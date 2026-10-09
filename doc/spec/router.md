@@ -395,7 +395,7 @@ execution authority. This frontend is not available in passthrough mode.
 `router.jsonl` MUST support `event: "feature_usage"` with `schema_version: 1`, fixed
 `feature`, `source`, `stage`, and `outcome` categories, and a UTC timestamp. The
 `router_start` event MUST advertise `feature_usage_schema: 1` and
-`feature_usage_features: ["journal", "commentary"]`. Missing coverage markers in older logs mean
+`feature_usage_features: ["journal"]`. Missing coverage markers in older logs mean
 unobserved, not zero use. An interrupted log or a debug write failure cannot establish
 complete coverage.
 
@@ -408,69 +408,26 @@ debug owner. Future features extend that allowlist and the advertised coverage, 
 the raw-data surface or capture metrics.
 
 Every request emits `feature_coverage` for journals with `state` unavailable,
-incomplete, or observed, plus fixed-category observation counts. Empty counts only
-establish zero observations when the relevant response inspection completed; they
-never establish that an unobserved worker did not attempt publication. Counts describe
-branch observations, not unique messages or independent uses. Older logs without this
-marker cannot establish zero commentary output.
+incomplete, or observed, plus fixed-category observation counts. Counts describe
+observed branches, not unique messages or independent uses. Missing coverage
+markers and interrupted logs cannot establish zero use.
 
-The journal feature records `mutation / accepted` for batched and runtime mutations,
-`tool / mutation / prepared` for dedicated router calls, `code_mode / lowering / prepared`
-for runtime wiring, and separate `report_now` and `terminal_flush` rendering events.
-Journal-only `code_mode / lowering` records one observation per carrier, not per expression:
-`prepared` means a publisher route was created; `unavailable` means it could not be created
-and lowering rejects. Neither outcome proves expression execution.
-Only successful store admission counts as an accepted mutation. `code_mode / mutation / rejected`
-records an authenticated runtime mutation that failed decoding or store admission; it
-applied nothing and carries no error text. Prepared rendering does not
-prove display. Existing `commentary` categories remain for automatic notice infrastructure:
+Retained dedicated journal calls record `tool / mutation / accepted` and
+`tool_field / mutation / accepted` at the atomic owner. Journal delivery records
+`report_now` and `terminal_flush` rendering events with `prepared` or `suppressed`
+outcomes. Prepared rendering does not prove display. The originating host result
+records `host_result / completion / local` when local completion is selected.
+MCP operation counts belong to the durable journal metrics owner.
 
-- `source: provider_message`, `stage: authored`, `outcome: observed`: a completed
-  assistant commentary message was observed at the provider boundary. A generated-looking
-  message ID does not change its provenance. Consumers deduplicate by thread/message ID.
-- `source: router_activity`, `stage: render`, `outcome: prepared`: the router constructed
-  a root activity copy. This is not authored in-tool commentary or proof of UI delivery.
-- `source: shell` or `code_mode`, `stage: publication`: an authenticated nonempty
-  runtime submission reached the broker. Outcomes are `accepted`, `blank` (whitespace),
-  `oversized` (rendered size), or `capacity`. Empty completion signals are excluded.
-  Malformed, oversized HTTP bodies and unauthorized requests never reach this boundary
-  and MUST NOT count as feature usage. Shell commands that cannot discover or reach
-  a publisher remain unobserved. Successful HTTP status alone is not acceptance.
-- `stage: render`, with the originating source: `prepared` means commentary passed
-  provenance checks and was prepared for a response; `suppressed` means it did not.
-  Accepted publications and prepared messages share `message_id`. Neither stage proves
-  that the client received or displayed the message.
-
-Request-bound observations use the same request ID as the existing debug request log.
-Runtime publication has no inferred originating request or public routing-session ID;
-shell publications also have no inferred tool-call ID. Runtime records use the route's
-originating thread when known. The broker's internal replay key is not a public session
-and MUST NOT be exported. Rendering uses the consuming request's identity, including
-its public routing session, and joins accepted publications through message ID. Consumers
-MUST select a stage rather than summing stages as independent feature uses. Rendering
-can be reconsidered during response reconstruction, so consumers MUST deduplicate it
-by message ID. Subagent activity copies, critical notices, and
-standalone provider commentary MUST NOT be classified as explicit in-tool usage.
+Request-bound observations use the same request ID as the existing debug request
+log. Consumers select one stage rather than sum stages as independent feature uses,
+and deduplicate reconsidered rendering by message ID. Subagent activity, critical
+notices, and provider commentary are separate from journal authoring.
 
 Evidence is opt-in through `--debug`, remains in the existing operational log, and
 shares its serialized writes and shutdown error reporting. It adds no capture
-callback, metric counter, listener, or execution dependency. JSON, SSE, runtime
-publication, repeated observation, excluded content, suppression, and auxiliary
-write failure must preserve those boundaries.
-
-### Journal latency debug evidence
-
-With `--debug`, authenticated journal requests emit `journal_latency` in
-`router.jsonl` with `schema_version: 1`. Numeric microsecond fields are
-`delivery_wait_us`, `state_wait_us`, `replay_wait_us`, `persist_write_us`,
-`response_write_us`, and `total_us`. They cover server handling of mutations and
-reads; zero may mean a phase was not reached. `response_write_us` measures the
-handler's response write, not client or network round-trip latency.
-
-Optional `thread_id` and `call_id` use the feature-record identity sanitization
-above. Journal contents, receipt IDs, credentials, and paths are never included.
-These diagnostics remain auxiliary operational evidence, not capture metrics,
-provider consumption, or proof that the client received a result.
+callback, metric counter, listener, or execution dependency. Repeated observation,
+excluded content, suppression, and auxiliary write failure preserve those boundaries.
 
 ## Acceptance
 

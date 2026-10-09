@@ -21,8 +21,6 @@ const (
 	applyPatchToolName = "apply_patch"
 
 	maxMekugiScriptBytes = 1 << 20
-
-	maxMekugiPendingCalls = 128
 )
 
 func nativeSpawnRoles(raw jsonv1.RawMessage, parentAuthor string, ignoredCallIDs ...map[string]bool) map[string]journalSpawnRole {
@@ -114,23 +112,21 @@ func mekugiDataDirectory() (string, error) {
 }
 
 type mekugiProxy struct {
-	registry           *toolRegistry
-	titles             *sessionTitleCache
-	memoryCommentary   map[string]map[string]*commentaryReplacement
-	commentary         *commentaryBroker
-	commentaryEndpoint string
-	journals           *journalStore
-	journalCompaction  string
-	duplicateOutput    bool
-	usage              *threadUsage
-	autoLiveDiff       *autoLiveDiff
-	activity           *subagentActivity
-	execTrack          *execTrackHub // Set for the UI when command shells are tracked.
-	skillsManager      bool
-	execWindows        *execWindowRegistry
-	nativeTrace        *nativeToolTrace
-	approvalMu         sync.Mutex
-	approvalFeedback   map[[2]string][]string // Live thread/turn feedback; no host steering.
+	registry          *toolRegistry
+	titles            *sessionTitleCache
+	memoryCommentary  map[string]map[string]*commentaryReplacement
+	journals          *journalStore
+	journalCompaction string
+	duplicateOutput   bool
+	usage             *threadUsage
+	autoLiveDiff      *autoLiveDiff
+	activity          *subagentActivity
+	execTrack         *execTrackHub // Set for the UI when command shells are tracked.
+	skillsManager     bool
+	execWindows       *execWindowRegistry
+	nativeTrace       *nativeToolTrace
+	approvalMu        sync.Mutex
+	approvalFeedback  map[[2]string][]string // Live thread/turn feedback; no host steering.
 
 	mu                 sync.RWMutex
 	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
@@ -158,11 +154,9 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 	}
 	activity := newSubagentActivity()
 	activity.usage = newThreadUsage()
-	broker := newCommentaryBroker()
 	proxy := &mekugiProxy{
 		registry:       registry,
 		titles:         titles,
-		commentary:     broker,
 		journals:       newJournalStore(),
 		usage:          activity.usage,
 		activity:       activity,
@@ -170,43 +164,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		sessions:       make(map[string]*mekugiHistorySession),
 		activeSessions: make(map[string]int),
 	}
-	broker.notice = func(category, message string) { proxy.notice("", "", category, message) }
-	activity.notice = broker.notice
-	broker.journalPublisher = func(ctx context.Context, session, thread, receipt string, mutations []journalMutation) ([]string, error) {
-		workspace, _, ok := strings.Cut(session, "\x00")
-		if !ok {
-			return nil, errors.New("journal workspace is unavailable")
-		}
-		return proxy.applyJournal(ctx, workspace, thread, "runtime:"+receipt, mutations)
-	}
-	broker.journalLister = func(ctx context.Context, session, thread, agent string) ([]journalItem, error) {
-		workspace, _, ok := strings.Cut(session, "\x00")
-		if !ok {
-			return nil, errors.New("journal workspace is unavailable")
-		}
-		var items []journalItem
-		var err error
-		if agent != "" {
-			items, err = proxy.journals.listAgent(ctx, proxy.replayStore, workspace, thread, agent)
-		} else {
-			items, err = proxy.journals.list(ctx, proxy.replayStore, workspace, thread)
-		}
-		if err == nil {
-			proxy.countJournalRead(ctx, workspace, thread, "", "list")
-		}
-		return items, err
-	}
-	broker.journalReader = func(ctx context.Context, session, thread, agent, path string, depth *int, view string) ([]journalNode, error) {
-		workspace, _, ok := strings.Cut(session, "\x00")
-		if !ok {
-			return nil, errors.New("journal workspace is unavailable")
-		}
-		nodes, err := proxy.readJournalTree(ctx, workspace, thread, agent, path, depth, view)
-		if err == nil {
-			proxy.countJournalRead(ctx, workspace, thread, "", "read")
-		}
-		return nodes, err
-	}
+	activity.notice = func(category, message string) { proxy.notice("", "", category, message) }
 	return proxy
 }
 
@@ -234,25 +192,12 @@ func (p *mekugiProxy) Close() error {
 	clear(p.sessions)
 	clear(p.activeSessions)
 	p.historyBytes = 0
-	if p.commentary != nil {
-		p.commentary.close()
-	}
 	p.usage.close()
 	p.activity.close()
 	return cleanupErr
 }
 
-type mekugiPendingCall struct {
-	callID     string
-	toolName   string
-	structured bool
-
-	added         []byte
-	argumentsDone []byte
-}
-
 type mekugiTranslationState struct {
-	pending         map[string]mekugiPendingCall
 	previews        map[string]*liveDiffPreviewWorker
 	nativeExecCalls map[string]map[string]jsonv1.RawMessage
 	local           map[string]mekugiHistory
@@ -263,14 +208,6 @@ type mekugiTranslationState struct {
 	localSequence    uint64
 	storageIdle      bool
 	historyCommitted bool
-}
-
-type mekugiCommentaryState struct {
-	commentarySubscriptions []commentarySubscription
-	deferredCommentary      []publishedCommentary
-	commentaryEmitted       map[string]struct{}
-	subagentTurn            bool
-	activityResponding      bool // Counted in the agents-pane roster until Close.
 }
 
 type mekugiJournalState struct {
@@ -335,9 +272,9 @@ type mekugiResponseTransform struct {
 	mekugiTranslationState
 
 	commentaryAuthor string
-	commentaryTools  commentaryToolCatalog
 
-	mekugiCommentaryState
+	subagentTurn       bool
+	activityResponding bool // Counted in the agents-pane roster until Close.
 	mekugiJournalState
 	mekugiDeliveryState
 
@@ -359,7 +296,6 @@ func (t *mekugiResponseTransform) Close() {
 		t.proxy.activity.endResponse(t.threadID)
 	}
 	t.ReleaseDelivery()
-	t.releaseCommentarySubscriptions()
 	if t.sessionActive {
 		t.proxy.deactivateSession(t.historySessionID)
 		if t.storageIdle {
@@ -547,7 +483,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	if err != nil {
 		return nil, err
 	}
-	// Collaboration-only turns still need journal and commentary projection;
+	// Collaboration-only turns still need journal projection;
 	// absence of execution tools is not an incompatible Codex catalog.
 	codeModeToolName := ""
 	if execution != nil {
@@ -558,12 +494,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 			return nil, err
 		}
 	}
-	var commentaryTools commentaryToolCatalog
-	commentaryTools, err = prepareCommentaryTools(request.fields, tools)
-	if err != nil {
-		return nil, err
-	}
-
 	if prewarm {
 		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 	}
@@ -632,7 +562,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		model := request.model()
 		p.activity.beginResponse(activityThreadID, isGrokModel(model) || isOpenCodeModel(model))
 	}
-	deferredCommentary := p.drainCommentarySession(historySessionID, threadID)
 	transform := &mekugiResponseTransform{
 		ctx:              ctx,
 		proxy:            p,
@@ -650,15 +579,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		originalToolChoice:        originalToolChoice,
 		originalToolChoicePresent: originalToolChoicePresent,
 		directory:                 directory,
-		pending:                   make(map[string]mekugiPendingCall),
 		nativeExecCalls:           make(map[string]map[string]jsonv1.RawMessage),
 		local:                     make(map[string]mekugiHistory),
 		commentaryAuthor:          metadata.commentaryAuthor(),
-		commentaryTools:           commentaryTools,
 		subagentTurn:              metadata.SubagentKind != "",
 		activityResponding:        activityThreadID != "",
-		deferredCommentary:        deferredCommentary,
-		commentaryEmitted:         make(map[string]struct{}),
 		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.model(), usageServiceTier(request.fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
 		sessionShell:              requestSessionShell(request.fields["input"]),

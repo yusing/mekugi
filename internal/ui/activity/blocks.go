@@ -19,7 +19,6 @@ type Block struct {
 	Started            time.Time     // Observed live command start, presentation only.
 	Duration           time.Duration // Host or measured segment duration; zero means unavailable.
 	NotificationTiming bool          // Timestamps are UI notification observations, not host execution boundaries; Duration is host elapsed.
-	JournalTransport   bool          // Verified journal read/list; adjacent settled pages share a row and sum their durations.
 	Questions          []Question
 	Source             uint64   // Activity entry identity for exact cross-pane navigation.
 	Section            int      // Reasoning section ordinal within that entry, retained by dialogs.
@@ -101,7 +100,7 @@ func (b Block) Collapsible() bool {
 		return !b.Live
 	case "op", "reads":
 		lines := len(b.Tail) + b.TailOmitted
-		return !b.Running && !b.Skipped && b.ExitCode == 0 && (lines > 1 || b.JournalTransport && lines > 0)
+		return !b.Running && !b.Skipped && b.ExitCode == 0 && lines > 1
 	}
 	return false
 }
@@ -109,7 +108,7 @@ func (b Block) Collapsible() bool {
 // ReadOutput reports a file or skill read, whose output is what the agent
 // read rather than a result to watch, so it starts collapsed.
 func (b Block) ReadOutput() bool {
-	return b.JournalTransport || b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads" ||
+	return b.Verb == "Read" || b.Verb == "Skill" && b.Kind == "reads" ||
 		b.Kind == "op" && (b.Verb == "Attached" || b.Verb == "Attached skill")
 }
 
@@ -549,16 +548,9 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 			last.countContent()
 		}
 		last.Members = append(last.Members, block)
-		if last.JournalTransport || last.Verb == "Skill" {
+		if last.Verb == "Skill" {
 			last.Duration += block.Duration
 			last.Ended = block.Ended
-		}
-		if last.JournalTransport {
-			if last.Results != nil && block.Results != nil {
-				last.Results = new(*last.Results + *block.Results)
-			} else {
-				last.Results = nil
-			}
 		}
 		last.Flash = last.Flash || block.Flash
 		last.Collapsed = last.Collapsed || block.Collapsed
@@ -578,11 +570,11 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 // mergesReads reports whether next joins the read row last.
 func mergesReads(last, next Block) bool {
 	joins := func(b Block) bool {
-		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && (b.Results == nil || b.JournalTransport) && b.ExitCode == 0 &&
-			(b.JournalTransport || b.Verb == "Skill" || b.Started.IsZero() && b.Duration == 0) &&
+		return b.Kind == "reads" && !b.Running && !b.Skipped && b.Approval == "" && b.Results == nil && b.ExitCode == 0 &&
+			(b.Verb == "Skill" || b.Started.IsZero() && b.Duration == 0) &&
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}
-	return last.Verb == next.Verb && last.Workdir == next.Workdir && last.JournalTransport == next.JournalTransport && joins(last) && joins(next)
+	return last.Verb == next.Verb && last.Workdir == next.Workdir && joins(last) && joins(next)
 }
 
 // AddTimeouts carries presentation metadata outside command and operand spans.
@@ -613,10 +605,6 @@ func (b Block) readContent() bool {
 // countContent moves a read's collapsed content count onto its target.
 func (b *Block) countContent() {
 	if b.readContent() {
-		if b.JournalTransport {
-			b.Tail, b.TailOmitted = nil, 0
-			return
-		}
 		b.Reads = slices.Clone(b.Reads)
 		b.Reads[0].Lines = b.TailOmitted + len(b.Tail)
 		b.Tail, b.TailOmitted = nil, 0

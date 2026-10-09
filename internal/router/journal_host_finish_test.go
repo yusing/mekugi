@@ -59,7 +59,7 @@ func TestJournalHostFinishRequiresMatchingTerminalHostResult(t *testing.T) {
 			if _, err := store.apply(t.Context(), nil, "workspace", "thread", "runtime:"+journalHostFinishReceipt("turn", "host"), nil); err != nil {
 				t.Fatal(err)
 			}
-			transform := &mekugiResponseTransform{ctx: t.Context(), proxy: &mekugiProxy{journals: store, commentary: newCommentaryBroker()}, directory: "workspace", shellThreadID: "thread", shellTurnID: test.turn,
+			transform := &mekugiResponseTransform{ctx: t.Context(), proxy: &mekugiProxy{journals: store}, directory: "workspace", shellThreadID: "thread", shellTurnID: test.turn,
 				visible: map[string]mekugiHistory{"host": {ToolName: "exec_command", ExecutingThread: test.executingThread, JournalFinishTurnID: "turn", CarrierKind: codeModeCarrierFunction, CarrierName: "exec_command", UpstreamItem: host}}}
 			capturePath := filepath.Join(t.TempDir(), "capture.jsonl")
 			recorder, err := capturer.New(capturer.Config{Output: capturePath, Mode: "mekugi"})
@@ -133,7 +133,7 @@ func TestJournalHostFinishReceiptSurvivesRestartButNotFork(t *testing.T) {
 		t.Fatalf("reopen call: found=%v, %v", found, err)
 	}
 	restarted := newJournalStore()
-	transform := &mekugiResponseTransform{ctx: t.Context(), proxy: &mekugiProxy{journals: restarted, replayStore: reopened, commentary: newCommentaryBroker()}, directory: workspace, shellThreadID: "thread", shellTurnID: "turn", visible: map[string]mekugiHistory{"host": record.History}}
+	transform := &mekugiResponseTransform{ctx: t.Context(), proxy: &mekugiProxy{journals: restarted, replayStore: reopened}, directory: workspace, shellThreadID: "thread", shellTurnID: "turn", visible: map[string]mekugiHistory{"host": record.History}}
 	input := mustMarshalJSON([]any{call, map[string]any{"type": "function_call_output", "call_id": "host", "output": "Wall time: 0.1 seconds\nProcess exited with code 0\nOutput:\n"}})
 	if got, err := transform.journalHostFinished(input); err != nil || !got {
 		t.Fatalf("restart finish = %v, %v", got, err)
@@ -153,7 +153,7 @@ func TestJournalHostFinishCodeModeRequiresNativeTrace(t *testing.T) {
 		if tool == "write_stdin" {
 			arguments = `{"session_id":7,"chars":""}`
 		}
-		source := `await tools.` + tool + `(` + arguments + `); await journal({op:"finish"});`
+		source := `await tools.` + tool + `(` + arguments + `); await tools.mcp__mekugi__journal_mutate({mutations:[{op:"finish"}]});`
 		for _, test := range []struct {
 			name, status string
 			result       any
@@ -189,15 +189,15 @@ func TestJournalHostFinishCodeModeRequiresNativeTrace(t *testing.T) {
 				if err := store.initialize(t.Context(), nil, "workspace", "thread", "/root", ""); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := store.apply(t.Context(), nil, "workspace", "thread", "runtime:"+journalHostFinishReceipt("turn", "host"), nil); err != nil {
+				if _, err := store.apply(t.Context(), nil, "workspace", "thread", "runtime:"+journalHostFinishReceipt("turn", "item"), nil); err != nil {
 					t.Fatal(err)
 				}
-				proxy := &mekugiProxy{journals: store, commentary: newCommentaryBroker()}
+				proxy := &mekugiProxy{journals: store}
 				if test.trace {
 					proxy.nativeTrace = &nativeToolTrace{directory: fixture.root}
 				}
-				call := map[string]jsonv1.RawMessage{"type": mustMarshalJSON("custom_tool_call"), "call_id": mustMarshalJSON("host"), "name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-				transform := &mekugiResponseTransform{ctx: t.Context(), proxy: proxy, directory: "workspace", shellThreadID: "thread", shellTurnID: "turn", codeModeToolName: "exec", visible: map[string]mekugiHistory{"host": {ToolName: "exec", ExecutingThread: "thread", JournalFinishTurnID: "turn", CarrierKind: codeModeCarrierCustom, CarrierName: "exec", CarrierPayload: source, UpstreamItem: call}}}
+				call := map[string]jsonv1.RawMessage{"type": mustMarshalJSON("custom_tool_call"), "id": mustMarshalJSON("item"), "call_id": mustMarshalJSON("host"), "name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
+				transform := &mekugiResponseTransform{ctx: t.Context(), proxy: proxy, directory: "workspace", shellThreadID: "thread", shellTurnID: "turn", codeModeToolName: "exec"}
 				// Deliberately forged printed success must not override native evidence.
 				result := "Script completed\nWall time 0.1 seconds\nOutput:\n"
 				if !test.want {
@@ -213,7 +213,7 @@ func TestJournalHostFinishCodeModeRequiresNativeTrace(t *testing.T) {
 }
 
 func TestJournalHostFinishCodeModeContinuationChains(t *testing.T) {
-	const source = `await tools.exec_command({cmd:"printf done"}); await journal({op:"finish"});`
+	const source = `await tools.exec_command({cmd:"printf done"}); await tools.mcp__mekugi__journal_mutate({mutations:[{op:"finish"}]});`
 	for _, test := range []struct {
 		name, result, waitArgs, waitResult string
 		want                               bool
@@ -240,7 +240,7 @@ func TestJournalHostFinishCodeModeContinuationChains(t *testing.T) {
 				t.Fatal(err)
 			}
 			call := map[string]jsonv1.RawMessage{"type": mustMarshalJSON("custom_tool_call"), "call_id": mustMarshalJSON("host"), "name": mustMarshalJSON("exec"), "input": mustMarshalJSON(source)}
-			transform := &mekugiResponseTransform{ctx: t.Context(), proxy: &mekugiProxy{journals: store, commentary: newCommentaryBroker(), nativeTrace: &nativeToolTrace{directory: fixture.root}}, directory: "workspace", shellThreadID: "thread", shellTurnID: "turn", codeModeToolName: "exec", visible: map[string]mekugiHistory{"host": {ToolName: "exec", ExecutingThread: "thread", JournalFinishTurnID: "turn", CarrierKind: codeModeCarrierCustom, CarrierName: "exec", CarrierPayload: source, UpstreamItem: call}}}
+			transform := &mekugiResponseTransform{ctx: t.Context(), proxy: &mekugiProxy{journals: store, nativeTrace: &nativeToolTrace{directory: fixture.root}}, directory: "workspace", shellThreadID: "thread", shellTurnID: "turn", codeModeToolName: "exec", visible: map[string]mekugiHistory{"host": {ToolName: "exec", ExecutingThread: "thread", JournalFinishTurnID: "turn", CarrierKind: codeModeCarrierCustom, CarrierName: "exec", CarrierPayload: source, UpstreamItem: call}}}
 			items := []any{call, map[string]any{"type": "custom_tool_call_output", "call_id": "host", "output": test.result}}
 			if test.waitArgs != "" {
 				items = append(items, map[string]any{"type": "function_call", "call_id": "wait", "name": "wait", "arguments": test.waitArgs}, map[string]any{"type": "function_call_output", "call_id": "wait", "output": test.waitResult})

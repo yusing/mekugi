@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -102,7 +103,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": subagentBridgeNamespace, "arguments": string(mustMarshalJSON(args)), "status": "completed"}
 	}
 	journalCall := func(title string) map[string]any {
-		return map[string]any{"type": "custom_tool_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": "exec", "status": "completed", "input": `await journal({op:"add",title:` + string(mustMarshalJSON(title)) + `});`}
+		return map[string]any{"type": "custom_tool_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": "exec", "status": "completed", "input": `const result = await tools.mcp__mekugi__journal_mutate({mutations:[{op:"add",title:` + string(mustMarshalJSON(title)) + `}]}); if(result.isError) throw new Error(JSON.stringify(result)); text(result);`}
 	}
 	finishCall := func(integrate bool, titles ...string) map[string]any {
 		mutations := make([]any, 0, len(titles)+1)
@@ -113,7 +114,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			mutations = append(mutations, map[string]any{"op": "add", "title": title})
 		}
 		mutations = append(mutations, map[string]any{"op": "finish"})
-		return map[string]any{"type": "custom_tool_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": "exec", "status": "completed", "input": `const result = await tools.exec_command({cmd:"printf journal-host-finish"}); if (result.exit_code !== 0) throw new Error("fixture host failed"); await journal(` + string(mustMarshalJSON(mutations)) + `);`}
+		return map[string]any{"type": "custom_tool_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": "exec", "status": "completed", "input": `const result = await tools.exec_command({cmd:"printf journal-host-finish"}); if (result.exit_code !== 0) throw new Error("fixture host failed"); const mutation = await tools.mcp__mekugi__journal_mutate({mutations:` + string(mustMarshalJSON(mutations)) + `}); if(mutation.isError) throw new Error(JSON.stringify(mutation)); text(mutation); const second = await tools.mcp__mekugi__journal_mutate({mutations:[{op:"finish"}]}); if(second.isError) throw new Error(JSON.stringify(second));`}
 	}
 	if child {
 		p.childRequests++
@@ -172,7 +173,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		case turn == 1:
 			item = journalCall("Native root milestone")
 			if p.hostFinish {
-				item["input"] = `await journal({op:"add",kind:"task",title:"Native root milestone",state:"working",agent:"/root/journal_child"});`
+				item["input"] = `const result = await tools.mcp__mekugi__journal_mutate({mutations:[{op:"add",kind:"task",title:"Native root milestone",state:"working",agent:"/root/journal_child"}]}); if(result.isError) throw new Error(JSON.stringify(result)); text(result);`
 			}
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone, then report your findings.", "task_name": "journal_child", "fork_turns": "none"})
@@ -247,9 +248,15 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, hostFinish bool) {
 	provider.store = store
 	proxy.replayStore = store
 	proxy.nativeTrace = &nativeToolTrace{directory: traceRoot}
-	publisher := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
-	defer publisher.Close()
-	proxy.commentaryEndpoint = publisher.URL + commentaryPublisherPath
+	socket, stopMCP, err := startJournalMCP(t.Context(), newJournalMCPServer(proxy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := stopMCP(); err != nil {
+			t.Error(err)
+		}
+	}()
 	issues := NewCriticalErrors()
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
@@ -259,6 +266,7 @@ func runJournalNativeCodexSpawnE2E(t *testing.T, hostFinish bool) {
 	cmd := exec.CommandContext(ctx, codex,
 		"-c", config, "-c", `model_provider="journal_fixture"`,
 		"-c", "features.plugins=false",
+		"-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["journal-mcp",`+strconv.Quote(socket)+`]}`,
 		"-c", "features.code_mode=true", "-c", "features.code_mode_host=true",
 		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`,
 		"-c", "tools.update_plan.enabled=false",

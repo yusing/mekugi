@@ -124,7 +124,7 @@ func TestUISnapshotJournalRootLive(t *testing.T) {
 	t.Parallel()
 	text, _ := rootJournalLiveText(threadJournal{Author: "/root/reviewer", TreeAuthored: true, Events: []journalEvent{
 		{Seq: 1, Op: "add", Path: "/1", Fields: journalNode{Kind: "note", Title: "Consumer sees the live milestone before child completion."}},
-	}}, maxCommentaryPublicationBytes)
+	}}, maxJournalPublicationBytes)
 	painter := activityui.Painter{Theme: livediff.DarkTheme}
 	uisnapshot.Assert(t, "testdata/snapshots/journal-root-live.txt", strings.Join(painter.Markdown(text, 70), "\n")+"\n")
 }
@@ -136,20 +136,20 @@ func TestJournalRootLiveBoundedWindow(t *testing.T) {
 		{Seq: 2, Op: "add", Path: "/2", Fields: journalNode{Kind: "answer", Title: "Must stay terminal-only"}},
 		{Seq: 3, Op: "add", Path: "/3", Fields: journalNode{Kind: "note", Title: "Later milestone"}},
 	}}
-	text, sequence := rootJournalLiveText(j, maxCommentaryPublicationBytes)
-	if len(text) > maxCommentaryPublicationBytes || sequence != 1 || !strings.Contains(text, "clipped") {
+	text, sequence := rootJournalLiveText(j, maxJournalPublicationBytes)
+	if len(text) > maxJournalPublicationBytes || sequence != 1 || !strings.Contains(text, "clipped") {
 		t.Fatalf("unbounded or lost first window: bytes=%d sequence=%d", len(text), sequence)
 	}
 	j.RootLiveSeq = sequence
-	text, sequence = rootJournalLiveText(j, maxCommentaryPublicationBytes)
+	text, sequence = rootJournalLiveText(j, maxJournalPublicationBytes)
 	if sequence != 3 || !strings.Contains(text, "Later milestone") || strings.Contains(text, "terminal-only") || strings.Contains(text, "Large milestone") {
 		t.Fatalf("wrong continuation window: %q, %d", text, sequence)
 	}
 	if text, _ := rootJournalLiveText(j, 1); text != "" {
 		t.Fatal("insufficient remaining budget produced an update")
 	}
-	j.Author = strings.Repeat("x", maxCommentaryPublicationBytes)
-	if text, _ := rootJournalLiveText(j, maxCommentaryPublicationBytes); text != "" {
+	j.Author = strings.Repeat("x", maxJournalPublicationBytes)
+	if text, _ := rootJournalLiveText(j, maxJournalPublicationBytes); text != "" {
 		t.Fatal("oversized identity produced an update")
 	}
 }
@@ -159,7 +159,7 @@ func TestJournalRootLiveLegacyOptIn(t *testing.T) {
 	j := threadJournal{Author: "/root/child", Items: []journalItem{{Path: "/1", Updated: 1}}, Events: []journalEvent{
 		{Legacy: true, Seq: 1, Op: "add", Path: "/1", Fields: journalNode{Kind: "note", Title: "Silent milestone"}},
 	}}
-	if text, _ := rootJournalLiveText(j, maxCommentaryPublicationBytes); text != "" {
+	if text, _ := rootJournalLiveText(j, maxJournalPublicationBytes); text != "" {
 		t.Fatalf("v1 milestone without report_now became live: %q", text)
 	}
 }

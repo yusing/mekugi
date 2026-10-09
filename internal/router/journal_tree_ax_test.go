@@ -1,15 +1,8 @@
 package router
 
 import (
-	"bytes"
-	"encoding/json"
 	"encoding/json/jsontext"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"os/exec"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -75,62 +68,5 @@ func TestJournalRejectionsNameTheCorrection(t *testing.T) {
 	}
 	if journal := treeSnapshot(t, proxy, workspace); len(journal.Items) != 3 {
 		t.Fatalf("rejected batch applied: %+v", journal.Items)
-	}
-}
-
-// A rejected mutation is the model's correction, not a transport failure, so it
-// must not abort the rest of the exec program.
-func TestCodeModeJournalRejectionDoesNotAbortProgram(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("Node is required to execute lowered exec")
-	}
-	proxy, workspace := treeTestJournal(t)
-	treeApply(t, proxy, workspace, journalMutation{Op: "add", Title: new("Root finding")})
-	server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
-	defer server.Close()
-	token := proxy.commentary.subscribe(workspace+"\x00session", "reject-call")
-	proxy.commentary.bindActivity(token, "tree")
-	publish := func(body string) string {
-		t.Helper()
-		var output bytes.Buffer
-		matched, err := publishCommentaryOnce(t.Context(), &output, []string{commentaryOnceArgument, server.URL, token, url.PathEscape(body)})
-		if !matched || err != nil {
-			t.Fatalf("publication %s: matched=%v err=%v", body, matched, err)
-		}
-		return output.String()
-	}
-	var rejected struct {
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(publish(`{"op":"add","under":"/1","title":"Detail"}`)), &rejected); err != nil || rejected.OK || !strings.HasPrefix(rejected.Error, "journal mutation rejected: journal parent must be a task: /1 is a note") {
-		t.Fatalf("rejection = %+v, %v", rejected, err)
-	}
-	if err := json.Unmarshal([]byte(publish(`[{"op":"log","path":"/1","text":"Typo"}]`)), &rejected); err != nil || rejected.OK || !strings.Contains(rejected.Error, `unknown field "path"`) {
-		t.Fatalf("decode rejection = %+v, %v", rejected, err)
-	}
-
-	transform, _ := newRuntimeCommentaryTransform(t)
-	lowered, changed, err := transform.lowerCodeModeCommentary("reject-call", `const single = await journal({op:"add",under:"/1",title:"Detail"});
-const batch = await journal([{op:"log",text:"Fine"},{op:"set",p:"/9",state:"done"}]);
-text("continued " + JSON.stringify([single, batch]));`)
-	if err != nil || !changed {
-		t.Fatalf("lowering: changed=%t err=%v", changed, err)
-	}
-	script := `const outputs=[]; globalThis.text=value=>outputs.push(value);
-const tools={exec_command:async ()=>({exit_code:0,output:` + strconv.Quote(`{"ok":false,"error":"journal mutation rejected: example"}`) + `})};
-(async()=>{` + lowered + `})().then(()=>process.stdout.write(JSON.stringify(outputs)),error=>{console.error(error);process.exitCode=1;});`
-	output, err := exec.CommandContext(t.Context(), node, "-e", script).CombinedOutput()
-	if err != nil {
-		t.Fatalf("lowered execution: %s: %v", output, err)
-	}
-	var outputs []string
-	if err := json.Unmarshal(output, &outputs); err != nil {
-		t.Fatalf("outputs %s: %v", output, err)
-	}
-	want := []string{"journal mutation rejected: example", "journal mutation rejected: example", "continued [null,[]]"}
-	if !reflect.DeepEqual(outputs, want) {
-		t.Fatalf("outputs = %q, want %q", outputs, want)
 	}
 }

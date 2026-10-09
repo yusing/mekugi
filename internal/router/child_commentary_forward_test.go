@@ -45,17 +45,6 @@ func TestCollaborationCallsPassThroughWithoutCommentary(t *testing.T) {
 				if !bytes.Equal(request.fields["input"], mustTestJSON(t, []any{call})) {
 					t.Fatal("collaboration replay changed")
 				}
-				fields := map[string]json.RawMessage{"input": mustTestJSON(t, []any{
-					map[string]any{"type": "additional_tools", "tools": []any{
-						map[string]any{"type": "namespace", "name": namespace, "tools": []any{
-							map[string]any{"type": "function", "name": name, "parameters": map[string]any{"type": "object"}},
-						}},
-					}},
-				})}
-				catalog, err := prepareCommentaryTools(fields, decodeResponsesToolCatalog(fields))
-				if err != nil || len(catalog) != 0 {
-					t.Fatalf("collaboration alias instrumented: %v, %v", catalog, err)
-				}
 			})
 		}
 	}

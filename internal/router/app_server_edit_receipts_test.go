@@ -243,10 +243,9 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 // A cell that publishes a journal milestone, edits through an interpreter, and
 // reads in the same cell still yields host identities for its confirmed edit,
 // live and after history is restored into a new UI.
-func TestCodeModeLoweredJournalCellEditReceipt(t *testing.T) {
+func TestCodeModeMCPJournalCellEditReceipt(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	proxy.commentaryEndpoint = "http://127.0.0.1:1234/internal/commentary"
 	trace := newNativeTraceFixture(t)
 	proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
 	transform, _, _, workspace := newMekugiTestTransformWithProxy(t, proxy)
@@ -257,20 +256,18 @@ func TestCodeModeLoweredJournalCellEditReceipt(t *testing.T) {
 	}
 	const edit = "python3 - <<'PY'\nopen('file.txt','w').write('new\\n')\nPY\ncat file.txt"
 	const read = "git diff --stat"
-	source := `await journal({op:"add", text:"Editing"});` +
+	source := `await tools.mcp__mekugi__journal_mutate({mutations:[{op:"log",text:"Editing"}]});` +
 		`text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(edit)) + `}));` +
 		`text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(read)) + `}));`
 	call := map[string]any{"type": "custom_tool_call", "id": "cell-item", "call_id": "cell", "name": "exec", "input": source, "status": "completed"}
 	if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
 		t.Fatal(err)
 	}
-	lowered := transform.local["cell"].CarrierPayload
-	if lowered == source {
-		t.Fatal("journal call was not lowered")
+	if transform.local["cell"].CarrierPayload != source {
+		t.Fatal("stock exec source changed")
 	}
-	journal := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, runtimeCommentaryToken(t, transform)}) + " '%7B%22op%22%3A%22add%22%7D'"
-	trace.start("thread-1", "runtime", "cell", lowered)
-	for _, tool := range []struct{ id, cmd string }{{"journal-exec", journal}, {"edit-exec", edit}, {"read-exec", read}} {
+	trace.start("thread-1", "runtime", "cell", source)
+	for _, tool := range []struct{ id, cmd string }{{"edit-exec", edit}, {"read-exec", read}} {
 		trace.tool("thread-1", "runtime", tool.id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": tool.cmd})))
 		trace.result("thread-1", tool.id, "completed", map[string]any{"exit_code": 0})
 	}
@@ -279,7 +276,7 @@ func TestCodeModeLoweredJournalCellEditReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	visible := maps.Clone(call)
-	visible["input"] = lowered
+	visible["input"] = source
 	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{visible, map[string]any{
 		"type": "custom_tool_call_output", "call_id": "cell", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n",
 	}})}}

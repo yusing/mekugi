@@ -140,9 +140,6 @@ func (p *mekugiProxy) releaseIdleStorageSession(ctx context.Context, thread stri
 		delete(p.storageLeases, thread)
 		delete(p.storageTurns, thread)
 	}
-	if p.commentary != nil {
-		p.commentary.retireThread(thread)
-	}
 }
 
 func (s *mekugiReplayStore) readRetainedSession(name string) (retainedSession, error) {

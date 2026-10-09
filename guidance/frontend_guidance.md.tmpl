@@ -61,17 +61,15 @@ Record useful interim results, blockers, and recovery facts with useful tool wor
 <instruction id="journal_api">
 Give each item a short, clear title or first line with no trailing punctuation. Prefer an action-subject clause with the action in bold: "**Completed** the task".
 
-exec API: `await journal(op)` or `await journal([op, ...])` applies an atomic batch. The helper returns a Promise and can also be joined with independent work in `Promise.allSettled`; await the enclosing batch before the cell ends. Paths use stable sibling ordinals (`/1`, `/1/2`) shared by tasks, notes and context, never titles or shifting array indices; use returned paths rather than counting. New router-owned Outcomes do not consume these ordinals. Only tasks accept children. A plan returns its created paths in order; other mutations return the affected path. Arrays return paths in operation order. Plans, adds and arrays containing them also print the returned paths through `text`.
+Inside exec, await `tools.mcp__mekugi__journal_mutate({mutations:[...]})` or `tools.mcp__mekugi__journal_read({...})`. Codex may omit these deferred tools from its tool list; the declarations below come from their native schemas. Mutations apply atomically and return `structuredContent.paths` in operation order; reads return `structuredContent.nodes`. Check `isError` before dependent work: a rejected batch applies nothing. Print useful results with `text(result.isError ? result.content : result.structuredContent)`. Await every call, including calls joined in `Promise.allSettled`, before the cell ends.
 
-- `{op:"plan", under?:path, tasks:["Title", {p?:existingChildPath,title,state?,body?,reason?,tasks?:[...]}], reset?:"slice"}` creates pending tasks or updates listed children. Unlisted pending children become dropped; working and finished children remain.
-- `{op:"add", under?:path, kind?:"task"|"note"|"context", title, body?, state?, reason?, agent?:canonicalChild, before?:siblingPath}` adds one node. Only `kind:"task"` accepts state, reason and agent; creation and binding validate together. Default kind is note. Context nodes hold durable constraints.
-- `{op:"set", p:path, title?,body?,state?,reason?,agent?:canonicalChild,superseded_by?:path}` updates a node. Task states are pending, working, done, blocked, dropped. Blocked and dropped require a reason. Reopen done/dropped with working. A done parent cannot have open descendants; complete parent and children in one atomic batch when appropriate. `superseded_by` marks a context node, note, or done or dropped task as replaced by another node outside its subtree; reads keep it as history with that pointer, and recovery shows only its pointer line instead of its body and children. An empty string clears it.
-- `{op:"log", p?:taskPath, text}` records a new fact under p, otherwise under the working leaf task; several working leaves select their common parent task, else root. A note p selects its containing task. Lead with the result or decision so the card's short preview is useful; supporting evidence follows in the body. For example, "**Verified** the result" is an established result; "Now checking restart" is narration. Record a separate item for a coverage gap. Do not repeat unchanged facts.
-- `{op:"remove", p:path}` corrects a mistaken entry; retained history keeps a tombstone.
-- `{op:"finish"}` is a completion marker, not a journal node. Put it last in the final useful exec's journal batch, after checking required results in JavaScript. It returns no path. Runnable local work rejects the whole batch with its task path; correct it in the same turn. Completed slice boundaries, blocked reports and user-stopped work can finish. Native `exec_command` or `write_stdin` journal arrays may likewise end with it when a successful result needs no further provider interpretation; there, runnable local work drops only the marker. Mekugi verifies the enclosing host result and answers Codex's continuation locally, without a provider inference. Rejected, failed or unfinished work still needs inspection; the marker does not stop host execution or revive a later turn.
-- `{op:"read", p?:path, agent?:agentPath, depth?:number, view?:"combined"|"own"|"tasks"|"outline"}` returns a tree of nodes with paths, kinds, titles, task states, router timestamps and children. Omit agent to select your journal; read agent selectors may omit the `/root/` prefix. Only proven ancestors and descendants are readable. The default `combined` view includes bodies and mounted agents. `own` excludes mounted agents; `tasks` also omits notes, context, answers and task bodies; `outline` keeps your own nodes of every kind with titles but no bodies, for finding a node to amend. Recover root task IDs with `{op:"read", view:"tasks", depth:0}` instead of expanding completed agents. Write only your own journal. Bind a direct child once on task `add agent` or existing-task `set agent` using its canonical path; its read-only subtree appears under that task, otherwise under Agents. Combined view paths (with @ keys) are readable but not writable; `read agent` uses that child's local ordinal paths. Mounted root state comes from observed host lifecycle, not the child's prose. Parents record integration decisions, not copies of child results.
+Paths use stable sibling ordinals (`/1`, `/1/2`) shared by tasks, notes and context, never titles or shifting array indices; use returned paths. Router-owned Outcomes have separate identities. Only tasks accept children, state, reason and agent binding; `add` creates a note by default. `plan` returns created paths in preorder. Unlisted pending children become dropped; working and finished children remain. Blocked and dropped tasks require a reason. Reopen finished tasks with working. A done parent has no open descendants; complete related states in one batch.
 
-Call `journal(...)` directly, not `tools.journal(...)`. The helper uses authenticated stock execution; do not construct its internal transport. A rejected mutation applies nothing, prints `journal mutation rejected: ...` through `text`, and returns null (`[]` for plans and arrays) while the rest of the exec continues; correct it in your next useful call. Read and transport failures throw.
+`log` records a new fact under its selected task, or under the working leaf task; several working leaves select their common task, else root. A note or context path selects its containing task. Lead with the result or decision; put supporting evidence after a newline. For example, "**Verified** the result" is an established result; "Now checking restart" is narration. Record a separate item for a coverage gap. Do not repeat unchanged facts. `remove` corrects a mistaken entry and retains its removal event. `superseded_by` names a replacement outside the target subtree; use it on notes, context, or done/dropped tasks. Reads retain the pointer; recovery follows the replacement. An empty string clears it.
+
+`finish` is a completion marker, not a node. Put it last in the final useful exec's mutation batch after checking required host results. It adds no path. Ordinary runnable local work rejects the whole batch with its task path; correct it in the same turn. Completed slice boundaries, blocked reports and user-stopped work can finish. Mekugi completes only after the originating host result succeeds. Failed or unfinished work still needs inspection; the marker does not stop host execution or revive a later turn.
+
+Recover root task IDs with `tools.mcp__mekugi__journal_read({view:"tasks",depth:0})`; use outline to find older paths. Write only your journal. Bind a direct child once with a task's `agent`. Combined view paths with `@` are read-only; select `agent` with `view:"own"` for child-local paths. Mounted lifecycle comes from observed host results. Parents record integration decisions, not copies of child results.
 </instruction>
 
 <instruction id="journal_code_mode">
@@ -81,17 +79,13 @@ Call `journal(...)` directly, not `tools.journal(...)`. The helper uses authenti
 
 <journal-api />
 
-Input declarations for planning and type-checking, not executable JavaScript. Use these discriminated inputs to catch unsupported fields before submission; native journal fields expose the same operation-specific shapes.
 ```ts
-<journal-input-types />
+<journal-declarations />
 ```
 </journal>
 <!-- mekugi-journal:end -->
 </instruction>
 
-<instruction id="journal_mutations">
-Optional atomic journal plan, add, set, log, or remove operations applied before this operation. Task paths are stable; notes record established facts. A final op:finish marker on stock exec_command/write_stdin requests local completion after the host reports success, without a follow-up provider inference.
-</instruction>
 <instruction id="report_issue">
 Report an observed Mekugi interaction problem as Markdown to the configured diagnose hooks.
 </instruction>
@@ -129,5 +123,5 @@ The input string must obey this tool format:
 </instruction>
 
 <instruction id="journal_code_mode_hint">
-Use the exec-local journal helper for reads and mutations.
+Use `tools.mcp__mekugi__journal_read` and `tools.mcp__mekugi__journal_mutate` inside exec.
 </instruction>

@@ -738,7 +738,7 @@ func segmentTrailer(block Block) string {
 	switch {
 	case block.Skipped && EditStatus(block) != "skipped":
 		return "· skipped"
-	case !block.Segment && !block.JournalTransport || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads" || block.VCS():
+	case !block.Segment || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads" || block.VCS():
 		return ""
 	case block.Kind == "op" && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)):
 		return "" // The row already shows the exit.
@@ -815,9 +815,6 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		return append([]string{Green + "✓ Final answer" + Reset}, liveActivityIndent(p.Markdown(block.Body, width-2), "  ")...)
 	case "reads":
 		color := VerbColor(block.Verb)
-		if block.JournalTransport && block.ExitCode != 0 {
-			color = Red
-		}
 		lead, count := block.lead(color, block.Verb), ResultCount(block.Results)+readLines(block)
 		indent := ansi.StringWidth(lead)
 		literal := block.Verb == "Search" || block.Verb == "Skill"
@@ -1252,7 +1249,7 @@ func clipSource(rows []string, block Block, lead string) []string {
 // readLines counts collapsed read output after the target it came from: a
 // file's content needs no row of its own to say how much there is.
 func readLines(block Block) string {
-	if block.JournalTransport || !block.Collapsed || !block.ReadOutput() || len(block.Tail) == 0 {
+	if !block.Collapsed || !block.ReadOutput() || len(block.Tail) == 0 {
 		return ""
 	}
 	return lineSuffix(block.TailOmitted+len(block.Tail), block.Hovered)
@@ -1270,9 +1267,6 @@ func lineSuffix(n int, hovered bool) string {
 // outputRows attaches the invocation's output to its final operation. Open
 // output counts its earlier lines in the verb column of its first row.
 func outputRows(block Block, lines []string, width int) []string {
-	if block.JournalTransport && block.Collapsed {
-		return lines
-	}
 	indent := block.cell(RowVerb(block))
 	padding := strings.Repeat(" ", indent)
 	// A VCS row's changes are its result, not output to collapse.

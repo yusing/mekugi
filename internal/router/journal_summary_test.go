@@ -87,7 +87,7 @@ func TestJournalSummarySeparatesEarlierEvidenceFromUnreportedFailure(t *testing.
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := proxy.commentary.journalPublisher(t.Context(), workspace+"\x00runtime", thread, "checkpoint", []journalMutation{{Op: "log", P: "/1", Text: new("Earlier test result reviewed")}}); err != nil {
+	if _, err := proxy.applyJournal(t.Context(), workspace, thread, "checkpoint", []journalMutation{{Op: "log", P: "/1", Text: new("Earlier test result reviewed")}}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := summaryForTest(t, ctx, store, workspace, thread)
@@ -269,7 +269,7 @@ func TestJournalSummaryLimitsFactsToCurrentWork(t *testing.T) {
 	if strings.Contains(summary.Text, "Result 36") || strings.Contains(summary.Text, "Unrelated") || len(summary.Text) > 4096 {
 		t.Fatalf("session history inflated recovery: %d bytes; unrelated history=%t", len(summary.Text), strings.Contains(summary.Text, "Unrelated"))
 	}
-	for _, want := range []string{"Preserve the active wire contract", "Result 37", "Result 38", "Result 39", "37 more current-work facts available by path", `journal({op:"read",view:"outline"})`} {
+	for _, want := range []string{"Preserve the active wire contract", "Result 37", "Result 38", "Result 39", "37 more current-work facts available by path", `view:"outline"`} {
 		if !strings.Contains(summary.Text, want) {
 			t.Errorf("missing %q", want)
 		}

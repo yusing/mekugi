@@ -20,6 +20,17 @@ func main() {
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(os.Args) > 1 && os.Args[1] == "journal-mcp" {
+		if len(os.Args) != 3 {
+			fmt.Fprintln(os.Stderr, "mekugi: journal-mcp requires one socket path")
+			return 2
+		}
+		if err := router.RunJournalMCPBridge(ctx, os.Args[2], os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "mekugi:", err)
+			return 1
+		}
+		return 0
+	}
 	if handled, exitCode := router.RunOwnedToolPluginWorker(
 		ctx,
 		os.Args[0],

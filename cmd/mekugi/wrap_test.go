@@ -286,15 +286,7 @@ func TestWrappedCodexProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_EXIT") == "interrupt" {
 		signal.Notify(interrupts, os.Interrupt)
 	}
-	var baseURL string
-	for _, arg := range os.Args {
-		start := strings.Index(arg, "http://127.0.0.1:")
-		if start < 0 {
-			continue
-		}
-		baseURL = strings.SplitN(arg[start:], "\"", 2)[0]
-		break
-	}
+	baseURL := os.Getenv("MEKUGI_BASE_URL")
 	client := &http.Client{Timeout: 5 * time.Second}
 	response, err := client.Get(strings.TrimSuffix(baseURL, "/v1") + "/api/metrics")
 	if err != nil {

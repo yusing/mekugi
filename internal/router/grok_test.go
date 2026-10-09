@@ -140,9 +140,6 @@ func TestGrokToolStreamThroughMekugi(t *testing.T) {
 			if name == "lookup" {
 				kind = "function"
 				arguments = `{"query":"test"}`
-				transform.commentaryTools = commentaryToolCatalog{
-					functionToolKey("", name): {qualifiedName: name},
-				}
 			}
 			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{
 				"tool": {kind: kind, name: name},

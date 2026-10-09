@@ -1,13 +1,8 @@
 package router
 
 import (
-	"bytes"
 	"encoding/json/jsontext"
-	json "encoding/json/v2"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -300,33 +295,6 @@ func TestJournalMountFailedRefreshDoesNotKeepStaleView(t *testing.T) {
 	}
 }
 
-func TestJournalMountAuthenticatedCarrierBindingAndRead(t *testing.T) {
-	proxy, workspace := mountFixture(t)
-	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Delegation")})
-	server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
-	defer server.Close()
-	token := proxy.commentary.subscribe(workspace+"\x00session", "mount-call")
-	proxy.commentary.bindActivity(token, "tree")
-	for _, mutation := range []string{`{"op":"set","p":"/1","agent":"/root/child"}`, `{"op":"read","p":"/1"}`} {
-		var output bytes.Buffer
-		matched, err := publishCommentaryOnce(t.Context(), &output, []string{commentaryOnceArgument, server.URL, token, url.PathEscape(mutation)})
-		if !matched || err != nil {
-			t.Fatalf("carrier %s: %v %s", mutation, err, output.String())
-		}
-		if strings.Contains(mutation, `"read"`) {
-			var result struct {
-				Items []journalNode `json:"items"`
-			}
-			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
-			if len(result.Items) != 2 || result.Items[1].Path != "/1/@child" {
-				t.Fatalf("authenticated read did not include mount: %s", output.String())
-			}
-		}
-	}
-}
-
 func TestJournalMountForkPreservesFactsNotSourceChildAuthority(t *testing.T) {
 	proxy, workspace := mountFixture(t)
 	treeApply(t, proxy, workspace, journalMutation{Op: "add", Kind: "task", Title: new("Finished delegation"), State: new("working")}, journalMutation{Op: "set", P: "/1", Agent: "/root/child"})
@@ -503,31 +471,20 @@ func TestJournalMountCompletedChildPreservesOpenOwnedTasks(t *testing.T) {
 				t.Fatalf("host completion changed parent tasks: %+v", got.Items)
 			}
 			proxy.journals = newJournalStore()
-			proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 			transform, _ := prepareActivityTest(t, proxy, "final", "tree", "", "/root", nil)
 			defer transform.Close()
 			transform.shellTurnID = "integration-turn"
-			token := testRuntimeCommentaryCall(t, transform, "final-integration")
 			transform.ReleaseDelivery()
-			body, err := json.Marshal(map[string]any{"journal": []journalMutation{
+			_, err = proxy.applyJournal(t.Context(), workspace, "tree", "runtime:"+journalHostFinishReceipt(transform.shellTurnID, "final-integration"), []journalMutation{
 				{Op: "set", P: "/1", State: new("done")},
 				{Op: "set", P: "/1/1", State: new("done")},
 				{Op: "log", Text: new("Integrated child result; unfinished work remains with child")},
-				{Op: "finish"},
-			}, "id": "integration-result"})
+				{Op: "finish", finishTurn: transform.shellTurnID},
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, bytes.NewReader(body))
-			request.Header.Set("Authorization", "Bearer "+token)
-			response := httptest.NewRecorder()
-			proxy.commentary.serveHTTP(response, request)
-			var outcome struct {
-				OK bool `json:"ok"`
-			}
-			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &outcome) != nil || !outcome.OK {
-				t.Fatalf("final batch rejected: %d %s", response.Code, response.Body)
-			}
+
 			parent := treeSnapshot(t, proxy, workspace)
 			if parent.Items[0].State != "done" || parent.Items[1].State != "done" {
 				t.Fatalf("final batch did not commit: %+v", parent.Items)

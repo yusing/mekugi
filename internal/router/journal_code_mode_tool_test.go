@@ -2,100 +2,11 @@ package router
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"os/exec"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
-
-func TestPublishCommentaryOnceListsThroughAuthenticatedRoute(t *testing.T) {
-	t.Parallel()
-	broker := newCommentaryBroker()
-	broker.journalLister = func(_ context.Context, session, thread, agent string) ([]journalItem, error) {
-		if session != "session" || thread != "thread" || agent != "/root/child" {
-			t.Fatalf("list identity = %q %q %q", session, thread, agent)
-		}
-		return []journalItem{{ID: "item-1", Text: "Checked", Author: "/root/child"}}, nil
-	}
-	server := httptest.NewServer(http.HandlerFunc(broker.serveHTTP))
-	defer server.Close()
-	token := broker.subscribe("session", "call")
-	broker.bindActivity(token, "thread")
-	for _, tc := range []struct {
-		name string
-		body string
-		ok   bool
-	}{
-		{"list", `{"op":"list","agent":"/root/child"}`, true},
-		{"mutation field", `{"op":"list","agent":"/root/child","text":"bad"}`, false},
-		{"unknown field", `{"op":"list","agent":"/root/child","extra":true}`, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var output bytes.Buffer
-			matched, err := publishCommentaryOnce(t.Context(), &output, []string{commentaryOnceArgument, server.URL, token, url.PathEscape(tc.body)})
-			if !matched {
-				t.Fatal("journal publisher command was not recognized")
-			}
-			if !tc.ok {
-				if err == nil {
-					t.Fatalf("invalid list accepted: %s", output.String())
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			var result struct {
-				OK    bool              `json:"ok"`
-				Items []journalListItem `json:"items"`
-			}
-			if err := json.Unmarshal(output.Bytes(), &result); err != nil {
-				t.Fatal(err)
-			}
-			if !result.OK || len(result.Items) != 1 || result.Items[0].Text != "Checked" {
-				t.Fatalf("list output = %+v", result)
-			}
-		})
-	}
-}
-
-func TestLoweredCodeModeJournalListReturnsItems(t *testing.T) {
-	t.Parallel()
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("Node is required to execute lowered exec")
-	}
-	transform, _ := newRuntimeCommentaryTransform(t)
-	lowered, changed, err := transform.lowerCodeModeCommentary("list-call", `const items = await journal({op:"list",agent:"/root/child"}); process.stdout.write(JSON.stringify(items));`)
-	if err != nil || !changed {
-		t.Fatalf("lowering: changed=%t err=%v", changed, err)
-	}
-	const result = `{"ok":true,"items":[{"id":"item-1","text":"Checked","author":"/root/child","reported":false,"flushed":false}]}`
-	script := `let calls=0; const result=JSON.parse(` + strconv.Quote(result) + `);
-const tools={exec_command:async ({cmd})=>{
-  calls++;
-  if(calls===1) return {exit_code:0,output:JSON.stringify({...result,next:1,revision:"a".repeat(64)})};
-  if(calls!==2 || !cmd.endsWith(" 1 "+"a".repeat(64))) throw new Error("invalid continuation command");
-  return {exit_code:0,output:JSON.stringify(result)};
-}}; (async()=>{` + lowered + `})().catch(error=>{console.error(error);process.exitCode=1;});`
-	output, err := exec.CommandContext(t.Context(), node, "-e", script).CombinedOutput()
-	if err != nil {
-		t.Fatalf("lowered execution: %s: %v", output, err)
-	}
-	var items []journalListItem
-	if err := json.Unmarshal(output, &items); err != nil {
-		t.Fatalf("list returned %s: %v", output, err)
-	}
-	if len(items) != 2 || items[0].ID != "item-1" || items[1].Text != "Checked" {
-		t.Fatalf("list returned %+v", items)
-	}
-}
 
 func TestJournalToolIsAbsentInBothModes(t *testing.T) {
 	t.Parallel()
@@ -126,7 +37,7 @@ func TestCodeModeJournalCompletionAvoidsProviderContinuation(t *testing.T) {
 		return map[string]any{"type": "function_call", "id": callID + "-item", "call_id": callID, "namespace": "functions", "name": "journal", "arguments": arguments, "status": "completed"}
 	}
 	exec := map[string]any{"type": "custom_tool_call", "id": "exec-item", "call_id": "exec-call", "namespace": "functions", "name": "exec", "status": "completed",
-		"input": `const id = await journal({op: "add", text: "Validated milestone"}); await tools.exec_command({cmd: "true"});`}
+		"input": `await tools.mcp__mekugi__journal_mutate({mutations:[{op:"log",text:"Validated milestone"}]}); await tools.exec_command({cmd: "true"});`}
 	for _, test := range []struct {
 		name     string
 		native   bool

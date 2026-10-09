@@ -79,7 +79,7 @@ func TestJournalMainFlushOnlyOwnJournalAfterRestart(t *testing.T) {
 				t.Fatalf("nonterminal child flush: %v, %v", messages, err)
 			}
 			root.ReleaseDelivery()
-			root.journalLiveBytes = maxCommentaryPublicationBytes
+			root.journalLiveBytes = maxJournalPublicationBytes
 			messages, err := root.prepareJournalDelivery(true)
 			if err != nil || len(messages) != 1 {
 				t.Fatalf("main snapshot: %v, %v", messages, err)

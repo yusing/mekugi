@@ -593,9 +593,6 @@ func (t *mekugiResponseTransform) commitHistory() error {
 		return criticalDiagnostic(err, "replay_history_commit", "Mekugi could not retain completed response history", true)
 	}
 	t.historyCommitted = true
-	for callID := range t.local {
-		t.handOffCommentary(callID)
-	}
 	return nil
 }
 
@@ -610,6 +607,5 @@ func (t *mekugiResponseTransform) commitLocalCall(callID string) error {
 	if err := t.proxy.rememberBatch(t.historySessionID, map[string]mekugiHistory{callID: history}); err != nil && t.proxy.replayStore == nil {
 		return criticalDiagnostic(err, "replay_call_commit", "Mekugi could not retain a completed tool call", true)
 	}
-	t.handOffCommentary(callID)
 	return nil
 }

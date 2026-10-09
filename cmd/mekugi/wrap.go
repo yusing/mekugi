@@ -146,16 +146,21 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 	}
 
-	if session.PostCompactRecovery {
-		hookExecutable, err := os.Executable()
+	if session.PostCompactRecovery || session.JournalMCPSocket != "" {
+		worker, err := os.Executable()
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
 		}
-		var registered bool
-		args, registered = postCompactHookArgs(args, hookExecutable)
-		if !registered {
-			fmt.Fprintln(os.Stderr, "mekugi: explicit CLI hooks configuration retained; add the post-compact SessionStart hook to that configuration to enable recovery")
+		if session.PostCompactRecovery {
+			var registered bool
+			args, registered = postCompactHookArgs(args, worker)
+			if !registered {
+				fmt.Fprintln(os.Stderr, "mekugi: explicit CLI hooks configuration retained; add the post-compact SessionStart hook to that configuration to enable recovery")
+			}
+		}
+		if session.JournalMCPSocket != "" {
+			args = journalMCPArgs(args, worker, session)
 		}
 	}
 	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)

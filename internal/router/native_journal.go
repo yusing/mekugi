@@ -832,20 +832,6 @@ func journalEventVerb(event journalEvent) string {
 	return "updated"
 }
 
-// journalNodeRow is one node on one styled row: a state glyph, the dim path,
-// the title, then dim details. verb names the change a transcript row shows.
-func journalNodeRow(theme livediff.Theme, node journalNode, verb string) string {
-	lead, text := journalNodeParts(theme, node, verb)
-	return lead + text
-}
-
-// journalNodeParts splits a node row into its glyph lead and its text, so
-// wrapped rows can hang under the text.
-func journalNodeParts(theme livediff.Theme, node journalNode, verb string) (lead, text string) {
-	p := activityui.Painter{Theme: theme}
-	return journalPaintNodeParts(&p, node, verb, false)
-}
-
 func journalPaintNodeParts(p *activityui.Painter, node journalNode, verb string, compact bool) (lead, text string) {
 	theme := p.Theme
 	safe := func(text string) string { return livediff.Safe(strings.Join(strings.Fields(text), " "), false) }

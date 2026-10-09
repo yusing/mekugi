@@ -1,10 +1,7 @@
 package router
 
 import (
-	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -117,55 +114,6 @@ func TestJournalMutationRoutingAndRendering(t *testing.T) {
 	result = call("batch", `{"op":"list","journal":[{"op":"add","text":"Batched"}]}`)
 	if err := json.Unmarshal(result["items"], &items); err != nil || len(items) != 2 || items[1].Question != "" {
 		t.Fatalf("batch: %s %v", mustMarshalJSON(result), err)
-	}
-}
-
-func TestCodeModeJournalPinsQuestionAtLowering(t *testing.T) {
-	proxy := newManagedMekugiProxy(t)
-	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
-	proxy.commentaryEndpoint = "http://localhost/internal/commentary"
-	transform.journalQuestion = "Original question?"
-	_, lowered, err := transform.lowerCodeModeCommentary("call", `await journal({op: "add", text: "Milestone", answer: true})`)
-	if err != nil || !lowered {
-		t.Fatalf("lower: %v %v", lowered, err)
-	}
-	transform.journalQuestion = "Later question?"
-	proxy.commentary.journalPublisher = func(_ context.Context, _, _, _ string, mutations []journalMutation) ([]string, error) {
-		if len(mutations) != 1 || mutations[0].Text == nil || *mutations[0].Text != "Milestone" ||
-			mutations[0].Answer == nil || !*mutations[0].Answer || mutations[0].inferredQuestion != "Original question?" {
-			t.Fatalf("publication source: %+v", mutations)
-		}
-		return []string{"amber"}, nil
-	}
-	request := httptest.NewRequest(http.MethodPost, commentaryPublisherPath, strings.NewReader(`{"journal":{"op":"add","text":"Milestone","answer":true},"id":"publication"}`))
-	request.Header.Set("Authorization", "Bearer "+transform.commentarySubscriptions[0].token)
-	writer := httptest.NewRecorder()
-	proxy.commentary.serveHTTP(writer, request)
-	if writer.Code != http.StatusOK {
-		t.Fatalf("publish: %d %s", writer.Code, writer.Body.String())
-	}
-}
-
-func TestStructuredJournalMutationIsPlainMilestone(t *testing.T) {
-	transform, proxy, _, workspace := newMekugiTestTransform(t)
-	transform.journalQuestion = "Run checks?"
-	transform.commentaryTools = commentaryToolCatalog{
-		functionToolKey("functions", "exec_command"): {qualifiedName: "functions.exec_command"},
-	}
-	item := map[string]json.RawMessage{
-		"type": mustMarshalJSON("function_call"), "namespace": mustMarshalJSON("functions"),
-		"name": mustMarshalJSON("exec_command"), "call_id": mustMarshalJSON("structured-answer"),
-		"arguments": mustMarshalJSON(`{"cmd":"true","journal":[{"op":"add","text":"Passed"}]}`),
-	}
-	if _, err := transform.transformStructuredCommentary(item); err != nil {
-		t.Fatal(err)
-	}
-	if jsonString(item, "arguments") != `{"cmd":"true"}` {
-		t.Fatalf("host arguments: %s", item["arguments"])
-	}
-	items, err := proxy.journals.list(t.Context(), proxy.replayStore, workspace, "thread-1")
-	if err != nil || len(items) != 1 || items[0].Question != "" {
-		t.Fatalf("state: %+v %v", items, err)
 	}
 }
 

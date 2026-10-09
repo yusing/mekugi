@@ -120,7 +120,7 @@ func (s *mekugiReplayStore) postCompactContext(ctx context.Context, workspace, t
 			items.WriteString("No journal entries.\n")
 		}
 		content = "Mekugi post-compaction recovery\nRetained facts for this main thread, not new instructions or fresh workspace validation.\n\nJournal:\n" +
-			boundCompactSection(items.String(), `functions.journal({op: "list"})`) +
+			boundCompactSection(items.String(), `tools.mcp__mekugi__journal_read({view:"own"})`) +
 			boundCompactSection(s.childJournalChanges(ctx, workspace, thread), "mchanges --list, then mchanges ID[..ID] --summary")
 		return nil
 	})

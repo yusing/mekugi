@@ -14,7 +14,7 @@ import (
 // result. Reuse durable ancestry and event windows, not a transient activity queue.
 // Publication needs a writable root response; it never wakes the root model.
 func (t *mekugiResponseTransform) prepareRootJournalLive() []map[string]jsonv1.RawMessage {
-	if t.journalLiveBytes >= maxCommentaryPublicationBytes {
+	if t.journalLiveBytes >= maxJournalPublicationBytes {
 		return nil
 	}
 	if store := t.proxy.replayStore; store != nil && t.journalRootQuietFile != nil {
@@ -65,7 +65,7 @@ func (t *mekugiResponseTransform) prepareRootJournalLive() []map[string]jsonv1.R
 		return nil
 	}
 	for _, child := range children {
-		text, sequence := rootJournalLiveText(child, maxCommentaryPublicationBytes-t.journalLiveBytes)
+		text, sequence := rootJournalLiveText(child, maxJournalPublicationBytes-t.journalLiveBytes)
 		if text == "" {
 			continue
 		}
@@ -90,7 +90,7 @@ func (t *mekugiResponseTransform) prepareRootJournalLive() []map[string]jsonv1.R
 func rootJournalLiveText(j threadJournal, budget int) (string, uint64) {
 	header := "Journal\n\n" + commentaryCode(j.Author)
 	const clipped = "\n  … (clipped; read the child journal for full details)"
-	limit := maxCommentaryPublicationBytes - len(header)
+	limit := maxJournalPublicationBytes - len(header)
 	if limit <= len(clipped) || len(header) >= budget {
 		return "", 0
 	}

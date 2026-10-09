@@ -7,7 +7,7 @@ import (
 
 // Feature observations are operational debug evidence, not capture metrics.
 // Keep categories allowlisted and identities bounded; never accept payload text,
-// publisher capabilities, arbitrary attributes, or errors through this seam.
+// credentials, arbitrary attributes, or errors through this seam.
 type featureUsageTrace struct {
 	summary   *featureUsageSummary
 	debug     *debugOutput
@@ -41,31 +41,16 @@ func (trace featureUsageTrace) record(feature, source, stage, outcome, callID, m
 }
 
 func validFeatureUsage(feature, source, stage, outcome string) bool {
-	if feature == "journal" {
-		switch stage {
-		case "mutation":
-			return (source == "tool_field" || source == "tool" || source == "shell" || source == "code_mode") &&
-				(outcome == "accepted" || outcome == "prepared") || source == "code_mode" && outcome == "rejected"
-		case "lowering":
-			return source == "code_mode" && (outcome == "prepared" || outcome == "unavailable")
-		case "render":
-			return (source == "report_now" || source == "terminal_flush" || source == "tokens") &&
-				(outcome == "prepared" || outcome == "suppressed")
-		}
+	if feature != "journal" {
 		return false
 	}
-	switch feature {
-	case "commentary":
-		switch stage {
-		case "authored":
-			return (source == "tool_field" || source == "provider_message") && outcome == "observed"
-		case "publication":
-			return (source == "shell" || source == "code_mode") &&
-				(outcome == "accepted" || outcome == "blank" || outcome == "oversized" || outcome == "capacity")
-		case "render":
-			return (source == "tool_field" || source == "shell" || source == "code_mode" || source == "router_activity") &&
-				(outcome == "prepared" || outcome == "suppressed")
-		}
+	switch stage {
+	case "mutation":
+		return (source == "tool" || source == "tool_field") && outcome == "accepted"
+	case "render":
+		return (source == "report_now" || source == "terminal_flush") && (outcome == "prepared" || outcome == "suppressed")
+	case "completion":
+		return source == "host_result" && outcome == "local"
 	}
 	return false
 }
@@ -78,7 +63,6 @@ func safeFeatureIdentity(value string) bool {
 }
 
 // Counts describe branch observations, not unique messages or delivery to a UI.
-// Publications without a request owner remain separate thread/call events.
 type featureUsageSummary struct {
 	mu     sync.Mutex
 	counts map[string]uint64

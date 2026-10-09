@@ -35,10 +35,7 @@ func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) 
 	return transformed, translationDiagnostic(err, "mekugi_json", "Mekugi response translation failed while processing a JSON response")
 }
 
-func (t *mekugiResponseTransform) Finish(streamEvent bool) error {
-	if streamEvent && len(t.pending) != 0 {
-		return staticCriticalDiagnostic("stream_ended_incomplete_intercepted_call", "the upstream stream ended with an incomplete intercepted function call")
-	}
+func (t *mekugiResponseTransform) Finish(bool) error {
 	return nil
 }
 
@@ -103,9 +100,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		t.finalAnswer.observe(payload)
-		if len(t.pending) != 0 {
-			return nil, staticCriticalDiagnostic("malformed_pending_intercepted_event", "the upstream sent a malformed event while an intercepted function call was pending")
-		}
 		return [][]byte{payload}, nil
 	}
 	if envelope.Delta != "" && t.threadID != "" && strings.HasSuffix(string(envelope.Type), ".delta") {
@@ -113,16 +107,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	}
 	t.finalAnswer.observe(payload)
 	switch {
-	case envelope.Type == responseevents.Created:
-		visible := [][]byte{payload}
-		for _, publication := range t.deferredCommentary {
-			if message := t.runtimeCommentaryMessage(publication); message != nil {
-				visible = append(visible, assistantCommentaryDoneEvent(message))
-			}
-		}
-		t.deferredCommentary = nil
-		return visible, nil
-
 	case envelope.Type == responseevents.OutputItemAdded:
 		item, ok := decodeResponsesItem(envelope.Item)
 		if !ok {
@@ -143,37 +127,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			}
 			return [][]byte{payload}, nil
 		}
-		if item.Type == "function_call" {
-			key := functionToolKey(item.Namespace, name)
-			_, instrumented := t.commentaryTools[key]
-			if instrumented {
-				itemID, callID := item.ID, item.CallID
-				if itemID == "" || callID == "" {
-					return nil, staticCriticalDiagnostic("malformed_commentary_call", "the upstream emitted a malformed commentary function call")
-				}
-				if len(t.pending) >= maxMekugiPendingCalls {
-					return nil, staticCriticalDiagnostic("commentary_call_capacity", "the upstream commentary call capacity was exceeded")
-				}
-				if _, exists := t.pending[itemID]; exists || t.pendingCallKnown(callID) {
-					return nil, staticCriticalDiagnostic("reused_commentary_call", "the upstream reused a commentary call identity")
-				}
-				t.pending[itemID] = mekugiPendingCall{
-					callID: callID, toolName: name, structured: true, added: bytes.Clone(payload),
-				}
-				return nil, nil
-			}
-		}
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDelta:
 		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil {
 			t.previewStockDelta(envelope.ItemID, jsonString(fields, "name"), envelope.Delta)
-		}
-		return [][]byte{payload}, nil
-
-	case envelope.Type == responseevents.FunctionArgumentsDelta:
-		if pending, ok := t.pending[envelope.ItemID]; ok && pending.structured {
-			return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, nil
 		}
 		return [][]byte{payload}, nil
 
@@ -213,16 +171,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 
 	case envelope.Type == responseevents.FunctionArgumentsDone:
 		t.setToolInputEmission(envelope.ItemID, false)
-		pending, ok := t.pending[envelope.ItemID]
-		if !ok {
-			return [][]byte{payload}, nil
-		}
-		if len(pending.argumentsDone) != 0 {
-			return nil, staticCriticalDiagnostic("repeated_commentary_arguments", "the upstream repeated commentary argument completion")
-		}
-		pending.argumentsDone = bytes.Clone(payload)
-		t.pending[envelope.ItemID] = pending
-		return [][]byte{[]byte(`{"type":"response.in_progress"}`)}, nil
+		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.OutputItemDone:
 		item, ok := decodeResponsesItem(envelope.Item)
@@ -233,7 +182,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
 			// Item completion can report interrupted generation, not complete input.
-			delete(t.pending, item.ID)
 			delete(t.nativeExecCalls, item.ID)
 			return [][]byte{payload}, nil
 		}
@@ -256,57 +204,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		}
 		defer delete(t.previews, item.ID)
 		delete(t.nativeExecCalls, itemID)
-		if pending, buffered := t.pending[itemID]; buffered && pending.structured {
-			if pending.callID != callID || len(pending.argumentsDone) == 0 {
-				return nil, staticCriticalDiagnostic("inconsistent_commentary_call", "the upstream completed an inconsistent commentary function call")
-			}
-			message, err := t.transformStructuredCommentary(item.fields)
-			if err != nil {
-				return nil, criticalDiagnostic(err, "commentary_call_completion", "Mekugi could not complete a buffered commentary call", true)
-			}
-			var addedEnvelope struct {
-				Item json.RawMessage `json:"item"`
-			}
-			var addedItem map[string]json.RawMessage
-			if json.Unmarshal(pending.added, &addedEnvelope) != nil || json.Unmarshal(addedEnvelope.Item, &addedItem) != nil {
-				return nil, staticCriticalDiagnostic("malformed_buffered_commentary_call", "Mekugi could not decode a buffered commentary call")
-			}
-			addedItem["arguments"] = item.fields["arguments"]
-			addedPayload, err := marshalProtocolJSON(addedItem)
-			if err != nil {
-				return nil, criticalDiagnostic(err, "commentary_added_encode", "Mekugi could not encode a buffered commentary call", true)
-			}
-			addedEvent, err := replaceRawField(pending.added, "item", addedPayload)
-			if err != nil {
-				return nil, criticalDiagnostic(err, "commentary_added_projection", "Mekugi could not project a buffered commentary call", true)
-			}
-			argumentsDone, err := replaceRawField(pending.argumentsDone, "arguments", item.fields["arguments"])
-			if err != nil {
-				return nil, criticalDiagnostic(err, "commentary_arguments_projection", "Mekugi could not project completed commentary arguments", true)
-			}
-			itemPayload, err := marshalProtocolJSON(item)
-			if err != nil {
-				return nil, criticalDiagnostic(err, "commentary_item_encode", "Mekugi could not encode a completed commentary item", true)
-			}
-			itemDone, err := replaceRawField(payload, "item", itemPayload)
-			if err != nil {
-				return nil, criticalDiagnostic(err, "commentary_item_projection", "Mekugi could not project a completed commentary item", true)
-			}
-			delete(t.pending, itemID)
-			if err := t.commitLocalCall(callID); err != nil {
-				return nil, err
-			}
-			if message != nil {
-				return [][]byte{assistantCommentaryDoneEvent(message), addedEvent, argumentsDone, itemDone}, nil
-			}
-			return [][]byte{addedEvent, argumentsDone, itemDone}, nil
-		}
-		originalArguments := string(item.fields["arguments"])
-		message, err := t.transformStructuredCommentary(item.fields)
-		if err != nil {
-			return nil, criticalDiagnostic(err, "output_item_commentary", "Mekugi could not process completed output-item commentary", true)
-		}
-		item = newResponsesItem(item.fields)
 		changed, err := t.transformOutputItem(&item)
 		if err != nil {
 			return nil, criticalDiagnostic(err, "output_item_projection", "Mekugi could not project a completed upstream output item", true)
@@ -314,10 +211,9 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if err := t.commitLocalCall(callID); err != nil {
 			return nil, err
 		}
-		if !changed && message == nil && string(item.fields["arguments"]) == originalArguments {
+		if !changed {
 			return [][]byte{payload}, nil
 		}
-		delete(t.pending, itemID)
 		transformed, err := marshalProtocolJSON(item)
 		if err != nil {
 			return nil, criticalDiagnostic(err, "output_item_encode", "Mekugi could not encode a completed output item", true)
@@ -326,20 +222,10 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if err != nil {
 			return nil, criticalDiagnostic(err, "output_item_event_projection", "Mekugi could not project a completed output-item event", true)
 		}
-		if message != nil {
-			return [][]byte{assistantCommentaryDoneEvent(message), event}, nil
-		}
 		return [][]byte{event}, nil
 
 	case envelope.Type.Terminal():
 		clear(t.nativeExecCalls)
-		if envelope.Type == responseevents.Completed {
-			if len(t.pending) != 0 {
-				return nil, staticCriticalDiagnostic("terminal_incomplete_intercepted_call", "the upstream completed with an incomplete intercepted function call")
-			}
-		} else {
-			clear(t.pending)
-		}
 		transformed, err := t.transformResponse(envelope.Response, envelope.Type.Status())
 		if err != nil {
 			return nil, err
@@ -357,80 +243,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if err != nil {
 			return nil, err
 		}
-		if err := t.Finish(true); err != nil {
-			return nil, err
-		}
-		visible := make([][]byte, 0, len(t.commentarySubscriptions)+1)
-		var threadMessages []map[string]json.RawMessage
-		for _, subscription := range t.commentarySubscriptions {
-			if !subscription.handedOff {
-				continue
-			}
-			for _, publication := range t.proxy.commentary.drain(subscription.token) {
-				if message := t.runtimeCommentaryMessage(publication); message != nil {
-					if t.subagentTurn || t.finalAnswer.substantive {
-						// Keep late progress in history without a completed message
-						// after the streamed final. Stock Codex would render it again.
-						threadMessages = append(threadMessages, message)
-					} else {
-						visible = append(visible, assistantCommentaryDoneEvent(message))
-					}
-				}
-			}
-		}
-		if len(threadMessages) != 0 {
-			var response map[string]json.RawMessage
-			var output []map[string]json.RawMessage
-			if err := json.Unmarshal(transformed, &response); err != nil {
-				return nil, err
-			}
-			if raw, exists := response["output"]; exists {
-				if err := json.Unmarshal(raw, &output); err != nil {
-					return nil, err
-				}
-			}
-			response["output"] = mustMarshalJSON(append(threadMessages, output...))
-			event, err = replaceRawField(event, "response", mustMarshalJSON(response))
-			if err != nil {
-				return nil, err
-			}
-		}
-		t.releaseCommentarySubscriptions()
-		visible = append(visible, event)
-		return visible, nil
+		return [][]byte{event}, nil
 
 	default:
-		if _, pending := t.pending[envelope.ItemID]; pending || t.pendingCallKnown(envelope.CallID) {
-			return nil, unsupportedMekugiStreamEvent(envelope.Type)
-		}
 		return [][]byte{payload}, nil
 	}
-}
-
-func unsupportedMekugiStreamEvent(eventType responseevents.Kind) error {
-	underlying := fmt.Errorf("unsupported intercepted stream event %q", eventType)
-	switch {
-	case eventType.FunctionArguments():
-		return criticalDiagnostic(
-			underlying,
-			"unsupported_mekugi_stream_event:"+string(eventType),
-			fmt.Sprintf("the upstream emitted unsupported intercepted streaming event %q", eventType),
-			false,
-		)
-	default:
-		// Unknown event names are provider-controlled payload. Their lexical
-		// shape alone cannot establish that they are safe to display.
-		return criticalDiagnostic(underlying, "unsupported_mekugi_stream_event", "the upstream emitted an unsupported intercepted streaming event", true)
-	}
-}
-
-func (t *mekugiResponseTransform) pendingCallKnown(callID string) bool {
-	for _, pending := range t.pending {
-		if callID != "" && pending.callID == callID {
-			return true
-		}
-	}
-	return false
 }
 
 func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStatus string) ([]byte, error) {
@@ -492,12 +309,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			}
 		}
 		transformedOutput := make([]map[string]json.RawMessage, 0, len(output))
-		for _, publication := range t.deferredCommentary {
-			if message := t.runtimeCommentaryMessage(publication); message != nil {
-				transformedOutput = append(transformedOutput, message)
-			}
-		}
-		t.deferredCommentary = nil
 		for _, fields := range output {
 			if t.journalActive && isRouterLocalCall(fields) {
 				// A completed stream event can omit status. Its already-executed
@@ -519,14 +330,6 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 				transformedOutput = append(transformedOutput, fields)
 				continue
 			}
-			message, err := t.transformStructuredCommentary(item.fields)
-			if err != nil {
-				return nil, err
-			}
-			if message != nil {
-				transformedOutput = append(transformedOutput, message)
-			}
-			item = newResponsesItem(item.fields)
 			if _, err := t.transformOutputItem(&item); err != nil {
 				return nil, err
 			}
@@ -600,10 +403,6 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 			item.setInput(retained.CarrierPayload)
 			return retained.CarrierPayload != originalInput, nil
 		}
-		input, changed, err := t.lowerCodeModeCommentary(callID, originalInput)
-		if err != nil {
-			return false, criticalDiagnostic(err, "code_mode_call_lowering", "Mekugi could not lower a exec call", true)
-		}
 		patches := nativePatchesInCall(name, originalInput, t.directory)
 		t.primePreviewSources(item.ID, patches)
 		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
@@ -611,11 +410,11 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
 		observation, observed := t.snapshotExecObservation(captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches)))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
-		if !changed && len(patches) == 0 && !observed && !previewOpened {
+		if len(patches) == 0 && !observed && !previewOpened {
 			return false, nil
 		}
 		if observation == nil && len(execs) != 0 {
-			// Retained patch or journal cells still need literal reader identities
+			// Retained patch cells still need literal reader identities
 			// for host-trace matching, without a baseline or writer window.
 			observation = &execObservation{Commands: execs, Class: execNeutral.String(), CodeMode: true}
 		}
@@ -624,24 +423,15 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		history := mekugiHistory{
 			ToolName: name,
 			Script:   originalInput, CarrierKind: codeModeCarrierCustom,
-			CarrierName: name, CarrierPayload: input, UpstreamItem: item.cloneFields(),
-			ReplayCarrier:   !changed,
+			CarrierName: name, CarrierPayload: originalInput, UpstreamItem: item.cloneFields(),
+			ReplayCarrier:   true,
 			NativePatches:   patches,
 			ExecObservation: observation,
 			ExecutingThread: t.shellThreadID,
 			Caller:          t.operationCaller(),
 		}
-		if changed {
-			history.JournalFinishTurnID = t.shellTurnID
-		}
-		if !changed {
-			history.CommentaryMessageIDs = []string{commentaryMessageID(callID)}
-		}
 		t.recordLocal(callID, &history)
-		if changed {
-			item.setInput(input)
-		}
-		return changed, nil
+		return false, nil
 	}
 	return false, nil
 }

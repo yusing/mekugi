@@ -77,9 +77,7 @@ func buildToolRegistryAt(
 	if err != nil {
 		return fail(err)
 	}
-	contributions := []toolContribution{
-		{PluginID: "builtin.mekugi", Name: "mjournal", Builtin: true, Executable: true},
-	}
+	var contributions []toolContribution
 	if diagnose {
 		contributions = append(contributions, toolContribution{
 			PluginID: "builtin.mekugi", Name: reportIssueToolName, Builtin: true,

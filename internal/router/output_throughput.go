@@ -22,7 +22,7 @@ func (o *threadUsageObservation) begin() {
 	u := o.totals
 	u.mu.Lock()
 	defer u.mu.Unlock()
-	if u.closed || o.thread == "" || len(o.thread) > maxCommentaryPublicationBytes {
+	if u.closed || o.thread == "" || len(o.thread) > maxActivityMetadataBytes {
 		return
 	}
 	u.loadLocked(o.thread)

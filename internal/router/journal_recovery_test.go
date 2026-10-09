@@ -1,18 +1,11 @@
 package router
 
 import (
-	"bytes"
-	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -102,86 +95,5 @@ func TestJournalTaskRecoveryAfterOutcomeAndRestart(t *testing.T) {
 	}
 	if _, err := proxy.journals.readTree(t.Context(), proxy.replayStore, workspace, "tree", "", "", new(0), "combined"); err == nil {
 		t.Fatal("combined read silently lost corrupt mounted evidence")
-	}
-}
-
-func TestJournalCompactReadAuthenticatedTransports(t *testing.T) {
-	t.Parallel()
-	transform, proxy, _, _ := newDurableTreeTransform(t)
-	if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, transform.directory, transform.shellThreadID, "", []journalMutation{
-		{Op: "add", Title: new("Not a task")},
-		{Op: "plan", Tasks: []jsontext.Value{jsontext.Value(`{"title":"Task","body":"Not needed for IDs"}`)}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
-	defer server.Close()
-	token := proxy.commentary.subscribe(transform.historySessionID, "recovery")
-	proxy.commentary.bindActivity(token, transform.shellThreadID)
-	for _, view := range []string{"tasks", "own", "unknown"} {
-		arguments := `{"op":"read","view":"` + view + `","depth":0}`
-		result, err := transform.executeJournalCall(map[string]jsonv1.RawMessage{
-			"type": mustMarshalJSON("function_call"), "name": mustMarshalJSON("journal"),
-			"call_id": mustMarshalJSON("recovery-" + view), "arguments": mustMarshalJSON(arguments),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		var native struct {
-			OK    bool          `json:"ok"`
-			Items []journalNode `json:"items"`
-		}
-		if err := json.Unmarshal([]byte(jsonString(result, "output")), &native); err != nil {
-			t.Fatal(err)
-		}
-		var output bytes.Buffer
-		_, carrierErr := publishCommentaryOnce(t.Context(), &output, []string{commentaryOnceArgument, server.URL, token, url.PathEscape(arguments)})
-		if view == "unknown" {
-			if native.OK || carrierErr == nil {
-				t.Fatal("invalid view accepted")
-			}
-			continue
-		}
-		if !native.OK || carrierErr != nil {
-			t.Fatalf("%s read: native=%v carrier=%v", view, native.OK, carrierErr)
-		}
-		var carrier struct {
-			Items []journalNode `json:"items"`
-		}
-		if err := json.Unmarshal(output.Bytes(), &carrier); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(carrier.Items, native.Items) {
-			t.Fatalf("%s transport mismatch: %s", view, output.String())
-		}
-		if view == "tasks" && (len(native.Items) != 1 || native.Items[0].Path != "/2" || native.Items[0].Body != "") {
-			t.Fatalf("task read: %+v", native.Items)
-		}
-	}
-}
-
-func TestCodeModeJournalPlanPathsAreVisibleAndReturned(t *testing.T) {
-	t.Parallel()
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("Node is required to execute lowered exec")
-	}
-	for _, mutation := range []string{`{op:"plan",tasks:["One","Two","Three"]}`, `[{op:"plan",tasks:["One","Two","Three"]}]`} {
-		transform, _ := newRuntimeCommentaryTransform(t)
-		lowered, changed, err := transform.lowerCodeModeCommentary("plan-call", `const paths = await journal(`+mutation+`); text({returned:paths});`)
-		if err != nil || !changed {
-			t.Fatalf("lowering: %v %v", changed, err)
-		}
-		script := `const outputs=[]; globalThis.text=value=>outputs.push(value); let calls=0;
-const tools={exec_command:async ()=>{if(++calls>1) throw new Error("unexpected extra read"); return {exit_code:0,output:` + strconv.Quote(`{"ok":true,"items":["/5","/6","/7"]}`) + `};}};
-(async()=>{` + lowered + `})().then(()=>process.stdout.write(JSON.stringify(outputs)),error=>{console.error(error);process.exitCode=1;});`
-		output, err := exec.CommandContext(t.Context(), node, "-e", script).CombinedOutput()
-		if err != nil {
-			t.Fatalf("execution: %s: %v", output, err)
-		}
-		want := `["journal paths: [\"/5\",\"/6\",\"/7\"]",{"returned":["/5","/6","/7"]}]`
-		if string(output) != want {
-			t.Fatalf("paths not visible/returned: %s", output)
-		}
 	}
 }

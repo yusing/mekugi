@@ -699,9 +699,8 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 	}
 	p := newManagedMekugiProxy(t)
 	p.replayStore = store
-	p.commentaryEndpoint = "http://127.0.0.1" + commentaryPublisherPath
 	workspace := t.TempDir()
-	start := func(callID string) (*mekugiResponseTransform, string) {
+	start := func() *mekugiResponseTransform {
 		t.Helper()
 		request := activityAdmissionRequest(t, nil)
 		transform, err := p.prepareRequest(t.Context(), &request, "routing", "thread", codexTurnMetadata{
@@ -710,13 +709,13 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return transform, testRuntimeCommentaryCall(t, transform, callID)
+		return transform
 	}
-	older, _ := start("older-call")
+	older := start()
 	older.storageIdle = true
-	newer, token := start("newer-call")
+	newer := start()
 	newer.Close() // The host has a tool to dispatch; no terminal was delivered.
-	older.Close() // Its terminal must not retire the newer request's lease or route.
+	older.Close() // Its terminal must not retire the newer request's lease.
 	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(storageSessionName("thread"), ".json")+".lock"))
 	acquired, err := lease.TryLock()
 	if acquired {
@@ -724,12 +723,6 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 	}
 	if err != nil || acquired {
 		t.Fatalf("newer handoff lost lease: acquired=%v err=%v", acquired, err)
-	}
-	p.commentary.mu.Lock()
-	_, routeExists := p.commentary.routes[token]
-	p.commentary.mu.Unlock()
-	if !routeExists {
-		t.Fatal("newer handoff lost publisher route")
 	}
 	p.releaseIdleStorageSession(newer.ctx, "thread")
 }

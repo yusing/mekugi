@@ -23,15 +23,15 @@ func TestJournalCountersRuntimeCarriersReachMetricsExport(t *testing.T) {
 	defer recorder.Close()
 	handler := recorder.Handler(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		transform.ctx = request.Context()
-		session := workspace + "\x00" + thread
 		for range 2 {
-			if _, err := proxy.commentary.journalPublisher(request.Context(), session, thread, "runtime-call", []journalMutation{{Op: "log", Text: new("private progress note")}}); err != nil {
+			if _, err := proxy.applyJournal(request.Context(), workspace, thread, "runtime:runtime-call", []journalMutation{{Op: "log", Text: new("private progress note")}}); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if _, err := proxy.commentary.journalReader(request.Context(), session, thread, "", "", nil, ""); err != nil {
+		if _, err := proxy.readJournalTree(request.Context(), workspace, thread, "", "", nil, ""); err != nil {
 			t.Fatal(err)
 		}
+		proxy.countJournalRead(request.Context(), workspace, thread, "", "read")
 		response := mustTestJSON(t, map[string]any{"id": "runtime-final", "status": "completed", "output": []any{map[string]any{"type": "message", "id": "runtime-message", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Done."}}}}})
 		visible, err := transform.TransformJSON(response)
 		if err != nil {

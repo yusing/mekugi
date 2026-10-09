@@ -107,13 +107,9 @@ including those without `report_now`, even without an open provider response.
 The frontend applies pending milestones before later host events and preserves
 their transcript position at terminal flush. Captured answers remain terminal-only, including answers without a linked question.
 Native deletion retracts an already applied milestone even without `report_now`.
-Internal journal transport commands are classified only when their exact generated
-prefix matches the same thread’s durable translated call, including on resume and
-offline replay. Mutation transports are hidden; their persisted events have rows.
-Read and list transports persist no event, so each shows as a typed `Read` or `List`
-operation naming its journal target, such as `journal /3/5` or `journal worker`,
-in place of the generated command, including its tracked segment.
-Ordinary commands mentioning `mjournal` remain visible. Enqueueing is not acknowledgement: successful
+Journal MCP calls retain their ordinary host tool identity and results. Journal
+shell commands use the same command display, history, and replay paths as other
+commands. Enqueueing is not acknowledgement: successful
 UI output acknowledges exact revisions through the journal owner. Terminal
 records become eligible only after successful downstream response completion.
 Failed presentation leaves unacknowledged records durable and pending.
@@ -200,14 +196,14 @@ budget; an omitted count identifies additional current-work facts. Full context,
 closed task bodies and other history remain durable and available through
 explicit reads. Bounded excerpts point back to `read`, never claim to be complete.
 
-One shared hint explains how to read more: `journal({op:"read",p:"PATH",depth:1})`
+One shared hint explains how to read more: `tools.mcp__mekugi__journal_read({p:"PATH",depth:1})`
 retrieves a listed node with its immediate children.
-`journal({op:"read",view:"outline"})` finds own older paths, and
-`journal({op:"read",depth:1})` discovers older agents.
+`tools.mcp__mekugi__journal_read({view:"outline"})` finds own older paths, and
+`tools.mcp__mekugi__journal_read({depth:1})` discovers older agents.
 Each child's content appears once under `Agent NAME [state]`, using its readable
 name without `/root/`, including nested names such as `child/worker`. Rows in that
 group use child-local paths. To read a child row, use
-`journal({op:"read",agent:"NAME",p:"PATH",view:"own"})` with its heading name and
+`tools.mcp__mekugi__journal_read({agent:"NAME",p:"PATH",view:"own"})` with its heading name and
 local path. Own-path reads remain unchanged, and combined read addresses remain
 supported; recovery keeps agent UUID mount addresses internal.
 Retained changes list only their ranges, pointing to
@@ -479,12 +475,27 @@ are retained; irreducible capacity failures reject atomically instead of losing 
 The managed record byte limit applies independently. Historical v1 timestamps are
 unknown rather than fabricated.
 
-Each mutation is `plan`, `add`, `set`, `log`, or `remove`. Eligible stock non-strict
-function tools accept an optional atomic `journal` array, applied before execution
-and removed from host arguments. JavaScript `exec` uses the exec-local `journal(...)` helper.
-The helper returns a Promise: direct awaits and calls joined in an awaited
-`Promise.all` or `Promise.allSettled` preserve normal JavaScript concurrency and
-rejection handling. No dedicated journal tool is exposed. Operations are:
+Wrapped Mekugi sessions expose `journal_read` through an invocation-local stdio MCP server.
+Its closed input schema accepts `p`, `agent`, `depth`, and `view`; results contain
+the selected tree in `structuredContent.nodes` and the standard MCP text content.
+Codex supplies caller identity. The router uses that thread's unique retained
+journal scope, including the unscoped namespace when workspace metadata is absent,
+rejects missing or ambiguous identity, and applies the same
+durable ancestry rules as other journal reads. Registration preserves user
+configuration and passthrough. The Codex-started process connects to the router
+through a private local socket. `journal_mutate {mutations: [...]}` applies an atomic
+batch through the same owner. Its closed schema constrains each operation. Accepted
+results contain `structuredContent.paths`; rejected batches return an MCP error
+without changing journal state. Host metadata supplies mutation receipts and binds
+`finish` to its originating item and turn. Repeated calls with the same identity
+and payload return the retained paths without applying effects again.
+Distinct nested calls in one `exec` cell retain separate mutation receipts,
+including when more than one batch ends with `finish`. Their completion markers
+refer to the same enclosing host item; each batch still validates its candidate journal.
+
+Each mutation is `plan`, `add`, `set`, `log`, or `remove`. JavaScript `exec` calls the nested
+MCP tools through Codex. Stock tool schemas and arguments remain unchanged. Direct awaits and calls joined in an awaited `Promise.all`
+or `Promise.allSettled` preserve normal JavaScript concurrency. Operations are:
 
 - `plan {under?, tasks, reset?}`: each string adds a pending task; objects contain
   `p?`, `title`, `state?`, `body?`, `reason?`, and nested `tasks?`. Existing paths must
@@ -514,15 +525,13 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   fact to an unrelated task.
 - `remove {p}`: removes a mistaken subtree, retaining its removal event.
 - `finish`: a control marker with no operands or node, allowed only last in a
-  JavaScript helper batch or a nested stock `exec_command`/`write_stdin` journal array.
+  MCP mutation batch.
   The preceding mutations and invocation-scoped receipt persist atomically; the marker
-  contributes no returned path. A lone helper marker returns null. A rejected batch
+  contributes no returned path. A lone MCP marker returns an empty path array. A rejected batch
   records no finish receipt. The candidate journal must have no ordinary runnable
   local work, or a completed slice boundary with a pending sibling. Otherwise the
   entire batch is rejected with the runnable task path, so the agent can correct
-  it in the same host turn. A native journal array cannot return that rejection
-  without failing the response, so it applies its other mutations without the
-  receipt, and the host result reaches ordinary provider inference.
+  it in the same host turn.
   Blocked reports and user-stopped work remain eligible.
   This check applies to the caller's own work, including child journals; it neither
   completes delegated work nor changes the host-result completion checks.
@@ -538,8 +547,10 @@ rejection handling. No dedicated journal tool is exposed. Operations are:
   and outline reads without an explicit agent require only the caller's record, so
   unavailable descendant journals cannot prevent local ID recovery.
 
-Structured mutation inputs are operation-specific closed schemas; `exec` guidance
-includes discriminated TypeScript input declarations. They reject unsupported fields
+Structured mutation inputs are operation-specific closed schemas. Codex lists the
+journal MCP tools as deferred and omits their declarations from `exec`, so journal
+guidance renders TypeScript declarations from the same MCP input schemas, including
+read field descriptions. The schemas reject unsupported fields
 and restrict creation-time agent binding to explicit task creation. These are input
 shapes, not a new JavaScript execution or static-checking authority; callers can
 type-check against the declarations before submitting. Runtime validation still
@@ -553,10 +564,8 @@ likewise leave the entire batch unchanged
 and do not retain a success receipt.
 A rejected operation in a batch names its one-based position and op. Undecodable
 payloads name the offending member.
-Single mutations return their affected path; plans and batches return paths in order.
-The helper also displays the returned path array for a plan, an add, or a batch
-containing either, without changing the helper's return value or performing another
-read. Other mutations address paths the caller already holds and display nothing.
+MCP mutation batches return their affected paths in order, including single-operation
+batches. The caller can display those paths without another read.
 Receipt replay returns the original result without applying effects twice.
 
 Ordinary forks copy the source's latest journal at their first accepted request and
@@ -735,23 +744,13 @@ marker when host results establish completion, or as a direct final answer. A
 clean review needs one no-defect result, not repeated task and note entries. The
 API, mutation validation and automatic child-result evidence remain shared.
 
-The router lowers the helper to authenticated `mjournal` through stock `exec_command`;
-one cell-local helper serves all calls, including nested and concurrent calls,
-without repeating its transport implementation at each call site. It neither runs
-the surrounding program nor owns the host lifecycle. Read transport
-packs flat pages by encoded byte size so small nodes do not require repeated host
-calls, authorizing each page against the full snapshot revision,
-then assembles the tree inside the helper. A concurrent revision fails rather than
-mixing snapshots. Pagination fields are internal, not model-facing. A rejected
-mutation applies nothing and is a result, not a transport failure: the helper
-prints the rejection through `text` and returns null, or an empty array for plans
-and batches, so the program's remaining work still runs. Read, transport and
-publisher-unavailable failures throw. Read and transport errors name the operation
-and retain the underlying diagnostic; unresolved agents name the normalized
-selector and explain canonical addressing and local-read recovery. Missing read
-paths explain how to recover paths in the same agent and view. Credentials and
-authored source stay out of sanitized metrics, which count helper rejections
-separately from acceptances.
+Journal access uses the invocation-local MCP server rather than a shell frontend.
+Reads return a complete selected tree. A rejected mutation applies nothing and
+returns the standard MCP error result, so the program can inspect `isError` and
+continue useful work. Unresolved agents name the normalized selector and explain
+canonical addressing and local-read recovery. Missing read paths explain how to
+recover paths in the same agent and view. Credentials and authored source stay out
+of sanitized metrics.
 
 ### Delivery failures
 
@@ -771,12 +770,12 @@ still require their own terminal evidence.
 
 ### Acceptance
 
-1. Structured journal fields and JavaScript helper mutations reach the same atomic owner; host input remains
-   exact apart from removing the optional journal field. Retained replay is idempotent.
+1. MCP mutations reach the atomic journal owner; stock tool schemas, input and lifecycle
+   events remain exact. Retained replay is idempotent.
 2. Stable paths, nested planning, omission/drop rules, reasons and end-of-batch parent
    validation survive restart and independent forks.
 3. Reads expose timestamps and children, respect subtree/depth, and require proven
-   durable ancestry. Bounded transport reassembles complete trees without mixed revisions.
+   durable ancestry. MCP results contain complete selected trees from one revision.
 4. Main answers remain ordinary messages, including replies while tasks are open.
    Cards require new non-answer events or diagnostics and never repeat the answer.
    Empty Outcomes create no tree answer node. Streamed items stay in provider history;

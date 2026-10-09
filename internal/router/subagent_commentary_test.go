@@ -78,7 +78,6 @@ func newSubagentCommentaryTestTransformWithMetadata(
 		t.Fatal(err)
 	}
 	proxy := newManagedMekugiProxy(t)
-	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
 	workspace := t.TempDir()
 	metadata.RequestKind = "turn"
 	metadata.Directories = map[string]json.RawMessage{workspace: nil}
@@ -91,16 +90,4 @@ func newSubagentCommentaryTestTransformWithMetadata(
 	}
 	t.Cleanup(transform.Close)
 	return transform, proxy, &request
-}
-
-func commentaryText(t *testing.T, item map[string]json.RawMessage) string {
-	t.Helper()
-	if jsonString(item, "type") != "message" || jsonString(item, "phase") != "commentary" {
-		t.Fatalf("not commentary: %#v", item)
-	}
-	var content []map[string]json.RawMessage
-	if err := json.Unmarshal(item["content"], &content); err != nil || len(content) != 1 {
-		t.Fatalf("commentary content = %s, error %v", item["content"], err)
-	}
-	return jsonString(content[0], "text")
 }

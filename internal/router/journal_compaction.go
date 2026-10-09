@@ -446,11 +446,25 @@ func (a *requestAttempt) journalCompactionFallback(err error) {
 // supply the directory. Multiple historical workspaces are deliberately ambiguous.
 // Called under the replay lock, after acquiring the requesting session lease.
 func (s *mekugiReplayStore) compactionWorkspace(thread string) (string, error) {
+	workspace, err := s.retainedJournalWorkspace(thread, false)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(workspace) || filepath.Clean(workspace) != workspace {
+		return "", errors.New("no retained compaction workspace")
+	}
+	return workspace, nil
+}
+
+// retainedJournalWorkspace includes the unscoped journal namespace. The caller
+// must have exactly one retained scope; a missing record is not an empty scope.
+func (s *mekugiReplayStore) retainedJournalWorkspace(thread string, includeUnscoped bool) (string, error) {
 	session, err := s.readRetainedSession(storageSessionName(thread))
 	if err != nil {
 		return "", err
 	}
 	workspace := ""
+	found := false
 	for name := range session.Files {
 		if !strings.HasPrefix(name, "journal-") && !strings.HasPrefix(name, "call-") {
 			continue
@@ -460,6 +474,7 @@ func (s *mekugiReplayStore) compactionWorkspace(thread string) (string, error) {
 			return "", err
 		}
 		var candidate string
+		owned := false
 		if strings.HasPrefix(name, "journal-") {
 			var j threadJournal
 			if json.Unmarshal(data, &j) != nil || journalFilename(j.Workspace, j.Thread) != name {
@@ -470,6 +485,7 @@ func (s *mekugiReplayStore) compactionWorkspace(thread string) (string, error) {
 					return "", errors.New("conflicted compaction identity")
 				}
 				candidate = j.Workspace
+				owned = true
 			}
 		} else {
 			var record replayRecord
@@ -479,16 +495,18 @@ func (s *mekugiReplayStore) compactionWorkspace(thread string) (string, error) {
 			}
 			if record.History.ExecutingThread == thread {
 				candidate = record.Workspace
+				owned = true
 			}
 		}
-		if candidate != "" {
-			if workspace != "" && workspace != candidate {
+		if owned && (candidate != "" || includeUnscoped) {
+			if found && workspace != candidate {
 				return "", errors.New("compaction workspace is ambiguous")
 			}
 			workspace = candidate
+			found = true
 		}
 	}
-	if !filepath.IsAbs(workspace) || filepath.Clean(workspace) != workspace {
+	if !found {
 		return "", errors.New("no retained compaction workspace")
 	}
 	return workspace, nil

@@ -28,6 +28,8 @@ type journalDelivery struct {
 	terminal  bool
 }
 
+const maxJournalPublicationBytes = 16 << 10
+
 func journalItemText(item journalItem) string {
 	if item.Question == "" {
 		return item.Text
@@ -255,13 +257,13 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 		return t.prepareTreeDelivery(journal, terminal)
 	}
 	for _, item := range journal.Items {
-		if item.ReportNow && !item.Reported && len(journalUpdateText(journal.Author, item.ID, journalItemText(item))) <= maxCommentaryPublicationBytes-t.journalLiveBytes {
+		if item.ReportNow && !item.Reported && len(journalUpdateText(journal.Author, item.ID, journalItemText(item))) <= maxJournalPublicationBytes-t.journalLiveBytes {
 			t.journalQuietFile = nil
 			break
 		}
 	}
 	for _, retraction := range journal.Retractions {
-		if len(journalUpdateText(journal.Author, retraction.ID, "Retracted.")) <= maxCommentaryPublicationBytes-t.journalLiveBytes {
+		if len(journalUpdateText(journal.Author, retraction.ID, "Retracted.")) <= maxJournalPublicationBytes-t.journalLiveBytes {
 			t.journalQuietFile = nil
 			break
 		}
@@ -287,7 +289,7 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 	emitRetractions := func(journal threadJournal) {
 		for _, retraction := range journal.Retractions {
 			text := journalUpdateText(journal.Author, retraction.ID, "Retracted.")
-			if !terminal && len(text) > maxCommentaryPublicationBytes-t.journalLiveBytes {
+			if !terminal && len(text) > maxJournalPublicationBytes-t.journalLiveBytes {
 				continue
 			}
 			emit(text, map[string]uint64{retraction.ID: retraction.Sequence}, fmt.Sprintf("retract:%d", retraction.Sequence))
@@ -347,7 +349,7 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 				continue
 			}
 			text := journalUpdateText(journal.Author, item.ID, journalItemText(item))
-			if len(text) > maxCommentaryPublicationBytes-t.journalLiveBytes {
+			if len(text) > maxJournalPublicationBytes-t.journalLiveBytes {
 				continue
 			}
 			emit(text, map[string]uint64{item.ID: item.Updated}, fmt.Sprintf("item:%d", item.Updated))

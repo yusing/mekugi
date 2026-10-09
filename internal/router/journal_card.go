@@ -288,10 +288,10 @@ func (t *mekugiResponseTransform) prepareTreeDelivery(j threadJournal, terminal 
 			row := "\n- " + strings.TrimPrefix(indentJournalText(journalEventText(event), "  "), "  ")
 			// A row no update can hold would block every later event; durable reads keep it whole.
 			const clipped = "\n  … (clipped; read the journal for full details)"
-			if limit := maxCommentaryPublicationBytes - len(header); len(row) > limit {
+			if limit := maxJournalPublicationBytes - len(header); len(row) > limit {
 				row = strings.ToValidUTF8(row[:limit-len(clipped)], "") + clipped
 			}
-			if output.Len()+len(row) > maxCommentaryPublicationBytes-t.journalLiveBytes {
+			if output.Len()+len(row) > maxJournalPublicationBytes-t.journalLiveBytes {
 				break
 			}
 			output.WriteString(row)

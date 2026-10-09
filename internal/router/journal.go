@@ -30,10 +30,6 @@ const (
 	// space covers indentation of every content line, Q&A labels, item IDs,
 	// and the bounded canonical agent name.
 	maxJournalFlushBytes = maxJournalItems*(3*maxJournalItemBytes+128) + maxJournalItemBytes
-	// Lists are a subset of the persisted record, encoded with the same escaping.
-	// Reserve a small allowance for the response envelope instead of estimating
-	// expanded item text or repeating a second author/content capacity model.
-	maxJournalPublicationResponseBytes = maxReplayRecordBytes + 1024
 )
 
 // errJournalUnchanged skips publication after the locked durable read.
@@ -60,8 +56,8 @@ type journalMutation struct {
 	Answer           *bool            `json:"answer,omitempty"`
 	inferredQuestion string
 	finishTurn       string
-	fallbackReceipt  string // Saves a native array whose finish has runnable work.
-	ReportNow        bool   `json:"report_now,omitzero"`
+	finishItem       string
+	ReportNow        bool `json:"report_now,omitzero"`
 }
 
 type journalItem struct {
@@ -202,10 +198,6 @@ func newJournalStore() *journalStore {
 // Keep the complete state transaction serialized without trapping canceled callers
 // behind another request's replay-lock wait.
 func (s *journalStore) lockState(ctx context.Context) (func(), error) {
-	if latency := journalLatencyFor(ctx); latency != nil {
-		started := time.Now()
-		defer func() { latency.stateWait += time.Since(started) }()
-	}
 	select {
 	case s.stateGate <- struct{}{}:
 		if err := ctx.Err(); err != nil {
@@ -224,10 +216,6 @@ func (s *journalStore) lockState(ctx context.Context) (func(), error) {
 // unrelated workspaces do not wait for each other's downstream writes.
 // Waiting remains request-cancellable.
 func (s *journalStore) lockDelivery(ctx context.Context, store *mekugiReplayStore, workspace string) (func(), error) {
-	if latency := journalLatencyFor(ctx); latency != nil {
-		started := time.Now()
-		defer func() { latency.deliveryWait += time.Since(started) }()
-	}
 	s.deliveryMu.Lock()
 	gate := s.deliveryGates[workspace]
 	if gate == nil {
@@ -371,7 +359,6 @@ func (s *journalStore) transactionWithTiming(ctx context.Context, store *mekugiR
 		return err
 	}
 	defer release()
-	latency := journalLatencyFor(ctx)
 	run := func() error {
 		key := journalKey(workspace, thread)
 		current, exists := s.memory[key]
@@ -415,11 +402,7 @@ func (s *journalStore) transactionWithTiming(ctx context.Context, store *mekugiR
 					}
 				}
 			}
-			writeStarted := time.Now()
 			err := writeThreadJournal(store, next)
-			if latency != nil {
-				latency.persistWrite += time.Since(writeStarted)
-			}
 			if err != nil {
 				return err
 			}
@@ -669,9 +652,12 @@ func decodeJournalMutations(raw []byte) ([]journalMutation, error) {
 }
 
 func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, error) {
-	finishTurn, fallbackReceipt := "", ""
+	submitted := mutations
+	finishTurn := ""
+	finishItem := ""
 	if len(mutations) != 0 && mutations[len(mutations)-1].Op == "finish" {
-		finishTurn, fallbackReceipt = mutations[len(mutations)-1].finishTurn, mutations[len(mutations)-1].fallbackReceipt
+		finishTurn = mutations[len(mutations)-1].finishTurn
+		finishItem = mutations[len(mutations)-1].finishItem
 	}
 	mutations, finish, err := splitJournalFinish(mutations)
 	if err != nil {
@@ -685,7 +671,7 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 		return nil, err
 	}
 	defer release()
-	encoded, err := marshalProtocolJSON(mutations)
+	encoded, err := marshalProtocolJSON(submitted)
 	if err != nil {
 		return nil, err
 	}
@@ -697,15 +683,14 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
 		}
 		counters = j.Counters.Clone()
-		for _, id := range []string{receiptID, fallbackReceipt} {
-			if receipt, ok := j.Receipts[id]; id != "" && ok {
-				if receipt.Digest != digest {
-					return errors.New("journal call changed its mutations")
-				}
-				ids = slices.Clone(receipt.IDs)
-				return errJournalUnchanged
+		if receipt, ok := j.Receipts[receiptID]; receiptID != "" && ok {
+			if receipt.Digest != digest {
+				return errors.New("journal call changed its mutations")
 			}
+			ids = slices.Clone(receipt.IDs)
+			return errJournalUnchanged
 		}
+
 		j.ensureTree()
 		treeMutated := false
 		before := slices.Clone(j.Items)
@@ -833,20 +818,20 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				return err
 			}
 		}
-		receipt := receiptID
 		if finish {
 			if next := j.continuationCandidate(finishTurn); next != nil && next.Resume {
-				if fallbackReceipt == "" {
-					return fmt.Errorf("journal finish has runnable task %s (%s); continue that work, complete a slice, or record its blocker before finish", next.Path, next.Title)
-				}
-				// A native array rejection would fail the response. Without the
-				// finish receipt, the host result reaches provider inference.
-				receipt = fallbackReceipt
+				return fmt.Errorf("journal finish has runnable task %s (%s); continue that work, complete a slice, or record its blocker before finish", next.Path, next.Title)
 			}
 		}
-		if receipt != "" {
-			j.Receipts[receipt] = journalReceipt{Digest: digest, IDs: slices.Clone(ids)}
+		if receiptID != "" {
+			j.Receipts[receiptID] = journalReceipt{Digest: digest, IDs: slices.Clone(ids)}
 		}
+		if finishItem != "" {
+			// Completion belongs to the enclosing item. Mutation replay belongs
+			// to each nested call, including separate finish batches in one cell.
+			j.Receipts["runtime:"+journalHostFinishReceipt(finishTurn, finishItem)] = journalReceipt{}
+		}
+
 		for _, mutation := range mutations {
 			if mutation.Answer == nil || !*mutation.Answer {
 				j.countJournalOperation(mutation.Op)

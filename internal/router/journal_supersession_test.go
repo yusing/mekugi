@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // A corrected decision stays as history but must stop reading as current.
@@ -162,7 +163,7 @@ func TestJournalMountedSupersessionUsesCombinedPaths(t *testing.T) {
 		if !strings.Contains(mount, "/@") || item.SupersededBy != mount+"/2" {
 			t.Fatalf("mounted pointer %q does not address the child's node under %q", item.SupersededBy, mount)
 		}
-		if _, text := journalNodeParts(livediff.DarkTheme, item.node(), ""); !strings.HasSuffix(ansi.Strip(text), "· superseded by /2") {
+		if _, text := journalPaintNodeParts(&activityui.Painter{Theme: livediff.DarkTheme}, item.node(), "", false); !strings.HasSuffix(ansi.Strip(text), "· superseded by /2") {
 			t.Fatalf("mounted row does not show the child-local pointer: %q", ansi.Strip(text))
 		}
 		return
@@ -200,7 +201,7 @@ func TestUISnapshotNativeJournalSupersededRows(t *testing.T) {
 		{journalItem{Path: "/2", Kind: "task", Title: "Minimal client", State: "dropped", Reason: "Replaced by the existing UI", SupersededBy: "/4"}, "dropped"},
 		{journalItem{Path: "/2/1", Kind: "note", Title: "Parallel screen renders streamed replies", SupersededBy: "/4"}, ""},
 	} {
-		lead, text := journalNodeParts(livediff.DarkTheme, row.item.node(), row.verb)
+		lead, text := journalPaintNodeParts(&activityui.Painter{Theme: livediff.DarkTheme}, row.item.node(), row.verb, false)
 		events = append(events, lead+text)
 	}
 	assertNativeJournalSnapshot(t, "journal-superseded-events", events)

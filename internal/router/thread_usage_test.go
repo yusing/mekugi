@@ -37,7 +37,7 @@ func TestThreadUsageConcurrentObservationsAndDuplicateTerminals(t *testing.T) {
 }
 func TestThreadUsageHasNoLifetimeThreadLimitAndHandlesOverflow(t *testing.T) {
 	totals := newThreadUsage()
-	for i := range maxCommentaryRoutes {
+	for i := range 256 {
 		totals.observation(fmt.Sprint(i), "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
 	}
 	totals.observation("excess", "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 100})
@@ -61,7 +61,7 @@ func TestThreadUsageHasNoLifetimeThreadLimitAndHandlesOverflow(t *testing.T) {
 	if _, valid := totals.snapshot("0"); valid || len(totals.threads) != 0 {
 		t.Fatal("closed accumulator retained or admitted usage")
 	}
-	for _, thread := range []string{"", strings.Repeat("x", maxCommentaryPublicationBytes+1)} {
+	for _, thread := range []string{"", strings.Repeat("x", maxActivityMetadataBytes+1)} {
 		fresh := newThreadUsage()
 		fresh.observation(thread, "", "gpt-5.5", "").observe(tokenCounts{InputTokens: 1})
 		if len(fresh.threads) != 0 {

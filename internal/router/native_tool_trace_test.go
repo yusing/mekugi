@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -227,50 +226,39 @@ func TestNativeTraceMissingAndCorruptEvidenceNeverConfirms(t *testing.T) {
 	}
 }
 
-// A journal publication the router lowered into the cell is transport, not an
-// observed command; only the model's literal commands decide the outcome.
-func TestNativeTraceCommandsSkipOnlyLoweredJournalPublications(t *testing.T) {
-	transform, proxy, _, _ := newMekugiTestTransform(t)
-	proxy.commentaryEndpoint = "http://127.0.0.1:1234/internal/commentary"
-	const edit = "python3 - <<'PY'\nopen('a.txt','w').write('new')\nPY\ncat a.txt"
-	source := `await journal({op:"add", text:"Editing"}); text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(edit)) + `}));`
-	lowered, changed, err := transform.lowerCodeModeCommentary("cell", source)
-	if err != nil || !changed {
-		t.Fatalf("lowering: %v %v", changed, err)
-	}
-	token := runtimeCommentaryToken(t, transform)
-	journal := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, token}) + " '%7B%22op%22%3A%22add%22%7D'"
-	history := &mekugiHistory{ToolName: "exec", Script: source, CarrierPayload: lowered,
-		ExecObservation: &execObservation{Commands: []execCommandInput{{Command: edit}}, CodeMode: true}}
+func TestNativeTraceCommandsIncludeJournalShellCalls(t *testing.T) {
+	const edit = "touch file.txt"
+	const journal = "mjournal --journal-once http://127.0.0.1/internal/commentary Y2VsbA.token '%7B%22op%22%3A%22add%22%7D'"
+	const source = "retained source"
 	for _, tc := range []struct {
-		name    string
-		extra   []string
-		history *mekugiHistory
-		want    bool
+		name     string
+		extra    []string
+		authored bool
+		want     bool
 	}{
-		{"lowered journal", []string{journal}, history, true},
-		{"journal list continuation", []string{journal + " 2 " + strings.Repeat("a", 64)}, history, true},
-		{"unobserved command", []string{journal, "touch b.txt"}, history, false},
-		{"repeated observed command", []string{edit}, history, false},
-		{"unproven token", []string{strings.Replace(journal, token, "unproven.token", 1)}, history, false},
-		{"untranslated carrier", []string{journal}, &mekugiHistory{Script: lowered, CarrierPayload: lowered, ExecObservation: history.ExecObservation}, false},
-		{"chained journal", []string{journal + "; touch b.txt"}, history, false},
+		{"authored journal command", []string{journal}, true, true},
+		{"unrecorded former transport", []string{journal}, false, false},
+		{"extra command", []string{"touch other.txt"}, false, false},
+		{"repeated command", []string{edit}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			history := &mekugiHistory{Script: source, CarrierPayload: `const command = "mjournal --journal-once http://127.0.0.1/internal/commentary Y2VsbA.token '" + encodeURIComponent(JSON.stringify(mutation))`,
+				ExecObservation: &execObservation{Commands: []execCommandInput{{Command: edit}}, CodeMode: true}}
+			if tc.authored {
+				history.ExecObservation.Commands = append(history.ExecObservation.Commands, execCommandInput{Command: journal})
+			}
 			f := newNativeTraceFixture(t)
-			f.start("t", "1", "cell", lowered)
-			for i, command := range tc.extra {
-				id := fmt.Sprintf("extra-%d", i)
-				f.tool("t", "1", id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": command, "login": false})))
+			f.start("t", "1", "cell", source)
+			for i, command := range append(tc.extra, edit) {
+				id := fmt.Sprint(i)
+				f.tool("t", "1", id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": command})))
 				f.result("t", id, "completed", map[string]any{"exit_code": 0})
 			}
-			f.tool("t", "1", "edit", "exec_command", string(mustMarshalJSON(map[string]string{"cmd": edit})))
-			f.result("t", "edit", "completed", map[string]any{"exit_code": 0})
 			f.end("t", "1")
 			trace := &nativeToolTrace{directory: f.root}
-			results, ok := trace.readCell("t", "cell", lowered).commands(tc.history, "/work")
-			if ok != tc.want || ok && (len(results) != 1 || results[0].CallID != "edit") {
-				t.Fatalf("results = %+v, %t; want confirmed %t", results, ok, tc.want)
+			results, ok := trace.readCell("t", "cell", source).commands(history, "/work")
+			if ok != tc.want || ok && len(results) != 2 {
+				t.Fatalf("results=%+v confirmed=%v want=%v", results, ok, tc.want)
 			}
 		})
 	}

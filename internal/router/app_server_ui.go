@@ -29,7 +29,6 @@ import (
 )
 
 type appServerItem struct {
-	journalTransport bool                      // Offline ingestion verified this exact read/list against its durable carrier; never a host field.
 	replacesItems    []string                  // Retained presentation provenance, not a host field.
 	DurationMS       *int64                    `json:"durationMs"`
 	Delivery         string                    `json:"delivery"`

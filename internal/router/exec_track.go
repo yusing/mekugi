@@ -731,15 +731,6 @@ func execSegmentText(source string) string {
 	return execSegmentTextInDirectory(source, "")
 }
 
-// commandSegmentText is a tracked segment's display operations. A verified
-// router transport keeps its typed operation rather than its command.
-func commandSegmentText(native *liveActivityNativeItem, source, cwd string) string {
-	if native != nil && native.operation != "" {
-		return native.operation
-	}
-	return execSegmentTextInDirectory(source, cwd)
-}
-
 func execSegmentTextInDirectory(source, cwd string) string {
 	if text := toolActivityShellInDirectory(source, cwd); strings.TrimSpace(text) != "" {
 		return text
@@ -754,7 +745,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 	s := &u.session
 	if run.completion != nil {
 		view, _ := u.execTrack.view(key, false, func(source string) string {
-			return commandSegmentText(run.entry.native, source, run.entry.native.commandCwd)
+			return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
 		}, &s.outputs)
 		if !view.ended && time.Since(run.completedAt) < execTrackCompletionWait {
 			return nil, true
@@ -768,7 +759,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 		return done, true
 	}
 	view, changed := u.execTrack.view(key, false, func(source string) string {
-		return commandSegmentText(run.entry.native, source, run.entry.native.commandCwd)
+		return execSegmentTextInDirectory(source, run.entry.native.commandCwd)
 	}, &s.outputs)
 	if !u.execTrack.tracking(key) {
 		return nil, false
@@ -803,7 +794,7 @@ func (u *appServerUI) flushTrackedCommand(key [3]string, run *appServerCommandRu
 func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry, item appServerItem) []activityPaneEntry {
 	now := time.Now()
 	view, _ := u.execTrack.view(key, true, func(source string) string {
-		return commandSegmentText(entry.native, source, appServerCommandDirectory(item, u.session.cwd))
+		return execSegmentTextInDirectory(source, appServerCommandDirectory(item, u.session.cwd))
 	}, &u.session.outputs)
 	if !view.complete || item.ExitCode == nil || view.code != *item.ExitCode || len(view.segments) == 0 {
 		return u.session.commandDone(entry, item, now)

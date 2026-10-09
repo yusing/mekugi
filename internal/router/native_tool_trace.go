@@ -609,9 +609,6 @@ func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]
 				}
 			}
 		}
-		if want[command] == 0 && history.lowersJournalCommand(nativeJournalCommand.FindStringSubmatch(tool.command.Command)) {
-			continue
-		}
 		if !tool.terminal || want[command] == 0 {
 			return nil, false
 		}

@@ -432,13 +432,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
 		case "commandExecution", "webSearch":
-			var shown bool
-			if item, native.operation, shown = u.journalTransport(p.ThreadID, item); !shown {
-				break
-			}
-			if native.operation != "" {
-				native.journalResults = journalReadResults(item)
-			}
 			if item.Type == "commandExecution" && u.proxy != nil {
 				if ms, known := u.proxy.nativeTrace.commandTimeout(p.ThreadID, id); known {
 					native.commandTimeout = strconv.FormatUint(ms/1000, 10)

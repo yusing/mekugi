@@ -397,19 +397,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 	if !ok || len(call.Args) == 0 || len(call.Assigns) != 0 {
 		return "", false
 	}
-	command, literal := shellCatLiteral(call.Args[0])
-	if literal && command == commentaryArgumentName && len(statement.Redirs) == 0 {
-		// Expanding progress text can itself run commands. Do not hide that work.
-		executable := false
-		syntax.Walk(call, func(node syntax.Node) bool {
-			switch node.(type) {
-			case *syntax.CmdSubst, *syntax.ProcSubst:
-				executable = true
-			}
-			return !executable
-		})
-		return "", !executable
-	}
+	command, _ := shellCatLiteral(call.Args[0])
 	if len(statement.Redirs) != 0 {
 		// Only discarded stderr is transparent to these search and listing previews.
 		if command != "find" && command != "rg" && command != "grep" && command != "ls" {

@@ -91,7 +91,7 @@ func (o *threadUsageObservation) finish() {
 
 func (u *threadUsage) addRound(o *threadUsageObservation, serviceTier string, counts tokenCounts, round providerRoundOutput) {
 	thread, model, reasoning, conflicted, price := o.thread, o.model, o.reasoning, o.conflicted, o.openCodePrice
-	if u == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
+	if u == nil || thread == "" || len(thread) > maxActivityMetadataBytes {
 		return
 	}
 	u.mu.Lock()

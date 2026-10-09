@@ -1,5 +1,0 @@
-● child-th                                                                                  12:00:00
-│ ├ Read journal entries at /12 (2 results) · 70ms
-│ ├ List journal entries at /12 (0 results) · 110ms
-│ └ Read journal entries at /12 · 70ms · exit 1
-│        ┆ journal changed during read; retry the read

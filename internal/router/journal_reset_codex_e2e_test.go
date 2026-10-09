@@ -116,7 +116,7 @@ func (p *journalResetCodexProvider) forwardExecution(ctx, _ context.Context, bod
 		for _, item := range request.Input {
 			for _, part := range item.Content {
 				p.continuation = p.continuation || item.Role == "user" && strings.Contains(part.Text, "Continue the journal plan: /2 Second.")
-				p.recovered = p.recovered || strings.Contains(part.Text, "Journal recovery") && strings.Contains(part.Text, `journal({op:"read",view:"outline"})`) && strings.Contains(part.Text, "/2 [pending] Second")
+				p.recovered = p.recovered || strings.Contains(part.Text, "Journal recovery") && strings.Contains(part.Text, `view:"outline"`) && strings.Contains(part.Text, "/2 [pending] Second")
 			}
 		}
 		if !p.continuation || p.proxy.journalCompaction != "off" && !p.recovered {

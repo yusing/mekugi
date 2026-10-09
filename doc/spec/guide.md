@@ -52,21 +52,20 @@ does not assert the current workspace state or cover shell-generated changes.
 
 The journal owner supplies the additive durable-work guidance once per request: on the
 `exec` in one marked Journal section. No dedicated
-`functions.journal` tool is exposed. Eligible
-structured tools receive the optional atomic `journal` mutation field.
+`functions.journal` tool is exposed. Journal access uses the invocation-local
+MCP tools; stock tool schemas and inputs remain unchanged.
 The guidance covers journal use and completion, without prescribing delegation, review,
 document workflow or personal setup. Tasks track work that needs continuation;
 short assignments need no plan. Main guidance plans an outcome task's separate results as
 child tasks. Main guidance covers work updates, recovery facts, slice
 boundaries, and work-report completion. Subagent guidance covers interim facts and final
-reports. Both versions include the same JavaScript helper API
-(including read, required fields, stable paths and failures) and batching contract. Main work updates belong in the journal; requested answers
+reports. Both versions use the same native MCP schemas and shared journal semantics
+for stable paths, reads, batching and failures. Main work updates belong in the journal; requested answers
 and necessary questions remain conversational. Subagents record useful interim facts and may deliver their
 final report directly. A result already recorded in the journal is not repeated
 as a second completion report.
-The section identifies `journal(...)` as a router-provided source helper outside `tools`
-and `ALL_TOOLS`, and the generated `mjournal` invocation as internal transport rather than an
-agent-authored command. Projection preserves the caller's stock execution contracts. A
+The section describes journal MCP calls through Codex's nested tools.
+Projection preserves the caller's stock execution contracts. A
 previously marked section is refreshed in place. Duplicate, incomplete, or reversed markers
 reject before forwarding instead of creating ambiguous guidance.
 
@@ -116,7 +115,7 @@ Acceptance:
    execution, one registry-derived frontend section in its authoritative `exec` description.
    Refresh is idempotent, malformed markers fail closed, and unrelated descriptions,
    sibling tools, and stock execution contracts remain unchanged.
-3. The execution-tool journal section and optional mutation field expose enough guidance to record concise
+3. The execution-tool journal section and MCP schemas expose enough guidance to record concise
    tasks and facts, read retained subtrees, and finish naturally with an answer.
    Journal format uses ASD-STE100, short titles with no trailing punctuation, a bold
    action where useful, and one topic per item. Bodies hold detail. Slice guidance retains
@@ -130,7 +129,7 @@ Acceptance:
    results. When their final report is already in the journal, they use the finish
    marker when host results establish completion. Requested explanations, review
    findings and actual questions remain conversational. Guidance directs mutations
-   onto useful calls rather than standalone journal calls; `exec` exposes only the exec-local helper for both read and mutations.
+   onto useful calls rather than standalone journal calls; `exec` uses the nested MCP tools for reads and mutations.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
    or live router state. Prewarm and generating requests select the same role policy;

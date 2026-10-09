@@ -45,6 +45,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./internal/ui/...`, plus affected router integration tests |
 | Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
 | Router behavior | `./internal/router` |
+| Journal MCP registration, schema, and authenticated reads | `./internal/router ./cmd/mekugi -run '^TestJournalMCP'`; installed-host check below |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
@@ -56,6 +57,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Configured frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
+| Native journal MCP read acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalMCPNativeCodexReadE2E$'` (installed Codex, local mock provider) |
 | Native journal host-result completion | `-tags journal_e2e ./internal/router -run '^TestJournalHostFinishNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
 | Native post-compaction recovery | `-tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `./...` |
@@ -86,15 +88,6 @@ the frontend measurements exclude registry creation and active-session leases:
 ```sh
 make test TEST_PACKAGES='./internal/router/toolplugin ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
-
-Journal contention checks compare authenticated HTTP latency with a synthetic
-20 ms delivery hold in the same or an unrelated workspace:
-
-```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkJournalConcurrentWorkspaceHTTP -benchtime=10x -count=1'
-```
-
-These are controlled contention measurements, not live-session latency claims.
 
 Generation uses Go to rebuild the embedded WASM core for configured JavaScript plugins
 through the directive in `internal/router/toolplugin/runtime.go`. Built-in frontends

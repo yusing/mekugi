@@ -144,7 +144,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	}
 	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item, workspace))
 	for _, part := range record.Parts {
-		segment := commandSegment{timing: part.Timing, source: part.Source, text: commandSegmentText(entry.native, part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
+		segment := commandSegment{timing: part.Timing, source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
 			segment.output = u.session.outputs.New()
 			segment.output.Finish(part.Output, &part.Exit)

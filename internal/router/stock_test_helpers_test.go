@@ -134,56 +134,6 @@ func newTopLevelMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (
 	return transform, &request
 }
 
-func shellCommentaryTestItem() map[string]any {
-	return map[string]any{
-		"type": "custom_tool_call", "id": "item-runtime", "call_id": "call-runtime",
-		"name": "exec", "input": `await journal({op: "add", text: "Working"});`, "status": "completed",
-	}
-}
-
-func newRuntimeCommentaryTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy) {
-	t.Helper()
-	transform, proxy, _, _ := newMekugiTestTransform(t)
-	proxy.commentaryEndpoint = "http://127.0.0.1:8080" + commentaryPublisherPath
-	return transform, proxy
-}
-
-func runtimeCommentaryToken(t *testing.T, transform *mekugiResponseTransform) string {
-	t.Helper()
-	if len(transform.commentarySubscriptions) != 1 {
-		t.Fatalf("commentary subscription count = %d", len(transform.commentarySubscriptions))
-	}
-	return transform.commentarySubscriptions[0].token
-}
-
-// testRuntimeCommentaryCall creates the retained exec call and hands its
-// authenticated progress subscription to the host before returning the token.
-func testRuntimeCommentaryCall(t *testing.T, transform *mekugiResponseTransform, callID string) string {
-	t.Helper()
-	item := shellCommentaryTestItem()
-	item["id"] = "item-" + callID
-	item["call_id"] = callID
-	events, err := transform.TransformSSE(mustTestJSON(t, map[string]any{
-		"type": "response.output_item.done", "item": item,
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, event := range events {
-		transform.Delivered(event)
-	}
-	if _, found := transform.proxy.history(transform.historySessionID, callID); !found {
-		t.Fatalf("exec call %q was not retained", callID)
-	}
-	for _, subscription := range transform.commentarySubscriptions {
-		if subscription.callID == callID && subscription.token != "" {
-			return subscription.token
-		}
-	}
-	t.Fatalf("exec call %q has no handed-off commentary subscription", callID)
-	return ""
-}
-
 func titleRequestFields() map[string]any {
 	return map[string]any{
 		"model": "gpt-test", "instructions": "Generate a short title.",

@@ -110,7 +110,7 @@ func (p *uiReplayPlayback) advance(position time.Duration) error {
 			p.applyReplayJournal(e)
 		case "replay/providerStarted":
 			p.ui.applyActivity(p.ui.session.beginThinking(e.Params.ThreadID, e.At), nil)
-		case "replay/providerCompleted", "replay/transportBoundary":
+		case "replay/providerCompleted":
 			// Retain this boundary in ordering and duration without duplicating state.
 		default:
 			params, err := json.Marshal(&e.Params)
@@ -392,9 +392,6 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream. Journal presentation uses retained revisions and host turn boundaries.\n", source.Thread, source.Items, len(source.Events), source.Providers, duration.Round(time.Millisecond), *speed, *seed)
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d missing child rollouts; unsupported item kinds: %v\n", len(source.Missing), source.Unsupported)
-	}
-	if source.JournalUnverified > 0 {
-		fmt.Fprintf(stderr, "Coverage: %d journal transport candidates lack verified retained provenance; kept visible.\n", source.JournalUnverified)
 	}
 	for _, failure := range source.JournalUnavailable {
 		fmt.Fprintf(stderr, "Coverage: journal history unavailable (%s); recorded host activity is preserved.\n", failure)

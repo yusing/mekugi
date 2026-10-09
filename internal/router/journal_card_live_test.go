@@ -51,7 +51,7 @@ func TestJournalLiveUpdateClipsRowLargerThanAnyUpdate(t *testing.T) {
 		t.Fatalf("oversized note stalled live delivery: %d messages, err=%v", len(messages), err)
 	}
 	text := commentaryMessageText(messages[0])
-	if !strings.Contains(text, "Large finding") || !strings.Contains(text, "clipped") || len(text) > maxCommentaryPublicationBytes {
+	if !strings.Contains(text, "Large finding") || !strings.Contains(text, "clipped") || len(text) > maxJournalPublicationBytes {
 		t.Fatalf("clipped live row: %d bytes, head %q", len(text), text[:min(len(text), 80)])
 	}
 }

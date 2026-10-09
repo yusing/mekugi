@@ -340,19 +340,12 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
-		item, operation, shown := u.journalTransport(u.thread, item)
-		if !shown {
-			return
-		}
 		text := appServerToolText(item, u.session.cwd)
 		if item.Type == "fileChange" {
 			text = appServerEditText(item, u.session.cwd)
 		}
 		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
-			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, operation: operation, command: item.Command, commandCwd: appServerCommandDirectory(item, u.session.cwd), status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
-		if operation != "" {
-			entry.native.journalResults = journalReadResults(item)
-		}
+			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(item, u.session.cwd), status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
 		if item.Type == "fileChange" {
 			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
 		}

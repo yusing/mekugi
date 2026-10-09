@@ -2,6 +2,15 @@
 
 ## CTR-JOURNAL-001 — Journal ownership and delivery
 
+The invocation-local journal MCP adapter uses the existing journal snapshot and
+authorization owners. It takes caller identity from host metadata, resolves
+the unique journal scope through the retained ownership catalog, and holds a
+session lease through each call. Mutations use the existing atomic owner and durable
+receipts. Host metadata binds completion to the originating item and turn; only a
+matching successful host result can complete that turn. Codex owns the stdio process,
+tool dispatch, and
+cancellation. A private local socket carries MCP to the existing router owner.
+
 The journal store owns per-thread task/note trees, ordinal paths, events, capacity, atomic mutation
 transactions, relationship binding, persistence, replay receipts, and delivery
 acknowledgements. New Outcomes have separate identities and do not consume task-tree
@@ -22,8 +31,8 @@ Cross-agent trees are derived views under the journal/replay locks, authorized b
 complete durable ancestry in one workspace. Records never contain child snapshots.
 Task creation and existing-task updates share the journal owner's binding validator
 and transaction; creation emits one event containing the binding, not an intermediate
-unbound task. Operation-specific structured schemas and JavaScript input declarations
-project through the journal tool guidance owner. Reserved view paths keep foreign
+unbound task. Operation-specific input schemas belong to the journal MCP tool owner.
+Role-appropriate writing guidance projects through the execution-tool description. Reserved view paths keep foreign
 nodes distinct without changing local ordinals. Native
 sinks cache immutable composed views only. Child lifecycle comes from accepted
 requests and host turn observations, never provider final-answer text. For stock-CLI
@@ -123,11 +132,11 @@ content-free counters at request preparation, mutation acceptance and answer obs
 runtime helper mutations completed between requests. Counter-only persistence
 failure is advisory and cannot replace a successful tool result or final answer.
 
-Retained dedicated journal calls remain replayable. Current journal helper
-mutations use a call-scoped authenticated publisher through a stock executable
-frontend; that publisher cannot complete a turn or acquire Codex execution
-authority. Its finish marker retains a receipt scoped to the originating host
-call and turn. The request pipeline selects local terminal delivery only after
+Retained dedicated journal calls remain replayable. Current authoring uses the
+journal MCP tools. The router forwards JavaScript source unchanged, including
+unrecognized journal calls and programs with syntax errors; Codex owns their
+execution and errors. The finish marker retains a receipt scoped to the originating
+host item and turn. The request pipeline selects local terminal delivery only after
 visible host results and native trace outcomes confirm completion.
 The mutation transaction checks finish against the candidate journal before
 saving that receipt. A pure journal-owned continuation selector is shared by
@@ -137,11 +146,9 @@ check also supplies the idle native plan strip's pause path and reason. Mounted
 child state remains separate from owned-task eligibility.
 Ordinary runnable work rejects the whole batch with its task path. Completed
 slice boundaries, blocked reports and user-stopped work retain their ending behavior.
-A native journal array drops only that marker, because its rejection would fail the response.
 This restores v1's result-driven completion boundary without its old shell executor.
 Codex still owns the continuation request; no provider inference is admitted for
-that local response. Its mutation rejections are structured results for the helper, while
-authentication, routing and transport failures remain HTTP errors. Replay of an old result cannot finish a later turn.
+that local response. Its mutation rejections use MCP error results. Replay of an old result cannot finish a later turn.
 
 Delivery snapshots and leases the originating journal before rendering. V2 delivery selects event windows from live and terminal cursors and acknowledges
 only after successful downstream delivery. Main's ordinary final-answer receipt

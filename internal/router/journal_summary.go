@@ -505,7 +505,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	default:
 		text.WriteString("\nResume: no runnable local task.\n")
 	}
-	text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. For an agent, add agent:\"NAME\",view:\"own\" using its heading. Discover older agents with journal({op:\"read\",depth:1}).\n")
+	text.WriteString("Read more: tools.mcp__mekugi__journal_read({p:\"PATH\",depth:1}); use view:\"outline\" for older paths. For an agent, add agent:\"NAME\",view:\"own\" using its heading. Find older agents with tools.mcp__mekugi__journal_read({depth:1}).\n")
 	if contextOmitted {
 		text.WriteString("Root context listed without its body has detail by path.\n")
 	}

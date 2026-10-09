@@ -170,11 +170,11 @@ func TestNativeActivityRetentionUsesQueueTime(t *testing.T) {
 		t.Fatal("event not queued")
 	}
 	queued := a.events[0].queued
-	a.expireLocked(queued.Add(commentaryRouteTTL - time.Nanosecond))
+	a.expireLocked(queued.Add(activityEventTTL - time.Nanosecond))
 	if len(a.events) != 1 || !a.events[0].observed.Equal(original) {
 		t.Fatal("retention used original message time")
 	}
-	a.expireLocked(queued.Add(commentaryRouteTTL))
+	a.expireLocked(queued.Add(activityEventTTL))
 	if len(a.events) != 0 {
 		t.Fatal("queue did not expire")
 	}

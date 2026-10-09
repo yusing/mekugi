@@ -1,7 +1,6 @@
 package router
 
 import (
-	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -23,9 +22,6 @@ const codeModeJournalEnd = "<!-- mekugi-journal:end -->"
 
 var codeModeJournalHint = embeddedInstruction("journal_code_mode_hint")
 
-//go:embed journal_input.d.ts
-var journalInputTypes string
-
 var codeModeJournalGuidance = codeModeJournalGuide("journal_main")
 var codeModeSubagentJournalGuidance = codeModeJournalGuide("journal_subagent")
 
@@ -33,7 +29,7 @@ func codeModeJournalGuide(role string) string {
 	return strings.NewReplacer(
 		"<journal-role-guidance />", embeddedInstruction(role),
 		"<journal-api />", embeddedInstruction("journal_api"),
-		"<journal-input-types />", strings.TrimSpace(journalInputTypes),
+		"<journal-declarations />", journalMCPDeclarations(),
 	).Replace(embeddedInstruction("journal_code_mode"))
 }
 
@@ -46,14 +42,13 @@ type journalListItem struct {
 	Flushed  bool   `json:"flushed"`
 }
 
-func journalMutationsSchema() json.RawMessage {
+func journalMutationsSchemaAt(root string) map[string]any {
 	text := map[string]any{"type": "string"}
 	state := map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}}
 	agent := map[string]any{"type": "string"}
-	// This schema is projected under properties.journal in the host tool's
-	// parameters. Local references resolve against that complete input schema.
+	// References resolve against the complete MCP input schema.
 	tasks := map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{
-		"anyOf": []any{text, map[string]any{"$ref": "#/properties/journal/$defs/task"}},
+		"anyOf": []any{text, map[string]any{"$ref": root + "/$defs/task"}},
 	}}
 	object := func(properties map[string]any, required ...string) map[string]any {
 		return map[string]any{"type": "object", "additionalProperties": false, "properties": properties, "required": required}
@@ -61,9 +56,8 @@ func journalMutationsSchema() json.RawMessage {
 	op := func(name string) map[string]any {
 		return map[string]any{"type": "string", "enum": []string{name}}
 	}
-	return mustMarshalJSON(map[string]any{
+	return map[string]any{
 		"type": "array", "maxItems": maxJournalItems,
-		"description": embeddedInstruction("journal_mutations"),
 		"$defs": map[string]any{"task": object(map[string]any{
 			"p": text, "title": text, "body": text, "state": state, "reason": text, "tasks": tasks,
 		}, "title")},
@@ -88,7 +82,7 @@ func journalMutationsSchema() json.RawMessage {
 			object(map[string]any{"op": op("remove"), "p": text}, "op", "p"),
 			object(map[string]any{"op": op("finish")}, "op"),
 		}},
-	})
+	}
 }
 
 func injectCodeModeJournalGuidance(description, guidance string) (string, error) {

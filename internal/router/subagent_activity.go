@@ -9,6 +9,13 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
+const (
+	maxActivityMetadataBytes   = 16 << 10
+	maxActivityEvents          = 1024
+	maxActivityEventsPerThread = 64
+	activityEventTTL           = time.Hour
+)
+
 // Bound native message display independently of authored journal publications.
 // Clipping is explicit in Activity.
 const maxNativeActivityMessageBytes = 64 << 10
@@ -78,7 +85,7 @@ func (a *subagentActivity) observe(thread, parent, name string, child bool) bool
 	if a == nil || thread == "" {
 		return false
 	}
-	if len(thread)+len(parent)+len(name) > maxCommentaryPublicationBytes || strings.ContainsAny(name, "\r\n\x00") ||
+	if len(thread)+len(parent)+len(name) > maxActivityMetadataBytes || strings.ContainsAny(name, "\r\n\x00") ||
 		child && (parent == "" || parent == thread || !strings.HasPrefix(name, "/root/")) ||
 		!child && (parent != "" || name != "/root") {
 		a.invalidate(thread)
@@ -119,7 +126,7 @@ func (a *subagentActivity) rootLocked(thread string) string {
 // cannot safely use its earlier ancestry, even after another valid turn.
 // Keep local runtime authors and replay provenance intact; suppress ambiguous activity.
 func (a *subagentActivity) invalidate(thread string) {
-	if a == nil || thread == "" || len(thread) > maxCommentaryPublicationBytes {
+	if a == nil || thread == "" || len(thread) > maxActivityMetadataBytes {
 		return
 	}
 	a.mu.Lock()
@@ -147,7 +154,7 @@ func (a *subagentActivity) collectEvent(event activityEvent) {
 func (a *subagentActivity) collectEventLocked(event activityEvent) {
 	thread, source, kind, text := event.thread, event.source, event.kind, event.text
 	// A message may be opaque and a start carries only its settings.
-	if source == "" || len(source) > maxCommentaryPublicationBytes || strings.TrimSpace(text) == "" && event.message == nil && event.start == nil {
+	if source == "" || len(source) > maxActivityMetadataBytes || strings.TrimSpace(text) == "" && event.message == nil && event.start == nil {
 		return
 	}
 	node := a.threads[thread]
@@ -187,7 +194,7 @@ func (a *subagentActivity) collectEventLocked(event activityEvent) {
 			count++
 		}
 	}
-	if len(a.events) >= maxCommentaryEvents || count >= maxCommentaryEventsPerRoute {
+	if len(a.events) >= maxActivityEvents || count >= maxActivityEventsPerThread {
 		if a.notice != nil {
 			a.notice("activity_capacity", "Mekugi omitted child-activity updates because its queue is full (1,024 total, 64 per child). Child execution and results are unchanged; updates resume when the queue drains.")
 		}
@@ -249,7 +256,7 @@ func restoredActivityKey(event activityEvent, thread string) string {
 }
 
 func (a *subagentActivity) expireLocked(now time.Time) {
-	a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool { return now.Sub(e.queued) >= commentaryRouteTTL })
+	a.events = slices.DeleteFunc(a.events, func(e activityEvent) bool { return now.Sub(e.queued) >= activityEventTTL })
 }
 
 func (a *subagentActivity) close() {

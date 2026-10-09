@@ -575,7 +575,7 @@ func TestJournalLiveSnapshotCacheRefreshesOnMutationAndTerminal(t *testing.T) {
 	}
 	transform.ReleaseDelivery()
 	// Exhausted live delivery must also use the cache even with pending notices.
-	transform.journalLiveBytes = maxCommentaryPublicationBytes
+	transform.journalLiveBytes = maxJournalPublicationBytes
 	messages, err = transform.prepareJournalDelivery(false)
 	if err != nil || len(messages) != 0 || transform.journalQuietFile == nil {
 		t.Fatalf("exhausted live snapshot not cached: %d %v", len(messages), err)

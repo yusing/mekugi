@@ -56,6 +56,7 @@ type Session struct {
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
+	JournalMCPSocket     string
 }
 
 // RunSession owns the private router for one wrapped Codex process.
@@ -276,7 +277,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		replayStore.storageNotice = func(session, thread, phase, message string) {
 			issues.addThreadNotice(session, thread, "storage_cleanup_"+phase, message)
 		}
-		mekugiCalls.commentary.debug = debug
 		var stopLiveDiff func()
 		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx, replayDirectory)
 		mekugiCalls.autoLiveDiff.notice = func(category, message string) { issues.addNotice("", category, message) }
@@ -305,12 +305,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	defer listener.Close()
 	address := listener.Addr().String()
-	if mekugiCalls != nil {
-		mekugiCalls.commentaryEndpoint, err = commentaryPublisherURL(address)
-		if err != nil {
-			return fmt.Errorf("initialize commentary publisher: %w", err)
-		}
-	}
 	if mekugiCalls != nil || issues != nil {
 		retentionCtx, stopRetention := context.WithCancel(ctx)
 		retentionDone := make(chan struct{})
@@ -339,11 +333,17 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
+	var journalMCPSocket string
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	registerCodexAuxiliaryRoutes(mux, ctx, *flags.timeout, provider)
 	if mekugiCalls != nil {
-		mux.HandleFunc("POST "+commentaryPublisherPath, mekugiCalls.commentary.serveHTTP)
+		var stopJournalMCP func() error
+		journalMCPSocket, stopJournalMCP, err = startJournalMCP(ctx, newJournalMCPServer(mekugiCalls))
+		if err != nil {
+			return fmt.Errorf("initialize journal MCP: %w", err)
+		}
+		defer func() { runErr = errors.Join(runErr, stopJournalMCP()) }()
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls)
 	defer webSocketEndpoint.Close()
@@ -366,6 +366,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
+			session.JournalMCPSocket = journalMCPSocket
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls, issues)
 			}

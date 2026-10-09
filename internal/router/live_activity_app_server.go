@@ -161,8 +161,6 @@ type liveActivityNativeItem struct {
 	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
 	replacesItems      []string          // Exact provider items contained in this retained child result.
 	command, status    string
-	operation          string // Typed display of a verified router transport, used by its tracked segments.
-	journalResults     *int   // Entry count from a successful verified journal transport response.
 	commandCwd         string // Metadata-owned directory for classified paths and receipt refreshes.
 	commandTimeout     string // Explicit timeout from available invocation input.
 	approval           string // UI decision, independent of the host execution result.

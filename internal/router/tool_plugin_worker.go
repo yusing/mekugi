@@ -182,19 +182,7 @@ func runAuthenticatedToolWorker(
 	}
 	var execution toolplugin.ExecutionOutput
 	if contribution.Builtin {
-		switch contribution.Name {
-		case "mjournal":
-			handled, publishErr := publishCommentaryOnce(ctx, stdout, args)
-			if publishErr != nil {
-				return fail(publishErr)
-			}
-			if !handled {
-				return fail(errors.New("invalid commentary invocation"))
-			}
-			return true, 0
-		default:
-			return fail(fmt.Errorf("built-in tool %q is unavailable", name))
-		}
+		return fail(fmt.Errorf("built-in tool %q is unavailable", name))
 	} else if contribution.PluginID == builtinToolsPluginID && contribution.NativeExecutor != "" {
 		switch contribution.NativeExecutor {
 		case "mcat":

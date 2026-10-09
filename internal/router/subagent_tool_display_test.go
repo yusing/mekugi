@@ -256,7 +256,7 @@ func TestShellBatchActivityDisplay(t *testing.T) {
 func TestSubagentMixedHeredocPreview(t *testing.T) {
 	const body = "cat <<EOF; printf done\nhello\nEOF\n"
 	source := "journal add 'Working'\n" + body + "journal add 'Finished'\n"
-	want := "Run\n" + toolActivityFenced("bash", strings.TrimRight(body, "\n"))
+	want := "Run\n" + toolActivityFenced("bash", strings.TrimRight(source, "\n"))
 	if got := toolActivityShell(source); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

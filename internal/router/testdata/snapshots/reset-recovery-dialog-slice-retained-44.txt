@@ -6,7 +6,7 @@
 │ instructions or fresh workspace          ▌
 │ validation.                              ▌
 │                                          ▌
-│ Context paths:                           ▌
+│ Context paths:                           │
 │                                          │
 │ /3 Preserve host authority               │
 │ Use retained observations, not revived   │

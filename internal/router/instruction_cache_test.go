@@ -189,7 +189,7 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 				}
 			}
 			// The comparison is meaningful only if the prewarm was projected.
-			if bytes.Contains(warm.fields["input"], []byte(conflictingProgress)) || !bytes.Contains(warm.fields["tools"], []byte(`"journal"`)) {
+			if bytes.Contains(warm.fields["input"], []byte(conflictingProgress)) || !bytes.Contains(append(slices.Clone(warm.fields["tools"]), warm.fields["input"]...), []byte("mekugi-journal:start")) {
 				t.Fatalf("prewarm skipped Mekugi projection: %s", mustMarshalJSON(warm.fields))
 			}
 		})

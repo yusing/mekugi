@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"cmp"
 	"context"
-	"encoding/base64"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
@@ -17,8 +16,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/yusing/mekugi/internal/execsegment"
 )
 
 // Replay uses retained semantic items, never shell execution or provider calls.
@@ -32,7 +29,6 @@ type sessionUIReplay struct {
 	Missing            []string
 	Unsupported        map[string]int
 	Items, Providers   int
-	JournalUnverified  int
 	JournalUnavailable []string
 	HookUnavailable    []string
 }
@@ -190,20 +186,6 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 				if item.ID == "" || p.Turn == "" || p.Started <= 0 || p.Completed < p.Started {
 					return errors.New("item lacks valid identity or start/end timing")
 				}
-				item, hidden, unverified := replayJournalTransport(store, workspace, thread, item)
-				if hidden {
-					// Hiding presentation must not shorten the recorded interval,
-					// including rollouts without explicit turn lifecycle records.
-					for _, at := range []int64{p.Started, p.Completed} {
-						r.Events = append(r.Events, uiReplayEvent{At: time.UnixMilli(at), Method: "replay/transportBoundary", Params: e.Params})
-					}
-					if len(r.Events) > 500000 {
-						return errors.New("replay exceeds 500000 events")
-					}
-					return nil
-				} else if unverified {
-					r.JournalUnverified++
-				}
 				r.Items++
 				item.DurationMS = new(p.Completed - p.Started)
 				start, end := time.UnixMilli(p.Started), time.UnixMilli(p.Completed)
@@ -292,33 +274,6 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 	slices.SortStableFunc(r.Events, func(a, b uiReplayEvent) int { return a.At.Compare(b.At) })
 	r.Start, r.End = r.Events[0].At, r.Events[len(r.Events)-1].At
 	return r, nil
-}
-
-// The generated command grammar alone is not provenance. Reuse the durable
-// carrier's classifier and executing-thread scope, without a live proxy or
-// authorization token. Semantic journal messages remain normal replay items.
-// A verified read or list is shown as its typed operation, as live.
-func replayJournalTransport(store *mekugiReplayStore, workspace, thread string, item appServerItem) (shown appServerItem, hidden, unverified bool) {
-	if item.Type != "commandExecution" {
-		return item, false, false
-	}
-	parts := nativeJournalCommand.FindStringSubmatch(execsegment.ShOriginal(appServerDisplayCommand(item.Command)))
-	if parts == nil {
-		return item, false, false
-	}
-	encoded, _, _ := strings.Cut(parts[2], ".")
-	callID, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil || store.directory == "" {
-		return item, false, true
-	}
-	for _, scope := range []string{workspace, ""} {
-		record, found, err := store.read(scope, string(callID), false)
-		if err == nil && found && record.History.ExecutingThread == thread && record.History.lowersJournalCommand(parts) {
-			shown, _, ok := journalTransportItem(item, parts)
-			return shown, !ok, false
-		}
-	}
-	return item, false, true
 }
 
 func replayItem(raw jsontext.Value) (appServerItem, bool, error) {

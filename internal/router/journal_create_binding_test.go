@@ -1,12 +1,8 @@
 package router
 
 import (
-	"bytes"
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"testing"
 )
@@ -125,37 +121,6 @@ func TestJournalCreateBindingRetainsSetBinding(t *testing.T) {
 	}
 	if after := treeSnapshot(t, proxy, workspace); !reflect.DeepEqual(before, after) {
 		t.Fatal("failed rebind changed journal")
-	}
-}
-
-func TestJournalCreateBindingAuthenticatedCarrier(t *testing.T) {
-	proxy, workspace := mountFixture(t)
-	server := httptest.NewServer(http.HandlerFunc(proxy.commentary.serveHTTP))
-	defer server.Close()
-	token := proxy.commentary.subscribe(workspace+"\x00session", "create-binding-call")
-	proxy.commentary.bindActivity(token, "tree")
-	var output bytes.Buffer
-	matched, err := publishCommentaryOnce(t.Context(), &output, []string{commentaryOnceArgument, server.URL, token, url.PathEscape(`{"op":"add","kind":"task","title":"Delegated","state":"working","agent":"/root/child"}`)})
-	if !matched || err != nil {
-		t.Fatalf("authenticated task creation: matched=%v err=%v output=%s", matched, err, output.String())
-	}
-	journal := treeSnapshot(t, proxy, workspace)
-	if len(journal.Items) != 1 || journal.Items[0].Agent != "/root/child" || len(journal.Events) != 1 || journal.Events[0].Fields.Agent != "/root/child" {
-		t.Fatalf("carrier lost create binding: %+v", journal)
-	}
-	output.Reset()
-	matched, err = publishCommentaryOnce(t.Context(), &output, []string{commentaryOnceArgument, server.URL, token, url.PathEscape(`{"op":"read","p":"/1"}`)})
-	if !matched || err != nil {
-		t.Fatalf("authenticated read: matched=%v err=%v output=%s", matched, err, output.String())
-	}
-	var result struct {
-		Items []journalNode `json:"items"`
-	}
-	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
-		t.Fatal(err)
-	}
-	if mount, ok := mountFind(result.Items, "/1/@child"); !ok || mount.Agent != "/root/child" {
-		t.Fatalf("carrier read did not expose created mount: %+v", result.Items)
 	}
 }
 

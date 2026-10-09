@@ -40,7 +40,7 @@ func subagentStart(model, effort, tier string) *activityStart {
 		tier = "fast"
 	}
 	effort = strings.TrimSpace(effort)
-	if model == "" || len(model)+len(effort)+len(tier) > maxCommentaryPublicationBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
+	if model == "" || len(model)+len(effort)+len(tier) > maxActivityMetadataBytes || strings.ContainsAny(model+effort+tier, "\r\n\x00") {
 		return nil
 	}
 	return &activityStart{model: model, effort: effort, tier: tier}
@@ -96,7 +96,7 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 			continue
 		}
 		id := subagentCommentaryMessageID("response\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text)
-		if len(envelopes.replies) < maxCommentaryEventsPerRoute {
+		if len(envelopes.replies) < maxActivityEventsPerThread {
 			envelopes.replies = append(envelopes.replies, subagentReply{source: id, message: activityMessage{from: sender, to: recipient, text: text}})
 		}
 	}

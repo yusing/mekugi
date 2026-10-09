@@ -24,7 +24,7 @@ func TestJournalTraceChildLifecycleAtConsumer(t *testing.T) {
 	proxy.nativeTrace = &nativeToolTrace{directory: f.root}
 	read := func(want string) {
 		t.Helper()
-		nodes, err := proxy.commentary.journalReader(t.Context(), workspace+"\x00tree", "tree", "", "", nil, "")
+		nodes, err := proxy.readJournalTree(t.Context(), workspace, "tree", "", "", nil, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +41,7 @@ func TestJournalTraceChildLifecycleAtConsumer(t *testing.T) {
 	f.event("child", map[string]any{"type": "codex_turn_started", "codex_turn_id": "first"})
 	read("working")
 	closeTask := []journalMutation{{Op: "set", P: "/1", State: new("done")}}
-	if _, err := proxy.commentary.journalPublisher(t.Context(), workspace+"\x00tree", "tree", "running", closeTask); err == nil {
+	if _, err := proxy.applyJournal(t.Context(), workspace, "tree", "running", closeTask); err == nil {
 		t.Fatal("running child permitted parent completion")
 	}
 	if err := proxy.journals.observeLifecycle(t.Context(), proxy.replayStore, workspace, "child", "done", ""); err != nil {
@@ -53,7 +53,7 @@ func TestJournalTraceChildLifecycleAtConsumer(t *testing.T) {
 	}
 	before, _, _ := readThreadJournal(proxy.replayStore, workspace, "child")
 	traceChildResult(f, "child", "tree", "first", "/root/child", map[string]any{"completed": "host result"})
-	if _, err := proxy.commentary.journalReader(t.Context(), workspace+"\x00sibling", "sibling", "", "", nil, ""); err != nil {
+	if _, err := proxy.readJournalTree(t.Context(), workspace, "sibling", "", "", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	if child, _, _ := readThreadJournal(proxy.replayStore, workspace, "child"); child.LifecycleState != "working" {
@@ -83,7 +83,7 @@ func TestJournalTraceChildLifecycleAtConsumer(t *testing.T) {
 	}
 	// Mutation-time refresh catches a result published after the parent's read.
 	traceChildResult(f, "child", "tree", "follow-up", "/root/child", map[string]any{"completed": nil})
-	if _, err := proxy.commentary.journalPublisher(t.Context(), workspace+"\x00tree", "tree", "complete", closeTask); err != nil {
+	if _, err := proxy.applyJournal(t.Context(), workspace, "tree", "complete", closeTask); err != nil {
 		t.Fatal(err)
 	}
 	proxy.journals = newJournalStore()
@@ -100,7 +100,7 @@ func TestJournalTraceChildLifecycleAtConsumer(t *testing.T) {
 	f.event("child", map[string]any{"type": "codex_turn_started", "codex_turn_id": "interrupted-follow-up"})
 	traceChildResult(f, "child", "tree", "interrupted-follow-up", "/root/child", "interrupted")
 	read("blocked")
-	if _, err := proxy.commentary.journalPublisher(t.Context(), workspace+"\x00tree", "tree", "interrupted", closeTask); err == nil {
+	if _, err := proxy.applyJournal(t.Context(), workspace, "tree", "interrupted", closeTask); err == nil {
 		t.Fatal("interrupted follow-up permitted parent completion")
 	}
 	if err := proxy.journals.beginJournalTurn(t.Context(), proxy.replayStore, workspace, "child", "live-follow-up"); err != nil {
@@ -176,14 +176,14 @@ func TestJournalTraceChildResultIdentityAndFailure(t *testing.T) {
 			proxy.nativeTrace = &nativeToolTrace{directory: f.root}
 			f.event("child", map[string]any{"type": "codex_turn_started", "codex_turn_id": "current"})
 			traceChildResult(f, "child", test.parent, test.turn, test.agent, test.status)
-			nodes, err := proxy.commentary.journalReader(t.Context(), workspace+"\x00tree", "tree", "", "", nil, "")
+			nodes, err := proxy.readJournalTree(t.Context(), workspace, "tree", "", "", nil, "")
 			if err != nil {
 				t.Fatal(err)
 			}
 			if mount, ok := mountFind(nodes, "/1/@child"); !ok || mount.State != test.want {
 				t.Fatalf("mount = %+v, want %s", mount, test.want)
 			}
-			if _, err := proxy.commentary.journalPublisher(t.Context(), workspace+"\x00tree", "tree", "close", []journalMutation{{Op: "set", P: "/1", State: new("done")}}); err == nil {
+			if _, err := proxy.applyJournal(t.Context(), workspace, "tree", "close", []journalMutation{{Op: "set", P: "/1", State: new("done")}}); err == nil {
 				t.Fatal("unsettled or failed child permitted parent completion")
 			}
 		})
@@ -211,7 +211,7 @@ func TestJournalTraceCorruptChildNotRewritten(t *testing.T) {
 	proxy.nativeTrace = &nativeToolTrace{directory: f.root}
 	f.event("child", map[string]any{"type": "codex_turn_started", "codex_turn_id": "current"})
 	traceChildResult(f, "child", "tree", "current", "/root/child", map[string]any{"completed": "done"})
-	_, readErr := proxy.commentary.journalReader(t.Context(), workspace+"\x00tree", "tree", "", "", nil, "")
+	_, readErr := proxy.readJournalTree(t.Context(), workspace, "tree", "", "", nil, "")
 	after, _, afterErr := readThreadJournal(proxy.replayStore, workspace, "child")
 	if after.LifecycleState != j.LifecycleState || readErr == nil || afterErr == nil {
 		t.Fatalf("corrupt child rewritten from %s to %s, read error=%v, record error=%v", j.LifecycleState, after.LifecycleState, readErr, afterErr)
@@ -237,7 +237,7 @@ func TestJournalTraceRefreshWaitsForNewerTurn(t *testing.T) {
 		}
 		result := make(chan error, 1)
 		go func() {
-			_, err := proxy.commentary.journalReader(t.Context(), workspace+"\x00tree", "tree", "", "", nil, "")
+			_, err := proxy.readJournalTree(t.Context(), workspace, "tree", "", "", nil, "")
 			result <- err
 		}()
 		synctest.Wait()

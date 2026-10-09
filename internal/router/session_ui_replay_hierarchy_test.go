@@ -17,7 +17,16 @@ import (
 // the historical revisions. Only host boundaries and revisions are replayable.
 func replayHierarchyFixture(t *testing.T, alter func(*threadJournal)) (*mekugiReplayStore, string, string) {
 	t.Helper()
-	store, workspace, _, _ := replayJournalTestEvidence(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	workspace := t.TempDir()
+	directory, err := defaultMekugiReplayDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openMekugiReplayStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
 	start := time.Date(2026, 9, 30, 8, 0, 0, 0, time.Local)
 	epoch := start.UnixMilli()
 	event := func(seq uint64, second int, path, kind, title, state, agent string) journalEvent {

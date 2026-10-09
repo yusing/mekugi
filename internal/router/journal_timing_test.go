@@ -141,7 +141,8 @@ func TestUISnapshotJournalActiveWorkTimer(t *testing.T) {
 		time.Sleep(3 * time.Second)
 		render("Resumed, three seconds later")
 		treeApply(t, proxy, workspace, journalMutation{Op: "set", P: "/1", State: new("done")})
-		out.WriteString("Completed\n" + journalNodeRow(u.view.painter.Theme, treeSnapshot(t, proxy, workspace).Items[0].node(), "") + "\n")
+		lead, text := journalPaintNodeParts(&u.view.painter, treeSnapshot(t, proxy, workspace).Items[0].node(), "", false)
+		out.WriteString("Completed\n" + lead + text + "\n")
 		uisnapshot.Assert(t, "testdata/snapshots/journal-active-work-timer.txt", out.String())
 	})
 }

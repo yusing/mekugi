@@ -34,14 +34,9 @@ Retained semantic journal messages remain visible. Authorized child journals use
 retained revisions and recorded host turns to reconstruct mounted and unmounted
 hierarchies. Latest stored child items or lifecycle cannot supply historical state;
 missing records or unproven ancestry are disclosed. Journal progress uses the
-recorded clock, including pause and backward seek. Router-generated journal
-transport commands are classified only when the strict
-generated shell grammar matches the durable translated carrier for the executing
-thread and metadata workspace (or its original empty workspace scope). Mutation
-transports and their synthetic output are hidden; read and list transports show
-their typed journal operation, as in live sessions. Reading
-that provenance creates no store, locks, or writers. Missing, invalid, or unrelated
-provenance keeps the command visible and discloses an unverified transport candidate.
+recorded clock, including pause and backward seek. Recorded journal shell commands
+and output use the ordinary command path,
+including their original start and completion bounds.
 
 Events are stably merged by recorded time. Item start and completion remain fixed;
 agent text and command output are not exposed at item start. Synthetic UTF-8 streaming deltas

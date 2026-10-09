@@ -141,16 +141,6 @@ func replayRecordName(workspace, callID string, commentary bool) string {
 	return prefix + fmt.Sprintf("%x.json", sha256.Sum256(fmt.Appendf(nil, "%t\x00%s\x00%s", commentary, workspace, callID)))
 }
 func (s *mekugiReplayStore) locked(ctx context.Context, fn func() error) (err error) {
-	latency := journalLatencyFor(ctx)
-	var started time.Time
-	if latency != nil {
-		started = time.Now()
-		defer func() {
-			if !started.IsZero() {
-				latency.replayWait += time.Since(started)
-			}
-		}()
-	}
 	path := filepath.Join(s.directory, "store.lock")
 	info, e := os.Lstat(path)
 	if e == nil && !info.Mode().IsRegular() {
@@ -176,10 +166,6 @@ func (s *mekugiReplayStore) locked(ctx context.Context, fn func() error) (err er
 	}
 	if err := ctx.Err(); err != nil {
 		return err
-	}
-	if latency != nil {
-		latency.replayWait += time.Since(started)
-		started = time.Time{}
 	}
 	return fn()
 }

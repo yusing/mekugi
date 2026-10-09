@@ -23,11 +23,15 @@ separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
 assignment, live milestones, terminal child result, and parent delivery without
 an extra final-answer provider request.
 
-The host-finish journal fixture carries the completion marker with useful stock
-execution inside exec for both root and native child. It verifies terminal
-journal delivery without forwarding the tool-result continuation to the provider,
-and that no standalone journal tool is advertised. The ordinary journal fixture
+The host-finish journal fixture carries an MCP mutation batch and completion marker
+with useful stock execution inside exec for both root and native child. It verifies
+terminal journal delivery without forwarding the tool-result continuation to the
+provider, including journals retained without workspace metadata. The ordinary journal fixture
 retains provider-authored substantive-final coverage.
+
+The journal MCP read fixture checks standard nested tool discovery and execution
+through installed Codex. It verifies that host-supplied identity selects the
+durable journal and that structured results reach the exec-cell continuation.
 
 The mchanges fixture executes nested stock patch and shell calls without printing
 their results, then checks durable native receipts, net review, explicit-ID reads

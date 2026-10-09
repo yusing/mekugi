@@ -34,18 +34,6 @@ func splitJournalFinish(mutations []journalMutation) ([]journalMutation, bool, e
 	return mutations, false, nil
 }
 
-func (b *commentaryBroker) bindJournalFinish(token, turn string) {
-	if turn == "" {
-		return
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if route := b.routes[token]; route != nil {
-		route.finishReceipt = journalHostFinishReceipt(turn, route.callID)
-		route.finishTurn = turn
-	}
-}
-
 // Source: internal/router/shell_journal_finish.go@518ac19ac89d17d4ef8b038422b46b124811dc17 shellJournalFinished.
 // Keep v1's invocation and continuation scope, using current stock host evidence.
 func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bool, error) {
@@ -53,13 +41,24 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 	if t.shellTurnID == "" || json.Unmarshal(raw, &items) != nil {
 		return false, nil
 	}
+	var receipts map[string]journalReceipt
+	err := t.proxy.journals.transaction(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, func(j *threadJournal, exists bool) error {
+		if exists {
+			receipts = j.Receipts
+		}
+		return errJournalUnchanged
+	})
+	if err != nil {
+		return false, err
+	}
 	type invocation struct {
 		executionCall
 		origin string
 	}
 	calls := make(map[string]invocation)
 	live := make(map[string]invocation)
-	var candidate, active, handle, lastResult string
+	var candidate, active, handle, lastResult, candidateSource string
+	var candidateCodeMode bool
 	finished := false
 	for _, item := range items {
 		if jsonString(item, "role") == "user" {
@@ -77,7 +76,9 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 				call.origin = prior.origin
 				delete(live, call.resumeHandle)
 			}
-			if history.JournalFinishTurnID == t.shellTurnID && history.ExecutingThread == t.shellThreadID {
+			_, legacyFinish := receipts["runtime:"+journalHostFinishReceipt(t.shellTurnID, callID)]
+			_, mcpFinish := receipts["runtime:"+journalHostFinishReceipt(t.shellTurnID, jsonString(item, "id"))]
+			if legacyFinish && history.JournalFinishTurnID == t.shellTurnID && history.ExecutingThread == t.shellThreadID || mcpFinish {
 				call.origin = callID
 			}
 			calls[callID] = call
@@ -87,6 +88,11 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 				candidate, active, handle, finished = "", "", "", false
 				if call.origin == callID {
 					candidate, active = callID, callID
+					candidateCodeMode = call.codeMode
+					candidateSource = jsonString(item, "input")
+					if known {
+						candidateSource = history.carrierInput()
+					}
 				}
 			}
 		case "custom_tool_call_output", "function_call_output":
@@ -108,9 +114,8 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 	if !finished || candidate == "" || lastResult != active || len(calls) != 0 || len(live) != 0 {
 		return false, nil
 	}
-	history := t.visible[candidate]
-	if history.effectiveCarrierKind() == codeModeCarrierCustom {
-		cell := t.proxy.nativeTrace.readCell(t.shellThreadID, candidate, history.carrierInput())
+	if candidateCodeMode {
+		cell := t.proxy.nativeTrace.readCell(t.shellThreadID, candidate, candidateSource)
 		if cell == nil || cell.pending() {
 			return false, nil
 		}
@@ -120,14 +125,7 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 			}
 		}
 	}
-	found := false
-	err := t.proxy.journals.transaction(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, func(j *threadJournal, exists bool) error {
-		if exists {
-			_, found = j.Receipts["runtime:"+journalHostFinishReceipt(t.shellTurnID, candidate)]
-		}
-		return errJournalUnchanged
-	})
-	return found, err
+	return true, nil
 }
 
 func journalHostExecutionResult(call executionCall, raw jsonv1.RawMessage) (handle string, success bool) {

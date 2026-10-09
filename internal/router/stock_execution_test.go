@@ -176,23 +176,6 @@ func TestCompletedCodeModeCallInputChangeHasSafeDiagnostic(t *testing.T) {
 	}
 }
 
-func TestCompletedOutputItemCommentaryFailureHasSafeDiagnostic(t *testing.T) {
-	transform, _, _, _ := newMekugiTestTransform(t)
-	transform.commentaryTools = commentaryToolCatalog{
-		functionToolKey("functions", "exec_command"): {qualifiedName: "functions.exec_command"},
-	}
-	_, err := transform.TransformSSE(mustMarshalJSON(map[string]any{
-		"type": "response.output_item.done",
-		"item": map[string]any{"type": "function_call", "id": "item", "call_id": "call",
-			"namespace": "functions", "name": "exec_command", "arguments": "private malformed arguments", "status": "completed"},
-	}))
-	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if !ok || diagnostic.code != "mekugi_sse:output_item_commentary" ||
-		strings.Contains(diagnostic.summary, "private malformed") {
-		t.Fatalf("completed commentary diagnostic = %#v, error = %v", diagnostic, err)
-	}
-}
-
 func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 	guide := newManagedMekugiProxy(t).registry.frontendGuidance
 	t.Run("exec", func(t *testing.T) {
@@ -349,6 +332,57 @@ func TestCodeModeStockBatchPassesThroughUnchanged(t *testing.T) {
 	history, found, err := transform.proxy.replayStore.lookup(transform.ctx, workspace, "batch-call")
 	if err != nil || !found || len(history.NativePatches) != 1 || history.NativePatches[0].Input != patch {
 		t.Fatalf("stock batch observation = %+v, found=%v, err=%v", history.NativePatches, found, err)
+	}
+}
+
+func TestCodeModeJournalSourcePassesThroughUnchanged(t *testing.T) {
+	for _, source := range []string{
+		`await journal({op:"log",text:"Unrecognized helper"});`,
+		`text("journal({op:'read'})"); // journal({op:'read'})`,
+		`const broken = ; journal({op:"read"});`,
+		`await tools.mcp__mekugi__journal_mutate({mutations:[{op:"log",text:"Checked"}]}); text(await tools.exec_command({cmd:"touch file.txt"}));`,
+	} {
+		for _, stream := range []bool{false, true} {
+			transform, _, _, _ := newMekugiTestTransform(t)
+			call := map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "input": source, "status": "completed"}
+			var result []byte
+			if stream {
+				for _, event := range []map[string]any{
+					{"type": "response.output_item.added", "item": map[string]any{"type": "custom_tool_call", "id": "item", "call_id": "call", "name": "exec", "status": "in_progress"}},
+					{"type": "response.custom_tool_call_input.done", "item_id": "item", "call_id": "call", "input": source},
+					{"type": "response.output_item.done", "item": call},
+				} {
+					events, err := transform.TransformSSE(mustTestJSON(t, event))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, raw := range events {
+						var decoded struct {
+							Item map[string]json.RawMessage `json:"item"`
+						}
+						if json.Unmarshal(raw, &decoded) == nil && jsonString(decoded.Item, "status") == "completed" {
+							result = decoded.Item["input"]
+						}
+					}
+				}
+			} else {
+				raw, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"status": "completed", "output": []any{call}}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var decoded struct {
+					Output []map[string]json.RawMessage `json:"output"`
+				}
+				if err := json.Unmarshal(raw, &decoded); err != nil || len(decoded.Output) != 1 {
+					t.Fatalf("stock call output = %s, %v", raw, err)
+				}
+				result = decoded.Output[0]["input"]
+			}
+			var forwarded string
+			if json.Unmarshal(result, &forwarded) != nil || forwarded != source {
+				t.Fatalf("stock source changed: %s", result)
+			}
+		}
 	}
 }
 

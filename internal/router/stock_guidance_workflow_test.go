@@ -64,6 +64,19 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 	if !strings.Contains(codeModeJournalGuidance, "Use ASD-STE100") || !strings.Contains(proxy.registry.frontendGuidance, "Promise.allSettled([") {
 		t.Fatal("projected guidance lost journal format or batching guidance")
 	}
+	for _, contract := range []string{"tools.mcp__mekugi__journal_read", "tools.mcp__mekugi__journal_mutate", "structuredContent.paths", "structuredContent.nodes", "Check `isError`",
+		// Codex defers the MCP tools, so guidance carries their schema declarations.
+		"type JournalMutation =", `| { before?: string; body?: string; kind?: "note" | "context"; op: "add"; title: string; under?: string; }`, "tasks?: Array<string | JournalTask>", "// Node path to read"} {
+		if !strings.Contains(codeModeJournalGuidance, contract) || !strings.Contains(codeModeSubagentJournalGuidance, contract) {
+			t.Errorf("shared MCP guidance missing: %s", contract)
+		}
+	}
+	for _, retired := range []string{"await journal(", "declare function journal", "<journal-input-types", "exec-local journal helper", "Native `exec_command` or `write_stdin` journal arrays"} {
+		if strings.Contains(combined, retired) || strings.Contains(codeModeSubagentJournalGuidance, retired) {
+			t.Errorf("retired journal interface remains: %s", retired)
+		}
+	}
+
 	for _, policy := range []string{"update affected documents before implementation", "review when warranted"} {
 		if strings.Contains(combined+proxy.registry.frontendGuidance, policy) {
 			t.Errorf("projected guidance retains copied workflow policy: %s", policy)
