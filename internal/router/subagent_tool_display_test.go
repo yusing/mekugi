@@ -69,6 +69,20 @@ func TestToolActivityMultilineFence(t *testing.T) {
 	}
 }
 
+func TestToolActivityShellSetupStaysTogether(t *testing.T) {
+	for _, setup := range []string{
+		"export ROOT=/tmp", "ROOT=$(mktemp -d)", "trap 'echo cleanup' EXIT",
+		"set -eu", "source setup.sh", ". setup.sh", "unset ROOT", "builtin export ROOT=/tmp",
+		"f() { cat a; }",
+		"export ROOT=/tmp\ncat <<'EOF'\nbody\nEOF\ngit log -1",
+	} {
+		source := "cat before\n" + setup + "\nsed -n '1,20p' after"
+		if got, want := toolActivityShell(source), "Run\n"+toolActivityFenced("bash", source); got != want {
+			t.Errorf("shell setup split: got %q, want %q", got, want)
+		}
+	}
+}
+
 func TestSubagentSedReadDisplay(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"sed -n '1,260p' source.go", "Read `source.go 1:260`"},

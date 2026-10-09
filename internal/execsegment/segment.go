@@ -14,9 +14,10 @@ import (
 )
 
 // Segment is one top-level command of a list: a statement, or an operand of a
-// top-level && or || chain. Pipelines and compound commands stay whole.
+// top-level && or || chain. Pipelines, compound commands, and scripts with
+// shell setup stay whole.
 type Segment struct {
-	Start, End int    // Script byte span, excluding terminators and heredoc bodies.
+	Start, End int    // Script byte span; grouped scripts include their full source.
 	Source     string // Display source, including any heredoc body.
 }
 
@@ -37,6 +38,9 @@ func Split(script string) ([]Segment, bool) {
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(script), "")
 	if err != nil || strings.Contains(script, "__mekugi_") || !trackable(program) {
 		return nil, false
+	}
+	if len(program.Stmts) > 0 && HasShellSetup(program) {
+		return []Segment{{Start: 0, End: len(script), Source: strings.TrimRight(script, "\r\n")}}, true
 	}
 	var segments []Segment
 	var add func(*syntax.Stmt)
@@ -65,6 +69,46 @@ func Split(script string) ([]Segment, bool) {
 		return nil, false
 	}
 	return segments, true
+}
+
+// HasShellSetup keeps shell context and the commands that use it in one event.
+// Command-local assignments, subprocesses, and pipelines keep their existing
+// segment boundaries.
+func HasShellSetup(program *syntax.File) bool {
+	setup := false
+	syntax.Walk(program, func(node syntax.Node) bool {
+		if setup {
+			return false
+		}
+		switch node := node.(type) {
+		case *syntax.Subshell, *syntax.CmdSubst, *syntax.ProcSubst:
+			return false
+		case *syntax.BinaryCmd:
+			if node.Op == syntax.Pipe || node.Op == syntax.PipeAll {
+				return false
+			}
+		case *syntax.DeclClause, *syntax.FuncDecl:
+			setup = true
+		case *syntax.CallExpr:
+			if len(node.Args) == 0 {
+				setup = len(node.Assigns) > 0
+				break
+			}
+			args := node.Args
+			if args[0].Lit() == "builtin" || args[0].Lit() == "command" {
+				args = args[1:]
+			}
+			if len(args) > 0 {
+				switch args[0].Lit() {
+				case "export", "readonly", "declare", "typeset", "local", "set", "shopt",
+					"trap", "source", ".", "unset", "alias", "unalias", "umask":
+					setup = true
+				}
+			}
+		}
+		return !setup
+	})
+	return setup
 }
 
 // Rewrite wraps each segment in hooks that report its start and exit status.

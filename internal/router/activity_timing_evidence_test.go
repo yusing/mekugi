@@ -174,7 +174,7 @@ func TestActivityTimingExitAndErrexitBoundaries(t *testing.T) {
 		code         int
 	}{
 		{"exit", "sleep .01; exit 7; echo never", 1, 7},
-		{"errexit", "set -e; sleep .01; false; echo never", 2, 1},
+		{"errexit", "set -e; sleep .01; false; echo never", 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			shell := newExecTrackShell(t)
@@ -182,12 +182,18 @@ func TestActivityTimingExitAndErrexitBoundaries(t *testing.T) {
 			shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(tc.script))
 			result := runExecTrackShell(t, shell.env, tc.script)
 			view := shell.awaitView(t, key)
-			if result.code != tc.code || !view.complete || view.code != tc.code || len(view.segments) <= tc.ending+1 {
+			if result.code != tc.code || !view.complete || view.code != tc.code || len(view.segments) <= tc.ending {
 				t.Fatalf("host=%+v view=%+v", result, view)
 			}
 			exiting := view.segments[tc.ending]
 			if exiting.exit != tc.code || exiting.timing.Started.IsZero() || exiting.timing.Ended.IsZero() || exiting.timing.ElapsedNS <= 0 {
 				t.Fatalf("exiting command lacks timing: %+v", exiting)
+			}
+			if tc.name == "errexit" {
+				if len(view.segments) != 1 || exiting.source != tc.script || result.stdout != "" {
+					t.Fatalf("setup event split or ran after errexit: host=%+v view=%+v", result, view)
+				}
+				return
 			}
 			skipped := view.segments[tc.ending+1]
 			if !skipped.skipped || skipped.timing != (execsegment.Timing{}) {

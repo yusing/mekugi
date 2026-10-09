@@ -21,6 +21,10 @@ func TestShellEditIntentClassification(t *testing.T) {
 			wantVerbs: []string{"Edit"}, wantPaths: []string{"internal/router/live_activity_view_test.go"}, wantProgram: "sed", secret: "Answers",
 		},
 		{
+			name: "setup and in-place edit", command: "export ROOT=/tmp\nsed -i 's/PRIVATE_SED_SOURCE/new/' a.go",
+			wantVerbs: []string{"Run", "Edit"}, wantPaths: []string{"a.go"}, wantProgram: "sed", secret: "PRIVATE_SED_SOURCE",
+		},
+		{
 			name: "sed backup and tests", command: `/usr/bin/sed --in-place=.bak -e 's/PRIVATE_SED_SOURCE/new/' 'a file.go' b.go; go test ./...`,
 			wantVerbs: []string{"Edit", "Edit", "Edit", "Edit", "Run"}, wantPaths: []string{"a file.go", "b.go", "a file.go.bak", "b.go.bak"}, wantProgram: "sed", secret: "PRIVATE_SED_SOURCE",
 		},

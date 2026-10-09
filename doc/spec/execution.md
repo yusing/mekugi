@@ -225,7 +225,13 @@ its own state and stream live output. Clicking a segment opens only its retained
 stdout and stderr in the shared output dialog. Supported single commands,
 including pipelines, report their own elapsed duration without redirecting
 stdout or stderr. Bash also supports timed single commands. Pipelines and compound
-commands are single segments. Authored command text, stdin, output bytes, exit status,
+commands are single segments. Scripts with shell setup, such as standalone variable
+assignments, declarations, shell options, sourced files, or function definitions,
+stay one event with their full source and combined output. Recognized file-edit
+operations keep their Edit rows and hidden edit bodies. Command-local environment
+assignments and setup in subprocesses or pipelines keep existing segment boundaries.
+Untrackable setup, including traps, keeps the host's aggregate event.
+Authored command text, stdin, output bytes, exit status,
 PTY/yield behavior, and `write_stdin` continuation stay those of the stock
 command. Codex's startup, cancellation, sandbox, and process group apply
 unchanged.

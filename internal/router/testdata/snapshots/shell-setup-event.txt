@@ -1,0 +1,5 @@
+└ Ran │ probe_root=$(mktemp -d /tmp/setup-apt-baseline.XXXXXX)
+      │ trap 'rm -rf "$probe_root"' EXIT
+      │ export SETUP_CONFIG=/workspace/setup.json
+      │ smoke_root="$probe_root"
+      │ … +6 lines

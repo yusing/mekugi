@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -108,6 +109,7 @@ func toolActivityReads(script, cwd string) (string, bool) {
 	if err != nil || len(program.Stmts) == 0 {
 		return "", false
 	}
+	hasSetup := execsegment.HasShellSetup(program)
 	// Heredoc bodies may occur after another statement on the same line,
 	// outside Stmt.End(). Preserve the whole source rather than slicing them.
 	hasHeredoc := false
@@ -118,17 +120,23 @@ func toolActivityReads(script, cwd string) (string, bool) {
 		return !hasHeredoc
 	})
 	hasEdit := false
-	if hasHeredoc {
+	if hasHeredoc || hasSetup {
 		syntax.Walk(program, func(node syntax.Node) bool {
+			if _, declaration := node.(*syntax.FuncDecl); declaration {
+				return false
+			}
 			if statement, ok := node.(*syntax.Stmt); ok && !hasEdit {
 				_, hasEdit = toolActivityEditStatement(script, toolActivityUnwrapTimeout(statement))
-				if !hasEdit {
+				if !hasEdit && hasHeredoc && !hasSetup {
 					// A commit's heredoc is its message, not a program.
 					_, hasEdit = vcsStatement(statement)
 				}
 			}
 			return !hasEdit
 		})
+	}
+	if hasSetup && !hasEdit {
+		return "", false
 	}
 	if hasHeredoc && !hasEdit {
 		var source strings.Builder

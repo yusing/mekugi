@@ -205,11 +205,12 @@ func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 		{
 			script: "set -e\necho x\nfalse\necho y",
 			segments: []commandSegment{
-				{text: "set -e"},
-				{text: "echo x", tail: []string{"x"}},
-				{text: "false", exit: 1},
-				{text: "echo y", skipped: true},
+				{text: "set -e\necho x\nfalse\necho y", exit: 1},
 			},
+		},
+		{
+			script:   "ROOT=/tmp; export ROOT; printf '%s\\n' \"$ROOT\"; printf err >&2",
+			segments: []commandSegment{{text: "ROOT=/tmp; export ROOT; printf '%s\\n' \"$ROOT\"; printf err >&2"}},
 		},
 		{
 			script: "cat <<'EOF' && printf 'tail\\n'\nheredoc body\nEOF",
@@ -227,7 +228,7 @@ func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 			t.Fatalf("%q: tracked run = %+v, plain run = %+v", tc.script, tracked, plain)
 		}
 		view := shell.awaitView(t, key)
-		if !view.complete || view.code != plain.code || !view.output {
+		if !view.complete || view.code != plain.code || view.output != (len(tc.segments) > 1) {
 			t.Fatalf("%q: view = %+v, want a complete report with exit %d", tc.script, view, plain.code)
 		}
 		if !slices.EqualFunc(view.segments, tc.segments, func(a, b commandSegment) bool {

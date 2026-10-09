@@ -211,6 +211,20 @@ func TestUISnapshotTimeoutSkill(t *testing.T) {
 	assertNativeUISnapshot(t, "timeout-skill", p.Block(blocks[0], 90))
 }
 
+func TestUISnapshotShellSetupEvent(t *testing.T) {
+	u := newAppServerSessionTestUI(t, "/workspace")
+	u.view.painter.Theme = livediff.DarkTheme
+	command := "probe_root=$(mktemp -d /tmp/setup-apt-baseline.XXXXXX)\n" +
+		"trap 'rm -rf \"$probe_root\"' EXIT\nexport SETUP_CONFIG=/workspace/setup.json\n" +
+		"smoke_root=\"$probe_root\"\ngit show 99076ca:setup.sh > \"$probe_root/baseline.sh\"\n" +
+		"sed -n '1,20p' setup_test.sh\nsource \"$probe_root/baseline.sh\"\ntrap - ERR\n" +
+		"source \"$probe_root/policy.sh\"\nif check_apt_policy; then exit 1; fi"
+	item := appServerItem{ID: "setup", Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0)}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+	finishPacing(u.view)
+	assertNativeUISnapshot(t, "shell-setup-event", u.view.renderFeed(100, 24).lines)
+}
+
 func TestUISnapshotClassifiedCommandPaths(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.view.painter.Theme = livediff.DarkTheme
