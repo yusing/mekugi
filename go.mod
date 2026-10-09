@@ -12,6 +12,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/dlclark/regexp2/v2 v2.8.0
 	github.com/gofrs/flock v0.13.1
+	github.com/klauspost/compress v1.20.1
 	github.com/muesli/cancelreader v0.2.2
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/rivo/uniseg v0.4.7

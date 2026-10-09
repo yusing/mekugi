@@ -20,8 +20,8 @@ func recordedInstructionCleanup(t *testing.T) (string, string) {
 		}
 		return string(text)
 	}
-	// Removed blocks leave three additional line separators after the policy.
-	return read("stock"), read("projected") + "\n\n\n"
+	// The removed plugin advertisement leaves its trailing line separator.
+	return read("stock"), read("projected") + "\n"
 }
 
 func TestRecordedInstructionCleanupBoundaries(t *testing.T) {
@@ -156,13 +156,14 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 	const ordinary = "- When possible, prefer parallelization over sequential tool calls, as this will help with round-trip latency and let you get work done faster."
 	const generic = "- Do not make single-step plans."
 	const customized = "- Use the plan tool to explain the work only when explicitly requested."
+	const delegation = "<multi_agent_mode>Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.</multi_agent_mode>"
 	for _, newline := range []string{"\n", "\r\n"} {
 		input := ordinary + newline + generic + newline + customized + newline +
 			"When using the planning tool:" + newline +
 			"- Skip using the planning tool for straightforward tasks (roughly the easiest 25%)." + newline +
 			generic + newline +
 			"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan." + newline +
-			"- Use the plan tool to explain the work" + newline
+			"- Use the plan tool to explain the work" + newline + delegation + newline
 		request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": mustMarshalJSON(input)}}
 		if err := rewriteRequestInstructionConflicts(&request); err != nil {
 			t.Fatal(err)

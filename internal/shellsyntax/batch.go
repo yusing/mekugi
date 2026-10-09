@@ -22,8 +22,6 @@ func shellVariant(interpreter string) syntax.LangVariant {
 		return syntax.LangPOSIX
 	case "ksh", "mksh":
 		return syntax.LangMirBSDKorn
-	case "zsh":
-		return syntax.LangZsh
 	default:
 		return 0
 	}

@@ -4,7 +4,7 @@
 "\x1b[1mbefore \x1b[38;2;86;212;221mnotify:         notif.FromCtx(parent.Context()).Notify,\x1b[39m after\x1b[m tail       "
 "\x1b[1mbefore \x1b[38;2;86;212;221mFOO=bar command args...\x1b[39m after\x1b[m tail                                       "
 "\x1b[1mbefore \x1b[38;2;86;212;221m\"not := code\"\x1b[39m after\x1b[m tail                                                 "
-"\x1b[1mbefore \x1b[38;2;86;212;221minternal/ui/activity/paint.go\x1b[39m after\x1b[m tail                                 "
+"\x1b[1mbefore \x1b[38;2;86;212;221;4m\x1b]8;;internal/ui/activity/paint.go\ainternal/ui/activity/paint.go\x1b[39;24m\x1b]8;;\a after\x1b[m tail                                 "
 "\x1b[1mbefore \x1b[38;2;86;212;221m猫👩\u200d💻\x1b[39m after\x1b[m tail                                                          "
 "\x1b[1mbefore \x1b[38;2;86;212;221mcompleted successfully\x1b[39m after\x1b[m tail                                        "
 "Run \x1b[38;2;86;212;221mgit commit -m 'amend:\x1b[m                                                       "

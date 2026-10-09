@@ -84,6 +84,12 @@ independently of sibling command processes that remain running.
 
 ### Command effects
 
+Commands submitted through native Shell Mode (`!`) use the same change recorder.
+Completed file effects update the saved Diff totals, pane, and Changes history,
+including `mchanges revert` and `apply`. Submission acknowledgements and replayed
+command history do not create captures; the matching terminal host item completes
+the observation. Codex retains execution, output, and interruption ownership.
+
 Mekugi records known edit sources in literal stock `tools.exec_command`
 calls. These include literal text/file redirections (`cat`, `printf`,
 `echo`, `tee`), coreutils file operations including `mv` and `rm`, in-place `sed`
@@ -577,6 +583,18 @@ matching relative paths, including descendants of collapsed folders; clearing
 it restores the tree's expansion and navigation position. Files use stable
 path ordering, with folders first in tree mode. Next/previous file navigation
 uses the matching set, revealing destinations inside collapsed folders.
+
+`c` cycles the saved Diff scope through current subslice (the default), current
+top-level slice, and all. The scope applies to Files in tree and flat views,
+Changes in branch view, file/change jumps, and the displayed diff. It combines
+with path, change, and caller filters. The current subslice is the deepest
+working owned task, otherwise its blocker or latest completed task; its
+descendants and bound child agents are included. Slice includes that task's
+top-level ancestor and descendants. Earlier captures compose as baseline.
+Task attribution is retained with each capture, so later task transitions and
+resume do not reassign earlier edits. Unattributed captures remain available
+in all. Without a current journal task, scopes show all retained captures.
+Scope selection is local to the viewer and resets to subslice on session switch.
 
 The navigator and diff have independent viewports and keyboard focus. Arrow keys
 act on the focused region. Keyboard focus is visible;

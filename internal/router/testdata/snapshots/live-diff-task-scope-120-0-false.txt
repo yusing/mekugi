@@ -1,0 +1,19 @@
+2 files +2 -2 | subslice /1/2 (c) · files focus · CONNECTING · 1/2
+▎Files  2/2 · tree · subslic… │  1/2  src/1.go +1 -1 ──────────────────────────────────────────────────────────────────
+ / filter paths               │  ┄ amber2 main·apply_patch
+▼ src (2)                     │  1│-old                                                                                
+  M 1.go ● +1 -1              │  1│+new                                                                                
+  M 4.go ● +1 -1              │  2/2  src/4.go +1 -1 ──────────────────────────────────────────────────────────────────
+                              │  ┄ amber5 worker·apply_patch
+                              │  1│-old                                                                                
+                              │  1│+new                                                                                
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │
+                              │

@@ -37,6 +37,9 @@ type Painter struct {
 	// CopySource carries semantic annotations to the native viewport.
 	CopySource bool
 	CopyScope  uint64 // Stable native entry/block scope for cached source identities.
+	// FileLink checks local destinations against the caller's workspace metadata.
+	// Without a resolver, only web destinations become clickable.
+	FileLink func(target string) bool
 }
 
 func (p *Painter) now() time.Time {
@@ -93,7 +96,7 @@ func liveActivityLanguagePath(lang string) string {
 	switch strings.ToLower(lang) {
 	case "":
 		return ""
-	case "bash", "sh", "shell", "zsh", "console":
+	case "bash", "sh", "shell", "console":
 		return "command.sh"
 	case "javascript", "js":
 		return "source.js"
@@ -304,17 +307,21 @@ func (p *Painter) Inline(line string) string {
 	for i := 0; i < len(line); {
 		if line[i] == '[' {
 			if label, target, end, ok := liveActivityLink(line[i:]); ok {
-				link := target
-				if strings.HasPrefix(target, "/") {
-					path := url.URL{Scheme: "file", Path: target}
-					link = path.String()
+				if p.linkAllowed(target) {
+					out.WriteString(p.inlineLink(label, target))
+				} else {
+					out.WriteString(label)
 				}
-				out.WriteString("\x1b]8;;" + link + "\x1b\\" + p.Theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\")
 				i += end
 				continue
 			}
 		}
 		if code, end, ok := liveActivityCodeSpan(line, i); ok {
+			if rawFilePath(code) && p.linkAllowed(code) {
+				out.WriteString(p.inlineLink(code, code))
+				i = end
+				continue
+			}
 			// Inline spans have no language tag. Detect from their content,
 			// retaining the accent for plain text and uncolored tokens.
 			highlighted := code
@@ -335,6 +342,18 @@ func (p *Painter) Inline(line string) string {
 			i += 2
 			continue
 		}
+		if i == 0 || strings.ContainsRune(" \t<([\"'", rune(line[i-1])) || i >= 2 && line[i-2:i] == "**" {
+			end := len(line)
+			if stop := strings.IndexAny(line[i:], " \t<>[](){}\"'`*"); stop >= 0 {
+				end = i + stop
+			}
+			path := strings.TrimRight(line[i:end], ".,;!?")
+			if rawFilePath(path) && p.linkAllowed(path) {
+				out.WriteString(p.inlineLink(path, path))
+				i += len(path)
+				continue
+			}
+		}
 		out.WriteByte(line[i])
 		i++
 	}
@@ -344,8 +363,41 @@ func (p *Painter) Inline(line string) string {
 	return out.String()
 }
 
-// Local paths, file URLs and HTTP(S) URLs become terminal links. File existence
-// and workspace-relative resolution belong to the click handler.
+func (p *Painter) linkAllowed(target string) bool {
+	return strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") || p.FileLink != nil && p.FileLink(target)
+}
+
+func (p *Painter) inlineLink(label, target string) string {
+	if strings.HasPrefix(target, "/") {
+		path := url.URL{Scheme: "file", Path: target}
+		target = path.String()
+	}
+	return "\x1b]8;;" + target + "\x1b\\" + p.Theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\"
+}
+
+// Recognize file-shaped operands without reading the filesystem during painting.
+// Journal ordinals and canonical agent names are identifiers, not file links.
+func rawFilePath(path string) bool {
+	if path == "" || strings.ContainsAny(path[:1], "#!@$?") || strings.ContainsAny(path, "\x00\r\n\x1b\"'(){}[]=*;") || strings.Contains(path, "://") {
+		return false
+	}
+	base := path
+	if colon := strings.LastIndexByte(base, ':'); colon >= 0 {
+		base = base[:colon]
+	}
+	name := base[strings.LastIndexByte(base, '/')+1:]
+	file := strings.Contains(name, ".") && strings.Trim(name, ". ") != ""
+	if strings.HasPrefix(base, "/") {
+		first := strings.SplitN(base[1:], "/", 2)[0]
+		_, ordinal := strconv.Atoi(first)
+		return name != "" && ordinal != nil && (first != "root" || file)
+	}
+	first := strings.SplitN(base, "/", 2)[0]
+	return !strings.Contains(base, ":") && !strings.ContainsAny(first, " \t") && name != "" && (strings.Contains(base, "/") || file)
+}
+
+// Parse local paths, file URLs and HTTP(S) URLs independently of clickability,
+// so missing destinations retain the same visible label and copy annotations.
 func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	close := strings.Index(s, "](")
 	if close < 2 || s[0] != '[' {
@@ -367,7 +419,10 @@ func liveActivityLink(s string) (label, target string, end int, ok bool) {
 	}
 	path := target
 	if colon := strings.LastIndexByte(path, ':'); colon >= 0 {
-		if line, err := strconv.Atoi(path[colon+1:]); err == nil && line > 0 {
+		from, to, ranged := strings.Cut(path[colon+1:], "-")
+		first, err := strconv.Atoi(from)
+		last, lastErr := strconv.Atoi(to)
+		if err == nil && first > 0 && (!ranged || lastErr == nil && last >= first) {
 			path = path[:colon]
 		}
 	}
@@ -640,6 +695,14 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines[i] = Dim + ansi.Strip(line) + Reset
 		}
 	}
+	if block.Expanded && block.MarkdownOutput() && len(block.Tail) > 0 {
+		indent := min(block.cell(RowVerb(block)), max(0, width-8))
+		rows := p.Markdown(strings.Join(block.Tail, "\n"), width-indent)
+		if block.TailOmitted > 0 {
+			rows = append([]string{Dim + Elision{Hidden: block.TailOmitted, Form: ElisionEarlier}.Text() + " not retained" + Undim}, rows...)
+		}
+		return append(lines, liveActivityIndent(rows, strings.Repeat(" ", indent))...)
+	}
 	if !block.Collapsed {
 		block.Tail = p.tailColors(block)
 	}
@@ -677,7 +740,7 @@ func segmentTrailer(block Block) string {
 	switch {
 	case block.Skipped && EditStatus(block) != "skipped":
 		return "· skipped"
-	case !block.Segment || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads" || block.VCS():
+	case !block.Segment && !block.JournalTransport || block.ExitCode == 0 || block.GroupHeader != "" || block.Kind != "op" && block.Kind != "reads" || block.VCS():
 		return ""
 	case block.Kind == "op" && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)):
 		return "" // The row already shows the exit.
@@ -731,7 +794,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			return []string{Dim + "• " + header + Undim}
 		}
-		if block.Live {
+		if block.Live && !block.Expanded {
 			var hidden int
 			if rows, hidden = TailRows(rows, ThinkingTailRows); hidden > 0 {
 				suffix := " · " + Elision{Hidden: hidden, Form: ElisionSuffix, Hovered: block.Hovered}.String()
@@ -753,7 +816,11 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return append([]string{Green + "✓ Final answer" + Reset}, liveActivityIndent(p.Markdown(block.Body, width-2), "  ")...)
 	case "reads":
-		lead, count := block.lead(VerbColor(block.Verb), block.Verb), ResultCount(block.Results)+readLines(block)
+		color := VerbColor(block.Verb)
+		if block.JournalTransport && block.ExitCode != 0 {
+			color = Red
+		}
+		lead, count := block.lead(color, block.Verb), ResultCount(block.Results)+readLines(block)
 		indent := ansi.StringWidth(lead)
 		literal := block.Verb == "Search" || block.Verb == "Skill"
 		// fit shortens a path that cannot share its row with its ranges, gap
@@ -1187,7 +1254,7 @@ func clipSource(rows []string, block Block, lead string) []string {
 // readLines counts collapsed read output after the target it came from: a
 // file's content needs no row of its own to say how much there is.
 func readLines(block Block) string {
-	if !block.Collapsed || !block.ReadOutput() || len(block.Tail) == 0 {
+	if block.JournalTransport || !block.Collapsed || !block.ReadOutput() || len(block.Tail) == 0 {
 		return ""
 	}
 	return lineSuffix(block.TailOmitted+len(block.Tail), block.Hovered)
@@ -1205,6 +1272,9 @@ func lineSuffix(n int, hovered bool) string {
 // outputRows attaches the invocation's output to its final operation. Open
 // output counts its earlier lines in the verb column of its first row.
 func outputRows(block Block, lines []string, width int) []string {
+	if block.JournalTransport && block.Collapsed {
+		return lines
+	}
 	indent := block.cell(RowVerb(block))
 	padding := strings.Repeat(" ", indent)
 	// A VCS row's changes are its result, not output to collapse.

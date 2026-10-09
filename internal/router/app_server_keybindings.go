@@ -51,6 +51,7 @@ func renderNativeKeybindingsForRuntime(width, height int, nativeRuntime bool) []
 			{"ctrl+b ← / →", "Resize panes"},
 		}},
 		{"Transcript", [][2]string{
+			{"ctrl+e", "Default / events / all"},
 			{"pgup / pgdn", "Scroll"},
 			{"esc", "Back to bottom"},
 		}},
@@ -108,6 +109,12 @@ func renderNativeKeybindingsForRuntime(width, height int, nativeRuntime bool) []
 	}
 	lines = append(lines, band...)
 	lines = append(lines, "", "  "+blue+"? / esc"+activityui.Reset+"  Close shortcuts")
+	// Give controls priority over spacing when an extra binding fills a narrow frame.
+	for i := len(lines) - 2; len(lines) > height && i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			lines = append(lines[:i], lines[i+1:]...)
+		}
+	}
 	frame := make([]string, height)
 	start := max(0, height-len(lines))
 	for i := range min(height, len(lines)) {

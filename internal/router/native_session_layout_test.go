@@ -158,7 +158,7 @@ func TestNativeUIComposerGapBelowJournal(t *testing.T) {
 		if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
 			t.Fatalf("composer not separated: %q", rows)
 		}
-		if withJournal && !strings.Contains(ansi.Strip(rows[border-2]), "Working renderer") {
+		if withJournal && !strings.Contains(ansi.Strip(rows[border-2]), "Continuation paused /3: Needs decision") {
 			t.Fatalf("journal not above gap: %q", rows)
 		}
 	}

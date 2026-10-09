@@ -2,14 +2,18 @@ package router
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestNativeJournalPrecedesNextHostCommand(t *testing.T) {
@@ -54,7 +58,21 @@ func TestNativeJournalPrecedesNextHostCommand(t *testing.T) {
 	assertOrder()
 }
 
-func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
+// journalTransportArgument is the quoted payload the generated helper
+// appends to its transport prefix.
+func journalTransportArgument(t *testing.T, request any) string {
+	t.Helper()
+	data, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return " '" + url.QueryEscape(string(data)) + "'"
+}
+
+// journalTransportFixture retains a lowered journal cell for the UI's thread
+// and returns its transport prefix and live authorization token.
+func journalTransportFixture(t *testing.T) (*appServerUI, *mekugiProxy, string, string) {
+	t.Helper()
 	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	proxy.commentaryEndpoint = "http://127.0.0.1:1234/internal/commentary"
 	const callID = "journal-cell"
@@ -64,7 +82,6 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 		t.Fatalf("lowering: %v %v", changed, err)
 	}
 	token := transform.commentarySubscriptions[0].token
-	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, token}) + " '%7B%22op%22%3A%22list%22%7D'"
 	u := newAppServerSessionTestUI(t, workspace)
 	u.proxy = proxy
 	proxy.replayStore, err = openMekugiReplayStore(t.TempDir())
@@ -75,8 +92,13 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 	if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{callID: history}); err != nil {
 		t.Fatal(err)
 	}
+	return u, proxy, workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, token}), token
+}
 
-	command = workerCommand("/bin/bash", []string{"-c", execsegment.ShScript("/private/exec-track.sh", command)})
+func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
+	u, proxy, prefix, token := journalTransportFixture(t)
+	command := workerCommand("/bin/bash", []string{"-c", execsegment.ShScript("/private/exec-track.sh", prefix+journalTransportArgument(t, map[string]any{"op": "add", "title": "Checked"}))})
+	var err error
 	for _, method := range []string{"item/started", "item/completed"} {
 		appServerTestNotify(t, u, method, map[string]any{"threadId": u.thread, "turnId": "turn", "item": map[string]any{"id": "internal", "type": "commandExecution", "command": command}})
 	}
@@ -94,12 +116,157 @@ func TestNativeJournalTransportHiddenWithDurableProvenance(t *testing.T) {
 		t.Fatal("restored transport visible")
 	}
 	for _, command := range []string{command + "; echo visible", "echo " + command, strings.Replace(command, token, "unproven.token", 1), "mjournal --help"} {
-		if u.internalJournalCommand(u.thread, appServerItem{Type: "commandExecution", Command: command}) {
-			t.Fatalf("hid ordinary command %q", command)
+		if _, _, shown := u.journalTransport(u.thread, appServerItem{Type: "commandExecution", Command: command}); !shown || u.verifiedJournalCommand(u.thread, appServerItem{Type: "commandExecution", Command: command}) != nil {
+			t.Fatalf("classified ordinary command %q", command)
 		}
 	}
-	if u.internalJournalCommand("other-thread", appServerItem{Type: "commandExecution", Command: command}) {
+	if u.verifiedJournalCommand("other-thread", appServerItem{Type: "commandExecution", Command: command}) != nil {
 		t.Fatal("borrowed another thread's provenance")
+	}
+	batch := prefix + journalTransportArgument(t, []map[string]any{{"op": "add", "title": "Checked"}})
+	if _, _, shown := u.journalTransport(u.thread, appServerItem{Type: "commandExecution", Command: batch}); shown {
+		t.Fatal("batched mutation transport visible")
+	}
+}
+
+// Reads and lists persist no event, so their transport is their only trace.
+func TestNativeJournalReadTransportShowsTypedOperation(t *testing.T) {
+	u, proxy, prefix, token := journalTransportFixture(t)
+	const revision = " 12 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	for _, test := range []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{"read", prefix + journalTransportArgument(t, map[string]any{"op": "read", "p": "/3/5", "depth": 1}), "Read `journal entries at /3/5 (1 child level)`"},
+		{"read continuation", prefix + journalTransportArgument(t, map[string]any{"op": "read", "view": "outline", "depth": 0}) + revision, "Read `journal outline (top level)`"},
+		{"agent list", prefix + journalTransportArgument(t, map[string]any{"op": "list", "agent": "worker"}), "List `journal entries for agent worker`"},
+		{"agent tasks", prefix + journalTransportArgument(t, map[string]any{"op": "read", "agent": "worker", "view": "tasks", "p": "/7", "depth": 2}), "Read `journal tasks for agent worker at /7 (2 child levels)`"},
+		{"own entries", prefix + journalTransportArgument(t, map[string]any{"op": "read", "view": "own"}), "Read `own journal entries`"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := workerCommand("/bin/bash", []string{"-c", execsegment.ShScript("/private/exec-track.sh", test.command)})
+			u.view = newLiveActivityView()
+			for _, method := range []string{"item/started", "item/completed"} {
+				appServerTestNotify(t, u, method, map[string]any{"threadId": u.thread, "turnId": "turn", "item": map[string]any{"id": "read", "type": "commandExecution", "command": command, "exitCode": 0, "aggregatedOutput": `{"ok":true,"items":[]}`}})
+			}
+			if len(u.view.entries) != 1 || u.view.entries[0].Text != test.want || u.view.entries[0].native.operation != test.want {
+				t.Fatalf("live transport entries = %+v, want %q", u.view.entries, test.want)
+			}
+			if got := commandSegmentText(u.view.entries[0].native, test.command, ""); got != test.want {
+				t.Fatalf("tracked segment text = %q, want %q", got, test.want)
+			}
+			u.view = newLiveActivityView()
+			u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Items: []appServerItem{{ID: "read", Type: "commandExecution", Command: command, ExitCode: new(0), AggregatedOutput: new(`{"ok":true,"items":[]}`)}}}})
+			if len(u.view.entries) != 1 || u.view.entries[0].Text != test.want {
+				t.Fatalf("restored transport entries = %+v, want %q", u.view.entries, test.want)
+			}
+		})
+	}
+	proxy.commentary.cancel(token)
+	unproven := strings.Replace(prefix, token, "unproven.token", 1) + journalTransportArgument(t, map[string]any{"op": "read"})
+	if shown, operation, ok := u.journalTransport(u.thread, appServerItem{Type: "commandExecution", Command: unproven}); !ok || operation != "" || len(shown.CommandActions) != 0 {
+		t.Fatalf("unproven read classified: %+v %q %v", shown, operation, ok)
+	}
+}
+
+func TestUISnapshotNativeJournalPagedReads(t *testing.T) {
+	for _, child := range []bool{false, true} {
+		t.Run(fmt.Sprintf("child=%t", child), func(t *testing.T) {
+			var u *appServerUI
+			var thread, prefix string
+			name := "journal-paged-reads-main"
+			if child {
+				var command string
+				u, thread, command = nativeChildJournalHistoryFixture(t)
+				prefix, _, _ = strings.Cut(command, " '")
+				name = "journal-paged-reads-child"
+				u.session.path(thread)
+			} else {
+				u, _, prefix, _ = journalTransportFixture(t)
+				thread = u.thread
+			}
+			view := u.view
+			if child {
+				view = u.agents
+			}
+			view.conversation = !child
+			view.bare, view.feedOnly = child, child
+			now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local)
+			u.clock, view.clock = func() time.Time { return now }, func() time.Time { return now }
+			view.painter.Theme = livediff.DarkTheme
+			const revision = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+			var items []appServerItem
+			for i, op := range []string{"read", "read", "list", "list", "read"} {
+				command := prefix + journalTransportArgument(t, map[string]any{"op": op, "p": "/12"})
+				if i%2 == 1 {
+					command += " 4 " + revision
+				}
+				output := fmt.Sprintf(`{"ok":true,"items":[{"title":"page-%d"}]}`, i+1)
+				if op == "list" {
+					output = `{"ok":true,"items":[]}`
+				}
+				item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, ExitCode: new(0), AggregatedOutput: &output, DurationMS: new(int64(30 + 10*i))}
+				if i == 4 {
+					item.ExitCode, item.AggregatedOutput = new(1), new("journal changed during read; retry the read")
+				}
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "turn", "item": item})
+				if i == 1 {
+					plain := ansi.Strip(strings.Join(view.renderFeed(100, 40).lines, "\n"))
+					if strings.Count(plain, "Read") != 2 || !view.entries[1].blocks[0].Running {
+						t.Fatalf("running page merged or lost its state: %s", plain)
+					}
+				}
+				now = now.Add(time.Duration(*item.DurationMS) * time.Millisecond)
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": item})
+				items = append(items, item)
+			}
+			check := func(restored bool) {
+				t.Helper()
+				finishPacing(view)
+				feed := view.renderFeed(100, 40)
+				plain := ansi.Strip(strings.Join(feed.lines, "\n"))
+				if strings.Count(plain, "Read") != 2 || strings.Count(plain, "List") != 1 || strings.Contains(plain, `"ok"`) || !strings.Contains(plain, "(2 results)") || !strings.Contains(plain, "(0 results)") || !strings.Contains(plain, "exit 1") || !strings.Contains(plain, "retry the read") {
+					t.Fatalf("journal pages did not group or hid failure: %s", plain)
+				}
+				for row, line := range feed.lines {
+					block, ok := view.snippetBlock(feed.snippets[row])
+					if !ok || block.Verb != "Read" || len(block.Members) != 2 {
+						continue
+					}
+					if block.Duration != 70*time.Millisecond || !strings.Contains(ansi.Strip(line), "70ms") || !u.shell.openOutput(view, feed.snippets[row]) || len(u.shell.output.pages) != 2 {
+						t.Fatal("group lost duration or page navigation")
+					}
+					for page := range 2 {
+						u.shell.output.showPage(page)
+						u.shell.output.layout(90)
+						if got := u.shell.output.laid.Text; got != *items[page].AggregatedOutput || u.shell.output.pages[page].Duration != time.Duration(*items[page].DurationMS)*time.Millisecond {
+							t.Fatalf("dialog page %d lost output or timing: %q", page, got)
+						}
+					}
+					snapshot := name
+					if child && restored {
+						snapshot += "-restored"
+					}
+					uisnapshot.Assert(t, "testdata/snapshots/"+snapshot+".txt", strings.Join(feed.lines, "\n")+"\n")
+					uisnapshot.AssertTerminal(t, "testdata/snapshots/"+snapshot+"-style.txt", feed.lines, 100)
+					return
+				}
+				t.Fatal("grouped journal read has no output dialog target")
+			}
+			check(false)
+			// Resume verifies durable provenance and uses the same presentation.
+			*view = *newLiveActivityView()
+			view.clock, view.painter.Theme = u.clock, livediff.DarkTheme
+			view.conversation = !child
+			view.bare, view.feedOnly = child, child
+			if child {
+				u.restoreActivityThread(appServerThreadInfo{ID: thread, Cwd: u.session.cwd, Turns: []appServerHistoryTurn{{ID: "turn", Status: "completed", Items: items}}})
+			} else {
+				u.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: items}})
+			}
+			check(true)
+		})
 	}
 }
 
@@ -122,7 +289,7 @@ func nativeChildJournalHistoryFixture(t *testing.T) (*appServerUI, string, strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, transform.commentarySubscriptions[0].token}) + " '%7B%22op%22%3A%22list%22%7D'"
+	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, transform.commentarySubscriptions[0].token}) + journalTransportArgument(t, map[string]any{"op": "add", "title": "Checked"})
 	history := mekugiHistory{ToolName: "exec", Script: source, CarrierPayload: lowered, ExecutingThread: child}
 	if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{callID: history}); err != nil {
 		t.Fatal(err)

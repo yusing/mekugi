@@ -22,7 +22,7 @@ func testJournalHeadlessNativeCodex(t *testing.T, mode string) {
 	ctx, cmd, provider := journalResetCodexFixture(t)
 	provider.proxy.journalCompaction = mode
 	var output bytes.Buffer
-	wait, err := startHeadlessAppServer(ctx, cmd, strings.NewReader("Complete the first journal slice."), &output, provider.proxy)
+	wait, err := startHeadlessAppServer(ctx, cmd, strings.NewReader("Complete the first journal slice."), &output, provider.proxy, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

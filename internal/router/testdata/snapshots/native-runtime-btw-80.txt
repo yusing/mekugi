@@ -25,4 +25,4 @@
 ─ 4 Agents · 1 ─────────────────────────────────────────────────────────────────
  ● main  idle
 
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes · ^E expan

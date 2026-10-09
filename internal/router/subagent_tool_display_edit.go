@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/pathdisplay"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -20,7 +21,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 		return "", false
 	}
 	name := filepath.Base(command)
-	if (name == "sed" || name == "rm") && len(statement.Redirs) == 0 {
+	if (name == "sed" || name == "rm" || name == "mv") && len(statement.Redirs) == 0 {
 		// Reuse capture's option/script parser without resolving or reading
 		// files. The operation is requested; only its later receipt has counts.
 		for _, arg := range call.Args[1:] {
@@ -31,10 +32,14 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 		plan := execPlan{}
 		walker := execShellWalker{cwd: ".", plan: &plan}
 		verb := "Edit"
-		if name == "rm" {
+		switch name {
+		case "rm":
 			walker.remove(call.Args[1:])
 			verb = "Delete"
-		} else {
+		case "mv":
+			walker.copyLike(name, call.Args[1:], true)
+			verb = "Move"
+		default:
 			walker.sed(call.Args[1:])
 		}
 		if plan.Class != execDeclared || len(plan.Scope) == 0 {
@@ -43,7 +48,15 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 		var paths []string
 		for _, scope := range plan.Scope {
 			for _, operand := range scope.Operands {
-				paths = append(paths, verb+" "+toolActivityCode(operand.Path)+" · "+name+" (requested)")
+				path := operand.Path
+				if name == "mv" {
+					destination := scope.Dest
+					if scope.DestDir {
+						destination = filepath.Join(destination, filepath.Base(path))
+					}
+					path = pathdisplay.Move("", path, destination)
+				}
+				paths = append(paths, verb+" "+toolActivityCode(path)+" · "+name+" (requested)")
 			}
 		}
 		return strings.Join(paths, "\n\n"), true

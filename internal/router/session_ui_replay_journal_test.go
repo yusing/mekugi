@@ -3,6 +3,7 @@ package router
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ func replayJournalTestEvidence(t *testing.T) (*mekugiReplayStore, string, string
 	if err != nil || !changed {
 		t.Fatalf("lowering: changed=%v error=%v", changed, err)
 	}
-	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, transform.commentarySubscriptions[0].token}) + " '%7B%22op%22%3A%22read%22%7D'"
+	command := workerCommand("mjournal", []string{commentaryOnceArgument, proxy.commentaryEndpoint, transform.commentarySubscriptions[0].token}) + journalTransportArgument(t, map[string]any{"op": "add", "title": "Checked the implementation"})
 	directory, err := defaultMekugiReplayDirectory()
 	if err != nil {
 		t.Fatal(err)
@@ -41,6 +42,8 @@ func replayJournalTestSource(t *testing.T) *sessionUIReplay {
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"replay-journal-cell": history}); err != nil {
 		t.Fatal(err)
 	}
+	prefix, _, _ := strings.Cut(command, " '")
+	read := prefix + journalTransportArgument(t, map[string]any{"op": "read", "p": "/1"})
 	// Offline ingestion must not acquire a lock, rewrite records or chmod the
 	// directory. Even the normal writer's lock is absent before the read.
 	if err := os.Remove(filepath.Join(store.directory, "store.lock")); err != nil {
@@ -60,6 +63,7 @@ func replayJournalTestSource(t *testing.T) *sessionUIReplay {
 	path := replayTestWrite(t, t.TempDir(), "root.jsonl", meta,
 		replayTestRecord("event_msg", epoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
 		replayTestItem("root", "turn", epoch+100, epoch+500, map[string]any{"id": "transport", "type": "CommandExecution", "command": []string{"bash", "-lc", execsegment.ShScript("/private/exec-track.sh", command)}, "aggregated_output": `{"ok":true,"items":[]}`, "status": "completed", "exit_code": 0}),
+		replayTestItem("root", "turn", epoch+520, epoch+580, map[string]any{"id": "journal-read", "type": "CommandExecution", "command": []string{"bash", "-lc", execsegment.ShScript("/private/exec-track.sh", read)}, "aggregated_output": `{"ok":true,"items":[]}`, "status": "completed", "exit_code": 0}),
 		replayTestItem("root", "turn", epoch+600, epoch+1000, map[string]any{"id": "journal-message", "type": "AgentMessage", "text": "Journal: Checked the implementation."}),
 		replayTestItem("root", "turn", epoch+1100, epoch+1500, map[string]any{"id": "ordinary-command", "type": "CommandExecution", "command": []string{"sh", "-c", "mjournal --help"}, "aggregated_output": "Journal command help", "status": "completed", "exit_code": 0}),
 		replayTestRecord("event_msg", epoch+2000, map[string]any{"type": "task_complete", "turn_id": "turn"}))
@@ -77,7 +81,7 @@ func replayJournalTestSource(t *testing.T) *sessionUIReplay {
 	if _, err := os.Lstat(filepath.Join(store.directory, "store.lock")); !os.IsNotExist(err) {
 		t.Fatalf("offline ingestion created a store lock: %v", err)
 	}
-	if r.Items != 2 || r.JournalUnverified != 0 {
+	if r.Items != 3 || r.JournalUnverified != 0 {
 		t.Fatalf("replay metadata: items=%d unverified=%d", r.Items, r.JournalUnverified)
 	}
 	for _, e := range r.Events {
@@ -106,7 +110,7 @@ func TestSessionUIReplayJournalPreservesSemanticMessagesAndSeek(t *testing.T) {
 		for _, entry := range p.ui.view.entries {
 			text.WriteString(entry.Text)
 		}
-		if !strings.Contains(text.String(), "Checked the implementation") || !strings.Contains(text.String(), "mjournal --help") || strings.Contains(text.String(), "--journal-once") {
+		if !strings.Contains(text.String(), "Checked the implementation") || !strings.Contains(text.String(), "Read `journal entries at /1`") || !strings.Contains(text.String(), "mjournal --help") || strings.Contains(text.String(), "--journal-once") {
 			t.Fatalf("lost meaningful journal or ordinary command: %s", text.String())
 		}
 	}
@@ -124,14 +128,19 @@ func TestUISnapshotSessionUIReplayJournal(t *testing.T) {
 }
 
 func TestSessionUIReplayJournalRequiresExactProvenance(t *testing.T) {
-	for _, tc := range []string{"verified", "tracked", "paged", "empty-workspace", "foreign-thread", "foreign-workspace", "untranslated", "changed-endpoint", "compound", "tracked compound", "ordinary", "missing", "corrupt"} {
+	for _, tc := range []string{"verified", "read", "tracked", "paged", "empty-workspace", "foreign-thread", "foreign-workspace", "untranslated", "changed-endpoint", "compound", "tracked compound", "ordinary", "missing", "corrupt"} {
 		t.Run(tc, func(t *testing.T) {
 			store, workspace, command, history := replayJournalTestEvidence(t)
 			scope := workspace
 			wantHidden, wantCandidate := false, true
+			var wantActions []appServerCommandAction
 			switch tc {
 			case "verified":
 				wantHidden = true
+			case "read":
+				prefix, _, _ := strings.Cut(command, " '")
+				command = prefix + journalTransportArgument(t, map[string]any{"op": "read", "agent": "worker"})
+				wantCandidate, wantActions = false, []appServerCommandAction{{Type: "read", Path: "journal entries for agent worker"}}
 			case "tracked":
 				command = execsegment.ShScript("/private/exec-track.sh", command)
 				wantHidden = true
@@ -168,9 +177,11 @@ func TestSessionUIReplayJournalRequiresExactProvenance(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			hidden, candidate := replayJournalTransport(store, workspace, "root", appServerItem{Type: "commandExecution", Command: command})
-			if hidden != wantHidden || candidate != wantCandidate {
-				t.Fatalf("hidden=%v candidate=%v want=%v/%v", hidden, candidate, wantHidden, wantCandidate)
+			// A verified transport is no longer a candidate: it is hidden or typed.
+			wantUnverified := wantCandidate && !wantHidden
+			shown, hidden, unverified := replayJournalTransport(store, workspace, "root", appServerItem{Type: "commandExecution", Command: command})
+			if hidden != wantHidden || unverified != wantUnverified || !slices.Equal(shown.CommandActions, wantActions) || shown.Command != command {
+				t.Fatalf("hidden=%v unverified=%v actions=%+v want=%v/%v/%+v", hidden, unverified, shown.CommandActions, wantHidden, wantUnverified, wantActions)
 			}
 		})
 	}
@@ -179,9 +190,9 @@ func TestSessionUIReplayJournalRequiresExactProvenance(t *testing.T) {
 func TestSessionUIReplayJournalMissingStoreStaysReadOnly(t *testing.T) {
 	store, workspace, command, _ := replayJournalTestEvidence(t)
 	store.directory = filepath.Join(t.TempDir(), "absent-store")
-	hidden, candidate := replayJournalTransport(store, workspace, "root", appServerItem{Type: "commandExecution", Command: command})
-	if hidden || !candidate {
-		t.Fatalf("missing provenance: hidden=%v candidate=%v", hidden, candidate)
+	_, hidden, unverified := replayJournalTransport(store, workspace, "root", appServerItem{Type: "commandExecution", Command: command})
+	if hidden || !unverified {
+		t.Fatalf("missing provenance: hidden=%v unverified=%v", hidden, unverified)
 	}
 	if _, err := os.Stat(store.directory); !os.IsNotExist(err) {
 		t.Fatalf("offline replay created missing store: %v", err)

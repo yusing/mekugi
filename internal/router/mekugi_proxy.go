@@ -132,20 +132,20 @@ type mekugiProxy struct {
 	approvalMu         sync.Mutex
 	approvalFeedback   map[[2]string][]string // Live thread/turn feedback; no host steering.
 
-	mu                   sync.RWMutex
-	toolInputEmissions   map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
-	contextSliceReminder map[string]bool                              // Latest host context observation, never inherited.
-	btwThreads           map[string]bool                              // Live ephemeral UI threads; never inherited or replayed.
-	replayStore          *mekugiReplayStore
-	sessions             map[string]*mekugiHistorySession
-	noticeSink           func(string, string, string, string)
-	storageTurns         map[string]uint64
-	storageSequence      uint64
-	storageLeases        map[string]func()
-	activeSessions       map[string]int
-	historyBytes         int
-	sessionSequence      uint64
-	closed               bool
+	mu                 sync.RWMutex
+	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
+	contextUsage       map[string]hostContextUsage                  // Latest host context observation, never inherited.
+	btwThreads         map[string]bool                              // Live ephemeral UI threads; never inherited or replayed.
+	replayStore        *mekugiReplayStore
+	sessions           map[string]*mekugiHistorySession
+	noticeSink         func(string, string, string, string)
+	storageTurns       map[string]uint64
+	storageSequence    uint64
+	storageLeases      map[string]func()
+	activeSessions     map[string]int
+	historyBytes       int
+	sessionSequence    uint64
+	closed             bool
 }
 
 func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *mekugiProxy {
@@ -177,7 +177,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		if !ok {
 			return nil, errors.New("journal workspace is unavailable")
 		}
-		return proxy.journals.apply(ctx, proxy.replayStore, workspace, thread, "runtime:"+receipt, mutations)
+		return proxy.applyJournal(ctx, workspace, thread, "runtime:"+receipt, mutations)
 	}
 	broker.journalLister = func(ctx context.Context, session, thread, agent string) ([]journalItem, error) {
 		workspace, _, ok := strings.Cut(session, "\x00")
@@ -201,7 +201,7 @@ func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *
 		if !ok {
 			return nil, errors.New("journal workspace is unavailable")
 		}
-		nodes, err := proxy.journals.readTree(ctx, proxy.replayStore, workspace, thread, agent, path, depth, view)
+		nodes, err := proxy.readJournalTree(ctx, workspace, thread, agent, path, depth, view)
 		if err == nil {
 			proxy.countJournalRead(ctx, workspace, thread, "", "read")
 		}
@@ -398,6 +398,7 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	if !request.streamResponse {
 		return errors.New("mekugi compaction bypass requires a streaming request")
 	}
+	v2 := compaction.Implementation == "responses_compaction_v2"
 
 	var tools []jsonv1.RawMessage
 	if rawTools, exists := request.fields["tools"]; exists {
@@ -405,7 +406,7 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 			return fmt.Errorf("decode compaction tools: %w", err)
 		}
 	}
-	if len(tools) != 0 {
+	if !v2 && len(tools) != 0 {
 		return errors.New("mekugi compaction request cannot expose tools")
 	}
 
@@ -416,10 +417,17 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	if len(items) == 0 {
 		return errors.New("mekugi compaction request requires nonempty input")
 	}
-	for _, rawItem := range items {
+	triggers := 0
+	for index, rawItem := range items {
 		var item map[string]jsonv1.RawMessage
 		if err := jsonv1.Unmarshal(rawItem, &item); err != nil || item == nil {
 			return errors.New("mekugi compaction request contains a malformed input item")
+		}
+		if jsonString(item, "type") == "compaction_trigger" {
+			triggers++
+			if !v2 || index != len(items)-1 {
+				return errors.New("mekugi compaction trigger must end a V2 request")
+			}
 		}
 		if jsonString(item, "type") != "additional_tools" {
 			continue
@@ -428,9 +436,12 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		if err := jsonv1.Unmarshal(item["tools"], &additionalTools); err != nil {
 			return fmt.Errorf("decode compaction additional tools: %w", err)
 		}
-		if len(additionalTools) != 0 {
+		if !v2 && len(additionalTools) != 0 {
 			return errors.New("mekugi compaction request cannot expose tools")
 		}
+	}
+	if v2 && triggers != 1 {
+		return errors.New("mekugi V2 compaction requires one final trigger")
 	}
 
 	var toolChoice string
@@ -438,8 +449,8 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		return errors.New("mekugi compaction request requires automatic tool choice")
 	}
 	var parallelToolCalls bool
-	if err := jsonv1.Unmarshal(request.fields["parallel_tool_calls"], &parallelToolCalls); err != nil || parallelToolCalls {
-		return errors.New("mekugi compaction request requires disabled parallel tool calls")
+	if err := jsonv1.Unmarshal(request.fields["parallel_tool_calls"], &parallelToolCalls); err != nil || !v2 && parallelToolCalls {
+		return errors.New("mekugi compaction request has incompatible parallel tool calls")
 	}
 	return nil
 }
@@ -451,7 +462,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
 			return nil, err
 		}
-		return nil, nil
+		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 	}
 	if p == nil {
 		return nil, errors.New("mekugi response proxy is unavailable")
@@ -468,7 +479,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 		}
-		return nil, nil
+		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 	}
 	journalGuidance := codeModeJournalGuidance
 	var hostParts map[string][]int
@@ -480,9 +491,9 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	if !prewarm {
 		p.mu.RLock()
-		remind := p.contextSliceReminder[threadID]
+		usage := p.contextUsage[threadID]
 		p.mu.RUnlock()
-		if remind {
+		if usage.window > 0 && float64(usage.tokens)/float64(usage.window) >= 0.7 {
 			journalGuidance = strings.Replace(journalGuidance, "<journal>\n", "<journal>\n"+embeddedInstruction("journal_context_reminder")+"\n", 1)
 		}
 	}
@@ -495,7 +506,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 			return nil, err
 		}
 		if execution == nil {
-			return nil, nil
+			return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 		}
 	}
 	if err := rewriteRequestInstructionConflicts(request); err != nil {
@@ -515,7 +526,16 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	envelopes := prepareSubagentInputEnvelopes(request.fields, recipient)
 
 	tools := request.responseTools()
-	directory, _ := usableRoutingDirectory(metadata.Directories)
+	directory, directorySelected := usableRoutingDirectory(metadata.Directories)
+	if !directorySelected && len(metadata.Directories) != 0 {
+		_, local, err := journalCompactionInput(request)
+		if err != nil {
+			return nil, err
+		}
+		if local {
+			return nil, errors.New("journal compaction recovery workspace is unavailable")
+		}
+	}
 	originalTools, originalToolsPresent := request.fields["tools"]
 	originalTools = bytes.Clone(originalTools)
 	originalToolChoice, originalToolChoicePresent := request.fields["tool_choice"]
@@ -545,7 +565,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 
 	if prewarm {
-		return nil, nil
+		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
 	}
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
@@ -566,6 +586,10 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {
+		p.deactivateSession(historySessionID)
+		return nil, err
+	}
+	if err := p.replayStore.restoreJournalCompactionInput(ctx, request, directory); err != nil {
 		p.deactivateSession(historySessionID)
 		return nil, err
 	}

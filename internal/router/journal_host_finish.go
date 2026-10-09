@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/yusing/mekugi/capturer"
 )
 
 func journalHostFinishReceipt(turn, call string) string {
@@ -23,7 +25,7 @@ func splitJournalFinish(mutations []journalMutation) ([]journalMutation, bool, e
 			continue
 		}
 		if i != len(mutations)-1 || mutation.Agent != "" || mutation.P != "" || mutation.Under != "" || mutation.Kind != "" ||
-			mutation.Title != nil || mutation.Body != nil || mutation.State != nil || mutation.Reason != nil || mutation.Before != "" ||
+			mutation.Title != nil || mutation.Body != nil || mutation.State != nil || mutation.Reason != nil || mutation.SupersededBy != nil || mutation.Before != "" ||
 			mutation.Reset != "" || mutation.Tasks != nil || mutation.ID != "" || mutation.Text != nil || mutation.Answer != nil || mutation.ReportNow {
 			return nil, false, errors.New("journal finish accepts only op and must be the last operation")
 		}
@@ -40,6 +42,7 @@ func (b *commentaryBroker) bindJournalFinish(token, turn string) {
 	defer b.mu.Unlock()
 	if route := b.routes[token]; route != nil {
 		route.finishReceipt = journalHostFinishReceipt(turn, route.callID)
+		route.finishTurn = turn
 	}
 }
 
@@ -160,6 +163,7 @@ func (a *requestAttempt) tryJournalHostFinish() (bool, error) {
 	if err != nil || !finished {
 		return false, err
 	}
+	capturer.ObserveNoProvider(a.startCtx)
 	t.journalFinishRequested = true
 	// This response did not admit inference. Terminal journal delivery must
 	// not finish the prepared observation as a missing provider-usage report.

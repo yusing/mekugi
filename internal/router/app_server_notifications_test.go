@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func notificationTestOutput(t *testing.T, u *appServerUI) *bytes.Buffer {
@@ -140,6 +141,11 @@ func TestAppServerNotificationAutoContinue(t *testing.T) {
 			if out.Len() != 0 || !d.active() {
 				t.Fatalf("premature completion: notification=%q active=%v", out.String(), d.active())
 			}
+			u.writeTerminalTitle(time.Unix(0, 0))
+			if u.notifications.lastTitle != "Mekugi ⠋" {
+				t.Fatal("slice countdown reported terminal idle")
+			}
+			out.Reset()
 			if err := d.tick(d.deadline); err != nil {
 				t.Fatal(err)
 			}
@@ -162,6 +168,10 @@ func TestAppServerNotificationAutoContinue(t *testing.T) {
 			}
 			if want := "\x1b]9;Agent turn complete\a"; out.String() != want || d.active() {
 				t.Fatalf("real completion: notification=%q active=%v", out.String(), d.active())
+			}
+			u.writeTerminalTitle(time.Unix(0, 0))
+			if u.notifications.lastTitle != "Mekugi" {
+				t.Fatal("final completion retained terminal working state")
 			}
 		})
 	}
@@ -280,6 +290,11 @@ func TestAppServerNotificationCompactionAck(t *testing.T) {
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"compact","item":{"type":"contextCompaction","id":"compact-item"}}}`, d.thread))
 	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":"compact","status":"completed"}}}`, d.thread))
+	u.writeTerminalTitle(time.Unix(0, 0))
+	if u.notifications.lastTitle != "Mekugi ⠋" {
+		t.Fatal("next slice awaiting acknowledgement reported terminal idle")
+	}
+	out.Reset()
 	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"continued"}}}`, d.thread))
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"turn":{"id":"continued"}}}`, d.requestID))
 	if out.Len() != 0 {

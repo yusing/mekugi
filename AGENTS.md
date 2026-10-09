@@ -67,8 +67,12 @@ Terminal appearance changes use actual renderer snapshots in the owner's `testda
 through `internal/uisnapshot`, with `TestUISnapshot` names. Review intentional changes and control
 nondeterminism. CONTEXT-TESTS owns check/update commands.
 
-Keep the fresh offline suite under 30 seconds with warm build caches (`make test TEST_FLAGS=-count=1`);
-measure wall time and report cold build/race/live checks separately. Local passes and model prose
+Treat 30 seconds for a fresh offline suite with warm build caches as an efficiency target,
+not a completion gate. When required validation takes longer, report its time and continue delivery;
+do not repeat passing tests or add cache-warming runs solely to meet the target. Investigate timing
+when test optimization is requested or an evidenced task-related regression needs correction.
+Measure wall time when a full suite is otherwise warranted; report cold build/race/live checks
+separately. Local passes and model prose
 do not replace host results or missing runtime coverage. Controlled model comparisons live in
 [codex-setup-ab](https://github.com/yusing/codex-setup-ab), not this task by default.
 

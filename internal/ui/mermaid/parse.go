@@ -1,4 +1,4 @@
-// Package mermaid renders the bounded Codex flowchart subset without I/O.
+// Package mermaid renders an extended bounded Codex flowchart subset without I/O.
 // Source: codex-rs/mermaid/src/parse.rs:15:217@[687a119f0fcaace47e1f1abcc77cec6c813fd6da] parse
 // Source: codex-rs/mermaid/src/syntax.rs:9:105@[687a119f0fcaace47e1f1abcc77cec6c813fd6da] statements
 package mermaid
@@ -11,11 +11,12 @@ import (
 )
 
 const (
-	maxSource = 16 * 1024
-	maxNodes  = 16
-	maxEdges  = 24
-	maxLabel  = 40
-	maxCells  = 64 * 1024
+	maxSource    = 16 * 1024
+	maxNodes     = 16
+	maxEdges     = 24
+	maxLabel     = 40
+	maxNodeLabel = 256
+	maxCells     = 64 * 1024
 )
 
 type node struct {
@@ -99,7 +100,7 @@ func identByte(c byte) bool {
 
 func letter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
-func label(text string) (string, bool) {
+func label(text string, node bool) (string, bool) {
 	if strings.HasPrefix(text, "\"`") {
 		return "", false
 	}
@@ -111,11 +112,22 @@ func label(text string) (string, bool) {
 	} else if strings.ContainsAny(text, "[]{}|") {
 		return "", false
 	}
-	if strings.Contains(text, "\"") || strings.TrimSpace(text) == "" {
+	if strings.Contains(text, "\"") {
+		return "", false
+	}
+	limit := maxLabel
+	if node {
+		limit = maxNodeLabel
+		text = strings.NewReplacer("<br>", "\n", "<br/>", "\n", "<br />", "\n").Replace(text)
+	}
+	if strings.TrimSpace(text) == "" {
 		return "", false
 	}
 	sum := 0
 	for i, c := range text {
+		if node && c == '\n' {
+			continue
+		}
 		if c == '<' && i+1 < len(text) && (letter(text[i+1]) || strings.ContainsRune("/!?", rune(text[i+1]))) {
 			return "", false
 		}
@@ -125,7 +137,7 @@ func label(text string) (string, bool) {
 		}
 		sum += w
 	}
-	return text, sum <= maxLabel && sum == ansi.StringWidth(text)
+	return text, sum <= limit && sum == ansi.StringWidth(text)
 }
 
 func delimited(text, close string) (string, string, bool) {
@@ -184,7 +196,7 @@ func (g *graph) node(rest *string) (int, bool) {
 		if !ok {
 			return 0, false
 		}
-		text, ok := label(raw)
+		text, ok := label(raw, true)
 		if !ok {
 			return 0, false
 		}
@@ -272,7 +284,7 @@ func parse(source string) (graph, bool) {
 					if !ok {
 						return g, false
 					}
-					e.label, ok = label(raw)
+					e.label, ok = label(raw, false)
 					if !ok {
 						return g, false
 					}
@@ -299,7 +311,7 @@ func parse(source string) (graph, bool) {
 				if !ok {
 					return g, false
 				}
-				e.label, ok = label(strings.TrimSpace(raw))
+				e.label, ok = label(strings.TrimSpace(raw), false)
 				if !ok {
 					return g, false
 				}

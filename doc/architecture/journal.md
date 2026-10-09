@@ -26,9 +26,22 @@ unbound task. Operation-specific structured schemas and JavaScript input declara
 project through the journal tool guidance owner. Reserved view paths keep foreign
 nodes distinct without changing local ordinals. Native
 sinks cache immutable composed views only. Child lifecycle comes from accepted
-requests and host turn observations, never provider final-answer text. A child's
+requests and host turn observations, never provider final-answer text. For stock-CLI
+consumers, the existing private trace reader supplies structured child-result status.
+The journal owner accepts only current-turn results with matching child, parent,
+canonical path, and proven ancestry. Reads and mutations refresh this host evidence,
+loading only observed threads and their parent chains;
+the trace retains observed start order so a pre-request follow-up outcome cannot
+reuse the previous turn's success. An idle child adopts an unmatched start or
+failure, because a restarted router's trace lacks its durable turn. Content-validation
+failures exclude that ancestry from reconciliation. Reconciliation writes do not
+add the child record to the caller's retained session. Completed
+evidence persists independently of the disposable trace. A child's
 publication refreshes ancestor views without mutating ancestor event logs or cursors.
 Parent completion validates mounted host lifecycles, not child-authored task states.
+An owned dropped assignment releases failed or interrupted mounts from that gate;
+live and unresolved mounts retain it. This disposition does not change child lifecycle
+evidence or terminate a host process.
 The child result exposes unchanged open tasks alongside its event delta; only the
 child can change those states, and the parent retains the integration decision.
 
@@ -79,8 +92,14 @@ For native compaction's missing workspace metadata, the session ownership catalo
 proves the unique prior selected workspace from exact thread-owned records. This
 lookup remains valid after restart and rejects multiple historical workspaces.
 
-The proxy owns a per-thread context-pressure reminder derived from the latest host
-context-usage snapshot and model window, not cumulative usage. At 70% or more it
+Native Responses compaction V2 uses the same local interception and recovery
+owners. Its router-owned compaction item restores the exact retained summary
+before provider preparation, with durable scope authorization. Real provider
+compaction items retain their native meaning. This introduces no separate route
+or provider compaction request.
+
+The proxy owns the latest per-thread host context-usage snapshot and model window,
+not cumulative usage. At 70% or more it
 adds a split-slice reminder to the next request's journal tool guidance. Successful
 host context-compaction completion clears it; native host-selected context facts
 restore it on resume. This observation neither dispatches a reset nor changes
@@ -97,7 +116,11 @@ A manual standalone compaction consumes only
 an armed intent in the requesting thread/workspace, recording its response ID.
 Fork initialization does not copy turn checkpoints or intents.
 
-The shared app-server reset driver owns countdown cancellation,
+The shared app-server reset driver uses that snapshot for the
+[subslice reset threshold](../spec/journal.md#journal-continuation), including
+countdown presentation and dispatch. Missing evidence keeps the reset behavior;
+the threshold does not change top-level transitions or host-selected compaction.
+The driver owns countdown cancellation,
 compaction acknowledgement and matching host turn
 completion, then `turn/start`. Terminal presentation does not implement a second
 policy. A continuation's reserved client-message ID identifies its transcript row;
@@ -128,6 +151,15 @@ frontend; that publisher cannot complete a turn or acquire Codex execution
 authority. Its finish marker retains a receipt scoped to the originating host
 call and turn. The request pipeline selects local terminal delivery only after
 visible host results and native trace outcomes confirm completion.
+The mutation transaction checks finish against the candidate journal before
+saving that receipt. A pure journal-owned continuation selector is shared by
+this check and Main continuation; caller identity and dispatch remain separate.
+The same selector supplies recovery's runnable target. Its owned-task blocker
+check also supplies the idle native plan strip's pause path and reason. Mounted
+child state remains separate from owned-task eligibility.
+Ordinary runnable work rejects the whole batch with its task path. Completed
+slice boundaries, blocked reports and user-stopped work retain their ending behavior.
+A native journal array drops only that marker, because its rejection would fail the response.
 This restores v1's result-driven completion boundary without its old shell executor.
 Codex still owns the continuation request; no provider inference is admitted for
 that local response. Its mutation rejections are structured results for the helper, while

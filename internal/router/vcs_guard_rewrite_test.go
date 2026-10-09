@@ -74,7 +74,7 @@ func TestVCSGuardFixturesIsolateInheritedSession(t *testing.T) {
 }
 
 func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
-	for _, name := range []string{"bash", "sh", "zsh"} {
+	for _, name := range []string{"bash", "sh"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			execTrackShellExecutable(t, name)
@@ -95,56 +95,58 @@ func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
 			}
 			git := quoteShellWord(filepath.Join(path, "git"))
 			gh := quoteShellWord(filepath.Join(path, "gh"))
-			script := git + " add -A; " + git + " commit -m x; env -i " + git + " push upstream main; echo DENIED $?; command " + git + " log; env -u UNUSED " + git + " push --tags && echo NEVER; " + gh + " pr view 1"
 			helper, err := execTrackHelper()
 			if err != nil {
 				t.Fatal(err)
 			}
 			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-			changed, err := vcsguard.Rewrite(script, helper, guard)
-			if err != nil {
-				t.Fatal(err)
+			rewrite := func(script string) string {
+				t.Helper()
+				changed, err := vcsguard.Rewrite(script, helper, guard)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if again, err := vcsguard.Rewrite(changed, helper, guard); err != nil || again != changed {
+					t.Fatalf("second rewrite = %q, %v; want %q", again, err, changed)
+				}
+				return changed
 			}
-			run := runShell(t, shell.env, name, "-c", changed)
-			if run.code != 0 || run.stdout != "DENIED 1\n" || strings.Count(run.stderr, "remote write denied") != 2 {
-				t.Fatalf("run = %+v; rewritten = %s", run, changed)
+			defaultPath := "PATH=" + quoteShellWord(path) + ":\"$PATH\"; command -p git --version"
+			original := runShell(t, shell.env, name, "-c", defaultPath)
+			if original.code != 0 || original.stderr != "" || !strings.HasPrefix(original.stdout, "git version ") {
+				t.Fatalf("native command -p = %+v", original)
+			}
+			// One workflow preserves denial control flow, dynamic nested-shell
+			// arguments, native function lookup, and both PATH lookup modes.
+			body := git + " push origin main; echo NESTED $? $0 $1"
+			script := strings.Join([]string{
+				git + " add -A; " + git + " commit -m x; env -i " + git + " push upstream main; echo DENIED $?; command " + git + " log; env -u UNUSED " + git + " push --tags && echo NEVER; " + gh + " pr view 1",
+				"body=" + quoteShellWord(body) + "; env -i sh -c \"$body\" label argument",
+				"git() { printf 'FUNCTION %s\\n' \"$1\"; }; git status; unset -f git; PATH=" + quoteShellWord(path) + " git push; echo LOCAL_PATH $?",
+				`sh() { printf 'FUNCTION:%s\n' "$*"; }; sh -c 'echo EXTERNAL'; unset -f sh`,
+				defaultPath,
+			}, ";\n")
+			run := runShell(t, shell.env, name, "-c", rewrite(script))
+			wantOutput := "DENIED 1\nNESTED 1 label argument\nFUNCTION status\nLOCAL_PATH 1\nFUNCTION:-c echo EXTERNAL\n" + original.stdout
+			denied := "mekugi: remote write denied: denied in test\n"
+			if run.code != 0 || run.stdout != wantOutput || run.stderr != strings.Repeat(denied, 4) {
+				t.Fatalf("native workflow = %+v; script=%s", run, script)
 			}
 			if got := shell.invoked(t); !slices.Equal(got, []string{"git_add_-A", "git_commit_-m_x", "git_log", "gh_pr_view_1"}) {
 				t.Fatalf("real commands = %q", got)
 			}
-			for range 2 {
-				if argv := <-asked; argv[1] != "push" {
-					t.Fatalf("approval = %q", argv)
+			for _, want := range [][]string{
+				{"git", "push", "upstream", "main"}, {"git", "push", "--tags"},
+				{"git", "push", "origin", "main"}, {"git", "push"},
+			} {
+				if argv := <-asked; !slices.Equal(argv, want) {
+					t.Fatalf("approval = %q; want %q", argv, want)
 				}
 			}
-			// The parent expands a dynamic -c payload. The helper instruments it
-			// before execing the same nested shell, with its $0/$1 unchanged.
-			body := git + " push origin main; echo NESTED $? $0 $1"
-			script = "body=" + quoteShellWord(body) + "; env -i sh -c \"$body\" label argument"
-			changed, err = vcsguard.Rewrite(script, helper, guard)
-			if err != nil {
-				t.Fatal(err)
-			}
-			run = runShell(t, shell.env, name, "-c", changed)
-			if run.code != 0 || run.stdout != "NESTED 1 label argument\n" || !strings.Contains(run.stderr, "remote write denied") {
-				t.Fatalf("nested run = %+v", run)
-			}
-			if argv := <-asked; argv[1] != "push" {
-				t.Fatalf("nested approval = %q", argv)
-			}
-			// Native function lookup and a command-local PATH stay native.
-			script = "git() { printf 'FUNCTION %s\\n' \"$1\"; }; git status; unset -f git; PATH=" + quoteShellWord(path) + " git push; echo LOCAL_PATH $?"
-			changed, err = vcsguard.Rewrite(script, helper, guard)
-			if err != nil {
-				t.Fatal(err)
-			}
-			run = runShell(t, shell.env, name, "-c", changed)
-			if run.code != 0 || run.stdout != "FUNCTION status\nLOCAL_PATH 1\n" || !strings.Contains(run.stderr, "remote write denied") {
-				t.Fatalf("function and local PATH run = %+v; script=%s", run, changed)
-			}
-			if argv := <-asked; argv[1] != "push" {
-				t.Fatalf("local PATH approval = %q", argv)
-			}
+			// Keep each nested option form, but amortize the outer shell startup.
+			// Drain approval records between batches, leaving buffer room for
+			// unexpected requests so regressions reach the assertions.
+			var wrappers []string
 			for _, wrapper := range []string{
 				`value=fixture; env TOKEN="$value" ` + git + " push",
 				"env -- TOKEN=fixture " + git + " push",
@@ -155,36 +157,21 @@ func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
 				"bash -o errexit -c " + quoteShellWord(git+" push; echo NEVER"),
 				"bash -c -o errexit -- " + quoteShellWord(git+" push; echo NEVER"),
 			} {
-				changed, err := vcsguard.Rewrite(wrapper+"; echo STATUS $?", helper, guard)
-				if err != nil {
-					t.Fatal(err)
+				wrappers = append(wrappers, wrapper+"; echo STATUS $?")
+			}
+			for batch := range slices.Chunk(wrappers, 4) {
+				run = runShell(t, shell.env, name, "-c", rewrite(strings.Join(batch, ";\n")))
+				if run.code != 0 || run.stdout != strings.Repeat("STATUS 1\n", len(batch)) || run.stderr != strings.Repeat(denied, len(batch)) {
+					t.Fatalf("wrapper workflow = %+v; scripts=%q", run, batch)
 				}
-				run := runShell(t, shell.env, name, "-c", changed)
-				if run.code != 0 || run.stdout != "STATUS 1\n" || !strings.Contains(run.stderr, "remote write denied") {
-					t.Fatalf("wrapper %s: %+v; script=%s", wrapper, run, changed)
+				for range batch {
+					if argv := <-asked; !slices.Equal(argv, []string{"git", "push"}) {
+						t.Fatalf("wrapper approval = %q", argv)
+					}
 				}
-				if argv := <-asked; argv[1] != "push" {
-					t.Fatalf("wrapper approval = %q", argv)
+				if got := shell.invoked(t); len(got) != 0 || len(asked) != 0 {
+					t.Fatalf("denied commands ran %q; extra approvals=%d", got, len(asked))
 				}
-			}
-			script = `sh() { printf 'FUNCTION:%s\n' "$*"; }; sh -c 'echo EXTERNAL'`
-			changed, err = vcsguard.Rewrite(script, helper, guard)
-			if err != nil {
-				t.Fatal(err)
-			}
-			run = runShell(t, shell.env, name, "-c", changed)
-			if run.code != 0 || run.stdout != "FUNCTION:-c echo EXTERNAL\n" || run.stderr != "" {
-				t.Fatalf("shell function = %+v", run)
-			}
-			script = "PATH=" + quoteShellWord(path) + ":\"$PATH\"; command -p git --version"
-			original := runShell(t, shell.env, name, "-c", script)
-			changed, err = vcsguard.Rewrite(script, helper, guard)
-			if err != nil {
-				t.Fatal(err)
-			}
-			run = runShell(t, shell.env, name, "-c", changed)
-			if run != original || !strings.HasPrefix(run.stdout, "git version ") {
-				t.Fatalf("command -p = %+v; original=%+v", run, original)
 			}
 		})
 	}

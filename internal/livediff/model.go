@@ -23,9 +23,10 @@ type File struct {
 	Chunks      []Chunk
 	Highlighted bool
 	// Origins are the shown changes a visible file composes, in capture
-	// order. Baseline counts changes a caller filter folded into its base.
-	Origins  []Origin
-	Baseline int
+	// order. Baseline counts changes a caller or task filter folded into its base.
+	Origins    []Origin
+	Baseline   int
+	taskScoped bool
 	// incomplete also covers hidden gaps and failed composition. Separate
 	// captures remain reviewable, but their sum is not a final outcome.
 	incomplete bool
@@ -34,6 +35,7 @@ type Chunk struct {
 	Key, Status   string
 	Stream        string
 	Workspace     string // The capturing workspace; empty when unknown.
+	TaskPath      string // The owned journal task at capture time; empty when unknown.
 	CaptureOrder  uint64
 	SnapshotOrder int
 	Review        mekugi.ReviewFile
@@ -59,6 +61,9 @@ type View struct {
 	// Caller, when set, shows only captures whose CallerKey matches. Other
 	// callers' captures compose as baseline, so the net diff stays exact.
 	Caller string
+	// TaskPaths restricts captures to each caller's local task subtree. A nil
+	// map shows all; an empty path admits a bound caller's complete journal.
+	TaskPaths map[string]string
 }
 
 func (file File) Key() string {
@@ -179,7 +184,7 @@ func (v *View) RefreshVisible() {
 		if _, cached := v.Visible[file.Key()]; cached {
 			continue
 		}
-		visible := File{id: file.id, Path: file.Path}
+		visible := File{id: file.id, Path: file.Path, taskScoped: v.TaskPaths != nil}
 		var composition mekugi.ReviewComposition
 		var failure error
 		chunks := slices.Clone(file.Chunks)
@@ -187,6 +192,9 @@ func (v *View) RefreshVisible() {
 			return cmp.Compare(a.CaptureOrder, b.CaptureOrder)
 		})
 		baseline := make(map[string]bool)
+		// A task range starts at its first shown capture's before image.
+		// Do not revive an earlier task's original rows when this task rewrites them.
+		scopedStarted := v.TaskPaths == nil
 		directoryChunk := -1
 		for _, chunk := range chunks {
 			visible.incomplete = visible.incomplete || chunk.Review.Incomplete != "" || chunk.Review.Binary
@@ -198,6 +206,10 @@ func (v *View) RefreshVisible() {
 					visible.Baseline++
 				}
 			}
+			if !scopedStarted && baselineChunk {
+				continue
+			}
+			scopedStarted = true
 			if !baselineChunk && chunk.Change != "" && !slices.ContainsFunc(visible.Origins, func(origin Origin) bool { return origin.Change == chunk.Change }) {
 				visible.Origins = append(visible.Origins, chunk.Origin)
 			}
@@ -305,7 +317,21 @@ func CallerKey(caller string) string {
 
 // Shows reports whether the caller filter admits a capture.
 func (v *View) Shows(chunk Chunk) bool {
-	return v.Caller == "" || CallerKey(chunk.Caller) == v.Caller
+	if v.Caller != "" && CallerKey(chunk.Caller) != v.Caller {
+		return false
+	}
+	if v.TaskPaths == nil {
+		return true
+	}
+	path, ok := v.TaskPaths[chunk.Caller]
+	if !ok {
+		for caller, subtree := range v.TaskPaths {
+			if subtree == "" && strings.HasPrefix(chunk.Caller, caller+"/") {
+				return true
+			}
+		}
+	}
+	return ok && (path == "" || chunk.TaskPath == path || strings.HasPrefix(chunk.TaskPath, path+"/"))
 }
 
 // FilterCaller shows only one CallerKey's captures; an empty key shows all.

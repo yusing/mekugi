@@ -1,9 +1,17 @@
 package router
 
 import (
+	"bytes"
 	jsonv1 "encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/yusing/mekugi/capturer"
 )
 
 // Source: internal/router/shell_journal_finish_test.go@518ac19ac89d17d4ef8b038422b46b124811dc17
@@ -53,8 +61,46 @@ func TestJournalHostFinishRequiresMatchingTerminalHostResult(t *testing.T) {
 			}
 			transform := &mekugiResponseTransform{ctx: t.Context(), proxy: &mekugiProxy{journals: store, commentary: newCommentaryBroker()}, directory: "workspace", shellThreadID: "thread", shellTurnID: test.turn,
 				visible: map[string]mekugiHistory{"host": {ToolName: "exec_command", ExecutingThread: test.executingThread, JournalFinishTurnID: "turn", CarrierKind: codeModeCarrierFunction, CarrierName: "exec_command", UpstreamItem: host}}}
-			if got, err := transform.journalHostFinished(mustMarshalJSON(test.input)); err != nil || got != test.want {
-				t.Fatalf("finished = %v, %v; want %v", got, err, test.want)
+			capturePath := filepath.Join(t.TempDir(), "capture.jsonl")
+			recorder, err := capturer.New(capturer.Config{Output: capturePath, Mode: "mekugi"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer recorder.Close()
+			handler := recorder.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if _, err := io.Copy(io.Discard, r.Body); err != nil {
+					t.Fatal(err)
+				}
+				transform.ctx = r.Context()
+				attempt := &requestAttempt{startCtx: r.Context(), mekugiTransform: transform, request: parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON(test.input)}, streamResponse: true}}
+				if got, err := attempt.tryJournalHostFinish(); err != nil || got != test.want {
+					t.Fatalf("finished = %v, %v; want %v", got, err, test.want)
+				}
+				if attempt.response != nil {
+					defer attempt.response.Body.Close()
+					w.Header().Set("Content-Type", attempt.response.Header.Get("Content-Type"))
+					if _, err := io.Copy(w, attempt.response.Body); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}))
+			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustMarshalJSON(map[string]any{"model": "model", "input": test.input}))))
+			raw, err := os.ReadFile(capturePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var record struct {
+				ProviderExpected *bool `json:"provider_expected"`
+			}
+			if err := jsonv1.Unmarshal(raw, &record); err != nil {
+				t.Fatal(err)
+			}
+			if test.want != (record.ProviderExpected != nil && !*record.ProviderExpected) {
+				t.Fatalf("provider expectation = %v; local finish = %v", record.ProviderExpected, test.want)
+			}
+			snapshot := recorder.Snapshot()
+			if test.want && (snapshot.Requests.Completed != 1 || snapshot.Requests.ProviderAttempts != 0 || snapshot.Capture.MissingProvider != 0 || snapshot.Capture.CaptureErrors != 0) {
+				t.Fatalf("local finish export does not reconcile: %+v", snapshot)
 			}
 		})
 	}

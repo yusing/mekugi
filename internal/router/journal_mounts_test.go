@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -600,6 +601,68 @@ func TestJournalMountOpenLifecycleRejectsFinalBatchAtomically(t *testing.T) {
 			after := treeSnapshot(t, proxy, workspace)
 			if !reflect.DeepEqual(before, after) {
 				t.Fatal("rejected batch changed durable parent state")
+			}
+		})
+	}
+}
+
+func TestJournalMountDroppedReviewContinuesAfterReplacement(t *testing.T) {
+	for _, status := range []string{"failed", "interrupted", "active", "unknown", "nested active"} {
+		t.Run(status, func(t *testing.T) {
+			proxy, workspace := mountFixture(t)
+			treeApply(t, proxy, workspace, journalMutation{Op: "plan", Reset: "slice", Tasks: []jsontext.Value{
+				jsontext.Value(`{"title":"Review","state":"working","tasks":["First reviewer","Replacement"]}`), jsontext.Value(`"Next slice"`),
+			}}, journalMutation{Op: "set", P: "/1/1", Agent: "/root/child"}, journalMutation{Op: "set", P: "/1/2", Agent: "/root/sibling"})
+			event := appServerEvent{ThreadID: "child"}
+			event.Turn.Status = status
+			if status == "nested active" {
+				event.Turn.Status = "failed"
+				if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "grandchild", "/root/child/grandchild", ""); err != nil {
+					t.Fatal(err)
+				}
+				if err := proxy.journals.bindIdentity(t.Context(), proxy.replayStore, workspace, "grandchild", "child", "/root/child/grandchild", true); err != nil {
+					t.Fatal(err)
+				}
+				if err := proxy.observeJournalHostTurn(t.Context(), workspace, "turn/started", appServerEvent{ThreadID: "grandchild"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			method := "turn/completed"
+			if status == "active" {
+				method = "turn/started"
+			}
+			if status != "unknown" {
+				if err := proxy.observeJournalHostTurn(t.Context(), workspace, method, event); err != nil {
+					t.Fatal(err)
+				}
+			}
+			event.ThreadID, event.Turn.Status = "sibling", "completed"
+			if err := proxy.observeJournalHostTurn(t.Context(), workspace, "turn/completed", event); err != nil {
+				t.Fatal(err)
+			}
+			if err := proxy.journals.beginJournalTurn(t.Context(), proxy.replayStore, workspace, "tree", "review"); err != nil {
+				t.Fatal(err)
+			}
+			proxy.journals = newJournalStore()
+			before := treeSnapshot(t, proxy, workspace)
+			_, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, "tree", "replacement", []journalMutation{
+				{Op: "set", P: "/1/1", State: new("dropped"), Reason: new("Replaced reviewer"), SupersededBy: new("/1/2")},
+				{Op: "set", P: "/1/2", State: new("done")}, {Op: "set", P: "/1", State: new("done")},
+			})
+			if status == "active" || status == "unknown" || status == "nested active" {
+				if err == nil || !reflect.DeepEqual(before, treeSnapshot(t, proxy, workspace)) {
+					t.Fatalf("unsettled host accepted or changed final batch: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if child, ok := mountFind(mountRead(t, proxy, workspace, "tree", "", ""), "/1/1/@child"); !ok || child.State != "blocked" {
+				t.Fatalf("abandoned host lifecycle lost: %+v", child)
+			}
+			if intent, err := proxy.journals.completedSlice(t.Context(), proxy.replayStore, workspace, "tree", "review"); err != nil || intent == nil || intent.Path != "/2" || intent.Resume {
+				t.Fatalf("next slice did not continue: %+v, %v", intent, err)
 			}
 		})
 	}

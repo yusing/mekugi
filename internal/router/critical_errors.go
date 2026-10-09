@@ -5,10 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +26,7 @@ type CriticalErrors struct {
 	writes          *persistence.Counter
 	mu              sync.Mutex
 	entries         []*criticalNotice
+	turnOutcomes    []criticalTurnOutcome
 	overflow        uint64
 	diagnosticSalt  string
 	failureStore    *mekugiReplayStore
@@ -35,6 +38,11 @@ type criticalNotice struct {
 	thread, turn, reference        string
 	count, delivered               uint64
 	inFlight                       bool
+	awaitTurn                      bool
+}
+
+type criticalTurnOutcome struct {
+	thread, turn, status string
 }
 
 func NewCriticalErrors() *CriticalErrors { return &CriticalErrors{diagnosticSalt: rand.Text()} }
@@ -222,6 +230,15 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	noticeID := commentaryMessageID("critical:" + f.sessionID + ":" + category)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	awaitTurn := f.threadID != "" && f.turnID != ""
+	if awaitTurn {
+		switch c.turnOutcomeLocked(f.threadID, f.turnID) {
+		case "completed", "interrupted":
+			return
+		case "failed":
+			awaitTurn = false
+		}
+	}
 	for _, notice := range c.entries {
 		if f.turnID != "" && notice.thread == f.threadID && notice.turn == f.turnID && notice.reference == f.diagnosticReference {
 			f.diagnosticNotice = notice
@@ -242,8 +259,52 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	}
 	f.diagnosticNotice = &criticalNotice{session: f.sessionID, category: category, message: message,
 		thread: f.threadID, turn: f.turnID, reference: f.diagnosticReference,
-		id: noticeID, count: 1}
+		id: noticeID, count: 1, awaitTurn: awaitTurn}
 	c.entries = append(c.entries, f.diagnosticNotice)
+}
+
+// Request attempts do not establish whether Codex can recover the turn. Keep
+// recent host outcomes so a late request finalization follows the same decision.
+func (c *CriticalErrors) observeTurnCompletion(method string, params []byte) {
+	if c == nil || method != "turn/completed" {
+		return
+	}
+	var event appServerEvent
+	if json.Unmarshal(params, &event) != nil || event.ThreadID == "" || event.Turn.ID == "" {
+		return
+	}
+	switch event.Turn.Status {
+	case "completed", "interrupted", "failed":
+	default:
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.turnOutcomeLocked(event.ThreadID, event.Turn.ID) == "" {
+		if len(c.turnOutcomes) == 256 {
+			c.turnOutcomes = slices.Delete(c.turnOutcomes, 0, 1)
+		}
+		c.turnOutcomes = append(c.turnOutcomes, criticalTurnOutcome{event.ThreadID, event.Turn.ID, event.Turn.Status})
+	}
+	c.entries = slices.DeleteFunc(c.entries, func(notice *criticalNotice) bool {
+		if notice.thread != event.ThreadID || notice.turn != event.Turn.ID {
+			return false
+		}
+		if event.Turn.Status == "failed" {
+			notice.awaitTurn = false
+			return false
+		}
+		return true
+	})
+}
+
+func (c *CriticalErrors) turnOutcomeLocked(thread, turn string) string {
+	for _, outcome := range c.turnOutcomes {
+		if outcome.thread == thread && outcome.turn == turn {
+			return outcome.status
+		}
+	}
+	return ""
 }
 
 // Auxiliary degradation and automatic cleanup are user-visible without turning
@@ -356,7 +417,7 @@ func (c *CriticalErrors) takeNative(root string, activity *subagentActivity) *cr
 	defer c.mu.Unlock()
 	delivery := &criticalNoticeDelivery{owner: c}
 	for _, notice := range c.entries {
-		if notice.delivered != 0 || notice.inFlight {
+		if notice.awaitTurn || notice.delivered != 0 || notice.inFlight {
 			continue
 		}
 		scoped := scopedThreads[notice.thread] || notice.thread == "" && notice.session == ""

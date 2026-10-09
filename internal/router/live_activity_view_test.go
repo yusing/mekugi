@@ -357,7 +357,7 @@ func TestLiveActivityPainterColors(t *testing.T) {
 }
 
 func TestLiveActivityLinksAndCommandExit(t *testing.T) {
-	painter := activityui.Painter{Theme: livediff.DarkTheme}
+	painter := activityui.Painter{Theme: livediff.DarkTheme, FileLink: func(string) bool { return true }}
 	link := painter.Inline("[report.go](</tmp/review folder/report.go:12>)")
 	if ansi.Strip(link) != "report.go" || !strings.Contains(link, "\x1b]8;;file:///tmp/review%20folder/report.go:12\x1b\\") ||
 		!strings.Contains(link, "\x1b]8;;\x1b\\") {

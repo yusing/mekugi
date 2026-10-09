@@ -2,7 +2,7 @@
 │◆ First check passed                                      ││ ▾ ● /1 Reopened task                              08:00  │
 │● /1 Restore journal history · done                       ││   ├ · First check passed                          08:00  │
 │                                                          ││   └ · Second check passed                         08:00  │
-│╭─ ✓ journal · 1 done ─────────────────────────── 08:00 ╮ ││                                                          │
+│╭─ ✓ journal · 1 done · 1 note ────────────────── 08:00 ╮ ││                                                          │
 ││ This turn                                             │ ││                                                          │
 ││ ● /1 Restore journal history                          │ ││                                                          │
 ││ ◆ First check passed                                  │ ││                                                          │
@@ -12,7 +12,7 @@
 │◆ Second check passed                                     ││                                                          │
 │● /1 Reopened task · done                                 ││                                                          │
 │                                                          ││                                                          │
-│╭─ ✓ journal · 1 done ─────────────────────────── 08:00 ╮ ││                                                          │
+│╭─ ✓ journal · 1 done · 1 note ────────────────── 08:00 ╮ ││                                                          │
 ││ This turn                                             │ ││                                                          │
 ││ ● /1 Reopened task                                    │ ││                                                          │
 ││ ◆ Second check passed                                 │ ││                                                          │
@@ -25,4 +25,4 @@
 ─ 4 Agents · 1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
  ● main  idle                                                                                             7s · just now
 
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes · ^E expand events

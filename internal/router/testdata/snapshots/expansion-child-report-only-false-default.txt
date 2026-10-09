@@ -1,0 +1,4 @@
+"\x1b[38;5;114m✓\x1b[m \x1b[38;5;37;1mworker\x1b[m \x1b[2mfinished\x1b[m                                                       \x1b[2m12:34:56\x1b[m"
+"\x1b[38;5;37m│\x1b[m Last retained answer.                                                         "
+"\x1b[38;5;37m╰─\x1b[38;2;86;212;221m↩ Open reply\x1b[m                                                                  "
+"plain after completion                                                          "

@@ -46,6 +46,11 @@ func (provider *routerFaultCodexProvider) forwardExecution(_, _ context.Context,
 		return routerFaultCodexSuccessResponse(), nil
 	}
 	if request == 1 {
+		if provider.mode == "close" {
+			return routerFaultCodexStreamResponse(routerFaultSSE(map[string]any{
+				"type": "response.created", "response": map[string]any{"id": "closed-response", "status": "in_progress"},
+			})), nil
+		}
 		return &http.Response{
 			StatusCode: http.StatusServiceUnavailable,
 			Status:     "503 Service Unavailable",
@@ -269,6 +274,52 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	}
 	if len(records) != 1 || records[0].Reference != reference || records[0].Phase != requestFailureTransform || records[0].Code != "mekugi_sse" {
 		t.Fatalf("post-run lookup did not resolve the sanitized transform failure: %+v", records)
+	}
+}
+
+func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
+	provider := &routerFaultCodexProvider{mode: "close"}
+	proxy := newManagedMekugiProxy(t)
+	issues := NewCriticalErrors()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	issues.failureStore = store
+	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
+	defer server.Close()
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, codex, "app-server",
+		"-c", `model_providers.router_fault_fixture={name="router_fault_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
+		"-c", `model_provider="router_fault_fixture"`, "-c", `model="gpt-6-astra"`,
+		"-c", "features.plugins=false", "-c", "features.goals=false")
+	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), t.TempDir()
+	var output bytes.Buffer
+	wait, err := startHeadlessAppServer(ctx, cmd, strings.NewReader("Complete after one stream interruption."), &output, proxy, issues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wait(); err != nil {
+		t.Fatalf("host recovery: %v\n%s", err, output.String())
+	}
+	provider.mu.Lock()
+	requests := provider.requests
+	provider.mu.Unlock()
+	if requests != 2 || len(issues.Pending()) != 0 || !strings.Contains(output.String(), "Recovered after a retry.") {
+		t.Fatalf("recovery requests=%d pending=%v\n%s", requests, issues.Pending(), output.String())
+	}
+	output.Reset()
+	if err := inspectFailures(ctx, store.directory, "", &output); err != nil {
+		t.Fatal(err)
+	}
+	var records []failureRecord
+	if err := json.Unmarshal(output.Bytes(), &records); err != nil || len(records) != 1 {
+		t.Fatalf("recovered attempt diagnostics: records=%v err=%v", records, err)
 	}
 }
 

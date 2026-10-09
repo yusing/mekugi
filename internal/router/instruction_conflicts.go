@@ -60,7 +60,6 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 	}
 	// Remove complete stock progress lines, preserving caller qualifications.
 	for _, line := range []string{
-		"<multi_agent_mode>Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.</multi_agent_mode>",
 		"- You yield back to the user and end your turn by sending a final message to the `final` channel.",
 		"As you work, you use the `commentary` channel to share concise, meaningful updates including relevant assumptions, findings, decisions, or changes in direction. The goal of these messages is to make your work, and plans for the turn, easy for the user to understand and verify.",
 		"As you work, you send messages to the `commentary` channel. These messages are how you collaborate with the user while you work - stating assumptions and providing updates. These messages should be concise and quickly scannable. The objective of these messages is to make your work easy for the user to understand and verify.",

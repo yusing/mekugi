@@ -104,8 +104,11 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 	journalCall := func(title string) map[string]any {
 		return map[string]any{"type": "custom_tool_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": "exec", "status": "completed", "input": `await journal({op:"add",title:` + string(mustMarshalJSON(title)) + `});`}
 	}
-	finishCall := func(titles ...string) map[string]any {
+	finishCall := func(integrate bool, titles ...string) map[string]any {
 		mutations := make([]any, 0, len(titles)+1)
+		if integrate {
+			mutations = append(mutations, map[string]any{"op": "set", "p": "/1", "state": "done"})
+		}
 		for _, title := range titles {
 			mutations = append(mutations, map[string]any{"op": "add", "title": title})
 		}
@@ -154,7 +157,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			}
 			if p.hostFinish {
 				p.childFinishSent = true
-				item = finishCall("Native child milestone", "Native child second finding")
+				item = finishCall(false, "Native child milestone", "Native child second finding")
 			} else {
 				item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
 					"phase": "final_answer", "status": "completed",
@@ -168,6 +171,9 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		switch {
 		case turn == 1:
 			item = journalCall("Native root milestone")
+			if p.hostFinish {
+				item["input"] = `await journal({op:"add",kind:"task",title:"Native root milestone",state:"working",agent:"/root/journal_child"});`
+			}
 		case turn == 2:
 			item = call("spawn_agent", map[string]any{"message": "Record your milestone, then report your findings.", "task_name": "journal_child", "fork_turns": "none"})
 		case strings.Contains(input, "Native child milestone") && strings.Contains(input, "Native child second finding") && strings.Contains(input, "Record your milestone, then report your findings."):
@@ -182,7 +188,7 @@ func (p *journalCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 			p.journalResultSeen = strings.Contains(input, "custom_tool_call_output") && strings.Contains(input, "Native root milestone")
 			if p.hostFinish {
 				p.rootFinishSent = true
-				item = finishCall("Native root completion after child review.")
+				item = finishCall(true, "Native root completion after child review.")
 			} else {
 				item = map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",
 					"phase": "final_answer", "status": "completed",

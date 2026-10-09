@@ -190,6 +190,12 @@ func (c *liveDiffTerminalController) filterCaller(caller string) {
 // refreshChanges rebuilds what the navigator derives from captures: the
 // Changes tab, caller marks, and the filter shown in the Files heading.
 func (c *liveDiffTerminalController) refreshChanges() {
+	c.files = make([]livediff.File, len(c.view.Files))
+	for i, file := range c.view.Files {
+		c.files[i] = c.view.Visible[file.Key()]
+	}
+	c.navigation.Rebuild(c.files, c.workspace)
+	c.navigation.Changes.Scope = c.navigation.Scope
 	c.navigation.Changes.Rebuild(&c.view, c.workspace)
 	c.navigation.Dots = c.callerDots()
 	c.navigation.Caller = c.view.Caller

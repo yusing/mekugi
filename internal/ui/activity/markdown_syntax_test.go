@@ -20,7 +20,7 @@ func TestUISnapshotMarkdownStyles(t *testing.T) {
 		{"light", livediff.LightTheme},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := Painter{Theme: tc.theme}
+			p := Painter{Theme: tc.theme, FileLink: func(string) bool { return true }}
 			var rows []string
 			for _, code := range []string{
 				"package main",

@@ -18,7 +18,9 @@ func (*appServerTestInput) Close() error { return nil }
 
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
-	return &appServerUI{client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}, w
+	u := &appServerUI{client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
+	u.view.painter.FileLink = u.markdownFileExists
+	return u, w
 }
 
 func TestAppServerUIDelayedSubmissionEditing(t *testing.T) {

@@ -31,6 +31,12 @@ type nativeTraceBundle struct {
 	bytes  int
 	cells  map[string]*nativeTraceCell
 	calls  map[string]*nativeTraceTool
+	agents map[string]nativeAgentResult
+}
+
+type nativeAgentResult struct {
+	thread, parent, turn, agent, state, reason string
+	previous                                   []string
 }
 
 type nativeTraceCell struct {
@@ -67,12 +73,17 @@ type nativeTraceEvent struct {
 	Seq     uint64 `json:"seq"`
 	Thread  string `json:"thread_id"`
 	Payload struct {
-		Type      string `json:"type"`
-		Cell      string `json:"runtime_cell_id"`
-		Call      string `json:"model_visible_call_id"`
-		Source    string `json:"source_js"`
-		Tool      string `json:"tool_call_id"`
-		Status    string `json:"status"`
+		Type      string         `json:"type"`
+		Cell      string         `json:"runtime_cell_id"`
+		Call      string         `json:"model_visible_call_id"`
+		Source    string         `json:"source_js"`
+		Tool      string         `json:"tool_call_id"`
+		Status    string         `json:"status"`
+		Child     string         `json:"child_thread_id"`
+		Parent    string         `json:"parent_thread_id"`
+		Turn      string         `json:"child_codex_turn_id"`
+		HostTurn  string         `json:"codex_turn_id"`
+		Carried   nativeTraceRef `json:"carried_payload"`
 		Requester struct {
 			Type string `json:"type"`
 			Cell string `json:"runtime_cell_id"`
@@ -176,6 +187,64 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 	p := event.Payload
 	key := event.Thread + "\x00" + p.Cell
 	switch p.Type {
+	case "codex_turn_started":
+		if event.Thread == "" || p.HostTurn == "" {
+			return nil
+		}
+		if b.agents == nil {
+			b.agents = make(map[string]nativeAgentResult)
+		}
+		if _, known := b.agents[event.Thread]; !known && len(b.agents) >= 4096 {
+			return nil
+		}
+		prior := b.agents[event.Thread]
+		previous := prior.previous
+		if prior.turn != "" && prior.turn != p.HostTurn {
+			if len(previous) >= 4096 {
+				return nil
+			}
+			previous = append(previous, prior.turn)
+			b.bytes += len(prior.turn)
+		}
+		b.agents[event.Thread] = nativeAgentResult{thread: event.Thread, turn: p.HostTurn, state: "working", previous: previous}
+	case "agent_result_observed":
+		if p.Child != event.Thread || p.Child == "" || p.Parent == "" || p.Turn == "" {
+			return nil
+		}
+		prior, exists := b.agents[p.Child]
+		if !exists || prior.turn != p.Turn {
+			return nil
+		}
+		var result struct {
+			Agent  string         `json:"child_agent_path"`
+			Status jsontext.Value `json:"status"`
+		}
+		if readNativeTracePayload(directory, p.Carried, &result) != nil {
+			return nil
+		}
+		state, reason := "", ""
+		var status map[string]jsontext.Value
+		if json.Unmarshal(result.Status, &status) == nil && len(status) == 1 {
+			if value, ok := status["completed"]; ok && (value.Kind() == '"' || value.Kind() == 'n') {
+				state = "done"
+			} else if value, ok := status["errored"]; ok && value.Kind() == '"' {
+				state, reason = "blocked", "Host child turn errored"
+			}
+		} else {
+			switch string(result.Status) {
+			case `"interrupted"`, `"shutdown"`, `"not_found"`:
+				state, reason = "blocked", "Host child turn "+strings.Trim(string(result.Status), `"`)
+			}
+		}
+		if state == "" {
+			return nil
+		}
+		next := nativeAgentResult{thread: p.Child, parent: p.Parent, turn: p.Turn, agent: result.Agent, state: state, reason: reason, previous: prior.previous}
+		if prior.state != "working" && (prior.parent != next.parent || prior.agent != next.agent || prior.state != next.state || prior.reason != next.reason) {
+			next.state, next.parent, next.agent, next.reason = "working", "", "", ""
+		}
+		b.bytes += len(p.Child) + len(p.Parent) + len(p.Turn) + len(result.Agent)
+		b.agents[p.Child] = next
 	case "code_cell_started":
 		if len(b.cells) >= 4096 || b.cells[key] != nil {
 			return errors.New("native trace cell inventory unavailable")
@@ -322,6 +391,32 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 		}
 	}
 	return nil
+}
+
+func (t *nativeToolTrace) readAgentResults() []nativeAgentResult {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	results := make(map[string]nativeAgentResult)
+	ambiguous := make(map[string]bool)
+	for _, bundle := range t.readBundles() {
+		for key, result := range bundle.agents {
+			if _, exists := results[key]; exists {
+				ambiguous[key] = true
+			}
+			results[key] = result
+		}
+	}
+	var found []nativeAgentResult
+	for key, result := range results {
+		if !ambiguous[key] && result.state != "" {
+			result.previous = append([]string(nil), result.previous...)
+			found = append(found, result)
+		}
+	}
+	return found
 }
 
 // readCell returns a copy; concurrent requests never share mutable outcomes.

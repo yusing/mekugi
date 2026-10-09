@@ -272,7 +272,7 @@ lines.on('line', line => {
       response = {commands: [], models: [], agents: [], account: {}};
       break;
     }
-    case 'get_settings': response = {effective: settings}; break;
+    case 'get_settings': response = {effective: settings, sources: [{source: 'flagSettings', settings}]}; break;
     case 'get_hooks_listing': response = {policy: {allDisabled: false, managedOnly: false, pluginOnly: false, policyHookCount: 0}, hooks}; break;
     default: process.exit(92);
   }

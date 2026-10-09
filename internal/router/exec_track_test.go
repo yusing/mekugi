@@ -481,6 +481,16 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	item.Status, item.ExitCode, item.AggregatedOutput = "completed", new(0), new("")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	awaitMain(t, u, "Search needle in src")
+	// A visible Search row can precede report EOF and the retention write.
+	// Drive the UI until it finalizes this invocation before draining writes.
+	deadline := time.Now().Add(2 * time.Second)
+	for u.execTrack.tracking([3]string{"main", "t", item.ID}) {
+		u.flushStreamOutput()
+		if time.Now().After(deadline) {
+			t.Fatal("tracked command did not finalize")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	awaitCommandSegments(t, u)
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
 	restored.proxy = &mekugiProxy{replayStore: store}

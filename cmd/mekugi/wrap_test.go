@@ -42,66 +42,75 @@ func TestCodexArgsForcesExecutionFeatureToggles(t *testing.T) {
 }
 
 func TestCodexArgsPreservesArguments(t *testing.T) {
-	forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
-	args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, true)
-	index := slices.Index(forwarded, "--")
-	if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+18:], forwarded[index:]) {
-		t.Fatalf("forwarded arguments changed: %q", args)
-	}
-	var config struct {
-		Features struct {
-			Goals    *bool `toml:"goals"`
-			Exec     *bool `toml:"code_mode"`
-			ExecOnly *bool `toml:"code_mode_only"`
-		} `toml:"features"`
-		IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
-		Skills                               struct {
-			IncludeInstructions *bool `toml:"include_instructions"`
-		} `toml:"skills"`
-		ModelProvider string `toml:"model_provider"`
-		Providers     map[string]struct {
-			Name       string `toml:"name"`
-			BaseURL    string `toml:"base_url"`
-			WireAPI    string `toml:"wire_api"`
-			WebSockets bool   `toml:"supports_websockets"`
-			Auth       bool   `toml:"requires_openai_auth"`
-		} `toml:"model_providers"`
-	}
-	if !slices.Equal(args[index+6:index+8], []string{"--disable", "goals"}) {
-		t.Fatalf("goal feature toggle not disabled: %q", args)
-	}
-	var settings []string
-	for i := index; i < index+18; i += 2 {
-		if args[i] == "--disable" {
-			continue
+	for _, openAIAuth := range []bool{true, false} {
+		forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
+		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, openAIAuth)
+		index := slices.Index(forwarded, "--")
+		if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+18:], forwarded[index:]) {
+			t.Fatalf("forwarded arguments changed: %q", args)
 		}
-		if args[i] != "-c" {
-			t.Fatalf("not a config override: %q", args)
+		var config struct {
+			Features struct {
+				Goals    *bool `toml:"goals"`
+				Exec     *bool `toml:"code_mode"`
+				ExecOnly *bool `toml:"code_mode_only"`
+			} `toml:"features"`
+			IncludeCollaborationModeInstructions *bool `toml:"include_collaboration_mode_instructions"`
+			Skills                               struct {
+				IncludeInstructions *bool `toml:"include_instructions"`
+			} `toml:"skills"`
+			ModelProvider string `toml:"model_provider"`
+			OpenAIBaseURL string `toml:"openai_base_url"`
+			Providers     map[string]struct {
+				Name       string `toml:"name"`
+				BaseURL    string `toml:"base_url"`
+				WireAPI    string `toml:"wire_api"`
+				WebSockets bool   `toml:"supports_websockets"`
+				Auth       bool   `toml:"requires_openai_auth"`
+			} `toml:"model_providers"`
 		}
-		settings = append(settings, args[i+1])
-	}
-	if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {
-		t.Fatal(err)
-	}
-	if config.IncludeCollaborationModeInstructions == nil || *config.IncludeCollaborationModeInstructions {
-		t.Fatalf("collaboration mode instructions not disabled: %q", args)
-	}
-	if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
-		t.Fatalf("skill instructions not disabled: %q", args)
-	}
-	if config.Features.Exec == nil || !*config.Features.Exec || config.Features.ExecOnly == nil || !*config.Features.ExecOnly {
-		t.Fatalf("exec interface not forced: %q", args)
-	}
-	if config.Features.Goals == nil || *config.Features.Goals {
-		t.Fatalf("goals not disabled: %q", args)
-	}
-	provider := config.Providers[config.ModelProvider]
-	if provider.Name == "" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || !provider.Auth || provider.WebSockets {
-		t.Fatalf("provider = %+v", provider)
-	}
-	withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
-	if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, true, true); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
-		t.Fatalf("ordinary -c or prompt moved: %q", got)
+		if !slices.Equal(args[index+6:index+8], []string{"--disable", "goals"}) {
+			t.Fatalf("goal feature toggle not disabled: %q", args)
+		}
+		var settings []string
+		for i := index; i < index+18; i += 2 {
+			if args[i] == "--disable" {
+				continue
+			}
+			if args[i] != "-c" {
+				t.Fatalf("not a config override: %q", args)
+			}
+			settings = append(settings, args[i+1])
+		}
+		if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {
+			t.Fatal(err)
+		}
+		if config.IncludeCollaborationModeInstructions == nil || *config.IncludeCollaborationModeInstructions {
+			t.Fatalf("collaboration mode instructions not disabled: %q", args)
+		}
+		if config.Skills.IncludeInstructions == nil || *config.Skills.IncludeInstructions {
+			t.Fatalf("skill instructions not disabled: %q", args)
+		}
+		if config.Features.Exec == nil || !*config.Features.Exec || config.Features.ExecOnly == nil || !*config.Features.ExecOnly {
+			t.Fatalf("exec interface not forced: %q", args)
+		}
+		if config.Features.Goals == nil || *config.Features.Goals {
+			t.Fatalf("goals not disabled: %q", args)
+		}
+		if openAIAuth {
+			if config.ModelProvider != "openai" || config.OpenAIBaseURL != "http://127.0.0.1:12345/v1" || len(config.Providers) != 0 {
+				t.Fatalf("built-in provider changed: %+v", config)
+			}
+		} else {
+			provider := config.Providers[config.ModelProvider]
+			if config.ModelProvider != "mekugi_wrap" || len(config.Providers) != 1 || config.OpenAIBaseURL != "" || provider.Name != "mekugi" || provider.BaseURL != "http://127.0.0.1:12345/v1" || provider.WireAPI != "responses" || provider.Auth || provider.WebSockets {
+				t.Fatalf("third-party provider changed: %+v", config)
+			}
+		}
+		withoutDelimiter := []string{"exec", "-c", `model="example"`, "prompt"}
+		if got := codexArgs("http://127.0.0.1:12345/v1", withoutDelimiter, true, true, openAIAuth); !slices.Equal(got[:len(withoutDelimiter)], withoutDelimiter) {
+			t.Fatalf("ordinary -c or prompt moved: %q", got)
+		}
 	}
 }
 
@@ -154,9 +163,7 @@ func TestFrontendPathSurvivesLoginBash(t *testing.T) {
 	}
 }
 
-// With the VCS guard enabled, it comes first in Bash and zsh alike, and zsh's
-// startup wrappers keep the user's ZDOTDIR for their own files.
-func TestFrontendShellEnvironmentGuardsBashAndZsh(t *testing.T) {
+func TestFrontendShellEnvironmentGuardsBash(t *testing.T) {
 	frontend := filepath.Join(t.TempDir(), "bin")
 	if err := os.MkdirAll(frontend, 0o700); err != nil {
 		t.Fatal(err)
@@ -165,55 +172,22 @@ func TestFrontendShellEnvironmentGuardsBashAndZsh(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	user := t.TempDir()
-	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin", "ZDOTDIR=" + user, vcsguard.UserZdotdirEnvironment + "=/stale"}, frontend, helper, true)
+	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin"}, frontend, helper, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	guard, _ := vcsguard.Paths(frontend)
-	zdotdir := filepath.Join(filepath.Dir(frontend), "zsh")
-	values := map[string][]string{}
+	values := map[string]string{}
 	for _, entry := range environment {
 		key, value, _ := strings.Cut(entry, "=")
-		values[key] = append(values[key], value)
+		values[key] = value
 	}
-	if !slices.Equal(values["ZDOTDIR"], []string{zdotdir}) || !slices.Equal(values[vcsguard.UserZdotdirEnvironment], []string{user}) {
-		t.Fatalf("zsh environment = %q", environment)
+	if !strings.HasPrefix(values["PATH"], guard+":"+frontend+":") {
+		t.Fatalf("PATH = %q", values["PATH"])
 	}
-	if path := values["PATH"]; !strings.HasPrefix(path[len(path)-1], guard+":"+frontend+":") {
-		t.Fatalf("PATH = %q", path)
-	}
-	bashEnv, err := os.ReadFile(values["BASH_ENV"][0])
+	bashEnv, err := os.ReadFile(values["BASH_ENV"])
 	if err != nil || !strings.Contains(string(bashEnv), "__mekugi_vcs_paths") {
 		t.Fatalf("BASH_ENV = %q, %v", bashEnv, err)
-	}
-	for _, name := range []string{".zshenv", ".zprofile", ".zshrc", ".zlogin", "mekugi-setup.zsh"} {
-		if _, err := os.Stat(filepath.Join(zdotdir, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// A nested session keeps the user's files, not the outer session's
-	// wrappers, which would otherwise source themselves.
-	inner := filepath.Join(t.TempDir(), "bin")
-	if err := os.MkdirAll(inner, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	nested, err := frontendShellEnvironment(environment, inner, helper, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(nested, vcsguard.UserZdotdirEnvironment+"="+user) || !slices.Contains(nested, "ZDOTDIR="+filepath.Join(filepath.Dir(inner), "zsh")) {
-		t.Fatalf("nested environment = %q", nested)
-	}
-	if zsh, err := frontendFixtureShell("zsh"); err == nil {
-		if err := os.WriteFile(filepath.Join(user, ".zshenv"), []byte("print -n user\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		command := exec.Command(zsh, "-c", "printf ' %s' ${path[1]:t}")
-		command.Env = append(nested, "HOME="+t.TempDir())
-		if output, err := command.Output(); err != nil || string(output) != "user "+vcsguard.Directory {
-			t.Fatalf("nested zsh = %q, %v", output, err)
-		}
 	}
 }
 
@@ -840,12 +814,11 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$3\" > \"$MEKUGI_TEST_TRACK_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	userZsh := t.TempDir()
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "ZDOTDIR=" + userZsh, "MEKUGI_TEST_TRACK_LOG=" + log, execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(environment, "PATH="+frontend+":"+os.Getenv("PATH")) || !slices.Contains(environment, "ZDOTDIR="+userZsh) {
+	if !slices.Contains(environment, "PATH="+frontend+":"+os.Getenv("PATH")) {
 		t.Fatalf("unguarded environment = %q", environment)
 	}
 	if slices.Contains(environment, execsegment.Guard+"=1") || !slices.Contains(environment, execsegment.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {
@@ -858,8 +831,19 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	const script = "printf local; printf read"
 	command := exec.Command(bash, "-c", script)
 	command.Env = environment
-	if output, err := command.Output(); err != nil || string(output) != "localread" {
+	if output, err := command.CombinedOutput(); err != nil || string(output) != "localread" {
 		t.Fatalf("unguarded command = %q, %v", output, err)
+	}
+	compatible := exec.Command(bash, "-c", `(( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 1) ))`)
+	compatible.Env = []string{"PATH=" + os.Getenv("PATH")}
+	if err := compatible.Run(); err != nil {
+		if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+			t.Fatalf("check Bash tracking support: %v", err)
+		}
+		if _, err := os.Stat(log); !os.IsNotExist(err) {
+			t.Fatalf("unsupported Bash started tracking: %v", err)
+		}
+		return
 	}
 	if tracked, err := os.ReadFile(log); err != nil || string(tracked) != script+"\n" {
 		t.Fatalf("tracked script = %q, %v", tracked, err)
@@ -867,54 +851,38 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 }
 
 func TestFrontendNestedGuardOptOut(t *testing.T) {
-	for _, withZdotdir := range []bool{false, true} {
-		t.Run(fmt.Sprintf("zdotdir=%t", withZdotdir), func(t *testing.T) {
-			root := t.TempDir()
-			outer, inner, real := filepath.Join(root, "outer", "bin"), filepath.Join(root, "inner", "bin"), filepath.Join(root, "user", vcsguard.Directory)
-			for _, path := range []string{outer, inner, real} {
-				if err := os.MkdirAll(path, 0o700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			helper, userEnv := filepath.Join(root, "mekugi-exec"), filepath.Join(root, "user-bash-env")
-			for path, script := range map[string]string{
-				helper:                     "#!/bin/sh\nprintf OUTER_GUARD\n",
-				filepath.Join(real, "git"): "#!/bin/sh\nprintf REAL_GIT\n",
-				userEnv:                    "export USER_STARTUP=preserved\n",
-			} {
-				if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			env := []string{"PATH=" + real + ":/usr/bin:/bin", "BASH_ENV=" + userEnv}
-			userZsh := filepath.Join(root, "user-zsh")
-			if withZdotdir {
-				env = append(env, "ZDOTDIR="+userZsh)
-			}
-			env, err := frontendShellEnvironment(env, outer, helper, true)
-			if err != nil {
-				t.Fatal(err)
-			}
-			env, err = frontendShellEnvironment(env, inner, "", false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, entry := range env {
-				if value, ok := strings.CutPrefix(entry, "ZDOTDIR="); ok && (!withZdotdir || value != userZsh) {
-					t.Fatalf("restored ZDOTDIR = %q", value)
-				}
-			}
-			if withZdotdir && !slices.Contains(env, "ZDOTDIR="+userZsh) {
-				t.Fatal("user ZDOTDIR lost")
-			}
-			for _, name := range []string{"git", filepath.Join(real, "git")} {
-				cmd := exec.Command("/bin/bash", "-c", shellsyntax.Quote(name)+" push; printf ' %s' \"$USER_STARTUP\"")
-				cmd.Env = env
-				out, err := cmd.CombinedOutput()
-				if err != nil || string(out) != "REAL_GIT preserved" {
-					t.Fatalf("nested opt-out %q = %q, %v", name, out, err)
-				}
-			}
-		})
+	root := t.TempDir()
+	outer, inner, real := filepath.Join(root, "outer", "bin"), filepath.Join(root, "inner", "bin"), filepath.Join(root, "user", vcsguard.Directory)
+	for _, path := range []string{outer, inner, real} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	helper, userEnv := filepath.Join(root, "mekugi-exec"), filepath.Join(root, "user-bash-env")
+	for path, script := range map[string]string{
+		helper:                     "#!/bin/sh\nprintf OUTER_GUARD\n",
+		filepath.Join(real, "git"): "#!/bin/sh\nprintf REAL_GIT\n",
+		userEnv:                    "export USER_STARTUP=preserved\n",
+	} {
+		if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := []string{"PATH=" + real + ":/usr/bin:/bin", "BASH_ENV=" + userEnv}
+	env, err := frontendShellEnvironment(env, outer, helper, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err = frontendShellEnvironment(env, inner, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git", filepath.Join(real, "git")} {
+		cmd := exec.Command("/bin/bash", "-c", shellsyntax.Quote(name)+" push; printf ' %s' \"$USER_STARTUP\"")
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil || string(out) != "REAL_GIT preserved" {
+			t.Fatalf("nested opt-out %q = %q, %v", name, out, err)
+		}
 	}
 }

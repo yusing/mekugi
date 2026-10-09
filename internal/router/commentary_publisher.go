@@ -47,6 +47,7 @@ type publishedCommentary struct {
 type commentaryRoute struct {
 	journalQuestion string
 	finishReceipt   string
+	finishTurn      string
 	originThread    string
 	sessionID       string
 	callID          string
@@ -225,10 +226,11 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	b.mu.Lock()
 	b.cleanupExpiredLocked(time.Now())
 	route := b.routes[token]
-	var session, thread, question, callID, finishReceipt string
+	var session, thread, question, callID, finishReceipt, finishTurn string
 	if route != nil {
 		question, callID = route.journalQuestion, route.callID
 		finishReceipt = route.finishReceipt
+		finishTurn = route.finishTurn
 		session, thread = route.sessionID, route.originThread
 		route.expires = time.Now().Add(commentaryRouteTTL)
 	}
@@ -296,6 +298,7 @@ func (b *commentaryBroker) serveHTTP(writer http.ResponseWriter, request *http.R
 	}
 	if finish {
 		publication.ReceiptID = finishReceipt
+		mutations = append(mutations, journalMutation{Op: "finish", finishTurn: finishTurn})
 	}
 	ids := []string{}
 	if len(mutations) != 0 || finish {

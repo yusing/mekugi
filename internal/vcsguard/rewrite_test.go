@@ -7,9 +7,6 @@ import (
 
 func TestRewriteExecutablePositions(t *testing.T) {
 	for _, script := range []string{
-		`'/unlisted directory/git' push origin main; echo after`,
-		`env -i -u NAME '/unlisted directory/git' push --tags && echo after`,
-		`command /usr/bin/git push upstream main`,
 		`exec /usr/bin/gh pr create`,
 		`timeout -k 1 5 nice -n 2 /usr/bin/hg push`,
 		`timeout "$delay" /usr/bin/git push`,
@@ -35,5 +32,15 @@ func TestRewriteExecutablePositions(t *testing.T) {
 		if err != nil || got != script {
 			t.Fatalf("non-command changed: %q, %v", got, err)
 		}
+	}
+}
+
+func TestRewriteLeavesZshUnsupported(t *testing.T) {
+	const script = `zsh -c 'git push origin main'`
+	if got, err := Rewrite(script, "/private/helper", "/private/guard"); err != nil || got != script {
+		t.Fatalf("unsupported shell rewritten: %q, %v", got, err)
+	}
+	if _, err := Rewrite(`git push origin ${(q)branch}`, "/private/helper", "/private/guard"); err == nil {
+		t.Fatal("Zsh-only syntax was accepted")
 	}
 }

@@ -10,7 +10,7 @@ import (
 )
 
 const shellInterpreterNamePattern = `python(?:[0-9]+(?:\.[0-9]+)*)?|pypy[0-9]*|node(?:js)?|bun|` +
-	`bash|dash|fish|ksh|mksh|sh|yash|zsh|perl|ruby|php|lua(?:jit)?|` +
+	`bash|dash|fish|ksh|mksh|sh|yash|perl|ruby|php|lua(?:jit)?|` +
 	`r(?:script)?|psql|mysql|sqlite3|pwsh|powershell`
 
 var (
@@ -24,7 +24,7 @@ func shellInterpreterFlag(name, flag string) (source, harmless bool) {
 		return flag == "-c", flag == "-I" || flag == "-u" || flag == "-B" || flag == "-E" || flag == "-s" || flag == "-S"
 	case name == "node" || name == "nodejs" || name == "bun":
 		return flag == "-e" || flag == "--eval", flag == "--input-type=module" || flag == "--input-type=commonjs" || flag == "--trace-warnings"
-	case name == "bash" || name == "sh" || name == "dash" || name == "zsh" || name == "ksh" || name == "mksh" || name == "yash":
+	case name == "bash" || name == "sh" || name == "dash" || name == "ksh" || name == "mksh" || name == "yash":
 		return shellCommandFlagPattern.MatchString(flag), flag == "-e" || flag == "-u" || flag == "-x" || flag == "-l" || flag == "-i"
 	case name == "fish":
 		return flag == "-c" || flag == "--command", false

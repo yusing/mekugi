@@ -35,6 +35,9 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 		if !strings.Contains(got, stock) {
 			t.Fatal("exec stock description was not preserved")
 		}
+		if !strings.Contains(got, "On macOS, pass `shell:\"bash\"` to `tools.exec_command` unless the task explicitly requires another shell") {
+			t.Fatal("exec description lost macOS Bash selection guidance")
+		}
 		for _, owner := range []string{guide, codeModeJournalGuidance} {
 			if strings.Count(got, owner) != 1 {
 				t.Error("exec description must include each guidance owner exactly once")
@@ -53,20 +56,17 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 	if count := strings.Count(combined, owner[1:len(owner)-1]); count != 1 {
 		t.Errorf("journal guidance appears %d times; want one owner", count)
 	}
-	for _, rule := range []string{
-		"exploration with the specification and affected reader documents, implementation with verification, review when warranted, then delivery",
-		"update affected documents before implementation",
-		"keeping implementation and its verification together",
-		"Ordinary questions, explanations and read-only reviews keep their conversational flow",
-		"one concrete result and a completion check",
-		"sized for about 5-10 minutes of work",
-		"pending sibling slices under the same parent",
-		"Record results as they become known",
-		"finish the turn before starting another slice",
-		"reset context and continue with the next pending slice",
-	} {
-		if !strings.Contains(combined, rule) {
-			t.Errorf("prepared request lacks workflow guidance: %s", rule)
+	for _, rule := range []string{"reset:\"slice\"", "pending sibling", "child tasks under it", "questions and requested answers stay conversational"} {
+		if !strings.Contains(codeModeJournalGuidance, rule) {
+			t.Errorf("journal usage guidance is missing: %s", rule)
+		}
+	}
+	if !strings.Contains(codeModeJournalGuidance, "Use ASD-STE100") || !strings.Contains(proxy.registry.frontendGuidance, "Promise.allSettled([") {
+		t.Fatal("projected guidance lost journal format or batching guidance")
+	}
+	for _, policy := range []string{"update affected documents before implementation", "review when warranted"} {
+		if strings.Contains(combined+proxy.registry.frontendGuidance, policy) {
+			t.Errorf("projected guidance retains copied workflow policy: %s", policy)
 		}
 	}
 }

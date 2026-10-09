@@ -37,7 +37,7 @@ func capturedEditActivity(workspace string, history mekugiHistory) *capturedActi
 		}
 	}
 	for _, result := range history.HostResults {
-		if result.Tool == "exec_command" {
+		if result.Tool == "exec_command" || result.Tool == "userShell" {
 			receipt.calls = append(receipt.calls, result.CallID)
 		}
 	}

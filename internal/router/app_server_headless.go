@@ -17,7 +17,7 @@ import (
 
 // Headless is an app-server client, not a second task executor. Its JSONL stream
 // retains host messages verbatim as objects, with namespaced frontend events.
-func startHeadlessAppServer(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer, proxy *mekugiProxy) (func() error, error) {
+func startHeadlessAppServer(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer, proxy *mekugiProxy, issues *CriticalErrors) (func() error, error) {
 	const maxPrompt = 16 << 20
 	type promptResult struct {
 		data []byte
@@ -54,7 +54,7 @@ func startHeadlessAppServer(ctx context.Context, cmd *exec.Cmd, input io.Reader,
 		<-c.Done
 		return nil, headlessHostError(c, err)
 	}
-	h := &headlessAppServer{ctx: ctx, client: c, proxy: proxy, output: jsontext.NewEncoder(output), prompt: prompt, requestID: initializeID, request: "initialize"}
+	h := &headlessAppServer{ctx: ctx, client: c, proxy: proxy, issues: issues, output: jsontext.NewEncoder(output), prompt: prompt, requestID: initializeID, request: "initialize"}
 	return h.run, nil
 }
 
@@ -62,6 +62,7 @@ type headlessAppServer struct {
 	ctx                        context.Context
 	client                     *appserver.Client
 	proxy                      *mekugiProxy
+	issues                     *CriticalErrors
 	output                     *jsontext.Encoder
 	prompt, request, requestID string
 	thread, turn               string
@@ -151,6 +152,7 @@ func headlessHostError(client *appserver.Client, err error) error {
 }
 
 func (h *headlessAppServer) message(m appserver.Message) error {
+	h.issues.observeTurnCompletion(m.Method, m.Params)
 	if handled, err := h.reset.message(m); handled || err != nil {
 		return err
 	}

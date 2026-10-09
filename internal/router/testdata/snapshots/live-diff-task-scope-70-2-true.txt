@@ -1,0 +1,19 @@
+5 files +5 -5 | all (c) · files focus · CONNECTING · 2/5
+▎Changes  5 · @all · all
+ / id, @caller, source
+● amber1 apply_patch M 0.go +1 -1
+● amber2 apply_patch M 1.go +1 -1                                   
+● amber3 apply_patch M 2.go +1 -1
+● amber4 apply_patch M 3.go +1 -1
+├─╮ worker
+│ ● amber5 apply_patch M 4.go +1 -1
+─────────────────────────────────────────────────────────────────────
+  2/5  src/1.go +1 -1 ───────────────────────────────────────────────
+  ┄ amber2 main·apply_patch
+  1│-old                                                             
+  1│+new                                                             
+  3/5  src/2.go +1 -1 ───────────────────────────────────────────────
+  ┄ amber3 main·apply_patch
+  1│-old                                                             
+  1│+new                                                             
+  4/5  src/3.go +1 -1 ───────────────────────────────────────────────

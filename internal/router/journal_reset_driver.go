@@ -165,11 +165,24 @@ func (d *journalResetDriver) fail(message string) error {
 	return d.finish()
 }
 
+func (d *journalResetDriver) needsContextReset() bool {
+	if d.intent.Resume || d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
+		return false
+	}
+	if journalParent(d.intent.Path) == "" {
+		return true
+	}
+	d.proxy.mu.RLock()
+	usage, known := d.proxy.contextUsage[d.thread]
+	d.proxy.mu.RUnlock()
+	return !known || usage.tokens >= 150_000
+}
+
 func (d *journalResetDriver) tick(now time.Time) error {
 	if d == nil || d.phase != "countdown" || now.Before(d.deadline) {
 		return nil
 	}
-	if d.intent.Resume || d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
+	if !d.needsContextReset() {
 		return d.continuePlan(false)
 	}
 	if err := d.change(func(j *threadJournal, intent *journalResetIntent) error {
@@ -336,7 +349,7 @@ func (d *journalResetDriver) label(now time.Time) string {
 	}
 	if d.phase == "countdown" {
 		verb := "Resetting context"
-		if d.intent.Resume || d.proxy.journalCompaction == "off" || d.proxy.journalCompaction == "" {
+		if !d.needsContextReset() {
 			verb = "Continuing plan"
 		}
 		return fmt.Sprintf("%s in %ds · starting %s %s · Esc cancels", verb, max(0, int(d.deadline.Sub(now).Seconds()+1)), d.intent.Path, d.intent.Title)

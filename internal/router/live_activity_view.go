@@ -73,12 +73,17 @@ type liveActivityView struct {
 	events         map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
 	pacedSeq       uint64                       // Entries up to this sequence have been considered for pacing.
 
+	expansion       uint8 // 0 default, 1 expanded events, 2 expanded all.
+	feedSpans       []liveActivitySpan
+	expansionAnchor *liveActivitySpan // Top item and its local row before a toggle.
+
 	// opening names the snippet requested in the shared dialog.
 	snippet liveActivitySnippet // Hovered content target.
 	opening liveActivitySnippet
-	// passed holds Main's sent messages and operation batches that have
+	// passed holds journal groups, Main's sent messages and operation batches that have
 	// scrolled above the viewport. Messages then show as excerpts linking to
 	// Activity, and batches as one row opening their operations.
+	// Journal groups retain compact previews opening their full details.
 	passed map[uint64]bool
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
@@ -159,6 +164,7 @@ type liveActivityRunKey struct {
 	flash       uint64             // Flashed Activity entry in this run, or 0.
 	excerpt     bool               // Main sent message or batch shortened out of view.
 	tail        int                // Tail lines open output shows; 0 shows the whole tail.
+	expansion   uint8
 }
 
 func newLiveActivityView() *liveActivityView {
@@ -677,7 +683,7 @@ func outputBlock(block activityui.Block) bool {
 // snippetBlock is the block a snippet names in the last frame.
 func (v *liveActivityView) snippetBlock(snippet liveActivitySnippet) (activityui.Block, bool) {
 	for key, run := range v.runs {
-		if key.first == snippet.run && snippet.block >= 0 && snippet.block < len(run.blocks) {
+		if key.expansion == v.expansion && key.first == snippet.run && snippet.block >= 0 && snippet.block < len(run.blocks) {
 			return run.blocks[snippet.block], true
 		}
 	}
@@ -1350,6 +1356,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 }
 
 type liveActivityFeed struct {
+	spans     []liveActivitySpan
 	paints    []liveActivityPaint // Cold runs to decorate if they enter the viewport.
 	lines     []string
 	heads     []int                 // Index of the heading that owns each line.
@@ -1420,6 +1427,15 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	v.painter.LayoutOnly = true
 	feed := v.layoutFeed(width, rows)
 	v.painter.LayoutOnly = false
+	if anchor := v.expansionAnchor; anchor != nil {
+		for _, span := range feed.spans {
+			if span.seq == anchor.seq {
+				v.offset = span.start + min(anchor.start, max(0, span.end-span.start-1))
+				break
+			}
+		}
+		v.expansionAnchor = nil
+	}
 	offset, _, pins := v.pinnedViewport(feed, rows)
 	for _, paint := range feed.paints {
 		old := v.runs[paint.key]
@@ -1460,6 +1476,9 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		return v.renderConversation(width)
 	}
 	clip := 5
+	if v.expansion != 0 {
+		clip = 0
+	}
 	// A cross-pane jump flashes its target from the first frame that shows it.
 	if v.pendingTarget != 0 && slices.ContainsFunc(v.entries, func(entry liveActivityRecord) bool {
 		return entry.Seq == v.pendingTarget && v.visible(entry.activityPaneEntry)
@@ -1519,7 +1538,11 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			}
 			last = j
 		}
-		key := liveActivityRunKey{first: v.entries[i].Seq, last: v.entries[last].Seq, revision: v.runRevision(i, last+1), width: width, clip: clip, theme: v.painter.Theme, hover: -1, tail: v.tailRows()}
+		key := liveActivityRunKey{first: v.entries[i].Seq, last: v.entries[last].Seq, revision: v.runRevision(i, last+1), width: width, clip: clip, theme: v.painter.Theme, hover: -1, tail: v.tailRows(), expansion: v.expansion}
+		foldJournal := v.entries[i].Kind == "journal_event" || v.entries[i].Kind == "journal_card"
+		if foldJournal {
+			key.excerpt = v.excerpt(v.passed[key.last])
+		}
 		if flash != 0 && slices.ContainsFunc(v.entries[i:j], func(entry liveActivityRecord) bool { return entry.Seq == flash }) {
 			key.flash = flash
 		}
@@ -1556,7 +1579,10 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			if v.childrenOnly {
 				observed = v.entries[first].Observed // A stable heading while the run grows.
 			}
-			return v.renderRun(key.first, agent, observed, activityui.MergeLiveActivityReads(blocks), width, clip)
+			if v.expansion == 0 {
+				blocks = activityui.MergeLiveActivityReads(blocks)
+			}
+			return v.renderRun(key.first, agent, observed, blocks, width, clip)
 		}
 		if !ok {
 			run = render()
@@ -1567,6 +1593,12 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			feed.separator()
 		}
 		head := len(feed.lines)
+		if full := key; !ok && key.excerpt && !v.following && head < v.offset {
+			full.excerpt = false
+			if shown, ok := v.runs[full]; ok {
+				v.offset -= len(shown.lines) - len(run.lines)
+			}
+		}
 		if !run.colored {
 			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
 		}
@@ -1577,6 +1609,10 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			feed.heads = append(feed.heads, head)
 		}
 		feed.appendRows(run)
+		feed.spans = append(feed.spans, liveActivitySpan{key.first, head, len(feed.lines)})
+		if foldJournal && !key.excerpt {
+			feed.passing = append(feed.passing, liveActivityPassing{key.last, len(feed.lines)})
+		}
 		i = j
 	}
 	// A preview can arrive before the caller's first transcript entry.
@@ -1585,7 +1621,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			appendPreview(agent)
 		}
 	}
-	v.runs = used
+	v.retainRuns(used)
 	return feed
 }
 
@@ -1619,6 +1655,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 	blocks = activityui.AlignVerbs(activityui.GroupOperations(blocks))
 	run.blocks = blocks
 	for index, block := range blocks {
+		block = v.discloseBlock(block)
 		v.painter.CopyScope = first + uint64(index)
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
@@ -1626,7 +1663,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		if block.Kind == "journal" && journalActivityBody(block.Body, true) != block.Body {
 			toggle = true // The omitted task row remains available in the dialog.
 		}
-		if operation(block) {
+		if operation(block) && v.expansion != 2 {
 			block.SourceRows = 5
 			if block.TailRows == 0 || block.TailRows > 5 {
 				block.TailRows = 5
@@ -1647,7 +1684,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		part := v.paintBlock(start, limit, func() []string {
 			switch {
 			case block.Kind == "journal":
-				return v.painter.Flash(block, v.painter.Markdown(journalActivityBody(block.Body, true), width-2))
+				return v.painter.Flash(block, v.painter.Markdown(journalActivityBody(block.Body, v.expansion == 0), width-2))
 			case tree:
 				return v.painter.Event(block, width-4)
 			case v.childrenOnly:
@@ -1787,6 +1824,7 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	var pins []int
 	v.offset, v.following, pins = v.pinnedViewport(feed, rows)
 	v.pendingTarget = 0
+	v.feedSpans = feed.spans
 	v.feedLines, v.feedRows = len(feed.lines), max(1, rows-len(pins))
 	if v.following {
 		v.unseen = 0

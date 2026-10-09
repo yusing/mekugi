@@ -155,7 +155,7 @@ func nativeRule(open, close, fill, left, right string, width int, color string) 
 		if label == "" {
 			return ""
 		}
-		return " " + label + activityui.Reset + color + " "
+		return " \x1b[39m" + label + activityui.Reset + color + " "
 	}
 	l, r := segment(left), segment(right)
 	if ansi.StringWidth(l)+ansi.StringWidth(r)+1 > inner {
@@ -194,7 +194,7 @@ func nativeBox(width, height int, title, right string, focused bool, body []stri
 func nativeTitle(digit int, name, detail string, focused bool) string {
 	label := fmt.Sprintf("%d %s", digit, name)
 	if focused {
-		label = "\x1b[1m" + label + "\x1b[22m"
+		label = nativeBorder(true) + "\x1b[1m" + label + "\x1b[22m"
 	} else {
 		label = activityui.Dim + label + activityui.Undim
 	}
@@ -325,6 +325,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		var body []string
 		var title, label string
 		if u.diffOpen {
+			if u.main != nil {
+				u.diff.updateTaskScope(u.main.journal.presented())
+			}
 			diffRows := content
 			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
 			if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
@@ -519,6 +522,15 @@ func (u *terminalUI) nativeStatus() string {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
 	hints = append(hints, terminalHint{"^B 1-5", "panes", 0})
+	if u.focus == 0 || u.focus == 2 || u.focus == 4 {
+		expansion := u.agents.expansion
+		if u.focus == 0 {
+			expansion = u.main.view.expansion
+		} else if u.focus == 4 {
+			expansion = u.main.journalView.expansion
+		}
+		hints = append(hints, terminalHint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
+	}
 	return tabs.String() + "  " + hints.render()
 }
 

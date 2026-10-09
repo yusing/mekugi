@@ -1,7 +1,7 @@
-┌ 1 Main ─────────────────────────── ▲ 4 ┐
-│┃ are in use.                           │
+┌ 1 Main ─────────────────────────── ▲ 5 ┐
 │                                        │
-│├ Running echo **literal**              │
+│└ Running echo **literal**              │
+│                                        │
 │└ Asked  1 question · waiting           │
 │    {"command":"echo **literal** `code` │
 │    [link](path)"}                      │

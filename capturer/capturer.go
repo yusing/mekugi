@@ -127,6 +127,7 @@ type requestState struct {
 	journal               *JournalMetrics
 	compaction            CompactionMetrics
 	requestKind           string
+	noProvider            bool
 	predecessorSequence   uint64
 	recorder              *Recorder
 	projectedRequest      *payloadMetrics
@@ -149,6 +150,18 @@ type requestState struct {
 type requestRouting struct {
 	sessionKey string
 	turnState  string
+}
+
+// ObserveNoProvider records a router decision to complete locally without inference.
+// Requests outside a Recorder handler are ignored.
+func ObserveNoProvider(ctx context.Context) {
+	state, ok := ctx.Value(captureKey{}).(*requestState)
+	if !ok {
+		return
+	}
+	state.mu.Lock()
+	state.noProvider = true
+	state.mu.Unlock()
 }
 
 // ObserveRequestKind records only the router's validated, content-free request kind.
@@ -407,11 +420,11 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	record.CompactionMetrics = state.compaction
 	if boundary == "codex" {
 		record.Journal = state.journal.Clone()
+		if state.noProvider || record.CompactionAnswer == "router" {
+			record.ProviderExpected = new(false)
+		}
 	}
 	state.mu.Unlock()
-	if boundary == "codex" && record.CompactionAnswer == "router" {
-		record.ProviderExpected = new(false)
-	}
 	if contentType == webSocketContentType {
 		record.Transport = "websocket"
 	}

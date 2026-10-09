@@ -17,38 +17,32 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
-// openMarkdownFile uses only session workspace metadata for relative paths.
-// Unrecognized and missing destinations retain their existing click behavior.
-func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) bool {
-	path := target
+// markdownFileTarget shares existence and workspace resolution between painting
+// and opening. Opening checks again because the file can change after painting.
+func markdownFileTarget(workspace, target string) (path, location string, first, last int, ok bool) {
+	path = target
 	if strings.HasPrefix(target, "file:") {
 		parsed, err := url.Parse(target)
 		if err != nil || parsed.Host != "" && parsed.Host != "localhost" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
-			return false
+			return
 		}
 		path = parsed.Path
 	} else {
 		candidate, _, _, _ := markdownFileLocation(target)
 		if !filepath.IsAbs(candidate) && (candidate == "" || strings.HasPrefix(candidate, "#") || strings.HasPrefix(candidate, "?") || strings.Contains(strings.SplitN(candidate, "/", 2)[0], ":")) {
-			return false
+			return
 		}
 	}
 	if strings.Contains(path, "://") || path == "" || strings.ContainsAny(path, "\x00\r\n\x1b") {
-		return false
-	}
-	workspace := ""
-	if u.main != nil {
-		workspace = u.main.session.cwd
+		return
 	}
 	if !filepath.IsAbs(path) {
 		if !filepath.IsAbs(workspace) {
-			return false
+			return
 		}
 		path = filepath.Join(workspace, path)
 	}
 	info, err := os.Stat(path)
-	first, last := 0, 0
-	location := ""
 	if os.IsNotExist(err) {
 		path, location, first, last = markdownFileLocation(path)
 		if first > 0 {
@@ -56,6 +50,24 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 		}
 	}
 	if err != nil || !info.Mode().IsRegular() {
+		return
+	}
+	return path, location, first, last, true
+}
+
+func (u *appServerUI) markdownFileExists(target string) bool {
+	_, _, _, _, ok := markdownFileTarget(u.session.cwd, target)
+	return ok
+}
+
+// openMarkdownFile uses only session workspace metadata for relative paths.
+func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) bool {
+	workspace := ""
+	if u.main != nil {
+		workspace = u.main.session.cwd
+	}
+	path, location, first, last, ok := markdownFileTarget(workspace, target)
+	if !ok {
 		return false
 	}
 	display := pathdisplay.ForWorkspace(workspace, path)

@@ -126,8 +126,8 @@ func TestJournalSummaryBoundedPreservesAllMandatoryNodes(t *testing.T) {
 			t.Errorf("mandatory fact omitted: %q", fact)
 		}
 	}
-	if !strings.Contains(summary.Text, "continue /13") {
-		t.Fatalf("working task lost resume priority: %s", summary.Text)
+	if !strings.Contains(summary.Text, "Continuation paused: /33: Reason 17") || strings.Contains(summary.Text, "Resume: continue") {
+		t.Fatalf("blocked journal directed unrelated work to continue: %s", summary.Text)
 	}
 	legacy, err := summaryForTest(t, ctx, store, workspace, thread)
 	if err != nil {

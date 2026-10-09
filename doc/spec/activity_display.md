@@ -45,10 +45,13 @@ the group's largest. Confirmed capture counts and past-tense verbs replace succe
 rows even when the shell invocation has tracked segments. A grouped capture
 appears once on its owning invocation, not once per segment; neighboring command
 output, failed/skipped edits, and per-command exit statuses remain visible.
-A confirmed whole-directory removal with complete captured file evidence shows
+A confirmed whole-directory removal shows
 one `Deleted PATH/ • N files` row, using `file` for one, instead of descendant file
-rows. Clicking it opens the invocation's retained file changes, starting within
-that directory. Detailed captured evidence remains available through `mchanges`.
+rows. The count includes known deleted files whose contents could not be captured;
+content gaps keep a separate capture warning rather than expanding the directory
+into file rows. Clicking it opens the invocation's retained file changes, starting
+within that directory. Detailed captured evidence and its limits remain available
+through `mchanges`.
 A path too wide for its row gives way before the row's other parts: it drops
 whole leading directories behind `…/`, keeping its nearest directories and file
 name, or elides the middle of the name itself when that alone is too wide; below
@@ -79,7 +82,14 @@ spans stay plain with the existing accent, which also colors plain tokens in det
 code. Fenced code retains language-specific highlighting. Decoration must not
 change code text, wrapping, or source-aware copying. Recognized local-file Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
-destination and underline only on their text, never on row padding or gutters. A completed child
+destination and underline only on their text, never on row padding or gutters.
+Raw file-shaped paths in authored text, including journal items and inline code,
+use the same clickable styling only when the local target exists as a regular file,
+resolved from session workspace metadata for relative paths. Missing paths and
+slash-separated prose remain unlinked, without changing the source or copied text.
+Paths with spaces can use an inline code span or an explicit Markdown link.
+Journal ordinals and agent names remain identifiers; fenced code stays literal.
+A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
 Read line spans display as `L25–46`. Each `Run` operation is its own row. In
@@ -151,7 +161,15 @@ timed commands and pipelines, use begin/EXIT duration rather than the host's
 invocation duration, as specified in [REQ-EXECUTION-002](execution.md).
 The dialog keeps the same elapsed suffix without extra timing metadata rows.
 Timed commands retain their individual rows rather
-than merging reads or folding staging into a commit. An EXIT boundary also
+than merging reads or folding staging into a commit. Verified journal read/list
+transports are an exception: adjacent successful pages group like other reads,
+including one-line JSON output, which collapses immediately. Their row sums
+observed page durations; the output dialog retains each page's output and timing.
+Labels identify the requested entries, outline, or task view, agent/task scope,
+and child-depth limit. Successful responses show their known result count,
+including zero, rather than a JSON line count or pagination revision.
+These scoped rows stay visible when older command batches fold, including on resume.
+Running or failed pages remain separate. An EXIT boundary also
 ends the active command when `exit` or `errexit` bypasses its normal end hook.
 Completed observations retain timestamps and duration across resume and forks;
 skipped commands have neither. A disconnected report supplies no invented end.
@@ -174,7 +192,7 @@ from the saved command when its timing is known. `yield_time_ms` does not produc
 a timeout suffix. A suffix that does not fit wraps beneath its operation row.
 
 The shared content dialog captures keys and pointer events above both panes.
-Clicking a recognized Markdown file link in Main, Activity, or Markdown dialog
+Clicking a recognized file link in Main, Activity, Journal, or Markdown dialog
 content opens an existing regular local file in this dialog. Relative paths
 require the current session's workspace metadata; absolute paths and local
 `file:///` URLs are also supported. A `:line` or `:first-last` suffix appears
@@ -194,8 +212,8 @@ Terminal controls are sanitized for display; whole-page `y` copies the original
 source bytes; dragging selects the visible path or content for selection copying. Reads
 accept UTF-8 text up to 8 MiB; oversized, binary/non-UTF-8, or unreadable files
 show red, copyable errors. Each opening reads current contents, without ongoing
-file monitoring. Missing or unrecognized destinations retain their prior click
-behavior. HTTP(S) links still copy their destinations in Main and Activity;
+file monitoring. Missing local destinations are not clickable; their Markdown labels
+remain visible. HTTP(S) links still copy their destinations in Main and Activity;
 clicking them inside a dialog still does nothing.
 
 Errors show a bounded first-line preview rather than an unbounded inline diagnostic.
@@ -243,7 +261,8 @@ buffers above their highlighting limit remain plain text; inferred syntax never
 changes output bytes or line numbering.
 Command titles and source bodies use syntax colors for their language; file-read
 output uses the file type, including when it ends in blank lines. Copying remains
-plain text. Skill-read output renders as Markdown, wrapping to the dialog width
+plain text. Skill-read output renders as Markdown in dialogs and fully expanded
+transcripts, wrapping to the available body width
 without line numbers or output gutters; whole-page copying preserves the retained
 Markdown source. Output from `skills-mgr run` remains literal command output.
 Source uses a numbered solid gutter, command output a dashed gutter, and a
@@ -354,17 +373,21 @@ label column; when that column would take more than half the pane, all labels
 stack above their values. Rendering is derived from the current text and pane width, including
 streaming updates and restored messages.
 
-Completed `mermaid` fences render the bounded Codex 0.159.0 flowchart subset:
+Completed `mermaid` fences render an extended bounded Codex 0.159.0 flowchart subset:
 `flowchart`/`graph`, TD/TB/BT/LR/RL, rectangle/decision/stadium nodes, solid and
 dashed directed/undirected/bidirectional edges, pipe and spaced directed labels,
 and `&` endpoint groups expanded across chained edges. Quoted labels preserve
-punctuation, delimiters, and semicolons. Each edge has a separate lane; crossings
+punctuation, delimiters, and semicolons. Node labels support `<br>`, `<br/>`, and
+`<br />` line breaks and wrap to fit the pane. LR/RL charts retain their horizontal
+layout when it fits; otherwise they use TD/BT respectively, keeping node order
+and every edge. Each edge has a separate lane; crossings
 are not junctions. No external renderer or process runs.
 
-Unsupported syntax, HTML/entities, unsafe or non-additive-width labels, open
+Unsupported syntax, other HTML/entities, unsafe or non-additive-width labels, open
 fences, and diagrams that cannot fit the pane retain the source code display,
 never a partial diagram. Bounds are 16 KiB source, 16 nodes, 24 expanded edges,
-24 references per group, 40 display cells per label, and 65,536 canvas cells.
+24 references per group, 256 display cells per node label, 40 display cells per
+edge label, and 65,536 canvas cells.
 Flowchart subgraphs and other Mermaid families are outside this port. Rendering
 is recomputed from current text and width, including quoted blocks and replay.
 The upstream subset and layout come from

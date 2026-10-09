@@ -18,8 +18,10 @@ type nativeJournalCard struct {
 
 type nativeJournalView struct {
 	unscoped bool
+	fileLink func(string) bool
 	// expanded records explicit disclosure choices; absent nodes fit automatically.
 	expanded                 map[string]bool
+	expansion                uint8 // Pane-wide disclosure, overridden by individual choices.
 	selected, offset, height int
 	top                      int // Header rows above the first node row.
 	// hover is the pointed pane row plus one. The selection is filled only
@@ -135,6 +137,9 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 			row := journalPaneRow{node: node, lead: lead, depth: depth, last: i == len(nodes)-1}
 			// Superseded history stays reachable but starts collapsed.
 			row.open = row.expandable() && node.SupersededBy == ""
+			if v.expansion != 0 {
+				row.open = row.expandable()
+			}
 			if expanded, explicit := v.expanded[node.Path]; explicit {
 				row.open = row.expandable() && expanded
 			}
@@ -164,7 +169,7 @@ func (v *nativeJournalView) rebuild(j *threadJournal) {
 // fit collapses the least recently updated visible subtrees first. A manual
 // expansion protects its ancestors, so fitting never undoes a disclosure click.
 func (v *nativeJournalView) fit() {
-	if v.height <= 0 || len(v.rows) <= v.height {
+	if v.expansion != 0 || v.height <= 0 || len(v.rows) <= v.height {
 		return
 	}
 	type candidate struct {
@@ -379,7 +384,7 @@ func (v *nativeJournalView) renderRow(row journalPaneRow, width int, theme lived
 	}
 	dim := func(text string) string { return activityui.Dim + text + activityui.Undim }
 	safe := func(text string) string { return livediff.Safe(text, false) }
-	p := activityui.Painter{Theme: theme}
+	p := activityui.Painter{Theme: theme, FileLink: v.fileLink}
 	path := journalDisplayPath(node)
 	if local := journalLocalPath(node.Path); local != node.Path {
 		path = local
@@ -530,6 +535,12 @@ func (v *nativeJournalView) journalRowAt(y int) int {
 
 func (u *terminalUI) journalKey(key string) error {
 	view := &u.main.journalView
+	if key == "\x05" {
+		view.expansion = (view.expansion + 1) % 3
+		view.expanded = nil
+		view.hover = 0
+		return nil
+	}
 	view.rebuild(u.main.journalTreeSnapshot())
 	switch key {
 	case "j", "\x1b[B", "k", "\x1b[A", "\x1b[6~", "\x1b[5~", "g", "\x1b[H", "G", "\x1b[F":
@@ -627,6 +638,10 @@ func (u *terminalUI) journalMouse(button, x, y int) error {
 	row := view.rows[index]
 	if from, to := row.disclosure(); row.expandable() && x >= from && x < to {
 		view.toggle(row)
+		return nil
+	}
+	r := u.layout.journal
+	if _, link := u.selectionScreen(u.paintedRows, r.x+x, r.y+y); link != "" && u.openMarkdownFile(u.main.view, link) {
 		return nil
 	}
 	u.openJournalRow(row.node)
@@ -738,6 +753,11 @@ func (u *appServerUI) journalPin() (journalPin, bool) {
 			current = item
 		}
 	}
+	if u.turn == "" {
+		if blocker := j.continuationBlocker(); blocker != nil {
+			current = blocker
+		}
+	}
 	if current == nil && u.turn != "" {
 		current = finished
 	}
@@ -756,8 +776,13 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 	}
 	node := pin.node
 	node.Body = "" // The strip identifies work; supporting detail belongs in the card.
-	lead, text := journalPaintNodeParts(&u.view.painter, node, "", true)
-	left := lead + text
+	var left string
+	if u.turn == "" && node.State == "blocked" {
+		left = activityui.Amber + "Continuation paused" + activityui.Reset + " " + activityui.Dim + livediff.Safe(node.Path, false) + activityui.Undim + ": " + u.view.painter.Inline(node.Reason)
+	} else {
+		lead, text := journalPaintNodeParts(&u.view.painter, node, "", true)
+		left = lead + text
+	}
 	if pin.node.Finished == nil && pin.node.WorkTimer.Known {
 		left += activityui.Dim + " · " + pin.node.WorkTimer.at(u.now()).Round(time.Second).String() + activityui.Undim
 	}
@@ -897,8 +922,8 @@ func (v *liveActivityView) applyTreeJournal(thread string, p nativeJournalPublic
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }
 
-// journalCardLines lays out Main's work report separately from its ordinary
-// answer, with its notes counted; the card opens as journalCardBlock.
+// journalCardLines shows the full report until it leaves the viewport. Its
+// compact preview still opens the full journalCardBlock for details and copy.
 func (v *liveActivityView) journalCardLines(out *conversationLines, entry activityPaneEntry, width int) {
 	card := entry.journalCard
 	if card == nil {
@@ -906,7 +931,7 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 	}
 	p := &v.painter
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-	rows, facts := journalCardRows(p, card, max(1, width-4), false)
+	rows, facts := journalCardRows(p, card, max(1, width-4), !v.excerpt(v.passed[entry.Seq]))
 	title := activityui.Green + "✓" + activityui.Reset + activityui.Dim + " journal"
 	if len(facts) > 0 {
 		title += " · " + strings.Join(facts, " · ")
@@ -973,6 +998,21 @@ func journalCardFacts(changed []journalEvent, open int, includeNotes bool) []str
 
 const journalCompletedCardRows = 8 // Body budget; with borders, a small card is at most ten rows.
 
+func journalBodyRows(p *activityui.Painter, node journalNode, width int) []string {
+	body := node.Body
+	if node.Kind == "note" && node.Title == "Note" {
+		_, body, _ = strings.Cut(body, "\n") // The row already shows its first line.
+	}
+	if body = strings.TrimSpace(body); body == "" {
+		return nil
+	}
+	rows := p.Markdown(livediff.Safe(body, false), max(1, width-2))
+	for i := range rows {
+		rows[i] = "  " + rows[i]
+	}
+	return rows
+}
+
 // journalCardRows lays out a work report's body: what
 // happened this turn one node per row, then the tasks still open. This turn
 // aggregates each node to its final state in the window; a node both added
@@ -991,15 +1031,7 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 			lines[len(lines)-1] = ansi.Truncate(lines[len(lines)-1], max(1, inner-1), "") + "…"
 		}
 		if expand && verb != "removed" {
-			body := node.Body
-			if node.Kind == "note" && node.Title == "Note" {
-				_, body, _ = strings.Cut(body, "\n") // The row already shows its first line.
-			}
-			if body = strings.TrimSpace(body); body != "" {
-				for _, line := range p.Markdown(livediff.Safe(body, false), max(1, inner-2)) {
-					lines = append(lines, "  "+line)
-				}
-			}
+			lines = append(lines, journalBodyRows(p, node, inner)...)
 		}
 		return lines
 	}
@@ -1069,6 +1101,7 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 	var laid []activityui.Block
 	entryRows := make(map[uint64]int)
 	stamp := ""
+	expand := !v.excerpt(v.passed[v.entries[last].Seq])
 	for k := first; k <= last; k++ {
 		entry := v.entries[k].activityPaneEntry
 		if !v.visible(entry) || entry.Kind != "journal_event" {
@@ -1078,7 +1111,7 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 		lead, text := "", livediff.Safe(entry.Text, false)
 		detail := ""
 		if event := entry.journalEvent; event != nil {
-			lead, text = journalNodeParts(p.Theme, event.Fields, journalEventVerb(*event))
+			lead, text = journalPaintNodeParts(p, event.Fields, journalEventVerb(*event), !expand)
 			if event.Op != "remove" && strings.TrimSpace(event.Fields.Body) != "" {
 				detail = journalEventText(*event)
 				text += activityui.Dim + " ›" + activityui.Undim
@@ -1102,7 +1135,11 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 			laid = append(laid, activityui.Block{Kind: "text", Verb: "Journal", Label: entry.journalEvent.Path, Body: livediff.Safe(detail, false)})
 		}
 		// Wrapped rows hang under the text, past the state glyph.
-		for _, line := range activityui.Hang(lead, text, body) {
+		lines := activityui.Hang(lead, text, body)
+		if event := entry.journalEvent; expand && event != nil && event.Op != "remove" {
+			lines = append(lines, journalBodyRows(p, event.Fields, body)...)
+		}
+		for _, line := range lines {
 			if entry.native != nil && entry.native.recovery != "" && v.snippet == snippet {
 				line = activityui.Underline(line)
 			}

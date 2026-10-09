@@ -42,6 +42,8 @@ type appServerSession struct {
 	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
 	waitStore       *mekugiReplayStore
 	waitContext     context.Context
+
+	compactionRollout appServerThreadInfo // Host-selected Main rollout, without its history.
 }
 
 // appServerCommandRun is a started command whose streamed output tail is
@@ -425,8 +427,12 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "reasoning", Text: text, CallID: id, Observed: now, native: native})
 			}
 		case "commandExecution", "webSearch":
-			if u.internalJournalCommand(p.ThreadID, item) {
+			var shown bool
+			if item, native.operation, shown = u.journalTransport(p.ThreadID, item); !shown {
 				break
+			}
+			if native.operation != "" {
+				native.journalResults = journalReadResults(item)
 			}
 			if item.Type == "commandExecution" && u.proxy != nil {
 				if ms, known := u.proxy.nativeTrace.commandTimeout(p.ThreadID, id); known {
@@ -827,7 +833,7 @@ func appServerDisplayCommand(command string) string {
 	name := filepath.Base(args[0])
 	name = strings.TrimSuffix(name, filepath.Ext(name))
 	switch name {
-	case "bash", "zsh", "sh":
+	case "bash", "sh":
 		if len(args) == 3 && (args[1] == "-lc" || args[1] == "-c") {
 			return args[2]
 		}

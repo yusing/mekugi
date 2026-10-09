@@ -27,7 +27,7 @@ func TestHeadlessAppServerRejectsInvalidPromptBeforeLaunch(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command("headless-must-not-start")
-			run, err := startHeadlessAppServer(t.Context(), cmd, strings.NewReader(tc.prompt), io.Discard, nil)
+			run, err := startHeadlessAppServer(t.Context(), cmd, strings.NewReader(tc.prompt), io.Discard, nil, nil)
 			if err == nil || !strings.Contains(err.Error(), tc.want) || run != nil || cmd.Process != nil {
 				t.Fatalf("run nonnil=%v, err=%v, process=%v", run != nil, err, cmd.Process)
 			}
@@ -42,7 +42,7 @@ func (f headlessFailedIO) Write([]byte) (int, error) { return 0, f.err }
 
 func TestHeadlessAppServerPromptReadFailure(t *testing.T) {
 	want := errors.New("stdin failed")
-	run, err := startHeadlessAppServer(t.Context(), exec.Command("headless-must-not-start"), headlessFailedIO{want}, io.Discard, nil)
+	run, err := startHeadlessAppServer(t.Context(), exec.Command("headless-must-not-start"), headlessFailedIO{want}, io.Discard, nil, nil)
 	if run != nil || !errors.Is(err, want) {
 		t.Fatalf("run nonnil=%v err=%v", run != nil, err)
 	}
@@ -116,16 +116,25 @@ func TestHeadlessAppServerIgnoresStaleCompletionAndRejectsFailedTurn(t *testing.
 	d, _ := resetDriverFixture(t, "off")
 	// Use its isolated durable owner, but no active slice reset.
 	d.phase, d.requestID, d.intent = "", "", nil
-	h := &headlessAppServer{ctx: t.Context(), proxy: d.proxy, client: d.client, reset: d, thread: d.thread, turn: "current", output: jsontext.NewEncoder(io.Discard)}
+	h := &headlessAppServer{ctx: t.Context(), proxy: d.proxy, client: d.client, reset: d, issues: NewCriticalErrors(), thread: d.thread, turn: "current", output: jsontext.NewEncoder(io.Discard)}
 	for _, params := range []string{
 		`{"threadId":"foreign","turn":{"id":"current","status":"completed"}}`,
 		`{"threadId":"` + d.thread + `","turn":{"id":"stale","status":"completed"}}`,
 	} {
+		var event appServerEvent
+		if err := json.Unmarshal([]byte(params), &event); err != nil {
+			t.Fatal(err)
+		}
+		h.issues.record(&requestFinalization{sessionID: "session", threadID: event.ThreadID, turnID: event.Turn.ID,
+			failurePhase: requestFailureInspectResponse, observation: requestObservation{outcome: requestOutcomeFailed}}, errors.New("upstream restart"))
 		if err := headlessTestMessage(t, h, "turn/completed", params); err != nil {
 			t.Fatal(err)
 		}
 		if h.completed || h.turn != "current" {
 			t.Fatal("unrelated completion changed current turn")
+		}
+		if len(h.issues.Pending()) != 0 {
+			t.Fatal("headless recovery left a launcher failure notice")
 		}
 	}
 	if err := headlessTestMessage(t, h, "turn/completed", `{"threadId":"`+d.thread+`","turn":{"id":"current","status":"failed"}}`); err == nil || h.completed {
@@ -191,7 +200,7 @@ func TestHeadlessAppServerCancelledPromptRead(t *testing.T) {
 	defer reader.Close()
 	defer writer.Close()
 	cancel()
-	run, err := startHeadlessAppServer(ctx, exec.Command("headless-must-not-start"), reader, io.Discard, nil)
+	run, err := startHeadlessAppServer(ctx, exec.Command("headless-must-not-start"), reader, io.Discard, nil, nil)
 	if run != nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("run nonnil=%v err=%v", run != nil, err)
 	}

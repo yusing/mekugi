@@ -30,10 +30,6 @@ func TestWrites(t *testing.T) {
 		command string
 		want    bool
 	}{
-		{"git push", true},
-		{"git push origin main", true},
-		{"git push --tags upstream", true},
-		{"git push origin v1.0", true},
 		{"git -C repo -c push.default=current push", true},
 		{"git --git-dir .git --no-pager push", true},
 		{"git push --dry-run", false},
@@ -41,8 +37,6 @@ func TestWrites(t *testing.T) {
 		{"git push --help", false},
 		{"git commit -m push", false},
 		{"git stash push", false},
-		{"git add -A", false},
-		{"git log", false},
 		{"git", false},
 		{"git --version", false},
 		{"git send-email HEAD~1", true},
@@ -78,7 +72,6 @@ func TestWrites(t *testing.T) {
 		{"git bisect run xargs -n 1 /usr/bin/git push", true},
 		{"gh pr create --fill", true},
 		{"gh pr merge 12", true},
-		{"gh pr view 12", false},
 		{"gh pr list --state open", false},
 		{"gh pr checkout 12", false},
 		{"gh pr comment 12 --body list", true},

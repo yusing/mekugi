@@ -13,21 +13,51 @@ func Render(source string, maxWidth int) ([]string, bool) {
 	if !ok {
 		return nil, false
 	}
-	horizontal := g.direction == "LR" || g.direction == "RL"
-	labels := make([]string, len(g.nodes))
-	boxCross := 3
-	labelWidth := 0
-	for i, n := range g.nodes {
-		labels[i] = n.label
-		if n.shape == "decision" {
-			labels[i] = "◇ " + n.label
+	rows, ok := render(g, maxWidth)
+	if !ok && (g.direction == "LR" || g.direction == "RL") {
+		if g.direction == "LR" {
+			g.direction = "TD"
+		} else {
+			g.direction = "BT"
 		}
-		if !horizontal {
-			boxCross = max(boxCross, ansi.StringWidth(labels[i])+4)
-		}
+		return render(g, maxWidth)
 	}
+	return rows, ok
+}
+
+func render(g graph, maxWidth int) ([]string, bool) {
+	horizontal := g.direction == "LR" || g.direction == "RL"
+	labelWidth := 0
 	for _, e := range g.edges {
 		labelWidth = max(labelWidth, ansi.StringWidth(e.label))
+	}
+	available := maxWidth - 4
+	if len(g.edges) > 0 {
+		available -= labelWidth + 4 + 2*len(g.edges)
+	}
+	if !horizontal && available < 1 {
+		return nil, false
+	}
+	labels := make([][]string, len(g.nodes))
+	boxCross := 3
+	for i, n := range g.nodes {
+		text := n.label
+		wrapWidth := maxLabel
+		if n.shape == "decision" {
+			text = "◇ " + text
+			wrapWidth += 2
+		}
+		if !horizontal {
+			wrapWidth = min(wrapWidth, available)
+		}
+		labels[i] = strings.Split(ansi.Wrap(text, wrapWidth, ""), "\n")
+		if horizontal {
+			boxCross = max(boxCross, len(labels[i])+2)
+		} else {
+			for _, line := range labels[i] {
+				boxCross = max(boxCross, ansi.StringWidth(line)+4)
+			}
+		}
 	}
 	counts := make([]int, len(g.nodes))
 	ports := make([][2]int, len(g.edges))
@@ -45,9 +75,12 @@ func Render(source string, maxWidth int) ([]string, bool) {
 	starts := make([]int, len(g.nodes))
 	along := 0
 	for i := range sizes {
-		sizes[i] = counts[i] + 3
+		sizes[i] = counts[i] + len(labels[i]) + 2
 		if horizontal {
-			sizes[i] = max(ansi.StringWidth(labels[i])+4, counts[i]*stride+2)
+			sizes[i] = counts[i]*stride + 2
+			for _, line := range labels[i] {
+				sizes[i] = max(sizes[i], ansi.StringWidth(line)+4)
+			}
 		}
 	}
 	for i := range starts {
@@ -118,10 +151,12 @@ func Render(source string, maxWidth int) ([]string, bool) {
 			set(0, y, '│')
 			set(boxCross-1, y, '│')
 		}
-		if horizontal {
-			put(start+2, 1, labels[i])
-		} else {
-			put(2, start+1, labels[i])
+		for j, line := range labels[i] {
+			if horizontal {
+				put(start+2, j+1, line)
+			} else {
+				put(2, start+j+1, line)
+			}
 		}
 	}
 	endpoints := make([][2]int, len(g.edges))
@@ -130,7 +165,7 @@ func Render(source string, maxWidth int) ([]string, bool) {
 			if horizontal {
 				return starts[n] + 1 + p*stride
 			}
-			return starts[n] + 2 + p
+			return starts[n] + len(labels[n]) + 1 + p
 		}
 		endpoints[i] = [2]int{offset(e.from, ports[i][0]), offset(e.to, ports[i][1])}
 	}

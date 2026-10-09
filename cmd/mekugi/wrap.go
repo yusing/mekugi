@@ -319,8 +319,6 @@ func restoreInheritedShellEnvironment(environment []string) []string {
 	previous := ""
 	basePath := ""
 	userBashEnv, userBashEnvSet := "", false
-	zdotdir, zdotdirSet := "", false
-	userZdotdir, userZdotdirSet := "", false
 	for _, entry := range environment {
 		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
 			previous = value
@@ -331,71 +329,44 @@ func restoreInheritedShellEnvironment(environment []string) []string {
 		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
 			basePath = value
 		}
-		if value, ok := strings.CutPrefix(entry, "ZDOTDIR="); ok {
-			zdotdir, zdotdirSet = value, true
-		}
-		if value, ok := strings.CutPrefix(entry, vcsguard.UserZdotdirEnvironment+"="); ok {
-			userZdotdir, userZdotdirSet = value, true
-		}
 	}
-	var inheritedGuards []string
-	restoreBash := false
+	inheritedGuard := ""
 	if userBashEnvSet && filepath.Base(previous) == "frontend-bash-env" {
 		if data, err := os.ReadFile(previous); err == nil && strings.HasPrefix(string(data), frontendBashEnvMarker) {
-			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), vcsguard.Directory))
+			inheritedGuard = filepath.Join(filepath.Dir(previous), vcsguard.Directory)
 			previous = userBashEnv
-			restoreBash = true
 		}
 	}
-	restoreZsh := zdotdirSet && vcsguard.IsZshStartup(zdotdir)
-	if restoreZsh {
-		inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(zdotdir), vcsguard.Directory))
-		// A nested session: the user's files are those the outer one ran.
-		zdotdir, zdotdirSet = userZdotdir, userZdotdirSet
-	}
-	if len(inheritedGuards) == 0 {
+	if inheritedGuard == "" {
 		return slices.Clone(environment)
 	}
 	paths := filepath.SplitList(basePath)
 	paths = slices.DeleteFunc(paths, func(path string) bool {
-		return slices.Contains(inheritedGuards, filepath.Clean(path))
+		return filepath.Clean(path) == inheritedGuard
 	})
 	basePath = strings.Join(paths, string(os.PathListSeparator))
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") ||
-			restoreBash && (strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=")) ||
-			restoreZsh && (strings.HasPrefix(entry, "ZDOTDIR=") || strings.HasPrefix(entry, vcsguard.UserZdotdirEnvironment+"="))
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=")
 	})
-	environment = append(environment, "PATH="+basePath)
-	if restoreBash {
-		environment = append(environment, "BASH_ENV="+previous)
-	}
-	if restoreZsh && zdotdirSet {
-		environment = append(environment, "ZDOTDIR="+zdotdir)
-	}
-	return environment
+	return append(environment, "PATH="+basePath, "BASH_ENV="+previous)
 }
 
 // frontendShellEnvironment restores the frontend PATH in Codex's Bash command
 // shells and, with a helper, reports each command's segments to the router.
 // A guard puts the helper ahead of the version-control tools, and defines a
-// function for each absolute path to one, in Bash and zsh, so remote writes
+// function for each absolute path to one, in Bash, so remote writes
 // wait for the user's approval.
 func frontendShellEnvironment(environment []string, directory, helper string, guard bool) ([]string, error) {
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
 	// noninteractive startup file runs afterward, including for `bash -lc`.
 	environment = restoreInheritedShellEnvironment(environment)
 	previous, basePath := "", ""
-	zdotdir, zdotdirSet := "", false
 	for _, entry := range environment {
 		if value, ok := strings.CutPrefix(entry, "BASH_ENV="); ok {
 			previous = value
 		}
 		if value, ok := strings.CutPrefix(entry, "PATH="); ok {
 			basePath = value
-		}
-		if value, ok := strings.CutPrefix(entry, "ZDOTDIR="); ok {
-			zdotdir, zdotdirSet = value, true
 		}
 	}
 	startup := frontendBashEnvMarker
@@ -419,25 +390,12 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		front = guardDirectory + string(os.PathListSeparator) + directory
 	}
 	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
-	var zsh []string
 	if guard {
 		guardDirectory, _ := vcsguard.Paths(directory)
-		known := vcsguard.KnownPaths(basePath)
-		startup += vcsguard.Functions("bash", guardDirectory, known)
-		// Zsh reads no BASH_ENV; its startup files, which ZDOTDIR locates,
-		// run the user's own and then the same setup.
-		zshDirectory := filepath.Join(filepath.Dir(directory), "zsh")
-		if err := vcsguard.WriteZshStartup(zshDirectory, vcsguard.ZshPath(guardDirectory, directory)+vcsguard.Functions("zsh", guardDirectory, known)); err != nil {
-			return nil, fmt.Errorf("prepare VCS write guard: %w", err)
-		}
-		zsh = append(zsh, "ZDOTDIR="+zshDirectory)
-		if zdotdirSet {
-			zsh = append(zsh, vcsguard.UserZdotdirEnvironment+"="+zdotdir)
-		}
+		startup += vcsguard.Functions(guardDirectory, vcsguard.KnownPaths(basePath))
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") ||
-			(guard && (strings.HasPrefix(entry, "ZDOTDIR=") || strings.HasPrefix(entry, vcsguard.UserZdotdirEnvironment+"=")))
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=")
 	})
 	if helper != "" {
 		socket, trackDirectory := router.ExecTrackPaths(directory)
@@ -456,9 +414,9 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	if err := os.WriteFile(path, []byte(startup), 0o600); err != nil {
 		return nil, fmt.Errorf("prepare frontend shell environment: %w", err)
 	}
-	return append(append(environment,
+	return append(environment,
 		"PATH="+front+string(os.PathListSeparator)+basePath,
-		"BASH_ENV="+path, userBashEnvEnvironment+"="+previous), zsh...), nil
+		"BASH_ENV="+path, userBashEnvEnvironment+"="+previous), nil
 }
 
 // Joining the startup receiver before launch ensures an interrupt it has already
@@ -510,10 +468,14 @@ func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, o
 	overrides := []string{
 		"--disable", "goals",
 		"-c", "features.goals=false",
-		"-c", `model_provider="mekugi_wrap"`,
-		"-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=%t,supports_websockets=false}`, baseURL, openAIAuth),
-		"-c", `include_collaboration_mode_instructions=false`,
 	}
+	if openAIAuth {
+		// Keep stock capabilities and runtime-only internal metadata.
+		overrides = append(overrides, "-c", `model_provider="openai"`, "-c", fmt.Sprintf(`openai_base_url=%q`, baseURL))
+	} else {
+		overrides = append(overrides, "-c", `model_provider="mekugi_wrap"`, "-c", fmt.Sprintf(`model_providers.mekugi_wrap={name="mekugi",base_url=%q,wire_api="responses",requires_openai_auth=false,supports_websockets=false}`, baseURL))
+	}
+	overrides = append(overrides, "-c", `include_collaboration_mode_instructions=false`)
 	if skillsManagerAvailable {
 		overrides = append(overrides, "-c", "skills.include_instructions=false")
 	}

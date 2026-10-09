@@ -85,7 +85,7 @@ func TestHeadlessAppServerStartupDiagnosticStaysOutOfJSONL(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	var output bytes.Buffer
-	wait, err := startHeadlessAppServer(ctx, exec.CommandContext(ctx, os.Args[0], "-test.run=^TestHeadlessFailureHostProcess$"), strings.NewReader("fixture"), &output, nil)
+	wait, err := startHeadlessAppServer(ctx, exec.CommandContext(ctx, os.Args[0], "-test.run=^TestHeadlessFailureHostProcess$"), strings.NewReader("fixture"), &output, nil, nil)
 	if err == nil {
 		err = wait()
 	}

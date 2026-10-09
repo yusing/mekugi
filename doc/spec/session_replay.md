@@ -31,9 +31,11 @@ retained revisions and recorded host turns to reconstruct mounted and unmounted
 hierarchies. Latest stored child items or lifecycle cannot supply historical state;
 missing records or unproven ancestry are disclosed. Journal progress uses the
 recorded clock, including pause and backward seek. Router-generated journal
-transport commands and their synthetic output are hidden only when the strict
+transport commands are classified only when the strict
 generated shell grammar matches the durable translated carrier for the executing
-thread and metadata workspace (or its original empty workspace scope). Reading
+thread and metadata workspace (or its original empty workspace scope). Mutation
+transports and their synthetic output are hidden; read and list transports show
+their typed journal operation, as in live sessions. Reading
 that provenance creates no store, locks, or writers. Missing, invalid, or unrelated
 provenance keeps the command visible and discloses an unverified transport candidate.
 
@@ -68,8 +70,9 @@ snapshots cover running, paused, completed, and narrow playback states.
 columns and 8–500 rows). It emits no terminal bytes and returns a JSON timing
 summary on stdout; loading/coverage/progress notices use stderr. Interactive
 mode requires terminal stdin/stdout and restores terminal state on exit.
-The p key pauses playback; Space also pauses outside Journal. Focused Journal
-supports selection with j/k or navigation keys, Space disclosure, namespace
+The p key pauses playback; Space also pauses outside Journal. `Ctrl-E` uses the
+focused pane's [disclosure controls](native_ui.md) as in live presentation.
+Focused Journal supports selection with j/k or navigation keys, Space disclosure, namespace
 switching, copied durable addresses, and d/Enter for read-only details. Its wheel
 scrolls without changing selection. Details support scrolling and close with
 Escape or q; Ctrl+C always quits replay. Outside details, Escape or q quits.
@@ -82,7 +85,7 @@ through `bin/mekugi-pprof replay-session`. Captures are requested over HTTP whil
 playback is running; replay creates no automatic profile files and accepts no
 `--cpu-profile` or `--heap-profile` flags. The normal command remains offline with
 no profiling listener.
-See the [shared profiling workflow](../../README.md#profile-live-sessions-and-replay).
+See the [shared profiling workflow](../../docs/contributing/development.md#profile-live-sessions-and-replay).
 
 Frame timings include output pacing, layout, and writes;
 write time is also measured separately. Headless writes cannot establish terminal

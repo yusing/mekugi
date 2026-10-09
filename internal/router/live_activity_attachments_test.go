@@ -102,6 +102,36 @@ func TestLiveActivityAttachmentLookalikes(t *testing.T) {
 	}
 }
 
+func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
+	const body = "# Commit\n\nA documented project convention (**contributing guide**, `commitlint` or similar config) takes precedence over the message format below.\n\n## Shape commits\n\n- Make each commit one coherent, independently valid change.\n\n```sh\ngit status --short\n```"
+	for _, child := range []bool{false, true} {
+		v := sharedEventsView(child)
+		content, err := json.Marshal([]map[string]string{{"type": "text", "text": encodeFileAttachments(frameComposerSkillFromPath("commit", "/workspace/SKILL.md", body))}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		thread := "main"
+		if child {
+			thread = "child"
+		}
+		v.applyAppServerItem(true, "/workspace", "main", thread, "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content, ID: "input"})
+		v.toggleExpansion()
+		v.toggleExpansion()
+		feed := v.renderFeed(70, 40)
+		v.viewport(feed, 40)
+		block := v.entries[1].blocks[0]
+		page := v.painter.DialogPage(block, 70)
+		if page.Text != body {
+			t.Fatal("expanded skill changed its dialog copy source")
+		}
+		name := "main"
+		if child {
+			name = "activity"
+		}
+		uisnapshot.AssertTerminal(t, "testdata/snapshots/expanded-skill-"+name+".txt", append(feed.lines, "plain after skill"), 70)
+	}
+}
+
 func TestLiveActivityAttachmentDialogs(t *testing.T) {
 	t.Parallel()
 	for _, child := range []bool{false, true} {

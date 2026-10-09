@@ -433,12 +433,16 @@ func (u *appServerUI) restoreActivityThread(info appServerThreadInfo) {
 }
 
 func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServerHistoryTurn, item appServerItem, name string, observed time.Time, entries *[]activityPaneEntry, lastMessage *int) {
-	if u.internalJournalCommand(info.ID, item) {
+	item, operation, shown := u.journalTransport(info.ID, item)
+	if !shown {
 		return
 	}
 	s := &u.session
 	entry := activityPaneEntry{Seq: s.next(), Agent: name, Observed: observed, CallID: item.ID,
-		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(item)}}
+		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", operation: operation, status: item.Status, searchResults: appServerSearchResults(item)}}
+	if operation != "" {
+		entry.native.journalResults = journalReadResults(item)
+	}
 	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
 	item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
 	if text, wait, handled := u.progress(item, progressPhase, info.ID, turn.ID); handled {

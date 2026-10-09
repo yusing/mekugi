@@ -168,6 +168,12 @@ func (s *mekugiReplayStore) renderJournalSummaryLocked(ctx context.Context, j th
 			}
 		}
 	}
+	resume, blocker := j.continuationCandidate(""), j.continuationBlocker()
+	if resume != nil {
+		next = resume.Path
+	} else if blocker != nil {
+		next = blocker.Path
+	}
 	hiddenBySupersession := func(path string) bool {
 		for parent := journalParent(path); parent != ""; parent = journalParent(parent) {
 			if superseded[parent] {
@@ -336,9 +342,14 @@ func (s *mekugiReplayStore) renderJournalSummaryLocked(ctx context.Context, j th
 	if mandatorySize > mandatoryLimit {
 		return result, errors.New("journal context and open tasks exceed summary capacity")
 	}
-	footer := ""
+	footer := "\nResume: no runnable local task.\n"
+	switch {
+	case blocker != nil:
+		footer = fmt.Sprintf("\nContinuation paused: %s: %s\n", blocker.Path, blocker.Reason)
+	case resume != nil:
+		footer = fmt.Sprintf("\nResume: continue %s; read listed journal paths, mchanges ranges and mread references as needed.\n", resume.Path)
+	}
 	if bounded {
-		footer = fmt.Sprintf("\nResume: continue %s; consult durable journal reads and retained change/output references.\n", cmp.Or(next, "the journal plan"))
 		if mandatorySize+measure(footer) > capacity {
 			return result, errors.New("journal context and open tasks exceed summary capacity")
 		}
@@ -543,11 +554,6 @@ func (s *mekugiReplayStore) renderJournalSummaryLocked(ctx context.Context, j th
 			delta.WriteString(entry)
 		}
 		writeSection(delta.String(), true)
-		if !bounded {
-			fmt.Fprintf(&text, "\nResume: continue %s; read the listed journal paths, mchanges ranges and mread references as needed.\n", cmp.Or(next, "the journal plan"))
-		}
-	} else if !bounded {
-		fmt.Fprintf(&text, "\nResume: continue %s; read retained journal paths and mchanges ranges as needed.\n", cmp.Or(next, "the journal plan"))
 	}
 	if bounded {
 		// Omitted command records remain discoverable even when individual mread
@@ -572,8 +578,8 @@ func (s *mekugiReplayStore) renderJournalSummaryLocked(ctx context.Context, j th
 		if evidenceOmitted {
 			text.WriteString(notice)
 		}
-		text.WriteString(footer)
 	}
+	text.WriteString(footer)
 	if !bounded {
 		text.WriteString("Read more: journal({op:\"read\",p:\"PATH\",depth:1}); journal({op:\"read\",view:\"outline\"}) finds own older paths. For an agent, add agent:\"NAME\",view:\"own\" using its heading. Discover older agents with journal({op:\"read\",depth:1}). Read relevant context paths before acting.\n")
 	}

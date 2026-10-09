@@ -50,12 +50,25 @@ func (s *journalStore) completedSlice(ctx context.Context, store *mekugiReplaySt
 			return errJournalUnchanged
 		}
 		j.ResetHandledTurn, j.ResetIntent = turn, nil
-		// A blocker is an explicit stop, not an invitation to try another turn.
-		for _, item := range j.Items {
-			if item.Kind == "task" && item.State == "blocked" {
-				return nil
-			}
+		if next := j.continuationCandidate(turn); next != nil {
+			next.ID = rand.Text()
+			j.ResetIntent = next
+			copy := *next
+			intent = &copy
 		}
+		return nil
+	})
+	return intent, err
+}
+
+// Select from candidate journal facts without handling a turn or allocating an
+// intent ID. Main continuation owns its root gate; finish checks each caller's work.
+func (j *threadJournal) continuationCandidate(turn string) *journalResetIntent {
+	// A blocker is an explicit stop, not an invitation to try another turn.
+	if j.continuationBlocker() != nil {
+		return nil
+	}
+	if turn != "" && j.TurnID == turn {
 		for _, event := range j.Events {
 			if event.Seq <= j.TurnStartSeq || !event.Transition || event.Fields.State != "done" || !j.SliceParents[journalParent(event.Path)] {
 				continue
@@ -65,34 +78,38 @@ func (s *journalStore) completedSlice(ctx context.Context, store *mekugiReplaySt
 				continue
 			}
 			for _, item := range j.Items {
-				if item.Kind == "task" && item.State == "pending" && item.Agent == "" && j.StoppedTasks[item.Path] == "" && journalParent(item.Path) == journalParent(event.Path) {
-					j.ResetIntent = &journalResetIntent{ID: rand.Text(), Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending"}
-					copy := *j.ResetIntent
-					intent = &copy
-					return nil
+				if item.State == "pending" && journalParent(item.Path) == journalParent(event.Path) && j.localJournalTask(item.Path) {
+					return &journalResetIntent{Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending"}
 				}
 			}
 		}
-		// A substantive answer does not finish an open plan. Prefer work already
-		// in progress, without requiring a mutation in this (possibly follow-up) turn.
-		for _, state := range []string{"working", "pending"} {
-			for _, item := range j.Items {
-				if item.State == state && j.runnableJournalTask(item.Path) {
-					j.ResetIntent = &journalResetIntent{ID: rand.Text(), Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending", Resume: true}
-					copy := *j.ResetIntent
-					intent = &copy
-					return nil
-				}
+	}
+	// Prefer work already in progress, including an unchanged follow-up turn.
+	for _, state := range []string{"working", "pending"} {
+		for _, item := range j.Items {
+			if item.State == state && j.runnableJournalTask(item.Path) {
+				return &journalResetIntent{Turn: turn, Path: item.Path, Title: item.Title, Phase: "pending", Resume: true}
 			}
 		}
-		return nil
-	})
-	return intent, err
+	}
+	return nil
 }
 
-// Only local runnable work may drive a turn. A parent waiting for unfinished
-// children is not itself runnable, and a bound agent retains its own lifecycle.
-func (j *threadJournal) runnableJournalTask(path string) bool {
+// Mounted child state is evidence, not an owned task that pauses this journal.
+func (j *threadJournal) continuationBlocker() *journalItem {
+	var blocker *journalItem
+	for i := range j.Items {
+		item := &j.Items[i]
+		if item.Kind == "task" && item.State == "blocked" && !strings.Contains(item.Path, "/@") && (blocker == nil || item.Updated > blocker.Updated) {
+			blocker = item
+		}
+	}
+	return blocker
+}
+
+// Slice targets may have open children, but share ordinary work's ownership
+// and ancestor disposition checks.
+func (j *threadJournal) localJournalTask(path string) bool {
 	i := j.treeIndex(path)
 	if i < 0 || j.StoppedTasks[path] != "" || j.Items[i].Kind != "task" || (j.Items[i].State != "pending" && j.Items[i].State != "working") {
 		return false
@@ -101,14 +118,22 @@ func (j *threadJournal) runnableJournalTask(path string) bool {
 		if item.Kind != "task" {
 			continue
 		}
-		if item.State == "blocked" {
-			return false
-		}
 		if item.Path == path || strings.HasPrefix(path, item.Path+"/") {
 			if item.Agent != "" || item.State == "done" || item.State == "dropped" {
 				return false
 			}
-		} else if strings.HasPrefix(item.Path, path+"/") && (item.State == "pending" || item.State == "working") {
+		}
+	}
+	return true
+}
+
+// A parent waiting for unfinished children is not itself runnable.
+func (j *threadJournal) runnableJournalTask(path string) bool {
+	if !j.localJournalTask(path) {
+		return false
+	}
+	for _, item := range j.Items {
+		if item.Kind == "task" && strings.HasPrefix(item.Path, path+"/") && (item.State == "pending" || item.State == "working") {
 			return false
 		}
 	}
@@ -116,20 +141,14 @@ func (j *threadJournal) runnableJournalTask(path string) bool {
 }
 
 func (j *threadJournal) continuationCurrent(intent *journalResetIntent) bool {
-	if !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.StoppedTasks[intent.Path] != "" {
+	if !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.StoppedTasks[intent.Path] != "" || j.continuationBlocker() != nil {
 		return false
 	}
 	if intent.Resume {
 		return intent.Turn == j.TurnID && j.runnableJournalTask(intent.Path)
 	}
-	for _, item := range j.Items {
-		if item.Kind == "task" && (item.State == "blocked" ||
-			((item.Path == intent.Path || strings.HasPrefix(intent.Path, item.Path+"/")) && (item.Agent != "" || item.State == "dropped"))) {
-			return false
-		}
-	}
 	i := j.treeIndex(intent.Path)
-	return i >= 0 && j.Items[i].State == "pending"
+	return i >= 0 && j.Items[i].State == "pending" && j.localJournalTask(intent.Path)
 }
 
 // Retain the user's stop before requesting an interrupt. The host can race and

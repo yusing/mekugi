@@ -5,6 +5,9 @@
 `CriticalErrors` owns bounded classified diagnostics, repeat counts, delivery claims,
 and launcher recovery. The [notice contract](../spec/notices.md) owns visible content
 and failure behavior. The queue never transforms provider responses.
+Native and headless app-server clients supply host turn outcomes. The queue keeps
+bounded recent outcomes to reconcile request finalization that races completion,
+without retaining or replaying live host state across sessions.
 
 Native session integration reserves notices scoped to its main thread and proven
 workspace ancestry from the [activity owner](activity.md). Router errors reuse Main's

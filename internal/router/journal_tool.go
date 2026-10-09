@@ -159,7 +159,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			var mutations []journalMutation
 			mutations, err = decodeJournalMutations(args.Journal)
 			if err == nil {
-				batchedIDs, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID+":journal", bindJournalAnswers(mutations, t.journalQuestion))
+				batchedIDs, err = t.proxy.applyJournal(t.ctx, t.directory, t.shellThreadID, callID+":journal", bindJournalAnswers(mutations, t.journalQuestion))
 			}
 		}
 		if err != nil {
@@ -187,7 +187,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			if args.Op == "read" {
 				var nodes []journalNode
 				if err == nil {
-					nodes, err = t.proxy.journals.readTree(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, args.Agent, args.P, args.Depth, args.View)
+					nodes, err = t.proxy.readJournalTree(t.ctx, t.directory, t.shellThreadID, args.Agent, args.P, args.Depth, args.View)
 				}
 				result = map[string]any{"ok": true, "items": nodes}
 			} else {
@@ -204,7 +204,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 			err = errors.New("journal view and depth require read")
 		} else {
 			var ids []string
-			ids, err = t.proxy.journals.apply(t.ctx, t.proxy.replayStore, t.directory, t.shellThreadID, callID, bindJournalAnswers([]journalMutation{args.journalMutation}, t.journalQuestion))
+			ids, err = t.proxy.applyJournal(t.ctx, t.directory, t.shellThreadID, callID, bindJournalAnswers([]journalMutation{args.journalMutation}, t.journalQuestion))
 			if err == nil {
 				t.featureTrace.record("journal", "tool", "mutation", "accepted", callID, "")
 				result = map[string]any{"ok": true}

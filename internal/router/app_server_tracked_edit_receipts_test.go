@@ -56,7 +56,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 			if thread == "child" {
 				view = u.agents
 			}
-			sources := []string{"cat > a.go", "cat > b.go", "go test ./...", "cat > failed.go", "cat > skipped.go"}
+			sources := []string{"cat > a.go", "mv b.go.new b.go", "go test ./...", "mv failed.go.new failed.go", "mv skipped.go.new skipped.go"}
 			var segments []commandSegment
 			for _, source := range sources {
 				segments = append(segments, commandSegment{source: source, text: execSegmentText(source)})
@@ -83,15 +83,15 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 						outputKept = block.Output == output && block.ExitCode == 0
 					case block.Verb == "Run" && block.Code == sources[2]:
 						testKept = block.ExitCode == 2 && strings.Join(block.Tail, "") == "test failed"
-					case block.Verb == "Edit" && strings.Contains(block.Label, "failed.go"):
+					case block.Verb == "Move" && strings.Contains(block.Label, "failed.go"):
 						failedKept = block.ExitCode == 1 && block.EditOutcome == "failed" && strings.Join(block.Tail, "") == "permission denied"
-					case block.Verb == "Edit" && strings.Contains(block.Label, "skipped.go"):
+					case block.Verb == "Move" && strings.Contains(block.Label, "skipped.go"):
 						skippedKept = block.Skipped && block.EditOutcome == "skipped"
-					case block.Verb == "Edit" && strings.Contains(block.Label, "(requested)"):
+					case (block.Verb == "Edit" || block.Verb == "Move") && strings.Contains(block.Label, "(requested)"):
 						t.Fatalf("successful intent survived receipt: %+v", block)
 					}
 				}
-				if !outputKept || !testKept || !failedKept || !skippedKept {
+				if !outputKept || !testKept || !failedKept || !skippedKept || len(view.entries[0].blocks) != 6 {
 					t.Fatalf("receipt lost segment output/state: %+v", view.entries[0].blocks)
 				}
 			}

@@ -1,0 +1,18 @@
+3 files +3 -3 | slice /1 (c) · files focus · CONNECTING · 2/3
+▎Changes  3 · @all · slice /1
+ / id, @caller, source
+● amber1 apply_patch M 0.go +1 -1
+● amber2 apply_patch M 1.go +1 -1                                   
+├─╮ worker
+│ ● amber5 apply_patch M 4.go +1 -1
+─────────────────────────────────────────────────────────────────────
+  2/3  src/1.go +1 -1 ───────────────────────────────────────────────
+  ┄ amber2 main·apply_patch
+  1│-old                                                             
+  1│+new                                                             
+  3/3  src/4.go +1 -1 ───────────────────────────────────────────────
+  ┄ amber5 worker·apply_patch
+  1│-old                                                             
+  1│+new                                                             
+
+

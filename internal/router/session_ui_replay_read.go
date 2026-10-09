@@ -189,7 +189,8 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 				if item.ID == "" || p.Turn == "" || p.Started <= 0 || p.Completed < p.Started {
 					return errors.New("item lacks valid identity or start/end timing")
 				}
-				if hidden, candidate := replayJournalTransport(store, workspace, thread, item); hidden {
+				item, hidden, unverified := replayJournalTransport(store, workspace, thread, item)
+				if hidden {
 					// Hiding presentation must not shorten the recorded interval,
 					// including rollouts without explicit turn lifecycle records.
 					for _, at := range []int64{p.Started, p.Completed} {
@@ -199,7 +200,7 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 						return errors.New("replay exceeds 500000 events")
 					}
 					return nil
-				} else if candidate {
+				} else if unverified {
 					r.JournalUnverified++
 				}
 				r.Items++
@@ -276,26 +277,28 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 // The generated command grammar alone is not provenance. Reuse the durable
 // carrier's classifier and executing-thread scope, without a live proxy or
 // authorization token. Semantic journal messages remain normal replay items.
-func replayJournalTransport(store *mekugiReplayStore, workspace, thread string, item appServerItem) (hidden, candidate bool) {
+// A verified read or list is shown as its typed operation, as live.
+func replayJournalTransport(store *mekugiReplayStore, workspace, thread string, item appServerItem) (shown appServerItem, hidden, unverified bool) {
 	if item.Type != "commandExecution" {
-		return false, false
+		return item, false, false
 	}
 	parts := nativeJournalCommand.FindStringSubmatch(execsegment.ShOriginal(appServerDisplayCommand(item.Command)))
 	if parts == nil {
-		return false, false
+		return item, false, false
 	}
 	encoded, _, _ := strings.Cut(parts[2], ".")
 	callID, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil || store.directory == "" {
-		return false, true
+		return item, false, true
 	}
 	for _, scope := range []string{workspace, ""} {
 		record, found, err := store.read(scope, string(callID), false)
 		if err == nil && found && record.History.ExecutingThread == thread && record.History.lowersJournalCommand(parts) {
-			return true, true
+			shown, _, ok := journalTransportItem(item, parts)
+			return shown, !ok, false
 		}
 	}
-	return false, true
+	return item, false, true
 }
 
 func replayItem(raw jsontext.Value) (appServerItem, bool, error) {

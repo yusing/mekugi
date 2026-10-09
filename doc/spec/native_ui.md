@@ -522,9 +522,9 @@ app-server, never generated commentary. [Router errors](notices.md) render as us
 composer feedback and leave the transcript and provider responses unchanged.
 Cleanup planning and reclaimed-storage progress remain transcript content.
 
-Run cards omit literal Bash, Zsh, or Sh `-c`/`-lc` launch wrappers and PowerShell
-`-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`), matching
-Codex's shell recognition. The inner source uses the existing shell highlighting. Commands with outer redirects, assignments, additional arguments,
+Run cards omit literal Bash or Sh `-c`/`-lc` launch wrappers and PowerShell
+`-Command`/`-c` wrappers (optionally preceded by `-NoLogo`/`-NoProfile`).
+The inner source uses the existing shell highlighting. Commands with outer redirects, assignments, additional arguments,
 or dynamic wrapper words remain intact. This is display-only, including resumed items.
 When Codex cannot classify a command, the shared shell display classifier identifies
 frontend reads, inspections, searches and skill reads after removing a literal
@@ -563,6 +563,9 @@ Missing or conflicting spawn evidence supplies no role label; explicit host
 metadata remains authoritative. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
+Uncolored labels in pane and composer borders use the terminal text foreground,
+not the border's decorative foreground. Faint styling and explicit label colors
+remain intact.
 
 Main's top-right title-bar label reads the host's thread name, including names
 restored on resume and inherited by forks. An unnamed thread has no placeholder;
@@ -1029,7 +1032,7 @@ the selection. Recognized Markdown file links in Main, Activity, and shared
 dialogs open local source with the path, content, and read errors copyable, as
 specified by [activity display](activity_display.md). HTTP(S) links still copy
 their destinations in Main and Activity; clicking them inside a dialog still
-does nothing. Missing or unrecognized file links retain their prior click behavior.
+does nothing. Missing local file destinations are not clickable.
 Clipboard availability is controlled by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
 rows. At the first/last displayed row, Up/Down recalls older/newer submitted
@@ -1115,6 +1118,8 @@ Rejected submissions return to an empty composer with an error; if a later draft
 exists, the rejected command is saved separately in input history instead of
 turning that draft into executable shell text. Acknowledgements do
 not claim command completion. Removing `!` returns to normal compose mode.
+Completed shell edits update Diff totals, the saved pane, and Changes history
+through the [command recorder](changes.md#command-effects).
 
 The host's opt-in `instant_interrupt` feature lets new input preempt model
 responses and yield long-running `exec` calls without terminating their
@@ -1449,6 +1454,19 @@ Successful command output eligible to fold shares one debounce deadline across M
 including late completions, so it collapses in a single screen update rather than
 one result at a time. An agent's latest command output remains open until later activity.
 
+`Ctrl-E` cycles the focused Main or Activity pane through default presentation,
+expanded events, and expanded all. Expanded events shows full narrative, journal
+details and public reasoning while leaving operation source/output at its normal
+preview. Both expanded modes show all retained child-journal answers and nonempty
+change reports, including report-only completions. Expanded all also opens retained
+operation source/output. Default restores
+automatic folding, including keeping new event groups open until they leave the
+viewport. User prompts remain unchanged. The choice also applies to arriving content
+and stays local to the pane. The status hint follows the pane shortcut and names
+the next disclosure choice. Dialogs retain
+their existing controls. Toggling preserves following or the item at the top of
+scrollback. Layouts are cached; off-screen blocks defer syntax decoration.
+
 Main and Activity follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
 opening a narrative snippet or output dialog do not disable following. Scrolling to the last full viewport
@@ -1478,7 +1496,9 @@ The native client publishes Codex-compatible terminal lifecycle titles so pane
 managers can recognize working and action-required states without parsing the
 transcript. The Main turn supplies the work spinner; pending questions (including
 hidden or resumed async questions), pending approvals and unsupported server
-requests take priority with `Action Required`. Settled Main turns remove the spinner; child completion
+requests take priority with `Action Required`. Automatic journal continuation keeps
+the spinner through its countdown, context reset and next-turn acknowledgement.
+Settled Main turns without automatic continuation remove the spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when
 the native client exits or yields the terminal to an external editor.

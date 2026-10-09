@@ -372,7 +372,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			u.shell.diffOpen = false
 			u.shell.journalOpen = false
 		}
-		view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](</tmp/my project/report.go:12>)"})
+		view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
 		screen := vt.NewEmulator(120, 30)
 		defer screen.Close()
 		var wire bytes.Buffer
@@ -405,7 +405,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		}
 		wire.Reset()
 		paint()
-		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("/tmp/my project/report.go:12")) + "\x07"
+		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("https://example.com/report")) + "\x07"
 		if !strings.Contains(wire.String(), want) {
 			t.Fatalf("clipboard request missing: %q", wire.String())
 		}
@@ -430,7 +430,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		if activity {
 			mention = "[Selected activity] "
 		}
-		if u.draft != mention || len(u.selections) != 1 || u.selections[0].text != "[report](</tmp/my project/report.go:12>)" {
+		if u.draft != mention || len(u.selections) != 1 || u.selections[0].text != "[report](https://example.com/report)" {
 			t.Fatalf("reference=%q %+v", u.draft, u.selections)
 		}
 	}

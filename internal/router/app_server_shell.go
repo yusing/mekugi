@@ -39,9 +39,14 @@ func (u *appServerUI) submitShell() error {
 		u.setNotice("Shell commands use plain text · remove attachments and picker tokens first", true)
 		return nil
 	}
+	u.discardShellEdit(u.shellEdits.pending)
+	u.shellEdits.pending = nil
+	edit := u.captureShellEdit(command)
 	if err := u.request("thread/shellCommand", map[string]any{"threadId": u.thread, "command": command}); err != nil {
+		u.discardShellEdit(edit)
 		return err // Keep the draft when transport submission fails.
 	}
+	u.shellEdits.pending = edit
 	u.shellCommand.begin(u.takeDraft(), u.turn)
 	u.setNotice("Shell command submitted", false)
 	u.view.follow()
@@ -51,6 +56,8 @@ func (u *appServerUI) submitShell() error {
 func (u *appServerUI) shellResponse(failure *appserver.Error) {
 	draft := u.shellCommand.acknowledge(failure != nil, u.turn)
 	if failure != nil {
+		u.discardShellEdit(u.shellEdits.pending)
+		u.shellEdits.pending = nil
 		hint := ""
 		if u.draft == "" {
 			u.loadDraft(draft)

@@ -1,0 +1,18 @@
+2 files +2 -2 | subslice /1/2 (c) · files focus · CONNECTING · 1/2
+▎Changes  2 · @all · subslice /1/2
+ / id, @caller, source
+● amber2 apply_patch M 1.go +1 -1                                   
+├─╮ worker
+│ ● amber5 apply_patch M 4.go +1 -1
+─────────────────────────────────────────────────────────────────────
+  1/2  src/1.go +1 -1 ───────────────────────────────────────────────
+  ┄ amber2 main·apply_patch
+  1│-old                                                             
+  1│+new                                                             
+  2/2  src/4.go +1 -1 ───────────────────────────────────────────────
+  ┄ amber5 worker·apply_patch
+  1│-old                                                             
+  1│+new                                                             
+
+
+

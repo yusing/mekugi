@@ -100,6 +100,17 @@ func TestShellEditIntentKeepsUnknownHeredocNeighbor(t *testing.T) {
 	}
 }
 
+func TestShellMoveIntentOperands(t *testing.T) {
+	for command, want := range map[string]string{
+		`mv -T 'src/old name.go' src/new.go`: "Move `src/{old name.go=>new.go}` · mv (requested)",
+		`mv -t dst src/a.go src/b.go`:        "Move `src/a.go => dst/a.go` · mv (requested)\n\nMove `src/b.go => dst/b.go` · mv (requested)",
+	} {
+		if got := toolActivityShell(command); got != want {
+			t.Errorf("%s: got %q, want %q", command, got, want)
+		}
+	}
+}
+
 func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','PRIVATE_BATCH_SOURCE');open(p,'w').write(s)\np='b.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\nenv -u BASH_ENV rtk go test ./internal/router -run 'TestEditIntent'"
 	source := "const r = await tools.exec_command({cmd:" + string(mustMarshalJSON(command)) + "}); text(r);"
@@ -145,6 +156,9 @@ func TestShellEditIntentDoesNotInventWrites(t *testing.T) {
 		`sed -i "$SCRIPT" "$TARGET"`,
 		`sed -i 's/old/new/' *.go`,
 		`sed -i.bak 's/old/new/' *.go`,
+		`mv "$SOURCE" target.go`,
+		`mv *.new target/`,
+		`mv --unknown source.go target.go`,
 		`node -e 'process.stdout.write("hello")'`,
 		`node -e 'document.open()'`,
 		`python3 -c 'items=["x"];items.remove("x");print(items)'`,
@@ -191,7 +205,7 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 }
 
 func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
-	const source = "cat > a.go <<'EOF'\nPRIVATE_NATIVE_SOURCE\nEOF\ngo test ./internal/router"
+	const source = "mv b.go.new b.go\ncat > a.go <<'EOF'\nPRIVATE_NATIVE_SOURCE\nEOF\ngo test ./internal/router"
 	command := "/usr/bin/bash -lc " + shellQuoteArgument(source)
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,
 		CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
@@ -211,7 +225,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 					current.ExitCode = new(2)
 				}
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": current})
-				assertCapturedCommand(t, view, thread, "cmd", "Edit", 0)
+				assertCapturedCommand(t, view, thread, "cmd", "Move", 0)
 				if method == "item/completed" {
 					finishPacing(u.view, u.agents)
 					if got := mainFeed(&appServerUI{view: view}, 100); !strings.Contains(got, "shell batch · exit 2") {
@@ -233,7 +247,7 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			if thread == "main" {
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
-				assertCapturedCommand(t, restored.view, "main", "cmd", "Edit", 0)
+				assertCapturedCommand(t, restored.view, "main", "cmd", "Move", 0)
 			}
 		})
 	}

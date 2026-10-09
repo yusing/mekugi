@@ -79,6 +79,68 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	}
 }
 
+func TestNativeRequestNoticesWaitForHostTurnOutcome(t *testing.T) {
+	for _, status := range []string{"completed", "interrupted", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.issues = NewCriticalErrors()
+			record := func(cause string) {
+				u.issues.record(&requestFinalization{sessionID: "session", threadID: "main", turnID: "turn",
+					failurePhase: requestFailureInspectResponse, observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("upstream closed: %s", cause))
+			}
+			record("StatusServiceRestart")
+			if delivery := u.applyCriticalNotices(); delivery != nil || u.noticeAlert {
+				t.Fatal("request attempt interrupted a retrying turn")
+			}
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": status}})
+			record("late NormalClosure") // Finalization can follow the host notification.
+			delivery := u.applyCriticalNotices()
+			if status != "failed" {
+				if delivery != nil || len(u.issues.Pending()) != 0 || u.noticeAlert {
+					t.Fatal("recovered or interrupted turn retained a failure notice")
+				}
+				return
+			}
+			if delivery == nil || len(delivery.errors.notices) != 2 || !strings.Contains(u.notice, "StatusServiceRestart") || !strings.Contains(u.notice, "NormalClosure") {
+				t.Fatalf("terminal failure lost its diagnostic batch: %s", u.notice)
+			}
+			delivery.errors.finish(true)
+			if len(u.issues.Pending()) != 0 {
+				t.Fatal("delivered terminal failure stayed pending")
+			}
+		})
+	}
+}
+
+func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.issues = NewCriticalErrors()
+	activity := newSubagentActivity()
+	activity.observe("main", "", "/root", false)
+	activity.observe("child", "main", "/root/worker", true)
+	u.proxy = &mekugiProxy{activity: activity}
+	for _, thread := range []string{"main", "child", "other"} {
+		u.issues.record(&requestFinalization{sessionID: "session", threadID: thread, turnID: "turn",
+			failurePhase: requestFailureInspectResponse, observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("upstream closed for %s", thread))
+	}
+	queueCritical(u.issues, "main") // Auxiliary/unidentified failures stay immediate.
+	delivery := u.applyCriticalNotices()
+	if delivery == nil || len(delivery.errors.notices) != 1 {
+		t.Fatal("retry gating hid an unrelated actionable notice")
+	}
+	delivery.errors.finish(true)
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "turn", "status": "failed"}})
+	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
+	delivery = u.applyCriticalNotices()
+	if delivery == nil || len(delivery.errors.notices) != 1 || !strings.Contains(u.notice, "/root/worker: ") || strings.Contains(u.notice, "upstream closed for main") {
+		t.Fatalf("child completion crossed turn scope: %s", u.notice)
+	}
+	delivery.errors.finish(true)
+	if pending := u.issues.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "upstream closed for other") {
+		t.Fatalf("unobserved turn lost launcher recovery: %v", pending)
+	}
+}
+
 func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T) {
 	stateHome := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(stateHome, []byte("occupied"), 0600); err != nil {

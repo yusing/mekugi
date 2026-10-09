@@ -33,4 +33,4 @@
  ◐ ├ review  running
  ● └ saved-child  saved
 
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   ^B 1-5 panes
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   ^B 1-5 panes · ^E expand events

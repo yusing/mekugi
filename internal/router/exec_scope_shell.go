@@ -932,7 +932,7 @@ func execProgramDirect(identity string, args []*syntax.Word) bool {
 	case identity == "bun" || identity == "deno":
 		subcommand := strings.TrimPrefix(execProgramLabel(identity, args), identity+" ")
 		return !execPackageSubcommands[subcommand]
-	case identity == "bash" || identity == "sh" || identity == "zsh" || identity == "dash":
+	case identity == "bash" || identity == "sh" || identity == "dash":
 		return slices.ContainsFunc(args, func(arg *syntax.Word) bool {
 			value, _ := shellCatLiteral(arg)
 			return strings.HasPrefix(value, "-") && !strings.HasPrefix(value, "--") && strings.Contains(value, "c")

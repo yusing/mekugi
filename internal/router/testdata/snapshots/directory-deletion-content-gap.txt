@@ -1,0 +1,4 @@
+├ Deleted removed/ • 4 files
+│ Deleted removed2/ • 1 file
+└ Capture · incomplete evidence for 1 path (not confirmed edits): 1 × "file exceeds the 8 MiB
+          capture bound" · mchanges amber1 --summary

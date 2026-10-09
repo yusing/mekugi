@@ -29,6 +29,7 @@ import (
 )
 
 type appServerItem struct {
+	journalTransport bool                      // Offline ingestion verified this exact read/list against its durable carrier; never a host field.
 	replacesItems    []string                  // Retained presentation provenance, not a host field.
 	DurationMS       *int64                    `json:"durationMs"`
 	Delivery         string                    `json:"delivery"`
@@ -108,6 +109,7 @@ type appServerUI struct {
 	agents                    *liveActivityView
 	proxy                     *mekugiProxy
 	execTrack                 *execTrackHub // Per-segment command reports; nil when not tracking.
+	shellEdits                appServerShellEdits
 	issues                    *CriticalErrors
 	noticeEntries             map[string]bool
 	journalView               nativeJournalView
@@ -497,6 +499,8 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	u.issues.observeTurnCompletion(m.Method, m.Params)
+	u.observeShellMessage(m)
 	if u.sessionTitleMessage(m) {
 		return nil
 	}
@@ -606,6 +610,19 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.shellResponse(m.Error)
 			return nil
 		}
+		if method == "environment/info" {
+			if m.Error == nil {
+				var info struct {
+					Shell struct {
+						Path string `json:"path"`
+					} `json:"shell"`
+				}
+				if json.Unmarshal(m.Result, &info) == nil {
+					u.shellEdits.shell = info.Shell.Path
+				}
+			}
+			return nil
+		}
 		if method == "thread/compact/start" {
 			u.compactResponse(m.Error != nil)
 			if m.Error != nil {
@@ -681,6 +698,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if _, err := u.client.Send("initialized", map[string]any{}, false); err != nil {
 				return err
+			}
+			if u.proxy != nil {
+				if err := u.request("environment/info", map[string]any{"environmentId": "local"}); err != nil {
+					return err
+				}
 			}
 			if u.resumeThread == resumePickerStartup {
 				u.status = "Choose a session"
@@ -1075,6 +1097,8 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		return false, nil
 	}
 	switch key {
+	case 5: // Ctrl+E discloses the focused Main transcript, leaving the draft intact.
+		u.view.toggleExpansion()
 	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
 	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
@@ -1537,7 +1561,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 		if label == "" {
 			return ""
 		}
-		return " " + label + color + " "
+		return " \x1b[39m" + label + color + " "
 	}
 	inner := width - 2
 	l, r := segment(left), segment(right)
@@ -1625,12 +1649,15 @@ func scrollLabel(v *liveActivityView) string {
 
 func (u *appServerUI) ensureShell() {
 	u.view.conversation = true
+	u.view.painter.FileLink = u.markdownFileExists
+	u.journalView.fileLink = u.markdownFileExists
 	if u.shell != nil {
 		return
 	}
 	if u.agents == nil {
 		u.agents = newLiveActivityView()
 	}
+	u.agents.painter.FileLink = u.markdownFileExists
 	u.agents.childrenOnly = true
 	u.agents.status = "" // Fed by app-server directly, never by a collector connection.
 	u.agents.mainView = u.view

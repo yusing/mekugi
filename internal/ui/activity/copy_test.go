@@ -109,6 +109,7 @@ func TestMarkdownSourceCopyWhitespaceAndFormatting(t *testing.T) {
 		{"```go\n  x := 1  \n\n\n    y := 2\n```", "  x := 1  \n\n\n    y := 2"},
 		{"**some long bold words**\nnext  \nline", "**some long bold words**\nnext  \nline"},
 		{"[hello world](https://example.com)", "[hello world](https://example.com)"},
+		{"Read /tmp/source.go:26 and `src/file name.go`.", "Read /tmp/source.go:26 and `src/file name.go`."},
 		{"# Title\n- item wraps across rows", "# Title\n- item wraps across rows"},
 	} {
 		for _, width := range []int{8, 20, 80} {

@@ -15,7 +15,16 @@ import (
 // Exercise manual standalone compaction without driver-dispatched reset or a
 // gated provider. Completion binds the retained answer to the unique host item.
 func TestNativeJournalPresentationCodexE2E(t *testing.T) {
-	ctx, cmd, provider := journalResetCodexFixture(t)
+	testNativeJournalPresentationCodex(t, false)
+}
+
+func TestNativeJournalRolloutDisclosureCodexE2E(t *testing.T) {
+	testNativeJournalPresentationCodex(t, true)
+}
+
+func testNativeJournalPresentationCodex(t *testing.T, builtin bool) {
+	t.Helper()
+	ctx, cmd, provider := journalResetCodexFixtureProvider(t, builtin)
 	proxy, workspace := provider.proxy, provider.workspace
 	proxy.journalCompaction = "auto"
 	client, err := appserver.Start(cmd)
@@ -38,6 +47,7 @@ func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 	var startID string
 	var firstDone, compactDone, itemDone bool
 	var observed journalCompactionItem
+	var rollout appServerThreadInfo
 	for !compactDone || u.compaction.ackPending {
 		select {
 		case m, ok := <-client.Messages:
@@ -69,6 +79,8 @@ func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 				}
 				u.thread = result.Thread.ID
 				u.session.start(u.thread, workspace)
+				rollout = result.Thread
+				u.restoreContextUsage(u.session.agent("/root"), rollout)
 				u.journal = proxy.journals.attachNative(workspace, u.thread)
 				u.unscopedJournal = proxy.journals.attachNative("", u.thread)
 				t.Cleanup(func() {
@@ -162,6 +174,9 @@ func TestNativeJournalPresentationCodexE2E(t *testing.T) {
 		t.Fatalf("fresh-store receipt lost exact native provenance: %+v; host item=%+v", record, observed)
 	}
 	retained := record.AnsweredItems[0]
+	if builtin && rolloutCompactionResponse(rollout, observed.Turn, observed.Item) != record.ResponseID {
+		t.Fatal("native paginated rollout did not retain exact item-to-response provenance")
+	}
 	if retained.Turn != observed.Turn || retained.Item != observed.Item || retained.ResponseID != record.ResponseID {
 		t.Fatalf("fresh-store receipt lost exact native provenance: %+v; host item=%+v", record, observed)
 	}

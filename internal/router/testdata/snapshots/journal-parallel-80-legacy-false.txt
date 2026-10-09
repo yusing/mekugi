@@ -1,13 +1,18 @@
 ◐ /1 Unify journal rendering · started ›                                   12:00
+  Full task details
 ◆ Validation passed with shared rendering. ›
+  Copy retains this detail.
 ⚠ /2 Provider check · blocked · Waiting for provider evidence ›
+  Full blocked task details
 
-╭─ ✓ journal · 1 open ────────────────────────────────────────────────── 12:00 ╮
+╭─ ✓ journal · 1 open · 1 note ───────────────────────────────────────── 12:00 ╮
 │ This turn                                                                    │
-│ ◐ /1 Unify journal rendering: Full task details                              │
-│ ⚠ /2 Provider check: Full blocked task details · Waiting for provider        │
-│   evidence                                                                   │
+│ ◐ /1 Unify journal rendering                                                 │
+│   Full task details                                                          │
 │ ◆ Validation passed with shared rendering.                                   │
+│   Copy retains this detail.                                                  │
+│ ⚠ /2 Provider check · Waiting for provider evidence                          │
+│   Full blocked task details                                                  │
 │                                                                              │
 │ Remaining                                                                    │
 │ ○ /3 Finish review                                                           │

@@ -58,17 +58,12 @@ func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 		t.Fatal(err)
 	}
 	front := "PATH=" + quoteShellWord(guard+string(os.PathListSeparator)+real) + ":\"$PATH\"; export PATH\n"
-	if err := os.WriteFile(startup, append([]byte(front+vcsguard.Functions("bash", guard, nil)), hook...), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	zdotdir := filepath.Join(shell.root, "zsh")
-	if err := vcsguard.WriteZshStartup(zdotdir, vcsguard.ZshPath(guard, real)+vcsguard.Functions("zsh", guard, nil)); err != nil {
+	if err := os.WriteFile(startup, append([]byte(front+vcsguard.Functions(guard, nil)), hook...), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Plain sh has no startup hook. Its nested commands must also find only
 	// this fixture's guard and fake tools before the isolated host PATH.
 	shell.env[0] = "PATH=" + guard + string(os.PathListSeparator) + real + string(os.PathListSeparator) + execTrackPath()
-	shell.env = append(shell.env, "ZDOTDIR="+zdotdir)
 	return &vcsGuardShell{execTrackShell: shell, log: log, real: real}
 }
 
@@ -296,45 +291,6 @@ func TestVCSGuardAbsolutePathBash(t *testing.T) {
 	}
 	if len(asked) != 0 {
 		t.Fatalf("non-writes asked %d times", len(asked))
-	}
-}
-
-// Zsh reaches the guard through ZDOTDIR's startup files, after the user's
-// own, which here replace PATH as a login profile may: by name and by path,
-// in login and plain shells alike.
-func TestVCSGuardZsh(t *testing.T) {
-	t.Parallel()
-	execTrackShellExecutable(t, "zsh")
-	shell := newVCSGuardShell(t)
-	asked := shell.answer(t, false)
-	// The user's files put the real tools first, as a profile adding a
-	// package manager's directory may.
-	reset := "PATH=" + quoteShellWord(shell.real) + ":/usr/bin:/bin:\"$PATH\"\n"
-	for _, name := range []string{".zshenv", ".zprofile", ".zshrc", ".zlogin"} {
-		if err := os.WriteFile(filepath.Join(shell.home, name), []byte(reset+"print -r -- "+name+" >> ~/startup.log\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	git := quoteShellWord(filepath.Join(shell.real, "git"))
-	script := "git add -A; git push origin main; " + git + " push origin main; echo $?; git log && " + git + " push --tags && git status"
-	for _, flag := range []string{"-lc", "-c"} {
-		run := runShell(t, shell.env, "zsh", flag, script)
-		if run.code != 1 || run.stdout != "1\n" || strings.Count(run.stderr, "mekugi: remote write denied: denied in test\n") != 3 {
-			t.Fatalf("zsh %s: run = %+v", flag, run)
-		}
-		if got := shell.invoked(t); !slices.Equal(got, []string{"git_add_-A", "git_log"}) {
-			t.Fatalf("zsh %s: real tools ran %q", flag, got)
-		}
-		for range 3 {
-			if argv := <-asked; argv[1] != "push" {
-				t.Fatalf("zsh %s: asked about %q", flag, argv)
-			}
-		}
-	}
-	// Each shell ran the user's files that apply to it, in zsh's order.
-	log, err := os.ReadFile(filepath.Join(shell.home, "startup.log"))
-	if err != nil || string(log) != ".zshenv\n.zprofile\n.zlogin\n.zshenv\n" {
-		t.Fatalf("user startup files = %q, %v", log, err)
 	}
 }
 
