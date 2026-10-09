@@ -78,13 +78,30 @@ explicit external roots and an empty root list remain inherited. Named permissio
 profiles and approval-review routing remain intact. Missing profile provenance
 rejects launch rather than approximating a custom policy with a sandbox label.
 
+## REQ-ORCHESTRATE-003 — Batch lifecycle waits
+
+Main calls `tools.mcp__orchestrate__wait_agent({timeout_ms:10000})` to receive
+the next observed batch completion, failure, question or approval. A wait returns
+the task, available host thread and turn identity, event kind and host status. Prompt events
+identify their host request or asynchronous question item. Cross-thread answering
+remains part of the accepted navigation capability below. Events describe
+observations, not a claim that a prompt is still pending when the result is read.
+
+Events observed during this session remain queued until a wait receives them.
+Terminal outcomes become available only after their run record is saved.
+Persistence failure returns `kind: "failure", status: "storage_failed"`.
+Waiting leaves input and host events responsive. Timeout returns `timed_out: true`;
+cancellation ends that wait without interrupting a child. Timeout defaults to
+ten seconds and accepts one millisecond through twenty-five minutes. Replay
+does not recreate wait handles or live prompt requests.
+
 ## Accepted delivery scope
 
 The remaining capabilities are accepted but not yet delivered:
 
 - `/orchestrate` starts the workflow or opens its run picker. Instructions appear
   once in the initial input and recover once after context reset.
-- `send_message`, `followup_task` and `wait_agent` coordinate run members without
+- `send_message` and `followup_task` coordinate run members without
   replacing Codex execution.
 - Run-authorized journals mount read-only across checkouts. The new Main-only
   `accepted` task state records reviewed integration; child completion cannot

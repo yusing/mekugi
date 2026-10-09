@@ -72,15 +72,25 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 		return result
 	}
 	call := func(tool string, args any) <-chan callResult { return callContext(t.Context(), tool, args) }
-	take := func(result <-chan callResult, wantError bool) {
+	take := func(result <-chan callResult, wantError bool) *mcp.CallToolResult {
 		t.Helper()
 		select {
 		case got := <-result:
 			if (got.err != nil || got.value.IsError) != wantError {
 				t.Fatalf("MCP result: %+v, %v", got.value, got.err)
 			}
+			return got.value
 		case <-time.After(5 * time.Second):
 			t.Fatal("MCP result timeout")
+		}
+		return nil
+	}
+	assertEvent := func(result *mcp.CallToolResult, kind, status string) {
+		t.Helper()
+		var event orchestrateEvent
+		encoded, err := json.Marshal(result.StructuredContent)
+		if err != nil || json.Unmarshal(encoded, &event) != nil || event.Task != "batch" || event.Thread != "child" || event.Kind != kind || event.Status != status {
+			t.Fatalf("wait event: %s, %v", encoded, err)
 		}
 	}
 	dispatch := func() *orchestrateCommand {
@@ -96,13 +106,25 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 		}
 	}
 	take(call("prepare", map[string]any{"task_name": "batch"}), false)
+	result := call("wait_agent", map[string]any{"timeout_ms": 1})
+	// The timeout may expire before the UI receives this command.
+	select {
+	case command := <-u.orchestrateCommands():
+		u.startOrchestratedChild(command)
+	case <-time.After(10 * time.Millisecond):
+	}
+	timedOut := take(result, false)
+	if encoded, _ := json.Marshal(timedOut.StructuredContent); string(encoded) != `{"timed_out":true}` {
+		t.Fatalf("timeout: %s", encoded)
+	}
+	take(call("wait_agent", map[string]any{"timeout_ms": 0}), true)
 	batches, err := store.List(ctx, workspace, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
 	batch := batches[0]
 	writeTestFile(t, filepath.Join(batch.Cwd, "input"), "copied input")
-	result := call("spawn_agent", map[string]any{"task_name": "batch", "message": "work"})
+	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "work"})
 	dispatch()
 	request := btwTestRequest(t, w, "thread/start", "")
 	batches, _ = store.List(ctx, workspace, "main")
@@ -141,6 +163,8 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "changed"})
 	dispatch()
 	take(result, true)
+	wait := call("wait_agent", map[string]any{"timeout_ms": 5000})
+	dispatch()
 	result = call("interrupt_agent", map[string]any{"target": "/root/batch"})
 	dispatch()
 	request = btwTestRequest(t, w, "turn/interrupt", "child")
@@ -149,12 +173,18 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	}
 	orchestrateTestReply(t, u, request, `{}`)
 	take(result, false)
+	select {
+	case <-wait:
+		t.Fatal("interrupt acknowledgement completed lifecycle wait")
+	default:
+	}
 	result = call("interrupt_agent", map[string]any{"target": "batch"})
 	dispatch()
 	request = btwTestRequest(t, w, "turn/interrupt", "child")
 	event := appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"child-turn","status":"interrupted"}}`)}
 	u.orchestrateMessage(event)
 	drainOrchestrateWork(t, u)
+	assertEvent(take(wait, false), "done", "interrupted")
 	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"turn already finished"}}`, request.ID))
 	take(result, true)
 	batches, _ = store.List(ctx, workspace, "main")
@@ -163,6 +193,36 @@ func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
 	}
 	if u.orchestrateBusy() {
 		t.Fatal("completion left child running")
+	}
+	// Cancellation retires a wait, not the next observed prompt.
+	waitCtx, cancelWait := context.WithCancel(t.Context())
+	wait = callContext(waitCtx, "wait_agent", map[string]any{})
+	waitCommand := dispatch()
+	cancelWait()
+	select {
+	case <-waitCommand.ctx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("wait cancellation not propagated")
+	}
+	take(wait, true)
+	for _, prompt := range []struct{ method, kind string }{{"item/tool/requestUserInput", "question"}, {"item/commandExecution/requestApproval", "approval"}} {
+		message := appserver.Message{ID: []byte(`"prompt"`), Method: prompt.method, Params: []byte(`{"threadId":"child","turnId":"question-turn"}`)}
+		if u.orchestrateMessage(message) {
+			t.Fatal("wait observer consumed a host prompt")
+		}
+		wait = call("wait_agent", map[string]any{})
+		dispatch()
+		assertEvent(take(wait, false), prompt.kind, "")
+	}
+	u.orchestrateMessage(appserver.Message{Method: "item/completed", Params: []byte(`{"threadId":"child","turnId":"question-turn","item":{"id":"async-question","type":"agentMessage","delivery":"async","questions":[{"title":"Which target?"}]}}`)})
+	wait = call("wait_agent", map[string]any{})
+	dispatch()
+	async := take(wait, false)
+	assertEvent(async, "question", "")
+	var asyncEvent orchestrateEvent
+	encoded, _ := json.Marshal(async.StructuredContent)
+	if err := json.Unmarshal(encoded, &asyncEvent); err != nil || asyncEvent.Item != "async-question" || len(asyncEvent.Request) != 0 {
+		t.Fatal("asynchronous question identity lost", asyncEvent, err)
 	}
 	// Removed options reject at the real MCP schema, before dispatch.
 	for _, option := range []string{"fork_turns", "agent_type"} {

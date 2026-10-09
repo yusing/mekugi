@@ -5,6 +5,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yusing/mekugi/internal/orchestrate"
@@ -16,6 +17,10 @@ type orchestratePrepareInput struct {
 
 type orchestrateInterruptInput struct {
 	Target string `json:"target"`
+}
+
+type orchestrateWaitInput struct {
+	TimeoutMS int `json:"timeout_ms"`
 }
 
 // Preparation is coordinator-only. Cross-checkout child authority is granted
@@ -46,6 +51,30 @@ func orchestrateMain(ctx context.Context, proxy *mekugiProxy, workspace, thread,
 func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.Server {
 	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
+	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next observed batch completion, failure, question or approval. Timeout ends only the wait. Prompt events identify the host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateWaitInput) (*mcp.CallToolResult, any, error) {
+		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+		if err != nil {
+			return nil, nil, err
+		}
+		defer release()
+		if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+			return nil, nil, err
+		}
+		if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
+			return nil, nil, err
+		}
+		if input.TimeoutMS == 0 {
+			input.TimeoutMS = 10000
+		}
+		waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
+		defer cancel()
+		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, wait: true, reply: make(chan orchestrateResult, 1)}
+		result, value, err := proxy.orchestration.call(command)
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, map[string]any{"timed_out": true}, nil
+		}
+		return result, value, err
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "interrupt_agent", Description: "Request interruption of a live batch turn. The host's turn completion confirms the outcome.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateInterruptInput) (*mcp.CallToolResult, any, error) {
 		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
 		if err != nil {
@@ -145,6 +174,9 @@ func (runtime *orchestrateRuntime) call(command *orchestrateCommand) (*mcp.CallT
 	}
 	select {
 	case result := <-command.reply:
+		if result.event != nil {
+			return nil, result.event, result.err
+		}
 		return nil, result.batch, result.err
 	case <-command.ctx.Done():
 		return nil, nil, command.ctx.Err()
