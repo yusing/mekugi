@@ -266,6 +266,9 @@ const nativeMetricParts = 11
 
 func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
 	var parts [nativeMetricParts]string
+	if v.orchestrationRetained[agent.Name] {
+		return parts
+	}
 	if agent.Name != "/root" {
 		// Main's context and output rate belong to the composer.
 		parts[10] = outputThroughputLabel(agent.OutputThroughput)

@@ -1,0 +1,7 @@
+─ 4 Agents · 5 ─────────────────────────────────────────────────────────────────────────────────────
+ Orchestration
+ ● main                      Ready                                                               0%
+ ● batch                     mekugi/run/batch · interrupted · not subscribed                        
+ ● prepared                  mekugi/run/prepared · prepared · not subscribed                       
+ ● failed                    mekugi/run/failed · failed · not subscribed                           
+ ● uncertain                 mekugi/run/uncertain · starting · not subscribed                      

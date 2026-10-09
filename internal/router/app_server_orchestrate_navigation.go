@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/orchestrate"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -24,6 +25,7 @@ type orchestrateNavigation struct {
 	unavailable   map[string]bool
 	pending       []appserver.Message
 	promptOrder   uint64
+	retained      []orchestrate.Batch
 }
 
 func (u *appServerUI) viewedUI() *appServerUI {
@@ -33,11 +35,15 @@ func (u *appServerUI) viewedUI() *appServerUI {
 	return u
 }
 
-func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, ready func()) error {
+func (u *appServerUI) ensureOrchestrationNavigation() *orchestrateNavigation {
 	if u.navigation == nil {
 		u.navigation = &orchestrateNavigation{owner: u, viewed: u, views: map[string]*appServerUI{u.thread: u}, order: []string{u.thread}, reads: make(map[string]string), unavailable: make(map[string]bool)}
 	}
-	n := u.navigation
+	return u.navigation
+}
+
+func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, ready func()) error {
+	n := u.ensureOrchestrationNavigation()
 	thread := child.batch.Launch.ThreadID
 	if n.views[thread] != nil {
 		ready()
@@ -357,6 +363,7 @@ func (u *appServerUI) orchestrationRoster() {
 		}
 		u.agents.orchestration = nil
 		u.agents.orchestrationLabels = map[string]string{}
+		u.agents.orchestrationRetained = map[string]bool{}
 		for _, thread := range n.order {
 			v := n.views[thread]
 			agent := *v.session.agent("/root")
@@ -371,6 +378,19 @@ func (u *appServerUI) orchestrationRoster() {
 			agent.Name = "/Orchestration/" + name
 			u.agents.orchestration = append(u.agents.orchestration, agent)
 			u.agents.orchestrationLabels[agent.Name] = label
+		}
+		for _, batch := range n.retained {
+			name := batch.TaskName
+			if name == "main" {
+				name = "main batch"
+			}
+			name = "/Orchestration/" + name
+			if _, exists := u.agents.orchestrationLabels[name]; exists {
+				continue
+			}
+			u.agents.orchestration = append(u.agents.orchestration, activityPaneAgent{Name: name})
+			u.agents.orchestrationRetained[name] = true
+			u.agents.orchestrationLabels[name] = batch.Branch + " · " + orchestrateRestoredBatchState(batch) + " · not subscribed"
 		}
 	}
 }
@@ -487,6 +507,16 @@ func (u *appServerUI) pickOrchestratedThread() bool {
 		batch := n.owner.orchestrateThreads[thread]
 		if name == "main" && thread == n.owner.thread || batch != nil && (name == batch.batch.TaskName && name != "main" || name == "main batch" && batch.batch.TaskName == "main") {
 			return u.switchOrchestratedThread(thread)
+		}
+	}
+	for _, batch := range n.retained {
+		if name == batch.TaskName && name != "main" || name == "main batch" && batch.TaskName == "main" {
+			message := "This batch is not subscribed · resume its retained thread before viewing"
+			if batch.Launch == nil || batch.Launch.ThreadID == "" {
+				message = "This batch has no confirmed thread · inspect preparation or launch before viewing"
+			}
+			u.setNotice(message, false)
+			return true
 		}
 	}
 	return false

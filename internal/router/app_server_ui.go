@@ -888,6 +888,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					u.setNotice(u.resumeNotice, true)
 					u.resumeNotice = ""
 				}
+				u.recoverOrchestratedRun()
 				u.retainAppliedSettings()
 				return u.restorePaneContent(result.Thread)
 			}
