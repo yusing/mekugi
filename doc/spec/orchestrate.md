@@ -95,14 +95,33 @@ cancellation ends that wait without interrupting a child. Timeout defaults to
 ten seconds and accepts one millisecond through twenty-five minutes. Replay
 does not recreate wait handles or live prompt requests.
 
+## REQ-ORCHESTRATE-004 — Batch follow-ups
+
+`tools.mcp__orchestrate__followup_task({target:"batch",message:"Continue the batch."})`
+delivers input through Codex to a confirmed live batch thread. An idle batch
+starts a turn; a running batch receives a steer with the active turn identity as
+its precondition. Main and confirmed child roots can target a sibling by task
+name or `/root/task_name`. Native subagents are not orchestration run members.
+`main` names the coordinator; a batch named `main` uses `/root/main`.
+
+The run saves delivery intent before host dispatch and saves acknowledgement
+before returning success. Repeating the same host call returns its retained
+delivery state without resending. Changed input under the same call identity
+rejects. Unconfirmed dispatches require inspection, not an automatic retry.
+Canceling a follow-up stops undispatched work; a late acknowledgement is retained
+without interrupting the recipient's existing work. Host rejection is reported
+without replacing the batch's launch or turn-completion facts.
+
+Deferred messages and follow-ups targeting Main remain accepted work below.
+
 ## Accepted delivery scope
 
 The remaining capabilities are accepted but not yet delivered:
 
 - `/orchestrate` starts the workflow or opens its run picker. Instructions appear
   once in the initial input and recover once after context reset.
-- `send_message` and `followup_task` coordinate run members without
-  replacing Codex execution.
+- `send_message` queues input for the recipient's next turn without waking it.
+  Child follow-ups can wake Main through the normal composer lifecycle.
 - Run-authorized journals mount read-only across checkouts. The new Main-only
   `accepted` task state records reviewed integration; child completion cannot
   accept its own result or complete Main's integration task.

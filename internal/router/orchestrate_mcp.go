@@ -23,6 +23,11 @@ type orchestrateWaitInput struct {
 	TimeoutMS int `json:"timeout_ms"`
 }
 
+type orchestrateFollowupInput struct {
+	Target  string `json:"target"`
+	Message string `json:"message"`
+}
+
 // Preparation is coordinator-only. Cross-checkout child authority is granted
 // separately when a run has a confirmed host child identity.
 func orchestrateMain(ctx context.Context, proxy *mekugiProxy, workspace, thread, name string) error {
@@ -51,6 +56,26 @@ func orchestrateMain(ctx context.Context, proxy *mekugiProxy, workspace, thread,
 func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.Server {
 	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
+	mcp.AddTool(server, &mcp.Tool{Name: "followup_task", Description: "Deliver input to a confirmed batch thread: start an idle turn or steer its running turn. Main and confirmed children can target sibling task names or /root/task paths. Repeats return retained delivery progress.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target", "message"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}, "message": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateFollowupInput) (*mcp.CallToolResult, any, error) {
+		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+		if err != nil {
+			return nil, nil, err
+		}
+		defer release()
+		if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+			return nil, nil, err
+		}
+		var turn struct {
+			ID string `json:"turn_id"`
+		}
+		encoded, err := json.Marshal(request.Params.GetMeta()[codexTurnMetadataHeader])
+		if err != nil || json.Unmarshal(encoded, &turn) != nil {
+			return nil, nil, errors.New("missing host turn identity")
+		}
+		key := fmt.Sprintf("%q/%q/%q", thread, turn.ID, request.Params.GetMeta()["callId"])
+		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, followup: true, callID: key, input: orchestrateSpawnInput{Message: input.Message}, reply: make(chan orchestrateResult, 1)}
+		return proxy.orchestration.call(command)
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next observed batch completion, failure, question or approval. Timeout ends only the wait. Prompt events identify the host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateWaitInput) (*mcp.CallToolResult, any, error) {
 		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
 		if err != nil {
@@ -174,6 +199,17 @@ func (runtime *orchestrateRuntime) call(command *orchestrateCommand) (*mcp.CallT
 	}
 	select {
 	case result := <-command.reply:
+		if result.delivery != nil {
+			d := result.delivery
+			value := map[string]any{"id": d.ID, "target": d.Target, "state": d.State}
+			if d.TurnID != "" {
+				value["turn_id"] = d.TurnID
+			}
+			if d.Error != "" {
+				value["error"] = d.Error
+			}
+			return nil, value, result.err
+		}
 		if result.event != nil {
 			return nil, result.event, result.err
 		}

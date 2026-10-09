@@ -25,23 +25,30 @@ type orchestrateCommand struct {
 	input           orchestrateSpawnInput
 	target          string
 	wait            bool
+	followup        bool
+	caller, callID  string
 	reply           chan orchestrateResult
 }
 
 type orchestrateResult struct {
-	batch orchestrate.Batch
-	err   error
-	event *orchestrateEvent
+	batch    orchestrate.Batch
+	err      error
+	event    *orchestrateEvent
+	delivery *orchestrate.Delivery
 }
 type orchestrateRPC struct {
-	method  string
-	child   *orchestrateChild
-	cleanup bool
+	method   string
+	child    *orchestrateChild
+	cleanup  bool
+	followup *orchestrateCommand
+	delivery orchestrate.Delivery
 }
 type orchestrateChild struct {
-	command *orchestrateCommand
-	batch   orchestrate.Batch
-	turn    string
+	command       *orchestrateCommand
+	batch         orchestrate.Batch
+	turn          string
+	completedTurn string
+	followups     []*orchestrateCommand
 }
 
 func (u *appServerUI) orchestrateCommands() <-chan *orchestrateCommand {
@@ -55,6 +62,10 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 	fail := func(err error) { command.reply <- orchestrateResult{err: err} }
 	if err := command.ctx.Err(); err != nil {
 		fail(err)
+		return
+	}
+	if command.followup {
+		u.queueOrchestratedFollowup(command)
 		return
 	}
 	if command.main != u.thread || command.workspace != u.session.cwd {
@@ -175,17 +186,21 @@ func (u *appServerUI) completeOrchestrateWork(complete func()) {
 }
 
 func (u *appServerUI) orchestrateRequest(child *orchestrateChild, method string, params any) error {
+	return u.orchestrateRPCRequest(orchestrateRPC{method: method, child: child}, params)
+}
+
+func (u *appServerUI) orchestrateRPCRequest(request orchestrateRPC, params any) error {
 	if u.orchestrateClosing {
 		return context.Canceled
 	}
-	id, err := u.client.Send(method, params, true)
+	id, err := u.client.Send(request.method, params, true)
 	if err != nil {
 		return err
 	}
 	if u.orchestrateRequests == nil {
 		u.orchestrateRequests = make(map[string]orchestrateRPC)
 	}
-	u.orchestrateRequests[id] = orchestrateRPC{method: method, child: child}
+	u.orchestrateRequests[id] = request
 	return nil
 }
 
@@ -234,6 +249,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			child.turn, status = event.Turn.ID, "running"
 		case "turn/completed":
 			child.turn, status = "", event.Turn.Status
+			child.completedTurn = event.Turn.ID
 		}
 		if status != "" {
 			child.batch.Launch.HostStatus = status
@@ -267,6 +283,10 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 	}
 	delete(u.orchestrateRequests, string(m.ID))
 	u.dirty = true
+	if r.followup != nil {
+		u.orchestratedFollowupResponse(r, m)
+		return true
+	}
 	child, c := r.child, r.child.command
 	if r.method == "turn/interrupt" {
 		var err error
@@ -387,7 +407,7 @@ func (u *appServerUI) orchestrateBusy() bool {
 		return true
 	}
 	for _, child := range u.orchestrateThreads {
-		if child.turn != "" {
+		if child.turn != "" || len(child.followups) != 0 {
 			return true
 		}
 	}

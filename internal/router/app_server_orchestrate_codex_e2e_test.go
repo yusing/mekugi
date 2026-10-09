@@ -186,6 +186,12 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if !strings.Contains(string(first), command.input.Message) {
 		t.Fatal("fresh assignment missing at provider")
 	}
+	followup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, callID: "installed-running", input: orchestrateSpawnInput{Message: "Continue the probe when ready."}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(followup)
+	pump(func() bool { return len(followup.reply) > 0 })
+	if r := <-followup.reply; r.err != nil || r.delivery == nil || r.delivery.State != "delivered" || r.delivery.TurnID != u.orchestrateThreads[result.batch.Launch.ThreadID].turn {
+		t.Fatalf("installed running follow-up: %+v", r)
+	}
 	interrupt := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", reply: make(chan orchestrateResult, 1)}
 	wait := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, wait: true, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(wait)
@@ -205,5 +211,21 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	if batches[0].Launch.HostStatus != "interrupted" {
 		t.Fatal("host interruption not retained", batches[0])
+	}
+	followup = &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, callID: "installed-idle", input: orchestrateSpawnInput{Message: "Start the idle follow-up probe."}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(followup)
+	pump(func() bool { return len(followup.reply) > 0 })
+	if r := <-followup.reply; r.err != nil || r.delivery == nil || r.delivery.State != "delivered" || r.delivery.TurnID == batches[0].Launch.TurnID {
+		t.Fatalf("installed idle follow-up: %+v", r)
+	}
+	for {
+		select {
+		case body := <-provider.requests:
+			if strings.Contains(string(body), followup.input.Message) {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("idle follow-up did not reach the provider", ctx.Err())
+		}
 	}
 }
