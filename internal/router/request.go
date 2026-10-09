@@ -23,6 +23,8 @@ type parsedResponsesRequest struct {
 	cachedInput int
 	rebaseInput bool
 	toolCatalog *responsesToolCatalog
+	// Authorized reset recovery carries the original guidance read order.
+	journalGuidanceOrder []string
 }
 
 // responseTools returns the decoded tool catalog, decoding it on first access.

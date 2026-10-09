@@ -132,6 +132,7 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 	}
 	s = s.scoped(ctx)
 	var restored []map[string]jsonv1.RawMessage
+	var guidanceOrder []string
 	err := s.locked(ctx, func() error {
 		var names []string
 		for _, item := range items {
@@ -173,6 +174,9 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 			if err != nil {
 				return err
 			}
+			if guidanceOrder == nil && recovery.Guidance != nil {
+				guidanceOrder = slices.Clone(recovery.Guidance.FirstReadOrder)
+			}
 			restored = append(restored, map[string]jsonv1.RawMessage{
 				"type": mustMarshalJSON("message"), "role": mustMarshalJSON("assistant"),
 				"content": mustMarshalJSON([]any{map[string]any{"type": "output_text", "text": recovery.Text, "annotations": []any{}}}),
@@ -188,6 +192,7 @@ func (s *mekugiReplayStore) restoreJournalCompactionItems(ctx context.Context, r
 	input, err := json.Marshal(&restored)
 	if err == nil {
 		request.setInput(input)
+		request.journalGuidanceOrder = guidanceOrder
 	}
 	return err
 }
@@ -275,7 +280,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 	if v2 && (p.journalCompaction == "auto" || metadata.Trigger == "manual" && metadata.Phase == "standalone_turn") {
 		// Snapshot outside the store lock: skill loads run skills-mgr.
 		if items, _, err := journalCompactionInput(&a.request); err == nil {
-			guidance = collectJournalGuidance(ctx, items, jsonString(a.request.fields, "instructions"), workspace)
+			guidance = collectJournalGuidance(ctx, items, jsonString(a.request.fields, "instructions"), workspace, a.request.journalGuidanceOrder)
 		}
 	}
 	var summary journalSummary

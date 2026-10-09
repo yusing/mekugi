@@ -338,21 +338,34 @@ A router-answered V2 reset also retains guidance the thread loaded before it, so
 the agent does not reload instructions the summary cannot carry. Guidance is a
 file read whose path the request's instruction text names. Instruction text is the base
 instructions, developer messages and AGENTS.md instruction messages; a name
-matches the absolute, `~/`, `$HOME/` or workspace-relative path as a whole token.
-Reads come from literal, simple top-level `cat` and `mcat` commands in
+matches the absolute, `~/`, `$HOME/`, `${HOME}/` or workspace-relative path as a whole token.
+Reads come from literal, simple top-level `cat`, `mcat` and `inspect_file` commands in
 completed `exec_command` calls and exec cells of the history the compaction
-request carries, including guidance retained by an earlier reset. Other reads
-and dynamic, piped, redirected or nested commands are not guidance. File snapshots require an instruction-named
+request carries, including guidance retained by an earlier reset. Plain `$HOME`
+and `${HOME}` path expansions, quoted or unquoted, resolve to the user's home
+directory without shell execution. Other parameter expansions remain ineligible.
+Only unambiguous single-path expansions qualify. Other reads and dynamic, piped,
+redirected or nested commands are not guidance. File snapshots require an instruction-named
 resolved path and a bounded regular file; process, system and device files are
 unavailable. A symlink cannot admit a different unnamed source.
+Eligibility comes only from the last context's completed reads, including retained
+guidance visible in that context. First-context ordering metadata cannot make an
+older omitted source eligible again.
 
-At reset, the router reads each source once from the selected workspace. Ranged
-or bounded reads identify the source; retained snapshots contain its whole text.
+At reset, the router reads each source once from the selected workspace. Global
+instruction references have first priority, followed by repository-instruction
+references to files in the repository root. These sources retain their whole text.
+Repository-instruction references below that root retain only the shared
+`inspect_file` structural outline, so their bodies do not displace task guidance.
+Ranged or bounded reads identify the source, not a retained subset of its text.
 Content reflects reset time, so a read that was truncated or batched with other
 output is complete. Skills are not snapshotted; the agent reloads them through
 stock host execution when needed. Collection starts no subprocess.
-Sources fill a 48 KiB budget and render newest first; the budget
-includes source labels and bounded omission and failure notices. The rest are
+Within each priority tier, sources follow the first context's read order, then
+the last context's read order, then instruction declaration order. The initial
+read order survives later resets and restart through the retained recovery record.
+Sources share a 12,000-token budget measured with Mekugi's pinned tokenizer,
+including source labels and bounded omission and failure notices. The rest are
 listed by read command while space permits, with a count for further notices.
 Sources that cannot be read are listed with their cause and never stop the reset.
 Collection has one five-second deadline and stops snapshotting when no body

@@ -7,9 +7,172 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/tokenizer"
 )
+
+func guidanceTokenCount(t *testing.T, text string) int {
+	t.Helper()
+	codec, err := tokenizer.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := codec.Count(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
+func TestJournalGuidanceHomeReads(t *testing.T) {
+	t.Parallel()
+	const workspace, home = "/workspace", "/user"
+	for _, tc := range []struct {
+		command string
+		want    []string
+	}{
+		{`cat "$HOME/ONE.md"`, []string{home + "/ONE.md"}},
+		{`mcat $HOME/ONE.md 1:2`, []string{home + "/ONE.md"}},
+		{`inspect_file "${HOME}/ONE.md"`, []string{home + "/ONE.md"}},
+		{`cat '${HOME}/ONE.md'`, []string{workspace + "/${HOME}/ONE.md"}},
+		{`cat "$HOME/ONE.md" "$OTHER/TWO.md"`, nil},
+		{`cat "${HOME:-$(touch sentinel)}/ONE.md"`, nil},
+		{`cat "${HOME#prefix}/ONE.md"`, nil},
+		{`cat "$HOME/$(printf ONE.md)"`, nil},
+	} {
+		if got := journalGuidanceReads(execCommandInput{Command: tc.command, Workdir: workspace}, home); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: got %v, want %v", tc.command, got, tc.want)
+		}
+	}
+	// Quoted HOME remains one path when the home directory contains spaces.
+	for _, tc := range []struct {
+		command string
+		want    []string
+	}{
+		{`cat "$HOME/ONE.md"`, []string{"/user space/ONE.md"}},
+		{`cat $HOME/ONE.md`, nil},
+	} {
+		if got := journalGuidanceReads(execCommandInput{Command: tc.command, Workdir: workspace}, "/user space"); !slices.Equal(got, tc.want) {
+			t.Errorf("spaced HOME %s: got %v, want %v", tc.command, got, tc.want)
+		}
+	}
+}
+
+func TestJournalCompactionV2GuidancePriorityAndReadOrder(t *testing.T) {
+	transform, proxy, _, workspace := newDurableTreeTransform(t)
+	defer transform.Close()
+	global := t.TempDir()
+	t.Setenv("HOME", global)
+	thread := transform.shellThreadID
+	proxy.journalCompaction = "auto"
+	if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Ordered guidance")}}); err != nil {
+		t.Fatal(err)
+	}
+	g1, g2 := filepath.Join(global, ".codex", "ONE.md"), filepath.Join(global, ".codex", "TWO.md")
+	doc := filepath.Join(workspace, "doc", "DETAIL.md")
+	for path, body := range map[string]string{
+		g1: "Global one.\n", g2: "Global two.\n",
+		filepath.Join(workspace, "ROOT1.md"): "Root one.\n",
+		filepath.Join(workspace, "ROOT2.md"): "Root two.\n",
+		filepath.Join(workspace, "NEW.md"):   "New context.\n",
+		doc:                                  "# Detail\n" + strings.Repeat("PRIVATE-DOC-BODY\n", 8000) + "## Tail\nDetails.\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	agents := map[string]any{"role": "user", "content": "# AGENTS.md instructions for " + workspace + "\n### In ~/.codex\nRead ONE.md and TWO.md.\n--- project-doc ---\nRead ROOT1.md, ROOT2.md, NEW.md and doc/DETAIL.md."}
+	read := func(id, command string) []any {
+		return []any{
+			map[string]any{"type": "function_call", "call_id": id, "name": nativeExecCommandToolName, "arguments": string(mustTestJSON(t, map[string]string{"cmd": command}))},
+			map[string]any{"type": "function_call_output", "call_id": id, "output": "loaded"},
+		}
+	}
+	history := append([]any{agents}, read("first-read", "cat ROOT2.md ROOT1.md "+shellQuoteArgument(g2)+" "+shellQuoteArgument(g1)+" doc/DETAIL.md")...)
+	item, first := deliverV2ContinuityReset(t, proxy, workspace, thread, history...)
+	want := []string{g2, g1, filepath.Join(workspace, "ROOT2.md"), filepath.Join(workspace, "ROOT1.md"), doc}
+	check := func(g *journalGuidance, paths []string) {
+		t.Helper()
+		if g == nil || len(g.Commands) != len(paths) {
+			t.Fatalf("guidance sources: %+v, want %v", g, paths)
+		}
+		for i, path := range paths {
+			if !strings.HasSuffix(g.Commands[i], shellQuoteArgument(path)) {
+				t.Fatalf("source order: %v, want %v", g.Commands, paths)
+			}
+		}
+		if !strings.Contains(g.Text, "1-1 heading Detail") || !strings.Contains(g.Text, "8002-8002 heading Tail") || strings.Contains(g.Text, "PRIVATE-DOC-BODY") || !strings.HasPrefix(g.Commands[len(paths)-1], "inspect_file ") {
+			t.Fatalf("nested document was not structural-only: %s", g.Text)
+		}
+	}
+	check(first.Guidance, want)
+	// Restoration reads durable order, not a live context or process handle.
+	history = append([]any{agents, item}, read("later-read", "cat "+shellQuoteArgument(g1)+" "+shellQuoteArgument(g2)+" ROOT1.md ROOT2.md NEW.md")...)
+	_, later := deliverV2ContinuityReset(t, proxy, workspace, thread, history...)
+	want = append(want[:4:4], filepath.Join(workspace, "NEW.md"), doc)
+	check(later.Guidance, want)
+	// Replaying an older snapshot supplies candidates, not a new read order.
+	// Without the initial order, actual last-context reads precede declarations.
+	legacy, err := journalGuidanceItems(&journalGuidance{Tool: first.Guidance.Tool, Name: first.Guidance.Name, Commands: first.Guidance.Commands, Text: first.Guidance.Text}, "resp_mekugi_compact_legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy = append(legacy,
+		map[string]jsonv1.RawMessage{"type": mustTestJSON(t, "function_call"), "call_id": mustTestJSON(t, "last-read"), "name": mustTestJSON(t, nativeExecCommandToolName), "arguments": mustTestJSON(t, `{"cmd":"cat ROOT2.md"}`)},
+		map[string]jsonv1.RawMessage{"type": mustTestJSON(t, "function_call_output"), "call_id": mustTestJSON(t, "last-read")})
+	legacy = append(legacy, map[string]jsonv1.RawMessage{"role": mustTestJSON(t, "user"), "content": mustTestJSON(t, agents["content"])})
+	g := collectJournalGuidance(t.Context(), legacy, "", workspace, nil)
+	check(g, []string{g1, g2, filepath.Join(workspace, "ROOT2.md"), filepath.Join(workspace, "ROOT1.md"), doc})
+	// Ordering metadata cannot revive a source absent from the last context.
+	old := filepath.Join(workspace, "OLD.md")
+	if err := os.WriteFile(old, []byte("OLDER-CONTEXT-SENTINEL\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g = collectJournalGuidance(t.Context(), legacy, "Read OLD.md.", workspace, append([]string{old}, first.Guidance.FirstReadOrder...))
+	check(g, []string{g2, g1, filepath.Join(workspace, "ROOT2.md"), filepath.Join(workspace, "ROOT1.md"), doc})
+	if strings.Contains(g.Text, "OLDER-CONTEXT-SENTINEL") {
+		t.Fatal("initial order revived an older-context source")
+	}
+}
+
+func TestJournalGuidanceTokenBudget(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "GUIDE.md")
+	// This whole source exceeds the old byte ceiling but is well below the token budget.
+	body := strings.Repeat(" guidance", 9000) + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	items := []map[string]jsonv1.RawMessage{
+		{"type": mustTestJSON(t, "function_call"), "name": mustTestJSON(t, nativeExecCommandToolName), "call_id": mustTestJSON(t, "read"), "arguments": mustTestJSON(t, `{"cmd":"cat GUIDE.md"}`)},
+		{"type": mustTestJSON(t, "function_call_output"), "call_id": mustTestJSON(t, "read")},
+	}
+	g := collectJournalGuidance(t.Context(), items, "Read GUIDE.md.", workspace, nil)
+	if g == nil || !strings.Contains(g.Text, body) || guidanceTokenCount(t, g.Text) > maxJournalGuidanceTokens {
+		t.Fatal("token-fitting large source was not retained whole")
+	}
+	if _, err := journalGuidanceItems(g, "resp_mekugi_compact_test"); err != nil {
+		t.Fatalf("large token-fitting snapshot was rejected on replay: %v", err)
+	}
+	// Dense text can exhaust tokens while using fewer bytes than the old ceiling.
+	dense := strings.Repeat("一二三", 4500)
+	if err := os.WriteFile(path, []byte(dense), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if guidanceTokenCount(t, dense) <= maxJournalGuidanceTokens {
+		t.Fatal("dense fixture does not exceed the token budget")
+	}
+	if got := collectJournalGuidance(t.Context(), items, "Read GUIDE.md.", workspace, nil); got != nil {
+		t.Fatal("token-overflowing source was retained")
+	}
+}
 
 func TestJournalCompactionV2RetainsLoadedGuidance(t *testing.T) {
 	bin := t.TempDir()
@@ -21,23 +184,24 @@ func TestJournalCompactionV2RetainsLoadedGuidance(t *testing.T) {
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	defer transform.Close()
 	thread := transform.shellThreadID
+	t.Setenv("HOME", workspace)
 	proxy.journalCompaction = "auto"
 	proxy.duplicateOutput = true
 	if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Guidance reset")}}); err != nil {
 		t.Fatal(err)
 	}
-	guide := filepath.Join(workspace, "docs", "GUIDE.md")
+	guide := filepath.Join(workspace, "GUIDE.md")
 	if err := os.MkdirAll(filepath.Dir(guide), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	guideBody := "Guide v1.\nWhole guidance tail.\nScript failed\nWall time 0.1 seconds\nOutput:\nScript error:\nprinted guidance, not a host failure\nScript running with cell ID guidance\nWall time 0.1 seconds\nOutput:\nScript completed\nWall time 0.1 seconds\nOutput:\n"
-	for path, content := range map[string]string{guide: guideBody, filepath.Join(workspace, "other.md"): "Unnamed body.\n", filepath.Join(workspace, "docs", "BIG.md"): strings.Repeat("x", maxJournalGuidanceBytes)} {
+	for path, content := range map[string]string{guide: guideBody, filepath.Join(workspace, "other.md"): "Unnamed body.\n", filepath.Join(workspace, "BIG.md"): strings.Repeat("x ", maxJournalGuidanceTokens)} {
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	agents := map[string]any{"role": "user", "content": "# AGENTS.md instructions for " + workspace + "\nRead docs/GUIDE.md, docs/BIG.md and docs/MISSING.md."}
-	cell := `text(await tools.exec_command({cmd: "mcat -n 1 docs/GUIDE.md 1:1; cat other.md docs/BIG.md docs/MISSING.md; skills-mgr get bad; skills-mgr get demo 1:1"}));`
+	agents := map[string]any{"role": "user", "content": "# AGENTS.md instructions for " + workspace + "\nRead GUIDE.md, BIG.md and MISSING.md."}
+	cell := `text(await tools.exec_command({cmd: 'mcat -n 1 "$HOME/GUIDE.md" 1:1; cat other.md BIG.md MISSING.md; skills-mgr get bad; skills-mgr get demo 1:1'}));`
 	item, recovery := deliverV2ContinuityReset(t, proxy, workspace, thread, agents,
 		map[string]any{"type": "custom_tool_call", "status": "completed", "call_id": "call_read", "name": "exec", "input": cell},
 		map[string]any{"type": "custom_tool_call_output", "call_id": "call_read", "output": []any{map[string]any{"type": "input_text", "text": "loaded"}}},
@@ -46,7 +210,7 @@ func TestJournalCompactionV2RetainsLoadedGuidance(t *testing.T) {
 		t.Fatalf("reset retained no guidance: %q", recovery.Text)
 	}
 	text := recovery.Guidance.Text
-	for _, want := range []string{"File: " + guide + "\nGuide v1.\nWhole guidance tail.\n", "Omitted by budget: cat " + filepath.Join(workspace, "docs", "BIG.md") + ": ", "Unavailable: cat " + filepath.Join(workspace, "docs", "MISSING.md") + ": "} {
+	for _, want := range []string{"File: " + guide + "\nGuide v1.\nWhole guidance tail.\n", "Omitted by budget: cat " + filepath.Join(workspace, "BIG.md") + ": ", "Unavailable: cat " + filepath.Join(workspace, "MISSING.md") + ": "} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("guidance missing %q:\n%s", want, text)
 		}
@@ -130,9 +294,9 @@ func TestJournalCompactionV2GuidanceNativeWholeSources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	agents := map[string]any{"role": "user", "content": "# AGENTS.md instructions for " + workspace + "\nRead $HOME/GUIDE.md and SKIP.md."}
+	agents := map[string]any{"role": "user", "content": "# AGENTS.md instructions for " + workspace + "\nRead ${HOME}/GUIDE.md and SKIP.md."}
 	item, recovery := deliverV2ContinuityReset(t, proxy, workspace, thread, agents,
-		map[string]any{"type": "function_call", "call_id": "call_native_read", "name": nativeExecCommandToolName, "arguments": string(mustTestJSON(t, map[string]string{"cmd": "mcat ~/GUIDE.md 1:1; cat SKIP.md | head; x=$(cat SKIP.md); cat SKIP.md > /dev/null", "workdir": workspace}))},
+		map[string]any{"type": "function_call", "call_id": "call_native_read", "name": nativeExecCommandToolName, "arguments": string(mustTestJSON(t, map[string]string{"cmd": `mcat "${HOME}/GUIDE.md" 1:1; cat SKIP.md | head; x=$(cat SKIP.md); cat SKIP.md > /dev/null`, "workdir": workspace}))},
 		map[string]any{"type": "function_call_output", "call_id": "call_native_read", "output": "loaded"},
 		map[string]any{"type": "custom_tool_call", "call_id": "call_other", "name": "other", "input": `text(await tools.exec_command({cmd: "cat SKIP.md"}));`},
 		map[string]any{"type": "custom_tool_call_output", "call_id": "call_other", "output": "loaded"})
@@ -231,7 +395,7 @@ func TestJournalCompactionV2GuidanceBoundsNotices(t *testing.T) {
 	if err := executeRequest(t.Context(), t.Context(), request, headers, "bounded-guidance-forward", provider, &output, nil, proxy); err != nil {
 		t.Fatalf("large source list made the reset unusable: %v", err)
 	}
-	if recovery.Guidance == nil || len(recovery.Guidance.Text) > maxJournalGuidanceBytes || !strings.Contains(recovery.Guidance.Text, "more sources") || len(provider.forwarded) != 1 {
+	if recovery.Guidance == nil || guidanceTokenCount(t, recovery.Guidance.Text) > maxJournalGuidanceTokens || !strings.Contains(recovery.Guidance.Text, "more sources") || len(provider.forwarded) != 1 {
 		t.Fatal("guidance notices were not bounded and forwarded")
 	}
 	entries := strings.Split(strings.TrimSpace(recovery.Guidance.Text), "\n")
