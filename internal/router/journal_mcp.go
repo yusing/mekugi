@@ -55,8 +55,8 @@ func journalMutateSchema() map[string]any {
 	}
 }
 
-// journalMCPDeclarations renders the input schemas for agent guidance. Codex
-// defers these MCP tools and omits their declarations from the exec description.
+// journalMCPDeclarations renders the input schemas for always-visible guidance,
+// including when Codex omits deferred MCP tools from the exec description.
 func journalMCPDeclarations() string {
 	mutations := journalMutationsSchemaAt("#/properties/mutations")
 	var declarations strings.Builder

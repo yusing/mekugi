@@ -65,6 +65,8 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 		t.Fatal("projected guidance lost journal format or batching guidance")
 	}
 	for _, contract := range []string{"tools.mcp__mekugi__journal_read", "tools.mcp__mekugi__journal_mutate", "structuredContent.paths", "structuredContent.nodes", "Check `isError`",
+		"without tool search, whether or not Codex lists the MCP tools", "p?:existingChildPath", "before?:siblingPath", "creation and binding validate together",
+		"recovery shows only its pointer line", "read-only subtree appears under that task", "Input declarations for planning and type-checking",
 		// Codex defers the MCP tools, so guidance carries their schema declarations.
 		"type JournalMutation =", `| { before?: string; body?: string; kind?: "note" | "context"; op: "add"; title: string; under?: string; }`, "tasks?: Array<string | JournalTask>", "// Node path to read"} {
 		if !strings.Contains(codeModeJournalGuidance, contract) || !strings.Contains(codeModeSubagentJournalGuidance, contract) {
@@ -80,6 +82,58 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 	for _, policy := range []string{"update affected documents before implementation", "review when warranted"} {
 		if strings.Contains(combined+proxy.registry.frontendGuidance, policy) {
 			t.Errorf("projected guidance retains copied workflow policy: %s", policy)
+		}
+	}
+}
+
+func TestJournalGuidanceVisibleWithEagerAndDeferredMCP(t *testing.T) {
+	for _, deferred := range []bool{false, true} {
+		for _, additional := range []bool{false, true} {
+			proxy := newManagedMekugiProxy(t)
+			// Stock headings/declarations advertise execution independently of the
+			// preamble's examples. MCP declarations are absent with tool search.
+			stock := "Run JavaScript.\n"
+			if additional {
+				stock += "declare const tools: { exec_command(args: { cmd: string }): Promise<unknown>; };"
+			} else {
+				stock += "### `exec_command`\nRun a command.\n"
+			}
+			if !deferred {
+				stock += "\n### `mcp__mekugi__journal_read`\nRead the journal.\n" +
+					"declare const tools: { mcp__mekugi__journal_read(args: {}): Promise<CallToolResult>; };"
+			}
+			fields := map[string]any{"model": "gpt-test", "instructions": testBaseInstructions,
+				"input": []any{map[string]any{"role": "user", "content": "task"}}}
+			if additional {
+				fields["input"] = []any{testCodeModeAdditionalTools(stock)}
+			} else {
+				fields["tools"] = []any{map[string]any{"type": "custom", "name": "exec", "description": stock}}
+			}
+			request, err := parseResponsesRequest(mustMarshalJSON(fields))
+			if err != nil {
+				t.Fatal(err)
+			}
+			metadata := codexTurnMetadata{RequestKind: "turn", Directories: map[string]jsonv1.RawMessage{t.TempDir(): nil}}
+			for _, prewarm := range []bool{true, false} {
+				transform, err := proxy.prepareModelRequest(t.Context(), &request, "session", "thread", metadata, true, prewarm)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if transform != nil {
+					transform.Close()
+				}
+				catalog := decodeResponsesToolCatalog(request.fields)
+				description := ""
+				if additional {
+					description = catalog.additional[0].tools.tools[0].nested.tools[0].Description
+				} else {
+					description = catalog.top.tools[0].Description
+				}
+				if !strings.Contains(description, stock) || strings.Count(description, codeModeJournalGuidance) != 1 ||
+					strings.Count(description, proxy.registry.frontendGuidance) != 1 || jsonString(request.fields, "instructions") != testBaseInstructions {
+					t.Fatalf("deferred=%v additional=%v prewarm=%v: stock contract or always-visible journal guidance lost", deferred, additional, prewarm)
+				}
+			}
 		}
 	}
 }

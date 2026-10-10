@@ -101,20 +101,28 @@ func (r *parsedResponsesRequest) isExecutionFreeRequest() bool {
 // Both clients advertise nested tools through headings; the App also exposes
 // TypeScript declarations. Match declarations, not examples such as
 // `await tools.exec_command(...)`, and do not depend on the client's preamble.
-var codeModeExecutionDeclaration = regexp.MustCompile(`(?:^|[;{])\s*(?:apply_patch|exec_command)\s*\(`)
+var codeModeExecutionDeclaration = regexp.MustCompile(`(?:^|[;{])\s*(apply_patch|exec_command)\s*\(`)
 
 func isExecutionFreeCodeModeDescription(description string) bool {
+	return !codeModeDeclaresExecutionTool(description, "apply_patch") && !codeModeDeclaresExecutionTool(description, "exec_command")
+}
+
+func codeModeDeclaresExecutionTool(description, name string) bool {
 	for line := range strings.SplitSeq(description, "\n") {
 		heading := strings.Fields(line)
 		if len(heading) < 2 || heading[0] != "###" {
 			continue
 		}
-		switch strings.Trim(heading[1], "`") {
-		case "apply_patch", "exec_command":
-			return false
+		if strings.Trim(heading[1], "`") == name {
+			return true
 		}
 	}
-	return !codeModeExecutionDeclaration.MatchString(description)
+	for _, declaration := range codeModeExecutionDeclaration.FindAllStringSubmatch(description, -1) {
+		if declaration[1] == name {
+			return true
+		}
+	}
+	return false
 }
 
 // setInput updates the request input and re-indexes additional tool groups.

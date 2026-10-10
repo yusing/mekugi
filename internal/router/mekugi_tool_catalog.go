@@ -65,7 +65,7 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 				return errors.New("responses request defines exec more than once")
 			}
 			result = &executionOwner{group: group, section: section, toolIndex: index, name: tool.Name,
-				command: strings.Contains(stockDescription, "tools.exec_command")}
+				command: strings.Contains(stockDescription, "tools.exec_command") || codeModeDeclaresExecutionTool(stockDescription, "exec_command")}
 		case applyPatchToolName, nativeExecCommandToolName:
 			return incompatibleRequest("unsupported_execution_interface", "This model does not expose the required exec interface. Select a model that supports exec.")
 		}
@@ -128,7 +128,8 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 }
 
 func codeModeOwnsStockExecution(description string) bool {
-	return strings.Contains(description, "tools.exec_command") || strings.Contains(description, "tools.apply_patch")
+	return strings.Contains(description, "tools.exec_command") || strings.Contains(description, "tools.apply_patch") ||
+		!isExecutionFreeCodeModeDescription(description)
 }
 
 func validateIndependentToolGuidance(description string) error {

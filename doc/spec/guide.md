@@ -51,7 +51,9 @@ the recipient's own change listing cannot discover another agent's IDs. Historic
 does not assert the current workspace state or cover shell-generated changes.
 
 The journal owner supplies the additive durable-work guidance once per request: on the
-`exec` in one marked Journal section. No dedicated
+`exec` in one marked Journal section, regardless of `support_tool_search` or whether
+Codex includes the journal MCP tools in its nested tool catalog. The section carries
+the journal operations and input declarations without requiring tool discovery. No dedicated
 `functions.journal` tool is exposed. Journal access uses the invocation-local
 MCP tools; stock tool schemas and inputs remain unchanged.
 The guidance covers journal use and completion, without prescribing delegation, review,
@@ -64,7 +66,8 @@ for stable paths, reads, batching and failures. Main work updates belong in the 
 and necessary questions remain conversational. Subagents record useful interim facts and may deliver their
 final report directly. A result already recorded in the journal is not repeated
 as a second completion report.
-The section describes journal MCP calls through Codex's nested tools.
+The section describes journal MCP calls through Codex's nested tools and retains the
+operation-specific writing, result, failure, and recovery rules.
 Projection preserves the caller's stock execution contracts. A
 previously marked section is refreshed in place. Duplicate, incomplete, or reversed markers
 reject before forwarding instead of creating ambiguous guidance.
