@@ -20,8 +20,9 @@ import (
 )
 
 type Store struct {
-	Directory string
-	Writes    *persistence.Counter
+	Directory      string
+	Writes         *persistence.Counter
+	ShadowSnapshot func(context.Context, string, string) (string, error)
 }
 
 type Batch struct {
@@ -165,9 +166,16 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		if err != nil || (inside != ".." && !strings.HasPrefix(inside, ".."+string(filepath.Separator))) {
 			return errors.New("orchestration storage must be outside the source repository")
 		}
-		base, err := sourceBase(ctx, vcs, workspace)
-		if err != nil {
-			return err
+		var base string
+		if vcs == "shadow" {
+			if s.ShadowSnapshot == nil {
+				return errors.New("shadow snapshot owner is unavailable")
+			}
+		} else {
+			base, err = sourceBase(ctx, vcs, workspace)
+			if err != nil {
+				return err
+			}
 		}
 		if relative != "." {
 			if err := committedDirectory(ctx, vcs, repository, base, relative); err != nil {
@@ -185,11 +193,27 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 				return err
 			}
 		}
+		if vcs == "shadow" {
+			batch.VCS, batch.Repository = vcs, filepath.Join(filepath.Dir(checkout), "shadow.git")
+		}
 		m.Batches = append(m.Batches, batch)
 		if err := s.save(m, path); err != nil {
 			return err
 		}
-		effectErr := createCheckout(ctx, repository, batch)
+		var effectErr error
+		if vcs == "shadow" {
+			batch.Base, effectErr = s.ShadowSnapshot(ctx, selected, batch.Repository)
+			if effectErr == nil {
+				m.Batches[len(m.Batches)-1] = batch
+				if err := s.save(m, path); err != nil {
+					return err
+				}
+				repository = batch.Repository
+			}
+		}
+		if effectErr == nil {
+			effectErr = createCheckout(ctx, repository, batch)
+		}
 		if effectErr == nil {
 			info, err := os.Stat(batch.Cwd)
 			if err != nil {

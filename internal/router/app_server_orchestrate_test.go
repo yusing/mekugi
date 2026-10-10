@@ -17,7 +17,7 @@ import (
 )
 
 func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
-	for _, vcs := range []string{"git", "hg"} {
+	for _, vcs := range []string{"git", "hg", "shadow"} {
 		t.Run(vcs, func(t *testing.T) { testAppServerOrchestrateMCPLaunch(t, vcs) })
 	}
 }
@@ -172,6 +172,9 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	}
 	if got, err := os.ReadFile(filepath.Join(batch.Cwd, "input")); err != nil || string(got) != "copied input" {
 		t.Fatal("prepared input changed", err)
+	}
+	if vcs == "shadow" {
+		return
 	}
 	if quit, err := u.key(3); quit || err != nil {
 		t.Fatal("running child was abandoned", err)

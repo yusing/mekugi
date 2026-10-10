@@ -62,6 +62,7 @@ func orchestrateMain(ctx context.Context, proxy *mekugiProxy, workspace, thread,
 }
 
 func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.Server {
+	store.ShadowSnapshot = orchestrateShadowSnapshot
 	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
 	for _, tool := range []struct{ name, description string }{
@@ -150,7 +151,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		return proxy.orchestration.call(command)
 	})
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "prepare", Description: "Main prepares an isolated Git or Mercurial checkout at its committed baseline. Nested runs are unavailable. Copy required inputs before spawning. Repeating a prepared task returns its record without resetting files.",
+		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git or Mercurial baseline, or an unversioned source snapshot. Nested runs are unavailable. Copy required inputs before spawning. Repeats preserve prepared files.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name"}, "properties": map[string]any{
 			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
 		}},

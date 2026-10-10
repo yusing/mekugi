@@ -104,7 +104,7 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 	if b.VCS == "hg" {
 		return validateHgIdentity(ctx, b)
 	}
-	if b.VCS != "" {
+	if b.VCS != "" && b.VCS != "shadow" {
 		return errors.New("unsupported checkout VCS")
 	}
 	root, err := git(ctx, cwd, "rev-parse", "--show-toplevel")
@@ -114,6 +114,12 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 	branch, err := git(ctx, cwd, "symbolic-ref", "--quiet", "HEAD")
 	if err != nil || branch != "refs/heads/"+b.Branch {
 		return errors.New("prepared checkout branch changed")
+	}
+	if b.VCS == "shadow" {
+		common, err := git(ctx, cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+		if err != nil || common != b.Repository {
+			return errors.New("shadow checkout repository changed")
+		}
 	}
 	return nil
 }
