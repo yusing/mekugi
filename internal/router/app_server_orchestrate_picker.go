@@ -99,6 +99,7 @@ func (u *appServerUI) refreshOrchestratePicker() {
 				choice.description = u.orchestratePickerStatus(view, batch.State+" · "+branch)
 			}
 		} else if batch.Launch != nil && batch.Launch.ThreadID != "" {
+			choice.name = batch.Launch.ThreadID
 			choice.description += " · not subscribed"
 		}
 		p.choices = append(p.choices, choice)
@@ -150,6 +151,10 @@ func (u *appServerUI) orchestratePickerKey(key string) bool {
 			return true
 		}
 		if thread != u.orchestrationOwner().thread || u.navigation != nil {
+			owner := u.orchestrationOwner()
+			if owner.navigation == nil {
+				owner.ensureOrchestrationNavigation().retained = p.orchestration.batches
+			}
 			if !u.switchOrchestratedThread(thread) {
 				u.setNotice("Orchestration thread is unavailable", true)
 				return true

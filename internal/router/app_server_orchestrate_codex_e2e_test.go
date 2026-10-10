@@ -310,6 +310,23 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if batches[0].Launch.HostStatus != "interrupted" {
 		t.Fatal("host interruption not retained", batches[0])
 	}
+	// Restore subscribed controllers from a fresh run-store owner, then resume
+	// the retained host thread without repeating its launch or native spawn.
+	u.closeOrchestratedViews()
+	u.navigation, u.orchestrateThreads = nil, nil
+	u.proxy.orchestration.store = &orchestrate.Store{Directory: store.Directory}
+	u.recoverOrchestratedRun()
+	pump(func() bool { return len(u.orchestrateJobs) == 0 })
+	if !u.switchOrchestratedThread(result.batch.Launch.ThreadID) {
+		t.Fatal("retained installed child was unavailable")
+	}
+	pump(func() bool { return u.viewedUI() != u && len(u.navigation.resumes) == 0 })
+	view = u.viewedUI()
+	if view.model != effective.Model || u.orchestrateThreads[result.batch.Launch.ThreadID].turn != "" {
+		t.Fatal("installed child resume lost effective settings or revived its old turn")
+	}
+	view.draft = "Batch draft"
+	u.switchOrchestratedThread(main)
 	followup = &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, callID: "installed-idle", input: orchestrateSpawnInput{Message: "Start the idle follow-up probe."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(followup)
 	pump(func() bool { return len(followup.reply) > 0 })

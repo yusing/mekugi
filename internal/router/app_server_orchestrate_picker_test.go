@@ -68,16 +68,18 @@ func TestAppServerOrchestratePickerSwitch(t *testing.T) {
 	fresh.ctx, fresh.proxy = t.Context(), u.proxy
 	fresh.session.start("main", u.session.cwd)
 	fresh.ensureShell()
-	t.Cleanup(func() { fresh.shell.diff.close(); fresh.shell.diffScreen.Close() })
+	t.Cleanup(func() { fresh.closeOrchestratedViews(); fresh.shell.diff.close(); fresh.shell.diffScreen.Close() })
 	appServerTestKeys(t, fresh, "/orchestrate\r")
 	drainOrchestrateWork(t, fresh)
 	if description := fresh.picker.choices[1].description; !strings.Contains(description, "not subscribed") || !strings.Contains(description, "failed") {
 		t.Fatal("retained thread lost its known lifecycle", description)
 	}
 	appServerTestKeys(t, fresh, "\x1b[B\r")
-	if fresh.navigation != nil || freshWire.Len() != 0 || fresh.picker.modal != "orchestrate" {
-		t.Fatal("retained selection resumed or started a thread")
+	drainOrchestrateWork(t, fresh)
+	if fresh.navigation == nil || fresh.viewedUI() != fresh || fresh.picker.modal != "" || strings.Contains(freshWire.String(), "turn/start") {
+		t.Fatal("retained selection skipped resume admission")
 	}
+	btwTestRequest(t, freshWire, "thread/read", "child")
 }
 
 func TestAppServerOrchestratePickerPromptPriority(t *testing.T) {

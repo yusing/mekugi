@@ -206,9 +206,13 @@ These rows are unsubscribed facts, with no live timers or usage inferred from th
 Recovery reads the selected Main's manifest without checkout effects, child
 resume requests, turn dispatch or process revival. Empty runs leave ordinary
 session navigation unchanged. Read failures remain visible rather than appearing
-as an empty run. Selecting an unsubscribed row reports that resume is required;
-lazy child resume remains staged below. Subscribed rows keep their live state
-and replace the matching retained row.
+as an empty run. Selecting a confirmed retained child resumes it through Codex
+and restores its settings and history before switching the view. Messaging a
+retained recipient uses the same admission before dispatch. Checkout identity
+and host thread/cwd must match the run. Dirty files and later commits remain
+intact; resume neither repeats launch nor revives prior processes. Uncertain
+launches without confirmed thread identity remain inspectable. Subscribed rows
+keep their live state and replace the matching retained row.
 
 ## REQ-ORCHESTRATE-008 — Unversioned shadow batches
 
@@ -270,7 +274,7 @@ Bare `/orchestrate` opens a picker of this Main's retained batches and coordinat
 It shows branch, lifecycle and available live timer, token and cost metrics.
 Selecting a subscribed thread switches the viewed shell without starting a turn
 or reloading history. Prepared batches remain visible before launch. Retained
-threads that are not subscribed remain visible, but require resume before viewing.
+threads that are not subscribed remain visible and resume when selected.
 An empty run offers `/orchestrate ISSUES`; Escape closes the picker.
 
 The Orchestration group in Agents lists the coordinator and its live batch
@@ -289,8 +293,7 @@ Resolution during answer paste discards that paste instead of editing another dr
 The remaining capabilities are accepted but not yet delivered:
 
 - Workflow instructions recover once after context reset.
-- Retained child threads resume when viewed or messaged, without reviving
-  processes or repeating effects. Exit confirms interruption of running children.
+- Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
   unrelated edits.
 - SVN uses run-owned shadow Git repositories, as do unversioned sources;

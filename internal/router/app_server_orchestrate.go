@@ -456,7 +456,7 @@ func (u *appServerUI) orchestrateBusy() bool {
 		if n.owner != u {
 			return n.owner.busy() || n.owner.reset.active() || n.owner.orchestrateBusy()
 		}
-		if len(n.pending) != 0 || len(n.reads) != 0 {
+		if len(n.pending) != 0 || len(n.reads) != 0 || len(n.resumes) != 0 {
 			return true
 		}
 		for _, v := range n.views {
