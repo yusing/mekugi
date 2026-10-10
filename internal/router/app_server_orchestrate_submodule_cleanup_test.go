@@ -91,7 +91,7 @@ func TestAppServerOrchestrateSubmoduleCleanupMCP(t *testing.T) {
 	for _, dir := range dirs {
 		before[dir] = state(dir)
 	}
-	call := orchestrateCleanupMCPClient(t, u)
+	call := orchestrateTargetMCPClient(t, u, "cleanup")
 	ref := "refs/mekugi/orchestrate/" + b.Branch
 	nested := b.Submodules[1]
 	gitTestRun(t, nested.Repository, "update-ref", ref, nested.Base)
@@ -132,7 +132,7 @@ func TestAppServerOrchestrateSubmoduleCleanupPreservesWork(t *testing.T) {
 	u := submoduleCleanupUI(t)
 	b := u.orchestrateThreads["child"].batch
 	acceptSubmoduleCleanup(t, u)
-	call := orchestrateCleanupMCPClient(t, u)
+	call := orchestrateTargetMCPClient(t, u, "cleanup")
 	clone := filepath.Join(b.Checkout, b.Submodules[1].Path)
 	gitdir := filepath.Join(clone, ".git")
 	gitTestRun(t, clone, "config", "user.name", "test")

@@ -117,6 +117,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 	})
 	for _, tool := range []struct{ name, description string }{
 		{"interrupt_agent", "Request interruption of a live batch turn. The host's turn completion confirms the outcome."},
+		{"integrate", "Main plans a three-way merge of a completed idle shadow batch with the current source. Returns and retains exact conflict paths or the clean merged tree and changed paths. Source writeback is not yet available; planning changes no source files or journal acceptance."},
 		{"cleanup", "Main removes an accepted idle Git batch checkout, safe run-owned submodule clones and unchanged evidence copies. Retains changed nested commits in source refs. Requires current journal acceptance and settled input. Keeps branches, manifests and unsafe copies; reports partial cleanup. Repeats reconcile confirmed removal."},
 	} {
 		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateInterruptInput) (*mcp.CallToolResult, any, error) {
@@ -131,7 +132,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
 				return nil, nil, err
 			}
-			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, removeCheckout: tool.name == "cleanup", reply: make(chan orchestrateResult, 1)}
+			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, removeCheckout: tool.name == "cleanup", planIntegration: tool.name == "integrate", reply: make(chan orchestrateResult, 1)}
 			result, value, err := proxy.orchestration.call(command)
 			if batch, ok := value.(orchestrate.Batch); tool.name == "cleanup" && err != nil && ok && batch.TaskName != "" {
 				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, batch, nil

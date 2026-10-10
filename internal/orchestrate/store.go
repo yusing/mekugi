@@ -28,6 +28,7 @@ type Store struct {
 type Batch struct {
 	VCS                string              `json:"vcs,omitempty"`
 	Repository         string              `json:"repository,omitempty"`
+	Source             string              `json:"source,omitempty"`
 	TaskName           string              `json:"task_name"`
 	Branch             string              `json:"branch"`
 	Checkout           string              `json:"checkout"`
@@ -37,6 +38,7 @@ type Batch struct {
 	Error              string              `json:"error,omitempty"`
 	Launch             *Launch             `json:"launch,omitempty"`
 	Integration        *Integration        `json:"integration,omitempty"`
+	ShadowMerge        *ShadowMerge        `json:"shadow_merge,omitempty"`
 	Submodules         []Submodule         `json:"submodules,omitempty"`
 	RetainedSubmodules []RetainedSubmodule `json:"retained_submodules,omitempty"`
 	Evidence           []Evidence          `json:"evidence,omitempty"`
@@ -194,6 +196,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 			Cwd: filepath.Join(checkout, relative), Base: base, State: "preparing"}
 		if vcs == "shadow" {
 			batch.VCS, batch.Repository = vcs, filepath.Join(filepath.Dir(checkout), "shadow.git")
+			batch.Source = selected
 		}
 		if vcs == "" {
 			batch.Submodules, err = planSubmodules(ctx, repository, base, "")
