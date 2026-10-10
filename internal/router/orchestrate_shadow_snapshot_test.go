@@ -3,6 +3,7 @@ package router
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -55,7 +56,7 @@ func TestOrchestrateShadowPreparation(t *testing.T) {
 		t.Fatal("new snapshot did not retain the run repository", other, err)
 	}
 	repeat, err := (&orchestrate.Store{Directory: s.Directory}).Prepare(t.Context(), workspace, "main", "batch")
-	if err != nil || repeat != b {
+	if err != nil || !reflect.DeepEqual(repeat, b) {
 		t.Fatal("restart replaced the prepared baseline", repeat, err)
 	}
 	if got, err := os.ReadFile(filepath.Join(repeat.Cwd, "input")); err != nil || string(got) != "prepared input" {

@@ -35,6 +35,14 @@ claiming that historical preparation state proves current filesystem contents.
 Prepared branches and checkouts remain until explicit cleanup; ordinary replay
 retention does not remove them.
 
+Git preparation includes locally initialized submodules, recursively, at the
+gitlink commits recorded in the baseline. Each is an independent local clone
+on the batch branch, with its path, source repository and baseline retained in
+the run. Source submodule edits and newer commits do not follow. Uninitialized
+submodules remain uninitialized; submodule preparation never fetches remote URLs.
+A missing local baseline fails preparation. Main imports and integrates any changed
+submodule commits with native Git before integrating the superproject.
+
 Acceptance:
 
 1. Two batches have distinct branches and checkouts at the committed baseline;
@@ -145,9 +153,8 @@ before changing the task. The child checkout must retain its recorded location
 and branch or bookmark and have
 no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
 with assume-unchanged or skip-worktree paths require inspection before acceptance,
-because those flags can conceal unfinished edits.
-Source edits
-and index are preserved. This verifies integration, while Main owns review.
+including recorded submodules, because those flags can conceal unfinished edits.
+Source edits and index are preserved. This verifies integration, while Main owns review.
 
 Only the run coordinator can accept its existing task bound to a confirmed batch.
 Active, unresolved or failed child lifecycles, including native descendants, keep
@@ -230,13 +237,13 @@ The remaining capabilities are accepted but not yet delivered:
 - Main integrates native VCS branches serially, preserving coherent commits and
   unrelated edits. Cleanup removes only idle, accepted, clean run-owned checkouts
   at their accepted tips, with no queued work or active native descendants.
-- jj uses native workspaces. Other sources use run-owned shadow Git
-  repositories; conflict detection precedes source writes and partial writeback
+- SVN uses run-owned shadow Git repositories, as do unversioned sources;
+  conflict detection precedes source writes and partial writeback
   remains recoverable. Observation snapshots do not own durable batch branches.
-- Versioned shadow children start from their VCS-recorded committed baseline,
-  excluding local edits. Versioned shadow preparation remains staged.
-- Initialized submodules and evidence inputs are prepared before the first turn.
-  The home `batch-agent-sessions` skill/helper retires only after parity.
+- SVN children start from their VCS-recorded committed baseline, excluding local
+  edits. SVN preparation remains staged.
+- Evidence inputs are retained before the first turn. The home
+  `batch-agent-sessions` skill/helper retires only after parity.
 
 Third-party threads retain their current stable schema exposure during initial
 delivery. Child-authored journal roots remain unchanged. Nested orchestration

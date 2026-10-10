@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -59,7 +60,7 @@ func TestPrepareGit(t *testing.T) {
 	write(filepath.Join(first.Cwd, "input"), "copied input")
 	reopened := &Store{Directory: store.Directory}
 	repeat, err := reopened.Prepare(t.Context(), workspace, "main", "first")
-	if err != nil || repeat != first {
+	if err != nil || !reflect.DeepEqual(repeat, first) {
 		t.Fatalf("repeat: %+v, %v", repeat, err)
 	}
 	if content, err := os.ReadFile(filepath.Join(repeat.Cwd, "input")); err != nil || string(content) != "copied input" {
