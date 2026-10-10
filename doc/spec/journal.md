@@ -146,8 +146,10 @@ Inside a batch, explicit agent selectors keep their native local paths;
 `agent: "main"` selects the orchestration coordinator. Reading Main still excludes
 the caller's siblings. Own reads without an agent require only the local record.
 The run coordinator records integrated batch tasks as `accepted`, with verified
-Git tips retained in the task and run. This is a closed task state; it releases
-parent completion, counts as finished in presentation and stays closed in recovery.
+integration proof retained in the task and run: Git tips for native integration,
+or the batch tip and merged tree for confirmed shadow writeback.
+This closed task state releases parent completion, counts as finished in
+presentation and stays closed in recovery.
 Only Main can create that state on its confirmed batch binding. Child completion
 does not accept the result. See [orchestration](orchestrate.md#req-orchestrate-005--cross-checkout-journals)
 for integration requirements.
