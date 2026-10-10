@@ -13,12 +13,13 @@ import (
 
 // ShadowMerge retains a source preimage and merged result before writeback.
 type ShadowMerge struct {
-	State     string   `json:"state"`
-	Tip       string   `json:"tip"`
-	SourceTip string   `json:"source_tip"`
-	Tree      string   `json:"tree"`
-	Paths     []string `json:"paths,omitempty"`
-	Conflicts []string `json:"conflicts,omitempty"`
+	State     string        `json:"state"`
+	Tip       string        `json:"tip"`
+	SourceTip string        `json:"source_tip"`
+	Tree      string        `json:"tree"`
+	Paths     []string      `json:"paths,omitempty"`
+	Conflicts []string      `json:"conflicts,omitempty"`
+	Writes    []ShadowWrite `json:"writes,omitempty"`
 }
 
 // PlanShadowMerge writes only run-owned objects and the manifest. The router
@@ -56,7 +57,7 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		if s.ShadowSnapshot == nil {
 			return errors.New("shadow snapshot owner is unavailable")
 		}
-		if b.ShadowMerge != nil && b.ShadowMerge.State != "planned" && b.ShadowMerge.State != "conflicted" {
+		if b.ShadowMerge != nil && b.ShadowMerge.State != "planned" && b.ShadowMerge.State != "conflicted" && b.ShadowMerge.State != "applied" {
 			return errors.New("unfinished shadow writeback requires recovery")
 		}
 		tip, err := sourceBase(ctx, b.Cwd)
@@ -73,7 +74,11 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		}
 		// Snapshot bytes, not checkout attributes or custom merge drivers,
 		// define the source comparison. Git still detects binary conflicts.
-		out, mergeErr := shadowGit(ctx, b.Repository, "--attr-source="+strings.TrimSpace(string(emptyTree)), "merge-tree", "--write-tree", "--merge-base="+b.Base, "-z", "--name-only", "--no-messages", tip, sourceTip)
+		base := b.Base
+		if b.Integration != nil {
+			base = b.Integration.Tip // Keep the last confirmed base through conflicts.
+		}
+		out, mergeErr := shadowGit(ctx, b.Repository, "--attr-source="+strings.TrimSpace(string(emptyTree)), "merge-tree", "--write-tree", "--merge-base="+base, "-z", "--name-only", "--no-messages", tip, sourceTip)
 		var exit *exec.ExitError
 		conflicted := errors.As(mergeErr, &exit) && exit.ExitCode() == 1 && ctx.Err() == nil
 		if mergeErr != nil && !conflicted {

@@ -117,7 +117,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 	})
 	for _, tool := range []struct{ name, description string }{
 		{"interrupt_agent", "Request interruption of a live batch turn. The host's turn completion confirms the outcome."},
-		{"integrate", "Main plans a three-way merge of a completed idle shadow batch with the current source. Returns and retains exact conflict paths or the clean merged tree and changed paths. Source writeback is not yet available; planning changes no source files or journal acceptance."},
+		{"integrate", "Main merges an idle shadow batch with current source edits and writes only changed paths. Conflicts write nothing. Retains partial progress; repeats verify completed writes and reconcile confirmed effects before continuing pending paths. Uncertain or changed paths require inspection. Main accepts its journal task separately."},
 		{"cleanup", "Main removes an accepted idle Git batch checkout, safe run-owned submodule clones and unchanged evidence copies. Retains changed nested commits in source refs. Requires current journal acceptance and settled input. Keeps branches, manifests and unsafe copies; reports partial cleanup. Repeats reconcile confirmed removal."},
 	} {
 		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateInterruptInput) (*mcp.CallToolResult, any, error) {
@@ -134,7 +134,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			}
 			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, removeCheckout: tool.name == "cleanup", planIntegration: tool.name == "integrate", reply: make(chan orchestrateResult, 1)}
 			result, value, err := proxy.orchestration.call(command)
-			if batch, ok := value.(orchestrate.Batch); tool.name == "cleanup" && err != nil && ok && batch.TaskName != "" {
+			if batch, ok := value.(orchestrate.Batch); (tool.name == "cleanup" || tool.name == "integrate") && err != nil && ok && batch.TaskName != "" {
 				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, batch, nil
 			}
 			return result, value, err

@@ -11,7 +11,7 @@ import (
 func (u *appServerUI) orchestrateCheckoutUnavailable() bool {
 	if u.navigation != nil {
 		if child := u.navigation.owner.orchestrateThreads[u.thread]; child != nil {
-			return child.batch.State == "removing" || child.batch.State == "removed"
+			return child.batch.State == "removing" || child.batch.State == "removed" || child.batch.State == "integrating"
 		}
 	}
 	return false

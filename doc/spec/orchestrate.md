@@ -177,9 +177,11 @@ with `agent: "main"`, while other agent selectors retain their native local path
 but cannot reveal sibling results. Child completion leaves Main's integration task
 unchanged.
 
-Main reviews and integrates the batch with native VCS commands, then marks
-its bound journal task `accepted`. Acceptance verifies that the batch's committed
-tip is reachable from the source's committed revision and records both tips
+Main reviews and integrates Git batches with native VCS commands, or shadow
+batches with `integrate`, then marks its bound journal task `accepted`. For Git,
+acceptance verifies that the batch's committed tip is reachable from the source's
+committed revision. For shadow, it verifies confirmed writeback and the current
+merged paths. It records the batch tip and source revision or merged tree
 before changing the task. The child checkout must retain its recorded location
 and branch and have
 no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
@@ -221,31 +223,44 @@ repository. The complete source snapshot honors ignore files, excludes VCS
 metadata and preserves on-disk bytes, executable state and symlinks. Incomplete snapshots fail
 preparation. The child starts in a branch worktree with fresh context; source
 files remain unchanged. Prepared inputs and private branch history survive
-reopening, independently of observation-snapshot retention. Shadow writeback
-and acceptance remain staged below.
+reopening, independently of observation-snapshot retention. Shadow integration
+and acceptance use the source-preserving writeback below.
 
-## REQ-ORCHESTRATE-010 — Shadow merge planning
+## REQ-ORCHESTRATE-010 — Shadow integration
 
 Main calls `tools.mcp__orchestrate__integrate({target:"batch"})` for a completed,
-idle shadow batch. The initial delivery prepares a merge plan without writing
-source files. Main and the child retain their checkouts and branches. Git batches
+idle shadow batch. It plans a merge before applying only changed paths to the
+source. Main and the child retain their checkouts and branches. Git batches
 continue to use native Git integration.
 
 The plan merges the child's committed tip with a fresh source snapshot using
-the batch's original baseline. Nonoverlapping source edits survive. Text and binary
+the batch's original baseline, or its last integrated tip for a follow-up commit.
+Nonoverlapping source edits survive. Text and binary
 merges use snapshot bytes; configured filters and custom merge drivers do not run.
 Conflicts return their exact paths with `state: "conflicted"`; a clean merge returns
-`state: "planned"`, its source revision, merged tree and changed paths. The run
-retains that result across restart. Repeating planning refreshes the source
-snapshot, so Main can check again after resolving a conflict.
+`state: "applied"`, its source revision, merged tree and changed paths after
+writeback. The run retains its plan and per-path progress across restart. A
+conflicted call writes nothing; Main can repeat after resolving the conflict.
 
 The child checkout must retain its recorded branch and location and be clean.
 Assume-unchanged or skip-worktree paths require inspection before integration.
 Pending turns, native descendants, questions, approvals and unsettled deliveries
-prevent planning. Main alone can request it. Snapshot, merge or persistence
-failure is reported without changing the source. A plan neither writes files
-nor establishes journal acceptance. Source writeback and its recovery remain
-the next delivery step.
+prevent integration. Main alone can request it. Snapshot, merge or persistence
+failure before writeback is reported without changing the source. Every changed
+path must still match its planned source preimage before any write. Writeback
+preserves unrelated and ignored files, VCS metadata, executable state and links.
+External writers must leave affected paths idle during writeback; checks and
+replacement are not an atomic filesystem transaction.
+
+Intent precedes each path effect. Cancellation or a failed write returns retained
+partial progress. A repeat verifies applied paths and reconciles an uncertain path
+only if it already matches the merged result; it never blindly repeats uncertain
+replacement. Other uncertain paths require inspection. Temporary paths from an
+interrupted replacement remain identified in the result for inspection. Pending
+paths can continue when their preimages still match. Source preimages and merged
+blobs remain in the private repository for recovery. Integration evidence becomes
+available only after every changed path is confirmed. Main then reviews and marks
+its bound task `accepted`; writeback alone does not accept it.
 
 ## REQ-ORCHESTRATE-009 — Accepted Git checkout cleanup
 
@@ -327,11 +342,8 @@ work without reviving processes.
 
 The remaining capabilities are accepted but not yet delivered:
 
-- SVN uses run-owned shadow Git repositories, as do unversioned sources;
-  conflict detection precedes source writes and partial writeback
-  remains recoverable. Observation snapshots do not own durable batch branches.
 - SVN children start from their VCS-recorded committed baseline, excluding local
-  edits. SVN preparation remains staged.
+  edits, in run-owned shadow Git repositories. SVN preparation remains staged.
 - Accepted shadow checkout cleanup uses the same ownership and settled-work
   requirements as Git cleanup and remains staged.
 - The home `batch-agent-sessions` skill/helper retires only after parity.

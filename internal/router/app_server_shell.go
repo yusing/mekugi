@@ -15,7 +15,7 @@ func (u *appServerUI) shellMode() bool {
 // into the running turn; standalone results wait in history for the next input.
 func (u *appServerUI) submitShell() error {
 	if u.orchestrateCheckoutUnavailable() {
-		u.setNotice("Batch checkout cleanup prevents shell commands", true)
+		u.setNotice("Batch checkout unavailable; shell commands are disabled", true)
 		return nil
 	}
 	command := strings.TrimSpace(strings.TrimPrefix(u.draft, "!"))
