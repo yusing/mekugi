@@ -143,7 +143,17 @@ Acknowledgement records which turn received the queued input. A rejected or
 undispatched canceled follow-up leaves that input queued; an uncertain dispatch
 requires inspection before resending. Repeating a message call never queues it twice.
 
-Deferred messages and follow-ups targeting Main remain accepted work below.
+Confirmed child roots can also use `followup_task` with `target: "main"`.
+Main receives it through the ordinary composer lifecycle: an idle coordinator
+starts a turn and a running coordinator receives a steer. Settings, restoration,
+questions, compaction and pending input keep their existing admission gates.
+User drafts remain in their editor, and already queued user input takes priority.
+The run records intent and acknowledgement just as for batch follow-ups. Child
+messages are literal input, including text that resembles a slash command.
+Interrupted or rejected child input stays child-owned; it does not enter the
+user's draft or automatic composer resend. Local input rejection returns a
+delivery failure. Canceled waiting follow-ups release their departure gate.
+Deferred messages targeting Main remain accepted work below.
 
 ## REQ-ORCHESTRATE-005 — Cross-checkout journals
 
@@ -267,8 +277,7 @@ Resolution during answer paste discards that paste instead of editing another dr
 The remaining capabilities are accepted but not yet delivered:
 
 - Workflow instructions recover once after context reset.
-- `send_message` can target Main's next turn without waking it. Child follow-ups
-  can wake Main through the normal composer lifecycle.
+- `send_message` can target Main's next turn without waking it.
 - Retained child threads resume when viewed or messaged, without reviving
   processes or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and

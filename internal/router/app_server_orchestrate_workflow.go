@@ -42,7 +42,7 @@ func (u *appServerUI) expandOrchestrate() bool {
 }
 
 func orchestrateChildInput(cwd, message string) string {
-	return fmt.Sprintf(`Work in %s. Your coordinator is main. Use tools.mcp__orchestrate__send_message({target,message}) to queue sibling input and tools.mcp__orchestrate__followup_task({target,message}) to start or steer a sibling. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Read Main's journal with agent:"main"; keep your own journal root independent. Ask your own decision questions. Main reviews and accepts your result after integration.
+	return fmt.Sprintf(`Work in %s. Your coordinator is main. Use tools.mcp__orchestrate__send_message({target,message}) to queue sibling input and tools.mcp__orchestrate__followup_task({target,message}) to start or steer main or a sibling. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Read Main's journal with agent:"main"; keep your own journal root independent. Ask your own decision questions. Main reviews and accepts your result after integration.
 Assignment:
 %s`, cwd, message)
 }

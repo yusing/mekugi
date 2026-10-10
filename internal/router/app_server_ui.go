@@ -93,6 +93,8 @@ type appServerUI struct {
 	orchestrateStorageErr     error
 	orchestrateEvents         []orchestrateEvent
 	orchestrateWaiters        []*orchestrateCommand
+	orchestrateMainFollowups  []*orchestrateCommand
+	orchestrateMainInput      *orchestrateMainInput
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	approvals                 nativeApprovalDock
@@ -631,6 +633,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.restoreActivityResponse(method, m)
 		}
 		if method == "turn/start" || method == "turn/steer" {
+			u.orchestratedMainResponse(method, m)
 			u.submissionResponse(method, m.Error)
 			return nil
 		}

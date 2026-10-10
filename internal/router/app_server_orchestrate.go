@@ -445,6 +445,10 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 }
 
 func (u *appServerUI) orchestrateBusy() bool {
+	u.cancelOrchestratedMainFollowups()
+	if len(u.orchestrateMainFollowups) != 0 || u.orchestrateMainInput != nil {
+		return true
+	}
 	if n := u.navigation; n != nil {
 		if n.owner != u {
 			return n.owner.busy() || n.owner.reset.active() || n.owner.orchestrateBusy()
@@ -493,6 +497,14 @@ func (u *appServerUI) orchestrateCleanupInterrupt(child *orchestrateChild, threa
 
 func (u *appServerUI) closeOrchestrateStorage() error {
 	u.orchestrateClosing = true
+	for _, c := range u.orchestrateMainFollowups {
+		c.reply <- orchestrateResult{err: context.Canceled}
+	}
+	u.orchestrateMainFollowups = nil
+	if pending := u.orchestrateMainInput; pending != nil && pending.dispatched {
+		pending.dispatched = false
+		u.retainOrchestratedMainInput(pending, "uncertain", "", errors.New("coordinator delivery was not acknowledged before shutdown"))
+	}
 	for _, waiter := range u.orchestrateWaiters {
 		waiter.reply <- orchestrateResult{err: context.Canceled}
 	}

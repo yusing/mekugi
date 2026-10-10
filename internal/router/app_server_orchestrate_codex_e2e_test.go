@@ -32,6 +32,9 @@ type orchestrateCodexProvider struct {
 func (p *orchestrateCodexProvider) forwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*http.Response, error) {
 	p.requests <- append([]byte(nil), body...)
 	metadata, _ := decodeCodexTurnMetadata(headers)
+	if strings.Contains(string(body), "Main follow-up probe.") {
+		return routerFaultCodexSuccessResponse(), nil
+	}
 	if metadata.SubagentKind != "" {
 		thread := headers.Get(threadIDHeader)
 		p.native.mu.Lock()
@@ -381,6 +384,19 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	if !asyncSeen || !syncSeen || !approvalSeen {
 		t.Fatalf("installed prompts missing provider evidence: async=%v sync=%v approval=%v", asyncSeen, syncSeen, approvalSeen)
+	}
+	mainInput := &orchestrateCommand{ctx: ctx, workspace: batch.Cwd, main: result.batch.Launch.ThreadID, target: "main", followup: true, callID: "installed-main-followup", input: orchestrateSpawnInput{Message: "Main follow-up probe."}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(mainInput)
+	pump(func() bool { return len(mainInput.reply) > 0 && !u.busy() })
+	if got := <-mainInput.reply; got.err != nil || got.delivery == nil || got.delivery.State != "delivered" || got.delivery.TurnID == "" || u.draft != "Main draft" || u.thread != main {
+		t.Fatal("installed Main composer delivery", got)
+	}
+	mainInputSeen := false
+	for len(provider.requests) > 0 {
+		mainInputSeen = strings.Contains(string(<-provider.requests), "Main follow-up probe.") || mainInputSeen
+	}
+	if !mainInputSeen {
+		t.Fatal("Main follow-up did not reach provider")
 	}
 	if _, err := proxy.applyJournal(ctx, workspace, main, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), State: new("working"), Agent: "/root/batch"}}); err != nil {
 		t.Fatal(err)

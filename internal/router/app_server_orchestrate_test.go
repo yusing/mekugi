@@ -421,9 +421,13 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	request = btwTestRequest(t, w, "turn/steer", "sibling-child")
 	orchestrateTestReply(t, u, request, `{"turnId":"sibling-turn"}`)
 	assertDelivery(take(result, false), "delivered", "sibling-turn")
-	result = followup(t.Context(), "child", "main", "coordinator wake is staged", "main-alias")
+	result = followup(t.Context(), "child", "main", "coordinator wake", "main-alias")
 	dispatch()
-	take(result, true)
+	mainRequest := appServerOneRequest(t, w, "turn/start", "coordinator wake")
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"coordinator-followup"}}}`, mainRequest.ID))
+	assertDelivery(take(result, false), "delivered", "coordinator-followup")
+	appServerTestTurn(t, u, "coordinator-followup")
+	appServerTestTurnEnd(t, u, "coordinator-followup", "completed")
 	// A native subagent does not acquire run-member authority by sharing cwd.
 	nativeCtx, nativeRelease, err := replay.beginSession(ctx, "native", "session")
 	if err != nil {

@@ -20,6 +20,13 @@ func (u *appServerUI) queueOrchestratedFollowup(c *orchestrateCommand) {
 		}
 		c.main, c.workspace = member.command.main, member.command.workspace
 	}
+	if c.target == "main" && c.caller != u.thread && !c.deferred {
+		u.orchestrateMainFollowups = append(u.orchestrateMainFollowups, c)
+		if err := u.flushInput(); err != nil {
+			u.setNotice(err.Error(), true)
+		}
+		return
+	}
 	for thread, child := range u.orchestrateThreads {
 		if child.command.main == c.main && child.command.workspace == c.workspace && (c.target != "main" && c.target == child.batch.TaskName || c.target == "/root/"+child.batch.TaskName) && thread != c.caller && child.batch.State == "launched" {
 			child.followups = append(child.followups, c)
@@ -103,9 +110,16 @@ func (u *appServerUI) retainOrchestratedDelivery(child *orchestrateChild, c *orc
 }
 
 func (u *appServerUI) orchestratedFollowupResponse(r orchestrateRPC, m appserver.Message) {
+	state, turn, err := orchestratedDeliveryResponse(r.method, m)
+	if err == nil && r.method == "turn/start" && r.child.completedTurn != turn {
+		r.child.turn = turn
+	}
+	u.retainOrchestratedDelivery(r.child, r.followup, r.delivery, state, turn, err)
+}
+
+func orchestratedDeliveryResponse(method string, m appserver.Message) (state, turn string, err error) {
 	if m.Error != nil {
-		u.retainOrchestratedDelivery(r.child, r.followup, r.delivery, "rejected", "", fmt.Errorf("%s: %s", r.method, m.Error.Message))
-		return
+		return "rejected", "", fmt.Errorf("%s: %s", method, m.Error.Message)
 	}
 	var result struct {
 		TurnID string `json:"turnId"`
@@ -113,17 +127,13 @@ func (u *appServerUI) orchestratedFollowupResponse(r orchestrateRPC, m appserver
 			ID string `json:"id"`
 		} `json:"turn"`
 	}
-	err := json.Unmarshal(m.Result, &result)
-	turn := result.Turn.ID
-	if r.method == "turn/steer" {
+	err = json.Unmarshal(m.Result, &result)
+	turn = result.Turn.ID
+	if method == "turn/steer" {
 		turn = result.TurnID
 	}
 	if err != nil || turn == "" {
-		u.retainOrchestratedDelivery(r.child, r.followup, r.delivery, "uncertain", "", errors.New("host returned no valid delivery turn identity"))
-		return
+		return "uncertain", "", errors.New("host returned no valid delivery turn identity")
 	}
-	if r.method == "turn/start" && r.child.completedTurn != turn {
-		r.child.turn = turn
-	}
-	u.retainOrchestratedDelivery(r.child, r.followup, r.delivery, "delivered", turn, nil)
+	return "delivered", turn, nil
 }
