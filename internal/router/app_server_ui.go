@@ -130,6 +130,7 @@ type appServerUI struct {
 	session                   appServerSession
 	ctx                       context.Context
 	quitRequested             bool
+	quitConfirmation          bool
 	interruptLocked           bool
 	activeChildren            map[string]bool // Live host lifecycles only, never replayed processes.
 	mainContentPainted        bool
@@ -1017,6 +1018,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	if !u.paste && u.quitConfirmationKey(string([]byte{key})) && key != 27 {
+		return u.quitRequested, nil
+	}
 	if editor := u.promptEditor(); editor != u {
 		if editor.questions.active != nil && !editor.questions.painted || editor.approvals.open && !editor.approvals.painted {
 			editor.hideQuestions()
@@ -1237,7 +1241,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		if text == "/quit" {
 			if u.orchestrateBusy() {
-				u.setNotice("Interrupt orchestration batches before quitting", true)
+				u.setNotice("Quit all threads? Enter yes · Esc no", false)
+				u.noticeUntil = time.Time{}
+				u.quitConfirmation = true
 				return false, nil
 			}
 			if u.turn == "" && !u.starting() && u.submission.text == "" {

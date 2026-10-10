@@ -1,0 +1,16 @@
+Mekugi dev • codex
+
+
+
+
+
+
+
+
+
+
+
+
+╭─ Quit all threads? Enter yes · Esc no ───────────────────────────────────────╮
+│ ❯ /quit                                                                      │
+╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

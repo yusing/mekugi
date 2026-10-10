@@ -354,6 +354,9 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		})
 		return true
 	}
+	if n.viewed != n.views[thread] {
+		n.viewed.quitConfirmationKey("\x1b")
+	}
 	n.viewed = n.views[thread]
 	n.viewed.shell.paintedRows = nil
 	n.viewed.dirty = true
