@@ -35,7 +35,7 @@ func orchestrateCleanupUIInWorkspace(t *testing.T, workspace string) *appServerU
 	return u
 }
 
-func orchestrateCleanupMCPClient(t *testing.T, u *appServerUI) func(string, bool) *mcp.CallToolResult {
+func orchestrateTargetMCPClient(t *testing.T, u *appServerUI, tool string) func(string, bool) *mcp.CallToolResult {
 	t.Helper()
 	p, store := u.proxy, u.proxy.orchestration.store
 	serverWire, clientWire := mcp.NewInMemoryTransports()
@@ -54,7 +54,7 @@ func orchestrateCleanupMCPClient(t *testing.T, u *appServerUI) func(string, bool
 		t.Helper()
 		result := make(chan *mcp.CallToolResult, 1)
 		go func() {
-			value, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: "cleanup", Arguments: map[string]any{"target": "batch"}, Meta: mcp.Meta{"threadId": thread, "sessionId": "session", "callId": "cleanup", codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "turn"}}})
+			value, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: map[string]any{"target": "batch"}, Meta: mcp.Meta{"threadId": thread, "sessionId": "session", "callId": tool, codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "turn"}}})
 			if err != nil {
 				t.Error(err)
 			}
@@ -70,11 +70,11 @@ func orchestrateCleanupMCPClient(t *testing.T, u *appServerUI) func(string, bool
 			}
 			return value
 		case <-time.After(5 * time.Second):
-			t.Fatal("cleanup command timeout")
+			t.Fatal(tool, "command timeout")
 		}
 		value := <-result
 		if value == nil || value.IsError != wantError {
-			t.Fatal("cleanup result", value)
+			t.Fatal(tool, "result", value)
 		}
 		return value
 	}
@@ -95,7 +95,7 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	batch := child.batch
-	call := orchestrateCleanupMCPClient(t, u)
+	call := orchestrateTargetMCPClient(t, u, "cleanup")
 	call("main", true) // A run proof alone does not accept Main's task.
 	if _, err := store.RecordIntegration(t.Context(), workspace, "main", "batch", "child"); err != nil {
 		t.Fatal(err)
@@ -178,7 +178,7 @@ func TestAppServerOrchestrateCleanupEvidenceMCP(t *testing.T) {
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"initial"}}`)
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"initial","status":"completed"}}}`)
 	b := u.orchestrateThreads["child"].batch
-	call := orchestrateCleanupMCPClient(t, u)
+	call := orchestrateTargetMCPClient(t, u, "cleanup")
 	call("main", true) // Evidence cannot be removed before journal acceptance.
 	if _, err := os.Stat(b.Evidence[0].Path); err != nil {
 		t.Fatal("removed unaccepted evidence", err)

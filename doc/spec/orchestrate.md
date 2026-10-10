@@ -224,6 +224,29 @@ files remain unchanged. Prepared inputs and private branch history survive
 reopening, independently of observation-snapshot retention. Shadow writeback
 and acceptance remain staged below.
 
+## REQ-ORCHESTRATE-010 — Shadow merge planning
+
+Main calls `tools.mcp__orchestrate__integrate({target:"batch"})` for a completed,
+idle shadow batch. The initial delivery prepares a merge plan without writing
+source files. Main and the child retain their checkouts and branches. Git batches
+continue to use native Git integration.
+
+The plan merges the child's committed tip with a fresh source snapshot using
+the batch's original baseline. Nonoverlapping source edits survive. Text and binary
+merges use snapshot bytes; configured filters and custom merge drivers do not run.
+Conflicts return their exact paths with `state: "conflicted"`; a clean merge returns
+`state: "planned"`, its source revision, merged tree and changed paths. The run
+retains that result across restart. Repeating planning refreshes the source
+snapshot, so Main can check again after resolving a conflict.
+
+The child checkout must retain its recorded branch and location and be clean.
+Assume-unchanged or skip-worktree paths require inspection before integration.
+Pending turns, native descendants, questions, approvals and unsettled deliveries
+prevent planning. Main alone can request it. Snapshot, merge or persistence
+failure is reported without changing the source. A plan neither writes files
+nor establishes journal acceptance. Source writeback and its recovery remain
+the next delivery step.
+
 ## REQ-ORCHESTRATE-009 — Accepted Git checkout cleanup
 
 Main calls `tools.mcp__orchestrate__cleanup({target:"batch"})` to remove an
@@ -304,18 +327,18 @@ work without reviving processes.
 
 The remaining capabilities are accepted but not yet delivered:
 
-- Main integrates native VCS branches serially, preserving coherent commits and
-  unrelated edits.
 - SVN uses run-owned shadow Git repositories, as do unversioned sources;
   conflict detection precedes source writes and partial writeback
   remains recoverable. Observation snapshots do not own durable batch branches.
 - SVN children start from their VCS-recorded committed baseline, excluding local
   edits. SVN preparation remains staged.
+- Accepted shadow checkout cleanup uses the same ownership and settled-work
+  requirements as Git cleanup and remains staged.
 - The home `batch-agent-sessions` skill/helper retires only after parity.
 
 Third-party threads retain their current stable schema exposure during initial
 delivery. Child-authored journal roots remain unchanged. Nested orchestration
-must be settled before exposure.
+is unavailable.
 
 Supported sources are Git, SVN and unversioned shadow. Other VCS sources reject
 preparation. Retained runs from a removed adapter remain inspectable, with their

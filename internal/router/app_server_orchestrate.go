@@ -31,6 +31,7 @@ type orchestrateCommand struct {
 	followup        bool
 	deferred        bool
 	removeCheckout  bool
+	planIntegration bool
 	caller, callID  string
 	reply           chan orchestrateResult
 }
@@ -84,6 +85,10 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 	}
 	if command.removeCheckout {
 		u.cleanOrchestratedChild(command)
+		return
+	}
+	if command.planIntegration {
+		u.planOrchestratedMerge(command)
 		return
 	}
 	if command.target != "" {
