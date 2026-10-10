@@ -456,3 +456,71 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal("unchanged evidence survived cleanup", err)
 	}
 }
+
+func TestAppServerYoloPermissionsNativeCodex(t *testing.T) {
+	codex, err := exec.LookPath("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	workspace := t.TempDir()
+	provider := &appResumeProvider{}
+	server := httptest.NewServer(responsesHandler(ctx, time.Minute, provider, nil, nil))
+	defer server.Close()
+	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model="gpt-6-astra"`,
+		"-c", `model_providers.yolo_fixture={name="yolo_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
+		"-c", `model_provider="yolo_fixture"`,
+		"-c", `approval_policy="never"`, "-c", `default_permissions=":danger-full-access"`)
+	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), workspace
+	client, err := appserver.Start(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	u := &appServerUI{ctx: ctx, client: client, view: newLiveActivityView(), agents: newLiveActivityView(),
+		requests: make(map[string]string), notifications: &nativeNotifications{out: io.Discard}, resumeCwd: workspace}
+	u.ensureShell()
+	defer u.shell.diff.close()
+	defer u.shell.diffScreen.Close()
+	pump := func(done func() bool) {
+		t.Helper()
+		for !done() {
+			select {
+			case m, ok := <-client.Messages:
+				if !ok {
+					t.Fatal("host closed")
+				}
+				if err := u.message(m); err != nil {
+					t.Fatal(err)
+				}
+			case <-ctx.Done():
+				t.Fatalf("%v: thread=%s status=%s notice=%s requests=%v", ctx.Err(), u.thread, u.status, u.notice, u.requests)
+			}
+		}
+		var profile struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(u.statusConfig.PermissionProfile, &profile); err != nil || profile.ID != ":danger-full-access" || string(u.statusConfig.Approval) != `"never"` || u.statusConfig.Sandbox.Type != "dangerFullAccess" {
+			t.Fatalf("lost yolo permissions: %+v, %v", u.statusConfig, err)
+		}
+	}
+	if err := u.request("initialize", nil); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return u.thread != "" && !u.modelsLoading })
+	root := u.thread
+	u.unsent = append(u.unsent, composerDraft{text: "Retain this session for resume."})
+	if err := u.flushInput(); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return !u.busy() && len(provider.snapshot()) == 1 })
+	if err := u.sessionCommand("/clear"); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return u.thread != root && !u.modelsLoading })
+	if err := u.resumeSession(root); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return u.thread == root && !u.replacement.pending() && !u.modelsLoading })
+}

@@ -64,7 +64,7 @@ func TestAppServerOrchestrateExitNativeCodex(t *testing.T) {
 	environment := routerFaultCodexEnvironment(t)
 	terminal := startAppResumeTerminalWithProxy(t, func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.exit_fixture={name="exit_fixture",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
-			"-c", `model_provider="exit_fixture"`, "-c", `model="gpt-6-astra"`, "-c", `approval_policy="never"`, "-c", `default_permissions=":workspace"`, "-c", "include_collaboration_mode_instructions=false")
+			"-c", `model_provider="exit_fixture"`, "-c", `model="gpt-6-astra"`, "-c", `approval_policy="never"`, "-c", `default_permissions=":danger-full-access"`, "-c", "include_collaboration_mode_instructions=false")
 		cmd.Dir, cmd.Env = workspace, environment
 		return cmd
 	}, "", proxy)

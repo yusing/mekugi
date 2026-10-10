@@ -37,7 +37,7 @@ func TestAppServerResumeArgv(t *testing.T) {
 func TestAppServerArgs(t *testing.T) {
 	for _, yolo := range []string{"--yolo", "--dangerously-bypass-approvals-and-sandbox"} {
 		got, _, bypass, err := appServerArgs([]string{yolo, "-c", "features.test=true", "--config=foo=42", "--model", "model-name"})
-		want := []string{"app-server", "-c", "features.test=true", "-c", "foo=42", "-c", `model="model-name"`, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`}
+		want := []string{"app-server", "-c", "features.test=true", "-c", "foo=42", "-c", `model="model-name"`, "-c", `approval_policy="never"`, "-c", `default_permissions=":danger-full-access"`}
 		if err != nil || !bypass || !slices.Equal(got, want) {
 			t.Fatalf("appServerArgs(%s) = %q, %v, %v; want %q", yolo, got, bypass, err, want)
 		}
@@ -82,7 +82,7 @@ func TestAppServerInstantInterruptOptIn(t *testing.T) {
 				wantOptions = []string{"-c", "features.instant_interrupt=false"}
 			}
 			want := append([]string{"app-server"}, wantOptions...)
-			want = append(want, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`)
+			want = append(want, "-c", `approval_policy="never"`, "-c", `default_permissions=":danger-full-access"`)
 			if err != nil || !slices.Equal(got, want) {
 				t.Fatalf("appServerArgs(%q) = %q, %v; want %q", input, got, err, want)
 			}
