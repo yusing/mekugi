@@ -67,7 +67,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
 	for _, tool := range []struct{ name, description string }{
-		{"followup_task", "Deliver input to a confirmed batch thread: start an idle turn or steer its running turn. Main and confirmed children can target sibling task names or /root/task paths. Repeats return retained delivery progress."},
+		{"followup_task", "Start an idle turn or steer a running turn. Main and confirmed children can target batch task names or /root/task paths; children can target main through its composer. Repeats return retained delivery progress."},
 		{"send_message", "Queue input for a confirmed batch's next turn without waking or steering it. Main and confirmed children can target sibling task names or /root/task paths. Repeats return retained delivery progress."},
 	} {
 		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target", "message"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}, "message": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateFollowupInput) (*mcp.CallToolResult, any, error) {

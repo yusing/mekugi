@@ -432,6 +432,7 @@ func (u *appServerUI) applyOrchestrationDiff(ctx context.Context, event liveDiff
 }
 
 func (u *appServerUI) tickOrchestratedViews(viewed *appServerUI) error {
+	u.cancelOrchestratedMainFollowups()
 	if n := u.navigation; n != nil {
 		for _, v := range n.views {
 			if v == viewed {

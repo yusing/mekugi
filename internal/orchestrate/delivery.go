@@ -46,8 +46,8 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 				return (b.VCS == "" || b.VCS == "shadow") && b.State == "launched" && b.Launch != nil && b.Launch.ThreadID == thread
 			})
 		}
-		if input.ID == "" || input.Message == "" || input.From == input.Target || input.From != main && !member(input.From) || !member(input.Target) {
-			return errors.New("delivery requires a run member and a separate launched batch target")
+		if input.ID == "" || input.Message == "" || input.From == input.Target || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
+			return errors.New("delivery requires separate confirmed run members")
 		}
 		input.State, input.TurnID, input.Error = "dispatching", "", ""
 		var parts []string

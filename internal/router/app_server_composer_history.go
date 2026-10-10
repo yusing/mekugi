@@ -6,6 +6,7 @@ import (
 )
 
 type composerDraft struct {
+	orchestrated     bool // Child-owned input cannot become a user draft or resend.
 	continueTask     bool // Busy /compact requests automatic continuation.
 	queueCompact     bool // Tab waits for Main instead of interrupting it.
 	questionCall     *nativeQuestionCall
