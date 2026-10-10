@@ -84,7 +84,7 @@ under the state root's `orchestrate` directory. The journal MCP identity resolve
 proves the selected workspace and caller; the orchestration adapter requires a
 coordinator identity before dispatch. `internal/orchestrate` serializes each run
 across router processes and publishes intent before invoking the native VCS.
-Its branches, bookmarks and checkouts are durable work, not observation snapshots
+Its branches and checkouts are durable work, not observation snapshots
 or replay-retention targets. The [orchestration contract](../spec/orchestrate.md) owns preparation
 states, repeat calls and staged capabilities.
 

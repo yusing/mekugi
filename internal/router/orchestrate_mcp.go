@@ -151,7 +151,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		return proxy.orchestration.call(command)
 	})
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git or Mercurial baseline, or an unversioned source snapshot. Nested runs are unavailable. Git includes locally initialized submodules at recorded commits. Copy required inputs before spawning. Repeats preserve prepared files.",
+		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git baseline, or an unversioned source snapshot. Nested runs are unavailable. Git includes locally initialized submodules at recorded commits. Copy required inputs before spawning. Repeats preserve prepared files.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name"}, "properties": map[string]any{
 			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
 		}},

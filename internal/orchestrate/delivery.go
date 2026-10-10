@@ -43,7 +43,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		}
 		member := func(thread string) bool {
 			return slices.ContainsFunc(m.Batches, func(b Batch) bool {
-				return b.State == "launched" && b.Launch != nil && b.Launch.ThreadID == thread
+				return (b.VCS == "" || b.VCS == "shadow") && b.State == "launched" && b.Launch != nil && b.Launch.ThreadID == thread
 			})
 		}
 		if input.ID == "" || input.Message == "" || input.From == input.Target || input.From != main && !member(input.From) || !member(input.Target) {

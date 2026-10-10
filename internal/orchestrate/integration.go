@@ -43,13 +43,6 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 		if err := validateSubmodules(ctx, *b, false); err != nil {
 			return err
 		}
-		if b.VCS == "hg" {
-			proof, err = hgIntegration(ctx, workspace, *b)
-			if err == nil {
-				b.Integration = &proof
-			}
-			return err
-		}
 		for _, sub := range b.Submodules {
 			if err := validateIndexFlags(ctx, filepath.Join(b.Checkout, sub.Path)); err != nil {
 				return err

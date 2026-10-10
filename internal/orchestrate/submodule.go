@@ -92,7 +92,7 @@ func validateSubmodules(ctx context.Context, b Batch, baseline bool) error {
 			return fmt.Errorf("submodule %q: %w", sub.Path, err)
 		}
 		if baseline {
-			tip, err := sourceBase(ctx, "", checkout)
+			tip, err := sourceBase(ctx, checkout)
 			if err != nil || tip != sub.Base {
 				return fmt.Errorf("submodule %q baseline changed", sub.Path)
 			}

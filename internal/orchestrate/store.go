@@ -141,6 +141,9 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		for _, existing := range m.Batches {
 			if existing.TaskName == name {
 				batch = existing
+				if batch.VCS != "" && batch.VCS != "shadow" {
+					return errors.New("retained batch uses an unsupported orchestration VCS")
+				}
 				if batch.State != "prepared" {
 					return fmt.Errorf("batch %s is %s; inspect its retained checkout before recovery", name, batch.State)
 				}
@@ -173,13 +176,13 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 				return errors.New("shadow snapshot owner is unavailable")
 			}
 		} else {
-			base, err = sourceBase(ctx, vcs, workspace)
+			base, err = sourceBase(ctx, workspace)
 			if err != nil {
 				return err
 			}
 		}
 		if relative != "." {
-			if err := committedDirectory(ctx, vcs, repository, base, relative); err != nil {
+			if err := committedDirectory(ctx, repository, base, relative); err != nil {
 				return errors.New("selected workspace directory is absent from the committed baseline")
 			}
 		}
@@ -187,13 +190,6 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		checkout := filepath.Join(storage, strings.TrimSuffix(filepath.Base(path), ".json"), name)
 		batch = Batch{TaskName: name, Branch: "mekugi/" + id + "/" + name, Checkout: checkout,
 			Cwd: filepath.Join(checkout, relative), Base: base, State: "preparing"}
-		if vcs == "hg" {
-			batch.VCS = vcs
-			batch.Repository, err = hg(ctx, repository, "root", "--share-source")
-			if err != nil {
-				return err
-			}
-		}
 		if vcs == "shadow" {
 			batch.VCS, batch.Repository = vcs, filepath.Join(filepath.Dir(checkout), "shadow.git")
 		}

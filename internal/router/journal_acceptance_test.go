@@ -11,23 +11,14 @@ import (
 )
 
 func TestJournalOrchestrateAcceptanceMCP(t *testing.T) {
-	for _, vcs := range []string{"git", "hg"} {
-		t.Run(vcs, func(t *testing.T) { testJournalOrchestrateAcceptanceMCP(t, vcs) })
-	}
-}
-
-func testJournalOrchestrateAcceptanceMCP(t *testing.T, vcs string) {
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := orchestrateVCSWorkspace(t, vcs)
-	if vcs == "git" {
-		writeTestFile(t, filepath.Join(source, "nested", "file"), "base")
-		gitTestCommit(t, source)
-		source = filepath.Join(source, "nested")
-	}
-	u, request := orchestrateIdentityPendingTurnInWorkspace(t, replay, source)
+	source := orchestrateVCSWorkspace(t, "git")
+	writeTestFile(t, filepath.Join(source, "nested", "file"), "base")
+	gitTestCommit(t, source)
+	u, request := orchestrateIdentityPendingTurnInWorkspace(t, replay, filepath.Join(source, "nested"))
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"initial"}}`)
 	p, workspace := u.proxy, u.session.cwd
 	childWorkspace := u.orchestrateThreads["child"].batch.Cwd
@@ -100,40 +91,27 @@ func testJournalOrchestrateAcceptanceMCP(t *testing.T, vcs string) {
 	call("main", "premature_parent", true, map[string]any{"op": "set", "p": "/1", "state": "done"})
 	writeTestFile(t, filepath.Join(childWorkspace, "result"), "result")
 	call("main", "dirty", true, accept)
-	if vcs == "hg" {
-		hgTestRun(t, childWorkspace, "add", "result")
-		hgTestRun(t, childWorkspace, "commit", "-u", "test", "-m", "result")
-	} else {
-		gitTestCommit(t, childWorkspace)
-	}
+	gitTestCommit(t, childWorkspace)
 	call("main", "unintegrated", true, accept)
 	// Native integration is external to the tool. Unrelated source edits survive.
 	writeTestFile(t, filepath.Join(workspace, "file"), "staged source edit")
-	if vcs == "git" {
-		gitTestRun(t, workspace, "add", "file")
-	}
+	gitTestRun(t, workspace, "add", "file")
 	writeTestFile(t, filepath.Join(workspace, "file"), "unstaged source edit")
-	if vcs == "hg" {
-		hgTestRun(t, workspace, "update", "-r", u.orchestrateThreads["child"].batch.Branch)
-	} else {
-		command := exec.CommandContext(t.Context(), "git", "-c", "core.hooksPath="+os.DevNull, "-C", workspace, "merge", "--ff-only", u.orchestrateThreads["child"].batch.Branch)
-		command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
-		if output, err := command.CombinedOutput(); err != nil {
-			t.Fatalf("merge: %v: %s", err, output)
-		}
+	command := exec.CommandContext(t.Context(), "git", "-c", "core.hooksPath="+os.DevNull, "-C", workspace, "merge", "--ff-only", u.orchestrateThreads["child"].batch.Branch)
+	command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("merge: %v: %s", err, output)
 	}
-	if vcs == "git" {
-		// Hidden edits outside the selected cwd must keep acceptance open.
-		for _, flag := range []string{"assume-unchanged", "skip-worktree"} {
-			gitTestRun(t, childRoot, "update-index", "--"+flag, "file")
-			writeTestFile(t, filepath.Join(childRoot, "file"), "hidden unfinished work")
-			call("main", flag, true, accept)
-			if data, err := os.ReadFile(filepath.Join(childRoot, "file")); err != nil || string(data) != "hidden unfinished work" {
-				t.Fatal("acceptance changed hidden tracked edits", flag, err)
-			}
-			gitTestRun(t, childRoot, "update-index", "--no-"+flag, "file")
-			gitTestRun(t, childRoot, "checkout", "--", "file")
+	// Hidden edits outside the selected cwd must keep acceptance open.
+	for _, flag := range []string{"assume-unchanged", "skip-worktree"} {
+		gitTestRun(t, childRoot, "update-index", "--"+flag, "file")
+		writeTestFile(t, filepath.Join(childRoot, "file"), "hidden unfinished work")
+		call("main", flag, true, accept)
+		if data, err := os.ReadFile(filepath.Join(childRoot, "file")); err != nil || string(data) != "hidden unfinished work" {
+			t.Fatal("acceptance changed hidden tracked edits", flag, err)
 		}
+		gitTestRun(t, childRoot, "update-index", "--no-"+flag, "file")
+		gitTestRun(t, childRoot, "checkout", "--", "file")
 	}
 	// Failed candidate batches do not accept the task, even after proof persistence.
 	call("main", "rollback", true, accept, map[string]any{"op": "set", "p": "/missing", "state": "done"})
@@ -166,11 +144,9 @@ func testJournalOrchestrateAcceptanceMCP(t *testing.T, vcs string) {
 	if err != nil || string(content) != "unstaged source edit" {
 		t.Fatal("source edits changed", string(content), err)
 	}
-	if vcs == "git" {
-		command := exec.CommandContext(t.Context(), "git", "-C", workspace, "show", ":./file")
-		if content, err := command.Output(); err != nil || string(content) != "staged source edit" {
-			t.Fatal("source index changed", string(content), err)
-		}
+	command = exec.CommandContext(t.Context(), "git", "-C", workspace, "show", ":./file")
+	if content, err := command.Output(); err != nil || string(content) != "staged source edit" {
+		t.Fatal("source index changed", string(content), err)
 	}
 	// Reopening starts a new review cycle; acceptance cannot use old task evidence.
 	call("main", "reopen", false, map[string]any{"op": "set", "p": "/1", "state": "working"}, map[string]any{"op": "set", "p": "/1/1", "state": "working"})
