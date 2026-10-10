@@ -18,8 +18,8 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				continue
 			}
 			batch = *b
-			if b.VCS != "" || len(b.Submodules) != 0 || b.Launch == nil || b.Launch.ThreadID == "" || b.Integration == nil || *b.Integration != proof {
-				return errors.New("cleanup requires an accepted Git batch without submodules")
+			if b.VCS != "" || b.Launch == nil || b.Launch.ThreadID == "" || b.Integration == nil || *b.Integration != proof {
+				return errors.New("cleanup requires an accepted Git batch")
 			}
 			for _, d := range m.Deliveries {
 				if (d.Target == b.Launch.ThreadID || d.From == b.Launch.ThreadID) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
@@ -64,15 +64,11 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				if err != nil || head != proof.Tip {
 					return errors.New("cleanup checkout tip changed after acceptance")
 				}
-				tree, err := git(ctx, b.Cwd, "ls-tree", "-rz", "--full-tree", "HEAD")
+				retained, err := retainCleanupSubmodules(ctx, *b)
 				if err != nil {
 					return err
 				}
-				for entry := range strings.SplitSeq(tree, "\x00") {
-					if strings.HasPrefix(entry, "160000 commit ") {
-						return errors.New("submodule checkout cleanup is not yet available")
-					}
-				}
+				b.RetainedSubmodules = retained
 				b.State, b.Error = "removing", ""
 				// The journal owner rechecks current acceptance and publishes intent
 				// in that transaction. The Git effect runs after its locks release.
@@ -80,7 +76,11 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 					return err
 				}
 				batch = *b
-				if _, err := git(ctx, workspace, "worktree", "remove", "--", b.Checkout); err != nil {
+				args := []string{"worktree", "remove"}
+				if len(b.Submodules) != 0 {
+					args = append(args, "--force") // Git requires force for populated submodules.
+				}
+				if _, err := git(ctx, workspace, append(args, "--", b.Checkout)...); err != nil {
 					b.Error = err.Error()
 					batch = *b
 					return errors.Join(err, s.save(m, path))

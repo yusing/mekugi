@@ -201,7 +201,7 @@ and acceptance remain staged below.
 ## REQ-ORCHESTRATE-009 — Accepted Git checkout cleanup
 
 Main calls `tools.mcp__orchestrate__cleanup({target:"batch"})` to remove an
-accepted, idle Git batch checkout without submodules. The bound journal task must
+accepted, idle Git batch checkout, including its run-owned submodule clones. The bound journal task must
 still be `accepted` with the run's integration tips. The checkout must retain its
 exact recorded location, repository, branch and accepted tip and be clean. Pending
 input, questions, approvals, native descendants or queued and uncertain deliveries
@@ -213,8 +213,18 @@ reconciles a missing checkout only when its Git registration is also absent and 
 still retains the accepted tip. A surviving checkout after uncertain removal
 requires inspection; cleanup never repeats that effect automatically. Branches,
 manifests, journals and evidence copies remain. The subscribed transcript stays
-viewable, with new turns disabled after removal. Submodule and evidence removal
-remain staged capabilities.
+viewable, with new turns disabled after removal. Evidence removal remains staged.
+
+Populated submodules must remain at their committed gitlinks, on their recorded
+batch branches, with clean worktrees and no stashes or unique branch/tag work.
+Checkouts with assume-unchanged or skip-worktree paths require inspection before
+cleanup; those flags can conceal unfinished edits.
+Removed, deinitialized or unregistered repositories preserve the checkout.
+Changed nested commits are retained in the recorded local source repositories
+before removal, without switching source branches or changing source edits and
+index. Cleanup returns the retained paths, tips and refs. It may add a retention
+ref when no source ref already reaches a changed tip. Retention failure preserves
+the checkout; successfully retained commits remain available after a later failure.
 
 ## Accepted delivery scope
 
@@ -251,8 +261,7 @@ The remaining capabilities are accepted but not yet delivered:
 - Retained child threads resume when viewed or messaged, without reviving
   processes or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
-  unrelated edits. Cleanup extends to accepted Git submodule checkouts and
-  unchanged run-owned evidence copies.
+  unrelated edits. Cleanup extends to unchanged run-owned evidence copies.
 - SVN uses run-owned shadow Git repositories, as do unversioned sources;
   conflict detection precedes source writes and partial writeback
   remains recoverable. Observation snapshots do not own durable batch branches.

@@ -16,11 +16,16 @@ import (
 
 func orchestrateCleanupUI(t *testing.T) *appServerUI {
 	t.Helper()
+	return orchestrateCleanupUIInWorkspace(t, orchestrateVCSWorkspace(t, "git"))
+}
+
+func orchestrateCleanupUIInWorkspace(t *testing.T, workspace string) *appServerUI {
+	t.Helper()
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, request := orchestrateIdentityPendingTurnWithReplay(t, replay)
+	u, request := orchestrateIdentityPendingTurnInWorkspace(t, replay, workspace)
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"initial"}}`)
 	if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), Agent: "/root/batch", State: new("working")}}); err != nil {
 		t.Fatal(err)
@@ -29,34 +34,22 @@ func orchestrateCleanupUI(t *testing.T) *appServerUI {
 	return u
 }
 
-func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
-	u := orchestrateCleanupUI(t)
-	p, workspace := u.proxy, u.session.cwd
-	store, child := p.orchestration.store, u.orchestrateThreads["child"]
-	gitRead := func(args ...string) string {
-		t.Helper()
-		command := exec.Command("git", append([]string{"-C", workspace}, args...)...)
-		command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
-		out, err := command.Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return strings.TrimSpace(string(out))
-	}
-	batch := child.batch
+func orchestrateCleanupMCPClient(t *testing.T, u *appServerUI) func(string, bool) *mcp.CallToolResult {
+	t.Helper()
+	p, store := u.proxy, u.proxy.orchestration.store
 	serverWire, clientWire := mcp.NewInMemoryTransports()
 	server, err := newOrchestrateMCPServer(p, store).Connect(t.Context(), serverWire, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer server.Close()
+	t.Cleanup(func() { server.Close() })
 	client, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(t.Context(), clientWire, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	t.Cleanup(func() { client.Close() })
 	p.orchestration.active.Store(true)
-	call := func(thread string, wantError bool) {
+	return func(thread string, wantError bool) *mcp.CallToolResult {
 		t.Helper()
 		result := make(chan *mcp.CallToolResult, 1)
 		go func() {
@@ -74,7 +67,7 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 			if !wantError || value == nil || !value.IsError {
 				t.Fatal("caller admission", value)
 			}
-			return
+			return value
 		case <-time.After(5 * time.Second):
 			t.Fatal("cleanup command timeout")
 		}
@@ -82,7 +75,26 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 		if value == nil || value.IsError != wantError {
 			t.Fatal("cleanup result", value)
 		}
+		return value
 	}
+}
+
+func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
+	u := orchestrateCleanupUI(t)
+	p, workspace := u.proxy, u.session.cwd
+	store, child := p.orchestration.store, u.orchestrateThreads["child"]
+	gitRead := func(args ...string) string {
+		t.Helper()
+		command := exec.Command("git", append([]string{"-C", workspace}, args...)...)
+		command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+		out, err := command.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	batch := child.batch
+	call := orchestrateCleanupMCPClient(t, u)
 	call("main", true) // A run proof alone does not accept Main's task.
 	if _, err := store.RecordIntegration(t.Context(), workspace, "main", "batch", "child"); err != nil {
 		t.Fatal(err)
