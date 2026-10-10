@@ -360,9 +360,9 @@ clear/interrupt behavior. Confirmed exit stops new orchestration dispatch and
 uses Codex's existing shutdown to stop its running turns. Resume shows interrupted
 work without reviving processes.
 
-The remaining capabilities are accepted but not yet delivered:
-
-- The home `batch-agent-sessions` skill/helper retires only after parity.
+Native orchestration replaces the home `batch-agent-sessions` skill and helper.
+Existing helper manifests, branches and unfinished checkouts remain available for
+inspection; orchestration does not import or remove those resources.
 
 Third-party threads retain their current stable schema exposure during initial
 delivery. Child-authored journal roots remain unchanged. Nested orchestration
