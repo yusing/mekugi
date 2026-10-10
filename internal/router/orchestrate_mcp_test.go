@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json/jsontext"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -52,6 +53,10 @@ func TestOrchestrateMCP(t *testing.T) {
 	meta := mcp.Meta{"threadId": "main", "sessionId": "host-session", "callId": "prepare",
 		codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "turn"}}
 	call("prepare", map[string]any{"task_name": "batch"}, meta, false)
+	preparedRecovery, err := replay.postCompactContext(ctx, workspace, "main")
+	if err != nil || strings.Count(preparedRecovery, orchestrateCoordinatorInstructions) != 1 {
+		t.Fatal("prepared run did not retain coordinator instructions", err, preparedRecovery)
+	}
 	call("list_agents", map[string]any{}, meta, false)
 	call("prepare", map[string]any{"task_name": "no_identity"}, nil, true)
 	call("prepare", map[string]any{"task_name": "no_turn"}, mcp.Meta{"threadId": "main", "sessionId": "host-session"}, true)

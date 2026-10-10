@@ -270,6 +270,11 @@ user input carries the issues and workflow instructions; later ordinary input
 does not repeat them or change tool exposure. Attachments, busy input, rejection
 and cancellation use the composer lifecycle. Fresh children receive their
 checkout, assignment and orchestration-tool instructions in their first input.
+Context resets carry the run's workflow instructions once in journal recovery.
+Main receives coordinator instructions after preparation; confirmed child roots
+receive their checkout and coordination instructions. Native descendants retain
+their existing guidance. Fresh resume restores the retained recovery content,
+without repeating instructions on ordinary requests or changing tool exposure.
 Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.
 It shows branch, lifecycle and available live timer, token and cost metrics.
 Selecting a subscribed thread switches the viewed shell without starting a turn
@@ -292,7 +297,6 @@ Resolution during answer paste discards that paste instead of editing another dr
 
 The remaining capabilities are accepted but not yet delivered:
 
-- Workflow instructions recover once after context reset.
 - Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
   unrelated edits.
