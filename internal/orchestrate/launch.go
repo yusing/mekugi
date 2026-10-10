@@ -106,7 +106,7 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 	if err != nil || !info.IsDir() {
 		return errors.New("prepared cwd is unavailable")
 	}
-	if b.VCS != "" && b.VCS != "shadow" {
+	if b.VCS != "" && !shadowVCS(b.VCS) {
 		return errors.New("unsupported checkout VCS")
 	}
 	root, err := git(ctx, cwd, "rev-parse", "--show-toplevel")
@@ -117,7 +117,7 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 	if err != nil || branch != "refs/heads/"+b.Branch {
 		return errors.New("prepared checkout branch changed")
 	}
-	if b.VCS == "shadow" {
+	if shadowVCS(b.VCS) {
 		common, err := git(ctx, cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
 		if err != nil || common != b.Repository {
 			return errors.New("shadow checkout repository changed")

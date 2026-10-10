@@ -12,7 +12,7 @@ Only an independent coordinator prepares batches. An orchestration child or its
 native descendants cannot start a nested run, including after fresh resume without
 a live parent. Retained run identity governs coordinator admission.
 
-Git and unversioned shadow preparation and listing are available
+Git, SVN and unversioned shadow preparation and listing are available
 through `tools.mcp__orchestrate__prepare({task_name:"batch"})` and
 `tools.mcp__orchestrate__list_agents({})`. Preparation creates no Codex thread and
 starts no model turn. Main can copy required ignored inputs into the returned
@@ -226,6 +226,24 @@ files remain unchanged. Prepared inputs and private branch history survive
 reopening, independently of observation-snapshot retention. Shadow integration
 and acceptance use the source-preserving writeback below.
 
+### SVN committed baselines
+
+SVN batches use the same private Git checkout and integration path. Preparation
+reconstructs the working copy's committed per-path baselines from a temporary
+copy of its local metadata, including mixed revisions. Local file and property
+edits, scheduled additions, replacements, moves and deletions stay in the source.
+Versioned files remain in the baseline even when Git ignore files match them.
+The selected subdirectory remains the child's cwd inside the reconstructed
+working-copy root. A directory absent from the baseline cannot launch.
+
+Preparation uses the installed SVN client without fetching remote content or
+changing source metadata. Missing pristine content fails preparation. File externals
+recorded in the local metadata keep their committed baseline. Unversioned inputs
+and separate directory externals do not follow; Main prepares required inputs explicitly.
+Keep source SVN operations idle while its metadata is copied. Integration writes
+only merged source paths and leaves SVN scheduling and metadata unchanged; Main
+owns any subsequent SVN add, delete or commit.
+
 ## REQ-ORCHESTRATE-010 — Shadow integration
 
 Main calls `tools.mcp__orchestrate__integrate({target:"batch"})` for a completed,
@@ -342,8 +360,6 @@ work without reviving processes.
 
 The remaining capabilities are accepted but not yet delivered:
 
-- SVN children start from their VCS-recorded committed baseline, excluding local
-  edits, in run-owned shadow Git repositories. SVN preparation remains staged.
 - Accepted shadow checkout cleanup uses the same ownership and settled-work
   requirements as Git cleanup and remains staged.
 - The home `batch-agent-sessions` skill/helper retires only after parity.

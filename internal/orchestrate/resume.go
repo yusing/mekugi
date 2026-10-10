@@ -17,7 +17,7 @@ func (s *Store) Resume(ctx context.Context, workspace, main, name string) (Batch
 			if b.Launch == nil || b.Launch.ThreadID == "" || b.State != "launched" && b.State != "started" && b.State != "removed" {
 				return errors.New("batch has no resumable confirmed thread")
 			}
-			if b.VCS != "" && b.VCS != "shadow" {
+			if b.VCS != "" && !shadowVCS(b.VCS) {
 				return errors.New("unsupported checkout VCS")
 			}
 			if b.State == "removed" {

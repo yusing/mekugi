@@ -17,7 +17,7 @@ import (
 )
 
 func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
-	for _, vcs := range []string{"git", "shadow"} {
+	for _, vcs := range []string{"git", "shadow", "svn"} {
 		t.Run(vcs, func(t *testing.T) { testAppServerOrchestrateMCPLaunch(t, vcs) })
 	}
 }

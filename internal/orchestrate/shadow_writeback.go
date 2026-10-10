@@ -63,7 +63,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 		}
 		b := &m.Batches[index]
 		defer func() { batch = *b }()
-		if b.VCS != "shadow" || b.State != "launched" || b.Launch == nil || b.Launch.ThreadID != thread || thread == "" || b.ShadowMerge == nil {
+		if !shadowVCS(b.VCS) || b.State != "launched" || b.Launch == nil || b.Launch.ThreadID != thread || thread == "" || b.ShadowMerge == nil {
 			return errors.New("writeback requires a confirmed shadow batch and merge plan")
 		}
 		for _, d := range m.Deliveries {
@@ -86,7 +86,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 			return errors.New("shadow batch tip changed during writeback")
 		}
 		vcs, source, err := sourceRepository(ctx, workspace)
-		if err != nil || vcs != "shadow" || source != b.Source {
+		if err != nil || vcs != b.VCS || source != b.Source {
 			return errors.New("shadow source identity changed")
 		}
 		root, err := os.OpenRoot(source)

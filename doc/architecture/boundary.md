@@ -92,3 +92,8 @@ Run-owned shadow repositories reuse the workspace snapshot owner's byte and
 ignore policy with complete indexing. Their objects and branches remain outside
 observation-snapshot size and age pruning. Preparation publishes the repository
 identity before snapshot effects and its baseline before checkout creation.
+SVN baseline preparation copies working-copy metadata to a temporary directory
+outside the source and restores only that copy with the SVN client. The snapshot
+owner imports the restored versioned files, including ignored files, into the
+durable private repository. Current-source comparisons keep the ordinary ignore
+policy. Source SVN metadata remains outside writeback effects.

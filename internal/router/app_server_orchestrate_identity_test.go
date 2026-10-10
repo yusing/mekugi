@@ -27,7 +27,7 @@ func orchestrateIdentityPendingTurnInWorkspace(t *testing.T, replay *mekugiRepla
 
 func orchestrateIdentityPendingTurnWithEvidence(t *testing.T, replay *mekugiReplayStore, workspace string, inputs []orchestrate.EvidenceInput) (*appServerUI, btwTestRPC) {
 	t.Helper()
-	store := &orchestrate.Store{Directory: t.TempDir(), ShadowSnapshot: orchestrateShadowSnapshot}
+	store := &orchestrate.Store{Directory: t.TempDir(), ShadowSnapshot: orchestrateShadowSnapshot, SVNBaseline: orchestrateSVNBaseline}
 	batch, err := store.Prepare(t.Context(), workspace, "main", "batch")
 	if err != nil {
 		t.Fatal(err)

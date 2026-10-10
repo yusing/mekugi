@@ -23,6 +23,7 @@ type Store struct {
 	Directory      string
 	Writes         *persistence.Counter
 	ShadowSnapshot func(context.Context, string, string) (string, error)
+	SVNBaseline    func(context.Context, string, string) (string, error)
 }
 
 type Batch struct {
@@ -145,7 +146,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		for _, existing := range m.Batches {
 			if existing.TaskName == name {
 				batch = existing
-				if batch.VCS != "" && batch.VCS != "shadow" {
+				if batch.VCS != "" && !shadowVCS(batch.VCS) {
 					return errors.New("retained batch uses an unsupported orchestration VCS")
 				}
 				if batch.State != "prepared" {
@@ -175,9 +176,12 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 			return errors.New("orchestration storage must be outside the source repository")
 		}
 		var base string
-		if vcs == "shadow" {
+		if shadowVCS(vcs) {
 			if s.ShadowSnapshot == nil {
 				return errors.New("shadow snapshot owner is unavailable")
+			}
+			if vcs == "svn" && s.SVNBaseline == nil {
+				return errors.New("SVN baseline owner is unavailable")
 			}
 		} else {
 			base, err = sourceBase(ctx, workspace)
@@ -185,7 +189,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 				return err
 			}
 		}
-		if relative != "." {
+		if relative != "." && !shadowVCS(vcs) {
 			if err := committedDirectory(ctx, repository, base, relative); err != nil {
 				return errors.New("selected workspace directory is absent from the committed baseline")
 			}
@@ -194,9 +198,9 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		checkout := filepath.Join(storage, strings.TrimSuffix(filepath.Base(path), ".json"), name)
 		batch = Batch{TaskName: name, Branch: "mekugi/" + id + "/" + name, Checkout: checkout,
 			Cwd: filepath.Join(checkout, relative), Base: base, State: "preparing"}
-		if vcs == "shadow" {
+		if shadowVCS(vcs) {
 			batch.VCS, batch.Repository = vcs, filepath.Join(filepath.Dir(checkout), "shadow.git")
-			batch.Source = selected
+			batch.Source = repository
 		}
 		if vcs == "" {
 			batch.Submodules, err = planSubmodules(ctx, repository, base, "")
@@ -209,8 +213,12 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 			return err
 		}
 		var effectErr error
-		if vcs == "shadow" {
-			batch.Base, effectErr = s.ShadowSnapshot(ctx, selected, batch.Repository)
+		if shadowVCS(vcs) {
+			snapshot := s.ShadowSnapshot
+			if vcs == "svn" {
+				snapshot = s.SVNBaseline
+			}
+			batch.Base, effectErr = snapshot(ctx, batch.Source, batch.Repository)
 			if effectErr == nil {
 				m.Batches[len(m.Batches)-1] = batch
 				if err := s.save(m, path); err != nil {
@@ -218,6 +226,9 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 				}
 				repository = batch.Repository
 			}
+		}
+		if effectErr == nil && relative != "." && shadowVCS(vcs) {
+			effectErr = committedDirectory(ctx, repository, batch.Base, relative)
 		}
 		if effectErr == nil {
 			effectErr = createCheckout(ctx, repository, batch)

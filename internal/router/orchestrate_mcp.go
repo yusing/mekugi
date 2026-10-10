@@ -64,6 +64,7 @@ func orchestrateMain(ctx context.Context, proxy *mekugiProxy, workspace, thread,
 
 func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.Server {
 	store.ShadowSnapshot = orchestrateShadowSnapshot
+	store.SVNBaseline = orchestrateSVNBaseline
 	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
 	for _, tool := range []struct{ name, description string }{
@@ -162,7 +163,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		return proxy.orchestration.call(command)
 	})
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git baseline, or an unversioned source snapshot. Nested runs are unavailable. Git includes locally initialized submodules. Optional evidence copies named absolute source files into run state and returns handoff paths. Copy checkout-relative inputs before spawning. Repeats preserve prepared files.",
+		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git or SVN baseline, or an unversioned source snapshot. Nested runs are unavailable. Git includes locally initialized submodules. Optional evidence copies named absolute source files into run state and returns handoff paths. Copy checkout-relative inputs before spawning. Repeats preserve prepared files.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name"}, "properties": map[string]any{
 			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
 			"evidence":  map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"name", "source"}, "properties": map[string]any{"name": map[string]any{"type": "string", "minLength": 1}, "source": map[string]any{"type": "string", "minLength": 1}}}},

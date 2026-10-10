@@ -26,7 +26,7 @@ func sourceRepository(ctx context.Context, workspace string) (string, string, er
 			case ".jj", ".hg", ".bzr":
 				return "", "", errors.New("orchestration supports Git, SVN and unversioned shadow only")
 			case ".svn":
-				return "", "", errors.New("SVN committed baselines are not yet available")
+				return "svn", dir, nil
 			case ".git":
 				root, err := git(ctx, selected, "rev-parse", "--show-toplevel")
 				return "", root, err
@@ -37,6 +37,8 @@ func sourceRepository(ctx context.Context, workspace string) (string, string, er
 		}
 	}
 }
+
+func shadowVCS(vcs string) bool { return vcs == "shadow" || vcs == "svn" }
 
 func sourceBase(ctx context.Context, cwd string) (string, error) {
 	return git(ctx, cwd, "rev-parse", "--verify", "HEAD^{commit}")
