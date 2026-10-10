@@ -379,4 +379,23 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if !asyncSeen || !syncSeen || !approvalSeen {
 		t.Fatalf("installed prompts missing provider evidence: async=%v sync=%v approval=%v", asyncSeen, syncSeen, approvalSeen)
 	}
+	if _, err := proxy.applyJournal(ctx, workspace, main, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), State: new("working"), Agent: "/root/batch"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := proxy.applyJournal(ctx, workspace, main, "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+		t.Fatal(err)
+	}
+	view.draft = "" // The earlier composer-preservation check is complete.
+	cleanup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", removeCheckout: true, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(cleanup)
+	pump(func() bool { return len(cleanup.reply) > 0 })
+	if result := <-cleanup.reply; result.err != nil || result.batch.State != "removed" {
+		t.Fatal("installed idle child cleanup", result.batch, result.err)
+	}
+	if _, err := os.Lstat(batch.Checkout); !os.IsNotExist(err) {
+		t.Fatal("installed child checkout survived cleanup", err)
+	}
+	if _, err := os.Stat(batch.Evidence[0].Path); err != nil {
+		t.Fatal("checkout cleanup discarded retained evidence", err)
+	}
 }

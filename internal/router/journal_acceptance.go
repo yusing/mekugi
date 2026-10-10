@@ -73,9 +73,17 @@ func validateJournalAcceptance(j threadJournal, before []journalItem) error {
 		previous := slices.IndexFunc(before, func(old journalItem) bool { return old.Path == item.Path })
 		return previous < 0 || before[previous].State != item.State || before[previous].Agent != item.Agent
 	}
-	if !slices.ContainsFunc(j.Items, func(item journalItem) bool {
+	accepting := slices.ContainsFunc(j.Items, func(item journalItem) bool {
 		return changed(item) && journalStateCompleted(item.State) && (item.State == "accepted" || item.Agent != "")
-	}) {
+	})
+	changedAccepted := slices.ContainsFunc(before, func(old journalItem) bool {
+		if old.State != "accepted" {
+			return false
+		}
+		index := slices.IndexFunc(j.Items, func(item journalItem) bool { return item.Path == old.Path })
+		return index < 0 || j.Items[index].State != old.State || j.Items[index].Agent != old.Agent
+	})
+	if !accepting && !changedAccepted {
 		return nil
 	}
 	var batches []orchestrate.Batch
@@ -86,6 +94,16 @@ func validateJournalAcceptance(j threadJournal, before []journalItem) error {
 		batches, err = (&orchestrate.Store{Directory: run.Directory}).Snapshot(run.Workspace, run.Main)
 		if err != nil {
 			return err
+		}
+	}
+	for _, old := range before {
+		if old.State != "accepted" {
+			continue
+		}
+		batch := slices.IndexFunc(batches, func(b orchestrate.Batch) bool { return old.Agent == "/root/"+b.TaskName && b.State == "removing" })
+		index := slices.IndexFunc(j.Items, func(item journalItem) bool { return item.Path == old.Path })
+		if batch >= 0 && (index < 0 || j.Items[index].State != old.State || j.Items[index].Agent != old.Agent) {
+			return fmt.Errorf("%s: batch cleanup requires the accepted binding to remain fixed", old.Path)
 		}
 	}
 	for _, item := range j.Items {

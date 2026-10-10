@@ -27,6 +27,7 @@ type orchestrateCommand struct {
 	wait            bool
 	followup        bool
 	deferred        bool
+	removeCheckout  bool
 	caller, callID  string
 	reply           chan orchestrateResult
 }
@@ -50,6 +51,7 @@ type orchestrateChild struct {
 	turn          string
 	completedTurn string
 	followups     []*orchestrateCommand
+	removing      bool
 }
 
 func (u *appServerUI) orchestrateCommands() <-chan *orchestrateCommand {
@@ -75,6 +77,10 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 	}
 	if command.wait {
 		u.waitOrchestratedEvent(command)
+		return
+	}
+	if command.removeCheckout {
+		u.cleanOrchestratedChild(command)
 		return
 	}
 	if command.target != "" {

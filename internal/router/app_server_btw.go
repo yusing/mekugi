@@ -62,6 +62,10 @@ func (p *mekugiProxy) isBTWThread(thread string) bool {
 }
 
 func (u *appServerUI) submitBTW() error {
+	if u.orchestrateCheckoutUnavailable() {
+		u.setNotice("Batch checkout cleanup prevents side questions", true)
+		return nil
+	}
 	text := strings.TrimSpace(u.draft)
 	question := strings.TrimSpace(strings.TrimPrefix(text, "/btw"))
 	if question == "" {

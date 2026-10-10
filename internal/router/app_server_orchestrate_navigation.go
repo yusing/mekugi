@@ -371,6 +371,9 @@ func (u *appServerUI) orchestrationRoster() {
 			name, label := "main", v.status
 			if child := n.owner.orchestrateThreads[thread]; child != nil {
 				name, label = child.batch.TaskName, child.batch.Branch+" · "+v.status
+				if v.orchestrateCheckoutUnavailable() {
+					label = child.batch.Branch + " · " + child.batch.State
+				}
 				if name == "main" {
 					name = "main batch"
 				}

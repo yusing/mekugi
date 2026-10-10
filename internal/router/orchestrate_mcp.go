@@ -115,21 +115,26 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		}
 		return result, value, err
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "interrupt_agent", Description: "Request interruption of a live batch turn. The host's turn completion confirms the outcome.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateInterruptInput) (*mcp.CallToolResult, any, error) {
-		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
-		if err != nil {
-			return nil, nil, err
-		}
-		defer release()
-		if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
-			return nil, nil, err
-		}
-		if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
-			return nil, nil, err
-		}
-		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, reply: make(chan orchestrateResult, 1)}
-		return proxy.orchestration.call(command)
-	})
+	for _, tool := range []struct{ name, description string }{
+		{"interrupt_agent", "Request interruption of a live batch turn. The host's turn completion confirms the outcome."},
+		{"cleanup", "Main removes an accepted idle Git batch checkout without submodules. Requires current journal acceptance and settled input. Keeps branches, manifests and evidence; repeats reconcile confirmed removal."},
+	} {
+		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateInterruptInput) (*mcp.CallToolResult, any, error) {
+			ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+			if err != nil {
+				return nil, nil, err
+			}
+			defer release()
+			if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+				return nil, nil, err
+			}
+			if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
+				return nil, nil, err
+			}
+			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, removeCheckout: tool.name == "cleanup", reply: make(chan orchestrateResult, 1)}
+			return proxy.orchestration.call(command)
+		})
+	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "spawn_agent", Description: "Start a fresh Codex thread in a prepared batch checkout. The message is the complete assignment. Repeats return retained launch progress without starting another thread.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name", "message"}, "properties": map[string]any{
