@@ -10,11 +10,14 @@ import (
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
-func resumeOrchestrationMain(t *testing.T, store *orchestrate.Store, workspace string) (*appServerUI, *appServerTestInput) {
+func resumeOrchestrationMain(t *testing.T, store *orchestrate.Store, workspace string, replay ...*mekugiReplayStore) (*appServerUI, *appServerTestInput) {
 	t.Helper()
 	u, wire := newAppServerTestUI()
 	u.ctx, u.thread, u.resumeThread = t.Context(), "", "main"
 	u.proxy = &mekugiProxy{journals: newJournalStore(), activity: newSubagentActivity(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: store.Directory}}}
+	if len(replay) != 0 {
+		u.proxy.replayStore = replay[0]
+	}
 	u.ensureShell()
 	t.Cleanup(func() { u.closeOrchestratedViews(); u.shell.diff.close(); u.shell.diffScreen.Close() })
 	if err := u.requestResume("main"); err != nil {
@@ -81,12 +84,12 @@ func TestUISnapshotOrchestrateRecoveryResume(t *testing.T) {
 		t.Fatal("retained facts replaced a subscribed row")
 	}
 	wire.Reset()
-	u.agents.selected = "/Orchestration/batch"
+	u.agents.selected = "/Orchestration/uncertain"
 	u.shell.focus = 3
 	if err := u.shell.key('\r'); err != nil {
 		t.Fatal(err)
 	}
-	if wire.Len() != 0 || u.viewedUI() != u || !strings.Contains(u.notice, "not subscribed") {
+	if wire.Len() != 0 || u.viewedUI() != u || !strings.Contains(u.notice, "no confirmed thread") {
 		t.Fatal("retained selection dispatched a host effect")
 	}
 	u.shell.focus = 0
@@ -108,6 +111,7 @@ func TestUISnapshotOrchestrateRecoveryResume(t *testing.T) {
 		b.Branch = "mekugi/run/" + b.TaskName
 	}
 	u.orchestrationRoster()
+	u.agents.selected = "/Orchestration/batch"
 	uisnapshot.Assert(t, "testdata/snapshots/orchestration-restored-roster.txt", strings.Join(u.agents.nativeRoster(100, 12, u.now(), true), "\n")+"\n")
 }
 

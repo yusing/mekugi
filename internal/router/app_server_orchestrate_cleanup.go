@@ -68,6 +68,33 @@ func (p *mekugiProxy) orchestrateCleanupProof(ctx context.Context, workspace, ma
 }
 
 func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand) {
+	if n := u.navigation; n != nil {
+		for _, b := range n.retained {
+			if b.Launch == nil || (c.target != b.TaskName && c.target != "/root/"+b.TaskName) || (n.views[b.Launch.ThreadID] != nil && n.resumes[b.Launch.ThreadID] == nil) {
+				continue
+			}
+			u.orchestrateWork(func() func() {
+				_, err := u.proxy.orchestrateCleanupProof(c.ctx, c.workspace, c.main, b.TaskName, nil)
+				return func() {
+					if err == nil {
+						err = c.ctx.Err()
+					}
+					if err != nil {
+						c.reply <- orchestrateResult{err: err}
+						return
+					}
+					u.resumeOrchestratedBatch(b.TaskName, func(err error) {
+						if err != nil {
+							c.reply <- orchestrateResult{err: err}
+						} else {
+							u.startOrchestratedChild(c)
+						}
+					})
+				}
+			})
+			return
+		}
+	}
 	for _, child := range u.orchestrateThreads {
 		if child.command.main != c.main || child.command.workspace != c.workspace || c.target != child.batch.TaskName && c.target != "/root/"+child.batch.TaskName {
 			continue

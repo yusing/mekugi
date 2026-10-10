@@ -271,6 +271,9 @@ func (u *appServerUI) finishRestoredContent() error {
 		a.mu.Unlock()
 		for workspace, threads := range scope.Workspaces {
 			for thread := range threads {
+				if u.navigation != nil && u.navigation.target(thread) != u {
+					continue
+				}
 				if !u.shell.diff.scope.Workspaces[workspace][thread] {
 					u.status = "Restoring saved Diff…"
 					return nil

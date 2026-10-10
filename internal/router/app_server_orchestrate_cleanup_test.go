@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	json "encoding/json/v2"
 	"os"
 	"os/exec"
@@ -164,6 +165,52 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 	retained, err := (&orchestrate.Store{Directory: store.Directory}).Snapshot(workspace, "main")
 	if err != nil || retained[0].State != "removed" || retained[0].Integration == nil {
 		t.Fatal("cleanup lost retained identity", retained, err)
+	}
+}
+
+func TestAppServerOrchestrateCleanupRetained(t *testing.T) {
+	for _, state := range []string{"idle", "working", "question", "canceled"} {
+		t.Run(state, func(t *testing.T) {
+			old := orchestrateCleanupUI(t)
+			store, workspace := old.proxy.orchestration.store, old.session.cwd
+			b := old.orchestrateThreads["child"].batch
+			_, err := store.RecordIntegration(t.Context(), workspace, "main", "batch", "child")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := old.proxy.applyJournal(old.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+				t.Fatal(err)
+			}
+			old.closeOrchestratedViews()
+			u, w := resumeOrchestrationMain(t, store, workspace, old.proxy.replayStore)
+			drainOrchestrateWork(t, u)
+			w.Reset()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			c := &orchestrateCommand{ctx: ctx, workspace: workspace, main: "main", target: "/root/batch", removeCheckout: true, reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(c)
+			drainOrchestrateWork(t, u)
+			if len(c.reply) != 0 {
+				t.Fatal("cleanup skipped host resume", <-c.reply)
+			}
+			if state == "question" {
+				orchestratePromptQuestion(t, u, false)
+			} else if state == "canceled" {
+				cancel()
+			}
+			resumeBatchResponses(t, u, w, b, state == "working")
+			drainOrchestrateWork(t, u)
+			result := <-c.reply
+			if (result.err != nil) != (state != "idle") {
+				t.Fatal("cleanup ignored resumed host state", result.err)
+			}
+			if _, err := os.Stat(b.Checkout); os.IsNotExist(err) != (state == "idle") || err != nil && !os.IsNotExist(err) {
+				t.Fatal("unexpected retained checkout state", err)
+			}
+			if w.Len() != 0 || u.viewedUI() != u {
+				t.Fatal("cleanup sent a host turn or switched the view", w.String())
+			}
+		})
 	}
 }
 

@@ -26,6 +26,7 @@ type orchestrateNavigation struct {
 	pending       []appserver.Message
 	promptOrder   uint64
 	retained      []orchestrate.Batch
+	resumes       map[string]*orchestrateResume
 }
 
 func (u *appServerUI) viewedUI() *appServerUI {
@@ -155,6 +156,9 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 		}
 		for _, v := range n.views {
 			if v != n.owner && (v.requests[string(m.ID)] != "" || v.btwRequests[string(m.ID)].panel != nil || v.reset != nil && v.reset.requestID == string(m.ID)) {
+				if handled := n.resumeResponse(v, m); handled {
+					return true, nil
+				}
 				if v.requests[string(m.ID)] == "thread/read" && m.Error == nil {
 					var r struct {
 						Thread appServerThreadInfo `json:"thread"`
@@ -164,8 +168,13 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 					}
 				}
 				if err := v.message(m); err != nil {
+					if n.resumes[v.thread] != nil {
+						n.finishResume(v.thread, err)
+						return true, nil
+					}
 					return true, err
 				}
+				n.completeResumes()
 				return true, n.drain()
 			}
 		}
@@ -323,7 +332,27 @@ func (n *orchestrateNavigation) drain() error {
 func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 	n := u.navigation
 	if n == nil || n.views[thread] == nil {
+		if n != nil {
+			for _, batch := range n.retained {
+				if batch.Launch != nil && batch.Launch.ThreadID == thread {
+					n.owner.resumeOrchestratedBatch(batch.TaskName, func(err error) {
+						if err == nil {
+							n.owner.switchOrchestratedThread(thread)
+						}
+					})
+					return true
+				}
+			}
+		}
 		return false
+	}
+	if r := n.resumes[thread]; r != nil {
+		r.ready = append(r.ready, func(err error) {
+			if err == nil {
+				n.owner.switchOrchestratedThread(thread)
+			}
+		})
+		return true
 	}
 	n.viewed = n.views[thread]
 	n.viewed.shell.paintedRows = nil
@@ -428,13 +457,22 @@ func (u *appServerUI) applyOrchestrationDiff(ctx context.Context, event liveDiff
 		}
 		v.shell.applyDiff(ctx, local)
 		v.dirty = true
+		if err := v.finishRestoredContent(); err != nil {
+			if n.resumes[v.thread] != nil {
+				n.finishResume(v.thread, err)
+			} else {
+				v.setNotice(err.Error(), true)
+			}
+		}
 	}
+	n.completeResumes()
 }
 
 func (u *appServerUI) tickOrchestratedViews(viewed *appServerUI) error {
 	u.flushOrchestratedEvents()
 	u.cancelOrchestratedMainFollowups()
 	if n := u.navigation; n != nil {
+		n.completeResumes()
 		for _, v := range n.views {
 			if v == viewed {
 				continue
@@ -516,11 +554,10 @@ func (u *appServerUI) pickOrchestratedThread() bool {
 	}
 	for _, batch := range n.retained {
 		if name == batch.TaskName && name != "main" || name == "main batch" && batch.TaskName == "main" {
-			message := "This batch is not subscribed · resume its retained thread before viewing"
-			if batch.Launch == nil || batch.Launch.ThreadID == "" {
-				message = "This batch has no confirmed thread · inspect preparation or launch before viewing"
+			if batch.Launch != nil && batch.Launch.ThreadID != "" {
+				return u.switchOrchestratedThread(batch.Launch.ThreadID)
 			}
-			u.setNotice(message, false)
+			u.setNotice("This batch has no confirmed thread · inspect preparation or launch before viewing", false)
 			return true
 		}
 	}
@@ -533,21 +570,28 @@ func (u *appServerUI) closeOrchestratedViews() {
 			return
 		}
 		n.closed = true
+		for thread := range n.resumes {
+			n.finishResume(thread, context.Canceled)
+		}
 		for _, v := range n.views {
 			if v == n.owner {
 				continue
 			}
-			v.cancelPickerScan()
-			v.discardDraftImages()
-			v.shell.diff.close()
-			v.shell.diffScreen.Close()
-			v.proxy.journals.detachNative(v.journal)
-			v.proxy.journals.detachNative(v.unscopedJournal)
-			v.proxy.activity.detachNativePane(v.thread)
-			if v.waitRelease != nil {
-				v.waitRelease()
-			}
+			v.closeOrchestratedView()
 		}
+	}
+}
+
+func (v *appServerUI) closeOrchestratedView() {
+	v.cancelPickerScan()
+	v.discardDraftImages()
+	v.shell.diff.close()
+	v.shell.diffScreen.Close()
+	v.proxy.journals.detachNative(v.journal)
+	v.proxy.journals.detachNative(v.unscopedJournal)
+	v.proxy.activity.detachNativePane(v.thread)
+	if v.waitRelease != nil {
+		v.waitRelease()
 	}
 }
 
