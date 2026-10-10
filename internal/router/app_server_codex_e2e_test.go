@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"reflect"
 	"strconv"
@@ -114,6 +115,7 @@ type appServerPreview struct {
 	codexArgs                 []string // Appended to the app-server invocation.
 	approvals                 bool     // Run in approval mode rather than --yolo's policy.
 	noJournal                 bool     // Skip the native journal milestone and its receipt checks.
+	mcp                       bool     // Register the existing bridge for native hooks.
 	beforePrompt, afterPrompt appServerPreviewHook
 	duringTurn                appServerPreviewHook // Runs after the prompt is sent, before the turn must finish.
 }
@@ -137,6 +139,18 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	args := []string{"app-server", "-c", `model_providers.preview={name="preview",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false"}
+	if options.mcp {
+		socket, stop, err := startJournalMCP(ctx, newJournalMCPServer(proxy))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := stop(); err != nil {
+				t.Error(err)
+			}
+		}()
+		args = append(args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["journal-mcp",`+strconv.Quote(socket)+`]}`)
+	}
 	cmd := exec.CommandContext(ctx, codex, append(args, options.codexArgs...)...)
 	cmd.Env = append(routerFaultCodexEnvironment(t), environment...)
 	cmd.Dir = t.TempDir()

@@ -192,7 +192,7 @@ turn. Your draft/attachments return afterward.
 
 The guard asks before supported Git/GitHub/Mercurial/SVN/Jujutsu remote writes in
 interactive Mekugi mode, even with `--yolo`; headless/noninteractive runs have no guard.
-It needs `mekugi-exec` beside `mekugi`, native command hooks, and unsandboxed execution.
+It needs `mekugi-exec` beside `mekugi`, native MCP hooks, and unsandboxed execution.
 Approve once, approve the exact command/workdir/executable for this UI session, or deny.
 Denial, a five-minute timeout, or an unreachable approval connection fails only that
 command with status 1; the shell follows normal `;`/`&&` behavior. Session grants expire

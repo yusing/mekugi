@@ -15,13 +15,13 @@ import (
 // Hook rewrites compete rather than compose, so another synchronous shell
 // hook could replace the guard's instrumentation. Keep that conflict visible.
 type approvalHookCheck struct {
-	command                    string
+	hash                       string
 	pendingThread, readyThread string
 }
 
 func (u *appServerUI) checkGuardHook() (bool, error) {
 	check := &u.guardHookCheck
-	if check.command == "" || u.turn != "" {
+	if check.hash == "" || u.turn != "" {
 		return true, nil
 	}
 	if check.readyThread == u.thread {
@@ -48,7 +48,7 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 	if message.Error != nil {
 		err = fmt.Errorf("read approval hook: %s", message.Error.Message)
 	} else {
-		err = validateGuardHook(message.Result, u.session.cwd, u.guardHookCheck.command)
+		err = validateGuardHook(message.Result, u.session.cwd, u.guardHookCheck.hash)
 	}
 	if err != nil {
 		u.restoreDrafts(append(u.unsent, u.queued...)...)
@@ -61,7 +61,7 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 	return u.flushInput()
 }
 
-func validateGuardHook(data []byte, cwd, command string) error {
+func validateGuardHook(data []byte, cwd, hash string) error {
 	var result struct {
 		Data []struct {
 			Cwd    string `json:"cwd"`
@@ -69,7 +69,10 @@ func validateGuardHook(data []byte, cwd, command string) error {
 			Hooks  []struct {
 				Key     string `json:"key"`
 				Event   string `json:"eventName"`
-				Command string `json:"command"`
+				Handler string `json:"handlerType"`
+				Server  string `json:"server"`
+				Tool    string `json:"tool"`
+				Hash    string `json:"currentHash"`
 				Matcher string `json:"matcher"`
 				Trust   string `json:"trustStatus"`
 				Enabled bool   `json:"enabled"`
@@ -89,7 +92,7 @@ func validateGuardHook(data []byte, cwd, command string) error {
 			if hook.Event != "preToolUse" || !hook.Enabled || (hook.Trust != "trusted" && hook.Trust != "managed") {
 				continue
 			}
-			if hook.Key == vcsguard.HookKey && hook.Command == command && hook.Matcher == "^Bash$" && !hook.Async {
+			if hook.Key == vcsguard.HookKey && hook.Handler == "mcpTool" && hook.Server == vcsguard.HookServer && hook.Tool == vcsguard.HookTool && hook.Hash == hash && hook.Matcher == "^Bash$" && !hook.Async {
 				found = true
 				continue
 			}

@@ -60,14 +60,6 @@ func main() {
 		}
 		return
 	}
-	if len(os.Args) == 3 && os.Args[1] == "--vcs-hook" {
-		helper, err := os.Executable()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
-		}
-		os.Exit(vcsguard.RunHook(helper, os.Args[2], os.Stdin, os.Stdout, os.Stderr))
-	}
 	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
 		if os.Args[3] == vcsguard.ItemFlag && len(os.Args) >= 6 {
 			if err := os.Setenv(vcsguard.ItemEnvironment, os.Args[4]); err != nil {

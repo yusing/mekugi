@@ -11,10 +11,10 @@ import (
 
 // vcsGuardHookArgs adds the guard to this invocation. Preserve other events
 // and trust entries, including the session recovery hook registered earlier.
-func vcsGuardHookArgs(args []string, helper, directory string) ([]string, error) {
-	config, state, err := vcsguard.HookConfig(helper, directory)
+func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker string) ([]string, string, error) {
+	config, state, hash, err := vcsguard.HookConfig(helper, directory, sudoDirectory, tracker)
 	if err != nil {
-		return args, err
+		return args, "", err
 	}
 	index := slices.Index(args, "--")
 	if index < 0 {
@@ -26,21 +26,21 @@ func vcsGuardHookArgs(args []string, helper, directory string) ([]string, error)
 		key, value, _ := strings.Cut(setting, "=")
 		key = strings.TrimSpace(key)
 		if key == "hooks" || key == "hooks.PreToolUse" || strings.HasPrefix(key, "hooks.PreToolUse.") {
-			return args, fmt.Errorf("command hook conflicts with explicit CLI PreToolUse configuration")
+			return args, "", fmt.Errorf("MCP hook conflicts with explicit CLI PreToolUse configuration")
 		}
 		if key == "hooks.state" {
 			var parsed struct {
 				State map[string]any `toml:"state"`
 			}
 			if _, err := toml.Decode("state="+value, &parsed); err != nil {
-				return args, fmt.Errorf("read CLI hook state: %w", err)
+				return args, "", fmt.Errorf("read CLI hook state: %w", err)
 			}
 			if _, exists := parsed.State[vcsguard.HookKey]; exists {
-				return args, fmt.Errorf("explicit CLI state for the command hook conflicts")
+				return args, "", fmt.Errorf("explicit CLI state for the MCP hook conflicts")
 			}
 			value = strings.TrimSpace(value)
 			if !strings.HasPrefix(value, "{") || !strings.HasSuffix(value, "}") {
-				return args, fmt.Errorf("CLI hook state must be a table")
+				return args, "", fmt.Errorf("CLI hook state must be a table")
 			}
 			previousState = strings.TrimSpace(value[1 : len(value)-1])
 		}
@@ -48,5 +48,5 @@ func vcsGuardHookArgs(args []string, helper, directory string) ([]string, error)
 	if previousState != "" {
 		state = previousState + "," + state
 	}
-	return slices.Insert(slices.Clone(args), index, "-c", config, "-c", "hooks.state={"+state+"}"), nil
+	return slices.Insert(slices.Clone(args), index, "-c", config, "-c", "hooks.state={"+state+"}"), hash, nil
 }

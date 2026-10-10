@@ -27,6 +27,10 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 		executions int // Expected occurrences of each FAKE output; default 1.
 	}{
 		{
+			name: "invalid-shell", command: "git push '",
+			want: []string{"VCS guard instrumentation failed"}, absent: []string{"FAKE git push"},
+		},
+		{
 			name:    "denied",
 			command: "git add -A; git push origin main; echo PUSH_EXIT $?; git log",
 			answers: []string{"wait for review"},
@@ -126,7 +130,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				t.Fatal(err)
 			}
 			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-			hook, state, err := vcsguard.HookConfig(helper, guard)
+			hook, state, hash, err := vcsguard.HookConfig(helper, guard, "", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -135,9 +139,12 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 
 			arguments += `, shell:` + string(mustMarshalJSON(shellPath))
 			provider := &toolFrontendCodexProvider{
-				program:   `const result = await tools.exec_command(` + arguments + `}); text(result.output);`,
+				program:   `if (ALL_TOOLS.some(t => t.name.includes("guard_rewrite"))) throw new Error("internal hook exposed"); const result = await tools.exec_command(` + arguments + `}); text(result.output);`,
 				expected:  tc.want,
 				finalText: "Recovered after a retry.",
+			}
+			if tc.name == "invalid-shell" {
+				provider.program = `try { ` + provider.program + ` } catch (error) { text(String(error)); }`
 			}
 			during := func(t *testing.T, outer io.Writer, await func(string), awaitFrame func(func(string) bool), _ *vt.Emulator) {
 				t.Helper()
@@ -159,11 +166,11 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				}
 			}
 			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-				environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "=" + vcsguard.HookCommand(helper, guard)},
+				environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "=" + hash},
 				codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 				approvals:   false,
-				noJournal:   true, // Journal delivery is not under test.
-				duringTurn:  during,
+				noJournal:   true, mcp: true, // Journal delivery is not under test.
+				duringTurn: during,
 			})
 			provider.mu.Lock()
 			defer provider.mu.Unlock()

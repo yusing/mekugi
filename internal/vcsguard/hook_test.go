@@ -1,27 +1,24 @@
 package vcsguard
 
 import (
-	"bytes"
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-
-	"github.com/yusing/mekugi/internal/execsegment"
 )
 
-func TestRunHookNativeUpdatedInput(t *testing.T) {
-	t.Setenv(execsegment.ShTrackerEnvironment, "")
+func TestRewriteHookNativeUpdatedInput(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "must-not-execute")
 	command := `git push "$(touch '` + marker + `')"; printf '%s' "$HOME"`
-	request, err := json.Marshal(map[string]any{"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "cmd", "tool_input": map[string]any{"command": command, "workdir": "/workspace"}})
+	input := HookInput{Helper: "/private/helper", Directory: "/private/guard", Event: "PreToolUse", Tool: "Bash", Item: "cmd"}
+	input.Input.Command = &command
+	result, err := RewriteHook(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var output, diagnostics bytes.Buffer
-	if code := RunHook("/private/helper", "/private/guard", bytes.NewReader(request), &output, &diagnostics); code != 0 {
-		t.Fatalf("hook code %d: %s", code, &diagnostics)
+	output, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
 	}
 	var response struct {
 		Output struct {
@@ -32,7 +29,7 @@ func TestRunHookNativeUpdatedInput(t *testing.T) {
 			} `json:"updatedInput"`
 		} `json:"hookSpecificOutput"`
 	}
-	if err := json.Unmarshal(output.Bytes(), &response); err != nil {
+	if err := json.Unmarshal(output, &response); err != nil {
 		t.Fatal(err)
 	}
 	expected, err := RewriteForItem(command, "/private/helper", "/private/guard", "cmd")
@@ -40,40 +37,46 @@ func TestRunHookNativeUpdatedInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	if response.Output.Event != "PreToolUse" || response.Output.Decision != "allow" || response.Output.Input.Command != expected || expected == command {
-		t.Fatalf("invalid native updatedInput: %s", &output)
+		t.Fatalf("invalid native updatedInput: %s", output)
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatalf("rewrite executed expansion: %v", err)
 	}
-	if diagnostics.Len() != 0 {
-		t.Fatalf("unexpected diagnostics: %s", &diagnostics)
-	}
 }
 
-func TestRunHookNoChangeAndInvalidInput(t *testing.T) {
-	t.Setenv(execsegment.ShTrackerEnvironment, "")
+func TestRewriteHookNoChangeAndInvalidInput(t *testing.T) {
 	for _, tt := range []struct {
 		name, input string
-		code        int
+		fail        bool
 	}{
-		{"ordinary command", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf '%s' 'git push'"}}`, 0},
-		{"malformed JSON", `{`, 2},
-		{"wrong event", `{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"git push"}}`, 2},
-		{"wrong tool", `{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"command":"git push"}}`, 2},
-		{"missing command", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}`, 2},
-		{"invalid shell", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push '"}}`, 2},
+		{"ordinary command", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"printf '%s' 'git push'"}}`, false},
+		{"malformed JSON", `{`, true},
+		{"wrong event", `{"hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"git push"}}`, true},
+		{"wrong tool", `{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"command":"git push"}}`, true},
+		{"missing command", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{}}`, true},
+		{"invalid shell", `{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push '"}}`, true},
+		{"relative helper", `{"helper":"relative/helper","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push"}}`, true},
+		{"relative resource", `{"directory":"relative/guard","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push"}}`, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			var output, diagnostics bytes.Buffer
-			if code := RunHook("/helper", "/guard", strings.NewReader(tt.input), &output, &diagnostics); code != tt.code {
-				t.Fatalf("code=%d diagnostics=%s", code, &diagnostics)
+			var input HookInput
+			err := json.Unmarshal([]byte(tt.input), &input)
+			if input.Helper == "" {
+				input.Helper = "/helper"
 			}
-			if tt.code == 0 {
-				if output.String() != "{}" || diagnostics.Len() != 0 {
-					t.Fatalf("unchanged command output=%q diagnostics=%q", &output, &diagnostics)
-				}
-			} else if output.Len() != 0 || diagnostics.Len() == 0 {
-				t.Fatalf("rejected input output=%q diagnostics=%q", &output, &diagnostics)
+			if input.Directory == "" {
+				input.Directory = "/guard"
+			}
+			var output any
+			if err == nil {
+				output, err = RewriteHook(input)
+			}
+			if (err != nil) != tt.fail {
+				t.Fatalf("output=%v error=%v", output, err)
+			}
+			data, marshalErr := json.Marshal(output)
+			if err == nil && (marshalErr != nil || string(data) != "{}") {
+				t.Fatalf("unchanged output=%v", output)
 			}
 		})
 	}

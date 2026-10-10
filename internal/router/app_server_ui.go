@@ -177,13 +177,13 @@ func StartAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 
 // Codex approval policy and the invocation-local VCS guard are independent.
 func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator, approvals bool) (func() error, error) {
-	guardCommand := ""
+	guardHash := ""
 	for _, entry := range cmd.Environ() {
-		if command, ok := strings.CutPrefix(entry, vcsguard.HookEnvironment+"="); ok {
-			guardCommand = command
+		if hash, ok := strings.CutPrefix(entry, vcsguard.HookEnvironment+"="); ok {
+			guardHash = hash
 		}
 	}
-	if guardCommand != "" && (proxy == nil || proxy.execTrack == nil || proxy.execTrack.guardClose == nil) {
+	if guardHash != "" && (proxy == nil || proxy.execTrack == nil || proxy.execTrack.guardClose == nil) {
 		return nil, errors.New("VCS guard approval channel is unavailable")
 	}
 	var resumeCwd string
@@ -202,7 +202,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		return nil, err
 	}
 	u := &appServerUI{client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
-	u.guardHookCheck.command = guardCommand
+	u.guardHookCheck.hash = guardHash
 	if generator != nil {
 		u.titleGenerator = generator
 		u.titleUpdates = generator.updates

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 func TestJournalMCPMutate(t *testing.T) {
@@ -176,6 +177,27 @@ func TestJournalMCPRead(t *testing.T) {
 	}
 	if !bytes.Contains(data, []byte(`"name":"journal_read"`)) || !bytes.Contains(data, []byte(`"additionalProperties":false`)) {
 		t.Fatalf("native schema discovery: %s", data)
+	}
+	for _, command := range []any{"git push '\"", 42} {
+		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: vcsguard.HookTool, Arguments: map[string]any{
+			"helper": "/helper", "directory": "/guard", "sudo_directory": "", "tracker": "",
+			"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "item", "tool_input": map[string]any{"command": command},
+		}})
+		if err != nil || result.IsError {
+			t.Fatalf("hook failed instead of returning a native decision: %+v, %v", result, err)
+		}
+		var response struct {
+			Output struct {
+				Decision string `json:"permissionDecision"`
+				Reason   string `json:"permissionDecisionReason"`
+			} `json:"hookSpecificOutput"`
+		}
+		if err := json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Output.Decision != "deny" || response.Output.Reason == "" {
+			t.Fatalf("instrumentation failure allowed: %+v", response)
+		}
 	}
 	for _, test := range []struct {
 		name, thread, agent string

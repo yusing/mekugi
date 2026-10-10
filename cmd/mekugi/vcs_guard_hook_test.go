@@ -14,7 +14,7 @@ func TestVCSGuardHookArgsPreservesRecoveryTrustAndCaller(t *testing.T) {
 		t.Fatal("recovery hook not registered")
 	}
 	original := slices.Clone(caller)
-	got, err := vcsGuardHookArgs(caller, "/path with spaces/mekugi", "/private/guard")
+	got, identity, err := vcsGuardHookArgs(caller, "/path with spaces/mekugi", "/private/guard", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +41,8 @@ func TestVCSGuardHookArgsPreservesRecoveryTrustAndCaller(t *testing.T) {
 	}
 	guard := config.Hooks.State[vcsguard.HookKey]
 	// Reported as trusted by `codex app-server` hooks/list for this exact hook.
-	const hash = "sha256:e517f39987a2e5743dde04d9e38da6bd5886bdc6ea16da50bcb08a9e11741ae5"
-	if guard.TrustedHash != hash || guard.Enabled != nil {
+	const hash = "sha256:16ebe25cea81aca7a47215fe1edd9a5c2bcdb9ed2c6a520a3ab8b3f0d3f56048"
+	if guard.TrustedHash != hash || identity != hash || guard.Enabled != nil {
 		t.Fatalf("guard trust identity or enablement changed: %+v", guard)
 	}
 }
@@ -55,7 +55,7 @@ func TestVCSGuardHookArgsRejectsExplicitConflicts(t *testing.T) {
 	} {
 		for _, args := range [][]string{{"exec", "-c", setting}, {"exec", "--config=" + setting}, {"exec", "-c" + setting}} {
 			original := slices.Clone(args)
-			fallback, err := vcsGuardHookArgs(args, "/mekugi", "")
+			fallback, _, err := vcsGuardHookArgs(args, "/mekugi", "", "", "")
 			if err == nil {
 				t.Errorf("accepted conflicting config: %q", args)
 			}

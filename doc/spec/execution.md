@@ -265,7 +265,7 @@ resources leave the original script to run once; after tracking is accepted,
 router cancellation cannot suppress its execution. Codex still owns command
 cancellation.
 
-For dash-backed sh, Codex's native `PreToolUse` command hook adds inline
+For dash-backed sh, Codex's native `PreToolUse` MCP hook adds inline
 instrumentation to supported POSIX scripts. It runs in Codex's selected shell,
 without launching a substitute interpreter, and uses the same segment reports,
 measured timing, output retention and UI as Bash. Bash keeps its startup path.
@@ -402,8 +402,10 @@ approvals and sandboxing, not this guard. Sandboxed guard execution is unsupport
 Mekugi does not silently change the user's configuration, approval policy or
 sandbox settings.
 
-The guard uses Codex's native command hook to instrument shell command text
-before execution. It leaves expansion and control flow to Codex's selected
+The guard uses Codex's native MCP hook through the existing Mekugi bridge to
+instrument shell command text before execution without starting a shell or
+helper process for each hook call. The hook tool is not exposed in the model's
+tool catalog. It leaves expansion and control flow to Codex's selected
 shell, including Bash and sh, rather than running the
 whole script in a substitute interpreter. It preserves all other tool arguments,
 permissions, sandbox settings, process ownership and continuation semantics.
@@ -428,10 +430,10 @@ retain shell-function lookup and use the command-local PATH; `command -p`
 retains its default-path lookup.
 
 The enabled guard requires Mekugi mode, the installed `mekugi-exec` sibling,
-Codex's native command-hook support and the approval channel. Before each new
+Codex's native MCP-hook support and the approval channel. Before each new
 user turn, the UI verifies the workspace's effective hooks. A missing, disabled
-or untrusted guard, or a competing trusted synchronous shell hook, blocks the
-turn with an explanation and preserves the draft. Explicit CLI overrides of
+or untrusted guard, a changed hook identity, or a competing trusted synchronous
+shell hook blocks the turn with an explanation and preserves the draft. Explicit CLI overrides of
 `hooks` or `hooks.PreToolUse` prevent a guarded launch. Interactive passthrough
 requires explicit `--vcs-guard=false`, rather than `--yolo`. Invocation-local hook
 setup preserves recovery-hook trust and leaves user configuration files unchanged.
@@ -549,4 +551,4 @@ not grant sandbox permissions or change sudo policy. It requires the interactive
 UI, the installed `mekugi-exec` helper and access to its local approval channel;
 headless and passthrough commands retain their existing behavior. Direct sudo
 names and executable paths through supported command wrappers are instrumented
-by the native command hook. Shell functions keep their existing lookup.
+by the native MCP hook. Shell functions keep their existing lookup.

@@ -17,45 +17,45 @@ func guardHookTestResult(t *testing.T, cwd string, hooks ...map[string]any) []by
 	return data
 }
 
-func guardHookTestEntry(command string) map[string]any {
-	return map[string]any{"key": vcsguard.HookKey, "eventName": "preToolUse", "command": command, "matcher": "^Bash$", "trustStatus": "trusted", "enabled": true, "async": false}
+func guardHookTestEntry(hash string) map[string]any {
+	return map[string]any{"key": vcsguard.HookKey, "eventName": "preToolUse", "handlerType": "mcpTool", "server": vcsguard.HookServer, "tool": vcsguard.HookTool, "currentHash": hash, "matcher": "^Bash$", "trustStatus": "trusted", "enabled": true, "async": false}
 }
 
 func TestValidateGuardHookEffectiveConfiguration(t *testing.T) {
-	const command = "'/helper' --vcs-hook '/guard'"
+	const hash = "sha256:expected"
 	for _, tt := range []struct {
 		name, field string
 		value       any
 	}{
 		{"disabled", "enabled", false}, {"untrusted", "trustStatus", "untrusted"},
 		{"wrong key", "key", "/user/config.toml:pre_tool_use:0:0"},
-		{"wrong command", "command", command + " extra"}, {"wrong matcher", "matcher", ".*"},
+		{"wrong hash", "currentHash", hash + " extra"}, {"wrong server", "server", "other"}, {"wrong tool", "tool", "other"}, {"wrong type", "handlerType", "command"}, {"wrong matcher", "matcher", ".*"},
 		{"asynchronous", "async", true}, {"wrong event", "eventName", "postToolUse"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			hook := guardHookTestEntry(command)
+			hook := guardHookTestEntry(hash)
 			hook[tt.field] = tt.value
-			if err := validateGuardHook(guardHookTestResult(t, "/workspace", hook), "/workspace", command); err == nil {
+			if err := validateGuardHook(guardHookTestResult(t, "/workspace", hook), "/workspace", hash); err == nil {
 				t.Fatal("accepted ineffective guard")
 			}
 		})
 	}
 	for _, trust := range []string{"trusted", "managed"} {
-		hook := guardHookTestEntry(command)
+		hook := guardHookTestEntry(hash)
 		hook["trustStatus"] = trust
-		if err := validateGuardHook(guardHookTestResult(t, "/workspace", hook), "/workspace", command); err != nil {
+		if err := validateGuardHook(guardHookTestResult(t, "/workspace", hook), "/workspace", hash); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, data := range [][]byte{[]byte(`{`), []byte(`{"data":[]}`), guardHookTestResult(t, "/other", guardHookTestEntry(command)), []byte(`{"data":[{"cwd":"/workspace","errors":["cannot load hooks"]}]}`)} {
-		if err := validateGuardHook(data, "/workspace", command); err == nil {
+	for _, data := range [][]byte{[]byte(`{`), []byte(`{"data":[]}`), guardHookTestResult(t, "/other", guardHookTestEntry(hash)), []byte(`{"data":[{"cwd":"/workspace","errors":["cannot load hooks"]}]}`)} {
+		if err := validateGuardHook(data, "/workspace", hash); err == nil {
 			t.Fatalf("accepted unverifiable host result: %s", data)
 		}
 	}
 }
 
 func TestValidateGuardHookCompetingShellHooks(t *testing.T) {
-	const command = "guard"
+	const hash = "guard"
 	for _, tt := range []struct {
 		name, matcher, trust, event string
 		enabled, async, conflict    bool
@@ -76,8 +76,8 @@ func TestValidateGuardHookCompetingShellHooks(t *testing.T) {
 		{"recovery hook", "^compact$", "trusted", "sessionStart", true, false, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			other := map[string]any{"key": "other", "command": "other-command", "eventName": tt.event, "matcher": tt.matcher, "trustStatus": tt.trust, "enabled": tt.enabled, "async": tt.async}
-			err := validateGuardHook(guardHookTestResult(t, "/workspace", guardHookTestEntry(command), other), "/workspace", command)
+			other := map[string]any{"key": "other", "handlerType": "command", "command": "other-command", "eventName": tt.event, "matcher": tt.matcher, "trustStatus": tt.trust, "enabled": tt.enabled, "async": tt.async}
+			err := validateGuardHook(guardHookTestResult(t, "/workspace", guardHookTestEntry(hash), other), "/workspace", hash)
 			if (err != nil) != tt.conflict {
 				t.Fatalf("conflict=%v error=%v", tt.conflict, err)
 			}
@@ -88,7 +88,7 @@ func TestValidateGuardHookCompetingShellHooks(t *testing.T) {
 func TestAppServerGuardHookChecksBeforeEachNewTurn(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.session.cwd = "/selected/workspace"
-	u.guardHookCheck.command = "guard"
+	u.guardHookCheck.hash = "guard"
 	appServerTestKeys(t, u, "first\rsecond\r")
 	type hookRequest struct {
 		ID     int    `json:"id"`
@@ -117,7 +117,7 @@ func TestAppServerGuardHookChecksBeforeEachNewTurn(t *testing.T) {
 func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
 	for _, response := range []string{`"result":{"data":[]}`, `"error":{"code":-1,"message":"offline"}`} {
 		u, wire := newAppServerTestUI()
-		u.session.cwd, u.guardHookCheck.command = "/workspace", "guard"
+		u.session.cwd, u.guardHookCheck.hash = "/workspace", "guard"
 		appServerTestKeys(t, u, "first\rsecond\rtyping")
 		request := appServerOneRequest(t, wire, "hooks/list", "")
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, request.ID, response))
@@ -131,7 +131,7 @@ func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
 
 func TestAppServerGuardHookIgnoresStaleThreadResponse(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.session.cwd, u.guardHookCheck.command = "/old", "guard"
+	u.session.cwd, u.guardHookCheck.hash = "/old", "guard"
 	appServerTestKeys(t, u, "old input\r")
 	old := appServerOneRequest(t, wire, "hooks/list", "")
 	// Thread switching owns pending-input removal. The outstanding host request

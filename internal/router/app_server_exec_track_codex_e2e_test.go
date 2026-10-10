@@ -33,7 +33,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	if err := os.WriteFile(tracker, []byte(execsegment.ShTracker(helper, shell.hub.requests.Name(), shell.hub.directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	hook, state, err := vcsguard.HookConfig(helper, "")
+	hook, state, _, err := vcsguard.HookConfig(helper, "", "", tracker)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
 		environment: []string{"PATH=" + execTrackPath(), execsegment.ShTrackerEnvironment + "=" + tracker},
 		codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
-		noJournal:   true, duringTurn: during, afterPrompt: after,
+		noJournal:   true, mcp: true, duringTurn: during, afterPrompt: after,
 	})
 	if !report.done || report.code != 1 || len(report.segments) != 5 {
 		t.Fatalf("dash report = %+v", report)
@@ -168,14 +168,8 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A native PreToolUse handler inherits BASH_ENV but must not enter the
-	// tracker, even while the same startup file tracks the actual tool command.
-	hookHelper := filepath.Join(shell.root, "hook-helper")
-	source := "#!/bin/sh\nif [ -n \"${MEKUGI_EXEC_TRACK-}\" ]; then echo 'hook started tracking' >&2; exit 2; fi\nexec " + quoteShellWord(helper) + " \"$@\"\n"
-	if err := os.WriteFile(hookHelper, []byte(source), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	hook, state, err := vcsguard.HookConfig(hookHelper, "")
+	// The MCP hook must not launch a helper or shell before instrumentation.
+	hook, state, _, err := vcsguard.HookConfig(helper, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +205,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 		}
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-		environment: environment, afterPrompt: after, noJournal: true,
+		environment: environment, afterPrompt: after, noJournal: true, mcp: true,
 		codexArgs: []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
 	})
 }

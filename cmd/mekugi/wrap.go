@@ -194,7 +194,17 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			if guard {
 				guardDirectory, _ = vcsguard.Paths(session.FrontendDirectory)
 			}
-			cmd.Args, err = vcsGuardHookArgs(cmd.Args, helper, guardDirectory)
+			sudoDirectory, tracker := "", ""
+			for _, entry := range cmd.Env {
+				if value, ok := strings.CutPrefix(entry, sudoask.DirectoryEnvironment+"="); ok {
+					sudoDirectory = value
+				}
+				if value, ok := strings.CutPrefix(entry, execsegment.ShTrackerEnvironment+"="); ok {
+					tracker = value
+				}
+			}
+			var hash string
+			cmd.Args, hash, err = vcsGuardHookArgs(cmd.Args, helper, guardDirectory, sudoDirectory, tracker)
 			if err != nil {
 				if guard {
 					cancel()
@@ -202,7 +212,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 				}
 				fmt.Fprintln(os.Stderr, "mekugi: sh segment tracking unavailable:", err)
 			} else if guard {
-				cmd.Env = append(cmd.Env, vcsguard.HookEnvironment+"="+vcsguard.HookCommand(helper, guardDirectory))
+				cmd.Env = append(cmd.Env, vcsguard.HookEnvironment+"="+hash)
 			}
 		}
 	}
