@@ -9,10 +9,15 @@ import (
 
 // Durable branches use the snapshot policy, not its disposable observation store.
 func orchestrateShadowSnapshot(ctx context.Context, workspace, repository string) (string, error) {
+	return orchestrateSnapshot(ctx, workspace, repository, false)
+}
+
+func orchestrateSnapshot(ctx context.Context, workspace, repository string, committed bool) (string, error) {
 	r := &workspaceSnapshotRepo{
 		owner:     &workspaceSnapshots{directory: filepath.Dir(repository)},
 		workspace: workspace, gitDir: repository, index: repository + ".index",
 		lockPath: repository + ".lock", gate: make(chan struct{}, 1), durable: true,
+		committed: committed,
 	}
 	tree, err := r.snapshot(ctx)
 	if err != nil {

@@ -7,6 +7,9 @@ import (
 
 func orchestrateVCSWorkspace(t *testing.T, vcs string) string {
 	t.Helper()
+	if vcs == "svn" {
+		return orchestrateSVNWorkspace(t)
+	}
 	if vcs == "shadow" {
 		workspace := t.TempDir()
 		writeTestFile(t, filepath.Join(workspace, "file"), "base")

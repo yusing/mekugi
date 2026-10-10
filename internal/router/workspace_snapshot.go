@@ -113,15 +113,16 @@ type workspaceSnapshotRepo struct {
 	lockPath  string
 	// worktree is the real repository's top level in Git mode, so its ignore
 	// files apply; pathspec limits the snapshot to the workspace below it.
-	worktree string
-	pathspec string
-	plain    bool
-	durable  bool // Run-owned snapshots require complete indexing and retain their objects.
-	excludes string
-	exclude  string // the real repository's info/exclude
-	objects  string // the real repository's object directory
-	seed     string // the real repository's index
-	gate     chan struct{}
+	worktree  string
+	pathspec  string
+	plain     bool
+	durable   bool // Run-owned snapshots require complete indexing and retain their objects.
+	committed bool // Reconstructed SVN baselines contain only versioned files.
+	excludes  string
+	exclude   string // the real repository's info/exclude
+	objects   string // the real repository's object directory
+	seed      string // the real repository's index
+	gate      chan struct{}
 	// finalize serializes snapshot comparisons and their claims.
 	finalize sync.Mutex
 	// snapshots counts refreshes since the store size was last checked.
@@ -348,7 +349,11 @@ func (s *workspaceSnapshots) pruneIdle(keep string) {
 func (r *workspaceSnapshotRepo) refresh(ctx context.Context) (string, error) {
 	var err error
 	if r.durable {
-		_, err = r.run(ctx, nil, "add", "-A", "--", r.pathspec)
+		args := []string{"add", "-A"}
+		if r.committed {
+			args = append(args, "--force")
+		}
+		_, err = r.run(ctx, nil, append(args, "--", r.pathspec)...)
 	} else if r.plain {
 		err = r.addPlain(ctx)
 	} else {
@@ -393,17 +398,19 @@ func (r *workspaceSnapshotRepo) setup(ctx context.Context) error {
 		return errors.New("git is unavailable")
 	}
 	userEnv := workspaceSnapshotUserEnv()
-	query := exec.CommandContext(ctx, git, "-c", "core.fsmonitor=false", "-C", r.workspace,
-		"rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir", "--git-path", "index")
-	query.Env, query.WaitDelay = userEnv, 100*time.Millisecond
 	r.worktree, r.pathspec, r.plain, r.exclude, r.objects, r.seed = r.workspace, ".", true, "", "", ""
-	if output, err := query.Output(); err == nil {
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-		if len(lines) == 3 && filepath.IsAbs(lines[0]) {
-			if relative, err := filepath.Rel(lines[0], r.workspace); err == nil && filepath.IsLocal(relative) {
-				r.worktree, r.pathspec, r.plain = lines[0], filepath.ToSlash(relative), false
-				r.exclude = filepath.Join(lines[1], "info", "exclude")
-				r.objects, r.seed = filepath.Join(lines[1], "objects"), lines[2]
+	if !r.durable {
+		query := exec.CommandContext(ctx, git, "-c", "core.fsmonitor=false", "-C", r.workspace,
+			"rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir", "--git-path", "index")
+		query.Env, query.WaitDelay = userEnv, 100*time.Millisecond
+		if output, err := query.Output(); err == nil {
+			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+			if len(lines) == 3 && filepath.IsAbs(lines[0]) {
+				if relative, err := filepath.Rel(lines[0], r.workspace); err == nil && filepath.IsLocal(relative) {
+					r.worktree, r.pathspec, r.plain = lines[0], filepath.ToSlash(relative), false
+					r.exclude = filepath.Join(lines[1], "info", "exclude")
+					r.objects, r.seed = filepath.Join(lines[1], "objects"), lines[2]
+				}
 			}
 		}
 	}

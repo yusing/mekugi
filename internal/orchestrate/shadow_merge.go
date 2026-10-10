@@ -32,7 +32,7 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		}
 		b := &m.Batches[index]
 		batch = *b
-		if b.VCS != "shadow" || b.State != "launched" || b.Launch == nil || b.Launch.ThreadID != thread || thread == "" {
+		if !shadowVCS(b.VCS) || b.State != "launched" || b.Launch == nil || b.Launch.ThreadID != thread || thread == "" {
 			return errors.New("shadow merge requires a confirmed shadow batch")
 		}
 		for _, d := range m.Deliveries {
@@ -51,7 +51,7 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 			return errors.New("shadow merge requires a clean batch checkout")
 		}
 		vcs, source, err := sourceRepository(ctx, workspace)
-		if err != nil || vcs != "shadow" || !filepath.IsAbs(b.Source) || b.Source != source {
+		if err != nil || vcs != b.VCS || !filepath.IsAbs(b.Source) || b.Source != source {
 			return errors.New("shadow source identity changed or is unavailable")
 		}
 		if s.ShadowSnapshot == nil {

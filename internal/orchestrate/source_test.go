@@ -11,7 +11,7 @@ import (
 )
 
 func TestPrepareExcludedVCS(t *testing.T) {
-	for _, marker := range []string{".hg", ".jj", ".bzr", ".svn"} {
+	for _, marker := range []string{".hg", ".jj", ".bzr"} {
 		t.Run(marker, func(t *testing.T) {
 			s, source, _ := launchFixture(t)
 			if err := os.Mkdir(filepath.Join(source, marker), 0700); err != nil {
@@ -23,9 +23,6 @@ func TestPrepareExcludedVCS(t *testing.T) {
 			}
 			_, err := s.Prepare(t.Context(), source, "main", "excluded")
 			want := "supports Git, SVN and unversioned shadow only"
-			if marker == ".svn" {
-				want = "SVN committed baselines are not yet available"
-			}
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatal("unexpected preparation result", err)
 			}

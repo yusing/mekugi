@@ -62,9 +62,9 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 		if status != "" {
 			return errors.New("integration requires a clean batch checkout")
 		}
-		if b.VCS == "shadow" {
+		if shadowVCS(b.VCS) {
 			vcs, source, err := sourceRepository(ctx, workspace)
-			if err != nil || vcs != "shadow" || source != b.Source {
+			if err != nil || vcs != b.VCS || source != b.Source {
 				return errors.New("shadow source identity changed")
 			}
 			proof, err = verifyShadowIntegration(ctx, *b)
