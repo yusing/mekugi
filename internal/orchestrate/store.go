@@ -26,19 +26,20 @@ type Store struct {
 }
 
 type Batch struct {
-	VCS         string       `json:"vcs,omitempty"`
-	Repository  string       `json:"repository,omitempty"`
-	TaskName    string       `json:"task_name"`
-	Branch      string       `json:"branch"`
-	Checkout    string       `json:"checkout"`
-	Cwd         string       `json:"cwd"`
-	Base        string       `json:"base"`
-	State       string       `json:"state"`
-	Error       string       `json:"error,omitempty"`
-	Launch      *Launch      `json:"launch,omitempty"`
-	Integration *Integration `json:"integration,omitempty"`
-	Submodules  []Submodule  `json:"submodules,omitempty"`
-	Evidence    []Evidence   `json:"evidence,omitempty"`
+	VCS                string              `json:"vcs,omitempty"`
+	Repository         string              `json:"repository,omitempty"`
+	TaskName           string              `json:"task_name"`
+	Branch             string              `json:"branch"`
+	Checkout           string              `json:"checkout"`
+	Cwd                string              `json:"cwd"`
+	Base               string              `json:"base"`
+	State              string              `json:"state"`
+	Error              string              `json:"error,omitempty"`
+	Launch             *Launch             `json:"launch,omitempty"`
+	Integration        *Integration        `json:"integration,omitempty"`
+	Submodules         []Submodule         `json:"submodules,omitempty"`
+	RetainedSubmodules []RetainedSubmodule `json:"retained_submodules,omitempty"`
+	Evidence           []Evidence          `json:"evidence,omitempty"`
 }
 
 type manifest struct {

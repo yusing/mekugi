@@ -99,6 +99,9 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	workspace := gitTestWorkspace(t)
 	writeTestFile(t, workspace+"/file", "baseline")
 	gitTestCommit(t, workspace)
+	module := orchestrateVCSWorkspace(t, "git")
+	gitTestRun(t, workspace, "-c", "protocol.file.allow=always", "submodule", "add", "-q", module, "module")
+	gitTestCommit(t, workspace)
 	provider := &orchestrateCodexProvider{native: appServerChildMetadataProvider{turns: make(map[string]int)}, requests: make(chan []byte, 32), nativeOutput: make(chan string, 4)}
 	proxy := newManagedMekugiProxy(t)
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
