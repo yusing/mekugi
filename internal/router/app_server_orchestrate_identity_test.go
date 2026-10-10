@@ -22,11 +22,21 @@ func orchestrateIdentityPendingTurnWithReplay(t *testing.T, replay *mekugiReplay
 }
 
 func orchestrateIdentityPendingTurnInWorkspace(t *testing.T, replay *mekugiReplayStore, workspace string) (*appServerUI, btwTestRPC) {
+	return orchestrateIdentityPendingTurnWithEvidence(t, replay, workspace, nil)
+}
+
+func orchestrateIdentityPendingTurnWithEvidence(t *testing.T, replay *mekugiReplayStore, workspace string, inputs []orchestrate.EvidenceInput) (*appServerUI, btwTestRPC) {
 	t.Helper()
 	store := &orchestrate.Store{Directory: t.TempDir()}
 	batch, err := store.Prepare(t.Context(), workspace, "main", "batch")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(inputs) != 0 {
+		batch, err = store.RetainEvidence(t.Context(), workspace, "main", "batch", inputs)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()

@@ -86,12 +86,22 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 					return errors.Join(err, s.save(m, path))
 				}
 			}
-			b.State, b.Error = "removed", ""
-			if err := s.save(m, path); err != nil {
-				return err
+			if b.State == "removed" && len(b.Evidence) != 0 {
+				// A repeat may have retained ready copies after partial cleanup.
+				// Reserve current acceptance before any further evidence effects.
+				if authorize == nil {
+					return errors.New("evidence cleanup requires current journal authorization")
+				}
+				b.State = "removing"
+				if err := authorize(func() error { return s.save(m, path) }); err != nil {
+					return err
+				}
 			}
+			err = s.cleanupEvidence(ctx, m, path, b)
+			b.State, b.Error = "removed", ""
+			err = errors.Join(err, s.save(m, path))
 			batch = *b
-			return nil
+			return err
 		}
 		return fmt.Errorf("batch %q has not been prepared", name)
 	})

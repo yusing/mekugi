@@ -398,7 +398,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if _, err := os.Lstat(batch.Checkout); !os.IsNotExist(err) {
 		t.Fatal("installed child checkout survived cleanup", err)
 	}
-	if _, err := os.Stat(batch.Evidence[0].Path); err != nil {
-		t.Fatal("checkout cleanup discarded retained evidence", err)
+	if _, err := os.Lstat(batch.Evidence[0].Path); !os.IsNotExist(err) {
+		t.Fatal("unchanged evidence survived cleanup", err)
 	}
 }

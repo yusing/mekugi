@@ -1,9 +1,11 @@
 package orchestrate
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -79,6 +81,85 @@ func TestRetainEvidence(t *testing.T) {
 	}
 }
 
+func TestCleanupEvidenceRecords(t *testing.T) {
+	s := &Store{Directory: t.TempDir()}
+	workspace, source := t.TempDir(), filepath.Join(t.TempDir(), "source")
+	if err := os.WriteFile(source, []byte("input"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.withRun(t.Context(), workspace, "main", func(m *manifest, path string) error {
+		directory := filepath.Join(filepath.Dir(path), strings.TrimSuffix(filepath.Base(path), ".json"))
+		m.Batches = []Batch{{TaskName: "batch", State: "prepared", Checkout: filepath.Join(directory, "batch")}}
+		return errors.Join(os.MkdirAll(directory, 0700), s.save(m, path))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var inputs []EvidenceInput
+	for _, name := range []string{"ready", "failed", "copying", "uncertain", "shared", "redirected", "outside", "missing", "replaced", "legacy"} {
+		inputs = append(inputs, EvidenceInput{Name: name, Source: source})
+	}
+	b, err := s.RetainEvidence(t.Context(), workspace, "main", "batch", inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(b.Evidence[5].Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(source, b.Evidence[5].Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(b.Evidence[7].Path); err != nil {
+		t.Fatal(err)
+	}
+	unknown := b.Evidence[8].Path + ".unknown"
+	if err := os.Rename(b.Evidence[8].Path, unknown); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b.Evidence[8].Path, []byte("input"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	clean := func(setup bool) error {
+		t.Helper()
+		return s.withRun(t.Context(), workspace, "main", func(m *manifest, path string) error {
+			if setup {
+				m.Batches[0].State = "removed"
+				e := m.Batches[0].Evidence
+				e[1].State, e[2].State, e[3].State, e[7].State = "failed", "copying", "removing", "removing"
+				e[6].Path, e[9].Identity = source, ""
+				m.Batches = append(m.Batches, Batch{TaskName: "other", Evidence: []Evidence{e[4]}})
+			}
+			return s.cleanupEvidence(t.Context(), m, path, &m.Batches[0])
+		})
+	}
+	if err := clean(true); err == nil {
+		t.Fatal("unsafe copies were reported as successful cleanup")
+	}
+	s = &Store{Directory: s.Directory} // Reopen only durable state.
+	retained, err := s.Snapshot(workspace, "main")
+	if err != nil || retained[0].Evidence[0].State != "removed" || retained[0].Evidence[7].State != "removed" {
+		t.Fatal("partial cleanup lost confirmed outcomes", retained, err)
+	}
+	if err := os.WriteFile(b.Evidence[0].Path, []byte("recreated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := clean(false); err == nil {
+		t.Fatal("repeat accepted recreated or uncertain copies")
+	}
+	for i, e := range b.Evidence {
+		if i == 7 {
+			continue
+		}
+		if _, err := os.Lstat(e.Path); err != nil {
+			t.Fatal("discarded preserved file", e.Name, err)
+		}
+	}
+	for path, want := range map[string]string{source: "input", unknown: "input", b.Evidence[0].Path: "recreated", b.Evidence[8].Path: "input"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Fatal("changed preserved bytes", path, string(got), err)
+		}
+	}
+}
+
 func TestEvidenceCopyRejectsStorageEscape(t *testing.T) {
 	run, outside := t.TempDir(), t.TempDir()
 	source := filepath.Join(t.TempDir(), "source")
@@ -91,7 +172,7 @@ func TestEvidenceCopyRejectsStorageEscape(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(run, ".evidence", "batch")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copyEvidence(t.Context(), source, run, filepath.Join(".evidence", "batch", "input")); err == nil {
+	if _, _, err := copyEvidence(t.Context(), source, run, filepath.Join(".evidence", "batch", "input")); err == nil {
 		t.Fatal("copied evidence outside run storage")
 	}
 	if _, err := os.Stat(filepath.Join(outside, "input")); !os.IsNotExist(err) {
@@ -101,7 +182,7 @@ func TestEvidenceCopyRejectsStorageEscape(t *testing.T) {
 	if err := os.Symlink(outside, redirected); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copyEvidence(t.Context(), source, redirected, filepath.Join(".evidence", "batch", "input")); err == nil {
+	if _, _, err := copyEvidence(t.Context(), source, redirected, filepath.Join(".evidence", "batch", "input")); err == nil {
 		t.Fatal("accepted redirected run storage")
 	}
 }
