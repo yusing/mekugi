@@ -117,7 +117,21 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 			return nil
 		}
 	}
-	take(call("prepare", map[string]any{"task_name": "batch"}), false)
+	evidenceSource := filepath.Join(t.TempDir(), "image.png")
+	evidenceBytes := []byte{0, 255, 13, 10, 128}
+	if err := os.WriteFile(evidenceSource, evidenceBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	prepared := take(call("prepare", map[string]any{"task_name": "batch", "evidence": []orchestrate.EvidenceInput{{Name: "image.png", Source: evidenceSource}}}), false)
+	var preparedBatch orchestrate.Batch
+	preparedJSON, err := json.Marshal(prepared.StructuredContent)
+	if err != nil || json.Unmarshal(preparedJSON, &preparedBatch) != nil || len(preparedBatch.Evidence) != 1 {
+		t.Fatal("MCP preparation lost evidence paths", prepared, err)
+	}
+	if err := os.Remove(evidenceSource); err != nil {
+		t.Fatal(err)
+	}
+	take(call("prepare", map[string]any{"task_name": "batch", "evidence": []orchestrate.EvidenceInput{{Name: "image.png", Source: evidenceSource}}}), false)
 	result := call("wait_agent", map[string]any{"timeout_ms": 1})
 	// The timeout may expire before the UI receives this command.
 	select {
@@ -144,6 +158,18 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal(err)
 	}
 	writeTestFile(t, filepath.Join(batch.Cwd, "input"), "copied input")
+	if err := os.WriteFile(preparedBatch.Evidence[0].Path, []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rejected := call("spawn_agent", map[string]any{"task_name": "batch", "message": "work"})
+	dispatch()
+	take(rejected, true)
+	if w.Len() != 0 {
+		t.Fatal("changed evidence dispatched a host effect", w.String())
+	}
+	if err := os.WriteFile(preparedBatch.Evidence[0].Path, evidenceBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
 	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "work"})
 	dispatch()
 	request := btwTestRequest(t, w, "thread/start", "")
@@ -160,6 +186,12 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal("confirmed thread linkage did not refresh Main before the first turn")
 	}
 	request = btwTestRequest(t, w, "turn/start", "child")
+	if !strings.Contains(request.Params.Input[0].Text, preparedBatch.Evidence[0].Path) {
+		t.Fatal("first child turn lost the retained evidence handoff", request.Params.Input)
+	}
+	if got, err := os.ReadFile(preparedBatch.Evidence[0].Path); err != nil || !slices.Equal(got, evidenceBytes) {
+		t.Fatal("child handoff lacks original evidence bytes", got, err)
+	}
 	if vcs == "git" {
 		if got, err := os.ReadFile(filepath.Join(batch.Cwd, "module", "file")); err != nil || string(got) != "base" {
 			t.Fatal("first child turn lacks committed submodule input", err)

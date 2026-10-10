@@ -8,13 +8,13 @@ import (
 // Workflow instructions are explicit input, not request-dependent tool guidance.
 const orchestrateWorkflow = `Coordinate these issues as isolated Git or unversioned shadow batches. Plan independent journal tasks; bind each integration task to /root/task_name. Names use lowercase letters, digits and underscores.
 Call tools.mcp__orchestrate__<tool> with JSON arguments:
-prepare: task_name
+prepare: task_name; optional evidence:[{name,source}] (absolute source files copied into run state)
 spawn_agent: task_name,message; optional model,reasoning_effort,service_tier
 list_agents: {}
 wait_agent: timeout_ms (default 10000)
 send_message,followup_task: target,message
 interrupt_agent: target
-Prepare at Git HEAD or a complete unversioned source snapshot. Copy required ignored inputs into the returned cwd before spawn. Versioned source edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
+Prepare at Git HEAD or a complete unversioned source snapshot. Evidence paths are returned and listed in the first child input. Copy required checkout-relative ignored inputs into the returned cwd before spawn. Versioned source edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
 send_message queues without waking; followup_task starts or steers. Targets are task names or /root/task_name. Native collaboration tools cannot reach these threads.
 Review and integrate branches with native VCS commands, one at a time, preserving coherent commits and unrelated source edits. Git preparation locally clones initialized submodules at recorded commits; import and integrate changed submodule commits before the superproject. Set each bound task accepted after integration; child completion leaves it open. Keep checkouts and branches until explicit cleanup is available.
 Shadow writeback is not yet available; keep those results in their private branches.
