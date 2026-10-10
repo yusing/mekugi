@@ -753,6 +753,24 @@ func (u *appServerUI) journalPin() (journalPin, bool) {
 			current = item
 		}
 	}
+	if current != nil && (current.State == "working" || current.State == "pending") && !j.runnableJournalTask(current.Path) {
+		parent := current.Path
+	findChild:
+		for _, state := range []string{"working", "pending"} {
+			for i := range j.Items {
+				item := &j.Items[i]
+				if item.State == state && strings.HasPrefix(item.Path, parent+"/") && !strings.Contains(item.Path, "/@") && j.runnableJournalTask(item.Path) && (current.Path == parent || state == "pending" || item.Updated > current.Updated) {
+					current = item
+					if state == "pending" {
+						break findChild
+					}
+				}
+			}
+			if current.Path != parent {
+				break
+			}
+		}
+	}
 	if u.turn == "" {
 		if blocker := j.continuationBlocker(); blocker != nil {
 			current = blocker
@@ -917,7 +935,7 @@ func (v *liveActivityView) journalCardLines(out *conversationLines, entry activi
 	}
 	p := &v.painter
 	snippet := liveActivitySnippet{run: entry.Seq, block: 0}
-	rows, facts := journalCardRows(p, card, max(1, width-4), !v.excerpt(v.passed[entry.Seq]))
+	rows, facts := journalCardRows(p, card, max(1, width-4), !v.excerpt(v.passed[entry.Seq]), false)
 	title := activityui.Green + "✓" + activityui.Reset + activityui.Dim + " journal"
 	if len(facts) > 0 {
 		title += " · " + strings.Join(facts, " · ")
@@ -947,7 +965,7 @@ func (v *liveActivityView) journalCardBlock(entry activityPaneEntry) activityui.
 		Body:   journalTurnCard(card.Journal, card.Since, false),
 		Detail: activityui.Dim + strings.Join(facts, " · ") + activityui.Undim,
 		Rows: func(width int) []string {
-			rows, _ := journalCardRows(p, card, width, true)
+			rows, _ := journalCardRows(p, card, width, true, true)
 			return rows
 		}}
 }
@@ -984,6 +1002,49 @@ func journalCardFacts(changed []journalEvent, open int, includeNotes bool) []str
 
 const journalCompletedCardRows = 8 // Body budget; with borders, a small card is at most ten rows.
 
+// journalRemainingPreview identifies unchanged open work without repeating its
+// waiting ancestors. Full reports keep journalCardEntries' complete task list.
+func journalRemainingPreview(j threadJournal, left []journalNode) (next journalNode, others int, ok bool) {
+	var tasks []journalNode
+	for _, node := range left {
+		waiting := false
+		for _, item := range j.Items {
+			if item.Kind == "task" && !strings.Contains(item.Path, "/@") && !journalNodeClosed(item.node()) && strings.HasPrefix(item.Path, node.Path+"/") {
+				waiting = true
+				break
+			}
+		}
+		if !waiting {
+			tasks = append(tasks, node)
+		}
+	}
+	if len(tasks) == 0 {
+		return journalNode{}, 0, false
+	}
+	path := ""
+	if candidate := j.continuationCandidate(""); candidate != nil {
+		path = candidate.Path
+	} else if blocker := j.continuationBlocker(); blocker != nil {
+		path = blocker.Path
+	}
+	next = tasks[0]
+	for _, node := range tasks {
+		if node.Path == path {
+			return node, len(tasks) - 1, true
+		}
+	}
+	// The active task can already be in This turn. Prefer active unchanged
+	// work over pending siblings in the remaining preview.
+	for _, state := range []string{"working", "pending", "blocked"} {
+		for _, node := range tasks {
+			if node.State == state {
+				return node, len(tasks) - 1, true
+			}
+		}
+	}
+	return next, len(tasks) - 1, true
+}
+
 func journalBodyRows(p *activityui.Painter, node journalNode, width int) []string {
 	body := node.Body
 	if node.Kind == "note" && node.Title == "Note" {
@@ -1005,7 +1066,7 @@ func journalBodyRows(p *activityui.Painter, node journalNode, width int) []strin
 // and removed within it is omitted from the report, not the history. Collapsed
 // rows preview the newest notes; expanded rows retain all bodies and reasons.
 // facts are the title's counts, including changed open tasks shown only once.
-func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, expand bool) (rows, facts []string) {
+func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, expand, detail bool) (rows, facts []string) {
 	theme := p.Theme
 	changed, left, open := journalCardEntries(card.Journal, card.Since)
 	var happened [][]string
@@ -1045,8 +1106,15 @@ func journalCardRows(p *activityui.Painter, card *nativeJournalCard, inner int, 
 		}
 	}
 	var remaining [][]string
-	for _, node := range left {
-		remaining = append(remaining, row(node, ""))
+	if detail {
+		for _, node := range left {
+			remaining = append(remaining, row(node, ""))
+		}
+	} else if next, others, ok := journalRemainingPreview(card.Journal, left); ok {
+		remaining = append(remaining, row(next, ""))
+		if others > 0 {
+			remaining = append(remaining, activityui.Hang("", activityui.Dim+fmt.Sprintf("and %d others", others)+activityui.Undim, inner))
+		}
 	}
 	section := func(label string, items [][]string) {
 		if len(items) == 0 {

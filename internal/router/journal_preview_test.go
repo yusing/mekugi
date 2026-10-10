@@ -65,7 +65,7 @@ func TestJournalPreviewReportGatingAndFullDetail(t *testing.T) {
 		Path: "/3", Kind: "note", Title: "Note", Body: "\n\n**Leading blank lines retained**. NOTE-BODY-END",
 	}})
 	v := newLiveActivityView()
-	rows, _ := journalCardRows(&v.painter, card, 66, true)
+	rows, _ := journalCardRows(&v.painter, card, 66, true, true)
 	for _, body := range []string{ansi.Strip(strings.Join(rows, "\n")), journalTurnCard(card.Journal, 0, false)} {
 		for _, marker := range []string{"TASK-BODY-END", "NOTE-BODY-END", "REASON-END", "NOTE-1-END", "REMAINING-BODY-END"} {
 			if !strings.Contains(body, marker) {

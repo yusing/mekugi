@@ -42,7 +42,9 @@ journal event rows; its pane subtree starts collapsed. Dimmed pane rows retain
 their link targets while foreground colors and emphasis yield to dim presentation.
 A plan strip above the composer shows current owned work: working tasks precede
 blocked tasks, then pending tasks. Within a state, the most recently updated task
-wins. Adding pending work cannot displace working work. The strip uses the same
+wins. A parent waiting for open children identifies its next runnable subslice
+instead, preferring working children, then pending children in plan order.
+Adding pending work cannot displace working work. The strip uses the same
 current state as the pane, with a short blocker preview, right-aligned owned-task
 progress and the pane key, which yield to the title when narrow. It remains while
 any owned task is open; during a Main turn after the last task finishes it shows
@@ -79,8 +81,11 @@ or mounted-journal diagnostics need to be shown. Captured answers and unchanged 
 tasks alone do not produce a card. This turn shows the final change per owned path,
 omitting add/remove transients and descendants of removed subtrees. Remaining adds
 only unchanged open owned tasks; changed open tasks appear once, but still count
-toward the title's open total. Captured answers are excluded. Work-report cards
-start expanded and use their compact preview after scrolling above the viewport.
+toward the title's open total. Inline Remaining shows the next active unchanged
+task and `and N others`, omitting parents waiting for open children from that
+preview and count. This limit applies in every `Ctrl-E` mode; the detail dialog
+and copied report retain all unchanged open tasks. Captured answers are excluded.
+Work-report cards start expanded and use their compact preview after scrolling above the viewport.
 Collapsed node rows use at most two visual rows, with short blocker explanations.
 Compact previews show the newest three changed notes in chronological order, with an
 older-note disclosure when needed. Changed context remains visible independently.

@@ -102,7 +102,7 @@ func TestUISnapshotJournalNoiseCardPreviewAndExpanded(t *testing.T) {
 	var out conversationLines
 	v.journalCardLines(&out, entry, 70)
 	assertNativeJournalSnapshot(t, "journal-noise-card-preview", out.lines)
-	rows, _ := journalCardRows(&v.painter, card, 66, true)
+	rows, _ := journalCardRows(&v.painter, card, 66, true, true)
 	assertNativeJournalSnapshot(t, "journal-noise-card-expanded", rows)
 	u, _ := newAppServerTestUI()
 	u.view.painter.Theme = livediff.DarkTheme
@@ -115,7 +115,7 @@ func TestJournalNoiseCardPreservesDetailAndOpenCount(t *testing.T) {
 	v.painter.Theme = livediff.DarkTheme
 	card := journalNoiseCard()
 	beforeItems, beforeEvents := slices.Clone(card.Journal.Items), slices.Clone(card.Journal.Events)
-	_, facts := journalCardRows(&v.painter, card, 66, false)
+	_, facts := journalCardRows(&v.painter, card, 66, false, false)
 	if !slices.Contains(facts, "1 open") {
 		t.Fatalf("deduplicating changed tasks lost open count: %v", facts)
 	}
@@ -151,7 +151,7 @@ func TestUISnapshotJournalNoiseRichNotePreview(t *testing.T) {
 	var events conversationLines
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Kind: "journal_event", journalEvent: &card.Journal.Events[0]}}})
 	v.journalEventsItem(&events, 0, 0, 40)
-	expanded, _ := journalCardRows(&v.painter, card, 86, true)
+	expanded, _ := journalCardRows(&v.painter, card, 86, true, true)
 	pane := (&nativeJournalView{fileLink: v.painter.FileLink}).renderRow(journalPaneRow{node: note}, 90, livediff.DarkTheme)
 	for label, rows := range map[string][]string{"pane": {pane}, "events": events.lines, "preview": out.lines, "expanded": expanded} {
 		styled := strings.Join(rows, "\n")
