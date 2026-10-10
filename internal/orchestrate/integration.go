@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Integration records observed Git ancestry, not Main's review or acceptance.
+// Integration records observed native ancestry, not Main's review or acceptance.
 type Integration struct {
 	Tip       string `json:"tip"`
 	SourceTip string `json:"source_tip"`
@@ -34,6 +34,13 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			return errors.New("integration requires a confirmed batch thread")
 		}
 		if err := validateCheckoutIdentity(ctx, *b); err != nil {
+			return err
+		}
+		if b.VCS == "hg" {
+			proof, err = hgIntegration(ctx, workspace, *b)
+			if err == nil {
+				b.Integration = &proof
+			}
 			return err
 		}
 		if err := validateIndexFlags(ctx, b.Checkout); err != nil {

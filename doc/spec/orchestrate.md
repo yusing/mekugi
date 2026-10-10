@@ -12,16 +12,17 @@ Only an independent coordinator prepares batches. An orchestration child or its
 native descendants cannot start a nested run, including after fresh resume without
 a live parent. Retained run identity governs coordinator admission.
 
-Delivery is staged. The first capability is Git checkout preparation and listing
+Git and Mercurial checkout preparation and listing are available
 through `tools.mcp__orchestrate__prepare({task_name:"batch"})` and
 `tools.mcp__orchestrate__list_agents({})`. Preparation creates no Codex thread and
 starts no model turn. Main can copy required ignored inputs into the returned
 checkout before a later spawn. Task names contain lowercase letters, digits and
 underscores, begin with a letter, and contain at most 64 characters.
 
-Each batch starts on its own branch at the source's committed HEAD. Source index,
-uncommitted files and ignored inputs stay in the source checkout. A selected
-subdirectory remains the child's working directory inside the new worktree.
+Each batch starts at the source's committed baseline, with its own Git branch
+or Mercurial bookmark. Source index, uncommitted files and ignored inputs stay
+in the source checkout. A selected
+subdirectory remains the child's working directory inside the new checkout.
 Preparation returns the task name, branch, checkout, cwd, baseline and observed
 preparation state. Repeating a successfully prepared task returns its retained
 record; it never resets the branch or replaces files copied afterward.
@@ -40,7 +41,7 @@ Acceptance:
    source dirty files and index are unchanged.
 2. Repeating preparation and reopening the store preserve the same checkout,
    including later copied ignored inputs.
-3. Missing or invalid caller identity, invalid task names and non-Git sources
+3. Missing or invalid caller identity, invalid task names and unsupported sources
    reject without creating an unowned checkout.
 4. Preparation failure retains its intent and failure state; a repeat does not
    retry the effect. Listing another thread cannot reveal the first run.
@@ -137,10 +138,11 @@ with `agent: "main"`, while other agent selectors retain their native local path
 but cannot reveal sibling results. Child completion leaves Main's integration task
 unchanged.
 
-Main reviews and integrates the Git branch with native VCS commands, then marks
+Main reviews and integrates the batch with native VCS commands, then marks
 its bound journal task `accepted`. Acceptance verifies that the batch's committed
-tip is reachable from source HEAD and records both tips in the run before changing
-the task. The child checkout must retain its recorded location and branch and have
+tip is reachable from the source's committed revision and records both tips
+before changing the task. The child checkout must retain its recorded location
+and branch or bookmark and have
 no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
 with assume-unchanged or skip-worktree paths require inspection before acceptance,
 because those flags can conceal unfinished edits.
@@ -153,7 +155,7 @@ acceptance open. A batch task uses `accepted`, rather than `done`, to release it
 parent's completion gate. An abandoned task uses `dropped` with a reason under the
 ordinary lifecycle rules. Reopening an accepted task uses `working` and requires
 new integration evidence before acceptance. Retained acceptance remains available
-after restart without checking Git again or reviving processes.
+after restart without checking the VCS again or reviving processes.
 
 ## REQ-ORCHESTRATE-006 — Restored run discovery
 
@@ -169,6 +171,17 @@ session navigation unchanged. Read failures remain visible rather than appearing
 as an empty run. Selecting an unsubscribed row reports that resume is required;
 lazy child resume remains staged below. Subscribed rows keep their live state
 and replace the matching retained row.
+
+## REQ-ORCHESTRATE-007 — Native Mercurial batches
+
+Mercurial batches use native shared checkouts and a shared bookmark per batch.
+Preparation starts at the source working directory's single committed parent;
+source edits and the source's active bookmark remain unchanged. Child launch
+requires the retained shared repository, bookmark and baseline. Main integrates
+with native Mercurial commands and accepts only a clean child tip that is an
+ancestor of the source's committed parent. Ignored prepared inputs may remain.
+Sources may be ordinary or shared Mercurial working directories. Native cleanup
+remains staged below.
 
 ## Accepted delivery scope
 
@@ -207,7 +220,7 @@ The remaining capabilities are accepted but not yet delivered:
 - Main integrates native VCS branches serially, preserving coherent commits and
   unrelated edits. Cleanup removes only idle, accepted, clean run-owned checkouts
   at their accepted tips, with no queued work or active native descendants.
-- jj and Mercurial use native workspaces. Other sources use run-owned shadow Git
+- jj uses native workspaces. Other sources use run-owned shadow Git
   repositories; conflict detection precedes source writes and partial writeback
   remains recoverable. Observation snapshots do not own durable batch branches.
 - Initialized submodules and evidence inputs are prepared before the first turn.
