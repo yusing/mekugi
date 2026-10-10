@@ -38,6 +38,7 @@ type Batch struct {
 	Launch      *Launch      `json:"launch,omitempty"`
 	Integration *Integration `json:"integration,omitempty"`
 	Submodules  []Submodule  `json:"submodules,omitempty"`
+	Evidence    []Evidence   `json:"evidence,omitempty"`
 }
 
 type manifest struct {

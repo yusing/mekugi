@@ -377,6 +377,14 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 						return
 					}
 					input := orchestrateChildInput(cwd, c.input.Message)
+					if len(child.batch.Evidence) != 0 {
+						paths := make(map[string]string, len(child.batch.Evidence))
+						for _, e := range child.batch.Evidence {
+							paths[e.Name] = e.Path
+						}
+						encoded, _ := json.Marshal(paths, json.Deterministic(true))
+						input = "Evidence files: " + string(encoded) + "\n" + input
+					}
 					if err := u.orchestrateRequest(child, "turn/start", map[string]any{"threadId": thread, "input": appserver.Input(input)}); err != nil {
 						u.failOrchestrate(child, err)
 					}

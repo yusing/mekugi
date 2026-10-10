@@ -57,6 +57,11 @@ func (s *Store) BeginLaunch(ctx context.Context, workspace, main, name, message 
 		if err := validateLaunchCheckout(ctx, *b); err != nil {
 			return err
 		}
+		for _, evidence := range b.Evidence {
+			if err := validateEvidence(evidence); err != nil {
+				return err
+			}
+		}
 		b.State = "starting"
 		b.Launch = &Launch{Message: message, Params: params}
 		batch, dispatch = *b, true

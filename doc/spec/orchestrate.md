@@ -27,6 +27,15 @@ Preparation returns the task name, branch, checkout, cwd, baseline and observed
 preparation state. Repeating a successfully prepared task returns its retained
 record; it never resets the branch or replaces files copied afterward.
 
+Optional `evidence: [{name, source}]` on `prepare` copies regular files from
+absolute source paths into run-owned storage outside both checkouts. Names are
+unique single filenames. The result returns their retained paths, and the child's
+first input lists them before its assignment. Copies preserve bytes without
+changing source files. Repeats keep the original copies, even after the source
+changes or disappears; reusing a name with another source rejects. Copy failures
+remain visible and prevent launch. Missing or changed retained copies also prevent
+launch. Main still copies inputs required at checkout-relative paths itself.
+
 The durable run record is scoped to the selected workspace and coordinating
 thread. Preparation intent is saved before checkout creation. A failed or
 interrupted preparation remains visible; retry does not blindly repeat its
@@ -231,8 +240,7 @@ The remaining capabilities are accepted but not yet delivered:
   remains recoverable. Observation snapshots do not own durable batch branches.
 - SVN children start from their VCS-recorded committed baseline, excluding local
   edits. SVN preparation remains staged.
-- Evidence inputs are retained before the first turn. The home
-  `batch-agent-sessions` skill/helper retires only after parity.
+- The home `batch-agent-sessions` skill/helper retires only after parity.
 
 Third-party threads retain their current stable schema exposure during initial
 delivery. Child-authored journal roots remain unchanged. Nested orchestration

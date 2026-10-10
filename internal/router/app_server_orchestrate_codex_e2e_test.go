@@ -10,7 +10,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -169,6 +171,15 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	evidence := filepath.Join(t.TempDir(), "evidence.txt")
+	writeTestFile(t, evidence, "retained input")
+	batch, err = store.RetainEvidence(ctx, workspace, main, "batch", []orchestrate.EvidenceInput{{Name: "evidence.txt", Source: evidence}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(evidence); err != nil {
+		t.Fatal(err)
+	}
 	tier := "priority"
 	command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, input: orchestrateSpawnInput{TaskName: "batch", Message: "Spawn the assigned native probe and wait for it.", ServiceTier: &tier}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(command)
@@ -206,6 +217,14 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	pump(func() bool { return len(provider.nativeOutput) > 0 })
 	if output := <-provider.nativeOutput; !strings.Contains(output, batch.Cwd) {
 		t.Fatal("native command escaped prepared checkout", output)
+	}
+	foundEvidence := false
+	for len(provider.requests) != 0 {
+		body := <-provider.requests
+		foundEvidence = foundEvidence || bytes.Contains(body, []byte(batch.Evidence[0].Path))
+	}
+	if !foundEvidence {
+		t.Fatal("installed host lost retained evidence from the child input")
 	}
 	nativeScoped := false
 	nativeThread := ""
