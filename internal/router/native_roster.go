@@ -55,7 +55,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var items []nativeRosterItem
 	fold := -1
 	for _, row := range rows {
-		if !focused && row.agent.Name != "/root" && v.agentStatus(row.agent) == '✓' && !(v.only && row.agent.Name == v.selected) {
+		if !focused && v.orchestrationLabels[row.agent.Name] == "" && row.agent.Name != "/root" && v.agentStatus(row.agent) == '✓' && !(v.only && row.agent.Name == v.selected) {
 			if fold < 0 {
 				fold = len(items)
 				items = append(items, nativeRosterItem{})
@@ -65,12 +65,15 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		items = append(items, nativeRosterItem{row: row})
 	}
-	responding, errors := v.statusCounts(rows)
+	responding, errors := v.statusCounts(slices.DeleteFunc(slices.Clone(rows), func(row liveActivityRosterRow) bool { return v.orchestrationLabels[row.agent.Name] != "" }))
 	var input, output uint64
 	var cost float64
 	costKnown, partial := false, false
 	tokensPartial := false
 	for _, row := range rows {
+		if v.orchestrationLabels[row.agent.Name] != "" {
+			continue
+		}
 		input += row.agent.InputTokens
 		output += row.agent.OutputTokens
 		tokensPartial = tokensPartial || row.agent.UsagePartial || row.agent.Turns > 0 && !row.agent.TokensKnown && row.agent.InputTokens == 0 && row.agent.OutputTokens == 0
@@ -163,6 +166,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var laid []agentLine
 	var parts [][nativeMetricParts]string
 	widest := 0
+	orchestrationHeading := false
 	for _, item := range items[start:end] {
 		if item.finished != nil {
 			var names []string
@@ -174,8 +178,15 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			continue
 		}
 		row := item.row
+		if v.orchestrationLabels[row.agent.Name] != "" && !orchestrationHeading {
+			laid = append(laid, agentLine{finishedLine: activityui.Dim + " Orchestration" + activityui.Undim})
+			orchestrationHeading = true
+		}
 		index := slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name })
 		tree, _ := rosterTree(rows, index, 0)
+		if v.orchestrationLabels[row.agent.Name] != "" {
+			tree = strings.TrimPrefix(row.agent.Name, "/Orchestration/")
+		}
 		tree = strings.TrimRight(liveActivityMiddle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
 		color := activityui.Color(row.agent.Name)
@@ -255,6 +266,9 @@ const nativeMetricParts = 11
 
 func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
 	var parts [nativeMetricParts]string
+	if v.orchestrationRetained[agent.Name] {
+		return parts
+	}
 	if agent.Name != "/root" {
 		// Main's context and output rate belong to the composer.
 		parts[10] = outputThroughputLabel(agent.OutputThroughput)
@@ -467,6 +481,9 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 // agentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
 func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string {
+	if label := v.orchestrationLabels[agent.Name]; label != "" {
+		return liveActivityMiddle(label, width)
+	}
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"

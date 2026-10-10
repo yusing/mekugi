@@ -19,6 +19,9 @@ Operation-row formatting and feed controls are specified by
 
 ### UI
 
+Orchestration thread navigation follows the
+[orchestration contract](orchestrate.md#accepted-delivery-scope).
+
 Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
 key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
 terminal card follow [journal presentation](journal.md#native-journal-presentation).
@@ -41,7 +44,9 @@ policy applies and the native client answers Codex approvals (see Approvals).
 The independent VCS guard follows
 [REQ-EXECUTION-003](execution.md#req-execution-003--guard-remote-vcs-writes).
 `--yolo` passes `approval_policy="never"` and
-`sandbox_mode="danger-full-access"`, and thread requests repeat them.
+`default_permissions=":danger-full-access"`. Fresh, cleared and resumed thread
+requests select that named profile with approvals disabled, so orchestration
+children inherit host-confirmed permission provenance.
 Mekugi never silently changes the user's configuration or
 sandbox policy. There is no legacy UI selection or fallback. It maps explicit
 `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
@@ -542,13 +547,17 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of an otherwise single-token draft opens a local command
-catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/session`, `/copy`,
+catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/orchestrate`, `/status`, `/session`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
 the catalog without changing the draft. Arguments close completion. Pasted text
 does not activate the catalog. The catalog uses the shared picker viewport and
 visible-row column sizing; it never submits a command to the model.
+
+`/orchestrate ISSUES` sends the issues and initial workflow instructions through
+the ordinary composer. The [orchestration contract](orchestrate.md) owns its
+staged capabilities.
 
 `/copy` opens a local picker for the latest completed response in the active
 thread, including restored history and journal answers. Whole response preserves
@@ -952,7 +961,8 @@ An ellipsis marks omitted error details; clicking a truncated composer error ope
 its complete text, including the full router-error batch, in the shared error dialog.
 Composer feedback stays user-only; model-visible error evidence
 keeps its red transcript display and details dialog. Only
-`/quit` is a command, and only while idle;
+`/quit` is a command, and only while idle, except for
+[confirmed orchestration exit](orchestrate.md#accepted-delivery-scope);
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
 session title, scroll position and unseen-message count. History
@@ -1257,7 +1267,10 @@ Redirected/noninteractive execution retains Codex's own behavior.
 ### User-input questions
 
 Root-thread questions use a shared dock above the composer, hiding the live-edit
-dock. `request_user_input` arrives as `item/tool/requestUserInput`; unexpected
+dock. During orchestration, all subscribed roots share this presentation on the
+viewed shell, with a source-thread label. Answer editors and replies remain owned
+by the originating thread; switching preserves the answer and each thread's draft.
+`request_user_input` arrives as `item/tool/requestUserInput`; unexpected
 server requests retain the visibly blocked fallback. Async questions arrive as
 `agentMessage` items with `delivery: "async"` and `questions`, not as server
 requests. They never become final-answer cards, journal finals, or final-answer
@@ -1383,7 +1396,9 @@ thread. It also answers remote writes held by the
 share the question dock's position above the composer and take precedence over
 it: opening one hides the question dock, and a pending question opens after the
 last approval ends. The oldest approval shows first; the header names a child
-agent's path and `1 of N` when more wait.
+agent's path and `1 of N` when more wait. Orchestration approvals also name their
+source thread and appear on the viewed shell; responses and denial feedback use
+that source's host request and turn.
 
 Choices follow the stock TUI approval overlay
 (`codex-rs/tui/src/bottom_pane/approval_overlay.rs` @7135b303d). Command requests

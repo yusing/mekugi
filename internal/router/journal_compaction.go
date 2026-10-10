@@ -464,16 +464,21 @@ func (s *mekugiReplayStore) compactionWorkspace(thread string) (string, error) {
 		return "", err
 	}
 	if !filepath.IsAbs(workspace) || filepath.Clean(workspace) != workspace {
-		return "", errors.New("no retained compaction workspace")
+		return "", errNoRetainedJournalWorkspace
 	}
 	return workspace, nil
 }
 
 // retainedJournalWorkspace includes the unscoped journal namespace. The caller
 // must have exactly one retained scope; a missing record is not an empty scope.
+var errNoRetainedJournalWorkspace = errors.New("no retained compaction workspace")
+
 func (s *mekugiReplayStore) retainedJournalWorkspace(thread string, includeUnscoped bool) (string, error) {
 	session, err := s.readRetainedSession(storageSessionName(thread))
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", errNoRetainedJournalWorkspace
+		}
 		return "", err
 	}
 	workspace := ""
@@ -520,7 +525,7 @@ func (s *mekugiReplayStore) retainedJournalWorkspace(thread string, includeUnsco
 		}
 	}
 	if !found {
-		return "", errors.New("no retained compaction workspace")
+		return "", errNoRetainedJournalWorkspace
 	}
 	return workspace, nil
 }

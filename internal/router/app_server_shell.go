@@ -14,6 +14,10 @@ func (u *appServerUI) shellMode() bool {
 // Codex owns execution, cancellation and history: active shell results inject
 // into the running turn; standalone results wait in history for the next input.
 func (u *appServerUI) submitShell() error {
+	if u.orchestrateCheckoutUnavailable() {
+		u.setNotice("Batch checkout unavailable; shell commands are disabled", true)
+		return nil
+	}
 	command := strings.TrimSpace(strings.TrimPrefix(u.draft, "!"))
 	if command == "" {
 		u.setNotice("Type a shell command after !", false)

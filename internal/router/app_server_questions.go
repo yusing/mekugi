@@ -34,6 +34,7 @@ type nativeQuestion struct {
 	outcome                string
 }
 type nativeQuestionCall struct {
+	order              uint64
 	thread, turn, item string
 	request            jsontext.Value
 	questions          []nativeQuestion
@@ -99,6 +100,16 @@ func (u *appServerUI) waitingQuestion() bool {
 	return false
 }
 func (u *appServerUI) openQuestions() {
+	if source := u.questionSource(); source != nil {
+		if source.questions.active == nil {
+			u.hidePromptEditors()
+			source.openLocalQuestions()
+		}
+		u.focusPrompt()
+	}
+}
+
+func (u *appServerUI) openLocalQuestions() {
 	if u.questions.active != nil {
 		return
 	}
@@ -119,8 +130,15 @@ func (u *appServerUI) openQuestions() {
 // Only an empty, idle composer yields to pending live questions. Explicitly
 // hiding the dock and history restoration leave manual reopening available.
 func (u *appServerUI) autoOpenQuestions() {
-	if u.questions.autoOpen && u.questions.active == nil && u.composerVacant() {
-		u.openQuestions()
+	u = u.viewedUI()
+	source := u.questionSource()
+	if source != nil && u.promptEditor() == u && u.questions.active == nil && u.composerVacant() {
+		for _, v := range u.promptViews() {
+			if v.questions.autoOpen && v.questionCount() > 0 {
+				u.openQuestions()
+				return
+			}
+		}
 	}
 }
 
@@ -196,6 +214,7 @@ func (u *appServerUI) addQuestions(c *nativeQuestionCall, replay bool) {
 		u.questions.inputTurns = make(map[string]bool)
 	}
 	u.questions.inputTurns[c.turn] = true
+	c.order = u.nextPromptOrder()
 	u.questions.calls = append(u.questions.calls, c)
 	if !replay {
 		if len(c.request) > 0 {
@@ -353,6 +372,7 @@ func (u *appServerUI) supersedeQuestions(turn string) {
 }
 
 func (u *appServerUI) questionKey(key string) (bool, error) {
+	u = u.promptEditor()
 	q := u.currentQuestion()
 	if q == nil {
 		return false, nil
@@ -372,7 +392,9 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		if q.note {
 			q.note = false
 		} else {
-			u.questions.autoOpen = false
+			for _, v := range u.promptViews() {
+				v.questions.autoOpen = false
+			}
 			u.hideQuestions()
 		}
 	case "\x1b[A", "\x10", "\x1b[B", "\x0e":
@@ -806,6 +828,10 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	}
 }
 func (u *appServerUI) questionRows(width, height int) []string {
+	u = u.questionSource()
+	if u == nil {
+		return nil
+	}
 	d := &u.questions
 	if u.questionCount() == 0 {
 		return nil
@@ -814,7 +840,9 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	accent, dim, reset := p.Theme.Accent(), activityui.Dim, activityui.Reset
 	if d.active == nil {
 		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
-		if u.turn == "" && u.draft != "" {
+		if source := u.promptLabel(u.thread); source != "" {
+			label = strings.Replace(label, "main asks", livediff.Safe(source, false)+" asks", 1)
+		} else if u.turn == "" && u.draft != "" {
 			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", u.questionCount()) + reset
 		}
 		return []string{ansi.Truncate(label, width, "…")}
@@ -836,6 +864,9 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		header += strings.Repeat(" ", gap) + p.QuestionState(state)
 	}
 	rows := []string{ansi.Truncate(header, inner, "")}
+	if source := u.promptLabel(c.thread); source != "" {
+		rows = append(rows, pickerWrap(dim+"from "+livediff.Safe(source, false)+reset, inner)...)
+	}
 	if height >= 10 {
 		rows = append(rows, "")
 	}
@@ -939,7 +970,11 @@ func (u *appServerUI) mainTitleDetail() string {
 
 func (u *appServerUI) questionBadge() string {
 	if u.shell != nil && u.shell.focus != 0 {
-		if n := u.questionCount(); n > 0 {
+		n := 0
+		for _, v := range u.promptViews() {
+			n += v.questionCount()
+		}
+		if n > 0 {
 			return fmt.Sprintf("?%d", n)
 		}
 	}

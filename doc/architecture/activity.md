@@ -47,7 +47,7 @@ do not establish replacement. This presentation does not change host transcripts
 
 The UI owns request-local child pagination state, keyed by stable root
 and child IDs. Codex owns visible lineage, including inherited fork items and
-archived descendants. Session switches retire response correlation and cursors;
+archived descendants. Session replacement retires response correlation and cursors;
 fresh resume rediscovers history instead of reviving continuation handles.
 
 Children with `historyMode: "paginated"` use a metadata-only `thread/read`,
@@ -68,7 +68,7 @@ silently replaced by an unbounded read.
 
 Active skills reconstruct from Codex event history on exit/resume, without a new durable store; see the [display contract](../spec/native_ui.md#session-status).
 Paginated child skill scans are independent of lazy Activity reads: descending `thread/items/list` pages cover turns and inherited history, stopping at the latest completed compaction.
-Only one bounded scan runs at a time; incomplete or failed scans leave counts unknown with a notice. Live resets override scans; session switches retire correlation. Observation neither resumes children nor invokes a model.
+Only one bounded scan runs at a time; incomplete or failed scans leave counts unknown with a notice. Live resets override scans; session replacement retires correlation. Observation neither resumes children nor invokes a model.
 
 Unloaded history, loading, and failed reads have separate presentation states.
 Pending rollout placements stay with their child until their item/turn is

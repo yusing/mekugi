@@ -51,6 +51,7 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 		err = validateGuardHook(message.Result, u.session.cwd, u.guardHookCheck.hash)
 	}
 	if err != nil {
+		u.rejectOrchestratedMainFollowups(err)
 		u.restoreDrafts(append(u.unsent, u.queued...)...)
 		u.unsent, u.queued = nil, nil
 		u.status = "Ready"

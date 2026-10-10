@@ -161,7 +161,7 @@ func (u *appServerUI) readRestoredChildren() error {
 	// Register names before rendering cross-agent assignments and messages.
 	for _, id := range r.order {
 		info := r.threads[id]
-		u.session.registerThread(info)
+		u.registerSessionThread(info)
 		u.restoreDiffThread(info, false)
 		agent := u.session.agent(u.session.paths[id])
 		agent.Started, agent.LastResponse = restoredAgentTimes(info)
@@ -271,6 +271,9 @@ func (u *appServerUI) finishRestoredContent() error {
 		a.mu.Unlock()
 		for workspace, threads := range scope.Workspaces {
 			for thread := range threads {
+				if u.navigation != nil && u.navigation.target(thread) != u {
+					continue
+				}
 				if !u.shell.diff.scope.Workspaces[workspace][thread] {
 					u.status = "Restoring saved Diff…"
 					return nil

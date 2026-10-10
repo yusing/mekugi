@@ -1,0 +1,36 @@
+┌ 1 main ────────────────────────────────────────┐┌ 5 Journal ─────────── space expand · d details ┐
+│Mekugi dev • codex                              ││ No journal entries.                            │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│  ? 1 of 1                             waiting  ││                                                │
+│  from main › batch                             ││                                                │
+│                                                ││                                                │
+│  Which batch scope?                            ││                                                │
+│                                                ││                                                │
+│  › 1. Narrow  One path                         ││                                                │
+│    2. Other   Type your answer                 ││                                                │
+│                                                ││                                                │
+│  1–2 choose · type answer · tab note · ctrl+]  ││                                                │
+│  skip · esc hide                               ││                                                │
+│                                                ││                                                │
+│╭─ answering · turn waiting · draft kept ──────╮││                                                │
+││ ❯                                            │││                                                │
+│╰────────────────────────── model (high) • 0% ─╯││                                                │
+└────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
+─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
+ Orchestration
+ ● main  Ready                                                                    0%  0s · just now
+ ◐ batch  mekugi/batch · Working                                                  0%  0s · just now
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   ^B 1-5 panes · ^E expand events

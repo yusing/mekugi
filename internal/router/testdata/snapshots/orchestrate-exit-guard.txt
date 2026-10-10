@@ -1,0 +1,16 @@
+Mekugi dev • codex
+
+
+
+
+
+
+
+
+
+
+
+
+╭─ ✗ Interrupt orchestration batches before quitting ──────────────────── [✓] ─╮
+│ ❯                                                                            │
+╰───────────────────────────────────────────────── snapshot-model (high) • 0% ─╯

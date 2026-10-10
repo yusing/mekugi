@@ -19,6 +19,7 @@ var nativeCommands = []composerChoice{
 	{name: "/tier", description: "Choose the service tier"},
 	{name: "/skills", description: "List or manage skills"},
 	{name: "/btw", description: "Ask a side question without changing Main"},
+	{name: "/orchestrate", description: "Coordinate isolated batch threads"},
 	{name: "/session", description: "Show request metrics, cache and transport"},
 	{name: "/title", description: "Rename this session"},
 	{name: "/status", description: "Show session settings and usage limits"},
@@ -88,7 +89,10 @@ func (u *appServerUI) submitCompact(queue bool) error {
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
-	return u.busy() || u.reset.active()
+	if u.navigation != nil && u.navigation.owner != u {
+		return true
+	}
+	return u.busy() || u.reset.active() || u.orchestrateBusy()
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
@@ -130,7 +134,22 @@ func (u *appServerUI) clearSessionPresentation() error {
 	for thread := range u.session.paths {
 		u.retiredThreads[thread] = u.thread
 	}
+	if u.navigation != nil {
+		for _, thread := range u.navigation.order {
+			if thread == u.thread {
+				continue
+			}
+			if err := u.request("thread/unsubscribe", map[string]any{"threadId": thread}); err != nil {
+				return err
+			}
+		}
+		u.closeOrchestratedViews()
+		u.navigation = nil
+		u.agents.orchestration, u.agents.orchestrationLabels = nil, nil
+		u.agents.orchestrationRetained = nil
+	}
 	if u.proxy != nil {
+		u.proxy.activity.detachNativePane(u.thread)
 		u.proxy.journals.detachNative(u.journal)
 		u.proxy.journals.detachNative(u.unscopedJournal)
 	}

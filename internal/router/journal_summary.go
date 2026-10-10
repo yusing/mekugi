@@ -110,7 +110,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	if !j.IdentityKnown || j.IdentityConflicted {
 		return result, errors.New("journal summary identity is unavailable or conflicted")
 	}
-	journals, recordErrors, err := newJournalStore().workspaceJournals(s, j.Workspace)
+	journals, recordErrors, err := newJournalStore().relatedJournals(s, j.Workspace, j.Thread)
 	if err != nil {
 		return result, err
 	}
@@ -127,7 +127,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 	for _, item := range items {
 		if item.Kind == "task" {
 			tasks[item.Path] = item
-			openTasks[item.Path] = item.State != "done" && item.State != "dropped"
+			openTasks[item.Path] = !journalStateClosed(item.State)
 		}
 		if item.SupersededBy != "" {
 			superseded[item.Path] = true
@@ -204,6 +204,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		return ""
 	}
 	var text strings.Builder
+	text.WriteString(orchestrateRecoveryInstructions(j))
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
 	workspaceText := ""
 	if j.Workspace != "" {

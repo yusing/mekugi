@@ -116,6 +116,7 @@ type mekugiProxy struct {
 	titles            *sessionTitleCache
 	memoryCommentary  map[string]map[string]*commentaryReplacement
 	journals          *journalStore
+	orchestration     *orchestrateRuntime
 	journalCompaction string
 	duplicateOutput   bool
 	usage             *threadUsage

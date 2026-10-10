@@ -11,6 +11,7 @@ import (
 
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
+	u.quitConfirmation = false
 	u.notice, u.noticeAlert = text, alert
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	u.noticeUntil = time.Time{}
@@ -113,7 +114,7 @@ func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
 				u.status, u.alert = "", false
 			}
 		} else {
-			u.shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: u.composerErrorText()}})
+			u.viewedUI().shell.openBlocks(u.view, []activityui.Block{{Kind: "error", Body: u.composerErrorText()}})
 		}
 		u.dirty = true
 	}

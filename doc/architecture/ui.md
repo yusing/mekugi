@@ -27,7 +27,13 @@ capture, accounting, or replay authority. Observable terminal behavior belongs t
 The router remains the integration owner for the native session, composer, transcript
 and roster state, and app-server event reconciliation. It adapts authenticated activity,
 scoped replay/change observations, accounting, and journal publications into display
-values. Shared Markdown annotations travel with rendered fragments through wrapping,
+values. Orchestration retains one session controller per subscribed root. The
+viewed controller owns its shell and draft; the coordinator retains run dispatch
+independently of navigation. Questions and approvals retain their source
+controller; the viewed shell presents its answer editor without moving execution.
+Shared change observations are filtered by each
+controller's host lineage. Switching presents retained state without retiring
+subscriptions or replaying host operations. Shared Markdown annotations travel with rendered fragments through wrapping,
 record layouts, gutters and viewport clipping. The router resolves them against the
 composed visible frame and removes their private transport before terminal delivery.
 A selection snapshots those annotations with its rows. A scrollable selection

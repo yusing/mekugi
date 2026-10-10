@@ -42,6 +42,7 @@ type terminalUI struct {
 	sequenceAt                                     time.Time
 	sequence, agentEscape                          string
 	paste                                          bool
+	pasteInput                                     func(byte) // Pins an active prompt through its paste terminator.
 	layout                                         terminalLayout
 	paneTabs                                       [5]terminalRect // Visible status-bar selectors, indexed by pane.
 	paintedRows                                    []string
@@ -82,6 +83,13 @@ func (u *terminalUI) key(key byte) error {
 		if u.pasteEnd == len(end) {
 			u.paste = false
 			u.pasteEnd = 0
+		}
+		if u.pasteInput != nil {
+			u.pasteInput(key)
+			if !u.paste {
+				u.pasteInput = nil
+			}
+			return nil
 		}
 		// The status panel and output dialog are not input destinations. Keep
 		// paste termination entirely in this decoder, including the final marker byte.
@@ -152,7 +160,30 @@ func (u *terminalUI) key(key byte) error {
 			u.pasteEnd = 0
 			u.prefix = false
 			if u.focus == 0 {
-				return u.send(s)
+				if err := u.send(s); err != nil {
+					return err
+				}
+				if u.main == nil {
+					return nil
+				}
+				editor := u.main.promptEditor()
+				question := editor.questions.active
+				var approval *nativeApproval
+				if editor.approvals.open {
+					approval = editor.approvals.pending[0]
+				}
+				if question != nil || approval != nil {
+					live := true
+					u.pasteInput = func(key byte) {
+						live = live && u.output == nil && (question != nil && editor.questions.active == question || approval != nil && editor.approvals.open && editor.approvals.pending[0] == approval)
+						if live {
+							editor.pasteByte(key)
+						} else {
+							editor.paste, editor.pasted, editor.escape = false, nil, ""
+						}
+					}
+				}
+				return nil
 			}
 			return nil
 		}
@@ -193,6 +224,16 @@ func (u *terminalUI) key(key byte) error {
 		switch key {
 		case 2:
 			return u.send(string([]byte{2}))
+		case '[', ']':
+			if u.main != nil && u.main.navigation != nil {
+				delta := 1
+				if key == '[' {
+					delta = -1
+				}
+				u.main.cycleOrchestratedThread(delta)
+			} else {
+				u.resize(string(key))
+			}
 		case '1', '2', '3', '4', '5':
 			u.selectNativePane(int(key - '1'))
 		case 'q':
@@ -321,6 +362,9 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
+	if u.main != nil && u.main.quitConfirmationKey(s) {
+		return nil
+	}
 	if s == "\x1b" && u.focus == 2 && u.main != nil && u.main.historyLoading != nil {
 		return u.main.cancelOlderActivity()
 	}
@@ -350,7 +394,7 @@ func (u *terminalUI) send(s string) error {
 		return u.main.resumePickerKey(s)
 	}
 
-	if s == "\x1b" && u.main != nil && u.focus == 0 && !u.main.paste {
+	if s == "\x1b" && u.main != nil && u.focus == 0 && !u.main.promptEditor().paste {
 		if handled, err := u.main.approvalKey(s); handled {
 			return err
 		}
@@ -365,7 +409,7 @@ func (u *terminalUI) send(s string) error {
 	if s == "\x1b" && u.main != nil && u.focus == 0 && u.main.pickerKey(s) {
 		return nil
 	}
-	if u.main != nil && u.focus == 0 && !u.main.paste {
+	if u.main != nil && u.focus == 0 && !u.main.promptEditor().paste {
 		if s == "\x1b" && u.selectionKey(s) {
 			return nil
 		}
@@ -438,6 +482,9 @@ func (u *terminalUI) send(s string) error {
 		} else {
 			var quit bool
 			if u.focus == 3 {
+				if (key == '\r' || key == '\n') && u.main.pickOrchestratedThread() {
+					return nil
+				}
 				only, selected := u.agents.only, u.agents.selected
 				u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
 				u.showRosterPick(only, selected)
@@ -550,7 +597,7 @@ func (u *terminalUI) mouse(s string) error {
 	if u.selectionMouse(button, x, y, release) {
 		return nil
 	}
-	if u.selection == nil && u.drag == 0 && u.main != nil && u.main.composerNoticeMouse(button, x-u.layout.codex.x, y-u.layout.codex.y, release) {
+	if u.selection == nil && u.drag == 0 && u.main != nil && u.main.promptEditor().composerNoticeMouse(button, x-u.layout.codex.x, y-u.layout.codex.y, release) {
 		return nil
 	}
 	if u.main != nil && u.main.btw != nil && !release && button&64 != 0 {

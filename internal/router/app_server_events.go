@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -25,7 +26,9 @@ import (
 // retain the shared router owners, as do journals and cost.
 type appServerSession struct {
 	seq       uint64
-	paths     map[string]string // Thread → canonical agent path.
+	paths     map[string]string // Thread → scoped presentation path.
+	threads   map[string]appServerThreadInfo
+	roots     map[string]string // Independent thread → presentation namespace.
 	agents    []activityPaneAgent
 	reasoning map[[3]string]string    // Summary text by thread, turn, item.
 	thinking  map[[3]string]time.Time // Start of reasoning still streaming.
@@ -80,6 +83,7 @@ type appServerCommandAction struct {
 }
 
 type appServerThreadInfo struct {
+	agentPath      string                 // Parsed native path; presentation scoping leaves Source unchanged.
 	Name           string                 `json:"name"`
 	ID             string                 `json:"id"`
 	ParentThreadID string                 `json:"parentThreadId"`
@@ -134,6 +138,8 @@ type appServerEvent struct {
 
 func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
+	s.threads = map[string]appServerThreadInfo{thread: {ID: thread, Cwd: cwd}}
+	s.roots = map[string]string{thread: "/root"}
 	s.agents = []activityPaneAgent{{Name: "/root", Role: "main"}}
 	s.reasoning = make(map[[3]string]string)
 	s.thinking = make(map[[3]string]time.Time)
@@ -152,22 +158,20 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	var source struct {
 		SubAgent struct {
 			ThreadSpawn struct {
-				AgentPath string `json:"agent_path"`
-				AgentRole string `json:"agent_role"`
+				ParentThreadID string `json:"parent_thread_id"`
+				AgentPath      string `json:"agent_path"`
+				AgentRole      string `json:"agent_role"`
 			} `json:"thread_spawn"`
 		} `json:"subAgent"`
 	}
 	_ = json.Unmarshal(info.Source, &source)
 	spawn := source.SubAgent.ThreadSpawn
-	path := spawn.AgentPath
-	old := s.paths[info.ID]
-	if path == "" && old != appServerPlaceholder(info.ID) {
-		path = old
-	}
-	if path == "" && info.AgentNickname != "" {
-		path = "/root/" + info.AgentNickname
-	}
-	path = cmp.Or(path, appServerPlaceholder(info.ID))
+	info.ParentThreadID = cmp.Or(info.ParentThreadID, spawn.ParentThreadID)
+	info.agentPath = cmp.Or(spawn.AgentPath, info.agentPath)
+	stored := info
+	stored.Turns = nil
+	s.threads[info.ID] = stored
+	path := s.threadPresentationPath(info)
 	if old := s.paths[info.ID]; old != "" {
 		s.agent(old).Name = path
 	} else {
@@ -230,8 +234,19 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 	}
 	u.observeProgress(m.Method, p)
 	if u.proxy != nil && u.proxy.journals != nil && p.ThreadID != "" {
-		if err := u.proxy.observeJournalHostTurn(u.ctx, u.session.cwd, m.Method, p); err != nil {
-			u.setNotice("Journal lifecycle: "+err.Error(), true)
+		workspace := s.threadWorkspace(p.ThreadID)
+		var scopeErr error
+		if workspace == "" && u.proxy.replayStore != nil && (m.Method == "turn/started" || m.Method == "turn/completed" || m.Method == "thread/status/changed") {
+			// A provider request can establish ownership before thread/read replies.
+			workspace, scopeErr = u.proxy.replayStore.retainedJournalWorkspace(p.ThreadID, true)
+			if errors.Is(scopeErr, errNoRetainedJournalWorkspace) {
+				workspace, scopeErr = u.journalDescendantWorkspace(p.ThreadID)
+			}
+		}
+		if scopeErr == nil {
+			if err := u.proxy.observeJournalHostTurn(u.ctx, workspace, m.Method, p); err != nil {
+				u.setNotice("Journal lifecycle: "+err.Error(), true)
+			}
 		}
 	}
 	if m.Method == "item/started" {
@@ -257,6 +272,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		h.live = true
 	}
 	if p.ThreadID != "" && !main {
+		// Native rollout metadata can be empty at spawn. Completion supplies a
+		// new host milestone for reading the confirmed descendant's metadata.
+		if m.Method == "turn/completed" && len(u.orchestrateThreads) != 0 && s.threads[p.ThreadID].ID == "" && s.metadata[p.ThreadID] == "" {
+			delete(s.metadata, p.ThreadID)
+		}
 		if err := u.requestThreadMetadata(p.ThreadID); err != nil {
 			return true, err
 		}
@@ -269,9 +289,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		if info.ID == "" || info.ID == u.thread {
 			return true, nil
 		}
-		old := s.path(info.ID)
-		s.registerThread(info)
-		u.renameThreadActivity(old, s.paths[info.ID])
+		u.registerSessionThread(info)
 
 	case "thread/status/changed":
 		agent := s.agent(s.path(p.ThreadID))
@@ -390,9 +408,13 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if item.AgentThreadID != "" && item.AgentThreadID != u.thread {
 				old := s.path(item.AgentThreadID)
 				if item.AgentPath != "" {
-					s.agent(old).Name = item.AgentPath
-					s.paths[item.AgentThreadID] = item.AgentPath
-					u.renameThreadActivity(old, item.AgentPath)
+					path := s.scopedAgentPath(item.AgentThreadID, item.AgentPath)
+					if s.threadRoot(item.AgentThreadID) == "" && s.threadRoot(p.ThreadID) != "" {
+						path = s.scopedAgentPath(p.ThreadID, item.AgentPath)
+					}
+					s.agent(old).Name = path
+					s.paths[item.AgentThreadID] = path
+					u.renameThreadActivity(old, path)
 				}
 				if err := u.requestThreadMetadata(item.AgentThreadID); err != nil {
 					return true, err
@@ -497,6 +519,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 					}
 				}
 				entries = append(entries, s.collab(item, id, now)...)
+
 			}
 		case "agentMessage":
 			if item.Delivery == "async" && len(item.Questions) > 0 {

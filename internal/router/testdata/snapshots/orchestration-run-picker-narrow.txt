@@ -1,0 +1,5 @@
+  Orchestration
+› main   Ready                               
+  batch  Working · mekugi/0123456789a…batch …
+
+  ↑/↓ navigate · enter view · esc close

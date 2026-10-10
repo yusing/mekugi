@@ -44,7 +44,7 @@ type journalListItem struct {
 
 func journalMutationsSchemaAt(root string) map[string]any {
 	text := map[string]any{"type": "string"}
-	state := map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "blocked", "dropped"}}
+	state := map[string]any{"type": "string", "enum": []string{"pending", "working", "done", "accepted", "blocked", "dropped"}}
 	agent := map[string]any{"type": "string"}
 	// References resolve against the complete MCP input schema.
 	tasks := map[string]any{"type": "array", "maxItems": maxJournalItems, "items": map[string]any{

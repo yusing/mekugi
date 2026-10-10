@@ -22,7 +22,6 @@ import (
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/term"
@@ -83,6 +82,19 @@ type appServerUI struct {
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
 	btwThreads                map[string]*appServerBTW
+	navigation                *orchestrateNavigation
+	orchestrateRequests       map[string]orchestrateRPC
+	orchestrateThreads        map[string]*orchestrateChild
+	orchestrateJobs           []func() func()
+	orchestrateCompletions    chan func()
+	orchestrateClosing        bool
+	orchestrateStorageContext context.Context
+	orchestrateStorageCancel  context.CancelFunc
+	orchestrateStorageErr     error
+	orchestrateEvents         []orchestrateEvent
+	orchestrateWaiters        []*orchestrateCommand
+	orchestrateMainFollowups  []*orchestrateCommand
+	orchestrateMainInput      *orchestrateMainInput
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	approvals                 nativeApprovalDock
@@ -118,6 +130,7 @@ type appServerUI struct {
 	session                   appServerSession
 	ctx                       context.Context
 	quitRequested             bool
+	quitConfirmation          bool
 	interruptLocked           bool
 	activeChildren            map[string]bool // Live host lifecycles only, never replayed processes.
 	mainContentPainted        bool
@@ -227,7 +240,16 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	}
 	u.ensureShell()
 	u.shell.faint = faint
-	return func() error {
+	owner := u
+	return func() (runErr error) {
+		defer func() {
+			runErr = errors.Join(runErr, owner.closeOrchestrateStorage())
+			owner.closeOrchestratedViews()
+		}()
+		if proxy != nil && proxy.orchestration != nil {
+			proxy.orchestration.active.Store(true)
+			defer proxy.orchestration.active.Store(false)
+		}
 		defer func() {
 			if u.waitRelease != nil {
 				u.waitRelease()
@@ -264,30 +286,30 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				width, height := 0, 0
 				agePaint := u.now()
 				for {
+					u = owner.viewedUI()
 					select {
 					case <-ctx.Done():
 						return ctx.Err()
 					case <-autoChanged:
 						u.shell.auto.mu.Lock()
-						u.shell.diff.workspace = u.shell.auto.workspace
+						u.shell.diff.workspace = u.session.cwd
 						u.shell.auto.mu.Unlock()
 						u.dirty = true
 					case <-diffGap:
-						u.shell.liveDock = diffview.PreviewPane{}
-						clear(u.shell.livePending)
+						owner.resetOrchestrationPreviews()
 						sub = u.shell.auto.events.subscribe()
 						diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
 						u.dirty = true
 					case <-diffReady:
 						for _, event := range u.shell.auto.events.takePreviews(sub) {
-							u.shell.applyDiff(ctx, event)
+							owner.applyOrchestrationDiff(ctx, event)
 						}
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
 						u.dirty = true
 					case event := <-diffEvents:
-						u.shell.applyDiff(ctx, event)
+						owner.applyOrchestrationDiff(ctx, event)
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
@@ -312,14 +334,18 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					case update := <-u.titleUpdates:
 						u.persistSessionTitle(update)
 					case request := <-u.guardRequests():
-						u.addGuardApproval(request)
+						owner.orchestrationGuardApproval(request)
 						u.dirty = true
+					case request := <-owner.orchestrateCommands():
+						owner.startOrchestratedChild(request)
+					case complete := <-owner.orchestrateCompletions:
+						owner.completeOrchestrateWork(complete)
 					case message, ok := <-c.Messages:
 						if !ok {
 							exited = true
 							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
 						}
-						if err := u.message(message); err != nil {
+						if err := owner.message(message); err != nil {
 							return err
 						}
 						u.dirty = true
@@ -333,6 +359,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.dirty = true
 					case <-tick.C:
+						if err := owner.tickOrchestratedViews(u); err != nil {
+							return err
+						}
 						if len(u.unsent) > 0 && u.unsent[0].questionCall != nil && !u.proxy.emittingToolInput(u.session.cwd, u.thread) {
 							if err := u.flushInput(); err != nil {
 								return err
@@ -378,6 +407,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						if err := u.drainKeys(keys); err != nil || u.quitRequested {
 							return err
 						}
+						u = owner.viewedUI()
 						notices := u.applyCriticalNotices()
 						journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
 						if err := u.finishJournalAcknowledgements(false); err != nil {
@@ -430,9 +460,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 					u.writeTerminalTitle(u.now())
 				}
 			})
+			u = owner.viewedUI()
 			var fileEditor *openFileEditor
 			if errors.Is(err, errOpenComposerEditor) {
-				u.openComposerEditor(stdin, stdout)
+				u.promptEditor().openComposerEditor(stdin, stdout)
 			} else if errors.As(err, &fileEditor) {
 				u.openSelectedFileEditor(fileEditor.path, stdin, stdout)
 			} else {
@@ -440,6 +471,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			}
 			u.dirty = true
 		}
+		u = owner
 		if saveErr := u.panes.save(u.shell, u.now(), true); saveErr != nil {
 			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", livediff.Safe(saveErr.Error(), false))
 		}
@@ -451,23 +483,12 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 				<-c.Done
 			}
 		}
+		err = errors.Join(err, owner.finishOrchestratedViews(stdout))
 		u.finishCommandSegments()
 		err = errors.Join(err, u.finishJournalAcknowledgements(true))
 		u.hideQuestions()
 		u.hideApprovals()
-		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
-			fmt.Fprintln(stdout, "Unsent draft:\n"+livediff.Safe(unsent.text, false))
-		}
-		unknown := slices.Clone(u.steers)
-		if !u.submission.committed {
-			unknown = append(unknown, u.submission)
-		}
-		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
-			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+livediff.Safe(unknown.text, false))
-		}
-		if u.shellCommand.pending.text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+livediff.Safe(u.shellCommand.pending.text, false))
-		}
+		u.writeUnsettledInput(stdout, "")
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -501,6 +522,14 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	if handled := u.orchestrateMessage(m); handled {
+		return nil
+	}
+	if u.navigation != nil && u.navigation.owner == u {
+		if handled, err := u.navigation.route(m); handled {
+			return err
+		}
+	}
 	u.issues.observeTurnCompletion(m.Method, m.Params)
 	u.observeShellMessage(m)
 	if u.sessionTitleMessage(m) {
@@ -605,6 +634,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.restoreActivityResponse(method, m)
 		}
 		if method == "turn/start" || method == "turn/steer" {
+			u.orchestratedMainResponse(method, m)
 			u.submissionResponse(method, m.Error)
 			return nil
 		}
@@ -862,6 +892,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					u.setNotice(u.resumeNotice, true)
 					u.resumeNotice = ""
 				}
+				u.recoverOrchestratedRun()
 				u.retainAppliedSettings()
 				return u.restorePaneContent(result.Thread)
 			}
@@ -940,7 +971,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
-				if u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
+				if !u.orchestrateCheckoutUnavailable() && u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
 					if err := u.reset.completed(p.Turn.ID); err != nil {
 						u.setNotice("Slice continuation: "+err.Error(), true)
 					}
@@ -987,6 +1018,17 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	if !u.paste && u.quitConfirmationKey(string([]byte{key})) && key != 27 {
+		return u.quitRequested, nil
+	}
+	if editor := u.promptEditor(); editor != u {
+		if editor.questions.active != nil && !editor.questions.painted || editor.approvals.open && !editor.approvals.painted {
+			editor.hideQuestions()
+			editor.hideApprovals()
+		} else {
+			return editor.key(key)
+		}
+	}
 	if u.paste {
 		u.pasteByte(key)
 		return false, nil
@@ -1061,7 +1103,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[1;2A", "\x1b[1;2B":
 				sequence := u.escape
 				u.escape = ""
-				return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
+				return false, u.viewedUI().stepReasoning(strings.HasSuffix(sequence, "A"))
 			case "\x1b[1;3A", "\x1b[1;2D":
 				u.editQueued()
 			case "\x1b[122;6u":
@@ -1092,7 +1134,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	}
 	switch key {
 	case 5: // Ctrl+E discloses the focused Main transcript, leaving the draft intact.
-		u.view.toggleExpansion()
+		u.viewedUI().view.toggleExpansion()
 	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
 	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
@@ -1139,6 +1181,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
+		if u.turn == "" && !u.starting() && u.orchestrateBusy() {
+			u.setNotice("Interrupt orchestration batches before quitting", true)
+			return false, nil
+		}
 		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
@@ -1158,6 +1204,12 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		if u.titleCommand(text) {
 			return false, nil
+		}
+		if text == "/orchestrate" || strings.HasPrefix(text, "/orchestrate ") || strings.HasPrefix(text, "/orchestrate\n") || strings.HasPrefix(text, "/orchestrate\t") {
+			if !u.expandOrchestrate() {
+				return false, nil
+			}
+			text = strings.TrimSpace(u.draft)
 		}
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, u.submitBTW()
@@ -1188,6 +1240,12 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if text == "/quit" {
+			if u.orchestrateBusy() {
+				u.setNotice("Quit all threads? Enter yes · Esc no", false)
+				u.noticeUntil = time.Time{}
+				u.quitConfirmation = true
+				return false, nil
+			}
 			if u.turn == "" && !u.starting() && u.submission.text == "" {
 				u.draft = ""
 				return true, nil
@@ -1199,7 +1257,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /orchestrate, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -1336,6 +1394,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
+	editor := u.promptEditor()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
@@ -1355,16 +1414,16 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		borderRows, inset = 2, 5
 	}
 	textWidth := width - inset
-	u.composerWidth = textWidth
-	draft, points := u.draftLayout()
-	if q := u.currentQuestion(); q != nil && q.IsSecret {
+	editor.composerWidth = textWidth
+	draft, points := editor.draftLayout()
+	if q := editor.currentQuestion(); q != nil && q.IsSecret {
 		for i, line := range draft {
 			draft[i] = strings.Repeat("•", ansi.StringWidth(line))
 		}
 	}
 	caret := points[len(points)-1]
 	for _, point := range points {
-		if point.Offset == u.cursor() {
+		if point.Offset == editor.cursor() {
 			caret = point
 			break
 		}
@@ -1375,8 +1434,8 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
 			dockRect.y++
 			u.composerRect.y++
-			u.noticeDetails.y++
-			u.noticeDismiss.y++
+			editor.noticeDetails.y++
+			editor.noticeDismiss.y++
 			if u.btw != nil && u.btw.rect.h > 0 {
 				u.btw.rect.y++
 			}
@@ -1468,18 +1527,18 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		frame = append(frame, strip)
 	}
 	frame = append(frame, make([]string, gap)...)
-	if u.questions.active != nil {
-		u.questions.painted = true
+	if editor.questions.active != nil {
+		editor.questions.painted = true
 	}
-	if u.approvals.open {
-		u.approvals.painted = true
+	if editor.approvals.open {
+		editor.approvals.painted = true
 	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
-	if u.currentQuestion() != nil || u.approvals.open {
+	if editor.currentQuestion() != nil || editor.approvals.open {
 		border = u.view.painter.Theme.Accent()
 	} else if u.shellMode() {
 		border = activityui.Red
@@ -1487,7 +1546,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	const inputColor = "\x1b[39m"
 	focused := u.shell == nil || u.shell.focus == 0
 	if boxed {
-		frame = append(frame, u.composerNoticeBorder(width, len(frame), border))
+		frame = append(frame, editor.composerNoticeBorder(width, len(frame), border))
 	}
 	textX := min(2, inset)
 	if boxed {
@@ -1502,7 +1561,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		line = ansi.Truncate(line, textWidth, "")
 		if focused && textWidth > 1 && i+firstRow == caret.Row {
 			before := ansi.Cut(line, 0, caret.Column)
-			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.draft[u.cursor():], -1)
+			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(editor.draft[editor.cursor():], -1)
 			cellWidth := max(1, ansi.StringWidth(livediff.Safe(cluster, false)))
 			cell := ansi.Cut(line, caret.Column, caret.Column+cellWidth)
 			if ansi.StringWidth(cell) == 0 {
@@ -1653,6 +1712,7 @@ func (u *appServerUI) ensureShell() {
 func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.refreshRosterRoles()
+	u.orchestrationRoster()
 	u.agents.mainView = u.view
 	u.view.status = livediff.Safe(u.status, false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
@@ -1742,4 +1802,20 @@ func (u *appServerUI) interruptTurn() error {
 		return err
 	}
 	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+}
+
+func (u *appServerUI) writeUnsettledInput(out io.Writer, source string) {
+	if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
+		fmt.Fprintln(out, "Unsent draft"+source+":\n"+livediff.Safe(unsent.text, false))
+	}
+	unknown := slices.Clone(u.steers)
+	if !u.submission.committed {
+		unknown = append(unknown, u.submission)
+	}
+	if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
+		fmt.Fprintln(out, "Submission outcome unknown"+source+"; not automatically resent:\n"+livediff.Safe(unknown.text, false))
+	}
+	if u.shellCommand.pending.text != "" {
+		fmt.Fprintln(out, "Shell submission outcome unknown"+source+"; not automatically rerun:\n"+livediff.Safe(u.shellCommand.pending.text, false))
+	}
 }

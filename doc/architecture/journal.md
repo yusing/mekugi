@@ -28,7 +28,17 @@ while retaining their last checkpoint. Forks copy stopped timing facts, not cloc
 Both the live plan strip and completed-task renderers consume this timing evidence.
 
 Cross-agent trees are derived views under the journal/replay locks, authorized by
-complete durable ancestry in one workspace. Records never contain child snapshots.
+complete durable native ancestry in one workspace or an authoritative orchestration
+run across its recorded checkouts. Journal records retain a run reference, not a
+second membership list. Composed views project run ancestry without changing
+each independent thread's stored identity. Run snapshots read atomic manifests
+without acquiring run locks or invoking checkout commands. Records never contain
+child snapshots.
+Git integration observation runs before journal/replay transactions and saves
+branch-tip ancestry in the run. The journal owner then checks Main's authority,
+the exact retained proof and mounted host lifecycles before recording `accepted`.
+Saved integration evidence alone does not accept a task. Journal events retain
+the accepted tips for replay; reopening clears the current task's evidence.
 Task creation and existing-task updates share the journal owner's binding validator
 and transaction; creation emits one event containing the binding, not an intermediate
 unbound task. Operation-specific input schemas belong to the journal MCP tool owner.

@@ -8,7 +8,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Behavior | Authoritative area |
 | --- | --- |
 | Review-diff rendering used by observed change evidence | Root-package `review*.go` |
-| Shared quoted operands, logical rows, source capability, Go lexical, and shell-header semantics | `internal/quotedoperand`, `internal/logicalrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
+| Shared quoted operands, logical rows, source capability, Go lexical, shell-header semantics and filesystem identity | `internal/quotedoperand`, `internal/logicalrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax`, `internal/fileidentity` |
 | Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
 | Native screen composition and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
@@ -37,6 +37,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Model-visible duplicate output references | `internal/router/output_dedupe.go`; content matching in `internal/outputdedupe`; provider-prefix reuse in `internal/router/provider_history.go` |
 | Shell segment reports and measured command timing | `internal/execsegment`, `cmd/mekugi-exec`, `internal/router/exec_track.go`; isolated shell fixtures in `internal/router/exec_track_test.go`, sandbox acceptance in `internal/router/app_server_exec_track_codex_e2e_test.go` |
 | Journal MCP schema, dispatch and launcher registration | `internal/router/journal_mcp.go`, `internal/router/journal_tool.go` (mutation schema), `cmd/mekugi/journal_mcp.go`; state remains with the journal owner |
+| Orchestration checkouts, live batch threads and MCP registration | `internal/orchestrate`, `internal/router/app_server_orchestrate*.go`, `internal/router/orchestrate_mcp.go`, `internal/router/orchestrate_shadow_snapshot.go`, `cmd/mekugi/orchestrate_mcp.go`; contract in `doc/spec/orchestrate.md` |
 | Journal state, router-owned CRUD, terminal delivery, and replay | `internal/router/journal.go`, `internal/router/journal_tool.go`, `internal/router/journal_delivery.go` |
 | Journal continuation/reset and recovery text | `internal/router/journal_reset_driver.go`, `internal/router/journal_compaction.go`, `internal/router/journal_summary.go`; reset guidance in `internal/router/journal_guidance.go`; verified host-item recovery links in `internal/router/compaction_disclosure.go` |
 | Journal writing rules and projected agent guidance | Prose source: `guidance/frontend_guidance.md.tmpl`; generated output: `internal/router/frontend_guidance.md`; embedding: `internal/router/frontend_guidance.go`; journal consumer: `internal/router/journal_tool.go`. Generation/check: `TestGeneratedFrontendGuidanceIsCurrent` in `internal/router/frontend_guidance_generation_test.go`. Frontend tool descriptions remain owned by their executable tool sources. |
