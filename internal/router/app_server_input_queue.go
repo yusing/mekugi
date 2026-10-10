@@ -211,6 +211,11 @@ func (u *appServerUI) flushInput() error {
 }
 
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
+	if u.orchestrateCheckoutUnavailable() {
+		u.restoreDrafts(parts...)
+		u.setNotice("Batch checkout cleanup prevents new turns", true)
+		return nil
+	}
 	if len(parts) == 1 && parts[0].text == "/compact" {
 		u.compaction.begin(parts[0].continueTask)
 		u.status = u.compactionProgressText() + "…"

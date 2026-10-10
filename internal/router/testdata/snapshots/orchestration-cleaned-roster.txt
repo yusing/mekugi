@@ -1,0 +1,4 @@
+─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
+ Orchestration
+ ● main                  Ready                                                                   0%
+ ✓ batch                 mekugi/run/batch · removed                                              0%

@@ -967,7 +967,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
-				if u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
+				if !u.orchestrateCheckoutUnavailable() && u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
 					if err := u.reset.completed(p.Turn.ID); err != nil {
 						u.setNotice("Slice continuation: "+err.Error(), true)
 					}

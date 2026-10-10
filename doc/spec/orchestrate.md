@@ -198,6 +198,24 @@ files remain unchanged. Prepared inputs and private branch history survive
 reopening, independently of observation-snapshot retention. Shadow writeback
 and acceptance remain staged below.
 
+## REQ-ORCHESTRATE-009 — Accepted Git checkout cleanup
+
+Main calls `tools.mcp__orchestrate__cleanup({target:"batch"})` to remove an
+accepted, idle Git batch checkout without submodules. The bound journal task must
+still be `accepted` with the run's integration tips. The checkout must retain its
+exact recorded location, repository, branch and accepted tip and be clean. Pending
+input, questions, approvals, native descendants or queued and uncertain deliveries
+preserve it. Cleanup requires a subscribed child so current idle state is known.
+
+Removal intent is retained with Main's current acceptance before the native Git
+effect. The accepted binding stays fixed while removal is pending. A repeat
+reconciles a missing checkout only when its Git registration is also absent and its branch
+still retains the accepted tip. A surviving checkout after uncertain removal
+requires inspection; cleanup never repeats that effect automatically. Branches,
+manifests, journals and evidence copies remain. The subscribed transcript stays
+viewable, with new turns disabled after removal. Submodule and evidence removal
+remain staged capabilities.
+
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
@@ -233,8 +251,8 @@ The remaining capabilities are accepted but not yet delivered:
 - Retained child threads resume when viewed or messaged, without reviving
   processes or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
-  unrelated edits. Cleanup removes only idle, accepted, clean run-owned checkouts
-  at their accepted tips, with no queued work or active native descendants.
+  unrelated edits. Cleanup extends to accepted Git submodule checkouts and
+  unchanged run-owned evidence copies.
 - SVN uses run-owned shadow Git repositories, as do unversioned sources;
   conflict detection precedes source writes and partial writeback
   remains recoverable. Observation snapshots do not own durable batch branches.

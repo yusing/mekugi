@@ -95,6 +95,9 @@ func (u *appServerUI) refreshOrchestratePicker() {
 		if view != nil {
 			choice.name = view.thread
 			choice.description = u.orchestratePickerStatus(view, view.status+" · "+branch)
+			if view.orchestrateCheckoutUnavailable() {
+				choice.description = u.orchestratePickerStatus(view, batch.State+" · "+branch)
+			}
 		} else if batch.Launch != nil && batch.Launch.ThreadID != "" {
 			choice.description += " · not subscribed"
 		}
