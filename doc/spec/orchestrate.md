@@ -212,8 +212,19 @@ effect. The accepted binding stays fixed while removal is pending. A repeat
 reconciles a missing checkout only when its Git registration is also absent and its branch
 still retains the accepted tip. A surviving checkout after uncertain removal
 requires inspection; cleanup never repeats that effect automatically. Branches,
-manifests, journals and evidence copies remain. The subscribed transcript stays
-viewable, with new turns disabled after removal. Evidence removal remains staged.
+manifests and journals remain. The subscribed transcript stays
+viewable, with new turns disabled after removal.
+
+After checkout removal, cleanup removes unchanged evidence copies at their exact
+recorded run-owned paths. Changed, redirected, shared, failed or uncertain copies
+remain, as do unknown files and directories. Each copy's removal intent and outcome
+are retained. Independent copies continue after a failure, and the result reports
+partial cleanup. A repeat can reconcile a missing copy with retained removal intent;
+it never repeats uncertain deletion of a surviving copy or removes a recreated file.
+Copies without retained filesystem identity remain for inspection. Main's accepted
+binding stays fixed throughout evidence cleanup, including repeat calls. Source
+evidence files remain unchanged. External writers must leave copies idle during
+cleanup; filesystem checks cannot make hashing and deletion atomic.
 
 Populated submodules must remain at their committed gitlinks, on their recorded
 batch branches, with clean worktrees and no stashes or unique branch/tag work.
@@ -261,7 +272,7 @@ The remaining capabilities are accepted but not yet delivered:
 - Retained child threads resume when viewed or messaged, without reviving
   processes or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
-  unrelated edits. Cleanup extends to unchanged run-owned evidence copies.
+  unrelated edits.
 - SVN uses run-owned shadow Git repositories, as do unversioned sources;
   conflict detection precedes source writes and partial writeback
   remains recoverable. Observation snapshots do not own durable batch branches.

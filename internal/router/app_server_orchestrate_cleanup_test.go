@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	json "encoding/json/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,6 +164,133 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 	retained, err := (&orchestrate.Store{Directory: store.Directory}).Snapshot(workspace, "main")
 	if err != nil || retained[0].State != "removed" || retained[0].Integration == nil {
 		t.Fatal("cleanup lost retained identity", retained, err)
+	}
+}
+
+func TestAppServerOrchestrateCleanupEvidenceMCP(t *testing.T) {
+	workspace, source := orchestrateVCSWorkspace(t, "git"), filepath.Join(t.TempDir(), "source")
+	writeTestFile(t, source, "original")
+	replay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, request := orchestrateIdentityPendingTurnWithEvidence(t, replay, workspace, []orchestrate.EvidenceInput{{Name: "ready", Source: source}, {Name: "changed", Source: source}, {Name: "replaced", Source: source}})
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"initial"}}`)
+	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"initial","status":"completed"}}}`)
+	b := u.orchestrateThreads["child"].batch
+	call := orchestrateCleanupMCPClient(t, u)
+	call("main", true) // Evidence cannot be removed before journal acceptance.
+	if _, err := os.Stat(b.Evidence[0].Path); err != nil {
+		t.Fatal("removed unaccepted evidence", err)
+	}
+	if _, err := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), Agent: "/root/batch", State: new("working")}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, b.Evidence[1].Path, "changed")
+	if err := os.Rename(b.Evidence[2].Path, b.Evidence[2].Path+".unknown"); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, b.Evidence[2].Path, "original")
+	unknown := filepath.Join(filepath.Dir(b.Evidence[0].Path), "unknown")
+	writeTestFile(t, unknown, "unknown")
+	result := call("main", true) // Partial failure still confirms checkout removal.
+	data, err := json.Marshal(result.StructuredContent)
+	var partial orchestrate.Batch
+	if err != nil || json.Unmarshal(data, &partial) != nil || partial.State != "removed" || len(partial.Evidence) != 3 || partial.Evidence[0].State != "removed" || partial.Evidence[1].Error == "" || partial.Evidence[2].Error == "" {
+		t.Fatal("MCP lost partial cleanup outcomes", result, err)
+	}
+	if _, err := os.Lstat(b.Checkout); !os.IsNotExist(err) {
+		t.Fatal("partial evidence cleanup retained accepted checkout", err)
+	}
+	if _, err := os.Lstat(b.Evidence[0].Path); !os.IsNotExist(err) {
+		t.Fatal("unchanged evidence survived", err)
+	}
+	store := &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
+	u.proxy.orchestration.store, u.proxy.journals = store, newJournalStore()
+	call("main", true) // A fresh storage owner preserves the partial result.
+	retained, err := store.Snapshot(workspace, "main")
+	if err != nil || retained[0].State != "removed" || retained[0].Evidence[0].State != "removed" || retained[0].Evidence[1].Error == "" {
+		t.Fatal("lost durable partial outcome", retained, err)
+	}
+	for path, want := range map[string]string{source: "original", b.Evidence[1].Path: "changed", unknown: "unknown", b.Evidence[2].Path: "original", b.Evidence[2].Path + ".unknown": "original"} {
+		if got, err := os.ReadFile(path); err != nil || string(got) != want {
+			t.Fatal("changed preserved evidence", path, string(got), err)
+		}
+	}
+}
+
+func TestAppServerOrchestrateEvidenceCleanupAcceptance(t *testing.T) {
+	workspace, source := orchestrateVCSWorkspace(t, "git"), filepath.Join(t.TempDir(), "source")
+	file, err := os.Create(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A sparse large copy keeps the real hashing interval observable after Git
+	// removes the checkout, without adding a production synchronization hook.
+	if err := file.Truncate(128 << 20); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	replay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, request := orchestrateIdentityPendingTurnWithEvidence(t, replay, workspace, []orchestrate.EvidenceInput{{Name: "copy", Source: source}})
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"initial"}}`)
+	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"initial","status":"completed"}}}`)
+	if _, err := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), Agent: "/root/batch", State: new("working")}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+		t.Fatal(err)
+	}
+	store := u.proxy.orchestration.store
+	proof, err := u.proxy.orchestrateCleanupProof(t.Context(), workspace, "main", "batch", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.Cleanup(t.Context(), workspace, "main", "batch", proof, func(publish func() error) error {
+			_, err := u.proxy.orchestrateCleanupProof(t.Context(), workspace, "main", "batch", publish)
+			return err
+		})
+		done <- err
+	}()
+	b := u.orchestrateThreads["child"].batch
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		if _, err := os.Lstat(b.Checkout); os.IsNotExist(err) {
+			retained, err := store.Snapshot(workspace, "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if retained[0].State == "removed" || retained[0].Evidence[0].State == "removing" {
+				if retained[0].State != "removing" {
+					<-done
+					t.Fatal("acceptance reservation ended before evidence removal")
+				}
+				break
+			}
+		}
+		select {
+		case err := <-done:
+			t.Fatal("missed evidence cleanup interval", err)
+		case <-deadline.C:
+			t.Fatal("checkout removal timeout")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	_, reopenErr := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("working")}})
+	cleanupErr := <-done
+	if reopenErr == nil || cleanupErr != nil {
+		t.Fatal("acceptance changed during evidence removal", reopenErr, cleanupErr)
 	}
 }
 
