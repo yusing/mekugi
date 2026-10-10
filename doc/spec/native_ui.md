@@ -44,7 +44,9 @@ policy applies and the native client answers Codex approvals (see Approvals).
 The independent VCS guard follows
 [REQ-EXECUTION-003](execution.md#req-execution-003--guard-remote-vcs-writes).
 `--yolo` passes `approval_policy="never"` and
-`sandbox_mode="danger-full-access"`, and thread requests repeat them.
+`default_permissions=":danger-full-access"`. Fresh, cleared and resumed thread
+requests select that named profile with approvals disabled, so orchestration
+children inherit host-confirmed permission provenance.
 Mekugi never silently changes the user's configuration or
 sandbox policy. There is no legacy UI selection or fallback. It maps explicit
 `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)

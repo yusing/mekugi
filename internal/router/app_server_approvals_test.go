@@ -256,7 +256,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 
 func TestNativeApprovalThreadPermissions(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	if got := u.threadPermissions(map[string]any{}); got["approvalPolicy"] != "never" || got["sandbox"] != "danger-full-access" {
+	if got := u.threadPermissions(map[string]any{}); got["approvalPolicy"] != "never" || got["permissions"] != ":danger-full-access" || got["sandbox"] != nil {
 		t.Fatalf("yolo params = %v", got)
 	}
 	u.approvalMode = true

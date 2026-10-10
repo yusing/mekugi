@@ -75,10 +75,11 @@ func guardApprovalIdentity(request *vcsApproval) guardApprovalKey {
 }
 
 // threadPermissions keeps --yolo's policy on thread requests. Approval mode
-// leaves both settings to Codex configuration and invocation overrides.
+// leaves both settings to Codex configuration and invocation overrides. Select
+// a named profile so the host retains provenance for independent child threads.
 func (u *appServerUI) threadPermissions(params map[string]any) map[string]any {
 	if !u.approvalMode {
-		params["approvalPolicy"], params["sandbox"] = "never", "danger-full-access"
+		params["approvalPolicy"], params["permissions"] = "never", ":danger-full-access"
 	}
 	return params
 }

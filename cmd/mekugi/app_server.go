@@ -98,5 +98,5 @@ func appServerArgs(args []string) ([]string, string, bool, error) {
 	if !yolo {
 		return out, resume, false, nil
 	}
-	return append(out, "-c", `approval_policy="never"`, "-c", `sandbox_mode="danger-full-access"`), resume, true, nil
+	return append(out, "-c", `approval_policy="never"`, "-c", `default_permissions=":danger-full-access"`), resume, true, nil
 }
