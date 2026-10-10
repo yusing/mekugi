@@ -74,7 +74,7 @@ func validateLaunchCheckout(ctx context.Context, b Batch) error {
 	if err != nil || base != b.Base {
 		return errors.New("prepared checkout baseline changed")
 	}
-	return nil
+	return validateSubmodules(ctx, b, true)
 }
 
 func validateCheckoutIdentity(ctx context.Context, b Batch) error {

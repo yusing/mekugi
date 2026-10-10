@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -39,6 +40,9 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 		if err := validateCheckoutIdentity(ctx, *b); err != nil {
 			return err
 		}
+		if err := validateSubmodules(ctx, *b, false); err != nil {
+			return err
+		}
 		if b.VCS == "hg" {
 			proof, err = hgIntegration(ctx, workspace, *b)
 			if err == nil {
@@ -46,10 +50,22 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			}
 			return err
 		}
+		for _, sub := range b.Submodules {
+			if err := validateIndexFlags(ctx, filepath.Join(b.Checkout, sub.Path)); err != nil {
+				return err
+			}
+			status, err := git(ctx, filepath.Join(b.Checkout, sub.Path), "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
+			if err != nil {
+				return err
+			}
+			if status != "" {
+				return errors.New("integration requires clean submodule checkouts")
+			}
+		}
 		if err := validateIndexFlags(ctx, b.Checkout); err != nil {
 			return err
 		}
-		status, err := git(ctx, b.Cwd, "status", "--porcelain", "--untracked-files=all")
+		status, err := git(ctx, b.Cwd, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
 		if err != nil {
 			return err
 		}

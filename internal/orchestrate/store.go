@@ -37,6 +37,7 @@ type Batch struct {
 	Error       string       `json:"error,omitempty"`
 	Launch      *Launch      `json:"launch,omitempty"`
 	Integration *Integration `json:"integration,omitempty"`
+	Submodules  []Submodule  `json:"submodules,omitempty"`
 }
 
 type manifest struct {
@@ -196,6 +197,12 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		if vcs == "shadow" {
 			batch.VCS, batch.Repository = vcs, filepath.Join(filepath.Dir(checkout), "shadow.git")
 		}
+		if vcs == "" {
+			batch.Submodules, err = planSubmodules(ctx, repository, base, "")
+			if err != nil {
+				return err
+			}
+		}
 		m.Batches = append(m.Batches, batch)
 		if err := s.save(m, path); err != nil {
 			return err
@@ -213,6 +220,9 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		}
 		if effectErr == nil {
 			effectErr = createCheckout(ctx, repository, batch)
+		}
+		if effectErr == nil {
+			effectErr = createSubmodules(ctx, batch)
 		}
 		if effectErr == nil {
 			info, err := os.Stat(batch.Cwd)

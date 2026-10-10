@@ -16,7 +16,7 @@ send_message,followup_task: target,message
 interrupt_agent: target
 Prepare at Git HEAD, Mercurial's single committed parent, or a complete unversioned source snapshot. Copy required ignored inputs into the returned cwd before spawn. Versioned source edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
 send_message queues without waking; followup_task starts or steers. Targets are task names or /root/task_name. Native collaboration tools cannot reach these threads.
-Review and integrate branches or bookmarks with native VCS commands, one at a time, preserving coherent commits and unrelated source edits. Set each bound task accepted after integration; child completion leaves it open. Keep checkouts and branches until explicit cleanup is available.
+Review and integrate branches or bookmarks with native VCS commands, one at a time, preserving coherent commits and unrelated source edits. Git preparation locally clones initialized submodules at recorded commits; import and integrate changed submodule commits before the superproject. Set each bound task accepted after integration; child completion leaves it open. Keep checkouts and branches until explicit cleanup is available.
 Shadow writeback is not yet available; keep those results in their private branches.
 Issues:
 `

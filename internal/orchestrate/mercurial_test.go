@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -68,7 +69,7 @@ func TestMercurialBatchLifecycle(t *testing.T) {
 	}
 	reopened := &Store{Directory: store.Directory}
 	repeat, err := reopened.Prepare(t.Context(), workspace, "main", "first")
-	if err != nil || repeat != first {
+	if err != nil || !reflect.DeepEqual(repeat, first) {
 		t.Fatal("retained preparation changed", repeat, err)
 	}
 	if _, dispatch, err := reopened.BeginLaunch(t.Context(), workspace, "main", "first", "assignment", []byte("{}")); err != nil || !dispatch {
