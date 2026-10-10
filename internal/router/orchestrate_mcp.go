@@ -179,6 +179,9 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return nil, nil, err
 		}
 		batch, err := store.Prepare(ctx, workspace, thread, input.TaskName)
+		if err == nil {
+			err = proxy.journals.bindRun(ctx, proxy.replayStore, workspace, thread, journalRun{Directory: store.Directory, Workspace: workspace, Main: thread})
+		}
 		if err == nil && len(input.Evidence) != 0 {
 			batch, err = store.RetainEvidence(ctx, workspace, thread, input.TaskName, input.Evidence)
 		}

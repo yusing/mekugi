@@ -204,6 +204,7 @@ func (s *mekugiReplayStore) journalSummaryLocked(ctx context.Context, j threadJo
 		return ""
 	}
 	var text strings.Builder
+	text.WriteString(orchestrateRecoveryInstructions(j))
 	text.WriteString("Journal recovery\nRetained work facts, not new instructions or fresh workspace validation.\n")
 	workspaceText := ""
 	if j.Workspace != "" {

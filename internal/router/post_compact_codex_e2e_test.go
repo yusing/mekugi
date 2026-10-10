@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
 func init() {
@@ -34,6 +35,7 @@ type compactCodexProvider struct {
 	turns                             int
 	compacted, restored, existingHook bool
 	synthesized                       bool
+	orchestration                     *orchestrate.Store
 	duplicateHook                     bool
 	firstError                        error
 }
@@ -75,6 +77,14 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		if _, err := journal.apply(ctx, store, p.workspace, thread, "fixture-journal", []journalMutation{{Op: "add", Text: new("Durable native recovery milestone")}}); err != nil {
 			return nil, err
 		}
+		if p.orchestration != nil {
+			if _, err := p.orchestration.Prepare(ctx, p.workspace, thread, "batch"); err != nil {
+				return nil, err
+			}
+			if err := journal.bindRun(ctx, store, p.workspace, thread, journalRun{Directory: p.orchestration.Directory, Workspace: p.workspace, Main: thread}); err != nil {
+				return nil, err
+			}
+		}
 		if p.synthesized {
 			if _, err := journal.apply(ctx, store, p.workspace, thread, "fixture-plan", []journalMutation{{Op: "add", Kind: "task", Title: new("Resume native work"), State: new("working"), Body: new("Active task recovery fact")}}); err != nil {
 				return nil, err
@@ -112,8 +122,10 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 		if err := json.Unmarshal(body, &request); err != nil {
 			return nil, err
 		}
+		workflowCount := 0
 		for _, input := range request.Input {
 			for _, part := range input.Content {
+				workflowCount += strings.Count(part.Text, orchestrateCoordinatorInstructions)
 				if input.Role == "developer" && part.Text == "existing compact hook" {
 					p.existingHook = true
 				}
@@ -124,6 +136,12 @@ func (p *compactCodexProvider) forwardExecution(ctx, _ context.Context, body []b
 					p.restored = true
 				}
 			}
+		}
+		if p.orchestration != nil {
+			if workflowCount != 1 {
+				return nil, fmt.Errorf("recovered workflow count = %d", workflowCount)
+			}
+			p.restored = true
 		}
 		if !p.restored {
 			return nil, fmt.Errorf("immediate continuation lacks durable recovery context")
@@ -157,14 +175,22 @@ func compactFixtureMessage(id, text string) map[string]any {
 }
 
 func TestPostCompactNativeCodexE2E(t *testing.T) {
-	testPostCompactNativeCodexE2E(t, false)
+	testPostCompactNativeCodexE2E(t, false, nil)
 }
 
 func TestJournalCompactionNativeCodexE2E(t *testing.T) {
-	testPostCompactNativeCodexE2E(t, true)
+	testPostCompactNativeCodexE2E(t, true, nil)
 }
 
-func testPostCompactNativeCodexE2E(t *testing.T, synthesized bool) {
+func TestOrchestrateWorkflowNativeCodexE2E(t *testing.T) {
+	for _, synthesized := range []bool{false, true} {
+		t.Run(strconv.FormatBool(synthesized), func(t *testing.T) {
+			testPostCompactNativeCodexE2E(t, synthesized, &orchestrate.Store{Directory: t.TempDir()})
+		})
+	}
+}
+
+func testPostCompactNativeCodexE2E(t *testing.T, synthesized bool, run *orchestrate.Store) {
 	t.Helper()
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -188,12 +214,14 @@ func testPostCompactNativeCodexE2E(t *testing.T, synthesized bool) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	if synthesized {
-		if output, err := exec.Command("git", "init", "--quiet", workspace).CombinedOutput(); err != nil {
-			t.Fatalf("initialize fixture workspace: %v: %s", err, output)
+	if synthesized || run != nil {
+		workspace = gitTestWorkspace(t)
+		if run != nil {
+			writeTestFile(t, filepath.Join(workspace, "file"), "baseline")
+			gitTestCommit(t, workspace)
 		}
 	}
-	provider := &compactCodexProvider{store: store, workspace: workspace, synthesized: synthesized}
+	provider := &compactCodexProvider{store: store, workspace: workspace, synthesized: synthesized, orchestration: run}
 	var proxy *mekugiProxy
 	if synthesized {
 		proxy = newManagedMekugiProxy(t)

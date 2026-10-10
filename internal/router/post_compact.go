@@ -106,7 +106,7 @@ func (s *mekugiReplayStore) postCompactContext(ctx context.Context, workspace, t
 		if journal.Parent != "" || journal.Author != "/root" {
 			return nil // Main threads only, even if invoked manually for a child.
 		}
-		if journal.TreeAuthored {
+		if journal.TreeAuthored || journal.Orchestration != nil {
 			summary, err := s.journalSummaryLocked(ctx, journal)
 			content = summary.Text
 			return err
