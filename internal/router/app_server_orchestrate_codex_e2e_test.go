@@ -398,6 +398,27 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if !mainInputSeen {
 		t.Fatal("Main follow-up did not reach provider")
 	}
+	mainQueued := &orchestrateCommand{ctx: ctx, workspace: batch.Cwd, main: result.batch.Launch.ThreadID, target: "main", followup: true, deferred: true, callID: "installed-main-ordinary", input: orchestrateSpawnInput{Message: "Queued context for ordinary Main input."}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(mainQueued)
+	pump(func() bool { return len(mainQueued.reply) > 0 })
+	if got := <-mainQueued.reply; got.err != nil || got.delivery.State != "queued" || u.busy() {
+		t.Fatal("ordinary Main queue", got)
+	}
+	u.unsent = []composerDraft{{text: "Main follow-up probe. Ordinary input."}}
+	if err := u.flushInput(); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return !u.busy() && u.orchestrateMainInput == nil })
+	if d, _, err := store.BeginDelivery(ctx, workspace, main, orchestrate.Delivery{ID: mainQueued.callID, From: result.batch.Launch.ThreadID, Target: main, Message: mainQueued.input.Message, Deferred: true}); err != nil || d.State != "delivered" || d.TurnID == "" || u.draft != "Main draft" {
+		t.Fatal("ordinary Main input did not acknowledge queued context", d, err)
+	}
+	mainInputSeen = false
+	for len(provider.requests) > 0 {
+		mainInputSeen = strings.Contains(string(<-provider.requests), "Queued context for ordinary Main input.\\nMain follow-up probe. Ordinary input.") || mainInputSeen
+	}
+	if !mainInputSeen {
+		t.Fatal("ordinary queued Main input did not reach provider")
+	}
 	if _, err := proxy.applyJournal(ctx, workspace, main, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), State: new("working"), Agent: "/root/batch"}}); err != nil {
 		t.Fatal(err)
 	}

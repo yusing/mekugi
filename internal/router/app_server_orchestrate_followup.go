@@ -20,7 +20,15 @@ func (u *appServerUI) queueOrchestratedFollowup(c *orchestrateCommand) {
 		}
 		c.main, c.workspace = member.command.main, member.command.workspace
 	}
-	if c.target == "main" && c.caller != u.thread && !c.deferred {
+	if c.target == "main" && c.caller != u.thread {
+		if c.deferred {
+			store := u.proxy.orchestration.store
+			u.orchestrateWork(func() func() {
+				d, _, err := store.BeginDelivery(c.ctx, c.workspace, c.main, orchestrate.Delivery{ID: c.callID, From: c.caller, Target: c.main, Message: c.input.Message, Deferred: true})
+				return func() { c.reply <- orchestrateResult{delivery: &d, err: err} }
+			})
+			return
+		}
 		u.orchestrateMainFollowups = append(u.orchestrateMainFollowups, c)
 		if err := u.flushInput(); err != nil {
 			u.setNotice(err.Error(), true)

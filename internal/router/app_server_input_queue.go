@@ -226,6 +226,10 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.status = u.compactionProgressText() + "…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
 	}
+	if !steer && u.orchestrateMainInput == nil && u.navigation != nil && u.navigation.owner == u {
+		u.reserveOrchestratedMainTurn(parts)
+		return nil
+	}
 	for i := range parts {
 		u.bindSkills(&parts[i], true)
 		u.snapshotDraftSkills(&parts[i])
