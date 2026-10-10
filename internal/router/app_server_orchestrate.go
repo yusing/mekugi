@@ -5,6 +5,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,9 +15,11 @@ import (
 
 // The MCP workers enqueue work; only the UI loop writes to the host client.
 type orchestrateRuntime struct {
-	store    *orchestrate.Store
-	commands chan *orchestrateCommand
-	active   atomic.Bool
+	store         *orchestrate.Store
+	commands      chan *orchestrateCommand
+	active        atomic.Bool
+	eventsMu      sync.Mutex
+	journalEvents []orchestrateEvent
 }
 
 type orchestrateCommand struct {
