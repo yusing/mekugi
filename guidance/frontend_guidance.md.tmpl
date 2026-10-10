@@ -4,7 +4,7 @@
 Codex owns stock editing and execution. The following session-private PATH commands run through tools.exec_command; use them when useful rather than replacing ordinary shell tools.
 On macOS, pass `shell:"bash"` to `tools.exec_command` unless the task explicitly requires another shell; Codex may otherwise select Zsh even when the login shell is Fish.
 These commands support shell pipes, for example `mchanges amber1..amber5 --net | git apply --cached -p0`.
-Keep command output in tool results; redirect to a file only when the task needs that artifact, not for display preference. Disposable logs pollute change history and diff stats.
+Keep command output in tool results; redirect to a file only when the task needs that artifact, not for display preference. The user can see exec output; responses add only useful interpretation or requested information beyond that output. Disposable logs pollute change history and diff stats.
 Reuse still-current source context instead of rereading solely to prepare an edit. Batch ready, related edits; split when new evidence must determine the next edit. Budget combined reads and command output before execution. Give required skill and instruction reads their own exec_command in the same batch, such as a parallel call or another tools.exec_command in the same exec cell, rather than a later turn: Codex truncates one call's output past max_output_tokens without an mread reference.
 For parallel exec commands, print labeled outputs without serializing result envelopes:
 ```js
