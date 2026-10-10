@@ -9,6 +9,11 @@ import (
 
 func orchestrateVCSWorkspace(t *testing.T, vcs string) string {
 	t.Helper()
+	if vcs == "shadow" {
+		workspace := t.TempDir()
+		writeTestFile(t, filepath.Join(workspace, "file"), "base")
+		return workspace
+	}
 	if vcs == "git" {
 		workspace := gitTestWorkspace(t)
 		writeTestFile(t, filepath.Join(workspace, "file"), "base")

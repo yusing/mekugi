@@ -19,7 +19,7 @@ starts no model turn. Main can copy required ignored inputs into the returned
 checkout before a later spawn. Task names contain lowercase letters, digits and
 underscores, begin with a letter, and contain at most 64 characters.
 
-Each batch starts at the source's committed baseline, with its own Git branch
+Git and Mercurial batches start at the source's committed baseline, with their own branch
 or Mercurial bookmark. Source index, uncommitted files and ignored inputs stay
 in the source checkout. A selected
 subdirectory remains the child's working directory inside the new checkout.
@@ -183,6 +183,16 @@ ancestor of the source's committed parent. Ignored prepared inputs may remain.
 Sources may be ordinary or shared Mercurial working directories. Native cleanup
 remains staged below.
 
+## REQ-ORCHESTRATE-008 — Unversioned shadow batches
+
+Unversioned sources can prepare a shadow batch in a run-owned private Git
+repository. The complete source snapshot honors ignore files, excludes VCS
+metadata and preserves on-disk bytes, executable state and symlinks. Incomplete snapshots fail
+preparation. The child starts in a branch worktree with fresh context; source
+files remain unchanged. Prepared inputs and private branch history survive
+reopening, independently of observation-snapshot retention. Shadow writeback
+and acceptance remain staged below.
+
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
@@ -223,10 +233,11 @@ The remaining capabilities are accepted but not yet delivered:
 - jj uses native workspaces. Other sources use run-owned shadow Git
   repositories; conflict detection precedes source writes and partial writeback
   remains recoverable. Observation snapshots do not own durable batch branches.
+- Versioned shadow children start from their VCS-recorded committed baseline,
+  excluding local edits. Versioned shadow preparation remains staged.
 - Initialized submodules and evidence inputs are prepared before the first turn.
   The home `batch-agent-sessions` skill/helper retires only after parity.
 
 Third-party threads retain their current stable schema exposure during initial
 delivery. Child-authored journal roots remain unchanged. Nested orchestration
-and versioned shadow-source baselines must
-be settled before their affected capability is exposed.
+must be settled before exposure.

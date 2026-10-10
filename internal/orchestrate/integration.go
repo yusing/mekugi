@@ -33,6 +33,9 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 		if b.Launch == nil || b.Launch.ThreadID != thread || thread == "" {
 			return errors.New("integration requires a confirmed batch thread")
 		}
+		if b.VCS == "shadow" {
+			return errors.New("shadow integration is not yet available")
+		}
 		if err := validateCheckoutIdentity(ctx, *b); err != nil {
 			return err
 		}

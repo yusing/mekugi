@@ -116,6 +116,7 @@ type workspaceSnapshotRepo struct {
 	worktree string
 	pathspec string
 	plain    bool
+	durable  bool // Run-owned snapshots require complete indexing and retain their objects.
 	excludes string
 	exclude  string // the real repository's info/exclude
 	objects  string // the real repository's object directory
@@ -280,7 +281,9 @@ func (r *workspaceSnapshotRepo) snapshot(ctx context.Context) (string, error) {
 		}
 	}
 	if r.git == "" {
-		r.owner.pruneIdle(filepath.Dir(r.lockPath))
+		if !r.durable {
+			r.owner.pruneIdle(filepath.Dir(r.lockPath))
+		}
 		if err := r.setup(ctx); err != nil {
 			return "", err
 		}
@@ -344,7 +347,9 @@ func (s *workspaceSnapshots) pruneIdle(keep string) {
 
 func (r *workspaceSnapshotRepo) refresh(ctx context.Context) (string, error) {
 	var err error
-	if r.plain {
+	if r.durable {
+		_, err = r.run(ctx, nil, "add", "-A", "--", r.pathspec)
+	} else if r.plain {
 		err = r.addPlain(ctx)
 	} else {
 		err = r.add(ctx, nil, "add", "-A", "--ignore-errors", "--", r.pathspec)

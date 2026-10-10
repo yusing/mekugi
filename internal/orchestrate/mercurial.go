@@ -18,7 +18,7 @@ func sourceRepository(ctx context.Context, workspace string) (string, string, er
 		return "", "", err
 	}
 	for dir := selected; ; dir = filepath.Dir(dir) {
-		for _, marker := range []string{".jj", ".hg", ".git"} {
+		for _, marker := range []string{".jj", ".hg", ".svn", ".bzr", ".git"} {
 			_, err := os.Lstat(filepath.Join(dir, marker))
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -29,6 +29,8 @@ func sourceRepository(ctx context.Context, workspace string) (string, string, er
 			switch marker {
 			case ".jj":
 				return "", "", errors.New("jj orchestration is not yet available")
+			case ".svn", ".bzr":
+				return "", "", errors.New("versioned shadow baselines are not yet available")
 			case ".hg":
 				root, err := hg(ctx, selected, "root")
 				return "hg", root, err
@@ -38,7 +40,7 @@ func sourceRepository(ctx context.Context, workspace string) (string, string, er
 			}
 		}
 		if filepath.Dir(dir) == dir {
-			return "", "", errors.New("workspace has no supported native repository")
+			return "shadow", selected, nil
 		}
 	}
 }
