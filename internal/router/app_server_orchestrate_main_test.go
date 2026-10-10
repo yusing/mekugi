@@ -33,6 +33,7 @@ func TestAppServerOrchestrateMainComposer(t *testing.T) {
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
+	drainOrchestrateWork(t, u)
 	r := appServerOneRequest(t, w, "turn/start", "user input")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"user-turn"}}}`, r.ID))
 	if w.Len() != 0 {
@@ -190,6 +191,7 @@ func TestAppServerOrchestrateMainEscapeReplay(t *testing.T) {
 	interrupt := appServerOneRequest(t, w, "turn/interrupt", "")
 	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 	appServerTestTurnEnd(t, u, "running", "interrupted")
+	drainOrchestrateWork(t, u)
 	appServerOneRequest(t, w, "turn/start", "ordinary user input")
 	if u.draft != "unsent editor text" {
 		t.Fatalf("editor changed: %q", u.draft)
@@ -244,5 +246,60 @@ func TestAppServerOrchestrateMainLocalSendRejection(t *testing.T) {
 		}
 	default:
 		t.Fatalf("local composer rejection strands delivery: pending=%v notice=%q", u.orchestrateMainInput != nil, u.notice)
+	}
+}
+
+func TestAppServerOrchestrateMainDeferredComposer(t *testing.T) {
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"child-turn"}}`)
+	w := u.client.Input.(*appServerTestInput)
+	u.draft = "user draft"
+	input := orchestrate.Delivery{ID: "main-queue", From: "child", Target: "main", Message: "child context", Deferred: true}
+	c := &orchestrateCommand{ctx: t.Context(), workspace: u.orchestrateThreads["child"].batch.Cwd, main: "child", target: "main", followup: true, deferred: true, callID: input.ID, input: orchestrateSpawnInput{Message: input.Message}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(c)
+	drainOrchestrateWork(t, u)
+	if got := <-c.reply; got.err != nil || got.delivery.State != "queued" || w.Len() != 0 || u.busy() {
+		t.Fatal("queued input woke Main", got)
+	}
+	// A fresh storage owner supplies queued input; it is not an in-memory draft.
+	store := &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
+	u.proxy.orchestration.store = store
+	appServerTestTurn(t, u, "running")
+	u.unsent = []composerDraft{{text: "user steer"}}
+	if err := u.flushInput(); err != nil {
+		t.Fatal(err)
+	}
+	r := appServerOneRequest(t, w, "turn/steer", "user steer")
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"running"}}`, r.ID))
+	appServerTestUserMessage(t, u, "user-input", r.Params.ClientUserMessageID, "user steer")
+	appServerTestTurnEnd(t, u, "running", "completed")
+	if d, _, err := store.BeginDelivery(t.Context(), u.session.cwd, "main", input); err != nil || d.State != "queued" {
+		t.Fatal("steer consumed queued input", d, err)
+	}
+	// Ordinary input keeps image token positions while child text is prefixed.
+	image := filepath.Join(t.TempDir(), "image.png")
+	writeTestFile(t, image, "image bytes")
+	user := composerDraft{text: "user [Image 1]", images: []composerImage{{start: 5, end: 14, path: image}}}
+	if err := u.send([]composerDraft{user}, false); err != nil {
+		t.Fatal(err)
+	}
+	drainOrchestrateWork(t, u)
+	r = appServerOneRequest(t, w, "turn/start", "child context\nuser ")
+	if len(r.Params.Input) != 2 || r.Params.Input[1].Path != image {
+		t.Fatal("queued child input changed the user attachment", r)
+	}
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
+	if d, _, err := store.BeginDelivery(t.Context(), u.session.cwd, "main", input); err != nil || d.State != "queued" || u.draft != "user [Image 1]\nuser draft" {
+		t.Fatal("rejected input lost queue or polluted user draft", d, err, u.draft)
+	}
+	c = mainFollowup(t, u, t.Context(), "idle-with-queue", "wake Main")
+	drainOrchestrateWork(t, u)
+	r = appServerOneRequest(t, w, "turn/start", "child context\nwake Main")
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"next"}}}`, r.ID))
+	if got := <-c.reply; got.err != nil || got.delivery.State != "delivered" {
+		t.Fatal(got)
+	}
+	if d, _, err := store.BeginDelivery(t.Context(), u.session.cwd, "main", input); err != nil || d.State != "delivered" || d.TurnID != "next" {
+		t.Fatal("queued acknowledgement missing", d, err)
 	}
 }

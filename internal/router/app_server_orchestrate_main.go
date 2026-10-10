@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 
 	"github.com/yusing/mekugi/internal/appserver"
@@ -14,6 +15,7 @@ type orchestrateMainInput struct {
 	command    *orchestrateCommand
 	delivery   orchestrate.Delivery
 	dispatched bool
+	parts      []composerDraft // Ordinary user input, separate from child-owned text.
 }
 
 func (u *appServerUI) flushOrchestratedMainFollowup() error {
@@ -28,27 +30,56 @@ func (u *appServerUI) flushOrchestratedMainFollowup() error {
 	}
 	c := u.orchestrateMainFollowups[0]
 	u.orchestrateMainFollowups = u.orchestrateMainFollowups[1:]
-	pending := &orchestrateMainInput{command: c}
+	u.beginOrchestratedMainInput(&orchestrateMainInput{command: c})
+	return nil
+}
+
+func (u *appServerUI) reserveOrchestratedMainTurn(parts []composerDraft) {
+	c := &orchestrateCommand{ctx: u.ctx, workspace: u.session.cwd, main: u.thread, callID: "composer/" + rand.Text()}
+	u.beginOrchestratedMainInput(&orchestrateMainInput{command: c, parts: parts})
+}
+
+func (u *appServerUI) beginOrchestratedMainInput(pending *orchestrateMainInput) {
+	c := pending.command
 	u.orchestrateMainInput = pending
 	turn, store := u.turn, u.proxy.orchestration.store
 	u.orchestrateWork(func() func() {
-		d, dispatch, err := store.BeginDelivery(c.ctx, c.workspace, c.main, orchestrate.Delivery{ID: c.callID, From: c.caller, Target: c.main, Message: c.input.Message})
+		var d orchestrate.Delivery
+		var dispatch bool
+		var err error
+		text := c.input.Message
+		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: c.main, Message: text}
+		switch {
+		case pending.parts != nil:
+			d, text, dispatch, err = store.ReserveMainTurn(c.ctx, c.workspace, c.main, c.callID)
+		case turn == "":
+			d, text, dispatch, err = store.BeginTurnDelivery(c.ctx, c.workspace, c.main, input)
+		default:
+			d, dispatch, err = store.BeginDelivery(c.ctx, c.workspace, c.main, input)
+		}
 		return func() {
 			pending.delivery = d
-			if err != nil || !dispatch {
+			if err != nil || !dispatch && pending.parts == nil {
+				u.restoreDrafts(pending.parts...)
 				u.finishOrchestratedMainInput(pending, d, err)
 				return
 			}
 			if c.ctx.Err() != nil || u.orchestrateClosing {
+				u.restoreDrafts(pending.parts...)
 				u.retainOrchestratedMainInput(pending, "canceled", "", context.Canceled)
 				return
 			}
 			if u.turn != turn || !u.acceptsInput() || u.restoring != nil || u.reset.active() || u.waitingQuestion() {
+				u.restoreDrafts(pending.parts...)
 				u.retainOrchestratedMainInput(pending, "rejected", "", errors.New("coordinator input state changed before delivery"))
 				return
 			}
 			pending.dispatched = true
-			if err := u.send([]composerDraft{{text: c.input.Message, orchestrated: true}}, turn != ""); err != nil {
+			parts := pending.parts
+			if text != "" {
+				parts = append([]composerDraft{{text: text, orchestrated: true}}, parts...)
+			}
+			if err := u.send(parts, turn != ""); err != nil {
 				pending.dispatched = false
 				u.retainOrchestratedMainInput(pending, "uncertain", "", err)
 			} else if !u.appServerInputOperation.pending() {
@@ -57,7 +88,6 @@ func (u *appServerUI) flushOrchestratedMainFollowup() error {
 			}
 		}
 	})
-	return nil
 }
 
 func (u *appServerUI) cancelOrchestratedMainFollowups() {
@@ -81,7 +111,11 @@ func (u *appServerUI) rejectOrchestratedMainFollowups(err error) {
 }
 
 func (u *appServerUI) finishOrchestratedMainInput(pending *orchestrateMainInput, d orchestrate.Delivery, err error) {
-	pending.command.reply <- orchestrateResult{delivery: &d, err: err}
+	if pending.command.reply != nil {
+		pending.command.reply <- orchestrateResult{delivery: &d, err: err}
+	} else if err != nil {
+		u.setNotice("Orchestration input: "+err.Error(), true)
+	}
 	u.orchestrateMainInput = nil
 	if err := u.flushInput(); err != nil {
 		u.setNotice(err.Error(), true)
@@ -89,6 +123,10 @@ func (u *appServerUI) finishOrchestratedMainInput(pending *orchestrateMainInput,
 }
 
 func (u *appServerUI) retainOrchestratedMainInput(pending *orchestrateMainInput, state, turn string, outcome error) {
+	if pending.delivery.ID == "" {
+		u.finishOrchestratedMainInput(pending, pending.delivery, outcome)
+		return
+	}
 	c, ctx, store := pending.command, u.orchestrateStorageContext, u.proxy.orchestration.store
 	u.orchestrateWork(func() func() {
 		message := ""

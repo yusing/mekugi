@@ -153,7 +153,13 @@ messages are literal input, including text that resembles a slash command.
 Interrupted or rejected child input stays child-owned; it does not enter the
 user's draft or automatic composer resend. Local input rejection returns a
 delivery failure. Canceled waiting follow-ups release their departure gate.
-Deferred messages targeting Main remain accepted work below.
+
+Confirmed children can use `send_message` with `target: "main"` without waking or
+steering it. Messages accompany Main's next ordinary input turn or idle follow-up,
+in arrival order before that input. Steers and context compaction leave them queued.
+Main's user attachments and draft remain intact. Rejection before delivery releases
+the messages back to the queue; uncertain dispatch remains retained for inspection.
+Restart restores queued input from the run, without reviving a turn.
 
 ## REQ-ORCHESTRATE-005 — Cross-checkout journals
 
@@ -277,7 +283,6 @@ Resolution during answer paste discards that paste instead of editing another dr
 The remaining capabilities are accepted but not yet delivered:
 
 - Workflow instructions recover once after context reset.
-- `send_message` can target Main's next turn without waking it.
 - Retained child threads resume when viewed or messaged, without reviving
   processes or repeating effects. Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and

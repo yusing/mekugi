@@ -21,16 +21,22 @@ type Delivery struct {
 }
 
 func (s *Store) BeginDelivery(ctx context.Context, workspace, main string, input Delivery) (delivery Delivery, dispatch bool, err error) {
-	delivery, _, dispatch, err = s.beginDelivery(ctx, workspace, main, input, false)
+	delivery, _, dispatch, err = s.beginDelivery(ctx, workspace, main, input, false, false)
 	return
 }
 
 // BeginTurnDelivery reserves queued input with the new turn's dispatch intent.
 func (s *Store) BeginTurnDelivery(ctx context.Context, workspace, main string, input Delivery) (delivery Delivery, text string, dispatch bool, err error) {
-	return s.beginDelivery(ctx, workspace, main, input, true)
+	return s.beginDelivery(ctx, workspace, main, input, true, false)
 }
 
-func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input Delivery, nextTurn bool) (delivery Delivery, text string, dispatch bool, err error) {
+// ReserveMainTurn claims queued messages for an ordinary composer turn. It saves
+// no delivery when the queue is empty. The composer owns its separate user input.
+func (s *Store) ReserveMainTurn(ctx context.Context, workspace, main, id string) (delivery Delivery, text string, dispatch bool, err error) {
+	return s.beginDelivery(ctx, workspace, main, Delivery{ID: id, From: main, Target: main}, true, true)
+}
+
+func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input Delivery, nextTurn, composer bool) (delivery Delivery, text string, dispatch bool, err error) {
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
 		for _, d := range m.Deliveries {
 			if d.ID == input.ID {
@@ -46,7 +52,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 				return (b.VCS == "" || b.VCS == "shadow") && b.State == "launched" && b.Launch != nil && b.Launch.ThreadID == thread
 			})
 		}
-		if input.ID == "" || input.Message == "" || input.From == input.Target || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
+		if input.ID == "" || !composer && (input.Message == "" || input.From == input.Target) || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
 			return errors.New("delivery requires separate confirmed run members")
 		}
 		input.State, input.TurnID, input.Error = "dispatching", "", ""
@@ -62,7 +68,13 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 				}
 			}
 		}
-		text = strings.Join(append(parts, input.Message), "\n")
+		if composer && len(parts) == 0 {
+			return nil
+		}
+		if !composer {
+			parts = append(parts, input.Message)
+		}
+		text = strings.Join(parts, "\n")
 		m.Deliveries = append(m.Deliveries, input)
 		delivery = input
 		err := s.save(m, path)
