@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -18,15 +19,23 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				continue
 			}
 			batch = *b
-			if b.VCS != "" || b.Launch == nil || b.Launch.ThreadID == "" || b.Integration == nil || *b.Integration != proof {
-				return errors.New("cleanup requires an accepted Git batch")
+			if b.VCS != "" && !shadowVCS(b.VCS) || b.Launch == nil || b.Launch.ThreadID == "" || b.Integration == nil || *b.Integration != proof {
+				return errors.New("cleanup requires an accepted Git or shadow batch")
+			}
+			repository := workspace
+			if shadowVCS(b.VCS) {
+				repository = b.Repository
+				resolved, err := filepath.EvalSymlinks(repository)
+				if err != nil || resolved != repository {
+					return errors.New("cleanup shadow repository is unavailable or redirected")
+				}
 			}
 			for _, d := range m.Deliveries {
 				if (d.Target == b.Launch.ThreadID || d.From == b.Launch.ThreadID) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
 					return errors.New("cleanup requires settled batch deliveries")
 				}
 			}
-			tip, err := git(ctx, workspace, "rev-parse", "--verify", "refs/heads/"+b.Branch+"^{commit}")
+			tip, err := git(ctx, repository, "rev-parse", "--verify", "refs/heads/"+b.Branch+"^{commit}")
 			if err != nil || tip != proof.Tip {
 				return errors.New("cleanup branch no longer retains the accepted tip")
 			}
@@ -34,7 +43,7 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				if _, err := os.Lstat(b.Checkout); !errors.Is(err, os.ErrNotExist) {
 					return errors.New("cleanup checkout still exists or is uncertain; inspect removal before recovery")
 				}
-				worktrees, err := git(ctx, workspace, "worktree", "list", "--porcelain", "-z")
+				worktrees, err := git(ctx, repository, "worktree", "list", "--porcelain", "-z")
 				if err != nil {
 					return err
 				}
@@ -48,7 +57,7 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				if err := validateCheckoutIdentity(ctx, *b); err != nil {
 					return err
 				}
-				source, err := git(ctx, workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")
+				source, err := git(ctx, repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
 				if err != nil {
 					return err
 				}
@@ -80,7 +89,7 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				if len(b.Submodules) != 0 {
 					args = append(args, "--force") // Git requires force for populated submodules.
 				}
-				if _, err := git(ctx, workspace, append(args, "--", b.Checkout)...); err != nil {
+				if _, err := git(ctx, repository, append(args, "--", b.Checkout)...); err != nil {
 					b.Error = err.Error()
 					batch = *b
 					return errors.Join(err, s.save(m, path))

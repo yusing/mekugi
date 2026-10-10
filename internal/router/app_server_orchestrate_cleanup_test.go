@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -295,48 +296,60 @@ func TestAppServerOrchestrateEvidenceCleanupAcceptance(t *testing.T) {
 }
 
 func TestAppServerOrchestrateCleanupReconciliation(t *testing.T) {
-	u := orchestrateCleanupUI(t)
-	p, workspace := u.proxy, u.session.cwd
-	if _, err := p.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
-		t.Fatal(err)
-	}
-	store := p.orchestration.store
-	batch := u.orchestrateThreads["child"].batch
-	// Save uncertain intent, then simulate a lost native removal response.
-	paths, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
-	if err != nil || len(paths) != 1 {
-		t.Fatal(paths, err)
-	}
-	data, err := os.ReadFile(paths[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	data = bytes.Replace(data, []byte(`"state":"launched"`), []byte(`"state":"removing"`), 1)
-	if err := os.WriteFile(paths[0], data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	proof, err := p.orchestrateCleanupProof(t.Context(), workspace, "main", "batch", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reopened := &orchestrate.Store{Directory: store.Directory}
-	if _, err := reopened.Cleanup(t.Context(), workspace, "main", "batch", proof, nil); err == nil {
-		t.Fatal("repeated uncertain removal of a surviving checkout")
-	}
-	missing := filepath.Join(t.TempDir(), "moved")
-	if err := os.Rename(batch.Checkout, missing); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reopened.Cleanup(t.Context(), workspace, "main", "batch", proof, nil); err == nil {
-		t.Fatal("accepted a missing checkout with a live Git registration")
-	}
-	if err := os.Rename(missing, batch.Checkout); err != nil {
-		t.Fatal(err)
-	}
-	gitTestRun(t, workspace, "worktree", "remove", "--", batch.Checkout)
-	got, err := reopened.Cleanup(t.Context(), workspace, "main", "batch", proof, nil)
-	if err != nil || got.State != "removed" {
-		t.Fatal("failed to reconcile confirmed removal", got, err)
+	for _, kind := range []string{"git", "shadow"} {
+		t.Run(kind, func(t *testing.T) {
+			workspace := orchestrateVCSWorkspace(t, kind)
+			u := orchestrateCleanupUIInWorkspace(t, workspace)
+			if kind != "git" {
+				orchestrateTargetMCPClient(t, u, "integrate")("main", false)
+			}
+			p := u.proxy
+			if _, err := p.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+				t.Fatal(err)
+			}
+			store := p.orchestration.store
+			batch := u.orchestrateThreads["child"].batch
+			// Save uncertain intent, then simulate a lost native removal response.
+			paths, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
+			if err != nil || len(paths) != 1 {
+				t.Fatal(paths, err)
+			}
+			data, err := os.ReadFile(paths[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			data = bytes.Replace(data, []byte(`"state":"launched"`), []byte(`"state":"removing"`), 1)
+			if err := os.WriteFile(paths[0], data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			proof, err := p.orchestrateCleanupProof(t.Context(), workspace, "main", "batch", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reopened := &orchestrate.Store{Directory: store.Directory}
+			if _, err := reopened.Cleanup(t.Context(), workspace, "main", "batch", proof, nil); err == nil {
+				t.Fatal("repeated uncertain removal of a surviving checkout")
+			}
+			missing := filepath.Join(t.TempDir(), "moved")
+			if err := os.Rename(batch.Checkout, missing); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reopened.Cleanup(t.Context(), workspace, "main", "batch", proof, nil); err == nil {
+				t.Fatal("accepted a missing checkout with a live Git registration")
+			}
+			if err := os.Rename(missing, batch.Checkout); err != nil {
+				t.Fatal(err)
+			}
+			repository := workspace
+			if kind != "git" {
+				repository = batch.Repository
+			}
+			gitTestRun(t, repository, "worktree", "remove", "--", batch.Checkout)
+			got, err := reopened.Cleanup(t.Context(), workspace, "main", "batch", proof, nil)
+			if err != nil || got.State != "removed" {
+				t.Fatal("failed to reconcile confirmed removal", got, err)
+			}
+		})
 	}
 }
 
@@ -351,6 +364,57 @@ func TestUISnapshotOrchestrateCleanedRoster(t *testing.T) {
 	child.batch.State, child.batch.Branch = "removed", "mekugi/run/batch"
 	u.orchestrationRoster()
 	uisnapshot.Assert(t, "testdata/snapshots/orchestration-cleaned-roster.txt", strings.Join(u.agents.nativeRoster(100, 12, now, true), "\n")+"\n")
+}
+
+func TestAppServerOrchestrateShadowCleanupMCP(t *testing.T) {
+	for _, kind := range []string{"shadow", "svn"} {
+		t.Run(kind, func(t *testing.T) {
+			workspace := orchestrateVCSWorkspace(t, kind)
+			u := orchestrateCleanupUIInWorkspace(t, workspace)
+			b := u.orchestrateThreads["child"].batch
+			writeTestFile(t, filepath.Join(b.Cwd, "file"), "child")
+			gitTestRun(t, b.Cwd, "config", "user.name", "test")
+			gitTestRun(t, b.Cwd, "config", "user.email", "test@example.invalid")
+			gitTestCommit(t, b.Cwd)
+			call := orchestrateTargetMCPClient(t, u, "cleanup")
+			call("main", true)
+			orchestrateTargetMCPClient(t, u, "integrate")("main", false)
+			if _, err := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+				t.Fatal(err)
+			}
+			writeTestFile(t, filepath.Join(b.Cwd, "file"), "unfinished")
+			gitTestRun(t, b.Cwd, "update-index", "--assume-unchanged", "file")
+			call("main", true)
+			gitTestRun(t, b.Cwd, "update-index", "--no-assume-unchanged", "file")
+			writeTestFile(t, filepath.Join(b.Cwd, "file"), "child")
+			var metadata map[string][32]byte
+			if kind == "svn" {
+				metadata = svnMetadata(t, workspace)
+			}
+			// Cleanup consumes retained acceptance, preserving later source edits.
+			writeTestFile(t, filepath.Join(workspace, "file"), "later source")
+			store := &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
+			u.proxy.orchestration.store, u.proxy.journals = store, newJournalStore()
+			call("main", false)
+			call("main", false)
+			retained, err := store.Snapshot(workspace, "main")
+			if err != nil || retained[0].State != "removed" {
+				t.Fatal("lost cleanup outcome", retained, err)
+			}
+			if _, err := os.Lstat(b.Checkout); !os.IsNotExist(err) {
+				t.Fatal("accepted shadow checkout survived", err)
+			}
+			gitTestRun(t, b.Repository, "cat-file", "-e", retained[0].Integration.Tip+"^{commit}")
+			gitTestRun(t, b.Repository, "cat-file", "-e", retained[0].Integration.SourceTip+"^{tree}")
+			gitTestRun(t, b.Repository, "show-ref", "--verify", "refs/heads/"+b.Branch)
+			if data, err := os.ReadFile(filepath.Join(workspace, "file")); err != nil || string(data) != "later source" {
+				t.Fatal("cleanup changed source", string(data), err)
+			}
+			if kind == "svn" && !reflect.DeepEqual(metadata, svnMetadata(t, workspace)) {
+				t.Fatal("cleanup changed SVN metadata")
+			}
+		})
+	}
 }
 
 func TestAppServerOrchestrateCleanupAcceptanceInterleaving(t *testing.T) {

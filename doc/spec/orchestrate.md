@@ -280,11 +280,13 @@ blobs remain in the private repository for recovery. Integration evidence become
 available only after every changed path is confirmed. Main then reviews and marks
 its bound task `accepted`; writeback alone does not accept it.
 
-## REQ-ORCHESTRATE-009 — Accepted Git checkout cleanup
+## REQ-ORCHESTRATE-009 — Accepted checkout cleanup
 
 Main calls `tools.mcp__orchestrate__cleanup({target:"batch"})` to remove an
-accepted, idle Git batch checkout, including its run-owned submodule clones. The bound journal task must
-still be `accepted` with the run's integration tips. The checkout must retain its
+accepted, idle Git or shadow batch checkout, including Git's run-owned submodule
+clones. Shadow cleanup retains the private repository and its history and leaves
+the source's files and VCS metadata unchanged. The bound journal task must still
+be `accepted` with the run's integration tips. The checkout must retain its
 exact recorded location, repository, branch and accepted tip and be clean. Pending
 input, questions, approvals, native descendants or queued and uncertain deliveries
 preserve it. Cleanup requires a subscribed child so current idle state is known.
@@ -360,8 +362,6 @@ work without reviving processes.
 
 The remaining capabilities are accepted but not yet delivered:
 
-- Accepted shadow checkout cleanup uses the same ownership and settled-work
-  requirements as Git cleanup and remains staged.
 - The home `batch-agent-sessions` skill/helper retires only after parity.
 
 Third-party threads retain their current stable schema exposure during initial
