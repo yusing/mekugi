@@ -92,9 +92,9 @@ Cancellation prevents the first turn when possible. Late host acknowledgements
 remain useful; an already-started turn is interrupted even if saving its result
 fails. An interrupt acknowledgement does not claim the turn has finished: host
 lifecycle events supply that outcome. Checkout preparation and orchestration
-run-storage waits leave input and host events responsive. Running batches prevent
-quitting or replacing the coordinator. Viewing another thread leaves its work
-subscribed and does not replace the coordinator.
+run-storage waits leave input and host events responsive. Running batches require
+exit confirmation and prevent replacing the coordinator. Viewing another thread
+leaves its work subscribed and does not replace the coordinator.
 
 The prepared checkout replaces the source repository in runtime workspace roots;
 explicit external roots and an empty root list remain inherited. Named permission
@@ -295,9 +295,15 @@ editors stay with the source across switching; hiding restores the viewed draft.
 Replies, denial feedback and interruption target the originating thread.
 Resolution during answer paste discards that paste instead of editing another draft.
 
+`/quit` with active orchestration asks for confirmation on the composer notice.
+Enter confirms exit and interruption of all threads; Escape keeps working with
+drafts and subscriptions intact. Ordinary Main Ctrl-C keeps its existing
+clear/interrupt behavior. Confirmed exit stops new orchestration dispatch and
+uses Codex's existing shutdown to stop its running turns. Resume shows interrupted
+work without reviving processes.
+
 The remaining capabilities are accepted but not yet delivered:
 
-- Exit confirms interruption of running children.
 - Main integrates native VCS branches serially, preserving coherent commits and
   unrelated edits.
 - SVN uses run-owned shadow Git repositories, as do unversioned sources;

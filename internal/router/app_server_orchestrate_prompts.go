@@ -77,6 +77,7 @@ func (u *appServerUI) hidePromptEditors() {
 
 func (u *appServerUI) focusPrompt() {
 	viewed := u.viewedUI()
+	viewed.quitConfirmationKey("\x1b")
 	viewed.picker.open, viewed.keybindings = false, false
 	viewed.cancelPickerScan()
 	if viewed.shell != nil {

@@ -959,7 +959,8 @@ An ellipsis marks omitted error details; clicking a truncated composer error ope
 its complete text, including the full router-error batch, in the shared error dialog.
 Composer feedback stays user-only; model-visible error evidence
 keeps its red transcript display and details dialog. Only
-`/quit` is a command, and only while idle;
+`/quit` is a command, and only while idle, except for
+[confirmed orchestration exit](orchestrate.md#accepted-delivery-scope);
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
 session title, scroll position and unseen-message count. History

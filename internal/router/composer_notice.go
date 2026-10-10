@@ -11,6 +11,7 @@ import (
 
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
+	u.quitConfirmation = false
 	u.notice, u.noticeAlert = text, alert
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	u.noticeUntil = time.Time{}

@@ -252,7 +252,9 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	if len(capture) > 0 {
 		recorder = capture[0]
 	}
-	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, false)
+	// Orchestration fixtures inherit the host's named permission profile.
+	approvals := proxy != nil && proxy.orchestration != nil
+	wait, err := startAppServerUI(ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, approvals)
 	if err != nil {
 		t.Fatal(err)
 	}
