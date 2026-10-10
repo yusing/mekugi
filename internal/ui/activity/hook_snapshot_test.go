@@ -18,6 +18,9 @@ func TestUISnapshotHookRuns(t *testing.T) {
 			b := Block{Kind: "op", Verb: "Run", Label: "PreToolUse · `hooks.toml` · async", Running: status == "running",
 				Hook:    &HookDetails{HandlerType: "command", ExecutionMode: "async", Status: status},
 				Started: time.Unix(1000, 0), Duration: 120 * time.Millisecond}
+			if status == "completed" {
+				b.Tail = []string{"context: #!/bin/bash", "echo ready"}
+			}
 			if status == "failed" {
 				b.Tail = []string{"error: executable not found", "warning: check hook configuration"}
 			}
@@ -40,17 +43,5 @@ func TestUISnapshotHookRuns(t *testing.T) {
 		}
 		uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/hooks_%d.txt", width), strings.Join(rows, "\n")+"\n")
 		uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/hooks_styles_%d.txt", width), append(rows, "plain after hooks"), width)
-	}
-}
-
-func TestHookOutputSkipsLanguageDetection(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
-	rows := []string{"#!/bin/bash", "echo ready"}
-	if colored := p.outputColors(Block{Kind: "op", Verb: "Run", Tail: rows}, rows); colored[1] == rows[1] {
-		t.Fatal("fixture no longer exercises content detection")
-	}
-	colored := p.outputColors(Block{Kind: "op", Verb: "Run", Tail: rows, Hook: &HookDetails{Status: "completed"}}, rows)
-	if strings.Join(colored, "\n") != strings.Join(rows, "\n") {
-		t.Fatalf("hook output was colored as a detected language: %q", colored)
 	}
 }

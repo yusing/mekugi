@@ -2,6 +2,8 @@
 "             \x1b[2masync\x1b[m \x1b[2m· 1s\x1b[m               "
 "\x1b[38;5;214;1mHook Ran\x1b[m \x1b[2mPreToolUse\x1b[m \x1b[2m·\x1b[m \x1b[38;2;210;168;255mhooks.toml\x1b[m \x1b[2m·\x1b[m    "
 "         \x1b[2masync\x1b[m \x1b[2m· 120ms\x1b[m                "
+"         \x1b[2m┆\x1b[m context: \x1b[38;2;139;148;158m#!/bin/bash\x1b[m       "
+"         \x1b[2m┆\x1b[m \x1b[38;2;242;192;120mecho\x1b[m ready                 "
 "\x1b[38;5;203;1mHook Failed\x1b[m \x1b[2mPreToolUse\x1b[m \x1b[2m·\x1b[m \x1b[38;2;210;168;255mhooks.toml\x1b[m \x1b[2m·\x1b[m "
 "            \x1b[2masync\x1b[m \x1b[2m· 120ms\x1b[m             "
 "            \x1b[2m┆\x1b[m error: executable not f…"

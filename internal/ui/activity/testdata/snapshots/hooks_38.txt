@@ -2,6 +2,8 @@ Hook Running PreToolUse · hooks.toml ·
              async · 1s
 Hook Ran PreToolUse · hooks.toml ·
          async · 120ms
+         ┆ context: #!/bin/bash
+         ┆ echo ready
 Hook Failed PreToolUse · hooks.toml ·
             async · 120ms
             ┆ error: executable not f…

@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -41,8 +42,7 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 	path := ""
 	switch {
 	case block.Hook != nil:
-		// Labeled free text in no declared language, which detection misreads.
-		return selectRows(rows)
+		return selectRows(p.hookColors(rows))
 	case block.ReadOutput() && len(block.Reads) == 1:
 		path = block.Reads[0].Path
 		if block.SyntaxPath != "" {
@@ -69,6 +69,43 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 		return selectRows(rows)
 	}
 	return selectRows(colored)
+}
+
+// Hook output prefixes each host entry with its kind. Detection misreads the
+// labeled whole, so each context body is colored alone and keeps its plain
+// label; warning, stop, feedback, and error entries are prose and stay plain.
+var hookEntryKinds = []string{"warning", "stop", "feedback", "context", "error"}
+
+func hookEntryKind(row string) string {
+	for _, kind := range hookEntryKinds {
+		if strings.HasPrefix(row, kind+": ") {
+			return kind
+		}
+	}
+	return ""
+}
+
+func (p *Painter) hookColors(rows []string) []string {
+	const label = "context: "
+	colored := slices.Clone(rows)
+	for start := 0; start < len(rows); {
+		end := start + 1
+		for end < len(rows) && hookEntryKind(rows[end]) == "" {
+			end++
+		}
+		if hookEntryKind(rows[start]) == "context" {
+			body := strings.TrimPrefix(strings.Join(rows[start:end], "\n"), label)
+			if len(body) <= outputAutoHighlightBytes {
+				lines, err := p.syntax.ColorSource(context.Background(), p.Theme, "", body+"\n")
+				if err == nil && len(lines) == end-start {
+					copy(colored[start:end], lines)
+					colored[start] = label + colored[start]
+				}
+			}
+		}
+		start = end
+	}
+	return colored
 }
 
 // Color from retained context before selecting the animated tail. Blank rows

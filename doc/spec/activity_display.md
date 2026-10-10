@@ -110,8 +110,9 @@ hook flags, shows as `builtin`. Hook completion, independently of turn completio
 ends a running hook. Hook status is distinct from command exit; no exit code is
 inferred. The output dialog also names the handler type. Host-supplied
 structured output retains its warning, stop, feedback, context, and error labels
-as plain text without language detection, using Run's bounded tail and
-retained-output dialog. Default presentation omits hook runs of every outcome;
+as plain text, using Run's bounded tail and retained-output dialog. Each context
+body is highlighted by content detection without its label; other entries stay
+plain. Default presentation omits hook runs of every outcome;
 expanded events and expanded all show them. Host approval and question surfaces
 are separate and unaffected. Successful output follows Run's collapse behavior;
 failed, blocked, stopped, or error-bearing output stays open. Hook notifications do not expose command source, raw stdout, stderr, or
