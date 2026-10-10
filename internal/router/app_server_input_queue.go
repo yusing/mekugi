@@ -218,7 +218,7 @@ func (u *appServerUI) flushInput() error {
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	if u.orchestrateCheckoutUnavailable() {
 		u.restoreDrafts(parts...)
-		u.setNotice("Batch checkout cleanup prevents new turns", true)
+		u.setNotice("Batch checkout unavailable; new turns are disabled", true)
 		return nil
 	}
 	if u.orchestrateMainInput == nil && len(parts) == 1 && parts[0].text == "/compact" {

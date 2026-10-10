@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Integration records observed native ancestry, not Main's review or acceptance.
+// Integration records native ancestry or confirmed shadow writeback, not review.
 type Integration struct {
 	Tip       string `json:"tip"`
 	SourceTip string `json:"source_tip"`
@@ -33,9 +33,6 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 	err = s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
 		if b.Launch == nil || b.Launch.ThreadID != thread || thread == "" {
 			return errors.New("integration requires a confirmed batch thread")
-		}
-		if b.VCS == "shadow" {
-			return errors.New("shadow integration is not yet available")
 		}
 		if err := validateCheckoutIdentity(ctx, *b); err != nil {
 			return err
@@ -64,6 +61,14 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 		}
 		if status != "" {
 			return errors.New("integration requires a clean batch checkout")
+		}
+		if b.VCS == "shadow" {
+			vcs, source, err := sourceRepository(ctx, workspace)
+			if err != nil || vcs != "shadow" || source != b.Source {
+				return errors.New("shadow source identity changed")
+			}
+			proof, err = verifyShadowIntegration(ctx, *b)
+			return err
 		}
 		proof.Tip, err = git(ctx, b.Cwd, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {

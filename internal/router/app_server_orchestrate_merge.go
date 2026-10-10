@@ -22,11 +22,16 @@ func (u *appServerUI) planOrchestratedMerge(c *orchestrateCommand) {
 			}
 		}
 		store, name, thread := u.proxy.orchestration.store, child.batch.TaskName, child.batch.Launch.ThreadID
+		previous := child.batch
+		child.removing = true
+		child.batch.State = "integrating" // Reserve input before leaving the UI loop.
 		u.orchestrateWork(func() func() {
-			batch, err := store.PlanShadowMerge(c.ctx, c.workspace, c.main, name, thread)
+			batch, err := store.IntegrateShadow(c.ctx, c.workspace, c.main, name, thread)
 			return func() {
-				if err == nil {
-					child.batch.ShadowMerge = batch.ShadowMerge
+				child.removing = false
+				child.batch = previous
+				if batch.TaskName != "" {
+					child.batch = batch
 				}
 				c.reply <- orchestrateResult{batch: batch, err: err}
 			}
