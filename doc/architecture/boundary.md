@@ -79,11 +79,11 @@ an out-of-router template. Configured plugin entries are derived from the authen
 registry. Both projections remain call-local; only the frontend section is stored with the pinned
 registry snapshot.
 
-Orchestration preparation owns its run manifests and Git worktrees separately
+Orchestration preparation owns its run manifests and native checkouts separately
 under the state root's `orchestrate` directory. The journal MCP identity resolver
 proves the selected workspace and caller; the orchestration adapter requires a
 coordinator identity before dispatch. `internal/orchestrate` serializes each run
-across router processes and publishes intent before invoking Git. Its branches
-and checkouts are durable work, not observation snapshots or replay-retention
-targets. The [orchestration contract](../spec/orchestrate.md) owns preparation
+across router processes and publishes intent before invoking the native VCS.
+Its branches, bookmarks and checkouts are durable work, not observation snapshots
+or replay-retention targets. The [orchestration contract](../spec/orchestrate.md) owns preparation
 states, repeat calls and staged capabilities.

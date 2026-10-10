@@ -6,7 +6,7 @@ import (
 )
 
 // Workflow instructions are explicit input, not request-dependent tool guidance.
-const orchestrateWorkflow = `Coordinate these issues as isolated Git batches. Plan independent journal tasks; bind each integration task to /root/task_name. Names use lowercase letters, digits and underscores.
+const orchestrateWorkflow = `Coordinate these issues as isolated Git or Mercurial batches. Plan independent journal tasks; bind each integration task to /root/task_name. Names use lowercase letters, digits and underscores.
 Call tools.mcp__orchestrate__<tool> with JSON arguments:
 prepare: task_name
 spawn_agent: task_name,message; optional model,reasoning_effort,service_tier
@@ -14,9 +14,9 @@ list_agents: {}
 wait_agent: timeout_ms (default 10000)
 send_message,followup_task: target,message
 interrupt_agent: target
-Prepare at committed HEAD, then copy required ignored inputs into the returned cwd before spawn. Source uncommitted edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
+Prepare at Git HEAD or Mercurial's single committed parent, then copy required ignored inputs into the returned cwd before spawn. Source uncommitted edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
 send_message queues without waking; followup_task starts or steers. Targets are task names or /root/task_name. Native collaboration tools cannot reach these threads.
-Review and integrate branches with native Git commands, one at a time, preserving coherent commits and unrelated source edits. Set each bound task accepted after integration; child completion leaves it open. Keep checkouts and branches until explicit cleanup is available.
+Review and integrate branches or bookmarks with native VCS commands, one at a time, preserving coherent commits and unrelated source edits. Set each bound task accepted after integration; child completion leaves it open. Keep checkouts and branches until explicit cleanup is available.
 Issues:
 `
 

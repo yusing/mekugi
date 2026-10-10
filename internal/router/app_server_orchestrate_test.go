@@ -17,9 +17,13 @@ import (
 )
 
 func TestAppServerOrchestrateMCPLaunch(t *testing.T) {
-	workspace := gitTestWorkspace(t)
-	writeTestFile(t, filepath.Join(workspace, "file"), "base")
-	gitTestCommit(t, workspace)
+	for _, vcs := range []string{"git", "hg"} {
+		t.Run(vcs, func(t *testing.T) { testAppServerOrchestrateMCPLaunch(t, vcs) })
+	}
+}
+
+func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
+	workspace := orchestrateVCSWorkspace(t, vcs)
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

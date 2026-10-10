@@ -25,6 +25,8 @@ type Store struct {
 }
 
 type Batch struct {
+	VCS         string       `json:"vcs,omitempty"`
+	Repository  string       `json:"repository,omitempty"`
 	TaskName    string       `json:"task_name"`
 	Branch      string       `json:"branch"`
 	Checkout    string       `json:"checkout"`
@@ -143,7 +145,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 				return nil
 			}
 		}
-		repository, err := git(ctx, workspace, "rev-parse", "--show-toplevel")
+		vcs, repository, err := sourceRepository(ctx, workspace)
 		if err != nil {
 			return err
 		}
@@ -153,7 +155,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		}
 		relative, err := filepath.Rel(repository, selected)
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return errors.New("selected workspace is outside its Git repository")
+			return errors.New("selected workspace is outside its repository")
 		}
 		storage, err := filepath.EvalSymlinks(filepath.Dir(path))
 		if err != nil {
@@ -163,25 +165,31 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 		if err != nil || (inside != ".." && !strings.HasPrefix(inside, ".."+string(filepath.Separator))) {
 			return errors.New("orchestration storage must be outside the source repository")
 		}
-		base, err := git(ctx, workspace, "rev-parse", "--verify", "HEAD^{commit}")
+		base, err := sourceBase(ctx, vcs, workspace)
 		if err != nil {
 			return err
 		}
 		if relative != "." {
-			kind, err := git(ctx, repository, "cat-file", "-t", base+":"+filepath.ToSlash(relative))
-			if err != nil || kind != "tree" {
-				return errors.New("selected workspace directory is absent from committed HEAD")
+			if err := committedDirectory(ctx, vcs, repository, base, relative); err != nil {
+				return errors.New("selected workspace directory is absent from the committed baseline")
 			}
 		}
 		id := fmt.Sprintf("%x", sha256.Sum256([]byte(workspace+"\x00"+main)))
 		checkout := filepath.Join(storage, strings.TrimSuffix(filepath.Base(path), ".json"), name)
 		batch = Batch{TaskName: name, Branch: "mekugi/" + id + "/" + name, Checkout: checkout,
 			Cwd: filepath.Join(checkout, relative), Base: base, State: "preparing"}
+		if vcs == "hg" {
+			batch.VCS = vcs
+			batch.Repository, err = hg(ctx, repository, "root", "--share-source")
+			if err != nil {
+				return err
+			}
+		}
 		m.Batches = append(m.Batches, batch)
 		if err := s.save(m, path); err != nil {
 			return err
 		}
-		_, effectErr := git(ctx, repository, "worktree", "add", "--quiet", "-b", batch.Branch, "--", checkout, base)
+		effectErr := createCheckout(ctx, repository, batch)
 		if effectErr == nil {
 			info, err := os.Stat(batch.Cwd)
 			if err != nil {
