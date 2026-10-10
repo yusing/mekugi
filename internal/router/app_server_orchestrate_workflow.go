@@ -15,10 +15,10 @@ wait_agent: timeout_ms (default 10000)
 send_message,followup_task: target,message
 interrupt_agent: target
 integrate: target (shadow merge and writeback; conflicts write nothing)
-cleanup: target (accepted idle Git checkout; removes unchanged owned evidence; retains branches and nested commits)
+cleanup: target (accepted idle Git or shadow checkout; removes unchanged owned evidence; retains branches, private repositories and nested commits)
 Prepare at Git HEAD, SVN's local committed baseline or a complete unversioned source snapshot. Evidence paths are returned and listed in the first child input. Copy required checkout-relative ignored inputs into the returned cwd before spawn. Versioned source edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
 send_message queues without waking; followup_task starts or steers. Targets are task names or /root/task_name. Native collaboration tools cannot reach these threads.
-Review and integrate Git branches with native VCS commands, one at a time, preserving coherent commits and unrelated source edits. Git preparation locally clones initialized submodules at recorded commits; import and integrate changed submodule commits before the superproject. Set each bound task accepted after integration; child completion leaves it open. Clean eligible accepted Git checkouts with cleanup.
+Review and integrate Git branches with native VCS commands, one at a time, preserving coherent commits and unrelated source edits. Git preparation locally clones initialized submodules at recorded commits; import and integrate changed submodule commits before the superproject. Set each bound task accepted after integration; child completion leaves it open. Clean eligible accepted checkouts with cleanup.
 Use integrate for shadow results; it preserves unrelated source edits and reports conflicts before writes. Inspect partial or uncertain writeback before retrying. Main marks the bound task accepted separately after review.`
 
 const orchestrateWorkflow = orchestrateCoordinatorInstructions + "\nIssues:\n"
