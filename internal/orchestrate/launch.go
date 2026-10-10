@@ -70,7 +70,7 @@ func validateLaunchCheckout(ctx context.Context, b Batch) error {
 	if err := validateCheckoutIdentity(ctx, b); err != nil {
 		return err
 	}
-	base, err := sourceBase(ctx, b.VCS, b.Cwd)
+	base, err := sourceBase(ctx, b.Cwd)
 	if err != nil || base != b.Base {
 		return errors.New("prepared checkout baseline changed")
 	}
@@ -100,9 +100,6 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 	info, err = os.Stat(cwd)
 	if err != nil || !info.IsDir() {
 		return errors.New("prepared cwd is unavailable")
-	}
-	if b.VCS == "hg" {
-		return validateHgIdentity(ctx, b)
 	}
 	if b.VCS != "" && b.VCS != "shadow" {
 		return errors.New("unsupported checkout VCS")

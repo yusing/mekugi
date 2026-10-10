@@ -12,15 +12,15 @@ Only an independent coordinator prepares batches. An orchestration child or its
 native descendants cannot start a nested run, including after fresh resume without
 a live parent. Retained run identity governs coordinator admission.
 
-Git and Mercurial checkout preparation and listing are available
+Git and unversioned shadow preparation and listing are available
 through `tools.mcp__orchestrate__prepare({task_name:"batch"})` and
 `tools.mcp__orchestrate__list_agents({})`. Preparation creates no Codex thread and
 starts no model turn. Main can copy required ignored inputs into the returned
 checkout before a later spawn. Task names contain lowercase letters, digits and
 underscores, begin with a letter, and contain at most 64 characters.
 
-Git and Mercurial batches start at the source's committed baseline, with their own branch
-or Mercurial bookmark. Source index, uncommitted files and ignored inputs stay
+Git batches start at the source's committed baseline, with their own branch.
+Source index, uncommitted files and ignored inputs stay
 in the source checkout. A selected
 subdirectory remains the child's working directory inside the new checkout.
 Preparation returns the task name, branch, checkout, cwd, baseline and observed
@@ -150,7 +150,7 @@ Main reviews and integrates the batch with native VCS commands, then marks
 its bound journal task `accepted`. Acceptance verifies that the batch's committed
 tip is reachable from the source's committed revision and records both tips
 before changing the task. The child checkout must retain its recorded location
-and branch or bookmark and have
+and branch and have
 no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
 with assume-unchanged or skip-worktree paths require inspection before acceptance,
 including recorded submodules, because those flags can conceal unfinished edits.
@@ -178,17 +178,6 @@ session navigation unchanged. Read failures remain visible rather than appearing
 as an empty run. Selecting an unsubscribed row reports that resume is required;
 lazy child resume remains staged below. Subscribed rows keep their live state
 and replace the matching retained row.
-
-## REQ-ORCHESTRATE-007 — Native Mercurial batches
-
-Mercurial batches use native shared checkouts and a shared bookmark per batch.
-Preparation starts at the source working directory's single committed parent;
-source edits and the source's active bookmark remain unchanged. Child launch
-requires the retained shared repository, bookmark and baseline. Main integrates
-with native Mercurial commands and accepts only a clean child tip that is an
-ancestor of the source's committed parent. Ignored prepared inputs may remain.
-Sources may be ordinary or shared Mercurial working directories. Native cleanup
-remains staged below.
 
 ## REQ-ORCHESTRATE-008 — Unversioned shadow batches
 
@@ -248,3 +237,8 @@ The remaining capabilities are accepted but not yet delivered:
 Third-party threads retain their current stable schema exposure during initial
 delivery. Child-authored journal roots remain unchanged. Nested orchestration
 must be settled before exposure.
+
+Supported sources are Git, SVN and unversioned shadow. Other VCS sources reject
+preparation. Retained runs from a removed adapter remain inspectable, with their
+files preserved. New batch launches, orchestration messages and integration
+acceptance reject for those runs.
