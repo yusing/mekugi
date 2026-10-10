@@ -1,12 +1,5 @@
----
-name: mekugi-owners
-description: Use when locating the authoritative Mekugi code or documentation owner for a behavior.
-user-invocable: false
-metadata:
-  internal: true
----
+# Mekugi owner map
 
-## Owners
 
 Paths are relative to the repository root. Start with the matching production entrypoint;
 use its focused tests when choosing validation. These are navigation pointers, not a second
