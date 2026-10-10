@@ -9,15 +9,16 @@ import (
 )
 
 type orchestrateEvent struct {
-	main, workspace string
-	Task            string         `json:"task_name"`
-	Thread          string         `json:"thread_id,omitempty"`
-	Turn            string         `json:"turn_id,omitempty"`
-	Kind            string         `json:"kind"`
-	Status          string         `json:"status,omitempty"`
-	Request         jsontext.Value `json:"request_id,omitempty"`
-	Item            string         `json:"item_id,omitempty"`
-	Message         string         `json:"message,omitempty"`
+	main, workspace, directory string
+	Task                       string         `json:"task_name"`
+	Thread                     string         `json:"thread_id,omitempty"`
+	Turn                       string         `json:"turn_id,omitempty"`
+	Kind                       string         `json:"kind"`
+	Status                     string         `json:"status,omitempty"`
+	Request                    jsontext.Value `json:"request_id,omitempty"`
+	Item                       string         `json:"item_id,omitempty"`
+	Message                    string         `json:"message,omitempty"`
+	Path                       string         `json:"path,omitempty"`
 }
 
 // Wait state belongs to this live coordinator, not replay. A canceled waiter
@@ -29,12 +30,20 @@ func (u *appServerUI) waitOrchestratedEvent(command *orchestrateCommand) {
 }
 
 func (u *appServerUI) publishOrchestratedEvent(child *orchestrateChild, event orchestrateEvent) {
+	u.flushOrchestratedEvents()
 	event.main, event.workspace = child.command.main, child.command.workspace
 	u.orchestrateEvents = append(u.orchestrateEvents, event)
 	u.flushOrchestratedEvents()
 }
 
 func (u *appServerUI) flushOrchestratedEvents() {
+	if u.proxy != nil && u.proxy.orchestration != nil {
+		runtime := u.proxy.orchestration
+		runtime.eventsMu.Lock()
+		u.orchestrateEvents = append(u.orchestrateEvents, runtime.journalEvents...)
+		runtime.journalEvents = nil
+		runtime.eventsMu.Unlock()
+	}
 	for waiting := 0; waiting < len(u.orchestrateWaiters); {
 		waiter := u.orchestrateWaiters[waiting]
 		if waiter.ctx.Err() != nil {

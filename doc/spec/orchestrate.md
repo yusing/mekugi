@@ -104,13 +104,19 @@ rejects launch rather than approximating a custom policy with a sandbox label.
 ## REQ-ORCHESTRATE-003 — Batch lifecycle waits
 
 Main calls `tools.mcp__orchestrate__wait_agent({timeout_ms:10000})` to receive
-the next observed batch completion, failure, question or approval. A wait returns
+the next observed batch completion, journal blocker, failure, question or approval. A wait returns
 the task, available host thread and turn identity, event kind and host status. Prompt events
 identify their host request or asynchronous question item. Cross-thread answering
 remains part of the accepted navigation capability below. Events describe
 observations, not a claim that a prompt is still pending when the result is read.
 
 Events observed during this session remain queued until a wait receives them.
+An authored task newly becoming `blocked` in a confirmed child's journal, including
+its native descendants, returns `kind: "blocked"` with the owning thread, journal
+path and reason. Publication follows successful journal persistence and uses the
+run's durable ancestry, without requiring a Main task binding. It does not change
+the child's host lifecycle. Duplicate mutation receipts, reason-only edits and
+restored history do not create another event.
 Terminal outcomes become available only after their run record is saved.
 Persistence failure returns `kind: "failure", status: "storage_failed"`.
 Waiting leaves input and host events responsive. Timeout returns `timed_out: true`;

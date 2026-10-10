@@ -675,6 +675,11 @@ func decodeJournalMutations(raw []byte) ([]journalMutation, error) {
 }
 
 func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, error) {
+	paths, _, err := s.applyWithBlocks(ctx, store, workspace, thread, receiptID, mutations)
+	return paths, err
+}
+
+func (s *journalStore) applyWithBlocks(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, []orchestrateEvent, error) {
 	submitted := mutations
 	finishTurn := ""
 	finishItem := ""
@@ -684,23 +689,24 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 	}
 	mutations, finish, err := splitJournalFinish(mutations)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if finish && finishTurn == "" {
-		return nil, errors.New("journal finish requires a turn-bound host invocation")
+		return nil, nil, errors.New("journal finish requires a turn-bound host invocation")
 	}
 	release, err := s.lockDelivery(ctx, store, workspace)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer release()
 	encoded, err := marshalProtocolJSON(submitted)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	digest := fmt.Sprintf("%x", sha256.Sum256(encoded))
 	var ids []string
 	var counters *capturer.JournalMetrics
+	var blocks []orchestrateEvent
 	err = s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists {
 			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
@@ -863,13 +869,25 @@ func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, work
 				j.countJournalOperation(mutation.Op)
 			}
 		}
+		blockedBefore := make(map[string]bool)
+		for _, item := range before {
+			if item.Kind == "task" && item.State == "blocked" {
+				blockedBefore[item.Path] = true
+			}
+		}
+		for _, item := range j.Items {
+			if item.Kind == "task" && item.State == "blocked" && !blockedBefore[item.Path] {
+				blocks = append(blocks, orchestrateEvent{Thread: thread, Turn: j.TurnID, Kind: "blocked", Status: "blocked", Path: item.Path, Message: item.Reason})
+			}
+		}
+		blocks = s.scopeOrchestratedBlocks(store.scoped(ctx), workspace, thread, blocks)
 		counters = j.Counters.Clone()
 		return nil
 	})
 	if err == nil {
 		capturer.ObserveJournal(ctx, counters)
 	}
-	return ids, err
+	return ids, blocks, err
 }
 
 // listAgent resolves authorization and reads content in one locked snapshot.

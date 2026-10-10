@@ -18,6 +18,37 @@ type journalRun struct {
 	Main      string `json:"main"`
 }
 
+// Called under the mutation's journal/replay locks. Complete run ancestry scopes
+// the reports; the caller publishes them only after successful persistence.
+func (s *journalStore) scopeOrchestratedBlocks(store *mekugiReplayStore, workspace, thread string, blocks []orchestrateEvent) []orchestrateEvent {
+	if len(blocks) == 0 {
+		return nil
+	}
+	journals, failures, err := s.relatedJournals(store, workspace, thread)
+	if err != nil {
+		return nil
+	}
+	chain := journalAncestry(journals, thread)
+	if len(chain) < 2 {
+		return nil
+	}
+	for _, id := range chain {
+		if failures[id] != nil {
+			return nil
+		}
+	}
+	main, child := journals[chain[len(chain)-1]], journals[chain[len(chain)-2]]
+	run := main.Orchestration
+	if run == nil || run.Main != main.Thread || run.Workspace != main.Workspace || child.Orchestration == nil || *child.Orchestration != *run {
+		return nil
+	}
+	for i := range blocks {
+		blocks[i].main, blocks[i].workspace, blocks[i].directory = run.Main, run.Workspace, run.Directory
+		blocks[i].Task = strings.TrimPrefix(child.Author, "/root/")
+	}
+	return blocks
+}
+
 func (s *journalStore) bindRun(ctx context.Context, store *mekugiReplayStore, workspace, thread string, run journalRun) error {
 	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists || !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.Author != "/root" {

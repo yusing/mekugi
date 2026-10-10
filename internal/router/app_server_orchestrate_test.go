@@ -216,6 +216,34 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	if got, err := os.ReadFile(filepath.Join(batch.Cwd, "input")); err != nil || string(got) != "copied input" {
 		t.Fatal("prepared input changed", err)
 	}
+	journalServerWire, journalClientWire := mcp.NewInMemoryTransports()
+	journalServer, err := newJournalMCPServer(proxy).Connect(t.Context(), journalServerWire, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journalServer.Close()
+	journalClient, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(t.Context(), journalClientWire, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journalClient.Close()
+	blockWait := call("wait_agent", map[string]any{})
+	dispatch()
+	blockArgs := map[string]any{"mutations": []any{map[string]any{"op": "add", "kind": "task", "title": "Batch decision", "state": "blocked", "reason": "Choose the target"}}}
+	blockMeta := mcp.Meta{"threadId": "child", "sessionId": "session", "callId": "blocked", "itemId": "journal-item", codexTurnMetadataHeader: map[string]any{"thread_id": "child", "turn_id": "child-turn"}}
+	if result, err := journalClient.CallTool(t.Context(), &mcp.CallToolParams{Name: "journal_mutate", Arguments: blockArgs, Meta: blockMeta}); err != nil || result.IsError {
+		t.Fatal("child journal blocker", result, err)
+	}
+	if err := u.tickOrchestratedViews(u); err != nil {
+		t.Fatal(err)
+	}
+	blocked := take(blockWait, false)
+	assertEvent(blocked, "blocked", "blocked")
+	var blockEvent orchestrateEvent
+	encodedBlock, _ := json.Marshal(blocked.StructuredContent)
+	if err := json.Unmarshal(encodedBlock, &blockEvent); err != nil || blockEvent.Path != "/1" || blockEvent.Message != "Choose the target" || w.Len() != 0 {
+		t.Fatal("journal blocker lost identity or dispatched a turn", blockEvent, err)
+	}
 	if vcs == "shadow" {
 		return
 	}
