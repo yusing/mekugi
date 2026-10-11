@@ -63,7 +63,7 @@ func orchestrateIdentityPendingTurnWithEvidence(t *testing.T, replay *mekugiRepl
 	u.statusConfig.Approval = []byte(`"never"`)
 	u.statusConfig.PermissionProfile = []byte(`{"id":":workspace"}`)
 	u.statusConfig.WorkspaceRoots = []string{workspace}
-	command := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", input: orchestrateSpawnInput{TaskName: "batch", Message: "work"}, reply: make(chan orchestrateResult, 1)}
+	command := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", tool: "spawn_agent", input: orchestrateSpawnInput{TaskName: "batch", Message: "work"}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(command)
 	drainOrchestrateWork(t, u)
 	request := btwTestRequest(t, w, "thread/start", "")

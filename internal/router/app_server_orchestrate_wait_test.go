@@ -14,7 +14,7 @@ func TestAppServerOrchestrateWaitPersistenceAndScope(t *testing.T) {
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"running-turn"}}`)
 	child := u.orchestrateThreads["child"]
 	wait := func() *orchestrateCommand {
-		c := &orchestrateCommand{ctx: t.Context(), main: "main", workspace: u.session.cwd, wait: true, reply: make(chan orchestrateResult, 1)}
+		c := &orchestrateCommand{ctx: t.Context(), main: "main", workspace: u.session.cwd, tool: "wait_agent", reply: make(chan orchestrateResult, 1)}
 		u.startOrchestratedChild(c)
 		return c
 	}
@@ -24,7 +24,7 @@ func TestAppServerOrchestrateWaitPersistenceAndScope(t *testing.T) {
 	owner.main = "other"
 	foreign.command = &owner
 	u.thread = "other"
-	other := &orchestrateCommand{ctx: t.Context(), main: "other", workspace: u.session.cwd, wait: true, reply: make(chan orchestrateResult, 1)}
+	other := &orchestrateCommand{ctx: t.Context(), main: "other", workspace: u.session.cwd, tool: "wait_agent", reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(other)
 	u.thread = "main"
 	u.publishOrchestratedEvent(&foreign, orchestrateEvent{Task: "foreign", Kind: "done"})
@@ -89,7 +89,7 @@ func TestAppServerOrchestrateWaitTargets(t *testing.T) {
 	child := u.orchestrateThreads["child"]
 	queued := func(task, kind string) { u.publishOrchestratedEvent(child, orchestrateEvent{Task: task, Kind: kind}) }
 	wait := func(ctx context.Context, names ...string) *orchestrateCommand {
-		c := &orchestrateCommand{ctx: ctx, main: "main", workspace: u.session.cwd, wait: true, waitTargets: names, reply: make(chan orchestrateResult, 1)}
+		c := &orchestrateCommand{ctx: ctx, main: "main", workspace: u.session.cwd, tool: "wait_agent", waitTargets: names, reply: make(chan orchestrateResult, 1)}
 		u.startOrchestratedChild(c)
 		return c
 	}
@@ -140,7 +140,7 @@ func TestAppServerOrchestrateJournalBlockers(t *testing.T) {
 	}
 	defer release()
 	wait := func(ctx context.Context) *orchestrateCommand {
-		c := &orchestrateCommand{ctx: ctx, main: "main", workspace: u.session.cwd, wait: true, reply: make(chan orchestrateResult, 1)}
+		c := &orchestrateCommand{ctx: ctx, main: "main", workspace: u.session.cwd, tool: "wait_agent", reply: make(chan orchestrateResult, 1)}
 		u.startOrchestratedChild(c)
 		return c
 	}

@@ -76,12 +76,12 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 	store := u.proxy.orchestration.store
 	turn := child.turn
 	u.orchestrateWork(func() func() {
-		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, Deferred: c.deferred}
+		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, Deferred: c.tool == "send_message"}
 		var d orchestrate.Delivery
 		var dispatch bool
 		var err error
 		text := input.Message
-		if turn == "" && !c.deferred {
+		if turn == "" && !input.Deferred {
 			d, text, dispatch, err = store.BeginTurnDelivery(c.ctx, c.workspace, c.main, input)
 		} else {
 			d, dispatch, err = store.BeginDelivery(c.ctx, c.workspace, c.main, input)

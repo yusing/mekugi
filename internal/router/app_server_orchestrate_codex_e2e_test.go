@@ -216,7 +216,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	tier := "priority"
-	command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, input: orchestrateSpawnInput{TaskName: "batch", Message: "Spawn the assigned native probe and wait for it.", ServiceTier: &tier}, reply: make(chan orchestrateResult, 1)}
+	command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, tool: "spawn_agent", input: orchestrateSpawnInput{TaskName: "batch", Message: "Spawn the assigned native probe and wait for it.", ServiceTier: &tier}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(command)
 	pump(func() bool { return len(command.reply) > 0 })
 	result := <-command.reply
@@ -367,20 +367,20 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	view.draft = "Batch draft"
-	queued := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, deferred: true, callID: "installed-queued", input: orchestrateSpawnInput{Message: "Deferred input for the next probe turn."}, reply: make(chan orchestrateResult, 1)}
+	queued := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "send_message", callID: "installed-queued", input: orchestrateSpawnInput{Message: "Deferred input for the next probe turn."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(queued)
 	pump(func() bool { return len(queued.reply) > 0 })
 	if r := <-queued.reply; r.err != nil || r.delivery == nil || r.delivery.State != "queued" {
 		t.Fatalf("installed deferred message: %+v", r)
 	}
-	followup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, callID: "installed-running", input: orchestrateSpawnInput{Message: "Continue the probe when ready."}, reply: make(chan orchestrateResult, 1)}
+	followup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "followup_task", callID: "installed-running", input: orchestrateSpawnInput{Message: "Continue the probe when ready."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(followup)
 	pump(func() bool { return len(followup.reply) > 0 })
 	if r := <-followup.reply; r.err != nil || r.delivery == nil || r.delivery.State != "delivered" || r.delivery.TurnID != u.orchestrateThreads[result.batch.Launch.ThreadID].turn {
 		t.Fatalf("installed running follow-up: %+v", r)
 	}
-	interrupt := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", reply: make(chan orchestrateResult, 1)}
-	wait := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, wait: true, reply: make(chan orchestrateResult, 1)}
+	interrupt := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "interrupt_agent", reply: make(chan orchestrateResult, 1)}
+	wait := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, tool: "wait_agent", reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(wait)
 	u.startOrchestratedChild(interrupt)
 	pump(func() bool {
@@ -416,7 +416,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	view.draft = "Batch draft"
 	u.switchOrchestratedThread(main)
-	followup = &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, callID: "installed-idle", input: orchestrateSpawnInput{Message: "Start the idle follow-up probe."}, reply: make(chan orchestrateResult, 1)}
+	followup = &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "followup_task", callID: "installed-idle", input: orchestrateSpawnInput{Message: "Start the idle follow-up probe."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(followup)
 	pump(func() bool { return len(followup.reply) > 0 })
 	if r := <-followup.reply; r.err != nil || r.delivery == nil || r.delivery.State != "delivered" || r.delivery.TurnID == batches[0].Launch.TurnID {
@@ -492,7 +492,10 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatalf("installed prompts missing provider evidence: async=%v sync=%v approval=%v", asyncSeen, syncSeen, approvalSeen)
 	}
 	for _, deferred := range []bool{false, true} {
-		mainInput := &orchestrateCommand{ctx: ctx, workspace: batch.Cwd, main: result.batch.Launch.ThreadID, target: "main", followup: true, deferred: deferred, callID: fmt.Sprint("installed-main-report-", deferred), input: orchestrateSpawnInput{Message: "Child report, not human input."}, reply: make(chan orchestrateResult, 1)}
+		mainInput := &orchestrateCommand{ctx: ctx, workspace: batch.Cwd, main: result.batch.Launch.ThreadID, target: "main", tool: "followup_task", callID: fmt.Sprint("installed-main-report-", deferred), input: orchestrateSpawnInput{Message: "Child report, not human input."}, reply: make(chan orchestrateResult, 1)}
+		if deferred {
+			mainInput.tool = "send_message"
+		}
 		u.startOrchestratedChild(mainInput)
 		pump(func() bool { return len(mainInput.reply) > 0 })
 		if got := <-mainInput.reply; got.err != nil || got.delivery.State != "reported" || got.delivery.TurnID != "" || u.draft != "Main draft" || u.thread != main || u.busy() {
@@ -525,7 +528,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	view.draft = "" // The earlier composer-preservation check is complete.
-	cleanup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", removeCheckout: true, reply: make(chan orchestrateResult, 1)}
+	cleanup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "cleanup", reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(cleanup)
 	pump(func() bool { return len(cleanup.reply) > 0 })
 	if result := <-cleanup.reply; result.err != nil || result.batch.State != "removed" {

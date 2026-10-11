@@ -35,7 +35,7 @@ func (p *orchestrateExitProvider) forwardExecution(ctx, responseCtx context.Cont
 			p.failures <- err
 			return nil, err
 		}
-		command := &orchestrateCommand{ctx: ctx, workspace: p.workspace, main: thread,
+		command := &orchestrateCommand{ctx: ctx, workspace: p.workspace, main: thread, tool: "spawn_agent",
 			input: orchestrateSpawnInput{TaskName: "batch", Message: "Keep batch running."}, reply: make(chan orchestrateResult, 1)}
 		if _, _, err := p.runtime.call(command); err != nil {
 			p.failures <- err

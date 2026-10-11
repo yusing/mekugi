@@ -44,7 +44,7 @@ func TestAppServerOrchestrateStorageContention(t *testing.T) {
 	}
 	defer lock.Unlock()
 	ctx, cancel := context.WithCancel(t.Context())
-	command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: "main", input: orchestrateSpawnInput{TaskName: "batch", Message: "work"}, reply: make(chan orchestrateResult, 1)}
+	command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: "main", tool: "spawn_agent", input: orchestrateSpawnInput{TaskName: "batch", Message: "work"}, reply: make(chan orchestrateResult, 1)}
 	returned := make(chan struct{})
 	go func() {
 		u.startOrchestratedChild(command)

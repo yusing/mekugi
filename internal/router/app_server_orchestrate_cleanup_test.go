@@ -188,7 +188,7 @@ func TestAppServerOrchestrateCleanupRetained(t *testing.T) {
 			w.Reset()
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			c := &orchestrateCommand{ctx: ctx, workspace: workspace, main: "main", target: "/root/batch", removeCheckout: true, reply: make(chan orchestrateResult, 1)}
+			c := &orchestrateCommand{ctx: ctx, workspace: workspace, main: "main", target: "/root/batch", tool: "cleanup", reply: make(chan orchestrateResult, 1)}
 			u.startOrchestratedChild(c)
 			drainOrchestrateWork(t, u)
 			if len(c.reply) != 0 {

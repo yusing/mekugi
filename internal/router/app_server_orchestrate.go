@@ -27,12 +27,8 @@ type orchestrateCommand struct {
 	workspace, main string
 	input           orchestrateSpawnInput
 	target          string
-	wait            bool
+	tool            string
 	waitTargets     []string // Empty selects all batches in this coordinator run.
-	followup        bool
-	deferred        bool
-	removeCheckout  bool
-	planIntegration bool
 	caller, callID  string
 	reply           chan orchestrateResult
 }
@@ -72,7 +68,7 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 		fail(err)
 		return
 	}
-	if command.followup {
+	if command.tool == "followup_task" || command.tool == "send_message" {
 		u.queueOrchestratedFollowup(command)
 		return
 	}
@@ -80,19 +76,17 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 		fail(errors.New("orchestration caller is not the active coordinator"))
 		return
 	}
-	if command.wait {
+	switch command.tool {
+	case "wait_agent":
 		u.waitOrchestratedEvent(command)
 		return
-	}
-	if command.removeCheckout {
+	case "cleanup":
 		u.cleanOrchestratedChild(command)
 		return
-	}
-	if command.planIntegration {
+	case "integrate":
 		u.planOrchestratedMerge(command)
 		return
-	}
-	if command.target != "" {
+	case "interrupt_agent":
 		for _, child := range u.orchestrateThreads {
 			if (command.target == child.batch.TaskName || command.target == "/root/"+child.batch.TaskName) && child.command.main == command.main && child.command.workspace == command.workspace {
 				if child.turn == "" {
@@ -108,6 +102,10 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 			}
 		}
 		fail(errors.New("target is not a live orchestration child"))
+		return
+	case "spawn_agent":
+	default:
+		fail(errors.New("unknown orchestration tool"))
 		return
 	}
 	store := u.proxy.orchestration.store
@@ -492,16 +490,7 @@ func (u *appServerUI) orchestrateBusy() bool {
 
 // Cleanup interrupts never publish the spawn result; its storage completion owns it.
 func (u *appServerUI) orchestrateCleanupInterrupt(child *orchestrateChild, thread, turn string) error {
-	if err := u.orchestrateRequest(child, "turn/interrupt", map[string]any{"threadId": thread, "turnId": turn}); err != nil {
-		return err
-	}
-	for id, r := range u.orchestrateRequests {
-		if r.child == child && r.method == "turn/interrupt" {
-			r.cleanup = true
-			u.orchestrateRequests[id] = r
-		}
-	}
-	return nil
+	return u.orchestrateRPCRequest(orchestrateRPC{method: "turn/interrupt", child: child, cleanup: true}, map[string]any{"threadId": thread, "turnId": turn})
 }
 
 func (u *appServerUI) closeOrchestrateStorage() error {

@@ -27,6 +27,20 @@ func validateIndexFlags(ctx context.Context, repository string) error {
 	return nil
 }
 
+func validateCleanCheckout(ctx context.Context, repository string) error {
+	if err := validateIndexFlags(ctx, repository); err != nil {
+		return err
+	}
+	status, err := git(ctx, repository, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
+	if err != nil {
+		return err
+	}
+	if status != "" {
+		return fmt.Errorf("checkout %q has uncommitted files", repository)
+	}
+	return nil
+}
+
 // RecordIntegration verifies integration without changing either checkout.
 // The caller records journal acceptance separately after its lifecycle checks.
 func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, thread string) (proof Integration, err error) {
@@ -41,26 +55,12 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			return err
 		}
 		for _, sub := range b.Submodules {
-			if err := validateIndexFlags(ctx, filepath.Join(b.Checkout, sub.Path)); err != nil {
+			if err := validateCleanCheckout(ctx, filepath.Join(b.Checkout, sub.Path)); err != nil {
 				return err
 			}
-			status, err := git(ctx, filepath.Join(b.Checkout, sub.Path), "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
-			if err != nil {
-				return err
-			}
-			if status != "" {
-				return errors.New("integration requires clean submodule checkouts")
-			}
 		}
-		if err := validateIndexFlags(ctx, b.Checkout); err != nil {
+		if err := validateCleanCheckout(ctx, b.Checkout); err != nil {
 			return err
-		}
-		status, err := git(ctx, b.Cwd, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
-		if err != nil {
-			return err
-		}
-		if status != "" {
-			return errors.New("integration requires a clean batch checkout")
 		}
 		if shadowVCS(b.VCS) {
 			vcs, source, err := sourceRepository(ctx, workspace)

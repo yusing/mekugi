@@ -43,12 +43,8 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		if err := validateCheckoutIdentity(ctx, *b); err != nil {
 			return err
 		}
-		if err := validateIndexFlags(ctx, b.Checkout); err != nil {
+		if err := validateCleanCheckout(ctx, b.Checkout); err != nil {
 			return err
-		}
-		status, err := git(ctx, b.Cwd, "status", "--porcelain", "--untracked-files=all")
-		if err != nil || status != "" {
-			return errors.New("shadow merge requires a clean batch checkout")
 		}
 		vcs, source, err := sourceRepository(ctx, workspace)
 		if err != nil || vcs != b.VCS || !filepath.IsAbs(b.Source) || b.Source != source {

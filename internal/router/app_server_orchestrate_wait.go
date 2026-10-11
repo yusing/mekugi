@@ -24,7 +24,6 @@ type orchestrateEvent struct {
 // Wait state belongs to this live coordinator, not replay. A canceled waiter
 // cannot consume an event that arrives after its cancellation.
 func (u *appServerUI) waitOrchestratedEvent(command *orchestrateCommand) {
-	u.orchestrateWaiters = slices.DeleteFunc(u.orchestrateWaiters, func(c *orchestrateCommand) bool { return c.ctx.Err() != nil })
 	u.orchestrateWaiters = append(u.orchestrateWaiters, command)
 	u.flushOrchestratedEvents()
 }

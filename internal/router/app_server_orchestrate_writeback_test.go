@@ -220,7 +220,7 @@ func TestUISnapshotOrchestrationIntegrating(t *testing.T) {
 	u.agents.clock = u.clock
 	u.status = "Ready"
 	child := u.orchestrateThreads["child"]
-	command := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", planIntegration: true, reply: make(chan orchestrateResult, 1)}
+	command := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "integrate", reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(command)
 	if !u.navigation.views["child"].orchestrateCheckoutUnavailable() || child.batch.State != "integrating" {
 		t.Fatal("integration did not reserve child input before its background work")

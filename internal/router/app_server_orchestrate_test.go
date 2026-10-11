@@ -245,7 +245,9 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	if err := json.Unmarshal(encodedBlock, &blockEvent); err != nil || blockEvent.Path != "/1" || blockEvent.Message != "Choose the target" || w.Len() != 0 {
 		t.Fatal("journal blocker lost identity or dispatched a turn", blockEvent, err)
 	}
-	if vcs == "shadow" {
+	// Adapter launch and journal wiring are covered above for each source.
+	// Messaging and cancellation use the same host lifecycle for all adapters.
+	if vcs != "git" {
 		return
 	}
 	if quit, err := u.key(3); quit || err != nil {

@@ -9,7 +9,7 @@ func (u *appServerUI) reportOrchestratedMainMessage(c *orchestrateCommand) {
 	store := u.proxy.orchestration.store
 	u.orchestrateWork(func() func() {
 		d, publish, err := store.BeginDelivery(c.ctx, c.workspace, c.main, orchestrate.Delivery{
-			ID: c.callID, From: c.caller, Target: c.main, Message: c.input.Message, Deferred: c.deferred,
+			ID: c.callID, From: c.caller, Target: c.main, Message: c.input.Message, Deferred: c.tool == "send_message",
 		})
 		return func() {
 			if err == nil && publish {

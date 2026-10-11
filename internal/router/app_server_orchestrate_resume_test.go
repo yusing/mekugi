@@ -148,10 +148,6 @@ func retainedOrchestratedUI(t *testing.T) (*appServerUI, *appServerTestInput, or
 		t.Fatal(err)
 	}
 	b := batches[0]
-	// Resume must admit advanced commits and dirty unfinished inputs.
-	writeTestFile(t, filepath.Join(b.Cwd, "file"), "committed batch change")
-	gitTestCommit(t, b.Cwd)
-	writeTestFile(t, filepath.Join(b.Cwd, "unfinished"), "keep")
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -221,6 +217,10 @@ func resumeBatchResponses(t *testing.T, u *appServerUI, w *appServerTestInput, b
 
 func TestAppServerOrchestrateResumeView(t *testing.T) {
 	u, w, b := retainedOrchestratedUI(t)
+	// Resume must admit advanced commits and dirty unfinished inputs.
+	writeTestFile(t, filepath.Join(b.Cwd, "file"), "committed batch change")
+	gitTestCommit(t, b.Cwd)
+	writeTestFile(t, filepath.Join(b.Cwd, "unfinished"), "keep")
 	u.resumeConfig = map[string]any{"model": "main-only", "model_reasoning_effort": "low", "service_tier": "flex"}
 	u.draft = "Main draft"
 	u.agents.rosterSelected = "/Orchestration/batch"
@@ -284,7 +284,7 @@ func TestAppServerOrchestrateResumeFollowup(t *testing.T) {
 	for _, active := range []bool{false, true} {
 		t.Run(fmt.Sprint(active), func(t *testing.T) {
 			u, w, b := retainedOrchestratedUI(t)
-			c := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", followup: true, callID: "resumed-message", input: orchestrateSpawnInput{Message: "Continue retained work"}, reply: make(chan orchestrateResult, 1)}
+			c := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "resumed-message", input: orchestrateSpawnInput{Message: "Continue retained work"}, reply: make(chan orchestrateResult, 1)}
 			u.startOrchestratedChild(c)
 			drainOrchestrateWork(t, u)
 			resumeBatchResponses(t, u, w, b, active)
@@ -365,7 +365,7 @@ func TestAppServerOrchestrateResumeDiffAdmission(t *testing.T) {
 				}
 				liveDiffScopeCapture(t, u.proxy.replayStore, b.Cwd, "child", "saved-edit", filepath.Join(b.Cwd, "file"), "before", "after")
 				if message {
-					u.startOrchestratedChild(&orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", followup: true, callID: "diff-resume", input: orchestrateSpawnInput{Message: "Continue after Diff"}, reply: make(chan orchestrateResult, 1)})
+					u.startOrchestratedChild(&orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "diff-resume", input: orchestrateSpawnInput{Message: "Continue after Diff"}, reply: make(chan orchestrateResult, 1)})
 				} else {
 					u.switchOrchestratedThread("child")
 				}

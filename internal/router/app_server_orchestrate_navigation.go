@@ -57,10 +57,8 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 		serviceTiers: u.serviceTiers, approvalMode: u.approvalMode, backendVersion: u.backendVersion,
 		skillEnvironment: u.skillEnvironment,
 		resumeConfig:     u.resumeConfig, notifications: u.notifications}
-	if err := json.Unmarshal(raw, &v.statusConfig); err != nil {
-		return err
-	}
 	var result struct {
+		appServerStatusConfig
 		Model           string              `json:"model"`
 		ReasoningEffort string              `json:"reasoningEffort"`
 		ServiceTier     string              `json:"serviceTier"`
@@ -69,6 +67,7 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return err
 	}
+	v.statusConfig = result.appServerStatusConfig
 	v.thread, v.title = thread, result.Thread.Name
 	v.awaitingTurn, v.status = true, "Starting"
 	v.resumeArgv, v.replayDebugDirectory = u.resumeArgv, u.replayDebugDirectory

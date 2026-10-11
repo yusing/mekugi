@@ -74,12 +74,8 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 		if err := validateCheckoutIdentity(ctx, *b); err != nil {
 			return err
 		}
-		if err := validateIndexFlags(ctx, b.Checkout); err != nil {
+		if err := validateCleanCheckout(ctx, b.Checkout); err != nil {
 			return err
-		}
-		status, err := git(ctx, b.Cwd, "status", "--porcelain", "--untracked-files=all")
-		if err != nil || status != "" {
-			return errors.New("shadow writeback requires a clean batch checkout")
 		}
 		tip, err := sourceBase(ctx, b.Cwd)
 		if err != nil || tip != b.ShadowMerge.Tip {

@@ -103,18 +103,11 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 				return nil, nil, err
 			}
 			defer release()
-			if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+			key, err := orchestrateCallIdentity(request.Params.GetMeta(), thread)
+			if err != nil {
 				return nil, nil, err
 			}
-			var turn struct {
-				ID string `json:"turn_id"`
-			}
-			encoded, err := json.Marshal(request.Params.GetMeta()[codexTurnMetadataHeader])
-			if err != nil || json.Unmarshal(encoded, &turn) != nil {
-				return nil, nil, errors.New("missing host turn identity")
-			}
-			key := fmt.Sprintf("%q/%q/%q", thread, turn.ID, request.Params.GetMeta()["callId"])
-			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, followup: true, deferred: tool.name == "send_message", callID: key, input: orchestrateSpawnInput{Message: input.Message}, reply: make(chan orchestrateResult, 1)}
+			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, tool: tool.name, callID: key, input: orchestrateSpawnInput{Message: input.Message}, reply: make(chan orchestrateResult, 1)}
 			return proxy.orchestration.call(command)
 		})
 	}
@@ -130,7 +123,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return nil, nil, err
 		}
 		defer release()
-		if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
 			return nil, nil, err
 		}
 		if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
@@ -157,7 +150,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			waitCtx, cancel = context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
 			defer cancel()
 		}
-		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, wait: true, waitTargets: targets, reply: make(chan orchestrateResult, 1)}
+		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, tool: "wait_agent", waitTargets: targets, reply: make(chan orchestrateResult, 1)}
 		result, value, err := proxy.orchestration.call(command)
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 			return nil, map[string]any{"timed_out": true}, nil
@@ -175,13 +168,13 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 				return nil, nil, err
 			}
 			defer release()
-			if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+			if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
 				return nil, nil, err
 			}
 			if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
 				return nil, nil, err
 			}
-			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, removeCheckout: tool.name == "cleanup", planIntegration: tool.name == "integrate", reply: make(chan orchestrateResult, 1)}
+			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, tool: tool.name, reply: make(chan orchestrateResult, 1)}
 			result, value, err := proxy.orchestration.call(command)
 			if batch, ok := value.(orchestrate.Batch); (tool.name == "cleanup" || tool.name == "integrate") && err != nil && ok && batch.TaskName != "" {
 				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, batch, nil
@@ -201,13 +194,13 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return nil, nil, err
 		}
 		defer release()
-		if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
 			return nil, nil, err
 		}
 		if err := orchestrateMain(ctx, proxy, workspace, thread, input.TaskName); err != nil {
 			return nil, nil, err
 		}
-		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, input: input, reply: make(chan orchestrateResult, 1)}
+		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, tool: "spawn_agent", input: input, reply: make(chan orchestrateResult, 1)}
 		return proxy.orchestration.call(command)
 	})
 	mcp.AddTool(server, &mcp.Tool{
@@ -222,7 +215,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return nil, nil, err
 		}
 		defer release()
-		if err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
 			return nil, nil, err
 		}
 		if err := orchestrateMain(ctx, proxy, workspace, thread, input.TaskName); err != nil {
@@ -256,7 +249,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 	return server
 }
 
-func orchestrateCallIdentity(meta mcp.Meta, thread string) error {
+func orchestrateCallIdentity(meta mcp.Meta, thread string) (string, error) {
 	call, _ := meta["callId"].(string)
 	var turn struct {
 		Thread string `json:"thread_id"`
@@ -264,9 +257,9 @@ func orchestrateCallIdentity(meta mcp.Meta, thread string) error {
 	}
 	encoded, err := json.Marshal(meta[codexTurnMetadataHeader])
 	if err != nil || json.Unmarshal(encoded, &turn) != nil || turn.Thread != thread || turn.ID == "" || call == "" {
-		return errors.New("orchestration requires host call and turn identity")
+		return "", errors.New("orchestration requires host call and turn identity")
 	}
-	return nil
+	return fmt.Sprintf("%q/%q/%q", thread, turn.ID, call), nil
 }
 
 func (runtime *orchestrateRuntime) call(command *orchestrateCommand) (*mcp.CallToolResult, any, error) {

@@ -14,7 +14,7 @@ import (
 
 func mainFollowup(t *testing.T, u *appServerUI, ctx context.Context, id, text string) *orchestrateCommand {
 	t.Helper()
-	c := &orchestrateCommand{ctx: ctx, workspace: u.orchestrateThreads["child"].batch.Cwd, main: "child", target: "main", followup: true, callID: id, input: orchestrateSpawnInput{Message: text}, reply: make(chan orchestrateResult, 1)}
+	c := &orchestrateCommand{ctx: ctx, workspace: u.orchestrateThreads["child"].batch.Cwd, main: "child", target: "main", tool: "followup_task", callID: id, input: orchestrateSpawnInput{Message: text}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(c)
 	return c
 }
@@ -29,7 +29,10 @@ func TestAppServerOrchestrateMainReportsNeverSubmitUserInput(t *testing.T) {
 			if deferred {
 				appServerTestTurn(t, u, "human-turn")
 			}
-			c := &orchestrateCommand{ctx: t.Context(), workspace: u.orchestrateThreads["child"].batch.Cwd, main: "child", target: "main", followup: true, deferred: deferred, callID: "child-report", input: orchestrateSpawnInput{Message: "/compact"}, reply: make(chan orchestrateResult, 1)}
+			c := &orchestrateCommand{ctx: t.Context(), workspace: u.orchestrateThreads["child"].batch.Cwd, main: "child", target: "main", tool: "followup_task", callID: "child-report", input: orchestrateSpawnInput{Message: "/compact"}, reply: make(chan orchestrateResult, 1)}
+			if deferred {
+				c.tool = "send_message"
+			}
 			u.startOrchestratedChild(c)
 			drainOrchestrateWork(t, u)
 			if w.Len() != 0 || len(c.reply) != 1 {
