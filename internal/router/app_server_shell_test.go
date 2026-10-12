@@ -141,6 +141,10 @@ func TestAppServerShellComposer(t *testing.T) {
 	}
 	frame, _ := u.mainFrame(80, 20, 0)
 	text := strings.Join(frame, "\n")
+	redraw, _ := u.mainFrame(80, 20, 0)
+	if strings.Join(redraw, "\n") != text {
+		t.Fatal("redrawing the shell composer changed its text or cursor")
+	}
 	if !strings.Contains(ansi.Strip(text), "Shell Mode") || !strings.Contains(text, activityui.Red+"╭") || !strings.Contains(text, activityui.Red+"│") {
 		t.Fatalf("shell notice/frame missing: %q", text)
 	}
