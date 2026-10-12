@@ -49,7 +49,7 @@ func TestFunctionsPreserveRuntimeDirectory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	command := exec.Command(executable, "-c", Functions(guard, []string{tool})+shellsyntax.Quote(tool)+" push 'two words'")
+	command := exec.Command(executable, "-c", Functions(guard, []string{tool}, Tools)+shellsyntax.Quote(tool)+" push 'two words'")
 	command.Dir = root
 	command.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + root}
 	output, err := command.CombinedOutput()

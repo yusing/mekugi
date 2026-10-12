@@ -29,6 +29,8 @@ func TestSudoUnlockDialog(t *testing.T) {
 		{"retry", []string{"2\r", "wrong\r", "1234-secret\r"}, "", 0},
 		{"absolute-bash", []string{"1\r", "1234-secret\r"}, "bash", 0},
 		{"clean-env-sh", []string{"1\r", "1234-secret\r"}, "sh", 0},
+		{"script-absolute", []string{"1\r", "1234-secret\r"}, "script-bash", 0},
+		{"script-bare", []string{"1\r", "1234-secret\r"}, "script-sh", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			shell, directory, real := newSudoShell(t)
@@ -37,7 +39,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Only askpass reads the secret. Its output never reaches the host.
-			fake := "#!/bin/sh\n[ \"$1\" = -A ] || exit 42\npassword=$(\"$SUDO_ASKPASS\" 'Password:') || exit 1\n[ \"$password\" = 1234-secret ] || exit 1\nprintf 'unlocked\\n'\n"
+			fake := "#!/bin/sh\n[ \"$1\" = -A ] || exit 42\n[ -z \"${MEKUGI_VCS_GUARD_REAL+x}\" ] || exit 43\npassword=$(\"$SUDO_ASKPASS\" 'Password:') || exit 1\n[ \"$password\" = 1234-secret ] || exit 1\nprintf 'unlocked\\n'\n"
 			if tc.name == "retry" {
 				fake = strings.Replace(fake, "[ \"$password\" = 1234-secret ] || exit 1", "[ \"$password\" = 1234-secret ] || password=$(\"$SUDO_ASKPASS\" 'Password:') || exit 1\n[ \"$password\" = 1234-secret ] || exit 1", 1)
 			}
@@ -45,7 +47,28 @@ func TestSudoUnlockDialog(t *testing.T) {
 				t.Fatal(err)
 			}
 			cmd := exec.Command(filepath.Join(directory, "sudo"), "id")
-			if tc.shell != "" {
+			executable := filepath.Join(real, "sudo")
+			startup := ""
+			if name, scriptFile := strings.CutPrefix(tc.shell, "script-"); scriptFile {
+				body := "sudo id"
+				if name == "bash" {
+					// Keep the selected target off PATH to detect a wrong lookup.
+					executable = filepath.Join(t.TempDir(), "sudo")
+					if err := os.WriteFile(executable, []byte(fake), 0o700); err != nil {
+						t.Fatal(err)
+					}
+					body = quoteShellWord(executable) + " id"
+					startup = filepath.Join(real, "bash-env")
+					if err := os.WriteFile(startup, []byte(vcsguard.Functions(directory, []string{executable}, []string{"sudo"})), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				file := filepath.Join(real, "script")
+				if err := os.WriteFile(file, []byte(body+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				cmd = exec.Command(execTrackShellExecutable(t, name), file)
+			} else if tc.shell != "" {
 				script := quoteShellWord(filepath.Join(real, "sudo")) + " id"
 				if tc.shell == "sh" {
 					script = "env -i " + script
@@ -57,6 +80,9 @@ func TestSudoUnlockDialog(t *testing.T) {
 				cmd = exec.Command(execTrackShellExecutable(t, tc.shell), "-c", script)
 			}
 			cmd.Env = []string{"PATH=" + directory + ":" + real + ":" + execTrackPath(), "CODEX_THREAD_ID=main", vcsguard.ItemEnvironment + "=cmd"}
+			if startup != "" {
+				cmd.Env = append(cmd.Env, "BASH_ENV="+startup)
+			}
 			result := make(chan execTrackRun, 1)
 			go func() {
 				out, err := cmd.CombinedOutput()
@@ -76,7 +102,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 					if i > 0 {
 						kind = "sudo-password"
 					}
-					if request.kind != kind || request.item != "cmd" {
+					if request.kind != kind || request.item != "cmd" || request.executable != executable {
 						t.Fatalf("wrong approval identity: %#v", request)
 					}
 				case <-time.After(10 * time.Second):

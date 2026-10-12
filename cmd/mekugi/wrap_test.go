@@ -192,6 +192,57 @@ func TestFrontendShellEnvironmentGuardsBash(t *testing.T) {
 	}
 }
 
+func TestFrontendScriptSudo(t *testing.T) {
+	for _, guard := range []bool{false, true} {
+		t.Run(fmt.Sprint(guard), func(t *testing.T) {
+			root := t.TempDir()
+			frontend, real, custom := filepath.Join(root, "bin"), filepath.Join(root, "real"), filepath.Join(root, "custom")
+			for _, directory := range []string{frontend, real, custom} {
+				if err := os.Mkdir(directory, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			helper := filepath.Join(root, "mekugi-exec")
+			prior := filepath.Join(root, "user-bash-env")
+			for path, content := range map[string]string{
+				helper:                        "#!/bin/sh\ncase ${0##*/} in sudo|git) printf '%s <%s>\\n' \"$MEKUGI_VCS_GUARD_REAL\" \"$1\";; esac\n",
+				filepath.Join(real, "sudo"):   "#!/bin/sh\necho BYPASSED\n",
+				filepath.Join(real, "git"):    "#!/bin/sh\necho BYPASSED\n",
+				filepath.Join(custom, "sudo"): "#!/bin/sh\necho BYPASSED\n",
+				prior:                         filepath.Join(custom, "sudo") + "() { printf 'CUSTOM\\n'; }\n",
+			} {
+				if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			environment, err := frontendShellEnvironment([]string{"PATH=" + real + ":" + custom + ":/usr/bin:/bin", "BASH_ENV=" + prior}, frontend, helper, guard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			script := filepath.Join(root, "script")
+			body := "#!/bin/bash\n. \"$BASH_ENV\"\nsudo 'bare argument'\n" + shellsyntax.Quote(filepath.Join(real, "sudo")) + " 'two words'\n" + shellsyntax.Quote(filepath.Join(real, "git")) + " push\n" + shellsyntax.Quote(filepath.Join(custom, "sudo")) + "\nexit 7\n"
+			if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"/bin/bash", script}, {script}} {
+				cmd := exec.Command(args[0], args[1:]...)
+				cmd.Env = environment
+				out, err := cmd.CombinedOutput()
+				want := " <bare argument>\n" + filepath.Join(real, "sudo") + " <two words>\n"
+				if guard {
+					want += filepath.Join(real, "git") + " <push>\n"
+				} else {
+					want += "BYPASSED\n"
+				}
+				want += "CUSTOM\n"
+				if err == nil || cmd.ProcessState.ExitCode() != 7 || string(out) != want {
+					t.Fatalf("script=%v output=%q err=%v; want %q and exit 7", args, out, err, want)
+				}
+			}
+		})
+	}
+}
+
 func TestCodexArgsEnforcesCollaborationModeInstructions(t *testing.T) {
 	for _, forwarded := range [][]string{
 		{"-c", "include_collaboration_mode_instructions=true"},
