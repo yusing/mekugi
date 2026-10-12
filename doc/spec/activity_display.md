@@ -443,7 +443,10 @@ and never copied back into its conversation. Visible provider reasoning summarie
 reasoning are not exposed. Agent wait, start, resume, interrupt,
 user-input waits, and MCP calls have explicit action labels. These describe
 observed requests, not unobserved native execution or completion. Wait previews
-include targets explicitly supplied in the call. Sibling and ancestor continuation guides
+include targets explicitly supplied in the call. Active waits show the requested
+timeout in muted text when the call's arguments are available, using the same display for native
+agents and orchestration threads. Unknown timeouts stay unlabeled; elapsed time
+does not imply a timeout. Sibling and ancestor continuation guides
 form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Main
 and the right column, with its own resizable divider. It shares local selection with the activity feed on the right;
 no extra process, broker, or transport is needed. Each agent has one row: status, name,

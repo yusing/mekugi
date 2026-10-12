@@ -17,10 +17,11 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 		return false
 	}
 	var args struct {
-		TaskName string         `json:"task_name"`
-		Target   string         `json:"target"`
-		Message  string         `json:"message"`
-		Targets  jsontext.Value `json:"targets"`
+		TaskName  string         `json:"task_name"`
+		Target    string         `json:"target"`
+		Message   string         `json:"message"`
+		Targets   jsontext.Value `json:"targets"`
+		TimeoutMS uint64         `json:"timeout_ms"`
 	}
 	_ = json.Unmarshal(item.Arguments, &args)
 	target := strings.TrimSpace(cmp.Or(args.TaskName, args.Target))
@@ -53,7 +54,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 	entry.native.orchestrated = true
 	isWait := item.Tool == "wait_agent"
 	if isWait {
-		*block = *appServerWaitProgress(appServerItem{Type: "collabAgentToolCall", Tool: "wait", Status: item.Status}, phase)
+		*block = *appServerWaitProgress(appServerItem{Type: "collabAgentToolCall", Tool: "wait", Status: item.Status, waitTimeoutMS: args.TimeoutMS}, phase)
 		names, err := orchestrateWaitTargets(args.Targets)
 		if err == nil {
 			if len(names) == 0 {

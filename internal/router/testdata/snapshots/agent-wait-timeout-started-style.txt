@@ -1,0 +1,2 @@
+"\x1b[2mWaiting for agent (timeout 12.5s) · \x1b[38;5;133malpha\x1b[m                                       "
+"plain                                                                           "

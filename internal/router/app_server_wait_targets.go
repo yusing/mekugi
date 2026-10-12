@@ -54,6 +54,9 @@ func (u *appServerUI) waitItem(item appServerItem, thread, turn, id string, star
 	if item.Type != "collabAgentToolCall" || item.Tool != "wait" || thread == "" || turn == "" || id == "" {
 		return item
 	}
+	if u.proxy != nil {
+		item.waitTimeoutMS, _ = u.proxy.nativeTrace.toolTimeout(thread, id, "wait_agent")
+	}
 	s := &u.session
 	if s.waits == nil {
 		s.waits = make(map[[3]string][]appServerWaitTarget)

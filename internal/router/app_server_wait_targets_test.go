@@ -10,7 +10,48 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestUISnapshotAgentWaitTimeout(t *testing.T) {
+	for _, kind := range []string{"native", "model", "mcp", "unknown"} {
+		t.Run(kind, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			f := newNativeTraceFixture(t)
+			u.proxy = &mekugiProxy{nativeTrace: &nativeToolTrace{directory: f.root}}
+			f.start("main", "cell", "outer", "source")
+			ref := f.ref(map[string]any{"tool_name": "wait_agent", "tool_namespace": "collaboration", "payload": map[string]any{"type": "function", "arguments": `{"timeout_ms":12500}`}})
+			requester := map[string]string{"type": "code_cell", "runtime_cell_id": "cell"}
+			if kind == "model" {
+				requester = map[string]string{"type": "model"}
+			}
+			f.event("main", map[string]any{"type": "tool_call_started", "tool_call_id": "w", "requester": requester, "invocation_payload": ref})
+			item := appServerItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress", ReceiverThreadIDs: []string{"alpha"}}
+			if kind == "mcp" {
+				item.Type, item.Server, item.Tool = "mcpToolCall", "orchestrate", "wait_agent"
+				item.Arguments = []byte(`{"targets":["alpha"],"timeout_ms":12500}`)
+			} else if kind == "unknown" {
+				item.ID = "unknown"
+			}
+			for _, phase := range []string{"item/started", "item/completed"} {
+				appServerTestNotify(t, u, phase, map[string]any{"threadId": "main", "turnId": "t", "item": item})
+				entry := u.view.entries[len(u.view.entries)-1]
+				want := phase == "item/started" && kind != "unknown"
+				if strings.Contains(entry.Text, "(timeout 12.5s)") != want {
+					t.Fatalf("%s: %q", phase, entry.Text)
+				}
+				blocks := parseLiveActivity(entry.activityPaneEntry)
+				name := "agent-wait-timeout-" + strings.TrimPrefix(phase, "item/")
+				if kind == "unknown" && phase == "item/started" {
+					name += "-unknown"
+				}
+				assertNativeUISnapshot(t, name, u.view.painter.Block(blocks[0], 80))
+				uisnapshot.AssertTerminal(t, "testdata/snapshots/"+name+"-style.txt", []string{u.view.painter.Summary(blocks, 80), "plain"}, 80)
+				item.Status = "completed"
+			}
+		})
+	}
+}
 
 func waitTargetTestAgent(t *testing.T, u *appServerUI, id, path string, running bool) {
 	t.Helper()

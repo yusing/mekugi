@@ -71,6 +71,7 @@ type appServerItem struct {
 	Model             string                         `json:"model"`
 	ReasoningEffort   string                         `json:"reasoningEffort"`
 	waitNames         map[string]string              // Presentation-only names for retained wait targets.
+	waitTimeoutMS     uint64                         // Observed requested timeout; zero means unknown.
 }
 
 type appServerUI struct {
