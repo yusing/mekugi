@@ -13,4 +13,4 @@
 ││ ❯                              ││
 │╰────────── snapshot-model • 0% ─╯│
 └──────────────────────────────────┘
- 1 Main  [ 2 Diff │ 3 Activity │ 5 J
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 J

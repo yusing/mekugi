@@ -360,11 +360,13 @@ Raw results, including delivery IDs, stay in the existing output dialog rather
 than appearing as feed tails. Host item identity replaces a started row with its
 result. Restored calls retain their recorded outcomes without reviving work.
 
-The Orchestration group in Agents lists the coordinator and its live batch
-threads. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
+The separate Orchestration pane lists the coordinator and its live batch
+threads, with its own focus, selection and collapse state. Displayed lifecycle
+labels use sentence case. Agents remains scoped to the viewed thread’s native
+subagents. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
 cycle these threads, resuming a retained confirmed thread when needed. Activity includes
-the viewed root, and selecting an orchestration row shows that root’s activity.
-Native child filters remain local to their thread. Without orchestration navigation, these shortcuts resize
+the viewed root. Switching preserves the destination’s selected pane and native
+agent filter. Native child filters remain local to their thread. Without orchestration navigation, these shortcuts resize
 the Diff navigator. The Main pane title shows `main` or `main › batch`.
 Transcript, Activity, native Agents, Journal, Diff, settings and unsent drafts
 belong to the viewed thread. Switching uses the subscribed in-memory state,

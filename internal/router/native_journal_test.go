@@ -594,7 +594,7 @@ func TestNativeJournalStripPinsCurrentWork(t *testing.T) {
 	}}
 	u.journal = &nativeJournalSink{tree: &journal}
 	strip := ansi.Strip(u.journalPlanStrip(80))
-	if !strings.HasPrefix(strip, "◐ /2 Renderer · 1m") || !strings.HasSuffix(strip, "1/3 done · Ctrl-B 5 journal") {
+	if !strings.HasPrefix(strip, "◐ /2 Renderer · 1m") || !strings.HasSuffix(strip, "1/3 done · Ctrl-B 4 journal") {
 		t.Fatalf("strip did not pin current work: %q", strip)
 	}
 	journal.Events = append(journal.Events, nativeJournalEvent(4, now, "add", "/4", "task", "Review", "pending", ""))

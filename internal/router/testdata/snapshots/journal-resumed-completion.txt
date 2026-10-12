@@ -1,4 +1,4 @@
-┌ 1 Main ───────────────────────────────────────────── ▲ 1 ┐┌ 5 Journal · ● 1 done ────────── space expand · d details ┐
+┌ 1 Main ───────────────────────────────────────────── ▲ 1 ┐┌ 4 Journal · ● 1 done ────────── space expand · d details ┐
 │◆ First check passed                                      ││ ▾ ● /1 Reopened task                              08:00  │
 │● /1 Restore journal history · done                       ││   ├ · First check passed                          08:00  │
 │                                                          ││   └ · Second check passed                         08:00  │
@@ -22,7 +22,7 @@
 ││ ❯                                                      │││                                                          │
 │╰─────────────────────────────────────────────────── 0% ─╯││                                                          │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
-─ 4 Agents · 1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+─ 5 Agents · 1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────
  ● main  idle                                                                                             7s · just now
 
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes · ^E expand events
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents   ^B 1-5 panes · ^E expand events

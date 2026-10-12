@@ -22,7 +22,7 @@ Operation-row formatting and feed controls are specified by
 Orchestration thread navigation follows the
 [orchestration contract](orchestrate.md#accepted-delivery-scope).
 
-Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
+Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 4`). No bare
 key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
 terminal card follow [journal presentation](journal.md#native-journal-presentation).
 Pane preferences retain its visibility and focus; transient selection and expansion
@@ -275,7 +275,7 @@ one coverage notice with a `mchanges` reference, not labeled as confirmed edits;
 the durable records retain each path and its reason.
 
 The shell frames Main on the left and one right pane: the saved diff (2),
-Activity (3), or Journal (5), each filling the pane. A roster (4) below them fits its
+Activity (3), or Journal (4), each filling the pane. A roster (5) below them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
 agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
 before the status bar when terminal height permits. Collapsed rows place activity directly after the name
@@ -287,7 +287,13 @@ spawn evidence supplies it, including after resume and for nested descendants.
 Missing or conflicting spawn evidence supplies no role label; explicit host
 metadata remains authoritative. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
-contextual key hints. Ctrl-B + number focuses a pane.
+contextual key hints. Ctrl-B + number focuses a pane. During orchestration, a
+separate Orchestration roster (6) lists the shared run above Agents (5). Agents
+contains only the viewed thread’s native subagents. Each roster has independent
+selection and collapse state: click its title or press `c` while focused to
+collapse or expand it; dragging its title adjusts only that roster’s height.
+Switching threads preserves the shared Orchestration
+selection and each thread’s Agents state.
 Uncolored labels in pane and composer borders use the terminal text foreground,
 not the border's decorative foreground. Faint styling and explicit label colors
 remain intact.

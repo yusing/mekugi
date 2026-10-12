@@ -225,20 +225,47 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.agents.lineCounts = u.diff.callerCounts
 		u.agents.netCounts = u.diff.netCounts
 	}
-	roster := u.agents.nativeRoster(width, u.rosterLimit(height), now, u.focus == 3)
-	if height-1-len(roster) < nativeFramedRows {
-		roster = nil // A short terminal keeps its rows for Main.
+	limit := u.rosterLimit(height)
+	if u.agentsCollapsed {
+		limit = 0
+	}
+	roster := u.agents.nativeRoster(width, limit, now, u.focus == 3)
+	var orchestration []string
+	if n := u.main.navigation; n != nil && n.roster != nil {
+		limit := nativeRosterRows
+		if u.focus == 5 {
+			limit = max(nativeRosterRows, int(float64(height)*nativeRosterShare))
+		}
+		if n.height > 0 {
+			limit = n.height
+		}
+		if n.collapsed {
+			limit = 0
+		}
+		orchestration = n.roster.nativeRoster(width, limit, now, u.focus == 5)
+	}
+	if height-1-len(roster)-len(orchestration) < nativeFramedRows {
+		roster = roster[:min(1, len(roster))]
+		orchestration = orchestration[:min(1, len(orchestration))]
+		if height-1-len(roster)-len(orchestration) < nativeFramedRows {
+			roster, orchestration = nil, nil
+		}
 	}
 	padding := 0
-	if len(roster) > 0 && height-1-len(roster)-1 >= nativeFramedRows {
+	if len(roster)+len(orchestration) > 0 && height-1-len(roster)-len(orchestration)-1 >= nativeFramedRows {
 		padding = 1
 	}
-	top := max(0, height-1-len(roster)-padding)
+	top := max(0, height-1-len(roster)-len(orchestration)-padding)
 	framed := top >= nativeFramedRows
 	l := terminalLayout{vertical: -1, horizontal: -1, rosterHorizontal: -1}
-	if len(roster) > 0 {
+	if len(roster)+len(orchestration) > 0 {
 		l.rosterHorizontal = top
-		l.roster = terminalRect{0, top, width, len(roster)}
+	}
+	if len(orchestration) > 0 {
+		l.orchestration = terminalRect{0, top, width, len(orchestration)}
+	}
+	if len(roster) > 0 {
+		l.roster = terminalRect{0, top + len(orchestration), width, len(roster)}
 	}
 	var left, right terminalRect
 	wide := width >= 100 && top >= 12
@@ -364,7 +391,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 						detail = append(detail, counts)
 					}
 				}
-				title = nativeTitle(5, "Journal", strings.Join(detail, activityui.Dim+" · "+activityui.Undim), u.focus == 4)
+				title = nativeTitle(4, "Journal", strings.Join(detail, activityui.Dim+" · "+activityui.Undim), u.focus == 4)
 				if ansi.StringWidth(title)+ansi.StringWidth(label)+5 <= right.w-2 {
 					break
 				}
@@ -401,6 +428,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
 		rules := map[int]string{}
 		draw(right, nativeBox(right.w, right.h, title, label, focused, body, rules))
+	}
+	if len(orchestration) > 0 {
+		draw(l.orchestration, orchestration)
 	}
 	if len(roster) > 0 {
 		draw(l.roster, roster)
@@ -440,6 +470,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 
 // rosterLimit fits the roster to its rows, within a few rows unless focused.
 func (u *terminalUI) rosterLimit(height int) int {
+	if u.rosterHeight > 0 {
+		return u.rosterHeight
+	}
 	if u.focus == 3 {
 		return max(nativeRosterRows, int(float64(height)*nativeRosterShare))
 	}
@@ -449,15 +482,16 @@ func (u *terminalUI) rosterLimit(height int) int {
 // nativeStatus shows the pane tabs, with Diff and Activity marked as the pair
 // sharing the right column, and only the focused pane's keys.
 func (u *terminalUI) nativeStatus() string {
-	u.paneTabs = [5]terminalRect{}
+	u.paneTabs = [6]terminalRect{}
 	if u.main != nil && u.main.replay != nil {
 		return u.main.replay.bar(u.width)
 	}
 	var tabs strings.Builder
 	tab := func(digit int, name, badge string, shown bool) {
+		pane := nativePaneIndex(digit)
 		text := fmt.Sprintf(" %d %s", digit, name)
 		switch {
-		case u.focus == digit-1:
+		case u.focus == pane:
 			text = "\x1b[7;1m" + text + badge + " \x1b[27;22m"
 		case shown:
 			text += badge + " "
@@ -465,7 +499,7 @@ func (u *terminalUI) nativeStatus() string {
 			text = activityui.Dim + text + activityui.Undim + badge + " "
 		}
 		left := ansi.StringWidth(tabs.String())
-		u.paneTabs[digit-1] = terminalRect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
+		u.paneTabs[pane] = terminalRect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
 		tabs.WriteString(text)
 	}
 	diffBadge := ""
@@ -483,9 +517,14 @@ func (u *terminalUI) nativeStatus() string {
 	tabs.WriteString(activityui.Dim + "│" + activityui.Undim)
 	tab(3, "Activity", "", !u.diffOpen && !u.journalOpen)
 	tabs.WriteString(activityui.Dim + "│" + activityui.Undim)
-	tab(5, "Journal", "", u.journalOpen)
+	tab(4, "Journal", "", u.journalOpen)
 	tabs.WriteString(activityui.Dim + "]" + activityui.Undim + " ")
-	tab(4, "Agents", agentsBadge, true)
+	tab(5, "Agents", agentsBadge, !u.agentsCollapsed)
+	paneKeys := "1-5"
+	if u.main.navigation != nil {
+		tab(6, "Orchestration", "", !u.main.navigation.collapsed)
+		paneKeys = "1-6"
+	}
 	if u.main != nil && u.main.interruptLocked {
 		tabs.WriteString("  " + activityui.Amber + "Locked · /unlock" + activityui.Reset)
 	}
@@ -496,7 +535,7 @@ func (u *terminalUI) nativeStatus() string {
 	var hints terminalHints
 	switch {
 	case u.prefix:
-		hints = terminalHints{{"ctrl+b 1-5", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		hints = terminalHints{{"ctrl+b " + paneKeys, "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
 		return tabs.String() + "  " + hints.render()
 	case u.focus == 1:
 		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
@@ -509,12 +548,14 @@ func (u *terminalUI) nativeStatus() string {
 		// Expansion, details and namespace keys are in the pane title.
 		hints = terminalHints{{"j/k", "select", 0}, {"enter", "open", 0}, {"c", "copy path", 0}, {"esc", "Main", 0}}
 	case u.focus == 3:
-		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
+		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"c", "collapse", 0}, {"esc", "back", 0}}
+	case u.focus == 5:
+		hints = terminalHints{{"j/k", "thread", 0}, {"enter", "switch", 0}, {"c", "collapse", 0}, {"esc", "back", 0}}
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
-	hints = append(hints, terminalHint{"^B 1-5", "panes", 0})
+	hints = append(hints, terminalHint{"^B " + paneKeys, "panes", 0})
 	if u.focus == 0 || u.focus == 2 || u.focus == 4 {
 		expansion := u.agents.expansion
 		if u.focus == 0 {
@@ -527,8 +568,15 @@ func (u *terminalUI) nativeStatus() string {
 	return tabs.String() + "  " + hints.render()
 }
 
+func nativePaneIndex(digit int) int {
+	return [...]int{0, 1, 2, 4, 3, 5}[digit-1]
+}
+
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
 func (u *terminalUI) selectNativePane(pane int) {
+	if pane == 5 && (u.main == nil || u.main.navigation == nil) {
+		return
+	}
 	u.focus = pane
 	if pane == 0 {
 		return

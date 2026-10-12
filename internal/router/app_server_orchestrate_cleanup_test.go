@@ -410,7 +410,7 @@ func TestUISnapshotOrchestrateCleanedRoster(t *testing.T) {
 	child := u.orchestrateThreads["child"]
 	child.batch.State, child.batch.Branch = "removed", "mekugi/run/batch"
 	u.orchestrationRoster()
-	uisnapshot.Assert(t, "testdata/snapshots/orchestration-cleaned-roster.txt", strings.Join(u.agents.nativeRoster(100, 12, now, true), "\n")+"\n")
+	uisnapshot.Assert(t, "testdata/snapshots/orchestration-cleaned-roster.txt", strings.Join(u.navigation.roster.nativeRoster(100, 12, now, true), "\n")+"\n")
 }
 
 func TestAppServerOrchestrateShadowCleanupMCP(t *testing.T) {

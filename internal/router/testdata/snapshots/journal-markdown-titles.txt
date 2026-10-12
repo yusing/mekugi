@@ -6,7 +6,7 @@
    └ · Rendered editor report
 
 
-◐ /2 Rendered editor report                          1/4 done · Ctrl-B 5 journal
+◐ /2 Rendered editor report                          1/4 done · Ctrl-B 4 journal
    ◆ /5 Kept scope
    ○ /1 Rendered editor…
    ◐ /2 Rendered editor…

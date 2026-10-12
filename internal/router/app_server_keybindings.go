@@ -40,7 +40,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"/model /effort /tier", "Open picker or set VALUE"},
 			{"ctrl+c", "Clear / interrupt / quit"},
 			{"esc", "Interrupt, keep draft"},
-			{"ctrl+b 1–5", "Focus pane"},
+			{"ctrl+b 1–6", "Focus pane (6: Orchestration)"},
 			{"J (empty draft)", "Open journal"},
 			{"ctrl+b e", "Next live item"},
 			{"ctrl+b q / !", "Questions / error details"},

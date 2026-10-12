@@ -502,7 +502,7 @@ func (v *liveActivityView) roster() []liveActivityRosterRow {
 	visit = func(under string, depth int) {
 		for _, agent := range v.agents {
 			if parent(agent.Name) == under {
-				if agent.Name == "/root" && len(v.orchestration) != 0 {
+				if agent.Name == "/root" && v.includeRoot {
 					visit(agent.Name, depth)
 					continue
 				}

@@ -26,7 +26,7 @@
 "  \x1b[38;2;80;155;225malt/option+backspace\x1b[m  Delete previous word           \x1b[38;2;80;155;225m/model /effort /tier\x1b[m  Open picker or set VALUE                                       "
 "  \x1b[38;2;80;155;225mctrl+w / alt+del\x1b[m      Delete previous / next word    \x1b[38;2;80;155;225mctrl+c\x1b[m                Clear / interrupt / quit                                       "
 "  \x1b[38;2;80;155;225mctrl+k\x1b[m                Delete to end of line          \x1b[38;2;80;155;225mesc\x1b[m                   Interrupt, keep draft                                          "
-"  \x1b[38;2;80;155;225mctrl+z / ctrl+y\x1b[m       Undo / redo                    \x1b[38;2;80;155;225mctrl+b 1–5\x1b[m            Focus pane                                                     "
+"  \x1b[38;2;80;155;225mctrl+z / ctrl+y\x1b[m       Undo / redo                    \x1b[38;2;80;155;225mctrl+b 1–6\x1b[m            Focus pane (6: Orchestration)                                  "
 "  \x1b[38;2;80;155;225mctrl+v\x1b[m                Paste image                    \x1b[38;2;80;155;225mJ (empty draft)\x1b[m       Open journal                                                   "
 "  \x1b[38;2;80;155;225mctrl+g\x1b[m                External editor                \x1b[38;2;80;155;225mctrl+b e\x1b[m              Next live item                                                 "
 "                                                       \x1b[38;2;80;155;225mctrl+b q / !\x1b[m          Questions / error details                                      "

@@ -47,7 +47,7 @@ type nativeRosterItem struct {
 // turns; turns drop first when narrow.
 func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused bool) []string {
 	rows := v.roster()
-	if len(rows) == 0 || width < 20 {
+	if len(rows) == 0 && !v.includeRoot || width < 20 {
 		return nil
 	}
 	v.hits = v.hits[:0]
@@ -110,7 +110,14 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	if len(totals) > 0 {
 		right = activityui.Dim + strings.Join(totals, " · ") + activityui.Undim
 	}
-	lines := []string{nativeRule("─", "─", "─", nativeTitle(4, "Agents", detail, focused), right, width, nativeBorder(focused))}
+	digit, title := 5, "Agents"
+	if len(v.orchestration) != 0 {
+		digit, title = 6, "Orchestration"
+	}
+	lines := []string{nativeRule("─", "─", "─", nativeTitle(digit, title, detail, focused), right, width, nativeBorder(focused))}
+	if limit == 0 {
+		return lines
+	}
 
 	limit = max(1, limit)
 	legend := ""
@@ -166,7 +173,6 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var laid []agentLine
 	var parts [][nativeMetricParts]string
 	widest := 0
-	orchestrationHeading := false
 	for _, item := range items[start:end] {
 		if item.finished != nil {
 			var names []string
@@ -178,10 +184,6 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			continue
 		}
 		row := item.row
-		if v.orchestrationLabels[row.agent.Name] != "" && !orchestrationHeading {
-			laid = append(laid, agentLine{finishedLine: activityui.Dim + " Orchestration" + activityui.Undim})
-			orchestrationHeading = true
-		}
 		index := slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name })
 		tree, _ := rosterTree(rows, index, 0)
 		if v.orchestrationLabels[row.agent.Name] != "" {
@@ -250,7 +252,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		v.hits = append(v.hits, liveActivityHit{row: len(lines), first: 1, last: width, agent: item.row.agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
-		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+activityui.Undim, width, "…"))
+		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B %d shows all", hidden, digit)+activityui.Undim, width, "…"))
 	}
 	if legend != "" {
 		lines = append(lines, legend)
@@ -482,7 +484,7 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 // activity summary while an agent is working.
 func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string {
 	if label := v.orchestrationLabels[agent.Name]; label != "" {
-		return liveActivityMiddle(label, width)
+		return liveActivityMiddle(strings.ToUpper(label[:1])+label[1:], width)
 	}
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {

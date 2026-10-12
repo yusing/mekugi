@@ -6,7 +6,7 @@
 
 
 Active turn progress
-● /1 Integrate batch                       1/1 done · Ctrl-B 5 journal
+● /1 Integrate batch                       1/1 done · Ctrl-B 4 journal
 
 Work report
 ╭─ ✓ journal · 1 accepted ──────────────────────────────────── 22:31 ╮

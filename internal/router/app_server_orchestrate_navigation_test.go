@@ -85,9 +85,9 @@ func TestAppServerOrchestrateNavigationLineage(t *testing.T) {
 	if err := v.paint(&bytes.Buffer{}, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	for _, hit := range v.agents.hits {
+	for _, hit := range v.navigation.roster.hits {
 		if hit.agent == "/Orchestration/main" && !hit.skills {
-			r := v.shell.layout.roster
+			r := v.shell.layout.orchestration
 			for _, suffix := range []string{"M", "m"} {
 				if err := v.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.x+hit.first, r.y+hit.row, suffix)); err != nil {
 					t.Fatal(err)
@@ -102,8 +102,8 @@ func TestAppServerOrchestrateNavigationLineage(t *testing.T) {
 	u.switchOrchestratedThread("child")
 	// Enter uses the selected roster thread, not the native Activity filter.
 	v.orchestrationRoster()
-	v.agents.selected = "/Orchestration/main"
-	v.shell.focus = 3
+	v.navigation.roster.selected = "/Orchestration/main"
+	v.shell.focus = 5
 	if err := v.shell.key('\r'); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 		view.status, view.model = "Ready", "snapshot-model"
 		view.turn, view.awaitingTurn = "", false
 		view.modelsLoading = true
-		view.shell.focus = 3
+		view.shell.focus = 5
 		view.agents.apply(activityPaneEvent{Kind: "agents", Agents: view.session.agents})
 	}
 	for _, thread := range []string{"main", "child"} {
@@ -165,9 +165,16 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 		view.shell.journalOpen = false
 	}
 	u.draft, v.draft = "Review the batch", "Complete the batch"
-	for _, test := range []struct{ name, thread string }{{"main", "main"}, {"batch", "child"}} {
+	u.agents.agents = append(u.agents.agents, activityPaneAgent{Name: "/root/main_worker"})
+	v.agents.agents = append(v.agents.agents, activityPaneAgent{Name: "/root/batch_worker"})
+	for _, test := range []struct {
+		name, thread string
+		collapsed    bool
+	}{{"main", "main", false}, {"batch", "child", false}, {"collapsed", "main", true}} {
 		u.switchOrchestratedThread(test.thread)
 		view := u.viewedUI()
+		u.navigation.collapsed = test.collapsed
+		view.shell.agentsCollapsed = test.collapsed
 		var frame bytes.Buffer
 		if err := view.paint(&frame, 100, 32); err != nil {
 			t.Fatal(err)
@@ -286,4 +293,114 @@ func TestAppServerOrchestrateNavigationClosedAdmission(t *testing.T) {
 	if !ok {
 		t.Fatal("late admission retained a closed view's storage lease")
 	}
+}
+
+func TestAppServerOrchestrationPanels(t *testing.T) {
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+	u.orchestrationRoster()
+	n := u.navigation
+	u.agents.selected = "/root/worker"
+	for index, want := range []int{0, 1, 2, 4, 3, 5} {
+		digit := byte('1' + index)
+		if err := u.shell.key(2); err != nil {
+			t.Fatal(err)
+		}
+		if err := u.shell.key(digit); err != nil {
+			t.Fatal(err)
+		}
+		if u.shell.focus != want {
+			t.Fatalf("pane %c focused %d, want %d", digit, u.shell.focus, want)
+		}
+	}
+	if err := u.shell.send("c"); err != nil {
+		t.Fatal(err)
+	}
+	if !n.collapsed || u.shell.agentsCollapsed {
+		t.Fatal("Orchestration collapse changed Agents")
+	}
+	u.shell.selectNativePane(3)
+	if err := u.shell.send("c"); err != nil {
+		t.Fatal(err)
+	}
+	if !n.collapsed || !u.shell.agentsCollapsed {
+		t.Fatal("Agents collapse changed Orchestration")
+	}
+	u.shell.selectNativePane(5)
+	n.roster.selected = "/Orchestration/batch"
+	if err := u.shell.send("\r"); err != nil {
+		t.Fatal(err)
+	}
+	v := u.viewedUI()
+	if !n.collapsed || v.shell.agentsCollapsed {
+		t.Fatal("collapse state crossed thread owners")
+	}
+	n.roster.selected = "/Orchestration/main"
+	if err := v.shell.send("\r"); err != nil {
+		t.Fatal(err)
+	}
+	if u.agents.selected != "/root/worker" || !u.shell.agentsCollapsed {
+		t.Fatal("thread switching lost native roster state")
+	}
+	if err := u.paint(&bytes.Buffer{}, 120, 40); err != nil {
+		t.Fatal(err)
+	}
+	r := u.shell.layout.orchestration
+	if r.h != 1 || u.shell.layout.roster.h != 1 {
+		t.Fatal("collapsed rosters did not retain separate headers", u.shell.layout)
+	}
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", r.x+1, r.y+1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", r.x+1, r.y+1)); err != nil {
+		t.Fatal(err)
+	}
+	if n.collapsed || !u.shell.agentsCollapsed || u.shell.focus != 5 {
+		t.Fatal("header click did not independently expand Orchestration")
+	}
+	for _, report := range []string{fmt.Sprintf("\x1b[<0;1;%dM", r.y+1), fmt.Sprintf("\x1b[<32;1;%dM", r.y-1), fmt.Sprintf("\x1b[<0;1;%dm", r.y-1)} {
+		if err := u.shell.mouse(report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n.height < 2 || n.collapsed || u.shell.rosterHeight != 0 {
+		t.Fatal("Orchestration drag changed another panel or collapsed")
+	}
+	if err := u.shell.send("\x1b"); err != nil {
+		t.Fatal(err)
+	}
+	if u.shell.focus != 0 {
+		t.Fatal("Escape did not restore Main focus")
+	}
+	for i := range 6 {
+		batch := u.orchestrateThreads["child"].batch
+		batch.TaskName = fmt.Sprintf("extra_%d", i)
+		n.retained = append(n.retained, batch)
+	}
+	n.height = 0
+	u.orchestrationRoster()
+	n.roster.selected = "/Orchestration/batch"
+	if err := u.paint(&bytes.Buffer{}, 120, 40); err != nil {
+		t.Fatal(err)
+	}
+	r = u.shell.layout.orchestration
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;1;%dM", r.y+r.h)); err != nil {
+		t.Fatal(err)
+	}
+	if u.viewedUI() != u {
+		t.Fatal("overflow indicator switched a thread without a row hit")
+	}
+	for _, report := range []string{fmt.Sprintf("\x1b[<0;1;%dM", r.y+1), fmt.Sprintf("\x1b[<32;1;%dM", u.shell.height), fmt.Sprintf("\x1b[<0;1;%dm", u.shell.height)} {
+		if err := u.shell.mouse(report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows := n.height
+	if err := u.shell.mouse("\x1b[<35;1;1M"); err != nil {
+		t.Fatal(err)
+	}
+	if u.shell.rosterPress != nil || n.height != rows {
+		t.Fatal("release over status bar retained roster drag")
+	}
+
 }

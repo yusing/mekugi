@@ -1,4 +1,4 @@
-┌ 1 main ────────────────────────────────────────┐┌ 5 Journal ─────────── space expand · d details ┐
+┌ 1 main ────────────────────────────────────────┐┌ 4 Journal ─────────── space expand · d details ┐
 │Mekugi dev • codex                              ││ No journal entries.                            │
 │                                                ││                                                │
 │                                                ││                                                │
@@ -28,9 +28,9 @@
 ││ ❯                                            │││                                                │
 │╰────────────────────────── model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
-─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
- Orchestration
+─ 6 Orchestration · 2 ──────────────────────────────────────────────────────────────────────────────
  ● main  Ready                                                                    0%  0s · just now
  ◐ batch  Working                                                                 0%  0s · just now
+─ 5 Agents · 0 ─────────────────────────────────────────────────────────────────────────────────────
 
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   ^B 1-5 panes · ^E expand events
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents  6 Orchestration   ^B 1-6 panes · ^E expand e

@@ -806,7 +806,7 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 	}
 	// The pane key yields first, then progress, before the task's title.
 	progress := fmt.Sprintf("%d/%d done", pin.done, pin.total)
-	for _, right := range []string{progress + " · Ctrl-B 5 journal", progress} {
+	for _, right := range []string{progress + " · Ctrl-B 4 journal", progress} {
 		if room := width - ansi.StringWidth(right) - 2; ansi.StringWidth(left) <= room || right == progress && room >= 24 {
 			left = ansi.Truncate(left, room, "…")
 			return left + strings.Repeat(" ", width-ansi.StringWidth(left)-ansi.StringWidth(right)) + activityui.Dim + right + activityui.Undim

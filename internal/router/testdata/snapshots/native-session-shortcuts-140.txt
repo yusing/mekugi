@@ -26,7 +26,7 @@
   alt/option+backspace  Delete previous word           /model /effort /tier  Open picker or set VALUE
   ctrl+w / alt+del      Delete previous / next word    ctrl+c                Clear / interrupt / quit
   ctrl+k                Delete to end of line          esc                   Interrupt, keep draft
-  ctrl+z / ctrl+y       Undo / redo                    ctrl+b 1–5            Focus pane
+  ctrl+z / ctrl+y       Undo / redo                    ctrl+b 1–6            Focus pane (6: Orchestration)
   ctrl+v                Paste image                    J (empty draft)       Open journal
   ctrl+g                External editor                ctrl+b e              Next live item
                                                        ctrl+b q / !          Questions / error details

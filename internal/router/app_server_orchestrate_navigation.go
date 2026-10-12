@@ -17,6 +17,9 @@ import (
 // Execution stays with the coordinator. Each subscribed root keeps the ordinary
 // session controller, including its composer, request correlation and shell.
 type orchestrateNavigation struct {
+	roster        *liveActivityView
+	collapsed     bool
+	height        int
 	closed        bool
 	owner, viewed *appServerUI
 	views         map[string]*appServerUI
@@ -363,6 +366,9 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		n.viewed.quitConfirmationKey("\x1b")
 	}
 	n.viewed = n.views[thread]
+	if n.roster != nil {
+		n.roster.selected = ""
+	}
 	if strings.HasPrefix(n.viewed.agents.selected, "/Orchestration/") {
 		n.viewed.agents.selected = ""
 	}
@@ -408,9 +414,14 @@ func (u *appServerUI) orchestrationRoster() {
 				return strings.HasPrefix(agent.Name, "/orchestrate/")
 			})
 		}
-		u.agents.orchestration = nil
-		u.agents.orchestrationLabels = map[string]string{}
-		u.agents.orchestrationRetained = map[string]bool{}
+		if n.roster == nil {
+			n.roster = newLiveActivityView()
+		}
+		roster := n.roster
+		roster.painter = u.agents.painter
+		roster.orchestration = nil
+		roster.orchestrationLabels = map[string]string{}
+		roster.orchestrationRetained = map[string]bool{}
 		for _, thread := range n.order {
 			v := n.views[thread]
 			agent := *v.session.agent("/root")
@@ -426,10 +437,10 @@ func (u *appServerUI) orchestrationRoster() {
 				}
 			}
 			agent.Name = "/Orchestration/" + name
-			u.agents.orchestration = append(u.agents.orchestration, agent)
-			u.agents.orchestrationLabels[agent.Name] = label
-			if v == u && u.agents.selected == "" {
-				u.agents.selected = agent.Name
+			roster.orchestration = append(roster.orchestration, agent)
+			roster.orchestrationLabels[agent.Name] = label
+			if v == u && roster.selected == "" {
+				roster.selected = agent.Name
 			}
 		}
 		for _, batch := range n.retained {
@@ -438,14 +449,14 @@ func (u *appServerUI) orchestrationRoster() {
 				name = "main batch"
 			}
 			name = "/Orchestration/" + name
-			if _, exists := u.agents.orchestrationLabels[name]; exists {
+			if _, exists := roster.orchestrationLabels[name]; exists {
 				continue
 			}
-			u.agents.orchestration = append(u.agents.orchestration, activityPaneAgent{Name: name})
-			u.agents.orchestrationRetained[name] = true
-			u.agents.orchestrationLabels[name] = orchestrateRestoredBatchState(batch)
+			roster.orchestration = append(roster.orchestration, activityPaneAgent{Name: name})
+			roster.orchestrationRetained[name] = true
+			roster.orchestrationLabels[name] = orchestrateRestoredBatchState(batch)
 			if batch.Launch != nil && batch.Launch.ThreadID != "" {
-				u.agents.orchestrationLabels[name] += " · not subscribed"
+				roster.orchestrationLabels[name] += " · not subscribed"
 			}
 		}
 	}
@@ -560,7 +571,7 @@ func (u *appServerUI) orchestrationGuardApproval(request *vcsApproval) {
 	u.addGuardApproval(request)
 }
 
-func (u *appServerUI) pickOrchestratedThread() bool {
+func (u *appServerUI) pickOrchestratedThread(selected string) bool {
 	n := u.navigation
 	if n == nil {
 		return false
@@ -572,9 +583,8 @@ func (u *appServerUI) pickOrchestratedThread() bool {
 		show := func(err error) {
 			if err == nil {
 				v := n.views[thread]
-				v.agents.selected, v.agents.only = "", true
 				v.orchestrationRoster()
-				v.shell.diffOpen, v.shell.journalOpen = false, false
+				v.shell.focus = 5
 			}
 		}
 		if r := n.resumes[thread]; r != nil {
@@ -584,8 +594,8 @@ func (u *appServerUI) pickOrchestratedThread() bool {
 		}
 		return true
 	}
-	name := strings.TrimPrefix(u.agents.selected, "/Orchestration/")
-	if name == u.agents.selected {
+	name := strings.TrimPrefix(selected, "/Orchestration/")
+	if name == selected {
 		return false
 	}
 	for _, thread := range n.order {
