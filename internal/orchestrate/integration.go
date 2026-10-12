@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Integration records native ancestry or confirmed shadow writeback, not review.
+// Integration records committed Git delivery or confirmed shadow writeback, not review.
 type Integration struct {
 	Tip       string `json:"tip"`
 	SourceTip string `json:"source_tip"`
@@ -78,8 +78,12 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 		if err != nil {
 			return err
 		}
-		if _, err := git(ctx, workspace, "merge-base", "--is-ancestor", proof.Tip, proof.SourceTip); err != nil {
-			return errors.New("batch tip is not integrated into source HEAD")
+		unmatched, err := git(ctx, workspace, "log", "--cherry-pick", "--right-only", "--format=%H", proof.SourceTip+"..."+proof.Tip)
+		if err != nil {
+			return err
+		}
+		if unmatched != "" {
+			return errors.New("batch commits are not integrated into source HEAD")
 		}
 		b.Integration = &proof
 		return nil

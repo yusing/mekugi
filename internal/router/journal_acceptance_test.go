@@ -93,15 +93,19 @@ func TestJournalOrchestrateAcceptanceMCP(t *testing.T) {
 	call("main", "dirty", true, accept)
 	gitTestCommit(t, childWorkspace)
 	call("main", "unintegrated", true, accept)
-	// Native integration is external to the tool. Unrelated source edits survive.
+	writeTestFile(t, filepath.Join(childWorkspace, "second"), "second result")
+	gitTestCommit(t, childWorkspace)
+	// Divergent source history requires cherry-pick rather than ancestry proof.
+	writeTestFile(t, filepath.Join(workspace, "unrelated"), "source commit")
+	gitTestCommit(t, workspace)
+	branch := u.orchestrateThreads["child"].batch.Branch
+	gitTestRun(t, workspace, "cherry-pick", branch+"^")
+	call("main", "partial_delivery", true, accept)
+	gitTestRun(t, workspace, "cherry-pick", branch)
+	// Verification must preserve both unrelated source worktree and index edits.
 	writeTestFile(t, filepath.Join(workspace, "file"), "staged source edit")
 	gitTestRun(t, workspace, "add", "file")
 	writeTestFile(t, filepath.Join(workspace, "file"), "unstaged source edit")
-	command := exec.CommandContext(t.Context(), "git", "-c", "core.hooksPath="+os.DevNull, "-C", workspace, "merge", "--ff-only", u.orchestrateThreads["child"].batch.Branch)
-	command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("merge: %v: %s", err, output)
-	}
 	// Hidden edits outside the selected cwd must keep acceptance open.
 	for _, flag := range []string{"assume-unchanged", "skip-worktree"} {
 		gitTestRun(t, childRoot, "update-index", "--"+flag, "file")
@@ -144,7 +148,7 @@ func TestJournalOrchestrateAcceptanceMCP(t *testing.T) {
 	if err != nil || string(content) != "unstaged source edit" {
 		t.Fatal("source edits changed", string(content), err)
 	}
-	command = exec.CommandContext(t.Context(), "git", "-C", workspace, "show", ":./file")
+	command := exec.CommandContext(t.Context(), "git", "-C", workspace, "show", ":./file")
 	if content, err := command.Output(); err != nil || string(content) != "staged source edit" {
 		t.Fatal("source index changed", string(content), err)
 	}

@@ -53,7 +53,7 @@ on the batch branch, with its path, source repository and baseline retained in
 the run. Source submodule edits and newer commits do not follow. Uninitialized
 submodules remain uninitialized; submodule preparation never fetches remote URLs.
 A missing local baseline fails preparation. Main imports and integrates any changed
-submodule commits with native Git before integrating the superproject.
+submodule commits with native Git cherry-pick before the superproject.
 
 Acceptance:
 
@@ -177,11 +177,14 @@ with `agent: "main"`, while other agent selectors retain their native local path
 but cannot reveal sibling results. Child completion leaves Main's integration task
 unchanged.
 
-Main reviews and integrates Git batches with native VCS commands, or shadow
-batches with `integrate`, then marks its bound journal task `accepted`. For Git,
-acceptance verifies that the batch's committed tip is reachable from the source's
-committed revision. For shadow, it verifies confirmed writeback and the current
-merged paths. It records the batch tip and source revision or merged tree
+Main reviews Git batches and cherry-picks their coherent commits into the target
+branch, one batch at a time, preserving unrelated source edits. It does not merge
+or rebase branches. Shadow batches use `integrate`. Main marks its bound journal
+task `accepted` only after integration is verified. For Git,
+acceptance verifies that the batch's commits are reachable from the source's
+committed revision or have patch-equivalent commits there. Unmatched commits,
+including unintegrated merge commits, keep acceptance open. For shadow, it verifies
+confirmed writeback and the current merged paths. It records the batch tip and source revision or merged tree
 before changing the task. The child checkout must retain its recorded location
 and branch and have
 no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
