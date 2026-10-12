@@ -25,11 +25,16 @@ func TestUISnapshotNativeResetRecoveryDisclosure(t *testing.T) {
 				proxy, workspace, thread = driver.proxy, driver.workspace, driver.thread
 				if err := proxy.journals.transaction(t.Context(), proxy.replayStore, workspace, thread, func(j *threadJournal, _ bool) error {
 					for i := range j.Items {
+						j.Items[i].WorkTimer.ElapsedNS = 0
 						for _, stamp := range []*journalStamp{j.Items[i].Started, j.Items[i].Finished} {
 							if stamp != nil {
 								stamp.At = "2026-09-30T12:00:00Z"
 							}
 						}
+					}
+					// Task milestone rows use retained event timers, not item timers.
+					for i := range j.Events {
+						j.Events[i].Fields.WorkTimer.ElapsedNS = 0
 					}
 					return nil
 				}); err != nil {
