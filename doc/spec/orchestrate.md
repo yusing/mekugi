@@ -159,7 +159,8 @@ without interrupting the recipient's existing work. Host rejection is reported
 without replacing the batch's launch or turn-completion facts.
 
 `tools.mcp__orchestrate__send_message({target:"batch",message:"Use the revised input."})`
-saves input without waking or steering the batch. Queued messages accompany its
+delivers input promptly to a running batch without starting a new turn. For an idle
+batch it queues input without waking it. Queued messages accompany its
 next idle follow-up turn, in arrival order before the new assignment. A running
 follow-up steers only its own input and leaves deferred messages queued.
 Acknowledgement records which turn received the queued input. A rejected or

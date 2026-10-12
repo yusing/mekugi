@@ -363,11 +363,11 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	view.draft = "Batch draft"
-	queued := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "send_message", callID: "installed-queued", input: orchestrateSpawnInput{Message: "Deferred input for the next probe turn."}, reply: make(chan orchestrateResult, 1)}
+	queued := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "send_message", callID: "installed-queued", input: orchestrateSpawnInput{Message: "Correction for the running probe turn."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(queued)
 	pump(func() bool { return len(queued.reply) > 0 })
-	if r := <-queued.reply; r.err != nil || r.delivery == nil || r.delivery.State != "queued" {
-		t.Fatalf("installed deferred message: %+v", r)
+	if r := <-queued.reply; r.err != nil || r.delivery == nil || r.delivery.State != "delivered" {
+		t.Fatalf("installed running message: %+v", r)
 	}
 	followup := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "followup_task", callID: "installed-running", input: orchestrateSpawnInput{Message: "Continue the probe when ready."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(followup)

@@ -20,6 +20,8 @@ type Delivery struct {
 	Dispatch string `json:"dispatch,omitempty"`
 }
 
+// BeginDelivery uses input.TurnID to identify an active recipient turn.
+// Deferred input is queued only when idle; stored TurnID records acknowledgement.
 func (s *Store) BeginDelivery(ctx context.Context, workspace, main string, input Delivery) (delivery Delivery, dispatch bool, err error) {
 	delivery, _, dispatch, err = s.beginDelivery(ctx, workspace, main, input, false)
 	return
@@ -49,6 +51,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		if input.ID == "" || (input.Message == "" || input.From == input.Target) || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
 			return errors.New("delivery requires separate confirmed run members")
 		}
+		queue := input.Deferred && input.TurnID == ""
 		input.State, input.TurnID, input.Error = "dispatching", "", ""
 		if input.Target == main {
 			// Child reports are attributed observations, never user input.
@@ -60,7 +63,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 			return err
 		}
 		var parts []string
-		if input.Deferred {
+		if queue {
 			input.State = "queued"
 		} else if nextTurn {
 			for i := range m.Deliveries {
@@ -76,7 +79,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		m.Deliveries = append(m.Deliveries, input)
 		delivery = input
 		err := s.save(m, path)
-		dispatch = err == nil && !input.Deferred
+		dispatch = err == nil && !queue
 		return err
 	})
 	return

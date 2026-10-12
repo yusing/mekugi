@@ -278,6 +278,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 			t.Fatalf("delivery: %s, %v", encoded, err)
 		}
 	}
+	u.orchestrateThreads["child"].turn = ""
 	for _, text := range []string{"first deferred", "second deferred"} {
 		for range 2 {
 			result = messageCall(t.Context(), "send_message", "main", "batch", text, text)
@@ -291,6 +292,15 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	result = messageCall(t.Context(), "send_message", "main", "batch", "changed", "first deferred")
 	dispatch()
 	take(result, true)
+	u.orchestrateThreads["child"].turn = "child-turn"
+	result = messageCall(t.Context(), "send_message", "main", "batch", "correction", "running-message")
+	dispatch()
+	messageRequest := btwTestRequest(t, w, "turn/steer", "child")
+	if len(messageRequest.Params.Input) != 1 || messageRequest.Params.Input[0].Text != "correction" {
+		t.Fatal("running message", messageRequest)
+	}
+	orchestrateTestReply(t, u, messageRequest, `{"turnId":"child-turn"}`)
+	assertDelivery(take(result, false), "delivered", "child-turn")
 	result = followup(t.Context(), "main", "batch", "continue", "running")
 	dispatch()
 	steers := appServerTurnRequests(t, w)
@@ -422,6 +432,12 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	u.orchestrateMessage(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"followup-turn","status":"completed"}}`)})
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"followup-turn"}}`)
 	assertDelivery(take(result, false), "delivered", "followup-turn")
+	result = messageCall(t.Context(), "send_message", "main", "batch", "correction", "running-message")
+	dispatch()
+	assertDelivery(take(result, false), "delivered", "child-turn")
+	if w.Len() != 0 {
+		t.Fatal("repeated running message dispatched while idle")
+	}
 	result = messageCall(t.Context(), "send_message", "main", "batch", "first deferred", "first deferred")
 	dispatch()
 	assertDelivery(take(result, false), "delivered", "followup-turn")
@@ -446,7 +462,9 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	take(result, false)
 	queued := messageCall(t.Context(), "send_message", "child", "/root/main", "sibling deferred", "sibling-queue")
 	dispatch()
-	assertDelivery(take(queued, false), "queued", "")
+	request = btwTestRequest(t, w, "turn/steer", "sibling-child")
+	orchestrateTestReply(t, u, request, `{"turnId":"sibling-turn"}`)
+	assertDelivery(take(queued, false), "delivered", "sibling-turn")
 	result = followup(t.Context(), "child", "/root/main", "coordinate", "sibling-message")
 	dispatch()
 	request = btwTestRequest(t, w, "turn/steer", "sibling-child")
