@@ -45,6 +45,8 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./internal/ui/...`, plus affected router integration tests |
 | Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
 | Router behavior | `./internal/router` |
+| Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
+| Provider request encoding and stream normalization | `./internal/providercodec`, plus router Grok/OpenCode integration tests |
 | Journal MCP registration, schema, and authenticated reads | `./internal/router ./cmd/mekugi -run '^TestJournalMCP'`; installed-host check below |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |

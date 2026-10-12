@@ -9,6 +9,7 @@ behavioral contract. UI presentation packages and router session integration are
 | --- | --- |
 | Review-diff rendering used by observed change evidence | Root-package `review*.go` |
 | Shared quoted operands, logical rows, source capability, Go lexical, shell-header semantics and filesystem identity | `internal/quotedoperand`, `internal/logicalrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax`, `internal/fileidentity` |
+| Shared source parsing, literal decoding, and nonblocking source-file opens | `internal/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
 | Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
 | Native screen composition and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
@@ -27,13 +28,15 @@ behavioral contract. UI presentation packages and router session integration are
 | Shared Diff syntax and word highlighting | `internal/livediff/render.go`, `internal/livediff/word_diff.go`, `internal/livediff/theme.go`; source previews in `internal/ui/diffview/preview.go` |
 | Codex app-server stdio RPC and child-process lifecycle | `internal/appserver` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
-| Third-party native-agent projection, Grok authentication/translation, and model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
+| Third-party native-agent projection, Grok authentication, and model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
+| Provider request encoding, stream normalization, and Responses lifecycle emission | `internal/providercodec`; resolved provider policy and transport remain in `internal/router/provider_boundary.go`, `internal/router/grok_client.go`, and `internal/router/opencode.go` |
 | Automatic notices and root-visible child activity | `internal/router/critical_errors.go`, `internal/router/subagent_activity.go`; boundaries in `doc/architecture/notices.md` and `doc/architecture/journal.md` |
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |
 | Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
 | Provider-measured output throughput and response-byte receipt timing | `internal/router/output_throughput.go`, `internal/router/thread_usage_store.go`, `internal/router/stream_diagnostics.go`; capture snapshots remain in `capturer` |
 | Stock tool preservation and response observation | `internal/router/mekugi_proxy.go`, `internal/router/mekugi_response_transform.go`, `internal/router/native_apply_patch.go` |
+| Shell/source execution-scope classification and bounded provider queries | `internal/execscope`; host observation and retained-change resolution remain in `internal/router/exec_observation.go` and `internal/router/exec_changes.go` |
 | Model-visible duplicate output references | `internal/router/output_dedupe.go`; content matching in `internal/outputdedupe`; provider-prefix reuse in `internal/router/provider_history.go` |
 | Shell segment reports and measured command timing | `internal/execsegment`, `cmd/mekugi-exec`, `internal/router/exec_track.go`; isolated shell fixtures in `internal/router/exec_track_test.go`, sandbox acceptance in `internal/router/app_server_exec_track_codex_e2e_test.go` |
 | Journal MCP schema, dispatch and launcher registration | `internal/router/journal_mcp.go`, `internal/router/journal_tool.go` (mutation schema), `cmd/mekugi/journal_mcp.go`; state remains with the journal owner |

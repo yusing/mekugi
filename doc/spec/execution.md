@@ -307,7 +307,8 @@ after setup and matching, before draining end-of-command output. For a single
 command, elapsed time spans its begin and EXIT observations, including the small
 boundary and acknowledgment overhead. The shell's EXIT boundary closes the active
 segment if its ordinary end hook was bypassed. Missing boundaries never borrow
-invocation duration. Protocol version 3 carries this timing with boundary reports.
+invocation duration. Protocol version 4 carries this timing with boundary reports
+and a final closure record after all relayed output has drained.
 Output a background descendant writes later is attributed to the segment that
 is running when it arrives. A terminal command is not relayed, because
 programs would detect a pipe; it reports statuses only and keeps the host's
@@ -315,8 +316,8 @@ combined output. The helper never blocks on the router. When reporting falls
 behind or exceeds 4 MiB, it stops reporting output and continues relaying
 unchanged.
 
-A completed command shows its segments only when its report ended with the
-host's own exit status. Otherwise, including a report that ends when the shell
+A completed command shows its segments only when its report reached final closure
+with the host's own exit status. Otherwise, including a report that ends when the shell
 replaces itself or is killed, Activity falls back to the host's combined result.
 Completed, host-validated reports are retained in the managed replay store,
 scoped to the workspace and exact host turn/item identity. Restored history,
