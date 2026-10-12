@@ -375,6 +375,9 @@ accent styling; native subagents retain their identity and role colors. The
 panel has one focus, selection, collapse state and height. Subscribed threads use
 the same current-activity summaries and metric columns as native subagents,
 including captured edit counts from their own workspace and caller identity.
+The viewed root keeps its context usage and output rate in the composer only.
+The roster rule totals usage for that root and its native subagents, excluding
+other independent threads.
 Unavailable threads retain their observed lifecycle state. Displayed lifecycle
 labels use sentence case. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
 cycle these threads, resuming a retained confirmed thread when needed. Activity excludes

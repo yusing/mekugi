@@ -25,7 +25,7 @@
 └───────────────────────────────────────────┘
 ─ 5 Agents · 3 ──────────────────────────────
  ● main         Idle                      0%
- ● batch        Idle                      0%
+ ● batch        Idle
  · batch_work…  Idle                      0%
  Roles: ● review-correctness
 

@@ -30,7 +30,7 @@
 │╰────────────────────────── model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
 ─ 5 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────
- ● main  Idle                                                                     0%  0s · just now
+ ● main  Idle                                                                         0s · just now
  ◐ batch  Run echo batch                                                          0%  0s · just now
 
  1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents¹   ^B 1-5 panes · ^E expand events

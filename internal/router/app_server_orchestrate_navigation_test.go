@@ -255,6 +255,17 @@ func TestUISnapshotOrchestrationRosterActivityMetrics(t *testing.T) {
 		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"active"}}}`, view.thread))
 		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/started","params":{"threadId":%q,"turnId":"active","item":{"id":"run","type":"commandExecution","command":"go test ./...","status":"inProgress"}}}`, view.thread))
 		view.shell.diff.callerCounts = map[string]livediff.Counts{"/root": {Added: 12 + i, Removed: 3 + i}}
+		agent := view.session.agent("/root")
+		agent.InputTokens, agent.OutputTokens = uint64(1200*(i+1)), uint64(240*(i+1))
+		agent.TokensKnown, agent.CostKnown, agent.Cost = true, true, .02*float64(i+1)
+		agent.UsagePartial, agent.CostPartial = i == 0, i == 0
+		agent.ContextKnown, agent.ContextTokens, agent.ContextWindow = true, uint64(12000*(i+1)), 285000
+		agent.OutputThroughput.OutputTokens, agent.OutputThroughput.DurationNanos, agent.OutputThroughput.MeasuredRequests = 170, uint64(10*time.Second), 1
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"thread/started","params":{"thread":{"id":%q,"parentThreadId":%q,"agentNickname":"worker"}}}`, view.thread+"-worker", view.thread))
+		worker := view.session.agent("/root/worker")
+		worker.InputTokens, worker.OutputTokens, worker.TokensKnown = 300, 60, true
+		worker.Cost, worker.CostKnown = .01, true
+		view.agents.apply(activityPaneEvent{Kind: "agents", Agents: view.session.agents})
 	}
 	for _, view := range []*appServerUI{u, v} {
 		view.orchestrationRoster()

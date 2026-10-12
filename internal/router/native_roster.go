@@ -181,7 +181,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	costKnown, partial := false, false
 	tokensPartial := false
 	for _, row := range rows {
-		if nativeThreadRow(row.agent.Name) {
+		if nativeThreadRow(row.agent.Name) && v.orchestrationSources[row.agent.Name] != v {
 			continue
 		}
 		input += row.agent.InputTokens
@@ -395,7 +395,7 @@ func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now t
 	if v.orchestrationRetained[agent.Name] {
 		return parts
 	}
-	if agent.Name != "/root" {
+	if agent.Name != "/root" && v.orchestrationSources[agent.Name] != v {
 		// Main's context and output rate belong to the composer.
 		parts[10] = outputThroughputLabel(agent.OutputThroughput)
 		context := contextWindowLabel(agent)
