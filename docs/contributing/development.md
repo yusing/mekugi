@@ -17,6 +17,17 @@ The suite needs Node.js 24+/ripgrep; lint needs `golangci-lint`/`deadcode` and i
 Focus tests with `TEST_PACKAGES`/`TEST_RUN`/`TEST_FLAGS`; `-count=1` bypasses caching.
 Built-ins are Go; Bun is for separate plugin tests. `make preview-native-ui` uses no models.
 `make test-ui-snapshots` checks fixtures; review before updating. See [test procedures](../../CONTEXT-TESTS.md).
+Enable the repository's commit gate once per clone:
+
+```sh
+git config --local core.hooksPath "$(git rev-parse --show-toplevel)/.githooks"
+```
+
+The gate checks every UI snapshot against the staged source in a temporary checkout.
+The absolute hook path also applies the gate to this clone's other worktrees.
+Unstaged fixes cannot hide stale staged fixtures. A mismatch blocks the commit and
+prints its diff. Review and update the affected baselines, then stage them with the
+source change. The existing Linux CI suite also checks all UI snapshots.
 The [release workflow](../../.github/workflows/release.yml) packages Linux/macOS; tags publish assets.
 
 ## Diagnostics

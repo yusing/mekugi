@@ -112,6 +112,9 @@ fail the target. Linux amd64 CI installs the versions pinned in the release work
 
 ## Terminal UI snapshots
 
+Enable the staged-tree snapshot commit gate as described in
+[Development](docs/contributing/development.md#build-and-test).
+
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
 or model requests. Select a case with `SNAPSHOT='^TestUISnapshotJournalReply$'`.
 Set `SNAPSHOT_PACKAGES=./internal/router` (or another owning package) to avoid

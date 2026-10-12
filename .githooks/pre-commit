@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+# Check the exact tree being committed, including partially staged changes.
+snapshot_tree=$(mktemp -d /tmp/mekugi-staged-snapshots.XXXXXX)
+snapshot_tree=$(cd "$snapshot_tree" && pwd -P)
+trap 'rm -rf -- "$snapshot_tree"' 0
+trap 'exit 1' HUP INT TERM
+mkdir "$snapshot_tree/source" "$snapshot_tree/tmp"
+git checkout-index --all --prefix="$snapshot_tree/source/"
+
+# Nested Git test fixtures must not inherit this commit's repository or index.
+unset $(git rev-parse --local-env-vars)
+cd "$snapshot_tree/source"
+printf 'Checking all UI snapshots in the staged tree...\n'
+if ! env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS -u COLORFGBG TMPDIR="$snapshot_tree/tmp" \
+    make test-ui-snapshots SNAPSHOT_PACKAGES=./... SNAPSHOT='^TestUISnapshot'; then
+    printf '%s\n' 'Commit blocked: review the snapshot diff and stage current baselines.' >&2
+    exit 1
+fi
