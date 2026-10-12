@@ -11,7 +11,6 @@ Call tools.mcp__orchestrate__<tool> with JSON arguments:
 prepare: task_name; optional evidence:[{name,source}] (absolute source files copied into run state)
 spawn_agent: task_name,message; optional model,reasoning_effort,service_tier
 list_agents: {}
-wait_agent: timeout_ms (default 10000)
 send_message,followup_task: target,message
 interrupt_agent: target
 integrate: target (shadow merge and writeback; conflicts write nothing)

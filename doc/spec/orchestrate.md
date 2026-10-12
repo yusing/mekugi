@@ -112,8 +112,12 @@ Unavailable permission settings reject launch rather than guessing a profile.
 
 ## REQ-ORCHESTRATE-003 — Batch lifecycle waits
 
-Main calls `tools.mcp__orchestrate__wait_agent({timeout_ms:10000})` to receive
-the next observed batch completion, journal blocker, failure, question or approval. A wait returns
+Main calls `tools.mcp__orchestrate__wait_agent({targets:"all"})` to receive
+the next observed batch completion, message, journal blocker, failure, question or approval.
+`targets` accepts `"all"` (the default) or a nonempty list of task names or
+`/root/task_name` paths in this run. A targeted wait returns the next event from
+any selected batch; events from other batches remain queued. Invalid or unknown
+targets reject the wait. A wait returns
 the task, available host thread and turn identity, event kind and host status. Prompt events
 identify their host request or asynchronous question item. Cross-thread answering
 remains part of the accepted navigation capability below. Events describe
@@ -129,8 +133,9 @@ restored history do not create another event.
 Terminal outcomes become available only after their run record is saved.
 Persistence failure returns `kind: "failure", status: "storage_failed"`.
 Waiting leaves input and host events responsive. Timeout returns `timed_out: true`;
-cancellation ends that wait without interrupting a child. Timeout defaults to
-ten seconds and accepts one millisecond through twenty-five minutes. Replay
+cancellation ends that wait without interrupting a child. An omitted `timeout_ms`
+waits without a deadline. An explicit timeout accepts one millisecond through
+twenty-five minutes. Replay
 does not recreate wait handles or live prompt requests.
 
 ## REQ-ORCHESTRATE-004 — Batch follow-ups
@@ -201,7 +206,7 @@ after restart without checking the VCS again or reviving processes.
 
 ## REQ-ORCHESTRATE-006 — Restored run discovery
 
-Resuming Main restores its retained run into the Orchestration roster. Preparation
+Resuming Main restores its retained run into the Agents roster. Preparation
 failures, uncertain launch records and confirmed child identities remain visible.
 A recorded running turn displays as interrupted after restart; its stored last
 observation remains unchanged. Other recorded outcomes retain their lifecycle.
@@ -356,19 +361,21 @@ Main or Activity feed. Italic headers and accent-colored rails distinguish
 orchestration from native subagent events without changing their wording.
 Confirmed launches use start events; delivered messages
 and follow-ups use attributed message events. Waiting uses the shared wait
-presentation. Other calls show concise action labels, supplied targets and observed
+presentation and names all or the selected batches. Consecutive wait calls remain
+peer progress rows, without nested wait bullets. Other calls show concise action labels, supplied targets and observed
 call states. Queued input remains queued, and call completion does not claim
 that a batch's work or integration finished. Errors remain visible in the feed.
 Raw results, including delivery IDs, stay in the existing output dialog rather
 than appearing as feed tails. Host item identity replaces a started row with its
 result. Restored calls retain their recorded outcomes without reviving work.
 
-The separate Orchestration pane lists the coordinator and its live batch
-threads, with its own focus, selection and collapse state. Displayed lifecycle
-labels use sentence case. Agents remains scoped to the viewed thread’s native
-subagents. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
-cycle these threads, resuming a retained confirmed thread when needed. Activity includes
-the viewed root. Switching preserves the destination’s selected pane and native
+The Agents pane (5) lists the coordinator and its batch threads together with
+the viewed thread's native subagents. Independent thread rows use italic and
+accent styling; native subagents retain their identity and role colors. The
+panel has one focus, selection, collapse state and height. Displayed lifecycle
+labels use sentence case. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
+cycle these threads, resuming a retained confirmed thread when needed. Activity excludes
+the viewed root and shows only its native subagents. Switching preserves the destination’s selected pane and native
 agent filter. Native child filters remain local to their thread. Without orchestration navigation, these shortcuts resize
 the Diff navigator. The Main pane title shows `main` or `main › batch`.
 Transcript, Activity, native Agents, Journal, Diff, settings and unsent drafts

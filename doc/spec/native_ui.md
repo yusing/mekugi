@@ -287,13 +287,14 @@ spawn evidence supplies it, including after resume and for nested descendants.
 Missing or conflicting spawn evidence supplies no role label; explicit host
 metadata remains authoritative. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
-contextual key hints. Ctrl-B + number focuses a pane. During orchestration, a
-separate Orchestration roster (6) lists the shared run above Agents (5). Agents
-contains only the viewed thread’s native subagents. Each roster has independent
-selection and collapse state: click its title or press `c` while focused to
-collapse or expand it; dragging its title adjusts only that roster’s height.
-Switching threads preserves the shared Orchestration
-selection and each thread’s Agents state.
+contextual key hints. Ctrl-B + number focuses a pane. During orchestration,
+Agents (5) combines the coordinator and independent batch threads with the
+viewed thread's native subagents. Independent thread rows use italic and accent
+styling, while native subagents retain their identity and role colors. The
+roster has one selection and collapse state: click its title or press `c` while
+focused to collapse or expand it; dragging its title adjusts its height.
+Thread rows switch the viewed shell; native subagent rows select its local
+Activity filter. Switching preserves each thread's local filter.
 Uncolored labels in pane and composer borders use the terminal text foreground,
 not the border's decorative foreground. Faint styling and explicit label colors
 remain intact.

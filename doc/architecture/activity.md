@@ -19,7 +19,9 @@ are display data, not assistant speech. Native activity does not wait for a root
 provider response or create model turns.
 
 There is no legacy response projection or inline activity fallback. Main activity
-comes from app-server.
+comes from app-server. Each viewed root's transcript belongs to Main; its Activity
+feed admits only native descendants in that thread tree. Orchestration switching
+does not admit the coordinator, viewed root or sibling batch roots into that feed.
 
 The roster consumes canonical [per-thread usage](usage.md), not a second accounting
 store. Its final edit total consumes the shared saved-review composition, not a sum

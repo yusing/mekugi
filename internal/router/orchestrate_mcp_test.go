@@ -45,6 +45,27 @@ func TestOrchestrateMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	listed, err := client.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitIndex := slices.IndexFunc(listed.Tools, func(tool *mcp.Tool) bool { return tool.Name == "wait_agent" })
+	if waitIndex < 0 {
+		t.Fatal("wait tool missing from MCP discovery")
+	}
+	var waitSchema struct {
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(mustMarshalJSON(listed.Tools[waitIndex].InputSchema), &waitSchema); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(waitSchema.Properties["timeout_ms"].Description, "no timeout") ||
+		!strings.Contains(waitSchema.Properties["targets"].Description, "all (default)") ||
+		strings.Contains(orchestrateCoordinatorInstructions, "wait_agent:") {
+		t.Fatal("wait parameter help must be exposed by MCP, not duplicated in coordinator instructions")
+	}
 	call := func(tool string, args any, meta mcp.Meta, wantError bool) *mcp.CallToolResult {
 		t.Helper()
 		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args, Meta: meta})
