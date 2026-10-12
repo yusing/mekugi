@@ -451,15 +451,24 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	return err
 }
 
-// rosterLimit fits the roster to its rows, within a few rows unless focused.
+// rosterLimit leaves space for every working row before limiting idle history.
 func (u *terminalUI) rosterLimit(height int) int {
 	if u.rosterHeight > 0 {
 		return u.rosterHeight
 	}
+	limit := nativeRosterRows
 	if u.focus == 3 {
-		return max(nativeRosterRows, int(float64(height)*nativeRosterShare))
+		limit = max(limit, int(float64(height)*nativeRosterShare))
 	}
-	return nativeRosterRows
+	working := 0
+	for _, row := range u.agents.nativeRosterRows() {
+		if row.agent.Responding && row.agent.Name != "/root" && row.agent.Name != "/Orchestration/main" {
+			working++
+		}
+	}
+	// Main, a scrollable row, overflow, and the focused role legend need room too.
+	limit = max(limit, working+4)
+	return min(limit, max(1, height-nativeFramedRows-3))
 }
 
 // nativeStatus shows the pane tabs, with Diff and Activity marked as the pair

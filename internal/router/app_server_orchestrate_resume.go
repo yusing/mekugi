@@ -71,15 +71,6 @@ func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
 					delete(v.resumeConfig, "model")
 					delete(v.resumeConfig, "model_reasoning_effort")
 					delete(v.resumeConfig, "service_tier")
-					u.session.roots[thread] = "/orchestrate/" + thread
-					// Scope may have been consumed before this view and its root
-					// were registered. Reconcile the current producer snapshot.
-					if a := v.shell.auto; a != nil {
-						a.mu.Lock()
-						scope := cloneLiveDiffScope(a.scope)
-						a.mu.Unlock()
-						u.applyOrchestrationDiff(v.ctx, liveDiffEvent{Kind: "scope", Scope: &scope})
-					}
 					if err := v.requestResume(thread); err != nil {
 						n.finishResume(thread, err)
 					}

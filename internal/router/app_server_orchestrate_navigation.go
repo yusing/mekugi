@@ -80,7 +80,13 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 	v.agents.hideRootRoster = true
 	v.shell.faint = u.shell != nil && u.shell.faint
 	v.shell.diff.workspace = child.batch.Cwd
+	n.views[thread] = v
+	n.order = append(n.order, thread)
+	n.owner.session.roots[thread] = "/orchestrate/" + thread
 	v.restoreDiffThread(result.Thread, true)
+	// Host registration can publish the scope before this controller exists.
+	// includeThread does not publish again when that identity is already known.
+	v.syncOrchestrationDiffScope()
 	if u.proxy.activity != nil {
 		u.proxy.activity.attachNativePane(thread)
 	}
@@ -93,8 +99,6 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 		}
 	}
 	v.guardHookCheck.hash = u.guardHookCheck.hash
-	n.views[thread] = v
-	n.order = append(n.order, thread)
 	v.journal = u.proxy.journals.attachNative(child.batch.Cwd, thread)
 	v.unscopedJournal = u.proxy.journals.attachNative("", thread)
 	u.orchestrateWork(func() func() {
@@ -387,6 +391,10 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 	}
 	if n.viewed != n.views[thread] {
 		n.viewed.quitConfirmationKey("\x1b")
+		from, to := n.viewed.shell, n.views[thread].shell
+		to.focus, to.side = from.focus, from.side
+		to.journalOpen, to.diffOpen, to.activityOpen = from.journalOpen, from.diffOpen, from.activityOpen
+		to.autoActivity = false
 	}
 	n.viewed = n.views[thread]
 	n.viewed.orchestrationRoster()

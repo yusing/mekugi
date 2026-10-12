@@ -60,6 +60,70 @@ func TestAppServerOrchestrateActivityScope(t *testing.T) {
 	}
 }
 
+func TestAppServerOrchestrateSwitchPane(t *testing.T) {
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+	v := u.navigation.views["child"]
+	for _, view := range []*appServerUI{u, v} {
+		view.modelsLoading = true
+		view.agents.selected, view.agents.only = "/root/"+view.thread, true
+	}
+	for _, pane := range []int{1, 2, 4} {
+		for _, focus := range []int{0, pane, 3} {
+			u.shell.selectNativePane(pane)
+			u.shell.focus = focus
+			v.shell.selectNativePane(4)
+			u.switchOrchestratedThread("child")
+			if v.shell.focus != focus || v.shell.diffOpen != u.shell.diffOpen || v.shell.journalOpen != u.shell.journalOpen {
+				t.Fatalf("pane %d focus %d changed on switch", pane, focus)
+			}
+			u.switchOrchestratedThread("main")
+			for _, view := range []*appServerUI{u, v} {
+				if !view.agents.only || view.agents.selected != "/root/"+view.thread {
+					t.Fatal("switch changed native Activity filter", view.thread)
+				}
+			}
+		}
+	}
+}
+
+func TestAppServerOrchestrateFreshDiffAdmission(t *testing.T) {
+	replay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, launch := orchestrateIdentityPendingTurnWithReplay(t, replay)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+	auto, stop := newAutoLiveDiff(t.Context(), replay.directory)
+	defer stop()
+	auto.enable()
+	u.proxy.autoLiveDiff, u.shell.auto = auto, auto
+	second := *u.orchestrateThreads["child"]
+	second.batch.TaskName = "second"
+	copyLaunch := *second.batch.Launch
+	copyLaunch.ThreadID = "child2"
+	second.batch.Launch = &copyLaunch
+	u.orchestrateThreads["child2"] = &second
+	workspace := second.batch.Cwd
+	liveDiffScopeCapture(t, replay, workspace, "child2", "saved-edit", filepath.Join(workspace, "file"), "before", "after")
+	sub := auto.events.subscribe()
+	auto.includeThread(workspace, "child2", true)
+	for len(sub.events) > 0 {
+		u.applyOrchestrationDiff(t.Context(), <-sub.events)
+	}
+	// An authenticated request can publish its scope before the launch callback
+	// creates a controller. A repeated includeThread emits no replacement scope.
+	raw := mustMarshalJSON(map[string]any{"thread": appServerThreadInfo{ID: "child2", Cwd: workspace}})
+	if err := u.addOrchestratedView(&second, raw, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	drainOrchestrateWork(t, u)
+	v := u.navigation.views["child2"]
+	if len(v.shell.diff.data.files()) != 1 || len(u.shell.diff.data.files()) != 0 {
+		t.Fatal("fresh child lost prepublished Diff scope or crossed roots")
+	}
+}
+
 func TestAppServerOrchestrateNavigationLineage(t *testing.T) {
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -240,6 +304,60 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 		rows := view.agents.nativeRoster(test.width, limit, now, true)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-agents-"+test.name+"-styles.txt", append(rows, "plain after roster"), test.width)
 		screen.Close()
+	}
+}
+
+func TestUISnapshotOrchestrationWorkingRoster(t *testing.T) {
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+	v := u.navigation.views["child"]
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	for _, view := range []*appServerUI{u, v} {
+		view.clock = func() time.Time { return now }
+		view.view.clock, view.agents.clock = view.clock, view.clock
+		view.view.painter.Theme, view.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+		view.modelsLoading = true
+	}
+	for i := range 22 {
+		thread := fmt.Sprintf("%02d-worker", i)
+		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "parentThreadId": "child", "agentNickname": thread}})
+		if i > 0 && i < 9 {
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "working"}})
+		}
+	}
+	u.switchOrchestratedThread("child")
+	v.agents.rosterSelected = "/root/08-worker"
+	for _, test := range []struct {
+		name          string
+		height, focus int
+	}{
+		{"working", 40, 0}, {"scrolled", 40, 3}, {"short", 16, 3},
+	} {
+		v.shell.focus = test.focus
+		v.shell.paintedRows = nil
+		v.agents.rosterManual, v.agents.rosterOffset = test.focus == 3, 8
+		var frame bytes.Buffer
+		if err := v.paint(&frame, 100, test.height); err != nil {
+			t.Fatal(err)
+		}
+		screen := vt.NewEmulator(100, test.height)
+		_, _ = screen.Write(frame.Bytes())
+		uisnapshot.Assert(t, "testdata/snapshots/orchestration-roster-"+test.name+".txt", screen.String()+"\n")
+		screen.Close()
+		shown := make(map[string]bool)
+		for _, hit := range v.agents.hits {
+			shown[hit.agent] = true
+		}
+		if !shown["/Orchestration/main"] {
+			t.Fatal("Main scrolled out of the roster")
+		}
+		if test.height == 40 {
+			for _, row := range v.agents.nativeRosterRows() {
+				if row.agent.Responding && !shown[row.agent.Name] {
+					t.Fatal("working row hidden", row.agent.Name)
+				}
+			}
+		}
 	}
 }
 

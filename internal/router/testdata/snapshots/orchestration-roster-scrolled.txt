@@ -1,0 +1,40 @@
+┌ 1 main › batch ────────────────────────────────┐┌ 4 Journal ─────────── space expand · d details ┐
+│Mekugi dev • codex                              ││ No journal entries.                            │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│                                                ││                                                │
+│╭─ ◐ Working 0s ───────────────────────────────╮││                                                │
+││ ❯                                            │││                                                │
+│╰───────────────────────────────────────── 0% ─╯││                                                │
+└────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
+─ 5 Agents · 24 · 8 working ────────────────────────────────────────────────────────────────────────
+ ● main       Idle                                                                0%
+ ◐ 01-worker  Working                                                             0%  0s · just now
+ ◐ 02-worker  Working                                                             0%  0s · just now
+ ◐ 03-worker  Working                                                             0%  0s · just now
+ ◐ 04-worker  Working                                                             0%  0s · just now
+ ◐ 05-worker  Working                                                             0%  0s · just now
+ ◐ 06-worker  Working                                                             0%  0s · just now
+ ◐ 07-worker  Working                                                             0%  0s · just now
+ ◐ 08-worker  Working                                                             0%  0s · just now
+ ● 15-worker  Idle                                                                0%
+ ● 16-worker  Idle                                                                0%
+ ● 17-worker  Idle                                                                0%
+ ● 18-worker  Idle                                                                0%
+ ● 19-worker  Idle                                                                0%
+ ● 20-worker  Idle                                                                0%
+   +9 more · scroll
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents⁸   enter switch/filter · j/k agent · a only ·

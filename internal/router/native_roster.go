@@ -259,20 +259,37 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	if len(v.orchestration) != 0 {
 		cursor = v.rosterSelected
 	}
-	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.agent.Name == cursor }))
-	start := 0
+	// Keep Main and working agents above the scrollable idle/history rows.
+	// On very short screens Main wins; leave space to scroll the remaining rows.
+	var pinned []nativeRosterItem
 	if len(items) > limit {
-		start = max(0, min(selected-limit+2, len(items)-limit+1))
+		items = slices.DeleteFunc(items, func(item nativeRosterItem) bool {
+			name := item.row.agent.Name
+			if item.finished == nil && len(pinned) < max(1, limit-2) &&
+				(name == "/root" || name == "/Orchestration/main" || item.row.agent.Responding) {
+				pinned = append(pinned, item)
+				return true
+			}
+			return false
+		})
+		limit -= len(pinned)
 	}
-	if v.rosterManual {
-		start = min(v.rosterOffset, max(0, len(items)-limit+1))
+	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.agent.Name == cursor }))
+	capacity := limit
+	if limit > 1 && len(items) > limit {
+		capacity-- // Room for the hidden-count row.
 	}
-	end := min(len(items), start+limit)
-	if end < len(items) {
-		end-- // Room for the hidden-count row.
+	start := 0
+	if capacity > 0 && len(items) > capacity {
+		start = max(0, min(selected-capacity+1, len(items)-capacity))
 	}
+	if capacity > 0 && v.rosterManual {
+		start = min(v.rosterOffset, max(0, len(items)-capacity))
+	}
+	end := min(len(items), start+capacity)
+	visible := slices.Concat(pinned, items[start:end])
 	nameWidth := 4
-	for _, item := range items[start:end] {
+	for _, item := range visible {
 		if item.finished != nil {
 			continue
 		}
@@ -294,7 +311,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var laid []agentLine
 	var parts [][nativeMetricParts]string
 	widest := 0
-	for _, item := range items[start:end] {
+	for _, item := range visible {
 		if item.finished != nil {
 			var names []string
 			for _, row := range item.finished {
@@ -375,8 +392,8 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		lines = append(lines, line)
 		v.hits = append(v.hits, liveActivityHit{row: len(lines), first: 1, last: width, agent: item.row.agent.Name})
 	}
-	if hidden := len(items) - end; hidden > 0 {
-		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B %d shows all", hidden, digit)+activityui.Undim, width, "…"))
+	if hidden := len(items) - (end - start); hidden > 0 && limit > 1 {
+		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · scroll", hidden)+activityui.Undim, width, "…"))
 	}
 	if legend != "" {
 		lines = append(lines, legend)
