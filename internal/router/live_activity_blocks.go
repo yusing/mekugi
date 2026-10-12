@@ -405,8 +405,9 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		}
 		operations := toolOperationBlocks(livediff.Safe(segment.text, false))
 		if receipt != nil && !segment.running && !segment.skipped && segment.exit == 0 {
+			writer := execSegmentEdits(segment.source)
 			operations = slices.DeleteFunc(operations, func(block activityui.Block) bool {
-				return slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb)
+				return slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) || writer && block.Verb == "Run"
 			})
 			// The capture replaces edit intent, never the host's output. Keep
 			// an output-bearing edit-only segment as its real shell command.

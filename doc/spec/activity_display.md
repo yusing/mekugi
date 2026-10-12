@@ -28,10 +28,14 @@ as a trailing file label; each comma-separated source uses its own Bash syntax
 highlighting, including shell commands such as `git stash push`, rather than
 Markdown styling. Requested edit intent keeps the requested verb, such as `Edit`,
 in amber and never reads `Edited`; the first row ends with `· requested`, and its
-`(requested)` marker is not shown as source text. A successful tracked edit segment
-instead shows `Edit PATH via TOOL · ran` as soon as its writer command completes,
-even before following commands end. This includes successful no-ops and reports
-command completion, not confirmed file changes or counts. Running and untracked
+`(requested)` marker is not shown as source text. Once tracked writers finish,
+observed file differences replace their intent with past-tense rows and captured
+counts, even while following commands still run. These rows describe observed
+filesystem effects; they do not complete the host invocation or publish a durable
+change ID. The terminal host result still owns retained change evidence.
+A successful tracked edit without observed differences shows
+`Edit PATH via TOOL · ran`, including no-ops and unavailable capture.
+Running and untracked
 edit intent keeps `· requested`. A started patch that has not
 completed, including one awaiting approval, ends with `· pending`; a `failed` or
 `declined` patch uses a red verb and ends with `· failed` or `· declined`, named
