@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/providercodec"
 )
 
 func TestProviderBoundaryChatUsage(t *testing.T) {
@@ -34,8 +36,8 @@ func TestProviderBoundaryChatUsage(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, ok := tr.endpoint.(chatEndpoint); !ok {
-					t.Fatalf("expected Chat endpoint, got %T", tr.endpoint)
+				if tr.format != "chat" {
+					t.Fatalf("expected Chat endpoint, got %s", tr.format)
 				}
 				usage := map[string]any{"prompt_tokens": 11, "completion_tokens": 7}
 				if counts.nested != 0 {
@@ -49,12 +51,12 @@ func TestProviderBoundaryChatUsage(t *testing.T) {
 					map[string]any{"choices": []any{}, "usage": usage},
 				)
 				var terminal map[string]any
-				result, err := tr.readProviderStream(strings.NewReader(stream), func(event map[string]any) error {
+				result, err := tr.codec.Read(strings.NewReader(stream), func(event map[string]any) error {
 					if event["type"] == "response.completed" {
 						terminal = event["response"].(map[string]any)
 					}
 					return nil
-				})
+				}, openCodeTestFailureDetail)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -93,44 +95,19 @@ func TestProviderBoundaryOpenCodeChatFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := tr.endpoint.(chatEndpoint); !ok {
-				t.Fatalf("expected Chat endpoint, got %T", tr.endpoint)
+			if tr.format != "chat" {
+				t.Fatalf("expected Chat endpoint, got %s", tr.format)
 			}
 			assertProviderBoundaryFailure(t, tr, test.stream, test.code, test.message)
 		})
 	}
 }
 
-func TestProviderBoundarySuppliedDiagnostics(t *testing.T) {
-	policy := translationPolicy{diagnostics: providerDiagnostics{name: "Fixture Provider", subject: "fixture route", prefix: "fixture"}}
-	t.Run("validator", func(t *testing.T) {
-		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-			"model": "fixture-model", "input": []any{}, "previous_response_id": "old",
-		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = translateResponsesForProvider(request, "fixture-model", policy, chatEndpoint{})
-		if err == nil || err.Error() != "fixture route requires explicit conversation history, not previous_response_id" {
-			t.Fatalf("validator ignored supplied provider diagnostics: %v", err)
-		}
-	})
-	t.Run("decoder", func(t *testing.T) {
-		tr := &providerTranslation{policy: policy, endpoint: chatEndpoint{}}
-		assertProviderBoundaryFailure(t, tr, "data: not-json\n\n", "fixture_stream_invalid_json", "invalid JSON in Fixture Provider response stream")
-	})
-	t.Run("shared emitter", func(t *testing.T) {
-		tr := &providerTranslation{policy: policy, endpoint: chatEndpoint{}}
-		stream := grokTestSSE(map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "tool_calls"}}})
-		assertProviderBoundaryFailure(t, tr, stream, "fixture_stream_missing_calls", "Fixture Provider finished tool calls without a call")
-	})
-}
-
 func TestProviderBoundaryMixedRefusalDiagnostics(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
-	for _, policy := range []translationPolicy{grokTranslationPolicy(), openCodeTranslationPolicy(&service, openCodeTestModel(service), "chat")} {
-		t.Run(policy.diagnostics.name, func(t *testing.T) {
-			tr := &providerTranslation{policy: policy, endpoint: chatEndpoint{}}
+	for _, policy := range []providercodec.Policy{grokTranslationPolicy(), openCodeTranslationPolicy(&service, openCodeTestModel(service), "chat")} {
+		t.Run(policy.Diagnostics.Name, func(t *testing.T) {
+			tr := testProviderRequest(t, policy, "", "chat", nil)
 			stream := grokTestSSE(map[string]any{"choices": []any{map[string]any{
 				"index": 0, "delta": map[string]string{"content": "text", "refusal": "refusal"},
 			}}})
@@ -140,13 +117,13 @@ func TestProviderBoundaryMixedRefusalDiagnostics(t *testing.T) {
 	}
 }
 
-func assertProviderBoundaryFailure(t *testing.T, tr *providerTranslation, stream, code, message string) {
+func assertProviderBoundaryFailure(t *testing.T, tr *providerRequest, stream, code, message string) {
 	t.Helper()
 	var events []map[string]any
-	result, err := tr.readProviderStream(strings.NewReader(stream), func(event map[string]any) error {
+	result, err := tr.codec.Read(strings.NewReader(stream), func(event map[string]any) error {
 		events = append(events, event)
 		return nil
-	})
+	}, openCodeTestFailureDetail)
 	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
 	if result != nil || !ok || diagnostic.code != code || err.Error() != message {
 		t.Fatalf("result=%v error=%v; want diagnostic %s: %s", result, err, code, message)

@@ -1,4 +1,4 @@
-package router
+package providercodec
 
 import (
 	"encoding/json"
@@ -35,7 +35,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 			}
 			// A new translation has no process-local alias state, as on resume.
 			for range 2 {
-				tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
+				tr, err := testTranslate(mustTestJSON(t, request))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -72,7 +72,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 					}}}, "finish_reason": "tool_calls",
 				}}})
 				done := 0
-				result, err := tr.readProviderStream(strings.NewReader(stream), func(event map[string]any) error {
+				result, err := tr.codec.Read(strings.NewReader(stream), func(event map[string]any) error {
 					if event["type"] == "response.function_call_arguments.done" {
 						done++
 						if event["name"] != "wait" || event["arguments"] != arguments || event["call_id"] != "next-call" {
@@ -80,7 +80,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 						}
 					}
 					return nil
-				})
+				}, testFailureDetail)
 				if err != nil || done != 1 || result["status"] != "completed" {
 					t.Fatalf("wait failed: result=%v done=%d err=%v", result, done, err)
 				}
@@ -111,7 +111,7 @@ func TestGrokWaitIntegerParameters(t *testing.T) {
 			} else {
 				request["tools"] = []any{definition}
 			}
-			tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
+			tr, err := testTranslate(mustTestJSON(t, request))
 			if err != nil {
 				t.Fatal(err)
 			}

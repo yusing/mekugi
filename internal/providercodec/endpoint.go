@@ -1,4 +1,6 @@
-package router
+package providercodec
+
+// Source: internal/router/provider_endpoint.go:1:144@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 import (
 	"encoding/json"
@@ -10,8 +12,8 @@ import (
 // Endpoint adapters encode validated request data and normalize their own stream
 // framing. They do not select a provider or emit the Responses lifecycle.
 type providerEndpoint interface {
-	encode(string, []providerMessage, []map[string]any, providerOptions, providerDiagnostics) (map[string]any, error)
-	readStream(io.Reader, providerDiagnostics, func(providerChunk) error) error
+	encode(string, []providerMessage, []map[string]any, providerOptions, Diagnostics) (map[string]any, error)
+	readStream(io.Reader, Diagnostics, func(providerChunk) error) error
 }
 
 type providerOptions struct {
@@ -25,18 +27,18 @@ type providerOptions struct {
 }
 
 // Source: internal/router/grok_protocol.go:339:468@413bbaa9b9202042199c753690febe7bc1358fa6 translateChatRequest
-func validateProviderOptions(fields map[string]json.RawMessage, tools map[string]providerTool, policy translationPolicy) (providerOptions, error) {
-	d := policy.diagnostics
+func validateProviderOptions(fields map[string]json.RawMessage, tools map[string]providerTool, policy Policy) (providerOptions, error) {
+	d := policy.Diagnostics
 	o := providerOptions{fields: fields}
 	if raw, ok := fields["tool_choice"]; ok && len(tools) > 0 {
 		if json.Unmarshal(raw, &o.choice) != nil {
 			var obj map[string]json.RawMessage
 			if err := json.Unmarshal(raw, &obj); err != nil {
-				return o, fmt.Errorf("unsupported %s tool choice", d.name)
+				return o, fmt.Errorf("unsupported %s tool choice", d.Name)
 			}
 			o.namedTool = providerToolName(jsonString(obj, "namespace"), jsonString(obj, "name"))
 			if _, ok := tools[o.namedTool]; !ok {
-				return o, fmt.Errorf("%s tool choice references an unavailable tool", d.subject)
+				return o, fmt.Errorf("%s tool choice references an unavailable tool", d.Subject)
 			}
 		}
 	}
@@ -48,10 +50,10 @@ func validateProviderOptions(fields map[string]json.RawMessage, tools map[string
 			Effort string `json:"effort"`
 		}
 		if json.Unmarshal(raw, &reasoning) != nil {
-			return o, fmt.Errorf("invalid %s reasoning settings", d.name)
+			return o, fmt.Errorf("invalid %s reasoning settings", d.Name)
 		}
 		var err error
-		o.effort, err = policy.resolveEffort(reasoning.Effort)
+		o.effort, err = policy.ResolveEffort(reasoning.Effort)
 		if err != nil {
 			return o, err
 		}
@@ -71,7 +73,7 @@ func validateProviderOptions(fields map[string]json.RawMessage, tools map[string
 			switch jsonString(o.textFormat, "type") {
 			case "", "text", "json_object", "json_schema":
 			default:
-				return o, fmt.Errorf("unsupported %s structured output format", d.name)
+				return o, fmt.Errorf("unsupported %s structured output format", d.Name)
 			}
 		}
 	}
@@ -88,9 +90,9 @@ func providerRequestBody(model string, o providerOptions) map[string]any {
 	return body
 }
 
-func rejectUnsignedReasoning(message providerMessage, d providerDiagnostics) error {
+func rejectUnsignedReasoning(message providerMessage, d Diagnostics) error {
 	if message.reasoning != "" {
-		return incompatibleRequest(d.prefix+"_encrypted_history", fmt.Sprintf("Changing %s API formats requires a fresh thread; unsigned reasoning cannot replace provider replay data.", d.name))
+		return d.Incompatible(d.Prefix+"_encrypted_history", fmt.Sprintf("Changing %s API formats requires a fresh thread; unsigned reasoning cannot replace provider replay data.", d.Name))
 	}
 	return nil
 }
@@ -110,7 +112,7 @@ type providerCall struct {
 	id, name, arguments string
 }
 
-func endpointContent(value any, render func(map[string]any) (map[string]any, error), d providerDiagnostics) ([]any, error) {
+func endpointContent(value any, render func(map[string]any) (map[string]any, error), d Diagnostics) ([]any, error) {
 	var parts []any
 	switch value := value.(type) {
 	case nil:
@@ -122,7 +124,7 @@ func endpointContent(value any, render func(map[string]any) (map[string]any, err
 	case []any:
 		parts = value
 	default:
-		return nil, fmt.Errorf("unsupported %s message content", d.name)
+		return nil, fmt.Errorf("unsupported %s message content", d.Name)
 	}
 	var result []any
 	for _, raw := range parts {
@@ -130,7 +132,7 @@ func endpointContent(value any, render func(map[string]any) (map[string]any, err
 		if !ok {
 			text, ok := raw.(map[string]string)
 			if !ok {
-				return nil, fmt.Errorf("unsupported %s content part", d.name)
+				return nil, fmt.Errorf("unsupported %s content part", d.Name)
 			}
 			part = map[string]any{"type": text["type"], "text": text["text"]}
 		}

@@ -1,4 +1,6 @@
-package router
+package providercodec
+
+// Source: internal/router/provider_protocol.go:1:324@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 import (
 	"crypto/sha256"
@@ -8,16 +10,14 @@ import (
 	"strings"
 )
 
-const grokModel = "grok:grok-4.6"
-
 type providerTool struct{ name, namespace, kind string }
-type providerTranslation struct {
-	policy                translationPolicy
-	endpoint              providerEndpoint
-	providerFailureDetail func([]byte) string
-	body                  map[string]any
-	tools                 map[string]providerTool
-	stream                bool
+// Stream retains validated native tool identities for one translated request.
+// Endpoint framing and normalized chunks remain private to the codec.
+type Stream struct {
+	policy   Policy
+	endpoint providerEndpoint
+	model    string
+	tools    map[string]providerTool
 }
 
 func providerToolName(namespace, name string) string {
@@ -71,31 +71,42 @@ func providerFunctionParameters(namespace, name string, parameters json.RawMessa
 	return mustMarshalJSON(schema)
 }
 
-// translateResponsesForProvider validates shared tool identity and history, then builds
+// Translate validates shared tool identity and history, then builds
 // the selected provider's endpoint request without an intermediate Chat request.
 // It translates only representations with defined equivalents, never treating
 // encrypted_content as text or silently removing unsupported history items.
 // The caller remains responsible for executing tools.
 // Source: internal/router/grok_protocol.go:81:477@413bbaa9b9202042199c753690febe7bc1358fa6 translateChatRequest
-func translateResponsesForProvider(request parsedResponsesRequest, model string, policy translationPolicy, endpoint providerEndpoint) (*providerTranslation, error) {
-	d := policy.diagnostics
-	if value := jsonString(request.fields, "previous_response_id"); value != "" {
-		return nil, fmt.Errorf("%s requires explicit conversation history, not previous_response_id", d.subject)
+func Translate(fields map[string]json.RawMessage, model, format string, policy Policy) (map[string]any, *Stream, error) {
+	var endpoint providerEndpoint
+	switch format {
+	case "chat":
+		endpoint = chatEndpoint{}
+	case "anthropic":
+		endpoint = messagesEndpoint{}
+	case "responses":
+		endpoint = responsesEndpoint{}
+	default:
+		return nil, nil, fmt.Errorf("unsupported provider API format %q", format)
 	}
-	tr := &providerTranslation{policy: policy, endpoint: endpoint, tools: make(map[string]providerTool), stream: request.streamResponse}
+	d := policy.Diagnostics
+	if value := jsonString(fields, "previous_response_id"); value != "" {
+		return nil, nil, fmt.Errorf("%s requires explicit conversation history, not previous_response_id", d.Subject)
+	}
+	tr := &Stream{policy: policy, endpoint: endpoint, tools: make(map[string]providerTool), model: model}
 	noHostedSearch := false
 	var tools []map[string]any
 	var addTools func(json.RawMessage, string) error
 	addTools = func(raw json.RawMessage, namespace string) error {
 		var defs []map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &defs); err != nil {
-			return fmt.Errorf("decode %s tools: %w", d.name, err)
+			return fmt.Errorf("decode %s tools: %w", d.Name, err)
 		}
 		for _, def := range defs {
 			kind, name := jsonString(def, "type"), jsonString(def, "name")
 			if kind == "namespace" {
 				if namespace != "" {
-					return fmt.Errorf("nested tool namespaces are not supported by %s", d.name)
+					return fmt.Errorf("nested tool namespaces are not supported by %s", d.Name)
 				}
 				if err := addTools(def["tools"], name); err != nil {
 					return err
@@ -105,11 +116,11 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 			switch kind {
 			case "function", "custom":
 				if name == "" {
-					return fmt.Errorf("%s tool has no name", d.subject)
+					return fmt.Errorf("%s tool has no name", d.Subject)
 				}
 				wireName := providerToolName(namespace, name)
 				if _, exists := tr.tools[wireName]; exists {
-					return fmt.Errorf("duplicate %s tool identity", d.name)
+					return fmt.Errorf("duplicate %s tool identity", d.Name)
 				}
 				tr.tools[wireName] = providerTool{name: name, namespace: namespace, kind: kind}
 				fn := map[string]any{"name": wireName, "description": jsonString(def, "description")}
@@ -123,14 +134,14 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 						fn["strict"] = strict
 					}
 				} else {
-					fn["parameters"] = map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string", "description": embeddedInstruction("grok_input")}}, "required": []string{"input"}, "additionalProperties": false}
+					fn["parameters"] = map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string", "description": policy.CustomInputInstruction}}, "required": []string{"input"}, "additionalProperties": false}
 					if namespace == "" && name == "exec" {
 						// Codex's description leaves implicit that unprinted nested
 						// results never reach the model; other models miss it.
-						fn["description"] = fn["description"].(string) + "\n" + embeddedInstruction("grok_exec")
+						fn["description"] = fn["description"].(string) + "\n" + policy.ExecInstruction
 					}
 					if format, ok := def["format"]; ok {
-						fn["description"] = fn["description"].(string) + "\n" + embeddedInstruction("grok_format_prefix") + " " + string(format)
+						fn["description"] = fn["description"].(string) + "\n" + policy.FormatInstructionPrefix + " " + string(format)
 					}
 				}
 				tools = append(tools, fn)
@@ -139,31 +150,31 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 				// unavailable executor; explicitly describe this capability difference.
 				noHostedSearch = true
 			default:
-				return fmt.Errorf("%s does not support provider tool type %q", d.subject, kind)
+				return fmt.Errorf("%s does not support provider tool type %q", d.Subject, kind)
 			}
 		}
 		return nil
 	}
-	if raw, ok := request.fields["tools"]; ok {
+	if raw, ok := fields["tools"]; ok {
 		if err := addTools(raw, ""); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	var input []map[string]json.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
-		return nil, fmt.Errorf("%s requires an array of conversation items", d.subject)
+	if err := json.Unmarshal(fields["input"], &input); err != nil {
+		return nil, nil, fmt.Errorf("%s requires an array of conversation items", d.Subject)
 	}
 	for _, item := range input {
 		if jsonString(item, "type") == "additional_tools" {
 			if err := addTools(item["tools"], ""); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 	}
 	messages := []providerMessage{}
-	instructions := jsonString(request.fields, "instructions")
+	instructions := jsonString(fields, "instructions")
 	if noHostedSearch {
-		instructions += policy.noHostedSearchInstruction
+		instructions += policy.NoHostedSearchInstruction
 	}
 	if instructions != "" {
 		messages = append(messages, providerMessage{role: "system", content: instructions})
@@ -181,11 +192,11 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 			switch role {
 			case "system", "user", "assistant":
 			default:
-				return nil, fmt.Errorf("unsupported %s message role %q", d.name, role)
+				return nil, nil, fmt.Errorf("unsupported %s message role %q", d.Name, role)
 			}
 			content, err := providerContent(item["content"], d)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			// Streamed reasoning precedes its response's text, so the
 			// assistant it opened receives that text.
@@ -198,7 +209,7 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 		case "agent_message":
 			content, err := providerContent(item["content"], d)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			messages = append(messages, providerMessage{role: "user", content: content})
 		case "function_call", "custom_tool_call":
@@ -207,12 +218,12 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 			if kind == "custom_tool_call" {
 				var input *string
 				if json.Unmarshal(item["input"], &input) != nil || input == nil {
-					return nil, fmt.Errorf("%s custom tool history input is not a string", d.subject)
+					return nil, nil, fmt.Errorf("%s custom tool history input is not a string", d.Subject)
 				}
 				arguments = string(mustMarshalJSON(map[string]string{"input": *input}))
 			}
 			if !json.Valid([]byte(arguments)) {
-				return nil, fmt.Errorf("invalid JSON in %s tool-call history", d.name)
+				return nil, nil, fmt.Errorf("invalid JSON in %s tool-call history", d.Name)
 			}
 			call := providerCall{id: jsonString(item, "call_id"), name: name, arguments: arguments}
 			if len(messages) == 0 || messages[len(messages)-1].role != "assistant" {
@@ -223,14 +234,14 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 		case "function_call_output", "custom_tool_call_output":
 			content, err := providerContent(item["output"], d)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			messages = append(messages, providerMessage{role: "tool", callID: jsonString(item, "call_id"), content: content})
 		case "reasoning":
-			if policy.restoreReasoning != nil && jsonString(item, "encrypted_content") != "" {
-				restored, err := policy.restoreReasoning(jsonString(item, "encrypted_content"))
+			if policy.RestoreReasoning != nil && jsonString(item, "encrypted_content") != "" {
+				restored, err := policy.RestoreReasoning(jsonString(item, "encrypted_content"))
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if len(messages) == 0 || messages[len(messages)-1].role != "assistant" {
 					messages = append(messages, providerMessage{role: "assistant"})
@@ -240,20 +251,20 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 				continue
 			}
 			if encrypted := jsonString(item, "encrypted_content"); encrypted != "" {
-				return nil, incompatibleRequest(d.prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted OpenAI reasoning; start a fresh %s thread or spawn with fork_turns=none.", d.name, d.name))
+				return nil, nil, d.Incompatible(d.Prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted OpenAI reasoning; start a fresh %s thread or spawn with fork_turns=none.", d.Name, d.Name))
 			}
-			if policy.replaySummaries {
+			if policy.ReplaySummaries {
 				var summary []struct {
 					Type string `json:"type"`
 					Text string `json:"text"`
 				}
 				if err := json.Unmarshal(item["summary"], &summary); err != nil {
-					return nil, fmt.Errorf("invalid %s reasoning history", d.name)
+					return nil, nil, fmt.Errorf("invalid %s reasoning history", d.Name)
 				}
 				var reasoning strings.Builder
 				for _, part := range summary {
 					if part.Type != "summary_text" {
-						return nil, fmt.Errorf("unsupported %s reasoning history", d.name)
+						return nil, nil, fmt.Errorf("unsupported %s reasoning history", d.Name)
 					}
 					reasoning.WriteString(part.Text)
 				}
@@ -267,31 +278,31 @@ func translateResponsesForProvider(request parsedResponsesRequest, model string,
 			}
 			// Unencrypted reasoning summaries are explanatory metadata, not messages.
 		default:
-			return nil, fmt.Errorf("%s cannot translate history item type %q", d.subject, kind)
+			return nil, nil, fmt.Errorf("%s cannot translate history item type %q", d.Subject, kind)
 		}
 	}
 
-	options, err := validateProviderOptions(request.fields, tr.tools, policy)
+	options, err := validateProviderOptions(fields, tr.tools, policy)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	tr.body, err = endpoint.encode(model, messages, tools, options, d)
+	body, err := endpoint.encode(model, messages, tools, options, d)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return tr, nil
+	return body, tr, nil
 }
 
 // Source: internal/router/grok_protocol.go:479:516@413bbaa9b9202042199c753690febe7bc1358fa6 grokContent
-func providerContent(raw json.RawMessage, d providerDiagnostics) (any, error) {
+func providerContent(raw json.RawMessage, d Diagnostics) (any, error) {
 	var text *string
 	if json.Unmarshal(raw, &text) == nil && text != nil {
 		return *text, nil
 	}
 	var parts []map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &parts); err != nil || parts == nil {
-		return nil, fmt.Errorf("unsupported %s message content", d.name)
+		return nil, fmt.Errorf("unsupported %s message content", d.Name)
 	}
 	if len(parts) == 0 {
 		return "", nil
@@ -305,7 +316,7 @@ func providerContent(raw json.RawMessage, d providerDiagnostics) (any, error) {
 		case "input_image":
 			imageURL := jsonString(part, "image_url")
 			if imageURL == "" {
-				return nil, fmt.Errorf("%s requires an image URL or data URL, not a provider file ID", d.subject)
+				return nil, fmt.Errorf("%s requires an image URL or data URL, not a provider file ID", d.Subject)
 			}
 			image := map[string]string{"url": imageURL}
 			if detail := jsonString(part, "detail"); detail != "" {
@@ -315,9 +326,9 @@ func providerContent(raw json.RawMessage, d providerDiagnostics) (any, error) {
 		case "refusal":
 			content = append(content, map[string]any{"type": "refusal", "refusal": jsonString(part, "refusal")})
 		case "encrypted_content":
-			return nil, incompatibleRequest(d.prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted agent messages; start a fresh thread with the %s collaboration bridge enabled.", d.name, d.name))
+			return nil, d.Incompatible(d.Prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted agent messages; start a fresh thread with the %s collaboration bridge enabled.", d.Name, d.Name))
 		default:
-			return nil, fmt.Errorf("unsupported %s content type %q", d.name, jsonString(part, "type"))
+			return nil, fmt.Errorf("unsupported %s content type %q", d.Name, jsonString(part, "type"))
 		}
 	}
 	return content, nil

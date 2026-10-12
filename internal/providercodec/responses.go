@@ -1,4 +1,6 @@
-package router
+package providercodec
+
+// Source: internal/router/provider_responses.go:1:289@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 import (
 	"encoding/json/jsontext"
@@ -11,7 +13,7 @@ import (
 type responsesEndpoint struct{}
 
 // Source: internal/router/grok_protocol.go:339:473@413bbaa9b9202042199c753690febe7bc1358fa6 translateChatRequest
-func (responsesEndpoint) encode(model string, history []providerMessage, tools []map[string]any, o providerOptions, d providerDiagnostics) (map[string]any, error) {
+func (responsesEndpoint) encode(model string, history []providerMessage, tools []map[string]any, o providerOptions, d Diagnostics) (map[string]any, error) {
 	body := providerRequestBody(model, o)
 	body["store"] = false
 	body["include"] = []string{"reasoning.encrypted_content"}
@@ -70,11 +72,11 @@ func (responsesEndpoint) encode(model string, history []providerMessage, tools [
 	return body, nil
 }
 
-func (responsesEndpoint) readStream(reader io.Reader, d providerDiagnostics, send func(providerChunk) error) error {
+func (responsesEndpoint) readStream(reader io.Reader, d Diagnostics, send func(providerChunk) error) error {
 	return normalizeResponsesStream(reader, d, send)
 }
 
-func responsesContent(value any, role string, d providerDiagnostics) ([]any, error) {
+func responsesContent(value any, role string, d Diagnostics) ([]any, error) {
 	return endpointContent(value, func(part map[string]any) (map[string]any, error) {
 		switch part["type"] {
 		case "text":
@@ -93,13 +95,13 @@ func responsesContent(value any, role string, d providerDiagnostics) ([]any, err
 			}
 			return next, nil
 		default:
-			return nil, fmt.Errorf("unsupported %s content part", d.name)
+			return nil, fmt.Errorf("unsupported %s content part", d.Name)
 		}
 	}, d)
 }
 
 // Source: internal/router/opencode_stream.go:298:485@413bbaa9b9202042199c753690febe7bc1358fa6 normalizeResponsesStream
-func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func(providerChunk) error) error {
+func normalizeResponsesStream(reader io.Reader, d Diagnostics, send func(providerChunk) error) error {
 	texts := map[int]string{}
 	refusals := map[int]bool{}
 	items := map[int]jsontext.Value{}
@@ -108,13 +110,13 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 	consumeItem := func(index int, raw jsontext.Value) error {
 		if previous, ok := items[index]; ok {
 			if !jsonEquivalent(previous, raw) {
-				return d.streamError("invalid", fmt.Sprintf("%s changed a completed output item", d.name))
+				return d.streamError("invalid", fmt.Sprintf("%s changed a completed output item", d.Name))
 			}
 			return nil
 		}
 		var item map[string]jsontext.Value
 		if json.Unmarshal(raw, &item) != nil {
-			return d.streamError("invalid", fmt.Sprintf("Invalid %s Responses item", d.name))
+			return d.streamError("invalid", fmt.Sprintf("Invalid %s Responses item", d.Name))
 		}
 		var kind string
 		_ = json.Unmarshal(item["type"], &kind)
@@ -150,7 +152,7 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 		case "function_call":
 			var id, name, arguments string
 			if json.Unmarshal(item["call_id"], &id) != nil || json.Unmarshal(item["name"], &name) != nil || json.Unmarshal(item["arguments"], &arguments) != nil {
-				return d.streamError("invalid", fmt.Sprintf("Invalid %s function call", d.name))
+				return d.streamError("invalid", fmt.Sprintf("Invalid %s function call", d.Name))
 			}
 			if err := send(providerChunkCall(nextTool, id, name, arguments)); err != nil {
 				return err
@@ -163,7 +165,7 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 				Refusal string `json:"refusal"`
 			}
 			if json.Unmarshal(item["content"], &content) != nil {
-				return d.streamError("invalid", fmt.Sprintf("Invalid %s message content", d.name))
+				return d.streamError("invalid", fmt.Sprintf("Invalid %s message content", d.Name))
 			}
 			var completed strings.Builder
 			for _, part := range content {
@@ -174,7 +176,7 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 					refusals[index] = true
 					completed.WriteString(part.Refusal)
 				default:
-					return d.streamError("invalid", fmt.Sprintf("Unsupported %s output content", d.name))
+					return d.streamError("invalid", fmt.Sprintf("Unsupported %s output content", d.Name))
 				}
 			}
 			if texts[index] == "" {
@@ -182,10 +184,10 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 					return err
 				}
 			} else if texts[index] != completed.String() {
-				return d.streamError("invalid", fmt.Sprintf("%s final text differs from streamed text", d.name))
+				return d.streamError("invalid", fmt.Sprintf("%s final text differs from streamed text", d.Name))
 			}
 		default:
-			return d.streamError("invalid", fmt.Sprintf("Unsupported %s Responses output item", d.name))
+			return d.streamError("invalid", fmt.Sprintf("Unsupported %s Responses output item", d.Name))
 		}
 		items[index] = raw
 		return nil
@@ -216,14 +218,14 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 			} `json:"response"`
 		}
 		if json.Unmarshal(data, &event) != nil {
-			return false, d.streamError("invalid", fmt.Sprintf("Invalid %s Responses event", d.name))
+			return false, d.streamError("invalid", fmt.Sprintf("Invalid %s Responses event", d.Name))
 		}
 		switch event.Type {
 		case "response.created":
 			return false, send(providerChunk{Model: event.Response.Model})
 		case "response.output_text.delta", "response.refusal.delta":
 			if _, completed := items[event.OutputIndex]; completed {
-				return false, d.streamError("invalid", fmt.Sprintf("%s text followed a completed item", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("%s text followed a completed item", d.Name))
 			}
 			texts[event.OutputIndex] += event.Delta
 			refusal := event.Type == "response.refusal.delta"
@@ -233,7 +235,7 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 			return false, send(providerChunkText(event.Delta, refusal))
 		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 			if _, completed := items[event.OutputIndex]; completed {
-				return false, d.streamError("invalid", fmt.Sprintf("%s reasoning followed a completed item", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("%s reasoning followed a completed item", d.Name))
 			}
 			reasoned[event.OutputIndex] = true
 			return false, send(providerChunkDelta(providerDelta{ReasoningContent: event.Delta}))
@@ -263,7 +265,7 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 				case "content_filter":
 					finish = "content_filter"
 				default:
-					return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s incomplete reason", d.name))
+					return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s incomplete reason", d.Name))
 				}
 			}
 			if event.Response.Usage != nil {
@@ -283,7 +285,7 @@ func normalizeResponsesStream(reader io.Reader, d providerDiagnostics, send func
 			"response.reasoning_summary_text.done", "response.reasoning_text.done":
 			return false, send(providerChunk{})
 		default:
-			return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s Responses event", d.name))
+			return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s Responses event", d.Name))
 		}
 	})
 }

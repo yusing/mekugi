@@ -24,12 +24,12 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 		), "grok_stream_data_after_terminal"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
+			tr := testProviderRequest(t, grokTranslationPolicy(), "", "chat", nil)
 			var events []map[string]any
-			result, err := tr.readProviderStream(strings.NewReader(test.stream), func(event map[string]any) error {
+			result, err := tr.codec.Read(strings.NewReader(test.stream), func(event map[string]any) error {
 				events = append(events, event)
 				return nil
-			})
+			}, grokTestFailureDetail)
 			diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
 			if result != nil || !ok || diagnostic.code != test.code {
 				t.Fatalf("result=%v err=%v", result, err)
@@ -72,17 +72,17 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 }
 
 func TestGrokStreamWriteFailureDoesNotRetry(t *testing.T) {
-	tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
+	tr := testProviderRequest(t, grokTranslationPolicy(), "", "chat", nil)
 	for _, failAt := range []int{1, 2, 4} {
 		writes := 0
 		failure := staticCriticalDiagnostic("test_write", "consumer write failed")
-		_, err := tr.readProviderStream(strings.NewReader(grokTextStream()), func(map[string]any) error {
+		_, err := tr.codec.Read(strings.NewReader(grokTextStream()), func(map[string]any) error {
 			writes++
 			if writes >= failAt {
 				return failure
 			}
 			return nil
-		})
+		}, grokTestFailureDetail)
 		if !errors.Is(err, failure) || writes != failAt {
 			t.Fatalf("failAt=%d writes=%d err=%v", failAt, writes, err)
 		}
@@ -122,10 +122,10 @@ func TestGrokStreamReadFailurePreservesCause(t *testing.T) {
 	cause := io.ErrUnexpectedEOF
 	reader := io.MultiReader(strings.NewReader("data: {\"choices\":[]}\n\n"), grokFailureReader{cause})
 	var last map[string]any
-	_, err := (&providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}).readProviderStream(reader, func(event map[string]any) error {
+	_, err := (testProviderRequest(t, grokTranslationPolicy(), "", "chat", nil)).codec.Read(reader, func(event map[string]any) error {
 		last = event
 		return nil
-	})
+	}, grokTestFailureDetail)
 	if !errors.Is(err, cause) || last["type"] != "response.failed" {
 		t.Fatalf("last=%v err=%v", last, err)
 	}

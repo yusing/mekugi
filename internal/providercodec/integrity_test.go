@@ -1,4 +1,4 @@
-package router
+package providercodec
 
 import (
 	"encoding/json"
@@ -15,7 +15,7 @@ func TestGrokEmptyContentWire(t *testing.T) {
 			map[string]any{"type": "function_call_output", "call_id": "call", "output": []any{}},
 		},
 	})
-	tr, err := translateProviderRequest(body, nil)
+	tr, err := testTranslate(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,27 +51,27 @@ func TestGrokStreamSealsTerminalChoice(t *testing.T) {
 		"duplicate terminal": {choice(nil, "stop"), choice(nil, "stop")},
 	} {
 		t.Run(name, func(t *testing.T) {
-			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
-			_, err := tr.readProviderStream(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
+			tr := &Stream{policy: testPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
+			_, err := tr.Read(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
 				if event["type"] == "response.function_call_arguments.done" {
 					t.Error("exposed executable call after invalid terminal")
 				}
 				return nil
-			})
+			}, testFailureDetail)
 			if err == nil {
 				t.Fatal("accepted post-terminal choice")
 			}
 		})
 	}
-	tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
-	result, err := tr.readProviderStream(strings.NewReader(grokTextStream()), func(map[string]any) error { return nil })
+	tr := &Stream{policy: testPolicy(), endpoint: chatEndpoint{}}
+	result, err := tr.Read(strings.NewReader(grokTextStream()), func(map[string]any) error { return nil }, testFailureDetail)
 	if err != nil || result["usage"] == nil || result["status"] != "completed" {
 		t.Fatalf("usage trailer rejected: %v, %v", result, err)
 	}
 }
 
 func TestGrokInterleavedArgumentFragments(t *testing.T) {
-	tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
+	tr := &Stream{policy: testPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
 	arguments := []string{`{"first":"αβγ"}`, `{"second":[1,2,3]}`}
 	var chunks []any
 	for offset := range max(len([]rune(arguments[0])), len([]rune(arguments[1]))) {
@@ -90,7 +90,7 @@ func TestGrokInterleavedArgumentFragments(t *testing.T) {
 		}
 	}
 	chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "tool_calls"}}})
-	result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(chunks...)), func(map[string]any) error { return nil })
+	result, err := tr.Read(strings.NewReader(grokTestSSE(chunks...)), func(map[string]any) error { return nil }, testFailureDetail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,11 +117,11 @@ func BenchmarkGrokFragmentedArguments(b *testing.B) {
 			}
 			chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": "tool_calls"}}})
 			wire := grokTestSSE(chunks...)
-			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
+			tr := &Stream{policy: testPolicy(), endpoint: chatEndpoint{}, tools: map[string]providerTool{"run": {name: "run", kind: "function"}}}
 			b.ReportAllocs()
 			b.SetBytes(int64(size))
 			for b.Loop() {
-				result, err := tr.readProviderStream(strings.NewReader(wire), func(map[string]any) error { return nil })
+				result, err := tr.Read(strings.NewReader(wire), func(map[string]any) error { return nil }, testFailureDetail)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -146,11 +146,11 @@ func TestGrokFinishEvidence(t *testing.T) {
 				"index": 0, "delta": map[string]any{"content": "answer"}, "finish_reason": test.reason,
 			}}})
 			var events []map[string]any
-			tr := &providerTranslation{policy: grokTranslationPolicy(), endpoint: chatEndpoint{}}
-			result, err := tr.readProviderStream(strings.NewReader(wire), func(event map[string]any) error {
+			tr := &Stream{policy: testPolicy(), endpoint: chatEndpoint{}}
+			result, err := tr.Read(strings.NewReader(wire), func(event map[string]any) error {
 				events = append(events, event)
 				return nil
-			})
+			}, testFailureDetail)
 			if test.status == "" {
 				if err == nil {
 					t.Fatalf("accepted %q", test.reason)

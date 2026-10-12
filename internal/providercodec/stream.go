@@ -1,4 +1,6 @@
-package router
+package providercodec
+
+// Source: internal/router/provider_stream.go:1:443@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 import (
 	"crypto/rand"
@@ -62,26 +64,18 @@ type providerStreamCall struct {
 	name, arguments strings.Builder
 }
 
-// readProviderStream uses the selected endpoint only for normalization. Validation
-// and Responses lifecycle emission have one owner below.
-func (tr *providerTranslation) readProviderStream(reader io.Reader, emit func(map[string]any) error) (_ map[string]any, err error) {
+// Read normalizes the selected endpoint stream, validates it, and emits the
+// Responses lifecycle. failureDetail formats provider errors at the caller's
+// transport boundary and must be non-nil.
+func (tr *Stream) Read(reader io.Reader, emit func(map[string]any) error, failureDetail func([]byte) string) (result map[string]any, streamErr error) {
 	defer func() {
-		if err != nil && tr.policy.closeFailedStream {
+		if streamErr != nil && tr.policy.CloseFailedStream {
 			if closer, ok := reader.(io.Closer); ok {
 				_ = closer.Close()
 			}
 		}
 	}()
-	return tr.consumeProviderStream(func(send func(providerChunk) error) error {
-		return tr.endpoint.readStream(reader, tr.policy.diagnostics, send)
-	}, emit)
-}
-
-// consumeProviderStream owns validation and Responses emission for every
-// provider. Sources return nil only after their protocol's terminal marker.
-// Source: internal/router/grok_stream.go:78:452@413bbaa9b9202042199c753690febe7bc1358fa6 consumeProviderStream
-func (tr *providerTranslation) consumeProviderStream(source func(func(providerChunk) error) error, emit func(map[string]any) error) (result map[string]any, streamErr error) {
-	d := tr.policy.diagnostics
+	d := tr.policy.Diagnostics
 	writeFailed := false
 	write := emit
 	emit = func(event map[string]any) error {
@@ -91,7 +85,7 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 	}
 	id := "resp_" + rand.Text()
 	messageID := "msg_" + rand.Text()
-	model, _ := tr.body["model"].(string)
+	model := tr.model
 	// Visible provider reasoning streams as one summary item per provider
 	// reasoning block. Codex tracks one active item, so the block closes
 	// before text starts; reasoning seen after text is held for the end.
@@ -100,7 +94,7 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 	output := []any{}
 	var thinking *streamedReasoning
 	var retainedReasoning []any
-	summaryOnly := tr.policy.sealReasoning == nil
+	summaryOnly := tr.policy.SealReasoning == nil
 	reasoningItem := func(r *streamedReasoning, retained json.RawMessage) map[string]any {
 		item := map[string]any{"type": "reasoning", "id": "rs_" + rand.Text(), "summary": []any{}}
 		if r != nil {
@@ -110,7 +104,7 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 			}
 		}
 		if retained != nil {
-			item["encrypted_content"] = tr.policy.sealReasoning(retained)
+			item["encrypted_content"] = tr.policy.SealReasoning(retained)
 		}
 		return item
 	}
@@ -175,15 +169,11 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 	// Provider details are sanitized at the authenticated boundary; protocol
 	// failures retain static summaries. Write errors must not trigger another write.
 	defer func() {
-		diagnostic, ok := errors.AsType[*criticalDiagnosticError](streamErr)
+		code, summary, ok := d.DescribeError(streamErr)
 		if !ok || writeFailed {
 			return
 		}
 		failed := response("failed")
-		code, summary := diagnostic.code, diagnostic.summary
-		if diagnostic.callerDetail != "" {
-			summary = diagnostic.callerDetail
-		}
 		failed["error"] = map[string]string{"code": code, "message": summary}
 		if err := emit(map[string]any{"type": responseevents.Failed, "response": failed}); err != nil {
 			streamErr = errors.Join(streamErr, err)
@@ -191,22 +181,13 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 	}()
 	consume := func(chunk providerChunk) error {
 		if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
-			var detail string
-			if tr.providerFailureDetail != nil {
-				detail = tr.providerFailureDetail(chunk.Error)
-			} else {
-				detail = newProviderHTTPError(d.name, 0, chunk.Error).Error()
-			}
-			return &criticalDiagnosticError{
-				err:  errors.New("provider reported a streaming error"),
-				code: d.prefix + "_stream_provider_error", summary: d.name + " reported a streaming error",
-				callerDetail: detail, distinct: true,
-			}
+			detail := failureDetail(chunk.Error)
+			return d.Error(d.Prefix+"_stream_provider_error", d.Name+" reported a streaming error", detail)
 		}
-		if tr.policy.sealReasoning != nil && len(chunk.RetainedReasoning) > 0 {
+		if tr.policy.SealReasoning != nil && len(chunk.RetainedReasoning) > 0 {
 			var item map[string]any
 			if json.Unmarshal(chunk.RetainedReasoning, &item) != nil {
-				return d.streamError("invalid", "Invalid retained "+d.name+" reasoning")
+				return d.streamError("invalid", "Invalid retained "+d.Name+" reasoning")
 			}
 			if err := closeReasoning(reasoningItem(thinking, chunk.RetainedReasoning)); err != nil {
 				return err
@@ -222,7 +203,7 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 			}
 			// xAI Chat counts reasoning separately from completion tokens; Responses includes it in output.
 			outputTokens := u.CompletionTokens
-			if !tr.policy.completionIncludesReasoning {
+			if !tr.policy.CompletionIncludesReasoning {
 				outputTokens += u.CompletionDetails.ReasoningTokens
 			}
 			usage = map[string]any{"input_tokens": u.PromptTokens, "output_tokens": outputTokens, "total_tokens": u.PromptTokens + outputTokens, "input_tokens_details": map[string]any{"cached_tokens": u.PromptDetails.CachedTokens, "cache_write_tokens": u.PromptDetails.CacheWriteTokens}, "output_tokens_details": map[string]any{"reasoning_tokens": u.CompletionDetails.ReasoningTokens}}
@@ -230,12 +211,12 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 		textEmitted := false
 		for _, choice := range chunk.Choices {
 			if choice.Index != 0 {
-				return d.streamError("multiple_choices", fmt.Sprintf("%s returned multiple completion choices", d.name))
+				return d.streamError("multiple_choices", fmt.Sprintf("%s returned multiple completion choices", d.Name))
 			}
 			// A terminal choice seals its data, including incomplete calls.
 			// Usage-only trailers have no choices and remain admissible.
 			if finish != "" {
-				return d.streamError("data_after_terminal", fmt.Sprintf("%s returned choice data after its terminal finish reason", d.name))
+				return d.streamError("data_after_terminal", fmt.Sprintf("%s returned choice data after its terminal finish reason", d.Name))
 			}
 			if choice.FinishReason != "" {
 				finish = choice.FinishReason
@@ -298,7 +279,7 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 			}
 			for _, part := range choice.Delta.ToolCalls {
 				if part.Index < 0 || part.Index > 1023 {
-					return d.streamError("call_budget", fmt.Sprintf("%s tool-call index exceeds the response budget", d.name))
+					return d.streamError("call_budget", fmt.Sprintf("%s tool-call index exceeds the response budget", d.Name))
 				}
 				call := calls[part.Index]
 				if call == nil {
@@ -307,7 +288,7 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 				}
 				if part.ID != "" {
 					if call.id != "" && call.id != part.ID {
-						return d.streamError("call_identity_changed", fmt.Sprintf("%s changed a tool-call identity", d.name))
+						return d.streamError("call_identity_changed", fmt.Sprintf("%s changed a tool-call identity", d.Name))
 					}
 					call.id = part.ID
 				}
@@ -320,18 +301,18 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 		}
 		return nil
 	}
-	if err := source(consume); err != nil {
+	if err := tr.endpoint.readStream(reader, d, consume); err != nil {
 		return nil, err
 	}
 	status := finish.ResponseStatus()
 	if status == "" {
-		return nil, d.streamError("finish_reason", fmt.Sprintf("%s stream has no supported terminal finish reason", d.name))
+		return nil, d.streamError("finish_reason", fmt.Sprintf("%s stream has no supported terminal finish reason", d.Name))
 	}
 	if finish == chat.ToolCalls && len(calls) == 0 {
-		return nil, d.streamError("missing_calls", fmt.Sprintf("%s finished tool calls without a call", d.name))
+		return nil, d.streamError("missing_calls", fmt.Sprintf("%s finished tool calls without a call", d.Name))
 	}
 	if len(calls) > 0 && finish != chat.ToolCalls {
-		return nil, d.streamError("incomplete_calls", fmt.Sprintf("%s tool arguments were not completed", d.name))
+		return nil, d.streamError("incomplete_calls", fmt.Sprintf("%s tool arguments were not completed", d.Name))
 	}
 	if err := closeReasoning(nil); err != nil {
 		return nil, err
@@ -363,19 +344,19 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 	for index := 0; index < len(calls); index++ {
 		call := calls[index]
 		if call == nil {
-			return nil, d.streamError("call_indexes", fmt.Sprintf("%s returned noncontiguous tool-call indexes", d.name))
+			return nil, d.streamError("call_indexes", fmt.Sprintf("%s returned noncontiguous tool-call indexes", d.Name))
 		}
 		tool, ok := tr.tools[call.name.String()]
 		if !ok {
-			return nil, d.streamError("unavailable_tool", fmt.Sprintf("%s returned an unavailable tool", d.name))
+			return nil, d.streamError("unavailable_tool", fmt.Sprintf("%s returned an unavailable tool", d.Name))
 		}
 		if call.id == "" || seen[call.id] {
-			return nil, d.streamError("call_identity", fmt.Sprintf("%s returned an invalid tool-call identity", d.name))
+			return nil, d.streamError("call_identity", fmt.Sprintf("%s returned an invalid tool-call identity", d.Name))
 		}
 		seen[call.id] = true
 		arguments := call.arguments.String()
 		if !json.Valid([]byte(arguments)) {
-			return nil, d.streamError("call_arguments", fmt.Sprintf("%s returned invalid tool-call arguments", d.name))
+			return nil, d.streamError("call_arguments", fmt.Sprintf("%s returned invalid tool-call arguments", d.Name))
 		}
 		item := map[string]any{"type": "function_call", "id": "fc_" + rand.Text(), "call_id": call.id, "name": tool.name, "arguments": arguments, "status": "completed"}
 		if tool.namespace != "" {
@@ -384,11 +365,11 @@ func (tr *providerTranslation) consumeProviderStream(source func(func(providerCh
 		if tool.kind == "custom" {
 			var args map[string]json.RawMessage
 			if json.Unmarshal([]byte(arguments), &args) != nil || len(args) != 1 {
-				return nil, d.streamError("custom_input_shape", fmt.Sprintf("%s custom tool requires exactly one input string", d.name))
+				return nil, d.streamError("custom_input_shape", fmt.Sprintf("%s custom tool requires exactly one input string", d.Name))
 			}
 			var input *string
 			if json.Unmarshal(args["input"], &input) != nil || input == nil {
-				return nil, d.streamError("custom_input_type", fmt.Sprintf("%s custom tool input is not a string", d.name))
+				return nil, d.streamError("custom_input_type", fmt.Sprintf("%s custom tool input is not a string", d.Name))
 			}
 			delete(item, "arguments")
 			item["type"] = "custom_tool_call"
