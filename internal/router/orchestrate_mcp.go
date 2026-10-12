@@ -151,11 +151,12 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 				}
 			}
 		}
-		if input.TimeoutMS == 0 {
-			input.TimeoutMS = 10000
+		waitCtx := ctx
+		if input.TimeoutMS != 0 {
+			var cancel context.CancelFunc
+			waitCtx, cancel = context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
+			defer cancel()
 		}
-		waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
-		defer cancel()
 		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, wait: true, waitTargets: targets, reply: make(chan orchestrateResult, 1)}
 		result, value, err := proxy.orchestration.call(command)
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {

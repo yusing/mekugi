@@ -149,18 +149,24 @@ func TestOrchestrateMCP(t *testing.T) {
 	proxy.orchestration.active.Store(true)
 	proxy.orchestration.commands = make(chan *orchestrateCommand, 1)
 	for _, tc := range []struct {
-		args map[string]any
-		want []string
+		args     map[string]any
+		want     []string
+		deadline bool
 	}{
-		{map[string]any{}, nil},
-		{map[string]any{"targets": "all"}, nil},
-		{map[string]any{"targets": []string{"batch"}}, []string{"batch"}},
-		{map[string]any{"targets": []string{"/root/batch", "other", "batch"}}, []string{"batch", "other"}},
+		{map[string]any{}, nil, false},
+		{map[string]any{"targets": "all"}, nil, false},
+		{map[string]any{"targets": []string{"batch"}}, []string{"batch"}, false},
+		{map[string]any{"targets": []string{"/root/batch", "other", "batch"}}, []string{"batch", "other"}, false},
+		{map[string]any{"targets": []string{"batch"}, "timeout_ms": 1000}, []string{"batch"}, true},
 	} {
 		go func() {
 			select {
 			case command := <-proxy.orchestration.commands:
-				command.reply <- orchestrateResult{event: &orchestrateEvent{Kind: "message", Message: strings.Join(command.waitTargets, ",")}}
+				event := orchestrateEvent{Kind: "message", Message: strings.Join(command.waitTargets, ",")}
+				if _, ok := command.ctx.Deadline(); ok {
+					event.Status = "deadline"
+				}
+				command.reply <- orchestrateResult{event: &event}
 			case <-t.Context().Done():
 			}
 		}()
@@ -168,6 +174,9 @@ func TestOrchestrateMCP(t *testing.T) {
 		var event orchestrateEvent
 		if err := json.Unmarshal(mustMarshalJSON(result.StructuredContent), &event); err != nil || event.Message != strings.Join(tc.want, ",") {
 			t.Fatal("wait selection was not passed to the UI", event, err)
+		}
+		if (event.Status == "deadline") != tc.deadline {
+			t.Fatal("wait deadline did not match explicit timeout", tc.args, event)
 		}
 	}
 	manifests, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
