@@ -406,7 +406,7 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		switch item.Type {
 		case "mcpToolCall":
 			entry := activityPaneEntry{Seq: s.next(), Agent: agent, CallID: id, Observed: now, native: native}
-			if s.orchestrationActivity(&entry, item, m.Method, true) {
+			if u.orchestrationActivity(&entry, item, m.Method, true) {
 				entries = append(entries, entry)
 			}
 		case "subAgentActivity":

@@ -127,6 +127,11 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 				}
 			}
 		}
+		if entry.native != nil && entry.native.orchestrated {
+			for i := range blocks {
+				blocks[i].Orchestrated = true
+			}
+		}
 		setCommandTiming(blocks, entry)
 		if entry.native != nil && len(blocks) > 0 {
 			setApprovalBlocks(blocks, entry.native.approval)

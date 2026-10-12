@@ -675,7 +675,7 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 // they do: operations, compact reasoning and collapsed narrative text open the shared dialog.
 // Under the pointer, the block underlines its count.
 func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet, width int) bool {
-	if block.Kind == "summary" || block.Kind == "error" {
+	if (block.Kind == "summary" || block.Kind == "error") && block.Output == nil {
 		details := block.Kind == "summary" && v.painter.ReasoningElided(*block, width) || block.Kind == "error" && activityui.ErrorHasDetails(*block)
 		block.Hovered = details && v.snippet == snippet
 		return details
@@ -691,14 +691,20 @@ func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActi
 	return true
 }
 
-// outputBlock reports an operation the output dialog opens: one with output,
+// outputBlock reports an event the output dialog opens: one with output,
 // still running, carrying source a row may clip, or standing for several
 // reads. Edits open their captured change instead, and questions their dock.
 func outputBlock(block activityui.Block) bool {
-	if block.Kind != "op" && block.Kind != "reads" || block.EditSource != "" || len(block.Questions) > 0 {
+	if block.EditSource != "" || len(block.Questions) > 0 {
 		return false
 	}
-	return block.Output != nil || len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
+	if block.Output != nil {
+		return true
+	}
+	if block.Kind != "op" && block.Kind != "reads" {
+		return false
+	}
+	return len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
 }
 
 // snippetBlock is the block a snippet names in the last frame.

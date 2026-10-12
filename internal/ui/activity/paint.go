@@ -728,6 +728,16 @@ func liveActivityIndent(lines []string, prefix string) []string {
 	return lines
 }
 
+// StyleEventHeader distinguishes orchestration without changing event text,
+// agent colors or failure colors. Body rows keep their original styling.
+func (p *Painter) StyleEventHeader(block Block, row string) string {
+	if !block.Orchestrated {
+		return row
+	}
+	style := "\x1b[3m" + p.Theme.Accent()
+	return style + strings.ReplaceAll(row, Reset, Reset+style) + Reset
+}
+
 // Block renders one parsed block within width columns.
 func (p *Painter) Block(block Block, width int) []string {
 	width = max(8, width)
@@ -792,6 +802,9 @@ func (p *Painter) Block(block Block, width int) []string {
 	}
 	if !block.Collapsed {
 		block.Tail = p.tailColors(block)
+	}
+	if len(lines) > 0 {
+		lines[0] = p.StyleEventHeader(block, lines[0])
 	}
 	return outputRows(block, lines, width)
 }
@@ -1556,7 +1569,7 @@ func (p *Painter) Event(block Block, width int) []string {
 	width = max(8, width)
 	// A flashed entry highlights its text, never its label row.
 	label := func(head string, body []string) []string {
-		return append([]string{ansi.Truncate(head, width, "…")}, p.Flash(block, body)...)
+		return append([]string{p.StyleEventHeader(block, ansi.Truncate(head, width, "…"))}, p.Flash(block, body)...)
 	}
 	done := Green + "✓" + Reset + Dim + " answer" + Undim
 	switch block.Kind {

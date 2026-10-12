@@ -1328,7 +1328,7 @@ func (u *appServerUI) historyPending() bool {
 // Ordinary root activity stays in Main, but a directed message belongs at
 // both ends, and a child's start and answer show where Main follows them.
 func mainActivityEntry(entry activityPaneEntry) (activityPaneEntry, bool) {
-	main := entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "journal_event")
+	main := entry.native != nil && entry.native.orchestration != nil || entry.Agent == "/root" && (entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "journal_event")
 	if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
 		main = true
 		entry.Agent = entry.assignment.from
@@ -1337,7 +1337,7 @@ func mainActivityEntry(entry activityPaneEntry) (activityPaneEntry, bool) {
 		}
 	}
 	if entry.Kind == "reply" && entry.message != nil {
-		main = entry.message.from == "/root" || entry.message.to == "/root"
+		main = main || entry.message.from == "/root" || entry.message.to == "/root"
 		entry.Agent = entry.message.from
 	}
 	main = main || (entry.Kind == "final" || entry.Kind == "start") && entry.Agent != "/root"

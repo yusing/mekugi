@@ -457,7 +457,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 	}
 	switch item.Type {
 	case "mcpToolCall":
-		if s.orchestrationActivity(&entry, item, entry.native.phase, false) {
+		if u.orchestrationActivity(&entry, item, entry.native.phase, false) {
 			*entries = append(*entries, entry)
 		}
 	case "userMessage":

@@ -1,5 +1,5 @@
-└ Orchestrate spawn_agent batch · call failed · 211ms
-              ┆ coordinator permission profile is unavailable; cannot inherit permissions
+✗ Main                                                                           12:00:00
+│ Start batch: coordinator permission profile is unavailable; cannot inherit permissions
 
 
 

@@ -353,7 +353,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	case "mcpToolCall":
 		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", CallID: item.ID,
 			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: "item/completed"}}
-		if u.session.orchestrationActivity(&entry, item, entry.native.phase, false) {
+		if u.orchestrationActivity(&entry, item, entry.native.phase, false) {
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		}
 	case "imageView":

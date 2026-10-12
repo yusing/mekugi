@@ -8,6 +8,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/orchestrate"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func mainFollowup(t *testing.T, u *appServerUI, ctx context.Context, id, text string) *orchestrateCommand {
@@ -75,4 +76,5 @@ func TestUISnapshotOrchestrateMainReport(t *testing.T) {
 	drainOrchestrateWork(t, u)
 	rows, _ := u.mainFrame(90, 10, 0)
 	assertNativeUISnapshot(t, "orchestration-main-report", rows)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-main-report-styles.txt", append(rows, "plain after report"), 90)
 }

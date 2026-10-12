@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/orchestrate"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestUISnapshotOrchestrateActivity(t *testing.T) {
@@ -79,7 +81,7 @@ func TestUISnapshotOrchestrateActivity(t *testing.T) {
 		completed.Status, completed.Result = "inProgress", jsontext.Value("null")
 		entries = nil
 		restore(completed, "interrupted")
-		if len(entries) != 1 || entries[0].Text != "prepare batch · call unfinished (history only)" || entries[0].native.running {
+		if len(entries) != 1 || entries[0].Text != "Prepare batch · unfinished (history only)" || entries[0].native.running {
 			t.Fatal("restored pending call claims live work")
 		}
 	}
@@ -91,14 +93,79 @@ func TestOrchestrateActivityOutputRetention(t *testing.T) {
 	entry.native = &liveActivityNativeItem{}
 	item := appServerItem{Type: "mcpToolCall", Server: "orchestrate", Tool: "list_agents", Status: "completed",
 		Result: mustMarshalJSON(map[string]any{"content": []any{map[string]any{"type": "text", "text": strings.Repeat("line\n", 100)}}})}
-	u.session.orchestrationActivity(&entry, item, "item/completed", true)
+	u.orchestrationActivity(&entry, item, "item/completed", true)
 	block := entry.native.orchestration
-	if len(block.Tail) != 5 || block.TailOmitted != 95 || len(block.Output.View().Lines) != 100 {
-		t.Fatal("display tail or dialog retention is wrong")
+	if len(block.Tail) != 0 || block.TailOmitted != 0 || len(block.Output.View().Lines) != 100 {
+		t.Fatal("raw output reached the feed or dialog retention was lost")
 	}
-	// Mutating the owner's backing slice must not alter the copied preview.
-	block.Output.View().Lines[99] = "changed"
-	if block.Tail[4] != "line" {
-		t.Fatal("preview retains the output owner's backing slice")
+}
+
+func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
+	for _, tc := range []struct {
+		name, tool, state string
+		failed            bool
+	}{
+		{"started", "spawn_agent", "launched", false},
+		{"followup", "followup_task", "delivered", false},
+		{"message", "send_message", "reported", false},
+		{"queued", "send_message", "queued", false},
+		{"waiting", "wait_agent", "", false},
+		{"tool-error", "followup_task", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, w := newAppServerTestUI()
+			u.ctx = t.Context()
+			u.session.start("main", t.TempDir())
+			u.agents = newLiveActivityView()
+			u.ensureShell()
+			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+			u.view.painter.Theme = livediff.DarkTheme
+			u.clock = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.Local) }
+			u.view.clock = u.clock
+			text := `{"id":"opaque-delivery-id","state":"` + tc.state + `"}`
+			if tc.failed {
+				text = "Target is unavailable"
+			}
+			item := map[string]any{"id": "call", "type": "mcpToolCall", "server": "orchestrate", "tool": tc.tool, "status": "completed",
+				"arguments": map[string]any{"target": "batch", "message": "Check the rendered output."},
+				"result":    map[string]any{"isError": tc.failed, "content": []any{map[string]any{"type": "text", "text": text}}}}
+			if tc.name == "started" {
+				item["arguments"] = map[string]any{"task_name": "batch", "message": "Check the rendered output."}
+			}
+			if tc.name == "message" {
+				owner, _ := newAppServerTestUI()
+				owner.orchestrateThreads = map[string]*orchestrateChild{"main": {batch: orchestrate.Batch{TaskName: "batch"}}}
+				u.navigation = &orchestrateNavigation{owner: owner, viewed: u}
+				item["arguments"] = map[string]any{"target": "main", "message": "Check the rendered output."}
+			}
+			item["status"] = "inProgress"
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			item["status"] = "completed"
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			if len(u.view.entries) != 1 || len(u.agents.entries) != 1 {
+				t.Fatal("completion duplicated or lost the call")
+			}
+			rows, _ := u.mainFrame(70, 14, 0)
+			assertNativeUISnapshot(t, "orchestration-event-"+tc.name, rows)
+			uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-event-"+tc.name+"-styles.txt", append(rows, "plain after event"), 70)
+			block := u.view.entries[0].blocks[0]
+			opened := false
+			for _, run := range u.view.runs {
+				for _, snippet := range run.snippets {
+					if snippet.run != 0 {
+						opened = u.shell.openOutput(u.view, snippet) || opened
+					}
+				}
+			}
+			if !opened {
+				t.Fatal("rendered event has no output dialog target")
+			}
+			if got := u.view.painter.DialogPage(block, 70).Text; got != text {
+				t.Fatalf("dialog output = %q, want %q", got, text)
+			}
+			if w.Len() != 0 {
+				t.Fatal("presentation dispatched host work")
+			}
+		})
 	}
 }

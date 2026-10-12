@@ -347,12 +347,17 @@ Resume restores saved Diff before accepting input, including when its scope
 was already observed before the thread view opened.
 An empty run offers `/orchestrate ISSUES`; Escape closes the picker.
 
-Orchestration MCP calls appear as ordinary operation rows in the caller's Main
-or Activity feed, with the tool, supplied batch target, observed call status and
-available duration. Returned text and errors use the existing output dialog.
-Completion describes the tool call, not the batch's work or its integration.
-Host item identity replaces a started row with its result. Restored calls retain
-their recorded outcomes without reviving an unfinished call.
+Orchestration calls use the shared subagent event presentation in the caller's
+Main or Activity feed. Italic headers and accent-colored rails distinguish
+orchestration from native subagent events without changing their wording.
+Confirmed launches use start events; delivered messages
+and follow-ups use attributed message events. Waiting uses the shared wait
+presentation. Other calls show concise action labels, supplied targets and observed
+call states. Queued input remains queued, and call completion does not claim
+that a batch's work or integration finished. Errors remain visible in the feed.
+Raw results, including delivery IDs, stay in the existing output dialog rather
+than appearing as feed tails. Host item identity replaces a started row with its
+result. Restored calls retain their recorded outcomes without reviving work.
 
 The Orchestration group in Agents lists the coordinator and its live batch
 threads. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`

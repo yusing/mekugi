@@ -35,6 +35,7 @@ type Block struct {
 	Fenced             bool
 	From, To           string
 	Owner              string
+	Orchestrated       bool // Styling provenance, independent of agent identity.
 	Body               string
 	Reads              []Read
 	Journal            *Journal     // A final answer in journal-result form.

@@ -95,8 +95,10 @@ const (
 // whether it names one.
 func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnippet) bool {
 	for _, entry := range view.entries {
-		if entry.Seq == snippet.run && entry.journalCard != nil {
-			return u.openEntry(view, entry.Seq)
+		if entry.Seq == snippet.run {
+			if entry.journalCard != nil || len(entry.blocks) == 1 && entry.blocks[0].Output != nil && entry.blocks[0].Kind != "op" && entry.blocks[0].Kind != "reads" {
+				return u.openEntry(view, entry.Seq)
+			}
 		}
 	}
 	block, ok := view.snippetBlock(snippet)
