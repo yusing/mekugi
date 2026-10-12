@@ -756,9 +756,17 @@ one topic per item. Titles have no trailing punctuation and prefer a bold action
 bodies hold detail. Notes record new results and blockers. Context retains constraints
 and decisions needed after reset; corrections update the owning node.
 With `reset:"slice"`, bounded tasks have concrete results and completion checks.
-Completed tasks are turn boundaries so the frontend can reset and continue to a pending sibling.
+An accepted plan, a task completed in the current turn and an eligible pending sibling
+establish a turn boundary for frontend continuation when no owned blocker or user stop
+prevents it. Notes and recovery text alone,
+or rejected mutations, do not establish that boundary.
 Main work completion uses the finish marker in the final useful execution when its
-result can establish completion. It adds neither a standalone finalization tool
+result can establish completion of the requested outcome or the slice handoff.
+An interim command, commit, lookup or report is not completion of remaining work.
+The same completion conditions apply to natural final answers; interim answers
+leave active work to continue or wait for outstanding results. Real blockers and
+user stops retain their pause behavior, and task states reflect actual work rather
+than making a finish request pass. It adds neither a standalone finalization tool
 call nor a follow-up `Done.` provider acknowledgment. Required result interpretation
 is not skipped. A usable deliverable, usage explanation or decision beyond the work
 report instead uses a natural final answer. That Outcome does not repeat progress,

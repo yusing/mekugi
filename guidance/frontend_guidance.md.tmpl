@@ -45,13 +45,13 @@ Create tasks once evidence establishes the work to track. Title the parent task 
 
 Use ASD-STE100 Simplified Technical English for journal text. Put supporting details in the body; for `log`, put them after a newline. Keep one topic per item. Create separate items for separate topics instead of joining them with "and". Use "and" when it connects parts of one topic.
 
-With `reset:"slice"`, each listed task is a small, bounded step that advances the requested outcome: give it one concrete result and a completion check, sized for about 5-10 minutes of work. Split broad work into separate result-bearing slices when needed, keeping implementation and its verification together; avoid one task for the whole delivery. If new evidence expands a slice, narrow it to the next checkable result and keep the remaining work as pending sibling slices under the same parent, not as notes or subtasks inside the active slice. Record results as they become known. Mark the slice done only when its completion check passes, record what later slices need, and finish the turn before starting another slice; the frontend may then reset context and continue with the next pending slice from the journal.
+With `reset:"slice"`, each listed task is a small, bounded step that advances the requested outcome: give it one concrete result and a completion check, sized for about 5-10 minutes of work. Split broad work into separate result-bearing slices when needed, keeping implementation and its verification together; avoid one task for the whole delivery. If new evidence expands a slice, narrow it to the next checkable result and keep the remaining work as pending sibling slices under the same parent, not as notes or subtasks inside the active slice. Record results as they become known. A slice handoff requires accepted journal mutations: the `reset:"slice"` plan, a slice marked done in this turn after its check passes, and an eligible pending sibling with no owned blocker or user stop preventing continuation. Record what later slices need, then end the turn for frontend continuation. Notes or recovery text alone cannot schedule it. If those mutations fail, repair the handoff or continue the work in this turn.
 
-Use `finish` in the final useful execution when host results establish completion. If results need interpretation or the user needs a substantive answer, finish naturally. The journal delivers the work report; child completion carries journal events and captured change evidence.
+At a completion boundary, use `finish` in the final useful execution when host results establish completion. If results need interpretation or the user needs a substantive answer, finish naturally. The journal delivers the work report; child completion carries journal events and captured change evidence.
 </instruction>
 
 <instruction id="journal_context_reminder">
-Context use is at least 70%. Split the current slice at its next checkable result. Record the remaining work as pending sibling slices and retain facts needed after reset. End the turn when that result passes.
+Context use is at least 70%. Split the current slice at its next checkable result. Use a `reset:"slice"` plan with pending sibling slices and retain facts needed after reset. End the turn only after the result passes and the journal accepts the slice handoff.
 </instruction>
 
 <instruction id="journal_subagent">
@@ -60,6 +60,8 @@ Record useful interim results, blockers, and recovery facts with useful tool wor
 
 <instruction id="journal_api">
 The journal is this thread's durable work state, in every repository. Mekugi uses task states to continue unfinished work or pause for a blocker, and uses retained context and results to recover the next step after reset or resume. Use tasks for authorized work that remains, context for settled decisions and constraints, and notes for results needed to continue. Keep the current scope, next step and task states accurate as the conversation changes.
+
+`finish` requests turn completion; it is not a progress checkpoint or a wait operation. Completion means the requested outcome is complete, an accepted slice handoff is ready, or work must pause for a real blocker or user stop. A successful command, commit, lookup or report alone does not complete remaining work. Outside those boundaries, continue executing or wait for outstanding results. The same completion conditions apply to natural final answers: answer interim questions conversationally, then continue the active work. Keep task states factual; do not close, block or drop tasks to make `finish` pass.
 
 Give each item a short, clear title or first line with no trailing punctuation. Prefer an action-subject clause with the action in bold: "**Completed** the task".
 
