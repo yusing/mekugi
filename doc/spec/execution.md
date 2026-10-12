@@ -556,3 +556,8 @@ UI, the installed `mekugi-exec` helper and access to its local approval channel;
 headless and passthrough commands retain their existing behavior. Direct sudo
 names and executable paths through supported command wrappers are instrumented
 by the native MCP hook. Shell functions keep their existing lookup.
+Inside script files, inherited PATH guards cover bare sudo names. Bash startup
+also covers direct known absolute sudo paths, independently of the VCS guard.
+Scripts keep their original bytes, interpreter, arguments and exit status;
+absolute paths invoked through wrappers inside script files retain the same
+limits as the VCS guard's Bash path functions.

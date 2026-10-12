@@ -20,6 +20,13 @@ import (
 // askpass runs; no validation probe or privileged command is replayed.
 func sudoCommand(directory, target, argv0 string, defaultPath bool, args []string) int {
 	explicit := ""
+	if target == "sudo" {
+		explicit = os.Getenv(vcsguard.RealEnvironment)
+		if explicit != "" {
+			argv0 = explicit
+		}
+	}
+	os.Unsetenv(vcsguard.RealEnvironment) // Only this invocation uses the path function's target.
 	if strings.Contains(target, "/") {
 		explicit = target
 	}

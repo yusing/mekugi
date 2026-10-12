@@ -23,19 +23,19 @@ var standardDirectories = []string{
 
 // KnownPaths lists absolute paths of the guarded tools found in pathList and
 // the standard directories, with the files their symlinks resolve to.
-func KnownPaths(pathList string) []string {
+func KnownPaths(pathList string, tools []string) []string {
 	var paths []string
 	for _, directory := range slices.Concat(filepath.SplitList(pathList), standardDirectories) {
 		if !filepath.IsAbs(directory) || filepath.Base(directory) == Directory {
 			continue
 		}
-		for _, tool := range Tools {
+		for _, tool := range tools {
 			path := filepath.Join(directory, tool)
 			if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
 				continue
 			}
 			paths = append(paths, path)
-			if resolved, err := filepath.EvalSymlinks(path); err == nil && IsTool(resolved) {
+			if resolved, err := filepath.EvalSymlinks(path); err == nil && slices.Contains(tools, filepath.Base(resolved)) {
 				paths = append(paths, resolved)
 			}
 		}
@@ -51,7 +51,7 @@ func KnownPaths(pathList string) []string {
 // looks up functions before running a name that contains a slash; a
 // path the shell does not run itself, as through env, exec or command,
 // bypasses its function.
-func Functions(guardDirectory string, known []string) string {
+func Functions(guardDirectory string, known, tools []string) string {
 	var list strings.Builder
 	for _, path := range known {
 		list.WriteString(" " + shellsyntax.Quote(path))
@@ -59,7 +59,6 @@ func Functions(guardDirectory string, known []string) string {
 	// The value is shell source for eval, carried as data through the outer
 	// expansion so runtime-directory characters cannot become shell code.
 	guard := shellsyntax.Quote(shellsyntax.Quote(guardDirectory))
-	tools := strings.Join(Tools, " ")
 	// Function names cannot be quoted, so paths outside a plain character set
 	// are left unguarded rather than defined unsafely.
 	define := `eval "$__mekugi_p() { ` + RealEnvironment + `=$__mekugi_p $__mekugi_guard/${__mekugi_p##*/} \"\$@\"; }" 2>/dev/null`
@@ -71,11 +70,13 @@ func Functions(guardDirectory string, known []string) string {
   read -r -a __mekugi_ds <<<"$PATH"
   for __mekugi_d in "${__mekugi_ds[@]}"; do
     case $__mekugi_d in /*/` + Directory + `|/` + Directory + `) continue ;; /*) ;; *) continue ;; esac
-    for __mekugi_t in ` + tools + `; do __mekugi_ps+=("$__mekugi_d/$__mekugi_t"); done
+    for __mekugi_t in ` + strings.Join(tools, " ") + `; do __mekugi_ps+=("$__mekugi_d/$__mekugi_t"); done
   done
   for __mekugi_p in "${__mekugi_ps[@]}"; do
+    [ "${__mekugi_p%/*}" = ` + shellsyntax.Quote(guardDirectory) + ` ] && continue
     case $__mekugi_p in *[!A-Za-z0-9_./+@-]*) continue ;; esac
     [ -f "$__mekugi_p" ] && [ -x "$__mekugi_p" ] || continue
+    declare -F "$__mekugi_p" >/dev/null && continue
     ` + define + `
   done
 }
