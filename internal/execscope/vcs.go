@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"errors"
@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/sourceparse"
 )
 
 func execGitQuery(input execProviderInput, args []string, stdin string) (string, error) {
@@ -16,7 +18,7 @@ func execGitQuery(input execProviderInput, args []string, stdin string) (string,
 func execGitScope(input execProviderInput) execProviderResult {
 	args := slices.Clone(input.args)
 	for len(args) >= 2 && args[0] == "-C" {
-		input.cwd = execProviderPath(input.cwd, args[1])
+		input.cwd = sourceparse.Path(input.cwd, args[1])
 		args = args[2:]
 	}
 	if len(args) == 0 {
@@ -41,12 +43,12 @@ func execGitScope(input execProviderInput) execProviderResult {
 		var paths []string
 		for _, path := range operands {
 			if !strings.HasPrefix(path, ":(") {
-				paths = append(paths, execProviderPath(input.cwd, path))
+				paths = append(paths, sourceparse.Path(input.cwd, path))
 			}
 		}
 		result := execProviderResult{open: true, reason: reason}
 		if len(paths) != 0 {
-			result.scope = []execScopeEntry{execProviderFiles(paths, true)}
+			result.scope = []Entry{execProviderFiles(paths, true)}
 		}
 		return result
 	}
@@ -264,7 +266,7 @@ func execGitScope(input execProviderInput) execProviderResult {
 				if decoded, err := strconv.Unquote(path); err == nil {
 					path = decoded
 				}
-				paths = append(paths, execProviderPath(input.cwd, strings.TrimSuffix(path, "/")))
+				paths = append(paths, sourceparse.Path(input.cwd, strings.TrimSuffix(path, "/")))
 			}
 		}
 	} else if command == "apply" || command == "am" {
@@ -272,12 +274,12 @@ func execGitScope(input execProviderInput) execProviderResult {
 	} else {
 		for path := range strings.SplitSeq(output, "\x00") {
 			if path != "" {
-				paths = append(paths, execProviderPath(outputRoot, path))
+				paths = append(paths, sourceparse.Path(outputRoot, path))
 			}
 		}
 	}
 	entry := execProviderFiles(paths, true)
-	result := execProviderResult{scope: []execScopeEntry{entry}, open: open}
+	result := execProviderResult{scope: []Entry{entry}, open: open}
 	if open {
 		result.reason = "conflict resolution may write additional paths"
 	}
@@ -296,12 +298,12 @@ func execGitApplyPaths(output, cwd string) []string {
 			continue
 		}
 		if fields[2] != "" {
-			paths = append(paths, execProviderPath(cwd, fields[2]))
+			paths = append(paths, sourceparse.Path(cwd, fields[2]))
 			continue
 		}
 		// -z emits empty pathname followed by both rename operands.
 		if i+2 < len(parts) {
-			paths = append(paths, execProviderPath(cwd, parts[i+1]), execProviderPath(cwd, parts[i+2]))
+			paths = append(paths, sourceparse.Path(cwd, parts[i+1]), sourceparse.Path(cwd, parts[i+2]))
 			i += 2
 		}
 	}
@@ -330,7 +332,7 @@ func execGitApplyPaths(output, cwd string) []string {
 			if decoded, err := strconv.Unquote(path); err == nil {
 				path = decoded
 			}
-			paths = append(paths, execProviderPath(cwd, path))
+			paths = append(paths, sourceparse.Path(cwd, path))
 		}
 	}
 	return paths
@@ -358,15 +360,15 @@ func execSVNScope(input execProviderInput) execProviderResult {
 	if err == nil {
 		for line := range strings.SplitSeq(output, "\n") {
 			if len(line) > 8 {
-				paths = append(paths, execProviderPath(input.cwd, line[8:]))
+				paths = append(paths, sourceparse.Path(input.cwd, line[8:]))
 			}
 		}
 	} else {
 		for _, path := range operands {
-			paths = append(paths, execProviderPath(input.cwd, path))
+			paths = append(paths, sourceparse.Path(input.cwd, path))
 		}
 	}
-	result := execProviderResult{scope: []execScopeEntry{execProviderFiles(paths, depth == "infinity")}, open: err != nil}
+	result := execProviderResult{scope: []Entry{execProviderFiles(paths, depth == "infinity")}, open: err != nil}
 	if err != nil {
 		result.reason = "Subversion status query unavailable"
 	}
@@ -388,7 +390,7 @@ func execHGScope(input execProviderInput) execProviderResult {
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		path := execProviderPath(input.cwd, arg)
+		path := sourceparse.Path(input.cwd, arg)
 		matches := []string{path}
 		if strings.ContainsAny(path, "*?[") {
 			matches, _ = filepath.Glob(path)
@@ -400,7 +402,7 @@ func execHGScope(input execProviderInput) execProviderResult {
 			}
 		}
 	}
-	return execProviderResult{scope: []execScopeEntry{execProviderFiles(paths, true)}, open: true, reason: "Mercurial backup locations are configurable; no read-only worktree query"}
+	return execProviderResult{scope: []Entry{execProviderFiles(paths, true)}, open: true, reason: "Mercurial backup locations are configurable; no read-only worktree query"}
 }
 
 func execJJScope(input execProviderInput) execProviderResult {
@@ -417,10 +419,10 @@ func execJJScope(input execProviderInput) execProviderResult {
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		if path := execProviderPath(input.cwd, arg); path != "" {
+		if path := sourceparse.Path(input.cwd, arg); path != "" {
 			paths = append(paths, path)
 		}
 	}
 	entry := execProviderFiles(paths, true)
-	return execProviderResult{scope: []execScopeEntry{entry}, open: true, reason: "Jujutsu snapshots worktree state; no read-only query"}
+	return execProviderResult{scope: []Entry{entry}, open: true, reason: "Jujutsu snapshots worktree state; no read-only query"}
 }

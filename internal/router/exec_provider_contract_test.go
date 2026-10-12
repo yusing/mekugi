@@ -6,12 +6,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 func TestExecGitScopeRejectsRevisionOptionInjection(t *testing.T) {
 	root := newExecVCSTestRepo(t, map[string]string{"tracked": "old\n"})
 	marker := filepath.Join(root, "query-output")
-	plan := classifyExecShell("git restore --source="+shellQuoteArgument("--output="+marker)+" -- tracked", root, "bash")
+	plan := execscope.Classify(execscope.Input{Command: "git restore --source=" + shellsyntax.QuoteArgument("--output="+marker) + " -- tracked", Directory: root, Shell: "bash", Deadline: time.Now().Add(execscope.Budget)})
 	if !strings.Contains(plan.Reason, "query option") {
 		t.Fatalf("unsafe revision accepted: %+v", plan)
 	}
@@ -34,7 +37,7 @@ func TestExecProviderAliasesRecursionAndPreviewPermissions(t *testing.T) {
 			writeTestFile(t, filepath.Join(root, test.target), "before\n")
 			writeTestFile(t, filepath.Join(root, "edit.ts"), "unknown();\n")
 			observation, ok := captureExecObservation([]execCommandInput{{Command: test.command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root, previewOnly: strings.HasSuffix(test.name, "permission")})
-			if !ok || observation.Class != execScoped.String() {
+			if !ok || observation.Class != execscope.Scoped.String() {
 				t.Fatalf("scope: %+v", observation)
 			}
 			captured := false
@@ -45,21 +48,5 @@ func TestExecProviderAliasesRecursionAndPreviewPermissions(t *testing.T) {
 				t.Fatalf("target baseline missing: %+v", observation)
 			}
 		})
-	}
-}
-
-func TestExecProviderDeadlineAndDenoPermissionSet(t *testing.T) {
-	root := t.TempDir()
-	plan := classifyExecShellSource(`python3 -c 'open("a","w")'`, root, "bash", time.Now().Add(-time.Second), 0, nil, false)
-	if plan.Class != execOpaque || !strings.Contains(plan.Reason, "deadline") {
-		t.Fatalf("expired provider: %+v", plan)
-	}
-	writeTestFile(t, filepath.Join(root, "deno.json"), `{"permissions":{"default":{"write":["src"]},"spawn":{"write":["src"],"run":true}}}`)
-	paths, open := execDenoPermissionSet(root, "default")
-	if open || len(paths) != 1 || paths[0] != filepath.Join(root, "src") {
-		t.Fatalf("permission set: %v %v", paths, open)
-	}
-	if _, open := execDenoPermissionSet(root, "spawn"); !open {
-		t.Fatal("subprocess permissions closed the scope")
 	}
 }

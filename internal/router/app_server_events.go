@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/pathdisplay"
@@ -877,7 +879,7 @@ func appServerCommandArgs(command string) ([]string, bool) {
 	}
 	args := make([]string, 0, len(call.Args))
 	for _, word := range call.Args {
-		if !shellCatLiteralParts(word.Parts, false) {
+		if !shellsyntax.LiteralParts(word.Parts, false) {
 			return nil, false
 		}
 		// Fields removes shell quoting without consulting the environment or

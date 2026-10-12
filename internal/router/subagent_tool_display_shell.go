@@ -289,11 +289,11 @@ func toolActivityUnwrapTimeout(statement *syntax.Stmt) *syntax.Stmt {
 	}
 	args := call.Args
 	for len(args) >= 3 {
-		name, literal := shellCatLiteral(args[0])
+		name, literal := shellsyntax.Literal(args[0])
 		if !literal || filepath.Base(name) != "timeout" {
 			break
 		}
-		duration, literal := shellCatLiteral(args[1])
+		duration, literal := shellsyntax.Literal(args[1])
 		if !literal || !toolActivityTimeoutDuration.MatchString(duration) {
 			return statement
 		}
@@ -315,11 +315,11 @@ func toolActivityUnwrapEnv(statement *syntax.Stmt) *syntax.Stmt {
 	if !ok || len(call.Assigns) != 0 || len(call.Args) < 2 {
 		return statement
 	}
-	name, literal := shellCatLiteral(call.Args[0])
+	name, literal := shellsyntax.Literal(call.Args[0])
 	if !literal || toolActivityCommandName(name) != "env" {
 		return statement
 	}
-	args, reason := execEnvArgs(call.Args[1:])
+	args, reason := shellsyntax.EnvArgs(call.Args[1:])
 	if reason != "" || len(args) == 0 {
 		return statement
 	}
@@ -434,7 +434,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 	if !ok || len(call.Args) == 0 || len(call.Assigns) != 0 {
 		return "", false
 	}
-	command, _ := shellCatLiteral(call.Args[0])
+	command, _ := shellsyntax.Literal(call.Args[0])
 	command = toolActivityCommandName(command)
 	if len(statement.Redirs) != 0 {
 		// Only discarded stderr is transparent to these search and listing previews.
@@ -442,7 +442,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 			return "", false
 		}
 		for _, redirect := range statement.Redirs {
-			path, literal := shellCatLiteral(redirect.Word)
+			path, literal := shellsyntax.Literal(redirect.Word)
 			if redirect.Op != syntax.RdrOut || redirect.N == nil || redirect.N.Value != "2" || !literal || path != "/dev/null" {
 				return "", false
 			}
@@ -464,7 +464,7 @@ func toolActivityTimeouts(statement *syntax.Stmt) []string {
 	inner := unwrapped.Cmd.(*syntax.CallExpr).Args
 	var timeouts []string
 	for i := 1; i < len(args)-len(inner); i += 2 {
-		value, _ := shellCatLiteral(args[i])
+		value, _ := shellsyntax.Literal(args[i])
 		timeouts = append(timeouts, value)
 	}
 	return append(timeouts, toolActivityTimeouts(unwrapped)...)
@@ -520,7 +520,7 @@ func toolActivityPatternCall(script string, statement *syntax.Stmt) ([]string, b
 	}
 	argv := make([]string, 0, len(call.Args))
 	for _, arg := range call.Args {
-		value, literal := shellCatLiteral(arg)
+		value, literal := shellsyntax.Literal(arg)
 		if !literal {
 			if script == "" || !toolActivityPatternWord(arg) {
 				return nil, false
@@ -614,7 +614,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 	add := func(label, detail string) {
 		operations = append(operations, struct{ label, detail string }{label, detail})
 	}
-	command, literal := shellCatLiteral(call.Args[0])
+	command, literal := shellsyntax.Literal(call.Args[0])
 	if !literal {
 		return "", false
 	}
@@ -623,7 +623,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file"
 	var argv []string
 	for i, arg := range call.Args {
-		value, literal := shellCatLiteral(arg)
+		value, literal := shellsyntax.Literal(arg)
 		if !literal {
 			// Classify sed by its literal flags and print program, not by
 			// how the input path is constructed. Keep dynamic operands

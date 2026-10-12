@@ -13,6 +13,9 @@ import (
 	"syscall"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 )
@@ -288,7 +291,7 @@ func (m *changeMutation) file(path string) *mutationFile {
 	if file.blocked != "" {
 		return file
 	}
-	handle, err := openNativePatchFile(path)
+	handle, err := sourceparse.Open(path)
 	if err != nil {
 		file.blocked = err.Error()
 		return file
@@ -724,7 +727,7 @@ func (m *changeMutation) report(options changeReadOptions, history []changeCaptu
 		if len(options.paths) != 0 {
 			undo = append(undo, "--")
 			for _, path := range options.paths {
-				undo = append(undo, shellQuoteArgument(path))
+				undo = append(undo, shellsyntax.QuoteArgument(path))
 			}
 		}
 		summary = "undo: " + strings.Join(undo, " ") + "\n"

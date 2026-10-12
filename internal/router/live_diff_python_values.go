@@ -8,29 +8,31 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // Python bytes are valid path operands but are not text buffers.
-func (s *execSourceScope) pythonTextLiteral(node *sitter.Node) (string, bool) {
+func (s *previewSourceScope) pythonTextLiteral(node *sitter.Node) (string, bool) {
 	if node == nil || node.Kind() != "string" {
 		return "", false
 	}
-	text := s.text(node)
+	text := s.Text(node)
 	quote := strings.IndexAny(text, "\"'")
 	if quote < 0 || strings.ContainsAny(text[:quote], "bB") {
 		return "", false
 	}
-	return s.literal(node)
+	return s.Literal(node)
 }
 
 // Text I/O accepts only these newline values. Resolve them without executing
 // keyword expressions; a computed or duplicate setting is not predictable.
-func (s *execSourceScope) pythonNewline(args []*sitter.Node) (*string, bool) {
+func (s *previewSourceScope) pythonNewline(args []*sitter.Node) (*string, bool) {
 	var newline *string
 	seen := false
 	for _, arg := range args {
-		if arg.Kind() != "keyword_argument" || s.text(arg.ChildByFieldName("name")) != "newline" {
+		if arg.Kind() != "keyword_argument" || s.Text(arg.ChildByFieldName("name")) != "newline" {
 			continue
 		}
 		if seen {
@@ -38,7 +40,7 @@ func (s *execSourceScope) pythonNewline(args []*sitter.Node) (*string, bool) {
 		}
 		seen = true
 		value := arg.ChildByFieldName("value")
-		if s.text(value) == "None" {
+		if s.Text(value) == "None" {
 			continue
 		}
 		text, ok := s.pythonTextLiteral(value)
@@ -52,7 +54,7 @@ func (s *execSourceScope) pythonNewline(args []*sitter.Node) (*string, bool) {
 
 // Collections are immutable derived values. Mutation remains unsupported, so
 // aliases and helper parameters can safely share their bounded backing slices.
-func (s *execSourceScope) pythonLiteralList(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) ([]liveDiffPythonLoopItem, bool) {
+func (s *previewSourceScope) pythonLiteralList(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) ([]liveDiffPythonLoopItem, bool) {
 	if node == nil || depth > 32 || ctx.Err() != nil || time.Now().After(s.input.deadline) {
 		return nil, false
 	}
@@ -60,16 +62,16 @@ func (s *execSourceScope) pythonLiteralList(ctx context.Context, node *sitter.No
 		return s.pythonLiteralList(ctx, node.NamedChild(0), state, depth+1)
 	}
 	if node.Kind() == "identifier" {
-		if items, ok := state.lists[s.text(node)]; ok {
+		if items, ok := state.lists[s.Text(node)]; ok {
 			return items, true
 		}
 	}
 	if pairs, ok := s.pythonDictionary(ctx, node, state, depth+1); ok {
 		return liveDiffPythonDictionaryColumn(pairs, 0), true
 	}
-	if function, args := sourceCall(node); function != nil && function.Kind() == "attribute" {
+	if function, args := sourceparse.Call(node); function != nil && function.Kind() == "attribute" {
 		object := function.ChildByFieldName("object")
-		switch s.text(function.ChildByFieldName("attribute")) {
+		switch s.Text(function.ChildByFieldName("attribute")) {
 		case "items", "keys", "values":
 			if len(args) != 0 {
 				return nil, false
@@ -78,7 +80,7 @@ func (s *execSourceScope) pythonLiteralList(ctx context.Context, node *sitter.No
 			if !ok {
 				return nil, false
 			}
-			switch s.text(function.ChildByFieldName("attribute")) {
+			switch s.Text(function.ChildByFieldName("attribute")) {
 			case "keys":
 				return liveDiffPythonDictionaryColumn(pairs, 0), true
 			case "values":
@@ -134,12 +136,12 @@ func liveDiffPythonDictionaryColumn(pairs []liveDiffPythonLoopItem, column int) 
 	return items
 }
 
-func (s *execSourceScope) pythonDictionary(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) ([]liveDiffPythonLoopItem, bool) {
+func (s *previewSourceScope) pythonDictionary(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) ([]liveDiffPythonLoopItem, bool) {
 	if node == nil || depth > 32 || ctx.Err() != nil || time.Now().After(s.input.deadline) {
 		return nil, false
 	}
 	if node.Kind() == "identifier" {
-		pairs, ok := state.dicts[s.text(node)]
+		pairs, ok := state.dicts[s.Text(node)]
 		return pairs, ok
 	}
 	if node.Kind() == "parenthesized_expression" && node.NamedChildCount() == 1 {
@@ -183,7 +185,7 @@ func (s *execSourceScope) pythonDictionary(ctx context.Context, node *sitter.Nod
 	return pairs, true
 }
 
-func (s *execSourceScope) pythonRepeat(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, arriving uint, depth int) (liveDiffPythonText, bool) {
+func (s *previewSourceScope) pythonRepeat(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, arriving uint, depth int) (liveDiffPythonText, bool) {
 	left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
 	// Determine both types of the left operand before touching the right.
 	// Read-expression memoization prevents a type probe from consuming twice.
@@ -218,7 +220,7 @@ func liveDiffPythonWhitespace(r rune) bool {
 	return unicode.IsSpace(r) || r >= 0x1c && r <= 0x1f
 }
 
-func (s *execSourceScope) pythonTextTransform(ctx context.Context, method string, object *sitter.Node, args []*sitter.Node, state *liveDiffPythonState, arriving uint, depth int) (liveDiffPythonText, bool) {
+func (s *previewSourceScope) pythonTextTransform(ctx context.Context, method string, object *sitter.Node, args []*sitter.Node, state *liveDiffPythonState, arriving uint, depth int) (liveDiffPythonText, bool) {
 	switch method {
 	case "strip", "lstrip", "rstrip", "lower", "upper", "join":
 	default:
@@ -238,7 +240,7 @@ func (s *execSourceScope) pythonTextTransform(ctx context.Context, method string
 			return liveDiffPythonText{}, false
 		}
 		trim := liveDiffPythonWhitespace
-		if len(positional) == 1 && s.text(positional[0]) != "None" {
+		if len(positional) == 1 && s.Text(positional[0]) != "None" {
 			chars, ok := s.pythonString(ctx, positional[0], state, depth+1)
 			if !ok {
 				return liveDiffPythonText{}, false
@@ -297,20 +299,20 @@ func (s *execSourceScope) pythonTextTransform(ctx context.Context, method string
 	return liveDiffPythonText{}, false
 }
 
-func (s *execSourceScope) pythonSplit(ctx context.Context, function *sitter.Node, args []*sitter.Node, state *liveDiffPythonState, depth int) ([]liveDiffPythonLoopItem, bool) {
+func (s *previewSourceScope) pythonSplit(ctx context.Context, function *sitter.Node, args []*sitter.Node, state *liveDiffPythonState, depth int) ([]liveDiffPythonLoopItem, bool) {
 	text, ok := s.pythonString(ctx, function.ChildByFieldName("object"), state, depth+1)
 	positional, valid := liveDiffPythonArguments(s, args)
 	if !ok || !valid {
 		return nil, false
 	}
 	var parts []string
-	if s.text(function.ChildByFieldName("attribute")) == "splitlines" {
+	if s.Text(function.ChildByFieldName("attribute")) == "splitlines" {
 		if len(positional) > 1 {
 			return nil, false
 		}
 		keep := false
 		if len(positional) == 1 {
-			switch s.text(positional[0]) {
+			switch s.Text(positional[0]) {
 			case "True":
 				keep = true
 			case "False":
@@ -353,7 +355,7 @@ func (s *execSourceScope) pythonSplit(ctx context.Context, function *sitter.Node
 				return nil, false
 			}
 		}
-		if len(positional) == 0 || s.text(positional[0]) == "None" {
+		if len(positional) == 0 || s.Text(positional[0]) == "None" {
 			remaining := strings.TrimLeftFunc(text, liveDiffPythonWhitespace)
 			for remaining != "" {
 				if maxsplit == 0 {

@@ -1,13 +1,12 @@
-package router
+package execscope
 
 import (
 	"strings"
 
-	sitter "github.com/tree-sitter/go-tree-sitter"
-	python "github.com/tree-sitter/tree-sitter-python/bindings/go"
-)
+	"github.com/yusing/mekugi/internal/sourceparse"
 
-var execPythonLanguage = sitter.NewLanguage(python.Language())
+	sitter "github.com/tree-sitter/go-tree-sitter"
+)
 
 type execPythonValues struct {
 	paths, segments []string
@@ -26,7 +25,7 @@ func (s *execSourceScope) pythonDictionaryItems(node *sitter.Node) ([2]execPytho
 		if pair.Kind() == "comment" {
 			continue
 		}
-		if pair.Kind() != "pair" || i >= maxExecListingEntries {
+		if pair.Kind() != "pair" || i >= ListingLimit {
 			return [2]execPythonValues{}, false
 		}
 		for column, field := range []string{"key", "value"} {
@@ -34,7 +33,7 @@ func (s *execSourceScope) pythonDictionaryItems(node *sitter.Node) ([2]execPytho
 			paths, segments := s.paths(value), s.literalSegments(value, 0)
 			unknownPaths[column] = unknownPaths[column] || len(paths) == 0
 			unknownSegments[column] = unknownSegments[column] || len(segments) == 0
-			if len(items[column].paths)+len(paths) > maxExecListingEntries || len(items[column].segments)+len(segments) > maxExecListingEntries {
+			if len(items[column].paths)+len(paths) > ListingLimit || len(items[column].segments)+len(segments) > ListingLimit {
 				return [2]execPythonValues{}, false
 			}
 			items[column].paths = append(items[column].paths, paths...)
@@ -55,7 +54,7 @@ func (s *execSourceScope) pythonDictionaryItems(node *sitter.Node) ([2]execPytho
 func (s *execSourceScope) bindPythonItems(left, right *sitter.Node) {
 	// Python evaluates the iterable before assigning loop targets, which may
 	// themselves shadow the dictionary's name.
-	function, args := sourceCall(right)
+	function, args := sourceparse.Call(right)
 	var items [2]execPythonValues
 	ok := false
 	if function != nil {
@@ -68,8 +67,8 @@ func (s *execSourceScope) bindPythonItems(left, right *sitter.Node) {
 	// Clear old bindings even when the new iterable cannot be resolved.
 	for i := range left.NamedChildCount() {
 		name := s.text(left.NamedChild(uint(i)))
-		delete(s.vars, name)
-		delete(s.segments, name)
+		delete(s.state.Paths, name)
+		delete(s.state.Segments, name)
 		delete(s.texts, name)
 		delete(s.pythonItems, name)
 	}
@@ -84,12 +83,12 @@ func (s *execSourceScope) bindPythonItems(left, right *sitter.Node) {
 	if !ok {
 		return
 	}
-	if s.segments == nil {
-		s.segments = make(map[string][]string)
+	if s.state.Segments == nil {
+		s.state.Segments = make(map[string][]string)
 	}
 	for column, values := range items {
 		name := s.text(left.NamedChild(uint(column)))
-		s.vars[name], s.segments[name] = values.paths, values.segments
+		s.state.Paths[name], s.state.Segments[name] = values.paths, values.segments
 	}
 }
 
@@ -113,7 +112,7 @@ func (s *execSourceScope) pythonText(node *sitter.Node, depth int) bool {
 	if node.Kind() == "binary_operator" && s.text(node.ChildByFieldName("operator")) == "+" {
 		return s.pythonText(node.ChildByFieldName("left"), depth+1) && s.pythonText(node.ChildByFieldName("right"), depth+1)
 	}
-	function, _ := sourceCall(node)
+	function, _ := sourceparse.Call(node)
 	if function == nil {
 		return false
 	}
@@ -129,7 +128,7 @@ func execPythonScope(input execProviderInput) execProviderResult {
 	if reason != "" {
 		return execProviderResult{open: true, reason: reason}
 	}
-	return inspectExecSource(input, source, script, execPythonLanguage, true)
+	return inspectExecSource(input, source, script, sourceparse.Python, true)
 }
 
 func (s *execSourceScope) pythonCall(function *sitter.Node, base string, args []*sitter.Node) {

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -350,7 +352,7 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 		t.Fatalf("same-cell command and polling = %+v dynamic=%v", commands, dynamic)
 	}
 	observation, observed := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
-	if !observed || observation == nil || observation.Class == execOpaque.String() || !observation.CodeMode {
+	if !observed || observation == nil || observation.Class == execscope.Opaque.String() || !observation.CodeMode {
 		t.Fatalf("exec observation = %+v observed=%v; polling must not make the literal command opaque", observation, observed)
 	}
 	var baseline *execFileSnapshot
@@ -361,7 +363,7 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 		}
 	}
 	if baseline == nil || baseline.Content != "before\n" || baseline.Origin != "" ||
-		!slices.ContainsFunc(observation.Programs, func(program execProgram) bool { return program.Label == "python3" && program.Direct }) {
+		!slices.ContainsFunc(observation.Programs, func(program execscope.Program) bool { return program.Label == "python3" && program.Direct }) {
 		t.Fatalf("same-cell direct baseline/program = %+v / %+v", baseline, observation.Programs)
 	}
 	writeTestFile(t, target, "after\n")

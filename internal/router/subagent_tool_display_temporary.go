@@ -4,6 +4,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -13,7 +16,7 @@ import (
 // This proof is used only by the activity intent scanner, never by capture.
 func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]string {
 	end := int(before.Pos().Offset())
-	if end <= 0 || end > len(script) || end > maxExecProgramBytes {
+	if end <= 0 || end > len(script) || end > execscope.SourceLimit {
 		return nil
 	}
 	program, err := syntax.NewParser().Parse(strings.NewReader(script[:end]), "")
@@ -28,17 +31,17 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 		switch command := statement.Cmd.(type) {
 		case *syntax.CallExpr:
 			if len(command.Args) != 0 {
-				name, literal := shellCatLiteral(command.Args[0])
+				name, literal := shellsyntax.Literal(command.Args[0])
 				if !literal || interp.IsBuiltin(name) || len(command.Assigns) != 0 {
 					return nil
 				}
 				for _, arg := range command.Args[1:] {
-					if _, literal := shellCatLiteral(arg); !literal {
+					if _, literal := shellsyntax.Literal(arg); !literal {
 						return nil
 					}
 				}
 				for _, redirect := range statement.Redirs {
-					if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || !toolActivityPatternWord(redirect.Word) || redirect.N != nil && !isDigits(redirect.N.Value) {
+					if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || !toolActivityPatternWord(redirect.Word) || redirect.N != nil && !shellsyntax.IsDigits(redirect.N.Value) {
 						return nil
 					}
 				}
@@ -59,7 +62,7 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 				}
 				vars[name] = toolActivityTemporaryValue(assignment.Value, vars, name)
 				if vars[name] == "" {
-					if _, literal := shellCatLiteral(assignment.Value); !literal {
+					if _, literal := shellsyntax.Literal(assignment.Value); !literal {
 						return nil
 					}
 				}
@@ -82,7 +85,7 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 				if assignment.Value != nil {
 					vars[name] = toolActivityTemporaryValue(assignment.Value, vars, name)
 					if vars[name] == "" {
-						if _, literal := shellCatLiteral(assignment.Value); !literal {
+						if _, literal := shellsyntax.Literal(assignment.Value); !literal {
 							return nil
 						}
 					}

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -96,7 +98,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 			if !ok || observation == nil {
 				t.Fatal("missing command observation")
 			}
-			programs := append([]execProgram(nil), observation.Programs...)
+			programs := append([]execscope.Program(nil), observation.Programs...)
 			if tool := execPreviewTool(*observation); tool != tc.tool {
 				t.Fatalf("exec=%v tool=%q, want %q; observation=%+v", codeMode, tool, tc.tool, observation)
 			}
@@ -105,7 +107,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 			}
 		}
 	}
-	for _, unknown := range []execObservation{{}, {Programs: []execProgram{{Label: "shell", Direct: true}}}} {
+	for _, unknown := range []execObservation{{}, {Programs: []execscope.Program{{Label: "shell", Direct: true}}}} {
 		if tool := execPreviewTool(unknown); tool != "" {
 			t.Fatalf("unknown command guessed %q", tool)
 		}

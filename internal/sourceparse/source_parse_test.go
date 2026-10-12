@@ -1,6 +1,8 @@
-package router
+package sourceparse
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestParseSourceTreeCancellationModesPreserveSyntax(t *testing.T) {
 	for _, test := range []struct {
@@ -13,12 +15,12 @@ func TestParseSourceTreeCancellationModesPreserveSyntax(t *testing.T) {
 		{"empty", "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			ordinary, err := parseSourceTree([]byte(test.source), codeModeJavaScriptLanguage, nil)
+			ordinary, err := Parse([]byte(test.source), JavaScript, nil)
 			if err != nil || ordinary == nil {
 				t.Fatalf("ordinary parse = %v, %v", ordinary, err)
 			}
 			defer ordinary.Close()
-			interruptible, err := parseSourceTree([]byte(test.source), codeModeJavaScriptLanguage, func() bool { return false })
+			interruptible, err := Parse([]byte(test.source), JavaScript, func() bool { return false })
 			if err != nil || interruptible == nil {
 				t.Fatalf("interruptible parse = %v, %v", interruptible, err)
 			}

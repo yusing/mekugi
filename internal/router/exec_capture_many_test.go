@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/execscope"
 )
 
 // A file-count limit must not make a small, enumerable edit batch incomplete.
@@ -17,7 +19,7 @@ func TestExecCaptureManyLiteralGlobFiles(t *testing.T) {
 	}
 	capture := newExecCapture(time.Now().Add(10 * time.Second))
 	capture.scopeRoots = []string{workspace}
-	capture.entry(execScopeEntry{Kind: execScopeFile, Operands: []execOperand{{Path: filepath.Join(workspace, "many", "*.txt"), Glob: true}}})
+	capture.entry(execscope.Entry{Kind: execscope.File, Operands: []execscope.Operand{{Path: filepath.Join(workspace, "many", "*.txt"), Glob: true}}})
 	if len(capture.files) != 512 || len(capture.omitted) != 0 {
 		t.Fatalf("glob baselines=%d omitted=%+v", len(capture.files), capture.omitted)
 	}
@@ -25,7 +27,7 @@ func TestExecCaptureManyLiteralGlobFiles(t *testing.T) {
 		writeTestFile(t, filepath.Join(workspace, "many", fmt.Sprintf("file-%03d.txt", i)), "after\n")
 	}
 	reviews, complete, coverage, unswept := reconcileExecObservation(execObservation{
-		Class: execScoped.String(), Roots: []string{workspace}, Files: capture.files, Omitted: capture.omitted,
+		Class: execscope.Scoped.String(), Roots: []string{workspace}, Files: capture.files, Omitted: capture.omitted,
 	}, execReconcileEnv{})
 	if !complete || coverage != execCoverageExact || unswept != "" || len(reviews) != 12 {
 		t.Fatalf("glob reviews=%d complete=%v coverage=%s unswept=%q", len(reviews), complete, coverage, unswept)

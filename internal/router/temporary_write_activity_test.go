@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -81,8 +83,8 @@ func TestTemporaryWriteActivityIntent(t *testing.T) {
 
 func TestTemporaryWritePreservesCaptureUncertainty(t *testing.T) {
 	command := temporaryPlanCommand(temporaryPlanSetup+"gh run view 37104437662 --log-failed > \"$batch_plan_dir/ci-failure.log\"\n", temporaryPlanSource)
-	plan := classifyExecShell(command, t.TempDir(), "bash")
-	if plan.Class != execOpaque || len(plan.Scope) != 0 {
+	plan := execscope.Classify(execscope.Input{Command: command, Directory: t.TempDir(), Shell: "bash", Deadline: time.Now().Add(execscope.Budget)})
+	if plan.Class != execscope.Opaque || len(plan.Scope) != 0 {
 		t.Fatalf("display-only proof changed capture coverage: %+v", plan)
 	}
 }

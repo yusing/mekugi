@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"io/fs"
@@ -7,10 +7,14 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/internal/sourceparse"
 )
 
 // execGoFormatterWrites is shared by capture and display-only segment tracking.
-func execGoFormatterWrites(identity string, args []string) bool {
+// GoFormatterWrites identifies formatter invocations whose write segment
+// determines a preview lifetime.
+func GoFormatterWrites(identity string, args []string) bool {
 	return (identity == "gofmt" || identity == "goimports") && slices.Contains(args, "-w")
 }
 
@@ -41,7 +45,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 	root := input.cwd
 	switch input.identity {
 	case "gofmt", "goimports":
-		if !execGoFormatterWrites(input.identity, args) {
+		if !GoFormatterWrites(input.identity, args) {
 			return execProviderResult{unhandled: true}
 		}
 		extensions = []string{".go"}
@@ -141,7 +145,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 				}
 				continue
 			}
-			operands = append(operands, execProviderPath(root, arg))
+			operands = append(operands, sourceparse.Path(root, arg))
 		}
 		if input.authoredOnly {
 			// Named formatter targets are source edits. A default directory,
@@ -154,7 +158,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 			if len(paths) == 0 {
 				return execProviderResult{unhandled: true}
 			}
-			return execProviderResult{scope: []execScopeEntry{execProviderFiles(paths, false)}}
+			return execProviderResult{scope: []Entry{execProviderFiles(paths, false)}}
 		}
 		if len(operands) == 0 {
 			operands = []string{root}
@@ -172,7 +176,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 				}
 				_ = filepath.WalkDir(path, func(path string, entry fs.DirEntry, err error) error {
 					entries++
-					if entries > maxExecListingEntries || time.Now().After(input.deadline) {
+					if entries > ListingLimit || time.Now().After(input.deadline) {
 						truncated = true
 						return filepath.SkipAll
 					}
@@ -195,7 +199,7 @@ func execFixerScope(input execProviderInput) execProviderResult {
 	}
 	entry := execProviderFiles(paths, false)
 	entry.Origin = strings.TrimSpace(label)
-	result := execProviderResult{scope: []execScopeEntry{entry}, open: truncated, opaque: installsDependencies}
+	result := execProviderResult{scope: []Entry{entry}, open: truncated, opaque: installsDependencies}
 	if installsDependencies {
 		result.reason = "dependency installation may run lifecycle scripts"
 	}

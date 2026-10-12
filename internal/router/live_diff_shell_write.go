@@ -9,6 +9,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -27,7 +31,7 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 		len(call.Assigns) != 0 || len(call.Args) != 1 || len(stmt.Redirs) != 2 {
 		return nil, false, nil
 	}
-	name, literal := shellCatLiteral(call.Args[0])
+	name, literal := shellsyntax.Literal(call.Args[0])
 	if !literal || name != "cat" {
 		return nil, false, nil
 	}
@@ -48,8 +52,8 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	if heredoc == nil || output == nil {
 		return nil, false, nil
 	}
-	path, literal := shellCatLiteral(output.Word)
-	content, literalContent := liveDiffShellHeredoc(heredoc, partialLine)
+	path, literal := shellsyntax.Literal(output.Word)
+	content, literalContent := shellsyntax.Heredoc(heredoc, partialLine)
 	if !literal || path == "" || !literalContent {
 		return nil, false, nil
 	}
@@ -82,7 +86,7 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	// not the useful diff. Project its supported effects through the same
 	// paced preview pipeline; never execute or rewrite the host command.
 	if strings.HasSuffix(path, ".py") && output.Op != syntax.AppOut {
-		input := execProviderInput{identity: "python", cwd: directory, deadline: time.Now().Add(execProviderBudget)}
+		input := previewInterpreterInput{identity: "python", cwd: directory, deadline: time.Now().Add(execscope.Budget)}
 		if files, recognized, err := liveDiffInterpreterSource(ctx, input, content, path, true, true); recognized || err != nil {
 			return files, recognized, err
 		}
@@ -114,7 +118,7 @@ func liveDiffPreviewFile(path string) (string, bool, error) {
 	case !info.Mode().IsRegular() || info.Size() > liveDiffPreviewFileLimit:
 		return "", false, errors.New("streaming file preview requires a bounded regular file")
 	}
-	file, err := openNativePatchFile(path)
+	file, err := sourceparse.Open(path)
 	if err != nil {
 		return "", false, err
 	}
@@ -134,7 +138,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 	}
 	words := make([]string, 0, len(call.Args))
 	for _, arg := range call.Args {
-		word, literal := shellCatLiteral(arg)
+		word, literal := shellsyntax.Literal(arg)
 		if !literal || word == "" {
 			return nil, false, nil
 		}
@@ -171,7 +175,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		case name == "tee" && (redirect.Op == syntax.Hdoc || redirect.Op == syntax.DashHdoc):
 			heredoc = redirect
 		case name == "tee" && redirect.Op == syntax.RdrOut:
-			if target, literal := shellCatLiteral(redirect.Word); !literal || target != "/dev/null" {
+			if target, literal := shellsyntax.Literal(redirect.Word); !literal || target != "/dev/null" {
 				return nil, false, nil
 			}
 		default:
@@ -208,7 +212,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		}
 		return files, true, nil
 	case "tee":
-		content, literal := liveDiffShellHeredoc(heredoc, partialLine)
+		content, literal := shellsyntax.Heredoc(heredoc, partialLine)
 		if !literal || len(content) > liveDiffPreviewFileLimit || !utf8.ValidString(content) {
 			return nil, true, errors.New("streaming file write requires bounded UTF-8 content")
 		}

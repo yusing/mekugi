@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 const nativeExecCommandToolName = "exec_command"
@@ -49,20 +48,12 @@ func (h mekugiHistory) effectiveCarrierKind() codeModeCarrierKind {
 
 func (h mekugiHistory) carrierInput() string { return h.CarrierPayload }
 
-func shellQuoteArgument(value string) string {
-	quoted, err := syntax.Quote(value, syntax.LangBash)
-	if err == nil {
-		return quoted
-	}
-	return shellsyntax.Quote(value)
-}
-
 func workerCommand(executable string, arguments []string) string {
 	var command strings.Builder
-	command.WriteString(shellQuoteArgument(executable))
+	command.WriteString(shellsyntax.QuoteArgument(executable))
 	for _, argument := range arguments {
 		command.WriteByte(' ')
-		command.WriteString(shellQuoteArgument(argument))
+		command.WriteString(shellsyntax.QuoteArgument(argument))
 	}
 	return command.String()
 }

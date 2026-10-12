@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 const replayTestEpoch int64 = 1700000000000
@@ -52,7 +54,7 @@ func TestSessionUIReplayNormalizesItemsAndRecordedTiming(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	sentinel := filepath.Join(dir, "must-not-exist")
-	command := "touch " + shellQuoteArgument(sentinel)
+	command := "touch " + shellsyntax.QuoteArgument(sentinel)
 	items := []map[string]any{
 		{"type": "UserMessage", "id": "user", "content": []map[string]any{{"type": "text", "text": "question"}}},
 		{"type": "AgentMessage", "id": "message", "content": []map[string]any{{"type": "text", "text": "hello "}, {"type": "text", "text": "世界"}}, "phase": "final_answer"},

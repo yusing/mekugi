@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -111,7 +113,7 @@ func readNativePatchFile(path string) (content string, exists bool, err error) {
 	if path == "" {
 		return "", false, nil
 	}
-	file, err := openNativePatchFile(path)
+	file, err := sourceparse.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", false, nil
 	}
@@ -213,7 +215,7 @@ func stockLiteralPatchInputs(source string) []string {
 		return nil
 	}
 	bytes := []byte(source)
-	tree, err := parseSourceTree(bytes, codeModeJavaScriptLanguage, nil)
+	tree, err := sourceparse.Parse(bytes, sourceparse.JavaScript, nil)
 	if err != nil || tree == nil {
 		return nil
 	}
@@ -238,7 +240,7 @@ func stockLiteralPatchInputs(source string) []string {
 			if name == nil || name.Kind() != "identifier" {
 				continue
 			}
-			literal, ok := toolActivityStaticJavaScriptValue(value, bytes)
+			literal, ok := sourceparse.JavaScriptValue(value, bytes)
 			if text, isText := literal.(string); ok && isText {
 				bindings[name.Utf8Text(bytes)] = text
 			}
@@ -266,7 +268,7 @@ func stockLiteralPatchInputs(source string) []string {
 				}
 			}
 			if args, ok := toolActivityCallArguments(node, bytes, "tools", applyPatchToolName); ok && len(args) == 1 {
-				if value, ok := toolActivityStaticJavaScriptValue(args[0], bytes); ok {
+				if value, ok := sourceparse.JavaScriptValue(args[0], bytes); ok {
 					if patch, ok := value.(string); ok {
 						patches = append(patches, patch)
 					}

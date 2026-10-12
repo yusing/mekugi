@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 // Shell edit intent is only a requested operation. It is not a captured edit
@@ -210,7 +212,7 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 
 func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 	const source = "mv b.go.new b.go\ncat > a.go <<'EOF'\nPRIVATE_NATIVE_SOURCE\nEOF\ngo test ./internal/router"
-	command := "/usr/bin/bash -lc " + shellQuoteArgument(source)
+	command := "/usr/bin/bash -lc " + shellsyntax.QuoteArgument(source)
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,
 		CommandActions: []appServerCommandAction{{Type: "unknown", Command: command}}}
 	for _, thread := range []string{"main", "child"} {

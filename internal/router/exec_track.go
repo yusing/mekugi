@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -383,19 +386,19 @@ func execSegmentEdits(source string) bool {
 			if call, ok := node.(*syntax.CallExpr); ok {
 				args := call.Args
 				for len(args) > 0 {
-					name, literal := shellCatLiteral(args[0])
+					name, literal := shellsyntax.Literal(args[0])
 					if !literal || filepath.Base(name) != "env" {
 						break
 					}
 					var reason string
-					args, reason = execEnvArgs(args[1:])
+					args, reason = shellsyntax.EnvArgs(args[1:])
 					if reason != "" {
 						break
 					}
 				}
-				if words, literal := literalArgs(args); literal && len(words) > 0 {
+				if words, literal := shellsyntax.Args(args); literal && len(words) > 0 {
 					name := filepath.Base(words[0])
-					writes = writes || name == "cp" || name == "install" || execGoFormatterWrites(name, words[1:])
+					writes = writes || name == "cp" || name == "install" || execscope.GoFormatterWrites(name, words[1:])
 				}
 			}
 			return !writes

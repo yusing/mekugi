@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -239,34 +241,38 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 func TestMChangesMutationClassification(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
-	resolver := func(options changeReadOptions, _ time.Time) ([]string, error) {
+	resolver := func(arguments []string, directory string, _ time.Time) execscope.ChangeResolution {
+		options, err := parseChangeRead(arguments, directory)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if options.view != "revert" || options.workspace != workspace || len(options.ids) != 1 {
 			t.Fatalf("resolver options = %+v", options)
 		}
-		return []string{filepath.Join(workspace, "a.txt")}, nil
+		return execscope.ChangeResolution{Paths: []string{filepath.Join(workspace, "a.txt")}}
 	}
-	classify := func(command string, changes execChangeResolver) execPlan {
-		return classifyExecShellSource(command, workspace, "bash", time.Now().Add(execProviderBudget), 0, changes, false)
+	classify := func(command string, changes execscope.ChangeResolver) execscope.Result {
+		return execscope.Classify(execscope.Input{Command: command, Directory: workspace, Shell: "bash", Deadline: time.Now().Add(execscope.Budget), Changes: changes})
 	}
-	if plan := classify("mchanges --list && mchanges amber1 --summary", resolver); plan.Class != execNeutral {
+	if plan := classify("mchanges --list && mchanges amber1 --summary", resolver); plan.Class != execscope.Neutral {
 		t.Fatalf("read plan = %+v", plan)
 	}
 	for _, command := range []string{"mchanges revert amber1", "mchanges revert amber1 2>&1 | tail -n 50", "(mchanges revert amber1)"} {
 		plan := classify(command, resolver)
-		if plan.Class != execDeclared || !slices.Equal(plan.Labels, []string{"mchanges revert"}) ||
-			!slices.Equal(execPlanScope(plan, workspace), []string{"file:a.txt"}) {
+		if plan.Class != execscope.Declared || !slices.Equal(plan.Labels, []string{"mchanges revert"}) ||
+			len(plan.Scope) != 1 || plan.Scope[0].Kind != execscope.File || len(plan.Scope[0].Operands) != 1 || plan.Scope[0].Operands[0].Path != filepath.Join(workspace, "a.txt") {
 			t.Fatalf("%q plan = %+v", command, plan)
 		}
 	}
-	if plan := classify("mchanges revert amber1", nil); plan.Class != execOpaque {
+	if plan := classify("mchanges revert amber1", nil); plan.Class != execscope.Opaque {
 		t.Fatalf("unresolved plan = %+v", plan)
 	}
 	// Only a dynamic subcommand can hide a mutation.
-	if plan := classify(`mchanges amber1 --summary -- "$f"`, resolver); plan.Class != execNeutral {
+	if plan := classify(`mchanges amber1 --summary -- "$f"`, resolver); plan.Class != execscope.Neutral {
 		t.Fatalf("dynamic read plan = %+v", plan)
 	}
 	for _, command := range []string{`mchanges "$sub" amber1`, `mchanges revert "$id"`} {
-		if plan := classify(command, resolver); plan.Class != execOpaque {
+		if plan := classify(command, resolver); plan.Class != execscope.Opaque {
 			t.Fatalf("%q plan = %+v", command, plan)
 		}
 	}

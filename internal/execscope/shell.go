@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"path/filepath"
@@ -12,58 +12,58 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// execClass orders how much of a command's file effect is known statically.
+// Class orders how much of a command's file effect is known statically.
 // A program takes the most open class of its statements.
-type execClass int
+type Class int
 
 const (
-	execNeutral execClass = iota
-	execDeclared
-	execScoped
-	execOpaque
+	Neutral Class = iota
+	Declared
+	Scoped
+	Opaque
 )
 
-func (c execClass) String() string {
+func (c Class) String() string {
 	switch c {
-	case execNeutral:
+	case Neutral:
 		return "neutral"
-	case execDeclared:
+	case Declared:
 		return "declared"
-	case execScoped:
+	case Scoped:
 		return "scoped"
 	default:
 		return "opaque"
 	}
 }
 
-// execOperand is an absolute path, or a shell glob expanded read-only at
+// Operand is an absolute path, or a shell glob expanded read-only at
 // capture time.
-type execOperand struct {
+type Operand struct {
 	Path          string
 	Glob          bool `json:",omitzero"`
 	AbsoluteInput bool `json:",omitzero"`
 }
 
-type execScopeKind string
+type Kind string
 
 const (
-	// execScopeFile captures each operand path itself.
-	execScopeFile execScopeKind = "file"
-	// execScopeTree captures each operand, and every file below it when it is
+	// File captures each operand path itself.
+	File Kind = "file"
+	// Tree captures each operand, and every file below it when it is
 	// a directory.
-	execScopeTree execScopeKind = "tree"
-	// execScopeInto resolves coreutils destination rules at capture time:
+	Tree Kind = "tree"
+	// Into resolves coreutils destination rules at capture time:
 	// each source maps to Dest, or to Dest/basename(source) when Dest is a
 	// directory.
-	execScopeInto execScopeKind = "into"
+	Into Kind = "into"
 )
 
-// execScopeEntry is one statically derived part of a command's write scope.
+// Entry is one statically derived part of a command's write scope.
 // Destinations depend on filesystem state, so they resolve at capture time.
-type execScopeEntry struct {
+type Entry struct {
 	Origin   string `json:",omitempty"`
-	Kind     execScopeKind
-	Operands []execOperand
+	Kind     Kind
+	Operands []Operand
 	Dest     string `json:",omitempty"`
 	// DestDir forces directory semantics (-t, or several sources).
 	DestDir bool `json:",omitzero"`
@@ -82,17 +82,17 @@ type execScopeEntry struct {
 	Through bool `json:",omitzero"`
 }
 
-type execPlan struct {
-	Class  execClass
+type Result struct {
+	Class  Class
 	Labels []string
-	Scope  []execScopeEntry
+	Scope  []Entry
 	Reason string
 	// Programs are the statements whose effects are not derived, in order.
-	Programs []execProgram
+	Programs []Program
 }
 
-// execProgram names an undeclared statement for effect attribution.
-type execProgram struct {
+// Program names an undeclared statement for effect attribution.
+type Program struct {
 	Label string
 	// Direct marks statements whose targets and content the agent chose:
 	// interpreter programs, inline shell, and file operations with operands
@@ -102,7 +102,7 @@ type execProgram struct {
 	VCS bool `json:",omitzero"`
 }
 
-func (p *execPlan) raise(class execClass, reason string) {
+func (p *Result) raise(class Class, reason string) {
 	if class > p.Class {
 		p.Class = class
 	}
@@ -114,34 +114,34 @@ func (p *execPlan) raise(class execClass, reason string) {
 	}
 }
 
-func (p *execPlan) label(name string) {
+func (p *Result) label(name string) {
 	if !slices.Contains(p.Labels, name) {
 		p.Labels = append(p.Labels, name)
 	}
 }
 
-func (p *execPlan) add(entry execScopeEntry) {
+func (p *Result) add(entry Entry) {
 	p.Scope = append(p.Scope, entry)
 }
 
-func classifyExecShellSource(command, workdir, shell string, deadline time.Time, depth int, changes execChangeResolver, authoredOnly bool) execPlan {
-	plan := execPlan{}
+func classifyExecShellSource(command, workdir, shell string, deadline time.Time, depth int, changes ChangeResolver, authoredOnly bool) Result {
+	plan := Result{}
 	switch shellsyntax.InterpreterIdentity(shell) {
 	case "bash", "sh":
 	case "":
-		plan.raise(execOpaque, "session shell is unknown")
+		plan.raise(Opaque, "session shell is unknown")
 		return plan
 	default:
-		plan.raise(execOpaque, "shell "+shell+" is not parsed")
+		plan.raise(Opaque, "shell "+shell+" is not parsed")
 		return plan
 	}
 	if !filepath.IsAbs(workdir) {
-		plan.raise(execOpaque, "relative operands require an absolute working directory")
+		plan.raise(Opaque, "relative operands require an absolute working directory")
 		return plan
 	}
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command), "")
 	if err != nil {
-		plan.raise(execOpaque, "command does not parse as bash")
+		plan.raise(Opaque, "command does not parse as bash")
 		return plan
 	}
 	// A substitution anywhere, including heredoc bodies and test clauses,
@@ -155,7 +155,7 @@ func classifyExecShellSource(command, workdir, shell string, deadline time.Time,
 		return !substitution
 	})
 	if substitution {
-		plan.raise(execOpaque, "command substitution")
+		plan.raise(Opaque, "command substitution")
 		return plan
 	}
 	walker := execShellWalker{authoredOnly: authoredOnly, cwd: filepath.Clean(workdir), plan: &plan, deadline: deadline, depth: depth, changes: changes}
@@ -177,25 +177,25 @@ type execShellWalker struct {
 	deadline        time.Time
 	stdin           string
 	cwd             string
-	plan            *execPlan
+	plan            *Result
 	// moves counts cd commands walked, so a list can tell that the directory
 	// may have changed even when it returns to the same path.
 	moves int
 	// program attributes an undeclared current statement.
-	program execProgram
+	program Program
 	// functions are shell functions defined earlier in the command.
 	functions []string
 	// changes resolves the paths mchanges revert and apply may write.
-	changes execChangeResolver
+	changes ChangeResolver
 }
 
 // opaque marks the current statement as undeclared. Walking continues, so
 // later statements still contribute their declared scope and labels.
 func (w *execShellWalker) opaque(reason string) {
-	w.plan.raise(execOpaque, reason)
+	w.plan.raise(Opaque, reason)
 	program := w.program
 	if program.Label == "" {
-		program = execProgram{Label: "shell", Direct: true}
+		program = Program{Label: "shell", Direct: true}
 	}
 	if !slices.Contains(w.plan.Programs, program) {
 		w.plan.Programs = append(w.plan.Programs, program)
@@ -244,7 +244,7 @@ func execGuardedCd(stmt *syntax.Stmt) bool {
 		if !ok || len(call.Args) == 0 || len(stmt.Redirs) != 0 || stmt.Background || stmt.Negated {
 			return ""
 		}
-		value, _ := shellCatLiteral(call.Args[0])
+		value, _ := shellsyntax.Literal(call.Args[0])
 		return value
 	}
 	exit := name(binary.Y)
@@ -252,7 +252,7 @@ func execGuardedCd(stmt *syntax.Stmt) bool {
 }
 
 func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
-	w.program = execProgram{}
+	w.program = Program{}
 	previousOrigin := w.vcsOrigin
 	w.vcsOrigin = ""
 	// Each statement owns its scope, while compound output retains all producers.
@@ -263,15 +263,15 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	}()
 	w.stdin = ""
 	for _, redirect := range stmt.Redirs {
-		if body, ok := liveDiffShellHeredoc(redirect, false); ok {
+		if body, ok := shellsyntax.Heredoc(redirect, false); ok {
 			w.stdin = body
 		}
 	}
 	if stmt.Background || stmt.Coprocess || stmt.Disown {
 		// The job outlives the command, so its writes are not this call's.
-		w.program = execProgram{Label: "background job"}
+		w.program = Program{Label: "background job"}
 		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) != 0 {
-			if name, literal := shellCatLiteral(call.Args[0]); literal {
+			if name, literal := shellsyntax.Literal(call.Args[0]); literal {
 				w.program.Label = execProgramLabel(shellsyntax.InterpreterIdentity(name), call.Args[1:]) + " (background)"
 			}
 		}
@@ -299,7 +299,7 @@ func (w *execShellWalker) stmt(stmt *syntax.Stmt) {
 	if len(w.plan.Scope) != writes {
 		label := "shell"
 		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) != 0 {
-			if name, literal := shellCatLiteral(call.Args[0]); literal {
+			if name, literal := shellsyntax.Literal(call.Args[0]); literal {
 				label = shellsyntax.InterpreterIdentity(name)
 			}
 		}
@@ -430,7 +430,7 @@ func authoredShellRedirection(stmt *syntax.Stmt, generatedInput bool) bool {
 	if !ok || len(call.Args) == 0 {
 		return false
 	}
-	name, ok := shellCatLiteral(call.Args[0])
+	name, ok := shellsyntax.Literal(call.Args[0])
 	if !ok {
 		return false
 	}
@@ -451,21 +451,21 @@ func authoredPipeOutput(stmt *syntax.Stmt, generatedInput bool) bool {
 		if len(command.Args) == 0 {
 			return false
 		}
-		name, literal := shellCatLiteral(command.Args[0])
+		name, literal := shellsyntax.Literal(command.Args[0])
 		if !literal {
 			return false
 		}
 		switch name {
 		case "printf", "echo":
-			_, literal := literalArgs(command.Args[1:])
+			_, literal := shellsyntax.Args(command.Args[1:])
 			return literal
 		case "cat":
 			for _, redirect := range stmt.Redirs {
-				if _, literal := liveDiffShellHeredoc(redirect, false); literal {
+				if _, literal := shellsyntax.Heredoc(redirect, false); literal {
 					return true
 				}
 			}
-			if values, literal := literalArgs(command.Args[1:]); literal && len(values) != 0 && !slices.Contains(values, "-") {
+			if values, literal := shellsyntax.Args(command.Args[1:]); literal && len(values) != 0 && !slices.Contains(values, "-") {
 				return true
 			}
 			return !generatedInput
@@ -507,7 +507,7 @@ func (w *execShellWalker) subshell(walk func(*execShellWalker)) string {
 }
 
 func (w *execShellWalker) redirect(redirect *syntax.Redirect) {
-	if redirect.N != nil && !isDigits(redirect.N.Value) {
+	if redirect.N != nil && !shellsyntax.IsDigits(redirect.N.Value) {
 		w.opaque("named file descriptor")
 		return
 	}
@@ -521,8 +521,8 @@ func (w *execShellWalker) redirect(redirect *syntax.Redirect) {
 			w.opaque("dynamic input")
 		}
 	case syntax.DplIn, syntax.DplOut:
-		value, ok := shellCatLiteral(redirect.Word)
-		if !ok || value != "-" && !isDigits(value) {
+		value, ok := shellsyntax.Literal(redirect.Word)
+		if !ok || value != "-" && !shellsyntax.IsDigits(value) {
 			w.opaque("dynamic descriptor duplication")
 		}
 	case syntax.RdrOut, syntax.AppOut, syntax.RdrClob, syntax.RdrAll, syntax.AppAll, syntax.RdrInOut:
@@ -534,15 +534,11 @@ func (w *execShellWalker) redirect(redirect *syntax.Redirect) {
 		if strings.HasPrefix(operand.Path, "/dev/") {
 			return
 		}
-		w.plan.raise(execDeclared, "")
-		w.plan.add(execScopeEntry{Kind: execScopeFile, Operands: []execOperand{operand}, Through: true})
+		w.plan.raise(Declared, "")
+		w.plan.add(Entry{Kind: File, Operands: []Operand{operand}, Through: true})
 	default:
 		w.opaque("unsupported redirection")
 	}
-}
-
-func isDigits(value string) bool {
-	return value != "" && strings.Trim(value, "0123456789") == ""
 }
 
 // execHeredocStatic accepts heredoc bodies without expansions that could run
@@ -583,158 +579,38 @@ func execWordStatic(word *syntax.Word) bool {
 
 // operand resolves a literal or glob word against the walker's directory.
 // Parameters, command substitution, tilde, and brace expansion are dynamic.
-func (w *execShellWalker) operand(word *syntax.Word) (execOperand, bool) {
-	value, glob, ok := execWordOperand(word)
+func (w *execShellWalker) operand(word *syntax.Word) (Operand, bool) {
+	value, glob, ok := shellsyntax.Operand(word)
 	if !ok || value == "" {
-		return execOperand{}, false
+		return Operand{}, false
 	}
 	absolute := filepath.IsAbs(value)
 	if !filepath.IsAbs(value) {
 		if w.cwd == "" {
-			return execOperand{}, false
+			return Operand{}, false
 		}
 		value = filepath.Join(w.cwd, value)
 	}
 	if !glob {
 		value = filepath.Clean(value)
 	}
-	return execOperand{Path: value, Glob: glob, AbsoluteInput: absolute}, true
+	return Operand{Path: value, Glob: glob, AbsoluteInput: absolute}, true
 }
 
 // execDotOperand matches operands whose trailing . or .. names directory
 // contents rather than an entry, which destination rules do not model.
 func execDotOperand(word *syntax.Word) bool {
-	value, _, _ := execWordOperand(word)
+	value, _, _ := shellsyntax.Operand(word)
 	value = strings.TrimRight(value, "/")
 	return value == "." || value == ".." || strings.HasSuffix(value, "/.") || strings.HasSuffix(value, "/..")
 }
 
-// execWordOperand returns a word's literal value, or a filepath.Match pattern
+// shellsyntax.Operand returns a word's literal value, or a filepath.Match pattern
 // when unquoted glob characters appear. Quoted text is escaped in patterns.
-func execWordOperand(word *syntax.Word) (value string, glob bool, ok bool) {
-	if word == nil {
-		return "", false, false
-	}
-	var pattern strings.Builder
-	escape := func(text string) {
-		for _, char := range text {
-			if strings.ContainsRune(`*?[\`, char) {
-				pattern.WriteByte('\\')
-			}
-			pattern.WriteRune(char)
-		}
-	}
-	for index, part := range word.Parts {
-		switch part := part.(type) {
-		case *syntax.SglQuoted:
-			if part.Dollar {
-				return "", false, false
-			}
-			escape(part.Value)
-		case *syntax.DblQuoted:
-			for _, inner := range part.Parts {
-				literal, isLiteral := inner.(*syntax.Lit)
-				if !isLiteral {
-					return "", false, false
-				}
-				text, err := expand.Literal(&expand.Config{}, &syntax.Word{Parts: []syntax.WordPart{&syntax.DblQuoted{Parts: []syntax.WordPart{literal}}}})
-				if err != nil {
-					return "", false, false
-				}
-				escape(text)
-			}
-		case *syntax.Lit:
-			text := part.Value
-			if index == 0 && strings.HasPrefix(text, "~") {
-				return "", false, false
-			}
-			if strings.ContainsAny(text, "{}") {
-				return "", false, false
-			}
-			if strings.ContainsAny(text, "*?[") {
-				// Character classes and globstar have no filepath.Match
-				// form; bash negation is [! where Go uses [^.
-				if strings.Contains(text, "[[:") || strings.Contains(text, "**") {
-					return "", false, false
-				}
-				glob = true
-				pattern.WriteString(strings.ReplaceAll(text, "[!", "[^"))
-				continue
-			}
-			literal, err := expand.Literal(&expand.Config{}, &syntax.Word{Parts: []syntax.WordPart{part}})
-			if err != nil {
-				return "", false, false
-			}
-			escape(literal)
-		default:
-			return "", false, false
-		}
-	}
-	if glob {
-		return pattern.String(), true, true
-	}
-	literal, err := expand.Literal(&expand.Config{}, word)
-	if err != nil {
-		return "", false, false
-	}
-	return literal, false, true
-}
 
-// literalArgs returns all words as static strings, for options and scripts.
-func literalArgs(words []*syntax.Word) ([]string, bool) {
-	values := make([]string, 0, len(words))
-	for _, word := range words {
-		value, glob, ok := execWordOperand(word)
-		if !ok {
-			return nil, false
-		}
-		if glob {
-			// Keep the literal spelling; callers that need operands resolve
-			// them through operand().
-			value = word.Lit()
-			if value == "" {
-				return nil, false
-			}
-		}
-		values = append(values, value)
-	}
-	return values, true
-}
+// shellsyntax.Args returns all words as static strings, for options and scripts.
 
-// execEnvArgs unwraps only literal environment changes that preserve command resolution.
-func execEnvArgs(args []*syntax.Word) ([]*syntax.Word, string) {
-	assignments := false
-	for len(args) != 0 {
-		next, ok := shellCatLiteral(args[0])
-		if !assignments && ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
-			variable, inline := strings.CutPrefix(next, "--unset=")
-			count := 1
-			if !inline && len(args) > 1 {
-				variable, ok = shellCatLiteral(args[1])
-				count = 2
-			} else if !inline {
-				ok = false
-			}
-			if !ok || variable == "" || variable == "PATH" {
-				return nil, "env unset changes command resolution or is not literal"
-			}
-			args = args[count:]
-			continue
-		}
-		if !ok || strings.HasPrefix(next, "-") {
-			return nil, "env options are not parsed"
-		}
-		if !strings.Contains(next, "=") {
-			break
-		}
-		if variable, _, _ := strings.Cut(next, "="); variable == "PATH" {
-			return nil, "command resolution changes"
-		}
-		assignments = true
-		args = args[1:]
-	}
-	return args, ""
-}
+// shellsyntax.EnvArgs unwraps only literal environment changes that preserve command resolution.
 
 func (w *execShellWalker) call(call *syntax.CallExpr) {
 	for _, assign := range call.Assigns {
@@ -750,7 +626,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 	if len(call.Args) == 0 {
 		return
 	}
-	name, literal := shellCatLiteral(call.Args[0])
+	name, literal := shellsyntax.Literal(call.Args[0])
 	if !literal && call.Args[0].Lit() == "[" {
 		// An unmatched opening bracket is the test builtin, not a glob.
 		name, literal = "[", true
@@ -769,7 +645,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 				break
 			}
 			for len(args) > 0 {
-				option, ok := shellCatLiteral(args[0])
+				option, ok := shellsyntax.Literal(args[0])
 				if !ok || option != "--ultra-compact" && option != "--skip-env" {
 					break
 				}
@@ -778,7 +654,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 			if len(args) == 0 {
 				break
 			}
-			next, ok := shellCatLiteral(args[0])
+			next, ok := shellsyntax.Literal(args[0])
 			if !ok {
 				break
 			}
@@ -788,7 +664,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 				}
 				args = args[1:]
 				for len(args) > 1 {
-					option, literal := shellCatLiteral(args[0])
+					option, literal := shellsyntax.Literal(args[0])
 					if !literal || option != "--ultra-compact" && option != "--skip-env" && option != "--" {
 						break
 					}
@@ -798,7 +674,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 					}
 				}
 				// Proxy takes a literal executable and its original arguments.
-				name, ok = shellCatLiteral(args[0])
+				name, ok = shellsyntax.Literal(args[0])
 				if !ok || strings.HasPrefix(name, "-") {
 					w.opaque("rtk proxy executable is not literal")
 					return
@@ -807,8 +683,8 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 				continue
 			}
 			if next == "run" && len(args) == 3 && w.depth < 3 {
-				option, _ := shellCatLiteral(args[1])
-				source, literal := shellCatLiteral(args[2])
+				option, _ := shellsyntax.Literal(args[1])
+				source, literal := shellsyntax.Literal(args[2])
 				if literal && (option == "-c" || option == "--command") {
 					plan := classifyExecShellSource(source, w.cwd, "sh", w.deadline, w.depth+1, w.changes, w.authoredOnly)
 					w.plan.Scope = append(w.plan.Scope, plan.Scope...)
@@ -828,7 +704,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 			if len(args) == 0 {
 				return
 			}
-			next, ok := shellCatLiteral(args[0])
+			next, ok := shellsyntax.Literal(args[0])
 			if !ok || strings.HasPrefix(next, "-") {
 				w.opaque("dynamic command name")
 				return
@@ -837,7 +713,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 			continue
 		case "env":
 			var reason string
-			args, reason = execEnvArgs(args)
+			args, reason = shellsyntax.EnvArgs(args)
 			if reason != "" {
 				w.opaque(reason)
 				return
@@ -845,7 +721,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 			if len(args) == 0 {
 				return
 			}
-			next, ok := shellCatLiteral(args[0])
+			next, ok := shellsyntax.Literal(args[0])
 			if !ok {
 				w.opaque("dynamic command name")
 				return
@@ -856,7 +732,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		break
 	}
 	identity := shellsyntax.InterpreterIdentity(name)
-	w.program = execProgram{Label: execProgramLabel(identity, args), Direct: execProgramDirect(identity, args)}
+	w.program = Program{Label: execProgramLabel(identity, args), Direct: execProgramDirect(identity, args)}
 	if strings.Contains(name, "/") && filepath.Dir(name) != "/bin" && filepath.Dir(name) != "/usr/bin" {
 		// A path names a program of its own, not the system tool.
 		w.program.Direct = false
@@ -864,14 +740,14 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		return
 	}
 	if slices.Contains(w.functions, name) {
-		w.program = execProgram{Label: name, Direct: true}
+		w.program = Program{Label: name, Direct: true}
 		w.opaque("shell function")
 		w.loseDirectory()
 		return
 	}
 	if vcsguard.IsTool(identity) {
 		w.vcsOrigin = w.program.Label
-		values, literal := literalArgs(args)
+		values, literal := shellsyntax.Args(args)
 		w.program.VCS = !literal || vcsguard.WorktreeWrites(append([]string{identity}, values...))
 		start := len(w.plan.Scope)
 		defer func() {
@@ -904,7 +780,7 @@ func execProgramLabel(identity string, args []*syntax.Word) string {
 	var label strings.Builder
 	label.WriteString(identity)
 	for _, arg := range args {
-		value, literal := shellCatLiteral(arg)
+		value, literal := shellsyntax.Literal(arg)
 		if !literal {
 			break
 		}
@@ -936,7 +812,7 @@ func execProgramDirect(identity string, args []*syntax.Word) bool {
 		return !execPackageSubcommands[subcommand]
 	case identity == "bash" || identity == "sh" || identity == "dash":
 		return slices.ContainsFunc(args, func(arg *syntax.Word) bool {
-			value, _ := shellCatLiteral(arg)
+			value, _ := shellsyntax.Literal(arg)
 			return strings.HasPrefix(value, "-") && !strings.HasPrefix(value, "--") && strings.Contains(value, "c")
 		})
 	}
@@ -994,7 +870,7 @@ func (w *execShellWalker) command(identity, name string, args []*syntax.Word) {
 	case "find":
 		w.find(args)
 	case "uniq", "xxd":
-		operands, ok := literalArgs(args)
+		operands, ok := shellsyntax.Args(args)
 		count := 0
 		for _, operand := range operands {
 			if !strings.HasPrefix(operand, "-") {
@@ -1087,7 +963,7 @@ func execNeutralCommand(identity string, args []*syntax.Word) bool {
 		}
 		return true
 	}
-	values, ok := literalArgs(args)
+	values, ok := shellsyntax.Args(args)
 	if !ok {
 		return false
 	}
@@ -1139,7 +1015,7 @@ func execNeutralArgs(words []*syntax.Word) ([]string, bool) {
 			if err != nil || len(values) >= 4096 {
 				return nil, false
 			}
-			args, ok := literalArgs([]*syntax.Word{expanded})
+			args, ok := shellsyntax.Args([]*syntax.Word{expanded})
 			if !ok {
 				return nil, false
 			}
@@ -1157,7 +1033,7 @@ func (w *execShellWalker) cd(args []*syntax.Word) {
 		w.cwd = ""
 		return
 	}
-	if value, _ := shellCatLiteral(args[0]); value == "-" || strings.HasPrefix(value, "-") {
+	if value, _ := shellsyntax.Literal(args[0]); value == "-" || strings.HasPrefix(value, "-") {
 		w.cwd = ""
 		return
 	}
@@ -1215,7 +1091,7 @@ func (o execOptions) parse(words []*syntax.Word) (execParsedOptions, bool) {
 	parsed := execParsedOptions{set: make(map[string]string)}
 	for index := 0; index < len(words); index++ {
 		word := words[index]
-		text, literal := shellCatLiteral(word)
+		text, literal := shellsyntax.Literal(word)
 		if !literal || text == "-" || !strings.HasPrefix(text, "-") {
 			parsed.operands = append(parsed.operands, word)
 			continue
@@ -1240,7 +1116,7 @@ func (o execOptions) parse(words []*syntax.Word) (execParsedOptions, bool) {
 					if index+1 >= len(words) {
 						return parsed, false
 					}
-					next, ok := shellCatLiteral(words[index+1])
+					next, ok := shellsyntax.Literal(words[index+1])
 					if !ok {
 						return parsed, false
 					}
@@ -1262,7 +1138,7 @@ func (o execOptions) parse(words []*syntax.Word) (execParsedOptions, bool) {
 					if index+1 >= len(words) {
 						return parsed, false
 					}
-					next, ok := shellCatLiteral(words[index+1])
+					next, ok := shellsyntax.Literal(words[index+1])
 					if !ok {
 						return parsed, false
 					}
@@ -1333,8 +1209,8 @@ var (
 	}
 )
 
-func (w *execShellWalker) operands(words []*syntax.Word) ([]execOperand, bool) {
-	operands := make([]execOperand, 0, len(words))
+func (w *execShellWalker) operands(words []*syntax.Word) ([]Operand, bool) {
+	operands := make([]Operand, 0, len(words))
 	for _, word := range words {
 		operand, ok := w.operand(word)
 		if !ok {
@@ -1394,8 +1270,8 @@ func (w *execShellWalker) copyLike(identity string, args []*syntax.Word, move bo
 		w.opaque(identity + " backup control is not modeled")
 		return
 	}
-	entry := execScopeEntry{
-		Kind:      execScopeInto,
+	entry := Entry{
+		Kind:      Into,
 		NoTarget:  options.has("-T", "--no-target-directory"),
 		Recursive: move || options.has("-r", "-R", "-a", "--recursive", "--archive"),
 		Sources:   move,
@@ -1411,7 +1287,7 @@ func (w *execShellWalker) copyLike(identity string, args []*syntax.Word, move bo
 		w.opaque(identity + " without sources")
 		return
 	}
-	w.plan.raise(execDeclared, "")
+	w.plan.raise(Declared, "")
 	w.plan.label(identity)
 	w.plan.add(entry)
 }
@@ -1438,7 +1314,7 @@ func (w *execShellWalker) link(args []*syntax.Word) {
 	}
 	// Only the link names change; ln never writes its targets. A lone target
 	// links into the current directory.
-	entry := execScopeEntry{Kind: execScopeInto, NoTarget: options.has("-T", "--no-target-directory"), NoDereference: options.has("-n", "--no-dereference"), Backup: backup}
+	entry := Entry{Kind: Into, NoTarget: options.has("-T", "--no-target-directory"), NoDereference: options.has("-n", "--no-dereference"), Backup: backup}
 	_, hasTarget := options.value("-t", "--target-directory")
 	if !hasTarget && len(operands) == 1 {
 		if w.cwd == "" {
@@ -1449,12 +1325,12 @@ func (w *execShellWalker) link(args []*syntax.Word) {
 	} else if !w.intoTarget("ln", options, operands, &entry) {
 		return
 	}
-	w.plan.raise(execDeclared, "")
+	w.plan.raise(Declared, "")
 	w.plan.label("ln")
 	w.plan.add(entry)
 }
 
-func (w *execShellWalker) intoTarget(identity string, options execParsedOptions, operands []execOperand, entry *execScopeEntry) bool {
+func (w *execShellWalker) intoTarget(identity string, options execParsedOptions, operands []Operand, entry *Entry) bool {
 	if target, ok := options.value("-t", "--target-directory"); ok {
 		operand, ok := w.operand(&syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: target}}})
 		if !ok || operand.Glob {
@@ -1484,13 +1360,13 @@ func (w *execShellWalker) remove(args []*syntax.Word) {
 		w.opaque("dynamic rm operand")
 		return
 	}
-	kind := execScopeFile
+	kind := File
 	if options.has("-r", "-R", "--recursive") {
-		kind = execScopeTree
+		kind = Tree
 	}
-	w.plan.raise(execDeclared, "")
+	w.plan.raise(Declared, "")
 	w.plan.label("rm")
-	w.plan.add(execScopeEntry{Kind: kind, Operands: operands})
+	w.plan.add(Entry{Kind: kind, Operands: operands})
 }
 
 func (w *execShellWalker) fileOperands(identity string, args []*syntax.Word) {
@@ -1507,16 +1383,16 @@ func (w *execShellWalker) fileOperands(identity string, args []*syntax.Word) {
 	if len(operands) == 0 {
 		return
 	}
-	w.plan.raise(execDeclared, "")
+	w.plan.raise(Declared, "")
 	w.plan.label(identity)
 	// unlink removes the name itself; the others open it and follow links
 	// unless touch -h asks otherwise.
 	through := identity != "unlink" && !options.has("-h", "--no-dereference")
-	w.plan.add(execScopeEntry{Kind: execScopeFile, Operands: operands, Through: through})
+	w.plan.add(Entry{Kind: File, Operands: operands, Through: through})
 }
 
 func (w *execShellWalker) sort(args []*syntax.Word) {
-	values, ok := literalArgs(args)
+	values, ok := shellsyntax.Args(args)
 	if !ok {
 		w.opaque("dynamic sort operand")
 		return
@@ -1578,9 +1454,9 @@ func (w *execShellWalker) sort(args []*syntax.Word) {
 			w.opaque("dynamic sort output")
 			return
 		}
-		w.plan.raise(execDeclared, "")
+		w.plan.raise(Declared, "")
 		w.plan.label("sort")
-		w.plan.add(execScopeEntry{Kind: execScopeFile, Operands: []execOperand{operand}, Through: true})
+		w.plan.add(Entry{Kind: File, Operands: []Operand{operand}, Through: true})
 	}
 }
 
@@ -1596,7 +1472,7 @@ func (w *execShellWalker) awk(identity string, args []*syntax.Word) {
 	var programs []string
 	index := 0
 	for ; index < len(args); index++ {
-		value, literal := shellCatLiteral(args[index])
+		value, literal := shellsyntax.Literal(args[index])
 		if !literal {
 			break
 		}
@@ -1619,7 +1495,7 @@ func (w *execShellWalker) awk(identity string, args []*syntax.Word) {
 				w.opaque(identity + " program is not literal")
 				return
 			}
-			program, literal := shellCatLiteral(args[index+1])
+			program, literal := shellsyntax.Literal(args[index+1])
 			if !literal {
 				w.opaque(identity + " program is not literal")
 				return
@@ -1638,7 +1514,7 @@ func (w *execShellWalker) awk(identity string, args []*syntax.Word) {
 			w.opaque(identity + " without a program")
 			return
 		}
-		program, literal := shellCatLiteral(args[index])
+		program, literal := shellsyntax.Literal(args[index])
 		if !literal {
 			w.opaque(identity + " program is not literal")
 			return
@@ -1706,7 +1582,7 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 	inPlace, suffix := false, ""
 	sandbox := false
 	for index := 0; index < len(args); index++ {
-		text, literal := shellCatLiteral(args[index])
+		text, literal := shellsyntax.Literal(args[index])
 		if !literal {
 			if len(scripts) == 0 {
 				w.opaque("dynamic sed script")
@@ -1724,7 +1600,7 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 				w.opaque("sed option without a value")
 				return
 			}
-			value, ok := shellCatLiteral(args[index+1])
+			value, ok := shellsyntax.Literal(args[index+1])
 			if !ok {
 				w.opaque("dynamic sed script")
 				return
@@ -1766,7 +1642,7 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 						w.opaque("sed -e without a literal script")
 						return
 					}
-					value, ok := shellCatLiteral(args[index+1])
+					value, ok := shellsyntax.Literal(args[index+1])
 					if !ok {
 						w.opaque("dynamic sed script")
 						return
@@ -1801,7 +1677,7 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 			w.opaque("sed script writes files")
 			return
 		}
-		w.plan.raise(execScoped, "sed script writes other files")
+		w.plan.raise(Scoped, "sed script writes other files")
 	}
 	if !inPlace {
 		return
@@ -1811,9 +1687,9 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 		w.opaque("sed -i without literal files")
 		return
 	}
-	w.plan.raise(execDeclared, "")
+	w.plan.raise(Declared, "")
 	w.plan.label("sed")
-	w.plan.add(execScopeEntry{Kind: execScopeFile, Operands: operands})
+	w.plan.add(Entry{Kind: File, Operands: operands})
 	if suffix != "" {
 		w.addBackups(operands, suffix)
 	}
@@ -1821,8 +1697,8 @@ func (w *execShellWalker) sed(args []*syntax.Word) {
 
 // addBackups records in-place backup names. A suffix with * replaces the
 // original file operand, as in GNU sed and perl.
-func (w *execShellWalker) addBackups(operands []execOperand, suffix string) {
-	backups := make([]execOperand, 0, len(operands))
+func (w *execShellWalker) addBackups(operands []Operand, suffix string) {
+	backups := make([]Operand, 0, len(operands))
 	for _, operand := range operands {
 		if operand.Glob {
 			matches, err := filepath.Glob(operand.Path)
@@ -1831,7 +1707,7 @@ func (w *execShellWalker) addBackups(operands []execOperand, suffix string) {
 				continue
 			}
 			for _, path := range matches {
-				w.addBackups([]execOperand{{Path: path, AbsoluteInput: operand.AbsoluteInput}}, suffix)
+				w.addBackups([]Operand{{Path: path, AbsoluteInput: operand.AbsoluteInput}}, suffix)
 			}
 			continue
 		}
@@ -1851,9 +1727,9 @@ func (w *execShellWalker) addBackups(operands []execOperand, suffix string) {
 				name = filepath.Join(w.cwd, name)
 			}
 		}
-		backups = append(backups, execOperand{Path: filepath.Clean(name)})
+		backups = append(backups, Operand{Path: filepath.Clean(name)})
 	}
-	w.plan.add(execScopeEntry{Kind: execScopeFile, Operands: backups})
+	w.plan.add(Entry{Kind: File, Operands: backups})
 }
 
 // sedScriptWrites scans GNU sed commands for w, W, e, and s///w or s///e.
@@ -1990,7 +1866,7 @@ func sedScriptWrites(script string) (writes, known bool) {
 // perl -pi is declared only for substitution programs. Anything else can
 // open, rename, or run arbitrary files.
 func (w *execShellWalker) perl(args []*syntax.Word) {
-	values, ok := literalArgs(args)
+	values, ok := shellsyntax.Args(args)
 	if !ok {
 		w.opaque("dynamic perl operand")
 		return
@@ -2057,12 +1933,12 @@ func (w *execShellWalker) perl(args []*syntax.Word) {
 		declared = declared && perlSubstitutionOnly(program)
 	}
 	if declared {
-		w.plan.raise(execDeclared, "")
+		w.plan.raise(Declared, "")
 	} else {
-		w.plan.raise(execScoped, "perl -i program is not only substitutions")
+		w.plan.raise(Scoped, "perl -i program is not only substitutions")
 	}
 	w.plan.label("perl")
-	w.plan.add(execScopeEntry{Kind: execScopeFile, Operands: files})
+	w.plan.add(Entry{Kind: File, Operands: files})
 	if suffix != "" {
 		w.addBackups(files, suffix)
 	}
@@ -2184,7 +2060,7 @@ func gitSubcommand(values []string) (subcommand string, rest []string, cwd []str
 }
 
 func (w *execShellWalker) git(args []*syntax.Word) {
-	values, ok := literalArgs(args)
+	values, ok := shellsyntax.Args(args)
 	if !ok {
 		w.opaque("dynamic git operand")
 		return
@@ -2282,10 +2158,10 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 			w.opaque("git mv without literal operands")
 			return
 		}
-		w.plan.raise(execDeclared, "")
+		w.plan.raise(Declared, "")
 		w.plan.label("git mv")
-		w.plan.add(execScopeEntry{
-			Kind: execScopeInto, Operands: operands[:len(operands)-1], Dest: operands[len(operands)-1].Path,
+		w.plan.add(Entry{
+			Kind: Into, Operands: operands[:len(operands)-1], Dest: operands[len(operands)-1].Path,
 			DestDir: len(operands) > 2, Recursive: true, Sources: true,
 		})
 		return
@@ -2306,13 +2182,13 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 			w.opaque("git rm pathspec is not literal")
 			return
 		}
-		kind := execScopeFile
+		kind := File
 		if options.has("-r") {
-			kind = execScopeTree
+			kind = Tree
 		}
-		w.plan.raise(execDeclared, "")
+		w.plan.raise(Declared, "")
 		w.plan.label("git rm")
-		w.plan.add(execScopeEntry{Kind: kind, Operands: operands})
+		w.plan.add(Entry{Kind: kind, Operands: operands})
 		return
 	}
 	if vcsguard.GitReadOnlyCommand(subcommand) {
@@ -2325,7 +2201,7 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 // shell passes them quoted: wildcards match across directories, and a leading
 // colon starts pathspec magic.
 func execGitPathspecMagic(word *syntax.Word) bool {
-	value, glob, _ := execWordOperand(word)
+	value, glob, _ := shellsyntax.Operand(word)
 	if glob {
 		return true
 	}
@@ -2333,7 +2209,7 @@ func execGitPathspecMagic(word *syntax.Word) bool {
 }
 
 func (w *execShellWalker) svn(args []*syntax.Word) {
-	values, ok := literalArgs(args)
+	values, ok := shellsyntax.Args(args)
 	if !ok || len(values) == 0 {
 		w.opaque("dynamic svn operand")
 		return
@@ -2361,19 +2237,19 @@ func (w *execShellWalker) svn(args []*syntax.Word) {
 	}
 	var local []*syntax.Word
 	for _, word := range options.operands {
-		if value, _ := shellCatLiteral(word); !strings.Contains(value, "://") {
+		if value, _ := shellsyntax.Literal(word); !strings.Contains(value, "://") {
 			local = append(local, word)
 		}
 	}
 	operands, ok := w.operands(local)
-	if !ok || slices.ContainsFunc(operands, func(operand execOperand) bool { return operand.Glob }) {
+	if !ok || slices.ContainsFunc(operands, func(operand Operand) bool { return operand.Glob }) {
 		w.opaque("svn operand is not literal")
 		return
 	}
 	if len(operands) == 0 {
 		return
 	}
-	w.plan.raise(execDeclared, "")
+	w.plan.raise(Declared, "")
 	w.plan.label("svn " + subcommand)
 	switch subcommand {
 	case "move", "mv", "rename", "ren":
@@ -2381,11 +2257,11 @@ func (w *execShellWalker) svn(args []*syntax.Word) {
 			w.opaque("svn move without a destination")
 			return
 		}
-		w.plan.add(execScopeEntry{
-			Kind: execScopeInto, Operands: operands[:len(operands)-1], Dest: operands[len(operands)-1].Path,
+		w.plan.add(Entry{
+			Kind: Into, Operands: operands[:len(operands)-1], Dest: operands[len(operands)-1].Path,
 			DestDir: len(operands) > 2, Recursive: true, Sources: true,
 		})
 	default:
-		w.plan.add(execScopeEntry{Kind: execScopeTree, Operands: operands})
+		w.plan.add(Entry{Kind: Tree, Operands: operands})
 	}
 }

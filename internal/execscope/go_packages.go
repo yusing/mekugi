@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"errors"
@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/internal/sourceparse"
 )
 
 // Explicit go fix package operands scope the Go sources the agent asks to edit.
@@ -35,7 +37,7 @@ func execGoPackageScope(input execProviderInput) execProviderResult {
 		if arg != "." && !strings.HasPrefix(arg, "./") && !strings.HasPrefix(arg, "../") && !filepath.IsAbs(arg) {
 			continue
 		}
-		root := execProviderPath(input.cwd, strings.TrimSuffix(arg, "/..."))
+		root := sourceparse.Path(input.cwd, strings.TrimSuffix(arg, "/..."))
 		if info, err := os.Lstat(root); err == nil && info.IsDir() && !slices.Contains(roots, root) {
 			roots = append(roots, root)
 		}
@@ -64,7 +66,7 @@ func execGoPackageScope(input execProviderInput) execProviderResult {
 			truncated = true
 			continue
 		}
-		children, err := directory.ReadDir(maxExecListingEntries - entries + 1)
+		children, err := directory.ReadDir(ListingLimit - entries + 1)
 		directory.Close()
 		if err != nil && !errors.Is(err, io.EOF) {
 			truncated = true
@@ -73,7 +75,7 @@ func execGoPackageScope(input execProviderInput) execProviderResult {
 		slices.SortFunc(children, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 		for _, child := range children {
 			entries++
-			if entries > maxExecListingEntries || time.Now().After(input.deadline) {
+			if entries > ListingLimit || time.Now().After(input.deadline) {
 				truncated = true
 				break
 			}
@@ -95,7 +97,7 @@ func execGoPackageScope(input execProviderInput) execProviderResult {
 	}
 	entry := execProviderFiles(paths, false)
 	entry.Origin = "go " + input.args[0]
-	result := execProviderResult{scope: []execScopeEntry{entry}, open: true}
+	result := execProviderResult{scope: []Entry{entry}, open: true}
 	if truncated {
 		result.reason = "package baseline enumeration reached its bound or was unavailable"
 	}

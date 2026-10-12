@@ -14,6 +14,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	"github.com/pmezard/go-difflib/difflib"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
@@ -29,7 +32,7 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	if !ok || stmt.Background || stmt.Negated || len(call.Assigns) != 0 {
 		return nil, false, nil
 	}
-	words, ok := literalArgs(call.Args)
+	words, ok := shellsyntax.Args(call.Args)
 	if !ok || len(words) == 0 {
 		return nil, false, nil
 	}
@@ -38,38 +41,38 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	if !python && identity != "node" && identity != "bun" && identity != "deno" {
 		return nil, false, nil
 	}
-	input := execProviderInput{identity: identity, args: words[1:], cwd: directory, deadline: time.Now().Add(execProviderBudget)}
+	input := previewInterpreterInput{identity: identity, args: words[1:], cwd: directory, deadline: time.Now().Add(execscope.Budget)}
 	for _, redirect := range stmt.Redirs {
 		if redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc {
 			return nil, false, nil
 		}
-		body, literal := liveDiffShellHeredoc(redirect, partial)
+		body, literal := shellsyntax.Heredoc(redirect, partial)
 		if !literal {
 			return nil, false, nil
 		}
 		input.stdin = body
 	}
-	source, script, reason := execProgramSource(input)
-	if reason != "" || len(source) > maxExecProgramBytes {
+	source, script, reason := execscope.ReadSource(execscope.Interpreter{Identity: input.identity, Arguments: input.args, Directory: input.cwd, Stdin: input.stdin})
+	if reason != "" || len(source) > execscope.SourceLimit {
 		return nil, false, nil
 	}
 	files, _, err := liveDiffInterpreterSource(ctx, input, source, script, python, partial)
 	return files, len(files) != 0, err
 }
 
-func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, source, script string, python, partial bool) ([]mekugi.ReviewFile, bool, error) {
-	if len(source) > maxExecProgramBytes {
+func liveDiffInterpreterSource(ctx context.Context, input previewInterpreterInput, source, script string, python, partial bool) ([]mekugi.ReviewFile, bool, error) {
+	if len(source) > execscope.SourceLimit {
 		return nil, false, nil
 	}
-	language := codeModeJavaScriptLanguage
+	language := sourceparse.JavaScript
 	if python {
-		language = execPythonLanguage
+		language = sourceparse.Python
 	} else if strings.HasSuffix(script, ".ts") || input.identity == "deno" {
-		language = execTypeScriptLanguage
+		language = sourceparse.TypeScript
 	}
 	canceled := func() bool { return ctx.Err() != nil || time.Now().After(input.deadline) }
 	data := []byte(source)
-	tree, err := parseSourceTree(data, language, canceled)
+	tree, err := sourceparse.Parse(data, language, canceled)
 	if err != nil {
 		return nil, false, err
 	}
@@ -84,7 +87,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		}
 		tree.Close()
 		data = []byte(source + closer)
-		tree, err = parseSourceTree(data, language, canceled)
+		tree, err = sourceparse.Parse(data, language, canceled)
 		if err != nil {
 			return nil, false, err
 		}
@@ -99,19 +102,14 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 	if tree.RootNode().HasError() {
 		return nil, editScript, nil
 	}
-	scan := execSourceScope{input: input, source: data, script: script, python: python, vars: make(map[string][]string), segments: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
-	scan.walk(tree.RootNode())
+	scan := previewSourceScope{Bindings: execscope.NewBindings(execscope.SourceInput{Source: data, Script: script, Directory: input.cwd, Deadline: input.deadline, Python: python}), input: input, source: data, python: python}
+	scan.State().Segments = make(map[string][]string)
+	scan.Analyze(tree.RootNode())
 	if python {
 		// Bind Python paths as statements are visited, including each loop
 		// iteration, rather than borrowing a later assignment from capture.
-		clear(scan.vars)
-		clear(scan.segments)
-	} else {
-		for name, count := range scan.assigned {
-			if count > 1 {
-				delete(scan.vars, name)
-			}
-		}
+		clear(scan.State().Paths)
+		clear(scan.State().Segments)
 	}
 	state := liveDiffPythonState{texts: make(map[string]liveDiffPythonText), handles: make(map[string]*liveDiffPythonHandle),
 		ints: make(map[string]int), written: make(map[string]string), defs: make(map[string]liveDiffPythonDefinition), lists: make(map[string][]liveDiffPythonLoopItem), dicts: make(map[string][]liveDiffPythonLoopItem), reads: make(map[[2]uint]liveDiffPythonText)}
@@ -166,7 +164,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				var names []string
 				unpack := left.Kind() != "identifier"
 				if !unpack {
-					names = []string{scan.text(left)}
+					names = []string{scan.Text(left)}
 				} else if left.Kind() == "pattern_list" || left.Kind() == "tuple_pattern" || left.Kind() == "list_pattern" {
 					for i := range left.NamedChildCount() {
 						target := left.NamedChild(uint(i))
@@ -177,7 +175,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 							failure = errors.New("literal preview includes an unsupported loop target")
 							return
 						}
-						names = append(names, scan.text(target))
+						names = append(names, scan.Text(target))
 					}
 				}
 				items, ok := scan.pythonLiteralList(ctx, right, &state, 0)
@@ -199,8 +197,8 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 						value := item.values[i]
 						clearBinding(name)
 						state.texts[name] = liveDiffPythonText{content: value}
-						scan.vars[name] = []string{execProviderPath(input.cwd, value)}
-						scan.segments[name] = []string{value}
+						scan.State().Paths[name] = []string{sourceparse.Path(input.cwd, value)}
+						scan.State().Segments[name] = []string{value}
 					}
 					visit(node.ChildByFieldName("body"), depth+1)
 					if failure != nil {
@@ -260,10 +258,10 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 						failure = errors.New("literal preview includes an unsupported helper default")
 						return
 					}
-					definition.defaults[scan.text(parameter.ChildByFieldName("name"))] = bound
+					definition.defaults[scan.Text(parameter.ChildByFieldName("name"))] = bound
 				}
-				clearBinding(scan.text(name))
-				state.defs[scan.text(name)] = definition
+				clearBinding(scan.Text(name))
+				state.defs[scan.Text(name)] = definition
 				return
 			case "global_statement", "pass_statement":
 				return
@@ -280,9 +278,9 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				failure = errors.New("literal preview includes an unsupported assignment")
 				return
 			}
-			name := scan.text(left)
-			paths := scan.paths(right)
-			segments := scan.literalSegments(right, 0)
+			name := scan.Text(left)
+			paths := scan.Paths(right)
+			segments := scan.Segments(right)
 			dictionary, hasDictionary := scan.pythonDictionary(ctx, right, &state, 0)
 			var items []liveDiffPythonLoopItem
 			hasList := false
@@ -296,13 +294,13 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				offset, hasInt = scan.pythonInt(ctx, right, &state, 0)
 			}
 			clearBinding(name)
-			scan.vars[name] = paths
-			scan.segments[name] = segments
+			scan.State().Paths[name] = paths
+			scan.State().Segments[name] = segments
 			if hasText {
 				state.texts[name] = value
 				if value.path == "" && value.tip == 0 && !liveDiffArriving(right, arriving) {
-					scan.vars[name] = []string{execProviderPath(input.cwd, value.content)}
-					scan.segments[name] = []string{value.content}
+					scan.State().Paths[name] = []string{sourceparse.Path(input.cwd, value.content)}
+					scan.State().Segments[name] = []string{value.content}
 				}
 				return
 			}
@@ -321,11 +319,11 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		}
 		if python && node.Kind() == "augmented_assignment" {
 			left, right := node.ChildByFieldName("left"), node.ChildByFieldName("right")
-			if left == nil || left.Kind() != "identifier" || scan.text(node.ChildByFieldName("operator")) != "+=" {
+			if left == nil || left.Kind() != "identifier" || scan.Text(node.ChildByFieldName("operator")) != "+=" {
 				failure = errors.New("literal preview includes an unsupported buffer mutation")
 				return
 			}
-			name := scan.text(left)
+			name := scan.Text(left)
 			before, known := state.texts[name]
 			next, ok := scan.previewPythonText(ctx, right, &state, arriving, 0)
 			joined, fits := liveDiffPythonConcat(before, next, liveDiffArriving(right, arriving))
@@ -335,11 +333,11 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 			}
 			joined.path = before.path
 			state.texts[name] = joined
-			delete(scan.vars, name)
-			delete(scan.segments, name)
+			delete(scan.State().Paths, name)
+			delete(scan.State().Segments, name)
 			if joined.path == "" && joined.tip == 0 {
-				scan.vars[name] = []string{execProviderPath(input.cwd, joined.content)}
-				scan.segments[name] = []string{joined.content}
+				scan.State().Paths[name] = []string{sourceparse.Path(input.cwd, joined.content)}
+				scan.State().Segments[name] = []string{joined.content}
 			}
 			return
 		}
@@ -347,13 +345,13 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 			failure = errors.New("literal preview includes an unsupported buffer mutation")
 			return
 		}
-		function, args := sourceCall(node)
+		function, args := sourceparse.Call(node)
 		if function != nil {
-			if strings.HasSuffix(scan.text(function), ".chdir") {
+			if strings.HasSuffix(scan.Text(function), ".chdir") {
 				failure = errors.New("literal preview does not predict working-directory changes")
 				return
 			}
-			if definition, exists := state.defs[scan.text(function)]; python && exists {
+			if definition, exists := state.defs[scan.Text(function)]; python && exists {
 				if !inline(definition, node, args, depth) && failure == nil {
 					failure = errors.New("literal preview includes an unsupported helper call")
 				}
@@ -379,9 +377,9 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				recordWrite(write)
 				return
 			}
-			name := scan.text(function)
+			name := scan.Text(function)
 			base := name[strings.LastIndexByte(name, '.')+1:]
-			if alias := scan.aliases[base]; alias != "" {
+			if alias := scan.State().Aliases[base]; alias != "" {
 				base = alias
 			}
 			base = strings.TrimSuffix(base, "Sync")
@@ -393,7 +391,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 			case base == "require":
 				module := ""
 				if len(args) == 1 {
-					module, _ = scan.literal(args[0])
+					module, _ = scan.Literal(args[0])
 				}
 				module = strings.TrimPrefix(module, "node:")
 				if module != "fs" && module != "fs/promises" && module != "path" {
@@ -439,8 +437,8 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		}
 		// Helper locals, parameters included, end with the call; names the
 		// body declares global keep their new values.
-		texts, handles, ints, vars, lists := maps.Clone(state.texts), maps.Clone(state.handles), maps.Clone(state.ints), maps.Clone(scan.vars), maps.Clone(state.lists)
-		segments, defs := maps.Clone(scan.segments), maps.Clone(state.defs)
+		texts, handles, ints, vars, lists := maps.Clone(state.texts), maps.Clone(state.handles), maps.Clone(state.ints), maps.Clone(scan.State().Paths), maps.Clone(state.lists)
+		segments, defs := maps.Clone(scan.State().Segments), maps.Clone(state.defs)
 		dicts := maps.Clone(state.dicts)
 		body := definition.node.ChildByFieldName("body")
 		locals, globals := scan.pythonScope(body)
@@ -463,9 +461,9 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 				state.lists[name] = bound.items
 			}
 			if len(bound.paths) == 1 {
-				scan.vars[name] = bound.paths
+				scan.State().Paths[name] = bound.paths
 			}
-			scan.segments[name] = bound.segments
+			scan.State().Segments[name] = bound.segments
 		}
 		wasCalling := calling
 		calling = calling || liveDiffArriving(call, arriving)
@@ -474,9 +472,9 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 		restoreScope(state.texts, texts, globals)
 		restoreScope(state.handles, handles, globals)
 		restoreScope(state.ints, ints, globals)
-		restoreScope(scan.vars, vars, globals)
+		restoreScope(scan.State().Paths, vars, globals)
 		restoreScope(state.lists, lists, globals)
-		restoreScope(scan.segments, segments, globals)
+		restoreScope(scan.State().Segments, segments, globals)
 		restoreScope(state.defs, defs, globals)
 		restoreScope(state.dicts, dicts, globals)
 		return failure == nil
@@ -484,7 +482,7 @@ func liveDiffInterpreterSource(ctx context.Context, input execProviderInput, sou
 	visit(tree.RootNode(), 0)
 	if failure != nil {
 		if note, _ := ctx.Value(liveDiffFailureContext{}).(*error); note != nil {
-			*note = fmt.Errorf("%w: %s %q", failure, failed.Kind(), scan.text(failed))
+			*note = fmt.Errorf("%w: %s %q", failure, failed.Kind(), scan.Text(failed))
 		}
 		return nil, editScript, nil
 	}
@@ -706,10 +704,8 @@ func liveDiffFirstMatch(lines, old []string, from int) int {
 // Keep an unfinished or unsupported edit script from replacing its target diff
 // with the script's own source. Inspect syntax, not text inside comments/strings.
 func liveDiffPythonEditIntent(node *sitter.Node, source []byte, deadline time.Time) bool {
-	scan := execSourceScope{input: execProviderInput{deadline: deadline}, source: source, python: true, intentOnly: true,
-		vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
-	scan.walk(node)
-	return scan.writes
+	scan := execscope.NewBindings(execscope.SourceInput{Source: source, Deadline: deadline, Python: true, IntentOnly: true})
+	return scan.Analyze(node).Writes
 }
 
 // liveDiffPythonSetup reports whether received Python source is still only the
@@ -718,7 +714,7 @@ func liveDiffPythonEditIntent(node *sitter.Node, source []byte, deadline time.Ti
 // source, which streams like any other file.
 func liveDiffPythonSetup(ctx context.Context, source string) bool {
 	data := []byte(source)
-	tree, err := parseSourceTree(data, execPythonLanguage, func() bool { return ctx.Err() != nil })
+	tree, err := sourceparse.Parse(data, sourceparse.Python, func() bool { return ctx.Err() != nil })
 	if err != nil || tree == nil {
 		return true
 	}
@@ -747,7 +743,7 @@ func liveDiffPythonSetup(ctx context.Context, source string) bool {
 				if child.Kind() == "string" {
 					continue
 				}
-				if function, _ := sourceCall(child); function != nil && strings.HasPrefix(string(data[function.StartByte():function.EndByte()]), "sys.path.") {
+				if function, _ := sourceparse.Call(child); function != nil && strings.HasPrefix(string(data[function.StartByte():function.EndByte()]), "sys.path.") {
 					continue
 				}
 				if child.Kind() == "assignment" && liveDiffPythonPathValue(child.ChildByFieldName("right"), data, 0) {
@@ -778,7 +774,7 @@ func liveDiffPythonPathValue(node *sitter.Node, data []byte, depth int) bool {
 			liveDiffPythonPathValue(node.ChildByFieldName("left"), data, depth+1) &&
 			liveDiffPythonPathValue(node.ChildByFieldName("right"), data, depth+1)
 	}
-	function, _ := sourceCall(node)
+	function, _ := sourceparse.Call(node)
 	if function == nil {
 		return false
 	}
@@ -790,10 +786,10 @@ func liveDiffPythonPathValue(node *sitter.Node, data []byte, depth int) bool {
 	return false
 }
 
-func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Node, args []*sitter.Node, state *liveDiffPythonState, arriving uint) (liveDiffPythonText, bool) {
-	name := s.text(function)
+func (s *previewSourceScope) literalWrite(ctx context.Context, function *sitter.Node, args []*sitter.Node, state *liveDiffPythonState, arriving uint) (liveDiffPythonText, bool) {
+	name := s.Text(function)
 	base := name[strings.LastIndexByte(name, '.')+1:]
-	if alias := s.aliases[base]; alias != "" {
+	if alias := s.State().Aliases[base]; alias != "" {
 		base = alias
 	}
 	var paths []string
@@ -804,7 +800,7 @@ func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Nod
 		if (base != "writeFileSync" && base != "writeFile") || len(args) != 2 {
 			return liveDiffPythonText{}, false
 		}
-		paths, body = s.paths(args[0]), args[1]
+		paths, body = s.Paths(args[0]), args[1]
 	} else {
 		positional, ok := liveDiffPythonArguments(s, args, "encoding", "errors", "newline")
 		if !ok || len(positional) != 1 {
@@ -813,12 +809,12 @@ func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Nod
 		object := function.ChildByFieldName("object")
 		switch {
 		case base == "write_text":
-			paths = s.paths(object)
+			paths = s.Paths(object)
 			if newline, ok = s.pythonNewline(args); !ok {
 				return liveDiffPythonText{}, false
 			}
 		case base == "write" && object != nil && object.Kind() == "identifier":
-			handle, found := state.handles[s.text(object)]
+			handle, found := state.handles[s.Text(object)]
 			if !found || !handle.write || handle.closed || len(args) != 1 {
 				return liveDiffPythonText{}, false
 			}
@@ -841,7 +837,7 @@ func (s *execSourceScope) literalWrite(ctx context.Context, function *sitter.Nod
 	if s.python && writing == nil && liveDiffPythonOpenConflict(state, paths[0], true) {
 		return liveDiffPythonText{}, false
 	}
-	content, literal := s.literal(body)
+	content, literal := s.Literal(body)
 	if s.python {
 		content, literal = s.pythonTextLiteral(body)
 	}
@@ -900,7 +896,7 @@ func restoreScope[V any](current, saved map[string]V, globals map[string]bool) {
 
 // pythonParameters maps a helper's parameters to the call's argument
 // expressions, or to their defaults.
-func (s *execSourceScope) pythonParameters(definition *sitter.Node, args []*sitter.Node) (map[string]*sitter.Node, bool) {
+func (s *previewSourceScope) pythonParameters(definition *sitter.Node, args []*sitter.Node) (map[string]*sitter.Node, bool) {
 	parameters := definition.ChildByFieldName("parameters")
 	if parameters == nil {
 		return nil, false
@@ -911,9 +907,9 @@ func (s *execSourceScope) pythonParameters(definition *sitter.Node, args []*sitt
 		parameter := parameters.NamedChild(uint(i))
 		switch parameter.Kind() {
 		case "identifier":
-			names = append(names, s.text(parameter))
+			names = append(names, s.Text(parameter))
 		case "default_parameter":
-			name := s.text(parameter.ChildByFieldName("name"))
+			name := s.Text(parameter.ChildByFieldName("name"))
 			names = append(names, name)
 			defaults[name] = parameter.ChildByFieldName("value")
 		case "comment":
@@ -927,7 +923,7 @@ func (s *execSourceScope) pythonParameters(definition *sitter.Node, args []*sitt
 		switch arg.Kind() {
 		case "comment":
 		case "keyword_argument":
-			name := s.text(arg.ChildByFieldName("name"))
+			name := s.Text(arg.ChildByFieldName("name"))
 			if !slices.Contains(names, name) || bindings[name] != nil {
 				return nil, false
 			}
@@ -957,7 +953,7 @@ func (s *execSourceScope) pythonParameters(definition *sitter.Node, args []*sitt
 
 // pythonScope finds static local bindings and global declarations throughout
 // a helper body. A later assignment makes a name local even before it runs.
-func (s *execSourceScope) pythonScope(body *sitter.Node) (locals, globals map[string]bool) {
+func (s *previewSourceScope) pythonScope(body *sitter.Node) (locals, globals map[string]bool) {
 	locals, globals = make(map[string]bool), make(map[string]bool)
 	var target func(*sitter.Node)
 	target = func(node *sitter.Node) {
@@ -965,7 +961,7 @@ func (s *execSourceScope) pythonScope(body *sitter.Node) (locals, globals map[st
 			return
 		}
 		if node.Kind() == "identifier" {
-			locals[s.text(node)] = true
+			locals[s.Text(node)] = true
 		} else if node.Kind() == "pattern_list" || node.Kind() == "tuple_pattern" || node.Kind() == "list_pattern" || node.Kind() == "as_pattern_target" {
 			for i := range node.NamedChildCount() {
 				target(node.NamedChild(uint(i)))
@@ -980,7 +976,7 @@ func (s *execSourceScope) pythonScope(body *sitter.Node) (locals, globals map[st
 		switch node.Kind() {
 		case "global_statement":
 			for i := range node.NamedChildCount() {
-				globals[s.text(node.NamedChild(uint(i)))] = true
+				globals[s.Text(node.NamedChild(uint(i)))] = true
 			}
 		case "assignment", "augmented_assignment", "for_statement":
 			target(node.ChildByFieldName("left"))
@@ -998,22 +994,22 @@ func (s *execSourceScope) pythonScope(body *sitter.Node) (locals, globals map[st
 // pythonInt resolves an integer from literals, bound integers, `len` of a
 // string, and `index`/`find` positions in a known text, with + and -.
 // Positions count Unicode codepoints, matching Python's string indexing.
-func (s *execSourceScope) pythonInt(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) (int, bool) {
+func (s *previewSourceScope) pythonInt(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) (int, bool) {
 	if node == nil || depth > 16 {
 		return 0, false
 	}
 	switch node.Kind() {
 	case "integer":
-		value, err := strconv.Atoi(s.text(node))
+		value, err := strconv.Atoi(s.Text(node))
 		return value, err == nil
 	case "identifier":
-		value, found := state.ints[s.text(node)]
+		value, found := state.ints[s.Text(node)]
 		return value, found
 	case "parenthesized_expression":
 		return s.pythonInt(ctx, node.NamedChild(0), state, depth+1)
 	case "unary_operator":
 		value, ok := s.pythonInt(ctx, node.ChildByFieldName("argument"), state, depth+1)
-		if operator := node.ChildByFieldName("operator"); !ok || operator == nil || s.text(operator) != "-" {
+		if operator := node.ChildByFieldName("operator"); !ok || operator == nil || s.Text(operator) != "-" {
 			return 0, false
 		}
 		return -value, true
@@ -1023,7 +1019,7 @@ func (s *execSourceScope) pythonInt(ctx context.Context, node *sitter.Node, stat
 		if !okLeft || !okRight {
 			return 0, false
 		}
-		switch s.text(node.ChildByFieldName("operator")) {
+		switch s.Text(node.ChildByFieldName("operator")) {
 		case "+":
 			return left + right, true
 		case "-":
@@ -1031,7 +1027,7 @@ func (s *execSourceScope) pythonInt(ctx context.Context, node *sitter.Node, stat
 		}
 		return 0, false
 	}
-	function, args := sourceCall(node)
+	function, args := sourceparse.Call(node)
 	if function == nil {
 		return 0, false
 	}
@@ -1039,7 +1035,7 @@ func (s *execSourceScope) pythonInt(ctx context.Context, node *sitter.Node, stat
 	if !ok {
 		return 0, false
 	}
-	if s.text(function) == "len" && len(positional) == 1 {
+	if s.Text(function) == "len" && len(positional) == 1 {
 		if text, ok := s.pythonString(ctx, positional[0], state, depth+1); ok {
 			return utf8.RuneCountInString(text), true
 		}
@@ -1051,7 +1047,7 @@ func (s *execSourceScope) pythonInt(ctx context.Context, node *sitter.Node, stat
 	if function.Kind() != "attribute" || len(positional) < 1 || len(positional) > 3 {
 		return 0, false
 	}
-	method := s.text(function.ChildByFieldName("attribute"))
+	method := s.Text(function.ChildByFieldName("attribute"))
 	if method != "index" && method != "find" && method != "rindex" && method != "rfind" && method != "count" {
 		return 0, false
 	}
@@ -1100,12 +1096,12 @@ func (s *execSourceScope) pythonInt(ctx context.Context, node *sitter.Node, stat
 }
 
 // pythonSlice resolves text[start:stop] bounds with Python semantics.
-func (s *execSourceScope) pythonSlice(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, length int) (int, int, bool) {
+func (s *previewSourceScope) pythonSlice(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, length int) (int, int, bool) {
 	bounds := [2]*sitter.Node{}
 	part := 0
 	for i := range node.ChildCount() {
 		child := node.Child(uint(i))
-		if s.text(child) == ":" {
+		if s.Text(child) == ":" {
 			part++
 			if part > 1 {
 				return 0, 0, false
@@ -1199,15 +1195,15 @@ func liveDiffPythonOpenConflict(state *liveDiffPythonState, path string, write b
 	return false
 }
 
-func (s *execSourceScope) pythonClearBinding(state *liveDiffPythonState, name string) {
+func (s *previewSourceScope) pythonClearBinding(state *liveDiffPythonState, name string) {
 	delete(state.texts, name)
 	delete(state.ints, name)
 	delete(state.handles, name)
 	delete(state.lists, name)
 	delete(state.dicts, name)
 	delete(state.defs, name)
-	delete(s.vars, name)
-	delete(s.segments, name)
+	delete(s.State().Paths, name)
+	delete(s.State().Segments, name)
 }
 
 type liveDiffPythonDefinition struct {
@@ -1228,13 +1224,13 @@ type liveDiffPythonBinding struct {
 	hasDictionary bool
 }
 
-func (s *execSourceScope) pythonBinding(ctx context.Context, value *sitter.Node, state *liveDiffPythonState, arriving uint) liveDiffPythonBinding {
+func (s *previewSourceScope) pythonBinding(ctx context.Context, value *sitter.Node, state *liveDiffPythonState, arriving uint) liveDiffPythonBinding {
 	var bound liveDiffPythonBinding
 	bound.text, bound.hasText = s.previewPythonText(ctx, value, state, arriving, 0)
 	if bound.hasText && liveDiffArriving(value, arriving) {
 		bound.text.arriving = true
 	}
-	bound.paths, bound.segments = s.paths(value), s.literalSegments(value, 0)
+	bound.paths, bound.segments = s.Paths(value), s.Segments(value)
 	bound.integer, bound.hasInt = s.pythonInt(ctx, value, state, 0)
 	bound.dictionary, bound.hasDictionary = s.pythonDictionary(ctx, value, state, 0)
 	if !bound.hasDictionary {
@@ -1257,7 +1253,7 @@ func liveDiffArriving(node *sitter.Node, arriving uint) bool {
 
 // liveDiffPythonArguments separates positional arguments from keywords,
 // accepting only the named keywords, whose values do not affect content.
-func liveDiffPythonArguments(s *execSourceScope, args []*sitter.Node, keywords ...string) ([]*sitter.Node, bool) {
+func liveDiffPythonArguments(s *previewSourceScope, args []*sitter.Node, keywords ...string) ([]*sitter.Node, bool) {
 	var positional []*sitter.Node
 	for _, arg := range args {
 		if arg.Kind() == "comment" {
@@ -1267,7 +1263,7 @@ func liveDiffPythonArguments(s *execSourceScope, args []*sitter.Node, keywords .
 			positional = append(positional, arg)
 			continue
 		}
-		if !slices.Contains(keywords, s.text(arg.ChildByFieldName("name"))) {
+		if !slices.Contains(keywords, s.Text(arg.ChildByFieldName("name"))) {
 			return nil, false
 		}
 	}
@@ -1276,8 +1272,8 @@ func liveDiffPythonArguments(s *execSourceScope, args []*sitter.Node, keywords .
 
 // pythonOpen resolves open(path[, mode]) and Path.open([mode]) to one
 // absolute path and whether the text mode truncates for writing.
-func (s *execSourceScope) pythonOpen(node *sitter.Node) (liveDiffPythonHandle, bool) {
-	function, args := sourceCall(node)
+func (s *previewSourceScope) pythonOpen(node *sitter.Node) (liveDiffPythonHandle, bool) {
+	function, args := sourceparse.Call(node)
 	if function == nil {
 		return liveDiffPythonHandle{}, false
 	}
@@ -1289,13 +1285,13 @@ func (s *execSourceScope) pythonOpen(node *sitter.Node) (liveDiffPythonHandle, b
 		return liveDiffPythonHandle{}, false
 	}
 	switch {
-	case s.text(function) == "open" && (len(positional) == 1 || len(positional) == 2):
-		paths = s.paths(positional[0])
+	case s.Text(function) == "open" && (len(positional) == 1 || len(positional) == 2):
+		paths = s.Paths(positional[0])
 		if len(positional) == 2 {
 			modeNode = positional[1]
 		}
-	case function.Kind() == "attribute" && s.text(function.ChildByFieldName("attribute")) == "open" && len(positional) <= 1:
-		paths = s.paths(function.ChildByFieldName("object"))
+	case function.Kind() == "attribute" && s.Text(function.ChildByFieldName("attribute")) == "open" && len(positional) <= 1:
+		paths = s.Paths(function.ChildByFieldName("object"))
 		if len(positional) == 1 {
 			modeNode = positional[0]
 		}
@@ -1303,13 +1299,13 @@ func (s *execSourceScope) pythonOpen(node *sitter.Node) (liveDiffPythonHandle, b
 		return liveDiffPythonHandle{}, false
 	}
 	for _, arg := range args {
-		if arg.Kind() == "keyword_argument" && s.text(arg.ChildByFieldName("name")) == "mode" {
+		if arg.Kind() == "keyword_argument" && s.Text(arg.ChildByFieldName("name")) == "mode" {
 			modeNode = arg.ChildByFieldName("value")
 		}
 	}
 	mode := "r"
 	if modeNode != nil {
-		if mode, ok = s.literal(modeNode); !ok {
+		if mode, ok = s.Literal(modeNode); !ok {
 			return liveDiffPythonHandle{}, false
 		}
 	}
@@ -1326,7 +1322,7 @@ func (s *execSourceScope) pythonOpen(node *sitter.Node) (liveDiffPythonHandle, b
 }
 
 // pythonWith binds the handles of `with open(...) as name` items.
-func (s *execSourceScope) pythonWith(node *sitter.Node, state *liveDiffPythonState) ([]*liveDiffPythonHandle, bool) {
+func (s *previewSourceScope) pythonWith(node *sitter.Node, state *liveDiffPythonState) ([]*liveDiffPythonHandle, bool) {
 	start := len(state.activeHandles)
 	for i := range node.NamedChildCount() {
 		clause := node.NamedChild(uint(i))
@@ -1346,7 +1342,7 @@ func (s *execSourceScope) pythonWith(node *sitter.Node, state *liveDiffPythonSta
 			if !ok || target == nil || target.Kind() != "identifier" || liveDiffPythonOpenConflict(state, handle.path, handle.write) {
 				return nil, false
 			}
-			name := s.text(target)
+			name := s.Text(target)
 			s.pythonClearBinding(state, name)
 			state.handles[name] = &handle
 			state.activeHandles = append(state.activeHandles, &handle)
@@ -1357,7 +1353,7 @@ func (s *execSourceScope) pythonWith(node *sitter.Node, state *liveDiffPythonSta
 
 // pythonGuard reports an if statement whose branches only stop or report,
 // with conditions that inspect strings without effects.
-func (s *execSourceScope) pythonGuard(node *sitter.Node) bool {
+func (s *previewSourceScope) pythonGuard(node *sitter.Node) bool {
 	for _, field := range []string{"condition", "consequence"} {
 		if node.ChildByFieldName(field) == nil {
 			return false
@@ -1405,12 +1401,12 @@ func (s *execSourceScope) pythonGuard(node *sitter.Node) bool {
 
 // pythonStop matches exits, error constructors, and printing whose
 // arguments have no effect.
-func (s *execSourceScope) pythonStop(node *sitter.Node) bool {
-	function, args := sourceCall(node)
+func (s *previewSourceScope) pythonStop(node *sitter.Node) bool {
+	function, args := sourceparse.Call(node)
 	if function == nil {
 		return false
 	}
-	switch s.text(function) {
+	switch s.Text(function) {
 	case "print", "exit", "quit", "sys.exit", "SystemExit", "RuntimeError", "ValueError", "AssertionError", "Exception":
 	default:
 		return false
@@ -1424,7 +1420,7 @@ func (s *execSourceScope) pythonStop(node *sitter.Node) bool {
 }
 
 // pythonPure reports syntax that calls only string inspection.
-func (s *execSourceScope) pythonPure(node *sitter.Node, depth int) bool {
+func (s *previewSourceScope) pythonPure(node *sitter.Node, depth int) bool {
 	if node == nil || depth > 64 {
 		return node == nil
 	}
@@ -1432,8 +1428,8 @@ func (s *execSourceScope) pythonPure(node *sitter.Node, depth int) bool {
 	case "named_expression", "assignment", "augmented_assignment", "lambda", "await", "yield":
 		return false
 	}
-	if function, _ := sourceCall(node); function != nil {
-		name := s.text(function)
+	if function, _ := sourceparse.Call(node); function != nil {
+		name := s.Text(function)
 		if !liveDiffPythonPureCalls[name[strings.LastIndexByte(name, '.')+1:]] {
 			return false
 		}
@@ -1448,19 +1444,19 @@ func (s *execSourceScope) pythonPure(node *sitter.Node, depth int) bool {
 
 // pythonString resolves a complete known string, including source-derived
 // expressions. Arriving text cannot decide a search operand or offset.
-func (s *execSourceScope) pythonString(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) (string, bool) {
+func (s *previewSourceScope) pythonString(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, depth int) (string, bool) {
 	value, ok := s.previewPythonText(ctx, node, state, 0, depth+1)
 	return value.content, ok && value.tip == 0 && !value.arriving
 }
 
 // Interpret only literal strings, same-file reads, and replacement chains.
 // This does not run Python or resolve arbitrary expressions.
-func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, arriving uint, depth int) (liveDiffPythonText, bool) {
+func (s *previewSourceScope) previewPythonText(ctx context.Context, node *sitter.Node, state *liveDiffPythonState, arriving uint, depth int) (liveDiffPythonText, bool) {
 	if node == nil || depth > 64 || ctx.Err() != nil || time.Now().After(s.input.deadline) {
 		return liveDiffPythonText{}, false
 	}
 	if node.Kind() == "identifier" {
-		value, ok := state.texts[s.text(node)]
+		value, ok := state.texts[s.Text(node)]
 		return value, ok
 	}
 	if node.Kind() == "parenthesized_expression" && node.NamedChildCount() == 1 {
@@ -1501,10 +1497,10 @@ func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.No
 		start, stop, ok := s.pythonSlice(ctx, bounds, state, len(runes))
 		return liveDiffPythonText{content: string(runes[start:stop])}, ok
 	case "binary_operator":
-		if s.text(node.ChildByFieldName("operator")) == "*" {
+		if s.Text(node.ChildByFieldName("operator")) == "*" {
 			return s.pythonRepeat(ctx, node, state, arriving, depth+1)
 		}
-		if s.text(node.ChildByFieldName("operator")) != "+" {
+		if s.Text(node.ChildByFieldName("operator")) != "+" {
 			return liveDiffPythonText{}, false
 		}
 		left, okLeft := s.previewPythonText(ctx, node.ChildByFieldName("left"), state, arriving, depth+1)
@@ -1514,12 +1510,12 @@ func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.No
 		}
 		return liveDiffPythonConcat(left, right, liveDiffArriving(node.ChildByFieldName("right"), arriving))
 	}
-	replace, values := sourceCall(node)
+	replace, values := sourceparse.Call(node)
 	if replace == nil || replace.Kind() != "attribute" {
 		return liveDiffPythonText{}, false
 	}
 	object := replace.ChildByFieldName("object")
-	attribute := s.text(replace.ChildByFieldName("attribute"))
+	attribute := s.Text(replace.ChildByFieldName("attribute"))
 	if value, ok := s.pythonTextTransform(ctx, attribute, object, values, state, arriving, depth+1); ok {
 		return value, true
 	}
@@ -1536,7 +1532,7 @@ func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.No
 			if newline, valid = s.pythonNewline(values); !valid {
 				return liveDiffPythonText{}, false
 			}
-			paths := s.paths(object)
+			paths := s.Paths(object)
 			if len(paths) != 1 {
 				return liveDiffPythonText{}, false
 			}
@@ -1545,7 +1541,7 @@ func (s *execSourceScope) previewPythonText(ctx context.Context, node *sitter.No
 				return liveDiffPythonText{}, false
 			}
 		case object != nil && object.Kind() == "identifier":
-			handle, found := state.handles[s.text(object)]
+			handle, found := state.handles[s.Text(object)]
 			if !found || handle.write || handle.closed || len(values) != 0 {
 				return liveDiffPythonText{}, false
 			}

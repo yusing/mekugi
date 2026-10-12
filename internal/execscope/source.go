@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"io/fs"
@@ -8,22 +8,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // execSourceScope derives path values from syntax, never from evaluation. Unknown
 // expressions remain open; only derived paths are compared after execution.
 type execSourceScope struct {
+	state                       BindingState
+	assigned                    map[string]int
+	texts                       map[string]bool
 	input                       execProviderInput
 	source                      []byte
 	script                      string
 	python                      bool
-	vars                        map[string][]string
-	segments                    map[string][]string // Raw strings, before cwd resolution, for path joins.
 	pythonItems                 map[string][2]execPythonValues
-	texts                       map[string]bool
-	assigned                    map[string]int
-	aliases                     map[string]string
 	result                      execProviderResult
 	iterations                  []string
 	intentOnly                  bool              // Display classification: no filesystem or nested provider inspection.
@@ -34,11 +35,11 @@ type execSourceScope struct {
 }
 
 func inspectExecSource(input execProviderInput, source, script string, language *sitter.Language, python bool) execProviderResult {
-	if len(source) > maxExecProgramBytes {
+	if len(source) > SourceLimit {
 		return execProviderResult{open: true, reason: "interpreter source exceeds capture bound"}
 	}
 	data := []byte(source)
-	tree, err := parseSourceTree(data, language, func() bool { return time.Now().After(input.deadline) })
+	tree, err := sourceparse.Parse(data, language, func() bool { return time.Now().After(input.deadline) })
 	if err != nil {
 		return execProviderResult{open: true, reason: "interpreter parser unavailable"}
 	}
@@ -49,7 +50,7 @@ func inspectExecSource(input execProviderInput, source, script string, language 
 	if tree.RootNode().HasError() {
 		return execProviderResult{open: true, reason: "interpreter source could not be parsed"}
 	}
-	scan := execSourceScope{input: input, source: data, script: script, python: python, vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
+	scan := execSourceScope{input: input, source: data, script: script, python: python, state: newBindingState(), assigned: make(map[string]int), texts: make(map[string]bool)}
 	scan.walk(tree.RootNode())
 	// The command names its script. Retaining that bounded baseline also
 	// distinguishes an unchanged source at the filesystem clock boundary.
@@ -74,27 +75,12 @@ func (s *execSourceScope) text(node *sitter.Node) string {
 	return node.Utf8Text(s.source)
 }
 
-func sourceCall(node *sitter.Node) (*sitter.Node, []*sitter.Node) {
-	if node == nil || node.Kind() != "call" && node.Kind() != "call_expression" {
-		return nil, nil
-	}
-	function := node.ChildByFieldName("function")
-	args := node.ChildByFieldName("arguments")
-	var values []*sitter.Node
-	if args != nil {
-		for i := range args.NamedChildCount() {
-			values = append(values, args.NamedChild(uint(i)))
-		}
-	}
-	return function, values
-}
-
 func (s *execSourceScope) literal(node *sitter.Node) (string, bool) {
 	if node == nil {
 		return "", false
 	}
 	if !s.python {
-		value, ok := toolActivityStaticJavaScriptValue(node, s.source)
+		value, ok := sourceparse.JavaScriptValue(node, s.source)
 		str, isString := value.(string)
 		return str, ok && isString
 	}
@@ -164,13 +150,13 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 		if s.intentOnly {
 			return []string{value}
 		}
-		return []string{execProviderPath(s.input.cwd, value)}
+		return []string{sourceparse.Path(s.input.cwd, value)}
 	}
 	if node.Kind() == "identifier" {
 		if s.text(node) == "__dirname" && s.script != "" {
 			return []string{filepath.Dir(s.script)}
 		}
-		return s.vars[s.text(node)]
+		return s.state.Paths[s.text(node)]
 	}
 	if node.Kind() == "list" || node.Kind() == "tuple" || node.Kind() == "array" {
 		var paths []string
@@ -192,7 +178,7 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 	if node.Kind() == "binary_operator" && s.text(node.ChildByFieldName("operator")) == "/" {
 		left := s.paths(node.ChildByFieldName("left"))
 		right := s.literalSegments(node.ChildByFieldName("right"), 0)
-		if len(left) != 0 && len(right) > maxExecListingEntries/len(left) {
+		if len(left) != 0 && len(right) > ListingLimit/len(left) {
 			s.result.open = true
 			return nil
 		}
@@ -202,10 +188,10 @@ func (s *execSourceScope) paths(node *sitter.Node) []string {
 		}
 		return paths
 	}
-	function, args := sourceCall(node)
+	function, args := sourceparse.Call(node)
 	name := s.text(function)
 	base := name[strings.LastIndexByte(name, '.')+1:]
-	if alias := s.aliases[base]; alias != "" {
+	if alias := s.state.Aliases[base]; alias != "" {
 		base = alias
 	}
 	if (base == "Path" || base == "PurePath" || base == "open" || base == "file") && len(args) > 0 {
@@ -277,7 +263,7 @@ func (s *execSourceScope) literalSegments(node *sitter.Node, depth int) []string
 		return []string{value}
 	}
 	if node.Kind() == "identifier" {
-		return s.segments[s.text(node)]
+		return s.state.Segments[s.text(node)]
 	}
 	if node.Kind() != "list" && node.Kind() != "tuple" && node.Kind() != "array" {
 		return nil
@@ -285,7 +271,7 @@ func (s *execSourceScope) literalSegments(node *sitter.Node, depth int) []string
 	var values []string
 	for i := range node.NamedChildCount() {
 		part := s.literalSegments(node.NamedChild(uint(i)), depth+1)
-		if len(part) == 0 || len(values)+len(part) > maxExecListingEntries {
+		if len(part) == 0 || len(values)+len(part) > ListingLimit {
 			return nil
 		}
 		values = append(values, part...)
@@ -324,7 +310,7 @@ func (s *execSourceScope) glob(root, pattern string) []string {
 		root = string(filepath.Separator)
 		pattern = strings.TrimPrefix(pattern, root)
 	}
-	expression, ok := parseExecIgnoreLine(pattern)
+	expression, ok := sourceparse.ParseIgnore(pattern)
 	if !ok {
 		s.result.open = true
 		return nil
@@ -334,7 +320,7 @@ func (s *execSourceScope) glob(root, pattern string) []string {
 	entries := 0
 	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		entries++
-		if entries > maxExecListingEntries || time.Now().After(s.input.deadline) {
+		if entries > ListingLimit || time.Now().After(s.input.deadline) {
 			s.result.open = true
 			return filepath.SkipAll
 		}
@@ -346,7 +332,7 @@ func (s *execSourceScope) glob(root, pattern string) []string {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, path)
-		if expression.pattern.MatchString(filepath.ToSlash(rel)) {
+		if expression.Pattern.MatchString(filepath.ToSlash(rel)) {
 			paths = append(paths, path)
 		}
 		return nil
@@ -406,11 +392,11 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 		}
 		if node.Kind() == "assignment" || node.Kind() == "augmented_assignment" {
 			left := s.text(node.ChildByFieldName("left"))
-			if left == "os" || left == "Path" || left == "PurePath" || left == "open" || s.aliases[left] == "Path" || s.aliases[left] == "PurePath" || strings.HasPrefix(left, "os.") {
+			if left == "os" || left == "Path" || left == "PurePath" || left == "open" || s.state.Aliases[left] == "Path" || s.state.Aliases[left] == "PurePath" || strings.HasPrefix(left, "os.") {
 				s.result.open = true
 			}
 		}
-		if function, _ := sourceCall(node); function != nil && strings.HasPrefix(s.text(function), "os.environ.") {
+		if function, _ := sourceparse.Call(node); function != nil && strings.HasPrefix(s.text(function), "os.environ.") {
 			s.result.open = true
 		}
 		if node.Kind() == "attribute" && s.text(node) == "os.environ" {
@@ -438,13 +424,13 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 	if node.Kind() == "import_specifier" || node.Kind() == "aliased_import" {
 		name, alias := node.ChildByFieldName("name"), node.ChildByFieldName("alias")
 		if name != nil && alias != nil {
-			s.aliases[s.text(alias)] = s.text(name)
+			s.state.Aliases[s.text(alias)] = s.text(name)
 		}
 	}
 	if node.Kind() == "pair_pattern" {
 		key, value := node.ChildByFieldName("key"), node.ChildByFieldName("value")
 		if key != nil && value != nil && value.Kind() == "identifier" {
-			s.aliases[s.text(value)] = s.text(key)
+			s.state.Aliases[s.text(value)] = s.text(key)
 		}
 	}
 	if node.Kind() == "augmented_assignment" {
@@ -456,9 +442,9 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 		}
 		if left := node.ChildByFieldName("left"); left != nil && left.Kind() == "identifier" {
 			name := s.text(left)
-			delete(s.vars, name)
+			delete(s.state.Paths, name)
 			delete(s.texts, name)
-			delete(s.segments, name)
+			delete(s.state.Segments, name)
 			delete(s.pythonItems, name)
 		}
 	}
@@ -480,11 +466,11 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 				text := s.python && s.pythonText(right, 0)
 				segments := s.literalSegments(right, 0)
 				paths := s.paths(right)
-				if s.segments == nil {
-					s.segments = make(map[string][]string)
+				if s.state.Segments == nil {
+					s.state.Segments = make(map[string][]string)
 				}
-				s.segments[name] = segments
-				s.vars[name] = paths
+				s.state.Segments[name] = segments
+				s.state.Paths[name] = paths
 				s.texts[name] = text
 				if s.python {
 					delete(s.pythonItems, name)
@@ -496,9 +482,9 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 					}
 				}
 			} else {
-				delete(s.vars, name)
+				delete(s.state.Paths, name)
 				delete(s.texts, name)
-				delete(s.segments, name)
+				delete(s.state.Segments, name)
 				delete(s.pythonItems, name)
 			}
 		}
@@ -515,18 +501,18 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 		if left != nil && left.Kind() == "identifier" {
 			segments := s.literalSegments(right, 0)
 			paths := s.paths(right)
-			if s.segments == nil {
-				s.segments = make(map[string][]string)
+			if s.state.Segments == nil {
+				s.state.Segments = make(map[string][]string)
 			}
-			s.segments[s.text(left)] = segments
-			s.vars[s.text(left)] = paths
+			s.state.Segments[s.text(left)] = segments
+			s.state.Paths[s.text(left)] = paths
 			delete(s.texts, s.text(left))
 			delete(s.pythonItems, s.text(left))
 		} else if s.python && left != nil {
 			s.bindPythonItems(left, right)
 		}
 	}
-	if function, args := sourceCall(node); function != nil {
+	if function, args := sourceparse.Call(node); function != nil {
 		s.call(function, args)
 	}
 	for i := range node.NamedChildCount() {
@@ -537,7 +523,7 @@ func (s *execSourceScope) walk(node *sitter.Node) {
 func (s *execSourceScope) call(function *sitter.Node, args []*sitter.Node) {
 	name := s.text(function)
 	base := name[strings.LastIndexByte(name, '.')+1:]
-	if alias := s.aliases[base]; alias != "" {
+	if alias := s.state.Aliases[base]; alias != "" {
 		base = alias
 	}
 	if s.intentOnly {
@@ -638,14 +624,14 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 		command = value
 		// execFile/spawn use a separate argv array rather than shell text.
 		if len(args) > 1 && (args[1].Kind() == "array" || args[1].Kind() == "list") {
-			command = shellQuoteArgument(value)
+			command = shellsyntax.QuoteArgument(value)
 			for i := range args[1].NamedChildCount() {
 				part, ok := s.literal(args[1].NamedChild(uint(i)))
 				if !ok {
 					s.result.open = true
 					return
 				}
-				command += " " + shellQuoteArgument(part)
+				command += " " + shellsyntax.QuoteArgument(part)
 			}
 		}
 	} else if args[0].Kind() == "list" || args[0].Kind() == "array" || args[0].Kind() == "tuple" {
@@ -655,7 +641,7 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 				s.result.open = true
 				return
 			}
-			command += " " + shellQuoteArgument(part)
+			command += " " + shellsyntax.QuoteArgument(part)
 		}
 	} else {
 		s.result.open = true
@@ -664,6 +650,6 @@ func (s *execSourceScope) subprocess(args []*sitter.Node) {
 	plan := classifyExecShellSource(command, s.input.cwd, "bash", s.input.deadline, s.input.depth+1, s.input.changes, s.input.authoredOnly)
 	s.result.scope = append(s.result.scope, plan.Scope...)
 	s.result.programs = append(s.result.programs, plan.Programs...)
-	s.result.open = s.result.open || plan.Class == execOpaque || plan.Reason != ""
-	s.writes = s.writes || plan.Class != execNeutral
+	s.result.open = s.result.open || plan.Class == Opaque || plan.Reason != ""
+	s.writes = s.writes || plan.Class != Neutral
 }

@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"slices"
@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-func classifyExecShell(command, workdir, shell string) execPlan {
-	return classifyExecShellSource(command, workdir, shell, time.Now().Add(execProviderBudget), 0, nil, false)
+func classifyExecShell(command, workdir, shell string) Result {
+	return Classify(Input{Command: command, Directory: workdir, Shell: shell, Deadline: time.Now().Add(Budget)})
 }
 
-func execPlanScope(plan execPlan, workdir string) []string {
+func execPlanScope(plan Result, workdir string) []string {
 	var scope []string
 	for _, entry := range plan.Scope {
 		var operands []string
@@ -23,7 +23,7 @@ func execPlanScope(plan execPlan, workdir string) []string {
 			operands = append(operands, path)
 		}
 		text := string(entry.Kind) + ":" + strings.Join(operands, ",")
-		if entry.Kind == execScopeInto {
+		if entry.Kind == Into {
 			text += "->" + strings.TrimPrefix(entry.Dest, workdir+"/")
 			if entry.DestDir {
 				text += "/"
@@ -75,7 +75,7 @@ func TestClassifyExecShellDeclaredOperations(t *testing.T) {
 		{"cat \"$f\" > out", []string{"cat"}, []string{"file:out"}},
 	} {
 		plan := classifyExecShell(test.command, workdir, "bash")
-		if plan.Class != execDeclared && !(test.labels == nil && plan.Class == execNeutral) {
+		if plan.Class != Declared && !(test.labels == nil && plan.Class == Neutral) {
 			t.Errorf("%q class = %v (%s)", test.command, plan.Class, plan.Reason)
 			continue
 		}
@@ -94,7 +94,7 @@ func TestClassifyExecShellNeutralAndOpaque(t *testing.T) {
 		"ls -la", "git status && git diff", "rg foo | head", "go version", "cat a.txt",
 		"if test -f a; then echo yes; fi", "git config --get user.name", "fd -e go", "less -R a",
 	} {
-		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != execNeutral {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != Neutral {
 			t.Errorf("%q class = %v (%s), want neutral", command, plan.Class, plan.Reason)
 		}
 	}
@@ -117,18 +117,18 @@ func TestClassifyExecShellNeutralAndOpaque(t *testing.T) {
 		"PATH=/tmp:$PATH rm a", "export PATH=/tmp; rm a", "env PATH=/tmp rm a", "./rm a", "bin/cp a b",
 		"rm [[:alpha:]]*", "rm **/*.log",
 	} {
-		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != execOpaque {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != Opaque {
 			t.Errorf("%q class = %v, want opaque", command, plan.Class)
 		}
 	}
 	// Code in a substitution leaves perl -i scoped rather than declared.
 	for _, command := range []string{"bash -c 'rm a'", "perl -pi -e 's/a/${\\ `rm x`}/' f", "perl -pi -e 's/(?{ system 1 })//' f"} {
-		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != execScoped {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != Scoped {
 			t.Errorf("%q class = %v, want scoped", command, plan.Class)
 		}
 	}
 	for _, shell := range []string{"/usr/bin/fish", "zsh", ""} {
-		if plan := classifyExecShell("rm a", workdir, shell); plan.Class != execOpaque {
+		if plan := classifyExecShell("rm a", workdir, shell); plan.Class != Opaque {
 			t.Errorf("shell %q class = %v, want opaque", shell, plan.Class)
 		}
 	}
@@ -144,7 +144,7 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 		"env -u BASH_ENV rtk proxy rm a",
 	} {
 		plan := classifyExecShell(command, workdir, "bash")
-		if plan.Class != execDeclared || !slices.Equal(execPlanScope(plan, workdir), []string{"file:a"}) {
+		if plan.Class != Declared || !slices.Equal(execPlanScope(plan, workdir), []string{"file:a"}) {
 			t.Errorf("literal scope lost through %q: class=%v scope=%q reason=%q", command, plan.Class, execPlanScope(plan, workdir), plan.Reason)
 		}
 	}
@@ -154,7 +154,7 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 		"env --unset=PATH rm a",
 		"env -u \"$VARIABLE\" rm a",
 	} {
-		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != execOpaque {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != Opaque {
 			t.Errorf("unsafe env wrapper %q class=%v, want opaque", command, plan.Class)
 		}
 	}
@@ -165,7 +165,7 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 		"rtk run -c 'env -u BASH_ENV rm target'",
 	} {
 		plan := classifyExecShell(command, workdir, "bash")
-		if plan.Class != execDeclared || !slices.Equal(execPlanScope(plan, workdir), []string{"file:target"}) {
+		if plan.Class != Declared || !slices.Equal(execPlanScope(plan, workdir), []string{"file:target"}) {
 			t.Errorf("literal nested rtk command %q: class=%v scope=%q reason=%q", command, plan.Class, execPlanScope(plan, workdir), plan.Reason)
 		}
 	}
@@ -177,14 +177,14 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 		`RTK_BIN=rtk; "$RTK_BIN" proxy rm a`,
 		"rtk() { command rm \"$@\"; }; rtk proxy rm a",
 	} {
-		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != execOpaque {
+		if plan := classifyExecShell(command, workdir, "bash"); plan.Class != Opaque {
 			t.Errorf("ambiguous rtk impostor %q class=%v, want opaque", command, plan.Class)
 		}
 	}
 
 	plan := classifyExecShell("rtk go test ./...", workdir, "bash")
-	if !slices.ContainsFunc(plan.Programs, func(program execProgram) bool { return program.Label == "go test" }) ||
-		slices.ContainsFunc(plan.Programs, func(program execProgram) bool { return strings.HasPrefix(program.Label, "rtk") }) {
+	if !slices.ContainsFunc(plan.Programs, func(program Program) bool { return program.Label == "go test" }) ||
+		slices.ContainsFunc(plan.Programs, func(program Program) bool { return strings.HasPrefix(program.Label, "rtk") }) {
 		t.Fatalf("wrapped go test program labels = %+v; want go test, not rtk", plan.Programs)
 	}
 }
@@ -202,7 +202,7 @@ func TestClassifyReadCommandFormsWithoutFalseWriters(t *testing.T) {
 		`skills-mgr get golang-best-practices`,
 		`skills-mgr get golang-best-practices/references/go.md 1:20`,
 	} {
-		if plan := classifyExecShell(command, "/work", "bash"); plan.Class != execNeutral {
+		if plan := classifyExecShell(command, "/work", "bash"); plan.Class != Neutral {
 			t.Errorf("read command %q classified as %s: %s", command, plan.Class, plan.Reason)
 		}
 	}
@@ -220,12 +220,12 @@ func TestClassifyReadCommandFormsWithoutFalseWriters(t *testing.T) {
 		`skills-mgr adopt`,
 		`rg() { touch changed; }; rg pattern src/{one,two}`,
 	} {
-		if plan := classifyExecShell(command, "/work", "bash"); plan.Class != execOpaque {
+		if plan := classifyExecShell(command, "/work", "bash"); plan.Class != Opaque {
 			t.Errorf("possible writer %q classified as %s: %s", command, plan.Class, plan.Reason)
 		}
 	}
 	plan := classifyExecShell(`rg -n pattern src/{one,two}.go > matches.txt`, "/work", "bash")
-	if plan.Class != execDeclared || !slices.Equal(execPlanScope(plan, "/work"), []string{"file:matches.txt"}) {
+	if plan.Class != Declared || !slices.Equal(execPlanScope(plan, "/work"), []string{"file:matches.txt"}) {
 		t.Fatalf("reader redirection lost write scope: %+v", plan)
 	}
 }

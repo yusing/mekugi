@@ -5,6 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -16,7 +20,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown || len(call.Assigns) != 0 || len(call.Args) == 0 {
 		return "", false
 	}
-	command, literal := shellCatLiteral(call.Args[0])
+	command, literal := shellsyntax.Literal(call.Args[0])
 	if !literal {
 		return "", false
 	}
@@ -24,25 +28,15 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 	if (name == "sed" || name == "rm" || name == "mv") && len(statement.Redirs) == 0 {
 		// Reuse capture's option/script parser without resolving or reading
 		// files. The operation is requested; only its later receipt has counts.
-		for _, arg := range call.Args[1:] {
-			if _, glob, literal := execWordOperand(arg); !literal || glob {
-				return "", false
-			}
-		}
-		plan := execPlan{}
-		walker := execShellWalker{cwd: ".", plan: &plan}
+		plan := execscope.StatementIntent(statement)
 		verb := "Edit"
 		switch name {
 		case "rm":
-			walker.remove(call.Args[1:])
 			verb = "Delete"
 		case "mv":
-			walker.copyLike(name, call.Args[1:], true)
 			verb = "Move"
-		default:
-			walker.sed(call.Args[1:])
 		}
-		if plan.Class != execDeclared || len(plan.Scope) == 0 {
+		if plan.Class != execscope.Declared || len(plan.Scope) == 0 {
 			return "", false
 		}
 		var paths []string
@@ -67,7 +61,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 			if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || redirect.N != nil && redirect.N.Value != "1" {
 				continue
 			}
-			path, literal := shellCatLiteral(redirect.Word)
+			path, literal := shellsyntax.Literal(redirect.Word)
 			if !literal && toolActivityPatternWord(redirect.Word) {
 				path = shellWords([]*syntax.Word{redirect.Word})
 			}
@@ -88,17 +82,17 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 		return "", false
 	}
 	projection, ok := shellInterpreterScriptProjection(source.String())
-	if !ok || projection.Language != "python" && projection.Language != "javascript" || len(projection.Source) > maxExecProgramBytes {
+	if !ok || projection.Language != "python" && projection.Language != "javascript" || len(projection.Source) > execscope.SourceLimit {
 		return "", false
 	}
 	python := projection.Language == "python"
-	language := codeModeJavaScriptLanguage
+	language := sourceparse.JavaScript
 	if python {
-		language = execPythonLanguage
+		language = sourceparse.Python
 	}
-	deadline := time.Now().Add(execProviderBudget)
+	deadline := time.Now().Add(execscope.Budget)
 	data := []byte(projection.Source)
-	tree, err := parseSourceTree(data, language, func() bool { return time.Now().After(deadline) })
+	tree, err := sourceparse.Parse(data, language, func() bool { return time.Now().After(deadline) })
 	if err != nil || tree == nil {
 		return "", false
 	}
@@ -106,14 +100,12 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 	if tree.RootNode().HasError() {
 		return "", false
 	}
-	scan := execSourceScope{input: execProviderInput{deadline: deadline}, source: data, python: python, intentOnly: true,
-		vars: make(map[string][]string), texts: make(map[string]bool), assigned: make(map[string]int), aliases: make(map[string]string)}
-	scan.temporaryEnv = toolActivityTemporaryEnv(script, statement)
-	scan.walk(tree.RootNode())
-	if !scan.writes {
+	scan := execscope.NewBindings(execscope.SourceInput{Source: data, Deadline: deadline, Python: python, IntentOnly: true, TemporaryEnv: toolActivityTemporaryEnv(script, statement)})
+	result := scan.Analyze(tree.RootNode())
+	if !result.Writes {
 		return "", false
 	}
-	if len(scan.result.scope) == 0 {
+	if len(result.Scope) == 0 {
 		// Unresolved targets have no edit to open. Keep the ordinary Run
 		// projection so its dialog retains the original command and output.
 		return "", false
@@ -121,7 +113,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 	suffix := " · " + shellInterpreterName(command) + " (requested)"
 	var displays []string
 	seen := make(map[string]bool)
-	for _, scope := range scan.result.scope {
+	for _, scope := range result.Scope {
 		for _, operand := range scope.Operands {
 			if operand.Path != "" && !seen[operand.Path] {
 				seen[operand.Path] = true
@@ -129,7 +121,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 			}
 		}
 	}
-	if scan.result.open {
+	if result.Unresolved {
 		displays = append(displays, "Run "+toolActivityCode(projection.Command)+"\n"+toolActivityFenced(projection.Language, projection.Source))
 	}
 	return strings.Join(displays, "\n\n"), true

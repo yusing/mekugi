@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi"
 )
 
@@ -76,7 +78,7 @@ func TestExecGofmtScopesGoFilesWithManagedOrigin(t *testing.T) {
 	writeTestFile(t, nonGo, "stable text\n")
 	before := execFixerTestRead(t, bad)
 	observation := execFixerTestCapture(t, root, root, "gofmt -w .")
-	if observation.Class != execScoped.String() {
+	if observation.Class != execscope.Scoped.String() {
 		t.Fatalf("gofmt class = %q (%s), want scoped", observation.Class, observation.Reason)
 	}
 	captured := execFixerTestCapturedFiles(observation)
@@ -130,7 +132,7 @@ func TestExecGoModuleCommandsCaptureNearestManifestsAsManaged(t *testing.T) {
 			writeTestFile(t, modulePath, beforeModule)
 			writeTestFile(t, sumPath, beforeSum)
 			observation := execFixerTestCapture(t, root, nested, test.command)
-			if observation.Class != execScoped.String() {
+			if observation.Class != execscope.Scoped.String() {
 				t.Fatalf("%s class = %q (%s), want scoped", test.command, observation.Class, observation.Reason)
 			}
 			captured := execFixerTestCapturedFiles(observation)
@@ -159,7 +161,7 @@ func TestExecMixedPythonAndGoModKeepsDirectPathOrigin(t *testing.T) {
 	writeTestFile(t, sumPath, beforeSum)
 	command := `python3 -c 'from pathlib import Path; Path("go.mod").write_text("module example.test/root\\n\\ngo 1.27\\n// direct edit\\n")' && go mod tidy`
 	observation := execFixerTestCapture(t, root, root, command)
-	if observation.Class != execScoped.String() {
+	if observation.Class != execscope.Scoped.String() {
 		t.Fatalf("mixed command class = %q (%s), want scoped", observation.Class, observation.Reason)
 	}
 	captured := execFixerTestCapturedFiles(observation)

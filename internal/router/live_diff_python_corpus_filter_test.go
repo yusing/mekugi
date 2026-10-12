@@ -9,6 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -79,14 +83,14 @@ func pythonCorpusExtractDetailed(command pythonCorpusCommand) ([]pythonCorpusCom
 			if len(call.Args) == 0 {
 				return
 			}
-			name, literal := shellCatLiteral(call.Args[0])
+			name, literal := shellsyntax.Literal(call.Args[0])
 			if !literal {
 				uncertain["invocation/source uncertainty"]++
 				return
 			}
 			args := make([]string, len(call.Args))
 			for i, word := range call.Args {
-				value, ok := shellCatLiteral(word)
+				value, ok := shellsyntax.Literal(word)
 				if !ok {
 					if strings.HasPrefix(filepath.Base(name), "python") || filepath.Base(name) == "env" || filepath.Base(name) == "bash" || filepath.Base(name) == "sh" {
 						uncertain["invocation/source uncertainty"]++
@@ -135,10 +139,10 @@ func pythonCorpusExtractDetailed(command pythonCorpusCommand) ([]pythonCorpusCom
 			if !pythonCorpusExecutable(identity) {
 				return
 			}
-			input := execProviderInput{identity: identity, args: args[index+1:], cwd: directory}
+			input := previewInterpreterInput{identity: identity, args: args[index+1:], cwd: directory}
 			for _, redirect := range stmt.Redirs {
 				if redirect.Op == syntax.Hdoc || redirect.Op == syntax.DashHdoc {
-					source, literal := liveDiffShellHeredoc(redirect, false)
+					source, literal := shellsyntax.Heredoc(redirect, false)
 					if !literal {
 						uncertain["invocation/source uncertainty"]++
 						return
@@ -162,7 +166,7 @@ func pythonCorpusExtractDetailed(command pythonCorpusCommand) ([]pythonCorpusCom
 				uncertain["invocation/source uncertainty"]++
 				return
 			}
-			source, _, reason := execProgramSource(input)
+			source, _, reason := execscope.ReadSource(execscope.Interpreter{Identity: input.identity, Arguments: input.args, Directory: input.cwd, Stdin: input.stdin})
 			if reason != "" {
 				uncertain["invocation/source uncertainty"]++
 				return
@@ -205,7 +209,7 @@ func pythonCorpusExecutable(name string) bool {
 // and stay in the measured population. Known output streams are not files.
 func pythonCorpusIntent(source string) string {
 	data := []byte(source)
-	tree, err := parseSourceTree(data, execPythonLanguage, func() bool { return false })
+	tree, err := sourceparse.Parse(data, sourceparse.Python, func() bool { return false })
 	if err != nil || tree == nil {
 		return "Python parse uncertainty"
 	}
@@ -225,7 +229,7 @@ func pythonCorpusIntent(source string) string {
 		if n.Kind() == "comment" {
 			return
 		}
-		if function, _ := sourceCall(n); function != nil {
+		if function, _ := sourceparse.Call(n); function != nil {
 			callee := text(function)
 			attribute := text(function.ChildByFieldName("attribute"))
 			switch {
@@ -233,7 +237,7 @@ func pythonCorpusIntent(source string) string {
 			case attribute == "write_text" || attribute == "write_bytes" || attribute == "write" || attribute == "writelines" || attribute == "truncate" || attribute == "unlink" || attribute == "rename" || attribute == "replace" && strings.Contains(callee, "os."):
 				write = true
 			case callee == "print":
-				_, args := sourceCall(n)
+				_, args := sourceparse.Call(n)
 				for _, arg := range args {
 					argument := strings.ReplaceAll(text(arg), " ", "")
 					if strings.HasPrefix(argument, "file=") && argument != "file=sys.stdout" && argument != "file=sys.stderr" {
@@ -242,7 +246,7 @@ func pythonCorpusIntent(source string) string {
 				}
 			case callee == "open":
 				// A read-only open cannot mutate a file, but computed modes remain unknown.
-				_, args := sourceCall(n)
+				_, args := sourceparse.Call(n)
 				if len(args) >= 2 {
 					mode := strings.ReplaceAll(text(args[1]), " ", "")
 					mode = strings.TrimPrefix(mode, "mode=")
@@ -256,7 +260,7 @@ func pythonCorpusIntent(source string) string {
 				}
 			case attribute == "replace":
 				object := function.ChildByFieldName("object")
-				constructor, _ := sourceCall(object)
+				constructor, _ := sourceparse.Call(object)
 				if constructor != nil && (text(constructor) == "Path" || text(constructor) == "pathlib.Path") {
 					write = true
 				} else if object == nil || object.Kind() != "string" {

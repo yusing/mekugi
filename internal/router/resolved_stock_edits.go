@@ -3,6 +3,8 @@ package router
 import (
 	"path/filepath"
 	"slices"
+
+	"github.com/yusing/mekugi/internal/execscope"
 )
 
 // Legacy schema, decoded only when reading retained pre-redesign records.
@@ -52,7 +54,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 			}
 			copy.Commands = append(copy.Commands, command)
 			copy.CommandClasses = append(copy.CommandClasses, classes[i])
-			copy.RepeatedPaths = copy.RepeatedPaths || classes[i] != execNeutral.String()
+			copy.RepeatedPaths = copy.RepeatedPaths || classes[i] != execscope.Neutral.String()
 		}
 	}
 	literal := slices.Clone(history.NativePatches)

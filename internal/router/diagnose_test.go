@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 func TestReportIssueOptInUsesOneRouterLocalFunctionAndStartupHookSnapshot(t *testing.T) {
 	data := t.TempDir()
 	output := filepath.Join(t.TempDir(), "report.txt")
-	settings := `{"hooks":{"diagnose":["printf '%s\\n%s' {{shellquote .Title}} {{shellquote (format_markdown .Body)}} > ` + shellQuoteArgument(output) + `"]}}`
+	settings := `{"hooks":{"diagnose":["printf '%s\\n%s' {{shellquote .Title}} {{shellquote (format_markdown .Body)}} > ` + shellsyntax.QuoteArgument(output) + `"]}}`
 	if err := os.WriteFile(filepath.Join(data, "settings.json"), []byte(settings), 0o600); err != nil {
 		t.Fatal(err)
 	}

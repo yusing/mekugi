@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 	"github.com/yusing/mekugi/internal/sourcekind"
@@ -27,14 +29,14 @@ func liveDiffSourceReady(ctx context.Context, path, source string) bool {
 func liveDiffSourceLanguage(format sourcekind.Format) (*sitter.Language, bool) {
 	switch format.Language {
 	case "javascript":
-		return codeModeJavaScriptLanguage, true
+		return sourceparse.JavaScript, true
 	case "typescript":
 		if format.JSX {
 			return liveDiffTSXLanguage, true
 		}
-		return execTypeScriptLanguage, true
+		return sourceparse.TypeScript, true
 	case "python":
-		return execPythonLanguage, true
+		return sourceparse.Python, true
 	}
 	return nil, false
 }
@@ -83,7 +85,7 @@ func liveDiffSourceTerminated(ctx context.Context, path, source string) bool {
 	if !ok {
 		return false
 	}
-	tree, err := parseSourceTree([]byte(source), language, func() bool { return ctx.Err() != nil })
+	tree, err := sourceparse.Parse([]byte(source), language, func() bool { return ctx.Err() != nil })
 	if err != nil || tree == nil {
 		return false
 	}
@@ -147,7 +149,7 @@ func liveDiffSourceComplete(ctx context.Context, path, source string) bool {
 		return true
 	}
 	canceled := func() bool { return ctx.Err() != nil }
-	tree, err := parseSourceTree([]byte(source), language, canceled)
+	tree, err := sourceparse.Parse([]byte(source), language, canceled)
 	if err != nil || tree == nil {
 		return false
 	}
@@ -191,7 +193,7 @@ func liveDiffSourceComplete(ctx context.Context, path, source string) bool {
 		return false
 	}
 	slices.Reverse(closers)
-	closed, err := parseSourceTree([]byte(source+strings.Join(closers, "")), language, canceled)
+	closed, err := sourceparse.Parse([]byte(source+strings.Join(closers, "")), language, canceled)
 	if err != nil || closed == nil {
 		return false
 	}

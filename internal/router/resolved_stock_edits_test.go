@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi"
 )
 
@@ -268,7 +270,7 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 	source := "for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "});"
 	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
 	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
-	if dynamic || len(observation.CommandClasses) != 1 || observation.CommandClasses[0] != execScoped.String() {
+	if dynamic || len(observation.CommandClasses) != 1 || observation.CommandClasses[0] != execscope.Scoped.String() {
 		t.Fatal("fixture must pre-capture one scoped literal provider")
 	}
 	// The provider source changed after capture. Its original classification
@@ -281,7 +283,7 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 	resolveStockEdits(&history, workspace)
 	reviews, complete, coverage, _ := reconcileExecObservation(*history.ExecObservation, execReconcileEnv{})
 	if len(history.ExecObservation.Commands) != 2 || len(history.ExecObservation.CommandClasses) != 2 ||
-		history.ExecObservation.CommandClasses[1] != execScoped.String() || !history.ExecObservation.RepeatedPaths ||
+		history.ExecObservation.CommandClasses[1] != execscope.Scoped.String() || !history.ExecObservation.RepeatedPaths ||
 		len(reviews) != 0 || complete || coverage != execCoveragePartial {
 		t.Fatalf("late provider state erased repeated-write uncertainty: %+v, complete=%v coverage=%s", history.ExecObservation, complete, coverage)
 	}

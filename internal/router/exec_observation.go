@@ -20,6 +20,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
@@ -41,7 +44,7 @@ const (
 	// maxExecRecordBytes keeps the encoded reviews of a derived record below
 	// the store's record limit.
 	maxExecRecordBytes    = 24 << 20
-	maxExecListingEntries = 4096
+	maxExecListingEntries = execscope.ListingLimit
 )
 
 // execCommandInput is one stock command as the host will run it.
@@ -112,12 +115,12 @@ type execObservation struct {
 	Labels         []string `json:",omitempty"`
 	Reason         string   `json:",omitempty"`
 	Files          []execFileSnapshot
-	Omitted        []execOmission `json:",omitempty"`
-	Listings       []execListing  `json:",omitempty"`
-	CodeMode       bool           `json:",omitzero"`
-	Roots          []string       `json:",omitempty"`
-	WindowStart    time.Time      `json:",omitzero"`
-	Programs       []execProgram  `json:",omitempty"`
+	Omitted        []execOmission      `json:",omitempty"`
+	Listings       []execListing       `json:",omitempty"`
+	CodeMode       bool                `json:",omitzero"`
+	Roots          []string            `json:",omitempty"`
+	WindowStart    time.Time           `json:",omitzero"`
+	Programs       []execscope.Program `json:",omitempty"`
 	// Group identifies the response that emitted the call, so parallel
 	// siblings finalized together share one record.
 	Group string `json:",omitempty"`
@@ -291,7 +294,7 @@ type execCaptureEnv struct {
 	// excluded paths belong to patch records of the same call.
 	excluded []string
 	// changes scopes mchanges revert and apply by their recorded paths.
-	changes execChangeResolver
+	changes execscope.ChangeResolver
 }
 
 // captureExecObservation classifies commands and captures their scope before
@@ -335,7 +338,7 @@ func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool,
 var execCaptureSlots = make(chan struct{}, 16)
 
 func incompleteExecCapture(commands []execCommandInput, codeMode bool, env execCaptureEnv) *execObservation {
-	return &execObservation{Commands: commands, CodeMode: codeMode, Class: execOpaque.String(), Reason: "capture deadline"}
+	return &execObservation{Commands: commands, CodeMode: codeMode, Class: execscope.Opaque.String(), Reason: "capture deadline"}
 }
 
 func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
@@ -344,10 +347,10 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 		return nil, false
 	}
 	observation := &execObservation{Commands: commands, CodeMode: codeMode}
-	class := execNeutral
-	var scope []execScopeEntry
+	class := execscope.Neutral
+	var scope []execscope.Entry
 	for _, command := range commands {
-		plan := classifyExecShellSource(command.Command, command.Workdir, command.Shell, started.Add(execProviderBudget), 0, env.changes, !env.previewOnly)
+		plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell, Deadline: started.Add(execscope.Budget), Changes: env.changes, AuthoredOnly: !env.previewOnly})
 		observation.CommandClasses = append(observation.CommandClasses, plan.Class.String())
 		if plan.Class > class {
 			class = plan.Class
@@ -373,8 +376,8 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	}
 	if dynamic {
 		observation.LiteralClass = class.String()
-		class, observation.Reason = execOpaque, "exec cell has a non-literal command"
-		observation.Programs = append(observation.Programs, execProgram{Label: "exec command"})
+		class, observation.Reason = execscope.Opaque, "exec cell has a non-literal command"
+		observation.Programs = append(observation.Programs, execscope.Program{Label: "exec command"})
 		if filepath.IsAbs(env.directory) {
 			observation.Roots = execAddRoot(observation.Roots, filepath.Clean(env.directory))
 		}
@@ -382,7 +385,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	observation.Class = class.String()
 	observation.Excluded = env.excluded
 	if len(scope) == 0 {
-		if class == execNeutral {
+		if class == execscope.Neutral {
 			return nil, false
 		}
 		return observation, false
@@ -657,7 +660,7 @@ func (c *execCapture) mayRemove(path string) bool {
 // expand returns a glob's current matches and earlier captured paths it may
 // match once earlier statements have run. Without nullglob, bash passes an
 // unmatched pattern through.
-func (c *execCapture) expand(operand execOperand) ([]string, bool) {
+func (c *execCapture) expand(operand execscope.Operand) ([]string, bool) {
 	if !operand.Glob {
 		return []string{operand.Path}, true
 	}
@@ -681,9 +684,9 @@ func (c *execCapture) expand(operand execOperand) ([]string, bool) {
 	return matches, true
 }
 
-func (c *execCapture) entry(entry execScopeEntry) {
+func (c *execCapture) entry(entry execscope.Entry) {
 	c.origin = entry.Origin
-	c.moveOnly = entry.Kind == execScopeInto && entry.Sources
+	c.moveOnly = entry.Kind == execscope.Into && entry.Sources
 	var sources []string
 	for _, operand := range entry.Operands {
 		matches, ok := c.expand(operand)
@@ -694,20 +697,20 @@ func (c *execCapture) entry(entry execScopeEntry) {
 		sources = append(sources, matches...)
 	}
 	switch entry.Kind {
-	case execScopeFile:
+	case execscope.File:
 		for _, path := range sources {
 			c.add(path)
 			if entry.Through {
 				c.through(path, "")
 			}
 		}
-	case execScopeTree:
+	case execscope.Tree:
 		for _, path := range sources {
 			c.tree(path)
 			c.list(path)
 		}
 		c.removals = append(c.removals, sources...)
-	case execScopeInto:
+	case execscope.Into:
 		for _, source := range sources {
 			for _, target := range c.targets(entry, source) {
 				c.into(entry, source, target)
@@ -723,7 +726,7 @@ func (c *execCapture) entry(entry execScopeEntry) {
 // destination names the target or a directory to write into depends on the
 // state when the command reaches it, which an earlier statement may change,
 // so both readings are captured when both are possible.
-func (c *execCapture) targets(entry execScopeEntry, source string) []string {
+func (c *execCapture) targets(entry execscope.Entry, source string) []string {
 	inside := filepath.Join(entry.Dest, filepath.Base(source))
 	switch {
 	case entry.DestDir:
@@ -744,7 +747,7 @@ func (c *execCapture) targets(entry execScopeEntry, source string) []string {
 	return []string{entry.Dest, inside}
 }
 
-func (c *execCapture) into(entry execScopeEntry, source, target string) {
+func (c *execCapture) into(entry execscope.Entry, source, target string) {
 	if entry.Recursive {
 		// A recursive source can be created or grow before the command
 		// runs, so the destination is listed for files that appear there.
@@ -792,7 +795,7 @@ func (c *execCapture) into(entry execScopeEntry, source, target string) {
 	}
 }
 
-func execCopySource(entry execScopeEntry, source string) string {
+func execCopySource(entry execscope.Entry, source string) string {
 	if entry.Copies {
 		return filepath.Clean(source)
 	}
@@ -851,7 +854,7 @@ func snapshotExecFile(path string, budget *int) execFileSnapshot {
 		snapshot.Stamp, snapshot.Error = execFileStamp(info), "capture budget exhausted"
 		return snapshot
 	}
-	file, err := openNativePatchFile(path)
+	file, err := sourceparse.Open(path)
 	if err != nil {
 		snapshot.Stamp, snapshot.Error = execFileStamp(info), err.Error()
 		return snapshot
@@ -1413,12 +1416,12 @@ func mergeExecObservations(members []execCompletion) execObservation {
 }
 
 func execClassRank(class string) int {
-	for rank := execNeutral; rank <= execOpaque; rank++ {
+	for rank := execscope.Neutral; rank <= execscope.Opaque; rank++ {
 		if rank.String() == class {
 			return int(rank)
 		}
 	}
-	return int(execOpaque)
+	return int(execscope.Opaque)
 }
 
 func execTruncateReport(text string, limit int) string {
@@ -1650,7 +1653,7 @@ func stockLiteralExecCommands(source, directory, sessionShell string) (commands 
 		return nil, false
 	}
 	bytes := []byte(source)
-	tree, err := parseSourceTree(bytes, codeModeJavaScriptLanguage, nil)
+	tree, err := sourceparse.Parse(bytes, sourceparse.JavaScript, nil)
 	if err != nil || tree == nil {
 		return nil, true
 	}
@@ -1738,7 +1741,7 @@ func execPollOnly(args []*sitter.Node, source []byte) bool {
 			case "property_identifier":
 				key = node.Utf8Text(source)
 			case "string":
-				key, _ = toolActivityJavaScriptString(node.Utf8Text(source))
+				key, _ = sourceparse.JavaScriptString(node.Utf8Text(source))
 			}
 		}
 		if key == "" || key == "__proto__" || strings.ContainsRune(key, '\\') || seen[key] {
@@ -1746,7 +1749,7 @@ func execPollOnly(args []*sitter.Node, source []byte) bool {
 		}
 		seen[key] = true
 		if key == "chars" {
-			value, ok := toolActivityStaticJavaScriptValue(pair.ChildByFieldName("value"), source)
+			value, ok := sourceparse.JavaScriptValue(pair.ChildByFieldName("value"), source)
 			if !ok || value != "" {
 				return false
 			}
@@ -1759,7 +1762,7 @@ func execLiteralCommand(args []*sitter.Node, source []byte, directory, sessionSh
 	if len(args) != 1 {
 		return execCommandInput{}, false
 	}
-	value, ok := toolActivityStaticJavaScriptValue(args[0], source)
+	value, ok := sourceparse.JavaScriptValue(args[0], source)
 	object, isObject := value.(map[string]any)
 	if !ok || !isObject {
 		return execCommandInput{}, false
