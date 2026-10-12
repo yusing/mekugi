@@ -80,6 +80,26 @@ func TestAppServerOrchestrateNavigationLineage(t *testing.T) {
 	if v.shell.livePending["edit"].preview.Thread != "native-worker" || len(u.shell.livePending) != 0 || len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("preview crossed thread views")
 	}
+	// A real roster click switches controllers before later keys are dispatched.
+	v.orchestrationRoster()
+	if err := v.paint(&bytes.Buffer{}, 120, 40); err != nil {
+		t.Fatal(err)
+	}
+	for _, hit := range v.agents.hits {
+		if hit.agent == "/Orchestration/main" && !hit.skills {
+			r := v.shell.layout.roster
+			for _, suffix := range []string{"M", "m"} {
+				if err := v.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.x+hit.first, r.y+hit.row, suffix)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			break
+		}
+	}
+	if u.viewedUI() != u {
+		t.Fatal("roster click only filtered instead of switching")
+	}
+	u.switchOrchestratedThread("child")
 	// Enter uses the selected roster thread, not the native Activity filter.
 	v.orchestrationRoster()
 	v.agents.selected = "/Orchestration/main"
@@ -128,7 +148,7 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
 	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 	v := u.navigation.views["child"]
-	u.orchestrateThreads["child"].batch.Branch = "mekugi/batch"
+	u.orchestrateThreads["child"].batch.Branch = "mekugi/" + strings.Repeat("0123456789", 8) + "/batch"
 	for _, view := range []*appServerUI{u, v} {
 		view.clock = func() time.Time { return now }
 		view.view.clock, view.agents.clock = view.clock, view.clock
@@ -137,6 +157,12 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 		view.modelsLoading = true
 		view.shell.focus = 3
 		view.agents.apply(activityPaneEvent{Kind: "agents", Agents: view.session.agents})
+	}
+	for _, thread := range []string{"main", "child"} {
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"turn","item":{"id":"read","type":"commandExecution","command":"cat %s.go","status":"completed","exitCode":0}}}`, thread, thread))
+	}
+	for _, view := range []*appServerUI{u, v} {
+		view.shell.journalOpen = false
 	}
 	u.draft, v.draft = "Review the batch", "Complete the batch"
 	for _, test := range []struct{ name, thread string }{{"main", "main"}, {"batch", "child"}} {

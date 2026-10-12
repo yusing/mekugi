@@ -20,7 +20,7 @@ func (v *liveActivityView) nativeTitle() (string, string) {
 	if v.only {
 		rows := v.feedAgents()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		detail = v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
+		detail = v.painter.Agent(strings.TrimPrefix(v.selected, "/Orchestration/")) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
 	if v.historyHint != "" {
 		detail = strings.TrimSpace(activityui.Dim + v.historyHint + activityui.Undim + " " + detail)

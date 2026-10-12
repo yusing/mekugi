@@ -87,16 +87,15 @@ func (u *appServerUI) refreshOrchestratePicker() {
 				}
 			}
 		}
-		branch := strings.TrimSpace(liveActivityMiddle(batch.Branch, 24))
-		choice := composerChoice{display: batch.TaskName, description: state + " · " + branch}
+		choice := composerChoice{display: batch.TaskName, description: state}
 		if batch.TaskName == "main" {
 			choice.display = "main batch"
 		}
 		if view != nil {
 			choice.name = view.thread
-			choice.description = u.orchestratePickerStatus(view, view.status+" · "+branch)
+			choice.description = u.orchestratePickerStatus(view, view.status)
 			if view.orchestrateCheckoutUnavailable() {
-				choice.description = u.orchestratePickerStatus(view, batch.State+" · "+branch)
+				choice.description = u.orchestratePickerStatus(view, batch.State)
 			}
 		} else if batch.Launch != nil && batch.Launch.ThreadID != "" {
 			choice.name = batch.Launch.ThreadID

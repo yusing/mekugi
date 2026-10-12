@@ -38,6 +38,7 @@ func (u *appServerUI) viewedUI() *appServerUI {
 
 func (u *appServerUI) ensureOrchestrationNavigation() *orchestrateNavigation {
 	if u.navigation == nil {
+		u.agents.includeRoot = true
 		u.navigation = &orchestrateNavigation{owner: u, viewed: u, views: map[string]*appServerUI{u.thread: u}, order: []string{u.thread}, reads: make(map[string]string), unavailable: make(map[string]bool)}
 	}
 	return u.navigation
@@ -77,6 +78,7 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 	v.session.registerThread(result.Thread)
 	v.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(v.session.agents)})
 	v.ensureShell()
+	v.agents.includeRoot = true
 	v.shell.faint = u.shell != nil && u.shell.faint
 	v.shell.diff.workspace = child.batch.Cwd
 	v.restoreDiffThread(result.Thread, true)
@@ -361,6 +363,10 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		n.viewed.quitConfirmationKey("\x1b")
 	}
 	n.viewed = n.views[thread]
+	if strings.HasPrefix(n.viewed.agents.selected, "/Orchestration/") {
+		n.viewed.agents.selected = ""
+	}
+	n.viewed.orchestrationRoster()
 	n.viewed.shell.paintedRows = nil
 	n.viewed.dirty = true
 	if len(n.viewed.models) == 0 && !n.viewed.modelsLoading {
@@ -374,8 +380,14 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 
 func (u *appServerUI) cycleOrchestratedThread(delta int) {
 	if n := u.navigation; n != nil {
-		index := slices.Index(n.order, n.viewed.thread)
-		u.switchOrchestratedThread(n.order[(index+delta+len(n.order))%len(n.order)])
+		order := slices.Clone(n.order)
+		for _, batch := range n.retained {
+			if batch.Launch != nil && batch.Launch.ThreadID != "" && !slices.Contains(order, batch.Launch.ThreadID) {
+				order = append(order, batch.Launch.ThreadID)
+			}
+		}
+		index := slices.Index(order, n.viewed.thread)
+		u.switchOrchestratedThread(order[(index+delta+len(order))%len(order)])
 	}
 }
 
@@ -405,9 +417,9 @@ func (u *appServerUI) orchestrationRoster() {
 			agent.Role = ""
 			name, label := "main", v.status
 			if child := n.owner.orchestrateThreads[thread]; child != nil {
-				name, label = child.batch.TaskName, child.batch.Branch+" · "+v.status
+				name = child.batch.TaskName
 				if v.orchestrateCheckoutUnavailable() {
-					label = child.batch.Branch + " · " + child.batch.State
+					label = child.batch.State
 				}
 				if name == "main" {
 					name = "main batch"
@@ -416,6 +428,9 @@ func (u *appServerUI) orchestrationRoster() {
 			agent.Name = "/Orchestration/" + name
 			u.agents.orchestration = append(u.agents.orchestration, agent)
 			u.agents.orchestrationLabels[agent.Name] = label
+			if v == u && u.agents.selected == "" {
+				u.agents.selected = agent.Name
+			}
 		}
 		for _, batch := range n.retained {
 			name := batch.TaskName
@@ -428,7 +443,10 @@ func (u *appServerUI) orchestrationRoster() {
 			}
 			u.agents.orchestration = append(u.agents.orchestration, activityPaneAgent{Name: name})
 			u.agents.orchestrationRetained[name] = true
-			u.agents.orchestrationLabels[name] = batch.Branch + " · " + orchestrateRestoredBatchState(batch) + " · not subscribed"
+			u.agents.orchestrationLabels[name] = orchestrateRestoredBatchState(batch)
+			if batch.Launch != nil && batch.Launch.ThreadID != "" {
+				u.agents.orchestrationLabels[name] += " · not subscribed"
+			}
 		}
 	}
 }
@@ -547,6 +565,25 @@ func (u *appServerUI) pickOrchestratedThread() bool {
 	if n == nil {
 		return false
 	}
+	pick := func(thread string) bool {
+		if !u.switchOrchestratedThread(thread) {
+			return false
+		}
+		show := func(err error) {
+			if err == nil {
+				v := n.views[thread]
+				v.agents.selected, v.agents.only = "", true
+				v.orchestrationRoster()
+				v.shell.diffOpen, v.shell.journalOpen = false, false
+			}
+		}
+		if r := n.resumes[thread]; r != nil {
+			r.ready = append(r.ready, show)
+		} else {
+			show(nil)
+		}
+		return true
+	}
 	name := strings.TrimPrefix(u.agents.selected, "/Orchestration/")
 	if name == u.agents.selected {
 		return false
@@ -554,13 +591,13 @@ func (u *appServerUI) pickOrchestratedThread() bool {
 	for _, thread := range n.order {
 		batch := n.owner.orchestrateThreads[thread]
 		if name == "main" && thread == n.owner.thread || batch != nil && (name == batch.batch.TaskName && name != "main" || name == "main batch" && batch.batch.TaskName == "main") {
-			return u.switchOrchestratedThread(thread)
+			return pick(thread)
 		}
 	}
 	for _, batch := range n.retained {
 		if name == batch.TaskName && name != "main" || name == "main batch" && batch.TaskName == "main" {
 			if batch.Launch != nil && batch.Launch.ThreadID != "" {
-				return u.switchOrchestratedThread(batch.Launch.ThreadID)
+				return pick(batch.Launch.ThreadID)
 			}
 			u.setNotice("This batch has no confirmed thread · inspect preparation or launch before viewing", false)
 			return true

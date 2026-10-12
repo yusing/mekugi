@@ -59,6 +59,7 @@ type liveActivityView struct {
 	livePreviews          map[string][]string // Temporary caller-local transcript replacements.
 	feedOnly              bool
 	conversation          bool                        // Main uses the same feed/state with full, unclipped messages.
+	includeRoot           bool                        // Orchestration Activity includes the viewed independent root.
 	childrenOnly          bool                        // Native Main already owns root activity; keep it out of the auxiliary feed.
 	bare                  bool                        // The shell's pane title replaces the heading and footer rows.
 	focused               bool                        // Native Activity shows its key hints only while it has keyboard focus.
@@ -226,7 +227,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 			// These are provider-visible summaries from the collector, never
 			// raw reasoning. Keep legacy panes and the other audience excluded.
-			if !(v.childrenOnly && entry.Agent != "/root" || v.conversation && entry.Agent == "Main") {
+			if !(v.childrenOnly && (entry.Agent != "/root" || v.includeRoot) || v.conversation && entry.Agent == "Main") {
 				continue
 			}
 			updated := false
@@ -473,10 +474,14 @@ func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 			return false
 		}
 	}
-	if v.childrenOnly && entry.Agent == "/root" {
+	if v.childrenOnly && !v.includeRoot && entry.Agent == "/root" {
 		return false
 	}
-	return !v.only || entry.Agent == v.selected
+	selected := v.selected
+	if v.includeRoot && strings.HasPrefix(selected, "/Orchestration/") {
+		selected = "/root"
+	}
+	return !v.only || entry.Agent == selected
 }
 
 // roster orders agents as a canonical-path tree. Siblings keep observation

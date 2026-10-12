@@ -244,6 +244,9 @@ func TestAppServerOrchestrateResumeView(t *testing.T) {
 	u.switchOrchestratedThread("child")
 	resumeBatchResponses(t, u, w, b, false)
 	v := u.viewedUI()
+	if v.shell.journalOpen || v.shell.diffOpen || !v.agents.only {
+		t.Fatal("retained roster pick did not open root Activity")
+	}
 	if v.questionCount() != 1 {
 		t.Fatal("resume lost the buffered source prompt")
 	}
@@ -399,5 +402,20 @@ func TestAppServerOrchestrateResumeDefaultEffortRejection(t *testing.T) {
 	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"cannot clear"}}`, update.ID))
 	if u.viewedUI() != u || len(u.navigation.resumes) != 0 || len(u.navigation.views) != 1 || u.orchestrateBusy() || !strings.Contains(u.notice, "cannot clear") {
 		t.Fatal("reasoning rejection stranded resume", u.notice)
+	}
+}
+
+func TestAppServerOrchestrateCycleRetained(t *testing.T) {
+	u, w, b := retainedOrchestratedUI(t)
+	u.draft = "Main draft"
+	u.cycleOrchestratedThread(1)
+	drainOrchestrateWork(t, u)
+	resumeBatchResponses(t, u, w, b, false)
+	if u.viewedUI().thread != "child" || u.draft != "Main draft" {
+		t.Fatal("cycling skipped the retained thread or changed Main's draft")
+	}
+	u.cycleOrchestratedThread(-1)
+	if u.viewedUI() != u {
+		t.Fatal("reverse cycle did not restore Main")
 	}
 }

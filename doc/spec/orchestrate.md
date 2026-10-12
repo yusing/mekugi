@@ -339,7 +339,7 @@ receive their checkout and coordination instructions. Native descendants retain
 their existing guidance. Fresh resume restores the retained recovery content,
 without repeating instructions on ordinary requests or changing tool exposure.
 Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.
-It shows branch, lifecycle and available live timer, token and cost metrics.
+It shows concise task names, lifecycle and available live timer, token and cost metrics.
 Selecting a subscribed thread switches the viewed shell without starting a turn
 or reloading history. Prepared batches remain visible before launch. Retained
 threads that are not subscribed remain visible and resume when selected.
@@ -355,8 +355,10 @@ Host item identity replaces a started row with its result. Restored calls retain
 their recorded outcomes without reviving an unfinished call.
 
 The Orchestration group in Agents lists the coordinator and its live batch
-threads. Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
-cycle these threads. Without orchestration navigation, these shortcuts resize
+threads. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
+cycle these threads, resuming a retained confirmed thread when needed. Activity includes
+the viewed root, and selecting an orchestration row shows that root’s activity.
+Native child filters remain local to their thread. Without orchestration navigation, these shortcuts resize
 the Diff navigator. The Main pane title shows `main` or `main › batch`.
 Transcript, Activity, native Agents, Journal, Diff, settings and unsent drafts
 belong to the viewed thread. Switching uses the subscribed in-memory state,

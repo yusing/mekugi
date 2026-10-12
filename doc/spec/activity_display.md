@@ -525,8 +525,10 @@ redundant underline hint or full-view click target. Neither action changes
 transcript following. Roster rows are clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at
-either end. Main's activity belongs to Main, so Activity neither shows nor counts
-Main: roster navigation skips its row, and clicking it restores the shared feed.
+either end. Outside orchestration, Main's activity belongs to Main, so Activity
+neither shows nor counts Main: roster navigation skips its row, and clicking it
+restores the shared feed. Orchestration rows switch the viewed thread and show
+its root activity; native child filters stay within that thread.
 `a` toggles the filter in Activity and Agents; the hint describes the next action
 as `a all` when filtered and `a only` otherwise. `n`/`Tab` and `p` also select agents.
 The roster mouse wheel scrolls its viewport without changing selection, filtering,

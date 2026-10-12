@@ -746,6 +746,16 @@ func (u *terminalUI) mouse(s string) error {
 			u.agents.scrollRoster(-1)
 		} else {
 			only, selected := u.agents.only, u.agents.selected
+			if action == '\r' && u.main != nil {
+				for _, hit := range u.agents.hits {
+					if !hit.skills && hit.row == y-r.y+1 && x-r.x+1 >= hit.first && x-r.x+1 <= hit.last && strings.HasPrefix(hit.agent, "/Orchestration/") {
+						u.agents.selected = hit.agent
+						if u.main.pickOrchestratedThread() {
+							return nil
+						}
+					}
+				}
+			}
 			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
 			if agent := u.agents.skillsRequest; agent != "" {
 				u.agents.skillsRequest = ""

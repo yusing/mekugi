@@ -31,6 +31,6 @@
 ─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
  Orchestration
  ● main  Ready                                                                    0%  0s · just now
- ◐ batch  mekugi/batch · Working                                                  0%  0s · just now
+ ◐ batch  Working                                                                 0%  0s · just now
 
  1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents¹   ^B 1-5 panes · ^E expand events
