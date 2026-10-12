@@ -22,7 +22,7 @@
 │╰───────────────── snapshot-model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
 ─ 5 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
- ● editor  idle                                                                                  0%
- ● reviewer  idle                                                                                0%
+ ● editor  Idle                                                                                  0%
+ ● reviewer  Idle                                                                                0%
 
  1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents   ^B 1-5 panes · ^E expand events

@@ -462,6 +462,9 @@ func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now t
 	for i, row := range rows {
 		agent := &rows[i].agent
 		lines, hasLines := v.lineCounts[agent.Name]
+		if source := v.orchestrationSources[agent.Name]; source != nil {
+			lines, hasLines = source.lineCounts["/root"]
+		}
 		target := rosterMetrics{float64(agent.InputTokens), float64(agent.OutputTokens), float64(agent.ContextTokens), agent.Cost, float64(lines.Added), float64(lines.Removed)}
 		p, seen := v.rosterPace[row.agent.Name]
 		switch {
@@ -610,6 +613,10 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string
 	if label := v.orchestrationLabels[agent.Name]; label != "" {
 		return liveActivityMiddle(strings.ToUpper(label[:1])+label[1:], width)
 	}
+	if source := v.orchestrationSources[agent.Name]; source != nil {
+		agent.Name = "/root"
+		return source.agentState(agent, width)
+	}
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"
@@ -624,13 +631,13 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string
 	}
 	switch {
 	case kind == "error":
-		return activityui.Red + "error" + activityui.Reset
+		return activityui.Red + "Error" + activityui.Reset
 	case !agent.Responding && agent.Final:
-		return activityui.Dim + "done" + activityui.Undim
+		return activityui.Dim + "Done" + activityui.Undim
 	case !agent.Responding:
-		return activityui.Dim + "idle" + activityui.Undim
+		return activityui.Dim + "Idle" + activityui.Undim
 	case len(blocks) == 0:
-		return "working"
+		return "Working"
 	}
 	summary, _ := v.current(agent, time.Now(), width)
 	return summary

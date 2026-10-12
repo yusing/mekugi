@@ -1,14 +1,14 @@
 Active: 20 seconds of work
 ─ 5 Agents · 2 · 2 working ─────────────────────────────────────────────────────────────────────────
- ◐ main      working                                                                  20s · 20s ago
- ◐ └ worker  working                                                              0%  20s · 20s ago 
+ ◐ main      Working                                                                  20s · 20s ago
+ ◐ └ worker  Working                                                              0%  20s · 20s ago 
 
 Paused: same work after 10 idle minutes
 ─ 5 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────
- ● main      idle                                                                  20s · 10m20s ago
- ● └ worker  idle                                                              0%  20s · 10m20s ago 
+ ● main      Idle                                                                  20s · 10m20s ago
+ ● └ worker  Idle                                                              0%  20s · 10m20s ago 
 
 Resumed: 27 seconds of work
 ─ 5 Agents · 2 · 2 working ─────────────────────────────────────────────────────────────────────────
- ◐ main      working                                                               27s · 10m27s ago
- ◐ └ worker  working                                                           0%  27s · 10m27s ago 
+ ◐ main      Working                                                               27s · 10m27s ago
+ ◐ └ worker  Working                                                           0%  27s · 10m27s ago 

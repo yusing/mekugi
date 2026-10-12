@@ -408,13 +408,14 @@ func (u *appServerUI) orchestrationRoster() {
 		roster := u.agents
 		initial := len(roster.orchestration) == 0
 		roster.orchestration = nil
+		roster.orchestrationSources = map[string]*liveActivityView{}
 		roster.orchestrationLabels = map[string]string{}
 		roster.orchestrationRetained = map[string]bool{}
 		for _, thread := range n.order {
 			v := n.views[thread]
 			agent := *v.session.agent("/root")
 			agent.Role = ""
-			name, label := "main", v.status
+			name, label := "main", ""
 			if child := n.owner.orchestrateThreads[thread]; child != nil {
 				name = child.batch.TaskName
 				if v.orchestrateCheckoutUnavailable() {
@@ -425,6 +426,8 @@ func (u *appServerUI) orchestrationRoster() {
 				}
 			}
 			agent.Name = "/Orchestration/" + name
+			v.agents.lineCounts = v.shell.diff.callerCounts
+			roster.orchestrationSources[agent.Name] = v.agents
 			roster.orchestration = append(roster.orchestration, agent)
 			roster.orchestrationLabels[agent.Name] = label
 			if v == u && initial {

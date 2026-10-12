@@ -372,7 +372,10 @@ result. Restored calls retain their recorded outcomes without reviving work.
 The Agents pane (5) lists the coordinator and its batch threads together with
 the viewed thread's native subagents. Independent thread rows use italic and
 accent styling; native subagents retain their identity and role colors. The
-panel has one focus, selection, collapse state and height. Displayed lifecycle
+panel has one focus, selection, collapse state and height. Subscribed threads use
+the same current-activity summaries and metric columns as native subagents,
+including captured edit counts from their own workspace and caller identity.
+Unavailable threads retain their observed lifecycle state. Displayed lifecycle
 labels use sentence case. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
 cycle these threads, resuming a retained confirmed thread when needed. Activity excludes
 the viewed root and shows only its native subagents. Switching preserves the destination’s selected pane and native

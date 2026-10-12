@@ -24,9 +24,9 @@
 │╰───────────────── snapshot-model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
 ─ 5 Agents · 3 ─────────────────────────────────────────────────────────────────────────────────────
- ● main         Ready                                                                            0%
- ● batch        Ready                                                                            0%
- · main_worker  idle                                                                             0%
+ ● main         Idle                                                                             0%
+ ● batch        Idle                                                                             0%
+ · main_worker  Idle                                                                             0%
  Roles: ● worker
 
  1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents   enter switch/filter · j/k agent · a only ·

@@ -147,6 +147,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.navigation = nil
 		u.agents.orchestration, u.agents.orchestrationLabels = nil, nil
 		u.agents.orchestrationRetained = nil
+		u.agents.orchestrationSources = nil
 	}
 	if u.proxy != nil {
 		u.proxy.activity.detachNativePane(u.thread)

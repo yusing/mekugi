@@ -243,6 +243,34 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 	}
 }
 
+func TestUISnapshotOrchestrationRosterActivityMetrics(t *testing.T) {
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+	v := u.navigation.views["child"]
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	for i, view := range []*appServerUI{u, v} {
+		view.clock = func() time.Time { return now }
+		view.view.clock, view.agents.clock = view.clock, view.clock
+		view.view.painter.Theme, view.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"active"}}}`, view.thread))
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/started","params":{"threadId":%q,"turnId":"active","item":{"id":"run","type":"commandExecution","command":"go test ./...","status":"inProgress"}}}`, view.thread))
+		view.shell.diff.callerCounts = map[string]livediff.Counts{"/root": {Added: 12 + i, Removed: 3 + i}}
+	}
+	for _, view := range []*appServerUI{u, v} {
+		view.orchestrationRoster()
+		rows := view.agents.nativeRoster(160, 8, now, true)
+		uisnapshot.Assert(t, "testdata/snapshots/orchestration-roster-activity-"+view.thread+".txt", strings.Join(rows, "\n")+"\n")
+		for _, agent := range view.agents.orchestration {
+			if got := ansi.Strip(view.agents.agentState(agent, 80)); !strings.Contains(got, "go test") {
+				t.Fatalf("thread activity = %q", got)
+			}
+		}
+		if view.agents.rosterLines["/Orchestration/main"].Added != 12 || view.agents.rosterLines["/Orchestration/batch"].Added != 13 {
+			t.Fatalf("thread edit counts = %v", view.agents.rosterLines)
+		}
+	}
+}
+
 func TestAppServerOrchestrateNavigationRepaint(t *testing.T) {
 	u, launch := orchestrateIdentityPendingTurn(t)
 	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)

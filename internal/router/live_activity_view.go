@@ -31,6 +31,7 @@ type liveActivityView struct {
 	clock                 func() time.Time // Shared with the owning replay UI, nil for live time.
 	agents                []activityPaneAgent
 	orchestration         []activityPaneAgent
+	orchestrationSources  map[string]*liveActivityView
 	orchestrationLabels   map[string]string
 	orchestrationRetained map[string]bool
 	entries               []liveActivityRecord
