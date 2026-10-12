@@ -66,7 +66,7 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			u.proxy = &mekugiProxy{replayStore: store}
 			key := [3]string{"main", "t", "commit"}
 			command := "git commit -m directory"
-			u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, ended: true, segments: []execTrackSegment{
+			u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, closed: true, ended: true, segments: []execTrackSegment{
 				{source: prior, began: true, ended: true},
 				{source: command, began: true, ended: true, vcs: true, raw: []byte(output)},
 			}}}}

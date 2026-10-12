@@ -44,7 +44,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		first, second := u.session.outputs.New(), u.session.outputs.New()
 		first.Finish(new("first\n"), new(0))
 		second.Finish(new("second\n"), new(0))
-		u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, ended: true, segments: []execTrackSegment{
+		u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, closed: true, ended: true, segments: []execTrackSegment{
 			{source: "echo first", began: true, ended: true, full: first},
 			{source: "echo second", began: true, ended: true, full: second},
 		}}}}
