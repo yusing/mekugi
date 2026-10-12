@@ -306,17 +306,10 @@ func resumePickerAge(now time.Time, updated int64) string {
 		return "-"
 	}
 	d := now.Sub(time.Unix(updated, 0))
-	switch {
-	case d < time.Second:
+	if d < time.Second {
 		return "now"
-	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	}
-	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	return activityui.FormatDuration(d) + " ago"
 }
 
 // The picker replaces Main, as the stock resume screen replaces the chat.

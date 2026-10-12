@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // journalResetDriver is the shared app-server policy. It observes host events
@@ -359,7 +360,7 @@ func (d *journalResetDriver) label(now time.Time) string {
 		if !d.needsContextReset() {
 			verb = "Continuing plan"
 		}
-		return fmt.Sprintf("%s in %ds · starting %s %s · Esc cancels", verb, max(0, int(d.deadline.Sub(now).Seconds()+1)), d.intent.Path, d.intent.Title)
+		return fmt.Sprintf("%s in %s · starting %s %s · Esc cancels", verb, activityui.FormatDuration(d.deadline.Sub(now)), d.intent.Path, d.intent.Title)
 	}
 	switch d.phase {
 	case "compacting":

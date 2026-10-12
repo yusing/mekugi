@@ -820,7 +820,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 // long the agent took rather than a second clock time.
 func threadHeading(lead, detail string, entry, previous activityPaneEntry, reply bool, width int) string {
 	if reply && !entry.Observed.IsZero() && !previous.Observed.IsZero() {
-		detail = strings.TrimPrefix(detail+" · "+liveActivityAge(entry.Observed.Sub(previous.Observed)), " · ")
+		detail = strings.TrimPrefix(detail+" · "+activityui.FormatDuration(entry.Observed.Sub(previous.Observed)), " · ")
 	}
 	head := lead
 	if detail != "" {

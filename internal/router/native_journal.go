@@ -522,7 +522,7 @@ func journalTaskElapsed(node journalNode) string {
 	if node.Finished == nil || !node.WorkTimer.Known {
 		return ""
 	}
-	return time.Duration(node.WorkTimer.ElapsedNS).Round(time.Second).String()
+	return activityui.FormatDuration(time.Duration(node.WorkTimer.ElapsedNS))
 }
 
 // journalRowAt is the node row at a pane row, or -1.
@@ -802,7 +802,7 @@ func (u *appServerUI) journalPlanStrip(width int) string {
 		left = lead + text
 	}
 	if pin.node.Finished == nil && pin.node.WorkTimer.Known {
-		left += activityui.Dim + " · " + pin.node.WorkTimer.at(u.now()).Round(time.Second).String() + activityui.Undim
+		left += activityui.Dim + " · " + activityui.FormatDuration(pin.node.WorkTimer.at(u.now())) + activityui.Undim
 	}
 	// The pane key yields first, then progress, before the task's title.
 	progress := fmt.Sprintf("%d/%d done", pin.done, pin.total)

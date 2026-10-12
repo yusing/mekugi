@@ -735,7 +735,7 @@ func (p *Painter) Block(block Block, width int) []string {
 	if len(block.Timeouts) > 0 && !block.Skipped && runDuration(block, p.now()) >= 500*time.Millisecond && len(lines) > 0 {
 		var labels []string
 		for _, timeout := range block.Timeouts {
-			labels = append(labels, "(timeout "+timeout+")")
+			labels = append(labels, "(timeout "+formatTimeout(timeout)+")")
 		}
 		suffix := Dim + strings.Join(labels, " ") + Undim
 		if ansi.StringWidth(lines[0])+1+ansi.StringWidth(suffix) <= width {
@@ -1993,6 +1993,37 @@ func RunElapsed(block Block, now time.Time) string {
 	elapsed := runDuration(block, now)
 	if elapsed <= 3*time.Millisecond {
 		return ""
+	}
+	return FormatDuration(elapsed)
+}
+
+func formatTimeout(value string) string {
+	original := value
+	if value == "" {
+		return value
+	}
+	if strings.HasSuffix(value, "d") {
+		value = strings.TrimSuffix(value, "d") + "h"
+		if duration, err := time.ParseDuration(value); err == nil && duration <= time.Duration(1<<63-1)/24 {
+			return FormatDuration(duration * 24)
+		}
+	} else {
+		if last := value[len(value)-1]; last >= '0' && last <= '9' || last == '.' {
+			value += "s"
+		}
+		if duration, err := time.ParseDuration(value); err == nil {
+			return FormatDuration(duration)
+		}
+	}
+	return original
+}
+
+// FormatDuration uses milliseconds below one second and whole seconds thereafter.
+// Trailing zero units are omitted. Negative durations display as zero.
+func FormatDuration(elapsed time.Duration) string {
+	elapsed = max(0, elapsed)
+	if elapsed == 0 {
+		return "0s"
 	}
 	var text string
 	if elapsed < time.Second {

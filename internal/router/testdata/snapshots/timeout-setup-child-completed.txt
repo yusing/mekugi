@@ -1,4 +1,4 @@
 ● child                                                       20:00:00
-│ └ Ran │ set -e (timeout 10)
+│ └ Ran │ set -e (timeout 10s)
 │       │ timeout 10 sleep 1
 │       · 500ms

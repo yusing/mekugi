@@ -114,7 +114,7 @@ func TestAppServerWorkingShimmers(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	a, b := u.sessionLabel(u.turnStarted), u.sessionLabel(u.turnStarted.Add(500*time.Millisecond))
-	if a == b || ansi.Strip(a) != ansi.Strip(b) || !strings.Contains(ansi.Strip(a), "Working") {
+	if a == b || strings.TrimSuffix(ansi.Strip(a), " 0s") != strings.TrimSuffix(ansi.Strip(b), " 500ms") || !strings.Contains(ansi.Strip(a), "Working") {
 		t.Fatalf("no text-preserving shimmer: %q %q", a, b)
 	}
 	u.turn = ""

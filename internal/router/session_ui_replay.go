@@ -389,7 +389,7 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if *from >= *until || *until > duration {
 		return fail(errors.New("require 0 <= from < until <= session duration"))
 	}
-	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream. Journal presentation uses retained revisions and host turn boundaries.\n", source.Thread, source.Items, len(source.Events), source.Providers, duration.Round(time.Millisecond), *speed, *seed)
+	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream. Journal presentation uses retained revisions and host turn boundaries.\n", source.Thread, source.Items, len(source.Events), source.Providers, activityui.FormatDuration(duration), *speed, *seed)
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d missing child rollouts; unsupported item kinds: %v\n", len(source.Missing), source.Unsupported)
 	}

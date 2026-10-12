@@ -1131,8 +1131,8 @@ Working and its progress overrides shimmer while the turn runs. Other ongoing
 states, such as sending and interrupting, breathe smoothly together from dim to light to dim, using a continuous neutral
 color ramp until terminal colors are reported. Successful steering returns to
 the active turn state rather than remaining in Sending.
-Composer status (including Waiting), agent timers, and relative response ages share
-whole-second duration formatting: `82s` displays as `1m22s`, and `3682s` as `1h1m22s`.
+Composer status (including Waiting), agent timers, and relative response ages use
+shared compact duration formatting from [Activity](activity_display.md): `82s` displays as `1m22s`, and `3682s` as `1h1m22s`.
 Trailing zero units are omitted (`5m`, `1h`), while elapsed timers start at `0s`;
 response ages under two seconds remain `just now`.
 Successful completion shows the frozen elapsed turn time in hours, minutes, and

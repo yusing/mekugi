@@ -1,5 +1,5 @@
 Read   file.go
        (timeout
-       90s)
+       1m30s)
        L1–20
        · 500ms

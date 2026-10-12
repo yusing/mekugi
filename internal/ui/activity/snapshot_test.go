@@ -24,6 +24,10 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 			block: ParseOperation("Run (timeout 12.5s)\n```bash\nunknown arg\n```"),
 		},
 		{
+			name: "timeout_day", width: 44,
+			block: ParseOperation("Run (timeout 1d)\n```bash\nbackup\n```"),
+		},
+		{
 			name: "failed_command", width: 44,
 			block: Block{Kind: "op", Verb: "Run", Code: "go test ./internal/ui/activity -run TestDialog", ExitCode: 1, Duration: 125 * time.Millisecond,
 				Tail: []string{"--- FAIL: TestDialog (0.00s)", "    dialog_test.go:42: unexpected output", "FAIL"}, TailOmitted: 8},
