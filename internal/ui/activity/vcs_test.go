@@ -172,7 +172,7 @@ func TestTimeoutSuffixIsMuted(t *testing.T) {
 			block := ParseOperation("Skill `skill` (timeout 123)")
 			block.Running, block.Started, block.Duration, block.Skipped = tc.block.Running, tc.block.Started, tc.block.Duration, tc.block.Skipped
 			raw := strings.Join(p.Block(block, 80), "\n")
-			if got := strings.Contains(raw, Dim+"(timeout 123)"+Undim); got != tc.want {
+			if got := strings.Contains(raw, Dim+"(timeout 2m3s)"+Undim); got != tc.want {
 				t.Fatalf("muted timeout shown = %v, want %v: %q", got, tc.want, raw)
 			}
 		})

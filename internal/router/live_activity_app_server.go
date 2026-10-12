@@ -407,6 +407,9 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 			return true
 		}
 		entry.native.approval = previous.native.approval
+		if entry.native.capturedEdit == nil {
+			entry.native.capturedEdit = previous.native.capturedEdit
+		}
 		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/updated" && previous.native.phase != "hook/restored" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
 			return true
 		}

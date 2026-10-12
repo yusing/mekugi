@@ -48,6 +48,12 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 
 // preview updates the shared dock by call ID, including caller-less completion markers.
 func (u *terminalUI) preview(preview diffview.Preview) {
+	if u.main != nil && preview.Complete && preview.EditReceipt != "" && len(preview.HostItems) > 0 {
+		receipt := &capturedActivityEdit{thread: preview.Thread, calls: preview.HostItems, text: preview.EditReceipt}
+		data := &liveDiffData{order: []string{preview.ID}, attempts: map[string]liveDiffAttempt{preview.ID: {receipt: receipt}}}
+		u.main.view.applyCapturedEdits(data)
+		u.main.agents.applyCapturedEdits(data)
+	}
 	dock := &u.liveDock
 	dock.Retain = true
 	if preview.Caller == "" && preview.Workspace != "" {

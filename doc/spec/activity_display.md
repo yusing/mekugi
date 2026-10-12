@@ -28,10 +28,14 @@ as a trailing file label; each comma-separated source uses its own Bash syntax
 highlighting, including shell commands such as `git stash push`, rather than
 Markdown styling. Requested edit intent keeps the requested verb, such as `Edit`,
 in amber and never reads `Edited`; the first row ends with `· requested`, and its
-`(requested)` marker is not shown as source text. A successful tracked edit segment
-instead shows `Edit PATH via TOOL · ran` as soon as its writer command completes,
-even before following commands end. This includes successful no-ops and reports
-command completion, not confirmed file changes or counts. Running and untracked
+`(requested)` marker is not shown as source text. Once tracked writers finish,
+observed file differences replace their intent with past-tense rows and captured
+counts, even while following commands still run. These rows describe observed
+filesystem effects; they do not complete the host invocation or publish a durable
+change ID. The terminal host result still owns retained change evidence.
+A successful tracked edit without observed differences shows
+`Edit PATH via TOOL · ran`, including no-ops and unavailable capture.
+Running and untracked
 edit intent keeps `· requested`. A started patch that has not
 completed, including one awaiting approval, ends with `· pending`; a `failed` or
 `declined` patch uses a red verb and ends with `· failed` or `· declined`, named
@@ -176,7 +180,7 @@ row of its own: a muted `(N lines)` follows the read's target, and a row too
 narrow for it shortens the path rather than the count. Restored history shows zero-exit output
 already collapsed. Output arriving after completion is ignored.
 Command rows and their dialog titles append elapsed time only above 3 ms,
-using milliseconds below a second and compact whole-second units thereafter
+using truncated milliseconds below a second and truncated whole-second units thereafter
 (`4ms`, `1s`, `1m10s`, `1h`). For tracked commands, the shell helper records
 each command's start and end at its control boundaries and measures duration with
 its monotonic clock. The elapsed suffix counts from that command's observed start while running and freezes
@@ -202,8 +206,12 @@ individual command rows.
 
 After a command runs for at least 500 ms, its row shows a muted
 `(timeout DURATION)` suffix for a supported literal shell `timeout` prefix or
-an explicit `exec_command.timeout_ms` input. Shell durations keep their original
-spelling; parameter durations use seconds, with a fractional part when needed.
+an explicit `exec_command.timeout_ms` input. Both use the same compact duration
+format as elapsed time. Supported literal shell `timeout` prefixes are hidden
+in ordinary command previews, including generic Run commands; whole setup and
+heredoc scripts retain their source. Execution input stays unchanged.
+Status timers, task timers, ages, and countdowns use this same format and
+rounding rule. The replay position clock keeps its `MM:SS` notation.
 Fast or skipped commands and rows without individual timing omit the suffix.
 Parameter-derived suffixes appear only while the original invocation input is
 available, so fresh resume omits them. Shell-derived suffixes remain available

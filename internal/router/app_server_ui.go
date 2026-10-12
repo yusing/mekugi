@@ -978,7 +978,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.endSyncQuestions(p.Turn.ID)
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
 			if p.Turn.Status == "completed" && !u.turnStarted.IsZero() {
-				u.status += " in " + liveActivityAge(u.now().Sub(u.turnStarted))
+				u.status += " in " + activityui.FormatDuration(u.now().Sub(u.turnStarted))
 			}
 			if p.Turn.Error != nil {
 				u.status, u.alert = u.status+": "+p.Turn.Error.Message, true
@@ -1670,7 +1670,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.Colors) + activityui.Reset
 		}
 		if !u.turnStarted.IsZero() {
-			label += activityui.Dim + " " + liveActivityAge(now.Sub(u.turnStarted)) + activityui.Undim
+			label += activityui.Dim + " " + activityui.FormatDuration(now.Sub(u.turnStarted)) + activityui.Undim
 		}
 		return label
 	case u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "":

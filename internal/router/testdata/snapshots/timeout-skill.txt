@@ -1,1 +1,1 @@
-Skill  skill (timeout 123) · 500ms
+Skill  skill (timeout 2m3s) · 500ms

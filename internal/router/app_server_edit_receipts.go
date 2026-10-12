@@ -7,8 +7,9 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
-// Retain only the display receipt and durable host identities, not scripts or
-// another filesystem snapshot. The live diff loader owns replay and scope.
+// Retain only the display projection and exact host identities, not scripts or
+// another filesystem snapshot. Observed writer effects can precede the durable
+// receipt; the live diff loader owns retained evidence and replay.
 type capturedActivityEdit struct {
 	thread string
 	calls  []string

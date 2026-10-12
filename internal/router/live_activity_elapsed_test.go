@@ -14,7 +14,7 @@ func TestLiveActivityElapsedFormatting(t *testing.T) {
 		age  time.Duration
 		want string
 	}{
-		{-time.Second, "0s"}, {0, "0s"}, {999 * time.Millisecond, "0s"},
+		{-time.Second, "0s"}, {0, "0s"}, {999 * time.Millisecond, "999ms"},
 		{time.Second, "1s"}, {59 * time.Second, "59s"}, {time.Minute, "1m"},
 		{5 * time.Minute, "5m"}, {70 * time.Second, "1m10s"},
 		{82500 * time.Millisecond, "1m22s"}, {time.Hour, "1h"},

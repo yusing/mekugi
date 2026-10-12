@@ -420,7 +420,7 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	status := livediff.Safe(b.status, false)
 	if (b.busy || b.starting) && b.status == "Answering" && !b.alert && !b.started.IsZero() {
 		elapsed := max(time.Duration(0), u.now().Sub(b.started))
-		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + activityui.Dim + " · " + liveActivityAge(elapsed) + activityui.Reset
+		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + activityui.Dim + " · " + activityui.FormatDuration(elapsed) + activityui.Reset
 	}
 	label := " /btw · " + status
 	rows := []string{ansi.Truncate(color+"╭─"+label+activityui.Reset, width, "…")}

@@ -198,7 +198,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 				block.Live = i == len(blocks)-1 && (entry.native.phase == "summary" || entry.native.phase == "item/started")
 				// Duration belongs to the item, not to each detected section.
 				if i == len(blocks)-1 && entry.native.thought >= time.Second {
-					block.Elapsed = liveActivityAge(entry.native.thought)
+					block.Elapsed = activityui.FormatDuration(entry.native.thought)
 				}
 			}
 			block.Collapsed = block.Collapsible() && (entry.native == nil || !entry.native.live || entry.native.collapsed || entry.native.phase != "item/completed")
@@ -413,8 +413,9 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		}
 		operations := toolOperationBlocks(livediff.Safe(segment.text, false))
 		if receipt != nil && !segment.running && !segment.skipped && segment.exit == 0 {
+			writer := execSegmentEdits(segment.source)
 			operations = slices.DeleteFunc(operations, func(block activityui.Block) bool {
-				return slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb)
+				return slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) || writer && block.Verb == "Run"
 			})
 			// The capture replaces edit intent, never the host's output. Keep
 			// an output-bearing edit-only segment as its real shell command.

@@ -290,6 +290,23 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		// alive, not this edit's live card. This does not close the observation
 		// window or persist a command outcome or completed change receipt.
 		if settled && len(settledPaths) == len(observation.Files) || !tracked && len(expected) > 0 && len(matched) == len(expected) {
+			if tracked && settled {
+				tracking.hub.mu.Lock()
+				for _, command := range observation.Commands {
+					if match := tracking.matches[tracking.authoredScript(command.Command)]; match != nil {
+						if match.ambiguous || match.track == nil {
+							preview.HostItems = nil
+							break
+						}
+						preview.HostItems = append(preview.HostItems, match.key[2])
+					}
+				}
+				tracking.hub.mu.Unlock()
+				if len(preview.HostItems) > 0 {
+					preview.EditReceipt = editReceiptText(preview.Workspace, mekugiHistory{ReviewFiles: preview.Files,
+						ExecOutcome: &execOutcome{Labels: observation.Labels}})
+				}
+			}
 			if len(preview.Files) > 0 && ctx.Err() == nil {
 				preview.Status, preview.Complete = diffview.PreviewRunning, true
 				preview.Footer = "observed edit"

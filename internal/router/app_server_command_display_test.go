@@ -29,14 +29,17 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 		{"timeout 123 cat file.go | sed -n '1,20p'", "Read `file.go 1:20` (timeout 123)"},
 		{"timeout 123 nl -ba file.go | sed -n '1,20p'", "Read `file.go 1:20` (timeout 123)"},
 		{"cat file.go | timeout 123 head -20", "Read `file.go` (timeout 123)"},
-		{`timeout 123 cat file.go | head -n "$count"`, "Run (timeout 123)\n" + toolActivityFenced("bash", `timeout 123 cat file.go | head -n "$count"`)},
+		{`timeout 123 cat file.go | head -n "$count"`, "Run (timeout 123)\n" + toolActivityFenced("bash", `cat file.go | head -n "$count"`)},
 		{"timeout 123 skills-mgr get skill", "Skill `skill` (timeout 123)"},
 		{"timeout 123 skills-mgr run skill/script --flag", "Skill `run skill/script --flag` (timeout 123)"},
 		{`timeout 123 cat "$HOME/file"`, "Read `\"$HOME/file\"` (timeout 123)"},
 		{`timeout --help skills-mgr get skill`, "Run\n" + toolActivityFenced("bash", `timeout --help skills-mgr get skill`)},
 		{`timeout "$duration" skills-mgr get skill`, "Run\n" + toolActivityFenced("bash", `timeout "$duration" skills-mgr get skill`)},
-		{`timeout 123 skills-mgr get skill > out`, "Run (timeout 123)\n" + toolActivityFenced("bash", `timeout 123 skills-mgr get skill > out`)},
-		{`timeout 123 unknown arg`, "Run (timeout 123)\n" + toolActivityFenced("bash", `timeout 123 unknown arg`)},
+		{`timeout 123 skills-mgr get skill > out`, "Run (timeout 123)\n" + toolActivityFenced("bash", `skills-mgr get skill > out`)},
+		{`timeout 5 echo "$(timeout 10 probe)"`, "Run (timeout 5)\n" + toolActivityFenced("bash", `echo "$(timeout 10 probe)"`)},
+		{`timeout 5 sleep 6`, "Run (timeout 5)\n" + toolActivityFenced("bash", `sleep 6`)},
+		{`timeout .5m timeout 1h unknown "arg text" 2>err`, "Run (timeout .5m) (timeout 1h)\n" + toolActivityFenced("bash", `unknown "arg text" 2>err`)},
+		{`timeout 123 unknown arg`, "Run (timeout 123)\n" + toolActivityFenced("bash", `unknown arg`)},
 		{"skills-mgr get js-ts-best-practices; skills-mgr get user-experience", "Skill `js-ts-best-practices`\n\nSkill `user-experience`"},
 		{"skills-mgr run use-modern-go/scripts/run-tool.sh list --go-version 1.27", "Skill `run use-modern-go/scripts/run-tool.sh list --go-version 1.27`"},
 		{"mcat app.go 1:20; go test ./...", "Read `app.go 1:20`\n\nRun `go test ./...`"},
@@ -270,6 +273,13 @@ func TestUISnapshotTimeoutSkill(t *testing.T) {
 	assertNativeUISnapshot(t, "timeout-skill", p.Block(blocks[0], 90))
 }
 
+func TestUISnapshotTimeoutRun(t *testing.T) {
+	p := activityui.Painter{Theme: livediff.DarkTheme}
+	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: toolActivityShell("timeout 5 sleep 6")})
+	blocks[0].Duration, blocks[0].ExitCode = 5*time.Second, 124
+	assertNativeUISnapshot(t, "timeout-run", p.Block(blocks[0], 90))
+}
+
 func TestUISnapshotShellSetupEvent(t *testing.T) {
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.view.painter.Theme = livediff.DarkTheme
@@ -418,7 +428,7 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 			for _, block := range blocks {
 				rows = append(rows, p.Block(block, 90)...)
 			}
-			if got := strings.Join(rows, "\n"); !strings.Contains(got, "(timeout 10)") {
+			if got := strings.Join(rows, "\n"); !strings.Contains(got, "(timeout 10s)") {
 				t.Fatalf("missing timeout suffix: %s", got)
 			}
 			if entry.native.command != command || blocks[0].Code != command {

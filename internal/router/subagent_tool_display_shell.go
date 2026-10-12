@@ -350,7 +350,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 			return
 		}
 		if !recognized {
-			source := toolActivityStatementSource(script, original)
+			source := toolActivityTimeoutSource(script, original)
 			result = "Run\n" + toolActivityFenced("bash", source)
 			recognized = true
 		}
@@ -450,6 +450,38 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 	}
 	display, ok := toolActivityReadCommand(script, call, cwd)
 	return display, ok
+}
+
+// Remove supported timeout prefixes from the preview, preserving the remaining
+// source bytes, including quoting, redirections, and pipeline operators.
+func toolActivityTimeoutSource(script string, statement *syntax.Stmt) string {
+	type span struct{ start, end int }
+	var spans []span
+	heredoc := false
+	syntax.Walk(statement, func(node syntax.Node) bool {
+		switch node.(type) {
+		case *syntax.CallExpr, *syntax.FuncDecl:
+			return false
+		}
+		if redirect, ok := node.(*syntax.Redirect); ok && redirect.Hdoc != nil {
+			heredoc = true
+		}
+		if stmt, ok := node.(*syntax.Stmt); ok {
+			if inner := toolActivityUnwrapTimeout(stmt); inner != stmt {
+				spans = append(spans, span{int(stmt.Cmd.(*syntax.CallExpr).Args[0].Pos().Offset()), int(inner.Cmd.(*syntax.CallExpr).Args[0].Pos().Offset())})
+			}
+		}
+		return true
+	})
+	source := toolActivityStatementSource(script, statement)
+	if heredoc {
+		return source
+	}
+	start := int(statement.Pos().Offset())
+	for _, span := range slices.Backward(spans) {
+		source = source[:span.start-start] + source[span.end-start:]
+	}
+	return source
 }
 
 func toolActivityTimeouts(statement *syntax.Stmt) []string {

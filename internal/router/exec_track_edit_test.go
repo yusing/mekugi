@@ -20,23 +20,23 @@ import (
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
-func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
+func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
-	for _, edit := range []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPY\ngofmt -w source.go"} {
+	for _, edit := range []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPath('other.go').write_text('package p; var B=2\\n')\nPY\ngofmt -w source.go other.go"} {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
-			before, after, completedText := "before\n", "+after", "via "+filepath.Base(strings.Fields(edit)[0])+" · ran"
+			before, after, completedText := "before\n", "+after", "Edited"
 			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
-				before, after, completedText = "package p; var A=1\n", "+var A = 1", "Ran"
+				before, after = "package p; var A=1\n", "+var A = 1"
 			}
 			if strings.HasPrefix(edit, "python3") {
 				after = "+var A = 1"
+				writeTestFile(t, filepath.Join(workspace, "other.go"), "before\n")
 			}
 			binaryCopy := strings.HasPrefix(edit, "cp ")
 			if binaryCopy {
 				writeTestFile(t, filepath.Join(workspace, "image.png"), "\x89PNG\r\n\x1a\n\x00binary image")
-				completedText = "Ran"
 			}
 			writeTestFile(t, filepath.Join(workspace, "source.go"), before)
 			// The following command cannot exit until the test has inspected a
@@ -113,7 +113,6 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if line, err := bufio.NewReader(output).ReadString('\n'); err != nil || line != "test running\n" {
 				t.Fatalf("following command did not start: %q, %v", line, err)
 			}
-			awaitMain(t, u, completedText)
 			var completed *diffview.Preview
 			for completed == nil {
 				select {
@@ -131,6 +130,9 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				}
 			}
 			wantFiles := 1
+			if strings.HasPrefix(edit, "python3") {
+				wantFiles = 2
+			}
 			if binaryCopy {
 				wantFiles = 0 // Binary evidence does not open a source preview.
 			}
@@ -140,7 +142,17 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if binaryCopy && completed.Status != "" || !binaryCopy && !strings.Contains(completed.Files[0].Diff, after) {
 				t.Fatalf("completion lost copied content: %+v", completed.Files)
 			}
+			awaitMain(t, u, completedText)
 			awaitMain(t, u, "Running")
+			if strings.HasPrefix(edit, "python3") {
+				var rows []string
+				for _, block := range u.view.entries[0].blocks {
+					if _, _, _, _, ok := activityui.EditStat(block.Label); ok {
+						rows = append(rows, u.view.painter.Block(block, 120)...)
+					}
+				}
+				assertNativeUISnapshot(t, "tracked-python-edited-before-test", rows)
+			}
 			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 			if len(u.shell.liveDock.Order) != 0 || u.status != "Working" || !registry.find("edit").closed.IsZero() {
 				t.Fatal("edit completion retained the dock or completed the host lifecycle")
@@ -174,7 +186,7 @@ func TestExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			case raw := <-frame:
 				_, _ = screen.Write([]byte(raw))
 				shown := screen.String()
-				if strings.Contains(shown, "requested") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, completedText) || !strings.Contains(shown, "Running") {
+				if strings.Contains(shown, "requested") || strings.Contains(shown, " · ran") || strings.Contains(shown, "LIVE ·") || !strings.Contains(shown, completedText) || !strings.Contains(shown, "Running") {
 					t.Fatalf("terminal did not settle only the edit:\n%s", shown)
 				}
 			case <-ctx.Done():

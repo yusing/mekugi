@@ -995,7 +995,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time, width
 		return summary, ""
 	}
 	// The response-age clock is independent of accumulated active work.
-	return summary, liveActivityAge(agent.WorkTimer.at(now)) + " · " + liveActivityLast(last, now)
+	return summary, activityui.FormatDuration(agent.WorkTimer.at(now)) + " · " + liveActivityLast(last, now)
 }
 
 // liveActivityTokens shows cumulative input (sent) and output (received) tokens.
@@ -1275,7 +1275,7 @@ func liveActivityLast(last, now time.Time) string {
 	if age < 2*time.Second {
 		return "just now"
 	}
-	return liveActivityAge(age) + " ago"
+	return activityui.FormatDuration(age) + " ago"
 }
 
 // metricTable reserves stable timer, input/output, cost, and turn slots even
@@ -1990,18 +1990,6 @@ func (v *liveActivityView) footer(width int) string {
 		keys = "n/p · a · j/k · End"
 	}
 	return ansi.Truncate("\x1b[1m"+mode+activityui.Undim+activityui.Dim+" · "+keys+activityui.Undim, width, "…")
-}
-
-func liveActivityAge(age time.Duration) string {
-	age = max(0, age.Truncate(time.Second))
-	formatted := age.String()
-	if age >= time.Minute && age%time.Minute == 0 {
-		formatted = strings.TrimSuffix(formatted, "0s")
-		if age%time.Hour == 0 {
-			formatted = strings.TrimSuffix(formatted, "0m")
-		}
-	}
-	return formatted
 }
 
 // liveActivityMiddle shortens a path while keeping its leaf name visible.
