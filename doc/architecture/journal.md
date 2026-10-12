@@ -104,17 +104,17 @@ an armed intent in the requesting thread/workspace, recording its response ID.
 Fork initialization does not copy turn checkpoints or intents.
 
 The shared app-server reset driver uses that snapshot for the
-[subslice reset threshold](../spec/journal.md#journal-continuation), including
-countdown presentation and dispatch. Missing evidence keeps the reset behavior;
+[subslice reset threshold](../spec/journal.md#journal-continuation) at dispatch.
+Missing evidence keeps the reset behavior;
 the threshold does not change top-level transitions or host-selected compaction.
-The driver owns countdown cancellation,
-compaction acknowledgement and matching host turn
-completion, then `turn/start`. Terminal presentation does not implement a second
-policy. A continuation's reserved client-message ID identifies its transcript row;
+The driver dispatches immediately after successful Main completion and owns
+compaction acknowledgement and matching host turn completion, then immediate
+`turn/start`. In-flight automatic compaction remains inside its existing host turn.
+Terminal presentation does not implement a second policy. A continuation's reserved client-message ID identifies its transcript row;
 its acknowledged host turn ID gates pending input. Dispatched intents never replay
 RPCs after restart; uncertain outcomes require manual continuation.
 
-The headless adapter uses the same driver with zero countdown delay. Its stdout
+The headless adapter uses the same immediate driver. Its stdout
 is one JSON object per line: host `appserver.Message` objects plus
 `mekugi/journal/reset` notifications (`threadId`, `phase`), advisory
 `mekugi/journal/notice` notifications (`threadId`, `message`), and terminal

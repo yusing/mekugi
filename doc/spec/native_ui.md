@@ -1075,7 +1075,7 @@ and diff coordinates; non-dimmed semantic colors, syntax highlighting and
 animated status ramps stay unchanged.
 
 Journal plans use the [journal continuation policy](journal.md#journal-continuation).
-The pinned countdown names the next path and title and shows `Esc cancels`.
+The pinned strip shows context reset or continuation progress without a countdown.
 Completed context-reset events remain visible even with the Journal pane open or
 when continuation is rejected or interrupted. Router-authored
 continuations appear as auto-continue rows, not user bubbles. Pending user input
@@ -1236,7 +1236,7 @@ managers can recognize working and action-required states without parsing the
 transcript. The Main turn supplies the work spinner; pending questions (including
 hidden or resumed async questions), pending approvals and unsupported server
 requests take priority with `Action Required`. Automatic journal continuation keeps
-the spinner through its countdown, context reset and next-turn acknowledgement.
+the spinner through context reset and next-turn acknowledgement.
 Settled Main turns without automatic continuation remove the spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when

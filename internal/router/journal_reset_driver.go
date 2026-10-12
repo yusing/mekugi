@@ -4,11 +4,8 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
-	"fmt"
-	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // journalResetDriver is the shared app-server policy. It observes host events
@@ -21,14 +18,11 @@ type journalResetDriver struct {
 	workspace, thread                     string
 	intent                                *journalResetIntent
 	phase, requestID                      string
-	deadline                              time.Time
-	delay                                 time.Duration
 	serviceTier                           func() string // Current confirmed choice from the native settings owner.
 	compactTurn                           string
 	compactAck, compactDone, compactEnded bool
 	startPending                          bool
 	continuationTurn, lastStartedTurn     string
-	cancelled                             bool
 	notice                                string
 	pendingCompleted                      string
 }
@@ -78,11 +72,11 @@ func (d *journalResetDriver) completed(turn string) error {
 	if err != nil || intent == nil {
 		return err
 	}
-	d.intent, d.cancelled, d.notice = intent, false, ""
-	return d.countdown(time.Now())
+	d.intent, d.notice = intent, ""
+	return d.start()
 }
 
-// Only a not-yet-dispatched countdown that still matches the journal is
+// Only a not-yet-dispatched intent that still matches the journal is
 // replayable. An interrupted process never repeats an RPC whose acceptance is
 // unknown; it reports and discards that intent.
 func (d *journalResetDriver) restore() error {
@@ -94,38 +88,14 @@ func (d *journalResetDriver) restore() error {
 		return err
 	}
 	d.intent = intent
-	return d.countdown(time.Now())
-}
-
-func (d *journalResetDriver) countdown(now time.Time) error {
-	if d.cancelled {
-		return d.finish()
-	}
-	d.phase, d.deadline = "countdown", now.Add(d.delay)
-	return nil
-}
-
-// cancellable reports whether nothing context-changing has been dispatched yet.
-func (d *journalResetDriver) cancellable() bool {
-	return d.active() && d.phase == "countdown"
-}
-
-func (d *journalResetDriver) cancel() error {
-	if !d.cancellable() || d.cancelled {
-		return nil
-	}
-	d.cancelled, d.notice = true, "Slice continuation cancelled"
-	if err := d.change(func(_ *threadJournal, intent *journalResetIntent) error { intent.Phase = "cancelled"; return nil }); err != nil {
-		return err
-	}
-	return d.finish()
+	return d.start()
 }
 
 func (d *journalResetDriver) stop(turn string) error {
 	if d == nil {
 		return nil
 	}
-	d.cancelled, d.pendingCompleted = true, ""
+	d.pendingCompleted = ""
 	// An already-dispatched RPC remains host-owned, but cannot launch more work.
 	if d.intent != nil {
 		if turn == d.compactTurn {
@@ -180,8 +150,8 @@ func (d *journalResetDriver) needsContextReset() bool {
 	return !known || usage.tokens >= 150_000
 }
 
-func (d *journalResetDriver) tick(now time.Time) error {
-	if d == nil || d.phase != "countdown" || now.Before(d.deadline) {
+func (d *journalResetDriver) start() error {
+	if d == nil || d.intent == nil || d.active() {
 		return nil
 	}
 	if !d.needsContextReset() {
@@ -329,8 +299,6 @@ func (d *journalResetDriver) message(m appserver.Message) (bool, error) {
 				return false, d.fail("Another turn started during context reset; continuation was not sent")
 			}
 			d.compactTurn = p.Turn.ID
-		} else if d.phase == "countdown" {
-			return false, d.cancel()
 		}
 	}
 	if d.phase == "compacting" {
@@ -351,16 +319,9 @@ func (d *journalResetDriver) message(m appserver.Message) (bool, error) {
 	return false, nil
 }
 
-func (d *journalResetDriver) label(now time.Time) string {
+func (d *journalResetDriver) label() string {
 	if !d.active() {
 		return ""
-	}
-	if d.phase == "countdown" {
-		verb := "Resetting context"
-		if !d.needsContextReset() {
-			verb = "Continuing plan"
-		}
-		return fmt.Sprintf("%s in %s · starting %s %s · Esc cancels", verb, activityui.FormatDuration(d.deadline.Sub(now)), d.intent.Path, d.intent.Title)
 	}
 	switch d.phase {
 	case "compacting":

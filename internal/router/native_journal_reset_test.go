@@ -3,23 +3,21 @@ package router
 import (
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 func seedNativeJournalResetPreview(p *nativePreview) {
 	p.steps = nil
 	d, _ := resetDriverFixture(p.t, "slice")
-	// Leave enough time to inspect a terminal frame and press Escape.
-	d.deadline = time.Now().Add(30 * time.Second)
+	if err := d.start(); err != nil {
+		p.t.Fatal(err)
+	}
 	p.ui.ctx, p.ui.proxy, p.ui.client, p.ui.thread, p.ui.reset = p.t.Context(), d.proxy, d.client, d.thread, d
 	p.ui.journal = d.proxy.journals.attachNative(d.workspace, d.thread)
 	p.t.Cleanup(func() { d.proxy.journals.detachNative(p.ui.journal) })
 	p.ui.shell.focus, p.ui.shell.journalOpen = 0, false
 }
 
-func TestUISnapshotJournalSubsliceCountdown(t *testing.T) {
+func TestUISnapshotJournalSubsliceContinuation(t *testing.T) {
 	d, wire := resetDriverPlanFixture(t, "auto", "/1")
 	u := newAppServerSessionTestUI(t, d.workspace)
 	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
@@ -30,11 +28,11 @@ func TestUISnapshotJournalSubsliceCountdown(t *testing.T) {
 			"last":  map[string]any{"totalTokens": 149_999}, "modelContextWindow": 400_000,
 		},
 	})
-	assertNativeUISnapshot(t, "journal-subslice-countdown", []string{u.journalResetStrip(100)})
-	if err := u.tickJournalReset(time.Unix(102, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "turn/start")
+	assertNativeUISnapshot(t, "journal-subslice-continuation", []string{u.journalResetStrip(100)})
 }
 
 func TestNativeJournalSubsliceResumeUsesRestoredContext(t *testing.T) {
@@ -57,42 +55,10 @@ func TestNativeJournalSubsliceResumeUsesRestoredContext(t *testing.T) {
 	if err := next.restore(); err != nil {
 		t.Fatal(err)
 	}
-	if err := next.tick(time.Now().Add(time.Second)); err != nil {
+	if err := next.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "turn/start")
-}
-
-func TestNativeJournalResetCountdownEscape(t *testing.T) {
-	d, wire := resetDriverFixture(t, "slice")
-	d.deadline = time.Now().Add(3 * time.Second)
-	u, _ := newAppServerTestUI()
-	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
-	u.ensureShell()
-	notificationTestOutput(t, u)
-	u.writeTerminalTitle(time.Unix(0, 0))
-	if u.notifications.lastTitle != "Mekugi ⠋" {
-		t.Fatal("reset countdown reported terminal idle")
-	}
-	frame, _ := u.mainFrame(100, 24, 0)
-	if text := ansi.Strip(strings.Join(frame, "\n")); !strings.Contains(text, "Resetting context") || !strings.Contains(text, "/2 Second") || !strings.Contains(text, "Esc cancels") {
-		t.Fatalf("countdown is not visible: %s", text)
-	}
-	if err := u.shell.send("\x1b"); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.tick(time.Now().Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	resetDriverRequireMethods(t, wire)
-	intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
-	if err != nil || intent != nil || d.active() {
-		t.Fatalf("Esc left active intent: %+v %v", intent, err)
-	}
-	u.writeTerminalTitle(time.Unix(0, 0))
-	if u.notifications.lastTitle != "Mekugi" {
-		t.Fatal("cancelled continuation retained terminal working state")
-	}
 }
 
 func TestNativeJournalResetPreservesSelectedServiceTier(t *testing.T) {
@@ -117,7 +83,7 @@ func TestNativeJournalResetPreservesSelectedServiceTier(t *testing.T) {
 			}
 			u.ensureJournalReset()
 			d = u.reset
-			if err := d.tick(d.deadline); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			appServerOneRequest(t, wire, "thread/compact/start", "")
@@ -150,7 +116,11 @@ func TestNativeJournalResetRequiresSuccessfulHostCompletion(t *testing.T) {
 			u.ctx, u.proxy, u.thread, u.turn = t.Context(), proxy, thread, "turn"
 			u.reset = &journalResetDriver{ctx: t.Context(), proxy: proxy, client: u.client, workspace: workspace, thread: thread}
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+thread+`","turn":{"id":"turn","status":"`+status+`"}}}`)
-			resetDriverRequireMethods(t, wire)
+			if status == "completed" {
+				resetDriverRequireMethods(t, wire, "turn/start")
+			} else {
+				resetDriverRequireMethods(t, wire)
+			}
 			if u.reset.active() != (status == "completed") {
 				t.Fatalf("status=%s active=%t", status, u.reset.active())
 			}

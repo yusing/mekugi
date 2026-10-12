@@ -81,9 +81,7 @@ func TestNativeUIPreview(t *testing.T) {
 			case <-tick.C:
 				now := time.Now()
 				if p.ui.reset != nil {
-					if err := p.ui.tickJournalReset(now); err != nil {
-						return err
-					}
+					p.ui.ensureJournalReset()
 				}
 				if err := p.ui.drainKeys(keys); err != nil || p.ui.quitRequested {
 					return err

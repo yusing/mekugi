@@ -340,9 +340,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.refreshSessionMetrics(false)
 						u.startSkillHistory()
-						if err := u.tickJournalReset(u.now()); err != nil {
-							u.setNotice(err.Error(), true)
-						}
+						u.ensureJournalReset()
 						u.applyObservedActivity()
 						if err := u.fillResumePicker(); err != nil {
 							return err
@@ -516,6 +514,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		u.showResetNotice()
 		if handled {
+			if !u.reset.active() {
+				u.interruption.cancelDeferred()
+			}
 			if pendingCompletion != "" && pendingCompletion == u.reset.continuationTurn && !u.reset.active() && u.questionCount() == 0 {
 				u.notify("agent-turn-complete", "Agent turn complete")
 			}
@@ -1128,7 +1129,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.draft != "" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
-			if u.turn != "" || u.starting() || u.submission.text != "" {
+			if u.turn != "" || u.starting() || u.reset.active() || u.submission.text != "" {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
 			if u.interruptLocked {
@@ -1139,7 +1140,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
+		if u.turn != "" || u.starting() || u.reset.active() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1715,7 +1716,15 @@ func (u *appServerUI) interruptTurn() error {
 	}
 	u.compaction.cancelContinuation()
 	if u.turn == "" {
-		if u.starting() || u.submission.text != "" {
+		if u.reset.active() && u.reset.intent != nil {
+			d := u.reset
+			if err := d.proxy.journals.stopJournalTurn(d.ctx, d.proxy.replayStore, d.workspace, d.thread, d.intent.Turn); err != nil {
+				u.setNotice("Journal stop: "+err.Error(), true)
+			} else {
+				d.intent = nil // The RPC remains host-owned until its start or rejection.
+			}
+		}
+		if u.starting() || u.submission.text != "" || u.reset.active() {
 			u.interruption.deferUntilStart()
 			u.status = "Interrupting…"
 			return nil

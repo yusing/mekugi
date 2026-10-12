@@ -1,7 +1,6 @@
 • Context reset
 
-◆ ↻ Context reset from journal · 0 provider tokens                                   20:00
-  ›
+◆ ↻ Context reset from journal · 0 provider tokens ›                                 20:00
 
 ╭─ Journal recovery · Context reset from journal ───────────────────────── [×] ─╮
 │                                                                               │

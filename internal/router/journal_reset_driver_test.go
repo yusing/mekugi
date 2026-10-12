@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
 )
@@ -37,14 +36,12 @@ func resetDriverPlanFixture(t *testing.T, mode, parent string) (*journalResetDri
 	}
 	_, wire := newAppServerTestUI()
 	client := &appserver.Client{Input: wire}
-	d := &journalResetDriver{ctx: t.Context(), proxy: proxy, client: client, workspace: workspace, thread: thread, delay: time.Second}
-	if err := d.completed("first-turn"); err != nil {
-		t.Fatal(err)
+	d := &journalResetDriver{ctx: t.Context(), proxy: proxy, client: client, workspace: workspace, thread: thread}
+	var err error
+	d.intent, err = proxy.journals.completedSlice(t.Context(), proxy.replayStore, workspace, thread, "first-turn")
+	if err != nil || d.intent == nil {
+		t.Fatalf("completed slice intent: %v %v", d.intent, err)
 	}
-	if d.intent == nil || d.phase != "countdown" {
-		t.Fatalf("completed slice did not start countdown: %+v", d)
-	}
-	d.deadline = time.Unix(101, 0)
 	return d, wire
 }
 
@@ -80,7 +77,7 @@ func TestJournalResetDriverSubsliceContextThreshold(t *testing.T) {
 			usage(d.thread, new(uint64(200_000)))
 			usage(d.thread, tc.tokens)
 			usage("other", new(uint64(200_000)))
-			if err := d.tick(time.Unix(102, 0)); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			resetDriverRequireMethods(t, wire, tc.method)
@@ -143,10 +140,10 @@ func resetDriverRequireMethods(t *testing.T, wire *appServerTestInput, want ...s
 func TestJournalResetDriverCompactionRequiresOwnSuccessfulTurnAndAcknowledgement(t *testing.T) {
 	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
-	if d.phase != "countdown" {
+	if d.phase != "" {
 		t.Fatalf("phase %q", d.phase)
 	}
-	if err := d.tick(time.Unix(102, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "thread/compact/start")
@@ -175,7 +172,7 @@ func TestJournalResetDriverCompactionRequiresOwnSuccessfulTurnAndAcknowledgement
 func TestJournalResetDriverOffContinuesWithoutCompaction(t *testing.T) {
 	t.Parallel()
 	d, wire := resetDriverFixture(t, "off")
-	if err := d.tick(time.Unix(102, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "turn/start")
@@ -184,14 +181,14 @@ func TestJournalResetDriverOffContinuesWithoutCompaction(t *testing.T) {
 func TestJournalResetDriverRejectedCompactDoesNotRetry(t *testing.T) {
 	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
-	if err := d.tick(time.Unix(102, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Error: &appserver.Error{Code: -1, Message: "rejected"}})
 	if err != nil || !handled {
 		t.Fatalf("rejection: %v %v", handled, err)
 	}
-	if err := d.tick(time.Unix(104, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "thread/compact/start")
@@ -207,16 +204,16 @@ func TestJournalResetDriverRestartOnlyReplaysPendingIntent(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			restarted := &journalResetDriver{ctx: t.Context(), proxy: d.proxy, client: &appserver.Client{Input: wire}, workspace: d.workspace, thread: d.thread, delay: time.Second}
+			restarted := &journalResetDriver{ctx: t.Context(), proxy: d.proxy, client: &appserver.Client{Input: wire}, workspace: d.workspace, thread: d.thread}
 			wire.Reset()
 			if err := restarted.restore(); err != nil {
 				t.Fatal(err)
 			}
 			if phase == "pending" {
-				if restarted.phase != "countdown" {
+				if restarted.phase != "compacting" {
 					t.Fatalf("restored phase %q", restarted.phase)
 				}
-				resetDriverRequireMethods(t, wire)
+				resetDriverRequireMethods(t, wire, "thread/compact/start")
 			} else {
 				resetDriverRequireMethods(t, wire)
 			}
@@ -227,14 +224,14 @@ func TestJournalResetDriverRestartOnlyReplaysPendingIntent(t *testing.T) {
 func TestJournalResetDriverFailedCompactionNeverStartsContinuation(t *testing.T) {
 	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
-	if err := d.tick(time.Unix(102, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverReply(t, d, `{}`)
 	resetDriverEvent(t, d, "turn/started", `{"threadId":"`+d.thread+`","turn":{"id":"compaction"}}`)
 	resetDriverEvent(t, d, "turn/completed", `{"threadId":"`+d.thread+`","turn":{"id":"compaction","status":"failed"}}`)
 	resetDriverRequireMethods(t, wire, "thread/compact/start")
-	if err := d.tick(time.Unix(104, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "thread/compact/start")
@@ -243,36 +240,23 @@ func TestJournalResetDriverFailedCompactionNeverStartsContinuation(t *testing.T)
 func TestJournalResetDriverRejectedContinuationDoesNotRetry(t *testing.T) {
 	t.Parallel()
 	d, wire := resetDriverFixture(t, "off")
-	if err := d.tick(time.Unix(102, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	handled, err := d.message(appserver.Message{ID: jsontext.Value(d.requestID), Error: &appserver.Error{Code: -1, Message: "busy"}})
 	if err != nil || !handled {
 		t.Fatalf("rejection: %v %v", handled, err)
 	}
-	if err := d.tick(time.Unix(104, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "turn/start")
 }
 
-func TestJournalResetDriverCancelCountdownClearsIntent(t *testing.T) {
-	t.Parallel()
-	d, wire := resetDriverFixture(t, "slice")
-	if err := d.cancel(); err != nil {
-		t.Fatal(err)
-	}
-	resetDriverRequireMethods(t, wire)
-	intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
-	if err != nil || intent != nil {
-		t.Fatalf("cancel intent: %+v %v", intent, err)
-	}
-}
-
 func TestJournalResetDriverDoesNotReplaceCompactionTurn(t *testing.T) {
 	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
-	if err := d.tick(time.Unix(102, 0)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverEvent(t, d, "turn/started", `{"threadId":"`+d.thread+`","turn":{"id":"first-turn"}}`)
@@ -292,7 +276,7 @@ func TestJournalResetDriverContinuationStartIdentity(t *testing.T) {
 	for _, beforeReply := range []bool{false, true} {
 		t.Run(map[bool]string{false: "after reply", true: "before reply"}[beforeReply], func(t *testing.T) {
 			d, _ := resetDriverFixture(t, "off")
-			if err := d.tick(time.Unix(102, 0)); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			event := func(id string) {
@@ -332,7 +316,7 @@ func TestJournalResetDriverUncertainIntentDoesNotBlockLaterSlice(t *testing.T) {
 	t.Parallel()
 	d, wire := resetDriverFixture(t, "slice")
 	d.client = &appserver.Client{Input: resetFailingInput{}}
-	if err := d.tick(time.Unix(102, 0)); err == nil {
+	if err := d.start(); err == nil {
 		t.Fatal("send failure was swallowed")
 	}
 	d.client = &appserver.Client{Input: wire}
@@ -351,10 +335,10 @@ func TestJournalResetDriverUncertainIntentDoesNotBlockLaterSlice(t *testing.T) {
 	if err := d.completed("second-turn"); err != nil {
 		t.Fatal(err)
 	}
-	if d.intent == nil || d.intent.Path != "/3" || d.phase != "countdown" {
+	if d.intent == nil || d.intent.Path != "/3" || d.phase != "compacting" {
 		t.Fatalf("later slice blocked by retained intent: intent=%+v phase=%q", d.intent, d.phase)
 	}
-	resetDriverRequireMethods(t, wire)
+	resetDriverRequireMethods(t, wire, "thread/compact/start")
 }
 
 func TestJournalResetDriverRestoreDropsStaleIntents(t *testing.T) {
@@ -376,7 +360,7 @@ func TestJournalResetDriverRestoreDropsStaleIntents(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			restarted := &journalResetDriver{ctx: t.Context(), proxy: d.proxy, client: &appserver.Client{Input: wire}, workspace: d.workspace, thread: d.thread, delay: time.Second}
+			restarted := &journalResetDriver{ctx: t.Context(), proxy: d.proxy, client: &appserver.Client{Input: wire}, workspace: d.workspace, thread: d.thread}
 			wire.Reset()
 			if err := restarted.restore(); err != nil {
 				t.Fatal(err)
@@ -397,7 +381,7 @@ func TestJournalResetDriverUnknownCompactDispatchDisarmsIntent(t *testing.T) {
 	t.Parallel()
 	d, _ := resetDriverFixture(t, "slice")
 	d.client = &appserver.Client{Input: resetFailingInput{}}
-	if err := d.tick(time.Unix(102, 0)); err == nil {
+	if err := d.start(); err == nil {
 		t.Fatal("send failure was swallowed")
 	}
 	intent, err := d.proxy.replayStore.resetIntent(t.Context(), d.workspace, d.thread)
@@ -411,7 +395,7 @@ func TestJournalCompactionConsumesOnlyCurrentTurnResetIntent(t *testing.T) {
 	for _, stale := range []bool{false, true} {
 		t.Run(map[bool]string{false: "current", true: "later-turn"}[stale], func(t *testing.T) {
 			d, _ := resetDriverFixture(t, "slice")
-			if err := d.tick(time.Unix(102, 0)); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			if stale {

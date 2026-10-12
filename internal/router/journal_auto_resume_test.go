@@ -5,7 +5,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/uisnapshot"
@@ -35,9 +34,6 @@ func TestJournalAutoResumeFollowupUntilComplete(t *testing.T) {
 		}
 		if d.intent == nil || !d.intent.Resume || d.intent.Path != "/1" {
 			t.Fatalf("not resuming unfinished work: %+v", d.intent)
-		}
-		if err := d.tick(time.Now().Add(time.Second)); err != nil {
-			t.Fatal(err)
 		}
 		resetDriverRequireMethods(t, wire, "turn/start")
 		wire.Reset()
@@ -99,7 +95,9 @@ func TestJournalAutoResumeRevalidatesAndIsolatesRestart(t *testing.T) {
 	for _, scenario := range []string{"pending", "done", "blocked", "new-turn", "cancelled", "dispatched", "other-thread", "other-workspace"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := autoResumeFixture(t)
-			if err := d.completed("answer"); err != nil {
+			var err error
+			d.intent, err = d.proxy.journals.completedSlice(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "answer")
+			if err != nil {
 				t.Fatal(err)
 			}
 			switch scenario {
@@ -112,11 +110,11 @@ func TestJournalAutoResumeRevalidatesAndIsolatesRestart(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "cancelled":
-				if err := d.cancel(); err != nil {
+				if err := d.stop("answer"); err != nil {
 					t.Fatal(err)
 				}
 			case "dispatched":
-				if err := d.tick(time.Now().Add(time.Second)); err != nil {
+				if err := d.start(); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -139,11 +137,10 @@ func TestJournalAutoResumeRevalidatesAndIsolatesRestart(t *testing.T) {
 			if next.active() != (scenario == "pending") {
 				t.Fatalf("active=%v", next.active())
 			}
-			resetDriverRequireMethods(t, wire)
+			if scenario != "pending" {
+				resetDriverRequireMethods(t, wire)
+			}
 			if scenario == "pending" {
-				if err := next.tick(time.Now().Add(time.Second)); err != nil {
-					t.Fatal(err)
-				}
 				resetDriverRequireMethods(t, wire, "turn/start")
 			}
 		})
@@ -179,7 +176,9 @@ func TestNativeJournalAutoResumeStopsForInputAndCancellation(t *testing.T) {
 			if d.active() != (scenario == "natural") {
 				t.Fatalf("active=%v", d.active())
 			}
-			if scenario != "queued" {
+			if scenario == "natural" {
+				resetDriverRequireMethods(t, wire, "turn/start")
+			} else if scenario != "queued" {
 				resetDriverRequireMethods(t, wire)
 			}
 			if scenario == "interrupt-race" {
@@ -210,9 +209,7 @@ func TestUISnapshotJournalAutoResume(t *testing.T) {
 	if err := d.completed("answer"); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Unix(100, 0)
-	d.deadline = now.Add(3 * time.Second)
-	uisnapshot.Assert(t, "testdata/snapshots/journal-auto-resume.txt", d.label(now)+"\n")
+	uisnapshot.Assert(t, "testdata/snapshots/journal-auto-resume.txt", d.label()+"\n")
 }
 
 func TestJournalAutoResumeOwnership(t *testing.T) {
@@ -243,6 +240,7 @@ func TestJournalAutoResumeOwnership(t *testing.T) {
 				if err := d.completed("answer"); err != nil {
 					t.Fatal(err)
 				}
+				wire.Reset()
 				if err := d.proxy.journals.initialize(t.Context(), d.proxy.replayStore, d.workspace, "fork", "/root", d.thread); err != nil {
 					t.Fatal(err)
 				}
@@ -267,7 +265,9 @@ func TestJournalAutoResumeRevalidatesBeforeDispatch(t *testing.T) {
 	for _, scenario := range []string{"done", "blocked", "new-turn", "delegated"} {
 		t.Run(scenario, func(t *testing.T) {
 			d, wire := autoResumeFixture(t)
-			if err := d.completed("answer"); err != nil {
+			var err error
+			d.intent, err = d.proxy.journals.completedSlice(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "answer")
+			if err != nil {
 				t.Fatal(err)
 			}
 			if err := d.proxy.journals.transaction(t.Context(), d.proxy.replayStore, d.workspace, d.thread, func(j *threadJournal, _ bool) error {
@@ -283,7 +283,7 @@ func TestJournalAutoResumeRevalidatesBeforeDispatch(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if err := d.tick(time.Now().Add(time.Second)); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			if d.active() {
@@ -335,9 +335,6 @@ func TestJournalAutoResumeCheckpointReleasesPlanPause(t *testing.T) {
 			if d.intent == nil || d.intent.Path != want {
 				t.Fatalf("intent=%+v want=%s", d.intent, want)
 			}
-			if err := d.tick(time.Now().Add(time.Second)); err != nil {
-				t.Fatal(err)
-			}
 			resetDriverRequireMethods(t, wire, "turn/start")
 		})
 	}
@@ -359,6 +356,9 @@ func TestJournalAutoResumeUserStopSurvivesLaterQuestions(t *testing.T) {
 				if err := u.shell.send("\x1b"); err != nil {
 					t.Fatal(err)
 				}
+				appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"`+d.thread+`","turn":{"id":"continued"}}}`)
+				resetDriverRequireMethods(t, wire, "turn/start", "turn/interrupt")
+				wire.Reset()
 			} else if scenario == "native-interrupted" {
 				u, _ := newAppServerTestUI()
 				u.ctx, u.proxy, u.client, u.thread, u.turn, u.reset = t.Context(), d.proxy, d.client, d.thread, "answer", d
@@ -449,7 +449,11 @@ func TestJournalAutoResumeUserStopSurvivesLaterQuestions(t *testing.T) {
 			if want == "" && !strings.Contains(summary.Text, "Resume: no runnable local task") || want != "" && !strings.Contains(summary.Text, "Resume: continue "+want) {
 				t.Fatalf("recovery disagrees with stopped-work eligibility: %s", summary.Text)
 			}
-			resetDriverRequireMethods(t, wire)
+			if want == "" {
+				resetDriverRequireMethods(t, wire)
+			} else {
+				resetDriverRequireMethods(t, wire, "turn/start")
+			}
 		})
 	}
 }

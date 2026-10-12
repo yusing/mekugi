@@ -84,16 +84,13 @@ func TestUISnapshotNativeResetWording(t *testing.T) {
 			u.view.painter.Theme = livediff.DarkTheme
 			u.view.clock = func() time.Time { return now }
 			u.clock = u.view.clock
-			// Render the driver's real countdown without wall-clock-dependent timing.
-			d.deadline = now.Add(3 * time.Second)
-			assertNativeUISnapshot(t, "native-reset-countdown-"+mode, []string{d.label(now)})
+			if err := d.start(); err != nil {
+				t.Fatal(err)
+			}
+			assertNativeUISnapshot(t, "native-reset-dispatched-"+mode, []string{d.label()})
 			if mode == "off" {
 				return
 			}
-			if err := d.tick(d.deadline); err != nil {
-				t.Fatal(err)
-			}
-			assertNativeUISnapshot(t, "native-reset-dispatched-"+mode, []string{d.label(now)})
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": d.thread, "turn": map[string]any{"id": "reset-turn"}})
 			item := map[string]any{"id": "reset-item", "type": "contextCompaction"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": d.thread, "turnId": "reset-turn", "item": item})
@@ -117,7 +114,7 @@ func TestUISnapshotNativeResetWording(t *testing.T) {
 
 func TestUISnapshotNativeResetRestored(t *testing.T) {
 	d, _ := resetDriverFixture(t, "slice")
-	if err := d.tick(d.deadline); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverEvent(t, d, "turn/started", fmt.Sprintf(`{"threadId":%q,"turn":{"id":"reset-turn"}}`, d.thread))
@@ -158,7 +155,7 @@ func TestUISnapshotNativeResetProviderFallback(t *testing.T) {
 	for _, mode := range []string{"slice"} {
 		t.Run(mode, func(t *testing.T) {
 			d, _ := resetDriverFixture(t, mode)
-			if err := d.tick(d.deadline); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			u := newAppServerSessionTestUI(t, d.workspace)

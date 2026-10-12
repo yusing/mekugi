@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 func resetPlan(t *testing.T, proxy *mekugiProxy, workspace, thread string) {
@@ -145,7 +144,7 @@ func TestJournalSliceAncestorEligibility(t *testing.T) {
 					t.Fatalf("rejected finish changed journal: %v", readErr)
 				}
 			}
-			if err := d.tick(time.Unix(102, 0)); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "non-leaf" {

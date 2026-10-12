@@ -372,8 +372,6 @@ func testJournalSliceResetNativeCodex(t *testing.T, ctx context.Context, cmd *ex
 	var thread, startID, turnStartID string
 	var firstDone, secondDone bool
 	var driver *journalResetDriver
-	ticker := time.NewTicker(20 * time.Millisecond)
-	defer ticker.Stop()
 	for !secondDone || driver != nil && driver.active() {
 		select {
 		case m, ok := <-client.Messages:
@@ -416,7 +414,7 @@ func testJournalSliceResetNativeCodex(t *testing.T, ctx context.Context, cmd *ex
 					if thread == "" {
 						t.Fatal("thread/start returned no thread ID")
 					}
-					driver = &journalResetDriver{ctx: ctx, proxy: proxy, client: client, workspace: workspace, thread: thread, delay: 0}
+					driver = &journalResetDriver{ctx: ctx, proxy: proxy, client: client, workspace: workspace, thread: thread}
 					turnStartID, err = client.Send("turn/start", map[string]any{"threadId": thread, "input": appserver.Input("Complete the first journal slice.")}, true)
 					if err != nil {
 						t.Fatal(err)
@@ -452,12 +450,6 @@ func testJournalSliceResetNativeCodex(t *testing.T, ctx context.Context, cmd *ex
 					}
 				} else if turns == 2 {
 					secondDone = true
-				}
-			}
-		case <-ticker.C:
-			if driver != nil {
-				if err := driver.tick(time.Now()); err != nil {
-					t.Fatal(err)
 				}
 			}
 		case err := <-client.Done:

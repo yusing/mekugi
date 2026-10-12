@@ -379,7 +379,7 @@ and client behavior.
 
 `mekugi codex headless --yolo` runs one stdin prompt in a new thread for automation
 and offline comparisons. It reuses invocation-local routing and the native client's
-slice-reset policy with a zero-duration countdown; it does not own a second reset
+immediate slice-reset policy; it does not own a second reset
 or continuation implementation. `off` keeps the continuing-context control arm,
 while `slice` compacts at planned boundaries. Successful completion requires a
 successful Main turn and settled slice continuation.

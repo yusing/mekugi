@@ -40,7 +40,7 @@ func TestUISnapshotNativeResetRecoveryDisclosure(t *testing.T) {
 				}); err != nil {
 					t.Fatal(err)
 				}
-				if err := driver.tick(driver.deadline); err != nil {
+				if err := driver.start(); err != nil {
 					t.Fatal(err)
 				}
 				driver.compactTurn = "reset-turn"
@@ -194,7 +194,7 @@ func TestNativeProviderCompactionHasNoRecoveryDisclosure(t *testing.T) {
 func TestNativeResetRecoveryReplayKeepsJournalClickTarget(t *testing.T) {
 	t.Parallel()
 	d, _ := resetDriverFixture(t, "slice")
-	if err := d.tick(d.deadline); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	d.compactTurn = "reset-turn"
@@ -267,7 +267,7 @@ func TestNativeResetDisclosureSurvivesRejectedContinuation(t *testing.T) {
 		for _, status := range []string{"completed", "interrupted"} {
 			t.Run(next+"/"+status, func(t *testing.T) {
 				d, wire := resetDriverFixture(t, "slice")
-				if err := d.tick(d.deadline); err != nil {
+				if err := d.start(); err != nil {
 					t.Fatal(err)
 				}
 				resetDriverReply(t, d, "{}")
