@@ -8,6 +8,9 @@ invocation-local `orchestrate` MCP server uses host caller metadata and retained
 workspace ownership. Tool arguments cannot select another caller's workspace or
 run. User configuration remains unchanged.
 
+A retained empty-workspace journal does not override a unique retained workspace.
+Multiple retained nonempty workspaces remain ambiguous and reject dispatch.
+
 Only an independent coordinator prepares batches. An orchestration child or its
 native descendants cannot start a nested run, including after fresh resume without
 a live parent. Retained run identity governs coordinator admission.

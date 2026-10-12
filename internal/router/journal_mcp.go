@@ -138,7 +138,12 @@ func journalMCPContext(ctx context.Context, proxy *mekugiProxy, meta mcp.Meta) (
 	}
 	var workspace string
 	err = proxy.replayStore.scoped(ctx).locked(ctx, func() error {
-		workspace, err = proxy.replayStore.retainedJournalWorkspace(thread, true)
+		// Workspace-less recovery can retain an unscoped journal alongside
+		// the selected workspace. It must not displace that workspace.
+		workspace, err = proxy.replayStore.retainedJournalWorkspace(thread, false)
+		if errors.Is(err, errNoRetainedJournalWorkspace) {
+			workspace, err = proxy.replayStore.retainedJournalWorkspace(thread, true)
+		}
 		return err
 	})
 	if err != nil {
