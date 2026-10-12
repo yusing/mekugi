@@ -94,3 +94,37 @@ func TestComposerCommandMouseSelection(t *testing.T) {
 		t.Fatalf("click did not dispatch local command: %+v", u.picker)
 	}
 }
+
+func TestUISnapshotComposerCommandWithPastedImage(t *testing.T) {
+	for _, key := range []string{"\t", "\r"} {
+		t.Run(key, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			path := answerImageFixture(t)
+			appServerTestKeys(t, u, "\n\x1b[200~"+path+"\x1b[201~\x1b[H\x1b[D/bt")
+			if !u.picker.open || u.picker.target.query != "bt" {
+				t.Fatalf("image blocked command completion: %q %+v", u.draft, u.picker)
+			}
+			if key == "\t" {
+				rows, _ := u.mainFrame(60, 10, 0)
+				assertNativeUISnapshot(t, "composer-command-image", rows)
+			}
+			appServerTestKeys(t, u, key)
+			draft := u.draftSnapshot()
+			if key == "\r" {
+				btwTestRequest(t, wire, "thread/fork", "main")
+				draft = u.btw.pending
+			} else if wire.Len() != 0 || !strings.HasPrefix(draft.text, "/btw ") {
+				t.Fatalf("Tab submitted or lost command: %q %s", draft.text, wire.String())
+			}
+			if len(draft.images) != 1 || draft.images[0].path != path || draft.text[draft.images[0].start:draft.images[0].end] != "[Image 1]" {
+				t.Fatalf("completion lost attachment: %+v", draft)
+			}
+			if key == "\t" {
+				appServerTestKeys(t, u, "\x1a")
+				if u.draft != "/bt\n[Image 1] " || len(u.images) != 1 {
+					t.Fatalf("undo lost original draft: %q", u.draft)
+				}
+			}
+		})
+	}
+}

@@ -37,9 +37,12 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if u.draft != "[Image 1] " || len(u.images) != 1 || len(u.draftSnapshot().displaySpans()) != 1 {
 		t.Fatalf("answer did not reuse composer: %q %+v", u.draft, u.images)
 	}
+	u.insertSelection("message", "first quote", "")
 	appServerTestKeys(t, u, "\r")
 	questionTestPaint(t, u, 70)
-	appServerTestKeys(t, u, "\x1b[200~"+second+"\x1b[201~\r")
+	appServerTestKeys(t, u, "\x1b[200~"+second+"\x1b[201~")
+	u.insertSelection("message", "second quote", "")
+	appServerTestKeys(t, u, "\r")
 	if u.draft != "main draft" {
 		t.Fatalf("parked editor changed: %q", u.draft)
 	}
@@ -56,16 +59,20 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(wire.Bytes()), &request); err != nil {
 		t.Fatal(err)
 	}
-	if request.Method != "turn/steer" || len(request.Params.Input) != 3 {
+	if request.Method != "turn/steer" || len(request.Params.Input) != 4 {
 		t.Fatalf("wrong answer input: %+v", request)
 	}
 	input := request.Params.Input
 	replies := questionReplies(input[0].Text)
-	if len(replies) != 2 || replies[0].Answer != "[Image 1] " || replies[1].Answer != "[Image 2] " {
+	if len(replies) != 2 || replies[0].Answer != "[Image 1] [Selected message] " || replies[1].Answer != "[Image 2] [Selected message 2] " {
 		t.Fatalf("wrong image identity: %+v", replies)
 	}
 	if input[1].Type != "localImage" || input[1].Path != first || input[2].Type != "localImage" || input[2].Path != second {
 		t.Fatalf("images became paths: %+v", input)
+	}
+	frames, ok := decodeFileAttachments(input[3].Text)
+	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote") || !strings.HasSuffix(frames[1], "\nsecond quote") {
+		t.Fatalf("answer selections lost: %q", frames)
 	}
 	content, err := json.Marshal(u.submission.input())
 	if err != nil {
@@ -114,6 +121,7 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	path := answerImageFixture(t)
 	u.attachImage(path)
+	u.insertSelection("message", "retry quote", "")
 	appServerTestKeys(t, u, "\r")
 	u.pruneDraftImages()
 	if _, err := os.Stat(path); err != nil {
@@ -130,12 +138,12 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":`+requestID+`,"error":{"code":-1,"message":"rejected"}}`)
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
-	if len(u.images) != 1 || u.images[0].path != path {
+	if len(u.images) != 1 || u.images[0].path != path || len(u.selections) != 1 || u.selections[0].text != "retry quote" {
 		t.Fatalf("retry lost image: %q %+v", u.draft, u.images)
 	}
 	wire.Reset()
 	appServerTestKeys(t, u, "\r")
-	if !strings.Contains(wire.String(), `"type":"localImage"`) {
+	if !strings.Contains(wire.String(), `"type":"localImage"`) || !strings.Contains(wire.String(), "retry quote") {
 		t.Fatalf("retry omitted image: %s", wire.String())
 	}
 }

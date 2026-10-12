@@ -37,11 +37,25 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 	}
 	label := composerSelectionPrefix + description + "]"
 	pending := slices.Concat(u.submission.parts, u.unsent, u.queued, u.steerParts(u.steers))
+	for _, call := range u.questions.calls {
+		for _, question := range call.questions {
+			pending = append(pending, question.editor.snapshot.composerDraft)
+		}
+	}
+	if u.currentQuestion() != nil {
+		pending = append(pending, u.questions.parked.snapshot.composerDraft)
+	}
 	used := func(label string) bool {
 		return strings.Contains(u.draft, label) || slices.ContainsFunc(pending, func(d composerDraft) bool { return strings.Contains(d.text, label) })
 	}
 	for n := 2; used(label); n++ {
 		label = fmt.Sprintf("%s%s %d]", composerSelectionPrefix, description, n)
+	}
+	if q := u.currentQuestion(); q != nil {
+		if !q.note {
+			q.selected = len(q.choices)
+		}
+		q.done, q.skipped = false, false
 	}
 	u.run = runNone
 	u.insertDraft(label)

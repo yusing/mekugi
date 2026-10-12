@@ -309,14 +309,8 @@ func (u *terminalUI) selectionAction(action byte) {
 	}
 	switch action {
 	case 'r':
-		if u.main.currentQuestion() != nil {
-			// A question answer is plain text; it cannot carry a mention's quote.
-			u.main.run = runNone
-			u.main.insertDraft("> " + s.text() + "\n\n")
-		} else {
-			description, source := s.mentionDescription()
-			u.main.insertSelection(description, s.text(), source)
-		}
+		description, source := s.mentionDescription()
+		u.main.insertSelection(description, s.text(), source)
 		u.main.refreshPicker()
 		u.main.run = runNone
 		u.focus = 0

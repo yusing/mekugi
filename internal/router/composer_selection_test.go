@@ -219,13 +219,16 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 			t.Fatalf("queued label reused: %q", u.draft)
 		}
 	})
-	t.Run("question answers quote text", func(t *testing.T) {
-		u := selectionTestUI("hello world")
-		u.main.questions.active = &nativeQuestionCall{questions: []nativeQuestion{{}}}
-		selectionTestDrag(t, u, 0, 0, 4, 0)
-		u.selectionAction('r')
-		if u.main.draft != "> hello\n\n" || len(u.main.selections) != 0 {
-			t.Fatalf("question answer draft = %q", u.main.draft)
+	t.Run("hidden question releases parked labels", func(t *testing.T) {
+		u, _ := newAppServerTestUI()
+		u.insertSelection("message", "main quote", "")
+		questionTestAsync(t, u, "parked", "Which scope?")
+		u.openQuestions()
+		u.hideQuestions()
+		u.deleteDraftRange(0, len(u.draft))
+		u.insertSelection("message", "replacement quote", "")
+		if u.draft != "[Selected message] " {
+			t.Fatalf("inactive parked editor reserved a label: %q", u.draft)
 		}
 	})
 	t.Run("omissions never overflow the envelope", func(t *testing.T) {

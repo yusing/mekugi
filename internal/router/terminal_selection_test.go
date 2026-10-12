@@ -238,9 +238,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				}
 				if reference {
 					want := "before " + mention + " after"
-					if key == "question" {
-						want = "before > hello\n\nafter"
-					} else if len(u.main.selections) != 1 || u.main.selections[0].text != "hello" {
+					if len(u.main.selections) != 1 || u.main.selections[0].text != "hello" {
 						t.Fatal("reference lost quote")
 					}
 					if u.main.draft != want || u.focus != 0 {

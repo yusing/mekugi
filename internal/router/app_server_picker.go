@@ -85,8 +85,14 @@ func (u *appServerUI) completionTarget() composerTarget {
 		return composerTarget{}
 	}
 	at := u.cursor()
-	if strings.HasPrefix(u.draft, "/") && at > 0 && !strings.ContainsFunc(u.draft, unicode.IsSpace) {
-		return composerTarget{kind: '/', end: len(u.draft), query: u.draft[1:]}
+	if strings.HasPrefix(u.draft, "/") && at > 0 {
+		end := strings.IndexFunc(u.draft, unicode.IsSpace)
+		if end < 0 {
+			end = len(u.draft)
+		}
+		if at <= end {
+			return composerTarget{kind: '/', end: end, query: u.draft[1:end]}
+		}
 	}
 	start := at
 	for start > 0 {
