@@ -17,11 +17,11 @@ func TestProviderReasoningStreamsBeforeText(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-key"}}).services()[0]
-	anthropic := testOpenCodeTranslation(&service, "minimax-m3", "anthropic", map[string]providerTool{"exec": {name: "exec", kind: "custom"}})
-	responses := testOpenCodeTranslation(&service, "grok-4.6", "responses", map[string]providerTool{"exec": {name: "exec", kind: "custom"}})
+	anthropic := testOpenCodeTranslation(t, &service, "minimax-m3", "anthropic", []any{map[string]string{"type": "custom", "name": "exec"}})
+	responses := testOpenCodeTranslation(t, &service, "grok-4.6", "responses", []any{map[string]string{"type": "custom", "name": "exec"}})
 	for _, test := range []struct {
 		name     string
-		tr       *providerTranslation
+		tr       *providerRequest
 		upstream string
 		want     string
 		retained bool
@@ -46,10 +46,10 @@ func TestProviderReasoningStreamsBeforeText(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var events []map[string]any
-			result, err := test.tr.readProviderStream(io.NopCloser(strings.NewReader(test.upstream)), func(event map[string]any) error {
+			result, err := test.tr.codec.Read(io.NopCloser(strings.NewReader(test.upstream)), func(event map[string]any) error {
 				events = append(events, event)
 				return nil
-			})
+			}, grokTestFailureDetail)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,13 +108,13 @@ func TestProviderReasoningAfterTextIsDeferred(t *testing.T) {
 		t.Fatal(err)
 	}
 	var events []string
-	result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(
+	result, err := tr.codec.Read(strings.NewReader(grokTestSSE(
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"content": "answer"}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "late"}, "finish_reason": "stop"}}},
 	)), func(event map[string]any) error {
 		events = append(events, event["type"].(string))
 		return nil
-	})
+	}, grokTestFailureDetail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,12 +131,12 @@ func TestProviderReasoningAfterTextIsDeferred(t *testing.T) {
 // visible block that closes before its retained item keeps no summary.
 func TestProviderReasoningWithoutRetainedItemIsNotReplayed(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-key"}}).services()[0]
-	tr := testOpenCodeTranslation(&service, "grok-4.6", "responses", map[string]providerTool{})
-	result, err := tr.readProviderStream(io.NopCloser(strings.NewReader(openCodeEvents(
+	tr := testOpenCodeTranslation(t, &service, "grok-4.6", "responses", nil)
+	result, err := tr.codec.Read(io.NopCloser(strings.NewReader(openCodeEvents(
 		map[string]any{"type": "response.reasoning_text.delta", "output_index": 0, "delta": "unsigned"},
 		map[string]any{"type": "response.output_text.delta", "output_index": 1, "delta": "done"},
 		map[string]any{"type": "response.completed", "response": map[string]any{"output": []any{}}},
-	))), func(map[string]any) error { return nil })
+	))), func(map[string]any) error { return nil }, grokTestFailureDetail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +155,11 @@ func TestOpenCodeChatReasoningAroundTextReplays(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(
+	result, err := tr.codec.Read(strings.NewReader(grokTestSSE(
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "before "}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"content": "text"}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "after"}, "finish_reason": "stop"}}},
-	)), func(map[string]any) error { return nil })
+	)), func(map[string]any) error { return nil }, grokTestFailureDetail)
 	if err != nil {
 		t.Fatal(err)
 	}

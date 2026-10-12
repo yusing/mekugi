@@ -1,4 +1,6 @@
-package router
+package providercodec
+
+// Source: internal/router/provider_chat.go:1:152@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 import (
 	"bufio"
@@ -11,7 +13,7 @@ import (
 
 type chatEndpoint struct{}
 
-func (chatEndpoint) encode(model string, history []providerMessage, tools []map[string]any, o providerOptions, d providerDiagnostics) (map[string]any, error) {
+func (chatEndpoint) encode(model string, history []providerMessage, tools []map[string]any, o providerOptions, d Diagnostics) (map[string]any, error) {
 	body := providerRequestBody(model, o)
 	body["stream_options"] = map[string]any{"include_usage": true}
 	var wireTools []any
@@ -35,7 +37,7 @@ func (chatEndpoint) encode(model string, history []providerMessage, tools []map[
 		body["reasoning_effort"] = o.effort
 	}
 	if o.maxOutput != nil {
-		return nil, fmt.Errorf("%s Chat Completions cannot enforce max_output_tokens including reasoning; omit this unsupported setting", d.subject)
+		return nil, fmt.Errorf("%s Chat Completions cannot enforce max_output_tokens including reasoning; omit this unsupported setting", d.Subject)
 	}
 	switch jsonString(o.textFormat, "type") {
 	case "json_object":
@@ -52,7 +54,7 @@ func (chatEndpoint) encode(model string, history []providerMessage, tools []map[
 	return body, nil
 }
 
-func (chatEndpoint) readStream(reader io.Reader, d providerDiagnostics, send func(providerChunk) error) error {
+func (chatEndpoint) readStream(reader io.Reader, d Diagnostics, send func(providerChunk) error) error {
 	return readChatChunks(reader, d, send)
 }
 
@@ -98,7 +100,7 @@ func chatMessages(history []providerMessage) ([]map[string]any, error) {
 	return messages, nil
 }
 
-func readChatChunks(reader io.Reader, d providerDiagnostics, consume func(providerChunk) error) error {
+func readChatChunks(reader io.Reader, d Diagnostics, consume func(providerChunk) error) error {
 	done := false
 	decode := func(data string) error {
 		if data == "[DONE]" {
@@ -107,19 +109,19 @@ func readChatChunks(reader io.Reader, d providerDiagnostics, consume func(provid
 		}
 		var chunk providerChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			return d.streamError("invalid_json", fmt.Sprintf("invalid JSON in %s response stream", d.name))
+			return d.streamError("invalid_json", fmt.Sprintf("invalid JSON in %s response stream", d.Name))
 		}
 		return consume(chunk)
 	}
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64<<10), upstreamJSONBufferBytes)
+	scanner.Buffer(make([]byte, 64<<10), d.BufferBytes)
 	var data []string
 	budget := 0
 	for scanner.Scan() {
 		line := scanner.Text()
 		budget += len(line)
-		if budget > upstreamJSONBufferBytes {
-			return d.streamError("buffer_budget", fmt.Sprintf("%s response exceeds the router buffer budget", d.name))
+		if budget > d.BufferBytes {
+			return d.streamError("buffer_budget", fmt.Sprintf("%s response exceeds the router buffer budget", d.Name))
 		}
 		if line == "" {
 			if len(data) > 0 {
@@ -138,7 +140,7 @@ func readChatChunks(reader io.Reader, d providerDiagnostics, consume func(provid
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("read %s stream: %w", d.name, forwardCriticalDiagnostic(err))
+		return fmt.Errorf("read %s stream: %w", d.Name, d.ForwardError(err))
 	}
 	if !done && len(data) > 0 {
 		if err := decode(strings.Join(data, "\n")); err != nil {
@@ -146,7 +148,7 @@ func readChatChunks(reader io.Reader, d providerDiagnostics, consume func(provid
 		}
 	}
 	if !done {
-		return d.streamError("missing_done", fmt.Sprintf("%s stream ended without [DONE]", d.name))
+		return d.streamError("missing_done", fmt.Sprintf("%s stream ended without [DONE]", d.Name))
 	}
 	return nil
 }

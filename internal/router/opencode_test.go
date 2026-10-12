@@ -221,7 +221,7 @@ func TestOpenCodeReasoningToolReplay(t *testing.T) {
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"reasoning_content": "Think "}}}},
 		map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"reasoning_content": "first", "tool_calls": []any{map[string]any{"index": 0, "id": "call1", "function": map[string]string{"name": "exec", "arguments": `{"input":"exact\nprogram"}`}}}}, "finish_reason": "tool_calls"}}},
 	)
-	result, err := tr.readProviderStream(strings.NewReader(stream), func(map[string]any) error { return nil })
+	result, err := tr.codec.Read(strings.NewReader(stream), func(map[string]any) error { return nil }, openCodeTestFailureDetail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,11 +365,11 @@ func TestOpenCodeMixedReasoningMultiTurnReplay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, err := tr.readProviderStream(strings.NewReader(grokTestSSE(
+		result, err := tr.codec.Read(strings.NewReader(grokTestSSE(
 			map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{
 				"reasoning_content": "reasoning for " + answer, "content": answer,
 			}, "finish_reason": "stop"}}},
-		)), func(map[string]any) error { return nil })
+		)), func(map[string]any) error { return nil }, openCodeTestFailureDetail)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -455,21 +455,21 @@ func TestEveryEmbeddedGoModelHasAnEndpoint(t *testing.T) {
 			if err != nil || tr.body["model"] != item.ID {
 				t.Fatalf("Go model unavailable: %v", err)
 			}
-			switch tr.endpoint.(type) {
-			case chatEndpoint:
+			switch tr.format {
+			case "chat":
 				if tr.body["messages"] == nil {
 					t.Fatal("Chat endpoint body missing messages")
 				}
-			case messagesEndpoint:
+			case "anthropic":
 				if tr.body["max_tokens"] == nil {
 					t.Fatal("Anthropic endpoint body missing max_tokens")
 				}
-			case responsesEndpoint:
+			case "responses":
 				if tr.body["input"] == nil {
 					t.Fatal("Responses endpoint body missing input")
 				}
 			default:
-				t.Fatalf("unsupported endpoint adapter %T", tr.endpoint)
+				t.Fatalf("unsupported endpoint adapter %T", tr.format)
 			}
 		})
 	}

@@ -841,10 +841,10 @@ func (p *nativePreview) grokThink(thread, reasoning string) {
 	}
 	chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{}, "finish_reason": "stop"}}})
 	var events []map[string]any
-	if _, err := tr.readProviderStream(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
+	if _, err := tr.codec.Read(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
 		events = append(events, event)
 		return nil
-	}); err != nil {
+	}, grokTestFailureDetail); err != nil {
 		p.t.Fatal(err)
 	}
 	for _, event := range events {

@@ -1,17 +1,29 @@
 package router
 
-func testOpenCodeTranslation(service *openCodeService, model, format string, tools map[string]providerTool) *providerTranslation {
-	var endpoint providerEndpoint = chatEndpoint{}
-	switch format {
-	case "anthropic":
-		endpoint = messagesEndpoint{}
-	case "responses":
-		endpoint = responsesEndpoint{}
+import (
+	"testing"
+
+	"github.com/yusing/mekugi/internal/providercodec"
+)
+
+func testProviderRequest(t *testing.T, policy providercodec.Policy, model, format string, tools []any) *providerRequest {
+	t.Helper()
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"input": []any{}, "tools": tools}))
+	if err != nil {
+		t.Fatal(err)
 	}
-	return &providerTranslation{policy: openCodeTranslationPolicy(service, model, format), endpoint: endpoint, body: map[string]any{"model": model}, tools: tools}
+	body, codec, err := providercodec.Translate(request.fields, model, format, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &providerRequest{body: body, format: format, codec: codec}
 }
 
-func isResponsesEndpoint(endpoint providerEndpoint) bool {
-	_, ok := endpoint.(responsesEndpoint)
-	return ok
+func testOpenCodeTranslation(t *testing.T, service *openCodeService, model, format string, tools []any) *providerRequest {
+	return testProviderRequest(t, openCodeTranslationPolicy(service, model, format), model, format, tools)
+}
+
+func grokTestFailureDetail(body []byte) string { return newProviderHTTPError("Grok", 0, body).Error() }
+func openCodeTestFailureDetail(body []byte) string {
+	return newProviderHTTPError("OpenCode", 0, body).Error()
 }

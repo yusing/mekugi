@@ -155,7 +155,7 @@ func TestOpenCodeOnlineCatalogRefresh(t *testing.T) {
 		t.Fatal("format update lost, or changed an in-flight request")
 	}
 	tr, err := translateProviderRequest([]byte(`{"model":"opencode-go:brand-new","input":[]}`), &service)
-	if err != nil || !isResponsesEndpoint(tr.endpoint) || tr.body["input"] == nil {
+	if err != nil || tr.format != "responses" || tr.body["input"] == nil {
 		t.Fatalf("changed API not selected: %v", err)
 	}
 	cost = catalog.current().Models["opencode-go"]["brand-new"].Cost.estimate("", counts)

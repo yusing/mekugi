@@ -1,4 +1,6 @@
-package router
+package providercodec
+
+// Source: internal/router/provider_stream_decode.go:1:92@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 import (
 	"bufio"
@@ -11,9 +13,9 @@ import (
 	"github.com/yusing/mekugi/internal/chat"
 )
 
-func readEndpointSSE(reader io.Reader, d providerDiagnostics, consume func([]byte) (bool, error)) error {
+func readEndpointSSE(reader io.Reader, d Diagnostics, consume func([]byte) (bool, error)) error {
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64<<10), upstreamJSONBufferBytes)
+	scanner.Buffer(make([]byte, 64<<10), d.BufferBytes)
 	var data []string
 	budget := 0
 	flush := func() (bool, error) {
@@ -27,8 +29,8 @@ func readEndpointSSE(reader io.Reader, d providerDiagnostics, consume func([]byt
 	for scanner.Scan() {
 		line := scanner.Text()
 		budget += len(line)
-		if budget > upstreamJSONBufferBytes {
-			return d.streamError("invalid", fmt.Sprintf("%s response exceeds the router buffer budget", d.name))
+		if budget > d.BufferBytes {
+			return d.streamError("invalid", fmt.Sprintf("%s response exceeds the router buffer budget", d.Name))
 		}
 		if line == "" {
 			done, err := flush()
@@ -40,12 +42,12 @@ func readEndpointSSE(reader io.Reader, d providerDiagnostics, consume func([]byt
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return forwardCriticalDiagnostic(err)
+		return d.ForwardError(err)
 	}
 	if done, err := flush(); err != nil || done {
 		return err
 	}
-	return d.streamError("invalid", fmt.Sprintf("%s stream ended without its terminal event", d.name))
+	return d.streamError("invalid", fmt.Sprintf("%s stream ended without its terminal event", d.Name))
 }
 
 func providerChunkDelta(delta providerDelta) providerChunk {
@@ -71,10 +73,10 @@ func providerChunkFinish(reason string) providerChunk {
 
 // Keep the signed-count bounds previously enforced by decoding the synthetic
 // Chat wire payload. Provider usage can be unsigned; the shared consumer is not.
-func endpointUsage(d providerDiagnostics, input, output, cached, written, reasoning uint64) (*providerUsage, error) {
+func endpointUsage(d Diagnostics, input, output, cached, written, reasoning uint64) (*providerUsage, error) {
 	for _, count := range []uint64{input, output, cached, written, reasoning} {
 		if count > math.MaxInt64 {
-			return nil, d.streamError("invalid_json", "invalid JSON in "+d.name+" response stream")
+			return nil, d.streamError("invalid_json", "invalid JSON in "+d.Name+" response stream")
 		}
 	}
 	usage := &providerUsage{PromptTokens: int64(input), CompletionTokens: int64(output)}

@@ -1,4 +1,6 @@
-package router
+package providercodec
+
+// Source: internal/router/provider_messages.go:1:326@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 import (
 	"encoding/json/jsontext"
@@ -12,7 +14,7 @@ import (
 type messagesEndpoint struct{}
 
 // Source: internal/router/grok_protocol.go:339:473@413bbaa9b9202042199c753690febe7bc1358fa6 translateChatRequest
-func (messagesEndpoint) encode(model string, history []providerMessage, tools []map[string]any, o providerOptions, d providerDiagnostics) (map[string]any, error) {
+func (messagesEndpoint) encode(model string, history []providerMessage, tools []map[string]any, o providerOptions, d Diagnostics) (map[string]any, error) {
 	body := providerRequestBody(model, o)
 	body["max_tokens"] = 32768
 	var wireTools []any
@@ -36,7 +38,7 @@ func (messagesEndpoint) encode(model string, history []providerMessage, tools []
 	if o.parallel != nil {
 		var enabled bool
 		if json.Unmarshal(o.parallel, &enabled) != nil {
-			return nil, fmt.Errorf("invalid %s parallel tool setting", d.name)
+			return nil, fmt.Errorf("invalid %s parallel tool setting", d.Name)
 		}
 		choice, _ := body["tool_choice"].(map[string]any)
 		if choice == nil {
@@ -54,7 +56,7 @@ func (messagesEndpoint) encode(model string, history []providerMessage, tools []
 	}
 	switch jsonString(o.textFormat, "type") {
 	case "json_object":
-		return nil, fmt.Errorf("%s Messages requires a JSON schema for structured output", d.name)
+		return nil, fmt.Errorf("%s Messages requires a JSON schema for structured output", d.Name)
 	case "json_schema":
 		outputConfig["format"] = map[string]any{"type": "json_schema", "schema": o.textFormat["schema"]}
 	}
@@ -84,7 +86,7 @@ func (messagesEndpoint) encode(model string, history []providerMessage, tools []
 		for _, call := range message.calls {
 			arguments := jsontext.Value(call.arguments)
 			if arguments.Kind() != '{' {
-				return nil, fmt.Errorf("%s Messages tool arguments must be JSON objects", d.name)
+				return nil, fmt.Errorf("%s Messages tool arguments must be JSON objects", d.Name)
 			}
 			blocks = append(blocks, map[string]any{"type": "tool_use", "id": call.id, "name": call.name, "input": arguments})
 		}
@@ -103,11 +105,11 @@ func (messagesEndpoint) encode(model string, history []providerMessage, tools []
 	return body, nil
 }
 
-func (messagesEndpoint) readStream(reader io.Reader, d providerDiagnostics, send func(providerChunk) error) error {
+func (messagesEndpoint) readStream(reader io.Reader, d Diagnostics, send func(providerChunk) error) error {
 	return normalizeAnthropicStream(reader, d, send)
 }
 
-func messagesContent(value any, role string, d providerDiagnostics) ([]any, error) {
+func messagesContent(value any, role string, d Diagnostics) ([]any, error) {
 	return endpointContent(value, func(part map[string]any) (map[string]any, error) {
 		switch part["type"] {
 		case "text":
@@ -116,7 +118,7 @@ func messagesContent(value any, role string, d providerDiagnostics) ([]any, erro
 			return map[string]any{"type": "text", "text": part["refusal"]}, nil
 		case "image_url":
 			if role == "system" || role == "assistant" {
-				return nil, fmt.Errorf("%s Messages only supports images in user/tool input", d.name)
+				return nil, fmt.Errorf("%s Messages only supports images in user/tool input", d.Name)
 			}
 			image := part["image_url"].(map[string]string)
 			url := image["url"]
@@ -124,13 +126,13 @@ func messagesContent(value any, role string, d providerDiagnostics) ([]any, erro
 			if data, ok := strings.CutPrefix(url, "data:"); ok {
 				media, payload, ok := strings.Cut(data, ";base64,")
 				if !ok {
-					return nil, fmt.Errorf("%s image data must be base64 encoded", d.name)
+					return nil, fmt.Errorf("%s image data must be base64 encoded", d.Name)
 				}
 				source = map[string]any{"type": "base64", "media_type": media, "data": payload}
 			}
 			return map[string]any{"type": "image", "source": source}, nil
 		default:
-			return nil, fmt.Errorf("unsupported %s content part", d.name)
+			return nil, fmt.Errorf("unsupported %s content part", d.Name)
 		}
 	}, d)
 }
@@ -144,7 +146,7 @@ type anthropicStreamBlock struct {
 }
 
 // Source: internal/router/opencode_stream.go:117:296@413bbaa9b9202042199c753690febe7bc1358fa6 normalizeAnthropicStream
-func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func(providerChunk) error) error {
+func normalizeAnthropicStream(reader io.Reader, d Diagnostics, send func(providerChunk) error) error {
 	blocks := map[int]*anthropicStreamBlock{}
 	started := false
 	nextBlock, nextTool := 0, 0
@@ -156,7 +158,7 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 		}
 		var update map[string]jsontext.Value
 		if json.Unmarshal(raw, &update) != nil {
-			return d.streamError("invalid", fmt.Sprintf("Invalid %s Messages usage", d.name))
+			return d.streamError("invalid", fmt.Sprintf("Invalid %s Messages usage", d.Name))
 		}
 		maps.Copy(usage, update)
 		return nil
@@ -174,7 +176,7 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 			} `json:"message"`
 		}
 		if json.Unmarshal(data, &event) != nil {
-			return false, d.streamError("invalid", fmt.Sprintf("Invalid %s Messages event", d.name))
+			return false, d.streamError("invalid", fmt.Sprintf("Invalid %s Messages event", d.Name))
 		}
 		textField := func(fields map[string]jsontext.Value, key string) string {
 			var value string
@@ -189,7 +191,7 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 		}
 		if event.Type == "message_start" {
 			if started {
-				return false, d.streamError("invalid", fmt.Sprintf("Duplicate %s message start", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("Duplicate %s message start", d.Name))
 			}
 			started = true
 			if err := mergeUsage(event.Message.Usage); err != nil {
@@ -198,12 +200,12 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 			return false, send(providerChunk{Model: event.Message.Model})
 		}
 		if !started || (finish != "" && event.Type != "message_stop") {
-			return false, d.streamError("invalid", fmt.Sprintf("%s Messages event outside an active message", d.name))
+			return false, d.streamError("invalid", fmt.Sprintf("%s Messages event outside an active message", d.Name))
 		}
 		switch event.Type {
 		case "content_block_start":
 			if event.Index != nextBlock || len(event.ContentBlock) == 0 {
-				return false, d.streamError("invalid", fmt.Sprintf("Invalid %s content-block index", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("Invalid %s content-block index", d.Name))
 			}
 			nextBlock++
 			block := &anthropicStreamBlock{raw: event.ContentBlock, kind: textField(event.ContentBlock, "type")}
@@ -224,12 +226,12 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 				}
 			case "redacted_thinking", "tool_use":
 			default:
-				return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s content block", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s content block", d.Name))
 			}
 		case "content_block_delta":
 			block := blocks[event.Index]
 			if block == nil {
-				return false, d.streamError("invalid", fmt.Sprintf("%s delta has no active content block", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("%s delta has no active content block", d.Name))
 			}
 			kind := textField(event.Delta, "type")
 			switch {
@@ -246,12 +248,12 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 			case kind == "input_json_delta" && block.kind == "tool_use":
 				block.arguments.WriteString(textField(event.Delta, "partial_json"))
 			default:
-				return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s content delta", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s content delta", d.Name))
 			}
 		case "content_block_stop":
 			block := blocks[event.Index]
 			if block == nil {
-				return false, d.streamError("invalid", fmt.Sprintf("%s stopped an unknown content block", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("%s stopped an unknown content block", d.Name))
 			}
 			delete(blocks, event.Index)
 			switch block.kind {
@@ -274,7 +276,7 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 			}
 		case "message_delta":
 			if len(blocks) != 0 {
-				return false, d.streamError("invalid", fmt.Sprintf("%s ended a message with unfinished content", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("%s ended a message with unfinished content", d.Name))
 			}
 			if err := mergeUsage(event.Usage); err != nil {
 				return false, err
@@ -289,11 +291,11 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 			case "refusal":
 				finish = "content_filter"
 			default:
-				return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s stop reason", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s stop reason", d.Name))
 			}
 		case "message_stop":
 			if finish == "" || len(blocks) != 0 {
-				return false, d.streamError("invalid", fmt.Sprintf("%s message stopped before completion", d.name))
+				return false, d.streamError("invalid", fmt.Sprintf("%s message stopped before completion", d.Name))
 			}
 			count := func(key string) (uint64, bool) {
 				var value uint64
@@ -306,7 +308,7 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 			written, _ := count("cache_creation_input_tokens")
 			if inputOK && outputOK {
 				if ^uint64(0)-input < cached || ^uint64(0)-input-cached < written {
-					return false, d.streamError("invalid", fmt.Sprintf("Invalid %s token counts", d.name))
+					return false, d.streamError("invalid", fmt.Sprintf("Invalid %s token counts", d.Name))
 				}
 				counts, err := endpointUsage(d, input+cached+written, output, cached, written, 0)
 				if err != nil {
@@ -318,7 +320,7 @@ func normalizeAnthropicStream(reader io.Reader, d providerDiagnostics, send func
 			}
 			return true, send(providerChunkFinish(finish))
 		default:
-			return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s Messages event", d.name))
+			return false, d.streamError("invalid", fmt.Sprintf("Unsupported %s Messages event", d.Name))
 		}
 		// Non-text progress still reaches the shared stream reader.
 		return false, send(providerChunk{})

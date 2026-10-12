@@ -44,13 +44,13 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		if session := openCodeSessionID(g.openCode.prefix, headers.Get(threadIDHeader)); session != "" {
 			credentials.headers.Set("x-opencode-session", session)
 		}
-		switch tr.endpoint.(type) {
-		case messagesEndpoint:
+		switch tr.format {
+		case "anthropic":
 			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/messages"
 			credentials.headers.Del("Authorization")
 			credentials.headers.Set("x-api-key", g.openCode.apiKey)
 			credentials.headers.Set("anthropic-version", "2023-06-01")
-		case responsesEndpoint:
+		case "responses":
 			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/responses"
 		}
 	} else {
@@ -152,11 +152,11 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		model, _ := tr.body["model"].(string)
 		price = new(service.snapshot.Models[service.prefix][model].Cost)
 	}
-	tr.providerFailureDetail = func(body []byte) string {
+	failureDetail := func(body []byte) string {
 		return newProviderHTTPError(label, 0, body, credentials.headers, headers).Error()
 	}
 	if !tr.stream {
-		result, err := tr.readProviderStream(upstream, func(map[string]any) error { return nil })
+		result, err := tr.codec.Read(upstream, func(map[string]any) error { return nil }, failureDetail)
 		if err != nil {
 			upstream.Close()
 			return nil, err
@@ -170,10 +170,10 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		_, err := tr.readProviderStream(upstream, func(event map[string]any) error {
+		_, err := tr.codec.Read(upstream, func(event map[string]any) error {
 			_, err := fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", event["type"], mustMarshalJSON(event))
 			return err
-		})
+		}, failureDetail)
 		streamErr = err
 		writer.CloseWithError(err)
 	}()
