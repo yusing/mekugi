@@ -175,3 +175,50 @@ func TestJournalOrchestrateAcceptanceMCP(t *testing.T) {
 		t.Fatal("event replay lost integration proof", restored)
 	}
 }
+
+func TestJournalOrchestrateAcceptanceLinearHistory(t *testing.T) {
+	merge := func(t *testing.T, repository string) {
+		t.Helper()
+		gitTestRun(t, repository, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "side")
+		side := submoduleCleanupGit(t, repository, "rev-parse", "HEAD")
+		gitTestRun(t, repository, "reset", "--hard", "HEAD^")
+		gitTestRun(t, repository, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "main")
+		gitTestRun(t, repository, "-c", "user.name=test", "-c", "user.email=test@example.com", "merge", "--no-ff", "-qm", "merge", side)
+	}
+	for _, scenario := range []string{"baseline", "child", "source", "nested-child", "nested-source"} {
+		t.Run(scenario, func(t *testing.T) {
+			var u *appServerUI
+			if strings.HasPrefix(scenario, "nested-") {
+				u = submoduleCleanupUI(t)
+			} else {
+				source := orchestrateVCSWorkspace(t, "git")
+				merge(t, source) // Historical merges must not prevent new linear work.
+				u = orchestrateCleanupUIInWorkspace(t, source)
+			}
+			b := u.orchestrateThreads["child"].batch
+			repository := u.session.cwd
+			if scenario == "child" || scenario == "nested-child" {
+				repository = b.Checkout
+			}
+			if strings.HasPrefix(scenario, "nested-") {
+				merge(t, filepath.Join(repository, b.Submodules[1].Path))
+				for _, dir := range []string{filepath.Join(repository, b.Submodules[0].Path), repository} {
+					gitTestRun(t, dir, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-qam", "record gitlink")
+				}
+			} else if scenario != "baseline" {
+				merge(t, repository)
+			}
+			if scenario == "child" || scenario == "nested-child" {
+				gitTestRun(t, u.session.cwd, "merge", "--ff-only", b.Branch)
+			}
+			_, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}})
+			if scenario == "baseline" {
+				if err != nil {
+					t.Fatal("historical merge rejected", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "merge commits after the batch baseline") {
+				t.Fatal("nonlinear integration was not rejected", err)
+			}
+		})
+	}
+}

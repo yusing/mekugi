@@ -169,6 +169,33 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 	}
 }
 
+func TestAppServerOrchestrateCleanupAfterRunningMessage(t *testing.T) {
+	u := orchestrateCleanupUI(t)
+	w := u.client.Input.(*appServerTestInput)
+	w.Reset()
+	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"working"}}}`)
+	c := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "send_message", callID: "separate-commit", input: orchestrateSpawnInput{Message: "Keep this fix as a separate commit"}, reply: make(chan orchestrateResult, 1)}
+	u.queueOrchestratedFollowup(c)
+	drainOrchestrateWork(t, u)
+	if w.Len() == 0 {
+		t.Fatal("running message was queued instead of steered")
+	}
+	request := btwTestRequest(t, w, "turn/steer", "child")
+	orchestrateTestReply(t, u, request, `{"turnId":"working"}`)
+	drainOrchestrateWork(t, u)
+	if result := <-c.reply; result.err != nil || result.delivery.State != "delivered" {
+		t.Fatal("running direction was not delivered", result)
+	}
+	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"working","status":"completed"}}}`)
+	if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+		t.Fatal(err)
+	}
+	orchestrateTargetMCPClient(t, u, "cleanup")("main", false)
+	if w.Len() != 0 {
+		t.Fatal("accepted delivery required another host turn", w.String())
+	}
+}
+
 func TestAppServerOrchestrateCleanupRetained(t *testing.T) {
 	for _, state := range []string{"idle", "working", "question", "canceled"} {
 		t.Run(state, func(t *testing.T) {

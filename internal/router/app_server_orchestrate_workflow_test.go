@@ -10,9 +10,20 @@ import (
 
 func requireOrchestrateToolMechanics(t *testing.T, input string) {
 	t.Helper()
-	for _, policy := range []string{"review", "periodic progress", "Plan independent", "Dispatch all batches", "prepare: task_name", "spawn_agent: task_name", "queues sibling input", "Repeats return retained"} {
+	for _, policy := range []string{"periodic progress", "Plan independent", "Dispatch all batches", "prepare: task_name", "spawn_agent: task_name", "queues sibling input", "Repeats return retained"} {
 		if strings.Contains(input, policy) {
 			t.Fatalf("tool instructions include workflow policy %q: %s", policy, input)
+		}
+	}
+	var required []string
+	if strings.Contains(input, "Your coordinator is main.") {
+		required = []string{"Implement and validate your assigned changes", "local commits are part of delivery", "Main reviews and integrates", "read-only assignments"}
+	} else {
+		required = []string{"Children implement and validate", "Main coordinates, reviews and integrates", "local commits and linear Git integration", "explicit user restrictions", "Diagnosis-only assignments remain read-only"}
+	}
+	for _, rule := range required {
+		if !strings.Contains(input, rule) {
+			t.Fatalf("workflow omitted responsibility %q: %s", rule, input)
 		}
 	}
 }

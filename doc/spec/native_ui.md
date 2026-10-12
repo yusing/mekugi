@@ -276,8 +276,10 @@ the durable records retain each path and its reason.
 
 The shell frames Main on the left and one right pane: the saved diff (2),
 Activity (3), or Journal (4), each filling the pane. A roster (5) below them fits its
-content, four rows unfocused and up to 40% of the screen when focused; finished
-agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
+content and available terminal space, expanding for Main and working rows.
+Main and working rows stay pinned above
+scrollable idle/history rows; very short terminals prioritize Main. Manual
+collapse and resize remain available, and finished agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
 before the status bar when terminal height permits. Collapsed rows place activity directly after the name
 without reserving name-column padding. Each row shows state, timer, tokens, cost
 and turns, dropping from the right when narrow. Observed roles color the status
@@ -294,7 +296,8 @@ styling, while native subagents retain their identity and role colors. The
 roster has one selection and collapse state: click its title or press `c` while
 focused to collapse or expand it; dragging its title adjusts its height.
 Thread rows switch the viewed shell; native subagent rows select its local
-Activity filter. Switching preserves each thread's local filter.
+Activity filter. Switching keeps the visible Activity, Diff or Journal pane and
+keyboard focus while preserving each thread's local filter.
 Uncolored labels in pane and composer borders use the terminal text foreground,
 not the border's decorative foreground. Faint styling and explicit label colors
 remain intact.

@@ -187,8 +187,11 @@ details](doc/spec/native_ui.md).
 
 ### Orchestration
 
-Use `/orchestrate ISSUES` in Main's composer to coordinate parallel batches in
-isolated checkouts. Supported sources are Git, SVN and unversioned directories.
+Use `/orchestrate ISSUES` in Main's composer to have children implement and validate
+changes in isolated checkouts while Main coordinates, reviews and integrates.
+For change requests, local commits and linear Git integration are included,
+subject to explicit restrictions; diagnosis-only assignments stay read-only.
+Supported sources are Git, SVN and unversioned directories.
 Git is required; SVN sources also need the SVN client. Git and SVN batches start
 from locally recorded committed baselines, excluding local edits; unversioned
 batches snapshot the current tree with ignore rules. Main prepares required ignored
@@ -196,12 +199,13 @@ inputs before starting each fresh child thread.
 
 Bare `/orchestrate` opens this Main's batch picker. Enter on an Orchestration row
 in Agents switches threads; `Ctrl-B`, then `[` / `]` cycles them. Each thread keeps
-its draft and panes while background threads continue working. Input targets the
-viewed thread; labeled questions and approvals return answers to their source.
+its draft and local Activity filter while background threads continue working.
+Switching keeps the visible Activity, Diff or Journal pane and keyboard focus.
+Input targets the viewed thread; labeled questions and approvals return answers to their source.
 Orchestration calls show their status in Main or Activity; click returned output
 or errors to inspect them. A completed call does not mean its batch is complete.
 
-Main reviews and integrates Git batches with native Git, or SVN/unversioned batches
+Main reviews and integrates Git batches with linear native Git history, or SVN/unversioned batches
 with shadow writeback, then accepts their journal tasks. Explicit cleanup removes
 accepted, idle, clean run-owned checkouts and unchanged copied evidence. Branches,
 manifests, journals and shadow history remain; unfinished or unintegrated work stays.

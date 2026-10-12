@@ -186,12 +186,16 @@ with `agent: "main"`, while other agent selectors retain their native local path
 but cannot reveal sibling results. Child completion leaves Main's integration task
 unchanged.
 
-Git batches use native Git integration, preserving unrelated source edits.
+Git batches use linear native Git integration, preserving unrelated source edits.
+Child and source history added after each recorded baseline must contain no merge
+commits, including recorded submodules. Existing merges at or before the baseline
+remain unchanged. Main integrates changed submodule commits locally and records
+their results in the source's committed gitlinks before accepting the superproject.
 Shadow batches use `integrate`. Main marks its bound journal
 task `accepted` only after integration is verified. For Git,
 acceptance verifies that the batch's commits are reachable from the source's
-committed revision or have patch-equivalent commits there. Unmatched commits,
-including unintegrated merge commits, keep acceptance open. For shadow, it verifies
+committed revision or have patch-equivalent commits there. Unmatched commits or
+new merge commits keep acceptance open. For shadow, it verifies
 confirmed writeback and the current merged paths. It records the batch tip and source revision or merged tree
 before changing the task. The child checkout must retain its recorded location
 and branch and have
@@ -337,15 +341,19 @@ the checkout; successfully retained commits remain available after a later failu
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
-user input carries the issues and a short instruction to use orchestration, similar
-to native collaboration spawning. Tool descriptions and parameter help belong
+user input carries the issues and the division of work: children implement and
+validate requested changes in isolated checkouts; Main coordinates, reviews and
+integrates their results. For change requests, local commits and linear Git
+integration are part of the invoked workflow, subject to explicit user restrictions.
+Diagnosis-only assignments remain read-only. Tool descriptions and parameter help belong
 only to MCP metadata, not composer input or recovery instructions. Later ordinary
 input does not repeat the instruction or change tool exposure. Attachments, busy
 input, rejection and cancellation use the composer lifecycle. Fresh children
-receive their coordinator identity, journal access and assignment. Codex sets their
+receive their coordinator identity, journal access, implementation and delivery
+responsibility, and assignment. Codex sets their
 working directory when it starts the thread.
 Caller guidance and the explicit assignment retain their own policy.
-Context resets restore this minimal run context once from durable records;
+Context resets restore these responsibilities once from durable records;
 native descendants retain their existing guidance.
 Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.
 It shows concise task names, lifecycle and available live timer, token and cost metrics.
@@ -353,8 +361,11 @@ Resumed batch roots appear only in this group, never as UUID-named native agents
 Selecting a subscribed thread switches the viewed shell without starting a turn
 or reloading history. Prepared batches remain visible before launch. Retained
 threads that are not subscribed remain visible and resume when selected.
-Resume restores saved Diff before accepting input, including when its scope
-was already observed before the thread view opened.
+Fresh and resumed child views admit the current Diff scope when they open,
+including scope observed before the view registered. Resume restores saved Diff
+before accepting input. Native descendant admission also reapplies current scope
+through the same per-root filter, so changes observed before ancestry was known
+become visible without admitting foreign or Main changes.
 An empty run offers `/orchestrate ISSUES`; Escape closes the picker.
 
 Orchestration calls use the shared subagent event presentation in the caller's
@@ -373,7 +384,11 @@ result. Restored calls retain their recorded outcomes without reviving work.
 The Agents pane (5) lists the coordinator and its batch threads together with
 the viewed thread's native subagents. Independent thread rows use italic and
 accent styling; native subagents retain their identity and role colors. The
-panel has one focus, selection, collapse state and height. Subscribed threads use
+panel has one focus, selection, collapse state and height. Main stays visible.
+Within available terminal space, the roster expands for Main and working rows;
+when idle/history rows need scrolling, Main and working rows stay pinned above
+them. A very short terminal prioritizes Main. Manual collapse and resize remain
+available. Subscribed threads use
 the same current-activity summaries and metric columns as native subagents,
 including captured edit counts from their own workspace and caller identity.
 The viewed root keeps its context usage and output rate in the composer only.
@@ -382,13 +397,20 @@ other independent threads.
 Unavailable threads retain their observed lifecycle state. Displayed lifecycle
 labels use sentence case. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
 cycle these threads, resuming a retained confirmed thread when needed. Activity excludes
-the viewed root and shows only its native subagents. Switching preserves the destination’s selected pane and native
-agent filter. Native child filters remain local to their thread. Without orchestration navigation, these shortcuts resize
+the viewed root and shows only its native subagents. Switching keeps the currently
+visible Activity, Diff or Journal pane and keyboard focus, with the destination
+thread's local native-agent filter. Without orchestration navigation, these shortcuts resize
 the Diff navigator. The Main pane title shows `main` or `main › batch`.
 Transcript, Activity, native Agents, Journal, Diff, settings and unsent drafts
 belong to the viewed thread. Switching uses the subscribed in-memory state,
 without resuming a thread or reloading history. Background threads continue to
-receive events and process their existing input lifecycle. Pending questions and
+receive events and process their existing input lifecycle. Native events that
+precede readable host metadata stay with their originating thread until complete,
+unconflicted authenticated ancestry admits them to an already subscribed root.
+They then enter that root's Activity in arrival order. Failed observational reads
+recheck known identity, and later identity can resolve waiting events without
+another host notification. Resolution clears only that thread's ancestry notice;
+unrelated notices and unresolved or conflicting ancestry remain intact. Pending questions and
 approvals appear on the viewed shell with their source thread. Their answer
 editors stay with the source across switching; hiding restores the viewed draft.
 Replies, denial feedback and interruption target the originating thread.

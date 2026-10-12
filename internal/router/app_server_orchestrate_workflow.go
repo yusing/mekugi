@@ -3,7 +3,7 @@ package router
 import "strings"
 
 // Tool descriptions and parameter help belong to MCP metadata.
-const orchestrateCoordinatorInstructions = `Use tools.mcp__orchestrate__spawn_agent, similar to mekugi_collaboration.spawn_agent.`
+const orchestrateCoordinatorInstructions = `Use tools.mcp__orchestrate__spawn_agent for isolated implementation batches. Children implement and validate requested changes; Main coordinates, reviews and integrates their results. For change requests, this workflow includes local commits and linear Git integration, subject to explicit user restrictions. Diagnosis-only assignments remain read-only.`
 
 const orchestrateWorkflow = orchestrateCoordinatorInstructions + "\nIssues:\n"
 
@@ -27,6 +27,7 @@ func (u *appServerUI) expandOrchestrate() bool {
 }
 
 const orchestrateChildInstructions = `Your coordinator is main. Main's journal is readable with agent:"main"; your journal root is independent.
+Implement and validate your assigned changes in this checkout. For change requests, local commits are part of delivery; keep Git history linear. Main reviews and integrates your result. Honor explicit user restrictions and read-only assignments.
 `
 
 // relatedJournals has verified this root's durable run membership before rendering.

@@ -11,7 +11,12 @@ Child attribution uses validated stable thread relationships and canonical agent
 identity, never routing-session IDs or message text. Request preparation precedes
 identity admission. Deferred observations retain their originating thread rather
 than borrowing the identity of a later draining request. Ambiguous ancestry suppresses
-projection without suppressing execution or substantive child output.
+projection without suppressing execution or substantive child output. Native
+events waiting for host metadata retain their source thread and arrival order.
+Complete, unconflicted authenticated ancestry can admit them to an already
+subscribed root after an observational read fails or later identity arrives.
+Recovery changes presentation only; it neither resumes a process nor creates an
+execution request.
 
 The native client binds its root to the activity collector for scoped observations. App-server events supply live activity; authenticated recipient-input
 observations supplement assignment and directed-message bodies. Those observations
