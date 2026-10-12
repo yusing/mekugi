@@ -71,6 +71,8 @@ func TestExecTrackDashSegments(t *testing.T) {
 		"cat <<'EOF'\nheredoc\nEOF\nprintf tail",
 		"printf first; exit 7; printf never",
 		"printf first; echo ${missing:?fatal}; printf never",
+		"true; if [ \"$?\" -eq 0 ]; then printf formatted && printf tested; fi",
+		"if false; then printf never; elif true; then false; else printf never; fi; printf \"status %s\" \"$?\"",
 		"printf single",
 		"printf '%s' $?",
 		"exit",

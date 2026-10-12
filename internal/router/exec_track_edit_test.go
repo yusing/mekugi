@@ -22,7 +22,7 @@ import (
 
 func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
-	for _, edit := range []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPath('other.go').write_text('package p; var B=2\\n')\nPY\ngofmt -w source.go other.go"} {
+	for _, edit := range []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPath('other.go').write_text('package p; var B=2\\n')\nPY\ngit --version >/dev/null\ngofmt -w source.go other.go"} {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
@@ -42,13 +42,17 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			// The following command cannot exit until the test has inspected a
 			// real terminal frame and the preview's completed filesystem view.
 			script := edit + "\nprintf 'test running\\n'; read -r answer"
+			if strings.HasPrefix(edit, "python3") {
+				writeTestFile(t, filepath.Join(workspace, "Makefile"), "test:\n\t@printf 'test running\\n'; read -r answer\n")
+				script = strings.TrimSuffix(edit, "\ngofmt -w source.go other.go") + "\nif [ \"$?\" -eq 0 ]; then gofmt -w source.go other.go && make test; fi"
+			}
 			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
 			}
 			if strings.Contains(edit, "git --version") {
 				var err error
-				script, err = vcsguard.Rewrite(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), vcsguard.Directory))
+				script, err = vcsguard.RewriteForItem(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), vcsguard.Directory), "edit")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -272,7 +276,7 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 	const original = "gofmt -w source.go; git --version"
 	const guard = "/private/session/vcs-guard"
-	for _, scenario := range []string{"current", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
+	for _, scenario := range []string{"current", "item-bound", "wrong item", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
 		t.Run(scenario, func(t *testing.T) {
 			hub := &execTrackHub{directory: "/private/session/exec", changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
 			script, directory := original, guard
@@ -282,7 +286,13 @@ func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 			if scenario == "lookalike helper" {
 				script = "gofmt -w source.go; /usr/bin/git --version"
 			}
-			wrapped, err := vcsguard.Rewrite(script, "/unrelated/mekugi-exec", directory)
+			item := ""
+			if scenario == "item-bound" {
+				item = "command"
+			} else if scenario == "wrong item" {
+				item = "other"
+			}
+			wrapped, err := vcsguard.RewriteForItem(script, "/unrelated/mekugi-exec", directory, item)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -302,7 +312,7 @@ func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 				hub.start([3]string{"main", "turn", "pending"}, "/bin/bash -lc "+quoteShellWord(original))
 			}
 			_, settled, _ := p.state()
-			if settled != (scenario == "current" || scenario == "captured guarded") {
+			if settled != (scenario == "current" || scenario == "item-bound" || scenario == "captured guarded") {
 				t.Fatalf("preview settled = %v", settled)
 			}
 		})

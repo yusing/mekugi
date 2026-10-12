@@ -19,7 +19,7 @@ import (
 
 // These are retained host observations, not guesses from the shell text. The
 // command item can arrive on either side of the change publication.
-func TestAppServerCapturedEditReceipts(t *testing.T) {
+func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
@@ -81,8 +81,8 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "cat-call", "type": "commandExecution", "command": "cat unrelated.go", "exitCode": 0}})
 	assertCapturedCommand(t, u.agents, "child", "cat-call", "Read", 0)
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
-		"id": "sibling-call", "type": "commandExecution", "command": "rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY", "exitCode": 0}})
+	sibling := appServerItem{ID: "sibling-call", Type: "commandExecution", Command: "/bin/bash -lc " + shellsyntax.QuoteArgument("rg needle src; python3 - <<'PY'\nopen('nested.go', 'w').write('PRIVATE_EDIT_SOURCE')\nPY"), ExitCode: new(0), DurationMS: new(int64(64))}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": sibling})
 	assertCapturedCommand(t, u.agents, "child", "sibling-call", "Search", 0)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "c", "item": map[string]any{
 		"id": "python-call", "type": "commandExecution", "command": "python3 - <<'PY'\nopen('nested.go','w').write('new')\nPY", "exitCode": 0}})
@@ -128,6 +128,24 @@ func TestAppServerCapturedEditReceipts(t *testing.T) {
 		ID: "cat-call", Type: "commandExecution", Command: "cat > direct.go", ExitCode: new(2),
 	}}}})
 	assertCapturedCommand(t, restored.view, "main", "cat-call", "Edit", 2)
+	restored.session.path("child")
+	restored.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: workspace, Turns: []appServerHistoryTurn{{ID: "c", Status: "completed", Items: []appServerItem{sibling}}}})
+	assertCapturedCommand(t, restored.agents, "child", sibling.ID, "Search", 0)
+	for _, view := range []*liveActivityView{u.agents, restored.agents} {
+		for _, entry := range view.entries {
+			if entry.native == nil || entry.native.item != sibling.ID {
+				continue
+			}
+			var rows []string
+			for _, block := range entry.blocks {
+				if block.Verb == "Edit" {
+					t.Fatalf("captured sibling retained edit intent: %+v", block)
+				}
+				rows = append(rows, view.painter.Block(block, 120)...)
+			}
+			assertNativeUISnapshot(t, "captured-edit-sibling-batch", rows)
+		}
+	}
 }
 
 func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, verb string, exit int) {
