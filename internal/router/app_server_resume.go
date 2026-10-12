@@ -350,6 +350,12 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		return
 	}
 	switch item.Type {
+	case "mcpToolCall":
+		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", CallID: item.ID,
+			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: "item/completed"}}
+		if u.session.orchestrationActivity(&entry, item, entry.native.phase, false) {
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
+		}
 	case "imageView":
 		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
 			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}

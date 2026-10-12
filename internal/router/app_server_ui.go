@@ -52,12 +52,18 @@ type appServerItem struct {
 	Results          []jsontext.Value          `json:"results"`
 	// Content is variant-specific: user input blocks or raw reasoning strings.
 	// Decode only userMessage content; reasoning presentation uses Summary.
-	Content           jsontext.Value                 `json:"content"`
-	Phase             string                         `json:"phase"`
-	ExitCode          *int                           `json:"exitCode"`
-	CommandActions    []appServerCommandAction       `json:"commandActions"`
-	Changes           []appServerFileChange          `json:"changes"`
-	Tool              string                         `json:"tool"`
+	Content        jsontext.Value           `json:"content"`
+	Phase          string                   `json:"phase"`
+	ExitCode       *int                     `json:"exitCode"`
+	CommandActions []appServerCommandAction `json:"commandActions"`
+	Changes        []appServerFileChange    `json:"changes"`
+	Tool           string                   `json:"tool"`
+	Server         string                   `json:"server"`
+	Arguments      jsontext.Value           `json:"arguments"`
+	Result         jsontext.Value           `json:"result"`
+	Error          *struct {
+		Message string `json:"message"`
+	} `json:"error"`
 	SenderThreadID    string                         `json:"senderThreadId"`
 	ReceiverThreadIDs []string                       `json:"receiverThreadIds"`
 	AgentsStates      map[string]appServerAgentState `json:"agentsStates"`

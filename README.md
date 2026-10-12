@@ -198,6 +198,8 @@ Bare `/orchestrate` opens this Main's batch picker. Enter on an Orchestration ro
 in Agents switches threads; `Ctrl-B`, then `[` / `]` cycles them. Each thread keeps
 its draft and panes while background threads continue working. Input targets the
 viewed thread; labeled questions and approvals return answers to their source.
+Orchestration calls show their status in Main or Activity; click returned output
+or errors to inspect them. A completed call does not mean its batch is complete.
 
 Main reviews and integrates Git batches with native Git, or SVN/unversioned batches
 with shadow writeback, then accepts their journal tasks. Explicit cleanup removes

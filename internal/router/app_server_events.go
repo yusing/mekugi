@@ -404,6 +404,11 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			break
 		}
 		switch item.Type {
+		case "mcpToolCall":
+			entry := activityPaneEntry{Seq: s.next(), Agent: agent, CallID: id, Observed: now, native: native}
+			if s.orchestrationActivity(&entry, item, m.Method, true) {
+				entries = append(entries, entry)
+			}
 		case "subAgentActivity":
 			if item.AgentThreadID != "" && item.AgentThreadID != u.thread {
 				old := s.path(item.AgentThreadID)

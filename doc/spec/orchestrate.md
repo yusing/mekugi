@@ -350,6 +350,13 @@ Resume restores saved Diff before accepting input, including when its scope
 was already observed before the thread view opened.
 An empty run offers `/orchestrate ISSUES`; Escape closes the picker.
 
+Orchestration MCP calls appear as ordinary operation rows in the caller's Main
+or Activity feed, with the tool, supplied batch target, observed call status and
+available duration. Returned text and errors use the existing output dialog.
+Completion describes the tool call, not the batch's work or its integration.
+Host item identity replaces a started row with its result. Restored calls retain
+their recorded outcomes without reviving an unfinished call.
+
 The Orchestration group in Agents lists the coordinator and its live batch
 threads. Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
 cycle these threads. Without orchestration navigation, these shortcuts resize

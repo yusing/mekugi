@@ -182,6 +182,7 @@ type liveActivityNativeItem struct {
 	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
 	output             *activityui.Output     // A command's retained host output, which the output dialog reads.
 	hook               *activityui.HookDetails
+	orchestration      *activityui.Block // Host MCP call observation, never batch execution state.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {

@@ -456,6 +456,10 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		return
 	}
 	switch item.Type {
+	case "mcpToolCall":
+		if s.orchestrationActivity(&entry, item, entry.native.phase, false) {
+			*entries = append(*entries, entry)
+		}
 	case "userMessage":
 		if blocks := appServerAttachmentBlocks(info.Cwd, item.Content); len(blocks) > 0 {
 			entry.Kind, entry.native.item = "attachments", item.ID+"/attachments"

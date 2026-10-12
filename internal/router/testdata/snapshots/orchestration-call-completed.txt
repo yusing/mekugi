@@ -1,0 +1,14 @@
+├ Orchestrate spawn_agent batch · call failed · 211ms
+│             ┆ coordinator permission profile is unavailable; cannot inherit permissions
+└ Orchestrate prepare batch · call completed · 80ms
+              ┆ Batch prepared at the committed baseline.
+
+
+
+
+
+
+
+╭────────────────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                      │
+╰─────────────────────────────────────────────────────────────────────────────────── 0% ─╯
