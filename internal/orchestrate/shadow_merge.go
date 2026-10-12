@@ -36,7 +36,7 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 			return errors.New("shadow merge requires a confirmed shadow batch")
 		}
 		for _, d := range m.Deliveries {
-			if (d.Target == thread || d.From == thread) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
+			if d.Target != main && (d.Target == thread || d.From == thread) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
 				return errors.New("shadow merge requires settled batch deliveries")
 			}
 		}

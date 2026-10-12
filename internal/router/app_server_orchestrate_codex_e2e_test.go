@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -428,39 +429,32 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if !asyncSeen || !syncSeen || !approvalSeen {
 		t.Fatalf("installed prompts missing provider evidence: async=%v sync=%v approval=%v", asyncSeen, syncSeen, approvalSeen)
 	}
-	mainInput := &orchestrateCommand{ctx: ctx, workspace: batch.Cwd, main: result.batch.Launch.ThreadID, target: "main", followup: true, callID: "installed-main-followup", input: orchestrateSpawnInput{Message: "Main follow-up probe."}, reply: make(chan orchestrateResult, 1)}
-	u.startOrchestratedChild(mainInput)
-	pump(func() bool { return len(mainInput.reply) > 0 && !u.busy() })
-	if got := <-mainInput.reply; got.err != nil || got.delivery == nil || got.delivery.State != "delivered" || got.delivery.TurnID == "" || u.draft != "Main draft" || u.thread != main {
-		t.Fatal("installed Main composer delivery", got)
+	for _, deferred := range []bool{false, true} {
+		mainInput := &orchestrateCommand{ctx: ctx, workspace: batch.Cwd, main: result.batch.Launch.ThreadID, target: "main", followup: true, deferred: deferred, callID: fmt.Sprint("installed-main-report-", deferred), input: orchestrateSpawnInput{Message: "Child report, not human input."}, reply: make(chan orchestrateResult, 1)}
+		u.startOrchestratedChild(mainInput)
+		pump(func() bool { return len(mainInput.reply) > 0 })
+		if got := <-mainInput.reply; got.err != nil || got.delivery.State != "reported" || got.delivery.TurnID != "" || u.draft != "Main draft" || u.thread != main || u.busy() {
+			t.Fatal("installed child report changed human input", got)
+		}
 	}
-	mainInputSeen := false
-	for len(provider.requests) > 0 {
-		mainInputSeen = strings.Contains(string(<-provider.requests), "Main follow-up probe.") || mainInputSeen
-	}
-	if !mainInputSeen {
-		t.Fatal("Main follow-up did not reach provider")
-	}
-	mainQueued := &orchestrateCommand{ctx: ctx, workspace: batch.Cwd, main: result.batch.Launch.ThreadID, target: "main", followup: true, deferred: true, callID: "installed-main-ordinary", input: orchestrateSpawnInput{Message: "Queued context for ordinary Main input."}, reply: make(chan orchestrateResult, 1)}
-	u.startOrchestratedChild(mainQueued)
-	pump(func() bool { return len(mainQueued.reply) > 0 })
-	if got := <-mainQueued.reply; got.err != nil || got.delivery.State != "queued" || u.busy() {
-		t.Fatal("ordinary Main queue", got)
+	if len(provider.requests) != 0 {
+		t.Fatal("child report reached the provider as user input")
 	}
 	u.unsent = []composerDraft{{text: "Main follow-up probe. Ordinary input."}}
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
-	pump(func() bool { return !u.busy() && u.orchestrateMainInput == nil })
-	if d, _, err := store.BeginDelivery(ctx, workspace, main, orchestrate.Delivery{ID: mainQueued.callID, From: result.batch.Launch.ThreadID, Target: main, Message: mainQueued.input.Message, Deferred: true}); err != nil || d.State != "delivered" || d.TurnID == "" || u.draft != "Main draft" {
-		t.Fatal("ordinary Main input did not acknowledge queued context", d, err)
-	}
-	mainInputSeen = false
+	pump(func() bool { return !u.busy() })
+	mainInputSeen := false
 	for len(provider.requests) > 0 {
-		mainInputSeen = strings.Contains(string(<-provider.requests), "Queued context for ordinary Main input.\\nMain follow-up probe. Ordinary input.") || mainInputSeen
+		body := string(<-provider.requests)
+		if strings.Contains(body, "Child report, not human input.") {
+			t.Fatal("ordinary user input included a child report")
+		}
+		mainInputSeen = strings.Contains(body, "Main follow-up probe. Ordinary input.") || mainInputSeen
 	}
 	if !mainInputSeen {
-		t.Fatal("ordinary queued Main input did not reach provider")
+		t.Fatal("ordinary human input did not reach provider")
 	}
 	if _, err := proxy.applyJournal(ctx, workspace, main, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), State: new("working"), Agent: "/root/batch"}}); err != nil {
 		t.Fatal(err)

@@ -31,7 +31,7 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				}
 			}
 			for _, d := range m.Deliveries {
-				if (d.Target == b.Launch.ThreadID || d.From == b.Launch.ThreadID) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
+				if d.Target != main && (d.Target == b.Launch.ThreadID || d.From == b.Launch.ThreadID) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
 					return errors.New("cleanup requires settled batch deliveries")
 				}
 			}

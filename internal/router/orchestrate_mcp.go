@@ -68,8 +68,8 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
 	for _, tool := range []struct{ name, description string }{
-		{"followup_task", "Start an idle turn or steer a running turn. Main and confirmed children can target batch task names or /root/task paths; children can target main through its composer. Repeats return retained delivery progress."},
-		{"send_message", "Queue input for the next turn without waking or steering. Main and confirmed children can target batch task names or /root/task paths; children can target main. Repeats return retained delivery progress."},
+		{"followup_task", "Start an idle batch turn or steer a running batch. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Repeats return retained progress."},
+		{"send_message", "Queue batch input without waking or steering. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Repeats return retained progress."},
 	} {
 		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target", "message"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}, "message": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateFollowupInput) (*mcp.CallToolResult, any, error) {
 			ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
@@ -92,7 +92,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return proxy.orchestration.call(command)
 		})
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next observed batch completion, journal blocker, failure, question or approval. Timeout ends only the wait. Blockers include thread, journal path and reason; prompts identify the host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateWaitInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next observed batch completion, message, journal blocker, failure, question or approval. Timeout ends only the wait. Messages identify their batch and sender thread; prompts identify the host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateWaitInput) (*mcp.CallToolResult, any, error) {
 		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
 		if err != nil {
 			return nil, nil, err

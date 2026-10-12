@@ -100,7 +100,6 @@ func (u *appServerUI) takeDraft() composerDraft {
 // restoreDrafts returns input to the composer ahead of the current draft.
 func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
 	parts = u.rejectQuestionParts(parts)
-	parts = slices.DeleteFunc(parts, func(part composerDraft) bool { return part.orchestrated })
 	if u.approvals.open && u.approvals.pending[0].denialChoice() >= 0 {
 		u.hideApprovals()
 		u.restoreDrafts(parts...)
@@ -137,12 +136,8 @@ func (u *appServerUI) editQueued() {
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
 func (u *appServerUI) flushInput() error {
-	u.cancelOrchestratedMainFollowups()
-	if u.orchestrateMainInput != nil {
-		return nil
-	}
 	if u.reset.active() {
-		if len(u.unsent) > 0 || len(u.queued) > 0 || len(u.orchestrateMainFollowups) > 0 {
+		if len(u.unsent) > 0 || len(u.queued) > 0 {
 			if err := u.reset.cancel(); err != nil {
 				return err
 			}
@@ -201,7 +196,7 @@ func (u *appServerUI) flushInput() error {
 	case !steer && len(u.queued) > 0:
 		parts, u.queued = questionSubmissionBatch(u.queued)
 	default:
-		return u.flushOrchestratedMainFollowup()
+		return nil
 	}
 	if u.waitForSkillBindings(parts) {
 		if fromUnsent {
@@ -221,14 +216,10 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.setNotice("Batch checkout unavailable; new turns are disabled", true)
 		return nil
 	}
-	if u.orchestrateMainInput == nil && len(parts) == 1 && parts[0].text == "/compact" {
+	if len(parts) == 1 && parts[0].text == "/compact" {
 		u.compaction.begin(parts[0].continueTask)
 		u.status = u.compactionProgressText() + "…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
-	}
-	if !steer && u.orchestrateMainInput == nil && u.navigation != nil && u.navigation.owner == u {
-		u.reserveOrchestratedMainTurn(parts)
-		return nil
 	}
 	for i := range parts {
 		u.bindSkills(&parts[i], true)
@@ -419,7 +410,6 @@ func (u *appServerUI) settleInput(turn string, interrupted bool) {
 // Only Escape with pending steers resends uncommitted input after interruption.
 func (u *appServerUI) settleSteers(interrupted bool) {
 	steers := u.steerParts(u.steers)
-	steers = slices.DeleteFunc(steers, func(part composerDraft) bool { return part.orchestrated })
 	u.steers = nil
 	sendNow := interrupted && u.sendSteersAfterInterrupt
 	u.sendSteersAfterInterrupt = false

@@ -451,23 +451,22 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	assertDelivery(take(result, false), "delivered", "sibling-turn")
 	queued = messageCall(t.Context(), "send_message", "child", "main", "first Main input", "main-queue")
 	dispatch()
-	assertDelivery(take(queued, false), "queued", "")
+	assertDelivery(take(queued, false), "reported", "")
 	queued = messageCall(t.Context(), "send_message", "sibling-child", "main", "second Main input", "main-queue-sibling")
 	dispatch()
-	assertDelivery(take(queued, false), "queued", "")
+	assertDelivery(take(queued, false), "reported", "")
 	if w.Len() != 0 {
 		t.Fatal("deferred Main input woke the coordinator")
 	}
 	result = followup(t.Context(), "child", "main", "coordinator wake", "main-alias")
 	dispatch()
-	mainRequest := appServerOneRequest(t, w, "turn/start", "first Main input\nsecond Main input\ncoordinator wake")
-	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"coordinator-followup"}}}`, mainRequest.ID))
-	assertDelivery(take(result, false), "delivered", "coordinator-followup")
+	assertDelivery(take(result, false), "reported", "")
 	queued = messageCall(t.Context(), "send_message", "child", "main", "first Main input", "main-queue")
 	dispatch()
-	assertDelivery(take(queued, false), "delivered", "coordinator-followup")
-	appServerTestTurn(t, u, "coordinator-followup")
-	appServerTestTurnEnd(t, u, "coordinator-followup", "completed")
+	assertDelivery(take(queued, false), "reported", "")
+	if w.Len() != 0 {
+		t.Fatal("child reports dispatched coordinator input")
+	}
 	// A native subagent does not acquire run-member authority by sharing cwd.
 	nativeCtx, nativeRelease, err := replay.beginSession(ctx, "native", "session")
 	if err != nil {

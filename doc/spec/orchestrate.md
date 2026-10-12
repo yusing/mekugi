@@ -158,23 +158,14 @@ Acknowledgement records which turn received the queued input. A rejected or
 undispatched canceled follow-up leaves that input queued; an uncertain dispatch
 requires inspection before resending. Repeating a message call never queues it twice.
 
-Confirmed child roots can also use `followup_task` with `target: "main"`.
-Main receives it through the ordinary composer lifecycle: an idle coordinator
-starts a turn and a running coordinator receives a steer. Settings, restoration,
-questions, compaction and pending input keep their existing admission gates.
-User drafts remain in their editor, and already queued user input takes priority.
-The run records intent and acknowledgement just as for batch follow-ups. Child
-messages are literal input, including text that resembles a slash command.
-Interrupted or rejected child input stays child-owned; it does not enter the
-user's draft or automatic composer resend. Local input rejection returns a
-delivery failure. Canceled waiting follow-ups release their departure gate.
-
-Confirmed children can use `send_message` with `target: "main"` without waking or
-steering it. Messages accompany Main's next ordinary input turn or idle follow-up,
-in arrival order before that input. Steers and context compaction leave them queued.
-Main's user attachments and draft remain intact. Rejection before delivery releases
-the messages back to the queue; uncertain dispatch remains retained for inspection.
-Restart restores queued input from the run, without reviving a turn.
+Confirmed child roots can use either messaging tool with `target: "main"`.
+The run retains the report and Main receives a `kind: "message"` event through
+`wait_agent`, identifying the sending batch and thread. Repeated calls return
+retained progress without another event. Child text never starts or steers a
+coordinator turn, enters the human composer, or accompanies user input.
+Previously queued child-to-Main reports remain inspectable without becoming
+user input. Human decision questions use Codex's native question tools and
+appear in the shared question UI with their source thread.
 
 ## REQ-ORCHESTRATE-005 — Cross-checkout journals
 

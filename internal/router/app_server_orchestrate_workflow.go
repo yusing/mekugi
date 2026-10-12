@@ -43,7 +43,7 @@ func (u *appServerUI) expandOrchestrate() bool {
 }
 
 func orchestrateChildInstructions(cwd string) string {
-	return fmt.Sprintf(`Work in %s. Your coordinator is main. Use tools.mcp__orchestrate__send_message({target,message}) to queue main or sibling input and tools.mcp__orchestrate__followup_task({target,message}) to start or steer main or a sibling. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Read Main's journal with agent:"main"; keep your own journal root independent. Ask your own decision questions. Main reviews and accepts your result after integration.
+	return fmt.Sprintf(`Work in %s. Your coordinator is main. Use tools.mcp__orchestrate__send_message({target,message}) to queue sibling input and tools.mcp__orchestrate__followup_task({target,message}) to start or steer a sibling. Either tool with target main reports an attributed event without starting or steering a user turn. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Read Main's journal with agent:"main"; keep your own journal root independent. Use stock request_user_input_async for human decision questions; messages to main are coordinator reports. Main reviews and accepts your result after integration.
 `, cwd)
 }
 

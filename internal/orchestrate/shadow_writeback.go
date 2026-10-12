@@ -67,7 +67,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 			return errors.New("writeback requires a confirmed shadow batch and merge plan")
 		}
 		for _, d := range m.Deliveries {
-			if (d.Target == thread || d.From == thread) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
+			if d.Target != main && (d.Target == thread || d.From == thread) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
 				return errors.New("shadow writeback requires settled batch deliveries")
 			}
 		}
