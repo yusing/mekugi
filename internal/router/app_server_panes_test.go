@@ -86,6 +86,27 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	}
 }
 
+func TestNativePaneStateMergedAgentsFocus(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	u := newAppServerSessionTestUI(t, "/workspace")
+	p := new(nativePanePersistence)
+	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p.path, []byte(`{"version":1,"focus":5}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.open(u.shell, "/workspace", "thread", true); err != nil {
+		t.Fatal(err)
+	}
+	if u.shell.focus != 3 {
+		t.Fatal("former thread panel focus did not restore Agents")
+	}
+}
+
 func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")

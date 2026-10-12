@@ -17,9 +17,6 @@ import (
 // Execution stays with the coordinator. Each subscribed root keeps the ordinary
 // session controller, including its composer, request correlation and shell.
 type orchestrateNavigation struct {
-	roster        *liveActivityView
-	collapsed     bool
-	height        int
 	closed        bool
 	owner, viewed *appServerUI
 	views         map[string]*appServerUI
@@ -366,12 +363,6 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		n.viewed.quitConfirmationKey("\x1b")
 	}
 	n.viewed = n.views[thread]
-	if n.roster != nil {
-		n.roster.selected = ""
-	}
-	if strings.HasPrefix(n.viewed.agents.selected, "/Orchestration/") {
-		n.viewed.agents.selected = ""
-	}
 	n.viewed.orchestrationRoster()
 	n.viewed.shell.paintedRows = nil
 	n.viewed.dirty = true
@@ -414,11 +405,8 @@ func (u *appServerUI) orchestrationRoster() {
 				return strings.HasPrefix(agent.Name, "/orchestrate/")
 			})
 		}
-		if n.roster == nil {
-			n.roster = newLiveActivityView()
-		}
-		roster := n.roster
-		roster.painter = u.agents.painter
+		roster := u.agents
+		initial := len(roster.orchestration) == 0
 		roster.orchestration = nil
 		roster.orchestrationLabels = map[string]string{}
 		roster.orchestrationRetained = map[string]bool{}
@@ -439,8 +427,8 @@ func (u *appServerUI) orchestrationRoster() {
 			agent.Name = "/Orchestration/" + name
 			roster.orchestration = append(roster.orchestration, agent)
 			roster.orchestrationLabels[agent.Name] = label
-			if v == u && roster.selected == "" {
-				roster.selected = agent.Name
+			if v == u && initial {
+				roster.rosterSelected = agent.Name
 			}
 		}
 		for _, batch := range n.retained {
@@ -584,7 +572,7 @@ func (u *appServerUI) pickOrchestratedThread(selected string) bool {
 			if err == nil {
 				v := n.views[thread]
 				v.orchestrationRoster()
-				v.shell.focus = 5
+				v.shell.focus = 3
 			}
 		}
 		if r := n.resumes[thread]; r != nil {

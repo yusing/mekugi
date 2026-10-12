@@ -223,8 +223,8 @@ func TestAppServerOrchestrateResumeView(t *testing.T) {
 	u, w, b := retainedOrchestratedUI(t)
 	u.resumeConfig = map[string]any{"model": "main-only", "model_reasoning_effort": "low", "service_tier": "flex"}
 	u.draft = "Main draft"
-	u.navigation.roster.selected = "/Orchestration/batch"
-	u.shell.focus = 5
+	u.agents.rosterSelected = "/Orchestration/batch"
+	u.shell.focus = 3
 	if err := u.shell.key('\r'); err != nil {
 		t.Fatal(err)
 	}
@@ -244,8 +244,8 @@ func TestAppServerOrchestrateResumeView(t *testing.T) {
 	u.switchOrchestratedThread("child")
 	resumeBatchResponses(t, u, w, b, false)
 	v := u.viewedUI()
-	if v.shell.focus != 5 {
-		t.Fatal("retained roster pick did not focus Orchestration")
+	if v.shell.focus != 3 {
+		t.Fatal("retained roster pick did not focus Agents")
 	}
 	if v.questionCount() != 1 {
 		t.Fatal("resume lost the buffered source prompt")

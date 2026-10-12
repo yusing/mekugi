@@ -75,17 +75,17 @@ func TestUISnapshotOrchestrateRecoveryResume(t *testing.T) {
 	old.navigation.retained = u.navigation.retained
 	old.orchestrationRoster()
 	count := 0
-	for _, agent := range old.navigation.roster.orchestration {
+	for _, agent := range old.agents.orchestration {
 		if agent.Name == "/Orchestration/batch" {
 			count++
 		}
 	}
-	if count != 1 || strings.Contains(old.navigation.roster.orchestrationLabels["/Orchestration/batch"], "not subscribed") {
+	if count != 1 || strings.Contains(old.agents.orchestrationLabels["/Orchestration/batch"], "not subscribed") {
 		t.Fatal("retained facts replaced a subscribed row")
 	}
 	wire.Reset()
-	u.navigation.roster.selected = "/Orchestration/uncertain"
-	u.shell.focus = 5
+	u.agents.rosterSelected = "/Orchestration/uncertain"
+	u.shell.focus = 3
 	if err := u.shell.key('\r'); err != nil {
 		t.Fatal(err)
 	}
@@ -111,8 +111,8 @@ func TestUISnapshotOrchestrateRecoveryResume(t *testing.T) {
 		b.Branch = "mekugi/run/" + b.TaskName
 	}
 	u.orchestrationRoster()
-	u.navigation.roster.selected = "/Orchestration/batch"
-	uisnapshot.Assert(t, "testdata/snapshots/orchestration-restored-roster.txt", strings.Join(u.navigation.roster.nativeRoster(100, 12, u.now(), true), "\n")+"\n")
+	u.agents.rosterSelected = "/Orchestration/batch"
+	uisnapshot.Assert(t, "testdata/snapshots/orchestration-restored-roster.txt", strings.Join(u.agents.nativeRoster(100, 12, u.now(), true), "\n")+"\n")
 }
 
 func TestAppServerOrchestrateRecoveryReadAdmission(t *testing.T) {

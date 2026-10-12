@@ -1,0 +1,32 @@
+┌ 3 Activity ─────────────────────── FOLLOW ┐
+│● batch_worker · review-correctness        │
+││ └ Read child-worker.go                   │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+│                                           │
+└───────────────────────────────────────────┘
+─ 5 Agents · 3 ──────────────────────────────
+ ● main         Ready                     0%
+ ● batch        Ready                     0%
+ · batch_work…  idle                      0%
+ Roles: ● review-correctness
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]

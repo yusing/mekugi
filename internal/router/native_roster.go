@@ -41,13 +41,123 @@ type nativeRosterItem struct {
 	finished []liveActivityRosterRow
 }
 
+func nativeThreadRow(name string) bool {
+	return strings.HasPrefix(name, "/Orchestration/")
+}
+
+// Thread rows precede the viewed thread's native tree. Its root already has
+// a thread row, so keep the native children without a duplicate root.
+func (v *liveActivityView) nativeRosterRows() []liveActivityRosterRow {
+	rows := v.roster()
+	if len(v.orchestration) == 0 {
+		return rows
+	}
+	nativeEnd := len(rows) - len(v.orchestration)
+	threads := rows[nativeEnd:]
+	rows = rows[:nativeEnd]
+	rootShown := slices.ContainsFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
+	rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool {
+		return row.agent.Name == "/root" || nativeThreadRow(row.agent.Name)
+	})
+	if rootShown {
+		for i := range rows {
+			rows[i].depth = max(0, rows[i].depth-1)
+		}
+	}
+	return slices.Concat(threads, rows)
+}
+
+func (v *liveActivityView) scrollNativeRoster(step int) {
+	v.rosterOffset = max(0, min(v.rosterOffset+step, len(v.nativeRosterRows())-1))
+	v.rosterManual, v.hovered = true, ""
+}
+
+// Independent thread selection does not change the native Activity filter.
+func (u *terminalUI) handleNativeRosterKey(escape string, key byte) (string, bool) {
+	v := u.agents
+	if u.main == nil || u.main.navigation == nil {
+		return v.handleRosterKey(escape, key)
+	}
+	if key == 27 {
+		return "\x1b", false
+	}
+	if escape != "" {
+		escape += string(key)
+		if escape == "\x1b[" || escape == "\x1bO" {
+			return escape, false
+		}
+		switch escape {
+		case "\x1b[A", "\x1bOA":
+			key = 'k'
+		case "\x1b[B", "\x1bOB":
+			key = 'j'
+		default:
+			return "", false
+		}
+	}
+	switch key {
+	case 3, 'q':
+		return "", true
+	case '\r', '\n':
+		if nativeThreadRow(v.rosterSelected) {
+			u.main.pickOrchestratedThread(v.rosterSelected)
+		} else if v.rosterSelected != "" {
+			v.selected, v.only = v.rosterSelected, true
+			v.follow()
+		}
+	case 'j', 'n', '\t', 'k', 'p':
+		rows := v.nativeRosterRows()
+		step := 1
+		if key == 'k' || key == 'p' {
+			step = -1
+		}
+		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.rosterSelected })
+		index = max(-1, min(index+step, len(rows)-1))
+		v.rosterManual, v.hovered = false, ""
+		v.rosterSelected = ""
+		if index < 0 {
+			v.only = false
+			v.follow()
+		} else {
+			v.rosterSelected = rows[index].agent.Name
+			if !nativeThreadRow(v.rosterSelected) {
+				v.selected, v.only = v.rosterSelected, true
+				v.follow()
+			}
+		}
+	case 'a':
+		v.only = !v.only
+		v.follow()
+	}
+	return "", false
+}
+
+func (u *terminalUI) pointNativeRoster(action byte, row, column int) {
+	v := u.agents
+	for _, hit := range v.hits {
+		if !hit.skills && hit.row == row && column >= hit.first && column <= hit.last {
+			if action == '\r' {
+				v.rosterSelected = hit.agent
+				v.rosterManual = false
+				if nativeThreadRow(hit.agent) {
+					v.hovered, v.skillsHover = "", ""
+					u.main.pickOrchestratedThread(hit.agent)
+					return
+				}
+			}
+			break
+		}
+	}
+	v.pointAgent(action, row, column)
+}
+
 // nativeRoster fits the roster to its content within limit rows, under a rule
 // carrying the counts and session totals. Unfocused, finished agents fold
 // into one row. Rows show state, then timer, edited lines, tokens, cost and
 // turns; turns drop first when narrow.
 func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused bool) []string {
-	rows := v.roster()
-	if len(rows) == 0 && !v.hideRootRoster || width < 20 {
+	rows := v.nativeRosterRows()
+	if len(rows) == 0 || width < 20 {
 		return nil
 	}
 	v.hits = v.hits[:0]
@@ -55,7 +165,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var items []nativeRosterItem
 	fold := -1
 	for _, row := range rows {
-		if !focused && v.orchestrationLabels[row.agent.Name] == "" && row.agent.Name != "/root" && v.agentStatus(row.agent) == '✓' && !(v.only && row.agent.Name == v.selected) {
+		if !focused && !nativeThreadRow(row.agent.Name) && row.agent.Name != "/root" && v.agentStatus(row.agent) == '✓' && !(v.only && row.agent.Name == v.selected) {
 			if fold < 0 {
 				fold = len(items)
 				items = append(items, nativeRosterItem{})
@@ -65,13 +175,13 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		items = append(items, nativeRosterItem{row: row})
 	}
-	responding, errors := v.statusCounts(slices.DeleteFunc(slices.Clone(rows), func(row liveActivityRosterRow) bool { return v.orchestrationLabels[row.agent.Name] != "" }))
+	responding, errors := v.statusCounts(rows)
 	var input, output uint64
 	var cost float64
 	costKnown, partial := false, false
 	tokensPartial := false
 	for _, row := range rows {
-		if v.orchestrationLabels[row.agent.Name] != "" {
+		if nativeThreadRow(row.agent.Name) {
 			continue
 		}
 		input += row.agent.InputTokens
@@ -111,9 +221,6 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		right = activityui.Dim + strings.Join(totals, " · ") + activityui.Undim
 	}
 	digit, title := 5, "Agents"
-	if len(v.orchestration) != 0 {
-		digit, title = 6, "Orchestration"
-	}
 	lines := []string{nativeRule("─", "─", "─", nativeTitle(digit, title, detail, focused), right, width, nativeBorder(focused))}
 	if limit == 0 {
 		return lines
@@ -148,18 +255,32 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			limit--
 		}
 	}
-	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.agent.Name == v.selected }))
+	cursor := v.selected
+	if len(v.orchestration) != 0 {
+		cursor = v.rosterSelected
+	}
+	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.agent.Name == cursor }))
 	start := 0
 	if len(items) > limit {
 		start = max(0, min(selected-limit+2, len(items)-limit+1))
+	}
+	if v.rosterManual {
+		start = min(v.rosterOffset, max(0, len(items)-limit+1))
 	}
 	end := min(len(items), start+limit)
 	if end < len(items) {
 		end-- // Room for the hidden-count row.
 	}
 	nameWidth := 4
-	for _, row := range rows {
+	for _, item := range items[start:end] {
+		if item.finished != nil {
+			continue
+		}
+		row := item.row
 		name, _ := rosterTree(rows, slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name }), 0)
+		if nativeThreadRow(row.agent.Name) {
+			name = strings.TrimPrefix(row.agent.Name, "/Orchestration/")
+		}
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(8, width/4))
@@ -186,7 +307,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		row := item.row
 		index := slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name })
 		tree, _ := rosterTree(rows, index, 0)
-		if v.orchestrationLabels[row.agent.Name] != "" {
+		if nativeThreadRow(row.agent.Name) {
 			tree = strings.TrimPrefix(row.agent.Name, "/Orchestration/")
 		}
 		tree = strings.TrimRight(liveActivityMiddle(tree, nameWidth), " ")
@@ -196,6 +317,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			color = "\x1b[1m" + v.painter.Theme.Accent()
 		}
 		name := activityui.DimColor(row.agent.Name) + tree[:split] + activityui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + activityui.Reset
+		if nativeThreadRow(row.agent.Name) {
+			name = "\x1b[3m" + v.painter.Theme.Accent() + v.hoverName(tree, row.agent.Name) + activityui.Reset
+		}
 		gap := "  "
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
@@ -245,7 +369,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		next++
 		line = ansi.Truncate(line, width, "…")
-		if item.row.agent.Name == v.selected && (focused || v.only) {
+		if focused && item.row.agent.Name == cursor || v.only && item.row.agent.Name == v.selected {
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)

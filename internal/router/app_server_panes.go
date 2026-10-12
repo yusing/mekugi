@@ -164,7 +164,10 @@ func (p *nativePanePersistence) read(workspace, thread string) (nativePaneState,
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nativePaneState{}, err
 	}
-	if state.Version != 1 || state.Focus < 0 || state.Focus > 5 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && (state.DiffOpen || state.JournalOpen) || state.DiffOpen && state.JournalOpen || state.Focus == 4 && !state.JournalOpen {
+	if state.Version == 1 && state.Focus == 5 {
+		state.Focus = 3 // The former Orchestration selector now belongs to Agents.
+	}
+	if state.Version != 1 || state.Focus < 0 || state.Focus > 4 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && (state.DiffOpen || state.JournalOpen) || state.DiffOpen && state.JournalOpen || state.Focus == 4 && !state.JournalOpen {
 		return nativePaneState{}, errors.New("invalid or unsupported pane state")
 	}
 	if state.Settings != (nativeAppliedSettings{}) && (state.Settings.Model == "" || state.Settings.Observed.IsZero()) {

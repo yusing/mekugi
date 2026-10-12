@@ -1,6 +1,6 @@
-─ 6 Orchestration · 5 ──────────────────────────────────────────────────────────────────────────────
- ● main                      Ready                                                               0%
- ● batch                     Interrupted · not subscribed                                           
- ● prepared                  Prepared                                                              
- ● failed                    Failed                                                                
- ● uncertain                 Starting                                                              
+─ 5 Agents · 5 ─────────────────────────────────────────────────────────────────────────────────────
+ ● main       Ready                                                                              0%
+ ● batch      Interrupted · not subscribed                                                          
+ ● prepared   Prepared                                                                             
+ ● failed     Failed                                                                               
+ ● uncertain  Starting                                                                             

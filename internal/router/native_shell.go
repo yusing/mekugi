@@ -230,42 +230,22 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		limit = 0
 	}
 	roster := u.agents.nativeRoster(width, limit, now, u.focus == 3)
-	var orchestration []string
-	if n := u.main.navigation; n != nil && n.roster != nil {
-		limit := nativeRosterRows
-		if u.focus == 5 {
-			limit = max(nativeRosterRows, int(float64(height)*nativeRosterShare))
-		}
-		if n.height > 0 {
-			limit = n.height
-		}
-		if n.collapsed {
-			limit = 0
-		}
-		orchestration = n.roster.nativeRoster(width, limit, now, u.focus == 5)
-	}
-	if height-1-len(roster)-len(orchestration) < nativeFramedRows {
+	if height-1-len(roster) < nativeFramedRows {
 		roster = roster[:min(1, len(roster))]
-		orchestration = orchestration[:min(1, len(orchestration))]
-		if height-1-len(roster)-len(orchestration) < nativeFramedRows {
-			roster, orchestration = nil, nil
+		if height-1-len(roster) < nativeFramedRows {
+			roster = nil
 		}
 	}
 	padding := 0
-	if len(roster)+len(orchestration) > 0 && height-1-len(roster)-len(orchestration)-1 >= nativeFramedRows {
+	if len(roster) > 0 && height-1-len(roster)-1 >= nativeFramedRows {
 		padding = 1
 	}
-	top := max(0, height-1-len(roster)-len(orchestration)-padding)
+	top := max(0, height-1-len(roster)-padding)
 	framed := top >= nativeFramedRows
 	l := terminalLayout{vertical: -1, horizontal: -1, rosterHorizontal: -1}
-	if len(roster)+len(orchestration) > 0 {
-		l.rosterHorizontal = top
-	}
-	if len(orchestration) > 0 {
-		l.orchestration = terminalRect{0, top, width, len(orchestration)}
-	}
 	if len(roster) > 0 {
-		l.roster = terminalRect{0, top + len(orchestration), width, len(roster)}
+		l.rosterHorizontal = top
+		l.roster = terminalRect{0, top, width, len(roster)}
 	}
 	var left, right terminalRect
 	wide := width >= 100 && top >= 12
@@ -429,9 +409,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		rules := map[int]string{}
 		draw(right, nativeBox(right.w, right.h, title, label, focused, body, rules))
 	}
-	if len(orchestration) > 0 {
-		draw(l.orchestration, orchestration)
-	}
 	if len(roster) > 0 {
 		draw(l.roster, roster)
 	}
@@ -482,7 +459,7 @@ func (u *terminalUI) rosterLimit(height int) int {
 // nativeStatus shows the pane tabs, with Diff and Activity marked as the pair
 // sharing the right column, and only the focused pane's keys.
 func (u *terminalUI) nativeStatus() string {
-	u.paneTabs = [6]terminalRect{}
+	u.paneTabs = [5]terminalRect{}
 	if u.main != nil && u.main.replay != nil {
 		return u.main.replay.bar(u.width)
 	}
@@ -521,10 +498,6 @@ func (u *terminalUI) nativeStatus() string {
 	tabs.WriteString(activityui.Dim + "]" + activityui.Undim + " ")
 	tab(5, "Agents", agentsBadge, !u.agentsCollapsed)
 	paneKeys := "1-5"
-	if u.main.navigation != nil {
-		tab(6, "Orchestration", "", !u.main.navigation.collapsed)
-		paneKeys = "1-6"
-	}
 	if u.main != nil && u.main.interruptLocked {
 		tabs.WriteString("  " + activityui.Amber + "Locked · /unlock" + activityui.Reset)
 	}
@@ -549,8 +522,9 @@ func (u *terminalUI) nativeStatus() string {
 		hints = terminalHints{{"j/k", "select", 0}, {"enter", "open", 0}, {"c", "copy path", 0}, {"esc", "Main", 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"c", "collapse", 0}, {"esc", "back", 0}}
-	case u.focus == 5:
-		hints = terminalHints{{"j/k", "thread", 0}, {"enter", "switch", 0}, {"c", "collapse", 0}, {"esc", "back", 0}}
+		if u.main.navigation != nil {
+			hints = append(terminalHints{{"enter", "switch/filter", 0}}, hints...)
+		}
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
@@ -569,14 +543,11 @@ func (u *terminalUI) nativeStatus() string {
 }
 
 func nativePaneIndex(digit int) int {
-	return [...]int{0, 1, 2, 4, 3, 5}[digit-1]
+	return [...]int{0, 1, 2, 4, 3}[digit-1]
 }
 
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
 func (u *terminalUI) selectNativePane(pane int) {
-	if pane == 5 && (u.main == nil || u.main.navigation == nil) {
-		return
-	}
 	u.focus = pane
 	if pane == 0 {
 		return

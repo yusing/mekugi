@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
@@ -130,9 +131,9 @@ func TestAppServerOrchestrateNavigationLineage(t *testing.T) {
 	if err := v.paint(&bytes.Buffer{}, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	for _, hit := range v.navigation.roster.hits {
+	for _, hit := range v.agents.hits {
 		if hit.agent == "/Orchestration/main" && !hit.skills {
-			r := v.shell.layout.orchestration
+			r := v.shell.layout.roster
 			for _, suffix := range []string{"M", "m"} {
 				if err := v.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", r.x+hit.first, r.y+hit.row, suffix)); err != nil {
 					t.Fatal(err)
@@ -147,8 +148,8 @@ func TestAppServerOrchestrateNavigationLineage(t *testing.T) {
 	u.switchOrchestratedThread("child")
 	// Enter uses the selected roster thread, not the native Activity filter.
 	v.orchestrationRoster()
-	v.navigation.roster.selected = "/Orchestration/main"
-	v.shell.focus = 5
+	v.agents.rosterSelected = "/Orchestration/main"
+	v.shell.focus = 3
 	if err := v.shell.key('\r'); err != nil {
 		t.Fatal(err)
 	}
@@ -197,10 +198,11 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 	for _, view := range []*appServerUI{u, v} {
 		view.clock = func() time.Time { return now }
 		view.view.clock, view.agents.clock = view.clock, view.clock
+		view.view.painter.Theme, view.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
 		view.status, view.model = "Ready", "snapshot-model"
 		view.turn, view.awaitingTurn = "", false
 		view.modelsLoading = true
-		view.shell.focus = 5
+		view.shell.focus = 3
 		view.agents.apply(activityPaneEvent{Kind: "agents", Agents: view.session.agents})
 	}
 	for _, thread := range []string{"main", "child"} {
@@ -211,26 +213,32 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 	}
 	u.draft, v.draft = "Review the batch", "Complete the batch"
 	for _, root := range []string{"main", "child"} {
-		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"thread/started","params":{"thread":{"id":%q,"parentThreadId":%q,"agentNickname":%q}}}`, root+"-worker", root, map[string]string{"main": "main_worker", "child": "batch_worker"}[root]))
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"thread/started","params":{"thread":{"id":%q,"parentThreadId":%q,"agentNickname":%q,"agentRole":%q}}}`, root+"-worker", root, map[string]string{"main": "main_worker", "child": "batch_worker"}[root], map[string]string{"main": "worker", "child": "review-correctness"}[root]))
 		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"turn","item":{"id":"read-worker","type":"commandExecution","command":"cat %s-worker.go","status":"completed","exitCode":0}}}`, root+"-worker", root))
 	}
 	for _, test := range []struct {
 		name, thread string
 		collapsed    bool
-	}{{"main", "main", false}, {"batch", "child", false}, {"collapsed", "main", true}} {
+		width        int
+	}{{"main", "main", false, 100}, {"batch", "child", false, 100}, {"collapsed", "main", true, 100}, {"narrow", "child", false, 45}} {
 		u.switchOrchestratedThread(test.thread)
 		view := u.viewedUI()
-		u.navigation.collapsed = test.collapsed
 		view.shell.agentsCollapsed = test.collapsed
 		var frame bytes.Buffer
-		if err := view.paint(&frame, 100, 32); err != nil {
+		if err := view.paint(&frame, test.width, 32); err != nil {
 			t.Fatal(err)
 		}
-		screen := vt.NewEmulator(100, 32)
+		screen := vt.NewEmulator(test.width, 32)
 		if _, err := screen.Write(frame.Bytes()); err != nil {
 			t.Fatal(err)
 		}
 		uisnapshot.Assert(t, "testdata/snapshots/orchestration-navigation-"+test.name+".txt", screen.String()+"\n")
+		limit := 12
+		if test.collapsed {
+			limit = 0
+		}
+		rows := view.agents.nativeRoster(test.width, limit, now, true)
+		uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-agents-"+test.name+"-styles.txt", append(rows, "plain after roster"), test.width)
 		screen.Close()
 	}
 }
@@ -342,76 +350,80 @@ func TestAppServerOrchestrateNavigationClosedAdmission(t *testing.T) {
 	}
 }
 
-func TestAppServerOrchestrationPanels(t *testing.T) {
+func TestAppServerOrchestrationAgentsPanel(t *testing.T) {
 	u, launch := orchestrateIdentityPendingTurn(t)
 	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
 	u.orchestrationRoster()
 	n := u.navigation
-	u.agents.selected = "/root/worker"
-	for index, want := range []int{0, 1, 2, 4, 3, 5} {
-		digit := byte('1' + index)
-		if err := u.shell.key(2); err != nil {
-			t.Fatal(err)
-		}
-		if err := u.shell.key(digit); err != nil {
-			t.Fatal(err)
+	v := n.views["child"]
+	u.agents.agents = append(u.agents.agents, activityPaneAgent{Name: "/root/worker"})
+	u.agents.selected, u.agents.only = "/root/worker", true
+	for index, want := range []int{0, 1, 2, 4, 3} {
+		for _, key := range []byte{2, byte('1' + index)} {
+			if err := u.shell.key(key); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if u.shell.focus != want {
-			t.Fatalf("pane %c focused %d, want %d", digit, u.shell.focus, want)
+			t.Fatalf("pane %d focused %d, want %d", index+1, u.shell.focus, want)
 		}
 	}
+	for _, key := range []byte{2, '6'} {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if u.shell.focus != 3 {
+		t.Fatal("removed selector changed focus")
+	}
 	if err := u.shell.send("c"); err != nil {
 		t.Fatal(err)
 	}
-	if !n.collapsed || u.shell.agentsCollapsed {
-		t.Fatal("Orchestration collapse changed Agents")
+	if !u.shell.agentsCollapsed {
+		t.Fatal("Agents did not collapse")
 	}
-	u.shell.selectNativePane(3)
-	if err := u.shell.send("c"); err != nil {
+	u.agents.rosterSelected = "/Orchestration/main"
+	if err := u.shell.send("j"); err != nil {
 		t.Fatal(err)
 	}
-	if !n.collapsed || !u.shell.agentsCollapsed {
-		t.Fatal("Agents collapse changed Orchestration")
+	if u.agents.rosterSelected != "/Orchestration/batch" || u.agents.selected != "/root/worker" || !u.agents.only || u.viewedUI() != u {
+		t.Fatal("thread cursor changed native filter or switched early")
 	}
-	u.shell.selectNativePane(5)
-	n.roster.selected = "/Orchestration/batch"
 	if err := u.shell.send("\r"); err != nil {
 		t.Fatal(err)
 	}
-	v := u.viewedUI()
-	if !n.collapsed || v.shell.agentsCollapsed {
-		t.Fatal("collapse state crossed thread owners")
+	if u.viewedUI() != v || v.shell.focus != 3 || v.shell.agentsCollapsed {
+		t.Fatal("thread pick lost local panel state")
 	}
-	n.roster.selected = "/Orchestration/main"
+	v.agents.rosterSelected = "/Orchestration/main"
 	if err := v.shell.send("\r"); err != nil {
 		t.Fatal(err)
 	}
-	if u.agents.selected != "/root/worker" || !u.shell.agentsCollapsed {
-		t.Fatal("thread switching lost native roster state")
+	if u.viewedUI() != u || u.agents.selected != "/root/worker" || !u.agents.only || !u.shell.agentsCollapsed {
+		t.Fatal("switch lost native filter or collapse")
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	r := u.shell.layout.orchestration
-	if r.h != 1 || u.shell.layout.roster.h != 1 {
-		t.Fatal("collapsed rosters did not retain separate headers", u.shell.layout)
+	r := u.shell.layout.roster
+	if r.h != 1 {
+		t.Fatal("collapsed panel did not retain one header")
 	}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", r.x+1, r.y+1)); err != nil {
-		t.Fatal(err)
+	for _, suffix := range []string{"M", "m"} {
+		if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;1;%d%s", r.y+1, suffix)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dm", r.x+1, r.y+1)); err != nil {
-		t.Fatal(err)
-	}
-	if n.collapsed || !u.shell.agentsCollapsed || u.shell.focus != 5 {
-		t.Fatal("header click did not independently expand Orchestration")
+	if u.shell.agentsCollapsed || u.shell.focus != 3 {
+		t.Fatal("header did not expand Agents")
 	}
 	for _, report := range []string{fmt.Sprintf("\x1b[<0;1;%dM", r.y+1), fmt.Sprintf("\x1b[<32;1;%dM", r.y-1), fmt.Sprintf("\x1b[<0;1;%dm", r.y-1)} {
 		if err := u.shell.mouse(report); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if n.height < 2 || n.collapsed || u.shell.rosterHeight != 0 {
-		t.Fatal("Orchestration drag changed another panel or collapsed")
+	if u.shell.rosterHeight < 2 || u.shell.agentsCollapsed {
+		t.Fatal("Agents resize failed")
 	}
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
@@ -419,35 +431,57 @@ func TestAppServerOrchestrationPanels(t *testing.T) {
 	if u.shell.focus != 0 {
 		t.Fatal("Escape did not restore Main focus")
 	}
+	u.shell.diffOpen = true
+	if err := u.paint(&bytes.Buffer{}, 120, 40); err != nil {
+		t.Fatal(err)
+	}
+	for _, hit := range u.agents.hits {
+		if hit.agent == "/root/worker" && !hit.skills {
+			r := u.shell.layout.roster
+			if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", hit.first, r.y+hit.row)); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	if u.agents.only || u.shell.diffOpen || u.viewedUI() != u {
+		t.Fatal("native click did not toggle local Activity")
+	}
 	for i := range 6 {
 		batch := u.orchestrateThreads["child"].batch
 		batch.TaskName = fmt.Sprintf("extra_%d", i)
 		n.retained = append(n.retained, batch)
 	}
-	n.height = 0
+	u.shell.rosterHeight = 0
 	u.orchestrationRoster()
-	n.roster.selected = "/Orchestration/batch"
+	u.agents.rosterSelected = "/Orchestration/batch"
 	if err := u.paint(&bytes.Buffer{}, 120, 40); err != nil {
 		t.Fatal(err)
 	}
-	r = u.shell.layout.orchestration
+	r = u.shell.layout.roster
 	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;1;%dM", r.y+r.h)); err != nil {
 		t.Fatal(err)
 	}
 	if u.viewedUI() != u {
-		t.Fatal("overflow indicator switched a thread without a row hit")
+		t.Fatal("overflow indicator switched without row hit")
+	}
+	filter, selected := u.agents.only, u.agents.selected
+	if err := u.shell.mouse(fmt.Sprintf("\x1b[<65;1;%dM", r.y+2)); err != nil {
+		t.Fatal(err)
+	}
+	if !u.agents.rosterManual || filter != u.agents.only || selected != u.agents.selected {
+		t.Fatal("wheel changed filter")
 	}
 	for _, report := range []string{fmt.Sprintf("\x1b[<0;1;%dM", r.y+1), fmt.Sprintf("\x1b[<32;1;%dM", u.shell.height), fmt.Sprintf("\x1b[<0;1;%dm", u.shell.height)} {
 		if err := u.shell.mouse(report); err != nil {
 			t.Fatal(err)
 		}
 	}
-	rows := n.height
+	rows := u.shell.rosterHeight
 	if err := u.shell.mouse("\x1b[<35;1;1M"); err != nil {
 		t.Fatal(err)
 	}
-	if u.shell.rosterPress != nil || n.height != rows {
-		t.Fatal("release over status bar retained roster drag")
+	if u.shell.rosterPress != nil || u.shell.rosterHeight != rows {
+		t.Fatal("release retained roster drag")
 	}
-
 }

@@ -227,7 +227,7 @@ func TestUISnapshotOrchestrationIntegrating(t *testing.T) {
 	}
 	child.batch.Branch = "mekugi/run/batch"
 	u.orchestrationRoster()
-	uisnapshot.Assert(t, "testdata/snapshots/orchestration-integrating-roster.txt", strings.Join(u.navigation.roster.nativeRoster(100, 12, now, true), "\n")+"\n")
+	uisnapshot.Assert(t, "testdata/snapshots/orchestration-integrating-roster.txt", strings.Join(u.agents.nativeRoster(100, 12, now, true), "\n")+"\n")
 	drainOrchestrateWork(t, u)
 	if result := <-command.reply; result.err != nil || u.navigation.views["child"].orchestrateCheckoutUnavailable() {
 		t.Fatal("integration failed to release input", result)

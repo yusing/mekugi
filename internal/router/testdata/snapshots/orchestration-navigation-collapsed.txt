@@ -1,6 +1,7 @@
 ┌ 1 main ────────────────────────────────────────┐┌ 3 Activity ──────────────────────────── FOLLOW ┐
-│└ Read main.go                                  ││● main_worker                          20:00:00 │
+│└ Read main.go                                  ││● main_worker · worker                 20:00:00 │
 │                                                │││ └ Read main-worker.go                         │
+│                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │
@@ -26,7 +27,6 @@
 ││ ❯ Review the batch                           │││                                                │
 │╰───────────────── snapshot-model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
-─ 6 Orchestration · 2 ──────────────────────────────────────────────────────────────────────────────
-─ 5 Agents · 1 ─────────────────────────────────────────────────────────────────────────────────────
+─ 5 Agents · 3 ─────────────────────────────────────────────────────────────────────────────────────
 
- 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents  6 Orchestration   j/k thread · enter switch
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents   enter switch/filter · j/k agent · a only ·

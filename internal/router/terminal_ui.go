@@ -46,7 +46,7 @@ type terminalUI struct {
 	paste                                          bool
 	pasteInput                                     func(byte) // Pins an active prompt through its paste terminator.
 	layout                                         terminalLayout
-	paneTabs                                       [6]terminalRect // Visible status-bar selectors, indexed by pane.
+	paneTabs                                       [5]terminalRect // Visible status-bar selectors, indexed by pane.
 	paintedRows                                    []string
 	paintedCopy                                    [][]activityui.CopySpan
 	paintedWidth                                   int
@@ -54,16 +54,16 @@ type terminalUI struct {
 }
 
 type nativeRosterPress struct {
-	pane, y, height int
-	moved           bool
+	y, height int
+	moved     bool
 }
 
 type terminalRect struct{ x, y, w, h int }
 
 type terminalLayout struct {
-	codex, diff, agents, roster, orchestration, live, journal terminalRect
-	mainSkills                                                terminalRect // Main's active-skill count in its title.
-	vertical, horizontal, rosterHorizontal                    int
+	codex, diff, agents, roster, live, journal terminalRect
+	mainSkills                                 terminalRect // Main's active-skill count in its title.
+	vertical, horizontal, rosterHorizontal     int
 }
 
 func (r terminalRect) contains(x, y int) bool {
@@ -241,7 +241,7 @@ func (u *terminalUI) key(key byte) error {
 			} else {
 				u.resize(string(key))
 			}
-		case '1', '2', '3', '4', '5', '6':
+		case '1', '2', '3', '4', '5':
 			u.selectNativePane(nativePaneIndex(int(key - '0')))
 		case 'q':
 			if u.main != nil && !u.main.openApprovals() {
@@ -455,28 +455,9 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 
-	if s == "\x1b" && (u.focus == 3 || u.focus == 5) {
+	if s == "\x1b" && u.focus == 3 {
 		u.focus = 0
 		u.agentEscape = ""
-		return nil
-	}
-	if u.focus == 5 && u.main != nil && u.main.navigation != nil {
-		n := u.main.navigation
-		if s == "c" {
-			n.collapsed = !n.collapsed
-			return nil
-		}
-		for _, key := range []byte(s) {
-			if key == '\r' || key == '\n' {
-				u.main.pickOrchestratedThread(n.roster.selected)
-				return nil
-			}
-			var quit bool
-			u.agentEscape, quit = n.roster.handleRosterKey(u.agentEscape, key)
-			if quit {
-				u.focus = 0
-			}
-		}
 		return nil
 	}
 	if u.focus == 3 && s == "c" {
@@ -518,7 +499,7 @@ func (u *terminalUI) send(s string) error {
 			var quit bool
 			if u.focus == 3 {
 				only, selected := u.agents.only, u.agents.selected
-				u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
+				u.agentEscape, quit = u.handleNativeRosterKey(u.agentEscape, key)
 				u.showRosterPick(only, selected)
 			} else {
 				u.agentEscape, quit = u.agents.handleKey(u.agentEscape, key)
@@ -549,7 +530,7 @@ func (u *terminalUI) mouse(s string) error {
 	if press := u.rosterPress; press != nil {
 		if release {
 			if !press.moved {
-				u.toggleRoster(press.pane)
+				u.agentsCollapsed = !u.agentsCollapsed
 			}
 			u.rosterPress = nil
 			return nil
@@ -558,11 +539,7 @@ func (u *terminalUI) mouse(s string) error {
 			press.moved = press.moved || y != press.y
 			if press.moved {
 				rows := min(max(1, press.height+press.y-y), max(1, u.height-nativeFramedRows-4))
-				if press.pane == 3 {
-					u.rosterHeight, u.agentsCollapsed = rows, false
-				} else {
-					u.main.navigation.height, u.main.navigation.collapsed = rows, false
-				}
+				u.rosterHeight, u.agentsCollapsed = rows, false
 			}
 			return nil
 		}
@@ -684,18 +661,12 @@ func (u *terminalUI) mouse(s string) error {
 		}
 		return nil
 	}
-	if button&^28 == 0 && !release && u.main != nil {
-		for _, pane := range []struct {
-			id   int
-			rect terminalRect
-		}{{3, u.layout.roster}, {5, u.layout.orchestration}} {
-			if pane.rect.contains(x, y) && y == pane.rect.y {
-				u.focus = pane.id
-				u.rosterPress = &nativeRosterPress{pane: pane.id, y: y, height: max(1, pane.rect.h-1)}
-				return nil
-			}
-		}
+	if button&^28 == 0 && !release && u.main != nil && u.layout.roster.contains(x, y) && y == u.layout.roster.y {
+		u.focus = 3
+		u.rosterPress = &nativeRosterPress{y: y, height: max(1, u.layout.roster.h-1)}
+		return nil
 	}
+
 	if button&^28 == 0 && !release {
 		switch {
 		case x == u.layout.vertical && u.layout.vertical >= 0 && (u.layout.rosterHorizontal < 0 || y < u.layout.rosterHorizontal):
@@ -742,9 +713,6 @@ func (u *terminalUI) mouse(s string) error {
 	case u.layout.diff.contains(x, y):
 		pane = 1
 		r = u.layout.diff
-	case u.layout.orchestration.contains(x, y):
-		pane = 5
-		r = u.layout.orchestration
 	case u.layout.roster.contains(x, y):
 		pane = 3
 		r = u.layout.roster
@@ -807,34 +775,15 @@ func (u *terminalUI) mouse(s string) error {
 	case 65:
 		action = 'j'
 	}
-	if pane == 5 {
-		v := u.main.navigation.roster
-		if action == 'j' {
-			v.scrollRoster(1)
-		} else if action == 'k' {
-			v.scrollRoster(-1)
-		} else {
-			v.pointAgent(action, y-r.y+1, x-r.x+1)
-			if action == '\r' {
-				for _, hit := range v.hits {
-					if !hit.skills && hit.row == y-r.y+1 && x-r.x+1 >= hit.first && x-r.x+1 <= hit.last {
-						u.main.pickOrchestratedThread(hit.agent)
-						break
-					}
-				}
-			}
-		}
-		return nil
-	}
 	if pane == 3 {
 		if action == 'j' {
-			u.agents.scrollRoster(1)
+			u.agents.scrollNativeRoster(1)
 		} else if action == 'k' {
-			u.agents.scrollRoster(-1)
+			u.agents.scrollNativeRoster(-1)
 		} else {
 			only, selected := u.agents.only, u.agents.selected
 
-			u.agents.pointAgent(action, y-r.y+1, x-r.x+1)
+			u.pointNativeRoster(action, y-r.y+1, x-r.x+1)
 			if agent := u.agents.skillsRequest; agent != "" {
 				u.agents.skillsRequest = ""
 				u.openSkills(u.agents, agent)
@@ -858,13 +807,5 @@ func (u *terminalUI) clearSkillsHover() {
 	}
 	if u.agents != nil {
 		u.agents.skillsHover = ""
-	}
-}
-
-func (u *terminalUI) toggleRoster(pane int) {
-	if pane == 3 {
-		u.agentsCollapsed = !u.agentsCollapsed
-	} else {
-		u.main.navigation.collapsed = !u.main.navigation.collapsed
 	}
 }
