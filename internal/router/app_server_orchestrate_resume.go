@@ -97,9 +97,9 @@ func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
 func (n *orchestrateNavigation) resumeResponse(v *appServerUI, m appserver.Message) bool {
 	r := n.resumes[v.thread]
 	method := v.requests[string(m.ID)]
-	if r != nil && m.Error != nil && v.settings.restoreEffort && (method == "thread/settings/update" || method == "turn/settings/update") {
+	if r != nil && m.Error != nil && (method == "thread/settings/update" || method == "turn/settings/update") {
 		delete(v.requests, string(m.ID))
-		n.finishResume(v.thread, fmt.Errorf("restore default reasoning: %s", m.Error.Message))
+		n.finishResume(v.thread, fmt.Errorf("restore batch settings: %s", m.Error.Message))
 		return true
 	}
 	if r == nil || method != "resume/settings" && method != "thread/resume" {

@@ -219,6 +219,7 @@ func (u *appServerUI) resumeSession(id string) error {
 func (u *appServerUI) resumeSessionFailed(message string) error {
 	u.replacement.finish()
 	u.resumePendingEffort = false
+	u.resumeSandbox = nil
 	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil
 	u.status = "Ready"

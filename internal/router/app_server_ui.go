@@ -860,6 +860,11 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.paneError(u.panes.open(u.shell, result.Thread.Cwd, u.thread, method == "thread/resume"))
 			}
 			if method == "thread/resume" {
+				change := make(map[string]any)
+				if u.resumeSandbox != nil {
+					change["sandboxPolicy"] = *u.resumeSandbox
+					u.resumeSandbox = nil
+				}
 				if u.settings.restoreEffort {
 					// effort:null means no change in the host RPC. Its complete
 					// collaboration-mode snapshot can express a nullable effort,
@@ -880,12 +885,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 							u.paneError(u.panes.save(u.shell, u.now(), true))
 						}
 						settings["reasoning_effort"] = nil
-						if _, err := u.updateSettings(map[string]any{"collaborationMode": result.CollaborationMode}); err != nil {
-							return err
-						}
+						change["collaborationMode"] = result.CollaborationMode
 					} else {
 						u.settings.restoredEffort()
 						u.reasoningEffort = ""
+					}
+				}
+				if len(change) != 0 {
+					if _, err := u.updateSettings(change); err != nil {
+						return err
 					}
 				}
 				if u.resumeNotice != "" {
@@ -893,7 +901,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 					u.resumeNotice = ""
 				}
 				u.recoverOrchestratedRun()
-				u.retainAppliedSettings()
+				if !u.settings.pending() {
+					u.retainAppliedSettings()
+				}
 				return u.restorePaneContent(result.Thread)
 			}
 			u.retainAppliedSettings()

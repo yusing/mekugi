@@ -2,6 +2,7 @@ package router
 
 import (
 	"cmp"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"os"
@@ -23,29 +24,53 @@ type orchestrateSpawnInput struct {
 // Source: codex-rs/app-server-protocol/src/protocol/v2/thread.rs:62:120@823ea830c
 // Build from host-confirmed live settings, not invocation defaults. The caller
 // retains this request before dispatch and records the effective host response.
-func (u *appServerUI) orchestrateThreadRequest(batch orchestrate.Batch, input orchestrateSpawnInput) (map[string]any, error) {
+func (u *appServerUI) orchestrateThreadRequest(batch orchestrate.Batch, input orchestrateSpawnInput) (map[string]any, jsontext.Value, error) {
 	if u.thread == "" || u.settings.pending() || u.replacement.pending() || u.restoring != nil {
-		return nil, errors.New("wait for the coordinator's thread settings to settle")
+		return nil, nil, errors.New("wait for the coordinator's thread settings to settle")
 	}
 	var profile struct {
 		ID string `json:"id"`
 	}
-	if json.Unmarshal(u.statusConfig.PermissionProfile, &profile) != nil || profile.ID == "" {
-		return nil, errors.New("coordinator permission profile is unavailable; cannot inherit permissions")
+	if json.Unmarshal(u.statusConfig.PermissionProfile, &profile) != nil || profile.ID == "" && u.statusConfig.PermissionProfile.Kind() != 'n' {
+		return nil, nil, errors.New("coordinator permission profile is unavailable; cannot inherit permissions")
 	}
 	if !u.statusConfig.Approval.IsValid() || u.statusConfig.Approval.Kind() == 'n' || u.statusConfig.ApprovalsReviewer == "" || u.statusConfig.Provider == "" || u.model == "" {
-		return nil, errors.New("coordinator launch settings are incomplete")
+		return nil, nil, errors.New("coordinator launch settings are incomplete")
 	}
 	roots, err := orchestrateWorkspaceRoots(u.session.cwd, batch, u.statusConfig.WorkspaceRoots)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	params := map[string]any{
 		"cwd": batch.Cwd, "runtimeWorkspaceRoots": roots,
 		"model": cmp.Or(input.Model, u.model), "modelProvider": u.statusConfig.Provider,
 		"approvalPolicy":    slices.Clone(u.statusConfig.Approval),
-		"approvalsReviewer": u.statusConfig.ApprovalsReviewer, "permissions": profile.ID,
-		"serviceTier": nil,
+		"approvalsReviewer": u.statusConfig.ApprovalsReviewer,
+		"serviceTier":       nil,
+	}
+	var policy jsontext.Value
+	if profile.ID != "" {
+		params["permissions"] = profile.ID
+	} else {
+		sandbox := u.statusConfig.Sandbox
+		switch sandbox.Type {
+		case "dangerFullAccess", "readOnly", "workspaceWrite", "externalSandbox":
+		default:
+			return nil, nil, errors.New("coordinator sandbox policy is unavailable; cannot inherit permissions")
+		}
+		if len(sandbox.WritableRoots) != 0 {
+			sandbox.WritableRoots, err = orchestrateWorkspaceRoots(u.session.cwd, batch, sandbox.WritableRoots)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		policy, err = json.Marshal(&sandbox)
+		if err != nil {
+			return nil, nil, err
+		}
+		// thread/start only accepts a sandbox mode, not a complete policy.
+		// No turn runs until turn/start applies the retained exact policy.
+		params["sandbox"] = "read-only"
 	}
 	tier := u.serviceTier
 	if input.ServiceTier != nil {
@@ -62,11 +87,11 @@ func (u *appServerUI) orchestrateThreadRequest(batch orchestrate.Batch, input or
 			effort = model.DefaultEffort
 		}
 		if effort == "" {
-			return nil, errors.New("wait for the coordinator's model reasoning default")
+			return nil, nil, errors.New("wait for the coordinator's model reasoning default")
 		}
 	}
 	params["config"] = map[string]any{"model_reasoning_effort": effort}
-	return params, nil
+	return params, policy, nil
 }
 
 func orchestrateWorkspaceRoots(sourceCwd string, batch orchestrate.Batch, roots []string) ([]string, error) {

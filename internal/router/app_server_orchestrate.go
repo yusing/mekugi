@@ -132,7 +132,7 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 				fail(errors.New("prepare this batch before spawning"))
 				return
 			}
-			params, err := u.orchestrateThreadRequest(batch, command.input)
+			params, policy, err := u.orchestrateThreadRequest(batch, command.input)
 			if err != nil {
 				fail(err)
 				return
@@ -143,7 +143,7 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 				return
 			}
 			u.orchestrateWork(func() func() {
-				batch, dispatch, err := store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded)
+				batch, dispatch, err := store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded, policy)
 				return func() {
 					if err != nil || !dispatch {
 						command.reply <- orchestrateResult{batch: batch, err: err}
@@ -399,7 +399,11 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 						encoded, _ := json.Marshal(paths, json.Deterministic(true))
 						input = "Evidence files: " + string(encoded) + "\n" + input
 					}
-					if err := u.orchestrateRequest(child, "turn/start", map[string]any{"threadId": thread, "input": appserver.Input(input)}); err != nil {
+					params := map[string]any{"threadId": thread, "input": appserver.Input(input)}
+					if len(child.batch.Launch.SandboxPolicy) != 0 {
+						params["sandboxPolicy"] = child.batch.Launch.SandboxPolicy
+					}
+					if err := u.orchestrateRequest(child, "turn/start", params); err != nil {
 						u.failOrchestrate(child, err)
 					}
 				}); err != nil {

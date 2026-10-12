@@ -6,11 +6,137 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/internal/orchestrate"
 )
+
+func TestAppServerOrchestrateResumeCustomSandbox(t *testing.T) {
+	for _, rootCount := range []int{0, 50} {
+		t.Run(fmt.Sprintf("roots=%d", rootCount), func(t *testing.T) {
+			stateDir, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("XDG_STATE_HOME", stateDir)
+			u, w, b := retainedOrchestratedUI(t)
+			// Save a post-launch policy through the ordinary host-settings consumer.
+			previous, _ := appliedSettingsTestUI(t, b.Cwd, "child")
+			previous.navigation = &orchestrateNavigation{owner: u}
+			roots := make([]any, rootCount)
+			for i := range roots {
+				roots[i] = filepath.Join(b.Cwd, fmt.Sprintf("explicit-writable-root-%03d", i))
+			}
+			policy := map[string]any{"type": "workspaceWrite", "networkAccess": true,
+				"writableRoots": roots, "excludeTmpdirEnvVar": true, "excludeSlashTmp": true}
+			appServerTestNotify(t, previous, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+				"model": "batch-model", "effort": "high", "activePermissionProfile": nil, "sandboxPolicy": policy,
+			}})
+			u.panes = new(nativePanePersistence)
+			u.switchOrchestratedThread("child")
+			drainOrchestrateWork(t, u)
+			read := btwTestRequest(t, w, "thread/read", "child")
+			btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": map[string]any{"id": "child", "cwd": b.Cwd}})))
+			var resume struct {
+				ID     int            `json:"id"`
+				Params map[string]any `json:"params"`
+			}
+			if err := json.Unmarshal(w.Bytes(), &resume); err != nil {
+				t.Fatal(err)
+			}
+			w.Reset()
+			if resume.Params["sandbox"] != "read-only" || resume.Params["permissions"] != nil {
+				t.Fatal("resume used invocation permissions", resume.Params)
+			}
+			btwTestReply(t, u, btwTestRPC{ID: resume.ID}, string(mustMarshalJSON(map[string]any{
+				"thread": map[string]any{"id": "child", "cwd": b.Cwd}, "model": "batch-model", "reasoningEffort": "high",
+				"activePermissionProfile": nil, "sandbox": map[string]any{"type": "readOnly"},
+			})))
+			var correction int
+			for _, req := range appServerDrainRequests[struct {
+				ID     int            `json:"id"`
+				Method string         `json:"method"`
+				Params map[string]any `json:"params"`
+			}](t, w) {
+				if req.Method == "thread/settings/update" {
+					correction = req.ID
+					if len(roots) == 0 {
+						req.Params["sandboxPolicy"].(map[string]any)["writableRoots"] = roots
+					}
+					if !reflect.DeepEqual(req.Params["sandboxPolicy"], policy) {
+						t.Fatal("resume lost the latest custom policy", req.Params)
+					}
+				} else {
+					btwTestReply(t, u, btwTestRPC{ID: req.ID}, `{"data":[]}`)
+				}
+			}
+			view := u.navigation.views["child"]
+			if correction == 0 || !view.settings.pending() || len(u.navigation.resumes) != 1 {
+				t.Fatal("resume admitted input before policy restoration")
+			}
+			state, err := view.panes.read(b.Cwd, "child")
+			var retained map[string]any
+			if err == nil && json.Unmarshal([]byte(state.Settings.SandboxPolicy), &retained) == nil && len(roots) == 0 {
+				retained["writableRoots"] = roots
+			}
+			if err != nil || !reflect.DeepEqual(retained, policy) {
+				t.Fatal("resume hydration overwrote retained policy", state, err)
+			}
+			for _, req := range resumeTestRequests(t, w) {
+				if req.Method != "thread/list" {
+					t.Fatal("unexpected remaining history request", req.Method)
+				}
+				btwTestReply(t, u, btwTestRPC{ID: req.ID}, `{"data":[]}`)
+			}
+			btwTestReply(t, u, btwTestRPC{ID: correction}, `{}`)
+			if !view.settings.pending() {
+				t.Fatal("enqueue acknowledgement claimed policy restoration")
+			}
+			appServerTestNotify(t, view, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+				"model": "batch-model", "effort": "high", "activePermissionProfile": nil, "sandboxPolicy": map[string]any{"type": "readOnly"},
+			}})
+			state, err = view.panes.read(b.Cwd, "child")
+			if err != nil || !view.settings.pending() || state.Settings.SandboxPolicy == "" {
+				t.Fatal("resume-default notification released input or replaced the saved policy")
+			}
+			appServerTestNotify(t, view, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+				"model": "batch-model", "effort": "high", "activePermissionProfile": nil, "sandboxPolicy": policy,
+			}})
+			u.navigation.completeResumes()
+			if view.settings.pending() || len(u.navigation.resumes) != 0 {
+				t.Fatal("host-confirmed policy did not admit the batch")
+			}
+			// Switching to a named profile retires the saved custom policy.
+			appServerTestNotify(t, view, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+				"model": "batch-model", "effort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"},
+			}})
+			state, err = view.panes.read(b.Cwd, "child")
+			if err != nil || state.Settings.SandboxPolicy != "" {
+				t.Fatal("named profile retained superseded custom policy")
+			}
+		})
+	}
+}
+
+func TestAppServerOrchestrateResumeUnreadableSettings(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	u, w, b := retainedOrchestratedUI(t)
+	u.panes = new(nativePanePersistence)
+	path, err := nativePaneStatePath(b.Cwd, "child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, path, "{invalid")
+	u.switchOrchestratedThread("child")
+	drainOrchestrateWork(t, u)
+	read := btwTestRequest(t, w, "thread/read", "child")
+	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": map[string]any{"id": "child", "cwd": b.Cwd}})))
+	if w.Len() != 0 || len(u.navigation.resumes) != 0 || !strings.Contains(u.notice, "read batch settings") {
+		t.Fatal("unreadable batch settings resumed with invocation permissions", w.String(), u.notice)
+	}
+}
 
 func retainedOrchestratedUI(t *testing.T) (*appServerUI, *appServerTestInput, orchestrate.Batch) {
 	t.Helper()

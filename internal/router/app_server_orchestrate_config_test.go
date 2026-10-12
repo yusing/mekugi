@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,7 +27,7 @@ func TestAppServerOrchestrateThreadSettings(t *testing.T) {
 	}
 	u.statusConfig.WorkspaceRoots = []string{source, filepath.Join(source, "src"), external}
 	before, _ := json.Marshal(u.statusConfig)
-	params, err := u.orchestrateThreadRequest(batch, orchestrateSpawnInput{})
+	params, _, err := u.orchestrateThreadRequest(batch, orchestrateSpawnInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestAppServerOrchestrateThreadSettings(t *testing.T) {
 		"serviceTier": "priority", "config": map[string]any{"model_reasoning_effort": "high"},
 	})
 	// Explicit child budget changes do not change the coordinator.
-	params, err = u.orchestrateThreadRequest(batch, orchestrateSpawnInput{Model: "child-model", ReasoningEffort: "low", ServiceTier: new("")})
+	params, _, err = u.orchestrateThreadRequest(batch, orchestrateSpawnInput{Model: "child-model", ReasoningEffort: "low", ServiceTier: new("")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestAppServerOrchestrateThreadSettings(t *testing.T) {
 	// Host updates supply current permission provenance, not just sandbox labels.
 	appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"live-model","effort":null,"serviceTier":null,"approvalPolicy":"on-request","approvalsReviewer":"user","activePermissionProfile":{"id":":read-only"},"sandboxPolicy":{"type":"read-only"}}}}`)
 	u.models = []appServerModel{{Model: "live-model", DefaultEffort: "medium"}}
-	params, err = u.orchestrateThreadRequest(batch, orchestrateSpawnInput{})
+	params, _, err = u.orchestrateThreadRequest(batch, orchestrateSpawnInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +63,11 @@ func TestAppServerOrchestrateThreadSettings(t *testing.T) {
 		t.Fatalf("live settings lost: %+v", params)
 	}
 	appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"other","threadSettings":{"activePermissionProfile":null}}}`)
-	if _, err := u.orchestrateThreadRequest(batch, orchestrateSpawnInput{}); err != nil {
+	if _, _, err := u.orchestrateThreadRequest(batch, orchestrateSpawnInput{}); err != nil {
 		t.Fatal("foreign thread cleared profile", err)
 	}
 	appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"activePermissionProfile":null}}}`)
-	if _, err := u.orchestrateThreadRequest(batch, orchestrateSpawnInput{}); err == nil {
+	if _, _, err := u.orchestrateThreadRequest(batch, orchestrateSpawnInput{}); err == nil {
 		t.Fatal("missing profile silently replaced")
 	}
 }
@@ -81,6 +82,46 @@ func TestAppServerOrchestrateWorkspaceRoots(t *testing.T) {
 	batch.Cwd = filepath.Join(filepath.Dir(checkout), "outside")
 	if _, err := orchestrateWorkspaceRoots(source, batch, nil); err == nil {
 		t.Fatal("outside cwd accepted")
+	}
+}
+
+func TestAppServerOrchestrateLegacyPermissions(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	source, checkout, external := t.TempDir(), t.TempDir(), t.TempDir()
+	u.session.cwd = source
+	u.model, u.reasoningEffort = "model", "high"
+	batch := orchestrate.Batch{Checkout: checkout, Cwd: checkout}
+	for _, raw := range []string{
+		`{"type":"dangerFullAccess"}`,
+		`{"type":"readOnly","networkAccess":true}`,
+		`{"type":"externalSandbox","networkAccess":"restricted"}`,
+		fmt.Sprintf(`{"type":"workspaceWrite","networkAccess":true,"writableRoots":[%q,%q],"excludeTmpdirEnvVar":true,"excludeSlashTmp":true}`, source, external),
+	} {
+		// Exercise the authoritative settings decoder, including null provenance.
+		wire := fmt.Sprintf(`{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"model","effort":"high","modelProvider":"provider","approvalPolicy":"on-request","approvalsReviewer":"auto_review","activePermissionProfile":null,"sandboxPolicy":%s}}}`, raw)
+		appServerTestMessage(t, u, wire)
+		before, _ := json.Marshal(u.statusConfig)
+		params, policy, err := u.orchestrateThreadRequest(batch, orchestrateSpawnInput{})
+		if err != nil || params["sandbox"] != "read-only" || params["permissions"] != nil {
+			t.Fatalf("legacy launch: %v, %s, %v", params, policy, err)
+		}
+		var got, want map[string]any
+		if err := json.Unmarshal(policy, &got); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(raw), &want); err != nil {
+			t.Fatal(err)
+		}
+		if roots, ok := want["writableRoots"].([]any); ok {
+			roots[0] = checkout
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("policy changed: %+v; want %+v", got, want)
+		}
+		after, _ := json.Marshal(u.statusConfig)
+		if string(before) != string(after) {
+			t.Fatal("child policy changed Main")
+		}
 	}
 }
 

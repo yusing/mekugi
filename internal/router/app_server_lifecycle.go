@@ -82,6 +82,7 @@ type appServerResumeOperation struct {
 	resumeCwd           string
 	resumeConfig        map[string]any
 	resumePendingEffort bool
+	resumeSandbox       *appServerSandboxPolicy
 	resumeEvidence      nativeResumeEvidence
 	resumePending       []appserver.Message
 }

@@ -85,8 +85,11 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 	}
 	if u.panes != nil {
 		v.panes = new(nativePanePersistence)
-		v.paneError(v.panes.open(v.shell, child.batch.Cwd, thread, false))
-		v.retainAppliedSettings()
+		resuming := child.batch.Launch.TurnID != ""
+		v.paneError(v.panes.open(v.shell, child.batch.Cwd, thread, resuming))
+		if !resuming {
+			v.retainAppliedSettings()
+		}
 	}
 	v.guardHookCheck.hash = u.guardHookCheck.hash
 	n.views[thread] = v

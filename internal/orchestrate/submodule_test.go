@@ -100,11 +100,11 @@ func TestPrepareGitSubmodules(t *testing.T) {
 	}
 	// Launch checks all local clone identities before authorizing a host effect.
 	run(child, "checkout", "--detach", "-q")
-	if _, dispatch, err := reopened.BeginLaunch(t.Context(), source, "main", "batch", "work", jsontext.Value(`{}`)); err == nil || dispatch {
+	if _, dispatch, err := reopened.BeginLaunch(t.Context(), source, "main", "batch", "work", jsontext.Value(`{}`), nil); err == nil || dispatch {
 		t.Fatal("redirected submodule branch authorized launch")
 	}
 	run(child, "checkout", "-q", b.Branch)
-	if _, dispatch, err := reopened.BeginLaunch(t.Context(), source, "main", "batch", "work", jsontext.Value(`{}`)); err != nil || !dispatch {
+	if _, dispatch, err := reopened.BeginLaunch(t.Context(), source, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil || !dispatch {
 		t.Fatal("prepared submodules rejected launch", err)
 	}
 	if err := reopened.RecordThread(t.Context(), source, "main", "batch", "child", jsontext.Value(`{}`)); err != nil {

@@ -54,6 +54,9 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if u.panes != nil {
 		state, err := u.panes.read(result.Thread.Cwd, thread)
 		if err != nil {
+			if u.navigation != nil && u.navigation.owner != u {
+				return fail("read batch settings: " + err.Error())
+			}
 			u.paneError(err)
 		} else {
 			retained = state.Settings
@@ -82,6 +85,18 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		u.setNotice(u.resumeNotice, true)
 	}
 	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
+	u.resumeSandbox = nil
+	if u.navigation != nil && u.navigation.owner != u && retained.SandboxPolicy != "" {
+		var sandbox appServerSandboxPolicy
+		if err := json.Unmarshal([]byte(retained.SandboxPolicy), &sandbox); err != nil {
+			return fail("invalid retained batch sandbox policy")
+		}
+		u.resumeSandbox = &sandbox
+		// Hydrate without granting current invocation defaults. The full policy
+		// is applied by the shared settings owner before resumed input.
+		delete(params, "permissions")
+		params["sandbox"] = "read-only"
+	}
 	u.resumePendingEffort = false
 	for field, value := range saved {
 		if _, explicit := config[field]; explicit {

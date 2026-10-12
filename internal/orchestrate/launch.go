@@ -12,14 +12,16 @@ import (
 )
 
 // Launch retains the host request and acknowledgements. Params is the
-// serialized thread/start configuration, supplied by the runtime coordinator.
+// serialized thread/start configuration; SandboxPolicy is the exact first-turn
+// override when the host has no re-selectable profile. Both precede dispatch.
 type Launch struct {
-	Message      string         `json:"message"`
-	Params       jsontext.Value `json:"params"`
-	ThreadID     string         `json:"thread_id,omitempty"`
-	ThreadResult jsontext.Value `json:"thread_result,omitempty"`
-	TurnID       string         `json:"turn_id,omitempty"`
-	HostStatus   string         `json:"host_status,omitempty"`
+	SandboxPolicy jsontext.Value `json:"sandbox_policy,omitempty"`
+	Message       string         `json:"message"`
+	Params        jsontext.Value `json:"params"`
+	ThreadID      string         `json:"thread_id,omitempty"`
+	ThreadResult  jsontext.Value `json:"thread_result,omitempty"`
+	TurnID        string         `json:"turn_id,omitempty"`
+	HostStatus    string         `json:"host_status,omitempty"`
 }
 
 var errLaunchUnchanged = errors.New("launch unchanged")
@@ -38,15 +40,18 @@ func (s *Store) ObserveLaunch(ctx context.Context, workspace, main, name, status
 
 // BeginLaunch reserves dispatch once. Only a true dispatch result authorizes
 // thread/start; repeats return retained facts, including uncertain outcomes.
-func (s *Store) BeginLaunch(ctx context.Context, workspace, main, name, message string, params jsontext.Value) (batch Batch, dispatch bool, err error) {
+func (s *Store) BeginLaunch(ctx context.Context, workspace, main, name, message string, params, policy jsontext.Value) (batch Batch, dispatch bool, err error) {
 	params, err = launchObject(params)
+	if err == nil && len(policy) != 0 {
+		policy, err = launchObject(policy)
+	}
 	if message == "" || err != nil {
 		return batch, false, errors.New("launch requires a handoff and host configuration object")
 	}
 	err = s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
 		batch = *b
 		if b.Launch != nil {
-			if b.Launch.Message != message || !bytes.Equal(b.Launch.Params, params) {
+			if b.Launch.Message != message || !bytes.Equal(b.Launch.Params, params) || !bytes.Equal(b.Launch.SandboxPolicy, policy) {
 				return errors.New("batch already has a different launch request")
 			}
 			return errLaunchUnchanged
@@ -63,7 +68,7 @@ func (s *Store) BeginLaunch(ctx context.Context, workspace, main, name, message 
 			}
 		}
 		b.State = "starting"
-		b.Launch = &Launch{Message: message, Params: params}
+		b.Launch = &Launch{Message: message, Params: params, SandboxPolicy: policy}
 		batch, dispatch = *b, true
 		return nil
 	})

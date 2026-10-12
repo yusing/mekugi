@@ -98,8 +98,14 @@ leaves its work subscribed and does not replace the coordinator.
 
 The prepared checkout replaces the source repository in runtime workspace roots;
 explicit external roots and an empty root list remain inherited. Named permission
-profiles and approval-review routing remain intact. Missing profile provenance
-rejects launch rather than approximating a custom policy with a sandbox label.
+profiles and approval-review routing remain intact. When Codex reports no active
+profile, the complete host-confirmed sandbox policy is inherited, including
+network access, writable roots and temporary-directory exclusions. Source-local
+writable roots map to the prepared checkout; external roots remain unchanged.
+The first turn applies this retained policy before any model or tool work.
+Fresh-process batch resume restores the batch's latest host-confirmed custom
+sandbox policy before accepting input, including changes made after launch.
+Unavailable permission settings reject launch rather than guessing a profile.
 
 ## REQ-ORCHESTRATE-003 — Batch lifecycle waits
 

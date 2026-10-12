@@ -76,7 +76,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.BeginLaunch(ctx, workspace, "main", "batch", "work", jsontext.Value(`{}`)); err != nil {
+	if _, _, err := store.BeginLaunch(ctx, workspace, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RecordThread(ctx, workspace, "main", "batch", "batch-thread", jsontext.Value(`{}`)); err != nil {

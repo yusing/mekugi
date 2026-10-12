@@ -114,7 +114,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	cmd := exec.CommandContext(ctx, codex, "app-server",
 		"-c", `model_providers.orchestrate_test={name="orchestrate_test",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
 		"-c", `model_provider="orchestrate_test"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`,
-		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`, "-c", `approval_policy="on-request"`, "-c", `default_permissions=":workspace"`, "-c", "features.default_mode_request_user_input=true", "-c", "include_collaboration_mode_instructions=false")
+		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`, "-c", `approval_policy="on-request"`, "-c", `sandbox_mode="workspace-write"`, "-c", `sandbox_workspace_write={network_access=true,exclude_tmpdir_env_var=true,exclude_slash_tmp=true}`, "-c", "features.default_mode_request_user_input=true", "-c", "include_collaboration_mode_instructions=false")
 	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), workspace
 	client, err := appserver.Start(cmd)
 	if err != nil {
@@ -127,6 +127,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	defer u.shell.diffScreen.Close()
 	defer u.closeOrchestrateStorage()
 	defer u.closeOrchestratedViews()
+	var observedSandbox jsontext.Value
 	pump := func(done func() bool) {
 		t.Helper()
 		for !done() {
@@ -134,6 +135,15 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 			case m, ok := <-client.Messages:
 				if !ok {
 					t.Fatal("host closed")
+				}
+				if u.requests[string(m.ID)] == "thread/start" {
+					var settings struct {
+						Sandbox jsontext.Value `json:"sandbox"`
+					}
+					if err := json.Unmarshal(m.Result, &settings); err != nil {
+						t.Fatal(err)
+					}
+					observedSandbox = settings.Sandbox
 				}
 				if err := u.message(m); err != nil {
 					t.Fatal(err)
@@ -155,7 +165,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	pump(func() bool {
-		return u.thread != "" && !u.modelsLoading && u.statusConfig.PermissionProfile.Kind() == '{'
+		return u.thread != "" && !u.modelsLoading && u.statusConfig.PermissionProfile.Kind() == 'n'
 	})
 	main := u.thread
 	// This fixture dispatches UI commands directly, without a Main provider turn
@@ -192,7 +202,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	pump(func() bool { return len(command.reply) > 0 })
 	result := <-command.reply
 	if result.err != nil {
-		t.Fatal(result.err)
+		t.Fatalf("%v; host sandbox: %s", result.err, observedSandbox)
 	}
 	if result.batch.Launch.ThreadID == main || u.thread != main {
 		t.Fatal("batch replaced or forked main")
@@ -211,16 +221,32 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	var params struct {
 		Permissions           string   `json:"permissions"`
+		Sandbox               string   `json:"sandbox"`
 		RuntimeWorkspaceRoots []string `json:"runtimeWorkspaceRoots"`
 		ApprovalPolicy        string   `json:"approvalPolicy"`
 	}
 	if err := json.Unmarshal(result.batch.Launch.Params, &params); err != nil {
 		t.Fatal(err)
 	}
-	if params.Permissions != ":workspace" || params.ApprovalPolicy != "on-request" || len(params.RuntimeWorkspaceRoots) == 0 || params.RuntimeWorkspaceRoots[0] != batch.Cwd {
+	if params.Permissions != "" || params.Sandbox != "read-only" || params.ApprovalPolicy != "on-request" || len(params.RuntimeWorkspaceRoots) == 0 || params.RuntimeWorkspaceRoots[0] != batch.Cwd {
 		t.Fatalf("inherited permissions missing: %+v", params)
 	}
-	pump(func() bool { return len(provider.nativeOutput) > 0 })
+	var inherited appServerSandboxPolicy
+	if err := json.Unmarshal(result.batch.Launch.SandboxPolicy, &inherited); err != nil {
+		t.Fatal(err)
+	}
+	if inherited.Type != "workspaceWrite" || string(inherited.NetworkAccess) != "true" || !inherited.ExcludeTmpdirEnvVar || !inherited.ExcludeSlashTmp {
+		t.Fatalf("legacy sandbox policy lost: %+v", inherited)
+	}
+	// turn/start updates the thread's effective settings before model/tool work.
+	pump(func() bool {
+		v := u.navigation.views[result.batch.Launch.ThreadID]
+		return v.statusConfig.Sandbox.Type == "workspaceWrite" && len(provider.nativeOutput) > 0
+	})
+	childPolicy := u.navigation.views[result.batch.Launch.ThreadID].statusConfig.Sandbox
+	if string(childPolicy.NetworkAccess) != "true" || !childPolicy.ExcludeTmpdirEnvVar || !childPolicy.ExcludeSlashTmp {
+		t.Fatalf("host did not apply the full inherited policy: %+v", childPolicy)
+	}
 	if output := <-provider.nativeOutput; !strings.Contains(output, batch.Cwd) {
 		t.Fatal("native command escaped prepared checkout", output)
 	}

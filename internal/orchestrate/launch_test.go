@@ -38,15 +38,16 @@ func TestLaunchRetainsIntentAndAcknowledgements(t *testing.T) {
 		t.Fatal(err)
 	}
 	params := jsontext.Value(`{ "permissions": ":workspace", "model": "model" }`)
-	b, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", params)
+	policy := jsontext.Value(`{"excludeSlashTmp":true,"networkAccess":true,"type":"workspaceWrite"}`)
+	b, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", params, policy)
 	if err != nil || !dispatch || b.State != "starting" || b.Launch == nil {
 		t.Fatalf("reserve: %+v, %v, %v", b, dispatch, err)
 	}
 	s = &Store{Directory: s.Directory, Writes: s.Writes}
 	for _, state := range []string{"starting", "started", "launched"} {
 		before := s.Writes.Snapshot().Bytes
-		b, dispatch, err = s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", params)
-		if err != nil || dispatch || b.State != state {
+		b, dispatch, err = s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", params, policy)
+		if err != nil || dispatch || b.State != state || string(b.Launch.SandboxPolicy) != string(policy) {
 			t.Fatalf("repeat %s: %+v, %v, %v", state, b, dispatch, err)
 		}
 		if s.Writes.Snapshot().Bytes != before {
@@ -77,11 +78,14 @@ func TestLaunchRetainsIntentAndAcknowledgements(t *testing.T) {
 			}
 		}
 	}
-	if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "changed", params); err == nil || dispatch {
+	if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "changed", params, policy); err == nil || dispatch {
 		t.Fatal("changed handoff accepted")
 	}
-	if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", jsontext.Value(`{}`)); err == nil || dispatch {
+	if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", jsontext.Value(`{}`), policy); err == nil || dispatch {
 		t.Fatal("changed configuration accepted")
+	}
+	if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", params, nil); err == nil || dispatch {
+		t.Fatal("changed first-turn policy accepted")
 	}
 	if err := s.RecordTurn(t.Context(), workspace, "main", "batch", "child", "other"); err == nil {
 		t.Fatal("turn identity replaced")
@@ -113,7 +117,7 @@ func TestLaunchCheckoutLocation(t *testing.T) {
 	if err := os.Symlink(parent+"-moved", parent); err != nil {
 		t.Fatal(err)
 	}
-	if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", jsontext.Value(`{}`)); err == nil || dispatch {
+	if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", jsontext.Value(`{}`), nil); err == nil || dispatch {
 		t.Fatal("relocated checkout authorized dispatch")
 	}
 }
@@ -122,7 +126,7 @@ func TestLaunchRejectsChangedCheckoutAndCanceledReservation(t *testing.T) {
 	s, workspace, prepared := launchFixture(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, dispatch, err := s.BeginLaunch(ctx, workspace, "main", "batch", "handoff", jsontext.Value(`{}`)); err == nil || dispatch {
+	if _, dispatch, err := s.BeginLaunch(ctx, workspace, "main", "batch", "handoff", jsontext.Value(`{}`), nil); err == nil || dispatch {
 		t.Fatal("canceled reservation authorized dispatch")
 	}
 	for i, change := range [][]string{
@@ -136,7 +140,7 @@ func TestLaunchRejectsChangedCheckoutAndCanceledReservation(t *testing.T) {
 		if i == 1 {
 			continue // Restore the owned branch before changing its baseline.
 		}
-		if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", jsontext.Value(`{}`)); err == nil || dispatch {
+		if _, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", jsontext.Value(`{}`), nil); err == nil || dispatch {
 			t.Fatalf("changed checkout authorized dispatch after %v", change)
 		}
 	}
