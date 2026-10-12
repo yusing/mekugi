@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// Workflow instructions are explicit input, not request-dependent tool guidance.
-const orchestrateCoordinatorInstructions = `Coordinate these issues as isolated Git, SVN or unversioned shadow batches. Plan independent journal tasks; bind each integration task to /root/task_name. Names use lowercase letters, digits and underscores.
+// Tool instructions are explicit input, not request-dependent tool guidance.
+const orchestrateCoordinatorInstructions = `Use isolated Git, SVN or unversioned shadow batches. Bind each integration task to /root/task_name. Names use lowercase letters, digits and underscores.
 Call tools.mcp__orchestrate__<tool> with JSON arguments:
 prepare: task_name; optional evidence:[{name,source}] (absolute source files copied into run state)
 spawn_agent: task_name,message; optional model,reasoning_effort,service_tier
@@ -18,8 +18,8 @@ integrate: target (shadow merge and writeback; conflicts write nothing)
 cleanup: target (accepted idle Git or shadow checkout; removes unchanged owned evidence; retains branches, private repositories and nested commits)
 Prepare at Git HEAD, SVN's local committed baseline or a complete unversioned source snapshot. Evidence paths are returned and listed in the first child input. Copy required checkout-relative ignored inputs into the returned cwd before spawn. Versioned source edits do not follow. Spawn starts a fresh independent thread; message carries its complete assignment, constraints and checks. Select requested budgets; omitted settings inherit Main's effective settings.
 send_message queues without waking; followup_task starts or steers. Targets are task names or /root/task_name. Native collaboration tools cannot reach these threads.
-Review Git batches and cherry-pick their coherent commits into the target branch, one batch at a time, preserving unrelated source edits. Do not merge or rebase branches. Git preparation locally clones initialized submodules at recorded commits; import and cherry-pick changed submodule commits before the superproject. Verify integration before marking each bound task accepted; child completion leaves it open. Clean eligible accepted checkouts with cleanup.
-Use integrate for shadow results; it preserves unrelated source edits and reports conflicts before writes. Inspect partial or uncertain writeback before retrying. Main marks the bound task accepted separately after review.`
+Git batches use native Git integration. Acceptance requires batch commits to be reachable or patch-equivalent in the source, including changed submodule commits. Mark the bound task accepted only after verifying integration; child completion leaves it open. cleanup requires an accepted idle checkout.
+Use integrate for shadow results; it preserves unrelated source edits and reports conflicts before writes. Inspect partial or uncertain writeback before retrying. Main marks the bound task accepted separately after verifying integration.`
 
 const orchestrateWorkflow = orchestrateCoordinatorInstructions + "\nIssues:\n"
 
@@ -43,7 +43,7 @@ func (u *appServerUI) expandOrchestrate() bool {
 }
 
 func orchestrateChildInstructions(cwd string) string {
-	return fmt.Sprintf(`Work in %s. Your coordinator is main. Use tools.mcp__orchestrate__send_message({target,message}) to queue sibling input and tools.mcp__orchestrate__followup_task({target,message}) to start or steer a sibling. Either tool with target main reports an attributed event without starting or steering a user turn. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Read Main's journal with agent:"main"; keep your own journal root independent. Use stock request_user_input_async for human decision questions; messages to main are coordinator reports. Main reviews and accepts your result after integration.
+	return fmt.Sprintf(`Work in %s. Your coordinator is main. tools.mcp__orchestrate__send_message({target,message}) queues sibling input without waking; tools.mcp__orchestrate__followup_task({target,message}) starts or steers a sibling. Either tool with target main reports to the coordinator without starting or steering a user turn. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Main's journal is readable with agent:"main"; your journal root is independent. Human decision questions use request_user_input_async.
 `, cwd)
 }
 
@@ -57,7 +57,7 @@ func orchestrateRecoveryInstructions(j threadJournal) string {
 		return ""
 	}
 	if j.Thread == j.Orchestration.Main {
-		return "Orchestration workflow\n" + orchestrateCoordinatorInstructions + "\n\n"
+		return "Orchestration tools\n" + orchestrateCoordinatorInstructions + "\n\n"
 	}
-	return "Orchestration workflow\n" + orchestrateChildInstructions(j.Workspace) + "\n"
+	return "Orchestration tools\n" + orchestrateChildInstructions(j.Workspace) + "\n"
 }

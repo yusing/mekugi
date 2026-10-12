@@ -53,7 +53,7 @@ on the batch branch, with its path, source repository and baseline retained in
 the run. Source submodule edits and newer commits do not follow. Uninitialized
 submodules remain uninitialized; submodule preparation never fetches remote URLs.
 A missing local baseline fails preparation. Main imports and integrates any changed
-submodule commits with native Git cherry-pick before the superproject.
+submodule commits with native Git before the superproject.
 
 Acceptance:
 
@@ -177,9 +177,8 @@ with `agent: "main"`, while other agent selectors retain their native local path
 but cannot reveal sibling results. Child completion leaves Main's integration task
 unchanged.
 
-Main reviews Git batches and cherry-picks their coherent commits into the target
-branch, one batch at a time, preserving unrelated source edits. It does not merge
-or rebase branches. Shadow batches use `integrate`. Main marks its bound journal
+Git batches use native Git integration, preserving unrelated source edits.
+Shadow batches use `integrate`. Main marks its bound journal
 task `accepted` only after integration is verified. For Git,
 acceptance verifies that the batch's commits are reachable from the source's
 committed revision or have patch-equivalent commits there. Unmatched commits,
@@ -190,7 +189,7 @@ and branch and have
 no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
 with assume-unchanged or skip-worktree paths require inspection before acceptance,
 including recorded submodules, because those flags can conceal unfinished edits.
-Source edits and index are preserved. This verifies integration, while Main owns review.
+Source edits and index are preserved. Acceptance verifies integration, not review.
 
 Only the run coordinator can accept its existing task bound to a confirmed batch.
 Active, unresolved or failed child lifecycles, including native descendants, keep
@@ -280,7 +279,7 @@ replacement. Other uncertain paths require inspection. Temporary paths from an
 interrupted replacement remain identified in the result for inspection. Pending
 paths can continue when their preimages still match. Source preimages and merged
 blobs remain in the private repository for recovery. Integration evidence becomes
-available only after every changed path is confirmed. Main then reviews and marks
+available only after every changed path is confirmed. Main then marks
 its bound task `accepted`; writeback alone does not accept it.
 
 ## REQ-ORCHESTRATE-009 — Accepted checkout cleanup
@@ -329,13 +328,17 @@ the checkout; successfully retained commits remain available after a later failu
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
-user input carries the issues and workflow instructions; later ordinary input
+user input carries the issues and orchestration-tool instructions; later ordinary input
 does not repeat them or change tool exposure. Attachments, busy input, rejection
 and cancellation use the composer lifecycle. Fresh children receive their
 checkout, assignment and orchestration-tool instructions in their first input.
-Context resets carry the run's workflow instructions once in journal recovery.
+Instructions contain tool mechanics, not planning, review, progress, or delivery
+workflow policy. Child instructions contain only their checkout and the messaging
+and journal access mechanics they can use; Main's integration and cleanup guidance
+stays with Main. Caller guidance and the explicit assignment retain their own policy.
+Context resets carry the run's tool instructions once in journal recovery.
 Main receives coordinator instructions after preparation; confirmed child roots
-receive their checkout and coordination instructions. Native descendants retain
+receive their checkout and tool instructions. Native descendants retain
 their existing guidance. Fresh resume restores the retained recovery content,
 without repeating instructions on ordinary requests or changing tool exposure.
 Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.

@@ -201,6 +201,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	if len(request.Params.Input) != 1 || !strings.Contains(request.Params.Input[0].Text, batch.Cwd) || strings.Count(request.Params.Input[0].Text, "Your coordinator is main.") != 1 || !strings.Contains(request.Params.Input[0].Text, "tools.mcp__orchestrate__send_message") || !strings.HasSuffix(request.Params.Input[0].Text, batches[0].Launch.Message) {
 		t.Fatal("first child input lost its checkout, coordinator, tool brief or assignment", request.Params.Input)
 	}
+	requireOrchestrateToolMechanics(t, request.Params.Input[0].Text)
 	if batches[0].Launch.ThreadID != "child" || batches[0].State != "started" {
 		t.Fatal("turn dispatched before retained thread identity")
 	}

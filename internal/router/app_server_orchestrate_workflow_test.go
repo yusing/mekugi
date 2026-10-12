@@ -8,6 +8,15 @@ import (
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
+func requireOrchestrateToolMechanics(t *testing.T, input string) {
+	t.Helper()
+	for _, policy := range []string{"review", "periodic progress", "Plan independent", "Dispatch all batches"} {
+		if strings.Contains(input, policy) {
+			t.Fatalf("tool instructions include workflow policy %q: %s", policy, input)
+		}
+	}
+}
+
 func TestAppServerOrchestrateWorkflowComposer(t *testing.T) {
 	for _, busy := range []bool{false, true} {
 		t.Run(map[bool]string{false: "start", true: "steer"}[busy], func(t *testing.T) {
@@ -30,6 +39,7 @@ func TestAppServerOrchestrateWorkflowComposer(t *testing.T) {
 			if strings.Count(input, orchestrateWorkflow) != 1 || !strings.Contains(input, "Issue A\nIssue B") || strings.Contains(input, "/orchestrate Issue") {
 				t.Fatalf("workflow input = %q", input)
 			}
+			requireOrchestrateToolMechanics(t, input)
 			if len(u.submission.files) != 1 || u.submission.text[u.submission.files[0].start:u.submission.files[0].end] != "@issue.md" || !strings.Contains(input, "attached issue") {
 				t.Fatal("workflow lost its attached file or token position")
 			}
