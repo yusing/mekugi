@@ -32,7 +32,7 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		}
 		b := &m.Batches[index]
 		batch = *b
-		if !shadowVCS(b.VCS) || b.State != "launched" || b.Launch == nil || b.Launch.ThreadID != thread || thread == "" {
+		if !shadowVCS(b.VCS) || b.State == "removing" || b.State == "removed" || b.Launch == nil || b.Launch.TurnID == "" || b.Launch.ThreadID != thread || thread == "" {
 			return errors.New("shadow merge requires a confirmed shadow batch")
 		}
 		for _, d := range m.Deliveries {

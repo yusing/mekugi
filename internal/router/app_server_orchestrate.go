@@ -340,7 +340,6 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			return true
 		}
 		child.batch.Launch.ThreadID = result.Thread.ID
-		child.batch.State, child.batch.Launch.ThreadResult = "started", m.Result
 		if u.orchestrateThreads == nil {
 			u.orchestrateThreads = make(map[string]*orchestrateChild)
 		}
@@ -351,7 +350,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		ctx, name, cwd, thread, raw := u.orchestrateStorageContext, child.batch.TaskName, child.batch.Cwd, result.Thread.ID, m.Result
 		journals, replay := u.proxy.journals, u.proxy.replayStore
 		u.orchestrateWork(func() func() {
-			err := store.RecordThread(ctx, c.workspace, c.main, name, thread, raw)
+			err := store.RecordThread(ctx, c.workspace, c.main, name, thread)
 			if err == nil {
 				var release func()
 				ctx, release, err = replay.beginSession(ctx, thread, "")
@@ -415,7 +414,6 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			u.failOrchestrate(child, errors.New("host returned no turn identity"))
 			return true
 		}
-		child.batch.Launch.TurnID = result.Turn.ID
 		if child.batch.Launch.HostStatus == "" || child.batch.Launch.HostStatus == "running" {
 			child.turn = result.Turn.ID
 		}
@@ -447,7 +445,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					u.setNotice("Orchestration outcome was not retained: "+persistErr.Error(), true)
 					return
 				}
-				child.batch.State = "launched"
+				child.batch.Launch.TurnID = turn
 				u.finishOrchestrate(child, c.ctx.Err())
 			}
 		})

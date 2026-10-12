@@ -19,7 +19,6 @@ type Launch struct {
 	Message       string         `json:"message"`
 	Params        jsontext.Value `json:"params"`
 	ThreadID      string         `json:"thread_id,omitempty"`
-	ThreadResult  jsontext.Value `json:"thread_result,omitempty"`
 	TurnID        string         `json:"turn_id,omitempty"`
 	HostStatus    string         `json:"host_status,omitempty"`
 }
@@ -67,7 +66,6 @@ func (s *Store) BeginLaunch(ctx context.Context, workspace, main, name, message 
 				return err
 			}
 		}
-		b.State = "starting"
 		b.Launch = &Launch{Message: message, Params: params, SandboxPolicy: policy}
 		batch, dispatch = *b, true
 		return nil
@@ -133,23 +131,21 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 
 // RecordThread publishes host identity before the runtime may send turn/start.
 // A late acknowledgement remains useful even when its MCP caller has canceled.
-func (s *Store) RecordThread(ctx context.Context, workspace, main, name, thread string, result jsontext.Value) error {
-	result, err := launchObject(result)
-	if thread == "" || thread == main || err != nil {
-		return errors.New("launch requires a separate host thread and response object")
+func (s *Store) RecordThread(ctx context.Context, workspace, main, name, thread string) error {
+	if thread == "" || thread == main {
+		return errors.New("launch requires a separate host thread")
 	}
 	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
-		if b.Launch == nil || b.State != "starting" && b.State != "started" {
+		if b.Launch == nil || b.Launch.TurnID != "" || b.State == "removing" || b.State == "removed" {
 			return errors.New("batch is not awaiting a thread acknowledgement")
 		}
 		if b.Launch.ThreadID != "" {
-			if b.Launch.ThreadID != thread || !bytes.Equal(b.Launch.ThreadResult, result) {
+			if b.Launch.ThreadID != thread {
 				return errors.New("host thread acknowledgement changed")
 			}
 			return errLaunchUnchanged
 		}
-		b.Launch.ThreadID, b.Launch.ThreadResult = thread, result
-		b.State = "started"
+		b.Launch.ThreadID = thread
 		return nil
 	})
 }
@@ -174,16 +170,16 @@ func (s *Store) RecordTurn(ctx context.Context, workspace, main, name, thread, t
 		return errors.New("launch requires a host turn identity")
 	}
 	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
-		if b.Launch == nil || b.Launch.ThreadID != thread || b.State != "started" && b.State != "launched" {
+		if b.Launch == nil || b.Launch.ThreadID == "" || b.Launch.ThreadID != thread || b.State == "removing" || b.State == "removed" {
 			return errors.New("batch is not awaiting a turn acknowledgement")
 		}
 		if b.Launch.TurnID != "" && b.Launch.TurnID != turn {
 			return errors.New("host turn acknowledgement changed")
 		}
-		if b.Launch.TurnID == turn && b.State == "launched" {
+		if b.Launch.TurnID == turn {
 			return errLaunchUnchanged
 		}
-		b.Launch.TurnID, b.State = turn, "launched"
+		b.Launch.TurnID = turn
 		return nil
 	})
 }

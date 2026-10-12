@@ -63,7 +63,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 		}
 		b := &m.Batches[index]
 		defer func() { batch = *b }()
-		if !shadowVCS(b.VCS) || b.State != "launched" || b.Launch == nil || b.Launch.ThreadID != thread || thread == "" || b.ShadowMerge == nil {
+		if !shadowVCS(b.VCS) || b.State == "removing" || b.State == "removed" || b.Launch == nil || b.Launch.TurnID == "" || b.Launch.ThreadID != thread || thread == "" || b.ShadowMerge == nil {
 			return errors.New("writeback requires a confirmed shadow batch and merge plan")
 		}
 		for _, d := range m.Deliveries {

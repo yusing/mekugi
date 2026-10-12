@@ -365,7 +365,7 @@ func TestAppServerOrchestrateCleanupReconciliation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			data = bytes.Replace(data, []byte(`"state":"launched"`), []byte(`"state":"removing"`), 1)
+			data = bytes.Replace(data, []byte(`"state":"prepared"`), []byte(`"state":"removing"`), 1)
 			if err := os.WriteFile(paths[0], data, 0600); err != nil {
 				t.Fatal(err)
 			}

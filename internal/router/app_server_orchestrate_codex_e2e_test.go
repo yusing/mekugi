@@ -226,18 +226,14 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if result.batch.Launch.ThreadID == main || u.thread != main {
 		t.Fatal("batch replaced or forked main")
 	}
-	var effective struct {
-		Model           string              `json:"model"`
-		ReasoningEffort string              `json:"reasoningEffort"`
-		ServiceTier     string              `json:"serviceTier"`
-		Thread          appServerThreadInfo `json:"thread"`
+	launched := u.navigation.views[result.batch.Launch.ThreadID]
+	if launched == nil {
+		t.Fatal("confirmed launch has no subscribed view")
 	}
-	if err := json.Unmarshal(result.batch.Launch.ThreadResult, &effective); err != nil {
-		t.Fatal(err)
+	if launched.model != "gpt-6-astra" || launched.reasoningEffort != "high" || launched.serviceTier != "priority" || launched.session.cwd != batch.Cwd {
+		t.Fatalf("effective launch settings: model=%q effort=%q tier=%q cwd=%q", launched.model, launched.reasoningEffort, launched.serviceTier, launched.session.cwd)
 	}
-	if effective.Model != "gpt-6-astra" || effective.ReasoningEffort != "high" || effective.ServiceTier != "priority" || effective.Thread.Cwd != batch.Cwd {
-		t.Fatalf("effective launch settings: %+v", effective)
-	}
+	effectiveModel := launched.model
 	var params struct {
 		Permissions           string   `json:"permissions"`
 		Sandbox               string   `json:"sandbox"`
@@ -300,7 +296,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatal("installed native descendant lost cross-checkout journal ancestry", node)
 	}
 	view := u.navigation.views[result.batch.Launch.ThreadID]
-	if view == nil || view.session.paths[nativeThread] != "/root/metadata_probe" || view.model != effective.Model {
+	if view == nil || view.session.paths[nativeThread] != "/root/metadata_probe" || view.model != effectiveModel {
 		t.Fatal("installed host tree did not populate its independent view")
 	}
 	u.draft, view.draft = "Main draft", "Batch draft"
@@ -411,7 +407,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	pump(func() bool { return u.viewedUI() != u && len(u.navigation.resumes) == 0 })
 	view = u.viewedUI()
-	if view.model != effective.Model || u.orchestrateThreads[result.batch.Launch.ThreadID].turn != "" {
+	if view.model != effectiveModel || u.orchestrateThreads[result.batch.Launch.ThreadID].turn != "" {
 		t.Fatal("installed child resume lost effective settings or revived its old turn")
 	}
 	view.draft = "Batch draft"

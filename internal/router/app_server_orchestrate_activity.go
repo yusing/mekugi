@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"github.com/yusing/mekugi/internal/orchestrate"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/livediff"
@@ -90,9 +91,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 	if item.Error != nil {
 		output = append(output, item.Error.Message)
 	}
-	var outcome struct {
-		State string `json:"state"`
-	}
+	var outcome orchestrate.Batch
 	data := result.Structured
 	if len(data) == 0 && len(output) == 1 {
 		data = jsontext.Value(output[0])
@@ -127,7 +126,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 			}
 		}
 		switch {
-		case item.Tool == "spawn_agent" && outcome.State == "launched":
+		case item.Tool == "spawn_agent" && outcome.Launch != nil && outcome.Launch.TurnID != "":
 			semantic.Kind, semantic.start = "start", &activityStart{}
 			semantic.assignment = &activityAssignment{from: from, to: to, text: args.Message}
 		case (item.Tool == "send_message" || item.Tool == "followup_task") && (outcome.State == "delivered" || outcome.State == "reported"):

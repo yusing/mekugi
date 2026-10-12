@@ -107,7 +107,7 @@ func TestPrepareGitSubmodules(t *testing.T) {
 	if _, dispatch, err := reopened.BeginLaunch(t.Context(), source, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil || !dispatch {
 		t.Fatal("prepared submodules rejected launch", err)
 	}
-	if err := reopened.RecordThread(t.Context(), source, "main", "batch", "child", jsontext.Value(`{}`)); err != nil {
+	if err := reopened.RecordThread(t.Context(), source, "main", "batch", "child"); err != nil {
 		t.Fatal(err)
 	}
 	// A .gitmodules ignore setting cannot hide unfinished submodule edits

@@ -27,7 +27,7 @@ func (u *appServerUI) queueOrchestratedFollowup(c *orchestrateCommand) {
 		return
 	}
 	for thread, child := range u.orchestrateThreads {
-		if child.command.main == c.main && child.command.workspace == c.workspace && (c.target != "main" && c.target == child.batch.TaskName || c.target == "/root/"+child.batch.TaskName) && thread != c.caller && child.batch.State == "launched" {
+		if child.command.main == c.main && child.command.workspace == c.workspace && (c.target != "main" && c.target == child.batch.TaskName || c.target == "/root/"+child.batch.TaskName) && thread != c.caller && child.batch.Launch != nil && child.batch.Launch.TurnID != "" && child.batch.State != "removing" && child.batch.State != "removed" && child.batch.State != "integrating" {
 			if u.navigation.resumes[thread] != nil {
 				u.resumeOrchestratedBatch(child.batch.TaskName, func(err error) {
 					if err != nil {
@@ -47,7 +47,7 @@ func (u *appServerUI) queueOrchestratedFollowup(c *orchestrateCommand) {
 	}
 	if n := u.navigation; n != nil {
 		for _, b := range n.retained {
-			if b.State == "launched" && b.Launch != nil && b.Launch.ThreadID != c.caller && n.views[b.Launch.ThreadID] == nil && (c.target != "main" && c.target == b.TaskName || c.target == "/root/"+b.TaskName) {
+			if b.State != "removing" && b.State != "removed" && b.Launch != nil && b.Launch.TurnID != "" && b.Launch.ThreadID != c.caller && n.views[b.Launch.ThreadID] == nil && (c.target != "main" && c.target == b.TaskName || c.target == "/root/"+b.TaskName) {
 				u.resumeOrchestratedBatch(b.TaskName, func(err error) {
 					if err != nil {
 						c.reply <- orchestrateResult{err: err}

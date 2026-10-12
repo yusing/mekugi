@@ -118,7 +118,7 @@ func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
 		name, tool, state string
 		failed            bool
 	}{
-		{"started", "spawn_agent", "launched", false},
+		{"started", "spawn_agent", "prepared", false},
 		{"followup", "followup_task", "delivered", false},
 		{"message", "send_message", "reported", false},
 		{"queued", "send_message", "queued", false},
@@ -137,6 +137,9 @@ func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
 			u.clock = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.Local) }
 			u.view.clock = u.clock
 			text := `{"id":"opaque-delivery-id","state":"` + tc.state + `"}`
+			if tc.tool == "spawn_agent" {
+				text = `{"state":"prepared","launch":{"thread_id":"child","turn_id":"turn"}}`
+			}
 			if tc.failed {
 				text = "Target is unavailable"
 			}

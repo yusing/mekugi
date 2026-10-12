@@ -220,6 +220,8 @@ func TestUISnapshotOrchestrationIntegrating(t *testing.T) {
 	u.agents.clock = u.clock
 	u.status = "Ready"
 	child := u.orchestrateThreads["child"]
+	u.openOrchestratePicker()
+	drainOrchestrateWork(t, u)
 	command := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "integrate", reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(command)
 	if !u.navigation.views["child"].orchestrateCheckoutUnavailable() || child.batch.State != "integrating" {
@@ -228,6 +230,10 @@ func TestUISnapshotOrchestrationIntegrating(t *testing.T) {
 	child.batch.Branch = "mekugi/run/batch"
 	u.orchestrationRoster()
 	uisnapshot.Assert(t, "testdata/snapshots/orchestration-integrating-roster.txt", strings.Join(u.agents.nativeRoster(100, 12, now, true), "\n")+"\n")
+	u.refreshOrchestratePicker()
+	if len(u.picker.choices) != 2 || !strings.HasPrefix(u.picker.choices[1].description, "integrating") {
+		t.Fatal("picker lost the active integration state", u.picker.choices)
+	}
 	drainOrchestrateWork(t, u)
 	if result := <-command.reply; result.err != nil || u.navigation.views["child"].orchestrateCheckoutUnavailable() {
 		t.Fatal("integration failed to release input", result)

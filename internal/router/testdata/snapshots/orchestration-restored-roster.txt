@@ -3,4 +3,4 @@
  ● batch      Interrupted · not subscribed                                                          
  ● prepared   Prepared                                                                             
  ● failed     Failed                                                                               
- ● uncertain  Starting                                                                             
+ ● uncertain                                                                                       

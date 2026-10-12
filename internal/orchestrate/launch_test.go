@@ -40,14 +40,14 @@ func TestLaunchRetainsIntentAndAcknowledgements(t *testing.T) {
 	params := jsontext.Value(`{ "permissions": ":workspace", "model": "model" }`)
 	policy := jsontext.Value(`{"excludeSlashTmp":true,"networkAccess":true,"type":"workspaceWrite"}`)
 	b, dispatch, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", params, policy)
-	if err != nil || !dispatch || b.State != "starting" || b.Launch == nil {
+	if err != nil || !dispatch || b.State != "prepared" || b.Launch == nil {
 		t.Fatalf("reserve: %+v, %v, %v", b, dispatch, err)
 	}
 	s = &Store{Directory: s.Directory, Writes: s.Writes}
 	for _, state := range []string{"starting", "started", "launched"} {
 		before := s.Writes.Snapshot().Bytes
 		b, dispatch, err = s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", params, policy)
-		if err != nil || dispatch || b.State != state || string(b.Launch.SandboxPolicy) != string(policy) {
+		if err != nil || dispatch || b.State != "prepared" || string(b.Launch.SandboxPolicy) != string(policy) {
 			t.Fatalf("repeat %s: %+v, %v, %v", state, b, dispatch, err)
 		}
 		if s.Writes.Snapshot().Bytes != before {
@@ -59,11 +59,11 @@ func TestLaunchRetainsIntentAndAcknowledgements(t *testing.T) {
 				t.Fatal("turn accepted before thread publication")
 			}
 			for range 2 {
-				if err := s.RecordThread(t.Context(), workspace, "main", "batch", "child", jsontext.Value(`{ "thread": { "id": "child" }, "model": "confirmed" }`)); err != nil {
+				if err := s.RecordThread(t.Context(), workspace, "main", "batch", "child"); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := s.RecordThread(t.Context(), workspace, "main", "batch", "other", jsontext.Value(`{}`)); err == nil {
+			if err := s.RecordThread(t.Context(), workspace, "main", "batch", "other"); err == nil {
 				t.Fatal("thread identity replaced")
 			}
 		case "started":

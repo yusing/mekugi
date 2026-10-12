@@ -88,7 +88,7 @@ func TestJournalOrchestrateCrossCheckout(t *testing.T) {
 	if _, _, err := store.BeginLaunch(t.Context(), workspace, "main", "sibling", "work", jsontext.Value(`{}`), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RecordThread(t.Context(), workspace, "main", "sibling", "sibling", jsontext.Value(`{}`)); err != nil {
+	if err := store.RecordThread(t.Context(), workspace, "main", "sibling", "sibling"); err != nil {
 		t.Fatal(err)
 	}
 	siblingCtx, releaseSibling, err := replay.beginSession(t.Context(), "sibling", "")

@@ -14,7 +14,7 @@ func TestDeliveryRetainsDispatchAndAcknowledgement(t *testing.T) {
 	if _, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RecordThread(t.Context(), workspace, "main", "batch", "child", jsontext.Value(`{}`)); err != nil {
+	if err := s.RecordThread(t.Context(), workspace, "main", "batch", "child"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordTurn(t.Context(), workspace, "main", "batch", "child", "first"); err != nil {

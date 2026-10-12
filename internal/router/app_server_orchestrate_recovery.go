@@ -8,10 +8,10 @@ import (
 )
 
 func orchestrateBatchState(batch orchestrate.Batch) string {
-	if batch.State == "removing" || batch.State == "removed" {
+	if batch.State == "integrating" || batch.State == "removing" || batch.State == "removed" {
 		return batch.State
 	}
-	if batch.Launch != nil && batch.Launch.HostStatus != "" {
+	if batch.Launch != nil {
 		return batch.Launch.HostStatus
 	}
 	return batch.State

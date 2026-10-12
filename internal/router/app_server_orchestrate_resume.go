@@ -58,7 +58,8 @@ func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
 					u.orchestrateThreads = make(map[string]*orchestrateChild)
 				}
 				u.orchestrateThreads[thread] = child
-				err = u.addOrchestratedView(child, batch.Launch.ThreadResult, func() {
+				raw, _ := json.Marshal(map[string]any{"thread": appServerThreadInfo{ID: thread, Cwd: batch.Cwd}})
+				err = u.addOrchestratedView(child, raw, func() {
 					v := n.views[thread]
 					r.view = v
 					v.awaitingTurn = false

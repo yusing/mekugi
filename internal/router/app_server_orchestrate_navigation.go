@@ -86,7 +86,7 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 	}
 	if u.panes != nil {
 		v.panes = new(nativePanePersistence)
-		resuming := child.batch.Launch.TurnID != ""
+		resuming := n.resumes[thread] != nil
 		v.paneError(v.panes.open(v.shell, child.batch.Cwd, thread, resuming))
 		if !resuming {
 			v.retainAppliedSettings()
@@ -418,7 +418,7 @@ func (u *appServerUI) orchestrationRoster() {
 			if child := n.owner.orchestrateThreads[thread]; child != nil {
 				name = child.batch.TaskName
 				if v.orchestrateCheckoutUnavailable() {
-					label = child.batch.State
+					label = orchestrateBatchState(child.batch)
 				}
 				if name == "main" {
 					name = "main batch"

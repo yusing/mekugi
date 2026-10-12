@@ -14,7 +14,7 @@ func (s *Store) Resume(ctx context.Context, workspace, main, name string) (Batch
 				continue
 			}
 			batch = b
-			if b.Launch == nil || b.Launch.ThreadID == "" || b.State != "launched" && b.State != "started" && b.State != "removed" {
+			if b.Launch == nil || b.Launch.ThreadID == "" || b.State == "removing" {
 				return errors.New("batch has no resumable confirmed thread")
 			}
 			if b.VCS != "" && !shadowVCS(b.VCS) {

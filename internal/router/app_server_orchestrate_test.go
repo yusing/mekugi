@@ -174,7 +174,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	dispatch()
 	request := btwTestRequest(t, w, "thread/start", "")
 	batches, _ = store.List(ctx, workspace, "main")
-	if batches[0].State != "starting" || batches[0].Launch == nil {
+	if batches[0].State != "prepared" || batches[0].Launch == nil {
 		t.Fatal("host dispatch preceded intent")
 	}
 	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "child", "cwd": batch.Cwd}, "model": "effective-model", "reasoningEffort": "high"})
@@ -202,7 +202,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal("first child input lost its checkout, coordinator, tool brief or assignment", request.Params.Input)
 	}
 	requireOrchestrateToolMechanics(t, request.Params.Input[0].Text)
-	if batches[0].Launch.ThreadID != "child" || batches[0].State != "started" {
+	if batches[0].Launch.ThreadID != "child" || batches[0].State != "prepared" {
 		t.Fatal("turn dispatched before retained thread identity")
 	}
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"child-turn"}}`)
@@ -337,7 +337,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	request = btwTestRequest(t, w, "turn/steer", "child")
 	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"turn changed"}}`, request.ID))
 	take(result, true)
-	if u.orchestrateThreads["child"].turn != "child-turn" || u.orchestrateThreads["child"].batch.State != "launched" {
+	if u.orchestrateThreads["child"].turn != "child-turn" || u.orchestrateThreads["child"].batch.Launch.TurnID != "child-turn" {
 		t.Fatal("follow-up rejection replaced batch lifecycle")
 	}
 	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "work"})

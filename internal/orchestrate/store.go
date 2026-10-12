@@ -149,7 +149,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 				if batch.VCS != "" && !shadowVCS(batch.VCS) {
 					return errors.New("retained batch uses an unsupported orchestration VCS")
 				}
-				if batch.State != "prepared" {
+				if batch.State != "prepared" || batch.Launch != nil {
 					return fmt.Errorf("batch %s is %s; inspect its retained checkout before recovery", name, batch.State)
 				}
 				return nil

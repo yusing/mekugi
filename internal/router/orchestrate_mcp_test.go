@@ -103,7 +103,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	if _, _, err := store.BeginLaunch(ctx, workspace, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RecordThread(ctx, workspace, "main", "batch", "batch-thread", jsontext.Value(`{}`)); err != nil {
+	if err := store.RecordThread(ctx, workspace, "main", "batch", "batch-thread"); err != nil {
 		t.Fatal(err)
 	}
 	run := journalRun{Directory: store.Directory, Workspace: workspace, Main: "main"}

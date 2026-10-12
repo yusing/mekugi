@@ -79,13 +79,16 @@ await tools.mcp__orchestrate__spawn_agent({task_name:"batch",message:"Complete t
 Children start as independent Codex threads with fresh context. `message` carries
 the complete assignment. Main can select model, reasoning effort and service tier;
 omitted settings inherit its current effective values. Host-confirmed settings
-are authoritative. Native subagents stay inside the child's checkout. Host thread
+are authoritative; resume reads current settings and history from Codex rather
+than retaining the initial thread-start response. Native subagents stay inside the child's checkout. Host thread
 identity selects their journal workspace. Presentation keeps identical native agent paths in
 different thread trees separate, without changing host identifiers. Live native
 descendants also prevent coordinator departure.
 
 A launch reserves its prepared checkout before requesting a host thread. Repeats
-return retained progress; a changed handoff or launch configuration rejects.
+return retained intent and confirmed identities; a changed handoff or configuration
+rejects. New launch records retain checkout state, without separate starting,
+started, or launched labels. Thread and turn IDs show acknowledged progress.
 Confirmed thread identity is saved before the first turn, and confirmed turn
 identity is saved before success is returned. Uncertain outcomes require
 inspection rather than an automatic retry. Launch checks the checkout location,

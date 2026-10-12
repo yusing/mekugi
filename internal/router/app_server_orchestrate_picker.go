@@ -95,7 +95,7 @@ func (u *appServerUI) refreshOrchestratePicker() {
 			choice.name = view.thread
 			choice.description = u.orchestratePickerStatus(view, view.status)
 			if view.orchestrateCheckoutUnavailable() {
-				choice.description = u.orchestratePickerStatus(view, batch.State)
+				choice.description = u.orchestratePickerStatus(view, orchestrateBatchState(batch))
 			}
 		} else if batch.Launch != nil && batch.Launch.ThreadID != "" {
 			choice.name = batch.Launch.ThreadID

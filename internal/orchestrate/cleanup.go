@@ -51,7 +51,7 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 					return errors.New("cleanup checkout still has a Git worktree registration")
 				}
 			} else {
-				if b.State != "launched" {
+				if b.Launch.TurnID == "" {
 					return errors.New("cleanup requires a launched batch")
 				}
 				if err := validateCheckoutIdentity(ctx, *b); err != nil {

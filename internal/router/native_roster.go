@@ -610,7 +610,10 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 // agentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
 func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string {
-	if label := v.orchestrationLabels[agent.Name]; label != "" {
+	if label, exists := v.orchestrationLabels[agent.Name]; exists && (label != "" || v.orchestrationRetained[agent.Name]) {
+		if label == "" {
+			return ""
+		}
 		return liveActivityMiddle(strings.ToUpper(label[:1])+label[1:], width)
 	}
 	if source := v.orchestrationSources[agent.Name]; source != nil {
