@@ -1,6 +1,6 @@
 ┌ 1 main ────────────────────────────────────────┐┌ 3 Activity ──────────────────────────── FOLLOW ┐
-│└ Read main.go                                  ││● main                                 20:00:00 │
-│                                                │││ └ Read main.go                                │
+│└ Read main.go                                  ││● main_worker                          20:00:00 │
+│                                                │││ └ Read main-worker.go                         │
 │                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │

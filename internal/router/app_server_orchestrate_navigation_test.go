@@ -8,11 +8,56 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
+
+func TestAppServerOrchestrateActivityScope(t *testing.T) {
+	for _, replay := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replay=%v", replay), func(t *testing.T) {
+			u, launch := orchestrateIdentityPendingTurn(t)
+			orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+			for _, root := range []string{"main", "child"} {
+				worker := root + "-worker"
+				orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"thread/started","params":{"thread":{"id":%q,"source":{"subAgent":{"thread_spawn":{"parent_thread_id":%q,"agent_path":"/root/worker"}}}}}}`, worker, root))
+				v := u.navigation.views[root]
+				for _, thread := range []string{root, worker} {
+					item := appServerItem{ID: thread, Type: "commandExecution", Command: "cat " + thread + ".go", Status: "completed"}
+					if replay {
+						turns := []appServerHistoryTurn{{ID: "recorded", Status: "completed", Items: []appServerItem{item}}}
+						if thread == root {
+							v.restoreMainHistory(turns, nil, nil)
+						} else {
+							info := v.session.threads[thread]
+							info.Turns = turns
+							v.restoreActivityThread(info)
+						}
+					} else {
+						appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "live", "item": item})
+					}
+				}
+			}
+			for _, root := range []string{"child", "main", "child"} {
+				u.switchOrchestratedThread(root)
+				v := u.viewedUI()
+				feed := ansi.Strip(strings.Join(v.agents.renderFeed(90, 60).lines, "\n"))
+				other := "main"
+				if root == "main" {
+					other = "child"
+				}
+				if !strings.Contains(feed, root+"-worker.go") || strings.Contains(feed, root+".go") || strings.Contains(feed, other+"-worker.go") {
+					t.Fatalf("%s Activity crossed its native-child scope:\n%s", root, feed)
+				}
+				if !strings.Contains(ansi.Strip(strings.Join(v.view.renderFeed(90, 60).lines, "\n")), root+".go") {
+					t.Fatal("root activity left its own transcript", root)
+				}
+			}
+		})
+	}
+}
 
 func TestAppServerOrchestrateNavigationLineage(t *testing.T) {
 	replay, err := openMekugiReplayStore(t.TempDir())
@@ -165,8 +210,10 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 		view.shell.journalOpen = false
 	}
 	u.draft, v.draft = "Review the batch", "Complete the batch"
-	u.agents.agents = append(u.agents.agents, activityPaneAgent{Name: "/root/main_worker"})
-	v.agents.agents = append(v.agents.agents, activityPaneAgent{Name: "/root/batch_worker"})
+	for _, root := range []string{"main", "child"} {
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"thread/started","params":{"thread":{"id":%q,"parentThreadId":%q,"agentNickname":%q}}}`, root+"-worker", root, map[string]string{"main": "main_worker", "child": "batch_worker"}[root]))
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"turn","item":{"id":"read-worker","type":"commandExecution","command":"cat %s-worker.go","status":"completed","exitCode":0}}}`, root+"-worker", root))
+	}
 	for _, test := range []struct {
 		name, thread string
 		collapsed    bool

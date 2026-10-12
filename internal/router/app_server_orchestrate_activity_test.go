@@ -163,18 +163,15 @@ func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
 				t.Fatal("completion duplicated or lost the call")
 			}
 			if tc.name == "waiting" {
-				// The screenshot's completed wait followed by a started wait must
-				// stay visible without entering the operation tree twice.
+				// Consecutive waits remain peer progress rows in Main.
 				item["id"], item["status"], item["arguments"] = "next-wait", "inProgress", map[string]any{}
 				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-				u.agents.childrenOnly, u.agents.includeRoot = true, true
-				u.agents.clock, u.agents.painter.Theme = u.clock, livediff.DarkTheme
+			}
+			if feed := strings.Join(u.agents.renderFeed(90, 60).lines, "\n"); strings.Contains(feed, "Check the rendered output.") || strings.Contains(feed, "waiting") || strings.Contains(feed, "Waiting") {
+				t.Fatal("orchestration call entered native Activity")
 			}
 			rows, _ := u.mainFrame(70, 14, 0)
 			assertNativeUISnapshot(t, "orchestration-event-"+tc.name, rows)
-			if tc.name == "waiting" {
-				uisnapshot.Assert(t, "testdata/snapshots/orchestration-wait-activity.txt", strings.Join(u.agents.renderFeed(70, 0).lines, "\n"))
-			}
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-event-"+tc.name+"-styles.txt", append(rows, "plain after event"), 70)
 			block := u.view.entries[0].blocks[0]
 			opened := false

@@ -59,7 +59,7 @@ type liveActivityView struct {
 	livePreviews          map[string][]string // Temporary caller-local transcript replacements.
 	feedOnly              bool
 	conversation          bool                        // Main uses the same feed/state with full, unclipped messages.
-	includeRoot           bool                        // Orchestration Activity includes the viewed independent root.
+	hideRootRoster        bool                        // Independent orchestration roots have their own roster.
 	childrenOnly          bool                        // Native Main already owns root activity; keep it out of the auxiliary feed.
 	bare                  bool                        // The shell's pane title replaces the heading and footer rows.
 	focused               bool                        // Native Activity shows its key hints only while it has keyboard focus.
@@ -227,7 +227,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 			// These are provider-visible summaries from the collector, never
 			// raw reasoning. Keep legacy panes and the other audience excluded.
-			if !(v.childrenOnly && (entry.Agent != "/root" || v.includeRoot) || v.conversation && entry.Agent == "Main") {
+			if !(v.childrenOnly && entry.Agent != "/root" || v.conversation && entry.Agent == "Main") {
 				continue
 			}
 			updated := false
@@ -403,11 +403,13 @@ func (v *liveActivityView) keepSelection() {
 }
 
 // feedAgents are the roster rows the feed can filter to. Native Activity
-// never shows Main's entries, so it neither counts nor selects Main.
+// never shows independent roots, so it neither counts nor selects their rows.
 func (v *liveActivityView) feedAgents() []liveActivityRosterRow {
 	rows := v.roster()
 	if v.childrenOnly {
-		rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
+		rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool {
+			return row.agent.Name == "/root" || strings.HasPrefix(row.agent.Name, "/Orchestration/")
+		})
 	}
 	return rows
 }
@@ -474,14 +476,10 @@ func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 			return false
 		}
 	}
-	if v.childrenOnly && !v.includeRoot && entry.Agent == "/root" {
+	if v.childrenOnly && (entry.Agent == "/root" || entry.native != nil && entry.native.orchestrated) {
 		return false
 	}
-	selected := v.selected
-	if v.includeRoot && strings.HasPrefix(selected, "/Orchestration/") {
-		selected = "/root"
-	}
-	return !v.only || entry.Agent == selected
+	return !v.only || entry.Agent == v.selected
 }
 
 // roster orders agents as a canonical-path tree. Siblings keep observation
@@ -502,7 +500,7 @@ func (v *liveActivityView) roster() []liveActivityRosterRow {
 	visit = func(under string, depth int) {
 		for _, agent := range v.agents {
 			if parent(agent.Name) == under {
-				if agent.Name == "/root" && v.includeRoot {
+				if agent.Name == "/root" && v.hideRootRoster {
 					visit(agent.Name, depth)
 					continue
 				}

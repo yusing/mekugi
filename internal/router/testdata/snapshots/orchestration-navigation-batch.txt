@@ -1,6 +1,6 @@
 ┌ 1 main › batch ────────────────────────────────┐┌ 3 Activity ──────────────────────────── FOLLOW ┐
-│└ Read child.go                                 ││● main                                 20:00:00 │
-│                                                │││ └ Read child.go                               │
+│└ Read child.go                                 ││● batch_worker                         20:00:00 │
+│                                                │││ └ Read child-worker.go                        │
 │                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │

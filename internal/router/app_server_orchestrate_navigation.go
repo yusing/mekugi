@@ -41,7 +41,7 @@ func (u *appServerUI) viewedUI() *appServerUI {
 
 func (u *appServerUI) ensureOrchestrationNavigation() *orchestrateNavigation {
 	if u.navigation == nil {
-		u.agents.includeRoot = true
+		u.agents.hideRootRoster = true
 		u.navigation = &orchestrateNavigation{owner: u, viewed: u, views: map[string]*appServerUI{u.thread: u}, order: []string{u.thread}, reads: make(map[string]string), unavailable: make(map[string]bool)}
 	}
 	return u.navigation
@@ -81,7 +81,7 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 	v.session.registerThread(result.Thread)
 	v.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(v.session.agents)})
 	v.ensureShell()
-	v.agents.includeRoot = true
+	v.agents.hideRootRoster = true
 	v.shell.faint = u.shell != nil && u.shell.faint
 	v.shell.diff.workspace = child.batch.Cwd
 	v.restoreDiffThread(result.Thread, true)

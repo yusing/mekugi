@@ -1,3 +1,0 @@
-● main                                                        12:00:00
-│ • Finished waiting · batch, check
-│ • Waiting for agent · all

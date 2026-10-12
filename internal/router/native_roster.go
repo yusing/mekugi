@@ -47,7 +47,7 @@ type nativeRosterItem struct {
 // turns; turns drop first when narrow.
 func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused bool) []string {
 	rows := v.roster()
-	if len(rows) == 0 && !v.includeRoot || width < 20 {
+	if len(rows) == 0 && !v.hideRootRoster || width < 20 {
 		return nil
 	}
 	v.hits = v.hits[:0]

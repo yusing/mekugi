@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,8 +42,8 @@ func TestAppServerOrchestrateMainReportsNeverSubmitUserInput(t *testing.T) {
 			if len(u.orchestrateEvents) != 1 {
 				t.Fatal("missing attributed event", u.orchestrateEvents)
 			}
-			if len(u.view.entries) != 1 || u.view.entries[0].Kind != "reply" || u.view.entries[0].message.from != "/root/batch" {
-				t.Fatal("report was not rendered as an attributed subagent message")
+			if len(u.view.entries) != 1 || u.view.entries[0].Kind != "reply" || u.view.entries[0].message.from != "/root/batch" || strings.Contains(strings.Join(u.agents.renderFeed(90, 60).lines, "\n"), "/compact") {
+				t.Fatal("report lost its transcript attribution or entered native Activity")
 			}
 			event := u.orchestrateEvents[0]
 			if event.Kind != "message" || event.Task != "batch" || event.Thread != "child" || event.Message != "/compact" {
