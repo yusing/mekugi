@@ -148,4 +148,14 @@ func TestAppServerShellComposer(t *testing.T) {
 	if u.shellMode() {
 		t.Fatal("removing bang did not leave shell mode")
 	}
+	appServerTestKeys(t, u, "\x03\x1b[200~!printf '%s\\n' \"你好\n$HOME\"\n\x1b[201~")
+	appServerTestKeys(t, u, "\x1b[A\x1b[H")
+	frame, _ = u.mainFrame(18, 20, 0)
+	if u.cursor() != strings.Index(u.draft, "$HOME") || !strings.Contains(ansi.Strip(strings.Join(frame, "\n")), "$HOME") {
+		t.Fatal("multiline navigation or wrapped command changed")
+	}
+	appServerTestKeys(t, u, "x\r")
+	if !strings.Contains(w.String(), `"command":"printf '%s\\n' \"你好\nx$HOME\""`) || u.draft != "" {
+		t.Fatalf("paint/edit changed shell submission: %s draft=%q", w.String(), u.draft)
+	}
 }

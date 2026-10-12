@@ -1357,6 +1357,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	textWidth := width - inset
 	u.composerWidth = textWidth
 	draft, points := u.draftLayout()
+	if u.shellMode() {
+		u.paintShellDraft(draft)
+	}
 	if q := u.currentQuestion(); q != nil && q.IsSecret {
 		for i, line := range draft {
 			draft[i] = strings.Repeat("•", ansi.StringWidth(line))

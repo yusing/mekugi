@@ -830,7 +830,10 @@ without a duplicate; rejection restores the draft, followed by any input stacked
 or queued behind it.
 
 Starting a draft with `!` selects Shell Mode, with an explicit label and red
-composer frame. Enter or Tab submits the command through Codex's native
+composer frame. The command is syntax-highlighted as Bash using the shared
+syntax theme; the leading `!` remains a plain mode marker. Highlighting preserves
+editable text, multiline wrapping and cursor placement. Enter or Tab submits
+the command through Codex's native
 `thread/shellCommand` API, not as a model prompt. Shell syntax passes through
 unchanged after removing the leading `!` and surrounding whitespace. Shell mode
 disables file and skill completion; attached images and picker tokens must be

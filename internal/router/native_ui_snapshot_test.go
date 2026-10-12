@@ -34,6 +34,27 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 	}
 }
 
+func TestUISnapshotShellComposer(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.TerminalTheme, livediff.DarkTheme, livediff.LightTheme} {
+		for _, width := range []int{18, 60} {
+			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {
+				u, _ := newAppServerTestUI()
+				u.view.painter.Theme = theme
+				u.status = "Ready"
+				appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\" | cat\n# comment\n\x1b[201~")
+				u.cursorBack = len(u.draft) - strings.Index(u.draft, "$HOME")
+				rows, _ := u.mainFrame(width, 12, 0)
+				rows = append(rows, "plain after shell")
+				u.deleteDraftRange(0, 1)
+				normal, _ := u.mainFrame(width, 12, 0)
+				rows = append(rows, normal...)
+				rows = append(rows, "plain after prompt")
+				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/shell-composer-%d-%d.txt", theme, width), rows, width)
+			})
+		}
+	}
+}
+
 func TestUISnapshotNativeResumePicker(t *testing.T) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 	for _, tc := range []struct {
