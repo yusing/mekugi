@@ -69,7 +69,8 @@ type execTrack struct {
 	segments []execTrackSegment
 	terminal bool // Output stays on the terminal; only statuses are reported.
 	lossy    bool // Output reports stopped at the helper's bound.
-	ended    bool // The report connection closed.
+	ended    bool // Report processing stopped, including transport failure.
+	closed   bool // The helper reported that all output was sent.
 	done     bool // The shell finished its script.
 	code     int  // The shell's exit status, once done.
 	dirty    bool
@@ -352,6 +353,9 @@ func (h *execTrackHub) serve(ctx context.Context, report, reply *os.File, work s
 				h.signal()
 			}
 			h.mu.Unlock()
+			if message.Type == execsegment.Closed {
+				return
+			}
 		}
 		if err != nil {
 			return
@@ -610,6 +614,8 @@ func (t *execTrack) apply(message execsegment.Message) {
 		if message.Code != nil {
 			t.done, t.code = true, *message.Code
 		}
+	case execsegment.Closed:
+		t.closed = true
 	case execsegment.Lossy:
 		t.lossy = true
 	default:
@@ -659,7 +665,8 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string,
 		return execTrackView{}, false
 	}
 	changed := track.dirty
-	view := execTrackView{output: !track.terminal && len(track.segments) != 1 && !track.lossy && !(track.ended && !track.done), ended: track.ended, complete: track.ended && track.done, code: track.code}
+	complete := track.ended && track.closed && track.done
+	view := execTrackView{output: !track.terminal && len(track.segments) != 1 && !track.lossy && !(track.ended && !complete), ended: track.ended, complete: complete, code: track.code}
 	last := track.lastStarted()
 	for i := range track.segments {
 		segment := &track.segments[i]

@@ -240,6 +240,66 @@ func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 	}
 }
 
+func TestExecTrackRelaysExternalCommandIO(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	content := strings.Repeat("payload\n", 8192) // Exceeds a FIFO's capacity.
+	input := filepath.Join(shell.root, "input")
+	if err := os.WriteFile(input, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, script string
+		want         execTrackRun
+	}{
+		{"single", "cat", execTrackRun{stdout: content}},
+		{"list", execsegment.ShScript(filepath.Join(shell.root, "exec-track.sh"), "cat; cat "+quoteShellWord(input)+" >&2; cat "+quoteShellWord(input)+"; false"), execTrackRun{stdout: content + content, stderr: content, code: 1}},
+		{"late output", "bash -c " + quoteShellWord("(sleep .05; cat "+quoteShellWord(input)+") & printf early") + "; false", execTrackRun{stdout: "early" + content, code: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := [3]string{"thread", "turn", tc.script}
+			shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(tc.script))
+			defer shell.hub.finish(key)
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-c", tc.script)
+			cmd.Env, cmd.Stdin = shell.env, strings.NewReader(content)
+			cmd.SysProcAttr = &unix.SysProcAttr{Setpgid: true}
+			cmd.Cancel = func() error { return unix.Kill(-cmd.Process.Pid, unix.SIGKILL) }
+			cmd.WaitDelay = time.Second
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			err := cmd.Run()
+			if ctx.Err() != nil {
+				t.Fatalf("external command stalled: stdout=%d stderr=%d: %v", stdout.Len(), stderr.Len(), ctx.Err())
+			}
+			code := 0
+			if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+				code = exitErr.ExitCode()
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if got := (execTrackRun{stdout.String(), stderr.String(), code}); got != tc.want {
+				t.Fatalf("I/O or status changed: stdout=%d stderr=%d code=%d", stdout.Len(), stderr.Len(), code)
+			}
+			if view := shell.awaitView(t, key); !view.complete || view.code != code {
+				t.Fatalf("tracking report incomplete: %+v", view)
+			}
+			if tc.name != "single" {
+				var reported strings.Builder
+				shell.hub.mu.Lock()
+				for _, segment := range shell.hub.tracks[key].segments {
+					reported.Write(segment.fresh)
+				}
+				shell.hub.mu.Unlock()
+				if reported.String() != tc.want.stdout+tc.want.stderr {
+					t.Fatalf("reported bytes changed: got %d, want %d", reported.Len(), len(tc.want.stdout)+len(tc.want.stderr))
+				}
+			}
+		})
+	}
+}
+
 // Tracked scripts keep Bash's own error handling: its messages, fatal
 // expansion errors that end the script, and set -e around recovered and
 // negated failures. Output printed before a fatal error shows that the
@@ -450,6 +510,7 @@ func TestAppServerTrackedCommandShowsEachSegment(t *testing.T) {
 		execsegment.Message{Type: execsegment.Output, Index: 2, Data: "cat: b: No such file or directory\n"},
 		execsegment.Message{Type: execsegment.End, Index: 2, Code: new(1)},
 		execsegment.Message{Type: execsegment.Done, Code: new(1)},
+		execsegment.Message{Type: execsegment.Closed},
 	)
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 1, "/w\na\nb\ncat: b: No such file or directory\n"
@@ -477,7 +538,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	if rows := awaitMain(t, u, "Read a.go"); strings.Contains(rows, cwd+"/a.go") {
 		t.Fatal("live read path stayed absolute")
 	}
-	report.send(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1}, execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)})
+	report.send(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1}, execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
 	report.conn.Close()
 	item.Status, item.ExitCode, item.AggregatedOutput = "completed", new(0), new("")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
@@ -523,6 +584,7 @@ func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 		execsegment.Message{Type: execsegment.Begin, Index: 0},
 		execsegment.Message{Type: execsegment.End, Index: 0, Code: new(1)},
 		execsegment.Message{Type: execsegment.Done, Code: new(1)},
+		execsegment.Message{Type: execsegment.Closed},
 	)
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 1, ""
@@ -534,30 +596,44 @@ func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 
 func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 	t.Parallel()
-	u, hub := newTrackedAppServerUI(t)
-	script := "echo a; cat b"
-	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
-	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	report := dialExecTrackReport(t, hub, script)
-	// The shell never reported its exit, as when it replaced itself.
-	report.send(
-		execsegment.Message{Type: execsegment.Begin, Index: 0},
-		execsegment.Message{Type: execsegment.Output, Index: 0, Data: "a\n"},
-		execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)},
-		execsegment.Message{Type: execsegment.Begin, Index: 1},
-	)
-	report.conn.Close()
-	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 2, "a\nb\n"
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	main := awaitMain(t, u, "exit 2")
-	if strings.Count(main, "exit 2") != 1 || !strings.Contains(main, "shell batch · exit 2") {
-		t.Fatalf("incomplete report attributed the batch exit to segments:\n%s", main)
-	}
-	if !strings.Contains(main, "┆ a\n") || !strings.Contains(main, "┆ b") || strings.Contains(main, "skipped") {
-		t.Fatalf("Main does not show the host's combined result:\n%s", main)
-	}
-	if hub.tracking([3]string{"main", "t", "cmd"}) {
-		t.Fatal("completed report was retained")
+	for _, failure := range []string{"no exit", "EOF after exit", "JSON error after exit"} {
+		t.Run(failure, func(t *testing.T) {
+			u, hub := newTrackedAppServerUI(t)
+			script := "echo a; cat b"
+			item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "/usr/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			report := dialExecTrackReport(t, hub, script)
+			// Only the first segment's bytes reached the router.
+			report.send(
+				execsegment.Message{Type: execsegment.Begin, Index: 0},
+				execsegment.Message{Type: execsegment.Output, Index: 0, Data: "a\n"},
+				execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)},
+				execsegment.Message{Type: execsegment.Begin, Index: 1},
+			)
+			if failure == "no exit" {
+				report.send(execsegment.Message{Type: execsegment.Closed})
+			} else {
+				report.send(execsegment.Message{Type: execsegment.Done, Code: new(2)})
+				if failure == "JSON error after exit" {
+					if _, err := report.conn.Write([]byte("{\n")); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			report.conn.Close()
+			item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 2, "a\nb\n"
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			main := awaitMain(t, u, "exit 2")
+			if strings.Count(main, "exit 2") != 1 || !strings.Contains(main, "shell batch · exit 2") {
+				t.Fatalf("incomplete report attributed the batch exit to segments:\n%s", main)
+			}
+			if !strings.Contains(main, "┆ a\n") || !strings.Contains(main, "┆ b") || strings.Contains(main, "skipped") {
+				t.Fatalf("Main does not show the host's combined result:\n%s", main)
+			}
+			if hub.tracking([3]string{"main", "t", "cmd"}) {
+				t.Fatal("completed report was retained")
+			}
+		})
 	}
 }
 
@@ -652,7 +728,7 @@ func TestAppServerTrackedMChangesShowsRichRows(t *testing.T) {
 			index := 1
 			report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.Output, Index: 0, Data: "before\n"}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)})
 			output := "amber1..amber5 +343 -658\namber6 +158 -81\namber7..amber9 +86 -30\n"
-			report.send(execsegment.Message{Type: execsegment.Begin, Index: index}, execsegment.Message{Type: execsegment.Output, Index: index, Data: output}, execsegment.Message{Type: execsegment.End, Index: index, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)})
+			report.send(execsegment.Message{Type: execsegment.Begin, Index: index}, execsegment.Message{Type: execsegment.Output, Index: index, Data: output}, execsegment.Message{Type: execsegment.End, Index: index, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
 			report.conn.Close()
 			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})

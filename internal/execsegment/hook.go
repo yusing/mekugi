@@ -106,7 +106,7 @@ esac
 }
 
 // Protocol is the helper-to-router message version.
-const Protocol = 3
+const Protocol = 4
 
 // Timing records helper-observed command boundaries. ElapsedNS is measured
 // with the helper's monotonic clock, independently of wall-clock adjustments.
@@ -139,6 +139,8 @@ const (
 	Output = "o"
 	End    = "e"
 	Done   = "d"
+	// Closed follows all output and ends the report without waiting for FIFO EOF.
+	Closed = "closed"
 	// Lossy reports that the helper stopped reporting output to stay within
 	// its bound; statuses continue.
 	Lossy = "lossy"

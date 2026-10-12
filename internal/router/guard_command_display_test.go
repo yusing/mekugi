@@ -152,13 +152,13 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 			execsegment.Message{Type: execsegment.End, Index: i, Code: new(0), Timing: execsegment.Timing{Started: now, Ended: now.Add(duration), ElapsedNS: int64(duration)}},
 		)
 	}
-	report.send(execsegment.Message{Type: execsegment.Done, Code: new(0)})
+	report.send(execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
 	report.conn.Close()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		hub.mu.Lock()
 		track := hub.tracks[[3]string{"main", "t", "cmd"}]
-		ready := track != nil && track.ended && track.done
+		ready := track != nil && track.ended && track.closed && track.done
 		changed := hub.changed
 		hub.mu.Unlock()
 		if ready {

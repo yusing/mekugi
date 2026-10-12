@@ -304,7 +304,7 @@ func TestAppServerTrackedEditFailureAndSkip(t *testing.T) {
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
-	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(2)}, execsegment.Message{Type: execsegment.Done, Code: new(2)})
+	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(2)}, execsegment.Message{Type: execsegment.Done, Code: new(2)}, execsegment.Message{Type: execsegment.Closed})
 	report.conn.Close()
 	item["status"], item["exitCode"] = "failed", 2
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -382,7 +382,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": firstItem})
 	firstReport := dialExecTrackReport(t, hub, first)
 	writeTestFile(t, path, "middle\n")
-	firstReport.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1}, execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)})
+	firstReport.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1}, execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
 	firstReport.conn.Close()
 	firstItem["status"], firstItem["exitCode"] = "completed", 0
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": firstItem})

@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -172,10 +173,16 @@ func run(args []string) int {
 		}
 		mode = "relay"
 	}
+	if err := unix.SetNonblock(0, true); err != nil {
+		return 0
+	}
 	if _, err := unix.Write(r.ack, []byte(mode+" "+work+"\n")); err != nil {
 		return 0
 	}
 	r.run()
+	// FIFO EOF readiness can be missed on Darwin. This final record follows
+	// every output record, including output after the shell's EXIT boundary.
+	r.report.send(execsegment.Message{Type: execsegment.Closed})
 	r.report.close(flushTimeout)
 	return 0
 }
@@ -211,7 +218,14 @@ func (r *relay) run() {
 		if len(fds) == 0 {
 			break
 		}
-		if _, err := unix.Poll(fds, -1); err != nil {
+		// Darwin can miss FIFO readiness while an external command blocks
+		// in a large write. Bound that wait so the nonblocking drain can
+		// read buffered output even without a readiness notification.
+		timeout := -1
+		if runtime.GOOS == "darwin" {
+			timeout = 10
+		}
+		if _, err := unix.Poll(fds, timeout); err != nil {
 			if errors.Is(err, unix.EINTR) {
 				continue
 			}
@@ -220,7 +234,9 @@ func (r *relay) run() {
 		// The shell writes a segment's begin line before its output, so
 		// boundaries come first; an end line drains the segment's output
 		// before it is acknowledged.
-		if controlOpen && fds[0].Revents != 0 {
+		// The control pipe is nonblocking too: a missed EOF notification
+		// must not keep the helper and Codex's output descriptors alive.
+		if controlOpen && (fds[0].Revents != 0 || timeout >= 0) {
 			controlOpen = r.readControl()
 		}
 		r.drain()

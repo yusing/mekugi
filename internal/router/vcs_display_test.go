@@ -290,6 +290,7 @@ func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 		execsegment.Message{Type: execsegment.Output, Index: 1, Data: output},
 		execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)},
 		execsegment.Message{Type: execsegment.Done, Code: new(0)},
+		execsegment.Message{Type: execsegment.Closed},
 	)
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
