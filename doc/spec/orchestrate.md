@@ -336,20 +336,16 @@ the checkout; successfully retained commits remain available after a later failu
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
-user input carries the issues and orchestration-tool instructions; later ordinary input
-does not repeat them or change tool exposure. Attachments, busy input, rejection
-and cancellation use the composer lifecycle. Fresh children receive their
-checkout, assignment and orchestration-tool instructions in their first input.
-Instructions contain tool mechanics and the child reporting boundary: messages to
-Main carry a new blocker requiring its action or one final handoff per assignment,
-not intermediate progress or repeated results. Child instructions contain their checkout and the messaging
-and journal access mechanics they can use; Main's integration and cleanup guidance
-stays with Main. Caller guidance and the explicit assignment retain their own policy.
-Context resets carry the run's tool instructions once in journal recovery.
-Main receives coordinator instructions after preparation; confirmed child roots
-receive their checkout and tool instructions. Native descendants retain
-their existing guidance. Fresh resume restores the retained recovery content,
-without repeating instructions on ordinary requests or changing tool exposure.
+user input carries the issues and a short instruction to use orchestration, similar
+to native collaboration spawning. Tool descriptions and parameter help belong
+only to MCP metadata, not composer input or recovery instructions. Later ordinary
+input does not repeat the instruction or change tool exposure. Attachments, busy
+input, rejection and cancellation use the composer lifecycle. Fresh children
+receive their coordinator identity, journal access and assignment. Codex sets their
+working directory when it starts the thread.
+Caller guidance and the explicit assignment retain their own policy.
+Context resets restore this minimal run context once from durable records;
+native descendants retain their existing guidance.
 Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.
 It shows concise task names, lifecycle and available live timer, token and cost metrics.
 Resumed batch roots appear only in this group, never as UUID-named native agents.

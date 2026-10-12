@@ -94,8 +94,8 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
 	for _, tool := range []struct{ name, description string }{
-		{"followup_task", "Start an idle batch turn or steer a running batch. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Repeats return retained progress."},
-		{"send_message", "Queue batch input without waking or steering. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Repeats return retained progress."},
+		{"followup_task", "Start an idle batch turn or steer a running batch. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Report only a new blocker requiring action or one final handoff per assignment. Use request_user_input_async for human decisions. Repeats return retained progress."},
+		{"send_message", "Queue batch input without waking or steering. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Report only a new blocker requiring action or one final handoff per assignment. Use request_user_input_async for human decisions. Repeats return retained progress."},
 	} {
 		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target", "message"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}, "message": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateFollowupInput) (*mcp.CallToolResult, any, error) {
 			ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
@@ -159,7 +159,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 	})
 	for _, tool := range []struct{ name, description string }{
 		{"interrupt_agent", "Request interruption of a live batch turn. The host's turn completion confirms the outcome."},
-		{"integrate", "Main merges an idle shadow batch with current source edits and writes only changed paths. Conflicts write nothing. Retains partial progress; repeats verify completed writes and reconcile confirmed effects before continuing pending paths. Uncertain or changed paths require inspection. Main accepts its journal task separately."},
+		{"integrate", "Main merges an idle shadow batch with current source edits and writes only changed paths. Conflicts write nothing. Retains partial progress; repeats verify completed writes and reconcile confirmed effects before continuing pending paths. Uncertain or changed paths require inspection. Main marks its bound journal task accepted separately after verifying writeback."},
 		{"cleanup", "Main removes an accepted idle Git or shadow batch checkout, safe run-owned submodule clones and unchanged evidence copies. Retains changed nested commits in source refs. Requires current journal acceptance and settled input. Keeps branches, private repositories, manifests and unsafe copies; reports partial cleanup. Repeats reconcile confirmed removal."},
 	} {
 		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateInterruptInput) (*mcp.CallToolResult, any, error) {
@@ -183,7 +183,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		})
 	}
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "spawn_agent", Description: "Start a fresh Codex thread in a prepared batch checkout. The message is the complete assignment. Repeats return retained launch progress without starting another thread.",
+		Name: "spawn_agent", Description: "Similar to mekugi_collaboration.spawn_agent, but starts a fresh independent Codex thread in an isolated checkout from prepare. Native collaboration tools cannot reach these threads. The message carries the complete assignment, constraints and checks. Omitted model, reasoning effort and service tier inherit Main's effective settings. Bind the integration task to /root/task_name; child completion leaves it open. Git integration uses native Git; accept only after verifying reachable or patch-equivalent batch commits, including changed submodules. SVN and unversioned shadow use integrate. Repeats return retained launch progress without starting another thread.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name", "message"}, "properties": map[string]any{
 			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}, "message": map[string]any{"type": "string", "minLength": 1},
 			"model": map[string]any{"type": "string", "minLength": 1}, "reasoning_effort": map[string]any{"type": "string", "minLength": 1}, "service_tier": map[string]any{"type": "string"},
@@ -204,7 +204,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		return proxy.orchestration.call(command)
 	})
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git or SVN baseline, or an unversioned source snapshot. Nested runs are unavailable. Git includes locally initialized submodules. Optional evidence copies named absolute source files into run state and returns handoff paths. Copy checkout-relative inputs before spawning. Repeats preserve prepared files.",
+		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git or SVN baseline, or an unversioned source snapshot. Nested runs are unavailable. Git includes locally initialized submodules. Optional evidence copies named absolute source files into run state and returns handoff paths. Evidence paths accompany the first child input. Copy required checkout-relative ignored inputs before spawning; versioned source edits do not follow. Repeats preserve prepared files.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name"}, "properties": map[string]any{
 			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
 			"evidence":  map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"name", "source"}, "properties": map[string]any{"name": map[string]any{"type": "string", "minLength": 1}, "source": map[string]any{"type": "string", "minLength": 1}}}},

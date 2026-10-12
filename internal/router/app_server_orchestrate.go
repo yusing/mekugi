@@ -388,7 +388,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 						u.finishOrchestrate(child, context.Canceled)
 						return
 					}
-					input := orchestrateChildInput(cwd, c.input.Message)
+					input := orchestrateChildInstructions + "Assignment:\n" + c.input.Message
 					if len(child.batch.Evidence) != 0 {
 						paths := make(map[string]string, len(child.batch.Evidence))
 						for _, e := range child.batch.Evidence {

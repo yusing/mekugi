@@ -18,7 +18,7 @@ func TestOrchestrateWorkflowRecoveryContinuity(t *testing.T) {
 			fresh := reopenV2ContinuityProxy(t, u.proxy)
 			want := orchestrateCoordinatorInstructions
 			if thread == "child" {
-				want = orchestrateChildInstructions(cwd)
+				want = orchestrateChildInstructions
 			}
 			// Reconstruct recovery using durable records, without live controllers.
 			hook, err := fresh.replayStore.postCompactContext(t.Context(), cwd, thread)

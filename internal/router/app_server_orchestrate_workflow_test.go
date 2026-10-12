@@ -10,10 +10,7 @@ import (
 
 func requireOrchestrateToolMechanics(t *testing.T, input string) {
 	t.Helper()
-	if strings.Contains(input, "Your coordinator is main.") && !strings.Contains(input, "Send main only a new blocker requiring its action or one final handoff per assignment, not intermediate progress or repeated results.") {
-		t.Fatal("child input lacks the reporting boundary")
-	}
-	for _, policy := range []string{"review", "periodic progress", "Plan independent", "Dispatch all batches"} {
+	for _, policy := range []string{"review", "periodic progress", "Plan independent", "Dispatch all batches", "prepare: task_name", "spawn_agent: task_name", "queues sibling input", "Repeats return retained"} {
 		if strings.Contains(input, policy) {
 			t.Fatalf("tool instructions include workflow policy %q: %s", policy, input)
 		}

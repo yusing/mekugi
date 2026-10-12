@@ -49,6 +49,16 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for name, description := range map[string]string{
+		"spawn_agent":   "Similar to mekugi_collaboration.spawn_agent",
+		"send_message":  "Report only a new blocker requiring action or one final handoff per assignment",
+		"followup_task": "Report only a new blocker requiring action or one final handoff per assignment",
+	} {
+		index := slices.IndexFunc(listed.Tools, func(tool *mcp.Tool) bool { return tool.Name == name })
+		if index < 0 || !strings.Contains(listed.Tools[index].Description, description) {
+			t.Fatalf("%s discovery lacks tool guidance", name)
+		}
+	}
 	waitIndex := slices.IndexFunc(listed.Tools, func(tool *mcp.Tool) bool { return tool.Name == "wait_agent" })
 	if waitIndex < 0 {
 		t.Fatal("wait tool missing from MCP discovery")
