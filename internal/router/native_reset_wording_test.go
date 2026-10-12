@@ -62,6 +62,8 @@ func fixResetPresentationTime(u *appServerUI) {
 			if record.journalEvent != nil {
 				event := *record.journalEvent
 				event.At = record.Observed.Format(time.RFC3339Nano)
+				// Completed milestone rows use retained work time, not event.At.
+				event.Fields.WorkTimer.ElapsedNS = 0
 				record.journalEvent = &event
 			}
 		})
