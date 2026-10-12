@@ -8,6 +8,9 @@ tradeoffs within the requested change. Codex remains the execution authority.
 Mekugi has one interactive UI and one stock JavaScript execution interface. Preserve host
 and internal identifiers without presenting them as extra user-facing modes.
 
+Mekugi DOES NOT support direct mode. Do not consider or implement direct mode logic,
+when found, report them on work done.
+
 Do not create report/summary Markdown unless requested. Observed Mekugi friction may go in
 `FIXME.md` with impact and a concrete next step. Distinguish current failures from fixed history
 and do not equate investigation time with waste.
