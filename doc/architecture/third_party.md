@@ -15,11 +15,13 @@ executable call before exposure.
 
 Each request's provider boundary resolves diagnostic identity, completion-token
 accounting, reasoning replay and effort policy, and the endpoint adapter from the
-pinned model metadata. The provider-neutral translator validates history and tool
+pinned model metadata. `internal/providercodec` validates history and tool
 identities; focused Chat Completions, Messages, and Responses adapters own wire
 encoding and stream normalization. One shared validator and Responses lifecycle
 emitter consumes their normalized output. Diagnostic codes and messages use the
 resolved identity directly, never another provider's errors rewritten afterward.
+The router supplies the resolved policy and reasoning callbacks, and retains provider
+selection, credentials, transport, and session-history reconciliation.
 
 Third-party credentials, refresh, redirects, and provider clients remain isolated from
 OpenAI authentication. Protocol classification is shared with capture, while transport

@@ -34,7 +34,7 @@ Production projection leaves GC to the runtime.
 The response observer reads completed stock arguments once, captures bounded
 pre-edit source for named paths, and later reconciles the result with the
 workspace outcome. It does not authorize, parse for execution, or replay an
-edit. The command classifier derives a write scope from Bash syntax and
+edit. The `internal/execscope` classifier derives a write scope from Bash syntax and
 literal nested tool calls only; it never evaluates a program, expands a
 variable, or consults the router's environment. The interpreter is the call's
 own shell or the session shell named in the request. Destinations that depend
@@ -50,10 +50,13 @@ window registry. The registry relates concurrent calls, merges response siblings
 and labels background sessions without owning their continuation. Durable captures
 survive restart; registry tags do not. Review origin is retained on each review
 file, and consumers group tool-managed evidence without changing stored content.
-Interpreter providers share syntax-derived path resolution and the shell classifier
+Interpreter providers in `internal/execscope` share syntax-derived path resolution
+and the shell classifier
 for literal subprocesses. Producer queries use a bounded argv-based runner only
 after their family validates read-only arguments; no shell executes query text.
-VCS and fixer providers use the same registry and deadline. The optional last-seen
+VCS and fixer providers use the same registry and deadline. The router supplies retained
+change resolution and consumes classification results for observation; the classifier
+does not own capture, replay storage, or host execution. The optional last-seen
 LRU is process-local and namespace-isolated. Only persisted observations populate
 it; its labeled historical comparisons never replace captured call baselines.
 Pre-call filesystem capture runs in a bounded worker pool outside the forwarding
