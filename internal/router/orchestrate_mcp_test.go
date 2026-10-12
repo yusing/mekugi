@@ -2,7 +2,9 @@ package router
 
 import (
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -43,12 +45,13 @@ func TestOrchestrateMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	call := func(tool string, args any, meta mcp.Meta, wantError bool) {
+	call := func(tool string, args any, meta mcp.Meta, wantError bool) *mcp.CallToolResult {
 		t.Helper()
 		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args, Meta: meta})
 		if err != nil || result.IsError != wantError {
 			t.Fatalf("%s = %+v, %v; want error %v", tool, result, err, wantError)
 		}
+		return result
 	}
 	meta := mcp.Meta{"threadId": "main", "sessionId": "host-session", "callId": "prepare",
 		codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "turn"}}
@@ -115,8 +118,43 @@ func TestOrchestrateMCP(t *testing.T) {
 			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
 	}
 	call("prepare", map[string]any{"task_name": "other"}, meta, false)
+	// Exercise the exposed union schema and retained-run admission before UI dispatch.
+	for _, targets := range []any{nil, "batch", []string{}, []string{""}, []string{"/root/batch/native"}, []any{1}, []string{"unknown"}, []string{"native"}} {
+		result := call("wait_agent", map[string]any{"targets": targets}, meta, true)
+		if names, ok := targets.([]string); ok && slices.Contains(names, "unknown") && !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "list_agents") {
+			t.Fatal("unknown target did not explain retained-run discovery", result)
+		}
+	}
+	proxy.orchestration.active.Store(true)
+	proxy.orchestration.commands = make(chan *orchestrateCommand, 1)
+	for _, tc := range []struct {
+		args map[string]any
+		want []string
+	}{
+		{map[string]any{}, nil},
+		{map[string]any{"targets": "all"}, nil},
+		{map[string]any{"targets": []string{"batch"}}, []string{"batch"}},
+		{map[string]any{"targets": []string{"/root/batch", "other", "batch"}}, []string{"batch", "other"}},
+	} {
+		go func() {
+			select {
+			case command := <-proxy.orchestration.commands:
+				command.reply <- orchestrateResult{event: &orchestrateEvent{Kind: "message", Message: strings.Join(command.waitTargets, ",")}}
+			case <-t.Context().Done():
+			}
+		}()
+		result := call("wait_agent", tc.args, meta, false)
+		var event orchestrateEvent
+		if err := json.Unmarshal(mustMarshalJSON(result.StructuredContent), &event); err != nil || event.Message != strings.Join(tc.want, ",") {
+			t.Fatal("wait selection was not passed to the UI", event, err)
+		}
+	}
 	manifests, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
 	if err != nil || len(manifests) != 1 {
 		t.Fatal("nested preparation created run state", manifests, err)
 	}
+	if _, err := store.Prepare(ctx, workspace, "foreign-coordinator", "foreign_batch"); err != nil {
+		t.Fatal(err)
+	}
+	call("wait_agent", map[string]any{"targets": []string{"foreign_batch"}}, meta, true)
 }

@@ -51,7 +51,8 @@ func (u *appServerUI) flushOrchestratedEvents() {
 			continue
 		}
 		index := slices.IndexFunc(u.orchestrateEvents, func(e orchestrateEvent) bool {
-			return e.main == waiter.main && e.workspace == waiter.workspace
+			return e.main == waiter.main && e.workspace == waiter.workspace &&
+				(len(waiter.waitTargets) == 0 || slices.Contains(waiter.waitTargets, e.Task))
 		})
 		if index < 0 {
 			waiting++

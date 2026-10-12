@@ -17,9 +17,10 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 		return false
 	}
 	var args struct {
-		TaskName string `json:"task_name"`
-		Target   string `json:"target"`
-		Message  string `json:"message"`
+		TaskName string         `json:"task_name"`
+		Target   string         `json:"target"`
+		Message  string         `json:"message"`
+		Targets  jsontext.Value `json:"targets"`
 	}
 	_ = json.Unmarshal(item.Arguments, &args)
 	target := strings.TrimSpace(cmp.Or(args.TaskName, args.Target))
@@ -50,11 +51,22 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 	entry.native.duration = appServerDuration(item)
 	entry.native.orchestration = block
 	entry.native.orchestrated = true
-	if item.Tool == "wait_agent" {
+	isWait := item.Tool == "wait_agent"
+	if isWait {
 		*block = *appServerWaitProgress(appServerItem{Type: "collabAgentToolCall", Tool: "wait", Status: item.Status}, phase)
+		names, err := orchestrateWaitTargets(args.Targets)
+		if err == nil {
+			if len(names) == 0 {
+				names = []string{"all"}
+			}
+			for _, name := range names {
+				block.WaitTargets = append(block.WaitTargets, activityui.WaitTarget{Name: name})
+			}
+		}
 		if !live && item.Status == "inProgress" {
 			block.Body = "Wait unfinished (history only)"
 		}
+		entry.Kind, entry.Text = "progress", block.ProgressText()
 	}
 	if phase != "item/completed" {
 		return true
@@ -87,8 +99,13 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 	_ = json.Unmarshal(data, &outcome)
 	if item.Error != nil || result.IsError || item.Status == "failed" {
 		reason := cmp.Or(strings.Join(output, "\n"), item.Status, "failed")
-		*block = activityui.Block{Kind: "error", Body: livediff.Safe(strings.TrimSpace(verb+" "+target+": "+reason), false)}
-		entry.Kind = "error"
+		if isWait {
+			block.Body = "Wait failed"
+			entry.Text = block.ProgressText()
+		} else {
+			*block = activityui.Block{Kind: "error", Body: livediff.Safe(strings.TrimSpace(verb+" "+target+": "+reason), false)}
+			entry.Kind = "error"
+		}
 	} else if item.Status == "completed" {
 		// Reuse the native collaboration block builder, but retain this MCP
 		// item's identity and caller. Only confirmed outcomes claim delivery.
@@ -120,7 +137,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 			*block = parseLiveActivity(semantic)[0]
 			entry.Kind = semantic.Kind
 			entry.start, entry.assignment, entry.message = semantic.start, semantic.assignment, semantic.message
-		} else if outcome.State != "" {
+		} else if outcome.State != "" && !isWait {
 			block.Label = livediff.Safe(strings.TrimSpace(target+" · "+outcome.State), false)
 		}
 	}

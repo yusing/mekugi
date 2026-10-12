@@ -132,7 +132,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal(err)
 	}
 	take(call("prepare", map[string]any{"task_name": "batch", "evidence": []orchestrate.EvidenceInput{{Name: "image.png", Source: evidenceSource}}}), false)
-	result := call("wait_agent", map[string]any{"timeout_ms": 1})
+	result := call("wait_agent", map[string]any{"timeout_ms": 1, "targets": []string{"batch"}})
 	// The timeout may expire before the UI receives this command.
 	select {
 	case command := <-u.orchestrateCommands():

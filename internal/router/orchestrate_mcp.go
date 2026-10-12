@@ -2,9 +2,12 @@ package router
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -21,7 +24,30 @@ type orchestrateInterruptInput struct {
 }
 
 type orchestrateWaitInput struct {
-	TimeoutMS int `json:"timeout_ms"`
+	TimeoutMS int            `json:"timeout_ms"`
+	Targets   jsontext.Value `json:"targets,omitempty"`
+}
+
+func orchestrateWaitTargets(raw jsontext.Value) ([]string, error) {
+	var all string
+	if len(raw) == 0 || json.Unmarshal(raw, &all) == nil && all == "all" {
+		return nil, nil
+	}
+	var targets []string
+	if json.Unmarshal(raw, &targets) != nil || len(targets) == 0 {
+		return nil, errors.New(`targets must be "all" or a nonempty list of task names or /root/task_name paths`)
+	}
+	var names []string
+	for _, target := range targets {
+		name := strings.TrimPrefix(target, "/root/")
+		if name == "" {
+			return nil, errors.New("wait targets must contain nonempty task names")
+		}
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names, nil
 }
 
 type orchestrateFollowupInput struct {
@@ -92,7 +118,13 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return proxy.orchestration.call(command)
 		})
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next observed batch completion, message, journal blocker, failure, question or approval. Timeout ends only the wait. Messages identify their batch and sender thread; prompts identify the host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateWaitInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next observed batch completion, message, journal blocker, failure, question or approval. Timeout ends only the wait. Messages identify their batch and sender thread; prompts identify the host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+		"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000},
+		"targets": map[string]any{"oneOf": []any{
+			map[string]any{"type": "string", "const": "all"},
+			map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string", "pattern": "^(/root/)?[a-z][a-z0-9_]{0,63}$"}},
+		}},
+	}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateWaitInput) (*mcp.CallToolResult, any, error) {
 		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
 		if err != nil {
 			return nil, nil, err
@@ -104,12 +136,27 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
 			return nil, nil, err
 		}
+		targets, err := orchestrateWaitTargets(input.Targets)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(targets) != 0 {
+			batches, err := store.Snapshot(workspace, thread)
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, target := range targets {
+				if !slices.ContainsFunc(batches, func(b orchestrate.Batch) bool { return b.TaskName == target }) {
+					return nil, nil, fmt.Errorf("wait target %q is not a retained batch in this coordinator run; use list_agents", target)
+				}
+			}
+		}
 		if input.TimeoutMS == 0 {
 			input.TimeoutMS = 10000
 		}
 		waitCtx, cancel := context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
 		defer cancel()
-		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, wait: true, reply: make(chan orchestrateResult, 1)}
+		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, wait: true, waitTargets: targets, reply: make(chan orchestrateResult, 1)}
 		result, value, err := proxy.orchestration.call(command)
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 			return nil, map[string]any{"timed_out": true}, nil

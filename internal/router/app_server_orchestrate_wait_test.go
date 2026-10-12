@@ -83,6 +83,49 @@ func TestAppServerOrchestrateWaitPersistenceAndScope(t *testing.T) {
 	}
 }
 
+func TestAppServerOrchestrateWaitTargets(t *testing.T) {
+	u, request := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"running-turn"}}`)
+	child := u.orchestrateThreads["child"]
+	queued := func(task, kind string) { u.publishOrchestratedEvent(child, orchestrateEvent{Task: task, Kind: kind}) }
+	wait := func(ctx context.Context, names ...string) *orchestrateCommand {
+		c := &orchestrateCommand{ctx: ctx, main: "main", workspace: u.session.cwd, wait: true, waitTargets: names, reply: make(chan orchestrateResult, 1)}
+		u.startOrchestratedChild(c)
+		return c
+	}
+	queued("other", "message")
+	// Selection never broadens workspace or coordinator identity.
+	u.orchestrateEvents = append(u.orchestrateEvents,
+		orchestrateEvent{main: "main", workspace: "foreign", Task: "batch", Kind: "done"},
+		orchestrateEvent{main: "foreign", workspace: u.session.cwd, Task: "batch", Kind: "done"})
+	c := wait(t.Context(), "batch", "selected")
+	if len(c.reply) != 0 {
+		t.Fatal("nonselected or foreign event woke the waiter")
+	}
+	queued("selected", "failure")
+	if event := (<-c.reply).event; event == nil || event.Task != "selected" || event.Kind != "failure" {
+		t.Fatal("wait did not return the next event from any selected batch", event)
+	}
+	if event := (<-wait(t.Context(), "other").reply).event; event == nil || event.Kind != "message" {
+		t.Fatal("selection consumed a nonmatching queued event", event)
+	}
+	cancelCtx, cancel := context.WithCancel(t.Context())
+	canceled := wait(cancelCtx, "batch")
+	c = wait(t.Context(), "selected")
+	cancel()
+	queued("batch", "blocked")
+	if len(canceled.reply) != 0 || len(c.reply) != 0 {
+		t.Fatal("cancellation or concurrent selection consumed another batch's event")
+	}
+	if event := (<-wait(t.Context()).reply).event; event == nil || event.Task != "batch" || event.Kind != "blocked" {
+		t.Fatal("all-batch wait lost the event preserved after cancellation", event)
+	}
+	queued("selected", "question")
+	if event := (<-c.reply).event; event == nil || event.Kind != "question" || len(u.orchestrateEvents) != 2 {
+		t.Fatal("remaining waiter or foreign queued events were lost", event, u.orchestrateEvents)
+	}
+}
+
 func TestAppServerOrchestrateJournalBlockers(t *testing.T) {
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {

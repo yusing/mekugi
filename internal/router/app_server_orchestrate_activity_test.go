@@ -84,6 +84,19 @@ func TestUISnapshotOrchestrateActivity(t *testing.T) {
 		if len(entries) != 1 || entries[0].Text != "Prepare batch · unfinished (history only)" || entries[0].native.running {
 			t.Fatal("restored pending call claims live work")
 		}
+		completed.Tool, completed.Status = "wait_agent", "completed"
+		completed.Arguments = jsontext.Value(`{"targets":["/root/batch","check"]}`)
+		entries = nil
+		restore(completed, "completed")
+		if len(entries) != 1 || entries[0].Kind != "progress" || entries[0].Text != "Finished waiting · batch, check" {
+			t.Fatal("restored wait lost its target presentation", entries)
+		}
+		completed.Status = "inProgress"
+		entries = nil
+		restore(completed, "interrupted")
+		if len(entries) != 1 || entries[0].Text != "Wait unfinished (history only) · batch, check" || entries[0].native.running {
+			t.Fatal("restored targeted wait revived work", entries)
+		}
 	}
 }
 
@@ -110,6 +123,7 @@ func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
 		{"message", "send_message", "reported", false},
 		{"queued", "send_message", "queued", false},
 		{"waiting", "wait_agent", "", false},
+		{"wait-error", "wait_agent", "", true},
 		{"tool-error", "followup_task", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -132,6 +146,9 @@ func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
 			if tc.name == "started" {
 				item["arguments"] = map[string]any{"task_name": "batch", "message": "Check the rendered output."}
 			}
+			if tc.tool == "wait_agent" {
+				item["arguments"] = map[string]any{"targets": []string{"batch", "/root/check"}}
+			}
 			if tc.name == "message" {
 				owner, _ := newAppServerTestUI()
 				owner.orchestrateThreads = map[string]*orchestrateChild{"main": {batch: orchestrate.Batch{TaskName: "batch"}}}
@@ -145,8 +162,19 @@ func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
 			if len(u.view.entries) != 1 || len(u.agents.entries) != 1 {
 				t.Fatal("completion duplicated or lost the call")
 			}
+			if tc.name == "waiting" {
+				// The screenshot's completed wait followed by a started wait must
+				// stay visible without entering the operation tree twice.
+				item["id"], item["status"], item["arguments"] = "next-wait", "inProgress", map[string]any{}
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+				u.agents.childrenOnly, u.agents.includeRoot = true, true
+				u.agents.clock, u.agents.painter.Theme = u.clock, livediff.DarkTheme
+			}
 			rows, _ := u.mainFrame(70, 14, 0)
 			assertNativeUISnapshot(t, "orchestration-event-"+tc.name, rows)
+			if tc.name == "waiting" {
+				uisnapshot.Assert(t, "testdata/snapshots/orchestration-wait-activity.txt", strings.Join(u.agents.renderFeed(70, 0).lines, "\n"))
+			}
 			uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-event-"+tc.name+"-styles.txt", append(rows, "plain after event"), 70)
 			block := u.view.entries[0].blocks[0]
 			opened := false

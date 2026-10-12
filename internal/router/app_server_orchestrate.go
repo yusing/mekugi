@@ -28,6 +28,7 @@ type orchestrateCommand struct {
 	input           orchestrateSpawnInput
 	target          string
 	wait            bool
+	waitTargets     []string // Empty selects all batches in this coordinator run.
 	followup        bool
 	deferred        bool
 	removeCheckout  bool
