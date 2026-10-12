@@ -74,6 +74,8 @@ func TestToolActivityShellSetupStaysTogether(t *testing.T) {
 		"export ROOT=/tmp", "ROOT=$(mktemp -d)", "trap 'echo cleanup' EXIT",
 		"set -eu", "source setup.sh", ". setup.sh", "unset ROOT", "builtin export ROOT=/tmp",
 		"f() { cat a; }",
+		"f() { timeout 10 sleep 1; }",
+		"set -e\ntimeout \"$duration\" sleep 1",
 		"export ROOT=/tmp\ncat <<'EOF'\nbody\nEOF\ngit log -1",
 	} {
 		source := "cat before\n" + setup + "\nsed -n '1,20p' after"

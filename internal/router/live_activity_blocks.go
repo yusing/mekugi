@@ -54,6 +54,12 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 	}
 	compound := len(blocks) > 1 || len(entry.native.segments) > 0
 	if program, err := syntax.NewParser().Parse(strings.NewReader(command), ""); err == nil {
+		// A setup script is deliberately one full-source Run event, so its
+		// invocation clock belongs to that row, not a second shell batch row.
+		if len(blocks) == 1 && blocks[0].Verb == "Run" &&
+			blocks[0].Code == livediff.Safe(toolActivityShellSource(command), false) && execsegment.HasShellSetup(program) {
+			return compound
+		}
 		compound = compound || len(program.Stmts) > 1
 		if len(program.Stmts) == 1 {
 			if binary, ok := program.Stmts[0].Cmd.(*syntax.BinaryCmd); ok {

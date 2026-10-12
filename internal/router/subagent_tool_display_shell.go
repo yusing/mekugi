@@ -135,17 +135,16 @@ func toolActivityReads(script, cwd string) (string, bool) {
 			return !hasEdit
 		})
 	}
-	if hasSetup && !hasEdit {
-		return "", false
-	}
-	if hasHeredoc && !hasEdit {
+	if (hasHeredoc || hasSetup) && !hasEdit {
 		var source strings.Builder
 		var timeouts []string
 		offset := 0
 		for _, statement := range program.Stmts {
 			if display, ok := toolActivityStatement(script, statement, cwd); ok {
-				timeouts = append(timeouts, activityui.ParseOperation(display).Timeouts...)
-				if display == "" {
+				for _, paragraph := range activityui.Paragraphs(display) {
+					timeouts = append(timeouts, activityui.ParseOperation(paragraph).Timeouts...)
+				}
+				if !hasSetup && display == "" {
 					source.WriteString(script[offset:int(statement.Pos().Offset())])
 					offset = int(statement.End().Offset())
 				}

@@ -208,7 +208,9 @@ Fast or skipped commands and rows without individual timing omit the suffix.
 Parameter-derived suffixes appear only while the original invocation input is
 available, so fresh resume omits them. Shell-derived suffixes remain available
 from the saved command when its timing is known. `yield_time_ms` does not produce
-a timeout suffix. A suffix that does not fit wraps beneath its operation row.
+a timeout suffix. Shell setup scripts kept in one Run event retain their supported
+literal timeout bounds without splitting the script. A suffix that does not fit
+wraps beneath its operation row.
 
 The shared content dialog captures keys and pointer events above both panes.
 Clicking a recognized file link in Main, Activity, Journal, or Markdown dialog

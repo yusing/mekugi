@@ -172,14 +172,14 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 		for _, tc := range []struct {
 			id, args, want string
 		}{
-			{"timed", fmt.Sprintf(`{"cmd":"skills-mgr get skill","timeout_ms":%d}`, timeoutMS), wantTimeout},
-			{"yielded", `{"cmd":"skills-mgr get skill","yield_time_ms":12500}`, ""},
+			{"timed", fmt.Sprintf(`{"cmd":"sleep 1","timeout_ms":%d}`, timeoutMS), wantTimeout},
+			{"yielded", `{"cmd":"sleep 1","yield_time_ms":12500}`, ""},
 			{"unknown", "", ""},
 		} {
 			if tc.args != "" {
 				f.tool(thread, thread, tc.id, "exec_command", tc.args)
 			}
-			item := appServerItem{ID: tc.id, Type: "commandExecution", Command: "skills-mgr get skill"}
+			item := appServerItem{ID: tc.id, Type: "commandExecution", Command: "sleep 1", DurationMS: new(int64(500))}
 			for _, method := range []string{"item/started", "item/completed"} {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
 				view := u.view
@@ -193,6 +193,12 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 				blocks := parseLiveActivity(entry.activityPaneEntry)
 				if got := strings.Join(blocks[0].Timeouts, " "); got != tc.want {
 					t.Fatalf("%s/%s displayed timeout = %q", thread, tc.id, got)
+				}
+				if method == "item/completed" {
+					rendered := strings.Join(view.painter.Block(entry.blocks[0], 90), "\n")
+					if strings.Contains(rendered, "(timeout ") != (tc.want != "") {
+						t.Fatalf("%s/%s rendered timeout: %s", thread, tc.id, rendered)
+					}
 				}
 			}
 		}
@@ -346,18 +352,45 @@ func TestActivityReadsKeepWorkdirsApart(t *testing.T) {
 	}
 }
 
-func TestAppServerHeredocTimeoutSuffix(t *testing.T) {
-	command := "timeout 10 bash <<'EOF'\nsleep 1\nEOF"
-	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	entry := u.view.entries[0]
-	blocks := parseLiveActivity(entry.activityPaneEntry)
-	var p activityui.Painter
-	if got := strings.Join(p.Block(blocks[0], 90), "\n"); !strings.Contains(got, "(timeout 10)") {
-		t.Fatalf("missing timeout suffix: %s", got)
+func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
+	for _, command := range []string{"timeout 10 bash <<'EOF'\nsleep 1\nEOF", "set -e\ntimeout 10 sleep 1", "set -e\necho start && timeout 10 sleep 1"} {
+		t.Run(command, func(t *testing.T) {
+			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
+			entry := u.view.entries[0]
+			blocks := parseLiveActivity(entry.activityPaneEntry)
+			var p activityui.Painter
+			var rows []string
+			for _, block := range blocks {
+				rows = append(rows, p.Block(block, 90)...)
+			}
+			if got := strings.Join(rows, "\n"); !strings.Contains(got, "(timeout 10)") {
+				t.Fatalf("missing timeout suffix: %s", got)
+			}
+			if entry.native.command != command || blocks[0].Code != command {
+				t.Fatalf("whole script source changed: %+v", blocks[0])
+			}
+		})
 	}
-	if entry.native.command != command || blocks[0].Code != command {
-		t.Fatalf("heredoc source changed: %+v", blocks[0])
+}
+
+func TestUISnapshotShellSetupTimeoutEvent(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		u := newAppServerSessionTestUI(t, "/workspace")
+		now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+		u.clock = func() time.Time { return now }
+		view := u.view
+		if thread == "child" {
+			view = u.agents
+		}
+		view.clock, view.painter.Theme = u.clock, livediff.DarkTheme
+		item := appServerItem{ID: "setup", Type: "commandExecution", Command: "set -e\ntimeout 10 sleep 1", Cwd: "/workspace", Status: "inProgress"}
+		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": item})
+		now = now.Add(500 * time.Millisecond)
+		assertNativeUISnapshot(t, "timeout-setup-"+thread+"-running", view.renderFeed(70, 24).lines)
+		item.Status, item.ExitCode, item.DurationMS = "completed", new(0), new(int64(500))
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
+		assertNativeUISnapshot(t, "timeout-setup-"+thread+"-completed", view.renderFeed(70, 24).lines)
 	}
 }
