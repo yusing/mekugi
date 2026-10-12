@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 
@@ -183,7 +184,23 @@ func (h *execTrackHub) close() {
 	}
 }
 
-// start makes a live command item available to its shell's report.
+// Match shell reports before queued presentation can exhaust the startup deadline.
+func (h *execTrackHub) observeCommandStart(message appserver.Message) {
+	if h == nil || message.Method != "item/started" {
+		return
+	}
+	var event appServerEvent
+	if json.Unmarshal(message.Params, &event) != nil || event.Item.Type != "commandExecution" {
+		return
+	}
+	item := event.Item.ID
+	if event.ItemID != "" {
+		item = event.ItemID
+	}
+	h.start([3]string{event.ThreadID, event.TurnID, item}, event.Item.Command)
+}
+
+// start is idempotent when the UI later consumes the same host notification.
 func (h *execTrackHub) start(key [3]string, command string) {
 	if h == nil {
 		return

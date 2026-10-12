@@ -3,6 +3,7 @@ package router
 import (
 	"bufio"
 	"context"
+	json "encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -22,10 +24,13 @@ import (
 
 func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
-	for _, edit := range []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPath('other.go').write_text('package p; var B=2\\n')\nPY\ngit --version >/dev/null\ngofmt -w source.go other.go"} {
+	edits := []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPath('other.go').write_text('package p; var B=2\\n')\nPY\ngit --version >/dev/null\ngofmt -w source.go other.go"}
+	edits = append(edits, strings.ReplaceAll(edits[len(edits)-1], "git --version >/dev/null\n", ""))
+	for _, edit := range edits {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
+			delayedUI := strings.HasPrefix(edit, "python3") && !strings.Contains(edit, "git --version")
 			before, after, completedText := "before\n", "+after", "Edited"
 			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
 				before, after = "package p; var A=1\n", "+var A = 1"
@@ -46,6 +51,9 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				writeTestFile(t, filepath.Join(workspace, "Makefile"), "test:\n\t@printf 'test running\\n'; read -r answer\n")
 				script = strings.TrimSuffix(edit, "\ngofmt -w source.go other.go") + "\nif [ \"$?\" -eq 0 ]; then gofmt -w source.go other.go && make test; fi"
 			}
+			if delayedUI {
+				script = edit + "\nmake test"
+			}
 			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
@@ -56,6 +64,9 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+			}
+			if delayedUI {
+				script = execsegment.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.execTrack = shell.hub
@@ -72,7 +83,16 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 			defer registry.close("edit")
 			registry.preview("edit", *observation, broker, workspace, "main", "/root")
-			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			params := map[string]any{"threadId": "main", "turnId": "turn", "item": item}
+			if delayedUI {
+				wire, err := json.Marshal(&params)
+				if err != nil {
+					t.Fatal(err)
+				}
+				shell.hub.observeCommandStart(appserver.Message{Method: "item/started", Params: wire})
+			} else {
+				appServerTestNotify(t, u, "item/started", params)
+			}
 			// Seed the same running dock before execution so completion must
 			// actively retire it, rather than simply avoid opening a new card.
 			u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"})
@@ -116,6 +136,14 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			}()
 			if line, err := bufio.NewReader(output).ReadString('\n'); err != nil || line != "test running\n" {
 				t.Fatalf("following command did not start: %q, %v", line, err)
+			}
+			if delayedUI {
+				// The shell reached the test before the UI consumed its start.
+				// Without transport observation its tracking deadline has expired.
+				if !shell.hub.tracking([3]string{"main", "turn", "edit"}) {
+					t.Fatal("edit report lost while host start waited for presentation")
+				}
+				appServerTestNotify(t, u, "item/started", params)
 			}
 			var completed *diffview.Preview
 			for completed == nil {

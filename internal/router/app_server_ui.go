@@ -197,7 +197,11 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	// Live settings and trusted reasoning configuration_update items are Codex
 	// opt-ins. Enable them only for this native app-server invocation.
 	cmd.Args = append(cmd.Args, "-c", "features.step_model_switching=true", "-c", "features.reasoning_effort_override=true")
-	c, err := appserver.Start(cmd)
+	var tracker *execTrackHub
+	if proxy != nil {
+		tracker = proxy.execTrack
+	}
+	c, err := appserver.Start(cmd, tracker.observeCommandStart)
 	if err != nil {
 		return nil, err
 	}

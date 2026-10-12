@@ -57,7 +57,9 @@ func (d *Diagnostics) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func Start(cmd *exec.Cmd) (*Client, error) {
+// observe receives decoded messages before they enter the presentation queue.
+// Observers must be bounded and must not modify the message or execute effects.
+func Start(cmd *exec.Cmd, observe ...func(Message)) (*Client, error) {
 	c := &Client{cmd: cmd, Messages: make(chan Message, 256), readDone: make(chan error, 1), stopRead: make(chan struct{}), Done: make(chan error, 1)}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, &c.Diagnostics
 	var err error
@@ -93,6 +95,9 @@ func Start(cmd *exec.Cmd) (*Client, error) {
 			if err := json.Unmarshal(frame, &message); err != nil {
 				c.readDone <- fmt.Errorf("decode app-server: %w", err)
 				return
+			}
+			for _, observer := range observe {
+				observer(message)
 			}
 			// Preserve ordered RPC events when presentation falls behind. The
 			// bounded channel and stdout pipe backpressure the producer instead
