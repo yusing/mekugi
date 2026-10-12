@@ -80,6 +80,7 @@ func TestUISnapshotMarkdownFileLinkExistence(t *testing.T) {
 		"Existing: sample.go:1, `sample.go`, [source](sample.go:1-2).\n" +
 		"Web: [remote](https://example.com)."
 	for _, view := range []*liveActivityView{u.view, u.agents} {
+		view.painter.Theme = livediff.TerminalTheme
 		rows := view.painter.Markdown(text, 72)
 		uisnapshot.AssertTerminal(t, "testdata/snapshots/markdown-file-link-existence.txt", append(rows, "plain after links"), 72)
 	}
@@ -172,6 +173,7 @@ func TestUISnapshotMarkdownFileViews(t *testing.T) {
 	}
 	main, _ := newAppServerTestUI()
 	main.session.cwd = workspace
+	main.view.painter.Theme = livediff.TerminalTheme
 	u := &terminalUI{main: main, width: 80, height: 24}
 	u.openMarkdownFile(main.view, path)
 	for _, view := range []string{"markdown", "file"} {
