@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/orchestrate"
+	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 func svnTestRun(t *testing.T, args ...string) string {
@@ -26,6 +27,9 @@ func svnTestRun(t *testing.T, args ...string) string {
 
 func orchestrateSVNWorkspace(t *testing.T) string {
 	t.Helper()
+	// Isolate setup and the production SVN reads exercised by this fixture.
+	// Command lookup must never select the live session's approval wrapper.
+	t.Setenv("PATH", execTrackPath())
 	if _, err := exec.LookPath("svnadmin"); err != nil {
 		t.Skip("SVN client and svnadmin are required")
 	}
@@ -60,6 +64,12 @@ func svnMetadata(t *testing.T, workspace string) map[string][32]byte {
 }
 
 func TestOrchestrateSVNBaselineAndIntegration(t *testing.T) {
+	guard := filepath.Join(t.TempDir(), vcsguard.Directory)
+	writeTestFile(t, filepath.Join(guard, "svn"), "#!/bin/sh\necho 'fixture reached live approval wrapper' >&2\nexit 97\n")
+	if err := os.Chmod(filepath.Join(guard, "svn"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", guard+string(os.PathListSeparator)+os.Getenv("PATH"))
 	workspace := orchestrateSVNWorkspace(t)
 	// The closest SVN owner wins even inside an unrelated Git checkout.
 	gitTestRun(t, filepath.Dir(workspace), "init", "--quiet")
