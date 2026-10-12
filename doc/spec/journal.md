@@ -425,9 +425,12 @@ to record an input-needed task as blocked; answer prose is not a state signal.
 Explicit user interruption or Escape during the countdown pauses the current
 unfinished tasks durably. Later questions, notes, restart, and forks retain that
 pause; newly authorized unrelated tasks can proceed without reviving stopped work.
-Resuming a stopped task is represented by explicitly setting it to `working` in a
-later turn, which also reactivates its stopped descendants. Mutations from the
-interrupted turn cannot reactivate it. Queued input and pending questions cancel
+Starting or completing a stopped checkpoint in a later turn resumes its containing
+plan, including remaining steps paused by the same interruption. No separate
+reactivation mutation is required when the checkpoint completes. Other plans and
+sibling steps paused by another interruption stay stopped. A root task resumes only its
+own subtree. Mutations from the interrupted turn cannot reactivate work.
+Queued input and pending questions cancel
 the countdown without marking the underlying work user-stopped.
 
 Each continuation is bound to its workspace, thread and completed turn, and is

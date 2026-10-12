@@ -294,6 +294,55 @@ func TestJournalAutoResumeRevalidatesBeforeDispatch(t *testing.T) {
 	}
 }
 
+func TestJournalAutoResumeCheckpointReleasesPlanPause(t *testing.T) {
+	for _, state := range []string{"working", "done"} {
+		t.Run(state, func(t *testing.T) {
+			d, wire := autoResumeFixture(t)
+			apply := func(mutations ...journalMutation) {
+				t.Helper()
+				if _, err := d.proxy.journals.apply(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "", mutations); err != nil {
+					t.Fatal(err)
+				}
+			}
+			apply(journalMutation{Op: "add", Under: "/1", Kind: "task", Title: new("Checkpoint"), State: new("working")},
+				journalMutation{Op: "add", Under: "/1", Kind: "task", Title: new("Next step")},
+				journalMutation{Op: "add", Kind: "task", Title: new("Other plan")})
+			if err := d.stop("answer"); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.proxy.journals.beginJournalTurn(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "resumed"); err != nil {
+				t.Fatal(err)
+			}
+			apply(journalMutation{Op: "set", P: "/1/1", State: new(state)})
+			if err := d.proxy.journals.transaction(t.Context(), d.proxy.replayStore, d.workspace, d.thread, func(j *threadJournal, _ bool) error {
+				if !j.runnableJournalTask("/1/2") {
+					t.Fatal("remaining plan step is still paused")
+				}
+				if j.runnableJournalTask("/2") {
+					t.Fatal("checkpoint resumed an unrelated stopped plan")
+				}
+				return errJournalUnchanged
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.completed("resumed"); err != nil {
+				t.Fatal(err)
+			}
+			want := "/1/1"
+			if state == "done" {
+				want = "/1/2"
+			}
+			if d.intent == nil || d.intent.Path != want {
+				t.Fatalf("intent=%+v want=%s", d.intent, want)
+			}
+			if err := d.tick(time.Now().Add(time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			resetDriverRequireMethods(t, wire, "turn/start")
+		})
+	}
+}
+
 // An interrupt is a durable user decision, not just suppression of one host event.
 func TestJournalAutoResumeUserStopSurvivesLaterQuestions(t *testing.T) {
 	t.Parallel()

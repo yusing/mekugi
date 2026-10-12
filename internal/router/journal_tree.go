@@ -335,11 +335,17 @@ func (j *threadJournal) applyTree(m journalMutation) ([]string, error) {
 		if err := j.treeEvent("set", index, transition); err != nil {
 			return nil, err
 		}
-		// Only an explicit task reactivation in a later user-driven turn releases
-		// a user stop. Status notes and unrelated new work cannot revive it.
-		if m.State != nil && *m.State == "working" && j.TurnID != "" {
+		// A resumed checkpoint releases its plan's matching pause. Completing
+		// it is sufficient; a separate working write is not required.
+		if m.State != nil && (*m.State == "working" || transition && *m.State == "done") && j.TurnID != "" {
+			scope, stop := m.P, j.StoppedTasks[m.P]
+			if parent := journalParent(m.P); parent != "" && stop != "" && stop != j.TurnID {
+				scope = parent
+			}
 			for path, turn := range j.StoppedTasks {
-				if turn != j.TurnID && (path == m.P || strings.HasPrefix(path, m.P+"/")) {
+				own := path == m.P || strings.HasPrefix(path, m.P+"/")
+				plan := turn == stop && (path == scope || strings.HasPrefix(path, scope+"/"))
+				if turn != j.TurnID && (own || plan) {
 					delete(j.StoppedTasks, path)
 				}
 			}
