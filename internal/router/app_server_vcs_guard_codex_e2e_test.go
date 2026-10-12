@@ -3,6 +3,7 @@
 package router
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,7 +29,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 	}{
 		{
 			name: "invalid-shell", command: "git push '",
-			want: []string{"VCS guard instrumentation failed"}, absent: []string{"FAKE git push"},
+			want: []string{"VCS guard instrumentation failed: VCS guard: cannot parse command:", "reached EOF without closing quote"}, absent: []string{"FAKE git push"},
 		},
 		{
 			name:    "denied",
@@ -146,8 +147,27 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 			if tc.name == "invalid-shell" {
 				provider.program = `try { ` + provider.program + ` } catch (error) { text(String(error)); }`
 			}
-			during := func(t *testing.T, outer io.Writer, await func(string), awaitFrame func(func(string) bool), _ *vt.Emulator) {
+			during := func(t *testing.T, outer io.Writer, await func(string), awaitFrame func(func(string) bool), screen *vt.Emulator) {
 				t.Helper()
+				if tc.name == "invalid-shell" {
+					if _, err := io.WriteString(outer, "\x05"); err != nil { // Expand events.
+						t.Fatal(err)
+					}
+					await("Hook Blocked")
+					for row, line := range strings.Split(screen.String(), "\n") {
+						if strings.Contains(line, "Hook Blocked") {
+							if _, err := fmt.Fprintf(outer, "\x1b[<0;10;%dM\x1b[<0;10;%dm", row+1, row+1); err != nil {
+								t.Fatal(err)
+							}
+							break
+						}
+					}
+					await("reached EOF without closing quote")
+					if _, err := io.WriteString(outer, "\x1b"); err != nil {
+						t.Fatal(err)
+					}
+					awaitFrame(func(frame string) bool { return !strings.Contains(frame, "mcpTool · 1 line") })
+				}
 				for i, answer := range tc.answers {
 					// Each request shows once the previous one has ended.
 					if i > 0 {

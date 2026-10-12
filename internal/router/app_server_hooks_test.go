@@ -241,6 +241,17 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 		frames = append(frames, fmt.Sprintf("expansion %d", expansion), rows)
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-visibility.txt", strings.Join(frames, "\n")+"\n")
+	// Native guard rejection carries the parser's reason, not a command exit.
+	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": map[string]any{
+		"id": "guard-rejected", "eventName": "preToolUse", "handlerType": "mcpTool", "executionMode": "sync",
+		"sourcePath": builtinHookSource, "status": "blocked", "statusMessage": "Applying VCS guard",
+		"startedAt": 1000, "completedAt": 1001, "durationMs": 5,
+		"entries": []map[string]any{{"kind": "feedback", "text": "mekugi: VCS guard instrumentation failed: VCS guard: cannot parse command: 1:10: reached EOF without closing quote `'`"}}}})
+	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection.txt", strings.Join(u.view.renderConversation(80).lines, "\n")+"\n")
+	if !u.shell.openEntry(u.view, u.view.entries[len(u.view.entries)-1].Seq) {
+		t.Fatal("guard rejection dialog did not open")
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection-dialog.txt", drawOutputDialog(u.shell)+"\n")
 }
 
 func TestHookObservationMovesReleasedStatusLine(t *testing.T) {

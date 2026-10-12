@@ -438,6 +438,9 @@ shell hook blocks the turn with an explanation and preserves the draft. Explicit
 requires explicit `--vcs-guard=false`, rather than `--yolo`. Invocation-local hook
 setup preserves recovery-hook trust and leaves user configuration files unchanged.
 
+Guard instrumentation failures reject the native tool with the actual failure
+reason. Expanded hook events and their output dialog retain that reason.
+
 Denial, no answer within 5 minutes, or a blocked or unreachable approval channel
 prints `mekugi: remote write denied: REASON` to stderr and exits 1 without running the
 write. Only that command fails: a `;` list continues, and `&&`/`||` follow the
