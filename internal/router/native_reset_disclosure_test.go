@@ -138,6 +138,10 @@ func TestUISnapshotNativeResetRecoveryDisclosure(t *testing.T) {
 					} else if page.Text != expected {
 						t.Fatalf("dialog is not exact model-visible recovery: %q != %q", page.Text, expected)
 					}
+					// Keep the exact recovery assertion above, then fix the rendering
+					// fixture's path so TMPDIR length cannot change the scrollbar.
+					shell.output.origins = nil
+					shell.output.pages[0].Body = strings.ReplaceAll(shell.output.pages[0].Body, fmt.Sprintf("%q", workspace), `"/workspace"`)
 					rows := make([]string, 18)
 					shell.paintOutput(rows, width, len(rows))
 					snapshotMode := "retained"
