@@ -35,6 +35,14 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 }
 
 func TestUISnapshotShellComposer(t *testing.T) {
+	t.Run("marker", func(t *testing.T) {
+		u, _ := newAppServerTestUI()
+		u.status = "Ready"
+		appServerTestKeys(t, u, "!")
+		u.mainFrame(36, 6, 0)
+		rows, _ := u.mainFrame(36, 6, 0)
+		uisnapshot.AssertTerminal(t, "testdata/snapshots/shell-composer-marker.txt", rows, 36)
+	})
 	for _, theme := range []livediff.Theme{livediff.TerminalTheme, livediff.DarkTheme, livediff.LightTheme} {
 		for _, width := range []int{18, 60} {
 			t.Run(fmt.Sprintf("%d/%d", theme, width), func(t *testing.T) {

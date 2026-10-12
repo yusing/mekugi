@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -15,7 +16,8 @@ func (u *appServerUI) shellMode() bool {
 // Paint complete logical lines before cutting them to the existing draft layout.
 // Soft wraps must not change Bash's multiline lexical state or cursor geometry.
 func (u *appServerUI) paintShellDraft(rows []string) {
-	lines := u.view.painter.Highlight("bash", livediff.Safe(u.draft[1:], false)+"\n")
+	// Highlight returns cached rows. The mode marker belongs only to this draft.
+	lines := slices.Clone(u.view.painter.Highlight("bash", livediff.Safe(u.draft[1:], false)+"\n"))
 	lines[0] = "!" + lines[0]
 	line, column := 0, 0
 	for i, row := range rows {

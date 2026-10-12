@@ -64,7 +64,8 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 	if !strings.Contains(codeModeJournalGuidance, "Use ASD-STE100") || !strings.Contains(proxy.registry.frontendGuidance, "Promise.allSettled([") {
 		t.Fatal("projected guidance lost journal format or batching guidance")
 	}
-	for _, contract := range []string{"tools.mcp__mekugi__journal_read", "tools.mcp__mekugi__journal_mutate", "structuredContent.paths", "structuredContent.nodes", "Check `isError`",
+	for _, contract := range []string{"tools.mcp__mekugi__journal_read", "tools.mcp__mekugi__journal_mutate", "structuredContent.paths", "structuredContent.nodes", "Check each nested result's `isError`",
+		"this thread's durable work state, in every repository", "notes and answers do not close tasks", "Reopening a parent does not unblock its children", "A rejected `finish` does not establish completion",
 		"without tool search, whether or not Codex lists the MCP tools", "p?:existingChildPath", "before?:siblingPath", "creation and binding validate together",
 		"recovery shows only its pointer line", "read-only subtree appears under that task", "Input declarations for planning and type-checking",
 		// Codex defers the MCP tools, so guidance carries their schema declarations.
