@@ -228,7 +228,9 @@ Numeric range ends such as
 unknown options are diagnosed as options. Missing-ID errors distinguish retired
 from never allocated and give the latest allocation for a never-allocated ID in a
 known stream. If the stream is unknown, the error identifies the selected
-workspace so callers can correct `--workspace`.
+workspace so callers can correct `--workspace`. Consecutive missing IDs in one
+stream with the same failure reason share one range-qualified diagnostic.
+Ranges do not bridge available IDs, unselected IDs, or different failure reasons.
 
 `--net` composes selected completed captures in recorded capture order using the
 same review composition as the live view. It follows moves; diff output and edit

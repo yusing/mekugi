@@ -61,11 +61,18 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 			t.Errorf("journal usage guidance is missing: %s", rule)
 		}
 	}
+	for _, rule := range []string{"A slice handoff requires accepted journal mutations", "a slice marked done in this turn", "Notes or recovery text alone cannot schedule it", "If those mutations fail, repair the handoff or continue the work in this turn"} {
+		if !strings.Contains(codeModeJournalGuidance, rule) {
+			t.Errorf("journal slice handoff guidance is missing: %s", rule)
+		}
+	}
 	if !strings.Contains(codeModeJournalGuidance, "Use ASD-STE100") || !strings.Contains(proxy.registry.frontendGuidance, "Promise.allSettled([") {
 		t.Fatal("projected guidance lost journal format or batching guidance")
 	}
 	for _, contract := range []string{"tools.mcp__mekugi__journal_read", "tools.mcp__mekugi__journal_mutate", "structuredContent.paths", "structuredContent.nodes", "Check each nested result's `isError`",
 		"this thread's durable work state, in every repository", "notes and answers do not close tasks", "Reopening a parent does not unblock its children", "A rejected `finish` does not establish completion",
+		"`finish` requests turn completion", "it is not a progress checkpoint or a wait operation", "The same completion conditions apply to natural final answers",
+		"answer interim questions conversationally, then continue the active work", "do not close, block or drop tasks to make `finish` pass",
 		"without tool search, whether or not Codex lists the MCP tools", "p?:existingChildPath", "before?:siblingPath", "creation and binding validate together",
 		"recovery shows only its pointer line", "read-only subtree appears under that task", "Input declarations for planning and type-checking",
 		// Codex defers the MCP tools, so guidance carries their schema declarations.
@@ -140,6 +147,10 @@ func TestJournalGuidanceVisibleWithEagerAndDeferredMCP(t *testing.T) {
 }
 
 func TestJournalContextSliceReminderUsesHostUsage(t *testing.T) {
+	reminder := embeddedInstruction("journal_context_reminder")
+	if !strings.Contains(reminder, "reset:\"slice\"") || !strings.Contains(reminder, "the journal accepts the slice handoff") {
+		t.Fatal("context reminder must require an accepted slice handoff before ending the turn")
+	}
 	proxy := newManagedMekugiProxy(t)
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.proxy = proxy

@@ -400,7 +400,11 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
 	if guard {
 		guardDirectory, _ := vcsguard.Paths(directory)
-		startup += vcsguard.Functions(guardDirectory, vcsguard.KnownPaths(basePath))
+		startup += vcsguard.Functions(guardDirectory, vcsguard.KnownPaths(basePath, vcsguard.Tools), vcsguard.Tools)
+	}
+	if helper != "" {
+		tools := []string{"sudo"}
+		startup += vcsguard.Functions(sudoask.Path(directory), vcsguard.KnownPaths(basePath, tools), tools)
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
 		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=")

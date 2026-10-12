@@ -660,6 +660,47 @@ func TestMChangesMissingReadRecoversAvailableRange(t *testing.T) {
 	}
 }
 
+func TestMChangesMissingRangeDiagnostics(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "missing-range-diagnostics")
+	for number := 1; number <= 5; number++ {
+		correlation := fmt.Sprintf("capture-%d", number)
+		id := f.reserve(t, f.thread, correlation)
+		if number == 2 || number == 3 || number == 5 {
+			f.retire(t, id)
+		} else {
+			name := fmt.Sprintf("file-%d.txt", number)
+			f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
+				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(name, name, "old\n", "new\n")},
+			})
+		}
+	}
+	for _, view := range []string{"", "--summary", "--history", "--net", "--list"} {
+		for _, test := range []struct {
+			selection, diagnostic string
+			available             bool
+		}{
+			{"apple1..apple12", fmt.Sprintf("changes apple1..apple12 are never allocated (latest is none in this stream) in workspace %q; check --workspace", f.workspace), false},
+			{"amber1..amber7", "changes amber2..amber3 are retired by session retention\nchange amber5 is retired by session retention\nchanges amber6..amber7 are never allocated (latest is amber5)", true},
+			{"amber6 amber8", "change amber6 is never allocated (latest is amber5)\nchange amber8 is never allocated (latest is amber5)", false},
+		} {
+			out, diagnostic, status := f.run(t, "mchanges "+view+" "+test.selection)
+			if status != 1 || diagnostic != "mchanges: "+test.diagnostic+"\n" {
+				t.Fatalf("%s %s: stdout=%q stderr=%q status=%d", view, test.selection, out, diagnostic, status)
+			}
+			if test.available {
+				first, last := "file-1.txt", "file-4.txt"
+				if view == "--list" {
+					first, last = "amber1", "amber4"
+				}
+				if !strings.Contains(out, first) || !strings.Contains(out, last) {
+					t.Fatalf("%s lost available targets: %q", view, out)
+				}
+			}
+		}
+	}
+}
+
 func TestMChangesReadsKeepAvailableTargets(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "mixed-read-targets")

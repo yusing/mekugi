@@ -70,6 +70,15 @@ for stable paths, reads, batching and failures. Main work updates belong in the 
 and necessary questions remain conversational. Subagents record useful interim facts and may deliver their
 final report directly. A result already recorded in the journal is not repeated
 as a second completion report.
+Completion refers to the requested outcome, not the latest successful command, commit,
+lookup or report. Both the finish marker and a natural final answer end the turn;
+an interim answer leaves active work to continue or wait for its outstanding results.
+A slice handoff requires accepted journal mutations: a `reset:"slice"` plan, a task
+completed in the current turn and an eligible pending sibling, with no owned blocker
+or user stop preventing continuation. Notes or recovery text
+alone cannot schedule continuation, and a failed mutation cannot establish that handoff.
+Real blockers and user stops retain their pause behavior. Task states record actual
+work status rather than being changed to make a finish request pass.
 Task completion requires state mutations, including completed children; completion notes and answers
 do not close tasks. Blockers identify required input, decisions or dependencies outside the agent's
 current ability to supply. Repairable failures remain working. Resumed work reassesses its blockers
@@ -145,6 +154,9 @@ Acceptance:
    findings and actual questions remain conversational. Guidance directs mutations
    onto useful calls rather than standalone journal calls; `exec` uses the nested MCP tools for reads and mutations.
    Both role projections retain task closure, blocker recovery and nested mutation-error guidance.
+   They distinguish turn completion from interim progress and preserve active work after
+   follow-up answers. Slice guidance requires an accepted journal handoff before ending
+   with work remaining; failed journal writes leave that handoff unestablished.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
    or live router state. Prewarm and generating requests select the same role policy;

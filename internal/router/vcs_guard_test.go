@@ -58,7 +58,7 @@ func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 		t.Fatal(err)
 	}
 	front := "PATH=" + quoteShellWord(guard+string(os.PathListSeparator)+real) + ":\"$PATH\"; export PATH\n"
-	if err := os.WriteFile(startup, append([]byte(front+vcsguard.Functions(guard, nil)), hook...), 0o600); err != nil {
+	if err := os.WriteFile(startup, append([]byte(front+vcsguard.Functions(guard, nil, vcsguard.Tools)), hook...), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Plain sh has no startup hook. Its nested commands must also find only

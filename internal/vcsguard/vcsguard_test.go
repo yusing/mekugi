@@ -204,7 +204,7 @@ func TestKnownPaths(t *testing.T) {
 	if err := os.Symlink(filepath.Join(cellar, "git"), filepath.Join(bin, "git")); err != nil {
 		t.Fatal(err)
 	}
-	got := KnownPaths(strings.Join([]string{bin, guard, plain, "relative"}, string(os.PathListSeparator)))
+	got := KnownPaths(strings.Join([]string{bin, guard, plain, "relative"}, string(os.PathListSeparator)), Tools)
 	var mine []string
 	for _, path := range got {
 		if strings.HasPrefix(path, root) {

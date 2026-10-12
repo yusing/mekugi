@@ -169,12 +169,28 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 		names := []string{changeIndexName(options.workspace, index.Namespace)}
 		var readable []string
 		missingStreams := make(map[string]bool)
-		for _, id := range options.ids {
+		for position := 0; position < len(options.ids); position++ {
+			id := options.ids[position]
 			change, exists := index.Changes[id]
 			if !exists {
 				if !options.mine || options.view == "net" {
-					targetErrors = append(targetErrors, missingChangeError(index, id))
-					stream, _, _ := parseChangeID(id)
+					stream, number, _ := parseChangeID(id)
+					state, _ := missingChangeState(index, id)
+					last := id
+					for position+1 < len(options.ids) {
+						next := options.ids[position+1]
+						if next != changeHandle(stream, number+1) {
+							break
+						}
+						nextState, _ := missingChangeState(index, next)
+						if _, exists := index.Changes[next]; exists || nextState != state {
+							break
+						}
+						last = next
+						number++
+						position++
+					}
+					targetErrors = append(targetErrors, missingChangeRangeError(index, id, last))
 					missingStreams[stream] = true
 				} else {
 					readable = append(readable, id)
@@ -262,15 +278,24 @@ func missingChangeState(index changeIndex, id string) (string, string) {
 }
 
 func missingChangeError(index changeIndex, id string) error {
+	return missingChangeRangeError(index, id, id)
+}
+
+func missingChangeRangeError(index changeIndex, first, last string) error {
+	id := first
+	subject := "change " + id + " is"
+	if first != last {
+		subject = "changes " + first + ".." + last + " are"
+	}
 	state, latest := missingChangeState(index, id)
 	reason := "retired by session retention"
 	if state == "unknown" {
 		reason = "never allocated (latest is " + latest + ")"
 	}
 	if latest == "none in this stream" {
-		return fmt.Errorf("change %s is %s in workspace %q; check --workspace", id, reason, index.Workspace)
+		return fmt.Errorf("%s %s in workspace %q; check --workspace", subject, reason, index.Workspace)
 	}
-	return fmt.Errorf("change %s is %s", id, reason)
+	return fmt.Errorf("%s %s", subject, reason)
 }
 
 // Recovery advertises retained IDs, not replacement evidence for a failed read.
