@@ -308,6 +308,34 @@ func toolActivityUnwrapTimeout(statement *syntax.Stmt) *syntax.Stmt {
 	return &innerStatement
 }
 
+// Keep env parsing at the existing shell owner. Only the display copy changes;
+// unsupported options, dynamic environment values, and PATH changes stay Run.
+func toolActivityUnwrapEnv(statement *syntax.Stmt) *syntax.Stmt {
+	call, ok := statement.Cmd.(*syntax.CallExpr)
+	if !ok || len(call.Assigns) != 0 || len(call.Args) < 2 {
+		return statement
+	}
+	name, literal := shellCatLiteral(call.Args[0])
+	if !literal || toolActivityCommandName(name) != "env" {
+		return statement
+	}
+	args, reason := execEnvArgs(call.Args[1:])
+	if reason != "" || len(args) == 0 {
+		return statement
+	}
+	innerCall, innerStatement := *call, *statement
+	innerCall.Args = args
+	innerStatement.Cmd = &innerCall
+	return &innerStatement
+}
+
+func toolActivityCommandName(name string) string {
+	if filepath.IsAbs(name) {
+		return filepath.Base(name)
+	}
+	return name
+}
+
 // Recognize only transparent search bounds and executable lookups. Keep their
 // complete source, including redirections and guards, rather than implying that
 // a pipeline's stages are independent operations.
@@ -332,6 +360,20 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}
+	if inner := toolActivityUnwrapEnv(statement); inner != statement {
+		return toolActivityStatement(script, inner, cwd)
+	}
+	if argv, ok := toolActivityLiteralCall(statement); ok && len(argv) == 3 &&
+		(argv[0] == "bash" || argv[0] == "sh" || argv[0] == "dash") && (argv[1] == "-c" || argv[1] == "-lc") {
+		display, recognized := toolActivityReads(argv[2], cwd)
+		paragraphs := activityui.Paragraphs(display)
+		if recognized && len(paragraphs) == 1 && activityui.ParseOperation(paragraphs[0]).Code == strings.Trim(argv[2], "\r\n") {
+			// Setup and heredoc programs must stay whole, including the wrapper.
+			innerTimeouts := activityui.ParseOperation(paragraphs[0]).Timeouts
+			return activityui.AddTimeouts("Run\n"+toolActivityFenced("bash", toolActivityStatementSource(script, original)), innerTimeouts), true
+		}
+		return display, recognized
+	}
 	if display, ok := toolActivityEditStatement(script, statement); ok {
 		return display, true
 	}
@@ -355,21 +397,9 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 		if display, ok := toolActivityPipedRead(script, statement, binary, cwd); ok {
 			return display, true
 		}
-		right, ok := toolActivityUnwrapTimeout(binary.Y).Cmd.(*syntax.CallExpr)
-		if !ok || len(right.Assigns) != 0 || len(binary.Y.Redirs) != 0 ||
-			binary.Y.Background || binary.Y.Negated || binary.Y.Coprocess || binary.Y.Disown {
+		argv, ok := toolActivityPatternCall(script, binary.Y)
+		if !ok {
 			return "", false
-		}
-		var argv []string
-		for _, arg := range right.Args {
-			value, literal := shellCatLiteral(arg)
-			if !literal {
-				if !toolActivityPatternWord(arg) {
-					return "", false
-				}
-				value = script[int(arg.Pos().Offset()):int(arg.End().Offset())]
-			}
-			argv = append(argv, value)
 		}
 		left, ok := toolActivityStatement(script, binary.X, cwd)
 		if !ok {
@@ -405,6 +435,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 		return "", false
 	}
 	command, _ := shellCatLiteral(call.Args[0])
+	command = toolActivityCommandName(command)
 	if len(statement.Redirs) != 0 {
 		// Only discarded stderr is transparent to these search and listing previews.
 		if command != "find" && command != "rg" && command != "grep" && command != "ls" {
@@ -422,6 +453,9 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 }
 
 func toolActivityTimeouts(statement *syntax.Stmt) []string {
+	if inner := toolActivityUnwrapEnv(statement); inner != statement {
+		return toolActivityTimeouts(inner)
+	}
 	unwrapped := toolActivityUnwrapTimeout(statement)
 	if unwrapped == statement {
 		return nil
@@ -433,7 +467,7 @@ func toolActivityTimeouts(statement *syntax.Stmt) []string {
 		value, _ := shellCatLiteral(args[i])
 		timeouts = append(timeouts, value)
 	}
-	return timeouts
+	return append(timeouts, toolActivityTimeouts(unwrapped)...)
 }
 
 // A single-file cat or nl -ba preserves source line positions through a bounded
@@ -477,6 +511,9 @@ func toolActivityPatternCall(script string, statement *syntax.Stmt) ([]string, b
 		statement.Coprocess || statement.Disown {
 		return nil, false
 	}
+	if inner := toolActivityUnwrapEnv(statement); inner != statement {
+		return toolActivityPatternCall(script, inner)
+	}
 	call, ok := statement.Cmd.(*syntax.CallExpr)
 	if !ok || len(call.Args) == 0 || len(call.Assigns) != 0 {
 		return nil, false
@@ -492,6 +529,7 @@ func toolActivityPatternCall(script string, statement *syntax.Stmt) ([]string, b
 		}
 		argv = append(argv, value)
 	}
+	argv[0] = toolActivityCommandName(argv[0])
 	return argv, true
 }
 
@@ -580,6 +618,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 	if !literal {
 		return "", false
 	}
+	command = toolActivityCommandName(command)
 	patterns := command == "rg" || command == "grep" || command == "ls" ||
 		command == "cat" || command == "mcat" || command == "sed" || command == "nl" || command == "inspect_file"
 	var argv []string
@@ -600,6 +639,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 		}
 		argv = append(argv, value)
 	}
+	argv[0] = command
 	switch argv[0] {
 	case "mread":
 		return "", true

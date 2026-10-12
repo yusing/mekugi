@@ -138,6 +138,7 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 	const workdir = "/work"
 	for _, command := range []string{
 		"env -u BASH_ENV rm a",
+		"env -u BASH_ENV MODE=x rm a",
 		"env --unset BASH_ENV rm a",
 		"env --unset=BASH_ENV rm a",
 		"env -u BASH_ENV rtk proxy rm a",
@@ -149,6 +150,7 @@ func TestClassifyRTKWrappersAndEnvUnset(t *testing.T) {
 	}
 	for _, command := range []string{
 		"env -u PATH rm a",
+		"env MODE=x -u BASH_ENV rm a",
 		"env --unset=PATH rm a",
 		"env -u \"$VARIABLE\" rm a",
 	} {

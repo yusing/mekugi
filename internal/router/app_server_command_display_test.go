@@ -14,6 +14,13 @@ import (
 
 func TestAppServerFrontendCommandClassification(t *testing.T) {
 	for _, tc := range []struct{ command, want string }{
+		{`env -u BASH_ENV -u MEKUGI_EXEC_TRACK bash -c 'sed -n "28,85p" internal/router/app_server_ui.go; cat internal/router/subagent_activity_pane.go | head -85; rg -n "MCP|spawn_agent" internal/router/subagent_activity.go | head -80'`, "Read `internal/router/app_server_ui.go 28:85`\n\nRead `internal/router/subagent_activity_pane.go`\n\nSearch `MCP|spawn_agent` in `internal/router/subagent_activity.go`"},
+		{`/usr/bin/sed -n '2,4p' app.go; /bin/cat other.go | /usr/bin/head -80; /usr/bin/rg needle src 2>/dev/null | /usr/bin/head -20`, "Read `app.go 2:4`\n\nRead `other.go`\n\nSearch `needle` in `src`"},
+		{`/usr/bin/env --unset=BASH_ENV LANG=C /bin/sh -c 'go test ./...; cat app.go'`, "Run `go test ./...`\n\nRead `app.go`"},
+		{`env -u BASH_ENV /bin/dash -c 'cat "$HOME/app.go"'`, "Read `\"$HOME/app.go\"`"},
+		{`env -u BASH_ENV timeout 10 /bin/cat app.go | env LANG=C /usr/bin/sed -n '2,4p'`, "Read `app.go 2:4` (timeout 10)"},
+		{`timeout 20 env LANG=C bash -c 'timeout 10 cat app.go; rg needle src'`, "Read `app.go` (timeout 10) (timeout 20)\n\nSearch `needle` in `src` (timeout 20)"},
+		{`env -u BASH_ENV bash -c 'set -e; timeout 10 sleep 1; cat app.go'`, "Run (timeout 10)\n" + toolActivityFenced("bash", `env -u BASH_ENV bash -c 'set -e; timeout 10 sleep 1; cat app.go'`)},
 		{"sed -n '390,432p' $(go env \\\nGOROOT)/src/encoding/json/v2/arshal_time.go", "Read\n```\n$(go env \\\nGOROOT)/src/encoding/json/v2/arshal_time.go 390:432\n```"},
 		{`sed -n '1,2p' "$(project-root)/file.go"`, "Read `\"$(project-root)/file.go\" 1:2`"},
 		{"cat /home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs | sed -n '45,150p'", "Read `/home/yusing/projects/codex/codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs 45:150`"},
@@ -49,13 +56,59 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.want || u.view.entries[0].native.command != command {
 					t.Fatalf("classified live entries: %+v; want %q", u.view.entries, tc.want)
 				}
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": item})
+				if len(u.agents.entries) != 2 || u.agents.entries[1].Text != tc.want || u.agents.entries[1].native.command != command {
+					t.Fatalf("classified child text: %q; want %q", u.agents.entries[len(u.agents.entries)-1].Text, tc.want)
+				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
 				if len(restored.view.entries) != 1 || restored.view.entries[0].Text != tc.want {
 					t.Fatalf("classified restored entries: %+v", restored.view.entries)
 				}
+				restored.session.path("child")
+				restored.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: restored.session.cwd, Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}})
+				if len(restored.agents.entries) != 1 || restored.agents.entries[0].Text != tc.want {
+					t.Fatalf("classified restored child text: %q; want %q", restored.agents.entries[len(restored.agents.entries)-1].Text, tc.want)
+				}
 			})
 		}
+	}
+}
+
+func TestAppServerOpaqueCommandWrappers(t *testing.T) {
+	for _, command := range []string{
+		`env MODE=x -u BASH_ENV cat app.go`,
+		`env -C /other cat app.go`, `env PATH=/other cat app.go`, `env -u PATH cat app.go`,
+		`env MODE="$(touch marker)" cat app.go`, `env -u "$NAME" cat app.go`,
+		`env -u BASH_ENV bash -c "$SCRIPT"`, `env -u BASH_ENV bash -c 'cat "$1"' name app.go`,
+		`env -u BASH_ENV bash -c 'cat app.go' > out`, `env -u BASH_ENV bash -c 'cat app.go' &`,
+		`env -u BASH_ENV bash -c 'cat app.go' | unknown`, `./cat app.go`,
+	} {
+		if got := appServerCommandText(appServerItem{Command: command}, ""); got != "Run\n"+toolActivityFenced("bash", command) {
+			t.Errorf("unsafe wrapper %q classified: %s", command, got)
+		}
+	}
+}
+
+func TestUISnapshotWrappedCommands(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		u := newAppServerSessionTestUI(t, "/workspace")
+		u.clock = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC) }
+		view := u.view
+		if thread == "child" {
+			view = u.agents
+		}
+		view.clock, view.painter.Theme = u.clock, livediff.DarkTheme
+		for i, command := range []string{
+			`env -u BASH_ENV -u MEKUGI_EXEC_TRACK bash -c 'sed -n "28,85p" internal/router/app_server_ui.go; cat internal/router/subagent_activity_pane.go | head -85; rg -n "MCP|spawn_agent" internal/router/subagent_activity.go | head -80'`,
+			`/usr/bin/sed -n '2,4p' app.go; /bin/cat other.go | /usr/bin/head -80`,
+			`env -u BASH_ENV bash -c 'set -e; timeout 10 sleep 1; cat app.go'`,
+		} {
+			item := appServerItem{ID: fmt.Sprint(i), Type: "commandExecution", Command: command, Cwd: "/workspace", Status: "completed", ExitCode: new(0), DurationMS: new(int64(500))}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
+		}
+		view.pace(u.clock().Add(time.Hour))
+		assertNativeUISnapshot(t, "wrapped-commands-"+thread, view.renderFeed(100, 30).lines)
 	}
 }
 

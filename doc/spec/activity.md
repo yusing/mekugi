@@ -62,6 +62,13 @@ an abbreviated long option that may consume the next word remains `Run`. Discard
 stderr (`2>/dev/null`) is transparent to `find`, `rg`, `grep`, and `ls`. Unknown or
 effectful pipeline stages retain the original `Run` preview. Shell execution
 still receives the exact original command, including flags and pipes.
+Literal absolute executable paths use the same read/search classification as bare
+names. Literal `env` assignments and unset options that preserve command resolution
+are transparent to classification, as are literal `bash`/`sh`/`dash` `-c` or `-lc`
+scripts without extra arguments or redirections. Unknown options, dynamic wrapper
+arguments, and PATH changes retain `Run`. Wrapped scripts retain all operations,
+whole-script setup previews, and known timeout metadata; display never executes or
+expands their source.
 A plain literal `timeout DURATION` prefix preserves the operation label. The duration
 may be a decimal number with an optional `s`, `m`, `h`, or `d` unit; timeout
 options and dynamic durations remain `Run`. Execution keeps the original prefix.

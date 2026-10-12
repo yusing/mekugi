@@ -703,9 +703,10 @@ func literalArgs(words []*syntax.Word) ([]string, bool) {
 
 // execEnvArgs unwraps only literal environment changes that preserve command resolution.
 func execEnvArgs(args []*syntax.Word) ([]*syntax.Word, string) {
+	assignments := false
 	for len(args) != 0 {
 		next, ok := shellCatLiteral(args[0])
-		if ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
+		if !assignments && ok && (next == "-u" || next == "--unset" || strings.HasPrefix(next, "--unset=")) {
 			variable, inline := strings.CutPrefix(next, "--unset=")
 			count := 1
 			if !inline && len(args) > 1 {
@@ -729,6 +730,7 @@ func execEnvArgs(args []*syntax.Word) ([]*syntax.Word, string) {
 		if variable, _, _ := strings.Cut(next, "="); variable == "PATH" {
 			return nil, "command resolution changes"
 		}
+		assignments = true
 		args = args[1:]
 	}
 	return args, ""
