@@ -100,8 +100,6 @@ func TestJournalAutoResumeNativeCodexE2E(t *testing.T) {
 			var thread, startID string
 			var driver *journalResetDriver
 			completed := 0
-			ticker := time.NewTicker(20 * time.Millisecond)
-			defer ticker.Stop()
 			for completed < 2 || driver != nil && driver.active() {
 				select {
 				case m, ok := <-client.Messages:
@@ -149,7 +147,7 @@ func TestJournalAutoResumeNativeCodexE2E(t *testing.T) {
 							if _, err := proxy.journals.apply(ctx, proxy.replayStore, workspace, thread, "fixture-plan", []journalMutation{{Op: "plan", Tasks: []jsontext.Value{jsontext.Value(fmt.Sprintf(`{"title":"Remaining","state":%q}`, state))}}}); err != nil {
 								t.Fatal(err)
 							}
-							driver = &journalResetDriver{ctx: ctx, proxy: proxy, client: client, workspace: workspace, thread: thread, delay: 0}
+							driver = &journalResetDriver{ctx: ctx, proxy: proxy, client: client, workspace: workspace, thread: thread}
 							if _, err := client.Send("turn/start", map[string]any{"threadId": thread, "input": appserver.Input("Answer this follow-up question without modifying the journal tasks.")}, true); err != nil {
 								t.Fatal(err)
 							}
@@ -191,21 +189,12 @@ func TestJournalAutoResumeNativeCodexE2E(t *testing.T) {
 							t.Fatalf("follow-up did not schedule ordinary continuation: %+v", driver.intent)
 						}
 					}
-				case <-ticker.C:
-					if driver != nil {
-						if err := driver.tick(time.Now()); err != nil {
-							t.Fatal(err)
-						}
-					}
 				case err := <-client.Done:
 					exited = true
 					t.Fatalf("app-server exited before continuation: %v", err)
 				case <-ctx.Done():
 					t.Fatalf("ordinary continuation timed out: %v", ctx.Err())
 				}
-			}
-			if err := driver.tick(time.Now().Add(time.Hour)); err != nil {
-				t.Fatal(err)
 			}
 			if driver.active() || driver.intent != nil {
 				t.Fatalf("completed plan scheduled another continuation: %+v", driver.intent)

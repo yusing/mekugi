@@ -300,7 +300,7 @@ See [all diff controls](doc/spec/changes.md#live-terminal-view).
 
 Journal shows work, results, constraints, and blockers, including delegated journals.
 `j`/`k` selects, Space expands, Enter opens details, `c` copies the address, Esc returns.
-Unfinished work offers a countdown; Esc cancels, blockers/questions pause it.
+Unfinished work continues immediately; blockers/questions pause it.
 Explicit stops stay paused across questions/forks/resume until reactivated.
 Ordinary continuation keeps context; slices follow [reset policy](#context-reset-and-recovery).
 See [Journal](doc/spec/journal.md).

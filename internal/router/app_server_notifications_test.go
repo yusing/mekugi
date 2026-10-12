@@ -143,10 +143,10 @@ func TestAppServerNotificationAutoContinue(t *testing.T) {
 			}
 			u.writeTerminalTitle(time.Unix(0, 0))
 			if u.notifications.lastTitle != "Mekugi ⠋" {
-				t.Fatal("slice countdown reported terminal idle")
+				t.Fatal("slice continuation reported terminal idle")
 			}
 			out.Reset()
-			if err := d.tick(d.deadline); err != nil {
+			if err := d.start(); err != nil {
 				t.Fatal(err)
 			}
 			reply := fmt.Sprintf(`{"id":%s,"result":{"turn":{"id":"continued"}}}`, d.requestID)
@@ -280,7 +280,7 @@ func TestAppServerNotificationCompactionAck(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
 	out := notificationTestOutput(t, u)
-	if err := d.tick(d.deadline); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{}}`, d.requestID))

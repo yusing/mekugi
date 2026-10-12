@@ -2,7 +2,6 @@ package router
 
 import (
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -18,9 +17,12 @@ func (u *appServerUI) ensureJournalReset() {
 	if !ready {
 		return
 	}
-	u.reset = &journalResetDriver{ctx: u.ctx, proxy: u.proxy, client: u.client, workspace: u.journal.workspace, thread: u.thread, delay: 3 * time.Second, serviceTier: u.selectedServiceTier}
-	if err := u.reset.restore(); err != nil {
-		u.setNotice("Slice reset recovery: "+err.Error(), true)
+	u.reset = &journalResetDriver{ctx: u.ctx, proxy: u.proxy, client: u.client, workspace: u.journal.workspace, thread: u.thread, serviceTier: u.selectedServiceTier}
+	// Active host work and waiting user input take priority over a retained intent.
+	if u.turn == "" && !u.starting() && u.questionCount() == 0 && len(u.unsent)+len(u.queued) == 0 {
+		if err := u.reset.restore(); err != nil {
+			u.setNotice("Slice reset recovery: "+err.Error(), true)
+		}
 	}
 	u.showResetNotice()
 }
@@ -32,28 +34,11 @@ func (u *appServerUI) showResetNotice() {
 	}
 }
 
-func (u *appServerUI) tickJournalReset(now time.Time) error {
-	if u.orchestrateCheckoutUnavailable() {
-		return nil
-	}
-	u.ensureJournalReset()
-	if u.reset == nil {
-		return nil
-	}
-	if u.questionCount() > 0 && u.reset.cancellable() {
-		return u.reset.cancel()
-	}
-	err := u.reset.tick(now)
-	u.dirty = u.dirty || u.reset.active()
-	u.showResetNotice()
-	return err
-}
-
 func (u *appServerUI) journalResetStrip(width int) string {
 	if !u.reset.active() {
 		return ""
 	}
-	return ansi.Truncate(livediff.Safe(u.reset.label(time.Now()), false), width, "…")
+	return ansi.Truncate(livediff.Safe(u.reset.label(), false), width, "…")
 }
 
 // Match the reset's own turn, not the configured mode: ordinary provider

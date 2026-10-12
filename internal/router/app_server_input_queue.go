@@ -137,14 +137,7 @@ func (u *appServerUI) editQueued() {
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
 func (u *appServerUI) flushInput() error {
 	if u.reset.active() {
-		if len(u.unsent) > 0 || len(u.queued) > 0 {
-			if err := u.reset.cancel(); err != nil {
-				return err
-			}
-		}
-		if u.reset.active() {
-			return nil
-		}
+		return nil
 	}
 	u.unsent = pendingQuestionReplies(u.unsent)
 	u.queued = pendingQuestionReplies(u.queued)

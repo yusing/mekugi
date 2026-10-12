@@ -302,7 +302,9 @@ selected in that requesting thread's durable journal/execution records can
 substitute for it. Conflicting historical workspaces stop `auto`; router cwd and
 another thread's records never supply a directory.
 
-Codex retains execution and history authority. The router uses the native
+Codex retains execution and history authority. Successful in-flight automatic
+compaction continues the same host turn without a resume request or a separate
+frontend continuation. The router uses the native
 compaction response shape through the same streamed Responses delivery path:
 an assistant summary for local text compaction, or one compaction item for
 Responses compaction V2. A router-owned V2 item refers to the exact retained
@@ -338,7 +340,8 @@ response. Missing, older, or ambiguous rollout evidence keeps the generic label.
 In `off` and `slice`, ordinary provider rows
 keep “Context compacted”.
 
-The journal's “Context reset from journal” row opens the shared scrollable dialog
+The journal's “Context reset from journal” row keeps its disclosure marker beside
+the title, before any right-aligned time, and opens the shared scrollable dialog
 with the exact model-visible recovery message and auto-loaded guidance retained
 for that response. The message remains associated with its original thread, turn
 and item across later resets and resume; it is never regenerated from newer journal
@@ -427,8 +430,8 @@ without changing the plan. Working tasks take priority over pending tasks.
 Ordinary continuation keeps the current context, regardless of compaction mode;
 only the slice boundary below can request a reset.
 
-The native frontend offers the same cancellable three-second countdown for
-ordinary and slice continuation. A blocked task pauses journal continuation;
+The native frontend dispatches ordinary and slice continuation immediately.
+A blocked task pauses journal continuation;
 the idle plan strip and recovery identify the blocking owned task and its reason.
 Pending user questions, queued input, failed/interrupted turns, and explicit
 user interruption do not trigger it. User interruption wins even when the host
@@ -438,33 +441,33 @@ does not independently drive continuation. Once no runnable local task remains,
 automatic continuation stops. Plain conversational questions require the agent
 to record an input-needed task as blocked; answer prose is not a state signal.
 
-Explicit user interruption or Escape during the countdown pauses the current
-unfinished tasks durably. Later questions, notes, restart, and forks retain that
+Explicit user interruption pauses the current unfinished tasks durably.
+Later questions, notes, restart, and forks retain that
 pause; newly authorized unrelated tasks can proceed without reviving stopped work.
 Starting or completing a stopped checkpoint in a later turn resumes its containing
 plan, including remaining steps paused by the same interruption. No separate
 reactivation mutation is required when the checkpoint completes. Other plans and
 sibling steps paused by another interruption stay stopped. A root task resumes only its
 own subtree. Mutations from the interrupted turn cannot reactivate work.
-Queued input and pending questions cancel
-the countdown without marking the underlying work user-stopped.
+Queued input and pending questions prevent continuation dispatch without marking
+the underlying work user-stopped.
 
 Each continuation is bound to its workspace, thread and completed turn, and is
 revalidated against the durable journal before dispatch. A restored pending
-countdown can continue still-runnable work; dispatched requests never replay.
+intent can continue still-runnable work; dispatched requests never replay.
 Forks and side threads do not inherit a live continuation. Switching models or
 viewing another agent does not transfer continuation ownership.
 
 A plan marked `reset: "slice"` can continue between successful native Main turns.
 When a task becomes done during the completed turn and has an eligible pending sibling,
-the frontend offers a three-second countdown to that sibling, including a sibling
+the frontend immediately continues to that sibling, including a sibling
 with open subtasks. Finished, dropped, or delegated ancestors exclude a target
 from both selection and dispatch. An excluded sibling does not hide other local
-work or permit premature finish. Escape
-or queued user input cancels it. Failed and interrupted turns do not continue;
+work or permit premature finish. Queued user input takes priority.
+Failed and interrupted turns do not continue;
 child completion cannot drive a Main reset.
 The [headless frontend](router.md#headless-app-server-frontend) uses the same policy
-with no countdown delay and emits reset events instead of rendering a strip.
+and emits reset events instead of rendering a strip.
 
 With `slice` or `auto`, the frontend asks Codex to compact before continuing
 between top-level slices. Between subslices, such as `/3/1` and `/3/2`, it
@@ -478,18 +481,18 @@ including its progress, completion, and restored event. Ordinary provider
 compactions in `slice` retain their compaction wording; `auto` uses context-reset
 wording for all compaction-related presentation.
 Only a router-answered, successfully completed compaction permits the automatic
-continuation. A failed reset leaves the plan available for manual continuation.
+continuation, dispatched as soon as Codex confirms completion and acknowledgement.
+A failed reset leaves the plan available for manual continuation.
 In `slice`, provider fallback also leaves continuation manual.
-With `off`, the same countdown continues the plan without resetting context.
+With `off`, the frontend immediately continues the plan without resetting context.
 This keeps the continuing-context comparison separate from compaction policy.
 
 Interrupted or uncertain RPC outcomes are not retried; the frontend reports that
 manual continuation is needed. That retained evidence never blocks a
 later slice, and an uncertain compaction dispatch cannot make a later manual
 compaction count as the reset: only an intent armed for the latest ordinary turn
-is answered. Escape cancels until compaction or continuation is dispatched. A
-still-pending countdown for the latest turn whose next slice is still pending can
-recover on resume; resume reports and discards any other intent. A fork copies
+is answered. A still-pending intent for the latest turn whose next slice is still
+pending can recover on resume; resume reports and discards any other intent. A fork copies
 the plan without its live continuation intent.
 
 ## REQ-JOURNAL-001 — Durable work journals

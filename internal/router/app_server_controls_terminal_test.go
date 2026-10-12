@@ -56,17 +56,17 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 			return ""
 		}
 	}
-	if frame := paint(); !strings.Contains(frame, "5 Journal ─") || !strings.Contains(frame, "No journal entries") {
+	if frame := paint(); !strings.Contains(frame, "4 Journal ─") || !strings.Contains(frame, "No journal entries") {
 		t.Fatalf("initial frame lacks Journal:\n%s", frame)
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "spawn", "type": "subAgentActivity", "agentThreadId": "child", "agentPath": "/root/worker", "kind": "started"}})
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
-	if frame := paint(); !strings.Contains(frame, "3 Activity ─") || strings.Contains(frame, "5 Journal ─") {
+	if frame := paint(); !strings.Contains(frame, "3 Activity ─") || strings.Contains(frame, "4 Journal ─") {
 		t.Fatalf("spawn did not render Activity:\n%s", frame)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn", "status": "failed"}})
-	if frame := paint(); !strings.Contains(frame, "5 Journal ─") || strings.Contains(frame, "3 Activity ─") {
+	if frame := paint(); !strings.Contains(frame, "4 Journal ─") || strings.Contains(frame, "3 Activity ─") {
 		t.Fatalf("failed child did not restore Journal:\n%s", frame)
 	}
 	appServerTestKeys(t, u, "/lock\r")

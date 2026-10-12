@@ -79,7 +79,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	restoredProxy.autoLiveDiff = auto
 	second := startAppResumeTerminalWithProxy(t, newCommand, root, restoredProxy)
 	second.await("Ready") // Restoration is complete before accepting new input.
-	second.send("\x024")  // Focus the restored Agents roster.
+	second.send("\x025")  // Focus the restored Agents roster.
 	second.awaitMatch("restored child roster", func(screen string) bool {
 		rows := strings.Split(screen, "\n")
 		return strings.Contains(strings.Join(rows[len(rows)/2:], "\n"), "journal_child")

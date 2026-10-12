@@ -310,14 +310,8 @@ func (u *terminalUI) selectionAction(action byte) {
 	switch action {
 	case 'r':
 		editor := u.main.promptEditor()
-		if editor.currentQuestion() != nil {
-			// A question answer is plain text; it cannot carry a mention's quote.
-			editor.run = runNone
-			editor.insertDraft("> " + s.text() + "\n\n")
-		} else {
-			description, source := s.mentionDescription()
-			editor.insertSelection(description, s.text(), source)
-		}
+		description, source := s.mentionDescription()
+		editor.insertSelection(description, s.text(), source)
 		editor.refreshPicker()
 		editor.run = runNone
 		u.focus = 0

@@ -553,13 +553,14 @@ while a request is pending; stale or canceled responses never replace current
 results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
-Typing `/` at the start of an otherwise single-token draft opens a local command
+Typing `/` at the start of the draft opens a local command
 catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/orchestrate`, `/status`, `/session`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
-the catalog without changing the draft. Arguments close completion. Pasted text
-does not activate the catalog. The catalog uses the shared picker viewport and
+the catalog without changing the draft. Completion replaces only the command token,
+preserving trailing images and other draft content. Moving into arguments closes
+completion. Pasted text does not activate the catalog. The catalog uses the shared picker viewport and
 visible-row column sizing; it never submits a command to the model.
 
 `/orchestrate ISSUES` sends the issues and initial workflow instructions through
@@ -759,8 +760,8 @@ On submission or queueing, each mention's selected text follows any file content
 in the same versioned attachment envelope, as its own user message framed with the
 label and, for Diff, the file path. A selection over 96 KiB is refused with a
 notice; one that exceeds the remaining envelope budget is replaced by an explicit
-omission frame, and the composer reports it. While a question is open, Reference
-inserts `> SELECTED_TEXT\n\n` instead, since an answer is plain text.
+omission frame, and the composer reports it. Question answers use the same reference
+tokens and quoted attachments as the main composer.
 Reference from a dialog closes it and focuses the composer. Copy and Clear keep
 the dialog open; `y` is also a dialog selection-copy shortcut.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
@@ -1092,7 +1093,7 @@ and diff coordinates; non-dimmed semantic colors, syntax highlighting and
 animated status ramps stay unchanged.
 
 Journal plans use the [journal continuation policy](journal.md#journal-continuation).
-The pinned countdown names the next path and title and shows `Esc cancels`.
+The pinned strip shows context reset or continuation progress without a countdown.
 Completed context-reset events remain visible even with the Journal pane open or
 when continuation is rejected or interrupted. Router-authored
 continuations appear as auto-continue rows, not user bubbles. Pending user input
@@ -1253,7 +1254,7 @@ managers can recognize working and action-required states without parsing the
 transcript. The Main turn supplies the work spinner; pending questions (including
 hidden or resumed async questions), pending approvals and unsupported server
 requests take priority with `Action Required`. Automatic journal continuation keeps
-the spinner through its countdown, context reset and next-turn acknowledgement.
+the spinner through context reset and next-turn acknowledgement.
 Settled Main turns without automatic continuation remove the spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when
@@ -1330,6 +1331,7 @@ never merges into the main draft. Answer editors accept literal text, Unicode,
 paste, undo and Ctrl-G, but disable completion and Shell Mode. Ctrl-V and a
 bracketed paste containing one image path reuse the main composer's highlighted,
 atomic `[Image N]` attachments, editing, undo and host-owned image processing.
+Reference inserts an atomic selected-text token into the answer or active option note.
 Image files remain available across question navigation, hide/reopen and rejected
 submissions. Secret answers are masked with `•` and
 never enter input history. If resolution, interruption or supersession discards
@@ -1338,9 +1340,10 @@ an unsent non-secret answer draft, it is saved to local input history with
 drafts are discarded. Neither main nor answer drafts survive router restart.
 
 Synchronous requests are keyed by thread and JSON-RPC request ID. Exactly one
-response is sent, preserving the original ID. Image answers retain their
-`[Image N]` references in that text-only response and queue a companion ordinary
-composer message with the matching local images after the request resolves.
+response is sent, preserving the original ID. Attached answers retain their
+image and selected-text references in that text-only response and queue a companion
+ordinary composer message with the matching images and quoted attachments after
+the request resolves.
 Codex emits the same image frames as for main-composer attachments.
 Its `answers` object maps question
 IDs to `{answers: [string]}`: an option sends `[label]`; a note sends
@@ -1352,6 +1355,7 @@ main draft instead of steering it. The open composer says
 `answering · turn waiting`.
 
 Async answers are batched per tool call, in a single ordinary user-input envelope.
+Selected text accompanies the reply through the shared attachment envelope.
 Images accompany the complete text envelope as stock local-image inputs, with
 labels numbered across the answered questions; image bytes and framing remain
 Codex-owned:
@@ -1391,7 +1395,8 @@ keys. Main and Activity use the shared `Asked` operation with full question text
 observed answers. Pending records say `waiting` or `open`; observed outcomes are
 `answered`, `skipped`, `interrupted`, `superseded`, or `answered elsewhere`.
 Answers sit directly under their questions with a distinct reply marker and
-stronger weight; observed completion states use a light/dark-aware success color.
+shared Markdown rendering, including source-aware selection and copy. Observed
+completion states use a light/dark-aware success color.
 Secrets are excluded from these answer records. External-editor access is
 disabled for secret answers. The scripted native preview
 includes an async question and a sync question. In-process acceptance covers

@@ -205,13 +205,14 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 	for _, tc := range []struct {
 		name                  string
 		digit                 byte
+		focus                 int
 		journal, diff, active bool
 	}{
-		{"Main", '1', false, false, true},
-		{"Diff", '2', false, true, true},
-		{"Activity", '3', false, false, true},
-		{"Agents", '4', false, false, true},
-		{"Journal", '5', true, false, true},
+		{"Main", '1', 0, false, false, true},
+		{"Diff", '2', 1, false, true, true},
+		{"Activity", '3', 2, false, false, true},
+		{"Agents", '5', 3, false, false, true},
+		{"Journal", '4', 4, true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := replayPlaybackTestNew(t)
@@ -228,7 +229,7 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 			assertPane := func() {
 				t.Helper()
 				shell := p.ui.shell
-				if shell.focus != int(tc.digit-'1') || !shell.side || shell.journalOpen != tc.journal || shell.diffOpen != tc.diff || shell.activityOpen != tc.active {
+				if shell.focus != tc.focus || !shell.side || shell.journalOpen != tc.journal || shell.diffOpen != tc.diff || shell.activityOpen != tc.active {
 					t.Fatalf("pane=%s: focus=%d side=%v journal=%v diff=%v activity=%v", tc.name, shell.focus, shell.side, shell.journalOpen, shell.diffOpen, shell.activityOpen)
 				}
 			}
@@ -276,7 +277,7 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
 	p := replayPlaybackTestNew(t)
 	p.paused = true
-	for _, key := range []byte{2, '5'} {
+	for _, key := range []byte{2, '4'} {
 		if quit, err := p.key(key); err != nil || quit {
 			t.Fatalf("select Journal: quit=%v error=%v", quit, err)
 		}
@@ -462,10 +463,10 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			if !strings.Contains(screen.String(), "Replay terminal row 36.") {
 				t.Fatalf("PTY rendered controls but lost transcript:\n%s", screen.String())
 			}
-			write("\x025")
+			write("\x024")
 			awaitFrame("focused Journal", func() bool {
 				journalTitle := screen.CellAt(62, 0)
-				return journalTitle != nil && journalTitle.Content == "5" && journalTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "Replay journal task")
+				return journalTitle != nil && journalTitle.Content == "4" && journalTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "Replay journal task")
 			})
 			write("d")
 			await("Retained journal detail")

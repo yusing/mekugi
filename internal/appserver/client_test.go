@@ -45,7 +45,12 @@ func TestAppServerBurst(t *testing.T) {
 			defer cancel()
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAppServerShutdownChild$")
 			cmd.Env = append(os.Environ(), "MEKUGI_APP_SERVER_SHUTDOWN_TEST=burst")
-			c, err := appserver.Start(cmd)
+			observed := make(chan struct{}, 1)
+			c, err := appserver.Start(cmd, func(message appserver.Message) {
+				if message.Method == "test/event/256" {
+					observed <- struct{}{}
+				}
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -62,11 +67,13 @@ func TestAppServerBurst(t *testing.T) {
 				case <-time.After(time.Millisecond):
 				}
 			}
-			// Let the reader encounter more events with no available slots.
+			// Observation must not wait for the full presentation queue to drain.
 			select {
+			case <-observed:
 			case err := <-c.Done:
 				t.Fatalf("full queue terminated app-server: %v", err)
-			case <-time.After(50 * time.Millisecond):
+			case <-ctx.Done():
+				t.Fatal("observer waited for presentation")
 			}
 			switch action {
 			case "drain":

@@ -45,8 +45,14 @@ func (p *Painter) questionRows(block Block, width int) []string {
 		}
 		switch {
 		case q.Answer != "":
-			answer := livediff.Safe(q.Answer, false)
-			rows = append(rows, liveActivityHang("  "+p.Theme.Accent()+"└ "+Reset, "\x1b[1m"+answer+Reset, width)...)
+			answer := p.Markdown(q.Answer, max(1, width-4))
+			for j, row := range answer {
+				prefix := "    "
+				if j == 0 {
+					prefix = "  " + p.Theme.Accent() + "└ " + Reset
+				}
+				rows = append(rows, prefix+row)
+			}
 		case q.Options != "":
 			rows = append(rows, liveActivityIndent(Wrap(Dim+livediff.Safe(q.Options, false)+Undim, inner, false), "  ")...)
 		}

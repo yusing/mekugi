@@ -81,9 +81,7 @@ func TestNativeUIPreview(t *testing.T) {
 			case <-tick.C:
 				now := time.Now()
 				if p.ui.reset != nil {
-					if err := p.ui.tickJournalReset(now); err != nil {
-						return err
-					}
+					p.ui.ensureJournalReset()
 				}
 				if err := p.ui.drainKeys(keys); err != nil || p.ui.quitRequested {
 					return err
@@ -177,7 +175,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		return frame
 	}
 	p.until("main streams its patch")
-	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents")
+	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "1 Main", "3 Activity", "5 Agents")
 	p.ui.shell.liveHidden = true // Subsequent assertions inspect transcripts, not their temporary replacements.
 	// Grok reasoning streams through the router's translation into Activity.
 	p.until("children start")
@@ -285,12 +283,12 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("s did not hide the focused stacked list")
 	}
 	// Picking an agent in the roster shows its Activity instead of the diff.
-	for _, key := range []byte{2, '4'} {
+	for _, key := range []byte{2, '5'} {
 		if err := p.ui.shell.key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
-	render("focused roster", "4 Agents")
+	render("focused roster", "5 Agents")
 	if !p.ui.shell.diffOpen {
 		t.Fatal("focusing the roster closed the saved diff")
 	}

@@ -63,7 +63,10 @@ func testHeadlessResetFailure(t *testing.T, mode string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.ctx, d.client, d.deadline = ctx, client, time.Now()
+	d.ctx, d.client = ctx, client
+	if err := d.start(); err != nil {
+		t.Fatal(err)
+	}
 	var output bytes.Buffer
 	h := &headlessAppServer{ctx: ctx, client: client, proxy: d.proxy, output: jsontext.NewEncoder(&output), thread: d.thread, turn: "first-turn", completed: true, reset: d}
 	err = h.run()

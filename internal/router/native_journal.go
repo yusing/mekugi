@@ -1175,6 +1175,9 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 				detail = journalEventText(*event)
 				text += activityui.Dim + " ›" + activityui.Undim
 			}
+			if entry.native != nil && entry.native.recovery != "" && detail == "" {
+				text += activityui.Dim + " ›" + activityui.Undim
+			}
 			if at := journalLocalTime(event.At); at != "" && at != stamp {
 				stamp = at
 				if gap := body - ansi.StringWidth(lead+text) - len(at); gap >= 2 {
@@ -1184,9 +1187,6 @@ func (v *liveActivityView) journalEventsItem(out *conversationLines, first, last
 		}
 		snippet := liveActivitySnippet{}
 		if entry.native != nil && entry.native.recovery != "" {
-			if detail == "" {
-				text += activityui.Dim + " ›" + activityui.Undim
-			}
 			snippet = liveActivitySnippet{run: head.Seq, block: len(laid)}
 			laid = append(laid, activityui.Block{Kind: "progress", Verb: "Journal recovery", Label: "Context reset from journal", Body: entry.native.recovery})
 		} else if detail != "" {

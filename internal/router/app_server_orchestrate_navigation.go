@@ -521,9 +521,6 @@ func (u *appServerUI) tickOrchestratedViews(viewed *appServerUI) error {
 			v.expireApprovals()
 			v.flushStreamOutput()
 			v.startCommitReads()
-			if err := v.tickJournalReset(v.now()); err != nil {
-				v.setNotice(err.Error(), true)
-			}
 			if err := v.flushInput(); err != nil {
 				return err
 			}

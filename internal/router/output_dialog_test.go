@@ -329,7 +329,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	track := hub.tracks[key]
 	track.segments[0].ended = true
 	track.segments[0].code = 2
-	track.ended, track.done, track.code = true, true, 2
+	track.ended, track.closed, track.done, track.code = true, true, true, 2
 	view, _ = hub.view(key, true, func(string) string { return "Run `echo one`" }, retention)
 	if !view.complete || view.segments[0].output != retained || !retained.View().Done || retained.View().Exit != 2 {
 		t.Fatalf("final segment did not settle retained output: %+v, %+v", view, retained.View())

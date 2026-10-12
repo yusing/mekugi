@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
 )
@@ -69,7 +68,7 @@ func TestHeadlessAppServerInitializeSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "initialized", "thread/start", "turn/start")
-	if h.thread != "main" || h.reset == nil || h.reset.delay != 0 {
+	if h.thread != "main" || h.reset == nil {
 		t.Fatalf("thread=%q reset=%+v", h.thread, h.reset)
 	}
 	lines := strings.Split(strings.TrimSpace(wire.String()), "\n")
@@ -144,10 +143,9 @@ func TestHeadlessAppServerIgnoresStaleCompletionAndRejectsFailedTurn(t *testing.
 
 func TestHeadlessAppServerContinuationStaysPendingUntilMatchingStart(t *testing.T) {
 	d, wire := resetDriverFixture(t, "off")
-	d.delay = 0
 	h := &headlessAppServer{ctx: t.Context(), client: d.client, proxy: d.proxy, reset: d, thread: d.thread, turn: "first-turn", completed: true, output: jsontext.NewEncoder(io.Discard)}
 
-	if err := d.tick(time.Now().Add(time.Second)); err != nil {
+	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
 	resetDriverRequireMethods(t, wire, "turn/start")

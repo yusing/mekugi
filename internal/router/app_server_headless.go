@@ -9,7 +9,6 @@ import (
 	"io"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -96,8 +95,6 @@ func (h *headlessAppServer) run() (runErr error) {
 		}
 		runErr = headlessHostError(h.client, runErr)
 	}()
-	ticker := time.NewTicker(20 * time.Millisecond)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-h.ctx.Done():
@@ -114,12 +111,6 @@ func (h *headlessAppServer) run() (runErr error) {
 			}
 			if err := h.message(m); err != nil {
 				return err
-			}
-		case now := <-ticker.C:
-			if h.reset != nil {
-				if err := h.reset.tick(now); err != nil {
-					return err
-				}
 			}
 		}
 		if h.reset != nil {

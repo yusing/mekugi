@@ -180,7 +180,7 @@ func (s *journalStore) changeReset(ctx context.Context, store *mekugiReplayStore
 }
 
 // restorableReset returns an intent that a restarted frontend may replay: a
-// not-yet-dispatched countdown for the journal's latest turn whose next slice is
+// not-yet-dispatched intent for the journal's latest turn whose next slice is
 // still pending. Any other retained intent is removed so it cannot block later
 // slices or answer an unrelated compaction; interrupted reports whether it
 // carried uncertain dispatch evidence the user must be told about.

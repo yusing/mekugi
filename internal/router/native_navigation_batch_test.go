@@ -51,7 +51,7 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 			for _, target := range []struct {
 				prefix string
 				pane   int
-			}{{" 1 Main", 0}, {" 2 Diff", 1}, {" 3 Activity", 2}, {" 4 Agents", 3}, {" 5 Journal", 4}} {
+			}{{" 1 Main", 0}, {" 2 Diff", 1}, {" 3 Activity", 2}, {" 5 Agents", 3}, {" 4 Journal", 4}} {
 				marker := target.prefix
 				// A narrow footer may show only the beginning of a selector.
 				start := strings.Index(footer, marker[:3])
@@ -111,11 +111,11 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	if u.shell.focus != 1 {
 		t.Fatal("clicking the diff indicator did not open Diff")
 	}
-	agents := strings.Index(footer, "4 Agents¹")
+	agents := strings.Index(footer, "5 Agents¹")
 	if agents < 0 {
 		t.Fatalf("responding count is not attached to Agents: %q", footer)
 	}
-	count := ansi.StringWidth(footer[:agents] + "4 Agents")
+	count := ansi.StringWidth(footer[:agents] + "5 Agents")
 	navigationBatchMouse(t, u.shell, 0, count, 23, false)
 	if u.shell.focus != 3 {
 		t.Fatal("clicking the responding count did not focus Agents")

@@ -503,7 +503,7 @@ func (u *appServerUI) submitQuestions() error {
 	if c.sudo != nil {
 		return u.submitSudoPassword(c)
 	}
-	images := questionAnswerImages(c)
+	attached := questionAnswerAttachments(c)
 	if len(c.request) > 0 {
 		answers := make(map[string]map[string][]string)
 		for _, q := range c.questions {
@@ -520,9 +520,11 @@ func (u *appServerUI) submitQuestions() error {
 			c.questions[i].editor = questionEditor{}
 		}
 		u.renderQuestionRecord(c)
-		if len(images) > 0 {
-			d := composerDraft{text: "Images accompanying answers to " + c.item + ":\n", questionCall: c, inHistory: true}
-			for i, path := range images {
+		if len(attached.answerImages) > 0 || len(attached.attachments) > 0 {
+			d := attached
+			d.text, d.questionCall, d.inHistory = "Attachments accompanying answers to "+c.item+":\n", c, true
+			d.answerImages = nil
+			for i, path := range attached.answerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
 				start := len(d.text)
 				d.text += label + "\n"
@@ -559,21 +561,27 @@ func (u *appServerUI) submitQuestions() error {
 		return nil
 	}
 	data, _ := json.Marshal(replies)
-	u.unsent = append(u.unsent, composerDraft{text: questionReplyStart + string(data) + questionReplyEnd, answerImages: images, questionCall: c, inHistory: true})
+	attached.text, attached.questionCall, attached.inHistory = questionReplyStart+string(data)+questionReplyEnd, c, true
+	u.unsent = append(u.unsent, attached)
 	u.renderQuestionRecord(c)
 	return u.flushInput()
 }
 
-// Answers refer to the same labels as composer images. The async envelope stays
-// a complete text part; the host processes its accompanying localImage inputs.
-func questionAnswerImages(c *nativeQuestionCall) []string {
+// Answers use composer attachment snapshots. Keep the async reply envelope
+// intact while the host processes accompanying images and quoted selections.
+func questionAnswerAttachments(c *nativeQuestionCall) composerDraft {
 	var paths []string
+	var drafts []composerDraft
 	for i := range c.questions {
 		q := &c.questions[i]
 		if !q.done || q.skipped || q.outcome != "" {
 			continue
 		}
 		d := q.editor.snapshot.composerDraft
+		if len(d.images) == 0 && len(c.request) == 0 && q.selected < len(q.choices) {
+			continue // Async option-only replies do not submit the parked free text.
+		}
+		drafts = append(drafts, d)
 		if len(d.images) == 0 {
 			continue
 		}
@@ -592,7 +600,9 @@ func questionAnswerImages(c *nativeQuestionCall) []string {
 			q.answer[0] = "user_note: " + text
 		}
 	}
-	return paths
+	attached := joinDrafts(drafts...)
+	attached.snapshotFileAttachments("") // Answer editors bind selections, not files.
+	return composerDraft{answerImages: paths, attachments: attached.attachments, attachmentNotice: attached.attachmentNotice}
 }
 
 const questionReplyStart = "<send_user_message_question_reply>"
@@ -670,13 +680,14 @@ func pendingQuestionReplies(parts []composerDraft) []composerDraft {
 			continue
 		}
 		if len(c.request) > 0 {
-			pending = append(pending, part) // Sync images follow the completed tool response.
+			pending = append(pending, part) // Sync attachments follow the completed tool response.
 			continue
 		}
 		if c.resolved {
 			continue
 		}
-		part.answerImages = questionAnswerImages(c)
+		attached := questionAnswerAttachments(c)
+		part.answerImages, part.attachments, part.attachmentNotice = attached.answerImages, attached.attachments, attached.attachmentNotice
 		var replies []nativeQuestionReply
 		for _, r := range questionReplies(part.text) {
 			item, index, ok := questionReplyIdentity(r)
@@ -788,13 +799,13 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 			for i, answer := range answers {
 				if note, ok := strings.CutPrefix(answer, "user_note: "); ok && len(c.request) > 0 && (i > 0 || q.selected == len(q.choices)) {
 					if len(answers) == 1 {
-						answers[i] = "Other: " + note
+						answers[i] = "Other:\n\n" + note
 					} else {
 						answers[i] = note
 					}
 				}
 			}
-			record.Answer = strings.Join(answers, " · ")
+			record.Answer = strings.Join(answers, "\n\n")
 			line += "\n└ " + record.Answer
 		} else if q.outcome == "" && len(q.choices) > 0 {
 			labels := []string{}

@@ -319,6 +319,12 @@ combined output. The helper never blocks on the router. When reporting falls
 behind or exceeds 4 MiB, it stops reporting output and continues relaying
 unchanged.
 
+Command-start matching observes received host notifications before they wait
+for terminal presentation. A queued start does not lose its segment report
+merely because presentation is delayed. Missing or late host
+notifications still retain the untracked fallback; observed file changes are
+not durable change receipts until the host result and capture are retained.
+
 A completed command shows its segments only when its report reached final closure
 with the host's own exit status. Otherwise, including a report that ends when the shell
 replaces itself or is killed, Activity falls back to the host's combined result.

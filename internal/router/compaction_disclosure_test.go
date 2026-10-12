@@ -84,8 +84,12 @@ func TestUISnapshotAutomaticResetRolloutDisclosure(t *testing.T) {
 		if restored {
 			u.restoreHistory([]appServerHistoryTurn{{ID: turn, Status: "completed", Items: items}})
 		} else {
+			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": turn}})
 			for _, item := range items {
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": turn, "item": item})
+			}
+			if u.turn != turn || u.compacting != nil || u.reset.active() || u.client.Input.(*appServerTestInput).Len() != 0 {
+				t.Fatal("in-flight reset stopped or restarted the host turn")
 			}
 		}
 		fixResetPresentationTime(u)

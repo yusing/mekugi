@@ -184,7 +184,7 @@ func TestUISnapshotSessionUIReplayRestoredJournal(t *testing.T) {
 	p.ui.view.painter.Theme, p.ui.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
 	uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-restored-completion.txt", replayPlaybackTestPaint(t, p, 120, 28))
 	p.key(2)
-	p.key('5')
+	p.key('4')
 	uisnapshot.Assert(t, "testdata/snapshots/session-ui-replay-restored-pane.txt", replayPlaybackTestPaint(t, p, 120, 28))
 }
 

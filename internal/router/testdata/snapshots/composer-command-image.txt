@@ -1,0 +1,10 @@
+
+
+
+› /btw  Ask a side question without changing Main           
+
+  ↑/↓ navigate · enter select · tab complete · esc close
+╭──────────────────────────────────────────────────────────╮
+│ ❯ /bt                                                    │
+│   [Image 1]                                              │
+╰───────────────────────────────────────────────────── 0% ─╯

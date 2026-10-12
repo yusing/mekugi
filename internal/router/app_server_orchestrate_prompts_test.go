@@ -307,3 +307,40 @@ func TestUISnapshotOrchestrationPrompts(t *testing.T) {
 		uisnapshot.Assert(t, "testdata/snapshots/orchestration-prompt-"+name+".txt", screen.String()+"\n")
 	}
 }
+
+func TestAppServerOrchestrateQuestionSelectionRouting(t *testing.T) {
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("sync=%v", sync), func(t *testing.T) {
+			u, v := orchestratePromptUI(t)
+			orchestratePromptQuestion(t, u, sync)
+			u.openQuestions()
+			questionTestPaint(t, u, 80)
+			shell := selectionTestUI("quoted")
+			selectionTestDrag(t, shell, 0, 0, 5, 0)
+			shell.main = u
+			shell.selectionAction('r')
+			if u.draft != "Main draft" || v.draft != "[Selected message] " || len(v.selections) != 1 {
+				t.Fatalf("selection missed the source answer editor: main=%q child=%q", u.draft, v.draft)
+			}
+			if err := u.shell.key('\r'); err != nil {
+				t.Fatal(err)
+			}
+			wire := u.client.Input.(*appServerTestInput)
+			if sync {
+				if !strings.Contains(wire.String(), `"id":"batch-question","result":{"answers":{"scope":{"answers":["user_note: [Selected message] "]}}}`) {
+					t.Fatal("selection answer missed the source request", wire.String())
+				}
+				wire.Reset()
+				questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "child", "requestId": "batch-question"})
+			}
+			request := btwTestRequest(t, wire, "turn/steer", "child")
+			encoded := string(mustMarshalJSON(request.Params))
+			if !strings.Contains(encoded, "quoted") || !strings.Contains(encoded, "[Selected message]") || strings.Contains(encoded, "Main draft") {
+				t.Fatal("selected quote did not reach its source thread", encoded)
+			}
+			if u.draft != "Main draft" || v.draft != "Batch draft" {
+				t.Fatal("answer replaced a parked draft")
+			}
+		})
+	}
+}

@@ -314,8 +314,8 @@ With a selection, the footer offers the shared [selection actions](native_ui.md)
 Reference (`r`/`R`), Copy (Ctrl-C, also `c`/`C` or `y`), and Clear (Esc), with
 bold keys and clickable hints matching the transcript. Only complete, visible
 action hints accept clicks. Reference closes the dialog, focuses the composer, and inserts
-the selected text as one undoable reference token at the caret, or as a plain-text
-quote for an active question. Copy and Clear keep the dialog open; Esc clears
+the selected text as one undoable reference token at the caret, including in an
+active question answer. Copy and Clear keep the dialog open; Esc clears
 a selection before a later Esc closes the dialog. Wheel, arrow, page, and
 Home/End scrolling preserve the frozen selection, including off-screen rows.
 Changing pages, navigating search, or resizing clears it; End resumes live
