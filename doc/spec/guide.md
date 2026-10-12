@@ -57,8 +57,12 @@ the journal operations and input declarations without requiring tool discovery. 
 `functions.journal` tool is exposed. Journal access uses the invocation-local
 MCP tools; stock tool schemas and inputs remain unchanged.
 The guidance covers journal use and completion, without prescribing delegation, review,
-document workflow or personal setup. Tasks track work that needs continuation;
-short assignments need no plan. Main guidance plans an outcome task's separate results as
+document workflow or personal setup. Both role projections explain the journal as the current
+thread's durable work state in every repository: task states control automatic continuation,
+and recovery retains the next step, decisions and evidence across reset or resume.
+Tasks track authorized work that remains; context retains settled decisions and constraints,
+and notes retain results useful to continuing that work. Short assignments need no plan.
+Main guidance plans an outcome task's separate results as
 child tasks. Main guidance covers work updates, recovery facts, slice
 boundaries, and work-report completion. Subagent guidance covers interim facts and final
 reports. Both versions use the same native MCP schemas and shared journal semantics
@@ -66,6 +70,13 @@ for stable paths, reads, batching and failures. Main work updates belong in the 
 and necessary questions remain conversational. Subagents record useful interim facts and may deliver their
 final report directly. A result already recorded in the journal is not repeated
 as a second completion report.
+Task completion requires state mutations, including completed children; completion notes and answers
+do not close tasks. Blockers identify required input, decisions or dependencies outside the agent's
+current ability to supply. Repairable failures remain working. Resumed work reassesses its blockers
+and explicitly changes each resolved task's state; reopening a parent leaves blocked children unchanged.
+Any owned blocked task pauses automatic continuation. Agents inspect nested mutation errors separately
+from host execution success. A rejected batch leaves all its changes unapplied, including a requested
+finish; agents correct it within authorization or report the unresolved error.
 The section describes journal MCP calls through Codex's nested tools and retains the
 operation-specific writing, result, failure, and recovery rules.
 Projection preserves the caller's stock execution contracts. A
@@ -133,6 +144,7 @@ Acceptance:
    marker when host results establish completion. Requested explanations, review
    findings and actual questions remain conversational. Guidance directs mutations
    onto useful calls rather than standalone journal calls; `exec` uses the nested MCP tools for reads and mutations.
+   Both role projections retain task closure, blocker recovery and nested mutation-error guidance.
 4. Ordinary, fork, side-thread, subagent, model-switch, compaction, and resume consumers derive
    guidance from their current tool catalog and authenticated registry rather than invisible ancestry
    or live router state. Prewarm and generating requests select the same role policy;
