@@ -264,6 +264,16 @@ func TestAppServerOrchestrateResumeView(t *testing.T) {
 		t.Fatal("resume changed unfinished work", err)
 	}
 	u.switchOrchestratedThread("main")
+	if got := u.session.paths["child"]; got != "/orchestrate/child" {
+		t.Fatalf("resumed root kept placeholder identity: %q", got)
+	}
+	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
+	u.orchestrationRoster()
+	for _, row := range u.agents.roster() {
+		if row.agent.Name == appServerPlaceholder("child") || strings.HasPrefix(row.agent.Name, "/orchestrate/") {
+			t.Fatalf("resumed batch leaked into native roster: %q", row.agent.Name)
+		}
+	}
 	u.switchOrchestratedThread("child")
 	if strings.Contains(w.String(), "thread/resume") || strings.Contains(w.String(), "turn/start") {
 		t.Fatal("subscribed switching replayed effects")

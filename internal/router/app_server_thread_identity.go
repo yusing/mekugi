@@ -76,6 +76,9 @@ func (u *appServerUI) registerSessionThread(info appServerThreadInfo) {
 }
 
 func (s *appServerSession) threadPresentationPath(info appServerThreadInfo) string {
+	if root := s.roots[info.ID]; root != "" {
+		return root
+	}
 	path := info.agentPath
 	if path == "" && info.AgentNickname != "" {
 		path = "/root/" + info.AgentNickname

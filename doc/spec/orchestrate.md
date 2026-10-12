@@ -340,6 +340,7 @@ their existing guidance. Fresh resume restores the retained recovery content,
 without repeating instructions on ordinary requests or changing tool exposure.
 Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.
 It shows concise task names, lifecycle and available live timer, token and cost metrics.
+Resumed batch roots appear only in this group, never as UUID-named native agents.
 Selecting a subscribed thread switches the viewed shell without starting a turn
 or reloading history. Prepared batches remain visible before launch. Retained
 threads that are not subscribed remain visible and resume when selected.
