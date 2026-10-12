@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,46 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 )
+
+func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
+	// Recorded from codex-cli 0.162.1 using isolated fake ChatGPT auth and local
+	// backend fixtures. The host performed its authenticated usage and detail GETs.
+	wire, err := os.ReadFile("testdata/status/reset-credits-wire.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := time.Local
+	time.Local = time.FixedZone("fixture", 8*60*60)
+	t.Cleanup(func() { time.Local = previous })
+	for _, tc := range []struct {
+		name, summary string
+	}{
+		{"wire", ""},
+		{"count-only", `{"availableCount":3,"credits":null}`},
+		{"unavailable", `null`},
+		{"empty", `{"availableCount":0,"credits":[]}`},
+		{"partial", `{"availableCount":4,"credits":[{"resetType":"codexRateLimits","status":"available","expiresAt":null,"title":null},{"resetType":"unknown","status":"available","expiresAt":null,"title":"Weekly reset"},{"resetType":"unknown","status":"available","expiresAt":null,"title":null},{"resetType":"codexRateLimits","status":"redeemed","title":"Consumed"},{"resetType":"codexRateLimits","status":"unknown","title":"Unconfirmed"}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, sent := newAppServerTestUI()
+			u.view.painter.Theme = livediff.DarkTheme
+			appServerTestKeys(t, u, "/status\r")
+			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
+			response := string(wire)
+			if tc.summary != "" {
+				response = `{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20}},"rateLimitResetCredits":` + tc.summary + `}}`
+			}
+			appServerTestMessage(t, u, response)
+			if len(u.statusReports) != 0 || len(u.view.entries) != 0 || strings.Count(sent.String(), `"method"`) != 2 || !strings.Contains(sent.String(), `"method":"account/rateLimits/read"`) {
+				t.Fatalf("status changed read-only request flow: %s", sent.String())
+			}
+			assertNativeUISnapshot(t, "native-status-resets-"+tc.name, u.statusPanelFrame(80, 40))
+			if tc.name == "wire" {
+				assertNativeUISnapshot(t, "native-status-resets-narrow", u.statusPanelFrame(44, 40))
+			}
+		})
+	}
+}
 
 func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 	// CST is ambiguous: Taipei and Chicago share the abbreviation, not the offset.

@@ -181,6 +181,7 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message) (bool, e
 	var result struct {
 		Limits appServerStatusLimit            `json:"rateLimits"`
 		ByID   map[string]appServerStatusLimit `json:"rateLimitsByLimitId"`
+		Resets *appServerStatusResets          `json:"rateLimitResetCredits"`
 	}
 	if err := json.Unmarshal(m.Result, &result); err != nil {
 		return fail("Usage limits response could not be read")
@@ -193,9 +194,45 @@ func (u *appServerUI) statusMessage(method string, m appserver.Message) (bool, e
 			rows = append(rows, result.ByID[id].rows(id)...)
 		}
 	}
+	rows = append(rows, result.Resets.rows()...)
 	rows = append(rows, statusField{group: "Account", label: "Usage details", value: "https://chatgpt.com/codex/settings/usage"})
 	u.renderStatus(report, rows)
 	return true, nil
+}
+
+// Source: codex-rs/app-server-protocol/src/protocol/v2/account.rs:348:381@5a9eb145
+// RateLimitResetCreditsSummary. Details can be absent or capped independently of count.
+type appServerStatusResets struct {
+	Available *int64 `json:"availableCount"`
+	Credits   []struct {
+		Type    string `json:"resetType"`
+		Status  string `json:"status"`
+		Expires *int64 `json:"expiresAt"`
+		Title   string `json:"title"`
+	} `json:"credits"`
+}
+
+func (resets *appServerStatusResets) rows() []statusField {
+	if resets == nil || resets.Available == nil {
+		return nil
+	}
+	const group = "Usage limit resets"
+	rows := []statusField{{group: group, label: "Available", value: fmt.Sprint(*resets.Available)}}
+	for _, credit := range resets.Credits {
+		if credit.Status != "available" {
+			continue
+		}
+		title := credit.Title
+		if title == "" && credit.Type == "codexRateLimits" {
+			title = "Full reset"
+		}
+		value := "Does not expire"
+		if credit.Expires != nil {
+			value = "Expires " + time.Unix(*credit.Expires, 0).Local().Format("Jan 2 15:04 UTC-07:00")
+		}
+		rows = append(rows, statusField{group: group, label: cmp.Or(title, "Reset"), value: value})
+	}
+	return rows
 }
 
 type appServerStatusLimit struct {

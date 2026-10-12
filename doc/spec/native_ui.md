@@ -673,7 +673,11 @@ through `account/read` without refreshing credentials; ChatGPT accounts addition
 refresh `account/rateLimits/read`. The same panel updates asynchronously with the
 account/plan, each reported quota window's percentage remaining and local reset
 time with the system timezone's UTC offset (including daylight saving at reset),
-credits, and the usage-page link. Non-ChatGPT sessions show observed input
+credits, and the usage-page link. When the host supplies usage-limit resets,
+the panel shows the available count and each available reset's title or type
+with its local expiry time. A count-only response does not invent reset details;
+missing reset data does not imply zero available. The count remains authoritative
+when the host returns fewer detail rows. Non-ChatGPT sessions show observed input
 and output tokens instead. Refresh failures stay on the panel without replacing
 turn status. Escape, Enter, q, or Ctrl-C closes the panel without interrupting a turn.
 Closing leaves no transcript entry; late responses cannot reopen or update a

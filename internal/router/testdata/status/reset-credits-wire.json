@@ -1,0 +1,73 @@
+{
+  "id": 2,
+  "result": {
+    "ordinaryUsageAllowed": null,
+    "rateLimits": {
+      "limitId": "codex",
+      "limitName": null,
+      "normalModelSlug": null,
+      "primary": {
+        "usedPercent": 20,
+        "windowDurationMins": 300,
+        "resetsAt": 1790856120
+      },
+      "secondary": {
+        "usedPercent": 80,
+        "windowDurationMins": 10080,
+        "resetsAt": 1790899200
+      },
+      "credits": null,
+      "individualLimit": null,
+      "spendControlReached": null,
+      "planType": "pro",
+      "rateLimitReachedType": null
+    },
+    "rateLimitsByLimitId": {
+      "codex": {
+        "limitId": "codex",
+        "limitName": null,
+        "normalModelSlug": null,
+        "primary": {
+          "usedPercent": 20,
+          "windowDurationMins": 300,
+          "resetsAt": 1790856120
+        },
+        "secondary": {
+          "usedPercent": 80,
+          "windowDurationMins": 10080,
+          "resetsAt": 1790899200
+        },
+        "credits": null,
+        "individualLimit": null,
+        "spendControlReached": null,
+        "planType": "pro",
+        "rateLimitReachedType": null
+      }
+    },
+    "rateLimitResetCredits": {
+      "availableCount": 2,
+      "credits": [
+        {
+          "id": "fixture-1",
+          "resetType": "codexRateLimits",
+          "status": "available",
+          "grantedAt": 1790812800,
+          "expiresAt": 1793300940,
+          "title": "Full reset",
+          "description": null
+        },
+        {
+          "id": "fixture-2",
+          "resetType": "codexRateLimits",
+          "status": "available",
+          "grantedAt": 1790812800,
+          "expiresAt": 1794008100,
+          "title": "Full reset",
+          "description": null
+        }
+      ]
+    },
+    "accountId": null,
+    "rateLimitUpsell": null
+  }
+}

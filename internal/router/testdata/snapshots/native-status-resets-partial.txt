@@ -1,0 +1,40 @@
+
+
+
+
+
+
+
+
+
+  ╭ Session status ─────────────────────────────────────────────── Esc close ╮
+  │                                                                          │
+  │  Usage  ───────────────────────────────────────────────────────────────  │
+  │  Usage primary limit                                           80% left  │
+  │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━──────────────  │
+  │                                                                          │
+  │  Usage limit resets  ──────────────────────────────────────────────────  │
+  │  Available      4                                                        │
+  │  Full reset     Does not expire                                          │
+  │  Weekly reset   Does not expire                                          │
+  │  Reset          Does not expire                                          │
+  │                                                                          │
+  │  Account  ─────────────────────────────────────────────────────────────  │
+  │  Sign-in        ChatGPT                                                  │
+  │  Plan           pro                                                      │
+  │  Usage details  https://chatgpt.com/codex/settings/usage                 │
+  │                                                                          │
+  │  Session  ─────────────────────────────────────────────────────────────  │
+  │  Session        main                                                     │
+  │                                                                          │
+  ╰─ ↑↓ scroll  PgUp/PgDn  drag to select ───────────────────────────────────╯
+
+
+
+
+
+
+
+
+
+

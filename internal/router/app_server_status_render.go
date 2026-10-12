@@ -51,7 +51,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	}
 	groups := p.groups
 	if groups == nil {
-		groups = []string{"Model", "Usage", "Account", "Session", "Permissions"}
+		groups = []string{"Model", "Usage", "Usage limit resets", "Account", "Session", "Permissions"}
 	}
 	for _, group := range groups {
 		started := false
