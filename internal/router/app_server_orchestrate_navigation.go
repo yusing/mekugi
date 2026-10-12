@@ -148,12 +148,21 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 				Thread appServerThreadInfo `json:"thread"`
 			}
 			if m.Error != nil || json.Unmarshal(m.Result, &r) != nil || r.Thread.ID != thread {
+				// Request identity or a host notification can establish ancestry
+				// while this observational read is still in flight.
+				if n.target(thread) == nil {
+					n.admitAuthenticated(thread)
+				}
+				if n.target(thread) != nil {
+					return true, n.drain()
+				}
 				n.unavailable[thread] = true
 				n.owner.setNotice("Orchestration ancestry unavailable for "+thread+" · awaiting host metadata", true)
 				return true, nil
 			}
 			n.owner.session.registerThread(r.Thread)
 			if v := n.target(thread); v != nil {
+				n.register(v, thread)
 				v.registerSessionThread(r.Thread)
 			}
 			return true, n.drain()
@@ -192,7 +201,6 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 	if p.Thread.ID != "" {
 		thread = p.Thread.ID
 		n.owner.session.registerThread(p.Thread)
-		delete(n.unavailable, thread)
 		if err := n.drain(); err != nil {
 			return true, err
 		}
@@ -202,9 +210,6 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 	}
 	if v := n.sideOwner(thread); v != nil {
 		return true, v.message(m)
-	}
-	if m.Method == "turn/completed" {
-		delete(n.unavailable, thread)
 	}
 	if n.target(thread) == nil && n.admitAuthenticated(thread) {
 		if err := n.drain(); err != nil {
@@ -217,6 +222,9 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 		}
 		n.register(v, thread)
 		return true, v.message(m)
+	}
+	if m.Method == "turn/completed" {
+		delete(n.unavailable, thread)
 	}
 	if len(n.pending) == 256 {
 		return true, errors.New("orchestration descendant event capacity exceeded")
@@ -247,6 +255,7 @@ func (n *orchestrateNavigation) admitAuthenticated(thread string) bool {
 }
 
 func (n *orchestrateNavigation) register(v *appServerUI, thread string) {
+	n.clearUnavailable(thread)
 	var chain []appServerThreadInfo
 	for remaining := len(n.owner.session.threads); thread != "" && thread != v.thread && remaining > 0; remaining-- {
 		if v.session.threads[thread].ID != "" {
@@ -261,6 +270,9 @@ func (n *orchestrateNavigation) register(v *appServerUI, thread string) {
 	}
 	for _, info := range slices.Backward(chain) {
 		v.registerSessionThread(info)
+	}
+	if len(chain) != 0 {
+		v.syncOrchestrationDiffScope()
 	}
 }
 
@@ -318,6 +330,9 @@ func (n *orchestrateNavigation) drain() error {
 			}
 			continue
 		}
+		if n.target(thread) == nil {
+			n.admitAuthenticated(thread)
+		}
 		if v := n.target(thread); v != nil {
 			n.register(v, thread)
 			if err := v.message(m); err != nil {
@@ -330,7 +345,19 @@ func (n *orchestrateNavigation) drain() error {
 			}
 		}
 	}
+	for thread := range n.unavailable {
+		if n.target(thread) != nil {
+			n.clearUnavailable(thread)
+		}
+	}
 	return nil
+}
+
+func (n *orchestrateNavigation) clearUnavailable(thread string) {
+	delete(n.unavailable, thread)
+	if n.owner.notice == "Orchestration ancestry unavailable for "+thread+" · awaiting host metadata" {
+		n.owner.setNotice("", false)
+	}
 }
 
 func (u *appServerUI) switchOrchestratedThread(thread string) bool {
@@ -452,6 +479,15 @@ func (u *appServerUI) orchestrationRoster() {
 	}
 }
 
+func (u *appServerUI) syncOrchestrationDiffScope() {
+	if a := u.shell.auto; a != nil {
+		a.mu.Lock()
+		scope := cloneLiveDiffScope(a.scope)
+		a.mu.Unlock()
+		u.applyOrchestrationDiff(u.ctx, liveDiffEvent{Kind: "scope", Scope: &scope})
+	}
+}
+
 // The broker observes all subscribed roots. Saved and provisional changes use
 // the same per-controller lineage filter before reaching their existing owner.
 func (u *appServerUI) applyOrchestrationDiff(ctx context.Context, event liveDiffEvent) {
@@ -496,6 +532,11 @@ func (u *appServerUI) applyOrchestrationDiff(ctx context.Context, event liveDiff
 func (u *appServerUI) tickOrchestratedViews(viewed *appServerUI) error {
 	u.flushOrchestratedEvents()
 	if n := u.navigation; n != nil {
+		// Accepted provider identity is published independently of host events.
+		// Reconcile buffered descendants even when no later notification arrives.
+		if err := n.drain(); err != nil {
+			return err
+		}
 		n.completeResumes()
 		for _, v := range n.views {
 			if v == viewed {
