@@ -16,7 +16,7 @@ func TestSplitTopLevelLists(t *testing.T) {
 		{"pwd && ls && cat a b", []string{"pwd", "ls", "cat a b"}},
 		{"cd x; make test 2>&1 | tail -20", []string{"cd x", "make test 2>&1 | tail -20"}},
 		{"a || b && ! c\nd", []string{"a", "b", "! c", "d"}},
-		{"if true; then echo x; fi; echo y # note", []string{"if true; then echo x; fi", "echo y"}},
+		{"if true; then echo x; fi; echo y # note", []string{"true", "echo x", "echo y"}},
 		{"f() { return 3; }; f", []string{"f() { return 3; }; f"}},
 		{"cat <<'EOF' && ls\nbody\nEOF\n", []string{"cat <<'EOF'\nbody\nEOF", "ls"}},
 		{"set -euo pipefail\necho ok", []string{"set -euo pipefail\necho ok"}},

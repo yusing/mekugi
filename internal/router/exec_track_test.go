@@ -319,6 +319,12 @@ func TestExecTrackMatchesPlainBash(t *testing.T) {
 		"echo once; echo ${nope:?unset}; echo never",
 		"echo once; echo $((1/0)); echo never",
 		"readonly r=1; echo once; r=2; echo never",
+		"true; if [ \"$?\" -eq 0 ]; then printf formatted && printf tested; fi",
+		"false; if [ \"$?\" -eq 0 ]; then echo never; fi; echo status $?",
+		"if false; then echo never; elif true; then false; else echo never; fi; echo status $?",
+		"if true; then if false; then echo never; else echo nested; fi; fi",
+		"if true; then false; fi",
+		"! if true; then false; fi; echo status $?",
 		"false; exit",
 		"ls /proc/self/fd; echo done",
 	} {

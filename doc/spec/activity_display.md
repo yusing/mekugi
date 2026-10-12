@@ -49,6 +49,9 @@ the group's largest. Confirmed capture counts and past-tense verbs replace succe
 rows even when the shell invocation has tracked segments. A grouped capture
 appears once on its owning invocation, not once per segment; neighboring command
 output, failed/skipped edits, and per-command exit statuses remain visible.
+Live and restored grouped captures replace successful sibling edit intent even
+when the sibling has a shell-batch timing row. That row retains its duration and
+output; its presence does not imply failure.
 A confirmed whole-directory removal shows
 one `Deleted PATH/ • N files` row, using `file` for one, instead of descendant file
 rows. The count includes known deleted files whose contents could not be captured;

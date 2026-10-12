@@ -293,7 +293,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			if tracked && settled {
 				tracking.hub.mu.Lock()
 				for _, command := range observation.Commands {
-					if match := tracking.matches[tracking.authoredScript(command.Command)]; match != nil {
+					if match := tracking.matches[tracking.authoredScript(command.Command, "")]; match != nil {
 						if match.ambiguous || match.track == nil {
 							preview.HostItems = nil
 							break

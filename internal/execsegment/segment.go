@@ -14,8 +14,8 @@ import (
 )
 
 // Segment is one top-level command of a list: a statement, or an operand of a
-// top-level && or || chain. Pipelines, compound commands, and scripts with
-// shell setup stay whole.
+// && or || chain, including conditions and branches of plain if blocks.
+// Pipelines, other compound commands, and scripts with shell setup stay whole.
 type Segment struct {
 	Start, End int    // Script byte span; grouped scripts include their full source.
 	Source     string // Display source, including any heredoc body.
@@ -49,6 +49,19 @@ func Split(script string) ([]Segment, bool) {
 			!stmt.Negated && len(stmt.Redirs) == 0 {
 			add(binary.X)
 			add(binary.Y)
+			return
+		}
+		// Conditional branches execute at most once and in source order.
+		// Keep redirects and negation on the enclosing compound command.
+		if conditional, ok := stmt.Cmd.(*syntax.IfClause); ok && !stmt.Negated && len(stmt.Redirs) == 0 {
+			for clause := conditional; clause != nil; clause = clause.Else {
+				for _, child := range clause.Cond {
+					add(child)
+				}
+				for _, child := range clause.Then {
+					add(child)
+				}
+			}
 			return
 		}
 		start, end := int(stmt.Pos().Offset()), int(stmtEnd(stmt).Offset())

@@ -226,8 +226,11 @@ start/end timestamps and elapsed duration, so Activity can show every segment wi
 its own state and stream live output. Clicking a segment opens only its retained
 stdout and stderr in the shared output dialog. Supported single commands,
 including pipelines, report their own elapsed duration without redirecting
-stdout or stderr. Bash also supports timed single commands. Pipelines and compound
-commands are single segments. Scripts with shell setup, such as standalone variable
+stdout or stderr. Bash also supports timed single commands. Conditions and branch
+commands in unredirected, non-negated `if` blocks
+report separate segments, so a completed formatter does not wait for tests in
+the same branch. Pipelines and other compound commands are single segments.
+Scripts with shell setup, such as standalone variable
 assignments, declarations, shell options, sourced files, or function definitions,
 stay one event with their full source and combined output. Recognized file-edit
 operations keep their Edit rows and hidden edit bodies. Command-local environment

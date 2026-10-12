@@ -119,7 +119,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				var remaining []string
 				for _, paragraph := range activityui.Paragraphs(entry.Text) {
 					block := activityui.ParseOperation(paragraph)
-					if exit == 0 && batch == nil && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
+					if exit == 0 && (batch == nil || batch.ExitCode == 0) && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 						continue
 					}
 					remaining = append(remaining, paragraph)

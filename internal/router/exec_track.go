@@ -439,7 +439,7 @@ func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []exec
 	p := &execPreviewTrack{hub: hub, thread: thread, turn: turn, matches: make(map[string]*execPreviewMatch)}
 	for _, command := range commands {
 		if execSegmentEdits(command.Command) {
-			script := p.authoredScript(command.Command)
+			script := p.authoredScript(command.Command, "")
 			if previous := p.matches[script]; previous != nil {
 				previous.ambiguous = true
 			} else {
@@ -479,7 +479,7 @@ func (p *execPreviewTrack) retain(key [3]string, track *execTrack) {
 	if key[0] != p.thread || key[1] != p.turn || track.serial <= p.after {
 		return
 	}
-	if match := p.matches[p.authoredScript(track.script)]; match != nil {
+	if match := p.matches[p.authoredScript(track.script, key[2])]; match != nil {
 		if match.track != nil && match.key != key {
 			match.ambiguous = true
 		} else {
@@ -490,7 +490,7 @@ func (p *execPreviewTrack) retain(key [3]string, track *execTrack) {
 
 // Only the current session's exact guard instrumentation may differ from the
 // captured authored source. Host/report matching keeps the executing script.
-func (p *execPreviewTrack) authoredScript(script string) string {
+func (p *execPreviewTrack) authoredScript(script, item string) string {
 	guard := filepath.Join(filepath.Dir(p.hub.directory), vcsguard.Directory)
 	source := vcsguard.DisplayScript(script, func(directory string) bool { return directory == guard })
 	if source == script {
@@ -500,7 +500,14 @@ func (p *execPreviewTrack) authoredScript(script string) string {
 	// with no helper must match exactly, so only injected PATH prefixes qualify.
 	rewritten, err := vcsguard.Rewrite(source, "", guard)
 	if err != nil || rewritten != script {
-		return script
+		if item == "" {
+			return script
+		}
+		// The host hook also binds the guard to this exact command item.
+		rewritten, err = vcsguard.RewriteForItem(source, "", guard, item)
+		if err != nil || rewritten != script {
+			return script
+		}
 	}
 	return source
 }
@@ -533,7 +540,7 @@ func (p *execPreviewTrack) state() (tracked, settled bool, changed <-chan struct
 			matches++
 		}
 		for _, pending := range h.started {
-			if pending.key[0] == p.thread && pending.key[1] == p.turn && pending.serial > p.after && pending.key != retained.key && p.authoredScript(pending.script) == script {
+			if pending.key[0] == p.thread && pending.key[1] == p.turn && pending.serial > p.after && pending.key != retained.key && p.authoredScript(pending.script, pending.key[2]) == script {
 				matches++
 			}
 		}

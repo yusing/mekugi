@@ -443,7 +443,9 @@ of a following test or other non-edit segment. A uniquely matched native Bash or
 including commands with supported literal `env` prefixes, without waiting for
 later commands in the same `exec` cell. Its final frame uses observed
 files, not predicted content; later edit segments keep it open. Ambiguous
-concurrent matches cannot retire each other's cards. Without tracking, a literal edit's card finishes when its
+concurrent matches cannot retire each other's cards. Invocation-local guard
+instrumentation does not prevent matching; another host item's identity cannot
+supply completion. Without tracking, a literal edit's card finishes when its
 captured targets match the fully projected edit. The completed card says
 `observed`; it does not claim that the shell command or tests succeeded. Matching
 uses the pre-call baseline, never a fresh baseline read after execution.
