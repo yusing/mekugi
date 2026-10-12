@@ -429,3 +429,50 @@ func TestAppServerOrchestrateCycleRetained(t *testing.T) {
 		t.Fatal("reverse cycle did not restore Main")
 	}
 }
+
+func TestAppServerOrchestrateResumeDescendantDiff(t *testing.T) {
+	u, w, b := retainedOrchestratedUI(t)
+	auto, stop := newAutoLiveDiff(t.Context(), u.proxy.replayStore.directory)
+	t.Cleanup(stop)
+	auto.enable()
+	u.proxy.autoLiveDiff, u.shell.auto = auto, auto
+	sub := auto.events.subscribe()
+	for _, thread := range []string{"child", "native", "foreign"} {
+		auto.includeThread(b.Cwd, thread, thread == "child")
+	}
+	for len(sub.events) > 0 {
+		u.applyOrchestrationDiff(t.Context(), <-sub.events)
+	}
+	u.switchOrchestratedThread("child")
+	drainOrchestrateWork(t, u)
+	read := btwTestRequest(t, w, "thread/read", "child")
+	root := map[string]any{"id": "child", "cwd": b.Cwd}
+	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": root})))
+	resume := btwTestRequest(t, w, "thread/resume", "child")
+	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": root, "model": "batch-model", "reasoningEffort": "high"})))
+	native := map[string]any{"id": "native", "cwd": b.Cwd, "parentThreadId": "child", "agentNickname": "worker"}
+	for w.Len() > 0 {
+		for _, request := range appServerDrainRequests[btwTestRPC](t, w) {
+			switch request.Method {
+			case "thread/list":
+				btwTestReply(t, u, request, string(mustMarshalJSON(map[string]any{"data": []any{native}})))
+			case "thread/read":
+				btwTestReply(t, u, request, string(mustMarshalJSON(map[string]any{"thread": native})))
+			case "model/list":
+				btwTestReply(t, u, request, `{"data":[]}`)
+			default:
+				t.Fatal("unexpected request", request.Method)
+			}
+		}
+	}
+	if err := u.tickOrchestratedViews(u); err != nil {
+		t.Fatal(err)
+	}
+	v := u.navigation.views["child"]
+	if v.restoring != nil || len(u.navigation.resumes) != 0 || u.viewedUI() != v {
+		t.Fatal("descendant scope blocked restored batch admission", v.status)
+	}
+	if scope := v.shell.diff.scope.Workspaces[b.Cwd]; !scope["native"] || scope["foreign"] || u.shell.diff.scope.Workspaces[b.Cwd]["native"] {
+		t.Fatal("restored descendant Diff scope crossed roots or stayed excluded", scope)
+	}
+}

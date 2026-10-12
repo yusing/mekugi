@@ -7,8 +7,14 @@ import (
 )
 
 func TestAppServerOrchestrateAncestryReadRace(t *testing.T) {
-	for _, order := range []string{"identity-before-error", "error-before-identity", "metadata-before-error", "metadata-read", "completion-before-identity", "unrelated-notice"} {
-		t.Run(order, func(t *testing.T) {
+	for _, scenario := range []struct{ root, order string }{
+		{"child", "identity-before-error"}, {"child", "error-before-identity"},
+		{"child", "metadata-before-error"}, {"child", "metadata-read"},
+		{"child", "completion-before-identity"}, {"child", "unrelated-notice"},
+		{"main", "error-before-identity"}, {"main", "metadata-before-error"},
+	} {
+		t.Run(scenario.root+"/"+scenario.order, func(t *testing.T) {
+			root, order := scenario.root, scenario.order
 			replay, err := openMekugiReplayStore(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
@@ -17,15 +23,18 @@ func TestAppServerOrchestrateAncestryReadRace(t *testing.T) {
 			u.shell.diff.store = replay
 			orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
 			u.proxy.activity = newSubagentActivity()
-			u.proxy.activity.attachNativePane("child")
-			v := u.navigation.views["child"]
+			u.proxy.activity.attachNativePane(root)
+			v, other := u.navigation.views[root], u
+			if v == u {
+				other = u.navigation.views["child"]
+			}
 			auto, stop := newAutoLiveDiff(t.Context(), "")
 			t.Cleanup(stop)
 			auto.enable()
 			u.proxy.autoLiveDiff, u.shell.auto, v.shell.auto = auto, auto, auto
 			sub := auto.events.subscribe()
-			for _, thread := range []string{"child", "native", "foreign"} {
-				auto.includeThread(v.session.cwd, thread, thread == "child")
+			for _, thread := range []string{root, "native", "foreign"} {
+				auto.includeThread(v.session.cwd, thread, thread == root)
 			}
 			for len(sub.events) > 0 {
 				u.applyOrchestrationDiff(t.Context(), <-sub.events)
@@ -51,11 +60,11 @@ func TestAppServerOrchestrateAncestryReadRace(t *testing.T) {
 				orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"native","turn":{"id":"native-turn","status":"completed"}}}`)
 			}
 			if order == "metadata-before-error" {
-				orchestrateTestMessage(t, u, `{"method":"thread/started","params":{"thread":{"id":"native","parentThreadId":"child","agentNickname":"worker"}}}`)
+				orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"thread/started","params":{"thread":{"id":"native","parentThreadId":%q,"agentNickname":"worker"}}}`, root))
 			} else if order == "metadata-read" {
-				orchestrateTestReply(t, u, read, `{"thread":{"id":"native","parentThreadId":"child","agentNickname":"worker"}}`)
+				orchestrateTestReply(t, u, read, fmt.Sprintf(`{"thread":{"id":"native","parentThreadId":%q,"agentNickname":"worker"}}`, root))
 			} else {
-				u.proxy.activity.observe("native", "child", "/root/worker", true)
+				u.proxy.activity.observe("native", root, "/root/worker", true)
 			}
 			if order == "identity-before-error" || order == "metadata-before-error" {
 				fail()
@@ -72,14 +81,14 @@ func TestAppServerOrchestrateAncestryReadRace(t *testing.T) {
 			if order == "unrelated-notice" && u.notice != "Unrelated failure" {
 				t.Fatal("ancestry recovery cleared another owner's notice", u.notice)
 			}
-			if scope := v.shell.diff.scope.Workspaces[v.session.cwd]; !scope["native"] || scope["foreign"] || u.shell.diff.scope.Workspaces[v.session.cwd]["native"] {
+			if scope := v.shell.diff.scope.Workspaces[v.session.cwd]; !scope["native"] || scope["foreign"] || other.shell.diff.scope.Workspaces[v.session.cwd]["native"] {
 				t.Fatal("late ancestry lost or crossed the existing Diff scope", scope)
 			}
 			feed := strings.Join(v.agents.renderFeed(90, 60).lines, "\n")
 			if a, b := strings.Index(feed, "first.go"), strings.Index(feed, "second.go"); a < 0 || b <= a || strings.Count(feed, "first.go") != 1 || strings.Count(feed, "second.go") != 1 {
 				t.Fatal("buffered native Activity was empty, duplicated or reordered", feed)
 			}
-			if v.session.agent("/root/worker").Responding != (order != "completion-before-identity") || strings.Contains(strings.Join(u.agents.renderFeed(90, 60).lines, "\n"), "first.go") {
+			if v.session.agent("/root/worker").Responding != (order != "completion-before-identity") || strings.Contains(strings.Join(other.agents.renderFeed(90, 60).lines, "\n"), "first.go") {
 				t.Fatal("native lifecycle or Activity crossed roots")
 			}
 		})

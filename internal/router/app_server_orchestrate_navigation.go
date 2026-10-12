@@ -142,6 +142,14 @@ func (n *orchestrateNavigation) target(thread string) *appServerUI {
 	return n.views[n.owner.session.threadRoot(thread)]
 }
 
+func (n *orchestrateNavigation) registerAncestry(info appServerThreadInfo) {
+	previous := n.target(info.ID)
+	n.owner.session.registerThread(info)
+	if n.target(info.ID) != previous {
+		n.owner.syncOrchestrationDiffScope()
+	}
+}
+
 // Unknown descendants wait for metadata rather than borrowing the displayed
 // root. This also covers notifications arriving before thread/started.
 func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
@@ -164,7 +172,7 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 				n.owner.setNotice("Orchestration ancestry unavailable for "+thread+" · awaiting host metadata", true)
 				return true, nil
 			}
-			n.owner.session.registerThread(r.Thread)
+			n.registerAncestry(r.Thread)
 			if v := n.target(thread); v != nil {
 				n.register(v, thread)
 				v.registerSessionThread(r.Thread)
@@ -181,7 +189,7 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 						Thread appServerThreadInfo `json:"thread"`
 					}
 					if json.Unmarshal(m.Result, &r) == nil && r.Thread.ID != "" {
-						n.owner.session.registerThread(r.Thread)
+						n.registerAncestry(r.Thread)
 					}
 				}
 				if err := v.message(m); err != nil {
@@ -204,7 +212,7 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 	thread := p.ThreadID
 	if p.Thread.ID != "" {
 		thread = p.Thread.ID
-		n.owner.session.registerThread(p.Thread)
+		n.registerAncestry(p.Thread)
 		if err := n.drain(); err != nil {
 			return true, err
 		}
@@ -253,7 +261,7 @@ func (n *orchestrateNavigation) admitAuthenticated(thread string) bool {
 		}
 		old := n.owner.session.threads[info.ID]
 		old.ID, old.ParentThreadID, old.agentPath = info.ID, info.ParentThreadID, info.agentPath
-		n.owner.session.registerThread(old)
+		n.registerAncestry(old)
 	}
 	return true
 }
@@ -274,9 +282,6 @@ func (n *orchestrateNavigation) register(v *appServerUI, thread string) {
 	}
 	for _, info := range slices.Backward(chain) {
 		v.registerSessionThread(info)
-	}
-	if len(chain) != 0 {
-		v.syncOrchestrationDiffScope()
 	}
 }
 
