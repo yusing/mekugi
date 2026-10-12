@@ -337,8 +337,9 @@ user input carries the issues and orchestration-tool instructions; later ordinar
 does not repeat them or change tool exposure. Attachments, busy input, rejection
 and cancellation use the composer lifecycle. Fresh children receive their
 checkout, assignment and orchestration-tool instructions in their first input.
-Instructions contain tool mechanics, not planning, review, progress, or delivery
-workflow policy. Child instructions contain only their checkout and the messaging
+Instructions contain tool mechanics and the child reporting boundary: messages to
+Main carry a new blocker requiring its action or one final handoff per assignment,
+not intermediate progress or repeated results. Child instructions contain their checkout and the messaging
 and journal access mechanics they can use; Main's integration and cleanup guidance
 stays with Main. Caller guidance and the explicit assignment retain their own policy.
 Context resets carry the run's tool instructions once in journal recovery.

@@ -42,7 +42,7 @@ func (u *appServerUI) expandOrchestrate() bool {
 }
 
 func orchestrateChildInstructions(cwd string) string {
-	return fmt.Sprintf(`Work in %s. Your coordinator is main. tools.mcp__orchestrate__send_message({target,message}) queues sibling input without waking; tools.mcp__orchestrate__followup_task({target,message}) starts or steers a sibling. Either tool with target main reports to the coordinator without starting or steering a user turn. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Main's journal is readable with agent:"main"; your journal root is independent. Human decision questions use request_user_input_async.
+	return fmt.Sprintf(`Work in %s. Your coordinator is main. tools.mcp__orchestrate__send_message({target,message}) queues sibling input without waking; tools.mcp__orchestrate__followup_task({target,message}) starts or steers a sibling. Either tool with target main reports to the coordinator without starting or steering a user turn. Send main only a new blocker requiring its action or one final handoff per assignment, not intermediate progress or repeated results. Targets are task names or /root/task_name; native collaboration tools reach only your native descendants. Main's journal is readable with agent:"main"; your journal root is independent. Human decision questions use request_user_input_async.
 `, cwd)
 }
 

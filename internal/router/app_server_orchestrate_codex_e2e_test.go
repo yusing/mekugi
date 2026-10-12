@@ -28,6 +28,7 @@ type orchestrateCodexProvider struct {
 	promptCalls  int
 	requests     chan []byte
 	nativeOutput chan string
+	heldProgram  string
 }
 
 func (p *orchestrateCodexProvider) forwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*http.Response, error) {
@@ -84,9 +85,20 @@ func (p *orchestrateCodexProvider) forwardExecution(ctx, responseCtx context.Con
 	if prompt >= 4 {
 		return routerFaultCodexSuccessResponse(), nil
 	}
+	if turn == 4 {
+		return mchangesNestedCodexResponse(turn, map[string]any{"type": "custom_tool_call", "id": "held-exec", "call_id": "held-exec", "name": "exec", "input": p.heldProgram, "status": "completed"}), nil
+	}
 	if turn >= 3 {
-		<-responseCtx.Done()
-		return nil, responseCtx.Err()
+		reader, writer := io.Pipe()
+		response := routerFaultCodexStreamResponse("")
+		response.Body = reader
+		go func() {
+			defer writer.Close()
+			_, _ = io.WriteString(writer, routerFaultSSE(map[string]any{"type": "response.created", "response": map[string]any{"id": fmt.Sprint("held-", turn), "status": "in_progress", "output": []any{}}}))
+			<-responseCtx.Done()
+			_ = writer.CloseWithError(responseCtx.Err())
+		}()
+		return response, nil
 	}
 	name, args := "spawn_agent", map[string]any{"task_name": "metadata_probe", "fork_turns": "none", "message": "Report the working directory through stock execution and complete."}
 	if turn == 2 {
@@ -102,6 +114,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	workspace := gitTestWorkspace(t)
 	writeTestFile(t, workspace+"/file", "baseline")
+	writeTestFile(t, workspace+"/.gitignore", "/started\n/release\n")
 	gitTestCommit(t, workspace)
 	module := orchestrateVCSWorkspace(t, "git")
 	gitTestRun(t, workspace, "-c", "protocol.file.allow=always", "submodule", "add", "-q", module, "module")
@@ -112,9 +125,10 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, codex, "app-server",
+	cmd := exec.CommandContext(ctx, codex, "app-server", "--enable", "instant_interrupt",
 		"-c", `model_providers.orchestrate_test={name="orchestrate_test",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`,
 		"-c", `model_provider="orchestrate_test"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`,
+		"-c", "features.code_mode=true", "-c", "features.code_mode_host=true",
 		"-c", `features.multi_agent_v2={enabled=true,tool_namespace="collaboration"}`, "-c", `approval_policy="on-request"`, "-c", `sandbox_mode="workspace-write"`, "-c", `sandbox_workspace_write={network_access=true,exclude_tmpdir_env_var=true,exclude_slash_tmp=true}`, "-c", "features.default_mode_request_user_input=true", "-c", "include_collaboration_mode_instructions=false")
 	cmd.Env, cmd.Dir = routerFaultCodexEnvironment(t), workspace
 	client, err := appserver.Start(cmd)
@@ -188,6 +202,10 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gate, started := filepath.Join(batch.Cwd, "release"), filepath.Join(batch.Cwd, "started")
+	shell := "touch " + strconv.Quote(started) + "; while test ! -f " + strconv.Quote(gate) + "; do sleep 0.1; done"
+	provider.heldProgram = "// @exec: {\"yield_time_ms\": 60000}\ntext(await tools.exec_command({cmd:" + strconv.Quote(shell) + ",yield_time_ms:30000}));"
+	t.Cleanup(func() { _ = os.WriteFile(gate, nil, 0o600) })
 	evidence := filepath.Join(t.TempDir(), "evidence.txt")
 	writeTestFile(t, evidence, "retained input")
 	batch, err = store.RetainEvidence(ctx, workspace, main, "batch", []orchestrate.EvidenceInput{{Name: "evidence.txt", Source: evidence}})
@@ -305,6 +323,50 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if !strings.Contains(string(first), command.input.Message) {
 		t.Fatal("fresh assignment missing at provider")
 	}
+	// Human input in the selected child must interrupt its held provider request
+	// using the process feature flag, without adding a child config override.
+	view.draft = "Direct child interruption probe."
+	if err := view.shell.key('\r'); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case body := <-provider.requests:
+		if !strings.Contains(string(body), "Direct child interruption probe.") {
+			t.Fatal("direct child input missing from replacement provider request")
+		}
+	case <-ctx.Done():
+		t.Fatal("direct child input did not replace the held provider request", ctx.Err())
+	}
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		select {
+		case m := <-client.Messages:
+			if err := u.message(m); err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(20 * time.Millisecond):
+		case <-ctx.Done():
+			t.Fatal("held child exec did not start")
+		}
+	}
+	view.draft = "Interrupt child exec now."
+	if err := view.shell.key('\r'); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case body := <-provider.requests:
+		if !strings.Contains(string(body), "Interrupt child exec now.") {
+			t.Fatal("child exec interruption missing from replacement request")
+		}
+	case <-ctx.Done():
+		t.Fatal("child exec prevented instant interruption")
+	}
+	if err := os.WriteFile(gate, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	view.draft = "Batch draft"
 	queued := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", followup: true, deferred: true, callID: "installed-queued", input: orchestrateSpawnInput{Message: "Deferred input for the next probe turn."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(queued)
 	pump(func() bool { return len(queued.reply) > 0 })
