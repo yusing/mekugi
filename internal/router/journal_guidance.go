@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/tokenizer"
 
@@ -312,7 +314,7 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 		if source.tier == 2 {
 			command = "inspect_file "
 		}
-		read := command + shellQuoteArgument(source.path)
+		read := command + shellsyntax.QuoteArgument(source.path)
 		body, err := "", ctx.Err()
 		if source.skill.Name != "" {
 			var data []byte
@@ -320,13 +322,13 @@ func collectJournalGuidance(ctx context.Context, items []map[string]jsonv1.RawMe
 			if err == nil {
 				data, managed, err = readSkillAttachment(ctx, workspace, os.Environ(), composerSkill{name: source.skill.Name, path: source.skill.Path})
 			}
-			read = "skills-mgr get --codex " + shellQuoteArgument(source.skill.Name)
+			read = "skills-mgr get --codex " + shellsyntax.QuoteArgument(source.skill.Name)
 			body = "\nSkill: " + source.skill.Name + "\n"
 			if source.skill.Path != "" {
 				body = fmt.Sprintf("\nSkill: %s from %q\n", source.skill.Name, source.skill.Path)
 			}
 			if !managed {
-				read = "cat " + shellQuoteArgument(source.skill.Path)
+				read = "cat " + shellsyntax.QuoteArgument(source.skill.Path)
 			}
 			body += string(data)
 			guidance.Tool, guidance.Name = source.tool, source.name
@@ -473,7 +475,7 @@ func journalGuidanceLiteral(word *syntax.Word, home string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	return shellCatLiteral(&copy)
+	return shellsyntax.Literal(&copy)
 }
 
 func journalGuidanceSnapshot(ctx context.Context, path string, named func(string) bool, structural bool) (string, error) {

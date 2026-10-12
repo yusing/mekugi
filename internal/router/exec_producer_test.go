@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/yusing/mekugi/internal/execscope"
 )
 
 func execProducerCommand(t *testing.T, name string) string {
@@ -31,7 +34,7 @@ func execProducerCapture(t *testing.T, root, command string) *execObservation {
 
 func execProducerAssertCaptured(t *testing.T, observation *execObservation, root string, expected map[string]string) {
 	t.Helper()
-	if observation.Class != execScoped.String() {
+	if observation.Class != execscope.Scoped.String() {
 		t.Fatalf("capture class = %q (%s), want scoped", observation.Class, observation.Reason)
 	}
 	captured := make(map[string]string, len(observation.Files))
@@ -151,8 +154,8 @@ func TestExecRGPreProducerIsOpaqueWithoutExecutingHook(t *testing.T) {
 	}
 	t.Setenv("MARKER", marker)
 	command := rg + " --pre ./hook -l old src | xargs " + sed + " -i 's/old/new/g'"
-	plan := classifyExecShell(command, root, "bash")
-	if plan.Class != execOpaque {
+	plan := execscope.Classify(execscope.Input{Command: command, Directory: root, Shell: "bash", Deadline: time.Now().Add(execscope.Budget)})
+	if plan.Class != execscope.Opaque {
 		t.Fatalf("hostile producer class = %v (%s), want opaque", plan.Class, plan.Reason)
 	}
 	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})

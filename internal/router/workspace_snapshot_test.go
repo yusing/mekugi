@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 func gitTestWorkspace(t *testing.T) string {
@@ -170,7 +173,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 		}
 		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{f.workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
-			ExecObservation: &execObservation{Commands: []execCommandInput{{Command: ref}}, Class: execOpaque.String(), Roots: []string{f.workspace}, Tree: tree}}
+			ExecObservation: &execObservation{Commands: []execCommandInput{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
 	finalize := func(ref string, history mekugiHistory) mekugiHistory {
 		if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, output: mustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
@@ -277,7 +280,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 		}
 		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
-			ExecObservation: &execObservation{Commands: []execCommandInput{{Command: ref}}, Class: execOpaque.String(), Roots: []string{workspace}, Tree: tree}}
+			ExecObservation: &execObservation{Commands: []execCommandInput{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{workspace}, Tree: tree}}
 	}
 	outer, nested := observe("outer", f.workspace), observe("nested", inner)
 	writeTestFile(t, filepath.Join(f.workspace, "README"), "two\n")
@@ -363,7 +366,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			// Global options force snapshot coverage, outside the Git scope provider.
 			command := "git -c core.fsmonitor=false cherry-pick incoming"
 			if mixed {
-				command = "env -u BASH_ENV rtk proxy git switch incoming; python3 -c " + shellQuoteArgument("from pathlib import Path; Path('authored.txt').write_text('after\\n')")
+				command = "env -u BASH_ENV rtk proxy git switch incoming; python3 -c " + shellsyntax.QuoteArgument("from pathlib import Path; Path('authored.txt').write_text('after\\n')")
 			}
 			history, ctx := runSnapshotExec(t, proxy, workspace, "vcs", command, func() {
 				if mixed {

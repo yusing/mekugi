@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"bytes"
@@ -13,13 +13,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	"mvdan.cc/sh/v3/syntax"
 )
 
 type execQueryOutput struct{ bytes.Buffer }
 
 func (b *execQueryOutput) Write(data []byte) (int, error) {
-	if b.Len()+len(data) > maxExecProgramBytes {
+	if b.Len()+len(data) > SourceLimit {
 		return 0, errors.New("scope query output limit")
 	}
 	return b.Buffer.Write(data)
@@ -103,7 +106,7 @@ func (w *execShellWalker) producerPipeline(binary *syntax.BinaryCmd) bool {
 		if err == nil {
 			for path := range strings.SplitSeq(strings.TrimSuffix(output, "\x00"), "\x00") {
 				if path != "" {
-					paths = append(paths, execProviderPath(w.cwd, path))
+					paths = append(paths, sourceparse.Path(w.cwd, path))
 				}
 			}
 		}
@@ -152,7 +155,7 @@ func (w *execShellWalker) addProducerWriter(input execProviderInput, writer []st
 		w.opaque("producer writer is not scoped")
 		return
 	}
-	w.plan.raise(execScoped, "")
+	w.plan.raise(Scoped, "")
 	w.plan.label(writer[0])
 	for _, path := range paths {
 		if time.Now().After(input.deadline) {
@@ -164,15 +167,15 @@ func (w *execShellWalker) addProducerWriter(input execProviderInput, writer []st
 			if replacement != "" {
 				word = strings.ReplaceAll(word, replacement, path)
 			}
-			words = append(words, shellQuoteArgument(word))
+			words = append(words, shellsyntax.QuoteArgument(word))
 		}
 		if replacement == "" {
-			words = append(words, shellQuoteArgument(path))
+			words = append(words, shellsyntax.QuoteArgument(path))
 		}
 		plan := classifyExecShellSource(strings.Join(words, " "), input.cwd, "bash", input.deadline, input.depth+1, input.changes, input.authoredOnly)
 		w.plan.Scope = append(w.plan.Scope, plan.Scope...)
 		w.plan.Programs = append(w.plan.Programs, plan.Programs...)
-		if plan.Class == execOpaque {
+		if plan.Class == Opaque {
 			w.opaque(plan.Reason)
 		}
 	}
@@ -210,7 +213,7 @@ func execProducerArgs(words []*syntax.Word) ([]string, bool) {
 			args = append(args, "{}")
 			continue
 		}
-		values, ok := literalArgs([]*syntax.Word{word})
+		values, ok := shellsyntax.Args([]*syntax.Word{word})
 		if !ok {
 			return nil, false
 		}
@@ -223,7 +226,7 @@ func execFindPaths(input execProviderInput, args []string) ([]string, string, er
 	if len(args) == 0 {
 		return nil, "", errors.New("find root is not literal")
 	}
-	root := execProviderPath(input.cwd, args[0])
+	root := sourceparse.Path(input.cwd, args[0])
 	if root == "" || strings.HasPrefix(args[0], "-") {
 		return nil, "", errors.New("find root unavailable")
 	}
@@ -252,7 +255,7 @@ func execFindPaths(input execProviderInput, args []string) ([]string, string, er
 	entries := 0
 	var pathPattern *regexp.Regexp
 	if pattern != "" {
-		expression, ok := execIgnoreExpression(pattern)
+		expression, ok := sourceparse.GlobExpression(pattern)
 		if !ok {
 			return nil, root, errors.New("invalid find path pattern")
 		}
@@ -269,7 +272,7 @@ func execFindPaths(input execProviderInput, args []string) ([]string, string, er
 			return err
 		}
 		entries++
-		if entries > maxExecListingEntries || time.Now().After(input.deadline) {
+		if entries > ListingLimit || time.Now().After(input.deadline) {
 			return errors.New("find scope exceeds budget")
 		}
 		if kind == "f" && !entry.Type().IsRegular() || kind == "d" && !entry.IsDir() {

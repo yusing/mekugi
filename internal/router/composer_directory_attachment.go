@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/sourceparse"
 )
 
 const (
@@ -20,7 +22,7 @@ const (
 
 type composerTreeIgnore struct {
 	directory string
-	rules     []execIgnoreRule
+	rules     []sourceparse.IgnoreRule
 }
 
 // Directory attachments read names only. Bounds include ignored entries and
@@ -59,7 +61,7 @@ func composerDirectoryTree(root string) (string, error) {
 			return group, fmt.Errorf("directory ignore rules exceed %d-byte limit", composerIgnoreBytes)
 		}
 		for line := range strings.SplitSeq(string(data), "\n") {
-			if rule, ok := parseExecIgnoreLine(line); ok {
+			if rule, ok := sourceparse.ParseIgnore(line); ok {
 				group.rules = append(group.rules, rule)
 			}
 		}
@@ -158,15 +160,15 @@ func composerTreeIgnored(path string, isDir bool, groups []composerTreeIgnore) b
 				continue
 			}
 			for _, rule := range group.rules {
-				if rule.dirOnly && index == len(parts)-1 && !isDir {
+				if rule.DirOnly && index == len(parts)-1 && !isDir {
 					continue
 				}
 				match := filepath.ToSlash(candidate)
-				if rule.basename {
+				if rule.Basename {
 					match = filepath.Base(candidate)
 				}
-				if rule.pattern.MatchString(match) {
-					ignored = !rule.negate
+				if rule.Pattern.MatchString(match) {
+					ignored = !rule.Negate
 				}
 			}
 		}

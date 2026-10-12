@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -328,7 +330,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				if thread == "child" {
 					view = u.agents
 				}
-				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + shellQuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
+				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "/bin/bash -lc " + shellsyntax.QuoteArgument(source), ExitCode: new(0), AggregatedOutput: new(" M tracked.go\n")}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "t", "item": item})
 				data := newLiveDiffData()
 				data.order = []string{"receipt"}

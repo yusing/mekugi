@@ -1,23 +1,20 @@
-package router
+package execscope
 
 import (
-	"context"
 	"time"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
 
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// execChangeResolver lists the absolute paths recorded by selected changes,
-// reading only the change store before the deadline.
-type execChangeResolver func(options changeReadOptions, deadline time.Time) ([]string, error)
+// ChangeResolver resolves literal mutation arguments in the selected directory.
+// InvalidArguments distinguishes parser rejection from unavailable retained paths.
+type ChangeResolver func(arguments []string, directory string, deadline time.Time) ChangeResolution
 
-// storeChangeResolver reads the calling thread's change namespace.
-func storeChangeResolver(ctx context.Context, store *mekugiReplayStore) execChangeResolver {
-	return func(options changeReadOptions, deadline time.Time) ([]string, error) {
-		ctx, cancel := context.WithDeadline(ctx, deadline)
-		defer cancel()
-		return store.changeMutationPaths(ctx, options)
-	}
+type ChangeResolution struct {
+	Paths            []string
+	InvalidArguments bool
 }
 
 // mchanges revert and apply write only the paths their selected records name,
@@ -28,7 +25,7 @@ func (w *execShellWalker) mchanges(args []*syntax.Word) {
 	}
 	// Only the first word selects a mutation, so a read may still expand its
 	// operands.
-	first, glob, ok := execWordOperand(args[0])
+	first, glob, ok := shellsyntax.Operand(args[0])
 	if !ok || glob {
 		w.opaque("dynamic mchanges subcommand")
 		return
@@ -42,7 +39,7 @@ func (w *execShellWalker) mchanges(args []*syntax.Word) {
 		}
 		return
 	}
-	values, ok := literalArgs(args)
+	values, ok := shellsyntax.Args(args)
 	if !ok {
 		w.opaque("dynamic mchanges operand")
 		return
@@ -56,20 +53,20 @@ func (w *execShellWalker) mchanges(args []*syntax.Word) {
 		w.opaque(subcommand + " history is unavailable")
 		return
 	}
-	options, err := parseChangeRead(values, w.cwd)
-	if err != nil {
+	if w.deadline.IsZero() {
+		w.deadline = time.Now().Add(Budget)
+	}
+	resolved := w.changes(values, w.cwd, w.deadline)
+	if resolved.InvalidArguments {
 		w.opaque(subcommand + " arguments are not valid")
 		return
 	}
-	if w.deadline.IsZero() {
-		w.deadline = time.Now().Add(execProviderBudget)
-	}
-	paths, err := w.changes(options, w.deadline)
-	if err != nil || len(paths) == 0 {
+	if len(resolved.Paths) == 0 {
 		w.opaque(subcommand + " history is unavailable")
 		return
 	}
-	w.plan.raise(execDeclared, "")
+	paths := resolved.Paths
+	w.plan.raise(Declared, "")
 	w.plan.label(subcommand)
 	w.plan.add(execProviderFiles(paths, false))
 }

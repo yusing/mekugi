@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"github.com/yusing/mekugi"
 )
 
@@ -140,7 +143,7 @@ func TestGitApplyRenameProviderCapturesSourcePath(t *testing.T) {
 	}
 	runExecVCSTestGit(t, repo, "reset", "--hard", "HEAD")
 
-	command := "git apply " + shellQuoteArgument(patchPath)
+	command := "git apply " + shellsyntax.QuoteArgument(patchPath)
 	observation := captureExecVCSTestCommand(t, repo, command)
 	assertCapturedExecVCSTestFile(t, observation, filepath.Join(repo, "old-name.txt"), original)
 	assertExecVCSTestFileContent(t, filepath.Join(repo, "old-name.txt"), original)
@@ -169,7 +172,7 @@ func TestGitProviderQueriesDisableConfiguredFSMonitor(t *testing.T) {
 	repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "committed\n"})
 	marker := filepath.Join(t.TempDir(), "fsmonitor-ran")
 	hook := filepath.Join(t.TempDir(), "fsmonitor-hook")
-	hookText := "#!/bin/sh\nprintf 'ran\\n' >> " + shellQuoteArgument(marker) + "\nprintf 'test-token\\0'\n"
+	hookText := "#!/bin/sh\nprintf 'ran\\n' >> " + shellsyntax.QuoteArgument(marker) + "\nprintf 'test-token\\0'\n"
 	if err := os.WriteFile(hook, []byte(hookText), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +200,7 @@ func TestGitProviderSkipsWorktreeQueryWhenCleanFilterConfigured(t *testing.T) {
 	})
 	marker := filepath.Join(t.TempDir(), "clean-filter-ran")
 	filter := filepath.Join(t.TempDir(), "clean-filter")
-	filterText := "#!/bin/sh\nprintf 'ran\\n' >> " + shellQuoteArgument(marker) + "\ncat\n"
+	filterText := "#!/bin/sh\nprintf 'ran\\n' >> " + shellsyntax.QuoteArgument(marker) + "\ncat\n"
 	if err := os.WriteFile(filter, []byte(filterText), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +271,7 @@ func captureExecVCSTestCommandAt(t *testing.T, repo, workdir, command string) *e
 	if !observed || observation == nil {
 		t.Fatalf("VCS writer %q was not captured", command)
 	}
-	if observation.Class != execScoped.String() {
+	if observation.Class != execscope.Scoped.String() {
 		t.Fatalf("VCS class for %q = %q, want scoped (reason: %s)", command, observation.Class, observation.Reason)
 	}
 	return observation
@@ -335,7 +338,7 @@ func TestVCSReadSiblingKeepsUnnamedInterpreterEdit(t *testing.T) {
 	workspace := newExecVCSTestRepo(t, map[string]string{"authored.txt": "before\n"})
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	command := "git -c core.fsmonitor=false status --short; python3 -c " + shellQuoteArgument("from pathlib import Path; name='authored'; name += '.txt'; Path(name).write_text('after\\n')")
+	command := "git -c core.fsmonitor=false status --short; python3 -c " + shellsyntax.QuoteArgument("from pathlib import Path; name='authored'; name += '.txt'; Path(name).write_text('after\\n')")
 	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-read", command, func() { writeTestFile(t, filepath.Join(workspace, "authored.txt"), "after\n") })
 	list, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "list"})
 	if err != nil || list != history.ChangeID+" +1 -1\n" {

@@ -6,6 +6,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -108,7 +110,7 @@ type codeModeStaticObject struct {
 // command can be shown as a stable Bash preview.
 func codeModePreviewSyntax(source string) ([]codeModeSourceRange, map[int]codeModeStaticObject, map[int]bool) {
 	bytes := []byte(source)
-	tree, err := parseSourceTree(bytes, codeModeJavaScriptLanguage, nil)
+	tree, err := sourceparse.Parse(bytes, sourceparse.JavaScript, nil)
 	if err != nil || tree == nil {
 		return nil, nil, nil
 	}
@@ -129,7 +131,7 @@ func codeModePreviewSyntax(source string) ([]codeModeSourceRange, map[int]codeMo
 			end := int(node.EndByte())
 			if end > int(node.StartByte()) && end <= len(source) && source[end-1] == '}' {
 				var call codeModeShellCall
-				if value, ok := toolActivityStaticJavaScriptValue(node, bytes); ok {
+				if value, ok := sourceparse.JavaScriptValue(node, bytes); ok {
 					if properties, ok := value.(map[string]any); ok {
 						call.cmd, _ = properties["cmd"].(string)
 						if workdir, exists := properties["workdir"]; exists {

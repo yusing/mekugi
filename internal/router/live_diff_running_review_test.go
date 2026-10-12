@@ -10,6 +10,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -31,7 +33,7 @@ func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
 		defer cancel()
 		broker := newLiveDiffBroker(ctx)
 		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil)
+		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
 		if len(broker.previews) != 0 {
@@ -102,7 +104,7 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 	broker := newLiveDiffBroker(ctx)
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
 	const previewID = "running:budgeted"
-	go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: files}, diffview.Preview{
+	go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: files}, diffview.Preview{
 		ID: previewID, Workspace: root, Thread: "thread", Caller: "budget-test",
 	}, nil)
 	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {

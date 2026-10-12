@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 func execProviderReviewMarker(t *testing.T) string {
@@ -13,7 +16,7 @@ func execProviderReviewMarker(t *testing.T) string {
 	bin := t.TempDir()
 	marker := filepath.Join(bin, "invoked")
 	program := filepath.Join(bin, "marker")
-	script := "#!/bin/sh\nprintf 'invoked\\n' >> " + shellQuoteArgument(marker) + "\n"
+	script := "#!/bin/sh\nprintf 'invoked\\n' >> " + shellsyntax.QuoteArgument(marker) + "\n"
 	if err := os.WriteFile(program, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +100,7 @@ func TestExecPythonUnresolvedReasonSurvivesClosedStatement(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "partial.txt"), "partial baseline\n")
 	command := `python3 -c 'open("closed.txt", "w").write("new")' && python3 -c 'open("partial.txt", "w").write("new"); open(target, "w").write("new")'`
 	observation := execProducerCapture(t, root, command)
-	if observation.Class != execScoped.String() || !strings.Contains(observation.Reason, "unresolved") {
+	if observation.Class != execscope.Scoped.String() || !strings.Contains(observation.Reason, "unresolved") {
 		t.Fatalf("later scoped-but-unresolved statement lost its reason: class=%q reason=%q scope=%+v", observation.Class, observation.Reason, observation.Files)
 	}
 	execProducerAssertCaptured(t, observation, root, map[string]string{

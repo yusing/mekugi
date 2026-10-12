@@ -61,7 +61,7 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 		len(call.Assigns) != 0 || len(call.Args) == 0 {
 		return shellScriptProjection{}, false
 	}
-	interpreter, literal := shellCatLiteral(call.Args[0])
+	interpreter, literal := shellsyntax.Literal(call.Args[0])
 	name := shellsyntax.InterpreterIdentity(interpreter)
 	if !literal || !shellInterpreterPattern.MatchString(name) {
 		return shellScriptProjection{}, false
@@ -69,7 +69,7 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 
 	args := call.Args[1:]
 	for index, word := range args {
-		value, static := shellCatLiteral(word)
+		value, static := shellsyntax.Literal(word)
 		if !static {
 			return shellScriptProjection{}, false
 		}
@@ -89,12 +89,12 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 		if index+1 >= len(args) || len(statement.Redirs) != 0 {
 			return shellScriptProjection{}, false
 		}
-		program, static := shellCatLiteral(args[index+1])
+		program, static := shellsyntax.Literal(args[index+1])
 		if !static {
 			return shellScriptProjection{}, false
 		}
 		for _, trailing := range args[index+2:] {
-			value, static := shellCatLiteral(trailing)
+			value, static := shellsyntax.Literal(trailing)
 			if !static || strings.HasPrefix(value, "-") {
 				return shellScriptProjection{}, false
 			}
@@ -109,7 +109,7 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 	if len(statement.Redirs) != 1 {
 		return shellScriptProjection{}, false
 	}
-	program, ok := liveDiffShellHeredoc(statement.Redirs[0], partialLine)
+	program, ok := shellsyntax.Heredoc(statement.Redirs[0], partialLine)
 	if !ok {
 		return shellScriptProjection{}, false
 	}
@@ -129,14 +129,14 @@ func shellInterpreterReadsStdin(input string) bool {
 		len(statement.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) < 2 {
 		return false
 	}
-	interpreter, literal := shellCatLiteral(call.Args[0])
+	interpreter, literal := shellsyntax.Literal(call.Args[0])
 	name := shellsyntax.InterpreterIdentity(interpreter)
 	if !literal || !shellInterpreterPattern.MatchString(name) {
 		return false
 	}
 	stdin := false
 	for _, word := range call.Args[1:] {
-		value, static := shellCatLiteral(word)
+		value, static := shellsyntax.Literal(word)
 		if _, harmless := shellInterpreterFlag(name, value); !static || value != "-" && !harmless {
 			return false
 		}

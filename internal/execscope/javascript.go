@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	json "encoding/json/v2"
@@ -6,20 +6,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/tree-sitter/go-tree-sitter"
-	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
+	"github.com/yusing/mekugi/internal/sourceparse"
 )
-
-var execTypeScriptLanguage = sitter.NewLanguage(typescript.LanguageTypescript())
 
 func execJavaScriptScope(input execProviderInput) execProviderResult {
 	source, script, reason := execProgramSource(input)
 	if reason != "" {
 		return execProviderResult{open: true, reason: reason}
 	}
-	language := codeModeJavaScriptLanguage
+	language := sourceparse.JavaScript
 	if strings.HasSuffix(script, ".ts") || input.identity == "deno" {
-		language = execTypeScriptLanguage
+		language = sourceparse.TypeScript
 	}
 	result := inspectExecSource(input, source, script, language, false)
 	if input.authoredOnly {
@@ -42,7 +39,7 @@ func execJavaScriptScope(input execProviderInput) execProviderResult {
 				bounded = true
 			}
 			for path := range strings.SplitSeq(paths, ",") {
-				if target := execProviderPath(input.cwd, path); target != "" {
+				if target := sourceparse.Path(input.cwd, path); target != "" {
 					roots = append(roots, target)
 				}
 			}
@@ -76,7 +73,7 @@ func execDenoPermissionSet(cwd, set string) ([]string, bool) {
 	if !filepath.IsAbs(cwd) {
 		return nil, true
 	}
-	file, err := openNativePatchFile(filepath.Join(cwd, "deno.json"))
+	file, err := sourceparse.Open(filepath.Join(cwd, "deno.json"))
 	if err != nil {
 		return nil, true
 	}
@@ -85,8 +82,8 @@ func execDenoPermissionSet(cwd, set string) ([]string, bool) {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, true
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxExecProgramBytes+1))
-	if err != nil || len(data) > maxExecProgramBytes {
+	data, err := io.ReadAll(io.LimitReader(file, SourceLimit+1))
+	if err != nil || len(data) > SourceLimit {
 		return nil, true
 	}
 	var config struct {
@@ -111,14 +108,14 @@ func execDenoPermissionSet(cwd, set string) ([]string, bool) {
 	case bool:
 		return nil, value
 	case string:
-		roots = append(roots, execProviderPath(cwd, value))
+		roots = append(roots, sourceparse.Path(cwd, value))
 	case []any:
 		for _, item := range value {
 			path, ok := item.(string)
 			if !ok {
 				return nil, true
 			}
-			roots = append(roots, execProviderPath(cwd, path))
+			roots = append(roots, sourceparse.Path(cwd, path))
 		}
 	default:
 		return nil, true

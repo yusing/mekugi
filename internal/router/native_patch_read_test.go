@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/execscope"
 )
 
 func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
@@ -54,9 +56,9 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			}
 			observation := before.ExecObservation
 			wantCommand := execCommandInput{Command: tc.command, Workdir: workspace, Shell: "bash"}
-			if observation == nil || observation.Class != execNeutral.String() ||
+			if observation == nil || observation.Class != execscope.Neutral.String() ||
 				!slices.Equal(observation.Commands, []execCommandInput{wantCommand}) ||
-				!slices.Equal(observation.commandClasses(), []string{execNeutral.String()}) {
+				!slices.Equal(observation.commandClasses(), []string{execscope.Neutral.String()}) {
 				t.Fatalf("pre-call neutral command/default shell not retained: %+v", observation)
 			}
 
@@ -105,7 +107,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 					status = execStatusFailed
 				}
 				if command.ExecOutcome == nil || command.ExecOutcome.Status != status ||
-					command.ExecOutcome.Coverage != execCoverageExact || command.ExecOutcome.Class != execNeutral.String() ||
+					command.ExecOutcome.Coverage != execCoverageExact || command.ExecOutcome.Class != execscope.Neutral.String() ||
 					command.ChangeID != "" || len(command.ReviewFiles) != 0 || command.TranslationError != "" {
 					t.Fatalf("reader acquired incomplete or patch effects: %+v", command)
 				}

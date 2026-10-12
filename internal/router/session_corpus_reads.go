@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -59,7 +61,7 @@ func corpusReadSelections(script string) []corpusReadSelection {
 		}
 		var args []string
 		for _, word := range call.Args {
-			arg, literal := shellCatLiteral(word)
+			arg, literal := shellsyntax.Literal(word)
 			if !literal {
 				return false
 			}

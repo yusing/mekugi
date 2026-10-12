@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi"
 )
 
@@ -20,8 +22,8 @@ func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observation := execObservation{Class: execScoped.String(), Roots: []string{root}, Listings: []execListing{{Root: root, Entries: map[string]string{"z": execFileStamp(info)}}}}
-	for index := range maxExecListingEntries + 1 {
+	observation := execObservation{Class: execscope.Scoped.String(), Roots: []string{root}, Listings: []execListing{{Root: root, Entries: map[string]string{"z": execFileStamp(info)}}}}
+	for index := range execscope.ListingLimit + 1 {
 		writeTestFile(t, filepath.Join(root, fmt.Sprintf("file-%04d.txt", index)), "new\n")
 	}
 	reviews, complete, _, _ := reconcileExecObservation(observation, execReconcileEnv{})
@@ -35,7 +37,7 @@ func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
 			added++
 		}
 	}
-	if complete || !walkTruncated || added != maxExecListingEntries {
+	if complete || !walkTruncated || added != execscope.ListingLimit {
 		t.Fatalf("destination enumeration: complete=%v truncated=%v added=%d", complete, walkTruncated, added)
 	}
 

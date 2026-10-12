@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -199,7 +201,7 @@ func TestExecEditCompletionUsesCapturedBaseline(t *testing.T) {
 			}
 		})
 	}
-	testOnly := execObservation{Commands: []execCommandInput{{Command: "env -u BASH_ENV go test ./...", Workdir: workspace, Shell: "bash"}}, Class: execOpaque.String()}
+	testOnly := execObservation{Commands: []execCommandInput{{Command: "env -u BASH_ENV go test ./...", Workdir: workspace, Shell: "bash"}}, Class: execscope.Opaque.String()}
 	if got := execPreviewExpected(t.Context(), testOnly); len(got) != 0 {
 		t.Fatalf("test-only command yielded predicted edit: %+v", got)
 	}

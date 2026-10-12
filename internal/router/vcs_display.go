@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -67,7 +69,7 @@ func vcsStatement(statement *syntax.Stmt) (vcsCall, bool) {
 			}
 			stdin = &body
 		case redirect.N == nil && stdin == nil && redirect.Op == syntax.WordHdoc:
-			body, ok := shellCatLiteral(redirect.Word)
+			body, ok := shellsyntax.Literal(redirect.Word)
 			if !ok {
 				return vcsCall{}, false
 			}
@@ -100,7 +102,7 @@ func vcsStatement(statement *syntax.Stmt) (vcsCall, bool) {
 	return vcsCall{}, false
 }
 
-// vcsLiteral is a word's literal value. Beyond shellCatLiteral, it keeps
+// vcsLiteral is a word's literal value. Beyond shellsyntax.Literal, it keeps
 // revision syntax such as HEAD~2, whose tilde does not lead the word and
 // so cannot expand; globs and brace expansions stay unrecognized.
 func vcsLiteral(word *syntax.Word) (string, bool) {
@@ -111,7 +113,7 @@ func vcsLiteral(word *syntax.Word) (string, bool) {
 	if braces {
 		return "", false
 	}
-	if value, ok := shellCatLiteral(word); ok {
+	if value, ok := shellsyntax.Literal(word); ok {
 		return value, true
 	}
 	var value strings.Builder
@@ -137,7 +139,7 @@ func vcsStderrRedirect(redirect *syntax.Redirect) bool {
 	if redirect.N == nil || redirect.N.Value != "2" {
 		return false
 	}
-	target, literal := shellCatLiteral(redirect.Word)
+	target, literal := shellsyntax.Literal(redirect.Word)
 	return literal && (redirect.Op == syntax.RdrOut && target == "/dev/null" || redirect.Op == syntax.DplOut && target == "1")
 }
 
@@ -190,7 +192,7 @@ func vcsCatSubstitution(word *syntax.Word) (string, bool) {
 		statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}
-	if name, literal := shellCatLiteral(call.Args[0]); !literal || name != "cat" {
+	if name, literal := shellsyntax.Literal(call.Args[0]); !literal || name != "cat" {
 		return "", false
 	}
 	redirect := statement.Redirs[0]

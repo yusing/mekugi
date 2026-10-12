@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
@@ -94,7 +96,7 @@ func TestJournalCompactionV2GuidancePriorityAndReadOrder(t *testing.T) {
 			map[string]any{"type": "function_call_output", "call_id": id, "output": "loaded"},
 		}
 	}
-	history := append([]any{agents}, read("first-read", "cat ROOT2.md ROOT1.md "+shellQuoteArgument(g2)+" "+shellQuoteArgument(g1)+" doc/DETAIL.md")...)
+	history := append([]any{agents}, read("first-read", "cat ROOT2.md ROOT1.md "+shellsyntax.QuoteArgument(g2)+" "+shellsyntax.QuoteArgument(g1)+" doc/DETAIL.md")...)
 	item, first := deliverV2ContinuityReset(t, proxy, workspace, thread, history...)
 	want := []string{g2, g1, filepath.Join(workspace, "ROOT2.md"), filepath.Join(workspace, "ROOT1.md"), doc}
 	check := func(g *journalGuidance, paths []string) {
@@ -103,7 +105,7 @@ func TestJournalCompactionV2GuidancePriorityAndReadOrder(t *testing.T) {
 			t.Fatalf("guidance sources: %+v, want %v", g, paths)
 		}
 		for i, path := range paths {
-			if !strings.HasSuffix(g.Commands[i], shellQuoteArgument(path)) {
+			if !strings.HasSuffix(g.Commands[i], shellsyntax.QuoteArgument(path)) {
 				t.Fatalf("source order: %v, want %v", g.Commands, paths)
 			}
 		}
@@ -113,7 +115,7 @@ func TestJournalCompactionV2GuidancePriorityAndReadOrder(t *testing.T) {
 	}
 	check(first.Guidance, want)
 	// Restoration reads durable order, not a live context or process handle.
-	history = append([]any{agents, item}, read("later-read", "cat "+shellQuoteArgument(g1)+" "+shellQuoteArgument(g2)+" ROOT1.md ROOT2.md NEW.md")...)
+	history = append([]any{agents, item}, read("later-read", "cat "+shellsyntax.QuoteArgument(g1)+" "+shellsyntax.QuoteArgument(g2)+" ROOT1.md ROOT2.md NEW.md")...)
 	_, later := deliverV2ContinuityReset(t, proxy, workspace, thread, history...)
 	want = append(want[:4:4], filepath.Join(workspace, "NEW.md"), doc)
 	check(later.Guidance, want)
@@ -214,7 +216,7 @@ func TestJournalCompactionV2GuidanceFirstFiveResponses(t *testing.T) {
 func TestJournalCompactionV2RetainsLoadedGuidance(t *testing.T) {
 	bin := t.TempDir()
 	trace := filepath.Join(bin, "reads")
-	if err := os.WriteFile(filepath.Join(bin, "skills-mgr"), []byte("#!/bin/sh\nprintf called > "+shellQuoteArgument(trace)+"\nexit 1\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "skills-mgr"), []byte("#!/bin/sh\nprintf called > "+shellsyntax.QuoteArgument(trace)+"\nexit 1\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

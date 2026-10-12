@@ -1,4 +1,4 @@
-package router
+package execscope
 
 import (
 	"io"
@@ -7,12 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sourceparse"
+
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-const execProviderBudget = 200 * time.Millisecond
-const maxExecProgramBytes = 1 << 20
+const Budget = 200 * time.Millisecond
+const SourceLimit = 1 << 20
 
 type execProviderInput struct {
 	authoredOnly bool
@@ -22,13 +25,13 @@ type execProviderInput struct {
 	cwd          string
 	stdin        string
 	deadline     time.Time
-	changes      execChangeResolver
+	changes      ChangeResolver
 }
 
 type execProviderResult struct {
-	programs  []execProgram
+	programs  []Program
 	unhandled bool
-	scope     []execScopeEntry
+	scope     []Entry
 	open      bool
 	// opaque preserves named scope while admitting additional unknown effects.
 	opaque bool
@@ -62,7 +65,7 @@ func execInlineShellScope(input execProviderInput) execProviderResult {
 	for i, arg := range input.args {
 		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(arg, "c") && i+1 < len(input.args) {
 			plan := classifyExecShellSource(input.args[i+1], input.cwd, input.identity, input.deadline, input.depth+1, input.changes, input.authoredOnly)
-			return execProviderResult{scope: plan.Scope, open: plan.Class == execOpaque, reason: plan.Reason, programs: plan.Programs}
+			return execProviderResult{scope: plan.Scope, open: plan.Class == Opaque, reason: plan.Reason, programs: plan.Programs}
 		}
 	}
 	return execProviderResult{open: true, reason: "shell source is not literal"}
@@ -77,7 +80,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 	if w.authoredOnly && execFormatterIdentity(key) {
 		w.program.Direct = true
 		for _, arg := range args {
-			if _, literal := shellCatLiteral(arg); !literal {
+			if _, literal := shellsyntax.Literal(arg); !literal {
 				w.opaque("formatter operands are not individual literal targets")
 				return true
 			}
@@ -90,7 +93,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 		w.opaque("scope provider recursion limit")
 		return true
 	}
-	values, ok := literalArgs(args)
+	values, ok := shellsyntax.Args(args)
 	if !ok {
 		w.opaque("provider arguments are dynamic")
 		return true
@@ -99,7 +102,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 		provider = execFixerScope
 	}
 	if w.deadline.IsZero() {
-		w.deadline = time.Now().Add(execProviderBudget)
+		w.deadline = time.Now().Add(Budget)
 	}
 	if time.Now().After(w.deadline) {
 		w.opaque("scope provider deadline")
@@ -120,7 +123,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 	w.plan.Scope = append(w.plan.Scope, result.scope...)
 	w.plan.Programs = append(w.plan.Programs, result.programs...)
 	w.plan.label(w.program.Label)
-	w.plan.raise(execScoped, result.reason)
+	w.plan.raise(Scoped, result.reason)
 	if result.opaque {
 		w.opaque(result.reason)
 	}
@@ -131,13 +134,13 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 }
 
 // execProgramSource selects literal eval/stdin/script input without evaluating it.
-func execProgramSource(input execProviderInput) (source, script, reason string) {
-	python := strings.HasPrefix(input.identity, "python")
-	for i := 0; i < len(input.args); i++ {
-		arg := input.args[i]
+func ReadSource(input Interpreter) (source, script, reason string) {
+	python := strings.HasPrefix(input.Identity, "python")
+	for i := 0; i < len(input.Arguments); i++ {
+		arg := input.Arguments[i]
 		if arg == "-c" && python || !python && (arg == "-e" || arg == "--eval" || arg == "-p" || arg == "--print") {
-			if i+1 < len(input.args) {
-				return input.args[i+1], "", ""
+			if i+1 < len(input.Arguments) {
+				return input.Arguments[i+1], "", ""
 			}
 			return "", "", "missing interpreter source"
 		}
@@ -149,18 +152,18 @@ func execProgramSource(input execProviderInput) (source, script, reason string) 
 			return "", "", "interpreter loader is not inspected"
 		}
 		if arg == "-" {
-			return input.stdin, "", ""
+			return input.Stdin, "", ""
 		}
-		if strings.HasPrefix(arg, "-") || (input.identity == "deno" || input.identity == "bun") && arg == "run" {
+		if strings.HasPrefix(arg, "-") || (input.Identity == "deno" || input.Identity == "bun") && arg == "run" {
 			continue
 		}
 		if !filepath.IsAbs(arg) {
-			if !filepath.IsAbs(input.cwd) {
+			if !filepath.IsAbs(input.Directory) {
 				return "", "", "interpreter working directory unavailable"
 			}
-			arg = filepath.Join(input.cwd, arg)
+			arg = filepath.Join(input.Directory, arg)
 		}
-		file, err := openNativePatchFile(arg)
+		file, err := sourceparse.Open(arg)
 		if err != nil {
 			return "", arg, "interpreter source unavailable"
 		}
@@ -169,39 +172,26 @@ func execProgramSource(input execProviderInput) (source, script, reason string) 
 		if err != nil || !info.Mode().IsRegular() {
 			return "", arg, "interpreter source is not regular"
 		}
-		data, err := io.ReadAll(io.LimitReader(file, maxExecProgramBytes+1))
-		if err != nil || len(data) > maxExecProgramBytes {
+		data, err := io.ReadAll(io.LimitReader(file, SourceLimit+1))
+		if err != nil || len(data) > SourceLimit {
 			return "", arg, "interpreter source exceeds capture bound"
 		}
 		return string(data), arg, ""
 	}
-	if input.stdin != "" {
-		return input.stdin, "", ""
+	if input.Stdin != "" {
+		return input.Stdin, "", ""
 	}
 	return "", "", "interpreter source is not literal"
 }
 
-func execProviderPath(cwd, path string) string {
-	if path == "" {
-		return ""
-	}
-	if filepath.IsAbs(path) {
-		return filepath.Clean(path)
-	}
-	if !filepath.IsAbs(cwd) {
-		return ""
-	}
-	return filepath.Join(cwd, path)
-}
-
-func execProviderFiles(paths []string, tree bool) execScopeEntry {
-	entry := execScopeEntry{Kind: execScopeFile, Through: true}
+func execProviderFiles(paths []string, tree bool) Entry {
+	entry := Entry{Kind: File, Through: true}
 	if tree {
-		entry.Kind, entry.Through = execScopeTree, false
+		entry.Kind, entry.Through = Tree, false
 	}
 	for _, path := range paths {
 		if path != "" {
-			entry.Operands = append(entry.Operands, execOperand{Path: path})
+			entry.Operands = append(entry.Operands, Operand{Path: path})
 		}
 	}
 	return entry

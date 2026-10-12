@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -331,8 +333,8 @@ func TestExecObservationSourceLabel(t *testing.T) {
 	}{
 		{execObservation{}, "exec_command"},
 		{execObservation{Labels: []string{"sed"}}, "sed"},
-		{execObservation{Programs: []execProgram{{Label: "python3", Direct: true}, {Label: "make"}}}, "python3"},
-		{execObservation{Labels: []string{"sed", "rm"}, Programs: []execProgram{{Label: "shell", Direct: true}}}, "sed+rm+…"},
+		{execObservation{Programs: []execscope.Program{{Label: "python3", Direct: true}, {Label: "make"}}}, "python3"},
+		{execObservation{Labels: []string{"sed", "rm"}, Programs: []execscope.Program{{Label: "shell", Direct: true}}}, "sed+rm+…"},
 	} {
 		if got := tc.observation.sourceLabel(); got != tc.want {
 			t.Errorf("%+v source = %q, want %q", tc.observation, got, tc.want)

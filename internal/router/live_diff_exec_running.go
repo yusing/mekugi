@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -65,7 +67,7 @@ func execPreviewTool(observation execObservation) string {
 	observation.Labels = slices.DeleteFunc(slices.Clone(observation.Labels), func(label string) bool { return label == "mv" || label == "git mv" })
 	// The classifier's opaque-statement fallback is scope uncertainty,
 	// not an evidenced executable. Keep it out of display attribution.
-	observation.Programs = slices.DeleteFunc(slices.Clone(observation.Programs), func(program execProgram) bool {
+	observation.Programs = slices.DeleteFunc(slices.Clone(observation.Programs), func(program execscope.Program) bool {
 		return program.Label == "shell"
 	})
 	tool := observation.sourceLabel()
@@ -95,7 +97,7 @@ func execScopePreviewFooter(observation execObservation) string {
 		}
 		footer += " · " + strings.Join(names, ", ")
 	}
-	if observation.Reason != "" || observation.Class == execOpaque.String() {
+	if observation.Reason != "" || observation.Class == execscope.Opaque.String() {
 		footer += " · other writes unknown"
 	}
 	if len(observation.Omitted) > 0 {

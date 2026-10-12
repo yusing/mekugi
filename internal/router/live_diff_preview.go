@@ -526,14 +526,14 @@ func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, 
 		// Moves constrain later predictions, but contain no arriving source.
 		// Retain their dependency checks without opening a live source card.
 		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 {
-			if name, literal := shellCatLiteral(call.Args[0]); literal && name == "mv" {
+			if name, literal := shellsyntax.Literal(call.Args[0]); literal && name == "mv" {
 				continue
 			}
 		}
 		files = append(files, projected...)
 		if len(projected) > 0 {
 			if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 {
-				if name, literal := shellCatLiteral(call.Args[0]); literal {
+				if name, literal := shellsyntax.Literal(call.Args[0]); literal {
 					name = shellsyntax.InterpreterIdentity(name)
 					if !slices.Contains(tools, name) {
 						tools = append(tools, name)

@@ -1,61 +1,59 @@
-package router
+package sourceparse
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-// execIgnoreRule is one pattern from an ignore file, matched against paths
+// IgnoreRule is one pattern from an ignore file, matched against paths
 // relative to the directory that holds the file.
-type execIgnoreRule struct {
-	pattern *regexp.Regexp
-	negate  bool
-	dirOnly bool
+type IgnoreRule struct {
+	Pattern *regexp.Regexp
+	Negate  bool
+	DirOnly bool
 	// basename rules have no inner slash and match an entry at any depth.
-	basename bool
+	Basename bool
 }
 
-func parseExecIgnoreLine(line string) (execIgnoreRule, bool) {
+func ParseIgnore(line string) (IgnoreRule, bool) {
 	line = strings.TrimSuffix(line, "\r")
 	if line == "" || strings.HasPrefix(line, "#") {
-		return execIgnoreRule{}, false
+		return IgnoreRule{}, false
 	}
 	// Trailing spaces are dropped unless escaped.
 	for strings.HasSuffix(line, " ") && !strings.HasSuffix(line, "\\ ") {
 		line = strings.TrimSuffix(line, " ")
 	}
-	var rule execIgnoreRule
+	var rule IgnoreRule
 	switch {
 	case strings.HasPrefix(line, "!"):
-		rule.negate, line = true, line[1:]
+		rule.Negate, line = true, line[1:]
 	case strings.HasPrefix(line, "\\!"), strings.HasPrefix(line, "\\#"):
 		line = line[1:]
 	}
 	if strings.HasSuffix(line, "/") {
-		rule.dirOnly, line = true, strings.TrimRight(line, "/")
+		rule.DirOnly, line = true, strings.TrimRight(line, "/")
 	}
 	if line == "" {
-		return execIgnoreRule{}, false
+		return IgnoreRule{}, false
 	}
-	rule.basename = !strings.Contains(line, "/")
+	rule.Basename = !strings.Contains(line, "/")
 	line = strings.TrimPrefix(line, "/")
-	expression, ok := execIgnoreExpression(line)
+	expression, ok := GlobExpression(line)
 	if !ok {
-		return execIgnoreRule{}, false
+		return IgnoreRule{}, false
 	}
 	pattern, err := regexp.Compile("^" + expression + "$")
 	if err != nil {
-		return execIgnoreRule{}, false
+		return IgnoreRule{}, false
 	}
-	rule.pattern = pattern
+	rule.Pattern = pattern
 	return rule, true
 }
 
-// execIgnoreExpression translates gitignore glob syntax to a regular
+// GlobExpression translates gitignore glob syntax to a regular
 // expression over slash-separated relative paths.
-func execIgnoreExpression(pattern string) (string, bool) {
+func GlobExpression(pattern string) (string, bool) {
 	var expression strings.Builder
 	for index := 0; index < len(pattern); {
 		switch {
@@ -110,18 +108,4 @@ func execIgnoreExpression(pattern string) (string, bool) {
 		}
 	}
 	return expression.String(), true
-}
-
-// execBuiltinPruned keeps formatter and fixer scopes out of dependency trees,
-// bytecode caches, tagged caches, and virtual environments.
-func execBuiltinPruned(path, name string) bool {
-	if name == "node_modules" || name == "__pycache__" {
-		return true
-	}
-	for _, marker := range []string{"CACHEDIR.TAG", "pyvenv.cfg"} {
-		if _, err := os.Lstat(filepath.Join(path, marker)); err == nil {
-			return true
-		}
-	}
-	return false
 }

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
-	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -78,8 +77,8 @@ func liveDiffShellCd(stmt *syntax.Stmt, directory string) (string, bool) {
 		len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) != 2 {
 		return "", false
 	}
-	name, literal := shellCatLiteral(call.Args[0])
-	target, targetLiteral := shellCatLiteral(call.Args[1])
+	name, literal := shellsyntax.Literal(call.Args[0])
+	target, targetLiteral := shellsyntax.Literal(call.Args[1])
 	if !literal || name != "cd" || !targetLiteral || target == "" || target == "-" || strings.HasPrefix(target, "~") {
 		return "", false
 	}
@@ -129,81 +128,8 @@ func completeStreamingHeredoc(input string) (string, bool) {
 	return input + "\n" + delimiter + "\n", true
 }
 
-func liveDiffShellHeredoc(redirect *syntax.Redirect, partial bool) (string, bool) {
-	if (redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc) ||
-		(redirect.N != nil && redirect.N.Value != "0") {
-		return "", false
-	}
-	if redirect.Hdoc == nil {
-		return "", true
-	}
-	var source strings.Builder
-	for _, part := range redirect.Hdoc.Parts {
-		literal, ok := part.(*syntax.Lit)
-		if !ok {
-			return "", false
-		}
-		source.WriteString(literal.Value)
-	}
-	content := source.String()
-	quoted := false
-	for _, part := range redirect.Word.Parts {
-		switch part := part.(type) {
-		case *syntax.SglQuoted, *syntax.DblQuoted:
-			quoted = true
-		case *syntax.Lit:
-			quoted = quoted || strings.Contains(part.Value, `\`)
-		}
-	}
-	if !quoted {
-		var err error
-		content, err = expand.Document(&expand.Config{}, redirect.Hdoc)
-		if err != nil {
-			return "", false
-		}
-	}
-	if redirect.Op == syntax.DashHdoc {
-		lines := strings.Split(content, "\n")
-		for index := range lines {
-			lines[index] = strings.TrimLeft(lines[index], "\t")
-		}
-		content = strings.Join(lines, "\n")
-	}
-	if partial {
-		content = strings.TrimSuffix(content, "\n")
-	}
-	return content, true
-}
-
 func shellInterpreterName(interpreter string) string {
 	return shellsyntax.InterpreterIdentity(interpreter)
-}
-
-func shellCatLiteral(word *syntax.Word) (string, bool) {
-	if word == nil || !shellCatLiteralParts(word.Parts, false) {
-		return "", false
-	}
-	value, err := expand.Literal(&expand.Config{}, word)
-	return value, err == nil
-}
-
-func shellCatLiteralParts(parts []syntax.WordPart, quoted bool) bool {
-	for _, part := range parts {
-		switch value := part.(type) {
-		case *syntax.SglQuoted:
-		case *syntax.DblQuoted:
-			if !shellCatLiteralParts(value.Parts, true) {
-				return false
-			}
-		case *syntax.Lit:
-			if !quoted && strings.ContainsAny(value.Value, "~*?[") {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func shellFilePath(directory, path string) string {
@@ -225,7 +151,7 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 			if assign.Append || assign.Array != nil || assign.Index != nil {
 				return false
 			}
-			if _, literal := shellCatLiteral(assign.Value); assign.Value != nil && !literal {
+			if _, literal := shellsyntax.Literal(assign.Value); assign.Value != nil && !literal {
 				return false
 			}
 		}
@@ -234,7 +160,7 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 	if len(call.Assigns) != 0 {
 		return false
 	}
-	name, literal := shellCatLiteral(call.Args[0])
+	name, literal := shellsyntax.Literal(call.Args[0])
 	if !literal {
 		return false
 	}
@@ -244,7 +170,7 @@ func liveDiffShellPreviewNeutral(stmt *syntax.Stmt) bool {
 		return false
 	}
 	for index, argument := range call.Args[1:] {
-		value, literal := shellCatLiteral(argument)
+		value, literal := shellsyntax.Literal(argument)
 		// mchanges revert and apply rewrite files that later previews read.
 		if !literal || index == 0 && name == "mchanges" && (value == "revert" || value == "apply") {
 			return false

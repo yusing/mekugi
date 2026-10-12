@@ -16,6 +16,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 // Replay uses retained semantic items, never shell execution or provider calls.
@@ -359,7 +361,7 @@ func replayItem(raw jsontext.Value) (appServerItem, bool, error) {
 			i.Command = args[2]
 		} else {
 			for j := range args {
-				args[j] = shellQuoteArgument(args[j])
+				args[j] = shellsyntax.QuoteArgument(args[j])
 			}
 			i.Command = strings.Join(args, " ")
 		}

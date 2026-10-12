@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
@@ -416,7 +418,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		if observation == nil && len(execs) != 0 {
 			// Retained patch cells still need literal reader identities
 			// for host-trace matching, without a baseline or writer window.
-			observation = &execObservation{Commands: execs, Class: execNeutral.String(), CodeMode: true}
+			observation = &execObservation{Commands: execs, Class: execscope.Neutral.String(), CodeMode: true}
 		}
 		// Retain the provider input and captured baseline before exposing any
 		// executable call. The stock host remains the only edit executor.
@@ -440,7 +442,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 // write outside its source-named scope. Neutral readers take no checkpoint;
 // without one, an unscoped call stays unobserved as before.
 func (t *mekugiResponseTransform) snapshotExecObservation(observation *execObservation, observed bool) (*execObservation, bool) {
-	if observation != nil && observation.Class != execNeutral.String() && t.proxy != nil && t.proxy.replayStore != nil {
+	if observation != nil && observation.Class != execscope.Neutral.String() && t.proxy != nil && t.proxy.replayStore != nil {
 		if tree := t.proxy.replayStore.snapshots.checkpoint(t.ctx, t.directory); tree != "" {
 			observation.Tree = tree
 			observation.Roots = execAddRoot(observation.Roots, t.directory)
@@ -497,7 +499,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 // turning formatter/managed effects into persisted authored changes.
 func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *execObservation, patches []nativePatchObservation, commands []execCommandInput, dynamic, codeMode bool) bool {
 	display := authored
-	if (authored == nil || authored.Class == execOpaque.String()) && t.proxy != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
+	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.proxy != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
 		env := t.execCaptureEnvironment(patches)
 		env.previewOnly = true
 		if preview, ok := captureExecObservation(commands, dynamic, codeMode, env); ok {

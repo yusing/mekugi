@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -61,7 +63,7 @@ func waitExecScopePreviewGone(t *testing.T, broker *liveDiffBroker, id string) {
 func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 	t.Parallel()
 	observation := execObservation{
-		Class:  execScoped.String(),
+		Class:  execscope.Scoped.String(),
 		Reason: "additional VCS targets were unresolved",
 		Files: []execFileSnapshot{
 			{Path: "/scope/tracked.txt"},
@@ -90,7 +92,7 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 	for index := range 8 {
 		ref := fmt.Sprintf("watch-%d", index)
 		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
-		registry.preview(ref, execObservation{Class: execOpaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller")
+		registry.preview(ref, execObservation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller")
 	}
 	broker.publishPreview(diffview.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
 		Status: diffview.PreviewEdit, Input: "cat /tmp/example\n"}, false)
@@ -391,7 +393,7 @@ func TestExecPreviewEditThenTestKeepsKnownTarget(t *testing.T) {
 	if !observed || observation == nil || len(observation.Files) != 1 || observation.Files[0].Path != path || observation.Files[0].Content != "before\n" {
 		t.Fatalf("lost literal edit target: %+v", observation)
 	}
-	if observation.Class != execOpaque.String() || !strings.Contains(observation.Reason, "go") {
+	if observation.Class != execscope.Opaque.String() || !strings.Contains(observation.Reason, "go") {
 		t.Fatalf("test side effects incorrectly treated as fully scoped: %+v", observation)
 	}
 	footer := execScopePreviewFooter(*observation)

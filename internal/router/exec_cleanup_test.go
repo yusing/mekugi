@@ -10,6 +10,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/internal/execscope"
+
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -17,33 +19,33 @@ import (
 func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
 	commands := []execCommandInput{{Command: "first"}, {Command: "command spare"}}
 	labels := []string{"shared", "label spare"}
-	programs := []execProgram{{Label: "shared"}, {Label: "program spare"}}
+	programs := []execscope.Program{{Label: "shared"}, {Label: "program spare"}}
 	roots := []string{"/workspace/project", "/root spare"}
 	files := []execFileSnapshot{{Path: "/workspace/first"}, {Path: "/file spare"}}
 	omitted := []execOmission{{Path: "/workspace/omitted"}, {Path: "/omission spare"}}
 	listings := []execListing{{Root: "/workspace/listed"}, {Root: "/listing spare"}}
 	excluded := []string{"/workspace/excluded", "/excluded spare"}
 	first := &execObservation{
-		Commands: commands[:1], Class: execScoped.String(), Reason: "first reason", Labels: labels[:1],
+		Commands: commands[:1], Class: execscope.Scoped.String(), Reason: "first reason", Labels: labels[:1],
 		Files: files[:1], Omitted: omitted[:1], Listings: listings[:1], Roots: roots[:1],
 		Programs: programs[:1], Excluded: excluded[:1], WindowStart: time.Unix(30, 0),
 	}
 	second := &execObservation{
-		Commands: []execCommandInput{{Command: "second"}}, Class: execOpaque.String(), Reason: "stronger reason",
-		Labels: []string{"shared", "second"}, Programs: []execProgram{{Label: "shared"}, {Label: "second"}},
+		Commands: []execCommandInput{{Command: "second"}}, Class: execscope.Opaque.String(), Reason: "stronger reason",
+		Labels: []string{"shared", "second"}, Programs: []execscope.Program{{Label: "shared"}, {Label: "second"}},
 		Roots: []string{"/workspace", "/outside"}, Files: []execFileSnapshot{{Path: "/workspace/second"}},
 		Omitted: []execOmission{{Path: "/workspace/omitted-2"}}, Listings: []execListing{{Root: "/workspace/listed-2"}},
 		Excluded: []string{"/workspace/excluded-2"}, WindowStart: time.Unix(20, 0), CodeMode: true,
 	}
 	third := &execObservation{
 		Commands: []execCommandInput{{Command: "third"}}, Labels: []string{"third"},
-		Programs: []execProgram{{Label: "third"}}, Roots: []string{"/workspace/child", "/last"},
+		Programs: []execscope.Program{{Label: "third"}}, Roots: []string{"/workspace/child", "/last"},
 		Files: []execFileSnapshot{{Path: "/workspace/third"}}, WindowStart: time.Unix(10, 0),
 	}
 	firstBefore := *first
 	firstBefore.Commands = append([]execCommandInput(nil), first.Commands...)
 	firstBefore.Labels = append([]string(nil), first.Labels...)
-	firstBefore.Programs = append([]execProgram(nil), first.Programs...)
+	firstBefore.Programs = append([]execscope.Program(nil), first.Programs...)
 	firstBefore.Roots = append([]string(nil), first.Roots...)
 	firstBefore.Files = append([]execFileSnapshot(nil), first.Files...)
 	firstBefore.Omitted = append([]execOmission(nil), first.Omitted...)
@@ -70,7 +72,7 @@ func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
 	if got, want := merged.Labels, []string{"shared", "second", "third"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("labels = %v, want %v", got, want)
 	}
-	if got, want := merged.Programs, []execProgram{{Label: "shared"}, {Label: "second"}, {Label: "third"}}; !reflect.DeepEqual(got, want) {
+	if got, want := merged.Programs, []execscope.Program{{Label: "shared"}, {Label: "second"}, {Label: "third"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("programs = %+v, want %+v", got, want)
 	}
 	if got, want := merged.Roots, []string{"/workspace", "/outside", "/last"}; !reflect.DeepEqual(got, want) {
@@ -88,7 +90,7 @@ func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
 	if got, want := merged.Excluded, []string{"/workspace/excluded", "/workspace/excluded-2"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("excluded = %v, want %v", got, want)
 	}
-	if merged.Class != execOpaque.String() || merged.Reason != "stronger reason" || !merged.CodeMode || !merged.WindowStart.Equal(time.Unix(10, 0)) {
+	if merged.Class != execscope.Opaque.String() || merged.Reason != "stronger reason" || !merged.CodeMode || !merged.WindowStart.Equal(time.Unix(10, 0)) {
 		t.Errorf("scalar merge fields = %+v", merged)
 	}
 }
@@ -108,7 +110,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		sub := broker.subscribe()
 		broker.takePreviews(sub) // Discard initial scope synchronization.
 		const previewID = "running:cleanup-test"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
+		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		}, nil)
 		synctest.Wait()
@@ -186,7 +188,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		}
 
 		const previewID = "running:admission-retry"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
+		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		}, nil)
 		synctest.Wait()
@@ -240,7 +242,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 		sub := broker.subscribe()
 		broker.takePreviews(sub)
 		const previewID = "running:large-unchanged"
-		go runExecScopePreview(ctx, broker, execObservation{Class: execScoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
+		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
 		}, nil)
 		advanceExecCleanupPreviewTicker(t)
