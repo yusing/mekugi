@@ -1,0 +1,6 @@
+"\x1b[38;2;130;170;255m─ \x1b[1m5 Agents\x1b[22;2m · 3\x1b[22m ─────────────────────────────────────────────────────────────────────────────────────\x1b[m"
+" \x1b[38;5;37;1m●\x1b[m \x1b[38;2;86;212;221;3mmain\x1b[m          \x1b[2mIdle\x1b[m                                                                          \x1b[2m  0%\x1b[m "
+"\x1b[48;2;62;72;86m \x1b[38;5;37;1m●\x1b[39;22m \x1b[38;2;86;212;221;3mbatch\x1b[39;23m         \x1b[2mIdle\x1b[22m                                                                          \x1b[2m    \x1b[22m \x1b[m"
+" \x1b[38;5;75m·\x1b[m \x1b[38;5;133;1mbatch_worker\x1b[m  \x1b[2mIdle\x1b[m                                                                          \x1b[2m  0%\x1b[m "
+" Roles: \x1b[38;5;75m●\x1b[m review-correctness                                                                        "
+"plain after roster                                                                                  "

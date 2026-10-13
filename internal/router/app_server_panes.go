@@ -14,7 +14,8 @@ import (
 )
 
 // Session preferences are separate from correctness/replay records. Applied
-// settings are host-confirmed defaults, never execution authorization or live work.
+// settings are host-confirmed defaults. Batch sandbox snapshots restore host
+// settings through Codex; they never authorize execution or revive live work.
 type nativePaneState struct {
 	Version          int                   `json:"version"`
 	Focus            int                   `json:"focus"`
@@ -27,6 +28,9 @@ type nativePaneState struct {
 	ResumeObserved   time.Time             `json:"resumeObserved,omitzero"`
 	ResumeEvidence   nativeResumeEvidence  `json:"resumeEvidence,omitzero"`
 }
+
+// Applied sandbox policies can contain more than the old layout-only budget.
+const nativePaneStateBytes = 1 << 20
 
 // Pre-resume evidence is already authoritative history, not confirmation of
 // the corrective update. TierKnown preserves absence in older turn contexts.
@@ -48,10 +52,11 @@ func (s nativeResumeEvidence) config() map[string]any {
 // Model identifies a complete snapshot. Empty effort/tier explicitly select the
 // host default, rather than meaning that a saved value is unknown.
 type nativeAppliedSettings struct {
-	Model    string    `json:"model"`
-	Effort   string    `json:"effort"`
-	Tier     string    `json:"tier"`
-	Observed time.Time `json:"observed"`
+	SandboxPolicy string    `json:"sandboxPolicy,omitzero"`
+	Model         string    `json:"model"`
+	Effort        string    `json:"effort"`
+	Tier          string    `json:"tier"`
+	Observed      time.Time `json:"observed"`
 }
 
 func (s nativeAppliedSettings) config() map[string]any {
@@ -148,16 +153,19 @@ func (p *nativePanePersistence) read(workspace, thread string) (nativePaneState,
 		return nativePaneState{}, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, 4097))
+	data, err := io.ReadAll(io.LimitReader(f, nativePaneStateBytes+1))
 	if err != nil {
 		return nativePaneState{}, err
 	}
-	if len(data) > 4096 {
+	if len(data) > nativePaneStateBytes {
 		return nativePaneState{}, errors.New("pane state exceeds size limit")
 	}
 	var state nativePaneState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nativePaneState{}, err
+	}
+	if state.Version == 1 && state.Focus == 5 {
+		state.Focus = 3 // The former Orchestration selector now belongs to Agents.
 	}
 	if state.Version != 1 || state.Focus < 0 || state.Focus > 4 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && (state.DiffOpen || state.JournalOpen) || state.DiffOpen && state.JournalOpen || state.Focus == 4 && !state.JournalOpen {
 		return nativePaneState{}, errors.New("invalid or unsupported pane state")
@@ -189,6 +197,9 @@ func (p *nativePanePersistence) save(u *terminalUI, now time.Time, flush bool) e
 	if err != nil {
 		return err
 	}
+	if len(data) > nativePaneStateBytes {
+		return errors.New("pane state exceeds size limit")
+	}
 	if err := os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
 		return err
 	}
@@ -198,7 +209,7 @@ func (p *nativePanePersistence) save(u *terminalUI, now time.Time, flush bool) e
 // Only authoritative start/resume results and settings notifications reach here.
 // Flush applied settings immediately; dragging still uses the existing debounce.
 func (u *appServerUI) retainAppliedSettings() {
-	if u.panes == nil || u.panes.path == "" || u.model == "" || u.settings.restoreEffort {
+	if u.panes == nil || u.panes.path == "" || u.model == "" || u.settings.restoreEffort || u.resumeSandbox != nil {
 		return
 	}
 	if u.panes.workspace != u.session.cwd || u.panes.thread != u.thread {
@@ -208,6 +219,14 @@ func (u *appServerUI) retainAppliedSettings() {
 		}
 	}
 	u.panes.settings = nativeAppliedSettings{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: u.now()}
+	if u.navigation != nil && u.navigation.owner != u && u.statusConfig.PermissionProfile.Kind() == 'n' && u.statusConfig.Sandbox.Type != "" {
+		policy, err := json.Marshal(&u.statusConfig.Sandbox)
+		if err != nil {
+			u.paneError(err)
+			return
+		}
+		u.panes.settings.SandboxPolicy = string(policy)
+	}
 	u.panes.resumeObserved = time.Time{}
 	u.panes.resumeEvidence = nativeResumeEvidence{}
 	u.paneError(u.panes.save(u.shell, u.now(), true))

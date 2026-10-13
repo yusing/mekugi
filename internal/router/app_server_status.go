@@ -44,12 +44,29 @@ func statusNotice(value string) []statusField {
 }
 
 type appServerStatusConfig struct {
-	Provider string         `json:"modelProvider"`
-	Approval jsontext.Value `json:"approvalPolicy"`
-	Sandbox  struct {
-		Type string `json:"type"`
-	} `json:"sandbox"`
-	Instructions []string `json:"instructionSources"`
+	Provider          string                 `json:"modelProvider"`
+	Approval          jsontext.Value         `json:"approvalPolicy"`
+	ApprovalsReviewer string                 `json:"approvalsReviewer"`
+	PermissionProfile jsontext.Value         `json:"activePermissionProfile"`
+	WorkspaceRoots    []string               `json:"runtimeWorkspaceRoots"`
+	Sandbox           appServerSandboxPolicy `json:"sandbox"`
+	Instructions      []string               `json:"instructionSources"`
+}
+
+// Full host policy, not the sandbox label shown by /status.
+// Source: codex-rs/app-server-protocol/src/protocol/v2/permissions.rs, SandboxPolicy.
+type appServerSandboxPolicy struct {
+	Type                string         `json:"type"`
+	NetworkAccess       jsontext.Value `json:"networkAccess,omitempty"`
+	WritableRoots       []string       `json:"writableRoots,omitempty"`
+	ExcludeTmpdirEnvVar bool           `json:"excludeTmpdirEnvVar,omitzero"`
+	ExcludeSlashTmp     bool           `json:"excludeSlashTmp,omitzero"`
+}
+
+func (p appServerSandboxPolicy) equal(other appServerSandboxPolicy) bool {
+	return p.Type == other.Type && string(p.NetworkAccess) == string(other.NetworkAccess) &&
+		slices.Equal(p.WritableRoots, other.WritableRoots) &&
+		p.ExcludeTmpdirEnvVar == other.ExcludeTmpdirEnvVar && p.ExcludeSlashTmp == other.ExcludeSlashTmp
 }
 
 func (u *appServerUI) displayServiceTier() string {

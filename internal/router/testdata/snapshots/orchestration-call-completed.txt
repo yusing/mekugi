@@ -1,0 +1,14 @@
+✗ Main                                                                           12:00:00
+│ Start batch: coordinator permission profile is unavailable; cannot inherit permissions
+
+└ Prepare batch · completed · 80ms
+
+
+
+
+
+
+
+╭────────────────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                      │
+╰─────────────────────────────────────────────────────────────────────────────────── 0% ─╯

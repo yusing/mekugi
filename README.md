@@ -51,6 +51,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
   See the [Journal pane](#journal-pane).
 - **Live subagent activity.** See model, effort, progress, and message excerpts
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
+- **Isolated parallel work.** [Orchestration](#orchestration) coordinates fresh
+  Codex threads in separate checkouts, then Main reviews and integrates their results.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
   click an Edit event to open its captured file and hunk.
 - **Readable command output.** Open [searchable retained output](#output-dialog).
@@ -183,6 +185,34 @@ not return. UI histories above 16 MiB cannot resume. Third-party `exec resume`/`
 fork` uses the mode's default model unless given `-m`. See [resume
 details](doc/spec/native_ui.md).
 
+### Orchestration
+
+Use `/orchestrate ISSUES` in Main's composer to have children implement and validate
+changes in isolated checkouts while Main coordinates, reviews and integrates.
+For change requests, local commits and linear Git integration are included,
+subject to explicit restrictions; diagnosis-only assignments stay read-only.
+Supported sources are Git, SVN and unversioned directories.
+Git is required; SVN sources also need the SVN client. Git and SVN batches start
+from locally recorded committed baselines, excluding local edits; unversioned
+batches snapshot the current tree with ignore rules. Main prepares required ignored
+inputs before starting each fresh child thread.
+
+Bare `/orchestrate` opens this Main's batch picker. Enter on an Orchestration row
+in Agents switches threads; `Ctrl-B`, then `[` / `]` cycles them. Each thread keeps
+its draft and local Activity filter while background threads continue working.
+Switching keeps the visible Activity, Diff or Journal pane and keyboard focus.
+Input targets the viewed thread; labeled questions and approvals return answers to their source.
+Orchestration calls show their status in Main or Activity; click returned output
+or errors to inspect them. A completed call does not mean its batch is complete.
+
+Main reviews and integrates Git batches with linear native Git history, or SVN/unversioned batches
+with shadow writeback, then accepts their journal tasks. Explicit cleanup removes
+accepted, idle, clean run-owned checkouts and unchanged copied evidence. Branches,
+manifests, journals and shadow history remain; unfinished or unintegrated work stays.
+`/quit` asks for confirmation while batches run. Resume restores the roster;
+interrupted turns stay interrupted. See the [orchestration contract](doc/spec/orchestrate.md)
+for preparation, integration, cleanup and recovery details.
+
 ### Approvals
 
 Codex approvals open over an empty composer; otherwise press `Ctrl-B`, then `q`. Arrows
@@ -225,7 +255,7 @@ Activity unless you select another pane. Narrow terminals show one pane.
 | --- | --- |
 | Focus Main / Diff / Activity / Agents / Journal | `Ctrl-B`, then `1` / `2` / `3` / `4` / `5` |
 | Resize splits | Drag dividers, or `Ctrl-B`, then arrows; Up/Down in Agents adjusts its height |
-| Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
+| Resize Diff navigator without orchestration; otherwise cycle threads | `Ctrl-B`, then `[` / `]` |
 | Browse Main history | `Ctrl-B`, then PageUp / PageDown |
 | Return to Main | Ctrl-C |
 

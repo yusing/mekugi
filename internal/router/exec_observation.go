@@ -25,6 +25,7 @@ import (
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/fileidentity"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
@@ -803,7 +804,7 @@ func execCopySource(entry execscope.Entry, source string) string {
 }
 
 func execFileStamp(info os.FileInfo) string {
-	return strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10) + ":" + execFileIdentity(info)
+	return strconv.FormatInt(info.Size(), 10) + ":" + strconv.FormatInt(info.ModTime().UnixNano(), 10) + ":" + fileidentity.FromInfo(info)
 }
 
 func execWatchFileStamp(path string, info os.FileInfo) string {

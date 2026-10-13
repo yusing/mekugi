@@ -28,7 +28,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 		Params struct {
 			ThreadID      string         `json:"threadId"`
 			Approval      string         `json:"approvalPolicy"`
-			Sandbox       string         `json:"sandbox"`
+			Permissions   string         `json:"permissions"`
 			Config        map[string]any `json:"config"`
 			ModelProvider string         `json:"modelProvider"`
 		} `json:"params"`
@@ -36,7 +36,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	if err := json.Unmarshal(lines[2], &request); err != nil {
 		t.Fatal(err)
 	}
-	if request.Method != "thread/resume" || request.Params.ThreadID != "saved" || request.Params.Approval != "never" || request.Params.Sandbox != "danger-full-access" || request.Params.Config["model"] != "override" || request.Params.ModelProvider != "routed" {
+	if request.Method != "thread/resume" || request.Params.ThreadID != "saved" || request.Params.Approval != "never" || request.Params.Permissions != ":danger-full-access" || request.Params.Config["model"] != "override" || request.Params.ModelProvider != "routed" {
 		t.Fatalf("wrong resume request: %+v", request)
 	}
 	w.Reset()

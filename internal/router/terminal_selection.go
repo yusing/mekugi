@@ -309,10 +309,11 @@ func (u *terminalUI) selectionAction(action byte) {
 	}
 	switch action {
 	case 'r':
+		editor := u.main.promptEditor()
 		description, source := s.mentionDescription()
-		u.main.insertSelection(description, s.text(), source)
-		u.main.refreshPicker()
-		u.main.run = runNone
+		editor.insertSelection(description, s.text(), source)
+		editor.refreshPicker()
+		editor.run = runNone
 		u.focus = 0
 		u.output = nil
 	case 'c':

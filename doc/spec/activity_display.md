@@ -454,7 +454,10 @@ and never copied back into its conversation. Visible provider reasoning summarie
 reasoning are not exposed. Agent wait, start, resume, interrupt,
 user-input waits, and MCP calls have explicit action labels. These describe
 observed requests, not unobserved native execution or completion. Wait previews
-include targets explicitly supplied in the call. Sibling and ancestor continuation guides
+include targets explicitly supplied in the call. Active waits show the requested
+timeout in muted text when the call's arguments are available, using the same display for native
+agents and orchestration threads. Unknown timeouts stay unlabeled; elapsed time
+does not imply a timeout. Sibling and ancestor continuation guides
 form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Main
 and the right column, with its own resizable divider. It shares local selection with the activity feed on the right;
 no extra process, broker, or transport is needed. Each agent has one row: status, name,
@@ -536,8 +539,11 @@ redundant underline hint or full-view click target. Neither action changes
 transcript following. Roster rows are clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
 `k`/`j` move through all agents followed by each individual agent, stopping at
-either end. Main's activity belongs to Main, so Activity neither shows nor counts
-Main: roster navigation skips its row, and clicking it restores the shared feed.
+either end. The viewed root's activity belongs to Main, so Activity neither
+shows nor counts it, including during orchestration. Native roster navigation
+skips its row, and clicking it restores the shared feed. Independent thread rows
+switch the viewed shell; Activity shows only that thread's native subagents,
+and native child filters stay within that thread.
 `a` toggles the filter in Activity and Agents; the hint describes the next action
 as `a all` when filtered and `a only` otherwise. `n`/`Tab` and `p` also select agents.
 The roster mouse wheel scrolls its viewport without changing selection, filtering,

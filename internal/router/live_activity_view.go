@@ -28,50 +28,55 @@ const (
 // Main and Activity each own one of these views, sharing the renderer. Entries carry
 // sequence numbers, so a reconnect snapshot merges without duplicating retained rows.
 type liveActivityView struct {
-	clock          func() time.Time // Shared with the owning replay UI, nil for live time.
-	agents         []activityPaneAgent
-	entries        []liveActivityRecord
-	revision       uint64 // Monotonic presentation revision shared by records.
-	lastSeq        uint64
-	selected       string
-	hovered        string
-	only           bool
-	hits           []liveActivityHit
-	following      bool
-	offset         int
-	rosterOffset   int
-	rosterManual   bool
-	rosterSelected string
-	rosterEnd      int
-	skillsHover    string // Agent whose loaded-skill count is under the pointer.
-	skillsRequest  string // Agent whose active skills a roster click asked to open.
-	skills         *liveActivitySkills
-	retiredSkills  map[string]activeSkillSet // Loads in trimmed entries, still in their agent's context.
-	skillHistory   map[string]bool           // Paginated owners: false until their current context is known.
-	unseen         int
-	status         string
-	historyHint    string // Intentionally unloaded child history, separate from missing evidence.
-	historyOrder   bool   // Stable IDs need not follow presentation order after older-page insertion.
-	roleColors     map[string]string
-	livePreviews   map[string][]string // Temporary caller-local transcript replacements.
-	feedOnly       bool
-	conversation   bool                        // Main uses the same feed/state with full, unclipped messages.
-	childrenOnly   bool                        // Native Main already owns root activity; keep it out of the auxiliary feed.
-	bare           bool                        // The shell's pane title replaces the heading and footer rows.
-	focused        bool                        // Native Activity shows its key hints only while it has keyboard focus.
-	lineCounts     map[string]livediff.Counts  // Captured edit lines by caller key, for the native roster.
-	netCounts      *livediff.Counts            // Composed project outcome, independent of roster rows.
-	rosterPace     map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
-	rosterLines    map[string]livediff.Counts  // Line counts as last shown by the roster.
-	rosterEasing   bool                        // The last roster frame showed metrics still easing.
-	mainView       *liveActivityView           // Roster reads Main's state without duplicating its feed entries.
-	painter        activityui.Painter
-	osc            livediff.OSC
-	runs           map[liveActivityRunKey]liveActivityRun
-	syntaxWindow   *liveActivitySyntaxWindow    // Invocation-local rows being decorated within a run.
-	paced          map[uint64]liveActivityPace  // Live invocations still revealing their operations, by entry.
-	events         map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
-	pacedSeq       uint64                       // Entries up to this sequence have been considered for pacing.
+	clock                 func() time.Time // Shared with the owning replay UI, nil for live time.
+	agents                []activityPaneAgent
+	orchestration         []activityPaneAgent
+	orchestrationSources  map[string]*liveActivityView
+	orchestrationLabels   map[string]string
+	orchestrationRetained map[string]bool
+	entries               []liveActivityRecord
+	revision              uint64 // Monotonic presentation revision shared by records.
+	lastSeq               uint64
+	selected              string
+	hovered               string
+	only                  bool
+	hits                  []liveActivityHit
+	following             bool
+	offset                int
+	rosterOffset          int
+	rosterManual          bool
+	rosterSelected        string
+	rosterEnd             int
+	skillsHover           string // Agent whose loaded-skill count is under the pointer.
+	skillsRequest         string // Agent whose active skills a roster click asked to open.
+	skills                *liveActivitySkills
+	retiredSkills         map[string]activeSkillSet // Loads in trimmed entries, still in their agent's context.
+	skillHistory          map[string]bool           // Paginated owners: false until their current context is known.
+	unseen                int
+	status                string
+	historyHint           string // Intentionally unloaded child history, separate from missing evidence.
+	historyOrder          bool   // Stable IDs need not follow presentation order after older-page insertion.
+	roleColors            map[string]string
+	livePreviews          map[string][]string // Temporary caller-local transcript replacements.
+	feedOnly              bool
+	conversation          bool                        // Main uses the same feed/state with full, unclipped messages.
+	hideRootRoster        bool                        // Independent orchestration roots have their own roster.
+	childrenOnly          bool                        // Native Main already owns root activity; keep it out of the auxiliary feed.
+	bare                  bool                        // The shell's pane title replaces the heading and footer rows.
+	focused               bool                        // Native Activity shows its key hints only while it has keyboard focus.
+	lineCounts            map[string]livediff.Counts  // Captured edit lines by caller key, for the native roster.
+	netCounts             *livediff.Counts            // Composed project outcome, independent of roster rows.
+	rosterPace            map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
+	rosterLines           map[string]livediff.Counts  // Line counts as last shown by the roster.
+	rosterEasing          bool                        // The last roster frame showed metrics still easing.
+	mainView              *liveActivityView           // Roster reads Main's state without duplicating its feed entries.
+	painter               activityui.Painter
+	osc                   livediff.OSC
+	runs                  map[liveActivityRunKey]liveActivityRun
+	syntaxWindow          *liveActivitySyntaxWindow    // Invocation-local rows being decorated within a run.
+	paced                 map[uint64]liveActivityPace  // Live invocations still revealing their operations, by entry.
+	events                map[string]liveActivityEvent // Each agent's latest standalone event, which settles its output.
+	pacedSeq              uint64                       // Entries up to this sequence have been considered for pacing.
 
 	expansion       uint8 // 0 default, 1 expanded events, 2 expanded all.
 	feedSpans       []liveActivitySpan
@@ -399,11 +404,13 @@ func (v *liveActivityView) keepSelection() {
 }
 
 // feedAgents are the roster rows the feed can filter to. Native Activity
-// never shows Main's entries, so it neither counts nor selects Main.
+// never shows independent roots, so it neither counts nor selects their rows.
 func (v *liveActivityView) feedAgents() []liveActivityRosterRow {
 	rows := v.roster()
 	if v.childrenOnly {
-		rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
+		rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool {
+			return row.agent.Name == "/root" || strings.HasPrefix(row.agent.Name, "/Orchestration/")
+		})
 	}
 	return rows
 }
@@ -470,7 +477,7 @@ func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 			return false
 		}
 	}
-	if v.childrenOnly && entry.Agent == "/root" {
+	if v.childrenOnly && (entry.Agent == "/root" || entry.native != nil && entry.native.orchestrated) {
 		return false
 	}
 	return !v.only || entry.Agent == v.selected
@@ -494,12 +501,19 @@ func (v *liveActivityView) roster() []liveActivityRosterRow {
 	visit = func(under string, depth int) {
 		for _, agent := range v.agents {
 			if parent(agent.Name) == under {
+				if agent.Name == "/root" && v.hideRootRoster {
+					visit(agent.Name, depth)
+					continue
+				}
 				rows = append(rows, liveActivityRosterRow{agent: agent, depth: depth})
 				visit(agent.Name, depth+1)
 			}
 		}
 	}
 	visit("", 0)
+	for _, agent := range v.orchestration {
+		rows = append(rows, liveActivityRosterRow{agent: agent})
+	}
 	return rows
 }
 
@@ -660,7 +674,7 @@ func (v *liveActivityView) pointSnippet(action byte, row, column int) bool {
 // they do: operations, compact reasoning and collapsed narrative text open the shared dialog.
 // Under the pointer, the block underlines its count.
 func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActivitySnippet, width int) bool {
-	if block.Kind == "summary" || block.Kind == "error" {
+	if (block.Kind == "summary" || block.Kind == "error") && block.Output == nil {
 		details := block.Kind == "summary" && v.painter.ReasoningElided(*block, width) || block.Kind == "error" && activityui.ErrorHasDetails(*block)
 		block.Hovered = details && v.snippet == snippet
 		return details
@@ -676,14 +690,20 @@ func (v *liveActivityView) clickTarget(block *activityui.Block, snippet liveActi
 	return true
 }
 
-// outputBlock reports an operation the output dialog opens: one with output,
+// outputBlock reports an event the output dialog opens: one with output,
 // still running, carrying source a row may clip, or standing for several
 // reads. Edits open their captured change instead, and questions their dock.
 func outputBlock(block activityui.Block) bool {
-	if block.Kind != "op" && block.Kind != "reads" || block.EditSource != "" || len(block.Questions) > 0 {
+	if block.EditSource != "" || len(block.Questions) > 0 {
 		return false
 	}
-	return block.Output != nil || len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
+	if block.Output != nil {
+		return true
+	}
+	if block.Kind != "op" && block.Kind != "reads" {
+		return false
+	}
+	return len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
 }
 
 // snippetBlock is the block a snippet names in the last frame.

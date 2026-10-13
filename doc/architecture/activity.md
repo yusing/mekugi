@@ -11,7 +11,12 @@ Child attribution uses validated stable thread relationships and canonical agent
 identity, never routing-session IDs or message text. Request preparation precedes
 identity admission. Deferred observations retain their originating thread rather
 than borrowing the identity of a later draining request. Ambiguous ancestry suppresses
-projection without suppressing execution or substantive child output.
+projection without suppressing execution or substantive child output. Native
+events waiting for host metadata retain their source thread and arrival order.
+Complete, unconflicted authenticated ancestry can admit them to an already
+subscribed root after an observational read fails or later identity arrives.
+Recovery changes presentation only; it neither resumes a process nor creates an
+execution request.
 
 The native client binds its root to the activity collector for scoped observations. App-server events supply live activity; authenticated recipient-input
 observations supplement assignment and directed-message bodies. Those observations
@@ -19,7 +24,9 @@ are display data, not assistant speech. Native activity does not wait for a root
 provider response or create model turns.
 
 There is no legacy response projection or inline activity fallback. Main activity
-comes from app-server.
+comes from app-server. Each viewed root's transcript belongs to Main; its Activity
+feed admits only native descendants in that thread tree. Orchestration switching
+does not admit the coordinator, viewed root or sibling batch roots into that feed.
 
 The roster consumes canonical [per-thread usage](usage.md), not a second accounting
 store. Its final edit total consumes the shared saved-review composition, not a sum
@@ -47,7 +54,7 @@ do not establish replacement. This presentation does not change host transcripts
 
 The UI owns request-local child pagination state, keyed by stable root
 and child IDs. Codex owns visible lineage, including inherited fork items and
-archived descendants. Session switches retire response correlation and cursors;
+archived descendants. Session replacement retires response correlation and cursors;
 fresh resume rediscovers history instead of reviving continuation handles.
 
 Children with `historyMode: "paginated"` use a metadata-only `thread/read`,
@@ -68,7 +75,7 @@ silently replaced by an unbounded read.
 
 Active skills reconstruct from Codex event history on exit/resume, without a new durable store; see the [display contract](../spec/native_ui.md#session-status).
 Paginated child skill scans are independent of lazy Activity reads: descending `thread/items/list` pages cover turns and inherited history, stopping at the latest completed compaction.
-Only one bounded scan runs at a time; incomplete or failed scans leave counts unknown with a notice. Live resets override scans; session switches retire correlation. Observation neither resumes children nor invokes a model.
+Only one bounded scan runs at a time; incomplete or failed scans leave counts unknown with a notice. Live resets override scans; session replacement retires correlation. Observation neither resumes children nor invokes a model.
 
 Unloaded history, loading, and failed reads have separate presentation states.
 Pending rollout placements stay with their child until their item/turn is

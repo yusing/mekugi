@@ -255,6 +255,30 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 	}
 }
 
+func TestLiveActivityNativeFilterExcludesIndependentRoots(t *testing.T) {
+	v := newLiveActivityView()
+	v.childrenOnly = true
+	v.agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
+	v.orchestration = []activityPaneAgent{{Name: "/Orchestration/main"}, {Name: "/Orchestration/batch"}}
+	v.selected, v.only = "/Orchestration/batch", true
+	v.keepSelection()
+	if v.selected != "/root/worker" {
+		t.Fatal("thread row remained an Activity selection", v.selected)
+	}
+	for _, key := range []byte{'n', 'p', 'n'} {
+		v.handleKey("", key)
+		if v.selected != "/root/worker" {
+			t.Fatal("native Activity cycled to an independent root", v.selected)
+		}
+	}
+	v.agents = v.agents[:1]
+	v.keepSelection()
+	v.showAgent(1)
+	if v.selected != "" || len(v.feedAgents()) != 0 {
+		t.Fatal("root-only roster acquired a native Activity filter", v.selected)
+	}
+}
+
 func TestRosterJoinsConsecutiveReasoning(t *testing.T) {
 	v := newLiveActivityView()
 	v.childrenOnly = true

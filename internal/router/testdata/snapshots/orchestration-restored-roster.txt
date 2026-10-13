@@ -1,0 +1,6 @@
+─ 5 Agents · 5 ─────────────────────────────────────────────────────────────────────────────────────
+ ● main       Idle                                                                                 
+ ● batch      Interrupted · not subscribed                                                          
+ ● prepared   Prepared                                                                             
+ ● failed     Failed                                                                               
+ ● uncertain                                                                                       

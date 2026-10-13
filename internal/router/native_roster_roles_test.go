@@ -65,6 +65,12 @@ func TestUISnapshotNativeRosterDurableRoles(t *testing.T) {
 	if u.session.agent("/root/review").Role != "" {
 		t.Fatal("display fallback changed host metadata")
 	}
+	u.navigation = &orchestrateNavigation{owner: u, viewed: u, views: map[string]*appServerUI{u.thread: u}, order: []string{u.thread}}
+	u.orchestrationRoster()
+	if u.agents.agents[3].Role != "review-correctness" {
+		t.Fatal("orchestration roster discarded authenticated native role evidence")
+	}
+	u.navigation = nil
 	if u.agents.agents[len(u.agents.agents)-1].Role != "" {
 		t.Fatal("conflicting or unrelated role leaked")
 	}

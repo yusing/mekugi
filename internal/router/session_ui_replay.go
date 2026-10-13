@@ -244,7 +244,7 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	if p.prefix {
 		p.prefix = false
 		if key >= '1' && key <= '5' {
-			p.ui.shell.selectNativePane(int(key - '1'))
+			p.ui.shell.selectNativePane(nativePaneIndex(int(key - '0')))
 		}
 		return false, nil
 	}

@@ -4,9 +4,10 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "66"
+  revision: "67"
   files:
     - journal.md
+    - orchestrate.md
     - router.md
     - native_ui.md
     - transport.md
@@ -39,6 +40,7 @@ linked, not copied.
 ## Inventory
 
 - [`REQ-JOURNAL-001`](journal.md): durable per-thread milestone journals
+- [`REQ-ORCHESTRATE-001`](orchestrate.md): isolated Codex batch preparation and coordination
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
 - [`REQ-TRANSPORT-001`](transport.md): Codex-facing and provider Responses transports

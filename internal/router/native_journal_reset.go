@@ -8,7 +8,7 @@ import (
 )
 
 func (u *appServerUI) ensureJournalReset() {
-	if u.reset != nil || u.proxy == nil || u.proxy.replayStore == nil || u.journal == nil || u.journal.workspace == "" {
+	if u.orchestrateCheckoutUnavailable() || u.reset != nil || u.proxy == nil || u.proxy.replayStore == nil || u.journal == nil || u.journal.workspace == "" {
 		return
 	}
 	u.journal.mu.Lock()

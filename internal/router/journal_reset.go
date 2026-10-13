@@ -70,11 +70,11 @@ func (j *threadJournal) continuationCandidate(turn string) *journalResetIntent {
 	}
 	if turn != "" && j.TurnID == turn {
 		for _, event := range j.Events {
-			if event.Seq <= j.TurnStartSeq || !event.Transition || event.Fields.State != "done" || !j.SliceParents[journalParent(event.Path)] {
+			if event.Seq <= j.TurnStartSeq || !event.Transition || !journalStateCompleted(event.Fields.State) || !j.SliceParents[journalParent(event.Path)] {
 				continue
 			}
 			i := j.treeIndex(event.Path)
-			if i < 0 || j.Items[i].State != "done" {
+			if i < 0 || !journalStateCompleted(j.Items[i].State) {
 				continue
 			}
 			for _, item := range j.Items {
@@ -119,7 +119,7 @@ func (j *threadJournal) localJournalTask(path string) bool {
 			continue
 		}
 		if item.Path == path || strings.HasPrefix(path, item.Path+"/") {
-			if item.Agent != "" || item.State == "done" || item.State == "dropped" {
+			if item.Agent != "" || journalStateClosed(item.State) {
 				return false
 			}
 		}

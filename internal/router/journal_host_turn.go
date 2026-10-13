@@ -165,5 +165,18 @@ func (p *mekugiProxy) applyJournal(ctx context.Context, workspace, thread, recei
 	if err := p.refreshJournalChildLifecycles(ctx, workspace, thread); err != nil {
 		return nil, err
 	}
-	return p.journals.apply(ctx, p.replayStore, workspace, thread, receipt, mutations)
+	mutations, err := p.prepareJournalAcceptance(ctx, workspace, thread, receipt, mutations)
+	if err != nil {
+		return nil, err
+	}
+	paths, blocks, err := p.journals.applyWithBlocks(ctx, p.replayStore, workspace, thread, receipt, mutations)
+	if runtime := p.orchestration; err == nil && runtime != nil && runtime.store != nil {
+		blocks = slices.DeleteFunc(blocks, func(e orchestrateEvent) bool { return e.directory != runtime.store.Directory })
+		if len(blocks) != 0 {
+			runtime.eventsMu.Lock()
+			runtime.journalEvents = append(runtime.journalEvents, blocks...)
+			runtime.eventsMu.Unlock()
+		}
+	}
+	return paths, err
 }

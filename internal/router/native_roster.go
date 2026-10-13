@@ -20,7 +20,7 @@ func (v *liveActivityView) nativeTitle() (string, string) {
 	if v.only {
 		rows := v.feedAgents()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		detail = v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
+		detail = v.painter.Agent(strings.TrimPrefix(v.selected, "/Orchestration/")) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
 	if v.historyHint != "" {
 		detail = strings.TrimSpace(activityui.Dim + v.historyHint + activityui.Undim + " " + detail)
@@ -41,12 +41,122 @@ type nativeRosterItem struct {
 	finished []liveActivityRosterRow
 }
 
+func nativeThreadRow(name string) bool {
+	return strings.HasPrefix(name, "/Orchestration/")
+}
+
+// Thread rows precede the viewed thread's native tree. Its root already has
+// a thread row, so keep the native children without a duplicate root.
+func (v *liveActivityView) nativeRosterRows() []liveActivityRosterRow {
+	rows := v.roster()
+	if len(v.orchestration) == 0 {
+		return rows
+	}
+	nativeEnd := len(rows) - len(v.orchestration)
+	threads := rows[nativeEnd:]
+	rows = rows[:nativeEnd]
+	rootShown := slices.ContainsFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
+	rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool {
+		return row.agent.Name == "/root" || nativeThreadRow(row.agent.Name)
+	})
+	if rootShown {
+		for i := range rows {
+			rows[i].depth = max(0, rows[i].depth-1)
+		}
+	}
+	return slices.Concat(threads, rows)
+}
+
+func (v *liveActivityView) scrollNativeRoster(step int) {
+	v.rosterOffset = max(0, min(v.rosterOffset+step, len(v.nativeRosterRows())-1))
+	v.rosterManual, v.hovered = true, ""
+}
+
+// Independent thread selection does not change the native Activity filter.
+func (u *terminalUI) handleNativeRosterKey(escape string, key byte) (string, bool) {
+	v := u.agents
+	if u.main == nil || u.main.navigation == nil {
+		return v.handleRosterKey(escape, key)
+	}
+	if key == 27 {
+		return "\x1b", false
+	}
+	if escape != "" {
+		escape += string(key)
+		if escape == "\x1b[" || escape == "\x1bO" {
+			return escape, false
+		}
+		switch escape {
+		case "\x1b[A", "\x1bOA":
+			key = 'k'
+		case "\x1b[B", "\x1bOB":
+			key = 'j'
+		default:
+			return "", false
+		}
+	}
+	switch key {
+	case 3, 'q':
+		return "", true
+	case '\r', '\n':
+		if nativeThreadRow(v.rosterSelected) {
+			u.main.pickOrchestratedThread(v.rosterSelected)
+		} else if v.rosterSelected != "" {
+			v.selected, v.only = v.rosterSelected, true
+			v.follow()
+		}
+	case 'j', 'n', '\t', 'k', 'p':
+		rows := v.nativeRosterRows()
+		step := 1
+		if key == 'k' || key == 'p' {
+			step = -1
+		}
+		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.rosterSelected })
+		index = max(-1, min(index+step, len(rows)-1))
+		v.rosterManual, v.hovered = false, ""
+		v.rosterSelected = ""
+		if index < 0 {
+			v.only = false
+			v.follow()
+		} else {
+			v.rosterSelected = rows[index].agent.Name
+			if !nativeThreadRow(v.rosterSelected) {
+				v.selected, v.only = v.rosterSelected, true
+				v.follow()
+			}
+		}
+	case 'a':
+		v.only = !v.only
+		v.follow()
+	}
+	return "", false
+}
+
+func (u *terminalUI) pointNativeRoster(action byte, row, column int) {
+	v := u.agents
+	for _, hit := range v.hits {
+		if !hit.skills && hit.row == row && column >= hit.first && column <= hit.last {
+			if action == '\r' {
+				v.rosterSelected = hit.agent
+				v.rosterManual = false
+				if nativeThreadRow(hit.agent) {
+					v.hovered, v.skillsHover = "", ""
+					u.main.pickOrchestratedThread(hit.agent)
+					return
+				}
+			}
+			break
+		}
+	}
+	v.pointAgent(action, row, column)
+}
+
 // nativeRoster fits the roster to its content within limit rows, under a rule
 // carrying the counts and session totals. Unfocused, finished agents fold
 // into one row. Rows show state, then timer, edited lines, tokens, cost and
 // turns; turns drop first when narrow.
 func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused bool) []string {
-	rows := v.roster()
+	rows := v.nativeRosterRows()
 	if len(rows) == 0 || width < 20 {
 		return nil
 	}
@@ -55,7 +165,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var items []nativeRosterItem
 	fold := -1
 	for _, row := range rows {
-		if !focused && row.agent.Name != "/root" && v.agentStatus(row.agent) == '✓' && !(v.only && row.agent.Name == v.selected) {
+		if !focused && !nativeThreadRow(row.agent.Name) && row.agent.Name != "/root" && v.agentStatus(row.agent) == '✓' && !(v.only && row.agent.Name == v.selected) {
 			if fold < 0 {
 				fold = len(items)
 				items = append(items, nativeRosterItem{})
@@ -71,6 +181,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	costKnown, partial := false, false
 	tokensPartial := false
 	for _, row := range rows {
+		if nativeThreadRow(row.agent.Name) && v.orchestrationSources[row.agent.Name] != v {
+			continue
+		}
 		input += row.agent.InputTokens
 		output += row.agent.OutputTokens
 		tokensPartial = tokensPartial || row.agent.UsagePartial || row.agent.Turns > 0 && !row.agent.TokensKnown && row.agent.InputTokens == 0 && row.agent.OutputTokens == 0
@@ -107,7 +220,11 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	if len(totals) > 0 {
 		right = activityui.Dim + strings.Join(totals, " · ") + activityui.Undim
 	}
-	lines := []string{nativeRule("─", "─", "─", nativeTitle(4, "Agents", detail, focused), right, width, nativeBorder(focused))}
+	digit, title := 5, "Agents"
+	lines := []string{nativeRule("─", "─", "─", nativeTitle(digit, title, detail, focused), right, width, nativeBorder(focused))}
+	if limit == 0 {
+		return lines
+	}
 
 	limit = max(1, limit)
 	legend := ""
@@ -138,18 +255,49 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			limit--
 		}
 	}
-	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.agent.Name == v.selected }))
-	start := 0
+	cursor := v.selected
+	if len(v.orchestration) != 0 {
+		cursor = v.rosterSelected
+	}
+	// Keep Main and working agents above the scrollable idle/history rows.
+	// On very short screens Main wins; leave space to scroll the remaining rows.
+	var pinned []nativeRosterItem
 	if len(items) > limit {
-		start = max(0, min(selected-limit+2, len(items)-limit+1))
+		items = slices.DeleteFunc(items, func(item nativeRosterItem) bool {
+			name := item.row.agent.Name
+			if item.finished == nil && len(pinned) < max(1, limit-2) &&
+				(name == "/root" || name == "/Orchestration/main" || item.row.agent.Responding) {
+				pinned = append(pinned, item)
+				return true
+			}
+			return false
+		})
+		limit -= len(pinned)
 	}
-	end := min(len(items), start+limit)
-	if end < len(items) {
-		end-- // Room for the hidden-count row.
+	selected := max(0, slices.IndexFunc(items, func(item nativeRosterItem) bool { return item.finished == nil && item.row.agent.Name == cursor }))
+	capacity := limit
+	if limit > 1 && len(items) > limit {
+		capacity-- // Room for the hidden-count row.
 	}
+	start := 0
+	if capacity > 0 && len(items) > capacity {
+		start = max(0, min(selected-capacity+1, len(items)-capacity))
+	}
+	if capacity > 0 && v.rosterManual {
+		start = min(v.rosterOffset, max(0, len(items)-capacity))
+	}
+	end := min(len(items), start+capacity)
+	visible := slices.Concat(pinned, items[start:end])
 	nameWidth := 4
-	for _, row := range rows {
+	for _, item := range visible {
+		if item.finished != nil {
+			continue
+		}
+		row := item.row
 		name, _ := rosterTree(rows, slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name }), 0)
+		if nativeThreadRow(row.agent.Name) {
+			name = strings.TrimPrefix(row.agent.Name, "/Orchestration/")
+		}
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(8, width/4))
@@ -163,7 +311,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	var laid []agentLine
 	var parts [][nativeMetricParts]string
 	widest := 0
-	for _, item := range items[start:end] {
+	for _, item := range visible {
 		if item.finished != nil {
 			var names []string
 			for _, row := range item.finished {
@@ -176,6 +324,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		row := item.row
 		index := slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name })
 		tree, _ := rosterTree(rows, index, 0)
+		if nativeThreadRow(row.agent.Name) {
+			tree = strings.TrimPrefix(row.agent.Name, "/Orchestration/")
+		}
 		tree = strings.TrimRight(liveActivityMiddle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
 		color := activityui.Color(row.agent.Name)
@@ -183,6 +334,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 			color = "\x1b[1m" + v.painter.Theme.Accent()
 		}
 		name := activityui.DimColor(row.agent.Name) + tree[:split] + activityui.Undim + color + v.hoverName(tree[split:], row.agent.Name) + activityui.Reset
+		if nativeThreadRow(row.agent.Name) {
+			name = "\x1b[3m" + v.painter.Theme.Accent() + v.hoverName(tree, row.agent.Name) + activityui.Reset
+		}
 		gap := "  "
 		if focused {
 			gap += strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(tree)))
@@ -232,14 +386,14 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		next++
 		line = ansi.Truncate(line, width, "…")
-		if item.row.agent.Name == v.selected && (focused || v.only) {
+		if focused && item.row.agent.Name == cursor || v.only && item.row.agent.Name == v.selected {
 			line = v.selectRow(line, width)
 		}
 		lines = append(lines, line)
 		v.hits = append(v.hits, liveActivityHit{row: len(lines), first: 1, last: width, agent: item.row.agent.Name})
 	}
-	if hidden := len(items) - end; hidden > 0 {
-		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+activityui.Undim, width, "…"))
+	if hidden := len(items) - (end - start); hidden > 0 && limit > 1 {
+		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · scroll", hidden)+activityui.Undim, width, "…"))
 	}
 	if legend != "" {
 		lines = append(lines, legend)
@@ -255,7 +409,10 @@ const nativeMetricParts = 11
 
 func nativeRosterMetricParts(v *liveActivityView, agent activityPaneAgent, now time.Time) [nativeMetricParts]string {
 	var parts [nativeMetricParts]string
-	if agent.Name != "/root" {
+	if v.orchestrationRetained[agent.Name] {
+		return parts
+	}
+	if agent.Name != "/root" && v.orchestrationSources[agent.Name] != v {
 		// Main's context and output rate belong to the composer.
 		parts[10] = outputThroughputLabel(agent.OutputThroughput)
 		context := contextWindowLabel(agent)
@@ -322,6 +479,9 @@ func (v *liveActivityView) paceRosterMetrics(rows []liveActivityRosterRow, now t
 	for i, row := range rows {
 		agent := &rows[i].agent
 		lines, hasLines := v.lineCounts[agent.Name]
+		if source := v.orchestrationSources[agent.Name]; source != nil {
+			lines, hasLines = source.lineCounts["/root"]
+		}
 		target := rosterMetrics{float64(agent.InputTokens), float64(agent.OutputTokens), float64(agent.ContextTokens), agent.Cost, float64(lines.Added), float64(lines.Removed)}
 		p, seen := v.rosterPace[row.agent.Name]
 		switch {
@@ -467,6 +627,16 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 // agentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
 func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string {
+	if label, exists := v.orchestrationLabels[agent.Name]; exists && (label != "" || v.orchestrationRetained[agent.Name]) {
+		if label == "" {
+			return ""
+		}
+		return liveActivityMiddle(strings.ToUpper(label[:1])+label[1:], width)
+	}
+	if source := v.orchestrationSources[agent.Name]; source != nil {
+		agent.Name = "/root"
+		return source.agentState(agent, width)
+	}
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"
@@ -481,13 +651,13 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string
 	}
 	switch {
 	case kind == "error":
-		return activityui.Red + "error" + activityui.Reset
+		return activityui.Red + "Error" + activityui.Reset
 	case !agent.Responding && agent.Final:
-		return activityui.Dim + "done" + activityui.Undim
+		return activityui.Dim + "Done" + activityui.Undim
 	case !agent.Responding:
-		return activityui.Dim + "idle" + activityui.Undim
+		return activityui.Dim + "Idle" + activityui.Undim
 	case len(blocks) == 0:
-		return "working"
+		return "Working"
 	}
 	summary, _ := v.current(agent, time.Now(), width)
 	return summary

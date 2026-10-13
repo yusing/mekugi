@@ -86,6 +86,27 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	}
 }
 
+func TestNativePaneStateMergedAgentsFocus(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	u := newAppServerSessionTestUI(t, "/workspace")
+	p := new(nativePanePersistence)
+	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p.path, []byte(`{"version":1,"focus":5}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.open(u.shell, "/workspace", "thread", true); err != nil {
+		t.Fatal(err)
+	}
+	if u.shell.focus != 3 {
+		t.Fatal("former thread panel focus did not restore Agents")
+	}
+}
+
 func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
@@ -148,7 +169,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{"{", `{"version":2}`, `{"version":1,"focus":99}`, `{"version":1,"focus":1,"diffOpen":false}`, strings.Repeat("x", 4097)} {
+	for _, body := range []string{"{", `{"version":2}`, `{"version":1,"focus":99}`, `{"version":1,"focus":1,"diffOpen":false}`, strings.Repeat("x", nativePaneStateBytes+1)} {
 		if err := os.WriteFile(p.path, []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -161,6 +182,11 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 			t.Fatal("layout failure was fatal or invisible")
 		}
 	}
+	p.settings.SandboxPolicy = strings.Repeat("x", nativePaneStateBytes)
+	if err := p.save(u.shell, time.Now(), true); err == nil {
+		t.Fatal("saved settings that exceed the reader budget")
+	}
+	p.settings.SandboxPolicy = ""
 	blocked := filepath.Join(t.TempDir(), "blocked")
 	if err := os.WriteFile(blocked, nil, 0600); err != nil {
 		t.Fatal(err)

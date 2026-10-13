@@ -1,0 +1,294 @@
+package router
+
+import (
+	"context"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/yusing/mekugi/internal/orchestrate"
+)
+
+type orchestratePrepareInput struct {
+	TaskName string                      `json:"task_name"`
+	Evidence []orchestrate.EvidenceInput `json:"evidence,omitempty"`
+}
+
+type orchestrateInterruptInput struct {
+	Target string `json:"target"`
+}
+
+type orchestrateWaitInput struct {
+	TimeoutMS int            `json:"timeout_ms"`
+	Targets   jsontext.Value `json:"targets,omitempty"`
+}
+
+func orchestrateWaitTargets(raw jsontext.Value) ([]string, error) {
+	var all string
+	if len(raw) == 0 || json.Unmarshal(raw, &all) == nil && all == "all" {
+		return nil, nil
+	}
+	var targets []string
+	if json.Unmarshal(raw, &targets) != nil || len(targets) == 0 {
+		return nil, errors.New(`targets must be "all" or a nonempty list of task names or /root/task_name paths`)
+	}
+	var names []string
+	for _, target := range targets {
+		name := strings.TrimPrefix(target, "/root/")
+		if name == "" {
+			return nil, errors.New("wait targets must contain nonempty task names")
+		}
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+type orchestrateFollowupInput struct {
+	Target  string `json:"target"`
+	Message string `json:"message"`
+}
+
+// Preparation is coordinator-only. Cross-checkout child authority is granted
+// separately when a run has a confirmed host child identity.
+func orchestrateMain(ctx context.Context, proxy *mekugiProxy, workspace, thread, name string) error {
+	return proxy.journals.transaction(ctx, proxy.replayStore, workspace, thread, func(j *threadJournal, exists bool) error {
+		if !exists || !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.Author != "/root" {
+			return errors.New("orchestration preparation requires a proven main thread")
+		}
+		if run := j.Orchestration; run != nil {
+			if run.Main != thread || run.Workspace != workspace || run.Directory != proxy.orchestration.store.Directory {
+				return errors.New("orchestration requires the retained run coordinator; nested runs are unavailable")
+			}
+			if _, err := proxy.orchestration.store.Snapshot(workspace, thread); err != nil {
+				return err
+			}
+		}
+		if name != "" {
+			journals, failures, err := proxy.journals.workspaceJournals(proxy.replayStore, workspace)
+			if err != nil {
+				return err
+			}
+			for id, child := range journals {
+				if child.Parent == thread && child.Author == "/root/"+name {
+					if failures[id] != nil {
+						return failures[id]
+					}
+					return fmt.Errorf("task_name %q already belongs to a native child", name)
+				}
+			}
+		}
+		return errJournalUnchanged
+	})
+}
+
+func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.Server {
+	store.ShadowSnapshot = orchestrateShadowSnapshot
+	store.SVNBaseline = orchestrateSVNBaseline
+	proxy.orchestration = &orchestrateRuntime{store: store, commands: make(chan *orchestrateCommand)}
+	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi-orchestrate", Version: "1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{}})
+	for _, tool := range []struct{ name, description string }{
+		{"followup_task", "Start an idle batch turn or steer a running batch. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Report only a new blocker requiring action or one final handoff per assignment. Use request_user_input_async for human decisions. Repeats return retained progress."},
+		{"send_message", "Deliver input to a running batch; queue without waking an idle batch. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Report only a new blocker requiring action or one final handoff per assignment. Use request_user_input_async for human decisions. Repeats return retained progress."},
+	} {
+		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target", "message"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}, "message": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateFollowupInput) (*mcp.CallToolResult, any, error) {
+			ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+			if err != nil {
+				return nil, nil, err
+			}
+			defer release()
+			key, err := orchestrateCallIdentity(request.Params.GetMeta(), thread)
+			if err != nil {
+				return nil, nil, err
+			}
+			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, tool: tool.name, callID: key, input: orchestrateSpawnInput{Message: input.Message}, reply: make(chan orchestrateResult, 1)}
+			return proxy.orchestration.call(command)
+		})
+	}
+	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next selected batch completion, message, journal blocker, failure, question or approval. Other events remain queued. Timeout or cancellation ends only the wait. Messages identify sender; prompts identify host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+		"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000, "description": "Wait limit in milliseconds. Omit for no timeout."},
+		"targets": map[string]any{"description": "Batches in this run: all (default), or a nonempty task-name or /root/task_name list. Returns the next event from any selected batch.", "oneOf": []any{
+			map[string]any{"type": "string", "const": "all"},
+			map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string", "pattern": "^(/root/)?[a-z][a-z0-9_]{0,63}$"}},
+		}},
+	}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateWaitInput) (*mcp.CallToolResult, any, error) {
+		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+		if err != nil {
+			return nil, nil, err
+		}
+		defer release()
+		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+			return nil, nil, err
+		}
+		if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
+			return nil, nil, err
+		}
+		targets, err := orchestrateWaitTargets(input.Targets)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(targets) != 0 {
+			batches, err := store.Snapshot(workspace, thread)
+			if err != nil {
+				return nil, nil, err
+			}
+			for _, target := range targets {
+				if !slices.ContainsFunc(batches, func(b orchestrate.Batch) bool { return b.TaskName == target }) {
+					return nil, nil, fmt.Errorf("wait target %q is not a retained batch in this coordinator run; use list_agents", target)
+				}
+			}
+		}
+		waitCtx := ctx
+		if input.TimeoutMS != 0 {
+			var cancel context.CancelFunc
+			waitCtx, cancel = context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
+			defer cancel()
+		}
+		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, tool: "wait_agent", waitTargets: targets, reply: make(chan orchestrateResult, 1)}
+		result, value, err := proxy.orchestration.call(command)
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, map[string]any{"timed_out": true}, nil
+		}
+		return result, value, err
+	})
+	for _, tool := range []struct{ name, description string }{
+		{"interrupt_agent", "Request interruption of a live batch turn. The host's turn completion confirms the outcome."},
+		{"integrate", "Main merges an idle shadow batch with current source edits and writes only changed paths. Conflicts write nothing. Retains partial progress; repeats verify completed writes and reconcile confirmed effects before continuing pending paths. Uncertain or changed paths require inspection. Main marks its bound journal task accepted separately after verifying writeback."},
+		{"cleanup", "Main removes an accepted idle Git or shadow batch checkout, safe run-owned submodule clones and unchanged evidence copies. Retains changed nested commits in source refs. Requires current journal acceptance and settled input. Keeps branches, private repositories, manifests and unsafe copies; reports partial cleanup. Repeats reconcile confirmed removal."},
+	} {
+		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateInterruptInput) (*mcp.CallToolResult, any, error) {
+			ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+			if err != nil {
+				return nil, nil, err
+			}
+			defer release()
+			if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+				return nil, nil, err
+			}
+			if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
+				return nil, nil, err
+			}
+			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, tool: tool.name, reply: make(chan orchestrateResult, 1)}
+			result, value, err := proxy.orchestration.call(command)
+			if batch, ok := value.(orchestrate.Batch); (tool.name == "cleanup" || tool.name == "integrate") && err != nil && ok && batch.TaskName != "" {
+				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, batch, nil
+			}
+			return result, value, err
+		})
+	}
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "spawn_agent", Description: "Similar to mekugi_collaboration.spawn_agent, but starts a fresh independent Codex thread in an isolated checkout from prepare. Native collaboration tools cannot reach these threads. The message carries the complete assignment, constraints and checks. Omitted model, reasoning effort and service tier inherit Main's effective settings. Bind the integration task to /root/task_name; child completion leaves it open. Git integration uses native Git; accept only after verifying reachable or patch-equivalent batch commits and merge-free child/source history after the baseline, including committed submodule gitlinks. SVN and unversioned shadow use integrate. Repeats return retained launch progress without starting another thread.",
+		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name", "message"}, "properties": map[string]any{
+			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}, "message": map[string]any{"type": "string", "minLength": 1},
+			"model": map[string]any{"type": "string", "minLength": 1}, "reasoning_effort": map[string]any{"type": "string", "minLength": 1}, "service_tier": map[string]any{"type": "string"},
+		}},
+	}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateSpawnInput) (*mcp.CallToolResult, any, error) {
+		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+		if err != nil {
+			return nil, nil, err
+		}
+		defer release()
+		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+			return nil, nil, err
+		}
+		if err := orchestrateMain(ctx, proxy, workspace, thread, input.TaskName); err != nil {
+			return nil, nil, err
+		}
+		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, tool: "spawn_agent", input: input, reply: make(chan orchestrateResult, 1)}
+		return proxy.orchestration.call(command)
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "prepare", Description: "Main prepares an isolated checkout at the committed Git or SVN baseline, or an unversioned source snapshot. Nested runs are unavailable. Git includes locally initialized submodules. Optional evidence copies named absolute source files into run state and returns handoff paths. Evidence paths accompany the first child input. Copy required checkout-relative ignored inputs before spawning; versioned source edits do not follow. Repeats preserve prepared files.",
+		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name"}, "properties": map[string]any{
+			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+			"evidence":  map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"name", "source"}, "properties": map[string]any{"name": map[string]any{"type": "string", "minLength": 1}, "source": map[string]any{"type": "string", "minLength": 1}}}},
+		}},
+	}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestratePrepareInput) (*mcp.CallToolResult, any, error) {
+		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+		if err != nil {
+			return nil, nil, err
+		}
+		defer release()
+		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+			return nil, nil, err
+		}
+		if err := orchestrateMain(ctx, proxy, workspace, thread, input.TaskName); err != nil {
+			return nil, nil, err
+		}
+		batch, err := store.Prepare(ctx, workspace, thread, input.TaskName)
+		if err == nil {
+			err = proxy.journals.bindRun(ctx, proxy.replayStore, workspace, thread, journalRun{Directory: store.Directory, Workspace: workspace, Main: thread})
+		}
+		if err == nil && len(input.Evidence) != 0 {
+			batch, err = store.RetainEvidence(ctx, workspace, thread, input.TaskName, input.Evidence)
+		}
+		return nil, batch, err
+	})
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_agents", Description: "List this coordinator's retained batches, including prepared checkouts; does not start or resume threads",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)},
+		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}},
+	}, func(ctx context.Context, request *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
+		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
+		if err != nil {
+			return nil, nil, err
+		}
+		defer release()
+		if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
+			return nil, nil, err
+		}
+		batches, err := store.List(ctx, workspace, thread)
+		return nil, map[string]any{"agents": batches}, err
+	})
+	return server
+}
+
+func orchestrateCallIdentity(meta mcp.Meta, thread string) (string, error) {
+	call, _ := meta["callId"].(string)
+	var turn struct {
+		Thread string `json:"thread_id"`
+		ID     string `json:"turn_id"`
+	}
+	encoded, err := json.Marshal(meta[codexTurnMetadataHeader])
+	if err != nil || json.Unmarshal(encoded, &turn) != nil || turn.Thread != thread || turn.ID == "" || call == "" {
+		return "", errors.New("orchestration requires host call and turn identity")
+	}
+	return fmt.Sprintf("%q/%q/%q", thread, turn.ID, call), nil
+}
+
+func (runtime *orchestrateRuntime) call(command *orchestrateCommand) (*mcp.CallToolResult, any, error) {
+	if !runtime.active.Load() {
+		return nil, nil, errors.New("orchestration requires a running native UI")
+	}
+	select {
+	case runtime.commands <- command:
+	case <-command.ctx.Done():
+		return nil, nil, command.ctx.Err()
+	}
+	select {
+	case result := <-command.reply:
+		if result.delivery != nil {
+			d := result.delivery
+			value := map[string]any{"id": d.ID, "target": d.Target, "state": d.State}
+			if d.TurnID != "" {
+				value["turn_id"] = d.TurnID
+			}
+			if d.Error != "" {
+				value["error"] = d.Error
+			}
+			return nil, value, result.err
+		}
+		if result.event != nil {
+			return nil, result.event, result.err
+		}
+		return nil, result.batch, result.err
+	case <-command.ctx.Done():
+		return nil, nil, command.ctx.Err()
+	}
+}

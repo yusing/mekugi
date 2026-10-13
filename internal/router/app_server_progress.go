@@ -2,6 +2,7 @@ package router
 
 import (
 	"slices"
+	"strconv"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -119,6 +120,9 @@ func appServerWaitProgress(item appServerItem, method string) *activityui.Block 
 		return nil
 	}
 	text := "Waiting for agent"
+	if item.waitTimeoutMS > 0 {
+		text += " (timeout " + strconv.FormatFloat(float64(item.waitTimeoutMS)/1000, 'f', -1, 64) + "s)"
+	}
 	if method == "item/completed" || method == "turn/completed" {
 		text = "Finished waiting"
 		if item.Status == "inProgress" {

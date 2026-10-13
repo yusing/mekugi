@@ -1,0 +1,16 @@
+┌ 4 Journal ───────────────────────────────────────────────────────────── space expand · d details ┐
+│ No journal entries.                                                                              │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+─ 5 Agents · 24 · 8 working ────────────────────────────────────────────────────────────────────────
+ ● main       Idle                                                                0%
+ ◐ 01-worker  Working                                                             0%  0s · just now
+ ◐ 02-worker  Working                                                             0%  0s · just now
+ ● 09-worker  Idle                                                                0%
+   +20 more · scroll
+
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents⁸   enter switch/filter · j/k agent · a only ·

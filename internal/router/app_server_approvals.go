@@ -34,6 +34,7 @@ type nativeApprovalChoice struct {
 // Source: codex-rs/tui/src/bottom_pane/approval_overlay.rs exec_options,
 // patch_options and permissions_options @7135b303d.
 type nativeApproval struct {
+	order        uint64
 	thread, turn string
 	item         string
 	request      jsontext.Value // Host server request; nil for a guarded write.
@@ -74,10 +75,11 @@ func guardApprovalIdentity(request *vcsApproval) guardApprovalKey {
 }
 
 // threadPermissions keeps --yolo's policy on thread requests. Approval mode
-// leaves both settings to Codex configuration and invocation overrides.
+// leaves both settings to Codex configuration and invocation overrides. Select
+// a named profile so the host retains provenance for independent child threads.
 func (u *appServerUI) threadPermissions(params map[string]any) map[string]any {
 	if !u.approvalMode {
-		params["approvalPolicy"], params["sandbox"] = "never", "danger-full-access"
+		params["approvalPolicy"], params["permissions"] = "never", ":danger-full-access"
 	}
 	return params
 }
@@ -110,6 +112,7 @@ func (u *appServerUI) approvalDirectory(cwd string) []string {
 }
 
 func (u *appServerUI) addApproval(a *nativeApproval) {
+	a.order = u.nextPromptOrder()
 	u.approvals.pending = append(u.approvals.pending, a)
 	u.recordApproval(a, "Pending Approval")
 	u.approvals.autoOpen = true
@@ -637,12 +640,31 @@ func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalCho
 // autoOpenApprovals takes over an empty, idle composer. Explicitly hiding the
 // dock leaves it closed until reopened or another approval arrives.
 func (u *appServerUI) autoOpenApprovals() {
-	if u.approvals.autoOpen && !u.approvals.open && len(u.approvals.pending) > 0 && u.questions.active == nil && u.composerVacant() {
-		u.openApprovals()
+	u = u.viewedUI()
+	source := u.approvalSource()
+	if source != nil && u.promptEditor() == u && !u.approvals.open && u.questions.active == nil && u.composerVacant() {
+		for _, v := range u.promptViews() {
+			if v.approvals.autoOpen && len(v.approvals.pending) > 0 {
+				u.openApprovals()
+				return
+			}
+		}
 	}
 }
 
 func (u *appServerUI) openApprovals() bool {
+	if source := u.approvalSource(); source != nil {
+		if !source.approvals.open {
+			u.hidePromptEditors()
+			source.openLocalApprovals()
+		}
+		u.focusPrompt()
+		return true
+	}
+	return false
+}
+
+func (u *appServerUI) openLocalApprovals() bool {
 	if len(u.approvals.pending) == 0 {
 		return false
 	}
@@ -675,6 +697,7 @@ func (u *appServerUI) hideApprovals() {
 }
 
 func (u *appServerUI) approvalKey(key string) (bool, error) {
+	u = u.promptEditor()
 	if !u.approvals.open || len(u.approvals.pending) == 0 {
 		return false, nil
 	}
@@ -682,7 +705,9 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 	switch key {
 	case "\x1b":
 		u.hideApprovals()
-		u.approvals.autoOpen = false
+		for _, v := range u.promptViews() {
+			v.approvals.autoOpen = false
+		}
 	case "\x1b[A", "\x10":
 		a.selected = (a.selected - 1 + len(a.choices)) % len(a.choices)
 	case "\x1b[B", "\x0e":
@@ -726,6 +751,10 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 }
 
 func (u *appServerUI) approvalRows(width, height int) []string {
+	u = u.approvalSource()
+	if u == nil {
+		return nil
+	}
 	d := &u.approvals
 	if len(d.pending) == 0 {
 		return nil
@@ -738,6 +767,9 @@ func (u *appServerUI) approvalRows(width, height int) []string {
 			label += "s"
 		}
 		label += " pending" + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " review" + reset
+		if source := u.promptLabel(d.pending[0].thread); source != "" {
+			label = "! " + livediff.Safe(source, false) + " · " + label
+		}
 		return []string{ansi.Truncate(label, width, "…")}
 	}
 	a := d.pending[0]
@@ -753,6 +785,9 @@ func (u *appServerUI) approvalRows(width, height int) []string {
 		header += strings.Repeat(" ", gap) + dim + state + reset
 	}
 	rows := []string{ansi.Truncate(header, inner, "")}
+	if source := u.promptLabel(a.thread); source != "" {
+		rows = append(rows, pickerWrap(dim+"from "+livediff.Safe(source, false)+reset, inner)...)
+	}
 	foot := pickerWrap(accent+fmt.Sprintf("1–%d", len(a.choices))+reset+dim+" choose · "+reset+accent+"enter"+reset+dim+" confirm · "+reset+accent+"esc"+reset+dim+" hide"+reset, inner)
 	if a.denialChoice() >= 0 {
 		foot = pickerWrap(accent+fmt.Sprintf("1–%d", len(a.choices))+reset+dim+" choose · "+reset+accent+"type"+reset+dim+" deny with reason · "+reset+accent+"enter"+reset+dim+" confirm · "+reset+accent+"esc"+reset+dim+" hide"+reset, inner)

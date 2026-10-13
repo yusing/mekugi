@@ -122,21 +122,26 @@ func TestJournalMCPRead(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	store := newJournalStore()
-	for _, identity := range []struct{ thread, parent, author string }{
-		{"root", "", "/root"}, {"child", "root", "/root/child"}, {"other", "root", "/root/other"},
+	for _, identity := range []struct{ workspace, thread, parent, author string }{
+		{workspace, "root", "", "/root"}, {workspace, "child", "root", "/root/child"}, {workspace, "other", "root", "/root/other"},
+		{"", "child", "root", "/root/child"}, {"", "unscoped", "", "/root"},
 	} {
 		ctx, release, err := replay.beginSession(t.Context(), identity.thread, "seed")
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer release()
-		if err := store.initialize(ctx, replay, workspace, identity.thread, identity.author, ""); err != nil {
+		if err := store.initialize(ctx, replay, identity.workspace, identity.thread, identity.author, ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := store.bindIdentity(ctx, replay, workspace, identity.thread, identity.parent, identity.author, true); err != nil {
+		if err := store.bindIdentity(ctx, replay, identity.workspace, identity.thread, identity.parent, identity.author, true); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.apply(ctx, replay, workspace, identity.thread, "seed", []journalMutation{{Op: "add", Title: new(identity.thread)}}); err != nil {
+		title := identity.thread
+		if identity.workspace == "" && identity.thread == "child" {
+			title = "unscoped recovery"
+		}
+		if _, err := store.apply(ctx, replay, identity.workspace, identity.thread, "seed", []journalMutation{{Op: "add", Title: new(title)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -205,6 +210,7 @@ func TestJournalMCPRead(t *testing.T) {
 		want, failure       string
 	}{
 		{name: "own", thread: "child", want: "child"},
+		{name: "unscoped only", thread: "unscoped", want: "unscoped"},
 		{name: "ancestor", thread: "child", agent: "/root", want: "root"},
 		{name: "foreign", thread: "child", agent: "/root/other", failure: "isError"},
 		{name: "missing identity", failure: "identity"},

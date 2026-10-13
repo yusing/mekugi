@@ -732,10 +732,17 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	if !v.conversation && block.Kind == "message" {
 		color = activityui.Gutter(block.From, p.Theme)
 	}
+	if block.Orchestrated {
+		color = p.Theme.Accent()
+	}
 	if thread.joined {
 		out.add(0, threadHeading(color+"├─"+activityui.Reset+glyph, detail, entry, v.entries[thread.previous].activityPaneEntry, reply, width))
 	} else {
 		out.add(0, conversationHeading(glyph, name, detail, entry, width))
+	}
+	out.lines[len(out.lines)-1] = p.StyleEventHeader(block, out.lines[len(out.lines)-1])
+	if block.Output != nil {
+		out.snippets[len(out.lines)-1] = liveActivitySnippet{run: entry.Seq, block: 0}
 	}
 	gutter := color + "│" + activityui.Reset + " "
 	tail, limit := color+"╰─"+activityui.Reset, conversationLatestRows

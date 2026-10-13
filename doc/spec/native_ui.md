@@ -19,7 +19,10 @@ Operation-row formatting and feed controls are specified by
 
 ### UI
 
-Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
+Orchestration thread navigation follows the
+[orchestration contract](orchestrate.md#accepted-delivery-scope).
+
+Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 4`). No bare
 key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
 terminal card follow [journal presentation](journal.md#native-journal-presentation).
 Pane preferences retain its visibility and focus; transient selection and expansion
@@ -41,7 +44,9 @@ policy applies and the native client answers Codex approvals (see Approvals).
 The independent VCS guard follows
 [REQ-EXECUTION-003](execution.md#req-execution-003--guard-remote-vcs-writes).
 `--yolo` passes `approval_policy="never"` and
-`sandbox_mode="danger-full-access"`, and thread requests repeat them.
+`default_permissions=":danger-full-access"`. Fresh, cleared and resumed thread
+requests select that named profile with approvals disabled, so orchestration
+children inherit host-confirmed permission provenance.
 Mekugi never silently changes the user's configuration or
 sandbox policy. There is no legacy UI selection or fallback. It maps explicit
 `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
@@ -270,9 +275,11 @@ one coverage notice with a `mchanges` reference, not labeled as confirmed edits;
 the durable records retain each path and its reason.
 
 The shell frames Main on the left and one right pane: the saved diff (2),
-Activity (3), or Journal (5), each filling the pane. A roster (4) below them fits its
-content, four rows unfocused and up to 40% of the screen when focused; finished
-agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
+Activity (3), or Journal (4), each filling the pane. A roster (5) below them fits its
+content and available terminal space, expanding for Main and working rows.
+Main and working rows stay pinned above
+scrollable idle/history rows; very short terminals prioritize Main. Manual
+collapse and resize remain available, and finished agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
 before the status bar when terminal height permits. Collapsed rows place activity directly after the name
 without reserving name-column padding. Each row shows state, timer, tokens, cost
 and turns, dropping from the right when narrow. Observed roles color the status
@@ -282,7 +289,15 @@ spawn evidence supplies it, including after resume and for nested descendants.
 Missing or conflicting spawn evidence supplies no role label; explicit host
 metadata remains authoritative. Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
-contextual key hints. Ctrl-B + number focuses a pane.
+contextual key hints. Ctrl-B + number focuses a pane. During orchestration,
+Agents (5) combines the coordinator and independent batch threads with the
+viewed thread's native subagents. Independent thread rows use italic and accent
+styling, while native subagents retain their identity and role colors. The
+roster has one selection and collapse state: click its title or press `c` while
+focused to collapse or expand it; dragging its title adjusts its height.
+Thread rows switch the viewed shell; native subagent rows select its local
+Activity filter. Switching keeps the visible Activity, Diff or Journal pane and
+keyboard focus while preserving each thread's local filter.
 Uncolored labels in pane and composer borders use the terminal text foreground,
 not the border's decorative foreground. Faint styling and explicit label colors
 remain intact.
@@ -542,7 +557,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of the draft opens a local command
-catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/session`, `/copy`,
+catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/orchestrate`, `/status`, `/session`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
@@ -550,6 +565,10 @@ the catalog without changing the draft. Completion replaces only the command tok
 preserving trailing images and other draft content. Moving into arguments closes
 completion. Pasted text does not activate the catalog. The catalog uses the shared picker viewport and
 visible-row column sizing; it never submits a command to the model.
+
+`/orchestrate ISSUES` sends the issues and initial workflow instructions through
+the ordinary composer. The [orchestration contract](orchestrate.md) owns its
+staged capabilities.
 
 `/copy` opens a local picker for the latest completed response in the active
 thread, including restored history and journal answers. Whole response preserves
@@ -960,7 +979,8 @@ An ellipsis marks omitted error details; clicking a truncated composer error ope
 its complete text, including the full router-error batch, in the shared error dialog.
 Composer feedback stays user-only; model-visible error evidence
 keeps its red transcript display and details dialog. Only
-`/quit` is a command, and only while idle;
+`/quit` is a command, and only while idle, except for
+[confirmed orchestration exit](orchestrate.md#accepted-delivery-scope);
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
 session title, scroll position and unseen-message count. History
@@ -1265,7 +1285,10 @@ Redirected/noninteractive execution retains Codex's own behavior.
 ### User-input questions
 
 Root-thread questions use a shared dock above the composer, hiding the live-edit
-dock. `request_user_input` arrives as `item/tool/requestUserInput`; unexpected
+dock. During orchestration, all subscribed roots share this presentation on the
+viewed shell, with a source-thread label. Answer editors and replies remain owned
+by the originating thread; switching preserves the answer and each thread's draft.
+`request_user_input` arrives as `item/tool/requestUserInput`; unexpected
 server requests retain the visibly blocked fallback. Async questions arrive as
 `agentMessage` items with `delivery: "async"` and `questions`, not as server
 requests. They never become final-answer cards, journal finals, or final-answer
@@ -1395,7 +1418,9 @@ thread. It also answers remote writes held by the
 share the question dock's position above the composer and take precedence over
 it: opening one hides the question dock, and a pending question opens after the
 last approval ends. The oldest approval shows first; the header names a child
-agent's path and `1 of N` when more wait.
+agent's path and `1 of N` when more wait. Orchestration approvals also name their
+source thread and appear on the viewed shell; responses and denial feedback use
+that source's host request and turn.
 
 Choices follow the stock TUI approval overlay
 (`codex-rs/tui/src/bottom_pane/approval_overlay.rs` @7135b303d). Command requests

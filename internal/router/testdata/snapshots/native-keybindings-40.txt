@@ -27,7 +27,7 @@
 "  \x1b[38;2;80;155;225m/model /effort /tier\x1b[m  Open picker or s"
 "  \x1b[38;2;80;155;225mctrl+c\x1b[m                Clear / interrup"
 "  \x1b[38;2;80;155;225mesc\x1b[m                   Interrupt, keep "
-"  \x1b[38;2;80;155;225mctrl+b 1–5\x1b[m            Focus pane      "
+"  \x1b[38;2;80;155;225mctrl+b 1–6\x1b[m            Focus pane (6: O"
 "  \x1b[38;2;80;155;225mJ (empty draft)\x1b[m       Open journal    "
 "  \x1b[38;2;80;155;225mctrl+b e\x1b[m              Next live item  "
 "  \x1b[38;2;80;155;225mctrl+b q / !\x1b[m          Questions / erro"

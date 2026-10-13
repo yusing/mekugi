@@ -13,6 +13,26 @@ import (
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
+func TestTerminalUIOrdinaryNavigatorResize(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ensureShell()
+	defer u.shell.diffScreen.Close()
+	u.shell.diff.navigation.Columns = 30
+	for _, test := range []struct {
+		key     byte
+		columns int
+	}{{']', 32}, {'[', 30}} {
+		for _, key := range []byte{2, test.key} {
+			if err := u.shell.key(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := u.shell.diff.navigation.Columns; got != test.columns {
+			t.Fatalf("Ctrl-B %c: navigator columns = %d, want %d", test.key, got, test.columns)
+		}
+	}
+}
+
 func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()

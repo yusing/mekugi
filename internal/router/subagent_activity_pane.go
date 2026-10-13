@@ -8,7 +8,7 @@ import (
 )
 
 // The only activity frontend is the UI.
-type activityPane struct{ root string }
+type activityPane struct{ roots map[string]bool }
 
 type activityPaneEntry struct {
 	journalEvent *journalEvent
@@ -71,6 +71,20 @@ func (a *subagentActivity) releasePane() {
 	a.pane = nil
 }
 
+func (a *subagentActivity) detachNativePane(root string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.pane != nil {
+		delete(a.pane.roots, root)
+		if len(a.pane.roots) == 0 {
+			a.pane = nil
+		}
+	}
+}
+
 // Main already knows its app-server thread before the first provider request.
 // The native frontend binds supplemental observations to its active root.
 // App-server notifications supply the live tool and lifecycle display.
@@ -78,7 +92,30 @@ func (a *subagentActivity) attachNativePane(root string) {
 	a.observe(root, "", "/root", false)
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.pane = &activityPane{root: root}
+	if a.pane == nil {
+		a.pane = &activityPane{roots: make(map[string]bool)}
+	}
+	a.pane.roots[root] = true
+}
+
+// Authenticated request identity can precede readable native rollout metadata.
+// Return only complete, non-conflicted ancestry; names are presentation data.
+func (a *subagentActivity) nativeLineage(thread string) []appServerThreadInfo {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.rootLocked(thread) == "" {
+		return nil
+	}
+	var lineage []appServerThreadInfo
+	for thread != "" {
+		node := a.threads[thread]
+		lineage = append(lineage, appServerThreadInfo{ID: thread, ParentThreadID: node.parent, agentPath: node.name})
+		thread = node.parent
+	}
+	return lineage
 }
 
 // beginResponse and endResponse track open provider responses for the roster.
@@ -110,12 +147,17 @@ func (a *subagentActivity) takeRequestStarts(root string) []activityRequestStart
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil || a.pane.root != root {
+	if a.closed || a.pane == nil || !a.pane.roots[root] {
 		return nil
 	}
-	// Starts outside the pane's root have no audience and are dropped.
-	starts := slices.DeleteFunc(a.starts, func(start activityRequestStart) bool { return a.rootLocked(start.thread) != root })
-	a.starts = nil
+	var starts []activityRequestStart
+	a.starts = slices.DeleteFunc(a.starts, func(start activityRequestStart) bool {
+		if source := a.rootLocked(start.thread); source != root {
+			return !a.pane.roots[source]
+		}
+		starts = append(starts, start)
+		return true
+	})
 	return starts
 }
 
@@ -145,11 +187,17 @@ func (a *subagentActivity) takeUnreturned(root string) []activityToolRef {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil || a.pane.root != root {
+	if a.closed || a.pane == nil || !a.pane.roots[root] {
 		return nil
 	}
-	refs := slices.DeleteFunc(a.unreturned, func(ref activityToolRef) bool { return a.rootLocked(ref.thread) != root })
-	a.unreturned = nil
+	var refs []activityToolRef
+	a.unreturned = slices.DeleteFunc(a.unreturned, func(ref activityToolRef) bool {
+		if source := a.rootLocked(ref.thread); source != root {
+			return !a.pane.roots[source]
+		}
+		refs = append(refs, ref)
+		return true
+	})
 	return refs
 }
 
@@ -256,7 +304,7 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed || a.pane == nil || a.pane.root != root {
+	if a.closed || a.pane == nil || !a.pane.roots[root] {
 		return nil
 	}
 	a.expireLocked(time.Now())

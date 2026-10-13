@@ -57,6 +57,9 @@ func (u *appServerUI) updateSettings(change map[string]any) (bool, error) {
 	unchanged := true
 	for field, value := range change {
 		switch field {
+		case "sandboxPolicy":
+			policy, ok := value.(appServerSandboxPolicy)
+			unchanged = unchanged && ok && policy.equal(u.statusConfig.Sandbox)
 		case "collaborationMode":
 			// Resume passes the host-returned snapshot with only its effort
 			// cleared. A changed complete mode requires host confirmation.
@@ -296,15 +299,15 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	var event struct {
 		ThreadID string `json:"threadId"`
 		Settings struct {
-			Provider string         `json:"modelProvider"`
-			Approval jsontext.Value `json:"approvalPolicy"`
-			Sandbox  *struct {
-				Type string `json:"type"`
-			} `json:"sandboxPolicy"`
-			Cwd         string `json:"cwd"`
-			Model       string `json:"model"`
-			Effort      string `json:"effort"`
-			ServiceTier string `json:"serviceTier"`
+			Provider          string                  `json:"modelProvider"`
+			Approval          jsontext.Value          `json:"approvalPolicy"`
+			ApprovalsReviewer string                  `json:"approvalsReviewer"`
+			PermissionProfile jsontext.Value          `json:"activePermissionProfile"`
+			Sandbox           *appServerSandboxPolicy `json:"sandboxPolicy"`
+			Cwd               string                  `json:"cwd"`
+			Model             string                  `json:"model"`
+			Effort            string                  `json:"effort"`
+			ServiceTier       string                  `json:"serviceTier"`
 		} `json:"threadSettings"`
 	}
 	if err := json.Unmarshal(m.Params, &event); err != nil {
@@ -319,13 +322,27 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if len(event.Settings.Approval) > 0 {
 		u.statusConfig.Approval = event.Settings.Approval
 	}
+	if event.Settings.ApprovalsReviewer != "" {
+		u.statusConfig.ApprovalsReviewer = event.Settings.ApprovalsReviewer
+	}
+	if len(event.Settings.PermissionProfile) > 0 {
+		u.statusConfig.PermissionProfile = event.Settings.PermissionProfile
+		if event.Settings.PermissionProfile.Kind() == 'n' && event.Settings.Sandbox == nil {
+			u.statusConfig.Sandbox = appServerSandboxPolicy{}
+		}
+	}
 	if event.Settings.Sandbox != nil {
-		u.statusConfig.Sandbox.Type = event.Settings.Sandbox.Type
+		u.statusConfig.Sandbox = *event.Settings.Sandbox
 	}
 	if event.Settings.Cwd != "" {
 		u.session.cwd = event.Settings.Cwd
 	}
 	u.model, u.reasoningEffort, u.serviceTier = event.Settings.Model, event.Settings.Effort, event.Settings.ServiceTier
+	if expected, restoring := u.settings.change["sandboxPolicy"].(appServerSandboxPolicy); restoring && !expected.equal(u.statusConfig.Sandbox) {
+		// A resume-default notification can precede the corrective policy.
+		// Keep both retained settings and the input gate until confirmation.
+		return true, nil
+	}
 	if _, explicit := u.settings.change["serviceTier"]; explicit {
 		u.chooseServiceTier()
 	}

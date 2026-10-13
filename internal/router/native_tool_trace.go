@@ -255,11 +255,8 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 			cell.ended = true
 		}
 	case "tool_call_started":
-		if p.Requester.Type != "code_cell" {
-			return nil
-		}
 		cell := b.cells[event.Thread+"\x00"+p.Requester.Cell]
-		if cell == nil {
+		if p.Requester.Type == "code_cell" && cell == nil {
 			return errors.New("native trace missing parent cell")
 		}
 		if len(b.calls) >= 16384 || b.calls[event.Thread+"\x00"+p.Tool] != nil {
@@ -277,9 +274,20 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 		if err := readNativeTracePayload(directory, p.Invocation, &invocation); err != nil {
 			return err
 		}
+		if p.Requester.Type != "code_cell" && invocation.Name != "wait_agent" {
+			return nil
+		}
 		tool := &nativeTraceTool{CallID: p.Tool, Tool: invocation.Name, input: invocation.Payload.Input}
 		if invocation.Namespace != "" && invocation.Namespace != "functions" {
 			tool.Tool = invocation.Namespace + "." + invocation.Name
+		}
+		if invocation.Name == "wait_agent" {
+			var args struct {
+				TimeoutMS *uint64 `json:"timeout_ms"`
+			}
+			if json.Unmarshal([]byte(invocation.Payload.Arguments), &args) == nil {
+				tool.timeoutMS = args.TimeoutMS
+			}
 		}
 		if tool.Tool == "exec_command" {
 			var args struct {
@@ -310,7 +318,9 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 			tool.stdinPoll = json.Unmarshal([]byte(invocation.Payload.Arguments), &args) == nil && args.Chars == ""
 			tool.session = strings.Trim(string(args.Session), "\"")
 		}
-		cell.tools = append(cell.tools, tool)
+		if cell != nil {
+			cell.tools = append(cell.tools, tool)
+		}
 		b.calls[event.Thread+"\x00"+p.Tool] = tool
 		b.bytes += len(tool.input) + len(tool.command.Command) + len(tool.command.Workdir) + len(tool.command.Shell) + len(tool.environmentID) + len(tool.CallID) + 256
 		if b.bytes > 64<<20 {
@@ -495,6 +505,10 @@ func (t *nativeToolTrace) readBundles() []*nativeTraceBundle {
 // commandTimeout reads the original input by exact native thread/call identity.
 // Missing or ambiguous input has no timeout label, including after fresh resume.
 func (t *nativeToolTrace) commandTimeout(thread, call string) (uint64, bool) {
+	return t.toolTimeout(thread, call, "exec_command")
+}
+
+func (t *nativeToolTrace) toolTimeout(thread, call, name string) (uint64, bool) {
 	if t == nil || thread == "" || call == "" {
 		return 0, false
 	}
@@ -509,7 +523,7 @@ func (t *nativeToolTrace) commandTimeout(thread, call string) (uint64, bool) {
 			found = tool
 		}
 	}
-	if found == nil || found.Tool != "exec_command" || found.timeoutMS == nil {
+	if found == nil || (found.Tool != name && !strings.HasSuffix(found.Tool, "."+name)) || found.timeoutMS == nil {
 		return 0, false
 	}
 	return *found.timeoutMS, true

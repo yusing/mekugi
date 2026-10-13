@@ -220,7 +220,7 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 		}
 	}
 	await("Ready")
-	await("4 Agents")
+	await("5 Agents")
 	if beforePrompt != nil {
 		beforePrompt(t, outer, await, awaitFrame, screen)
 	}

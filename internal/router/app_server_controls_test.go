@@ -158,7 +158,7 @@ func TestNativeControlsManualJournalSurvivesOverlappingChildren(t *testing.T) {
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 	}
 	spawn("a")
-	for _, key := range []byte("\x025") {
+	for _, key := range []byte("\x024") {
 		if err := u.shell.key(key); err != nil {
 			t.Fatal(err)
 		}
