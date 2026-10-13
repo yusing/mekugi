@@ -27,6 +27,7 @@ type orchestrateCommand struct {
 	ctx             context.Context
 	workspace, main string
 	input           orchestrateSpawnInput
+	prepare         orchestratePrepareInput
 	target          string
 	tool            string
 	waitTimeout     int
@@ -95,6 +96,27 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 		return
 	}
 	switch command.tool {
+	case "prepare":
+		if u.thread == "" || u.restoring != nil || u.replacement.pending() || u.orchestrateClosing {
+			fail(errors.New("wait for the coordinator session to be ready"))
+			return
+		}
+		proxy, store := u.proxy, u.proxy.orchestration.store
+		u.orchestrateWork(func() func() {
+			var batch orchestrate.Batch
+			err := orchestrateMain(command.ctx, proxy, command.workspace, command.main, command.prepare.TaskName)
+			if err == nil {
+				batch, err = store.Prepare(command.ctx, command.workspace, command.main, command.prepare.TaskName)
+			}
+			if err == nil {
+				err = proxy.journals.bindRun(command.ctx, proxy.replayStore, command.workspace, command.main, journalRun{Directory: store.Directory, Workspace: command.workspace, Main: command.main})
+			}
+			if err == nil && len(command.prepare.Evidence) != 0 {
+				batch, err = store.RetainEvidence(command.ctx, command.workspace, command.main, command.prepare.TaskName, command.prepare.Evidence)
+			}
+			return func() { command.reply <- orchestrateResult{batch: batch, err: err} }
+		})
+		return
 	case "wait_agent":
 		u.waitOrchestratedEvent(command)
 		return

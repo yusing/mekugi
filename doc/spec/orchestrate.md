@@ -11,7 +11,10 @@ run. User configuration remains unchanged.
 A retained empty-workspace journal does not override a unique retained workspace.
 Multiple retained nonempty workspaces remain ambiguous and reject dispatch.
 
-Only an independent coordinator prepares batches. An orchestration child or its
+Only the active session's independent coordinator prepares batches. A proven
+journal root alone does not grant this authority: reviewers, side threads and
+unselected forks cannot prepare batches. Selecting an independent thread as Main
+allows its own run. An orchestration child or its
 native descendants cannot start a nested run, including after fresh resume without
 a live parent. Retained run identity governs coordinator admission.
 
@@ -542,7 +545,9 @@ explicit user restrictions.
 Diagnosis-only assignments remain read-only. Tool descriptions and parameter help belong
 only to MCP metadata, not composer input or recovery instructions. Later ordinary
 input does not repeat the instruction or change tool exposure. Attachments, busy
-input, rejection and cancellation use the composer lifecycle. Fresh children
+input, rejection and cancellation use the composer lifecycle. Batch views reject
+`/orchestrate ISSUES` without changing the draft or attachments; bare
+`/orchestrate` still opens run navigation. Fresh children
 receive their coordinator identity, journal access, implementation and delivery
 responsibility, and assignment. Codex sets their
 working directory when it starts the thread.

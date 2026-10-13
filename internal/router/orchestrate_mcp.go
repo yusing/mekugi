@@ -238,17 +238,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
 			return nil, nil, err
 		}
-		if err := orchestrateMain(ctx, proxy, workspace, thread, input.TaskName); err != nil {
-			return nil, nil, err
-		}
-		batch, err := store.Prepare(ctx, workspace, thread, input.TaskName)
-		if err == nil {
-			err = proxy.journals.bindRun(ctx, proxy.replayStore, workspace, thread, journalRun{Directory: store.Directory, Workspace: workspace, Main: thread})
-		}
-		if err == nil && len(input.Evidence) != 0 {
-			batch, err = store.RetainEvidence(ctx, workspace, thread, input.TaskName, input.Evidence)
-		}
-		return nil, batch, err
+		return proxy.orchestration.call(&orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, tool: "prepare", prepare: input, reply: make(chan orchestrateResult, 1)})
 	})
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_agents", Description: "Read retained batches in this coordinator's run without starting or resuming threads. Default summary shows identity, checkout state, last host status, workflow phase/candidate and blockers, without prompts/settings/history. Select targets and detail for exact checks, reviews or full records. Unconfirmed wait deliveries remain visible for the whole run; their event payloads require full detail. Retained facts do not prove current filesystem or live host state.",

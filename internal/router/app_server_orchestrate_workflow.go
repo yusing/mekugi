@@ -21,6 +21,21 @@ func (u *appServerUI) expandOrchestrate() bool {
 		u.setNotice("Wait for the session to be ready", false)
 		return false
 	}
+	if u.orchestrationOwner() != u {
+		u.setNotice("Start orchestration from Main", true)
+		return false
+	}
+	if u.proxy.replayStore != nil {
+		j, _, err := readThreadJournal(u.proxy.replayStore, u.session.cwd, u.thread)
+		if err != nil {
+			u.setNotice("Orchestration: "+err.Error(), true)
+			return false
+		}
+		if j.IdentityConflicted || j.Parent != "" || j.Orchestration != nil && j.Orchestration.Main != u.thread {
+			u.setNotice("Start orchestration from Main", true)
+			return false
+		}
+	}
 	u.deleteDraftRange(0, prefix)
 	u.loadDraft(joinDrafts(composerDraft{text: orchestrateWorkflow}, u.draftSnapshot()))
 	return true

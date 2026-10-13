@@ -48,6 +48,10 @@ func TestOrchestrateMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	u, wire := newAppServerTestUI()
+	u.ctx, u.proxy = ctx, proxy
+	u.session.start("main", workspace)
+	proxy.orchestration.active.Store(true)
 	listed, err := client.ListTools(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -82,9 +86,26 @@ func TestOrchestrateMCP(t *testing.T) {
 	}
 	call := func(tool string, args any, meta mcp.Meta, wantError bool) *mcp.CallToolResult {
 		t.Helper()
-		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args, Meta: meta})
+		var result *mcp.CallToolResult
+		var err error
+		done := make(chan struct{})
+		go func() {
+			result, err = client.CallTool(t.Context(), &mcp.CallToolParams{Name: tool, Arguments: args, Meta: meta})
+			close(done)
+		}()
+		if tool == "prepare" {
+			select {
+			case command := <-u.orchestrateCommands():
+				u.startOrchestratedChild(command)
+				drainOrchestrateWork(t, u)
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("prepare admission timed out")
+			}
+		}
+		<-done
 		if err != nil || result.IsError != wantError {
-			t.Fatalf("%s = %+v, %v; want error %v", tool, result, err, wantError)
+			t.Fatalf("%s = %s, %v; want error %v", tool, mustMarshalJSON(result), err, wantError)
 		}
 		return result
 	}
@@ -92,7 +113,6 @@ func TestOrchestrateMCP(t *testing.T) {
 		codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "turn"}}
 	call("prepare", map[string]any{"task_name": "batch"}, meta, false)
 	waiver := "User requested correction-only delivery"
-	proxy.orchestration.active.Store(true)
 	received := make(chan *orchestrateCommand, 1)
 	go func() {
 		command := <-proxy.orchestration.commands
@@ -103,7 +123,36 @@ func TestOrchestrateMCP(t *testing.T) {
 	if command := <-received; command.reviewWaiver != waiver || command.main != "main" || command.workspace != workspace {
 		t.Fatal("authenticated coordinator waiver was not dispatched", command)
 	}
+	// Proven roots include runtime reviewers and /btw forks. Neither is
+	// the session coordinator, even when its journal has no retained run.
+	for _, thread := range []string{"reviewer", "side-thread", "fork"} {
+		rootCtx, release, err := replay.beginSession(t.Context(), thread, "host-session")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		fork := ""
+		if thread == "fork" {
+			fork = "main"
+		}
+		if err := journal.initialize(rootCtx, replay, workspace, thread, "/root", fork); err != nil {
+			t.Fatal(err)
+		}
+		if err := journal.bindIdentity(rootCtx, replay, workspace, thread, "", "/root", true); err != nil {
+			t.Fatal(err)
+		}
+		result := call("prepare", map[string]any{"task_name": "unauthorized"}, mcp.Meta{"threadId": thread, "sessionId": "host-session", "callId": "prepare",
+			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "turn"}}, true)
+		if !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "active coordinator") {
+			t.Fatal("proven root did not reach coordinator admission", result)
+		}
+		if _, err := store.Snapshot(workspace, thread); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("non-coordinator created run state", thread, err)
+		}
+	}
 	proxy.orchestration.active.Store(false)
+	call("prepare", map[string]any{"task_name": "inactive"}, meta, true)
+	proxy.orchestration.active.Store(true)
 	preparedRecovery, err := replay.postCompactContext(ctx, workspace, "main")
 	if err != nil || strings.Count(preparedRecovery, orchestrateCoordinatorInstructions) != 1 {
 		t.Fatal("prepared run did not retain coordinator instructions", err, preparedRecovery)
@@ -194,6 +243,8 @@ func TestOrchestrateMCP(t *testing.T) {
 	}
 	proxy.journals = newJournalStore()
 	for _, thread := range []string{"batch-thread", "worker"} {
+		u.thread = thread
+		u.session.start(thread, b.Cwd)
 		denied := call("followup_task", map[string]any{"target": "batch", "message": "finish", "review_waiver": "skip reviews"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "waive",
 			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
 		if reason := string(mustMarshalJSON(denied.Content)); !strings.Contains(reason, "coordinator") && !strings.Contains(reason, "proven main thread") {
@@ -203,6 +254,8 @@ func TestOrchestrateMCP(t *testing.T) {
 		call("prepare", map[string]any{"task_name": "nested"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "nested",
 			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
 	}
+	u.thread = "main"
+	u.session.start("main", workspace)
 	call("prepare", map[string]any{"task_name": "other"}, meta, false)
 	call("send_message", map[string]any{"target": "batch", "message": "finish", "review_waiver": "skip reviews"}, meta, true)
 	// Selection keeps run-wide unconfirmed deliveries, even from another batch.
@@ -261,6 +314,18 @@ func TestOrchestrateMCP(t *testing.T) {
 	waitsAfter, err := store.UnsettledWaits(ctx, workspace, "main")
 	if err != nil || string(mustMarshalJSON(waitsBefore)) != string(mustMarshalJSON(waitsAfter)) {
 		t.Fatal("listing changed wait delivery", err)
+	}
+	// Selecting an independent fork as Main authorizes its own run, not the
+	// original Main's run. Admission does not depend on the thread's name.
+	u.thread = "fork"
+	u.session.start("fork", workspace)
+	forkMeta := mcp.Meta{"threadId": "fork", "sessionId": "resumed-session", "callId": "prepare",
+		codexTurnMetadataHeader: map[string]any{"thread_id": "fork", "turn_id": "turn"}}
+	call("prepare", map[string]any{"task_name": "independent"}, forkMeta, false)
+	u.thread = "main"
+	u.session.start("main", workspace)
+	if wire.Len() != 0 {
+		t.Fatal("preparation started a host thread or turn", wire.String())
 	}
 	// Exercise the exposed union schema and retained-run admission before UI dispatch.
 	for _, targets := range []any{nil, "batch", []string{}, []string{""}, []string{"/root/batch/native"}, []any{1}, []string{"unknown"}, []string{"native"}} {

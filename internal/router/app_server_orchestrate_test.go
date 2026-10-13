@@ -97,16 +97,20 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	call := func(tool string, args any) <-chan callResult { return callContext(t.Context(), tool, args) }
 	take := func(result <-chan callResult, wantError bool) *mcp.CallToolResult {
 		t.Helper()
-		select {
-		case got := <-result:
-			if (got.err != nil || got.value.IsError) != wantError {
-				t.Fatalf("MCP result: %+v, %v", got.value, got.err)
+		for {
+			select {
+			case command := <-u.orchestrateCommands():
+				u.startOrchestratedChild(command)
+				drainOrchestrateWork(t, u)
+			case got := <-result:
+				if (got.err != nil || got.value.IsError) != wantError {
+					t.Fatalf("MCP result: %+v, %v", got.value, got.err)
+				}
+				return got.value
+			case <-time.After(5 * time.Second):
+				t.Fatal("MCP result timeout")
 			}
-			return got.value
-		case <-time.After(5 * time.Second):
-			t.Fatal("MCP result timeout")
 		}
-		return nil
 	}
 	assertEvent := func(result *mcp.CallToolResult, kind, status string) {
 		t.Helper()

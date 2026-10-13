@@ -47,6 +47,41 @@ func TestAppServerOrchestrateWorkflowUnavailable(t *testing.T) {
 	}
 }
 
+func TestAppServerOrchestrateWorkflowChildView(t *testing.T) {
+	for _, mode := range []string{"fresh", "resumed", "standalone"} {
+		t.Run(mode, func(t *testing.T) {
+			var u *appServerUI
+			var wire *appServerTestInput
+			if mode != "fresh" {
+				owner, input, batch := retainedOrchestratedUI(t)
+				u, wire = owner, input
+				u.switchOrchestratedThread("child")
+				drainOrchestrateWork(t, u)
+				resumeBatchResponses(t, u, wire, batch, false)
+			} else {
+				owner, launch := orchestrateIdentityPendingTurn(t)
+				u, wire = owner, owner.client.Input.(*appServerTestInput)
+				orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+				u.switchOrchestratedThread("child")
+			}
+			child := u.viewedUI()
+			if mode == "standalone" {
+				// A fresh session has retained identity without the run navigator.
+				child.navigation = nil
+			}
+			wire.Reset()
+			writeTestFile(t, filepath.Join(child.session.cwd, "issue.md"), "attached issue")
+			appServerTestKeys(t, child, "/orchestrate Issue ")
+			bindComposerFile(child, "@issue.md", "issue.md")
+			draft := child.draft
+			appServerTestKeys(t, child, "\r")
+			if wire.Len() != 0 || child.draft != draft || len(child.files) != 1 || !strings.Contains(child.notice, "Main") {
+				t.Fatalf("child workflow dispatched or lost draft: %q %q %s", child.draft, child.notice, wire.String())
+			}
+		})
+	}
+}
+
 func TestUISnapshotOrchestrateCommand(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "/orc")
