@@ -42,11 +42,22 @@ func ReasoningShimmer(text string, elapsed time.Duration, colors Colors) string 
 	return out.String()
 }
 
-// statusPulse brightens the entire pending label together over a two-second cycle.
+// StatusPulse brightens the entire pending label together over a two-second cycle.
 func StatusPulse(text string, now time.Time, colors Colors) string {
+	return statusPulseColor(now, colors) + text + "\x1b[39m"
+}
+
+func statusPulseColor(now time.Time, colors Colors) string {
 	phase := float64(now.UnixMilli()%2000) / 2000
 	intensity := .5 * (1 - math.Cos(2*math.Pi*phase))
-	return colors.animationColor(intensity) + text + "\x1b[39m"
+	return colors.animationColor(intensity)
+}
+
+func (p *Painter) statusStyle(live bool) string {
+	if live {
+		return statusPulseColor(p.now(), p.Colors)
+	}
+	return Dim
 }
 
 // Use continuous RGB levels even before OSC reports arrive, rather than toggling

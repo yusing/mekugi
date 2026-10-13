@@ -70,7 +70,7 @@ type Block struct {
 	Members    []Block
 	SourceRows int    // Rows a command or program preview may use; 0 shows it whole.
 	Flash      bool   // Presentation-only: another pane just opened this entry.
-	Live       bool   // Reasoning still streaming.
+	Live       bool   // Reasoning still streaming or progress still active.
 	Elapsed    string // Formatted reasoning time, when observed from its first delta.
 	// Collapsed shows a settled block as one row that opens it; Hovered
 	// underlines that row under the pointer. Both are presentation-only.

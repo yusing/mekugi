@@ -390,7 +390,7 @@ func TestUISnapshotOrchestrationRosterActivityMetrics(t *testing.T) {
 		rows := view.agents.nativeRoster(160, 8, now, true)
 		uisnapshot.Assert(t, "testdata/snapshots/orchestration-roster-activity-"+view.thread+".txt", strings.Join(rows, "\n")+"\n")
 		for _, agent := range view.agents.orchestration {
-			if got := ansi.Strip(view.agents.agentState(agent, 80)); !strings.Contains(got, "go test") {
+			if got := ansi.Strip(view.agents.agentState(agent, 80, now)); !strings.Contains(got, "go test") {
 				t.Fatalf("thread activity = %q", got)
 			}
 		}

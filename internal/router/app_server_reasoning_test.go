@@ -79,6 +79,14 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 			t.Fatal("fully shown restored reasoning has a redundant detail target")
 		}
 	}
+	// A new turn must not restart the restored summary animation.
+	agent := *u.session.agent("/root/worker")
+	agent.Responding = true
+	first, _ := u.agents.current(agent, time.Unix(0, 0))
+	second, _ := u.agents.current(agent, time.Unix(1, 0))
+	if first != second {
+		t.Fatal("restored reasoning animated in a later turn")
+	}
 	// Raw-only items are decodable but produce no visible entry.
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"raw","type":"reasoning","summary":[],"content":["PRIVATE"]}}}`)
 	if len(u.view.entries) != 1 {

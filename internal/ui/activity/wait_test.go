@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
@@ -62,5 +64,32 @@ func TestWaitProgressSanitizesHostText(t *testing.T) {
 	rows := strings.Join(p.Block(b, 120), "\n")
 	if strings.Contains(rows, "\x1b[31m") || strings.Contains(rows, "\x1b[2J") || ansi.Strip(rows) != "• Waiting · agent: done" {
 		t.Fatalf("unsafe wait: %q", rows)
+	}
+}
+
+func TestUISnapshotWaitingBreathing(t *testing.T) {
+	for _, theme := range []livediff.Theme{livediff.TerminalTheme, livediff.DarkTheme, livediff.LightTheme} {
+		t.Run(fmt.Sprint(theme), func(t *testing.T) {
+			now := time.Unix(0, 0)
+			p := activityui.Painter{Theme: theme, Clock: func() time.Time { return now }}
+			if theme != livediff.TerminalTheme {
+				fg, bg := livediff.RGB{R: 220, G: 220, B: 220}, livediff.RGB{R: 20, G: 20, B: 20}
+				if theme == livediff.LightTheme {
+					fg, bg = bg, fg
+				}
+				p.Colors = activityui.Colors{Foreground: fg, Background: bg, HasForeground: true, HasBackground: true}
+			}
+			wait := activityui.Block{Kind: "progress", Body: "Waiting for agent (timeout 600s)", Live: true, WaitTargets: []activityui.WaitTarget{{Name: "/root/agent1"}, {Name: "/root/agent6"}}}
+			reasoning := activityui.Block{Kind: "summary", Body: "Checking results", Live: true}
+			var rows []string
+			for _, phase := range []time.Duration{0, time.Second} {
+				now = time.Unix(0, 0).Add(phase)
+				rows = append(rows, fmt.Sprint(phase))
+				rows = append(rows, p.Block(wait, 44)...)
+				rows = append(rows, p.Summary([]activityui.Block{wait}, 100), p.Summary([]activityui.Block{reasoning}, 100))
+				rows = append(rows, "plain after status")
+			}
+			uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/wait_breathing_%d.txt", theme), rows, 100)
+		})
 	}
 }
