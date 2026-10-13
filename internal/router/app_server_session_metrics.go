@@ -134,6 +134,12 @@ func (u *appServerUI) renderSessionMetrics() {
 		add("Debug", "Directory", pathdisplay.ForWorkspace(u.session.cwd, u.replayDebugDirectory))
 		p.fields[len(p.fields)-1].path = true
 	}
+	if m.tab == 0 && s.OutputDeduplication.Projections > 0 {
+		add("Output deduplication", "Occurrences", s.OutputDeduplication.Occurrences)
+		add("Output deduplication", "Saved tokens (estimated)", s.OutputDeduplication.SavedTokens)
+		add("Output deduplication", "Unmeasured projections", s.OutputDeduplication.Unmeasured)
+		add("Output deduplication", "", "Launch totals per request projection, including repeated history. Net local estimate includes reference overhead; not provider billing savings.")
+	}
 	if m.tab == 0 && s.StorageWrites != nil {
 		add("Storage writes", "Application bytes", s.StorageWrites.Bytes)
 		add("Storage writes", "", s.StorageWrites.Scope)

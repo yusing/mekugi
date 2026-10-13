@@ -15,6 +15,7 @@ import (
 // so it can lay them out natively. Unrecognized text stays a plain text block;
 // nothing is interpreted, expanded, or executed.
 type Block struct {
+	Repeated           string        // Model-input deduplication receipt for this output group.
 	Ended              time.Time     // Observed command end; zero when unavailable.
 	Started            time.Time     // Observed live command start, presentation only.
 	Duration           time.Duration // Host or measured segment duration; zero means unavailable.
@@ -532,7 +533,7 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 	var first Block // Only the last group can receive another adjacent read.
 	for _, block := range blocks {
 		n := len(merged)
-		if n == 0 || !mergesReads(merged[n-1], block) {
+		if n == 0 || block.Repeated != "" || merged[n-1].Repeated != "" || !mergesReads(merged[n-1], block) {
 			if block.Kind == "reads" {
 				block.Reads = slices.Clone(block.Reads)
 				for i := range block.Reads {

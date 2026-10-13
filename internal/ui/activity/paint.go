@@ -777,6 +777,14 @@ func (p *Painter) Block(block Block, width int) []string {
 			lines = append(lines, strings.Repeat(" ", block.cell(RowVerb(block)))+trailer)
 		}
 	}
+	if block.Repeated != "" && len(lines) > 0 {
+		suffix := Dim + " · " + block.Repeated + Undim
+		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
+			lines[0] += suffix
+		} else {
+			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), Dim+block.Repeated+Undim, width)...)
+		}
+	}
 	if block.Skipped {
 		for i, line := range lines {
 			lines[i] = Dim + ansi.Strip(line) + Reset

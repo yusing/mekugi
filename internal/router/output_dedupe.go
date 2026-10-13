@@ -9,25 +9,38 @@ import (
 	"github.com/yusing/mekugi/internal/outputdedupe"
 )
 
+type outputDeduplication struct {
+	occurrences uint64
+	calls       map[string]string
+}
+
 // This is the last request projection. All evidence consumers must have already
 // read the original host output. Its index belongs only to this input view.
-func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[string][]int) {
+func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[string][]int) (summary outputDeduplication) {
 	var items []jsonv1.RawMessage
 	if json.Unmarshal(request.fields["input"], &items) != nil {
 		return
 	}
+	summary.calls = make(map[string]string)
+	var repeatedLines, bodyBytes, repeatedBytes int
 	index := outputdedupe.New()
 	defer index.Close()
 	sources := 0
 	changed := false
 	projectBody := func(header, body string) string {
+		bodyBytes += len(body)
 		if len(body) < outputdedupe.Threshold {
 			return header + body
 		}
 		projection := index.Project(body)
+		if len(projection.Spans) > 0 {
+			summary.occurrences++
+		}
 		verbatim := len(body)
 		for _, span := range projection.Spans {
 			verbatim -= span.End - span.Start
+			repeatedBytes += span.End - span.Start
+			repeatedLines += strings.Count(strings.TrimSuffix(body[span.Start:span.End], "\n"), "\n") + 1
 		}
 		var result strings.Builder
 		result.WriteString(header)
@@ -100,6 +113,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		if !duplicateOutputItem(item) || len(hostParts[id]) == 0 {
 			continue
 		}
+		repeatedLines, bodyBytes, repeatedBytes = 0, 0, 0
 		count := hostParts[id][0]
 		hostParts[id] = hostParts[id][1:]
 		if count == 0 {
@@ -117,10 +131,18 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 			items[at] = mustMarshalJSON(item)
 			changed = true
 		}
+		if repeatedLines > 0 {
+			label := fmt.Sprintf("%d lines repeated", repeatedLines)
+			if repeatedBytes == bodyBytes {
+				label = "repeated"
+			}
+			summary.calls[id] = label
+		}
 	}
 	if changed {
 		request.setInput(mustMarshalJSON(items))
 	}
+	return summary
 }
 
 // Project only complete attachment frames, never ordinary prompts or failure
