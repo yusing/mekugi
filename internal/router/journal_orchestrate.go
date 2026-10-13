@@ -93,7 +93,14 @@ func (s *journalStore) scopeOrchestratedBlocks(store *mekugiReplayStore, workspa
 }
 
 func (s *journalStore) bindRun(ctx context.Context, store *mekugiReplayStore, workspace, thread string, run journalRun) error {
-	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
+	_, err := s.bindRunOwned(ctx, store, workspace, thread, run)
+	return err
+}
+
+// The caller can release only a new, unused binding if admission is canceled.
+func (s *journalStore) bindRunOwned(ctx context.Context, store *mekugiReplayStore, workspace, thread string, run journalRun) (bool, error) {
+	created := false
+	err := s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists || !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || j.Author != "/root" {
 			return errors.New("orchestration journal requires a proven independent root")
 		}
@@ -126,6 +133,25 @@ func (s *journalStore) bindRun(ctx context.Context, store *mekugiReplayStore, wo
 			return errJournalUnchanged
 		}
 		j.Orchestration = &run
+		created = true
+		return nil
+	})
+	return created && err == nil, err
+}
+
+func (s *journalStore) releaseUnusedRun(ctx context.Context, store *mekugiReplayStore, run journalRun) error {
+	return s.transaction(ctx, store, run.Workspace, run.Main, func(j *threadJournal, exists bool) error {
+		if !exists || j.Orchestration == nil || *j.Orchestration != run {
+			return errJournalUnchanged
+		}
+		batches, err := (&orchestrate.Store{Directory: run.Directory}).Snapshot(run.Workspace, run.Main)
+		if err != nil {
+			return err
+		}
+		if len(batches) != 0 {
+			return errJournalUnchanged
+		}
+		j.Orchestration = nil
 		return nil
 	})
 }

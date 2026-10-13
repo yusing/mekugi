@@ -70,7 +70,7 @@ func (p *mekugiProxy) projectOrchestrateInstructions(ctx context.Context, reques
 		return nil
 	}
 	guidance := ""
-	err := p.journals.transaction(ctx, p.replayStore, workspace, thread, func(j *threadJournal, exists bool) error {
+	err := p.journals.transactionWithTiming(ctx, p.replayStore, workspace, thread, false, func(j *threadJournal, exists bool) error {
 		if exists && j.Parent == "" && j.Orchestration == nil || !exists && metadata.SubagentKind == "" {
 			return errJournalUnchanged
 		}

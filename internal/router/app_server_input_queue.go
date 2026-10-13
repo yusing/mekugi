@@ -206,10 +206,11 @@ func (u *appServerUI) flushInput() error {
 		u.refreshPicker()
 		return nil
 	}
-	return u.send(parts, steer)
+
+	return u.send(parts, steer, fromUnsent)
 }
 
-func (u *appServerUI) send(parts []composerDraft, steer bool) error {
+func (u *appServerUI) send(parts []composerDraft, steer, fromUnsent bool) error {
 	if u.orchestrateCheckoutUnavailable() {
 		u.restoreDrafts(parts...)
 		u.setNotice(u.orchestrateInputDisabledMessage("new turns"), true)
@@ -236,19 +237,15 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
 	}
-	// Only a native command admitted from the queue can activate masking.
-	// Startup persistence and canceled/restored drafts grant no membership.
 	for _, part := range parts {
-		if pending := part.orchestration; pending != nil {
-			run := pending.run
-			if u.thread != run.Main || u.session.cwd != run.Workspace {
-				u.restoreDrafts(parts...)
-				return fmt.Errorf("orchestration input no longer belongs to the selected thread")
+		if pending := part.orchestration; pending != nil && !pending.ready {
+			if fromUnsent {
+				u.unsent = append(parts, u.unsent...)
+			} else {
+				u.queued = append(parts, u.queued...)
 			}
-			if err := u.proxy.journals.bindRun(u.ctx, u.proxy.replayStore, run.Workspace, run.Main, run); err != nil {
-				u.restoreDrafts(parts...)
-				return err
-			}
+			u.admitOrchestrateInput(pending)
+			return nil
 		}
 	}
 	params := map[string]any{"threadId": u.thread, "input": input, "clientUserMessageId": s.id}

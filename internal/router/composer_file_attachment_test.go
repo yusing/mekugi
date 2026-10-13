@@ -26,7 +26,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	if err := os.WriteFile(path, []byte("changed after queueing"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.send([]composerDraft{draft}, false); err != nil {
+	if err := u.send([]composerDraft{draft}, false, true); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)
@@ -256,7 +256,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
 	d := composerDraft{text: strings.Repeat("x", composerTextLimit), attachments: []string{encodeFileAttachments([]string{"Attached file data"})}}
-	if err := u.send([]composerDraft{d}, false); err != nil {
+	if err := u.send([]composerDraft{d}, false, true); err != nil {
 		t.Fatal(err)
 	}
 	if w.Len() != 0 || u.draft != d.text || !u.noticeAlert || u.starting() {
@@ -267,7 +267,7 @@ func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 func TestComposerFileAttachmentLeavesOrdinaryUnicodeLimitToCodex(t *testing.T) {
 	u, w := newAppServerTestUI()
 	d := composerDraft{text: strings.Repeat("界", 400_000)}
-	if err := u.send([]composerDraft{d}, false); err != nil {
+	if err := u.send([]composerDraft{d}, false, true); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)

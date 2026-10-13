@@ -156,7 +156,7 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 	if got := gitRead("diff", "HEAD") + gitRead("diff", "--cached"); got != before {
 		t.Fatal("cleanup changed source edits or index")
 	}
-	if err := v.send([]composerDraft{{text: "new work"}}, false); err != nil || v.draft != "new work" || !strings.Contains(v.notice, "unavailable") {
+	if err := v.send([]composerDraft{{text: "new work"}}, false, true); err != nil || v.draft != "new work" || !strings.Contains(v.notice, "unavailable") {
 		t.Fatal("cleaned thread accepted input or lost its draft", err, v.draft)
 	}
 	w := u.client.Input.(*appServerTestInput)

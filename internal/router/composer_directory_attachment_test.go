@@ -209,7 +209,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 	if err := os.Rename(filepath.Join(root, "src/original.go"), filepath.Join(root, "src/changed.go")); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.send([]composerDraft{draft}, false); err != nil {
+	if err := u.send([]composerDraft{draft}, false, true); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)

@@ -167,6 +167,7 @@ func TestAppServerOrchestrateWorkflowQueuedPosition(t *testing.T) {
 		t.Fatal("queued input activated masking before admission", err)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"running"}}`, first.ID))
+	drainOrchestrateWork(t, u)
 	requests := appServerTurnRequests(t, wire)
 	if len(requests) != 1 || !strings.HasPrefix(requests[0].text(), "older\n"+orchestrateWorkflow) || !strings.HasSuffix(requests[0].text(), "newer") {
 		t.Fatalf("startup reordered queued input: %+v", requests)
@@ -174,8 +175,15 @@ func TestAppServerOrchestrateWorkflowQueuedPosition(t *testing.T) {
 }
 
 func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
-	for _, existing := range []bool{false, true} {
-		t.Run(fmt.Sprint(existing), func(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		existing  bool
+		admission bool
+	}{
+		{"startup/new", false, false}, {"startup/existing", true, false},
+		{"admission/new", false, true}, {"admission/existing", true, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ctx = t.Context()
 			replay, err := openMekugiReplayStore(t.TempDir())
@@ -186,7 +194,7 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 			u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: store}}
 			u.session.start("main", t.TempDir())
 			t.Cleanup(func() { u.closeOrchestrateStorage() })
-			if existing {
+			if test.existing {
 				for _, err := range []error{
 					u.proxy.journals.initialize(u.ctx, replay, u.session.cwd, "main", "/root", ""),
 					u.proxy.journals.bindIdentity(u.ctx, replay, u.session.cwd, "main", "", "/root", true),
@@ -205,9 +213,18 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("startup storage timeout")
 			}
+			if test.admission {
+				u.completeOrchestrateWork(complete)
+				select {
+				case complete = <-u.orchestrateCompletions:
+				case <-time.After(5 * time.Second):
+					t.Fatal("admission storage timeout")
+				}
+			}
 			// The worker has finished all persistence. The UI has not admitted input.
 			appServerTestKeys(t, u, "\x03")
 			u.completeOrchestrateWork(complete)
+			drainOrchestrateWork(t, u)
 			if wire.Len() != 0 || strings.Count(u.draft, "/orchestrate canceled") != 1 {
 				t.Fatal("cancellation dispatched or duplicated input", u.draft, wire.String())
 			}
@@ -216,9 +233,98 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 			if err := fresh.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
 				t.Fatal(err)
 			}
-			if got := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); got != existing {
-				t.Fatalf("cancellation changed durable membership: active=%v existing=%v", got, existing)
+			if got := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); got != test.existing {
+				t.Fatalf("cancellation changed durable membership: active=%v existing=%v", got, test.existing)
 			}
 		})
+	}
+}
+
+func TestAppServerOrchestrateStartupFailureRestoresStack(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.ctx = t.Context()
+	storage := filepath.Join(t.TempDir(), "blocked")
+	writeTestFile(t, storage, "not a directory")
+	u.proxy = &mekugiProxy{journals: newJournalStore(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: storage}}}
+	u.session.start("main", t.TempDir())
+	t.Cleanup(func() { u.closeOrchestrateStorage() })
+	appServerTestKeys(t, u, "/orchestrate first\rsecond\r")
+	drainOrchestrateWork(t, u)
+	if wire.Len() != 0 || len(u.unsent)+len(u.queued) != 0 || u.draft != "/orchestrate first\nsecond" {
+		t.Fatal("startup failure lost stack order", u.draft, u.unsent, u.queued, wire.String())
+	}
+}
+
+func TestAppServerOrchestrateSubmitFollowsTranscript(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.ctx = t.Context()
+	u.proxy = &mekugiProxy{journals: newJournalStore(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: t.TempDir()}}}
+	u.session.start("main", t.TempDir())
+	t.Cleanup(func() { u.closeOrchestrateStorage() })
+	u.view.following, u.view.unseen = false, 3
+	appServerTestKeys(t, u, "/orchestrate first\r")
+	if !u.view.following || u.view.unseen != 0 {
+		t.Fatal("native command did not resume transcript follow")
+	}
+	drainOrchestrateWork(t, u)
+	if wire.Len() == 0 || !u.view.following {
+		t.Fatal("submitted input remains below paused viewport")
+	}
+}
+
+func TestAppServerOrchestrateAdmissionKeepsUIResponsive(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.ctx = t.Context()
+	u.proxy = &mekugiProxy{journals: newJournalStore(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: t.TempDir()}}}
+	u.session.start("main", t.TempDir())
+	t.Cleanup(func() { u.closeOrchestrateStorage() })
+	appServerTestKeys(t, u, "/orchestrate first\r")
+	var complete func()
+	select {
+	case complete = <-u.orchestrateCompletions:
+	case <-time.After(5 * time.Second):
+		t.Fatal("startup timeout")
+	}
+	release, err := u.proxy.journals.lockState(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	returned := make(chan struct{})
+	go func() {
+		u.completeOrchestrateWork(complete)
+		appServerTestKeys(t, u, "second\r\x03")
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		release()
+		<-returned
+		t.Fatal("UI blocked on admission journal lock")
+	}
+	release()
+	drainOrchestrateWork(t, u)
+	if wire.Len() != 0 || u.draft != "/orchestrate first\nsecond" {
+		t.Fatal("admission cancellation lost input", u.draft, wire.String())
+	}
+}
+
+func TestAppServerOrchestrateOversizedInputDoesNotBindRun(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.ctx = t.Context()
+	u.proxy = &mekugiProxy{journals: newJournalStore(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: t.TempDir()}}}
+	u.session.start("main", t.TempDir())
+	t.Cleanup(func() { u.closeOrchestrateStorage() })
+	writeTestFile(t, filepath.Join(u.session.cwd, "issue.md"), "attached issue")
+	u.loadDraft(composerDraft{text: "/orchestrate " + strings.Repeat("x", composerTextLimit) + " "})
+	bindComposerFile(u, "@issue.md", "issue.md")
+	u.submitOrchestrate()
+	drainOrchestrateWork(t, u)
+	request := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
+	if err := u.proxy.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
+		t.Fatal(err)
+	}
+	if wire.Len() != 0 || !strings.HasPrefix(u.draft, "/orchestrate ") || !u.noticeAlert || strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions) {
+		t.Fatal("rejected input activated masking or lost the command")
 	}
 }

@@ -581,7 +581,8 @@ the checkout; successfully retained commits remain available after a later failu
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
-user input carries the issues and the division of work: Main looks up evidence,
+user input carries the issues. Authenticated runtime guidance supplies the
+division of work: Main looks up evidence,
 holds overall intent, current state and issues, delegates work, and verifies and
 integrates results. Children own planning, documentation, implementation,
 validation and correction in isolated checkouts. Mekugi owns review dispatch and
@@ -599,9 +600,12 @@ responsibility, and assignment. Codex sets their
 working directory when it starts the thread.
 The native command prepares run storage without creating a checkout. Its input
 keeps its original composer queue position while storage is pending. Run membership
-is bound only when the uncanceled command is admitted for dispatch. Failure or
-cancellation restores the command without enabling masking for a new run;
-existing run membership remains intact.
+is persisted on the orchestration worker before dispatch, with the entry retained
+in its queue until admission completes. Storage lock waits leave host events,
+rendering and keyboard cancellation responsive. Startup failure restores the whole
+pending stack in original order. Cancellation releases a newly created unused
+binding before further input can dispatch; existing or prepared runs remain intact.
+Submitting the command resumes ordinary transcript following.
 A successful authenticated batch preparation also establishes run identity.
 Before provider forwarding, the instruction projection uses the authenticated
 request workspace and retained journal/run membership to mask pinned incompatible

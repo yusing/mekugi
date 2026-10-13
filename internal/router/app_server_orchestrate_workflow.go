@@ -8,7 +8,7 @@ import (
 )
 
 // Tool descriptions and parameter help belong to MCP metadata.
-const orchestrateCoordinatorInstructions = `Use tools.mcp__orchestrate__spawn_agent for isolated implementation batches. Main looks up evidence, holds overall intent, current state and issues, delegates work, and verifies and integrates results. Children own planning, documentation, implementation, validation and correction. Mekugi owns review dispatch and correction routing. For change requests, this workflow includes local commits and linear Git integration, subject to explicit user restrictions. Diagnosis-only assignments remain read-only.`
+const orchestrateCoordinatorInstructions = `Use tools.mcp__orchestrate__spawn_agent for isolated implementation batches. For change requests, this workflow includes local commits and linear Git integration, subject to explicit user restrictions. Diagnosis-only assignments remain read-only.`
 
 // The runtime projects this policy for proven run members, including fresh resume.
 const orchestrateOwnershipInstructions = `Orchestration role ownership replaces incompatible global workflow rules, including rules in previously read or recovered guidance. Main owns lookup, overall intent, current state, issues, delegation and integration. Children own assigned planning, documentation, implementation, validation and correction, including model guidance and workflow documents. Mekugi owns review dispatch and correction routing; agents do not launch a separate review loop. Keep compatible safety, authorization, scope, quality and tool policies. Global instruction files remain unchanged.`
@@ -17,6 +17,7 @@ const orchestrateWorkflow = orchestrateCoordinatorInstructions + "\nIssues:\n"
 
 // Provisional intent stays with its queue entry. It grants no run membership.
 type orchestrateInput struct {
+	ready    bool
 	run      journalRun
 	original composerDraft
 }
@@ -51,6 +52,7 @@ func (u *appServerUI) submitOrchestrate() {
 	} else {
 		u.unsent = append(u.unsent, input)
 	}
+	u.view.follow()
 	ctx, cancel := context.WithCancel(u.ctx)
 	u.orchestrateStarting = cancel
 	u.orchestrateWork(func() func() {
@@ -95,17 +97,9 @@ func (u *appServerUI) submitOrchestrate() {
 				err = context.Canceled
 			}
 			if err != nil {
-				removed := false
-				remove := func(part composerDraft) bool {
-					match := part.orchestration == pending
-					removed = removed || match
-					return match
-				}
-				u.unsent = slices.DeleteFunc(u.unsent, remove)
-				u.queued = slices.DeleteFunc(u.queued, remove)
-				if removed {
-					u.restoreDrafts(original)
-				}
+				// Return all waiting input through the ordinary composer lifecycle.
+				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+				u.unsent, u.queued = nil, nil
 				u.setNotice("Start orchestration: "+err.Error(), true)
 				return
 			}
@@ -117,8 +111,52 @@ func (u *appServerUI) submitOrchestrate() {
 	})
 }
 
+// Journal and replay locks stay on the worker. The queue continues to own input
+// until persistence completes; cancellation restores it through the composer.
+func (u *appServerUI) admitOrchestrateInput(pending *orchestrateInput) {
+	proxy, run := u.proxy, pending.run
+	ctx, cancel := context.WithCancel(u.ctx)
+	u.orchestrateStarting = cancel
+	u.orchestrateWork(func() func() {
+		created, err := proxy.journals.bindRunOwned(ctx, proxy.replayStore, run.Workspace, run.Main, run)
+		return func() {
+			queued := slices.ContainsFunc(slices.Concat(u.unsent, u.queued), func(part composerDraft) bool { return part.orchestration == pending })
+			if err == nil {
+				err = ctx.Err()
+			}
+			if err == nil && (!queued || u.orchestrateClosing || u.thread != run.Main || u.session.cwd != run.Workspace) {
+				err = context.Canceled
+			}
+			finish := func(cleanupErr error) {
+				cancel()
+				u.orchestrateStarting = nil
+				if err != nil || cleanupErr != nil {
+					u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
+					u.unsent, u.queued = nil, nil
+					u.setNotice("Admit orchestration: "+errors.Join(err, cleanupErr).Error(), true)
+				} else {
+					pending.ready = true
+					if flushErr := u.flushInput(); flushErr != nil {
+						u.setNotice("Submit orchestration: "+flushErr.Error(), true)
+					}
+				}
+				u.dirty = true
+			}
+			if err != nil && created {
+				// Retain existing runs and any run already used by an authenticated prepare.
+				u.orchestrateWork(func() func() {
+					cleanupErr := proxy.journals.releaseUnusedRun(u.orchestrateStorageContext, proxy.replayStore, run)
+					return func() { finish(cleanupErr) }
+				})
+			} else {
+				finish(nil)
+			}
+		}
+	})
+}
+
 const orchestrateChildInstructions = `Your coordinator is main. Main's journal is readable with agent:"main"; your journal root is independent.
-Own planning, documentation, implementation, validation and correction for your assignment in this checkout. For change requests, local commits are part of delivery; keep Git history linear. Mekugi owns review dispatch and correction routing; Main verifies and integrates your result. Honor explicit user restrictions and read-only assignments.
+For change requests, local commits are part of delivery; keep Git history linear. Honor explicit user restrictions and read-only assignments.
 `
 
 // relatedJournals has verified this root's durable run membership before rendering.

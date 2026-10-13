@@ -63,7 +63,7 @@ func TestAppServerOrchestrateMainReportsNeverSubmitUserInput(t *testing.T) {
 			if deferred {
 				appServerTestTurnEnd(t, u, "human-turn", "completed")
 			}
-			if err := u.send([]composerDraft{{text: "human input"}}, false); err != nil {
+			if err := u.send([]composerDraft{{text: "human input"}}, false, true); err != nil {
 				t.Fatal(err)
 			}
 			appServerOneRequest(t, w, "turn/start", "human input")
