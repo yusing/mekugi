@@ -559,7 +559,7 @@ or feed follow state.
 Hover underlines only the name; selection shades the row. Feed scrolling follows the same
 line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
 Running command headers scroll with the transcript. Main's composer shows a
-breathing running-process count, and `/ps` opens the current process list as
+breathing running-process count, and `/ps` opens their live output in the shared dialog as
 specified by the [UI contract](native_ui.md#running-processes).
 Roster status symbols are
 observed facts only:

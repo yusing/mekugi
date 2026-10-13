@@ -21,7 +21,8 @@ import (
 type outputDialog struct {
 	view      *liveActivityView // Supplies the painter's theme and colors.
 	pages     []activityui.Block
-	origins   []activityui.Block // Original invocation members, including merged feed rows.
+	origins   []activityui.Block                                // Original invocation members, including merged feed rows.
+	processes func(pages []activityui.Block) []activityui.Block // Rebuilds /ps pages in place of origins.
 	states    map[outputPageKey]outputPageState
 	active    outputPageKey
 	pageReady bool
@@ -252,16 +253,22 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 }
 
 func (d *outputDialog) chrome() int {
-	if len(d.pages) > 1 {
+	if d.tabbed() {
 		return activityui.DialogChrome + 1
 	}
 	return activityui.DialogChrome
 }
 
+// tabbed reports a tab row: several pages, or any /ps process, whose tab
+// names its owning agent.
+func (d *outputDialog) tabbed() bool {
+	return len(d.pages) > 1 || d.processes != nil && d.pages[0].Source != 0
+}
+
 // tabRow keeps the active command and its nearest neighbors visible.
 func (d *outputDialog) tabRow(width int) string {
 	d.tabs = nil
-	if len(d.pages) < 2 {
+	if !d.tabbed() {
 		return ""
 	}
 	count := min(len(d.pages), max(1, width/24))
@@ -270,7 +277,11 @@ func (d *outputDialog) tabRow(width int) string {
 	var out strings.Builder
 	for i := first; i < first+count; i++ {
 		block := d.pages[i]
-		label := fmt.Sprintf(" %d %s", i+1, block.Verb)
+		name := block.Verb
+		if d.processes != nil {
+			name = activityui.AgentDisplayName(block.Owner)
+		}
+		label := fmt.Sprintf(" %d %s", i+1, name)
 		path := block.Path
 		if path == "" && len(block.Reads) == 1 {
 			path = block.Reads[0].Path
@@ -344,6 +355,10 @@ func (d *outputDialog) showPage(page int) {
 }
 
 func (d *outputDialog) refreshPages() {
+	if d.processes != nil {
+		d.setPages(d.processes(d.pages))
+		return
+	}
 	if len(d.origins) == 0 {
 		return
 	}
@@ -401,6 +416,11 @@ func (d *outputDialog) refreshPages() {
 			pages = append(pages, commands...)
 		}
 	}
+	d.setPages(pages)
+}
+
+// setPages keeps the active page selected by identity across a rebuild.
+func (d *outputDialog) setPages(pages []activityui.Block) {
 	d.pages = pages
 	page := min(d.page, len(pages)-1)
 	for i := range pages {
@@ -423,7 +443,7 @@ func (d *outputDialog) layout(width int) {
 		key.version = block.Output.Version()
 	}
 	if key == d.laidKey && d.starts != nil {
-		d.laid.Title = d.view.painter.DialogPageTitle(block, time.Now(), width)
+		d.laid.Title = d.view.painter.DialogPageTitle(block, d.view.now(), width)
 		return
 	}
 	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key
@@ -614,7 +634,7 @@ func (u *terminalUI) outputMouse(button, x, y int, release bool) {
 	case 65:
 		d.scroll(outputDialogWheelRows)
 	case 0:
-		if len(d.pages) > 1 && y == d.rect.y+2 {
+		if d.tabbed() && y == d.rect.y+2 {
 			for _, tab := range d.tabs {
 				if x-d.rect.x-2 >= tab.from && x-d.rect.x-2 < tab.to {
 					d.showPage(tab.page)
@@ -766,6 +786,8 @@ func (d *outputDialog) footer(width int) string {
 	navigation := "←→ command"
 	if d.filePath != "" {
 		navigation = "←→ view"
+	} else if d.processes != nil {
+		navigation = "←→ process"
 	}
 	if len(d.pages) > 1 {
 		keys = append(keys, navigation)

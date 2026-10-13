@@ -21,7 +21,6 @@ type appServerStatusReport struct {
 	title     string
 	groups    []string
 	controls  string
-	processes bool
 	metrics   *sessionMetricsPanel
 	rect      terminalRect // Selectable body, relative to Main.
 	fields    []statusField

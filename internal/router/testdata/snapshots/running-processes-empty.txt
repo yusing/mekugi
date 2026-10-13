@@ -1,12 +1,12 @@
 
 
-
-  ╭ Running processes ──────────────────────── Esc close ╮
-  │                                                      │
-  │  Processes  ───────────────────────────────────────  │
-  │  No running processes                                │
-  │                                                      │
-  ╰─ ↑↓ scroll  PgUp/PgDn ───────────────────────────────╯
+╭─ Running processes ────────────────────────── [×] ─╮
+│                                                    │
+├────────────────────────────────────────────────────┤
+│ No running processes                               │
+│                                                    │
+│                                                    │
+╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ──╯
 
 
 

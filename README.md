@@ -294,7 +294,7 @@ contract](doc/spec/native_ui.md) for complete controls.
 
 - Enter steers; Tab queues. Type `?` in an empty draft for shortcuts.
 - A breathing count shows running commands from Main and its children. `/ps` opens
-  their live process list without interrupting work.
+  their live output, one tab per command, without interrupting work.
 - `@` attaches files; `@!` includes ignored files. VCS metadata is excluded;
   unreadable/oversized content has omission notices. Directories attach two-level
   trees honoring `.gitignore`, bounded to 256 entries/16 KiB with truncation notices.
