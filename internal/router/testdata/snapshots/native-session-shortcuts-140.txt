@@ -12,7 +12,6 @@
 
 
 
-
   Keyboard shortcuts
 
   Compose                                              Session
@@ -21,14 +20,15 @@
   / / @ / $             Pick command / file / skill    alt+↑ / shift+←       Edit last queued
   arrows                Move caret / input history     shift+↑ / shift+↓     Raise / lower reasoning
   ctrl+← / ctrl+→       Previous / next word           /status /session      Settings / launch metrics
-  alt/option+← / →      Previous / next word           /copy                 Copy response or part of it
-  ctrl+↑ / ctrl+↓       Start / end of line            /btw QUESTION         Side question / follow-up
-  alt/option+backspace  Delete previous word           /model /effort /tier  Open picker or set VALUE
-  ctrl+w / alt+del      Delete previous / next word    ctrl+c                Clear / interrupt / quit
-  ctrl+k                Delete to end of line          esc                   Interrupt, keep draft
-  ctrl+z / ctrl+y       Undo / redo                    ctrl+b 1–6            Focus pane (6: Orchestration)
-  ctrl+v                Paste image                    J (empty draft)       Open journal
-  ctrl+g                External editor                ctrl+b e              Next live item
+  alt/option+← / →      Previous / next word           /ps                   Running processes
+  ctrl+↑ / ctrl+↓       Start / end of line            /copy                 Copy response or part of it
+  alt/option+backspace  Delete previous word           /btw QUESTION         Side question / follow-up
+  ctrl+w / alt+del      Delete previous / next word    /model /effort /tier  Open picker or set VALUE
+  ctrl+k                Delete to end of line          ctrl+c                Clear / interrupt / quit
+  ctrl+z / ctrl+y       Undo / redo                    esc                   Interrupt, keep draft
+  ctrl+v                Paste image                    ctrl+b 1–6            Focus pane (6: Orchestration)
+  ctrl+g                External editor                J (empty draft)       Open journal
+                                                       ctrl+b e              Next live item
                                                        ctrl+b q / !          Questions / error details
                                                        ctrl+b ← / →          Resize panes
 

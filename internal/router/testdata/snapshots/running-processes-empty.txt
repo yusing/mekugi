@@ -1,0 +1,12 @@
+
+
+
+  ╭ Running processes ──────────────────────── Esc close ╮
+  │                                                      │
+  │  Processes  ───────────────────────────────────────  │
+  │  No running processes                                │
+  │                                                      │
+  ╰─ ↑↓ scroll  PgUp/PgDn ───────────────────────────────╯
+
+
+

@@ -22,6 +22,7 @@
   alt+↑ / shift+←       Edit last queued
   shift+↑ / shift+↓     Raise / lower re
   /status /session      Settings / launc
+  /ps                   Running processe
   /copy                 Copy response or
   /btw QUESTION         Side question / 
   /model /effort /tier  Open picker or s
@@ -32,7 +33,6 @@
   ctrl+b e              Next live item
   ctrl+b q / !          Questions / erro
   ctrl+b ← / →          Resize panes
-
   Transcript
   ctrl+e       Default / events / all
   pgup / pgdn  Scroll

@@ -20,6 +20,7 @@ var nativeCommands = []composerChoice{
 	{name: "/skills", description: "List or manage skills"},
 	{name: "/btw", description: "Ask a side question without changing Main"},
 	{name: "/orchestrate", description: "Coordinate isolated batch threads"},
+	{name: "/ps", description: "Show running processes"},
 	{name: "/session", description: "Show request metrics, cache and transport"},
 	{name: "/title", description: "Rename this session"},
 	{name: "/status", description: "Show session settings and usage limits"},
