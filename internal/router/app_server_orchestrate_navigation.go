@@ -144,6 +144,11 @@ func (n *orchestrateNavigation) target(thread string) *appServerUI {
 }
 
 func (n *orchestrateNavigation) registerAncestry(info appServerThreadInfo) {
+	// Independent roots own their metadata and native row in their own view.
+	// Main already has their routing boundary; registration here adds an alias.
+	if v := n.views[info.ID]; v != nil && v != n.owner {
+		return
+	}
 	previous := n.target(info.ID)
 	n.owner.session.registerThread(info)
 	if n.target(info.ID) != previous {
