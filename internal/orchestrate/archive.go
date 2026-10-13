@@ -12,7 +12,7 @@ type Archive struct {
 	Error string `json:"error,omitempty"`
 }
 
-func (s *Store) BeginArchive(ctx context.Context, workspace, main, name string, proof Integration, authorize func(func() error) error) (batch Batch, err error) {
+func (s *Store) BeginArchive(ctx context.Context, workspace, main, name string, authorize func(func() error) error) (batch Batch, err error) {
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
 		for i := range m.Batches {
 			b := &m.Batches[i]
@@ -20,12 +20,12 @@ func (s *Store) BeginArchive(ctx context.Context, workspace, main, name string, 
 				continue
 			}
 			batch = *b
-			if b.State != "removed" || b.Launch == nil || b.Launch.ThreadID == "" || b.Launch.ThreadID == main || b.Integration == nil || *b.Integration != proof {
+			if b.State != "removed" || b.Launch == nil || b.Launch.ThreadID == "" || b.Launch.ThreadID == main || b.Integration == nil {
 				return errors.New("archive requires the accepted, removed child batch")
 			}
-			if b.Archive != nil {
+			if b.Archive != nil && b.Archive.State != "not_sent" {
 				if b.Archive.State == "archived" {
-					return nil
+					return authorize(nil)
 				}
 				return errors.New("child archive is unconfirmed; inspect host archive state before recovery")
 			}
@@ -41,7 +41,8 @@ func (s *Store) BeginArchive(ctx context.Context, workspace, main, name string, 
 	return batch, err
 }
 
-func (s *Store) RecordArchive(ctx context.Context, workspace, main, name string, hostErr error) (batch Batch, err error) {
+// dispatched includes failed sends when delivery to the host is uncertain.
+func (s *Store) RecordArchive(ctx context.Context, workspace, main, name string, dispatched bool, hostErr error) (batch Batch, err error) {
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
 		for i := range m.Batches {
 			b := &m.Batches[i]
@@ -52,8 +53,13 @@ func (s *Store) RecordArchive(ctx context.Context, workspace, main, name string,
 				return errors.New("archive has no pending intent")
 			}
 			b.Archive = &Archive{State: "archived"}
+			if !dispatched {
+				b.Archive.State = "not_sent"
+			} else if hostErr != nil {
+				b.Archive.State = "uncertain"
+			}
 			if hostErr != nil {
-				b.Archive = &Archive{State: "uncertain", Error: hostErr.Error()}
+				b.Archive.Error = hostErr.Error()
 			}
 			if err := s.save(m, path); err != nil {
 				return err

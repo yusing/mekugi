@@ -1,10 +1,13 @@
 package router
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/internal/orchestrate"
 )
@@ -46,12 +49,61 @@ func TestAppServerOrchestrateArchiveUncertain(t *testing.T) {
 			if err != nil || batches[0].Archive == nil || batches[0].Archive.State == "archived" || batches[0].Integration == nil {
 				t.Fatal("uncertain archive claimed success or lost integration", batches, err)
 			}
-			b := batches[0]
-			if _, err := store.BeginArchive(t.Context(), u.session.cwd, "main", "batch", *b.Integration, func(func() error) error { t.Fatal("replayed archive"); return nil }); err == nil {
+			if _, err := store.BeginArchive(t.Context(), u.session.cwd, "main", "batch", func(func() error) error { t.Fatal("replayed archive"); return nil }); err == nil {
 				t.Fatal("uncertain archive allowed another effect")
 			}
 			if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "accept", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil || len(u.proxy.orchestration.journalEvents) != 0 {
 				t.Fatal("acceptance replay queued archival", err)
+			}
+		})
+	}
+}
+
+func TestAppServerOrchestrateArchiveUnsentRetry(t *testing.T) {
+	for _, blocker := range []string{"canceled", "pending input"} {
+		t.Run(blocker, func(t *testing.T) {
+			u := orchestrateCleanupUI(t)
+			if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			c := &orchestrateCommand{ctx: ctx, workspace: u.session.cwd, main: "main", target: "batch", tool: "cleanup", reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(c)
+			for step := range 2 {
+				select {
+				case complete := <-u.orchestrateCompletions:
+					// First remove the checkout, then pause after durable archive
+					// intent but before the UI callback can dispatch to Codex.
+					if step == 1 {
+						if blocker == "canceled" {
+							cancel()
+						} else {
+							u.navigation.views["child"].draft = "keep this input"
+						}
+					}
+					u.completeOrchestrateWork(complete)
+				case <-time.After(5 * time.Second):
+					t.Fatal("cleanup storage timeout")
+				}
+			}
+			drainOrchestrateWork(t, u)
+			result := <-c.reply
+			if result.err == nil || result.batch.Archive == nil || result.batch.Archive.State != "not_sent" || u.client.Input.(*appServerTestInput).Len() != 0 {
+				t.Fatal("known-unsent archive was not retained correctly", result)
+			}
+			// A fresh store owner must permit an explicit retry, once idle.
+			store := &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
+			u.proxy.orchestration.store = store
+			u.navigation.views["child"].draft = ""
+			orchestrateTargetMCPClient(t, u, "cleanup")("main", false)
+			if u.orchestrateThreads["child"].batch.Archive.State != "archived" {
+				t.Fatal("explicit retry did not archive child")
+			}
+			// Even the already-archived no-effect path must recheck authority.
+			denied := errors.New("acceptance unavailable")
+			if _, err := store.BeginArchive(t.Context(), u.session.cwd, "main", "batch", func(func() error) error { return denied }); !errors.Is(err, denied) {
+				t.Fatal("archived no-op skipped authorization", err)
 			}
 		})
 	}

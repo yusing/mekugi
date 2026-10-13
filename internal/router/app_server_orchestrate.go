@@ -389,7 +389,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		if m.Error != nil {
 			err = fmt.Errorf("thread/archive: %s", m.Error.Message)
 		}
-		u.recordOrchestratedArchive(r.child, r.archiveReply, err)
+		u.recordOrchestratedArchive(r.child, r.archiveReply, true, err)
 		return true
 	}
 	if r.review != nil {

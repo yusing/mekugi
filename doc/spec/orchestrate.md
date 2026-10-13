@@ -431,6 +431,8 @@ Archive intent is durable before dispatch and keeps Main's accepted binding
 fixed. Host confirmation is retained separately from checkout removal. Archive
 failure preserves acceptance and history and remains visible; an unconfirmed
 request requires inspection and is never automatically repeated on recovery.
+If dispatch was confirmed not to have started, an explicit cleanup retry can
+archive the child after acceptance and idle input are checked again.
 
 Shadow cleanup retains the private repository and its history and leaves
 the source's files and VCS metadata unchanged. The bound journal task must still
