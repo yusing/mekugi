@@ -1159,9 +1159,8 @@ seconds as needed, for example `Completed in 12s` or `Completed in 1m22s`. Activ
 same bodies for children in both the combined transcript
 and selected-agent detail, including after completion or later activity. The current
 summary updates the agent's roster status with the shared breathing animation
-that stops when superseded or finished. The sweep blends between
-the terminal's reported (OSC 10/11) foreground and background; without both
-reports it steps through dim, normal and bold. Raw and encrypted
+that stops when superseded or finished. It uses the same neutral color ramp as
+waiting text, adapting to the terminal's reported (OSC 10/11) colors. Raw and encrypted
 reasoning stay excluded.
 Short reasoning summaries that occupy one rendered body row display directly,
 without a `Thinking…` header, while streaming and after completion. Heading-only

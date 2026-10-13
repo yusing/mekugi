@@ -365,7 +365,13 @@ A gold-led closing row follows any `… +N more`: a commit's hash, `on BRANCH`, 
 totals; a status's branch, `↑N ↓N`, and `clean`; an svn revision `rN`; or a diff's
 file count and totals when it has more files than show. These rows are the
 operation's result, so they stay when output collapses; the output dialog keeps the
-retained output, colored as a patch for `Diff`. The roster summary shows the verb,
+retained output, colored as a patch for `Diff`. In transcript output and the
+output dialog, recognized unified diffs show distinct file sections with a clear
+path heading and `+N -N` changed-line counts instead of raw `---` and `+++`
+headers. Added and deleted files identify their real path rather than `/dev/null`;
+renames retain both paths. Hunk content remains unchanged. Partial or unrecognized
+diff output retains its available evidence without claiming complete file counts.
+Retained raw output and copied source remain unchanged. The roster summary shows the verb,
 heading, the rows' changed lines, and the source.
 Unknown and zero exits add no failure label, and an unknown exit no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
