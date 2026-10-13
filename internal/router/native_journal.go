@@ -49,6 +49,16 @@ func (r journalPaneRow) disclosure() (int, int) {
 	return journalRowMargin, journalRowMargin + ansi.StringWidth(r.lead) + 2
 }
 
+// owned preserves the local caller identities used by saved captures.
+func (s *nativeJournalSink) owned() *threadJournal {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tree
+}
+
 func (s *nativeJournalSink) presented() *threadJournal {
 	if s == nil {
 		return nil

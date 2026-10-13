@@ -347,7 +347,6 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		widest = max(widest, ansi.StringWidth(line.prefix))
 	}
 	metrics := nativeRosterColumns(parts, width-widest-24)
-	skills := v.activeSkills()
 	stateEnd := width - 1
 	if len(metrics) > 0 {
 		stateEnd -= ansi.StringWidth(metrics[0])
@@ -362,7 +361,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		// A child's skill count ends its state cell and opens those skills.
 		// Main's count is in Main's title.
 		label := ""
-		if set := skills[item.row.agent.Name]; set != nil && item.row.agent.Name != "/root" {
+		if set := v.loadedSkills(item.row.agent.Name); set != nil && item.row.agent.Name != "/root" {
 			label = set.label()
 		}
 		if room-ansi.StringWidth(label)-2 < 8 {

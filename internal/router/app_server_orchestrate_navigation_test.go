@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/internal/uisnapshot"
@@ -121,6 +122,51 @@ func TestAppServerOrchestrateFreshDiffAdmission(t *testing.T) {
 	v := u.navigation.views["child2"]
 	if len(v.shell.diff.data.files()) != 1 || len(u.shell.diff.data.files()) != 0 {
 		t.Fatal("fresh child lost prepublished Diff scope or crossed roots")
+	}
+}
+
+func TestAppServerOrchestrateSavedTaskDiff(t *testing.T) {
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, launch := orchestrateIdentityPendingTurnWithReplay(t, store)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+	v := u.navigation.views["child"]
+	workspace := v.session.cwd
+	for i, parent := range []string{"", "/1"} {
+		if _, err := u.proxy.journals.apply(v.ctx, store, workspace, "child", "", []journalMutation{{Op: "add", Under: parent, Kind: "task", Title: new("Work"), State: new("working")}}); err != nil {
+			t.Fatal(err)
+		}
+		call := fmt.Sprintf("edit-%d", i)
+		id, err := store.reserveChange(v.ctx, workspace, "child", call)
+		if err != nil {
+			t.Fatal(err)
+		}
+		history := mekugiHistory{ChangeID: id, CorrelationID: call, Caller: "/root", ExecutingThread: "child", ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(workspace+"/"+call, workspace+"/"+call, "before\n", "after\n")}}
+		if err := store.put(v.ctx, workspace, map[string]mekugiHistory{call: history}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Restore using durable evidence only. The pane's mounted names differ
+	// from capture callers, while the owned task identities remain local.
+	reader := &mekugiReplayStore{directory: store.directory}
+	if err := u.proxy.journals.restoreNative(v.ctx, reader, v.journal); err != nil {
+		t.Fatal(err)
+	}
+	if v.journal.presented().Author != "/root/batch" {
+		t.Fatal("fixture did not mount the orchestration journal")
+	}
+	u.applyOrchestrationDiff(v.ctx, liveDiffEvent{Kind: "scope", Scope: &liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"child": true}}}})
+	v.shell.diffOpen, v.shell.journalOpen = true, false
+	for _, want := range []int{1, 2, 2} {
+		if err := v.paint(&bytes.Buffer{}, 120, 35); err != nil {
+			t.Fatal(err)
+		}
+		if got := len(v.shell.diff.navigation.Matches); got != want {
+			t.Fatalf("scope %v shows %d files, want %d", v.shell.diff.taskScope, got, want)
+		}
+		v.shell.diff.cycleTaskScope()
 	}
 }
 
@@ -284,8 +330,16 @@ func TestUISnapshotOrchestrationNavigation(t *testing.T) {
 		name, thread string
 		collapsed    bool
 		width        int
-	}{{"main", "main", false, 100}, {"batch", "child", false, 100}, {"collapsed", "main", true, 100}, {"narrow", "child", false, 45}} {
+	}{{"main", "main", false, 100}, {"batch", "child", false, 100}, {"returned", "main", false, 100}, {"collapsed", "main", true, 100}, {"narrow", "child", false, 45}} {
+		selected := "/Orchestration/main"
+		if test.thread == "child" {
+			selected = "/Orchestration/batch"
+		}
+		u.viewedUI().agents.rosterSelected = selected
 		u.switchOrchestratedThread(test.thread)
+		if test.name == "returned" {
+			test.name = "main" // Returning must restore the same selected-row style.
+		}
 		view := u.viewedUI()
 		view.shell.agentsCollapsed = test.collapsed
 		var frame bytes.Buffer
@@ -318,6 +372,10 @@ func TestUISnapshotOrchestrationWorkingRoster(t *testing.T) {
 		view.view.painter.Theme, view.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
 		view.modelsLoading = true
 	}
+	// Completed successful reads count once; failed reads do not count.
+	orchestrateTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"child","turnId":"batch-turn","item":{"id":"skill","type":"commandExecution","command":"skills-mgr get golang-best-practices","status":"completed","exitCode":0}}}`)
+	orchestrateTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"child","turnId":"batch-turn","item":{"id":"failed-skill","type":"commandExecution","command":"skills-mgr get goutils","status":"failed","exitCode":1}}}`)
+	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"batch-turn","status":"completed"}}}`)
 	for i := range 22 {
 		thread := fmt.Sprintf("%02d-worker", i)
 		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "parentThreadId": "child", "agentNickname": thread}})
@@ -358,6 +416,31 @@ func TestUISnapshotOrchestrationWorkingRoster(t *testing.T) {
 				}
 			}
 		}
+		boundary := v.shell.layout.rosterHorizontal
+		u.switchOrchestratedThread("main")
+		frame.Reset()
+		if err := u.paint(&frame, 100, test.height); err != nil {
+			t.Fatal(err)
+		}
+		if test.name == "working" {
+			screen := vt.NewEmulator(100, test.height)
+			_, _ = screen.Write(frame.Bytes())
+			uisnapshot.Assert(t, "testdata/snapshots/orchestration-roster-switched-main.txt", screen.String()+"\n")
+			screen.Close()
+		}
+		if u.shell.layout.rosterHorizontal != boundary || u.agents.rosterSelected != "/Orchestration/main" {
+			t.Fatal("switch moved the roster boundary or retained the old active thread")
+		}
+		u.switchOrchestratedThread("child")
+		if v.agents.rosterSelected != "/Orchestration/batch" || !v.shell.openSkills(v.agents, "/Orchestration/batch") {
+			t.Fatal("return switch lost the active thread or completed skill reads")
+		}
+		v.shell.output = nil
+	}
+	v.shell.rosterHeight, v.shell.agentsCollapsed = 6, true
+	u.switchOrchestratedThread("main")
+	if u.shell.rosterHeight != 6 || !u.shell.agentsCollapsed {
+		t.Fatal("switch lost the user's roster size or collapse state")
 	}
 }
 
@@ -550,8 +633,8 @@ func TestAppServerOrchestrationAgentsPanel(t *testing.T) {
 	if err := u.shell.send("\r"); err != nil {
 		t.Fatal(err)
 	}
-	if u.viewedUI() != v || v.shell.focus != 3 || v.shell.agentsCollapsed {
-		t.Fatal("thread pick lost local panel state")
+	if u.viewedUI() != v || v.shell.focus != 3 {
+		t.Fatal("thread pick lost focus")
 	}
 	v.agents.rosterSelected = "/Orchestration/main"
 	if err := v.shell.send("\r"); err != nil {

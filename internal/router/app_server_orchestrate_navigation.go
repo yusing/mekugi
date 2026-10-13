@@ -398,11 +398,18 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		n.viewed.quitConfirmationKey("\x1b")
 		from, to := n.viewed.shell, n.views[thread].shell
 		to.focus, to.side = from.focus, from.side
+		to.rosterHeight, to.agentsCollapsed = from.rosterHeight, from.agentsCollapsed
 		to.journalOpen, to.diffOpen, to.activityOpen = from.journalOpen, from.diffOpen, from.activityOpen
 		to.autoActivity = false
 	}
 	n.viewed = n.views[thread]
 	n.viewed.orchestrationRoster()
+	for _, agent := range n.viewed.agents.orchestration {
+		if n.viewed.agents.orchestrationSources[agent.Name] == n.viewed.agents {
+			n.viewed.agents.rosterSelected = agent.Name
+			break
+		}
+	}
 	n.viewed.shell.paintedRows = nil
 	n.viewed.dirty = true
 	if len(n.viewed.models) == 0 && !n.viewed.modelsLoading {

@@ -27,6 +27,17 @@ func (s activeSkillSet) label() string {
 	return fmt.Sprintf("%d loaded skills", len(s))
 }
 
+// Thread rows project their root's confirmed loads, not the selected feed's.
+func (v *liveActivityView) loadedSkills(agent string) activeSkillSet {
+	if source := v.orchestrationSources[agent]; source != nil {
+		return source.loadedSkills("/root")
+	}
+	if agent == "/root" && v.mainView != nil {
+		return v.mainView.activeSkills()["Main"]
+	}
+	return v.activeSkills()[agent]
+}
+
 // The revision cache avoids rescanning unchanged Activity on every paint.
 func (v *liveActivityView) activeSkills() map[string]activeSkillSet {
 	if v.skills != nil && v.skills.revision == v.revision {
@@ -135,7 +146,7 @@ func skillLoads(record liveActivityRecord) []string {
 }
 
 func (u *terminalUI) openSkills(view *liveActivityView, agent string) bool {
-	names := slices.Clone(view.activeSkills()[agent])
+	names := slices.Clone(view.loadedSkills(agent))
 	if len(names) == 0 {
 		return false
 	}

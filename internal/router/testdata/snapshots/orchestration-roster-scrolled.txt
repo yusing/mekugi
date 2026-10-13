@@ -1,5 +1,6 @@
-┌ 1 main › batch ────────────────────────────────┐┌ 4 Journal ─────────── space expand · d details ┐
-│Mekugi dev • codex                              ││ No journal entries.                            │
+┌ 1 main › batch · 1 loaded skill ───────────────┐┌ 4 Journal ─────────── space expand · d details ┐
+│├ Skill golang-best-practices                   ││ No journal entries.                            │
+│└ Skill goutils                                 ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │
@@ -14,8 +15,7 @@
 │                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │
-│                                                ││                                                │
-│╭─ ◐ Working 0s ───────────────────────────────╮││                                                │
+│╭─ Completed in 0s ────────────────────────────╮││                                                │
 ││ ❯                                            │││                                                │
 │╰───────────────────────────────────────── 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘

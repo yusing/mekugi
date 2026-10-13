@@ -232,10 +232,13 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		u.agents.netCounts = u.diff.netCounts
 	}
 	limit := u.rosterLimit(height)
-	if u.agentsCollapsed {
-		limit = 0
-	}
 	roster := u.agents.nativeRoster(width, limit, now, u.focus == 3)
+	if u.main != nil && u.main.navigation != nil && len(roster) > 0 {
+		// One shared row budget keeps thread switches from moving the divider.
+		for len(roster) < limit+1 {
+			roster = append(roster, "")
+		}
+	}
 	if height-1-len(roster) < nativeFramedRows {
 		roster = roster[:min(1, len(roster))]
 		if height-1-len(roster) < nativeFramedRows {
@@ -339,7 +342,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		var title, label string
 		if u.diffOpen {
 			if u.main != nil {
-				u.diff.updateTaskScope(u.main.journal.presented())
+				u.diff.updateTaskScope(u.main.journal.owned())
 			}
 			diffRows := content
 			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
@@ -453,6 +456,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 
 // rosterLimit leaves space for every working row before limiting idle history.
 func (u *terminalUI) rosterLimit(height int) int {
+	if u.agentsCollapsed {
+		return 0
+	}
 	if u.rosterHeight > 0 {
 		return u.rosterHeight
 	}
@@ -460,14 +466,45 @@ func (u *terminalUI) rosterLimit(height int) int {
 	if u.focus == 3 {
 		limit = max(limit, int(float64(height)*nativeRosterShare))
 	}
-	working := 0
-	for _, row := range u.agents.nativeRosterRows() {
-		if row.agent.Responding && row.agent.Name != "/root" && row.agent.Name != "/Orchestration/main" {
-			working++
+	if u.main != nil && u.main.navigation != nil {
+		// Reserve native-agent slots from current metadata, not rendered rows.
+		// Hidden histories and folded status do not affect shared geometry.
+		threads, workingThreads := len(u.agents.orchestration), 0
+		for _, agent := range u.agents.orchestration {
+			if agent.Responding && agent.Name != "/Orchestration/main" {
+				workingThreads++
+			}
 		}
+		needed := threads
+		for _, view := range u.main.navigation.views {
+			count, working, legend := threads, workingThreads, false
+			for _, agent := range view.agents.agents {
+				if agent.Name == "/root" || strings.HasPrefix(agent.Name, "/orchestrate/") || nativeThreadRow(agent.Name) {
+					continue
+				}
+				count++
+				if agent.Responding {
+					working++
+				}
+				legend = legend || u.focus == 3 && liveActivityRole(agent) != ""
+			}
+			if legend {
+				count++
+			}
+			needed = max(needed, count)
+			limit = max(limit, working+4)
+		}
+		limit = min(limit, needed)
+	} else {
+		working := 0
+		for _, row := range u.agents.nativeRosterRows() {
+			if row.agent.Responding && row.agent.Name != "/root" && row.agent.Name != "/Orchestration/main" {
+				working++
+			}
+		}
+		// Main, a scrollable row, overflow, and the focused role legend need room too.
+		limit = max(limit, working+4)
 	}
-	// Main, a scrollable row, overflow, and the focused role legend need room too.
-	limit = max(limit, working+4)
 	return min(limit, max(1, height-nativeFramedRows-3))
 }
 
