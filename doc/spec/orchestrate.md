@@ -215,7 +215,11 @@ blockers rather than weaker reviews or silent approval. Both reviews of a candid
 run concurrently, and each batch's workflow progresses independently of the others.
 
 Each verdict names the candidate and review purpose, with a result of clear,
-findings, or blocked. Findings have stable identifiers. Missing, malformed,
+findings, or blocked. Findings have stable identifiers. The reason field contains
+only a blocker and is empty for clear or findings verdicts; clear and blocked
+verdicts have no findings. The reviewer's schema-constrained final answer remains
+the verdict even when the reviewer completes journal work in the same turn.
+Missing, malformed,
 wrong-revision, or failed review results do not count as approval. Mekugi collects
 both results before delivering one correction assignment directly to the implementer.
 The implementer can fix or dispute findings but cannot approve its own candidate.

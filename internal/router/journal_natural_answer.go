@@ -9,7 +9,7 @@ import (
 // Capture a completed provider answer for recovery without making Main's answer
 // presentation journal-owned. Child completion still delivers its journal result.
 func (t *mekugiResponseTransform) captureNaturalJournalAnswer(payload []byte) error {
-	if !t.journalAvailable || t.journalClientCalls || len(t.journalPending) != 0 {
+	if !t.journalAvailable || t.structuredOutput || t.journalClientCalls || len(t.journalPending) != 0 {
 		return nil
 	}
 	var response struct {

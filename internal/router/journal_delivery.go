@@ -106,6 +106,9 @@ func (t *mekugiResponseTransform) prepareOwnJournalDelivery(terminal bool) ([]ma
 	if !t.journalActive {
 		return nil, nil
 	}
+	// Progress remains available, but a journal report cannot satisfy or replace
+	// a host-constrained final, including the early streaming flush.
+	terminal = terminal && !t.structuredOutput
 	// Native child completion delivers its own result. Main flushes only its
 	// own journal, never repeats child results.
 	childTerminal := terminal && t.subagentTurn

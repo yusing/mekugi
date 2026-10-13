@@ -154,7 +154,7 @@ func journalHostExecutionResult(call executionCall, raw jsonv1.RawMessage) (hand
 // Codex still owns its tool-result continuation; only provider inference is skipped.
 func (a *requestAttempt) tryJournalHostFinish() (bool, error) {
 	t := a.mekugiTransform
-	if t == nil || a.prewarm {
+	if t == nil || a.prewarm || t.structuredOutput {
 		return false, nil
 	}
 	finished, err := t.journalHostFinished(a.request.fields["input"])

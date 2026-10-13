@@ -658,6 +658,9 @@ trace and successful nested tool outcomes, not printed success prose. Restart ca
 recover a receipt for the same thread and turn; forks and later turns cannot reuse it.
 When results require further provider interpretation or the user needs a substantive
 answer, the agent instead finishes naturally after inspecting those results.
+When the host requires a schema-constrained final answer, the provider continuation
+still runs after a successful finish marker. Journal delivery preserves that final
+answer without replacing it with a work report or child-result text.
 On a successful completed response with no client-dispatched calls, the router captures the final
 answer for durable recovery and delivers Main's substantive provider final unchanged.
 Pending work-report events are delivered separately in that same response, without

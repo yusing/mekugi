@@ -247,7 +247,7 @@ func (t *mekugiResponseTransform) executeJournalCall(item map[string]json.RawMes
 // Completion is invocation-local. Replaying a retained finish result must never
 // finish a later turn, and client-dispatched work still belongs to the host.
 func (t *mekugiResponseTransform) journalTerminalReady() bool {
-	if !t.journalAvailable || !t.journalFinishRequested {
+	if !t.journalAvailable || !t.journalFinishRequested || t.structuredOutput {
 		return false
 	}
 	if t.journalClientCalls || len(t.journalPending) != 0 {

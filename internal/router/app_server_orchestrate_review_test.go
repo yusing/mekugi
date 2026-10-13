@@ -448,7 +448,7 @@ func TestOrchestrateWorkflowManualInputAndCancellation(t *testing.T) {
 }
 
 func TestOrchestrateWorkflowRejectsMalformedReviewAndPermissionMismatch(t *testing.T) {
-	for _, mode := range []string{"permissions", "malformed", "wrong-revision"} {
+	for _, mode := range []string{"permissions", "malformed", "wrong-revision", "wrong-purpose", "clear-reason", "findings-reason"} {
 		t.Run(mode, func(t *testing.T) {
 			u, w := workflowUI(t)
 			workflowCompleted(t, u, "child", "implement", "")
@@ -463,9 +463,22 @@ func TestOrchestrateWorkflowRejectsMalformedReviewAndPermissionMismatch(t *testi
 			if mode != "permissions" {
 				turn, _ := workflowTake(t, u, w, "turn/start", "reviewer", "")
 				orchestrateTestReply(t, u, turn, `{"turn":{"id":"review"}}`)
-				text := "looks good"
-				if mode == "wrong-revision" {
-					raw, _ := json.Marshal(orchestrate.ReviewResult{Revision: strings.Repeat("a", 40), Purpose: orchestrate.ReviewCorrectness, Verdict: orchestrate.VerdictClear, Findings: []orchestrate.ReviewFinding{}})
+				text := "Journal\n\n**This turn**\nCompleted source review without findings"
+				if mode != "malformed" {
+					result := orchestrate.ReviewResult{Revision: child.batch.Workflow.Candidate.Revision, Purpose: orchestrate.ReviewCorrectness, Verdict: orchestrate.VerdictClear, Findings: []orchestrate.ReviewFinding{}}
+					switch mode {
+					case "wrong-revision":
+						result.Revision = strings.Repeat("a", 40)
+					case "wrong-purpose":
+						result.Purpose = orchestrate.ReviewSimplification
+					case "clear-reason", "findings-reason":
+						result.Reason = "Source review complete. Runtime validation remains unverified."
+						if mode == "findings-reason" {
+							result.Verdict = orchestrate.VerdictFindings
+							result.Findings = []orchestrate.ReviewFinding{{ID: "fixture-path", Detail: "Retained fixtures use the old manifest path"}}
+						}
+					}
+					raw, _ := json.Marshal(result)
 					text = string(raw)
 				}
 				workflowCompleted(t, u, "reviewer", "review", text)

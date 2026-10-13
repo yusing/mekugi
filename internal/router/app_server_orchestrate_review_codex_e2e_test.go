@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +29,8 @@ type workflowCodexProvider struct {
 	calls              map[string]int
 	checkout, revision string
 	schemas            int
+	finishes           int
+	finishOutputs      []string
 	configured         bool
 }
 
@@ -43,14 +47,18 @@ func (p *workflowCodexProvider) forwardExecution(ctx, responseCtx context.Contex
 			Effort string `json:"effort"`
 		} `json:"reasoning"`
 		Input []struct {
-			Role    string `json:"role"`
+			Role    string         `json:"role"`
+			CallID  string         `json:"call_id"`
+			Output  jsontext.Value `json:"output"`
 			Content []struct {
 				Text string `json:"text"`
 			} `json:"content"`
 		} `json:"input"`
 		Text struct {
 			Format struct {
-				Type string `json:"type"`
+				Type   string         `json:"type"`
+				Strict bool           `json:"strict"`
+				Schema jsontext.Value `json:"schema"`
 			} `json:"format"`
 		} `json:"text"`
 	}
@@ -67,6 +75,9 @@ func (p *workflowCodexProvider) forwardExecution(ctx, responseCtx context.Contex
 	}
 	final := "Implementation complete."
 	if strings.HasPrefix(assignment, "Review candidate") {
+		if !strings.Contains(assignment, "Otherwise keep reason empty.") || !strings.Contains(assignment, "Return the JSON verdict as your final answer.") {
+			return nil, fmt.Errorf("review assignment omitted verdict completion rules")
+		}
 		purpose := orchestrate.DispatchCorrectness
 		if strings.Contains(assignment, "for simplification.") {
 			purpose = orchestrate.DispatchSimplification
@@ -91,13 +102,36 @@ func (p *workflowCodexProvider) forwardExecution(ctx, responseCtx context.Contex
 		if !found {
 			return nil, fmt.Errorf("review developer instructions missing for %s", purpose)
 		}
-		if request.Text.Format.Type != "json_schema" {
+		var gotSchema, wantSchema any
+		if err := json.Unmarshal(request.Text.Format.Schema, &gotSchema); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(orchestrate.ReviewResultSchema), &wantSchema); err != nil {
+			return nil, err
+		}
+		if request.Text.Format.Type != "json_schema" || !request.Text.Format.Strict || !reflect.DeepEqual(gotSchema, wantSchema) {
 			return nil, fmt.Errorf("host omitted review output schema: %s", request.Text.Format.Type)
 		}
 		if call == 1 {
 			p.schemas++
 			args, _ := json.Marshal(map[string]any{"cmd": "printf forbidden > " + strconv.Quote(filepath.Join(p.checkout, "readonly-probe")), "workdir": p.checkout, "shell": "bash"})
-			return mchangesNestedCodexResponse(call, map[string]any{"type": "custom_tool_call", "id": "readonly", "call_id": "readonly", "name": "exec", "input": "text(await tools.exec_command(" + string(args) + "));", "status": "completed"}), nil
+			return mchangesNestedCodexResponse(call, map[string]any{"type": "custom_tool_call", "id": "readonly-" + metadata.ThreadID, "call_id": "readonly-" + metadata.ThreadID, "name": "exec", "input": "text(await tools.exec_command(" + string(args) + "));", "status": "completed"}), nil
+		}
+		if call == 2 {
+			// A successful host finish must still reach the provider for the
+			// constrained verdict, rather than synthesize a Journal final.
+			return mchangesNestedCodexResponse(call, map[string]any{"type": "custom_tool_call", "id": "finish-" + metadata.ThreadID, "call_id": "finish-" + metadata.ThreadID, "name": "exec", "status": "completed", "input": `const check = await tools.exec_command({cmd:"printf reviewed"}); if(check.exit_code !== 0) throw new Error("review check failed"); const r = await tools.mcp__mekugi__journal_mutate({mutations:[{op:"log",text:"Source review complete"},{op:"finish"}]}); if(r.isError) throw new Error(JSON.stringify(r)); text(r);`}), nil
+		}
+		finished := false
+		for _, item := range request.Input {
+			if texts := executionOutputTexts([]byte(item.Output)); item.CallID == "finish-"+metadata.ThreadID && len(texts) > 0 {
+				p.finishOutputs = append(p.finishOutputs, texts...)
+				status, _, _ := codeModeExecutionHeader(texts[0])
+				finished = status == "Script completed"
+			}
+		}
+		if finished {
+			p.finishes++
 		}
 		raw, _ := json.Marshal(orchestrate.ReviewResult{Revision: p.revision, Purpose: orchestrate.ReviewPurpose(purpose), Verdict: orchestrate.VerdictClear, Findings: []orchestrate.ReviewFinding{}})
 		final = string(raw)
@@ -120,12 +154,23 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	t.Setenv("CODEX_ROLLOUT_TRACE_ROOT", trace)
 	provider := &workflowCodexProvider{calls: map[string]int{}, configured: configured}
 	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
 	proxy.nativeTrace = &nativeToolTrace{directory: trace}
+	socket, stopMCP, err := startJournalMCP(t.Context(), newJournalMCPServer(proxy))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := stopMCP(); err != nil {
+			t.Error(err)
+		}
+	}()
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.workflow_test={name="workflow_test",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="workflow_test"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`, "-c", "features.code_mode=true", "-c", "features.code_mode_host=true", "-c", `approval_policy="never"`, "-c", `sandbox_mode="workspace-write"`)
+	cmd.Args = append(cmd.Args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["journal-mcp",`+strconv.Quote(socket)+`]}`)
 	{
 		role := filepath.Join(t.TempDir(), "role.toml")
 		if err := os.WriteFile(role, []byte("developer_instructions = 'Configured correctness rubric'\nmodel = 'gpt-6-sol'\nmodel_reasoning_effort = 'low'\nservice_tier = 'flex'\n"), 0600); err != nil {
@@ -155,6 +200,9 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 			case message, ok := <-client.Messages:
 				if !ok {
 					t.Fatal("host closed")
+				}
+				if message.Method == "turn/completed" && strings.Contains(string(message.Params), `"failed"`) {
+					t.Logf("failed host turn: %s", message.Params)
 				}
 				if err := u.message(message); err != nil {
 					t.Fatal(err)
@@ -217,6 +265,9 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 		t.Fatal("reviewer escaped read-only sandbox", err)
 	}
 	provider.mu.Lock()
+	if provider.finishes != 2 {
+		t.Errorf("missing successful journal finishes: %q", provider.finishOutputs)
+	}
 	schemas := provider.schemas
 	provider.mu.Unlock()
 	if schemas != 2 || len(child.batch.Workflow.Reviews) != 2 || len(child.batch.Workflow.Checks) != 1 || child.batch.Workflow.Checks[0].Outcome != orchestrate.CheckPassed {

@@ -60,7 +60,7 @@ func workflowReviewerInstructions(purpose orchestrate.WorkflowDispatchKind) stri
 
 // Main owns final wording review of these per-turn assignments.
 func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.WorkflowDispatchKind) string {
-	return "Review candidate " + batch.Workflow.Candidate.Revision + " against baseline " + batch.Base + " for " + string(purpose) + ". Scope: " + batch.Workflow.Assignment.Scope + "\nInspect read-only. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. Use blocked with a reason if review cannot be completed."
+	return "Review candidate " + batch.Workflow.Candidate.Revision + " against baseline " + batch.Base + " for " + string(purpose) + ". Scope: " + batch.Workflow.Assignment.Scope + "\nInspect read-only. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer."
 }
 func workflowCorrectionAssignment(batch orchestrate.Batch) string {
 	var text strings.Builder

@@ -231,6 +231,7 @@ type mekugiJournalState struct {
 	journalQuestion         string // Request-local user text for the natural final answer.
 	journalAvailable        bool
 	journalActive           bool
+	structuredOutput        bool // The host requires a provider-authored final in its output format.
 	journalPending          map[string]bool
 	journalCalls            map[string]map[string]jsonv1.RawMessage
 	journalResults          []map[string]jsonv1.RawMessage
@@ -642,6 +643,14 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	transform.usageTracker.reasoning = request.reasoningEffort()
 	transform.journalAvailable = true
+	var outputText struct {
+		Format struct {
+			Type string `json:"type"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(request.fields["text"], &outputText); err == nil {
+		transform.structuredOutput = outputText.Format.Type != "" && outputText.Format.Type != "text"
+	}
 	transform.journalQuestion = journalQuestionFromInput(request.fields["input"], metadata.commentaryAuthor())
 	transform.journalActive = true
 	transform.journalPending = make(map[string]bool)
