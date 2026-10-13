@@ -629,12 +629,18 @@ Main's composer row shows a breathing `N running processes` label while at least
 one observed command is running in the active thread or its children. At zero,
 the label is absent. Running commands remain ordinary scrollable transcript rows.
 
-`/ps` opens the shared themed, scrollable dialog with each current command and
-its owning agent. The list updates as commands start or complete and shows an
-explicit empty state when none remain. Closing the dialog uses the existing
-dialog controls without interrupting work or submitting a model request. Yielded
-commands remain listed until host completion. Restored history never creates a
-running process, and switching sessions does not retain the prior session's list.
+`/ps` opens the shared [output dialog](activity_display.md) over every running
+command, in start order. Each page is one whole invocation: its display source,
+without Mekugi instrumentation as in its transcript row, and its retained output,
+streamed live and following its tail until the reader scrolls up. A tab row,
+shown even for one command, names each page's owning agent and command; Left/Right
+or a click selects a tab. Commands that start while the dialog is open join the tabs.
+A command that completes keeps its page, with its final output and exit, until
+the dialog closes. With no running command, the dialog shows an explicit empty
+state. Closing uses the shared dialog controls without interrupting work or
+submitting a model request. Yielded commands remain listed until host completion.
+Restored history never creates a running process, and switching sessions closes
+the dialog.
 
 ### Session metrics
 

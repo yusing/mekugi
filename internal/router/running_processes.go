@@ -3,6 +3,7 @@ package router
 import (
 	"cmp"
 	"iter"
+	"maps"
 	"slices"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -33,15 +34,49 @@ func (u *appServerUI) runningProcessCount() int {
 	return count
 }
 
-func (u *appServerUI) renderRunningProcesses() {
-	p := u.statusPanel
-	p.fields = nil
-	entries := slices.Collect(u.session.runningProcesses())
-	slices.SortFunc(entries, func(a, b activityPaneEntry) int { return cmp.Compare(a.Seq, b.Seq) })
-	for _, entry := range entries {
-		p.fields = append(p.fields, statusField{group: "Processes", label: activityui.AgentDisplayName(entry.Agent), value: appServerDisplayCommand(entry.native.command)})
+// showRunningProcesses opens the shared output dialog on every live command.
+func (u *appServerUI) showRunningProcesses() {
+	u.deleteDraftRange(0, len(u.draft))
+	u.ensureShell()
+	u.shell.selection = nil
+	u.shell.output = &outputDialog{view: u.agents, match: -1, processes: u.processPages}
+	u.shell.output.refreshPages()
+	u.shell.output.showPage(0)
+}
+
+// processPages rebuilds the /ps pages from Activity, which retains every
+// agent's running rows, Main's included. Each page is one whole invocation:
+// its display source and retained output, not a feed row's projection of it.
+// Live commands join in start order; a completed one keeps its page until the
+// dialog closes, as last seen if its row ages out.
+func (u *appServerUI) processPages(pages []activityui.Block) []activityui.Block {
+	bySource := make(map[uint64]activityui.Block)
+	for _, page := range pages {
+		if page.Source != 0 {
+			bySource[page.Source] = page
+		}
 	}
-	if len(p.fields) == 0 {
-		p.fields = []statusField{{group: "Processes", value: "No running processes"}}
+	for entry := range u.session.runningProcesses() {
+		if seq := u.agents.entrySeq(entry); seq != 0 {
+			if _, known := bySource[seq]; !known {
+				bySource[seq] = activityui.Block{Source: seq, Owner: entry.Agent}
+			}
+		}
 	}
+	for _, record := range u.agents.entries {
+		page, ok := bySource[record.Seq]
+		if n := record.native; ok && n != nil {
+			bySource[record.Seq] = activityui.Block{
+				Source: record.Seq, Owner: page.Owner, Kind: "op", Verb: "Run", Lang: "bash",
+				Code:   toolActivityShellSource(appServerDisplayCommand(n.command)),
+				Output: n.output, Tail: record.outputTail, TailOmitted: record.outputOmit,
+				Running: n.running, Approval: n.approval,
+				Started: n.commandStarted, Ended: n.commandEnded, Duration: n.duration, NotificationTiming: true,
+			}
+		}
+	}
+	if len(bySource) == 0 {
+		return []activityui.Block{{Kind: "text", Verb: "Running processes", Body: "No running processes"}}
+	}
+	return slices.SortedFunc(maps.Values(bySource), func(a, b activityui.Block) int { return cmp.Compare(a.Source, b.Source) })
 }

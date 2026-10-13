@@ -14,9 +14,6 @@ import (
 // workspace details. The border and controls stay fixed while the body scrolls.
 func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	p := u.statusPanel
-	if p.processes {
-		u.renderRunningProcesses()
-	}
 	u.mainContentPainted = false
 	u.composerRect = terminalRect{}
 	p.rect = terminalRect{}

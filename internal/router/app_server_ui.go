@@ -1178,8 +1178,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, u.resumeCommand(text)
 		}
 		if text == "/ps" {
-			u.statusPanel = &appServerStatusReport{title: "Running processes", groups: []string{"Processes"}, processes: true}
-			u.deleteDraftRange(0, len(u.draft))
+			u.showRunningProcesses()
 			return false, nil
 		}
 		if text == "/session" {
