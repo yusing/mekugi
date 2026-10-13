@@ -354,6 +354,42 @@ func TestOrchestrateWorkflowFollowupResumesStoppedWorkflow(t *testing.T) {
 	}
 }
 
+func TestOrchestrateWorkflowReviewWaiver(t *testing.T) {
+	for _, required := range []bool{false, true} {
+		t.Run(fmt.Sprintf("check=%v", required), func(t *testing.T) {
+			var checks []string
+			if required {
+				checks = []string{"printf check"}
+			}
+			u, w := workflowUI(t, checks...)
+			cancel := workflowCancel(t, u)
+			interrupt, _ := workflowTake(t, u, w, "turn/interrupt", "child", "")
+			orchestrateTestReply(t, u, interrupt, `{}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"implement","status":"interrupted"}}}`)
+			workflowNotice(t, u, w)
+			if result := <-cancel.reply; result.err != nil {
+				t.Fatal(result.err)
+			}
+			follow := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "waive", reviewWaiver: "User requested correction-only delivery", input: orchestrateSpawnInput{Message: "finish corrections"}, reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(follow)
+			drainOrchestrateWork(t, u)
+			start, _ := workflowTake(t, u, w, "turn/start", "child", "")
+			orchestrateTestReply(t, u, start, `{"turn":{"id":"corrected"}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"corrected","status":"inProgress"}}}`)
+			workflowCompleted(t, u, "child", "corrected", "corrections complete")
+			if required {
+				workflowCheck(t, u, w, "printf check", `{"exitCode":0,"stdout":"checked"}`)
+			}
+			if notice := workflowNotice(t, u, w); !strings.Contains(notice, "Further reviews waived") || !strings.Contains(notice, follow.reviewWaiver) || !strings.Contains(notice, "corrections complete") {
+				t.Fatal("waived readiness lost its authority or report", notice)
+			}
+			if len(u.orchestrateThreads["child"].batch.Workflow.Dispatches) != 0 || w.Len() != 0 {
+				t.Fatal("correction-only completion scheduled a review", w.String())
+			}
+		})
+	}
+}
+
 func TestUISnapshotOrchestrateWorkflowPhase(t *testing.T) {
 	u, w := workflowUI(t)
 	workflowCompleted(t, u, "child", "implement", "")

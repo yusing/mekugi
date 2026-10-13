@@ -56,8 +56,9 @@ func orchestrateWaitTargets(raw jsontext.Value) ([]string, error) {
 }
 
 type orchestrateFollowupInput struct {
-	Target  string `json:"target"`
-	Message string `json:"message"`
+	Target       string `json:"target"`
+	Message      string `json:"message"`
+	ReviewWaiver string `json:"review_waiver,omitempty"`
 }
 
 // Preparation is coordinator-only. Cross-checkout child authority is granted
@@ -102,17 +103,26 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		{"followup_task", "Start an idle batch turn or steer a running batch. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Report only a new blocker requiring action or one final handoff per assignment. Use request_user_input_async for human decisions. Repeats return retained progress."},
 		{"send_message", "Deliver input to a running batch; queue without waking an idle batch. Targets are task names or /root/task paths. Child messages to main are attributed events for wait_agent, never user input. Report only a new blocker requiring action or one final handoff per assignment. Use request_user_input_async for human decisions. Repeats return retained progress."},
 	} {
-		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target", "message"}, "properties": map[string]any{"target": map[string]any{"type": "string", "minLength": 1}, "message": map[string]any{"type": "string", "minLength": 1}}}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateFollowupInput) (*mcp.CallToolResult, any, error) {
+		properties := map[string]any{"target": map[string]any{"type": "string", "minLength": 1}, "message": map[string]any{"type": "string", "minLength": 1}}
+		if tool.name == "followup_task" {
+			properties["review_waiver"] = map[string]any{"type": "string", "minLength": 1, "description": "Coordinator only, after an explicit user request: reason to finish this stopped, idle batch without further reviews. Retained across resume. Required checks still run; prior findings remain. Omit to preserve current policy."}
+		}
+		mcp.AddTool(server, &mcp.Tool{Name: tool.name, Description: tool.description, InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"target", "message"}, "properties": properties}}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateFollowupInput) (*mcp.CallToolResult, any, error) {
 			ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
 			if err != nil {
 				return nil, nil, err
 			}
 			defer release()
+			if input.ReviewWaiver != "" {
+				if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
+					return nil, nil, err
+				}
+			}
 			key, err := orchestrateCallIdentity(request.Params.GetMeta(), thread)
 			if err != nil {
 				return nil, nil, err
 			}
-			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, tool: tool.name, callID: key, input: orchestrateSpawnInput{Message: input.Message}, reply: make(chan orchestrateResult, 1)}
+			command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, target: input.Target, tool: tool.name, callID: key, reviewWaiver: input.ReviewWaiver, input: orchestrateSpawnInput{Message: input.Message}, reply: make(chan orchestrateResult, 1)}
 			return proxy.orchestration.call(command)
 		})
 	}

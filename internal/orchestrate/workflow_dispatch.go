@@ -82,6 +82,9 @@ func (s *Store) BeginWorkflowDispatch(ctx context.Context, workspace, main, name
 		revision := ""
 		switch kind {
 		case DispatchCorrectness, DispatchSimplification:
+			if w.ReviewWaiver != "" {
+				return errors.New("further reviews were explicitly waived")
+			}
 			if w.Candidate == nil || w.Phase != PhaseQueuedReview && w.Phase != PhaseReview {
 				return errors.New("candidate is not awaiting review")
 			}

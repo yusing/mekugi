@@ -19,7 +19,7 @@ func TestOrchestrateListDetails(t *testing.T) {
 			Assignment: orchestrate.WorkflowAssignment{Kind: orchestrate.WorkflowImplementation, Scope: text,
 				RequiredChecks: []orchestrate.RequiredCheck{{ID: "check", Command: "make test"}}},
 			Phase: orchestrate.PhaseNeedsDecision, Generation: 2, Candidate: &orchestrate.Candidate{Revision: strings.Repeat("a", 40)},
-			Reason: "review dispatch unconfirmed", Report: text,
+			Reason: "review dispatch unconfirmed", Report: text, ReviewWaiver: "User requested correction-only delivery",
 			Checks: []orchestrate.CheckResult{{Generation: 2, Revision: strings.Repeat("a", 40), CheckID: "check", Outcome: orchestrate.CheckUncertain, Output: text}},
 			Reviews: []orchestrate.ReviewResult{{Revision: strings.Repeat("a", 40), Purpose: orchestrate.ReviewCorrectness,
 				Verdict: orchestrate.VerdictFindings, Findings: []orchestrate.ReviewFinding{{ID: "finding", Detail: text}}}},
@@ -50,7 +50,7 @@ func TestOrchestrateListDetails(t *testing.T) {
 			}
 			a := agents[0].(map[string]any)
 			w := a["workflow"].(map[string]any)
-			if a["state"] != b.State || a["error"] != b.Error || w["phase"] != b.Workflow.Phase || w["reason"] != b.Workflow.Reason ||
+			if a["state"] != b.State || a["error"] != b.Error || w["phase"] != b.Workflow.Phase || w["reason"] != b.Workflow.Reason || w["review_waiver"] != b.Workflow.ReviewWaiver ||
 				!reflect.DeepEqual(w["candidate"], b.Workflow.Candidate) || w["outcome_state"] != orchestrate.DispatchUncertain ||
 				!reflect.DeepEqual(w["dispatches"], b.Workflow.Dispatches[1:]) || a["evidence"] == nil || a["shadow_merge"] == nil {
 				t.Fatal("summary lost retained state or blockers", a)

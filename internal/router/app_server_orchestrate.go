@@ -33,6 +33,7 @@ type orchestrateCommand struct {
 	waitCancel      string
 	waitTargets     []string // Empty selects all batches in this coordinator run.
 	caller, callID  string
+	reviewWaiver    string
 	reply           chan orchestrateResult
 }
 

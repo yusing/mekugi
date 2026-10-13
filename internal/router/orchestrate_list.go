@@ -43,6 +43,9 @@ func orchestrateListAgents(batches []orchestrate.Batch, input orchestrateListInp
 		}
 		if w := b.Workflow; w != nil {
 			workflow := map[string]any{"kind": w.Assignment.Kind, "phase": w.Phase, "generation": w.Generation}
+			if w.ReviewWaiver != "" {
+				workflow["review_waiver"] = w.ReviewWaiver
+			}
 			if w.Candidate != nil {
 				workflow["candidate"] = w.Candidate
 			}

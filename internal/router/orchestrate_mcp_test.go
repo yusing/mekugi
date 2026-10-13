@@ -91,6 +91,19 @@ func TestOrchestrateMCP(t *testing.T) {
 	meta := mcp.Meta{"threadId": "main", "sessionId": "host-session", "callId": "prepare",
 		codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "turn"}}
 	call("prepare", map[string]any{"task_name": "batch"}, meta, false)
+	waiver := "User requested correction-only delivery"
+	proxy.orchestration.active.Store(true)
+	received := make(chan *orchestrateCommand, 1)
+	go func() {
+		command := <-proxy.orchestration.commands
+		received <- command
+		command.reply <- orchestrateResult{delivery: &orchestrate.Delivery{State: "delivered"}}
+	}()
+	call("followup_task", map[string]any{"target": "batch", "message": "finish", "review_waiver": waiver}, meta, false)
+	if command := <-received; command.reviewWaiver != waiver || command.main != "main" || command.workspace != workspace {
+		t.Fatal("authenticated coordinator waiver was not dispatched", command)
+	}
+	proxy.orchestration.active.Store(false)
 	preparedRecovery, err := replay.postCompactContext(ctx, workspace, "main")
 	if err != nil || strings.Count(preparedRecovery, orchestrateCoordinatorInstructions) != 1 {
 		t.Fatal("prepared run did not retain coordinator instructions", err, preparedRecovery)
@@ -181,11 +194,17 @@ func TestOrchestrateMCP(t *testing.T) {
 	}
 	proxy.journals = newJournalStore()
 	for _, thread := range []string{"batch-thread", "worker"} {
+		denied := call("followup_task", map[string]any{"target": "batch", "message": "finish", "review_waiver": "skip reviews"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "waive",
+			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
+		if reason := string(mustMarshalJSON(denied.Content)); !strings.Contains(reason, "coordinator") && !strings.Contains(reason, "proven main thread") {
+			t.Fatal("waiver failed outside coordinator authorization", reason)
+		}
 		call("list_agents", map[string]any{"detail": "full"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session"}, true)
 		call("prepare", map[string]any{"task_name": "nested"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "nested",
 			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
 	}
 	call("prepare", map[string]any{"task_name": "other"}, meta, false)
+	call("send_message", map[string]any{"target": "batch", "message": "finish", "review_waiver": "skip reviews"}, meta, true)
 	// Selection keeps run-wide unconfirmed deliveries, even from another batch.
 	if _, err := store.RegisterWait(ctx, workspace, "main", orchestrate.Wait{ID: "wait", Targets: []string{"other"}}, time.Now()); err != nil {
 		t.Fatal(err)

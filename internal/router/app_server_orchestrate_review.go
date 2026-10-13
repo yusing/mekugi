@@ -196,7 +196,10 @@ func workflowOutcomeText(w *orchestrate.Workflow) string {
 	if w.Reason != "" {
 		text.WriteString(": " + w.Reason)
 	}
-	if w.Phase != orchestrate.PhaseReady {
+	if w.ReviewWaiver != "" {
+		text.WriteString("\nFurther reviews waived by coordinator at user request: " + w.ReviewWaiver)
+	}
+	if w.Phase != orchestrate.PhaseReady || w.ReviewWaiver != "" {
 		writeWorkflowEvidence(&text, w)
 	}
 	if w.Report != "" {
@@ -228,6 +231,9 @@ func writeWorkflowEvidence(text *strings.Builder, w *orchestrate.Workflow) {
 		}
 	}
 	for _, review := range w.Reviews {
+		if w.ReviewWaiver != "" {
+			text.WriteString("\nRetained " + string(review.Purpose) + " review at " + review.Revision + ": " + string(review.Verdict))
+		}
 		for _, finding := range review.Findings {
 			text.WriteString("\n" + string(review.Purpose) + "/" + finding.ID + ": " + finding.Detail)
 		}

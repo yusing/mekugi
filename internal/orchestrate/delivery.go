@@ -9,15 +9,16 @@ import (
 
 // Delivery records one host call. Dispatching is intent, not confirmed input.
 type Delivery struct {
-	ID       string `json:"id"`
-	From     string `json:"from"`
-	Target   string `json:"target"`
-	Message  string `json:"message"`
-	State    string `json:"state"`
-	TurnID   string `json:"turn_id,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Deferred bool   `json:"deferred,omitzero"`
-	Dispatch string `json:"dispatch,omitempty"`
+	ReviewWaiver string `json:"review_waiver,omitempty"`
+	ID           string `json:"id"`
+	From         string `json:"from"`
+	Target       string `json:"target"`
+	Message      string `json:"message"`
+	State        string `json:"state"`
+	TurnID       string `json:"turn_id,omitempty"`
+	Error        string `json:"error,omitempty"`
+	Deferred     bool   `json:"deferred,omitzero"`
+	Dispatch     string `json:"dispatch,omitempty"`
 }
 
 // BeginDelivery uses input.TurnID to identify an active recipient turn.
@@ -36,7 +37,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
 		for _, d := range m.Deliveries {
 			if d.ID == input.ID {
-				if d.From != input.From || d.Target != input.Target || d.Message != input.Message || d.Deferred != input.Deferred {
+				if d.From != input.From || d.Target != input.Target || d.Message != input.Message || d.Deferred != input.Deferred || d.ReviewWaiver != input.ReviewWaiver {
 					return errors.New("delivery call already has different input")
 				}
 				delivery = d
@@ -50,6 +51,29 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		}
 		if input.ID == "" || (input.Message == "" || input.From == input.Target) || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
 			return errors.New("delivery requires separate confirmed run members")
+		}
+		if input.ReviewWaiver != "" {
+			if strings.TrimSpace(input.ReviewWaiver) == "" || input.From != main || input.Target == main || !nextTurn || input.Deferred || input.TurnID != "" {
+				return errors.New("review waiver requires a coordinator follow-up to an idle batch and a user reason")
+			}
+			i := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.Launch != nil && b.Launch.ThreadID == input.Target })
+			b := &m.Batches[i] // The confirmed membership check above establishes this target.
+			w, err := workflowFor(b)
+			if err != nil {
+				return err
+			}
+			if !w.stopped() && w.Phase != PhaseReady {
+				return errors.New("interrupt the workflow before selecting a review waiver")
+			}
+			if b.Launch.HostStatus != "completed" && b.Launch.HostStatus != "interrupted" && b.Launch.HostStatus != "failed" {
+				return errors.New("review waiver requires confirmed implementer completion")
+			}
+			for _, d := range w.Dispatches {
+				if d.State != DispatchFailed && (d.State != DispatchAcknowledged || d.HostStatus == "") {
+					return errors.New("review waiver requires settled host dispatches")
+				}
+			}
+			w.ReviewWaiver = input.ReviewWaiver
 		}
 		queue := input.Deferred && input.TurnID == ""
 		input.State, input.TurnID, input.Error = "dispatching", "", ""

@@ -224,8 +224,8 @@ a confirmed exit status requires a decision. An implementation or correction res
 that is not a clean, committed checkout also returns for correction. A changed
 candidate invalidates prior check and review approvals.
 
-Every implementation candidate requires independent correctness and simplification
-reviews. Mekugi starts fresh review threads with host-enforced read-only
+By default, every implementation candidate requires independent correctness and
+simplification reviews. Mekugi starts fresh review threads with host-enforced read-only
 permissions and schema-constrained verdicts. Mekugi's optional
 `[orchestration.reviewers]` settings map `correctness` and `simplification` to
 arbitrary Codex role names. No named role is selected by default. Empty or omitted
@@ -252,8 +252,8 @@ Missing, malformed,
 wrong-revision, or failed review results do not count as approval. Mekugi collects
 both results before delivering one correction assignment directly to the implementer.
 The implementer can fix or dispute findings but cannot approve its own candidate.
-Each changed candidate receives validation and both reviews again. Two correction
-rounds are permitted for failed checks, unclean results, and findings combined; a
+Each changed candidate receives validation and, unless explicitly waived below,
+both reviews again. Two correction rounds are permitted for failed checks, unclean results, and findings combined; a
 further rejection then requires a decision.
 
 Host lifecycle events drive dispatch and progress, not model polling or long MCP
@@ -273,11 +273,21 @@ dispatch is not repeated blindly. Cancellation stops undispatched transitions an
 uses the existing host interruption path for active work. It never means successful
 completion.
 
+Main can honor an explicit user request to finish corrections without more reviews
+by sending an idle, stopped or ready implementation batch a `followup_task` with
+`review_waiver` containing the user's reason. All earlier host work must be settled.
+This coordinator-only control is retained for that batch across fresh resume; it
+does not change other batches or user configuration. It keeps required validation
+and the clean exact-candidate integration gate. A passing candidate becomes ready
+with the waiver identified separately from review clearance. Existing verdicts and
+findings remain available with their original revisions; no clear verdict is
+created. Failed or uncertain checks retain their normal correction/blocker behavior.
+
 Integration remains Main's responsibility within the accepted destination and
 authorization. A reviewed candidate must still match its revision when integration
 is admitted. Workflow readiness does not replace Git ancestry or shadow-writeback
 verification. Earlier retained batches without workflow records keep their existing
-completion semantics; new implementation batches cannot omit the review gate.
+completion semantics; new implementation batches use the default review gate.
 
 ## REQ-ORCHESTRATE-004 — Batch follow-ups
 
@@ -287,6 +297,11 @@ starts a turn; a running batch receives a steer with the active turn identity as
 its precondition. Main and confirmed child roots can target a sibling by task
 name or `/root/task_name`. Native subagents are not orchestration run members.
 `main` names the coordinator; a batch named `main` uses `/root/main`.
+
+For the explicit correction-only control described above, Main uses
+`tools.mcp__orchestrate__followup_task({target:"batch",message:"Finish the requested corrections and commit.",review_waiver:"User requested no further reviews"})`.
+The reason and delivery intent are saved together before a turn starts. Omission
+preserves the batch's current policy. Children and `send_message` cannot select it.
 
 The run saves delivery intent before host dispatch and saves acknowledgement
 before returning success. Repeating the same host call returns its retained

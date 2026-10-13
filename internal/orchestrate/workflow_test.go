@@ -152,6 +152,74 @@ func TestWorkflowCorrectionLimitAndAggregation(t *testing.T) {
 	}
 }
 
+func TestWorkflowReviewWaiverRetainsEvidenceAndValidation(t *testing.T) {
+	f := newWorkflowFixture(t, []RequiredCheck{{"check", "focused check"}})
+	zero := 0
+	check := CheckResult{Generation: 1, Phase: PhaseValidation, Command: "focused check", Cwd: f.batch.Cwd, Revision: f.batch.Base, CheckID: "check", Outcome: CheckPassed, ExitCode: &zero}
+	f.ok(f.s.RecordWorkflowCheck(t.Context(), f.workspace, "main", "batch", check))
+	f.review(DispatchCorrectness, VerdictFindings)
+	f.review(DispatchSimplification, VerdictClear)
+	input := Delivery{ID: "waiver", From: "main", Target: "implementer", Message: "finish corrections", ReviewWaiver: "User requested no more reviews"}
+	if _, _, _, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", input); err == nil {
+		t.Fatal("active workflow accepted a waiver")
+	}
+	f.ok(f.s.StopWorkflow(t.Context(), f.workspace, "main", "batch", PhaseCanceled, "user stopped"))
+	f.ok(f.s.ObserveLaunch(t.Context(), f.workspace, "main", "batch", "completed", ""))
+	if _, _, _, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", input); err == nil {
+		t.Fatal("unsettled reviewer accepted a waiver")
+	}
+	for _, d := range f.state().Dispatches {
+		f.ok(f.s.RecordWorkflowCompletion(t.Context(), f.workspace, "main", "batch", d.ID, d.ThreadID, d.TurnID, "completed"))
+	}
+	if _, _, dispatch, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", input); err != nil || !dispatch {
+		t.Fatal("waiver dispatch", dispatch, err)
+	}
+	_, err := f.s.RecordDelivery(t.Context(), f.workspace, "main", input.ID, "delivered", "corrections", "")
+	f.ok(err)
+	f.s = &Store{Directory: f.s.Directory}
+	if _, _, dispatch, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", input); err != nil || dispatch {
+		t.Fatal("waiver replay", dispatch, err)
+	}
+	changed := input
+	changed.ReviewWaiver = "different authorization"
+	if _, _, _, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", changed); err == nil {
+		t.Fatal("changed waiver reused delivery identity")
+	}
+	f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
+	f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "corrections complete"))
+	w := f.state()
+	if w.ReviewWaiver != input.ReviewWaiver || w.Phase != PhaseValidation || len(w.Reviews) != 2 || w.Reviews[0].Verdict != VerdictFindings || len(w.Checks) != 0 {
+		t.Fatal("waiver lost evidence or skipped validation", w)
+	}
+	if err := f.s.RecordWorkflowCheck(t.Context(), f.workspace, "main", "batch", check); err == nil {
+		t.Fatal("waiver reused old validation")
+	}
+	check.Generation = w.Generation
+	f.ok(f.s.RecordWorkflowCheck(t.Context(), f.workspace, "main", "batch", check))
+	if f.state().Phase != PhaseReady {
+		t.Fatal("waiver did not reach readiness")
+	}
+	if _, _, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "unwanted", w.Generation, DispatchCorrectness); err == nil {
+		t.Fatal("waiver dispatched another review")
+	}
+	proof, err := f.s.RecordIntegration(t.Context(), f.workspace, "main", "batch", "implementer")
+	f.ok(err)
+	b := f.batch
+	b.Workflow = f.state()
+	if err := workflowReady(b, strings.Repeat("f", 40)); err == nil {
+		t.Fatal("waiver approved another revision")
+	}
+	b.Workflow.ReviewWaiver = ""
+	if err := workflowReady(b, f.batch.Base); err == nil {
+		t.Fatal("findings counted as normal review clearance")
+	}
+	removed, err := f.s.Cleanup(t.Context(), f.workspace, "main", "batch", proof, func(publish func() error) error { return publish() })
+	f.ok(err)
+	if removed.State != "removed" || removed.Workflow.ReviewWaiver != input.ReviewWaiver || removed.Workflow.Reviews[0].Verdict != VerdictFindings {
+		t.Fatal("cleanup lost the waiver or original finding", removed.Workflow)
+	}
+}
+
 func TestWorkflowDispatchRecoveryAndStops(t *testing.T) {
 	f := newWorkflowFixture(t, nil)
 	d, dispatch, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "review", 1, DispatchCorrectness)
@@ -222,23 +290,33 @@ func TestWorkflowStrictResults(t *testing.T) {
 }
 
 func TestWorkflowFailedChecksAndBlockedReview(t *testing.T) {
-	for _, outcome := range []CheckOutcome{CheckFailed, CheckUncertain} {
-		t.Run(string(outcome), func(t *testing.T) {
-			f := newWorkflowFixture(t, []RequiredCheck{{"check", "command"}})
-			var exit *int
-			if outcome == CheckFailed {
-				code := 1
-				exit = &code
-			}
-			f.ok(f.s.RecordWorkflowCheck(t.Context(), f.workspace, "main", "batch", CheckResult{Generation: 1, Phase: PhaseValidation, Command: "command", Cwd: f.batch.Cwd, Revision: f.batch.Base, CheckID: "check", Outcome: outcome, ExitCode: exit, Output: "tail"}))
-			want := PhaseNeedsDecision
-			if outcome == CheckFailed {
-				want = PhaseCorrection
-			}
-			if w := f.state(); w.Phase != want || w.Reason == "" {
-				t.Fatal("bad check was not routed", w)
-			}
-		})
+	for _, waived := range []bool{false, true} {
+		for _, outcome := range []CheckOutcome{CheckFailed, CheckUncertain} {
+			t.Run(fmt.Sprintf("%s/waived=%v", outcome, waived), func(t *testing.T) {
+				f := newWorkflowFixture(t, []RequiredCheck{{"check", "command"}})
+				if waived {
+					f.ok(f.s.StopWorkflow(t.Context(), f.workspace, "main", "batch", PhaseCanceled, "user stopped"))
+					f.ok(f.s.ObserveLaunch(t.Context(), f.workspace, "main", "batch", "completed", ""))
+					_, _, _, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", Delivery{ID: "waive", From: "main", Target: "implementer", Message: "finish", ReviewWaiver: "user requested"})
+					f.ok(err)
+					f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
+					f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "done"))
+				}
+				var exit *int
+				if outcome == CheckFailed {
+					code := 1
+					exit = &code
+				}
+				f.ok(f.s.RecordWorkflowCheck(t.Context(), f.workspace, "main", "batch", CheckResult{Generation: f.state().Generation, Phase: PhaseValidation, Command: "command", Cwd: f.batch.Cwd, Revision: f.batch.Base, CheckID: "check", Outcome: outcome, ExitCode: exit, Output: "tail"}))
+				want := PhaseNeedsDecision
+				if outcome == CheckFailed {
+					want = PhaseCorrection
+				}
+				if w := f.state(); w.Phase != want || w.Reason == "" {
+					t.Fatal("bad check was not routed", w)
+				}
+			})
+		}
 	}
 	f := newWorkflowFixture(t, nil)
 	f.review(DispatchCorrectness, VerdictBlocked)

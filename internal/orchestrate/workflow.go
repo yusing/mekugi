@@ -12,6 +12,7 @@ import (
 // Workflow retains facts only. The runtime owns permissions, validation command
 // execution, host lifecycle reconciliation, capacity, and user notifications.
 type Workflow struct {
+	ReviewWaiver     string             `json:"review_waiver,omitempty"`
 	Outcome          *WorkflowOutcome   `json:"outcome,omitempty"`
 	Assignment       WorkflowAssignment `json:"assignment"`
 	Phase            WorkflowPhase      `json:"phase"`
@@ -66,7 +67,8 @@ func (w *Workflow) stopped() bool {
 // AdmitCandidate accepts only the runtime's clean, host-observed revision after
 // an implementation or correction turn. A correction may dispute findings without
 // changing revision; it still starts a fresh validation/review generation. No
-// previous approvals survive replacement. The report is the implementer's final
+// previous approvals survive replacement. Waived reviews remain historical evidence.
+// The report is the implementer's final
 // message, retained only for the coordinator notification.
 func (s *Store) AdmitCandidate(ctx context.Context, workspace, main, name string, candidate Candidate, report string) error {
 	if err := candidate.Validate(); err != nil {
@@ -90,12 +92,17 @@ func (s *Store) AdmitCandidate(ctx context.Context, workspace, main, name string
 		w.Candidate = &candidate
 		w.Generation++
 		w.Checks = nil
-		w.Reviews = nil
+		if w.ReviewWaiver == "" {
+			w.Reviews = nil
+		}
 		w.Reason = ""
 		w.Report = report
 		w.Phase = PhaseValidation
 		if len(w.Assignment.RequiredChecks) == 0 {
 			w.Phase = PhaseQueuedReview
+			if w.ReviewWaiver != "" {
+				w.Phase = PhaseReady
+			}
 		}
 		return nil
 	})
@@ -135,7 +142,9 @@ func (s *Store) RouteWorkflowCorrection(ctx context.Context, workspace, main, na
 		w.Outcome = nil
 		w.Generation++
 		w.Checks = nil
-		w.Reviews = nil
+		if w.ReviewWaiver == "" {
+			w.Reviews = nil
+		}
 		w.Report = report
 		w.routeCorrection(reason)
 		return nil
@@ -157,7 +166,9 @@ func (s *Store) ResumeWorkflow(ctx context.Context, workspace, main, name string
 		w.Generation++
 		w.CorrectionRounds = 0
 		w.Checks = nil
-		w.Reviews = nil
+		if w.ReviewWaiver == "" {
+			w.Reviews = nil
+		}
 		w.Reason = ""
 		w.Report = ""
 		w.Outcome = nil
@@ -204,6 +215,9 @@ func (s *Store) RecordWorkflowCheck(ctx context.Context, workspace, main, name s
 		}
 		if len(w.Checks) == len(w.Assignment.RequiredChecks) {
 			w.Phase = PhaseQueuedReview
+			if w.ReviewWaiver != "" {
+				w.Phase = PhaseReady
+			}
 		}
 		return nil
 	})
@@ -289,7 +303,7 @@ func workflowReady(b Batch, revision string) error {
 	if w.Assignment.Kind != WorkflowImplementation || w.Phase != PhaseReady || w.Candidate == nil || w.Candidate.Revision != revision {
 		return errors.New("integration requires workflow readiness for the exact candidate revision")
 	}
-	if len(w.Checks) != len(w.Assignment.RequiredChecks) || len(w.Reviews) != 2 {
+	if len(w.Checks) != len(w.Assignment.RequiredChecks) {
 		return errors.New("workflow approvals are incomplete")
 	}
 	for _, check := range w.Assignment.RequiredChecks {
@@ -301,6 +315,12 @@ func workflowReady(b Batch, revision string) error {
 		if r.Validate() != nil || r.Revision != revision || r.Generation != w.Generation || r.Command != check.Command || r.Cwd != b.Cwd || r.Outcome != CheckPassed {
 			return fmt.Errorf("required check %s is not approved", check.ID)
 		}
+	}
+	if w.ReviewWaiver != "" {
+		return nil
+	}
+	if len(w.Reviews) != 2 {
+		return errors.New("workflow review approvals are incomplete")
 	}
 	for _, purpose := range []ReviewPurpose{ReviewCorrectness, ReviewSimplification} {
 		i := slices.IndexFunc(w.Reviews, func(r ReviewResult) bool { return r.Purpose == purpose })
