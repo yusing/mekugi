@@ -28,6 +28,7 @@ type changeReadOptions struct {
 	view          string
 	paths         []string
 	workspace     string
+	workspaceSet  bool
 	maxTokens     int
 	ids           []string
 }
@@ -91,6 +92,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			switch flag {
 			case "--workspace":
 				options.workspace = value
+				options.workspaceSet = true
 			case "--max-tokens":
 				number, err := parseMaxTokens(value)
 				if err != nil {
@@ -125,8 +127,14 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		if !filepath.IsAbs(options.workspace) {
 			options.workspace = filepath.Join(cwd, options.workspace)
 		}
-		options.workspace, err = filepath.EvalSymlinks(options.workspace)
-		if err != nil {
+		resolved, err := filepath.EvalSymlinks(options.workspace)
+		if err == nil {
+			options.workspace = resolved
+		} else if options.workspaceSet && !options.mine && options.view != "apply" && options.view != "revert" && errors.Is(err, os.ErrNotExist) {
+			// A removed checkout is still a retained evidence identity. The
+			// authenticated resolver, not filesystem existence, admits reads.
+			options.workspace = filepath.Clean(options.workspace)
+		} else {
 			return options, fmt.Errorf("resolve workspace: %w", err)
 		}
 	}
@@ -142,108 +150,135 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 type partialChangeReadError struct{ error }
 
 func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
-	s = s.scoped(ctx)
-	if options.view == "list" && len(options.ids) == 0 {
-		options.mine = true
+	if !options.mine && len(options.ids) != 0 {
+		return s.readSelectedChanges(ctx, options)
 	}
+	return s.readLocalChangeView(ctx, options)
+}
+
+func (s *mekugiReplayStore) readLocalChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
+	s = s.scoped(ctx)
 	var output string
 	var snapshot *changeReadSnapshot
-	var targetErrors []error
 	err := s.locked(ctx, func() error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
 		}
-		if options.mine {
-			if s.session.Thread == "" {
-				return errors.New("own-thread reads require a Codex thread identity")
-			}
-			options.ids, err = threadChangeIDs(index, s.session.Thread)
-			if err != nil {
-				return err
-			}
-		}
-		snapshot = &changeReadSnapshot{Workspace: options.workspace, IDs: options.ids, Paths: options.paths, View: options.view, Frozen: true,
-			Selected: make(map[string]trackedChange), Streams: index.Streams, Mine: options.mine, OverlapLabels: make(map[string]string)}
-		options.overlapLabels = snapshot.OverlapLabels
-		names := []string{changeIndexName(options.workspace, index.Namespace)}
-		var readable []string
-		missingStreams := make(map[string]bool)
-		for position := 0; position < len(options.ids); position++ {
-			id := options.ids[position]
-			change, exists := index.Changes[id]
-			if !exists {
-				if !options.mine || options.view == "net" {
-					stream, number, _ := parseChangeID(id)
-					state, _ := missingChangeState(index, id)
-					last := id
-					for position+1 < len(options.ids) {
-						next := options.ids[position+1]
-						if next != changeHandle(stream, number+1) {
-							break
-						}
-						nextState, _ := missingChangeState(index, next)
-						if _, exists := index.Changes[next]; exists || nextState != state {
-							break
-						}
-						last = next
-						number++
-						position++
-					}
-					targetErrors = append(targetErrors, missingChangeRangeError(index, id, last))
-					missingStreams[stream] = true
-				} else {
-					readable = append(readable, id)
-				}
-				continue
-			}
-			var readErr error
-			for _, call := range change.Calls {
-				record, found, err := s.read(options.workspace, call.ID, false)
-				if err != nil {
-					readErr = fmt.Errorf("change %s: %w", id, err)
-					break
-				}
-				if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
-					readErr = fmt.Errorf("change %s has a missing or inconsistent attempt", id)
-					break
-				}
-			}
-			if readErr == nil && options.view == "net" {
-				if len(change.Calls) == 0 || change.RetiredCalls != 0 {
-					readErr = fmt.Errorf("change %s has pending or retired history; cannot produce a complete --net view", id)
-				}
-			}
-			if readErr != nil {
-				targetErrors = append(targetErrors, readErr)
-				continue
-			}
-			readable = append(readable, id)
-			snapshot.Selected[id] = change
-			for _, call := range change.Calls {
-				names = append(names, replayRecordName(options.workspace, call.ID, false))
-			}
-		}
-		options.ids = readable
-		snapshot.IDs = readable
-		if err := s.retainFiles(names...); err != nil {
-			return err
-		}
-		if len(readable) == 0 && len(targetErrors) > 0 {
-			output = availableChangeRanges(index, missingStreams)
-			return nil
-		}
-		output, err = s.renderChanges(ctx, options, index)
-		if partial, ok := errors.AsType[*partialChangeReadError](err); ok {
-			targetErrors = append(targetErrors, partial.error)
-			return nil
-		}
+		output, snapshot, err = s.selectChangeView(ctx, options, index)
 		return err
 	})
-	if err == nil && len(targetErrors) > 0 {
-		err = &partialChangeReadError{errors.Join(targetErrors...)}
-	}
 	return output, snapshot, err
+}
+
+// Called under store.lock with a validated index. Selection, dependency retention,
+// and rendering share the same snapshot as coordinator ownership resolution.
+func (s *mekugiReplayStore) selectChangeView(ctx context.Context, options changeReadOptions, index changeIndex) (string, *changeReadSnapshot, error) {
+	snapshot, selectionErr := s.selectChangeSnapshot(options, index)
+	if snapshot == nil {
+		return "", nil, selectionErr
+	}
+	options.ids, options.overlapLabels = snapshot.IDs, snapshot.OverlapLabels
+	output := snapshot.Available
+	var renderErr error
+	if output == "" && (selectionErr == nil || len(snapshot.IDs) != 0) {
+		output, renderErr = s.renderChanges(ctx, options, index)
+	}
+	return output, snapshot, errors.Join(selectionErr, renderErr)
+}
+
+// Select and retain each namespace before combining authorized workspace views.
+func (s *mekugiReplayStore) selectChangeSnapshot(options changeReadOptions, index changeIndex) (*changeReadSnapshot, error) {
+	if options.view == "list" && len(options.ids) == 0 {
+		options.mine = true
+	}
+	var err error
+	var targetErrors []error
+	if options.mine {
+		if s.session.Thread == "" {
+			return nil, errors.New("own-thread reads require a Codex thread identity")
+		}
+		options.ids, err = threadChangeIDs(index, s.session.Thread)
+		if err != nil {
+			return nil, err
+		}
+	}
+	snapshot := &changeReadSnapshot{Workspace: options.workspace, IDs: options.ids, Paths: options.paths, View: options.view, Frozen: true,
+		Selected: make(map[string]trackedChange), Streams: index.Streams, Mine: options.mine, OverlapLabels: make(map[string]string)}
+	names := []string{changeIndexName(options.workspace, index.Namespace)}
+	var readable []string
+	missingStreams := make(map[string]bool)
+	for position := 0; position < len(options.ids); position++ {
+		id := options.ids[position]
+		change, exists := index.Changes[id]
+		if !exists {
+			if !options.mine || options.view == "net" {
+				stream, number, _ := parseChangeID(id)
+				state, _ := missingChangeState(index, id)
+				last := id
+				for position+1 < len(options.ids) {
+					next := options.ids[position+1]
+					if next != changeHandle(stream, number+1) {
+						break
+					}
+					nextState, _ := missingChangeState(index, next)
+					if _, exists := index.Changes[next]; exists || nextState != state {
+						break
+					}
+					last = next
+					number++
+					position++
+				}
+				targetErrors = append(targetErrors, missingChangeRangeError(index, id, last))
+				missingStreams[stream] = true
+			} else {
+				readable = append(readable, id)
+			}
+			continue
+		}
+		var readErr error
+		for _, call := range change.Calls {
+			record, found, err := s.read(options.workspace, call.ID, false)
+			if err != nil {
+				readErr = fmt.Errorf("change %s: %w", id, err)
+				break
+			}
+			if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
+				readErr = fmt.Errorf("change %s has a missing or inconsistent attempt", id)
+				break
+			}
+			if options.view == "history" && record.History.ExecOutcome != nil {
+				for _, ref := range record.History.ExecOutcome.Overlaps {
+					snapshot.OverlapLabels[ref] = index.overlapLabel(ref)
+				}
+			}
+		}
+		if readErr == nil && options.view == "net" {
+			if len(change.Calls) == 0 || change.RetiredCalls != 0 {
+				readErr = fmt.Errorf("change %s has pending or retired history; cannot produce a complete --net view", id)
+			}
+		}
+		if readErr != nil {
+			targetErrors = append(targetErrors, readErr)
+			continue
+		}
+		readable = append(readable, id)
+		snapshot.Selected[id] = change
+		for _, call := range change.Calls {
+			names = append(names, replayRecordName(options.workspace, call.ID, false))
+		}
+	}
+	snapshot.IDs = readable
+	if err := s.retainFiles(names...); err != nil {
+		return nil, err
+	}
+	if len(readable) == 0 && len(targetErrors) > 0 {
+		snapshot.Available = availableChangeRanges(index, missingStreams)
+	}
+	if len(targetErrors) > 0 {
+		return snapshot, &partialChangeReadError{errors.Join(targetErrors...)}
+	}
+	return snapshot, nil
 }
 
 func threadChangeIDs(index changeIndex, thread string) ([]string, error) {
@@ -327,6 +362,15 @@ func availableChangeRanges(index changeIndex, streams map[string]bool) string {
 		}
 	}
 	return output.String()
+}
+
+func (index changeIndex) overlapLabel(ref string) string {
+	for id, change := range index.Changes {
+		if slices.ContainsFunc(change.Calls, func(call trackedCall) bool { return strings.HasPrefix(call.ID, ref+":") }) {
+			return id
+		}
+	}
+	return ref
 }
 
 func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
@@ -414,13 +458,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				for _, ref := range history.ExecOutcome.Overlaps {
 					label, frozen := options.overlapLabels[ref]
 					if !frozen {
-						label = ref
-						for otherID, other := range index.Changes {
-							if slices.ContainsFunc(other.Calls, func(call trackedCall) bool { return strings.HasPrefix(call.ID, ref+":") }) {
-								label = otherID
-								break
-							}
-						}
+						label = index.overlapLabel(ref)
 						if options.overlapLabels != nil {
 							options.overlapLabels[ref] = label
 						}
@@ -680,18 +718,6 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 	if err != nil {
 		return fail(err)
 	}
-	if diagnostics != "" {
-		execution := toolplugin.ExecutionOutput{Stdout: selected, Stderr: diagnostics, ExitCode: 1}
-		if len(selected) < len(text) {
-			execution.OmittedOutput = &toolplugin.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
-			retained, err := retainExecutionOutput(ctx, manifest, execution)
-			if err != nil {
-				return fail(err)
-			}
-			return retained
-		}
-		return execution
-	}
 	next := ""
 	if len(selected) < len(text) {
 		next, err = store.putChangeRead(ctx, snapshot, text, len(selected))
@@ -700,7 +726,10 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 		}
 	}
 	if next != "" {
-		return toolplugin.ExecutionOutput{Stdout: selected, Stderr: readNextCall(next), ExitCode: 1}
+		diagnostics += readNextCall(next)
+	}
+	if diagnostics != "" {
+		return toolplugin.ExecutionOutput{Stdout: selected, Stderr: diagnostics, ExitCode: 1}
 	}
 	return toolplugin.ExecutionOutput{Stdout: selected}
 }

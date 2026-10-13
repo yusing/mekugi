@@ -14,8 +14,9 @@ import (
 )
 
 // Scope metadata outlives reclaimed payloads so resuming an expired session
-// cannot reuse one of its old handles.
+// cannot reuse old handles or forget coordinator authority requirements.
 type handleScope struct {
+	Coordinator      *journalRun `json:",omitzero"`
 	Version          int
 	Thread           string
 	Namespace        string
@@ -59,6 +60,10 @@ func (s *mekugiReplayStore) readHandleScope(thread string) (handleScope, bool, e
 		scope.Parent != "" && scope.Parent == thread || scope.Fork != "" && scope.Fork == thread ||
 		scope.Namespace != thread && (scope.Parent == "" || scope.Next != 0 || scope.NextChangeStream != 0 || len(scope.Inherited) != 0 || scope.Fork != "") {
 		return scope, false, errors.New("invalid handle scope identity")
+	}
+	if run := scope.Coordinator; run != nil && (run.Main != thread || scope.Namespace != thread || scope.Parent != "" ||
+		!filepath.IsAbs(run.Workspace) || !filepath.IsAbs(run.Directory)) {
+		return scope, false, errors.New("invalid retained coordinator identity")
 	}
 	var end uint64
 	seen := map[string]bool{thread: true}

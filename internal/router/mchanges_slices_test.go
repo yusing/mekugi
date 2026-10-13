@@ -621,12 +621,21 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 	f.publish(t, mixed, mixedCorrelation, "mixed-binary-text-call", mekugiHistory{
 		ReviewFiles: []mekugi.ReviewFile{
 			mekugi.RenderBinaryReviewFile("mixed.dat", "mixed.dat", 2, 3, "old-hash", "new-hash"),
-			mekugi.RenderReviewFile("text.txt", "text.txt", "before\n", "after\n"),
+			mekugi.RenderReviewFile("text.txt", "text.txt", "before\n", strings.Repeat("after\n", 100)),
 		},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --net "+mixed)
 	if status != 1 || !strings.Contains(stdout, "text.txt") || !strings.Contains(stdout, "+after") || strings.Contains(stdout, "mixed.dat") || !strings.Contains(stderr, "binary evidence that cannot be composed") {
 		t.Fatalf("mixed net evidence: %q, %q, %d", stdout, stderr, status)
+	}
+	stdout, stderr, status = f.run(t, "mchanges --net "+mixed+" --max-tokens 32")
+	_, next, found := strings.Cut(stderr, "read: incomplete; next_call: mread ")
+	if status != 1 || stdout == "" || !found || !strings.Contains(stderr, "binary evidence") {
+		t.Fatalf("partial net first page: %q %q %d", stdout, stderr, status)
+	}
+	stdout, stderr, status = f.run(t, "mread "+strings.Fields(next)[0]+" --max-tokens 4000")
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "+after") {
+		t.Fatalf("partial net recovery: %q %q %d", stdout, stderr, status)
 	}
 }
 

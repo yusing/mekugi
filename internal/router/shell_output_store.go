@@ -40,6 +40,8 @@ type shellOutputRecord struct {
 }
 
 type changeReadSnapshot struct {
+	Parts         []*changeReadSnapshot    `json:"parts,omitempty"`
+	Available     string                   `json:"available,omitempty"`
 	OverlapLabels map[string]string        `json:"overlap_labels,omitempty"`
 	Selected      map[string]trackedChange `json:"selected,omitempty"`
 	Streams       []changeStream           `json:"streams,omitempty"`
@@ -51,6 +53,18 @@ type changeReadSnapshot struct {
 	View          string                   `json:"view"`
 	Offset        int                      `json:"offset"`
 	Digest        string                   `json:"digest"`
+}
+
+// Composite reads keep each workspace's frozen selection independent. Ordinary
+// and historical single-workspace receipts retain their existing representation.
+func (s *changeReadSnapshot) selections() []*changeReadSnapshot {
+	if s == nil {
+		return nil
+	}
+	if len(s.Parts) != 0 {
+		return s.Parts
+	}
+	return []*changeReadSnapshot{s}
 }
 
 func (s *mekugiReplayStore) putChangeRead(ctx context.Context, snapshot *changeReadSnapshot, text string, offset int) (string, error) {
@@ -76,11 +90,28 @@ func (s *mekugiReplayStore) readSourceStreams(ctx context.Context, record shellO
 	if selection.Frozen {
 		scoped := s.scoped(ctx)
 		err = scoped.locked(ctx, func() error {
-			text, err = scoped.renderChanges(ctx, options, changeIndex{Workspace: selection.Workspace, Changes: selection.Selected, Streams: selection.Streams})
-			return err
+			var rendered strings.Builder
+			for _, part := range selection.selections() {
+				partText := part.Available
+				if partText == "" {
+					options := changeReadOptions{workspace: part.Workspace, ids: part.IDs, paths: part.Paths, view: part.View, mine: part.Mine, overlapLabels: part.OverlapLabels}
+					var err error
+					partText, err = scoped.renderChanges(ctx, options, changeIndex{Workspace: part.Workspace, Changes: part.Selected, Streams: part.Streams})
+					if _, partial := errors.AsType[*partialChangeReadError](err); err != nil && !partial {
+						return err
+					}
+				}
+				if rendered.Len()+len(partText) > maxChangeReadBytes {
+					return errors.New("change read exceeds 64 MiB")
+				}
+				rendered.WriteString(partText)
+			}
+			text = rendered.String()
+			return nil
 		})
 	} else {
-		text, err = s.readChanges(ctx, options)
+		// Historical receipts selected one caller workspace, not a run-wide ID.
+		text, _, err = s.readLocalChangeView(ctx, options)
 	}
 
 	if err != nil {
@@ -215,7 +246,21 @@ func validateReadRecord(record shellOutputRecord) error {
 			(selection.View != "" && selection.View != "summary" && selection.View != "history" && selection.View != "list" && selection.View != "net") {
 			return errors.New("invalid change read selection")
 		}
-		if selection.Frozen {
+		if len(selection.Parts) != 0 && (!selection.Frozen || len(selection.IDs) != 0 || len(selection.Selected) != 0) {
+			return errors.New("invalid composite change read selection")
+		}
+		for _, part := range selection.selections() {
+			if part == nil || part != selection && (len(part.Parts) != 0 || !part.Frozen) ||
+				(part.View != "" && part.View != "summary" && part.View != "history" && part.View != "list" && part.View != "net") {
+				return errors.New("invalid change read part")
+			}
+			if part.Available != "" && (!part.Frozen || len(part.IDs) != 0 || len(part.Selected) != 0 || len(part.Parts) != 0 || !utf8.ValidString(part.Available)) {
+				return errors.New("invalid frozen available-change ranges")
+			}
+			if !part.Frozen {
+				continue
+			}
+			selection := part
 			ids := make(map[string]bool, len(selection.IDs))
 			for _, id := range selection.IDs {
 				if _, _, err := parseChangeID(id); err != nil || ids[id] {

@@ -357,7 +357,7 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 			names = append(names, scopedCursorName(owner, record.CursorDigest))
 		}
 		names = append(names, scopedOutputName(owner, record.ID))
-		if selection := record.Changes; selection != nil {
+		for _, selection := range record.Changes.selections() {
 			if selection.Frozen {
 				for _, id := range selection.IDs {
 					for _, call := range selection.Selected[id].Calls {

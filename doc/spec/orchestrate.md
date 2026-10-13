@@ -355,6 +355,12 @@ with `agent: "main"`, while other agent selectors retain their native local path
 but cannot reveal sibling results. Child completion leaves Main's integration task
 unchanged.
 
+Main can inspect explicit child change IDs and ranges through
+[`mchanges`](changes.md#bounded-read-command), including after fresh recovery.
+Independent batch namespaces can reuse an ID; `--workspace` selects the retained
+owner when a read is ambiguous. This read authority does not grant cross-checkout
+apply/revert or expose sibling evidence to another child.
+
 Git batches use linear native Git integration, preserving unrelated source edits.
 Child and source history added after each recorded baseline must contain no merge
 commits, including recorded submodules. Existing merges at or before the baseline

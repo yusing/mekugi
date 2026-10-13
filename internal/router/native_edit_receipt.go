@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 // Receipt diffs are display-only and stay well inside one publication.
@@ -292,8 +293,8 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 		return "", nil
 	}
 	// Put every ID before the bounded statistics, including multi-patch cells.
-	header := "mchanges " + strings.Join(ids, " ") + " --summary\n"
-	summary, err := s.readChanges(ctx, changeReadOptions{workspace: workspace, ids: ids, view: "summary"})
+	header := "mchanges " + strings.Join(ids, " ") + " --summary --workspace " + shellsyntax.Quote(workspace) + "\n"
+	summary, _, err := s.readLocalChangeView(ctx, changeReadOptions{workspace: workspace, ids: ids, view: "summary"})
 	if err != nil {
 		return "", err
 	}

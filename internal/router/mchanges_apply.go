@@ -532,8 +532,13 @@ func (s *mekugiReplayStore) mutateChanges(ctx context.Context, options changeRea
 	var selected, history []changeCapture
 	var historyErr error
 	err := s.locked(ctx, func() error {
+		// Validate caller storage before cross-namespace authorization. Its
+		// error takes precedence if both caller and child storage are invalid.
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
+			return err
+		}
+		if err := s.checkCoordinatorChangeMutation(options, index); err != nil {
 			return err
 		}
 		names, err := s.changeDependencyNames(options.workspace, options.ids)

@@ -88,6 +88,21 @@ Its branches and checkouts are durable work, not observation snapshots
 or replay-retention targets. The [orchestration contract](../spec/orchestrate.md) owns preparation
 states, repeat calls and staged capabilities.
 
+Explicit coordinator change reads use that run's confirmed child membership and
+the independent retained journals to resolve child workspaces and change
+namespaces. Membership admission is shared with cross-checkout journal reads and
+does not retain records. After selection, the reader retains only the selected
+child identity and evidence dependencies.
+The coordinator run locator is part of durable handle identity, so missing journal
+payloads cannot erase coordinator status. The journal and manifest must still
+validate read authority. Index validation, ownership resolution and frozen
+selection use one replay lock and reuse the validated indexes.
+The locator selects exact coordinator and manifest-member journal roots; global
+journal discovery is used only when the retained locator is absent.
+This is read authority only; output recovery belongs to the reader's namespace
+and cannot restore child processes. [Changes](../spec/changes.md#bounded-read-command)
+owns ambiguous-ID selection and mutation behavior.
+
 Run-owned shadow repositories reuse the workspace snapshot owner's byte and
 ignore policy with complete indexing. Their objects and branches remain outside
 observation-snapshot size and age pruning. Preparation publishes the repository

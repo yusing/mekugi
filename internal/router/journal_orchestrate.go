@@ -18,6 +18,49 @@ type journalRun struct {
 	Main      string `json:"main"`
 }
 
+type journalRunMember struct {
+	batch   orchestrate.Batch
+	journal threadJournal
+	err     error
+}
+
+func (run journalRun) admitsRoot(j threadJournal) bool {
+	return j.IdentityKnown && !j.IdentityConflicted && j.Parent == "" && j.Author == "/root" &&
+		j.Orchestration != nil && *j.Orchestration == run
+}
+
+func (run journalRun) validateCoordinator(read func(string, string) (threadJournal, bool, error)) error {
+	main, exists, err := read(run.Workspace, run.Main)
+	if !exists || err != nil || !run.admitsRoot(main) {
+		return errors.New("orchestration coordinator journal authority is unavailable")
+	}
+	return nil
+}
+
+// Membership is independent of presentation, selection, and retention. Callers
+// hold the journal/replay locks; Snapshot reads an atomic manifest without a run lock.
+func (run journalRun) members(read func(string, string) (threadJournal, bool, error)) ([]journalRunMember, error) {
+	if err := run.validateCoordinator(read); err != nil {
+		return nil, err
+	}
+	batches, err := (&orchestrate.Store{Directory: run.Directory}).Snapshot(run.Workspace, run.Main)
+	if err != nil {
+		return nil, err
+	}
+	var members []journalRunMember
+	for _, batch := range batches {
+		if batch.Launch == nil || batch.Launch.ThreadID == "" {
+			continue
+		}
+		child, exists, err := read(batch.Cwd, batch.Launch.ThreadID)
+		if !exists || !run.admitsRoot(child) {
+			err = errors.New("orchestration child journal authority is unavailable")
+		}
+		members = append(members, journalRunMember{batch: batch, journal: child, err: err})
+	}
+	return members, nil
+}
+
 // Called under the mutation's journal/replay locks. Complete run ancestry scopes
 // the reports; the caller publishes them only after successful persistence.
 func (s *journalStore) scopeOrchestratedBlocks(store *mekugiReplayStore, workspace, thread string, blocks []orchestrateEvent) []orchestrateEvent {
@@ -58,6 +101,28 @@ func (s *journalStore) bindRun(ctx context.Context, store *mekugiReplayStore, wo
 			if *j.Orchestration != run {
 				return errors.New("journal orchestration reference changed")
 			}
+		}
+		if store != nil && run.Main == thread && run.Workspace == workspace {
+			// Keep the authority locator with durable identity, before publishing
+			// the journal binding. Missing journal payloads must not erase the role.
+			scope, _, err := store.readHandleScope(thread)
+			if err != nil {
+				return err
+			}
+			if scope.Namespace != thread || scope.Parent != "" {
+				return errors.New("coordinator requires an independent handle scope")
+			}
+			if scope.Coordinator != nil && *scope.Coordinator != run {
+				return errors.New("retained coordinator reference changed")
+			}
+			if scope.Coordinator == nil {
+				scope.Coordinator = &run
+				if err := store.writeHandleScope(scope); err != nil {
+					return err
+				}
+			}
+		}
+		if j.Orchestration != nil {
 			return errJournalUnchanged
 		}
 		j.Orchestration = &run
@@ -82,13 +147,17 @@ func (s *journalStore) relatedJournals(store *mekugiReplayStore, workspace, call
 	if run == nil {
 		return local, failures, nil
 	}
-	batches, err := (&orchestrate.Store{Directory: run.Directory}).Snapshot(run.Workspace, run.Main)
+	members, err := run.members(func(workspace, thread string) (threadJournal, bool, error) {
+		view := snapshot[workspace]
+		journal, exists := view.journals[thread]
+		return journal, exists, view.failures[thread]
+	})
 	if err != nil {
 		return local, failures, err
 	}
 	member := root.Thread == run.Main && root.Workspace == run.Workspace
-	for _, b := range batches {
-		if b.Launch != nil && b.Launch.ThreadID == root.Thread && b.Cwd == root.Workspace {
+	for _, child := range members {
+		if run.admitsRoot(child.journal) && child.journal.Thread == root.Thread && child.journal.Workspace == root.Workspace {
 			member = true
 		}
 	}
@@ -96,20 +165,13 @@ func (s *journalStore) relatedJournals(store *mekugiReplayStore, workspace, call
 		return local, failures, errors.New("journal root is not a confirmed member of its orchestration run")
 	}
 	mainJournals, mainErrors := snapshot[run.Workspace].journals, snapshot[run.Workspace].failures
-	main, ok := mainJournals[run.Main]
-	if !ok || mainErrors[run.Main] != nil || !main.IdentityKnown || main.IdentityConflicted || main.Parent != "" || main.Author != "/root" || main.Orchestration == nil || *main.Orchestration != *run {
-		return local, failures, errors.New("orchestration coordinator journal authority is unavailable")
-	}
 	joined, errorsByThread := maps.Clone(mainJournals), maps.Clone(mainErrors)
-	for _, b := range batches {
-		if b.Launch == nil || b.Launch.ThreadID == "" {
-			continue
+	for _, member := range members {
+		b, child := member.batch, member.journal
+		if !run.admitsRoot(child) {
+			continue // Unresolved members cannot prove joined journal ancestry.
 		}
 		journals, recordErrors := snapshot[b.Cwd].journals, snapshot[b.Cwd].failures
-		child, exists := journals[b.Launch.ThreadID]
-		if !exists || !child.IdentityKnown || child.IdentityConflicted || child.Parent != "" || child.Author != "/root" || child.Orchestration == nil || *child.Orchestration != *run {
-			continue // A binding remains unresolved until both durable owners agree.
-		}
 		prefix := "/root/" + b.TaskName
 		for thread, j := range journals {
 			if !slices.Contains(journalAncestry(journals, thread), child.Thread) {

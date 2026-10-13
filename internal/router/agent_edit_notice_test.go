@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 func projectedEditOutput(t *testing.T, request *parsedResponsesRequest, callID string) []map[string]any {
@@ -58,11 +59,11 @@ func assertEditNotice(t *testing.T, ctx context.Context, proxy *mekugiProxy, wor
 	if err != nil || !found || record.ChangeID == "" {
 		t.Fatalf("missing durable change for %s: %+v found=%v err=%v", recordCall, record, found, err)
 	}
-	summary, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{record.ChangeID}, view: "summary"})
+	summary, _, err := proxy.replayStore.readLocalChangeView(ctx, changeReadOptions{workspace: workspace, ids: []string{record.ChangeID}, view: "summary"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "mchanges " + record.ChangeID + " --summary\n" + summary
+	want := "mchanges " + record.ChangeID + " --summary --workspace " + shellsyntax.Quote(workspace) + "\n" + summary
 	if len(parts) != 2 || parts[1]["type"] != "input_text" || parts[1]["text"] != want || !strings.Contains(summary, filename) {
 		t.Fatalf("notice = %+v, want %q", parts, want)
 	}
@@ -71,13 +72,35 @@ func assertEditNotice(t *testing.T, ctx context.Context, proxy *mekugiProxy, wor
 func TestAgentEditNoticeNativePatchProjectionAndReplay(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	workspace := t.TempDir()
+	u, pending := orchestrateIdentityPendingTurnWithReplay(t, proxy.replayStore)
+	orchestrateTestReply(t, u, pending, `{"turn":{"id":"initial"}}`)
+	workspace := u.session.cwd
+	childCtx, release, err := proxy.replayStore.beginSession(t.Context(), "child", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	child := &mchangesSliceFixture{store: proxy.replayStore, ctx: childCtx, workspace: u.orchestrateThreads["child"].batch.Cwd, thread: "child"}
+	childID := child.reserve(t, "child", "child-edit")
+	child.publish(t, childID, "child-edit", "child-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("child.txt", "child.txt", "old\n", "child result\n")}})
 	target := filepath.Join(workspace, "file.txt")
 	if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
-	transform := prepareNativeStockTransform(t, proxy, workspace, "notice-patch")
+	initial, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+		"model": "gpt-test", "input": []any{map[string]any{"role": "user", "content": "Edit file.txt"}}, "tools": testExecResponsesTools(),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transform, err := proxy.prepareRequest(u.ctx, &initial, "notice-patch", "main", codexTurnMetadata{
+		RequestKind: "turn", ThreadID: "main", Directories: map[string]jsonv1.RawMessage{workspace: nil},
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(transform.Close)
 	retainPatchObservation(t, transform, patch)
 	if err := os.WriteFile(target, []byte("new\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -93,6 +116,14 @@ func TestAgentEditNoticeNativePatchProjectionAndReplay(t *testing.T) {
 			t.Fatal(err)
 		}
 		assertEditNotice(t, transform.ctx, proxy, workspace, &request, "patch-call", nativePatchDerivedCallID("patch-call", 0), original, "file.txt", true)
+	}
+	record, _, err := proxy.replayStore.lookup(transform.ctx, workspace, nativePatchDerivedCallID("patch-call", 0))
+	if err != nil || record.ChangeID != childID {
+		t.Fatalf("fixture did not collide: main=%q child=%q err=%v", record.ChangeID, childID, err)
+	}
+	result := executeMChanges(transform.ctx, toolWorkerManifest{ReplayDirectory: proxy.replayStore.directory}, []string{record.ChangeID, "--summary", "--workspace", workspace})
+	if result.ExitCode != 0 || result.Stderr != "" || !strings.Contains(result.Stdout, "file.txt") || strings.Contains(result.Stdout, "child.txt") {
+		t.Fatalf("notice recovery command: %+v", result)
 	}
 }
 
@@ -220,7 +251,7 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(notice, "mchanges "+strings.Join(ids, " ")+" --summary\n") || !strings.Contains(notice, "summary truncated") || len(notice) > maxEditReceiptDiffBytes {
+	if !strings.HasPrefix(notice, "mchanges "+strings.Join(ids, " ")+" --summary --workspace "+shellsyntax.Quote(workspace)+"\n") || !strings.Contains(notice, "summary truncated") || len(notice) > maxEditReceiptDiffBytes {
 		t.Fatalf("notice lost IDs or exceeded its bound: %q", notice)
 	}
 }

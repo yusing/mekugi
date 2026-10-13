@@ -10,6 +10,39 @@ import (
 	"github.com/yusing/mekugi"
 )
 
+func TestMChangesNonCoordinatorJournalsAcrossWorkspaces(t *testing.T) {
+	t.Parallel()
+	f := newMChangesSliceFixture(t, "multi-workspace-journals")
+	journals := newJournalStore()
+	other := t.TempDir()
+	for _, workspace := range []string{f.workspace, other} {
+		if err := journals.initialize(f.ctx, f.store, workspace, f.thread, "/root", ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := journals.bindIdentity(f.ctx, f.store, workspace, f.thread, "", "/root", true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := f.reserve(t, f.thread, "primary")
+	path := filepath.Join(f.workspace, "file.txt")
+	f.publish(t, id, "primary", "primary-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "before\n", "after\n")}})
+	writeTestFile(t, path, "after\n")
+	stdout, stderr, status := f.run(t, "mchanges "+id)
+	if status != 0 || stderr != "" || !strings.Contains(stdout, "+after") {
+		t.Fatalf("ordinary workspace read: %q %q %d", stdout, stderr, status)
+	}
+	for _, operation := range []string{"revert", "apply"} {
+		_, stderr, status := f.run(t, "mchanges "+operation+" "+id)
+		want := "after\n"
+		if operation == "revert" {
+			want = "before\n"
+		}
+		if status != 0 || stderr != "" || readTestFile(t, path) != want {
+			t.Fatalf("ordinary workspace %s: %q %d", operation, stderr, status)
+		}
+	}
+}
+
 func TestMChangesWorkspaceAllocationIgnoresForeignIndexPayload(t *testing.T) {
 	t.Parallel()
 	for _, namespace := range []string{"foreign", ""} {

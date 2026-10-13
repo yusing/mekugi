@@ -169,10 +169,12 @@ effects cannot be separated from the VCS operation and remain diagnostic.
 Recognized read-only VCS siblings do not exclude unnamed interpreter changes. New captures
 persist this provenance for restart; existing retained provenance is not rewritten.
 
-Root and child agents share their inherited namespace; forks and side threads
+Root and native child agents share their inherited namespace; forks and side threads
 receive isolated visible records, and resume reads retained evidence after a
 fresh router process. Allocation survives restart and never reuses another
-workspace's IDs. Retention belongs to [REQ-ROUTER-001](router.md); replay never
+workspace's IDs within that namespace. Orchestration batches have independent
+namespaces, so their IDs can collide with Main's or another batch's IDs.
+Retention belongs to [REQ-ROUTER-001](router.md); replay never
 repeats a host edit.
 
 ### Bounded read command
@@ -196,10 +198,32 @@ shows known direct `+N -N` capture counts, not a composed net total. Partial or 
 `?` marks unknown authored counts. Observation-only and tool-managed IDs
 are omitted from the authored list. Pending and retired IDs remain visible;
 sibling threads' IDs are not exposed by implicit selection. Explicit IDs can still be read across
-agents in the shared namespace. The default view shows each ID and unified
+agents in the shared namespace. An authenticated orchestration coordinator can
+also read explicit child IDs and ranges from its retained run. These reads resolve
+the child's owning workspace and namespace, without requiring a live child or
+using Main's cwd as the evidence owner. Ownership includes the allocated number,
+not just its stream name, and survives retirement. Ambiguous IDs reject with a
+`--workspace DIR` hint; that selector narrows authorized evidence and cannot grant
+access to another run. Explicit reads can select the retained workspace after
+checkout cleanup; mutations still require an existing workspace. Child and sibling isolation and implicit caller selection
+remain unchanged. Coordinator access to child evidence is read-only. `apply` and
+`revert` reject IDs that could select child evidence before writing; an explicit
+caller-owned workspace selects ordinary local mutations without requiring a
+readable orchestration manifest.
+Explicit reads of caller-owned IDs also remain independent of that manifest.
+Other selected IDs in the same workspace still resolve through child membership.
+An unavailable launched child's journal reports unresolved authority rather than
+removing that child from collision checks. Reads preserve available evidence with
+an error; mutations that require child resolution reject before writing.
+Losing the coordinator journal also reports unresolved authority; it cannot turn
+an implicit colliding selection into a local mutation.
+
+The default view shows each ID and unified
 file diff. `--summary` prefixes each path's added and removed line counts with the same
 file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, `UU`, or `?` for incomplete evidence), aggregating across
 selected records in durable capture order, regardless of argument or author order.
+Authorized captures in the same workspace compose together across namespaces;
+different workspaces remain independent, even when their relative paths match.
 Counts come from the composed file differences, not the sum of repeated attempts.
 Only authored evidence participates in this composition; historical managed
 records remain diagnostic history rather than authored edits. Inconsistent chains have unknown counts and a retained reason.
@@ -257,8 +281,14 @@ boundaries. The receipt freezes the selected attempts, allocation state and view
 under the read lock, and retains those exact attempt dependencies. Appended
 attempts or a pending change completing cannot change an existing continuation;
 its original pending/retired markers remain visible. Older receipts without a
-frozen selection retain their digest-check behavior. Pending, expired, or incomplete
+frozen selection retain their single-workspace scope and digest-check behavior,
+including when child IDs collide. Pending, expired, or incomplete
 history is explicit; no missing evidence becomes an empty successful diff.
+Cross-namespace reads freeze each selected workspace's evidence in the
+coordinator's output scope. Fresh `mread` workers render those selections without
+child process state, with the same 64 MiB change-read capacity as local reads.
+Partial reads retain their successful selections and recovery hints under the
+same bound, while the first response preserves the failed-target diagnostics.
 In `--history`, a record with file changes is `applied`; a no-effect attempt
 is `no changes`. The original command's results and errors are separate debug
 information. Only unfinished work is `pending`.
@@ -272,8 +302,9 @@ show both endpoints of moves, compressing shared directory prefixes as
 `internal/router/{old.go=>new.go}`. These messages are user-only presentation,
 not substituted tool results. After persistence, the
 agent-visible completed tool response also receives a separate text part with
-the change ID and `mchanges ID --summary` statistics. This bounded notice does
-not replace the original host result or alter the user-facing edit display.
+the change ID and `mchanges ID --summary` statistics. The notice uses the edited
+workspace for its summary and recovery command. This bounded notice does not
+replace the original host result or alter the user-facing edit display.
 The separate duplicate-output projection may reference repeated host text in
 model input; it leaves the appended change notice intact.
 No-effect and unfinished calls receive no notice; partial edits report only
@@ -674,6 +705,11 @@ Acceptance:
    themselves recorded as revertable changes.
 5. Child handoff and resume use durable ownership, not a live process; replay
    never executes an edit again.
+   A coordinator can read retained isolated-child IDs through a fresh worker.
+   Colliding IDs require a workspace selection; sibling and unrelated-run
+   access reject, implicit reads remain caller-owned, and child read authority
+   cannot apply or revert child captures. A failed target preserves other
+   selected output, including across namespaces.
 6. Live `cat`, `tee`, patch, and interpreter projections are presentation
    only and preserve stock PTY, yield, host result, and `write_stdin` behavior.
    The separate duplicate-output projection changes only eligible model input.
