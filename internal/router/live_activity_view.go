@@ -955,10 +955,11 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time, width
 				slices.Reverse(earlier)
 				blocks = append(earlier, blocks...)
 			}
-			summary = v.painter.Summary(blocks, width)
-			if v0.Kind == "reasoning" && agent.Responding {
-				summary = activityui.ReasoningShimmer(ansi.Strip(summary), now.Sub(v0.Observed), v.painter.Colors)
-			}
+			blocks = slices.Clone(blocks)
+			blocks[len(blocks)-1].Live = agent.Responding && v0.statusAnimating()
+			painter := v.painter
+			painter.Clock = func() time.Time { return now }
+			summary = painter.Summary(blocks, width)
 			break
 		}
 		if agent.Name == "/root" && len(blocks) == 1 && blocks[0].Kind == "message" && blocks[0].To == "/root" {

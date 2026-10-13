@@ -95,6 +95,14 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	if !strings.Contains(u.agents.entries[0].Text, "Waiting for agent") || u.session.agent(u.session.paths["child"]).Responding {
 		t.Fatal("unfinished historical wait claimed completion or revived work")
 	}
+	// A later turn must not restart animation for the restored wait.
+	agent := *u.session.agent(u.session.paths["child"])
+	agent.Responding = true
+	first, _ := u.agents.current(agent, time.Unix(0, 0))
+	second, _ := u.agents.current(agent, time.Unix(1, 0))
+	if first != second {
+		t.Fatal("restored wait animated in a later turn")
+	}
 	wait.Status = "failed"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": wait})
 	if u.agents.entries[0].Text != "Wait failed" || u.agents.entries[0].native.phase != "item/completed" {

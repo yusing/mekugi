@@ -175,7 +175,9 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 	case "progress":
 		if entry.native != nil && entry.native.wait != nil {
-			return []activityui.Block{*entry.native.wait}
+			block := *entry.native.wait
+			block.Live = entry.native.live && entry.native.phase == "item/started"
+			return []activityui.Block{block}
 		}
 		return []activityui.Block{{Kind: "progress", Body: text}}
 	case "assignment":

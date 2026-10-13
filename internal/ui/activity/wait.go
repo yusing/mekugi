@@ -8,9 +8,9 @@ import "github.com/yusing/mekugi/internal/livediff"
 type WaitTarget struct{ Name, Status string }
 
 // ProgressText is the plain-text form used by activity summaries.
-func (b Block) ProgressText() string { return b.progressText(false) }
+func (b Block) ProgressText() string { return b.progressText("") }
 
-func (b Block) progressText(styled bool) string {
+func (b Block) progressText(style string) string {
 	var text strings.Builder
 	body := b.Body
 	if b.Label != "" {
@@ -24,8 +24,8 @@ func (b Block) progressText(styled bool) string {
 			text.WriteString(", ")
 		}
 		name := livediff.Safe(AgentDisplayName(target.Name), false)
-		if styled {
-			name = DimColor(target.Name) + name + "\x1b[39m" + Dim
+		if style != "" {
+			name = DimColor(target.Name) + name + Reset + style
 		}
 		text.WriteString(name)
 		if target.Status != "" {

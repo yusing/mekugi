@@ -218,7 +218,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if label != "" {
 			state = room - ansi.StringWidth(label) - 2
 		}
-		line := item.prefix + liveActivityPad(v.agentState(item.row.agent, state), state)
+		line := item.prefix + liveActivityPad(v.agentState(item.row.agent, state, now), state)
 		if label != "" {
 			styled := label
 			if v.skillsHover == item.row.agent.Name {
@@ -466,7 +466,7 @@ func (v *liveActivityView) nativeGlyph(agent activityPaneAgent) string {
 
 // agentState preserves lifecycle states when idle, and shares the detailed
 // activity summary while an agent is working.
-func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string {
+func (v *liveActivityView) agentState(agent activityPaneAgent, width int, now time.Time) string {
 	source, owner := v, agent.Name
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"
@@ -489,6 +489,6 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int) string
 	case len(blocks) == 0:
 		return "working"
 	}
-	summary, _ := v.current(agent, time.Now(), width)
+	summary, _ := v.current(agent, now, width)
 	return summary
 }

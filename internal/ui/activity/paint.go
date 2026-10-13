@@ -839,11 +839,12 @@ func (p *Painter) blockRows(block Block, width int) []string {
 	}
 	switch block.Kind {
 	case "progress":
-		text := block.progressText(true)
+		style := p.statusStyle(block.Live)
+		text := block.progressText(style)
 		if block.Label != "" && block.Hovered {
 			text = Underline(text)
 		}
-		return Wrap(Dim+"• "+text+Reset, width, false)
+		return Wrap(style+"• "+text+Reset, width, false)
 	case "summary":
 		// Public reasoning shares one streaming block across providers.
 		if block.Label == "" {
@@ -1829,7 +1830,8 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 	}
 	switch block.Kind {
 	case "progress":
-		return Dim + block.progressText(true) + Reset
+		style := p.statusStyle(block.Live)
+		return style + block.progressText(style) + Reset
 	case "summary":
 		var headers []string
 		for i := len(blocks) - 1; i >= 0 && blocks[i].Kind == "summary"; i-- {
@@ -1846,7 +1848,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 			}
 		}
 		slices.Reverse(headers)
-		return Dim + strings.Join(headers, ", ") + Undim
+		return p.statusStyle(block.Live) + strings.Join(headers, ", ") + Reset
 	case "final":
 		text := firstLine(block.Body)
 		if block.Journal != nil {
