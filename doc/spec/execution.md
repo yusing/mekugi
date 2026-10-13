@@ -61,14 +61,14 @@ agent-visible change-ID and summary text part as specified in
 [applied changes](changes.md), preserving the original host result content.
 
 Native command approvals retain Codex's offered session, command-prefix and
-permission scopes. In the proxied UI, command denial uses native decline so
+permission scopes. In the UI, command denial uses native decline so
 the turn continues without running the command. The original native tool
 rejection remains intact, with no synthetic shell exit code. Companion user
 feedback reports denial with or without the optional reason in the existing
 provider continuation for the same thread, turn and tool roundtrip; it neither
 steers the host nor starts a new turn. File-change and permission approval
-choices remain unchanged. Proxy-free direct UI and passthrough preserve the
-original host decisions and do not offer typed denial reasons. Dock editing and
+choices remain unchanged. Passthrough preserves the original host decisions
+and does not offer typed denial reasons. Dock editing and
 draft preservation are specified under [native UI approvals](native_ui.md#approvals).
 
 The wrapped Codex `PATH` includes only this session's authenticated executable

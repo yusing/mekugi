@@ -1425,13 +1425,13 @@ quoted input to the named terminal. Edit requests offer accept,
 `acceptForSession` and cancel, naming the paths of the matching live
 `fileChange` item. Permission requests offer turn, turn with strict auto review,
 and session grants of the requested profile, or an empty grant. Responses
-retain the original request ID and offered approval scopes. In the proxied UI,
+retain the original request ID and offered approval scopes. In the UI,
 command denial uses native decline to continue without running the command,
 with optional user feedback in the matching provider continuation as specified
 in [execution](execution.md#req-execution-001--preserve-codexs-execution-authority).
-Edit and permission decisions remain unchanged. Proxy-free direct UI and
-passthrough retain original host decisions without typed denial reasons. A request
-with no choice the client can label stays visibly blocked.
+Edit and permission decisions remain unchanged. Passthrough retains original
+host decisions without typed denial reasons. A request with no choice the client
+can label stays visibly blocked.
 
 Guarded sudo and VCS commands offer approval once, approval for the exact command
 and workdir for this UI session, or denial. The matching scope and lifetime are
