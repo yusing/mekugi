@@ -377,8 +377,9 @@ keep their live state and replace the matching retained row.
 
 Unversioned sources can prepare a shadow batch in a run-owned private Git
 repository. The complete source snapshot honors ignore files, excludes VCS
-metadata and preserves on-disk bytes, executable state and symlinks. Incomplete snapshots fail
-preparation. The child starts in a branch worktree with fresh context; source
+metadata and preserves on-disk bytes, Git executable state (owner execute) and
+symlinks. Incomplete snapshots fail preparation. The child starts in a branch
+worktree with fresh context; source
 files remain unchanged. Prepared inputs and private branch history survive
 reopening, independently of observation-snapshot retention. Shadow integration
 and acceptance use the source-preserving writeback below.
@@ -422,8 +423,10 @@ Assume-unchanged or skip-worktree paths require inspection before integration.
 Pending turns, native descendants, questions, approvals and unsettled deliveries
 prevent integration. Main alone can request it. Snapshot, merge or persistence
 failure before writeback is reported without changing the source. Every changed
-path must still match its planned source preimage before any write. Writeback
-preserves unrelated and ignored files, VCS metadata, executable state and links.
+path must still match its planned source preimage before any write. Preimage and
+uncertain-write checks use the same Git executable state as snapshots; group and
+other execute bits do not change that state. Writeback preserves unrelated and
+ignored files, VCS metadata, executable state and links.
 External writers must leave affected paths idle during writeback; checks and
 replacement are not an atomic filesystem transaction.
 

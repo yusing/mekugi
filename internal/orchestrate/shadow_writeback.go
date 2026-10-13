@@ -282,7 +282,9 @@ func shadowMatches(ctx context.Context, root *os.Root, repository, name string, 
 		}
 		data = []byte(link)
 	} else if info.Mode().IsRegular() && (want.mode == "100644" || want.mode == "100755") {
-		if (info.Mode().Perm()&0111 != 0) != (want.mode == "100755") {
+		// Match Git add's normalization at the snapshot owner: only owner execute
+		// distinguishes regular blob modes; group and other execute do not.
+		if (info.Mode().Perm()&0100 != 0) != (want.mode == "100755") {
 			return errors.New("source executable state changed")
 		}
 		data, err = root.ReadFile(name)
