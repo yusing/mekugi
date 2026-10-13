@@ -397,8 +397,13 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
 func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
 	if p != nil {
-		if err := p.projectOrchestrateInstructions(ctx, request, threadID, metadata, metadataValid); err != nil {
+		workspace, err := p.projectOrchestrateInstructions(ctx, request, threadID, metadata, metadataValid)
+		if err != nil {
 			return nil, err
+		}
+		if workspace != "" {
+			// Keep later journal writes in the same authenticated cwd used by projection.
+			metadata.Directories = map[string]jsonv1.RawMessage{workspace: nil}
 		}
 	}
 	if metadataValid && metadata.RequestKind == responseevents.Compaction {

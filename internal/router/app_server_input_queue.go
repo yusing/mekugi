@@ -318,6 +318,15 @@ func (u *appServerUI) withdraw(s composerSubmission) {
 
 func (u *appServerUI) submissionResponse(method string, failure *appserver.Error) {
 	s := u.appServerInputOperation.acknowledge()
+	if failure != nil && !s.committed {
+		u.rejectOrchestrateInput(s.parts)
+	} else {
+		for _, part := range s.parts {
+			if pending := part.orchestration; pending != nil {
+				pending.owned = false
+			}
+		}
+	}
 	if failure == nil {
 		for i, part := range s.parts {
 			if !part.inHistory {

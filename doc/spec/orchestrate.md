@@ -601,15 +601,19 @@ working directory when it starts the thread.
 The native command queues its intent in the original composer position. After
 input validation, one asynchronous admission initializes run storage and persists
 membership without creating a checkout. The entry stays queued until admission
-completes; rejected input creates no run storage. Storage lock waits leave host events,
+completes; input rejected by local validation creates no run storage. Storage lock waits leave host events,
 rendering and keyboard cancellation responsive. Startup failure restores the whole
 pending stack in original order. Cancellation releases a newly created unused
-binding before further input can dispatch; existing or prepared runs remain intact.
+binding before further input can dispatch. A definitive host rejection also releases
+a newly created unused binding; existing or prepared runs remain intact.
 Submitting the command resumes ordinary transcript following.
 A successful authenticated batch preparation also establishes run identity.
 Before provider forwarding, the instruction projection uses the authenticated
-request workspace and retained journal/run membership to mask pinned incompatible
-global workflow rules. It removes the normal Main/review workflow read triggers
+retained cwd and journal/run membership to mask pinned incompatible
+global workflow rules. Ordinary turns, prewarm and recovery use that authority when
+workspace metadata is empty or names a containing Git root. Fresh native descendants
+use their authenticated parent until their own identity is retained. Conflicting
+identity and unrelated selected workspaces do not grant membership. It removes the normal Main/review workflow read triggers
 and Main-only authorship/delegation restrictions, preserving adjacent safety,
 authorization, scope and quality policy. Global instruction files stay unchanged.
 The current role policy also governs previously read and recovered workflow text;

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -109,6 +110,7 @@ func (s *journalStore) bindRunOwned(ctx context.Context, store *mekugiReplayStor
 				return errors.New("journal orchestration reference changed")
 			}
 		}
+		owned := j.Orchestration == nil
 		if store != nil && run.Main == thread && run.Workspace == workspace {
 			// Keep the authority locator with durable identity, before publishing
 			// the journal binding. Missing journal payloads must not erase the role.
@@ -122,6 +124,9 @@ func (s *journalStore) bindRunOwned(ctx context.Context, store *mekugiReplayStor
 			if scope.Coordinator != nil && *scope.Coordinator != run {
 				return errors.New("retained coordinator reference changed")
 			}
+			if scope.Coordinator != nil {
+				owned = false // Retained authority survives a missing journal binding.
+			}
 			if scope.Coordinator == nil {
 				scope.Coordinator = &run
 				if err := store.writeHandleScope(scope); err != nil {
@@ -133,7 +138,7 @@ func (s *journalStore) bindRunOwned(ctx context.Context, store *mekugiReplayStor
 			return errJournalUnchanged
 		}
 		j.Orchestration = &run
-		created = true
+		created = owned
 		return nil
 	})
 	return created && err == nil, err
@@ -150,6 +155,18 @@ func (s *journalStore) releaseUnusedRun(ctx context.Context, store *mekugiReplay
 		}
 		if len(batches) != 0 {
 			return errJournalUnchanged
+		}
+		if store != nil {
+			scope, _, err := store.readHandleScope(run.Main)
+			if err != nil {
+				return err
+			}
+			if scope.Coordinator != nil && *scope.Coordinator == run {
+				scope.Coordinator = nil
+				if err := store.writeHandleScope(scope); err != nil {
+					return err
+				}
+			}
 		}
 		j.Orchestration = nil
 		return nil
@@ -190,6 +207,7 @@ func (s *journalStore) relatedJournals(store *mekugiReplayStore, workspace, call
 	if !member {
 		return local, failures, errors.New("journal root is not a confirmed member of its orchestration run")
 	}
+
 	mainJournals, mainErrors := snapshot[run.Workspace].journals, snapshot[run.Workspace].failures
 	joined, errorsByThread := maps.Clone(mainJournals), maps.Clone(mainErrors)
 	for _, member := range members {
@@ -242,4 +260,116 @@ func (s *journalStore) relatedJournals(store *mekugiReplayStore, workspace, call
 		}
 	}
 	return joined, errorsByThread, nil
+}
+
+// Request membership uses the shared root authority without reading sibling journals.
+// The reader runs under the journal and replay locks.
+func journalRunMembership(workspace, caller string, read func(string, string) (threadJournal, bool, error)) (threadJournal, error) {
+	seen := make(map[string]bool)
+	var root threadJournal
+	for thread := caller; ; {
+		j, exists, err := read(workspace, thread)
+		if err != nil {
+			return threadJournal{}, err
+		}
+		if !exists || !j.IdentityKnown || j.IdentityConflicted || seen[thread] {
+			return threadJournal{}, nil
+		}
+		seen[thread] = true
+		if j.Parent == "" {
+			root = j
+			break
+		}
+		thread = j.Parent
+	}
+	run := root.Orchestration
+	if run == nil {
+		return root, nil
+	}
+	batches, err := (&orchestrate.Store{Directory: run.Directory}).Snapshot(run.Workspace, run.Main)
+	if err != nil {
+		return threadJournal{}, err
+	}
+	member := root.Thread == run.Main && root.Workspace == run.Workspace
+	for _, b := range batches {
+		if b.Launch != nil && b.Launch.ThreadID == root.Thread && b.Cwd == root.Workspace {
+			member = true
+		}
+	}
+	if !member || !run.admitsRoot(root) {
+		return threadJournal{}, errors.New("journal root is not a confirmed member of its orchestration run")
+	}
+	if err := run.validateCoordinator(read); err != nil {
+		return threadJournal{}, err
+	}
+	return root, nil
+}
+
+// Resolve the requesting thread's retained cwd, not the Git-root metadata shape.
+// Fresh descendants may use only their authenticated parent's retained scope.
+func (s *journalStore) orchestrationRequestRoot(ctx context.Context, store *mekugiReplayStore, workspace, thread, parent string) (threadJournal, error) {
+	store = store.scoped(ctx)
+	release, err := s.lockState(ctx)
+	if err != nil {
+		return threadJournal{}, err
+	}
+	defer release()
+	var root threadJournal
+	resolve := func() error {
+		read := func(workspace, thread string) (threadJournal, bool, error) {
+			if store != nil {
+				return readThreadJournal(store, workspace, thread)
+			}
+			j, exists := s.memory[journalKey(workspace, thread)]
+			return j, exists, nil
+		}
+		// Ordinary selected roots keep their existing policy without a run lookup.
+		if workspace != "" {
+			j, exists, err := read(workspace, thread)
+			if err != nil {
+				return err
+			}
+			if exists && j.Parent == "" && j.Orchestration == nil {
+				return nil
+			}
+		}
+		if store != nil {
+			retained, err := store.compactionWorkspace(thread)
+			if errors.Is(err, errNoRetainedJournalWorkspace) && parent != "" {
+				retained, err = store.compactionWorkspace(parent)
+			}
+			if err != nil && !errors.Is(err, errNoRetainedJournalWorkspace) {
+				return err
+			}
+			if err == nil {
+				if workspace != "" {
+					rel, err := filepath.Rel(workspace, retained)
+					if err != nil || !filepath.IsLocal(rel) {
+						return nil
+					}
+				}
+				workspace = retained
+			}
+		}
+		if workspace == "" {
+			return nil
+		}
+
+		_, exists, err := read(workspace, thread)
+		if err != nil {
+			return err
+		}
+		caller := thread
+		if !exists && parent != "" {
+			caller = parent
+		}
+		root, err = journalRunMembership(workspace, caller, read)
+		return err
+	}
+	if store != nil {
+		err = store.locked(ctx, resolve)
+	} else {
+		err = resolve()
+	}
+	return root, err
 }

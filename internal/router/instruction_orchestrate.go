@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Pinned workflow conflicts, not a classifier for arbitrary caller policy.
@@ -49,67 +47,30 @@ func maskOrchestrateInstructions(source string) string {
 
 // Read the same manifest-backed ancestry used for cross-checkout journals.
 // Request text and live UI state never grant orchestration membership.
-func (p *mekugiProxy) projectOrchestrateInstructions(ctx context.Context, request *parsedResponsesRequest, thread string, metadata codexTurnMetadata, valid bool) error {
+func (p *mekugiProxy) projectOrchestrateInstructions(ctx context.Context, request *parsedResponsesRequest, thread string, metadata codexTurnMetadata, valid bool) (string, error) {
 	if !valid || thread == "" || metadata.activityIdentityInvalid || metadata.ThreadID != "" && metadata.ThreadID != thread || p.journals == nil {
-		return nil
+		return "", nil
 	}
 	workspace, selected := usableRoutingDirectory(metadata.Directories)
-	if !selected && len(metadata.Directories) == 0 && metadata.RequestKind == responses.Compaction && p.replayStore != nil {
-		store := p.replayStore.scoped(ctx)
-		err := store.locked(ctx, func() error {
-			var err error
-			workspace, err = store.compactionWorkspace(thread)
-			return err
-		})
-		if err != nil && !errors.Is(err, errNoRetainedJournalWorkspace) {
-			return err
-		}
-		selected = err == nil
+	if !selected && len(metadata.Directories) != 0 {
+		return "", nil
 	}
-	if !selected {
-		return nil
+	parent := ""
+	if metadata.SubagentKind != "" {
+		parent = metadata.ParentThreadID
 	}
-	guidance := ""
-	err := p.journals.transactionWithTiming(ctx, p.replayStore, workspace, thread, false, func(j *threadJournal, exists bool) error {
-		if exists && j.Parent == "" && j.Orchestration == nil || !exists && metadata.SubagentKind == "" {
-			return errJournalUnchanged
-		}
-		// A fresh native descendant has not yet saved its own identity. Its host
-		// parent metadata still selects a retained ancestry, never a prompt claim.
-		caller := thread
-		if !exists && metadata.SubagentKind != "" {
-			caller = metadata.ParentThreadID
-		}
-		journals, failures, err := p.journals.relatedJournals(p.replayStore.scoped(ctx), workspace, caller)
-		if err != nil {
-			return err
-		}
-		chain := journalAncestry(journals, caller)
-		if len(chain) == 0 {
-			return errJournalUnchanged
-		}
-		for _, id := range chain {
-			if failures[id] != nil {
-				return failures[id]
-			}
-		}
-		root := journals[chain[len(chain)-1]]
-		if root.Orchestration == nil {
-			return errJournalUnchanged
-		}
-		guidance = orchestrateOwnershipInstructions
-		if thread == root.Orchestration.Main {
-			guidance = "This thread is Main.\n" + guidance
-		} else if exists && j.Parent == "" {
-			guidance = "This thread is an orchestration child.\n" + guidance
-		}
-		return errJournalUnchanged
-	})
+	root, err := p.journals.orchestrationRequestRoot(ctx, p.replayStore, workspace, thread, parent)
 	if err != nil {
-		return fmt.Errorf("resolve orchestration instructions: %w", err)
+		return "", fmt.Errorf("resolve orchestration instructions: %w", err)
 	}
-	if guidance == "" {
-		return nil
+	if root.Orchestration == nil {
+		return "", nil
+	}
+	guidance := orchestrateOwnershipInstructions
+	if thread == root.Orchestration.Main {
+		guidance = "This thread is Main.\n" + guidance
+	} else if thread == root.Thread {
+		guidance = "This thread is an orchestration child.\n" + guidance
 	}
 	if original, ok := decodeJSONString(request.fields["instructions"]); ok {
 		request.fields["instructions"] = mustMarshalJSON(maskOrchestrateInstructions(original))
@@ -126,16 +87,16 @@ func (p *mekugiProxy) projectOrchestrateInstructions(ctx context.Context, reques
 		content, found, err := transformResponsesTextContent(item.Content, transform, isResponsesInputTextPart)
 		return content, found && string(content) != string(item.Content), err
 	}); err != nil {
-		return err
+		return "", err
 	}
 	const start, end = "<!-- mekugi-orchestration:start -->", "<!-- mekugi-orchestration:end -->"
 	original, _ := decodeJSONString(request.fields["instructions"])
 	projected, err := refreshUnfencedOrchestrateGuidance(original, start, end, start+"\n"+guidance+"\n"+end)
 	if err != nil {
-		return err
+		return "", err
 	}
 	request.fields["instructions"] = mustMarshalJSON(projected)
-	return nil
+	return root.Workspace, nil
 }
 
 // Marker examples are evidence, not an owned runtime section.

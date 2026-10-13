@@ -18,6 +18,7 @@ const orchestrateWorkflow = orchestrateCoordinatorInstructions + "\nIssues:\n"
 // Provisional intent stays with its queue entry. It grants no run membership.
 type orchestrateInput struct {
 	ready    bool
+	owned    bool
 	run      journalRun
 	original composerDraft
 }
@@ -119,7 +120,7 @@ func (u *appServerUI) admitOrchestrateInput(pending *orchestrateInput) {
 					u.unsent, u.queued = nil, nil
 					u.setNotice("Admit orchestration: "+errors.Join(err, cleanupErr).Error(), true)
 				} else {
-					pending.ready = true
+					pending.ready, pending.owned = true, created
 					if flushErr := u.flushInput(); flushErr != nil {
 						u.setNotice("Submit orchestration: "+flushErr.Error(), true)
 					}
@@ -152,4 +153,35 @@ func orchestrateRecoveryInstructions(j threadJournal) string {
 		return "Orchestration tools\n" + orchestrateCoordinatorInstructions + "\n" + orchestrateOwnershipInstructions + "\n\n"
 	}
 	return "Orchestration tools\n" + orchestrateChildInstructions + orchestrateOwnershipInstructions + "\n"
+}
+
+// A definitive rejection releases only membership created by this submission.
+// Keep dispatch paused until the cleanup is durable, including after Ctrl-C.
+func (u *appServerUI) rejectOrchestrateInput(parts []composerDraft) {
+	var runs []journalRun
+	for _, part := range parts {
+		if pending := part.orchestration; pending != nil && pending.owned {
+			runs = append(runs, pending.run)
+			pending.owned, pending.ready = false, false
+		}
+	}
+	if len(runs) == 0 {
+		return
+	}
+	u.orchestrateStarting = func() {}
+	proxy := u.proxy
+	u.orchestrateWork(func() func() {
+		var err error
+		for _, run := range runs {
+			err = errors.Join(err, proxy.journals.releaseUnusedRun(u.orchestrateStorageContext, proxy.replayStore, run))
+		}
+		return func() {
+			u.orchestrateStarting = nil
+			if err != nil {
+				u.setNotice("Release rejected orchestration: "+err.Error(), true)
+			} else if err := u.flushInput(); err != nil {
+				u.setNotice("Submit input: "+err.Error(), true)
+			}
+		}
+	})
 }

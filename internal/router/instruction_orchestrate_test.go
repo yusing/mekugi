@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestOrchestrateInstructionMaskBoundaries(t *testing.T) {
@@ -105,7 +107,7 @@ func TestOrchestrateInstructionConsumers(t *testing.T) {
 			}
 			if test.active && test.parent == "" {
 				compact := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": mustMarshalJSON(conflict)}}
-				if err := proxy.projectOrchestrateInstructions(t.Context(), &compact, test.thread, codexTurnMetadata{RequestKind: "compaction"}, true); err != nil || strings.Contains(jsonString(compact.fields, "instructions"), conflict) || !strings.Contains(jsonString(compact.fields, "instructions"), orchestrateOwnershipInstructions) {
+				if _, err := proxy.projectOrchestrateInstructions(t.Context(), &compact, test.thread, codexTurnMetadata{RequestKind: "compaction"}, true); err != nil || strings.Contains(jsonString(compact.fields, "instructions"), conflict) || !strings.Contains(jsonString(compact.fields, "instructions"), orchestrateOwnershipInstructions) {
 					t.Fatal("compaction lost retained workspace policy", err)
 				}
 			}
@@ -156,5 +158,67 @@ func TestOrchestrateInstructionFencedMarkers(t *testing.T) {
 				previous = text
 			}
 		})
+	}
+}
+
+func TestOrchestrateInstructionWorkspaceShapes(t *testing.T) {
+	replay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := gitTestWorkspace(t)
+	workspace := filepath.Join(repository, "subdir")
+	writeTestFile(t, filepath.Join(workspace, "file"), "base")
+	gitTestCommit(t, repository)
+	u, launch := orchestrateIdentityPendingTurnInWorkspace(t, replay, workspace)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"initial"}}`)
+	child := u.orchestrateThreads["child"].batch
+	for _, test := range []struct {
+		name, thread, parent, directory, kind string
+		active                                bool
+	}{
+		{"main empty", "main", "", "", "", true},
+		{"main root", "main", "", repository, "prewarm", true},
+		{"child empty", "child", "", "", "prewarm", true},
+		{"child root", "child", "", child.Checkout, "", true},
+		{"descendant empty", "native", "child", "", "", true},
+		{"descendant root", "fresh-native", "child", child.Checkout, "prewarm", true},
+		{"foreign workspace", "main", "", t.TempDir(), "prewarm", false},
+		{"unrelated", "unrelated", "", "", "", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			proxy := newToolPluginTestProxy(t)
+			proxy.replayStore = replay
+			metadata := codexTurnMetadata{RequestKind: responses.Turn, ParentThreadID: test.parent, ThreadID: test.thread, TurnID: "turn"}
+			if test.parent != "" {
+				metadata.SubagentKind, metadata.AgentName = "thread_spawn", "/root/native"
+			}
+			if test.directory != "" {
+				metadata.Directories = map[string]json.RawMessage{test.directory: nil}
+			}
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustMarshalJSON([]any{testCodeModeAdditionalTools(testCodeModeDescription)})}}
+			for range 2 {
+				transform, err := proxy.prepareModelRequest(t.Context(), &request, "session-"+test.thread, test.thread, metadata, true, test.kind == "prewarm")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if transform != nil {
+					transform.Close()
+				}
+			}
+			if got := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); got != test.active {
+				t.Fatalf("runtime ownership=%v, want %v", got, test.active)
+			}
+		})
+	}
+	// A corrupt or conflicting retained identity cannot be replaced by parent metadata.
+	if err := u.proxy.journals.bindIdentity(u.ctx, replay, workspace, "main", "foreign", "/root", true); err != nil {
+		t.Fatal(err)
+	}
+	proxy := newToolPluginTestProxy(t)
+	proxy.replayStore = replay
+	request := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
+	if _, err := proxy.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{SubagentKind: "thread_spawn", ParentThreadID: "child"}, true); err == nil {
+		t.Fatal("conflicting retained identity was accepted")
 	}
 }

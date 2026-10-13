@@ -42,7 +42,7 @@ func TestAppServerOrchestrateWorkflowComposer(t *testing.T) {
 			}
 			fresh := &mekugiProxy{journals: newJournalStore(), replayStore: replay}
 			projected := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
-			if err := fresh.projectOrchestrateInstructions(t.Context(), &projected, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil || !strings.Contains(jsonString(projected.fields, "instructions"), orchestrateOwnershipInstructions) {
+			if _, err := fresh.projectOrchestrateInstructions(t.Context(), &projected, "main", codexTurnMetadata{}, true); err != nil || !strings.Contains(jsonString(projected.fields, "instructions"), orchestrateOwnershipInstructions) {
 				t.Fatal("first turn lacks durable policy", err)
 			}
 			request := btwTestRequest(t, wire, method, "main")
@@ -164,7 +164,7 @@ func TestAppServerOrchestrateWorkflowQueuedPosition(t *testing.T) {
 	}
 	pending := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
 	metadata := codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}
-	if err := u.proxy.projectOrchestrateInstructions(t.Context(), &pending, "main", metadata, true); err != nil || strings.Contains(jsonString(pending.fields, "instructions"), orchestrateOwnershipInstructions) {
+	if _, err := u.proxy.projectOrchestrateInstructions(t.Context(), &pending, "main", metadata, true); err != nil || strings.Contains(jsonString(pending.fields, "instructions"), orchestrateOwnershipInstructions) {
 		t.Fatal("queued input activated masking before admission", err)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"running"}}`, first.ID))
@@ -176,8 +176,9 @@ func TestAppServerOrchestrateWorkflowQueuedPosition(t *testing.T) {
 }
 
 func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
-	for _, existing := range []bool{false, true} {
-		t.Run(fmt.Sprint(existing), func(t *testing.T) {
+	for _, state := range []string{"new", "existing", "locator"} {
+		existing := state != "new"
+		t.Run(state, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ctx = t.Context()
 			replay, err := openMekugiReplayStore(t.TempDir())
@@ -200,6 +201,14 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 					}
 				}
 			}
+			if state == "locator" {
+				if err := u.proxy.journals.transaction(u.ctx, replay, u.session.cwd, "main", func(j *threadJournal, _ bool) error {
+					j.Orchestration = nil
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			appServerTestKeys(t, u, "/orchestrate canceled\r")
 			var complete func()
 			select {
@@ -214,9 +223,13 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 			if wire.Len() != 0 || strings.Count(u.draft, "/orchestrate canceled") != 1 {
 				t.Fatal("cancellation dispatched or duplicated input", u.draft, wire.String())
 			}
+			scope, _, err := replay.readHandleScope("main")
+			if err != nil || (scope.Coordinator != nil) != existing {
+				t.Fatal("cancellation changed retained coordinator authority", scope.Coordinator, err)
+			}
 			fresh := &mekugiProxy{journals: newJournalStore(), replayStore: replay}
 			request := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
-			if err := fresh.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
+			if _, err := fresh.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
 				t.Fatal(err)
 			}
 			if got := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); got != existing {
@@ -302,10 +315,72 @@ func TestAppServerOrchestrateOversizedInputDoesNotBindRun(t *testing.T) {
 		t.Fatal("rejected input created run storage", entries, err)
 	}
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
-	if err := u.proxy.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
+	if _, err := u.proxy.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
 		t.Fatal(err)
 	}
 	if wire.Len() != 0 || !strings.HasPrefix(u.draft, "/orchestrate ") || !u.noticeAlert || strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions) {
 		t.Fatal("rejected input activated masking or lost the command")
+	}
+}
+
+func TestAppServerOrchestrateHostRejectionReleasesOwnedRun(t *testing.T) {
+	for _, state := range []string{"new", "existing", "prepared"} {
+		t.Run(state, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.ctx = t.Context()
+			replay, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &orchestrate.Store{Directory: t.TempDir()}
+			u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: store}}
+			u.session.start("main", orchestrateVCSWorkspace(t, "git"))
+			t.Cleanup(func() { u.closeOrchestrateStorage() })
+			if state == "existing" {
+				for _, err := range []error{
+					u.proxy.journals.initialize(u.ctx, replay, u.session.cwd, "main", "/root", ""),
+					u.proxy.journals.bindIdentity(u.ctx, replay, u.session.cwd, "main", "", "/root", true),
+					store.Start(u.ctx, u.session.cwd, "main"),
+					u.proxy.journals.bindRun(u.ctx, replay, u.session.cwd, "main", journalRun{Directory: store.Directory, Workspace: u.session.cwd, Main: "main"}),
+				} {
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			original := "/orchestrate " + strings.Repeat("x", composerTextLimit)
+			u.loadDraft(composerDraft{text: original})
+			u.submitOrchestrate()
+			drainOrchestrateWork(t, u)
+			start := btwTestRequest(t, wire, "turn/start", "main")
+			if state == "prepared" {
+				if _, err := store.Prepare(t.Context(), u.session.cwd, "main", "used"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-32602,"message":"input too large"}}`, start.ID))
+			if u.draft != original {
+				t.Fatal("host rejection lost the original command")
+			}
+			u.loadDraft(composerDraft{text: "ordinary"})
+			appServerTestKeys(t, u, "\r")
+			if state != "existing" && wire.Len() != 0 {
+				t.Fatal("input escaped before binding cleanup")
+			}
+			drainOrchestrateWork(t, u)
+			appServerOneRequest(t, wire, "turn/start", "ordinary")
+			scope, _, err := replay.readHandleScope("main")
+			if err != nil || (scope.Coordinator != nil) != (state != "new") {
+				t.Fatal("rejection changed retained coordinator authority", scope.Coordinator, err)
+			}
+			fresh := &mekugiProxy{journals: newJournalStore(), replayStore: replay}
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
+			if _, err := fresh.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
+				t.Fatal(err)
+			}
+			if active := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); active != (state != "new") {
+				t.Fatalf("rejected %s run retains masking=%v", state, active)
+			}
+		})
 	}
 }
