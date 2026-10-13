@@ -181,7 +181,7 @@ func runShellWorkerTest(
 	}
 	environment = prependToolFrontendPath(environment, registry.frontendDirectory)
 	arguments := append(append([]string{}, interpreterArguments...), "-c", script)
-	command := exec.CommandContext(t.Context(), interpreter, arguments...)
+	command := exec.CommandContext(t.Context(), execTrackShellExecutable(t, interpreter), arguments...)
 	command.Dir, command.Env, command.Stdin = directory, environment, stdin
 	var out, diagnostic bytes.Buffer
 	command.Stdout, command.Stderr = &out, &diagnostic

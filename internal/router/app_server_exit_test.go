@@ -97,9 +97,9 @@ func TestAppServerExitSummaryArgvRoundTrip(t *testing.T) {
 		{argv[0], "replay-session", "--session", "saved", "--debug-dir", u.replayDebugDirectory},
 	} {
 		command := strings.TrimPrefix(lines[i*2+1], "  ")
-		got, err := exec.Command("bash", "-c", "set -- "+command+"; printf '%s\\0' \"$@\"").Output()
+		got, err := exec.Command(execTrackShellExecutable(t, "bash"), "-c", "set -- "+command+"; printf '%s\\0' \"$@\"").CombinedOutput()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("argv round trip: %v: %s", err, got)
 		}
 		if string(got) != strings.Join(want, "\x00")+"\x00" {
 			t.Fatalf("argv round trip: %q, want %q", got, want)
