@@ -28,11 +28,12 @@ type DialogPage struct {
 // DialogLine is one numbered source/output line, a logical unnumbered error
 // line, or a pre-laid-out row such as a note or rendered Markdown.
 type DialogLine struct {
-	Wrap        bool   // Keep an unnumbered logical line intact for search; wrap only for display.
-	Number      int    // Zero leaves the number column blank.
-	Gutter      string // "│" before source, "┆" before output, empty for other rows.
-	GutterStyle string // Optional number style, including wrapped rows and their left padding.
-	Text        string // Styled.
+	Wrap        bool          // Keep an unnumbered logical line intact for search; wrap only for display.
+	Number      int           // Zero leaves the number column blank.
+	Gutter      string        // "│" before source, "┆" before output, empty for other rows.
+	GutterStyle string        // Optional number style, including wrapped rows and their left padding.
+	Text        string        // Styled.
+	copySource  *CopyFragment // Original output behind a generated file heading.
 }
 
 // dialogHighlightBytes bounds the content the dialog colors; larger content
@@ -182,8 +183,16 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			}
 		}
 	}
+	var identity uint64
+	if p.CopySource && !p.LayoutOnly {
+		identity = copyID(content, p.CopyScope)
+	}
 	for i, line := range colored {
-		add(DialogLine{Number: first + i, Gutter: gutter, Text: line})
+		row := DialogLine{Number: first + i, Gutter: gutter, Text: line}
+		if p.CopySource && !p.LayoutOnly && ansi.Strip(line) != view.Lines[i] {
+			row.copySource = &CopyFragment{ID: copyID(strconv.Itoa(i), identity), Prefix: view.Lines[i]}
+		}
+		add(row)
 	}
 	return page
 }
@@ -328,6 +337,11 @@ func (d DialogPage) Rows(i, width int) []string {
 	parts := Wrap(line.Text, d.textWidth(width), true)
 	rows := make([]string, len(parts))
 	for k, part := range parts {
+		if line.copySource != nil {
+			fragment := *line.copySource
+			fragment.Width = ansi.StringWidth(part)
+			part = copyTag(fragment) + part
+		}
 		number := ""
 		if k == 0 && line.Number > 0 {
 			number = strconv.Itoa(line.Number)

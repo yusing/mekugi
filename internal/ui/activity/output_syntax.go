@@ -32,7 +32,7 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 		}
 		return selected
 	}
-	if len(rows) == 0 || p.LayoutOnly {
+	if len(rows) == 0 {
 		return selectRows(rows)
 	}
 	content := strings.Join(rows, "\n")
@@ -42,6 +42,9 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 	path := ""
 	switch {
 	case block.Hook != nil:
+		if p.LayoutOnly {
+			return selectRows(rows)
+		}
 		return selectRows(p.hookColors(rows))
 	case block.ReadOutput() && len(block.Reads) == 1:
 		path = block.Reads[0].Path
@@ -49,10 +52,13 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 			path = block.SyntaxPath
 		}
 	case block.Verb == "Diff" && block.VCS():
-		return selectRows(p.Highlight("diff", content))
+		return selectRows(p.diffOutput(block, content, len(rows)))
 	case strings.Contains(content, "\n+++ ") && strings.Contains(content, "\n@@ "):
-		return selectRows(p.Highlight("diff", content))
+		return selectRows(p.diffOutput(block, content, len(rows)))
 	case block.Verb == "Search":
+		if p.LayoutOnly {
+			return selectRows(rows)
+		}
 		rows = selectRows(rows)
 		colored := make([]string, len(rows))
 		for i, line := range rows {
@@ -60,7 +66,7 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 		}
 		return colored
 	}
-	if path == "" && len(content) > outputAutoHighlightBytes {
+	if p.LayoutOnly || path == "" && len(content) > outputAutoHighlightBytes {
 		return selectRows(rows)
 	}
 	// Supply a terminator so a retained trailing blank row keeps its position.
@@ -69,6 +75,22 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 		return selectRows(rows)
 	}
 	return selectRows(colored)
+}
+
+// Header presentation is limited to command output; authored diff fences and
+// read source retain their original rows. Layout uses the same section geometry.
+func (p *Painter) diffOutput(block Block, content string, rows int) []string {
+	complete := !block.Running && !block.Live
+	if block.Output != nil {
+		view := block.Output.View()
+		complete = view.Done && !view.Truncated && rows == len(view.Lines)
+	}
+	p.syntax.LayoutOnly = p.LayoutOnly
+	colored, err := p.syntax.DiffOutput(context.Background(), p.Theme, content, complete)
+	if err != nil {
+		return strings.Split(content, "\n")
+	}
+	return colored
 }
 
 // Hook output prefixes each host entry with its kind. Detection misreads the
@@ -111,11 +133,6 @@ func (p *Painter) hookColors(rows []string) []string {
 // Color from retained context before selecting the animated tail. Blank rows
 // are absent from the tail, and its last revealed row may precede live output.
 func (p *Painter) tailColors(block Block) []string {
-	// The observed tail is already bounded and sanitized. Measuring layout
-	// must not revisit and truncate its potentially much larger retained lines.
-	if p.LayoutOnly {
-		return block.Tail
-	}
 	if block.Output == nil || len(block.Tail) == 0 {
 		return p.outputColors(block, block.Tail)
 	}

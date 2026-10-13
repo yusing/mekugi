@@ -801,7 +801,16 @@ func (p *Painter) Block(block Block, width int) []string {
 		return append(lines, liveActivityIndent(rows, strings.Repeat(" ", indent))...)
 	}
 	if !block.Collapsed {
-		block.Tail = p.tailColors(block)
+		tail := p.tailColors(block)
+		if p.CopySource && !p.LayoutOnly {
+			identity := copyID(strings.Join(block.Tail, "\n"), p.CopyScope)
+			for i, row := range tail {
+				if ansi.Strip(row) != block.Tail[i] {
+					tail[i] = copyTag(CopyFragment{ID: copyID(strconv.Itoa(i), identity), Prefix: block.Tail[i], Width: ansi.StringWidth(row)}) + row
+				}
+			}
+		}
+		block.Tail = tail
 	}
 	if len(lines) > 0 {
 		lines[0] = p.StyleEventHeader(block, lines[0])

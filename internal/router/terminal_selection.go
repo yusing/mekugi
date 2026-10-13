@@ -416,6 +416,18 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		s.document(lines, d.top, 0)
 		if s.screenRows != 0 {
 			s.contentLeft = indents
+		} else {
+			// document already extracts source annotations for scrollable output.
+			// Short output needs numbered diff headings too, while Markdown bodies
+			// retain their existing rendered-text selection.
+			s.rows = make([]string, len(d.body))
+			s.copySource = make([][]activityui.CopySpan, len(d.body))
+			for i, row := range d.body {
+				s.rows[i] = row
+				if i < len(d.indents) && d.indents[i] > 0 {
+					s.rows[i], s.copySource[i] = activityui.ExtractCopy(row)
+				}
+			}
 		}
 		u.selection = s
 		return true
