@@ -405,7 +405,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 								u.dirty = true
 							}
 						}
-						if u.sessionAnimating() || u.view.hasLiveStatus() || u.shell.activityOpen && u.agents.hasLiveStatus() {
+						if u.statusAnimating() {
 							u.dirty = true
 						}
 						if u.shell.activityOpen && time.Since(agePaint) >= time.Second {

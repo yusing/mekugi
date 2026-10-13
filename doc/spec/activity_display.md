@@ -520,7 +520,9 @@ Shared column widths derive from currently visible roster rows. Before hiding ag
 selected-agent metrics when space permits. Hidden rows have directional counts and responding/error counts on the
 corresponding edge where space permits; the header always includes overall counts.
 Counts follow each agent's status symbol, so a responding agent is never also
-counted as an error.
+counted as an error. During orchestration, header counts and token/cost totals
+cover the whole run, while native rows remain local to the viewed thread;
+the [orchestration contract](orchestrate.md#accepted-delivery-scope) defines that scope.
 The viewport moves only when selection leaves it, not to recenter each selection.
 The separate roster header omits feed follow state; the feed header is `ACTIVITY`
 with its filter and follow state. Feed-only controls do not offer clicking agents.

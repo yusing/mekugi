@@ -100,14 +100,14 @@ func TestUISnapshotOrchestrateRecoveryResume(t *testing.T) {
 	u.shell.focus = 0
 	appServerTestKeys(t, u, "/orchestrate\r")
 	drainOrchestrateWork(t, u)
-	if !strings.Contains(u.picker.choices[1].description, "interrupted") || wire.Len() != 0 {
+	if !strings.Contains(u.picker.choices[1].description, "Interrupted") || wire.Len() != 0 {
 		t.Fatal("picker disagrees with restored roster")
 	}
 	appServerTestKeys(t, u, "\x1b")
 	orchestrateTestMessage(t, old, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"old-turn","status":"failed"}}}`)
 	appServerTestKeys(t, u, "/orchestrate\r")
 	drainOrchestrateWork(t, u)
-	if !strings.Contains(u.picker.choices[1].description, "failed") {
+	if !strings.Contains(u.picker.choices[1].description, "Failed") {
 		t.Fatal("restored facts replaced the picker's newer observation")
 	}
 	// Fix temporary branch hashes in the renderer's observation inputs.

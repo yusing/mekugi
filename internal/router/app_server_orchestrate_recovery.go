@@ -3,9 +3,18 @@ package router
 import (
 	"errors"
 	"os"
+	"strings"
 
 	"github.com/yusing/mekugi/internal/orchestrate"
 )
+
+func orchestrateStateLabel(state string) string {
+	state = strings.ReplaceAll(state, "_", " ")
+	if state != "" {
+		state = strings.ToUpper(state[:1]) + state[1:]
+	}
+	return state
+}
 
 func orchestrateBatchState(batch orchestrate.Batch) string {
 	if batch.State == "integrating" || batch.State == "removing" || batch.State == "removed" {

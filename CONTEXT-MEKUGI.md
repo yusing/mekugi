@@ -22,7 +22,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Dialog integration, Markdown file links, and background fading | `internal/router/output_dialog.go`, `internal/router/markdown_file_dialog.go`, `internal/ui/activity/dialog.go`, `internal/ui/activity/faint.go` |
 | Shared Markdown and activity painting | `internal/ui/activity/paint.go`; rendering coverage in `internal/ui/activity/*snapshot_test.go` |
 | Submitted file attachments | `internal/router/composer_file_attachment.go`; shared path formatting in `internal/pathdisplay` |
-| Journal cards and agent roster presentation | `internal/router/native_journal.go`, `internal/router/journal_card.go`, `internal/router/native_roster.go`; durable journal state remains separate |
+| Journal cards and agent roster presentation | `internal/router/native_journal.go`, `internal/router/journal_card.go`, `internal/router/native_roster.go`; run-wide header aggregation and stable working-row order in `native_roster.go`, status animation in `activity_shimmer.go`; durable journal state remains separate |
 | Live-diff models and preview presentation | `internal/livediff/model.go`, `internal/ui/diffview/preview.go`; native composition in `internal/router/native_shell.go` |
 | Saved Diff journal scope and capture attribution | `internal/router/live_diff_task_scope.go`, `internal/router/mekugi_store.go`; filtered composition in `internal/livediff/model.go` |
 | Selected-file editor handoff | `internal/router/native_file_editor.go`, `internal/router/terminal_ui.go`; shared editor runner and terminal restoration in `internal/router/app_server_composer_editor.go`, `internal/router/app_server_ui.go` |

@@ -54,6 +54,18 @@ func (v *liveActivityView) nativeRosterRows() []liveActivityRosterRow {
 	}
 	nativeEnd := len(rows) - len(v.orchestration)
 	threads := rows[nativeEnd:]
+	priority := func(row liveActivityRosterRow) int {
+		if row.agent.Name == "/Orchestration/main" {
+			return 0
+		}
+		if row.agent.Responding {
+			return 1
+		}
+		return 2
+	}
+	// Thread order cannot depend on whether the viewed native subtree overflows.
+	// Preserve the native tree's own observation order below these shared rows.
+	slices.SortStableFunc(threads, func(a, b liveActivityRosterRow) int { return priority(a) - priority(b) })
 	rows = rows[:nativeEnd]
 	rootShown := slices.ContainsFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
 	rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool {
@@ -175,26 +187,8 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		}
 		items = append(items, nativeRosterItem{row: row})
 	}
-	responding, errors := v.statusCounts(rows)
-	var input, output uint64
-	var cost float64
-	costKnown, partial := false, false
-	tokensPartial := false
-	for _, row := range rows {
-		if nativeThreadRow(row.agent.Name) && v.orchestrationSources[row.agent.Name] != v {
-			continue
-		}
-		input += row.agent.InputTokens
-		output += row.agent.OutputTokens
-		tokensPartial = tokensPartial || row.agent.UsagePartial || row.agent.Turns > 0 && !row.agent.TokensKnown && row.agent.InputTokens == 0 && row.agent.OutputTokens == 0
-		if row.agent.CostKnown {
-			cost, costKnown = cost+row.agent.Cost, true
-			partial = partial || row.agent.CostPartial
-		} else if row.agent.Turns > 0 {
-			partial = true
-		}
-	}
-	detail := activityui.Dim + fmt.Sprintf("%d", len(rows)) + activityui.Undim
+	count, responding, errors, usage := v.nativeRosterTotals(rows, now)
+	detail := activityui.Dim + fmt.Sprintf("%d", count) + activityui.Undim
 	if responding > 0 {
 		detail += activityui.Dim + " · " + activityui.Undim + activityui.Amber + fmt.Sprintf("%d working", responding) + activityui.Reset
 	}
@@ -205,16 +199,16 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	if v.netCounts != nil {
 		totals = append(totals, strings.TrimSpace(diffview.CountStats(*v.netCounts, v.painter.Theme)))
 	}
-	if input+output > 0 {
-		in, out := liveActivityTokenParts(activityPaneAgent{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial})
+	if usage.InputTokens+usage.OutputTokens > 0 {
+		in, out := liveActivityTokenParts(usage)
 		totals = append(totals, "↑"+in+" ↓"+out)
 	}
-	if costKnown {
+	if usage.CostKnown {
 		prefix := "$"
-		if partial {
+		if usage.CostPartial {
 			prefix = "≥$"
 		}
-		totals = append(totals, prefix+fmt.Sprintf("%.2f", cost))
+		totals = append(totals, prefix+fmt.Sprintf("%.2f", usage.Cost))
 	}
 	right := ""
 	if len(totals) > 0 {
@@ -399,6 +393,70 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	v.rosterOffset, v.rosterEnd = start, end
 	return lines
+}
+
+// nativeRosterTotals counts each subscribed root and its native descendants
+// once, independent of the viewed subtree, folding, and scrolling. Edit totals
+// stay with composed change evidence rather than these per-agent counters.
+func (v *liveActivityView) nativeRosterTotals(rows []liveActivityRosterRow, now time.Time) (count, responding, errors int, usage activityPaneAgent) {
+	add := func(source *liveActivityView, agent activityPaneAgent) {
+		count++
+		switch source.agentStatus(agent) {
+		case '◐':
+			responding++
+		case '!':
+			errors++
+		}
+		usage.InputTokens += agent.InputTokens
+		usage.OutputTokens += agent.OutputTokens
+		usage.UsagePartial = usage.UsagePartial || agent.UsagePartial || agent.Turns > 0 && !agent.TokensKnown && agent.InputTokens == 0 && agent.OutputTokens == 0
+		if agent.CostKnown {
+			usage.Cost, usage.CostKnown = usage.Cost+agent.Cost, true
+			usage.CostPartial = usage.CostPartial || agent.CostPartial
+		} else if agent.Turns > 0 {
+			usage.CostPartial = true
+		}
+	}
+	if len(v.orchestration) == 0 {
+		for _, row := range rows {
+			add(v, row.agent)
+		}
+		return
+	}
+	seen := make(map[*liveActivityView]bool)
+	for _, agent := range v.orchestration {
+		source := v.orchestrationSources[agent.Name]
+		if source != nil && seen[source] {
+			continue
+		}
+		add(v, agent)
+		if source == nil {
+			continue
+		}
+		seen[source] = true
+		for _, child := range source.agents {
+			if child.Name != "/root" && !nativeThreadRow(child.Name) && !strings.HasPrefix(child.Name, "/orchestrate/") {
+				add(source, child)
+			}
+		}
+	}
+	// All shells share one easing clock so a switch cannot jump the header.
+	owner := v.orchestrationSources["/Orchestration/main"]
+	if owner == nil {
+		owner = v
+	}
+	target := rosterMetrics{input: float64(usage.InputTokens), output: float64(usage.OutputTokens), cost: usage.Cost}
+	p := owner.rosterTotalPace
+	if p == nil {
+		p = &rosterMetricPace{from: target, to: target}
+		owner.rosterTotalPace = p
+	} else if p.to != target {
+		*p = rosterMetricPace{p.at(now), target, now}
+	}
+	v.rosterEasing = v.rosterEasing || now.Sub(p.start) < rosterMetricEase
+	shown := p.at(now)
+	usage.InputTokens, usage.OutputTokens, usage.Cost = uint64(math.Round(shown.input)), uint64(math.Round(shown.output)), shown.cost
+	return
 }
 
 // Metric parts, in column order: context used and percent, elapsed and last
@@ -630,7 +688,11 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int, now ti
 		if label == "" {
 			return ""
 		}
-		return liveActivityMiddle(strings.ToUpper(label[:1])+label[1:], width)
+		label = liveActivityMiddle(orchestrateStateLabel(label), width)
+		if agent.Responding && !v.orchestrationRetained[agent.Name] {
+			return activityui.StatusPulse(label, now, v.painter.Colors)
+		}
+		return label
 	}
 	if source := v.orchestrationSources[agent.Name]; source != nil {
 		agent.Name = "/root"
@@ -656,7 +718,7 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int, now ti
 	case !agent.Responding:
 		return activityui.Dim + "Idle" + activityui.Undim
 	case len(blocks) == 0:
-		return "Working"
+		return activityui.StatusPulse("Working", now, v.painter.Colors)
 	}
 	summary, _ := v.current(agent, now, width)
 	return summary

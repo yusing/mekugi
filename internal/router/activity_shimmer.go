@@ -1,5 +1,10 @@
 package router
 
+// The roster remains visible when Journal or Diff replaces Activity.
+func (u *appServerUI) statusAnimating() bool {
+	return u.sessionAnimating() || u.view.hasLiveStatus() || u.agents.hasLiveStatus()
+}
+
 func (r liveActivityRecord) statusAnimating() bool {
 	if r.native == nil || !r.native.live || len(r.blocks) == 0 {
 		return false
@@ -20,17 +25,20 @@ func (v *liveActivityView) hasLiveStatus() bool {
 	for _, agents := range [][]activityPaneAgent{v.agents, v.orchestration} {
 		for _, agent := range agents {
 			if agent.Responding {
+				if v.orchestrationRetained[agent.Name] {
+					continue
+				}
+				if v.orchestrationLabels[agent.Name] != "" {
+					return true
+				}
 				source, owner := v, agent.Name
 				if other := v.orchestrationSources[agent.Name]; other != nil {
-					if v.orchestrationLabels[agent.Name] != "" || v.orchestrationRetained[agent.Name] {
-						continue
-					}
 					source, owner = other, "/root"
 				}
 				if owner == "/root" && source.mainView != nil {
 					source, owner = source.mainView, "Main"
 				}
-				if i := source.latest(owner); i >= 0 && source.entries[i].statusAnimating() {
+				if i := source.latest(owner); i < 0 || len(source.entries[i].blocks) == 0 || source.entries[i].statusAnimating() {
 					return true
 				}
 			}

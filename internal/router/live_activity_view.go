@@ -69,6 +69,7 @@ type liveActivityView struct {
 	rosterPace            map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
 	rosterLines           map[string]livediff.Counts  // Line counts as last shown by the roster.
 	rosterEasing          bool                        // The last roster frame showed metrics still easing.
+	rosterTotalPace       *rosterMetricPace           // Run-wide header easing, owned by the coordinator's view.
 	mainView              *liveActivityView           // Roster reads Main's state without duplicating its feed entries.
 	painter               activityui.Painter
 	osc                   livediff.OSC
@@ -544,11 +545,15 @@ func (v *liveActivityView) glyph(agent activityPaneAgent) string {
 
 // agentStatus is the glyph's fact; counts use it so they agree with visible rows.
 func (v *liveActivityView) agentStatus(agent activityPaneAgent) rune {
-	latest := v.latest(agent.Name)
+	source, name := v, agent.Name
+	if other := v.orchestrationSources[name]; other != nil {
+		source, name = other, "/root"
+	}
+	latest := source.latest(name)
 	switch {
 	case agent.Responding:
 		return '◐'
-	case latest >= 0 && v.entries[latest].Kind == "error":
+	case latest >= 0 && source.entries[latest].Kind == "error":
 		return '!'
 	case agent.Final:
 		return '✓'

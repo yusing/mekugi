@@ -234,7 +234,7 @@ func TestUISnapshotOrchestrationIntegrating(t *testing.T) {
 	u.orchestrationRoster()
 	uisnapshot.Assert(t, "testdata/snapshots/orchestration-integrating-roster.txt", strings.Join(u.agents.nativeRoster(100, 12, now, true), "\n")+"\n")
 	u.refreshOrchestratePicker()
-	if len(u.picker.choices) != 2 || !strings.HasPrefix(u.picker.choices[1].description, "integrating") {
+	if len(u.picker.choices) != 2 || !strings.HasPrefix(u.picker.choices[1].description, "Integrating") {
 		t.Fatal("picker lost the active integration state", u.picker.choices)
 	}
 	drainOrchestrateWork(t, u)

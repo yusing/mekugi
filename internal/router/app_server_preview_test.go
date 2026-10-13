@@ -114,7 +114,7 @@ func TestNativeUIPreview(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.sessionAnimating() || p.ui.view.hasLiveStatus() || p.ui.agents.hasLiveStatus() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
+				if w != lastWidth || h != lastHeight || now.Sub(lastPaint) >= time.Second || p.ui.statusAnimating() || flashExpired || settled || noticeExpired || p.ui.shell.animating(now) {
 					if err := paint(); err != nil {
 						return err
 					}

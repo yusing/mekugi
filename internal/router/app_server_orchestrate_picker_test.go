@@ -71,7 +71,7 @@ func TestAppServerOrchestratePickerSwitch(t *testing.T) {
 	t.Cleanup(func() { fresh.closeOrchestratedViews(); fresh.shell.diff.close(); fresh.shell.diffScreen.Close() })
 	appServerTestKeys(t, fresh, "/orchestrate\r")
 	drainOrchestrateWork(t, fresh)
-	if description := fresh.picker.choices[1].description; !strings.Contains(description, "not subscribed") || !strings.Contains(description, "failed") {
+	if description := fresh.picker.choices[1].description; !strings.Contains(description, "not subscribed") || !strings.Contains(description, "Failed") {
 		t.Fatal("retained thread lost its known lifecycle", description)
 	}
 	appServerTestKeys(t, fresh, "\x1b[B\r")

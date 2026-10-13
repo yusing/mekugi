@@ -511,15 +511,24 @@ accent styling; native subagents retain their identity and role colors. The
 panel has one focus, selection, collapse state and height. Main stays visible.
 Within available terminal space, the roster expands for Main and working rows;
 when idle/history rows need scrolling, Main and working rows stay pinned above
-them. A very short terminal prioritizes Main. Manual collapse and resize remain
+them. Independent rows retain that order even when all rows fit; switching
+threads does not reorder unchanged rows. Actual lifecycle changes can move a
+row into or out of the working group. A very short terminal prioritizes Main. Manual collapse and resize remain
 available. Subscribed threads use
 the same current-activity summaries and metric columns as native subagents,
 including captured edit counts from their own workspace and caller identity.
 The viewed root keeps its context usage and output rate in the composer only.
-The roster rule totals usage for that root and its native subagents, excluding
-other independent threads.
+The roster rule counts agents and working/error states across the whole run.
+Token and cost totals likewise cover the coordinator, batch roots, native
+descendants, and runtime reviewers, counting each authenticated thread once.
+Switching the viewed thread does not change these counts or totals, including
+while updated metrics ease into view. The net edit metric remains the composed
+change evidence for the viewed workspace, not a sum of per-agent counters.
 Unavailable threads retain their observed lifecycle state. Displayed lifecycle
-labels use sentence case. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
+labels use sentence case with spaces, including `Queued review` and `Needs decision`,
+consistently in the roster and picker. Live working labels use the shared
+breathing animation even when Activity is hidden; restored and stopped labels
+remain static. Clicking or pressing Enter on a thread row switches the viewed shell; `Ctrl-B [` and `]`
 cycle these threads, resuming a retained confirmed thread when needed. Activity excludes
 the viewed root and shows only its native subagents. Switching keeps the currently
 visible Activity, Diff or Journal pane and keyboard focus, with the destination

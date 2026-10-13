@@ -87,15 +87,15 @@ func (u *appServerUI) refreshOrchestratePicker() {
 				}
 			}
 		}
-		choice := composerChoice{display: batch.TaskName, description: state}
+		choice := composerChoice{display: batch.TaskName, description: orchestrateStateLabel(state)}
 		if batch.TaskName == "main" {
 			choice.display = "main batch"
 		}
 		if view != nil {
 			choice.name = view.thread
 			choice.description = u.orchestratePickerStatus(view, view.status)
-			if view.orchestrateCheckoutUnavailable() {
-				choice.description = u.orchestratePickerStatus(view, orchestrateBatchState(batch))
+			if view.orchestrateCheckoutUnavailable() || batch.Workflow != nil && batch.Workflow.Assignment.Kind == orchestrate.WorkflowImplementation {
+				choice.description = u.orchestratePickerStatus(view, orchestrateStateLabel(orchestrateBatchState(batch)))
 			}
 		} else if batch.Launch != nil && batch.Launch.ThreadID != "" {
 			choice.name = batch.Launch.ThreadID

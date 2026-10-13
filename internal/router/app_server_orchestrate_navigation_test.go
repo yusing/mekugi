@@ -468,9 +468,16 @@ func TestUISnapshotOrchestrationRosterActivityMetrics(t *testing.T) {
 		worker.Cost, worker.CostKnown = .01, true
 		view.agents.apply(activityPaneEvent{Kind: "agents", Agents: view.session.agents})
 	}
+	orchestrateTestMessage(t, u, `{"method":"thread/started","params":{"thread":{"id":"extra","parentThreadId":"child","agentNickname":"extra"}}}`)
+	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"extra","turn":{"id":"working"}}}`)
+	var header string
 	for _, view := range []*appServerUI{u, v} {
-		view.orchestrationRoster()
+		u.switchOrchestratedThread(view.thread)
 		rows := view.agents.nativeRoster(160, 8, now, true)
+		if header != "" && rows[0] != header {
+			t.Fatal("switch changed run-wide header", rows[0], header)
+		}
+		header = rows[0]
 		uisnapshot.Assert(t, "testdata/snapshots/orchestration-roster-activity-"+view.thread+".txt", strings.Join(rows, "\n")+"\n")
 		for _, agent := range view.agents.orchestration {
 			if got := ansi.Strip(view.agents.agentState(agent, 80, now)); !strings.Contains(got, "go test") {
@@ -480,6 +487,16 @@ func TestUISnapshotOrchestrationRosterActivityMetrics(t *testing.T) {
 		if view.agents.rosterLines["/Orchestration/main"].Added != 12 || view.agents.rosterLines["/Orchestration/batch"].Added != 13 {
 			t.Fatalf("thread edit counts = %v", view.agents.rosterLines)
 		}
+	}
+	// Updating one root shares one total easing clock across both shells.
+	v.session.agent("/root").InputTokens += 1000
+	v.orchestrationRoster()
+	v.agents.nativeRoster(160, 8, now, true)
+	now = now.Add(rosterMetricEase / 2)
+	header = v.agents.nativeRoster(160, 8, now, true)[0]
+	u.switchOrchestratedThread("main")
+	if got := u.agents.nativeRoster(160, 8, now, true)[0]; got != header {
+		t.Fatal("switch restarted total easing", got, header)
 	}
 }
 

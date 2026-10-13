@@ -1,0 +1,13 @@
+─ 5 Agents · 3 · 1 working ───────────────────────────────────────────────────────────────
+ ● main             Idle                                                                 
+ ◐ review_protocol  Working                                                            0%
+ ✓ done             Done                                                               0%
+─ 5 Agents · 5 · 1 working ───────────────────────────────────────────────────────────────
+ ● main             Idle                                                                 
+ ◐ review_protocol  Working                                                            0%
+ ✓ done             Done                                                               0%
+   +2 more · scroll
+─ 5 Agents · 3 ───────────────────────────────────────────────────────────────────────────
+ ● main             Idle                                                                 
+ ✓ done             Done                                                               0%
+ ✓ review_protocol  Done                                                               0%
