@@ -598,10 +598,10 @@ input, rejection and cancellation use the composer lifecycle. Batch views reject
 receive their coordinator identity, journal access, implementation and delivery
 responsibility, and assignment. Codex sets their
 working directory when it starts the thread.
-The native command prepares run storage without creating a checkout. Its input
-keeps its original composer queue position while storage is pending. Run membership
-is persisted on the orchestration worker before dispatch, with the entry retained
-in its queue until admission completes. Storage lock waits leave host events,
+The native command queues its intent in the original composer position. After
+input validation, one asynchronous admission initializes run storage and persists
+membership without creating a checkout. The entry stays queued until admission
+completes; rejected input creates no run storage. Storage lock waits leave host events,
 rendering and keyboard cancellation responsive. Startup failure restores the whole
 pending stack in original order. Cancellation releases a newly created unused
 binding before further input can dispatch; existing or prepared runs remain intact.
@@ -618,7 +618,10 @@ tool results remain exact evidence rather than being rewritten.
 The projection covers instruction carriers, including wrapped AGENTS.md context,
 and refreshes one runtime policy section. It preserves ordinary user messages,
 assistant history, tool results, non-text parts, fenced examples and caller-qualified
-nonmatching rules. It is idempotent. Quoted workflow text cannot select a run;
+nonmatching rules. Runtime section markers inside fenced examples remain literal;
+only an unfenced owned section is refreshed. Without one, policy is inserted before
+the caller text so an open example fence cannot absorb it. Projection is idempotent.
+Quoted workflow text cannot select a run;
 ordinary non-orchestration requests retain their existing policy. Fresh children,
 resumed Main/children and context resets use the same retained authority without
 live parents. Native descendants retain their assigned roles within that division

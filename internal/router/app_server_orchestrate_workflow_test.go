@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -175,15 +176,8 @@ func TestAppServerOrchestrateWorkflowQueuedPosition(t *testing.T) {
 }
 
 func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
-	for _, test := range []struct {
-		name      string
-		existing  bool
-		admission bool
-	}{
-		{"startup/new", false, false}, {"startup/existing", true, false},
-		{"admission/new", false, true}, {"admission/existing", true, true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(fmt.Sprint(existing), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ctx = t.Context()
 			replay, err := openMekugiReplayStore(t.TempDir())
@@ -194,7 +188,7 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 			u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: store}}
 			u.session.start("main", t.TempDir())
 			t.Cleanup(func() { u.closeOrchestrateStorage() })
-			if test.existing {
+			if existing {
 				for _, err := range []error{
 					u.proxy.journals.initialize(u.ctx, replay, u.session.cwd, "main", "/root", ""),
 					u.proxy.journals.bindIdentity(u.ctx, replay, u.session.cwd, "main", "", "/root", true),
@@ -213,14 +207,6 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("startup storage timeout")
 			}
-			if test.admission {
-				u.completeOrchestrateWork(complete)
-				select {
-				case complete = <-u.orchestrateCompletions:
-				case <-time.After(5 * time.Second):
-					t.Fatal("admission storage timeout")
-				}
-			}
 			// The worker has finished all persistence. The UI has not admitted input.
 			appServerTestKeys(t, u, "\x03")
 			u.completeOrchestrateWork(complete)
@@ -233,8 +219,8 @@ func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
 			if err := fresh.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
 				t.Fatal(err)
 			}
-			if got := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); got != test.existing {
-				t.Fatalf("cancellation changed durable membership: active=%v existing=%v", got, test.existing)
+			if got := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); got != existing {
+				t.Fatalf("cancellation changed durable membership: active=%v existing=%v", got, existing)
 			}
 		})
 	}
@@ -278,21 +264,13 @@ func TestAppServerOrchestrateAdmissionKeepsUIResponsive(t *testing.T) {
 	u.proxy = &mekugiProxy{journals: newJournalStore(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: t.TempDir()}}}
 	u.session.start("main", t.TempDir())
 	t.Cleanup(func() { u.closeOrchestrateStorage() })
-	appServerTestKeys(t, u, "/orchestrate first\r")
-	var complete func()
-	select {
-	case complete = <-u.orchestrateCompletions:
-	case <-time.After(5 * time.Second):
-		t.Fatal("startup timeout")
-	}
 	release, err := u.proxy.journals.lockState(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	returned := make(chan struct{})
 	go func() {
-		u.completeOrchestrateWork(complete)
-		appServerTestKeys(t, u, "second\r\x03")
+		appServerTestKeys(t, u, "/orchestrate first\rsecond\r\x03")
 		close(returned)
 	}()
 	select {
@@ -320,6 +298,9 @@ func TestAppServerOrchestrateOversizedInputDoesNotBindRun(t *testing.T) {
 	bindComposerFile(u, "@issue.md", "issue.md")
 	u.submitOrchestrate()
 	drainOrchestrateWork(t, u)
+	if entries, err := os.ReadDir(u.proxy.orchestration.store.Directory); err != nil || len(entries) != 0 {
+		t.Fatal("rejected input created run storage", entries, err)
+	}
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
 	if err := u.proxy.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
 		t.Fatal(err)

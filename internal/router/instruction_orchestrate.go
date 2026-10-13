@@ -130,10 +130,40 @@ func (p *mekugiProxy) projectOrchestrateInstructions(ctx context.Context, reques
 	}
 	const start, end = "<!-- mekugi-orchestration:start -->", "<!-- mekugi-orchestration:end -->"
 	original, _ := decodeJSONString(request.fields["instructions"])
-	projected, err := refreshMarkedToolGuidance(original, start, end, start+"\n"+guidance+"\n"+end)
+	projected, err := refreshUnfencedOrchestrateGuidance(original, start, end, start+"\n"+guidance+"\n"+end)
 	if err != nil {
 		return err
 	}
 	request.fields["instructions"] = mustMarshalJSON(projected)
 	return nil
+}
+
+// Marker examples are evidence, not an owned runtime section.
+func refreshUnfencedOrchestrateGuidance(source, start, end, guidance string) (string, error) {
+	found := false
+	var err error
+	projected := rewriteUnfencedInstructionSpans(source, func(span string) string {
+		if err != nil || !strings.Contains(span, start) && !strings.Contains(span, end) {
+			return span
+		}
+		if found {
+			err = errors.New("orchestration instructions contain duplicate guidance sections")
+			return span
+		}
+		found = true
+		var refreshed string
+		refreshed, err = refreshMarkedToolGuidance(span, start, end, guidance)
+		return refreshed
+	})
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		if strings.TrimSpace(source) == "" {
+			return guidance, nil
+		}
+		// A leading section remains active even if the final example fence is open.
+		return guidance + "\n\n" + source, nil
+	}
+	return projected, nil
 }

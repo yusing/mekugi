@@ -53,10 +53,21 @@ func (u *appServerUI) submitOrchestrate() {
 		u.unsent = append(u.unsent, input)
 	}
 	u.view.follow()
+	if err := u.flushInput(); err != nil {
+		u.setNotice("Submit orchestration: "+err.Error(), true)
+	}
+}
+
+// Journal and replay locks stay on the worker. The queue continues to own input
+// until persistence completes; cancellation restores it through the composer.
+func (u *appServerUI) admitOrchestrateInput(pending *orchestrateInput) {
+	proxy, run := u.proxy, pending.run
 	ctx, cancel := context.WithCancel(u.ctx)
 	u.orchestrateStarting = cancel
 	u.orchestrateWork(func() func() {
-		start := func() error {
+		created := false
+		workspace, thread := run.Workspace, run.Main
+		admit := func() error {
 			if proxy.replayStore != nil {
 				var release func()
 				var err error
@@ -84,41 +95,14 @@ func (u *appServerUI) submitOrchestrate() {
 			if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
 				return err
 			}
-			return proxy.orchestration.store.Start(ctx, workspace, thread)
+			if err := proxy.orchestration.store.Start(ctx, workspace, thread); err != nil {
+				return err
+			}
+			var err error
+			created, err = proxy.journals.bindRunOwned(ctx, proxy.replayStore, workspace, thread, run)
+			return err
 		}
-		err := start()
-		return func() {
-			u.orchestrateStarting = nil
-			defer cancel()
-			if err == nil {
-				err = ctx.Err()
-			}
-			if err == nil && (u.orchestrateClosing || u.thread != thread || u.session.cwd != workspace) {
-				err = context.Canceled
-			}
-			if err != nil {
-				// Return all waiting input through the ordinary composer lifecycle.
-				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
-				u.unsent, u.queued = nil, nil
-				u.setNotice("Start orchestration: "+err.Error(), true)
-				return
-			}
-			if err := u.flushInput(); err != nil {
-				u.setNotice("Submit orchestration: "+err.Error(), true)
-			}
-			u.dirty = true
-		}
-	})
-}
-
-// Journal and replay locks stay on the worker. The queue continues to own input
-// until persistence completes; cancellation restores it through the composer.
-func (u *appServerUI) admitOrchestrateInput(pending *orchestrateInput) {
-	proxy, run := u.proxy, pending.run
-	ctx, cancel := context.WithCancel(u.ctx)
-	u.orchestrateStarting = cancel
-	u.orchestrateWork(func() func() {
-		created, err := proxy.journals.bindRunOwned(ctx, proxy.replayStore, run.Workspace, run.Main, run)
+		err := admit()
 		return func() {
 			queued := slices.ContainsFunc(slices.Concat(u.unsent, u.queued), func(part composerDraft) bool { return part.orchestration == pending })
 			if err == nil {

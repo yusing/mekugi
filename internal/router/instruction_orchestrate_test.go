@@ -116,3 +116,45 @@ func TestOrchestrateInstructionConsumers(t *testing.T) {
 		t.Fatal("global file changed", err)
 	}
 }
+
+func TestOrchestrateInstructionFencedMarkers(t *testing.T) {
+	replay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, launch := orchestrateIdentityPendingTurnWithReplay(t, replay)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"initial"}}`)
+	const start, end = "<!-- mekugi-orchestration:start -->", "<!-- mekugi-orchestration:end -->"
+	for _, test := range []struct{ name, example, section string }{
+		{"paired", "```text\n" + start + "\nexample\n" + end + "\n```", ""},
+		{"single", "~~~\r\n" + start + "\r\n~~~", ""},
+		{"open fence", "```text\n" + start, ""},
+		{"refresh", "```\n" + start + "\nexample\n" + end + "\n```", "\n" + start + "\nstale ownership\n" + end},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			proxy := newToolPluginTestProxy(t)
+			proxy.replayStore = replay
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": mustMarshalJSON("Keep safety.\n" + test.example + test.section)}}
+			metadata := codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}
+			var previous string
+			for pass := range 2 {
+				if _, err := proxy.prepareModelRequest(t.Context(), &request, "", "main", metadata, true, true); err != nil {
+					t.Fatal(err)
+				}
+				text := jsonString(request.fields, "instructions")
+				if !strings.Contains(text, test.example) || !strings.Contains(text, "Keep safety.") || strings.Contains(text, "stale ownership") {
+					t.Fatal("projection changed the example or retained stale ownership", text)
+				}
+				active := 0
+				rewriteUnfencedInstructionSpans(text, func(span string) string {
+					active += strings.Count(span, orchestrateOwnershipInstructions)
+					return span
+				})
+				if active != 1 || pass > 0 && text != previous {
+					t.Fatal("runtime policy is fenced, duplicated or not idempotent", text)
+				}
+				previous = text
+			}
+		})
+	}
+}
