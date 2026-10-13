@@ -7,10 +7,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 )
 
+// Endpoint adapters encode validated request data and normalize their own stream
+// framing. They do not select a provider or emit the Responses lifecycle.
+type providerEndpoint interface {
+	encode(string, []providerMessage, []map[string]any, providerOptions, Diagnostics) (map[string]any, error)
+	readStream(io.Reader, Diagnostics, func(providerChunk) error) error
+}
+
 type providerTool struct{ name, namespace, kind string }
+
 // Stream retains validated native tool identities for one translated request.
 // Endpoint framing and normalized chunks remain private to the codec.
 type Stream struct {

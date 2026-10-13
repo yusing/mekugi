@@ -11,18 +11,20 @@ import (
 	"github.com/dlclark/regexp2/v2"
 )
 
-type codec struct {
+// Codec tokenizes text with the pinned o200k_base vocabulary.
+// Use New to initialize a codec with its own regexp.
+type Codec struct {
 	vocabulary        map[string]uint
 	reverseVocabulary []string
 	splitRegexp       *regexp2.Regexp
 }
 
-func (c *codec) GetName() string {
+func (c *Codec) GetName() string {
 	return "o200k_base"
 }
 
 // Count returns the number of tokens in the input string.
-func (c *codec) Count(input string) (int, error) {
+func (c *Codec) Count(input string) (int, error) {
 	var count int
 
 	err := c.tokenize(input, func(_ uint, _ string) {
@@ -33,7 +35,7 @@ func (c *codec) Count(input string) (int, error) {
 }
 
 // Encode returns the token IDs and tokens for the input string.
-func (c *codec) Encode(input string) ([]uint, []string, error) {
+func (c *Codec) Encode(input string) ([]uint, []string, error) {
 
 	var ids []uint
 	var tokens []string
@@ -46,7 +48,7 @@ func (c *codec) Encode(input string) ([]uint, []string, error) {
 	return ids, tokens, err
 }
 
-func (c *codec) tokenize(input string, yield func(uint, string)) error {
+func (c *Codec) tokenize(input string, yield func(uint, string)) error {
 	match, err := c.splitRegexp.FindStringMatch(input)
 	if err != nil {
 		return fmt.Errorf("error matching: %v", err)
@@ -77,7 +79,7 @@ func (c *codec) tokenize(input string, yield func(uint, string)) error {
 	return nil
 }
 
-func (c *codec) Decode(tokens []uint) (string, error) {
+func (c *Codec) Decode(tokens []uint) (string, error) {
 	var out strings.Builder
 	for _, t := range tokens {
 		if t >= uint(len(c.reverseVocabulary)) {
@@ -93,7 +95,7 @@ type part struct {
 	rank   uint
 }
 
-func (c *codec) mergePairs(piece string) []part {
+func (c *Codec) mergePairs(piece string) []part {
 	parts := make([]part, len(piece)+1)
 	for i := range len(parts) {
 		parts[i] = part{i, math.MaxUint}
@@ -151,7 +153,7 @@ const longPieceBytes = 4096
 // mergeLongPiece selects the same lowest-rank pair as mergePairs, breaking
 // ties at the leftmost byte, using a heap and linked part offsets. This is
 // OpenAI tiktoken's _byte_pair_merge_large strategy.
-func (c *codec) mergeLongPiece(piece string) []part {
+func (c *Codec) mergeLongPiece(piece string) []part {
 	length := len(piece)
 	next := make([]int, length)
 	previous := make([]int, length)

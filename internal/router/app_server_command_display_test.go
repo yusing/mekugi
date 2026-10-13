@@ -48,7 +48,7 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/wrapped=%t", tc.command, wrapped), func(t *testing.T) {
 				command := tc.command
 				if wrapped {
-					command = workerCommand("/usr/bin/bash", []string{"-lc", command})
+					command = shellCommandString("/usr/bin/bash", []string{"-lc", command})
 				}
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command,

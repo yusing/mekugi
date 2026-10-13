@@ -14,6 +14,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -455,8 +456,6 @@ func (r *reporter) close(timeout time.Duration) {
 	}
 }
 
-type byteWriter interface{ Write([]byte) (int, error) }
-
 // readReply reads the router's one-line reply within timeout.
 func readReply(fd int, timeout time.Duration) ([]byte, bool) {
 	deadline := time.Now().Add(timeout)
@@ -488,7 +487,7 @@ func readReply(fd int, timeout time.Duration) ([]byte, bool) {
 	}
 }
 
-func writeMessage(w byteWriter, message execsegment.Message) error {
+func writeMessage(w io.Writer, message execsegment.Message) error {
 	line, err := json.Marshal(message)
 	if err != nil {
 		return err

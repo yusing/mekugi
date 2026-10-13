@@ -48,7 +48,7 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 	want := toolActivityShell(source)
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
-			command := workerCommand("/bin/bash", []string{"-lc", guarded})
+			command := shellCommandString("/bin/bash", []string{"-lc", guarded})
 			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(0)}
 			check := func(u *appServerUI) {
 				t.Helper()
@@ -116,7 +116,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := workerCommand("/bin/bash", []string{"-lc", guarded})
+	command := shellCommandString("/bin/bash", []string{"-lc", guarded})
 	output := "[main e9085377] docs(ui): describe content-detected inline highlighting\n 2 files changed, 6 insertions(+), 4 deletions(-)\n"
 	u := vcsCommandUI(t, "")
 	u.view.painter.Theme = livediff.DarkTheme
@@ -139,7 +139,7 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := workerCommand("/bin/bash", []string{"-lc", guarded})
+	command := shellCommandString("/bin/bash", []string{"-lc", guarded})
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": command, "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, guarded)
@@ -184,7 +184,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := workerCommand("/bin/bash", []string{"-lc", guarded})
+	command := shellCommandString("/bin/bash", []string{"-lc", guarded})
 	output := "9a9860a fix(ui): align loaded skills links and dialog selection\n"
 	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0),

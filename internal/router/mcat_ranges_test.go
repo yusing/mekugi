@@ -75,7 +75,7 @@ func TestReadBundleColonPathDisambiguation(t *testing.T) {
 	}
 	operand := source + ":2"
 	_, _, err := parseReadBundle([]string{operand})
-	want := "ranges must be separate operands; retry: " + workerCommand("mcat", []string{source, "2:2"})
+	want := "ranges must be separate operands; retry: " + shellCommandString("mcat", []string{source, "2:2"})
 	if err == nil || err.Error() != want {
 		t.Fatalf("nonexistent PATH:N error = %v, want %q", err, want)
 	}
@@ -88,7 +88,7 @@ func TestReadBundleColonPathDisambiguation(t *testing.T) {
 	}
 	registry := sharedProxyTestRegistry(t)
 	out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-		workerCommand("mcat", []string{operand}), nil, newShellWorkerTestInvocation(directory))
+		shellCommandString("mcat", []string{operand}), nil, newShellWorkerTestInvocation(directory))
 	if status != 0 || diagnostic != "" || out != "literal colon path\n" {
 		t.Fatalf("existing literal path: status=%d stdout=%q stderr=%q", status, out, diagnostic)
 	}

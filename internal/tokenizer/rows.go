@@ -10,7 +10,7 @@ import (
 // Completed regexp pieces never change at a later row boundary. Only the piece
 // crossing that boundary needs to be recounted, including newline/whitespace
 // runs whose BPE counts need not grow monotonically.
-func (c *codec) SelectRows(value string, limit int, tail bool) (string, error) {
+func (c *Codec) SelectRows(value string, limit int, tail bool) (string, error) {
 	if limit < 1 || value != "" && !strings.HasSuffix(value, "\n") {
 		return "", fmt.Errorf("row selection requires a positive budget and LF-terminated rows")
 	}
@@ -93,7 +93,7 @@ func (c *codec) SelectRows(value string, limit int, tail bool) (string, error) {
 	return value[start:], nil
 }
 
-func (c *codec) countPiece(piece string) int {
+func (c *Codec) countPiece(piece string) int {
 	if _, ok := c.vocabulary[piece]; ok {
 		return 1
 	}

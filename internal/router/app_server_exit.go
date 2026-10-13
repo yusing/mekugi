@@ -28,7 +28,7 @@ func (u *appServerUI) writeExitSummary(w io.Writer, color bool) error {
 		text.WriteByte('\n')
 	}
 	commandLine := func(argv []string) string {
-		command := livediff.Safe(workerCommand(argv[0], argv[1:]), false)
+		command := livediff.Safe(shellCommandString(argv[0], argv[1:]), false)
 		if color {
 			command = "\x1b[36m" + command + "\x1b[39m"
 		}

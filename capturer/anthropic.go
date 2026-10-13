@@ -11,7 +11,7 @@ import (
 
 // Observe actual Messages transport/output shapes. Token usage still comes
 // from the router's existing terminal-usage seam, not a second usage parser.
-func observeAnthropicResponse(payload []byte, record *captureRecord, codec tokenizer.Codec) []byte {
+func observeAnthropicResponse(payload []byte, record *captureRecord, codec *tokenizer.Codec) []byte {
 	blocks := map[int]map[string]jsontext.Value{}
 	arguments := map[int]string{}
 	closed := map[int]bool{}

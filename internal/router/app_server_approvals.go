@@ -130,7 +130,7 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 		item:    request.item,
 		guard:   request,
 		title:   "Allow this remote write?",
-		subject: workerCommand(request.argv[0], request.argv[1:]),
+		subject: shellCommandString(request.argv[0], request.argv[1:]),
 		details: details,
 		choices: []nativeApprovalChoice{
 			{label: "Yes, run it", approve: true, outcome: "Approved"},
@@ -402,7 +402,7 @@ func commandApprovalChoice(decision jsontext.Value, network, permissions bool) (
 	for name, value := range variant {
 		switch {
 		case name == "acceptWithExecpolicyAmendment" && len(value.Command) > 0:
-			prefix := workerCommand(value.Command[0], value.Command[1:])
+			prefix := shellCommandString(value.Command[0], value.Command[1:])
 			if strings.ContainsAny(prefix, "\r\n") {
 				return choice, false
 			}

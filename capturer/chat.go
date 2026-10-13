@@ -23,7 +23,7 @@ type chatCaptureCall struct {
 // observeChatResponse measures the actual Chat Completions provider boundary,
 // not the router's synthesized Responses envelope. Usage still comes from the
 // shared terminal observation seam; there is no second usage parser here.
-func observeChatResponse(payload []byte, contentType string, record *captureRecord, codec tokenizer.Codec) []byte {
+func observeChatResponse(payload []byte, contentType string, record *captureRecord, codec *tokenizer.Codec) []byte {
 	var content strings.Builder
 	calls := map[int]*chatCaptureCall{}
 	finished, done, malformed := false, false, false

@@ -23,7 +23,7 @@ import (
 
 func init() {
 	if os.Getenv("MEKUGI_COMPACT_TEST_WORKER") == "1" && len(os.Args) == 2 && os.Args[1] == "post-compact" {
-		os.Exit(RunPostCompactHook(context.Background(), nil, os.Stdin, os.Stdout, os.Stderr))
+		os.Exit(RunPostCompactionSessionStartHook(context.Background(), nil, os.Stdin, os.Stdout, os.Stderr))
 	}
 }
 

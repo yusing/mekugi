@@ -78,7 +78,7 @@ func TestVocabularyAndConcurrentCodecs(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			for _, codec := range []Codec{own, shared} {
+			for _, codec := range []*Codec{own, shared} {
 				for range 20 {
 					ids, _, err := codec.Encode("Hello, 世界🙂")
 					if err != nil {
@@ -118,7 +118,7 @@ func TestLongPieceMergeMatchesVerbatimMerge(t *testing.T) {
 		"letters":    string(letters),
 		"multibyte":  strings.Repeat("世界🙂", longPieceBytes/10),
 	} {
-		codec := c.(*codec)
+		codec := c
 		got, want := codec.mergeLongPiece(piece), codec.mergePairs(piece)
 		if len(got) != len(want) {
 			t.Fatalf("%s: %d parts, want %d", name, len(got), len(want))

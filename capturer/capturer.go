@@ -117,7 +117,7 @@ type Recorder struct {
 	fingerprintKey      [32]byte
 	mu                  sync.Mutex
 	file                *os.File
-	codec               tokenizer.Codec
+	codec               *tokenizer.Codec
 	mode                string
 	requestSequence     uint64
 	metrics             MetricsSnapshot

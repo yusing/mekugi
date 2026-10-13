@@ -101,7 +101,7 @@ func nativeReaderOptions(args []string, allowTail bool, defaultBudget int, takes
 	return o, rest, nil
 }
 
-type nativeBudget struct{ codec tokenizer.Codec }
+type nativeBudget struct{ codec *tokenizer.Codec }
 
 func (b *nativeBudget) count(s string) (int, error) {
 	if b.codec == nil {

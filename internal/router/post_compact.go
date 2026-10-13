@@ -14,10 +14,9 @@ import (
 
 const compactSectionBytes = 8 << 10
 
-// RunPostCompactHook implements Codex's context-injecting SessionStart hook,
-// not PostCompact (which does not accept additionalContext). Codex owns when
-// it runs and records its output; no router request or model round trip is needed.
-func RunPostCompactHook(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+// RunPostCompactionSessionStartHook supplies recovery context for Codex's
+// SessionStart event after compaction. Codex owns execution and context insertion.
+func RunPostCompactionSessionStartHook(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	var event struct {

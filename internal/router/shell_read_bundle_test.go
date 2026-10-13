@@ -90,7 +90,7 @@ func TestMCatMissingPathDiagnostics(t *testing.T) {
 		want = strings.ReplaceAll(want, `\u2028`, "\u2028")
 		for _, args := range [][]string{{missing}, {missing, "good"}} {
 			out, diagnostic, status := runShellWorkerTest(t, registry, "bash", nil,
-				workerCommand("mcat", args), nil, newShellWorkerTestInvocation(directory))
+				shellCommandString("mcat", args), nil, newShellWorkerTestInvocation(directory))
 			if status != 1 || diagnostic != want || (len(args) == 1 && out != "") ||
 				(len(args) == 2 && !strings.Contains(out, "available source\n")) {
 				t.Fatalf("%q: status=%d stdout=%q stderr=%q, want stderr=%q", args, status, out, diagnostic, want)

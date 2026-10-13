@@ -78,7 +78,7 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 	for _, operand := range operands {
 		if readBundleRange.MatchString(operand) {
 			if len(specs) == 0 {
-				return nil, 0, fmt.Errorf("range-like paths require ./; retry: %s", workerCommand("mcat", []string{"./" + operand}))
+				return nil, 0, fmt.Errorf("range-like paths require ./; retry: %s", shellCommandString("mcat", []string{"./" + operand}))
 			}
 			operand = strings.ReplaceAll(operand, "-", ":")
 			if _, _, err := parseReadBundleRange(operand); err != nil {
@@ -96,11 +96,11 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 			if len(specs) > 0 {
 				path = specs[len(specs)-1].path
 			}
-			return nil, 0, fmt.Errorf("invalid range %q; retry: %s", operand, workerCommand("mcat", []string{path, correction}))
+			return nil, 0, fmt.Errorf("invalid range %q; retry: %s", operand, shellCommandString("mcat", []string{path, correction}))
 		}
 		if path, row, ok := strings.CutLast(operand, ":"); ok && path != "" && readRowNumber.MatchString(row) {
 			if _, err := os.Stat(operand); errors.Is(err, os.ErrNotExist) {
-				return nil, 0, fmt.Errorf("ranges must be separate operands; retry: %s", workerCommand("mcat", []string{path, row + ":" + row}))
+				return nil, 0, fmt.Errorf("ranges must be separate operands; retry: %s", shellCommandString("mcat", []string{path, row + ":" + row}))
 			}
 		}
 		if operand == "" {

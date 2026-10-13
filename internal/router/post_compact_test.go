@@ -95,7 +95,7 @@ func TestPostCompactHookRestoresDurableMainThreadStateAfterRestart(t *testing.T)
 	}
 	input := string(inputBytes)
 	var stdout, stderr bytes.Buffer
-	if code := RunPostCompactHook(t.Context(), nil, strings.NewReader(input), &stdout, &stderr); code != 0 {
+	if code := RunPostCompactionSessionStartHook(t.Context(), nil, strings.NewReader(input), &stdout, &stderr); code != 0 {
 		t.Fatalf("hook exit %d: %s", code, stderr.String())
 	}
 	if stderr.Len() != 0 {
@@ -275,6 +275,6 @@ func postCompactInput(event, source, thread, workspace string) string {
 func runPostCompactInput(t *testing.T, input string) (stdout, stderr string, code int) {
 	t.Helper()
 	var output, diagnostics bytes.Buffer
-	code = RunPostCompactHook(t.Context(), nil, strings.NewReader(input), &output, &diagnostics)
+	code = RunPostCompactionSessionStartHook(t.Context(), nil, strings.NewReader(input), &output, &diagnostics)
 	return output.String(), diagnostics.String(), code
 }

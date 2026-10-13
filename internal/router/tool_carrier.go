@@ -1,11 +1,5 @@
 package router
 
-import (
-	"strings"
-
-	"github.com/yusing/mekugi/internal/shellsyntax"
-)
-
 const nativeExecCommandToolName = "exec_command"
 
 // Carrier fields remain in retained history because journal calls and observed
@@ -47,13 +41,3 @@ func (h mekugiHistory) effectiveCarrierKind() codeModeCarrierKind {
 }
 
 func (h mekugiHistory) carrierInput() string { return h.CarrierPayload }
-
-func workerCommand(executable string, arguments []string) string {
-	var command strings.Builder
-	command.WriteString(shellsyntax.QuoteArgument(executable))
-	for _, argument := range arguments {
-		command.WriteByte(' ')
-		command.WriteString(shellsyntax.QuoteArgument(argument))
-	}
-	return command.String()
-}

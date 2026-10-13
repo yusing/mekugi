@@ -14,7 +14,7 @@ import (
 // their wire spelling or JSON punctuation. Strings containing JSON/code remain
 // literal text: escaping inside model-visible content is real token overhead.
 // This is a local content estimate, never provider billing usage.
-func contentTokens(payload []byte, codec tokenizer.Codec) (int, error) {
+func contentTokens(payload []byte, codec *tokenizer.Codec) (int, error) {
 	if capturedPayloadLooksLikeSSE(payload) {
 		total := 0
 		for body := range sseData(payload) {
@@ -42,7 +42,7 @@ func contentTokens(payload []byte, codec tokenizer.Codec) (int, error) {
 	return decodedTokens(value, codec)
 }
 
-func decodedTokens(value any, codec tokenizer.Codec) (int, error) {
+func decodedTokens(value any, codec *tokenizer.Codec) (int, error) {
 	switch value := value.(type) {
 	case map[string]any:
 		total := 0
@@ -113,7 +113,7 @@ func normalizedNumber(value string) string {
 
 // Measure assistant text separately from tool calls, reasoning, and generated
 // commentary so semantic output remains visible independently of wire framing.
-func measureOutputText(output []byte, codec tokenizer.Codec) (payloadMetrics, error) {
+func measureOutputText(output []byte, codec *tokenizer.Codec) (payloadMetrics, error) {
 	var rawItems []json.RawMessage
 	if err := json.Unmarshal(output, &rawItems); err != nil {
 		return payloadMetrics{}, err

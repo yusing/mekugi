@@ -5,16 +5,8 @@ package providercodec
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 )
-
-// Endpoint adapters encode validated request data and normalize their own stream
-// framing. They do not select a provider or emit the Responses lifecycle.
-type providerEndpoint interface {
-	encode(string, []providerMessage, []map[string]any, providerOptions, Diagnostics) (map[string]any, error)
-	readStream(io.Reader, Diagnostics, func(providerChunk) error) error
-}
 
 type providerOptions struct {
 	choice     string

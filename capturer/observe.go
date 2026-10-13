@@ -38,7 +38,7 @@ func decodedCapturePayload(payload []byte, contentEncoding string) ([]byte, erro
 	}
 }
 
-func observeResponse(payload []byte, contentType string, record *captureRecord, codec tokenizer.Codec) []byte {
+func observeResponse(payload []byte, contentType string, record *captureRecord, codec *tokenizer.Codec) []byte {
 	if contentType == webSocketContentType || strings.Contains(strings.ToLower(contentType), "text/event-stream") || capturedPayloadLooksLikeSSE(payload) {
 		var finalOutput []byte
 		terminalOutputObserved := false
@@ -112,7 +112,7 @@ func capturedPayloadLooksLikeSSE(payload []byte) bool {
 	return false
 }
 
-func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.Codec) ([]byte, bool) {
+func observeResponseJSON(payload []byte, record *captureRecord, codec *tokenizer.Codec) ([]byte, bool) {
 	if len(bytes.TrimSpace(payload)) == 0 || bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) {
 		return nil, false
 	}
@@ -179,7 +179,7 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec tokenizer.
 	}
 }
 
-func observeResponseEnvelope(payload []byte, record *captureRecord, codec tokenizer.Codec) (string, []byte, bool) {
+func observeResponseEnvelope(payload []byte, record *captureRecord, codec *tokenizer.Codec) (string, []byte, bool) {
 	var response *struct {
 		Status string            `json:"status"`
 		Output []json.RawMessage `json:"output"`
@@ -226,7 +226,7 @@ func generatedOutputItem(payload []byte, record *captureRecord) bool {
 	return json.Unmarshal(payload, &item) == nil && item.Type == "message" && commentaryid.Generated(item.ID)
 }
 
-func observeOutputItem(payload []byte, record *captureRecord, codec tokenizer.Codec) {
+func observeOutputItem(payload []byte, record *captureRecord, codec *tokenizer.Codec) {
 	var item struct {
 		Type      string `json:"type"`
 		ID        string `json:"id"`

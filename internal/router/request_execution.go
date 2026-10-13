@@ -16,6 +16,10 @@ import (
 	"github.com/yusing/mekugi/internal/responses"
 )
 
+type responseProvider interface {
+	forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error)
+}
+
 // requestExecutor owns the stable services used by every attempt in a request,
 // including router-generated journal continuations.
 type requestExecutor struct {

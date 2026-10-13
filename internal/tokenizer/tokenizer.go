@@ -18,15 +18,6 @@ import (
 	_ "github.com/yusing/mekugi/internal/tokenizer/regex"
 )
 
-// Codec is the tokenization surface used by sanitized capture estimates.
-type Codec interface {
-	GetName() string
-	Count(string) (int, error)
-	SelectRows(string, int, bool) (string, error)
-	Encode(string) ([]uint, []string, error)
-	Decode([]uint) (string, error)
-}
-
 // Source: github.com/pkoukk/tiktoken-go-loader/assets/o200k_base.tiktoken@v0.0.2
 // Original: https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken
 // SHA-256 pins the exact bytes; LICENSE.data covers the distributed asset.
@@ -65,12 +56,12 @@ var loadVocabulary = sync.OnceValues(func() (*vocabulary, error) {
 })
 
 // New returns a codec with immutable shared vocabulary and its own regexp.
-func New() (Codec, error) {
+func New() (*Codec, error) {
 	vocabulary, err := loadVocabulary()
 	if err != nil {
 		return nil, err
 	}
-	return &codec{
+	return &Codec{
 		vocabulary: vocabulary.ranks, reverseVocabulary: vocabulary.tokens,
 		splitRegexp: regexp2.MustCompile(splitPattern, regexp2.None),
 	}, nil
