@@ -73,46 +73,16 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 	}
 	replacer := strings.NewReplacer(pairs...)
 	rewriteText := func(source string) string {
-		var output strings.Builder
-		var plain strings.Builder
-		flushPlain := func() {
-			output.WriteString(stockRecommendedPlugins.ReplaceAllString(plain.String(), "$1"))
-			plain.Reset()
-		}
-		var fence byte
-		var fenceWidth int
-		for line := range strings.SplitAfterSeq(source, "\n") {
-			content := strings.TrimRight(line, "\r\n")
-			trimmed := strings.TrimLeft(content, " ")
-			marker := byte(0)
-			width := 0
-			if len(content)-len(trimmed) <= 3 && len(trimmed) >= 3 && (trimmed[0] == '`' || trimmed[0] == '~') {
-				marker = trimmed[0]
-				for width < len(trimmed) && trimmed[width] == marker {
-					width++
-				}
-				if width < 3 {
-					marker = 0
-				}
+		return rewriteUnfencedInstructionSpans(source, func(span string) string {
+			var plain strings.Builder
+			for line := range strings.SplitAfterSeq(span, "\n") {
+				content := strings.TrimRight(line, "\r\n")
+				framed := replacer.Replace("\n" + content + "\n")
+				plain.WriteString(strings.TrimSuffix(strings.TrimPrefix(framed, "\n"), "\n"))
+				plain.WriteString(line[len(content):])
 			}
-			fenced := fence != 0
-			if fence == 0 && marker != 0 {
-				fence, fenceWidth = marker, width
-				fenced = true
-			} else if fence != 0 && marker == fence && width >= fenceWidth && strings.TrimSpace(trimmed[width:]) == "" {
-				fence = 0
-			}
-			if fenced {
-				flushPlain()
-				output.WriteString(line)
-				continue
-			}
-			framed := replacer.Replace("\n" + content + "\n")
-			plain.WriteString(strings.TrimSuffix(strings.TrimPrefix(framed, "\n"), "\n"))
-			plain.WriteString(line[len(content):])
-		}
-		flushPlain()
-		return output.String()
+			return stockRecommendedPlugins.ReplaceAllString(plain.String(), "$1")
+		})
 	}
 	if original, ok := decodeJSONString(request.fields["instructions"]); ok {
 		if updated := rewriteText(original); updated != original {
@@ -129,4 +99,45 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 		}
 		return content, found && string(content) != string(item.Content), nil
 	})
+}
+
+// rewriteUnfencedInstructionSpans shares fence boundaries without constraining
+// each policy's matches to physical lines. Fenced bytes remain exact.
+func rewriteUnfencedInstructionSpans(source string, rewrite func(string) string) string {
+	var output, plain strings.Builder
+	flush := func() {
+		output.WriteString(rewrite(plain.String()))
+		plain.Reset()
+	}
+	var fence byte
+	var fenceWidth int
+	for line := range strings.SplitAfterSeq(source, "\n") {
+		content := strings.TrimRight(line, "\r\n")
+		trimmed := strings.TrimLeft(content, " ")
+		marker := byte(0)
+		width := 0
+		if len(content)-len(trimmed) <= 3 && len(trimmed) >= 3 && (trimmed[0] == '`' || trimmed[0] == '~') {
+			marker = trimmed[0]
+			for width < len(trimmed) && trimmed[width] == marker {
+				width++
+			}
+			if width < 3 {
+				marker = 0
+			}
+		}
+		fenced := fence != 0
+		if fence == 0 && marker != 0 {
+			fence, fenceWidth, fenced = marker, width, true
+		} else if fence != 0 && marker == fence && width >= fenceWidth && strings.TrimSpace(trimmed[width:]) == "" {
+			fence = 0
+		}
+		if fenced {
+			flush()
+			output.WriteString(line)
+		} else {
+			plain.WriteString(line)
+		}
+	}
+	flush()
+	return output.String()
 }

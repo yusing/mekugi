@@ -597,8 +597,11 @@ input, rejection and cancellation use the composer lifecycle. Batch views reject
 receive their coordinator identity, journal access, implementation and delivery
 responsibility, and assignment. Codex sets their
 working directory when it starts the thread.
-The native command saves the run identity before submitting its input, without
-preparing a checkout. Failure preserves the draft; cancellation prevents submission.
+The native command prepares run storage without creating a checkout. Its input
+keeps its original composer queue position while storage is pending. Run membership
+is bound only when the uncanceled command is admitted for dispatch. Failure or
+cancellation restores the command without enabling masking for a new run;
+existing run membership remains intact.
 A successful authenticated batch preparation also establishes run identity.
 Before provider forwarding, the instruction projection uses the authenticated
 request workspace and retained journal/run membership to mask pinned incompatible

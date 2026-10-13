@@ -2,9 +2,11 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/internal/orchestrate"
 	"github.com/yusing/mekugi/internal/uisnapshot"
@@ -140,6 +142,82 @@ func TestAppServerOrchestrateWorkflowStartupInput(t *testing.T) {
 			}
 			if first, second := strings.Index(text, "first"), strings.Index(text, "second"); first < 0 || second < first {
 				t.Fatal("input order changed", text)
+			}
+		})
+	}
+}
+
+func TestAppServerOrchestrateWorkflowQueuedPosition(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	u.ctx = t.Context()
+	u.proxy = &mekugiProxy{journals: newJournalStore(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: t.TempDir()}}}
+	u.session.start("main", t.TempDir())
+	t.Cleanup(func() { u.closeOrchestrateStorage() })
+	u.turn = "running"
+	appServerTestKeys(t, u, "inflight\r")
+	first := appServerOneRequest(t, wire, "turn/steer", "inflight")
+	appServerTestKeys(t, u, "older\r/orchestrate newer\r")
+	drainOrchestrateWork(t, u)
+	if wire.Len() != 0 {
+		t.Fatal("startup bypassed the pending steer")
+	}
+	pending := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
+	metadata := codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}
+	if err := u.proxy.projectOrchestrateInstructions(t.Context(), &pending, "main", metadata, true); err != nil || strings.Contains(jsonString(pending.fields, "instructions"), orchestrateOwnershipInstructions) {
+		t.Fatal("queued input activated masking before admission", err)
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"running"}}`, first.ID))
+	requests := appServerTurnRequests(t, wire)
+	if len(requests) != 1 || !strings.HasPrefix(requests[0].text(), "older\n"+orchestrateWorkflow) || !strings.HasSuffix(requests[0].text(), "newer") {
+		t.Fatalf("startup reordered queued input: %+v", requests)
+	}
+}
+
+func TestAppServerOrchestrateWorkflowCancelAfterPersistence(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(fmt.Sprint(existing), func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.ctx = t.Context()
+			replay, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &orchestrate.Store{Directory: t.TempDir()}
+			u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: store}}
+			u.session.start("main", t.TempDir())
+			t.Cleanup(func() { u.closeOrchestrateStorage() })
+			if existing {
+				for _, err := range []error{
+					u.proxy.journals.initialize(u.ctx, replay, u.session.cwd, "main", "/root", ""),
+					u.proxy.journals.bindIdentity(u.ctx, replay, u.session.cwd, "main", "", "/root", true),
+					store.Start(u.ctx, u.session.cwd, "main"),
+					u.proxy.journals.bindRun(u.ctx, replay, u.session.cwd, "main", journalRun{Directory: store.Directory, Workspace: u.session.cwd, Main: "main"}),
+				} {
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			appServerTestKeys(t, u, "/orchestrate canceled\r")
+			var complete func()
+			select {
+			case complete = <-u.orchestrateCompletions:
+			case <-time.After(5 * time.Second):
+				t.Fatal("startup storage timeout")
+			}
+			// The worker has finished all persistence. The UI has not admitted input.
+			appServerTestKeys(t, u, "\x03")
+			u.completeOrchestrateWork(complete)
+			if wire.Len() != 0 || strings.Count(u.draft, "/orchestrate canceled") != 1 {
+				t.Fatal("cancellation dispatched or duplicated input", u.draft, wire.String())
+			}
+			fresh := &mekugiProxy{journals: newJournalStore(), replayStore: replay}
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
+			if err := fresh.projectOrchestrateInstructions(t.Context(), &request, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Contains(jsonString(request.fields, "instructions"), orchestrateOwnershipInstructions); got != existing {
+				t.Fatalf("cancellation changed durable membership: active=%v existing=%v", got, existing)
 			}
 		})
 	}

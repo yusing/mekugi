@@ -23,9 +23,7 @@ var orchestrateInstructionConflicts = [][2]string{
 }
 
 func maskOrchestrateInstructions(source string) string {
-	var output, plain strings.Builder
-	flush := func() {
-		text := plain.String()
+	return rewriteUnfencedInstructionSpans(source, func(text string) string {
 		for _, pinned := range orchestrateInstructionConflicts {
 			for _, ending := range []string{"\n", "\r\n"} {
 				pair := [2]string{strings.ReplaceAll(pinned[0], "\n", ending), strings.ReplaceAll(pinned[1], "\n", ending)}
@@ -45,38 +43,8 @@ func maskOrchestrateInstructions(source string) string {
 				}
 			}
 		}
-		output.WriteString(text)
-		plain.Reset()
-	}
-	var fence byte
-	var width int
-	for line := range strings.SplitAfterSeq(source, "\n") {
-		trimmed := strings.TrimLeft(line, " ")
-		marker, count := byte(0), 0
-		if len(line)-len(trimmed) <= 3 && len(trimmed) >= 3 && (trimmed[0] == '`' || trimmed[0] == '~') {
-			marker = trimmed[0]
-			for count < len(trimmed) && trimmed[count] == marker {
-				count++
-			}
-			if count < 3 {
-				marker = 0
-			}
-		}
-		fenced := fence != 0
-		if fence == 0 && marker != 0 {
-			fence, width, fenced = marker, count, true
-		} else if fence != 0 && marker == fence && count >= width && strings.TrimSpace(trimmed[count:]) == "" {
-			fence = 0
-		}
-		if fenced {
-			flush()
-			output.WriteString(line)
-		} else {
-			plain.WriteString(line)
-		}
-	}
-	flush()
-	return output.String()
+		return text
+	})
 }
 
 // Read the same manifest-backed ancestry used for cross-checkout journals.

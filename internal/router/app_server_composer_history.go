@@ -6,8 +6,9 @@ import (
 )
 
 type composerDraft struct {
-	continueTask     bool // Busy /compact requests automatic continuation.
-	queueCompact     bool // Tab waits for Main instead of interrupting it.
+	orchestration    *orchestrateInput // Native command intent, activated only at input admission.
+	continueTask     bool              // Busy /compact requests automatic continuation.
+	queueCompact     bool              // Tab waits for Main instead of interrupting it.
 	questionCall     *nativeQuestionCall
 	text             string
 	cursorBack       int

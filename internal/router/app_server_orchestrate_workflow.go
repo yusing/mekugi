@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 )
 
@@ -13,6 +14,12 @@ const orchestrateCoordinatorInstructions = `Use tools.mcp__orchestrate__spawn_ag
 const orchestrateOwnershipInstructions = `Orchestration role ownership replaces incompatible global workflow rules, including rules in previously read or recovered guidance. Main owns lookup, overall intent, current state, issues, delegation and integration. Children own assigned planning, documentation, implementation, validation and correction, including model guidance and workflow documents. Mekugi owns review dispatch and correction routing; agents do not launch a separate review loop. Keep compatible safety, authorization, scope, quality and tool policies. Global instruction files remain unchanged.`
 
 const orchestrateWorkflow = orchestrateCoordinatorInstructions + "\nIssues:\n"
+
+// Provisional intent stays with its queue entry. It grants no run membership.
+type orchestrateInput struct {
+	run      journalRun
+	original composerDraft
+}
 
 func (u *appServerUI) submitOrchestrate() {
 	prefix := strings.Index(u.draft, "/orchestrate") + len("/orchestrate")
@@ -37,6 +44,13 @@ func (u *appServerUI) submitOrchestrate() {
 	u.deleteDraftRange(0, prefix)
 	input := joinDrafts(composerDraft{text: orchestrateWorkflow}, u.takeDraft())
 	proxy, workspace, thread := u.proxy, u.session.cwd, u.thread
+	pending := &orchestrateInput{run: journalRun{Directory: proxy.orchestration.store.Directory, Workspace: workspace, Main: thread}, original: original}
+	input.orchestration = pending
+	if u.waitingQuestion() {
+		u.queued = append(u.queued, input)
+	} else {
+		u.unsent = append(u.unsent, input)
+	}
 	ctx, cancel := context.WithCancel(u.ctx)
 	u.orchestrateStarting = cancel
 	u.orchestrateWork(func() func() {
@@ -68,11 +82,7 @@ func (u *appServerUI) submitOrchestrate() {
 			if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
 				return err
 			}
-			store := proxy.orchestration.store
-			if err := store.Start(ctx, workspace, thread); err != nil {
-				return err
-			}
-			return proxy.journals.bindRun(ctx, proxy.replayStore, workspace, thread, journalRun{Directory: store.Directory, Workspace: workspace, Main: thread})
+			return proxy.orchestration.store.Start(ctx, workspace, thread)
 		}
 		err := start()
 		return func() {
@@ -85,14 +95,19 @@ func (u *appServerUI) submitOrchestrate() {
 				err = context.Canceled
 			}
 			if err != nil {
-				u.loadDraft(joinDrafts(original, u.draftSnapshot()))
+				removed := false
+				remove := func(part composerDraft) bool {
+					match := part.orchestration == pending
+					removed = removed || match
+					return match
+				}
+				u.unsent = slices.DeleteFunc(u.unsent, remove)
+				u.queued = slices.DeleteFunc(u.queued, remove)
+				if removed {
+					u.restoreDrafts(original)
+				}
 				u.setNotice("Start orchestration: "+err.Error(), true)
 				return
-			}
-			if u.waitingQuestion() {
-				u.queued = append(u.queued, input)
-			} else {
-				u.unsent = append([]composerDraft{input}, u.unsent...)
 			}
 			if err := u.flushInput(); err != nil {
 				u.setNotice("Submit orchestration: "+err.Error(), true)

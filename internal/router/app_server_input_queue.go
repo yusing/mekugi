@@ -99,6 +99,12 @@ func (u *appServerUI) takeDraft() composerDraft {
 
 // restoreDrafts returns input to the composer ahead of the current draft.
 func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
+	parts = slices.Clone(parts)
+	for i, part := range parts {
+		if part.orchestration != nil {
+			parts[i] = part.orchestration.original
+		}
+	}
 	parts = u.rejectQuestionParts(parts)
 	if u.approvals.open && u.approvals.pending[0].denialChoice() >= 0 {
 		u.hideApprovals()
@@ -229,6 +235,21 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.restoreDrafts(parts...)
 		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
+	}
+	// Only a native command admitted from the queue can activate masking.
+	// Startup persistence and canceled/restored drafts grant no membership.
+	for _, part := range parts {
+		if pending := part.orchestration; pending != nil {
+			run := pending.run
+			if u.thread != run.Main || u.session.cwd != run.Workspace {
+				u.restoreDrafts(parts...)
+				return fmt.Errorf("orchestration input no longer belongs to the selected thread")
+			}
+			if err := u.proxy.journals.bindRun(u.ctx, u.proxy.replayStore, run.Workspace, run.Main, run); err != nil {
+				u.restoreDrafts(parts...)
+				return err
+			}
+		}
 	}
 	params := map[string]any{"threadId": u.thread, "input": input, "clientUserMessageId": s.id}
 	method := "turn/start"
