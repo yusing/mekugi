@@ -348,11 +348,19 @@ Source edits and index are preserved. Acceptance verifies integration, not revie
 
 Only the run coordinator can accept its existing task bound to a confirmed batch.
 Active, unresolved or failed child lifecycles, including native descendants, keep
-acceptance open. A batch task uses `accepted`, rather than `done`, to release its
+acceptance open. An implementation batch task uses `accepted`, rather than `done`, to release its
 parent's completion gate. An abandoned task uses `dropped` with a reason under the
 ordinary lifecycle rules. Reopening an accepted task uses `working` and requires
 new integration evidence before acceptance. Retained acceptance remains available
 after restart without checking the VCS again or reviving processes.
+
+For a confirmed `kind: "diagnosis"` batch, Main reviews the report and sets its
+bound task to `done`. The same mounted host lifecycle checks apply, including
+native descendants. This completes the assignment without an implementation
+candidate, review clearance or integration proof, including for retained diagnosis
+batches whose workflow phase remains `implementation`. Completion stays closed
+after restart and requires no child turn. Diagnosis completion retains the checkout
+and thread; accepted-only cleanup and archive remain unavailable.
 
 ## REQ-ORCHESTRATE-006 — Restored run discovery
 

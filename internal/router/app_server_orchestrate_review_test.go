@@ -186,6 +186,14 @@ func TestOrchestrateWorkflowLifecycle(t *testing.T) {
 		t.Fatal("workflow wait registration failed", r)
 	}
 	workflowCompleted(t, u, "child", "implement", "implementer claims success")
+	if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate implementation"), Agent: "/root/batch", State: new("working")}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []string{"done", "accepted"} {
+		if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new(state)}}); err == nil {
+			t.Fatal("implementation completed before workflow readiness", state)
+		}
+	}
 	if w.Len() != 0 && !strings.Contains(w.String(), `"method":"command/exec"`) {
 		t.Fatal("reviews started before required checks", w.String())
 	}

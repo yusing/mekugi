@@ -151,7 +151,9 @@ or the batch tip and merged tree for confirmed shadow writeback.
 This closed task state releases parent completion, counts as finished in
 presentation and stays closed in recovery.
 Only Main can create that state on its confirmed batch binding. Child completion
-does not accept the result. See [orchestration](orchestrate.md#req-orchestrate-005--cross-checkout-journals)
+does not accept the result. A confirmed diagnosis batch uses `done` after Main
+reviews the report and mounted host lifecycles finish; it requires no integration
+proof and does not authorize cleanup. See [orchestration](orchestrate.md#req-orchestrate-005--cross-checkout-journals)
 for integration requirements.
 Read and list agent selectors accept canonical paths or paths with the
 `/root/` prefix omitted; task bindings still require canonical paths.

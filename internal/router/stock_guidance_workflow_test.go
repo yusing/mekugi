@@ -75,6 +75,7 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 		"answer interim questions conversationally, then continue the active work", "do not close, block or drop tasks to make `finish` pass",
 		"without tool search, whether or not Codex lists the MCP tools", "p?:existingChildPath", "before?:siblingPath", "creation and binding validate together",
 		"recovery shows only its pointer line", "read-only subtree appears under that task", "Input declarations for planning and type-checking",
+		"bound implementation batch task accepted", "Main completes a bound diagnosis task with done", "this retains its checkout",
 		// Codex defers the MCP tools, so guidance carries their schema declarations.
 		"type JournalMutation =", `| { before?: string; body?: string; kind?: "note" | "context"; op: "add"; title: string; under?: string; }`, "tasks?: Array<string | JournalTask>", "// Node path to read"} {
 		if !strings.Contains(codeModeJournalGuidance, contract) || !strings.Contains(codeModeSubagentJournalGuidance, contract) {

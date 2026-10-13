@@ -81,7 +81,12 @@ func orchestratePendingWorkflow(t *testing.T, replay *mekugiReplayStore, workspa
 	}
 	drainOrchestrateWork(t, u)
 	request := btwTestRequest(t, w, "thread/start", "")
-	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "child", "cwd": batch.Cwd}})
+	responseBody := map[string]any{"thread": map[string]any{"id": "child", "cwd": batch.Cwd}}
+	if workflow != nil && workflow.Kind == orchestrate.WorkflowDiagnosis {
+		responseBody["sandbox"] = map[string]any{"type": "readOnly"}
+		responseBody["approvalPolicy"] = "never"
+	}
+	response, _ := json.Marshal(responseBody)
 	orchestrateTestReply(t, u, request, string(response))
 	return u, btwTestRequest(t, w, "turn/start", "child")
 }

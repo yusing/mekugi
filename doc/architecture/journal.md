@@ -39,6 +39,9 @@ branch-tip ancestry in the run. The journal owner then checks Main's authority,
 the exact retained proof and mounted host lifecycles before recording `accepted`.
 Saved integration evidence alone does not accept a task. Journal events retain
 the accepted tips for replay; reopening clears the current task's evidence.
+For a confirmed diagnosis binding, the journal owner permits `done` using the
+run's assignment kind and the same mounted host lifecycle checks. This retains
+ordinary completion events without creating integration or workflow readiness.
 Task creation and existing-task updates share the journal owner's binding validator
 and transaction; creation emits one event containing the binding, not an intermediate
 unbound task. Operation-specific input schemas belong to the journal MCP tool owner.

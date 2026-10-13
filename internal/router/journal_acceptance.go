@@ -118,7 +118,12 @@ func validateJournalAcceptance(j threadJournal, before []journalItem) error {
 				return fmt.Errorf("%s: accepted requires Main's confirmed batch and recorded integration", item.Path)
 			}
 		} else if batch >= 0 {
-			return fmt.Errorf("%s: integrated batch tasks require accepted, not done", item.Path)
+			b := batches[batch]
+			// Diagnosis delivers a report, not an integration candidate. The
+			// mounted-completion owner checks its host lifecycle before this gate.
+			if b.Workflow == nil || b.Workflow.Assignment.Kind != orchestrate.WorkflowDiagnosis || b.Launch == nil || b.Launch.ThreadID == "" {
+				return fmt.Errorf("%s: integrated batch tasks require accepted, not done", item.Path)
+			}
 		}
 	}
 	return nil
