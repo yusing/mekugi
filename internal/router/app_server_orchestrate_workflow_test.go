@@ -1,10 +1,12 @@
 package router
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/orchestrate"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
@@ -12,8 +14,14 @@ func TestAppServerOrchestrateWorkflowComposer(t *testing.T) {
 	for _, busy := range []bool{false, true} {
 		t.Run(map[bool]string{false: "start", true: "steer"}[busy], func(t *testing.T) {
 			u, wire := newAppServerTestUI()
-			u.proxy = &mekugiProxy{orchestration: &orchestrateRuntime{}}
-			u.session.cwd = t.TempDir()
+			u.ctx = t.Context()
+			replay, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: t.TempDir()}}}
+			u.session.start("main", t.TempDir())
+			t.Cleanup(func() { u.closeOrchestrateStorage() })
 			writeTestFile(t, filepath.Join(u.session.cwd, "issue.md"), "attached issue")
 			method := "turn/start"
 			if busy {
@@ -22,6 +30,18 @@ func TestAppServerOrchestrateWorkflowComposer(t *testing.T) {
 			appServerTestKeys(t, u, "/orchestrate Issue A\nIssue B ")
 			bindComposerFile(u, "@issue.md", "issue.md")
 			appServerTestKeys(t, u, "\r")
+			if wire.Len() != 0 {
+				t.Fatal("input sent before run identity was saved")
+			}
+			drainOrchestrateWork(t, u)
+			if batches, err := u.proxy.orchestration.store.Snapshot(u.session.cwd, "main"); err != nil || len(batches) != 0 {
+				t.Fatal("initial command did not retain an empty run", batches, err)
+			}
+			fresh := &mekugiProxy{journals: newJournalStore(), replayStore: replay}
+			projected := parsedResponsesRequest{fields: map[string]json.RawMessage{}}
+			if err := fresh.projectOrchestrateInstructions(t.Context(), &projected, "main", codexTurnMetadata{Directories: map[string]json.RawMessage{u.session.cwd: nil}}, true); err != nil || !strings.Contains(jsonString(projected.fields, "instructions"), orchestrateOwnershipInstructions) {
+				t.Fatal("first turn lacks durable policy", err)
+			}
 			request := btwTestRequest(t, wire, method, "main")
 			var input string
 			for _, part := range request.Params.Input {
@@ -75,6 +95,7 @@ func TestAppServerOrchestrateWorkflowChildView(t *testing.T) {
 			bindComposerFile(child, "@issue.md", "issue.md")
 			draft := child.draft
 			appServerTestKeys(t, child, "\r")
+			drainOrchestrateWork(t, child)
 			if wire.Len() != 0 || child.draft != draft || len(child.files) != 1 || !strings.Contains(child.notice, "Main") {
 				t.Fatalf("child workflow dispatched or lost draft: %q %q %s", child.draft, child.notice, wire.String())
 			}
@@ -86,4 +107,40 @@ func TestUISnapshotOrchestrateCommand(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "/orc")
 	uisnapshot.Assert(t, "testdata/snapshots/orchestrate-command-picker.txt", strings.Join(u.renderPicker(70, 4), "\n")+"\n")
+}
+
+func TestAppServerOrchestrateWorkflowStartupInput(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ordered", true: "canceled"}[canceled], func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.ctx = t.Context()
+			u.proxy = &mekugiProxy{journals: newJournalStore(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: t.TempDir()}}}
+			u.session.start("main", t.TempDir())
+			t.Cleanup(func() { u.closeOrchestrateStorage() })
+			appServerTestKeys(t, u, "/orchestrate first\r")
+			if canceled {
+				appServerTestKeys(t, u, "\x03")
+			} else {
+				appServerTestKeys(t, u, "second\r")
+			}
+			if wire.Len() != 0 {
+				t.Fatal("startup input escaped before identity persistence")
+			}
+			drainOrchestrateWork(t, u)
+			if canceled {
+				if wire.Len() != 0 || !strings.Contains(u.draft, "/orchestrate first") {
+					t.Fatal("canceled startup dispatched or lost draft", u.draft, wire.String())
+				}
+				return
+			}
+			request := btwTestRequest(t, wire, "turn/start", "main")
+			var text string
+			for _, part := range request.Params.Input {
+				text += part.Text
+			}
+			if first, second := strings.Index(text, "first"), strings.Index(text, "second"); first < 0 || second < first {
+				t.Fatal("input order changed", text)
+			}
+		})
+	}
 }

@@ -50,6 +50,10 @@ func stripInstructionOmissions(text string) string {
 // User-role instruction context is carried in Codex's INSTRUCTIONS wrapper.
 // Ordinary user messages, tool results, and assistant history are not instructions.
 func stripUserInstructionOmissions(text string) string {
+	return transformUserInstructions(text, stripInstructionOmissions)
+}
+
+func transformUserInstructions(text string, transform func(string) string) string {
 	start := strings.Index(text, "<INSTRUCTIONS>")
 	if start < 0 {
 		return text
@@ -64,7 +68,7 @@ func stripUserInstructionOmissions(text string) string {
 		return text
 	}
 	end += start
-	return text[:start] + stripInstructionOmissions(text[start:end]) + text[end:]
+	return text[:start] + transform(text[start:end]) + text[end:]
 }
 
 func stripRequestInstructionOmissions(request *parsedResponsesRequest) error {

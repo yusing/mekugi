@@ -656,6 +656,9 @@ func (u *appServerUI) orchestrateCleanupInterrupt(child *orchestrateChild, threa
 
 func (u *appServerUI) closeOrchestrateStorage() error {
 	u.orchestrateClosing = true
+	if u.orchestrateStarting != nil {
+		u.orchestrateStarting()
+	}
 	if u.orchestrateStorageCancel == nil {
 		return nil
 	}

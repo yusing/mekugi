@@ -96,6 +96,7 @@ type appServerUI struct {
 	orchestrateCompletions    chan func()
 	orchestrateClosing        bool
 	orchestrateGeneration     uint64
+	orchestrateStarting       context.CancelFunc
 	orchestrateStorageContext context.Context
 	orchestrateStorageCancel  context.CancelFunc
 	orchestrateStorageErr     error
@@ -1232,11 +1233,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.turn == "" && !u.starting() && !u.reset.active() && u.orchestrateBusy() {
+		if u.turn == "" && !u.starting() && !u.reset.active() && u.orchestrateStarting == nil && u.orchestrateBusy() {
 			u.setNotice("Interrupt orchestration batches before quitting", true)
 			return false, nil
 		}
-		if u.turn != "" || u.starting() || u.reset.active() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
+		if u.turn != "" || u.starting() || u.reset.active() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 || u.orchestrateStarting != nil {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1257,10 +1258,8 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if text == "/orchestrate" || strings.HasPrefix(text, "/orchestrate ") || strings.HasPrefix(text, "/orchestrate\n") || strings.HasPrefix(text, "/orchestrate\t") {
-			if !u.expandOrchestrate() {
-				return false, nil
-			}
-			text = strings.TrimSpace(u.draft)
+			u.submitOrchestrate()
+			return false, nil
 		}
 		if text == "/btw" || strings.HasPrefix(text, "/btw ") || strings.HasPrefix(text, "/btw\n") || strings.HasPrefix(text, "/btw\t") {
 			return false, u.submitBTW()
@@ -1823,6 +1822,9 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
+	if u.orchestrateStarting != nil {
+		u.orchestrateStarting()
+	}
 	if n := u.navigation; n != nil {
 		if child := n.owner.orchestrateThreads[u.thread]; implementationWorkflow(child) && (!workflowTerminal(child.batch.Workflow) || len(child.workflowWork) != 0) {
 			c := &orchestrateCommand{ctx: u.ctx, reply: make(chan orchestrateResult, 1)}

@@ -581,9 +581,11 @@ the checkout; successfully retained commits remain available after a later failu
 ## Accepted delivery scope
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
-user input carries the issues and the division of work: children implement and
-validate requested changes in isolated checkouts; Mekugi drives reviews and
-corrections; Main coordinates and verifies integration. For change requests, local
+user input carries the issues and the division of work: Main looks up evidence,
+holds overall intent, current state and issues, delegates work, and verifies and
+integrates results. Children own planning, documentation, implementation,
+validation and correction in isolated checkouts. Mekugi owns review dispatch and
+correction routing. For change requests, local
 commits and linear Git integration are part of the invoked workflow, subject to
 explicit user restrictions.
 Diagnosis-only assignments remain read-only. Tool descriptions and parameter help belong
@@ -595,9 +597,25 @@ input, rejection and cancellation use the composer lifecycle. Batch views reject
 receive their coordinator identity, journal access, implementation and delivery
 responsibility, and assignment. Codex sets their
 working directory when it starts the thread.
-Caller guidance and the explicit assignment retain their own policy.
-Context resets restore these responsibilities once from durable records;
-native descendants retain their existing guidance.
+The native command saves the run identity before submitting its input, without
+preparing a checkout. Failure preserves the draft; cancellation prevents submission.
+A successful authenticated batch preparation also establishes run identity.
+Before provider forwarding, the instruction projection uses the authenticated
+request workspace and retained journal/run membership to mask pinned incompatible
+global workflow rules. It removes the normal Main/review workflow read triggers
+and Main-only authorship/delegation restrictions, preserving adjacent safety,
+authorization, scope and quality policy. Global instruction files stay unchanged.
+The current role policy also governs previously read and recovered workflow text;
+tool results remain exact evidence rather than being rewritten.
+
+The projection covers instruction carriers, including wrapped AGENTS.md context,
+and refreshes one runtime policy section. It preserves ordinary user messages,
+assistant history, tool results, non-text parts, fenced examples and caller-qualified
+nonmatching rules. It is idempotent. Quoted workflow text cannot select a run;
+ordinary non-orchestration requests retain their existing policy. Fresh children,
+resumed Main/children and context resets use the same retained authority without
+live parents. Native descendants retain their assigned roles within that division
+of work. Explicit assignments and compatible caller policy remain effective.
 Bare `/orchestrate` opens a picker of this Main's retained batches, reviewers and coordinator.
 It shows concise task names, lifecycle and available live timer, token and cost metrics.
 Resumed batch roots appear only in this group, never as UUID-named native agents.

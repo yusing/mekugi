@@ -22,11 +22,11 @@ func TestOrchestrateWorkflowRecoveryContinuity(t *testing.T) {
 			}
 			// Reconstruct recovery using durable records, without live controllers.
 			hook, err := fresh.replayStore.postCompactContext(t.Context(), cwd, thread)
-			if err != nil || strings.Count(hook, want) != 1 || strings.Contains(hook, "Assignment:") || strings.Contains(hook, "Issues:") {
+			if err != nil || strings.Count(hook, want) != 1 || strings.Count(hook, orchestrateOwnershipInstructions) != 1 || strings.Contains(hook, "Assignment:") || strings.Contains(hook, "Issues:") {
 				t.Fatal("incorrect run guidance after restart", err, hook)
 			}
 			item, recovery := deliverV2ContinuityReset(t, fresh, cwd, thread)
-			if strings.Count(recovery.Text, want) != 1 {
+			if strings.Count(recovery.Text, want) != 1 || strings.Count(recovery.Text, orchestrateOwnershipInstructions) != 1 {
 				t.Fatal("reset omitted or duplicated run guidance", recovery.Text)
 			}
 			requireV2ContinuityForward(t, reopenV2ContinuityProxy(t, fresh), cwd, thread, "", "", item, recovery.Text)

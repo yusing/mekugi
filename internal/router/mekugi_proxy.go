@@ -396,6 +396,11 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 // Prewarm shares model projection but cannot initialize execution, replay, or
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
 func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
+	if p != nil {
+		if err := p.projectOrchestrateInstructions(ctx, request, threadID, metadata, metadataValid); err != nil {
+			return nil, err
+		}
+	}
 	if metadataValid && metadata.RequestKind == responseevents.Compaction {
 		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
 			return nil, err

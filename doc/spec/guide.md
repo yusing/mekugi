@@ -3,7 +3,8 @@
 ## REQ-GUIDE-001 — Current agent guidance
 
 Mekugi preserves the caller's base `instructions` value and every system or developer message,
-except for complete explicit omission blocks and pinned inherited stock-prompt conflicts.
+except for complete explicit omission blocks, pinned inherited stock-prompt conflicts,
+and the run-scoped [orchestration policy](orchestrate.md#accepted-delivery-scope).
 It does not detect stock prompt shapes, replace editing sections, select model-specific workflows,
 inspect `model_instructions_file`, or create or modify instruction files. It does not restore the
 retired shell carrier, HPATCH, hash-target editing, or CTP instructions.
@@ -132,7 +133,8 @@ examples remain unchanged; Codex still owns its selection and execution.
 Acceptance:
 
 1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
-   unchanged except for complete explicit omission blocks and exact inherited conflict fragments.
+   unchanged except for complete explicit omission blocks, exact inherited conflict fragments,
+   and authenticated orchestration workflow projection.
    Fenced examples and non-instruction content are not rewritten.
 2. `exec` receives exactly one current marked Journal section and, when it exposes command
    execution, one registry-derived frontend section in its authoritative `exec` description.

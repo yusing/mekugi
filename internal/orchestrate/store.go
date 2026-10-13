@@ -144,6 +144,19 @@ func (s *Store) save(m *manifest, path string) error {
 	return persistence.AtomicFile(path, ".orchestrate-*", data, s.Writes)
 }
 
+// Start retains an explicitly selected run before its first model turn or batch.
+// It creates no checkout and preserves any existing manifest.
+func (s *Store) Start(ctx context.Context, workspace, main string) error {
+	return s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return s.save(m, path)
+	})
+}
+
 // List returns retained preparation facts, not a live filesystem assessment.
 func (s *Store) List(ctx context.Context, workspace, main string) (batches []Batch, err error) {
 	err = s.withRun(ctx, workspace, main, func(m *manifest, _ string) error {

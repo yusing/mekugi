@@ -136,7 +136,7 @@ func (u *appServerUI) editQueued() {
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
 func (u *appServerUI) flushInput() error {
-	if u.reset.active() {
+	if u.reset.active() || u.orchestrateStarting != nil {
 		return nil
 	}
 	u.unsent = pendingQuestionReplies(u.unsent)
