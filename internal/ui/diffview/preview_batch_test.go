@@ -41,6 +41,15 @@ func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
 	if pane.Views["stream"].Paused || pane.ScrollBatch("/root/worker", 'b') || pane.ScrollBatch("/root", '?') {
 		t.Fatal("batch scrolling affected the original call or accepted an unrelated caller/key")
 	}
+	for _, key := range []byte{' ', 'G'} {
+		pane.ScrollBatch("/root", 'b')
+		for range 10 {
+			pane.ScrollBatch("/root", key)
+		}
+		if view.Paused {
+			t.Fatalf("scroll %q to the live tip did not resume following", key)
+		}
+	}
 	pane.Update(batchTestPreview("new", "/root", "src/new.go"))
 	batchTestRender(t, &pane, 31)
 	pane.NextBatch("/root")
@@ -205,6 +214,8 @@ func TestUISnapshotNativeBatchCompletedSiblingExpiry(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			pane := PreviewPane{Retain: true}
 			pane.Update(batchTestPreview("running", "/root", "src/running.go"))
+			batchTestRender(t, &pane, 16)
+			pane.ScrollBatch("/root", 'b')
 			finished := batchTestPreview("finished", "/root", "src/done.go", "src/also_done.go")
 			finished.Complete = true
 			pane.Update(finished)
@@ -219,6 +230,9 @@ func TestUISnapshotNativeBatchCompletedSiblingExpiry(t *testing.T) {
 			batch := pane.batches["/root"]
 			if len(batch.files) != 1 || batch.selected.call != "running" || batch.pinned != pinned {
 				t.Fatalf("expired viewports or selection survived: %+v", batch)
+			}
+			if batch.files[batch.selected].Paused != pinned {
+				t.Fatal("expiry failed to resume the newest file or stole the surviving manual selection")
 			}
 			assertRowsSnapshot(t, "native_batch_expired_sibling_"+name, batchTestRender(t, &pane, 31))
 		})

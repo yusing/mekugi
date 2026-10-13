@@ -24,8 +24,10 @@ const liveDiffPreviewMaxLag = 2 << 10
 // back between units spans several. Encoded input is JSON or JavaScript
 // source, where \n escapes a line break.
 func (p *liveDiffPreviewPacer) advance(input string, frames int, finishing, encoded bool) int {
-	if p.cursor >= p.received {
+	if p.cursor >= p.received && liveDiffLineBoundary(input, p.shown, min(p.received, len(input)), encoded) == p.shown {
 		// Idle time is not arrival time: a burst after a stall is still paced.
+		// A cursor at the received end is not idle while complete source units
+		// still await reveal. Their held frames must continue to drain them.
 		frames = 1
 	}
 	frames = max(1, frames)

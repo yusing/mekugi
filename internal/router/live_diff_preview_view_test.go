@@ -539,6 +539,14 @@ func TestLiveDiffPreviewPacerKeepsUpAcrossHeldFrames(t *testing.T) {
 	if shown := pacer.advance(burst, 100, false, false); shown == 0 || shown > len(burst)/4 {
 		t.Fatalf("burst after idle was not paced: %d of %d", shown, len(burst))
 	}
+	for pacer.cursor < len(burst) {
+		pacer.advance(burst, 1, false, false)
+	}
+	before := pacer.shown
+	want := min(8*len(line), len(burst)-before)
+	if shown := pacer.advance(burst, 8, false, false); shown-before != want {
+		t.Fatalf("received source backlog stalled across held frames: advanced %d bytes, want %d", shown-before, want)
+	}
 }
 
 func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
