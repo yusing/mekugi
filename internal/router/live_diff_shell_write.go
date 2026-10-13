@@ -127,9 +127,8 @@ func liveDiffPreviewFile(path string) (string, bool, error) {
 	return content, err == nil, err
 }
 
-// liveDiffShellFileOperation predicts literal cp, mv, rm, and tee heredoc
-// effects from current files. The prediction is display only; the command's
-// observed record is the evidence.
+// liveDiffShellFileOperation projects tee heredoc content and retains literal
+// cp, mv, and rm paths for dependency checks, without previewing their effects.
 func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine, final bool) ([]mekugi.ReviewFile, bool, error) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
@@ -202,13 +201,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 	case "rm":
 		files := make([]mekugi.ReviewFile, 0, len(operands))
 		for _, path := range operands {
-			before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
-			if err != nil {
-				return nil, true, err
-			}
-			if exists {
-				files = append(files, mekugi.RenderReviewPreviewFile(path, "", before, ""))
-			}
+			files = append(files, mekugi.ReviewFile{BeforePath: path})
 		}
 		return files, true, nil
 	case "tee":
@@ -240,35 +233,10 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 	if info, err := os.Stat(target); err == nil && info.IsDir() {
 		target = filepath.Join(target, filepath.Base(source))
 	}
-	content, exists, err := liveDiffSourceRead(ctx, source, liveDiffPreviewFile)
-	if err != nil {
-		return nil, true, err
-	}
-	if !exists {
-		return nil, true, errors.New("streaming file preview source does not exist")
-	}
-	before, targetExists, err := liveDiffSourceRead(ctx, target, liveDiffPreviewFile)
-	if err != nil {
-		return nil, true, err
-	}
+	// File operations constrain dependent predictions, but carry no arriving
+	// source content. Keep their paths without reading or projecting bytes.
 	if name == "cp" {
-		beforePath := target
-		if !targetExists {
-			beforePath = ""
-		}
-		file := mekugi.RenderReviewPreviewFile(beforePath, target, before, content)
-		if !targetExists {
-			file.CopyFrom = source
-		}
-		return []mekugi.ReviewFile{file}, true, nil
+		return []mekugi.ReviewFile{{AfterPath: target}}, true, nil
 	}
-	if targetExists {
-		// A replacing move deletes the target's content, which one move
-		// entry cannot show.
-		return []mekugi.ReviewFile{
-			mekugi.RenderReviewPreviewFile(source, "", content, ""),
-			mekugi.RenderReviewPreviewFile(target, target, before, content),
-		}, true, nil
-	}
-	return []mekugi.ReviewFile{mekugi.RenderReviewPreviewFile(source, target, content, content)}, true, nil
+	return []mekugi.ReviewFile{{BeforePath: source, AfterPath: target}}, true, nil
 }

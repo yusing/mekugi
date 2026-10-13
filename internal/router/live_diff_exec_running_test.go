@@ -117,11 +117,66 @@ func captureRunningExecScope(t *testing.T) (string, string, *execObservation) {
 	repo := t.TempDir()
 	tracked := filepath.Join(repo, "tracked.txt")
 	writeTestFile(t, tracked, "before bytes\n")
-	observation, observed := captureExecObservation([]execCommandInput{{Command: "printf after > tracked.txt", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+	observation, observed := captureExecObservation([]execCommandInput{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
 	if !observed || observation == nil {
 		t.Fatal("ordinary write scope missing")
 	}
 	return repo, tracked, observation
+}
+
+func TestLiveDiffStreamableAdmissionPreservesCapture(t *testing.T) {
+	t.Parallel()
+	for _, command := range []string{
+		"cp source.go copied.go", "mv source.go moved.go", "rm source.go",
+		"gofmt -w source.go", "printf changed > source.go",
+	} {
+		t.Run(command, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeTestFile(t, filepath.Join(workspace, "source.go"), "package p; var A=1\n")
+			for _, mixed := range []bool{false, true} {
+				commands := []execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}
+				if mixed {
+					commands = append(commands, execCommandInput{Command: "cat > authored.go <<'EOF'\npackage authored\nEOF", Workdir: workspace, Shell: "bash"})
+				}
+				observation, ok := captureExecObservation(commands, false, false, execCaptureEnv{directory: workspace})
+				if !ok || observation == nil || len(observation.Files) == 0 {
+					t.Fatal("ordinary capture was lost")
+				}
+				worker := liveDiffPreviewWorker{ctx: t.Context()}
+				files, _, err := worker.projectShell(command, workspace, true)
+				if err != nil || len(files) != 0 {
+					t.Fatalf("non-content input projected live files: %+v, %v", files, err)
+				}
+				broker := newLiveDiffBroker(t.Context())
+				broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+				registry := &execWindowRegistry{}
+				window := &execWindow{ref: "admission", thread: "main", roots: []string{workspace}}
+				registry.open(window)
+				registry.preview(window.ref, *observation, broker, workspace, "main", "/root")
+				if (window.previewCancel != nil) != mixed {
+					t.Fatalf("source admission = %v, mixed = %v", window.previewCancel != nil, mixed)
+				}
+				if mixed {
+					writeTestFile(t, filepath.Join(workspace, "authored.go"), "package arriving\n")
+					preview := waitExecScopePreview(t, broker, func(p diffview.Preview) bool { return len(p.Files) > 0 })
+					if len(preview.Files) != 1 || filepath.Base(preview.Files[0].AfterPath) != "authored.go" {
+						t.Fatalf("unrelated effects entered the card: %+v", preview)
+					}
+				}
+				registry.close(window.ref)
+			}
+			observation, _ := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+			process := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
+			process.Dir = workspace
+			process.Env = append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=")
+			if output, err := process.CombinedOutput(); err != nil {
+				t.Fatalf("fixture execution: %v: %s", err, output)
+			}
+			if files := reconcileExecVCSTestExact(t, observation); len(files) == 0 {
+				t.Fatal("non-streamable effects lost completed evidence")
+			}
+		})
+	}
 }
 
 func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
@@ -170,61 +225,11 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 	}
 }
 
-func TestExecRunningPreviewKeepsAuthoredVCSSiblings(t *testing.T) {
-	type previewWorkflow struct {
-		command string
-		path    string
-		broker  *liveDiffBroker
-	}
-	var workflows []previewWorkflow
-	// Keep environment-changing setup serial, but start every isolated watch
-	// before waiting so the preview tickers can overlap.
-	for _, command := range []string{
-		"git restore -- authored.txt; printf after > authored.txt",
-		"git status --short; printf after > authored.txt",
-		"git show HEAD:restored.txt | tee exported.txt; printf after > authored.txt",
-		"git show HEAD:restored.txt | printf after > authored.txt",
-		"(git show HEAD:restored.txt; printf after > authored.txt; true) > exported.txt",
-	} {
-		repo := newExecVCSTestRepo(t, map[string]string{"restored.txt": "committed\n", "authored.txt": "committed\n"})
-		writeTestFile(t, filepath.Join(repo, "restored.txt"), "dirty\n")
-		path := filepath.Join(repo, "authored.txt")
-		observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo, previewOnly: true})
-		if !observed || observation == nil {
-			t.Fatalf("mixed scope missing for %q", command)
-		}
-		store, err := openMekugiReplayStore(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, broker, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
-		registry := &execWindowRegistry{}
-		registry.open(&execWindow{ref: "mixed", roots: []string{repo}, thread: "thread"})
-		t.Cleanup(func() { registry.close("mixed") })
-		registry.preview("mixed", *observation, broker, repo, "thread", "/root")
-		process := exec.Command(execTrackShellExecutable(t, "bash"), "-c", command)
-		process.Dir = repo
-		process.Env = append(os.Environ(), "BASH_ENV=", "MEKUGI_EXEC_TRACK=", "GIT_TERMINAL_PROMPT=0")
-		if output, err := process.CombinedOutput(); err != nil {
-			t.Fatalf("execute fixture %q: %v: %s", command, err, output)
-		}
-		workflows = append(workflows, previewWorkflow{command, path, broker})
-	}
-	for _, workflow := range workflows {
-		t.Run(workflow.command, func(t *testing.T) {
-			preview := waitExecScopePreview(t, workflow.broker, func(p diffview.Preview) bool { return len(p.Files) > 0 })
-			if len(preview.Files) != 1 || preview.Files[0].AfterPath != workflow.path || strings.Contains(preview.Footer, "restored.txt") || strings.Contains(preview.Footer, "exported.txt") {
-				t.Fatalf("mixed preview lost authored admission: %+v", preview)
-			}
-		})
-	}
-}
-
 func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testing.T) {
 	repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before bytes\n", "restored.txt": "committed bytes\n"})
 	tracked := filepath.Join(repo, "tracked.txt")
 	writeTestFile(t, filepath.Join(repo, "restored.txt"), "dirty bytes\n")
-	observation, observed := captureExecObservation([]execCommandInput{{Command: "git restore -- restored.txt; printf after > tracked.txt", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+	observation, observed := captureExecObservation([]execCommandInput{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF\ngit restore -- restored.txt", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
 	if !observed || observation == nil {
 		t.Fatal("mixed scope missing")
 	}
@@ -267,7 +272,7 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 	})
 	plainRunning := ansi.Strip(running)
 	if strings.Contains(plainRunning, "may write") || !strings.Contains(plainRunning, "observed changes") ||
-		!strings.Contains(plainRunning, "bounded scope") || !strings.Contains(plainRunning, "other writes unknown") ||
+		strings.Contains(plainRunning, "other writes unknown") ||
 		strings.Contains(plainRunning, "outside secret marker") || strings.Contains(plainRunning, "outside.txt") ||
 		strings.Contains(plainRunning, "restored.txt") || strings.Contains(plainRunning, "will restore") {
 		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)

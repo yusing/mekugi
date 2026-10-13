@@ -633,37 +633,20 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 	}
 }
 
-func TestLiveDiffShellFileOperationPreviews(t *testing.T) {
+func TestLiveDiffTeeHeredocPreview(t *testing.T) {
 	workspace := t.TempDir()
-	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
 	writeTestFile(t, filepath.Join(workspace, "log"), "one\n")
-	for _, test := range []struct {
-		command string
-		want    []string
-	}{
-		{"cp a.txt b.txt", []string{"Create b.txt (copy of a.txt)"}},
-		{"mv a.txt c.txt", []string{"Move a.txt -> c.txt"}},
-		{"rm -f a.txt missing", []string{"Delete a.txt"}},
-		{"tee -a log <<'EOF' >/dev/null\ntwo\nEOF\n", []string{"Edit log"}},
-	} {
-		statements, directory, partial, parsed := liveDiffShellStatements(test.command, workspace)
-		if !parsed || len(statements) != 1 {
-			t.Fatalf("%q did not parse", test.command)
-		}
-		files, recognized, err := liveDiffShellWriteStatement(t.Context(), statements[0], directory, partial, true)
-		if !recognized || err != nil {
-			t.Fatalf("%q recognized=%v err=%v", test.command, recognized, err)
-		}
-		if got := reviewSummary(workspace, files); !slices.Equal(got, test.want) {
-			t.Errorf("%q preview = %q, want %q", test.command, got, test.want)
-		}
+	command := "tee -a log <<'EOF' >/dev/null\ntwo\nEOF\n"
+	files, recognized, err := testLiveDiffShellWrite(t.Context(), command, workspace)
+	if !recognized || err != nil {
+		t.Fatalf("heredoc recognized=%v err=%v", recognized, err)
 	}
-	if _, recognized, _ := liveDiffShellWriteStatement(t.Context(), mustShellStatement(t, "cp -r a b"), workspace, false, true); recognized {
-		t.Error("an unsupported cp option was previewed")
+	if got := reviewSummary(workspace, files); !slices.Equal(got, []string{"Edit log"}) {
+		t.Fatalf("heredoc preview = %q", got)
 	}
 }
 
-func TestLiveDiffMoveInputPreservesSiblingStreams(t *testing.T) {
+func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "a.txt"), "a\n")
 	worker := liveDiffPreviewWorker{ctx: t.Context(), kind: nativeExecCommandToolName}
@@ -672,6 +655,10 @@ func TestLiveDiffMoveInputPreservesSiblingStreams(t *testing.T) {
 		want    []string
 	}{
 		{"mv a.txt b.txt\n", nil},
+		{"cp a.txt b.txt\n", nil},
+		{"rm a.txt\n", nil},
+		{"cp a.txt b.txt\ntee sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
+		{"rm a.txt\ncat > sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
 		{"mv a.txt b.txt\ncat > sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
 		{"cat > sibling.txt <<'EOF'\nnew content\nEOF\nmv a.txt b.txt\n", []string{"Create sibling.txt"}},
 	} {
