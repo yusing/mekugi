@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/execsegment"
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -27,13 +28,30 @@ const execRunningPreviewBytes = 1 << 20
 
 func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *liveDiffBroker, workspace, thread, caller string) {
 	// VCS effects use the same provenance admission as authored counts.
-	// Display-only formatter captures retain their existing preview behavior.
+	// Only source-content projections admit paths, never generic watch effects.
 	excludedVCS := func(origin string) bool {
 		tool, _, _ := strings.Cut(origin, " ")
 		return vcsguard.IsTool(tool) && !authoredReview(mekugi.ReviewFile{Origin: origin})
 	}
+	if r == nil || broker == nil {
+		return
+	}
+	projected := make(map[string]bool)
+	commands := observation.Commands
+	observation.Commands = nil
+	for _, command := range commands {
+		files, _ := execPreviewProjected(broker.ctx, execObservation{Files: observation.Files, Commands: []execCommandInput{command}})
+		if len(files) == 0 {
+			continue
+		}
+		observation.Commands = append(observation.Commands, command)
+		for path := range files {
+			projected[path] = true
+		}
+	}
 	observation.Files = slices.DeleteFunc(slices.Clone(observation.Files), func(file execFileSnapshot) bool {
-		return file.watchMoveOnly || excludedVCS(file.Origin)
+		streamable := projected[file.Path]
+		return !streamable || file.watchMoveOnly || excludedVCS(file.Origin)
 	})
 	observation.Omitted = slices.DeleteFunc(slices.Clone(observation.Omitted), func(omission execOmission) bool { return excludedVCS(omission.Origin) })
 	observation.Listings = slices.DeleteFunc(slices.Clone(observation.Listings), func(listing execListing) bool { return excludedVCS(listing.Origin) })
@@ -54,6 +72,27 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	ctx, cancel := context.WithCancel(broker.ctx)
 	window.previewCancel = cancel
 	tracking := newExecPreviewTrack(r.tracker, window.thread, window.turn, observation.Commands)
+	if tracking != nil {
+		tracking.streamable = make(map[string]bool)
+		for _, command := range observation.Commands {
+			segments, _ := execsegment.Split(command.Command)
+			directory := command.Workdir
+			for _, segment := range segments {
+				statements, _, _, _ := liveDiffShellStatements(segment.Source, directory)
+				if len(statements) == 1 {
+					if next, ok := liveDiffShellCd(statements[0], directory); ok {
+						directory = next
+					}
+				}
+				input := command
+				input.Command, input.Workdir = segment.Source, directory
+				files, _ := execPreviewProjected(ctx, execObservation{Files: observation.Files, Commands: []execCommandInput{input}})
+				if len(files) > 0 {
+					tracking.streamable[tracking.authoredScript(segment.Source, "")] = true
+				}
+			}
+		}
+	}
 	turn := window.turn
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
@@ -109,7 +148,7 @@ func execScopePreviewFooter(observation execObservation) string {
 // Reuse literal edit projection against the pre-call capture, never a fresh
 // read of a file the host may already have edited. Unprojectable effects keep
 // the normal host-result lifecycle; tests acquire no predicted write targets.
-func execPreviewExpected(ctx context.Context, observation execObservation) map[string]mekugi.ReviewFile {
+func execPreviewProjected(ctx context.Context, observation execObservation) (map[string]mekugi.ReviewFile, bool) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	sources := &liveDiffSources{capturedOnly: true, files: make(map[liveDiffSourceKey]liveDiffSource)}
@@ -121,30 +160,42 @@ func execPreviewExpected(ctx context.Context, observation execObservation) map[s
 	}
 	worker := liveDiffPreviewWorker{ctx: context.WithValue(ctx, liveDiffSourcesContext{}, sources)}
 	expected := make(map[string]mekugi.ReviewFile)
+	complete := true
 	for _, command := range observation.Commands {
 		if ctx.Err() != nil {
-			return nil
+			return nil, false
 		}
 		if shell := shellInterpreterName(command.Shell); shell != "" && shell != "bash" && shell != "sh" {
-			return nil
+			complete = false
+			continue
 		}
 		files, _, err := worker.projectShell(command.Command, command.Workdir, true)
 		if err != nil {
-			return nil
+			complete = false
+			continue
 		}
 		for _, file := range files {
 			path := file.AfterPath
 			if path == "" {
 				path = file.BeforePath
 			}
-			if _, duplicate := expected[path]; duplicate || file.Incomplete != "" || file.Binary || file.Link {
-				return nil
+			if _, duplicate := expected[path]; duplicate {
+				complete = false
+			}
+			if file.Incomplete != "" || file.Binary || file.Link {
+				complete = false
+				continue
 			}
 			expected[path] = file
 		}
 	}
-	// Only retire the watcher when its entire captured edit scope is known.
-	if len(expected) != len(observation.Files) {
+	return expected, complete
+}
+
+func execPreviewExpected(ctx context.Context, observation execObservation) map[string]mekugi.ReviewFile {
+	expected, complete := execPreviewProjected(ctx, observation)
+	// Only retire the watcher when its entire admitted edit scope is known.
+	if !complete || len(expected) != len(observation.Files) {
 		return nil
 	}
 	for _, file := range observation.Files {

@@ -523,13 +523,9 @@ func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, 
 		for path := range operationPaths {
 			seenPaths[path] = struct{}{}
 		}
-		// Moves constrain later predictions, but contain no arriving source.
-		// Retain their dependency checks without opening a live source card.
-		if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 {
-			if name, literal := shellsyntax.Literal(call.Args[0]); literal && name == "mv" {
-				continue
-			}
-		}
+		// Path-only operations constrain later predictions without arriving
+		// source content. No-op content writes likewise have no hunk to show.
+		projected = slices.DeleteFunc(projected, func(file mekugi.ReviewFile) bool { return file.Diff == "" })
 		files = append(files, projected...)
 		if len(projected) > 0 {
 			if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 {

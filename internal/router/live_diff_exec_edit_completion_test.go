@@ -64,31 +64,6 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	assertNativeUISnapshot(t, "native-dock-before-reveal", strings.Split(screen.String(), "\n"))
 }
 
-func TestLiveDiffMoveOperandStillShowsSourceWrite(t *testing.T) {
-	t.Parallel()
-	for _, script := range []string{"mv old.txt source.txt; printf new > source.txt", "printf new > source.txt; mv old.txt source.txt"} {
-		workspace := t.TempDir()
-		writeTestFile(t, filepath.Join(workspace, "old.txt"), "old\n")
-		observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
-		if !ok || observation == nil {
-			t.Fatal("missing mixed-write capture")
-		}
-		ctx, cancel := context.WithCancel(t.Context())
-		broker := newLiveDiffBroker(ctx)
-		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
-		registry := &execWindowRegistry{}
-		registry.open(&execWindow{ref: "mixed", thread: "main", roots: []string{workspace}})
-		registry.preview("mixed", *observation, broker, workspace, "main", "/root")
-		writeTestFile(t, filepath.Join(workspace, "source.txt"), "new\n")
-		preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool { return len(preview.Files) == 1 })
-		cancel()
-		registry.close("mixed")
-		if preview.Tool != "printf" || !strings.Contains(preview.Files[0].Diff, "+new") {
-			t.Fatalf("source write shared with a move did not stream: %+v", preview)
-		}
-	}
-}
-
 func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("python3"); err != nil {

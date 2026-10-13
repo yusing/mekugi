@@ -24,7 +24,7 @@ import (
 
 func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
-	edits := []string{"gofmt -w source.go", "gofmt -w source.go; git --version >/dev/null", "cat > source.go <<'EOF'\nafter\nEOF", "sed -i 's/before/after/' source.go", "cp image.png source.go", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p; var A=1\\n')\nPath('other.go').write_text('package p; var B=2\\n')\nPY\ngit --version >/dev/null\ngofmt -w source.go other.go"}
+	edits := []string{"cat > source.go <<'EOF'\nafter\nEOF", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p\\n\\nvar A = 1\\n')\nPath('other.go').write_text('package p\\n\\nvar B = 2\\n')\nPY\ngit --version >/dev/null\ngofmt -w source.go other.go"}
 	edits = append(edits, strings.ReplaceAll(edits[len(edits)-1], "git --version >/dev/null\n", ""))
 	for _, edit := range edits {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
@@ -32,16 +32,9 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			workspace := t.TempDir()
 			delayedUI := strings.HasPrefix(edit, "python3") && !strings.Contains(edit, "git --version")
 			before, after, completedText := "before\n", "+after", "Edited"
-			if filepath.Base(strings.Fields(edit)[0]) == "gofmt" {
-				before, after = "package p; var A=1\n", "+var A = 1"
-			}
 			if strings.HasPrefix(edit, "python3") {
 				after = "+var A = 1"
 				writeTestFile(t, filepath.Join(workspace, "other.go"), "before\n")
-			}
-			binaryCopy := strings.HasPrefix(edit, "cp ")
-			if binaryCopy {
-				writeTestFile(t, filepath.Join(workspace, "image.png"), "\x89PNG\r\n\x1a\n\x00binary image")
 			}
 			writeTestFile(t, filepath.Join(workspace, "source.go"), before)
 			// The following command cannot exit until the test has inspected a
@@ -165,14 +158,11 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if strings.HasPrefix(edit, "python3") {
 				wantFiles = 2
 			}
-			if binaryCopy {
-				wantFiles = 0 // Binary evidence does not open a source preview.
-			}
 			if len(completed.Files) != wantFiles || completed.Footer != "observed edit" {
 				t.Fatalf("completion lacks actual observed edit: %+v", completed)
 			}
-			if binaryCopy && completed.Status != "" || !binaryCopy && !strings.Contains(completed.Files[0].Diff, after) {
-				t.Fatalf("completion lost copied content: %+v", completed.Files)
+			if !strings.Contains(completed.Files[0].Diff, after) {
+				t.Fatalf("completion lost observed source content: %+v", completed.Files)
 			}
 			awaitMain(t, u, completedText)
 			awaitMain(t, u, "Running")
@@ -411,13 +401,13 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "before\n")
-	first := "sed -i 's/before/middle/' source.go; printf first"
-	second := "sed -i 's/middle/after/' source.go; go test ./..."
+	first := "cat > source.go <<'EOF'\nmiddle\nEOF\nprintf first"
+	second := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:%q,workdir:%q});", first, workspace, second, workspace)
 	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
 	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
-		t.Fatal("fixture must capture two unprojectable edits in one exec cell")
+		t.Fatal("fixture must capture two sequential edits in one exec cell")
 	}
 	auto, stop := newAutoLiveDiff(t.Context(), "")
 	defer stop()
@@ -473,28 +463,15 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ script, shell string }{
-		{"gofmt -w source.go", "bash"},
-		{"sed -i 's/A/B/' source.go", "bash"},
-		{"cp", "bash"},
-		{"install", "bash"},
-		{"env -u BASH_ENV gofmt -w source.go; printf formatted", "sh"},
+		{"cat > source.go <<'EOF'\npackage p; var B=2\nEOF", "bash"},
+		{"tee source.go <<'EOF'\npackage p; var B=2\nEOF\nprintf '// observed suffix\\n' >> source.go", "sh"},
 	} {
 		t.Run(tc.shell+"/"+strings.Fields(tc.script)[0], func(t *testing.T) {
 			script, shell := tc.script, tc.shell
 			u, hub := newTrackedAppServerUI(t)
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "source.go")
-			binaryCopy := script == "cp" || script == "install"
-			if binaryCopy {
-				// The session's stuck card copied a PNG outside its workspace.
-				// Binary copies have no projected text edit to end the watcher.
-				original := filepath.Join(t.TempDir(), "image.png")
-				path = filepath.Join(t.TempDir(), "stall-question.png")
-				writeTestFile(t, original, "\x89PNG\r\n\x1a\n\x00binary image")
-				script += " " + quoteShellWord(original) + " " + quoteShellWord(path)
-			} else {
-				writeTestFile(t, path, "package p; var A=1\n")
-			}
+			writeTestFile(t, path, "package p; var A=1\n")
 			// Two nested calls in one cell with no shell segment report.
 			// Native completion ends only the edit; the sibling test stays pending.
 			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q,shell:%q,login:false}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, "/bin/"+shell, workspace)
@@ -525,7 +502,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 				u.shell.preview(preview)
 				revealNativeDock(u.shell)
 				if u.shell.liveDock.Live() == 0 {
-					t.Fatal("formatter preview did not open before native completion")
+					t.Fatal("source preview did not open before native completion")
 				}
 			}
 			item["status"], item["exitCode"] = "completed", 0
@@ -539,14 +516,8 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 					for _, event := range auto.events.takePreviews(sub) {
 						if event.Preview != nil && event.Preview.Complete {
 							wantFiles := 1
-							if binaryCopy {
-								wantFiles = 0
-							}
 							if len(event.Preview.Files) != wantFiles || event.Preview.Footer != "observed edit" {
 								t.Fatalf("completion lost actual edit: %+v", event.Preview)
-							}
-							if binaryCopy && event.Preview.Status != "" {
-								t.Fatalf("binary copy opened a source preview: %+v", event.Preview)
 							}
 							if !proxy.execWindows.find("cell").closed.IsZero() || u.session.commands[[3]string{"main", "turn", "test"}] == nil {
 								t.Fatal("edit completion ended enclosing cell or sibling test")
@@ -572,12 +543,41 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 	}
 }
 
+func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
+	t.Parallel()
+	u, hub := newTrackedAppServerUI(t)
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "source.go")
+	writeTestFile(t, path, "before\n")
+	script := "cat > source.go <<'EOF'\npackage p; var A=1\nEOF\ngofmt -w source.go; go test ./..."
+	observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{directory: workspace})
+	if !ok || observation == nil {
+		t.Fatal("missing source capture")
+	}
+	broker := newLiveDiffBroker(t.Context())
+	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
+	sub := broker.subscribe()
+	registry := &execWindowRegistry{tracker: hub}
+	registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
+	defer registry.close("edit")
+	registry.preview("edit", *observation, broker, workspace, "main", "/root")
+	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	report := dialExecTrackReport(t, hub, script)
+	writeTestFile(t, path, "package p; var A=1\n")
+	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p diffview.Preview) bool { return p.Complete })
+	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+package p; var A=1") || !registry.find("edit").closed.IsZero() {
+		t.Fatalf("stream completion changed content or host lifecycle: %+v", preview)
+	}
+}
+
 func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 	t.Parallel()
 	for _, lateReport := range []bool{false, true} {
 		t.Run(fmt.Sprintf("late_report_%v", lateReport), func(t *testing.T) {
 			u, hub := newTrackedAppServerUI(t)
-			script := "sed -i 's/before/after/' source.go; go test ./..."
+			script := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 			oldItem := map[string]any{"id": "old", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": oldItem})
 			reportOld := func() {
@@ -672,7 +672,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	sub := auto.events.subscribe()
 	proxy := &mekugiProxy{execTrack: hub, execWindows: &execWindowRegistry{tracker: hub}, autoLiveDiff: auto}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
-	script := "sed -i 's/before/after/' source.go; go test ./..."
+	script := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	for _, id := range []string{"one", "two"} {
 		directory := filepath.Join(workspace, id)
 		if err := os.Mkdir(directory, 0o700); err != nil {

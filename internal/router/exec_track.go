@@ -390,9 +390,8 @@ func (h *execTrackHub) signal() {
 }
 
 func execSegmentEdits(source string) bool {
-	// Formatters and file copies can be shown as Run rather than Edit.
-	// Their write segments still own a live edit's lifetime, including binary
-	// copies for which text projection cannot establish completion.
+	// Activity retains write classification for formatters and file copies.
+	// Live previews use the narrower admitted source-segment scope.
 	program, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(source), "")
 	writes := false
 	if err == nil {
@@ -439,7 +438,8 @@ type execPreviewTrack struct {
 	hub          *execTrackHub
 	thread, turn string
 	matches      map[string]*execPreviewMatch
-	after        uint64 // Only host invocations started after this window opened.
+	streamable   map[string]bool // Optional source-only segment scope.
+	after        uint64          // Only host invocations started after this window opened.
 }
 
 type execPreviewMatch struct {
@@ -454,14 +454,13 @@ func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []exec
 		return nil
 	}
 	p := &execPreviewTrack{hub: hub, thread: thread, turn: turn, matches: make(map[string]*execPreviewMatch)}
+	// The caller supplies only admitted source-writing commands.
 	for _, command := range commands {
-		if execSegmentEdits(command.Command) {
-			script := p.authoredScript(command.Command, "")
-			if previous := p.matches[script]; previous != nil {
-				previous.ambiguous = true
-			} else {
-				p.matches[script] = &execPreviewMatch{}
-			}
+		script := p.authoredScript(command.Command, "")
+		if previous := p.matches[script]; previous != nil {
+			previous.ambiguous = true
+		} else {
+			p.matches[script] = &execPreviewMatch{}
 		}
 	}
 	if len(p.matches) == 0 {
@@ -575,7 +574,11 @@ func (p *execPreviewTrack) state() (tracked, settled bool, changed <-chan struct
 		tracked = true
 		last := match.lastStarted()
 		for i, segment := range match.segments {
-			if segment.edit && !segment.ended && !match.done && (segment.began || i > last) {
+			writer := segment.edit
+			if p.streamable != nil {
+				writer = p.streamable[p.authoredScript(segment.source, "")]
+			}
+			if writer && !segment.ended && !match.done && (segment.began || i > last) {
 				settled = false
 			}
 		}
