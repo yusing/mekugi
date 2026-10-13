@@ -115,13 +115,25 @@ Unavailable permission settings reject launch rather than guessing a profile.
 
 ## REQ-ORCHESTRATE-003 — Batch lifecycle waits
 
-Main calls `tools.mcp__orchestrate__wait_agent({targets:"all"})` to receive
-the next observed batch completion, message, journal blocker, failure, question or approval.
+Main calls `tools.mcp__orchestrate__wait_agent({targets:"all"})` to observe
+the next batch completion, message, journal blocker, failure, question or approval.
 `targets` accepts `"all"` (the default) or a nonempty list of task names or
 `/root/task_name` paths in this run. A targeted wait returns the next event from
 any selected batch; events from other batches remain queued. Invalid or unknown
-targets reject the wait. A wait returns
+targets reject the wait. An available event returns immediately with
 the task, available host thread and turn identity, event kind and host status.
+Otherwise the call registers a logical wait and promptly returns its identity.
+The logical wait continues independently of the MCP request. Its result is
+delivered through the existing host notification path, without polling model turns.
+Repeating the same host call does not register or deliver the wait twice.
+The reply contains a wait `id` and `state`. An immediate completed reply carries
+the selected `event`; `registered` means the subscription remains pending.
+Later results arrive as attributed `WAIT_RESULT` notifications with the same wait
+identity. A canceled subscription returns `canceled`.
+
+To cancel a subscription, call
+`tools.mcp__orchestrate__wait_agent({cancel_id:"WAIT_ID"})`.
+`cancel_id` cannot be combined with `targets` or `timeout_ms`.
 A successfully completed turn delivers its last completed agent message to Main
 as a separate `FINAL_ANSWER` notification through Codex's thread history. Delivery
 preserves the message text; a turn without a message has an empty payload. Delivery
@@ -136,7 +148,16 @@ identify their host request or asynchronous question item. Cross-thread answerin
 remains part of the accepted navigation capability below. Events describe
 observations, not a claim that a prompt is still pending when the result is read.
 
-Events observed during this session remain queued until a wait receives them.
+Wait registrations and selected results are retained before success is exposed.
+A disconnected observer cannot consume a later event. Delivery acknowledgement
+settles the selected result; repeating that call then reports delivery without the
+event. An uncertain or rejected delivery, including one interrupted by restart, is
+never dispatched again automatically. `list_agents` reports it under
+`unsettled_waits`; canceling it states that the result is absent from Main's history
+and returns its event to the queue. Canceling a registered wait ends its subscription
+without interrupting a child or consuming an undelivered event. Recovery drops
+unclaimed question and approval events because replay does not revive their host
+requests.
 An authored task newly becoming `blocked` in a confirmed child's journal, including
 its native descendants, returns `kind: "blocked"` with the owning thread, journal
 path and reason. Publication follows successful journal persistence and uses the
@@ -145,11 +166,11 @@ the child's host lifecycle. Duplicate mutation receipts, reason-only edits and
 restored history do not create another event.
 Terminal outcomes become available only after their run record is saved.
 Persistence failure returns `kind: "failure", status: "storage_failed"`.
-Waiting leaves input and host events responsive. Timeout returns `timed_out: true`;
-cancellation ends that wait without interrupting a child. An omitted `timeout_ms`
-waits without a deadline. An explicit timeout accepts one millisecond through
-twenty-five minutes. Replay
-does not recreate wait handles or live prompt requests.
+Waiting leaves input and host events responsive. An omitted `timeout_ms` means no
+logical deadline, not an indefinitely open MCP request. An explicit timeout accepts
+one millisecond through twenty-five minutes; expiry delivers `timed_out: true`.
+Recovery reconciles retained logical waits and deadlines without reviving host
+processes, transport requests, or live prompt handles.
 
 ## REQ-ORCHESTRATE-004 — Batch follow-ups
 

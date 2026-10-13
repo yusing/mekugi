@@ -238,3 +238,28 @@ func TestUISnapshotOrchestrateWaitBreathing(t *testing.T) {
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-wait-breathing.txt", rows, 80)
 }
+
+func TestUISnapshotOrchestrateLogicalWait(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.ctx = t.Context()
+	u.session.start("main", t.TempDir())
+	u.agents = newLiveActivityView()
+	u.clock = func() time.Time { return time.Unix(0, 0) }
+	u.view.clock = u.clock
+	u.view.painter.Theme = livediff.DarkTheme
+	u.ensureShell()
+	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
+	for _, state := range []string{"registered", "canceled", "uncertain", "completed"} {
+		args := map[string]any{"targets": []string{"batch"}}
+		if state == "canceled" {
+			args = map[string]any{"cancel_id": "wait-id"}
+		}
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
+			"id": state, "type": "mcpToolCall", "server": "orchestrate", "tool": "wait_agent", "status": "completed", "arguments": args,
+			"result": map[string]any{"structuredContent": map[string]any{"id": "wait-id", "state": state}},
+		}})
+	}
+	rows, _ := u.mainFrame(90, 12, 0)
+	assertNativeUISnapshot(t, "orchestration-logical-wait", rows)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-logical-wait-styles.txt", append(rows, "plain after wait"), 90)
+}

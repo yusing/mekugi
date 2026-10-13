@@ -226,7 +226,8 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	tier := "priority"
 	command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, tool: "spawn_agent", input: orchestrateSpawnInput{TaskName: "batch", Message: "Spawn the assigned native probe and wait for it.", ServiceTier: &tier}, reply: make(chan orchestrateResult, 1)}
-	u.startOrchestratedChild(command)
+	// Exercise the retained pre-workflow lifecycle in this fixture.
+	startLegacyOrchestrateFixture(t, u, command, batch)
 	pump(func() bool { return len(command.reply) > 0 })
 	result := <-command.reply
 	if result.err != nil {
@@ -385,7 +386,7 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 		t.Fatalf("installed running follow-up: %+v", r)
 	}
 	interrupt := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "interrupt_agent", reply: make(chan orchestrateResult, 1)}
-	wait := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, tool: "wait_agent", reply: make(chan orchestrateResult, 1)}
+	wait := &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, tool: "wait_agent", callID: "installed-wait", reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(wait)
 	u.startOrchestratedChild(interrupt)
 	pump(func() bool {
@@ -394,9 +395,16 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if r := <-interrupt.reply; r.err != nil {
 		t.Fatal(r.err)
 	}
-	if r := <-wait.reply; r.err != nil || r.event == nil || r.event.Kind != "done" || r.event.Status != "interrupted" || r.event.Thread != result.batch.Launch.ThreadID {
-		t.Fatalf("installed host wait: %+v", r)
+	if r := <-wait.reply; r.err != nil || r.wait == nil || r.wait.ID != "installed-wait" {
+		t.Fatalf("installed wait registration: %+v", r)
 	}
+	pump(func() bool { return len(u.orchestrateRequests) == 0 && len(u.orchestrateJobs) == 0 })
+	retainedWait, err := store.RegisterWait(ctx, workspace, main, orchestrate.Wait{ID: "installed-wait"}, time.Now())
+	var waitEvent orchestrateEvent
+	if err != nil || retainedWait.State != "delivered" || json.Unmarshal(retainedWait.Event, &waitEvent) != nil || waitEvent.Kind != "done" || waitEvent.Status != "interrupted" {
+		t.Fatal("installed wait result", retainedWait, waitEvent, err)
+	}
+
 	batches, err := store.List(ctx, workspace, main)
 	if err != nil {
 		t.Fatal(err)
@@ -421,6 +429,14 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	view.draft = "Batch draft"
 	u.switchOrchestratedThread(main)
+	// Test deferred input while actually idle. A running steer acknowledged just
+	// before interruption need not have entered host history.
+	queued = &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "send_message", callID: "installed-deferred", input: orchestrateSpawnInput{Message: "Deferred input for the idle probe."}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(queued)
+	pump(func() bool { return len(queued.reply) > 0 })
+	if r := <-queued.reply; r.err != nil || r.delivery == nil || r.delivery.State != "queued" {
+		t.Fatal("idle input was not queued", r)
+	}
 	followup = &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "followup_task", callID: "installed-idle", input: orchestrateSpawnInput{Message: "Start the idle follow-up probe."}, reply: make(chan orchestrateResult, 1)}
 	u.startOrchestratedChild(followup)
 	pump(func() bool { return len(followup.reply) > 0 })

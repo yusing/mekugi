@@ -20,6 +20,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 	var args struct {
 		TaskName  string         `json:"task_name"`
 		Target    string         `json:"target"`
+		CancelID  string         `json:"cancel_id"`
 		Message   string         `json:"message"`
 		Targets   jsontext.Value `json:"targets"`
 		TimeoutMS uint64         `json:"timeout_ms"`
@@ -97,6 +98,23 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 		data = jsontext.Value(output[0])
 	}
 	_ = json.Unmarshal(data, &outcome)
+	if isWait && item.Error == nil && !result.IsError {
+		switch outcome.State {
+		case "registered":
+			block.Body = "Wait registered"
+		case "canceled":
+			block.Body = "Wait canceled"
+		case "dispatching", "uncertain":
+			block.Body = "Wait delivery unconfirmed"
+		case "rejected":
+			block.Body = "Wait delivery failed"
+		}
+		if args.CancelID != "" {
+			block.WaitTargets = nil
+		}
+		entry.Text = block.ProgressText()
+	}
+
 	if item.Error != nil || result.IsError || item.Status == "failed" {
 		reason := cmp.Or(strings.Join(output, "\n"), item.Status, "failed")
 		if isWait {

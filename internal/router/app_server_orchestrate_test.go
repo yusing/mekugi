@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -74,11 +75,18 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		value *mcp.CallToolResult
 		err   error
 	}
+	callSeq := 0
 	callContext := func(callCtx context.Context, tool string, args any) <-chan callResult {
 		t.Helper()
 		result := make(chan callResult, 1)
+		callMeta := meta
+		if tool == "wait_agent" {
+			callSeq++
+			callMeta = maps.Clone(meta)
+			callMeta["callId"] = fmt.Sprint("wait-", callSeq)
+		}
 		go func() {
-			value, err := client.CallTool(callCtx, &mcp.CallToolParams{Name: tool, Arguments: args, Meta: meta})
+			value, err := client.CallTool(callCtx, &mcp.CallToolParams{Name: tool, Arguments: args, Meta: callMeta})
 			result <- callResult{value, err}
 		}()
 		return result
@@ -101,6 +109,9 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Helper()
 		var event orchestrateEvent
 		encoded, err := json.Marshal(result.StructuredContent)
+		var waitResult orchestrate.Wait
+		_ = json.Unmarshal(encoded, &waitResult)
+		encoded = waitResult.Event
 		if err != nil || json.Unmarshal(encoded, &event) != nil || event.Task != "batch" || event.Thread != "child" || event.Kind != kind || event.Status != status {
 			t.Fatalf("wait event: %s, %v", encoded, err)
 		}
@@ -132,17 +143,17 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal(err)
 	}
 	take(call("prepare", map[string]any{"task_name": "batch", "evidence": []orchestrate.EvidenceInput{{Name: "image.png", Source: evidenceSource}}}), false)
-	result := call("wait_agent", map[string]any{"timeout_ms": 1, "targets": []string{"batch"}})
-	// The timeout may expire before the UI receives this command.
-	select {
-	case command := <-u.orchestrateCommands():
-		u.startOrchestratedChild(command)
-	case <-time.After(10 * time.Millisecond):
+	result := call("wait_agent", map[string]any{"timeout_ms": 1500000, "targets": []string{"batch"}})
+	dispatch()
+	registered := take(result, false)
+	var registeredWait orchestrate.Wait
+	if err := json.Unmarshal(mustMarshalJSON(registered.StructuredContent), &registeredWait); err != nil || registeredWait.ID == "" {
+		t.Fatal(registered, err)
 	}
-	timedOut := take(result, false)
-	if encoded, _ := json.Marshal(timedOut.StructuredContent); string(encoded) != `{"timed_out":true}` {
-		t.Fatalf("timeout: %s", encoded)
-	}
+	// Cancel the logical subscription before continuing the independent launch checks.
+	cancelResult := call("wait_agent", map[string]any{"cancel_id": registeredWait.ID})
+	dispatch()
+	take(cancelResult, false)
 	take(call("wait_agent", map[string]any{"timeout_ms": 0}), true)
 	batches, err := store.List(ctx, workspace, "main")
 	if err != nil {
@@ -177,7 +188,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	if batches[0].State != "prepared" || batches[0].Launch == nil {
 		t.Fatal("host dispatch preceded intent")
 	}
-	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "child", "cwd": batch.Cwd}, "model": "effective-model", "reasoningEffort": "high"})
+	response, _ := json.Marshal(map[string]any{"sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never", "thread": map[string]any{"id": "child", "cwd": batch.Cwd}, "model": "effective-model", "reasoningEffort": "high"})
 	orchestrateTestReply(t, u, request, string(response))
 	sink.mu.Lock()
 	mounted := sink.mounted
@@ -228,8 +239,6 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal(err)
 	}
 	defer journalClient.Close()
-	blockWait := call("wait_agent", map[string]any{})
-	dispatch()
 	blockArgs := map[string]any{"mutations": []any{map[string]any{"op": "add", "kind": "task", "title": "Batch decision", "state": "blocked", "reason": "Choose the target"}}}
 	blockMeta := mcp.Meta{"threadId": "child", "sessionId": "session", "callId": "blocked", "itemId": "journal-item", codexTurnMetadataHeader: map[string]any{"thread_id": "child", "turn_id": "child-turn"}}
 	if result, err := journalClient.CallTool(t.Context(), &mcp.CallToolParams{Name: "journal_mutate", Arguments: blockArgs, Meta: blockMeta}); err != nil || result.IsError {
@@ -238,10 +247,15 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	if err := u.tickOrchestratedViews(u); err != nil {
 		t.Fatal(err)
 	}
+	drainOrchestrateWork(t, u)
+	blockWait := call("wait_agent", map[string]any{})
+	dispatch()
 	blocked := take(blockWait, false)
 	assertEvent(blocked, "blocked", "blocked")
 	var blockEvent orchestrateEvent
-	encodedBlock, _ := json.Marshal(blocked.StructuredContent)
+	var blockedWait orchestrate.Wait
+	_ = json.Unmarshal(mustMarshalJSON(blocked.StructuredContent), &blockedWait)
+	encodedBlock := blockedWait.Event
 	if err := json.Unmarshal(encodedBlock, &blockEvent); err != nil || blockEvent.Path != "/1" || blockEvent.Message != "Choose the target" || w.Len() != 0 {
 		t.Fatal("journal blocker lost identity or dispatched a turn", blockEvent, err)
 	}
@@ -359,8 +373,6 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "changed"})
 	dispatch()
 	take(result, true)
-	wait := call("wait_agent", map[string]any{"timeout_ms": 5000})
-	dispatch()
 	result = call("interrupt_agent", map[string]any{"target": "/root/batch"})
 	dispatch()
 	request = btwTestRequest(t, w, "turn/interrupt", "child")
@@ -369,11 +381,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	}
 	orchestrateTestReply(t, u, request, `{}`)
 	take(result, false)
-	select {
-	case <-wait:
-		t.Fatal("interrupt acknowledgement completed lifecycle wait")
-	default:
-	}
+
 	result = call("interrupt_agent", map[string]any{"target": "batch"})
 	dispatch()
 	request = btwTestRequest(t, w, "turn/interrupt", "child")
@@ -382,6 +390,8 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal(err)
 	}
 	drainOrchestrateWork(t, u)
+	wait := call("wait_agent", map[string]any{})
+	dispatch()
 	assertEvent(take(wait, false), "done", "interrupted")
 	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"turn already finished"}}`, request.ID))
 	take(result, true)
@@ -392,17 +402,14 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	if u.orchestrateBusy() {
 		t.Fatal("completion left child running")
 	}
-	// Cancellation retires a wait, not the next observed prompt.
-	waitCtx, cancelWait := context.WithCancel(t.Context())
-	wait = callContext(waitCtx, "wait_agent", map[string]any{})
-	waitCommand := dispatch()
-	cancelWait()
-	select {
-	case <-waitCommand.ctx.Done():
-	case <-time.After(5 * time.Second):
-		t.Fatal("wait cancellation not propagated")
-	}
-	take(wait, true)
+	// Explicit cancellation retires the subscription without consuming prompts.
+	wait = call("wait_agent", map[string]any{})
+	dispatch()
+	var subscription orchestrate.Wait
+	_ = json.Unmarshal(mustMarshalJSON(take(wait, false).StructuredContent), &subscription)
+	wait = call("wait_agent", map[string]any{"cancel_id": subscription.ID})
+	dispatch()
+	take(wait, false)
 	for _, prompt := range []struct{ method, kind string }{{"item/tool/requestUserInput", "question"}, {"item/commandExecution/requestApproval", "approval"}} {
 		message := appserver.Message{ID: []byte(`"prompt"`), Method: prompt.method, Params: []byte(`{"threadId":"child","turnId":"question-turn"}`)}
 		if u.orchestrateMessage(message) {
@@ -418,7 +425,9 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	async := take(wait, false)
 	assertEvent(async, "question", "")
 	var asyncEvent orchestrateEvent
-	encoded, _ := json.Marshal(async.StructuredContent)
+	var asyncWait orchestrate.Wait
+	_ = json.Unmarshal(mustMarshalJSON(async.StructuredContent), &asyncWait)
+	encoded := asyncWait.Event
 	if err := json.Unmarshal(encoded, &asyncEvent); err != nil || asyncEvent.Item != "async-question" || len(asyncEvent.Request) != 0 {
 		t.Fatal("asynchronous question identity lost", asyncEvent, err)
 	}
@@ -456,7 +465,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 			sibling = b
 		}
 	}
-	response, _ = json.Marshal(map[string]any{"thread": map[string]any{"id": "sibling-child", "cwd": sibling.Cwd}})
+	response, _ = json.Marshal(map[string]any{"sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never", "thread": map[string]any{"id": "sibling-child", "cwd": sibling.Cwd}})
 	orchestrateTestReply(t, u, request, string(response))
 	request = btwTestRequest(t, w, "turn/start", "sibling-child")
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"sibling-turn"}}`)
@@ -573,7 +582,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		if phase == "thread" {
 			cancelCall()
 		}
-		response, _ = json.Marshal(map[string]any{"thread": map[string]any{"id": phase + "-child", "cwd": current.Cwd}})
+		response, _ = json.Marshal(map[string]any{"sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never", "thread": map[string]any{"id": phase + "-child", "cwd": current.Cwd}})
 		orchestrateTestReply(t, u, request, string(response))
 		if phase == "turn" || phase == "persist" {
 			request = btwTestRequest(t, w, "turn/start", phase+"-child")

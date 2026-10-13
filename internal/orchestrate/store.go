@@ -51,6 +51,7 @@ type manifest struct {
 	Main       string     `json:"main"`
 	Batches    []Batch    `json:"batches"`
 	Deliveries []Delivery `json:"deliveries,omitempty"`
+	Wait       WaitState  `json:"wait,omitzero"`
 }
 
 var taskName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)

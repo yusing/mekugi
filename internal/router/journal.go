@@ -877,7 +877,7 @@ func (s *journalStore) applyWithBlocks(ctx context.Context, store *mekugiReplayS
 		}
 		for _, item := range j.Items {
 			if item.Kind == "task" && item.State == "blocked" && !blockedBefore[item.Path] {
-				blocks = append(blocks, orchestrateEvent{Thread: thread, Turn: j.TurnID, Kind: "blocked", Status: "blocked", Path: item.Path, Message: item.Reason})
+				blocks = append(blocks, orchestrateEvent{ID: fmt.Sprintf("block:%s:%s:%s:%d", thread, receiptID, item.Path, j.Sequence), Thread: thread, Turn: j.TurnID, Kind: "blocked", Status: "blocked", Path: item.Path, Message: item.Reason})
 			}
 		}
 		blocks = s.scopeOrchestratedBlocks(store.scoped(ctx), workspace, thread, blocks)

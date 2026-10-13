@@ -26,6 +26,10 @@ func orchestrateIdentityPendingTurnInWorkspace(t *testing.T, replay *mekugiRepla
 }
 
 func orchestrateIdentityPendingTurnWithEvidence(t *testing.T, replay *mekugiReplayStore, workspace string, inputs []orchestrate.EvidenceInput) (*appServerUI, btwTestRPC) {
+	return orchestratePendingWorkflow(t, replay, workspace, inputs, nil)
+}
+
+func orchestratePendingWorkflow(t *testing.T, replay *mekugiReplayStore, workspace string, inputs []orchestrate.EvidenceInput, workflow *orchestrateSpawnInput) (*appServerUI, btwTestRPC) {
 	t.Helper()
 	store := &orchestrate.Store{Directory: t.TempDir(), ShadowSnapshot: orchestrateShadowSnapshot, SVNBaseline: orchestrateSVNBaseline}
 	batch, err := store.Prepare(t.Context(), workspace, "main", "batch")
@@ -41,7 +45,12 @@ func orchestrateIdentityPendingTurnWithEvidence(t *testing.T, replay *mekugiRepl
 	u, w := newAppServerTestUI()
 	u.ctx = t.Context()
 	u.ensureShell()
-	t.Cleanup(func() { u.closeOrchestratedViews(); u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() {
+		u.closeOrchestrateStorage()
+		u.closeOrchestratedViews()
+		u.shell.diff.close()
+		u.shell.diffScreen.Close()
+	})
 	u.session.start("main", workspace)
 	u.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: replay, orchestration: &orchestrateRuntime{store: store}}
 	if replay != nil {
@@ -64,7 +73,12 @@ func orchestrateIdentityPendingTurnWithEvidence(t *testing.T, replay *mekugiRepl
 	u.statusConfig.PermissionProfile = []byte(`{"id":":workspace"}`)
 	u.statusConfig.WorkspaceRoots = []string{workspace}
 	command := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", tool: "spawn_agent", input: orchestrateSpawnInput{TaskName: "batch", Message: "work"}, reply: make(chan orchestrateResult, 1)}
-	u.startOrchestratedChild(command)
+	if workflow != nil {
+		command.input = *workflow
+		u.startOrchestratedChild(command)
+	} else {
+		startLegacyOrchestrateFixture(t, u, command, batch)
+	}
 	drainOrchestrateWork(t, u)
 	request := btwTestRequest(t, w, "thread/start", "")
 	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "child", "cwd": batch.Cwd}})
@@ -154,5 +168,27 @@ func TestAppServerOrchestrateRetainedDescendantWorkspace(t *testing.T) {
 		if scope == "" && j.LifecycleState != "" {
 			t.Fatal("ambiguous ownership mutated an unscoped journal", j.LifecycleState)
 		}
+	}
+}
+
+func startLegacyOrchestrateFixture(t *testing.T, u *appServerUI, command *orchestrateCommand, batch orchestrate.Batch) {
+	t.Helper()
+	// Retained batches without workflow records keep legacy lifecycle semantics.
+	u.orchestrateWork(func() func() { return func() {} })
+	drainOrchestrateWork(t, u)
+	params, policy, err := u.orchestrateThreadRequest(batch, command.input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, _, err = u.proxy.orchestration.store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = u.orchestrateRequest(&orchestrateChild{command: command, batch: batch}, "thread/start", params); err != nil {
+		t.Fatal(err)
 	}
 }

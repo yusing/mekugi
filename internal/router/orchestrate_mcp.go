@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yusing/mekugi/internal/orchestrate"
@@ -24,7 +23,8 @@ type orchestrateInterruptInput struct {
 }
 
 type orchestrateWaitInput struct {
-	TimeoutMS int            `json:"timeout_ms"`
+	TimeoutMS *int           `json:"timeout_ms,omitempty"`
+	CancelID  string         `json:"cancel_id,omitempty"`
 	Targets   jsontext.Value `json:"targets,omitempty"`
 }
 
@@ -111,8 +111,9 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return proxy.orchestration.call(command)
 		})
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next selected batch completion, message, journal blocker, failure, question or approval. Final answers reach Main automatically as separate notifications; waiting is optional. Other events remain queued. Timeout or cancellation ends only the wait. Messages identify sender; prompts identify host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
-		"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000, "description": "Wait limit in milliseconds. Omit for no timeout."},
+	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Return an available selected event or promptly register a durable logical wait. Results arrive as attributed host notifications without polling. Omitted timeout has no logical deadline; explicit timeout delivers timed_out asynchronously. cancel_id cancels only the subscription. Repeated host calls return retained state. Unconfirmed deliveries appear in list_agents; cancel one only if its result is absent. Final answers reach Main automatically as separate notifications; waiting is optional.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+		"cancel_id":  map[string]any{"type": "string", "minLength": 1, "description": "Cancel a wait by ID without interrupting children. Canceling an unconfirmed delivery requeues its event. Cannot be combined with targets or timeout_ms."},
+		"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000, "description": "Logical deadline in milliseconds. Omit for no deadline. The MCP call returns promptly."},
 		"targets": map[string]any{"description": "Batches in this run: all (default), or a nonempty task-name or /root/task_name list. Returns the next event from any selected batch.", "oneOf": []any{
 			map[string]any{"type": "string", "const": "all"},
 			map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string", "pattern": "^(/root/)?[a-z][a-z0-9_]{0,63}$"}},
@@ -123,9 +124,14 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return nil, nil, err
 		}
 		defer release()
-		if _, err := orchestrateCallIdentity(request.Params.GetMeta(), thread); err != nil {
+		key, err := orchestrateCallIdentity(request.Params.GetMeta(), thread)
+		if err != nil {
 			return nil, nil, err
 		}
+		if input.CancelID != "" && (input.TimeoutMS != nil || len(input.Targets) != 0) {
+			return nil, nil, errors.New("cancel_id cannot be combined with targets or timeout_ms")
+		}
+
 		if err := orchestrateMain(ctx, proxy, workspace, thread, ""); err != nil {
 			return nil, nil, err
 		}
@@ -144,18 +150,15 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 				}
 			}
 		}
-		waitCtx := ctx
-		if input.TimeoutMS != 0 {
-			var cancel context.CancelFunc
-			waitCtx, cancel = context.WithTimeout(ctx, time.Duration(input.TimeoutMS)*time.Millisecond)
-			defer cancel()
+		timeout := 0
+		if input.TimeoutMS != nil {
+			timeout = *input.TimeoutMS
+			if timeout < 1 || timeout > 1500000 {
+				return nil, nil, errors.New("timeout_ms must be 1..1500000")
+			}
 		}
-		command := &orchestrateCommand{ctx: waitCtx, workspace: workspace, main: thread, tool: "wait_agent", waitTargets: targets, reply: make(chan orchestrateResult, 1)}
-		result, value, err := proxy.orchestration.call(command)
-		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
-			return nil, map[string]any{"timed_out": true}, nil
-		}
-		return result, value, err
+		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, tool: "wait_agent", callID: key, waitTargets: targets, waitTimeout: timeout, waitCancel: input.CancelID, reply: make(chan orchestrateResult, 1)}
+		return proxy.orchestration.call(command)
 	})
 	for _, tool := range []struct{ name, description string }{
 		{"interrupt_agent", "Request interruption of a live batch turn. The host's turn completion confirms the outcome."},
@@ -231,7 +234,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		return nil, batch, err
 	})
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "list_agents", Description: "List this coordinator's retained batches, including prepared checkouts; does not start or resume threads",
+		Name: "list_agents", Description: "List this coordinator's retained batches, including prepared checkouts, and unconfirmed wait deliveries; does not start or resume threads",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)},
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}},
 	}, func(ctx context.Context, request *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
@@ -244,7 +247,17 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return nil, nil, err
 		}
 		batches, err := store.List(ctx, workspace, thread)
-		return nil, map[string]any{"agents": batches}, err
+		if err != nil {
+			return nil, nil, err
+		}
+		result := map[string]any{"agents": batches}
+		// Unconfirmed wait deliveries stay visible until Main cancels them.
+		if waits, err := store.UnsettledWaits(ctx, workspace, thread); err != nil {
+			return nil, nil, err
+		} else if len(waits) != 0 {
+			result["unsettled_waits"] = waits
+		}
+		return nil, result, nil
 	})
 	return server
 }
@@ -284,8 +297,8 @@ func (runtime *orchestrateRuntime) call(command *orchestrateCommand) (*mcp.CallT
 			}
 			return nil, value, result.err
 		}
-		if result.event != nil {
-			return nil, result.event, result.err
+		if result.wait != nil {
+			return nil, result.wait, result.err
 		}
 		return nil, result.batch, result.err
 	case <-command.ctx.Done():

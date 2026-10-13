@@ -19,7 +19,12 @@ func resumeOrchestrationMain(t *testing.T, store *orchestrate.Store, workspace s
 		u.proxy.replayStore = replay[0]
 	}
 	u.ensureShell()
-	t.Cleanup(func() { u.closeOrchestratedViews(); u.shell.diff.close(); u.shell.diffScreen.Close() })
+	t.Cleanup(func() {
+		u.closeOrchestrateStorage()
+		u.closeOrchestratedViews()
+		u.shell.diff.close()
+		u.shell.diffScreen.Close()
+	})
 	if err := u.requestResume("main"); err != nil {
 		t.Fatal(err)
 	}

@@ -72,7 +72,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err := json.Unmarshal(mustMarshalJSON(listed.Tools[waitIndex].InputSchema), &waitSchema); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(waitSchema.Properties["timeout_ms"].Description, "no timeout") ||
+	if !strings.Contains(waitSchema.Properties["timeout_ms"].Description, "no deadline") ||
 		!strings.Contains(waitSchema.Properties["targets"].Description, "all (default)") ||
 		strings.Contains(orchestrateCoordinatorInstructions, "wait_agent:") {
 		t.Fatal("wait parameter help must be exposed by MCP, not duplicated in coordinator instructions")
@@ -157,6 +157,9 @@ func TestOrchestrateMCP(t *testing.T) {
 			t.Fatal("unknown target did not explain retained-run discovery", result)
 		}
 	}
+	for _, args := range []map[string]any{{"cancel_id": "wait", "targets": "all"}, {"cancel_id": "wait", "timeout_ms": 1}, {"timeout_ms": 1500001}, {"timeout_ms": 0}} {
+		call("wait_agent", args, meta, true)
+	}
 	proxy.orchestration.active.Store(true)
 	proxy.orchestration.commands = make(chan *orchestrateCommand, 1)
 	for _, tc := range []struct {
@@ -174,16 +177,18 @@ func TestOrchestrateMCP(t *testing.T) {
 			select {
 			case command := <-proxy.orchestration.commands:
 				event := orchestrateEvent{Kind: "message", Message: strings.Join(command.waitTargets, ",")}
-				if _, ok := command.ctx.Deadline(); ok {
+				if command.waitTimeout != 0 {
 					event.Status = "deadline"
 				}
-				command.reply <- orchestrateResult{event: &event}
+				command.reply <- orchestrateResult{wait: &orchestrate.Wait{Event: mustMarshalJSON(&event)}}
 			case <-t.Context().Done():
 			}
 		}()
 		result := call("wait_agent", tc.args, meta, false)
 		var event orchestrateEvent
-		if err := json.Unmarshal(mustMarshalJSON(result.StructuredContent), &event); err != nil || event.Message != strings.Join(tc.want, ",") {
+		var wait orchestrate.Wait
+		_ = json.Unmarshal(mustMarshalJSON(result.StructuredContent), &wait)
+		if err := json.Unmarshal(wait.Event, &event); err != nil || event.Message != strings.Join(tc.want, ",") {
 			t.Fatal("wait selection was not passed to the UI", event, err)
 		}
 		if (event.Status == "deadline") != tc.deadline {

@@ -42,13 +42,14 @@ func TestAppServerOrchestrateMainReportsNeverSubmitUserInput(t *testing.T) {
 			if got.err != nil || got.delivery.State != "reported" || got.delivery.TurnID != "" || u.draft != "human draft" {
 				t.Fatal("child report changed human input", got, u.draft)
 			}
-			if len(u.orchestrateEvents) != 1 {
-				t.Fatal("missing attributed event", u.orchestrateEvents)
-			}
+
 			if len(u.view.entries) != 1 || u.view.entries[0].Kind != "reply" || u.view.entries[0].message.from != "/root/batch" || strings.Contains(strings.Join(u.agents.renderFeed(90, 60).lines, "\n"), "/compact") {
 				t.Fatal("report lost its transcript attribution or entered native Activity")
 			}
-			event := u.orchestrateEvents[0]
+			wait := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", tool: "wait_agent", callID: "observe", reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(wait)
+			drainOrchestrateWork(t, u)
+			event := waitTestEvent(t, <-wait.reply)
 			if event.Kind != "message" || event.Task != "batch" || event.Thread != "child" || event.Message != "/compact" {
 				t.Fatal("report lost sender identity", event)
 			}
@@ -56,7 +57,7 @@ func TestAppServerOrchestrateMainReportsNeverSubmitUserInput(t *testing.T) {
 			u.proxy.orchestration.store = &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
 			u.startOrchestratedChild(c)
 			drainOrchestrateWork(t, u)
-			if got := <-c.reply; got.err != nil || got.delivery.State != "reported" || len(u.orchestrateEvents) != 1 || w.Len() != 0 {
+			if got := <-c.reply; got.err != nil || got.delivery.State != "reported" || w.Len() != 0 {
 				t.Fatal("repeated report caused another effect", got)
 			}
 			if deferred {

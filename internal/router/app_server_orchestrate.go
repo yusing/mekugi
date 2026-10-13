@@ -28,24 +28,28 @@ type orchestrateCommand struct {
 	input           orchestrateSpawnInput
 	target          string
 	tool            string
+	waitTimeout     int
+	waitCancel      string
 	waitTargets     []string // Empty selects all batches in this coordinator run.
 	caller, callID  string
 	reply           chan orchestrateResult
 }
 
 type orchestrateResult struct {
+	wait     *orchestrate.Wait
 	batch    orchestrate.Batch
 	err      error
-	event    *orchestrateEvent
 	delivery *orchestrate.Delivery
 }
 type orchestrateRPC struct {
-	method     string
-	child      *orchestrateChild
-	cleanup    bool
-	followup   *orchestrateCommand
-	delivery   orchestrate.Delivery
-	completion *orchestrateEvent
+	wait                    *orchestrate.Wait
+	waitMain, waitWorkspace string
+	method                  string
+	child                   *orchestrateChild
+	cleanup                 bool
+	followup                *orchestrateCommand
+	delivery                orchestrate.Delivery
+	completion              *orchestrateEvent
 }
 type orchestrateChild struct {
 	command       *orchestrateCommand
@@ -327,6 +331,14 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 	}
 	delete(u.orchestrateRequests, string(m.ID))
 	u.dirty = true
+	if r.wait != nil {
+		state, message := "delivered", ""
+		if m.Error != nil {
+			state, message = "rejected", m.Error.Message
+		}
+		u.recordOrchestratedWait(r, state, message)
+		return true
+	}
 	if r.completion != nil {
 		if m.Error != nil {
 			u.orchestratedAnswerFailure(r.child, *r.completion, errors.New(m.Error.Message))
@@ -525,10 +537,6 @@ func (u *appServerUI) orchestrateCleanupInterrupt(child *orchestrateChild, threa
 
 func (u *appServerUI) closeOrchestrateStorage() error {
 	u.orchestrateClosing = true
-	for _, waiter := range u.orchestrateWaiters {
-		waiter.reply <- orchestrateResult{err: context.Canceled}
-	}
-	u.orchestrateWaiters = nil
 	if u.orchestrateStorageCancel == nil {
 		return nil
 	}
