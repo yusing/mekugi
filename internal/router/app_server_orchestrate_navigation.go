@@ -217,8 +217,9 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 	}
 	thread := p.ThreadID
 	if p.Thread.ID != "" {
+		p.Thread = p.Thread.withSourceIdentity()
 		thread = p.Thread.ID
-		if n.views[thread] == nil && n.owner.workflowStartingReviewer() {
+		if n.views[thread] == nil && p.Thread.ParentThreadID == "" && n.owner.workflowStartingReviewer() {
 			if len(n.pending) == 256 {
 				return true, errors.New("orchestration descendant event capacity exceeded")
 			}

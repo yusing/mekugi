@@ -1,0 +1,2 @@
+└ Ran printf check · exit 2
+      ┆ boom at line 7

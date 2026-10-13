@@ -1,0 +1,4 @@
+└ Ran printf check
+
+✗ Main                                                                                      12:00:00
+│ Validation uncertain: host returned no exit status

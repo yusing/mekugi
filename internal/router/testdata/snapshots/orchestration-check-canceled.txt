@@ -1,0 +1,4 @@
+└ Ran printf check
+      ┆ late output
+
+• Validation canceled

@@ -262,10 +262,14 @@ func TestOrchestrateWorkflowCorrections(t *testing.T) {
 	}
 }
 
-func TestOrchestrateWorkflowCheckOutcomes(t *testing.T) {
+func TestUISnapshotOrchestrateCheckOutcomes(t *testing.T) {
 	for _, test := range []string{"failed", "rpc-error", "no-exit", "canceled"} {
 		t.Run(test, func(t *testing.T) {
 			u, w := workflowUI(t, "printf check")
+			now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.Local)
+			v := u.navigation.views["child"]
+			u.clock, v.clock = func() time.Time { return now }, func() time.Time { return now }
+			v.view.clock, v.view.painter.Theme = v.clock, livediff.DarkTheme
 			workflowCompleted(t, u, "child", "implement", "")
 			child := u.orchestrateThreads["child"]
 			switch test {
@@ -289,15 +293,7 @@ func TestOrchestrateWorkflowCheckOutcomes(t *testing.T) {
 					t.Fatal("late check result revived canceled validation", result, child.batch.Workflow)
 				}
 			}
-			for _, entry := range u.navigation.views["child"].view.entries {
-				if entry.native == nil || entry.native.command != "printf check" {
-					continue
-				}
-				want := map[string]string{"failed": "failed", "rpc-error": "uncertain", "no-exit": "uncertain", "canceled": "interrupted"}[test]
-				if entry.native.running || entry.native.status != want {
-					t.Fatalf("settled validation display: running=%v status=%q, want %q", entry.native.running, entry.native.status, want)
-				}
-			}
+			uisnapshot.Assert(t, "testdata/snapshots/orchestration-check-"+test+".txt", strings.Join(v.view.renderFeed(100, 30).lines, "\n")+"\n")
 			if test == "failed" || test == "canceled" {
 				return
 			}

@@ -202,6 +202,13 @@ func (u *appServerUI) finishWorkflowCheckDisplay(work *orchestrateReviewWork, st
 		native.running, native.commandEnded, native.status, native.phase = false, u.now(), status, "command/exec/completed"
 		native.output.Finish(nil, exit)
 		run.done = v.session.commandDone(entry, appServerItem{Type: "commandExecution", AggregatedOutput: &work.checkOutput, ExitCode: exit}, u.now())
+		if status == "interrupted" || exit == nil {
+			kind, text := "error", "Validation "+status+": "+output
+			if status == "interrupted" {
+				kind, text = "progress", "Validation canceled"
+			}
+			run.done = append(run.done, activityPaneEntry{Seq: v.session.next(), Agent: "/root", Kind: kind, Text: text, Observed: u.now()})
+		}
 		v.flushStreamOutput()
 	}
 }
