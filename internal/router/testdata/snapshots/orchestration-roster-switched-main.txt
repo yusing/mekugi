@@ -37,4 +37,4 @@
 
 
 
- 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents   ^B 1-5 panes · ^E expand events
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents⁸   ^B 1-5 panes · ^E expand events

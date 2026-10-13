@@ -573,7 +573,12 @@ func (u *terminalUI) nativeStatus() string {
 	if u.diffUnseen {
 		diffBadge = activityui.Amber + " ●" + "\x1b[39m"
 	}
-	responding, _ := u.agents.statusCounts(u.agents.roster())
+	responding := 0
+	u.agents.eachRosterAgent(u.agents.roster(), func(source *liveActivityView, agent activityPaneAgent) {
+		if source.agentStatus(agent) == '◐' {
+			responding++
+		}
+	})
 	agentsBadge := ""
 	if responding > 0 {
 		agentsBadge = activityui.Amber + superscript(responding) + "\x1b[39m"

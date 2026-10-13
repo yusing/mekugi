@@ -395,28 +395,9 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	return lines
 }
 
-// nativeRosterTotals counts each subscribed root and its native descendants
-// once, independent of the viewed subtree, folding, and scrolling. Edit totals
-// stay with composed change evidence rather than these per-agent counters.
-func (v *liveActivityView) nativeRosterTotals(rows []liveActivityRosterRow, now time.Time) (count, responding, errors int, usage activityPaneAgent) {
-	add := func(source *liveActivityView, agent activityPaneAgent) {
-		count++
-		switch source.agentStatus(agent) {
-		case '◐':
-			responding++
-		case '!':
-			errors++
-		}
-		usage.InputTokens += agent.InputTokens
-		usage.OutputTokens += agent.OutputTokens
-		usage.UsagePartial = usage.UsagePartial || agent.UsagePartial || agent.Turns > 0 && !agent.TokensKnown && agent.InputTokens == 0 && agent.OutputTokens == 0
-		if agent.CostKnown {
-			usage.Cost, usage.CostKnown = usage.Cost+agent.Cost, true
-			usage.CostPartial = usage.CostPartial || agent.CostPartial
-		} else if agent.Turns > 0 {
-			usage.CostPartial = true
-		}
-	}
+// eachRosterAgent shares the run-wide identity scope between the header and
+// pane badge, independent of the viewed subtree, folding, and scrolling.
+func (v *liveActivityView) eachRosterAgent(rows []liveActivityRosterRow, add func(*liveActivityView, activityPaneAgent)) {
 	if len(v.orchestration) == 0 {
 		for _, row := range rows {
 			add(v, row.agent)
@@ -439,6 +420,31 @@ func (v *liveActivityView) nativeRosterTotals(rows []liveActivityRosterRow, now 
 				add(source, child)
 			}
 		}
+	}
+}
+
+// Edit totals stay with composed change evidence, not per-agent counters.
+func (v *liveActivityView) nativeRosterTotals(rows []liveActivityRosterRow, now time.Time) (count, responding, errors int, usage activityPaneAgent) {
+	v.eachRosterAgent(rows, func(source *liveActivityView, agent activityPaneAgent) {
+		count++
+		switch source.agentStatus(agent) {
+		case '◐':
+			responding++
+		case '!':
+			errors++
+		}
+		usage.InputTokens += agent.InputTokens
+		usage.OutputTokens += agent.OutputTokens
+		usage.UsagePartial = usage.UsagePartial || agent.UsagePartial || agent.Turns > 0 && !agent.TokensKnown && agent.InputTokens == 0 && agent.OutputTokens == 0
+		if agent.CostKnown {
+			usage.Cost, usage.CostKnown = usage.Cost+agent.Cost, true
+			usage.CostPartial = usage.CostPartial || agent.CostPartial
+		} else if agent.Turns > 0 {
+			usage.CostPartial = true
+		}
+	})
+	if len(v.orchestration) == 0 {
+		return
 	}
 	// All shells share one easing clock so a switch cannot jump the header.
 	owner := v.orchestrationSources["/Orchestration/main"]

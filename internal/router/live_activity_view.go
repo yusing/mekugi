@@ -549,6 +549,9 @@ func (v *liveActivityView) agentStatus(agent activityPaneAgent) rune {
 	if other := v.orchestrationSources[name]; other != nil {
 		source, name = other, "/root"
 	}
+	if name == "/root" && source.mainView != nil {
+		source, name = source.mainView, "Main"
+	}
 	latest := source.latest(name)
 	switch {
 	case agent.Responding:

@@ -2,3 +2,4 @@
  ◐ main    Running go test ./...                                                                                    0s · just now  +12 -3  ↑≥1.2K ↓≥240  ≥$0.02 
  ◐ batch   Running go test ./...                                                         24K/285K • 8%  17.0 tok/s  0s · just now  +13 -4   ↑2.4K ↓480    $0.04
  ● worker  Idle                                                                                     0%                                       ↑300 ↓60          
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents³   ^B 1-5 panes · ^E expand events

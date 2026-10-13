@@ -470,7 +470,7 @@ func TestUISnapshotOrchestrationRosterActivityMetrics(t *testing.T) {
 	}
 	orchestrateTestMessage(t, u, `{"method":"thread/started","params":{"thread":{"id":"extra","parentThreadId":"child","agentNickname":"extra"}}}`)
 	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"extra","turn":{"id":"working"}}}`)
-	var header string
+	var header, status string
 	for _, view := range []*appServerUI{u, v} {
 		u.switchOrchestratedThread(view.thread)
 		rows := view.agents.nativeRoster(160, 8, now, true)
@@ -478,6 +478,12 @@ func TestUISnapshotOrchestrationRosterActivityMetrics(t *testing.T) {
 			t.Fatal("switch changed run-wide header", rows[0], header)
 		}
 		header = rows[0]
+		bar := view.shell.nativeStatus()
+		if status != "" && bar != status {
+			t.Fatal("switch changed run-wide Agents badge", bar, status)
+		}
+		status = bar
+		rows = append(rows, bar)
 		uisnapshot.Assert(t, "testdata/snapshots/orchestration-roster-activity-"+view.thread+".txt", strings.Join(rows, "\n")+"\n")
 		for _, agent := range view.agents.orchestration {
 			if got := ansi.Strip(view.agents.agentState(agent, 80, now)); !strings.Contains(got, "go test") {

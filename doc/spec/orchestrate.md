@@ -519,6 +519,7 @@ the same current-activity summaries and metric columns as native subagents,
 including captured edit counts from their own workspace and caller identity.
 The viewed root keeps its context usage and output rate in the composer only.
 The roster rule counts agents and working/error states across the whole run.
+The Agents tab badge uses the same run-wide working count.
 Token and cost totals likewise cover the coordinator, batch roots, native
 descendants, and runtime reviewers, counting each authenticated thread once.
 Switching the viewed thread does not change these counts or totals, including

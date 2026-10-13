@@ -84,3 +84,24 @@ func TestUISnapshotOrchestrationRosterLifecycle(t *testing.T) {
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-roster-lifecycle.txt", rows, 100)
 }
+
+func TestUISnapshotOrchestrationRosterRestoredError(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	now := time.Unix(0, 0)
+	u.clock = func() time.Time { return now }
+	u.view.clock, u.agents.clock = u.clock, u.clock
+	u.agents.painter.Theme = livediff.DarkTheme
+	u.restoreMainHistory([]appServerHistoryTurn{{ID: "failed", Status: "failed"}}, nil, nil)
+	// The root failure lives only in the restored Main transcript.
+	if len(u.agents.entries) != 0 || u.agents.agentStatus(*u.session.agent("/root")) != '!' {
+		t.Fatal("native root did not resolve its restored Main error")
+	}
+	u.ensureOrchestrationNavigation()
+	u.orchestrationRoster()
+	rows := u.agents.nativeRoster(100, 4, now, true)
+	if !strings.Contains(ansi.Strip(rows[0]), "1 error") {
+		t.Fatal("orchestration header lost the restored root error", rows[0])
+	}
+	rows = append(rows, "plain after roster")
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-roster-restored-error.txt", rows, 100)
+}
