@@ -352,12 +352,14 @@ without shrinking existing splits. Overflow files remain in the batch. Ctrl-B e
 cycles and pins a file window for the focused caller (Main, or Activity's selected
 caller); subsequent arrivals do not steal that selection. Main's mouse wheel and
 Ctrl-B PgUp/PgDn scroll live source independently of the transcript and saved
-Diff. Ctrl-B r resumes Main's source following and newest-file window.
+Diff. Scrolling to the live tip resumes that file's source following.
+Ctrl-B r resumes Main's source following and newest-file window.
 
-An edit batch is a caller-local burst: completed calls and earlier file
-projections remain while another edit is streaming or until 1.5 seconds after
-the caller's last update. All of that caller's views then close together and
-its transcript returns. Other callers settle independently. Turn termination
+An edit batch is a caller-local burst. Each completed call retires after its own
+1.5-second settling interval; running siblings and newer edits do not retain its
+files. A surviving pinned file keeps its source window. When the selected call
+expires, the dock follows the newest remaining file. The transcript returns when
+the caller has no remaining previews. Turn termination
 and explicit withdrawal remove only the affected previews; transient batches
 are not reconstructed by history replay. Shell or JavaScript projections first
 received at completion do not open a transient view; captured effects remain in
