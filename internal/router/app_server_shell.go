@@ -40,7 +40,7 @@ func (u *appServerUI) paintShellDraft(rows []string) {
 // into the running turn; standalone results wait in history for the next input.
 func (u *appServerUI) submitShell() error {
 	if u.orchestrateCheckoutUnavailable() {
-		u.setNotice("Batch checkout unavailable; shell commands are disabled", true)
+		u.setNotice(u.orchestrateInputDisabledMessage("shell commands"), true)
 		return nil
 	}
 	command := strings.TrimSpace(strings.TrimPrefix(u.draft, "!"))

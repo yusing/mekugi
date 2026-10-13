@@ -70,12 +70,10 @@ func (u *appServerUI) workflowCheckResponse(work *orchestrateReviewWork, m appse
 	u.endWorkflowWork(work)
 	result := orchestrate.CheckResult{Generation: d.Generation, Phase: orchestrate.PhaseValidation, Command: work.check.Command, Cwd: child.batch.Cwd, Revision: d.Revision, CheckID: work.check.ID, Outcome: orchestrate.CheckUncertain}
 	var response struct {
-		ExitCode *int   `json:"exitCode"`
-		Stdout   string `json:"stdout"`
-		Stderr   string `json:"stderr"`
+		ExitCode *int `json:"exitCode"`
 	}
 	decodeErr := json.Unmarshal(m.Result, &response)
-	output := work.decodeCheckOutput(0, response.Stdout, true) + work.decodeCheckOutput(1, response.Stderr, true)
+	output := work.decodeCheckOutput(0, "", true) + work.decodeCheckOutput(1, "", true)
 	switch {
 	case m.Error != nil:
 		result.Output = "command/exec: " + m.Error.Message

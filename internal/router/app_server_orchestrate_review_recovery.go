@@ -221,6 +221,11 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 			}
 			return
 		}
+		if u.navigation != nil {
+			if v := u.navigation.views[work.dispatch.ThreadID]; v != nil && v.workflowReview != nil {
+				v.restoreWorkflowReviewStatus(turn.Status)
+			}
+		}
 		work.completed = &appServerTurn{ID: turn.ID, Status: turn.Status, Error: turn.Error}
 		for _, item := range turn.Items {
 			if item.Type == "agentMessage" && item.Delivery != "async" {

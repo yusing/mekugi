@@ -160,8 +160,15 @@ func TestOrchestrateWorkflowReviewerFailureSource(t *testing.T) {
 	if v.agents.agentStatus(*v.session.agent("/root")) != '!' {
 		t.Fatal("review failure unavailable to the shared roster status owner")
 	}
-	if err := v.send([]composerDraft{{text: "replace verdict"}}, false); err != nil || strings.Contains(w.String(), "replace verdict") {
-		t.Fatal("review view accepted manual model input", err, w.String())
+	v.shell.focus = 0
+	for _, input := range []string{"replace verdict", "!pwd", "/btw why"} {
+		v.loadDraft(composerDraft{})
+		v.setNotice("", false)
+		before := w.String()
+		appServerTestKeys(t, v, input+"\r")
+		if w.String() != before || !strings.HasPrefix(v.notice, "Runtime review owns this thread;") {
+			t.Fatal("review input lost its runtime ownership restriction", input, v.notice, w.String())
+		}
 	}
 }
 
@@ -224,5 +231,56 @@ func TestUISnapshotOrchestrateValidationProgress(t *testing.T) {
 		if entry.CallID == work.dispatch.ID && entry.native.running {
 			t.Fatal("completed check remained running")
 		}
+	}
+}
+
+func TestOrchestrateWorkflowRestoredReviewerOutcomes(t *testing.T) {
+	for _, outcome := range []string{"dispatch-failed", "completed", "failed"} {
+		t.Run(outcome, func(t *testing.T) {
+			u, w := workflowUI(t)
+			workflowActiveReviews(t, u, w)
+			batches, err := u.proxy.orchestration.store.Snapshot(u.session.cwd, "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if outcome == "dispatch-failed" {
+				for i := range batches[0].Workflow.Dispatches {
+					d := &batches[0].Workflow.Dispatches[i]
+					if d.ThreadID == "reviewer-c" {
+						d.State, d.HostStatus, d.TurnID = orchestrate.DispatchFailed, "", ""
+					}
+				}
+			}
+			u.closeOrchestratedViews()
+			u.navigation, u.orchestrateThreads, u.orchestrateRequests = nil, nil, nil
+			w.Reset()
+			u.recoverOrchestratedWorkflows(batches)
+			drainOrchestrateWork(t, u)
+			if outcome != "dispatch-failed" {
+				workflowThreadRead(t, u, w, "reviewer-c", outcome, workflowVerdict(u.orchestrateThreads["child"], orchestrate.ReviewCorrectness))
+			}
+			v := u.navigation.views["reviewer-c"]
+			want := "failed"
+			if outcome == "completed" {
+				want = "completed"
+			}
+			u.orchestrationRoster()
+			u.picker.orchestration = &orchestrateRunPicker{batches: batches}
+			u.refreshOrchestratePicker()
+			name := "/Orchestration/" + v.workflowReview.name
+			if u.agents.orchestrationLabels[name] != want {
+				t.Fatal("restored reviewer roster status", u.agents.orchestrationLabels[name], want)
+			}
+			found := false
+			for _, choice := range u.picker.choices {
+				if choice.name == v.thread {
+					found = strings.HasPrefix(choice.description, want)
+				}
+			}
+			a := v.session.agent("/root")
+			if !found || a.Final != (want == "completed") || a.Responding || v.turn != "" || !v.turnStarted.IsZero() || !a.WorkTimer.Since.IsZero() {
+				t.Fatal("reconciled reviewer picker or lifecycle", u.picker.choices, a, v.turn)
+			}
+		})
 	}
 }

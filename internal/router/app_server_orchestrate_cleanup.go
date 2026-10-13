@@ -21,6 +21,14 @@ func (u *appServerUI) orchestrateCheckoutUnavailable() bool {
 	return false
 }
 
+func (u *appServerUI) orchestrateInputDisabledMessage(input string) string {
+	cause := "Batch checkout unavailable"
+	if u.workflowReview != nil {
+		cause = "Runtime review owns this thread"
+	}
+	return cause + "; " + input + " are disabled"
+}
+
 func (p *mekugiProxy) orchestrateCleanupProof(ctx context.Context, workspace, main, name string, publishIntent func() error) (proof orchestrate.Integration, err error) {
 	err = p.journals.transactionWithTiming(ctx, p.replayStore, workspace, main, false, func(j *threadJournal, exists bool) error {
 		run := j.Orchestration

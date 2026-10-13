@@ -24,19 +24,30 @@ func (u *appServerUI) addWorkflowReviewView(child *orchestrateChild, d orchestra
 	v.status = "Ready"
 	v.workflowReview = &workflowReviewView{name: fmt.Sprintf("%s/%s/%d", child.batch.TaskName, d.Kind, d.Generation), restored: restored}
 	if restored {
-		v.awaitingTurn, v.status = false, d.HostStatus
-		if v.status == "" || v.status == "running" {
-			v.status = "interrupted"
+		status := d.HostStatus
+		if d.State == orchestrate.DispatchFailed {
+			status = "failed"
+		} else if status == "" || status == "running" {
+			status = "interrupted"
 		}
 		v.restoreUsage(appServerThreadInfo{ID: d.ThreadID})
-		agent := v.session.agent("/root")
-		agent.Final = d.HostStatus == "completed"
-		v.observeCost(d.ThreadID, agent)
-		if d.HostStatus == "failed" {
-			u.workflowReviewError(d.ThreadID, "Recorded review failed")
-		}
+		v.observeCost(d.ThreadID, v.session.agent("/root"))
+		v.restoreWorkflowReviewStatus(status)
 	}
 	return nil
+}
+
+// Recorded terminal status updates presentation without starting a live clock.
+func (u *appServerUI) restoreWorkflowReviewStatus(status string) {
+	u.awaitingTurn, u.turn, u.status = false, "", status
+	agent := u.session.agent("/root")
+	agent.Final, agent.Responding = status == "completed", false
+	agent.WorkTimer.update(false, u.now())
+	u.applyActivity(nil, u.session.agents)
+	if status == "failed" {
+		u.workflowReviewError(u.thread, "Recorded review failed")
+	}
+	u.dirty = true
 }
 
 func (u *appServerUI) workflowStartingReviewer() bool {

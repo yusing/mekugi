@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"encoding/base64"
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -197,7 +198,8 @@ func TestOrchestrateWorkflowLifecycle(t *testing.T) {
 	if w.Len() != 0 && !strings.Contains(w.String(), `"method":"command/exec"`) {
 		t.Fatal("reviews started before required checks", w.String())
 	}
-	workflowCheck(t, u, w, "printf verified", `{"exitCode":0,"stdout":"verified","stderr":""}`)
+	appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": u.orchestrateThreads["child"].workflowWork[workflowValidation].dispatch.ID, "stream": "stdout", "deltaBase64": base64.StdEncoding.EncodeToString([]byte("verified"))})
+	workflowCheck(t, u, w, "printf verified", `{"exitCode":0,"stdout":"","stderr":""}`)
 	child := u.orchestrateThreads["child"]
 	if len(child.batch.Workflow.Checks) != 1 || child.batch.Workflow.Phase != orchestrate.PhaseReview {
 		t.Fatal("passed check did not start reviews", child.batch.Workflow)
@@ -274,7 +276,8 @@ func TestUISnapshotOrchestrateCheckOutcomes(t *testing.T) {
 			child := u.orchestrateThreads["child"]
 			switch test {
 			case "failed":
-				workflowCheck(t, u, w, "printf check", `{"exitCode":2,"stdout":"","stderr":"boom at line 7"}`)
+				appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": child.workflowWork[workflowValidation].dispatch.ID, "stream": "stderr", "deltaBase64": base64.StdEncoding.EncodeToString([]byte("boom at line 7"))})
+				workflowCheck(t, u, w, "printf check", `{"exitCode":2,"stdout":"","stderr":""}`)
 				correction, _ := workflowTake(t, u, w, "turn/start", "child", orchestrate.DispatchCorrection)
 				text := correction.Params.Input[0].Text
 				if child.batch.Workflow.Phase != orchestrate.PhaseCorrection || !strings.Contains(text, "required check check-1 failed") || !strings.Contains(text, "exit code 2") || !strings.Contains(text, "boom at line 7") {
@@ -288,7 +291,8 @@ func TestUISnapshotOrchestrateCheckOutcomes(t *testing.T) {
 				cancel := workflowCancel(t, u)
 				terminate, _ := workflowTake(t, u, w, "command/exec/terminate", "", workflowValidation)
 				orchestrateTestReply(t, u, terminate, `{}`)
-				workflowCheck(t, u, w, "printf check", `{"exitCode":0,"stdout":"late output","stderr":""}`)
+				appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": child.workflowWork[workflowValidation].dispatch.ID, "stream": "stdout", "deltaBase64": base64.StdEncoding.EncodeToString([]byte("late output"))})
+				workflowCheck(t, u, w, "printf check", `{"exitCode":0,"stdout":"","stderr":""}`)
 				if result := <-cancel.reply; result.err != nil || child.batch.Workflow.Phase != orchestrate.PhaseCanceled || len(child.batch.Workflow.Checks) != 0 {
 					t.Fatal("late check result revived canceled validation", result, child.batch.Workflow)
 				}
@@ -391,7 +395,8 @@ func TestOrchestrateWorkflowReviewWaiver(t *testing.T) {
 			orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"corrected","status":"inProgress"}}}`)
 			workflowCompleted(t, u, "child", "corrected", "corrections complete")
 			if required {
-				workflowCheck(t, u, w, "printf check", `{"exitCode":0,"stdout":"checked"}`)
+				appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": u.orchestrateThreads["child"].workflowWork[workflowValidation].dispatch.ID, "stream": "stdout", "deltaBase64": base64.StdEncoding.EncodeToString([]byte("checked"))})
+				workflowCheck(t, u, w, "printf check", `{"exitCode":0,"stdout":""}`)
 			}
 			if notice := workflowNotice(t, u, w); !strings.Contains(notice, "Further reviews waived") || !strings.Contains(notice, follow.reviewWaiver) || !strings.Contains(notice, "corrections complete") {
 				t.Fatal("waived readiness lost its authority or report", notice)

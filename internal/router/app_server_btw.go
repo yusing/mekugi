@@ -63,7 +63,7 @@ func (p *mekugiProxy) isBTWThread(thread string) bool {
 
 func (u *appServerUI) submitBTW() error {
 	if u.orchestrateCheckoutUnavailable() {
-		u.setNotice("Batch checkout unavailable; side questions are disabled", true)
+		u.setNotice(u.orchestrateInputDisabledMessage("side questions"), true)
 		return nil
 	}
 	text := strings.TrimSpace(u.draft)
