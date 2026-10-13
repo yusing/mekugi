@@ -10,16 +10,29 @@ func (r liveActivityRecord) statusAnimating() bool {
 
 func (v *liveActivityView) hasLiveStatus() bool {
 	if !v.childrenOnly {
+		for _, entry := range v.entries {
+			if entry.Kind == "progress" && v.visible(entry.activityPaneEntry) && entry.statusAnimating() {
+				return true
+			}
+		}
 		return false
 	}
-	for _, agent := range v.agents {
-		if agent.Responding {
-			source, owner := v, agent.Name
-			if agent.Name == "/root" && v.mainView != nil {
-				source, owner = v.mainView, "Main"
-			}
-			if i := source.latest(owner); i >= 0 && source.entries[i].statusAnimating() {
-				return true
+	for _, agents := range [][]activityPaneAgent{v.agents, v.orchestration} {
+		for _, agent := range agents {
+			if agent.Responding {
+				source, owner := v, agent.Name
+				if other := v.orchestrationSources[agent.Name]; other != nil {
+					if v.orchestrationLabels[agent.Name] != "" || v.orchestrationRetained[agent.Name] {
+						continue
+					}
+					source, owner = other, "/root"
+				}
+				if owner == "/root" && source.mainView != nil {
+					source, owner = source.mainView, "Main"
+				}
+				if i := source.latest(owner); i >= 0 && source.entries[i].statusAnimating() {
+					return true
+				}
 			}
 		}
 	}

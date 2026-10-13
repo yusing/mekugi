@@ -94,7 +94,7 @@ func TestUISnapshotOrchestrateActivity(t *testing.T) {
 		completed.Status = "inProgress"
 		entries = nil
 		restore(completed, "interrupted")
-		if len(entries) != 1 || entries[0].Text != "Wait unfinished (history only) · batch, check" || entries[0].native.running {
+		if len(entries) != 1 || entries[0].Text != "Wait unfinished (history only) · batch, check" || entries[0].native.running || parseLiveActivity(entries[0])[0].Live {
 			t.Fatal("restored targeted wait revived work", entries)
 		}
 	}
@@ -196,4 +196,45 @@ func TestUISnapshotOrchestrateSharedEvents(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUISnapshotOrchestrateWaitBreathing(t *testing.T) {
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+	v := u.navigation.views["child"]
+	now := time.Unix(0, 0)
+	u.clock = func() time.Time { return now }
+	u.view.clock, u.agents.clock = u.clock, u.clock
+	u.view.painter.Theme = livediff.DarkTheme
+	item := appServerItem{ID: "wait", Type: "mcpToolCall", Server: "orchestrate", Tool: "wait_agent", Status: "inProgress", Arguments: jsontext.Value(`{"targets":["batch","/root/check"],"timeout_ms":12500}`)}
+	var rows []string
+	for _, state := range []string{"live", "completed", "failed", "interrupted"} {
+		item.ID, item.Status = state, "inProgress"
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": state}})
+		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": state, "item": item})
+		switch state {
+		case "completed", "failed":
+			item.Status = state
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": state, "item": item})
+		case "interrupted":
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": state, "status": state}})
+		}
+		v.orchestrationRoster()
+		if u.view.hasLiveStatus() != (state == "live") || v.agents.hasLiveStatus() != (state == "live") {
+			t.Fatalf("%s: transcript or other thread roster animation scheduling", state)
+		}
+		rows = append(rows, state)
+		for _, phase := range []time.Duration{0, time.Second, 2 * time.Second} {
+			now = time.Unix(0, 0).Add(phase)
+			frame := u.view.renderFeed(80, 100).lines
+			// Only retain this state's row; preceding completed waits stay visible.
+			got := frame[len(frame)-1]
+			rows = append(rows, got, "plain after wait")
+		}
+		if state == "live" { // Settle this row before the next independent lifecycle.
+			item.Status = "completed"
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": state, "item": item})
+		}
+	}
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-wait-breathing.txt", rows, 80)
 }

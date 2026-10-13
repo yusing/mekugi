@@ -17,6 +17,8 @@ func TestUISnapshotAgentWaitTimeout(t *testing.T) {
 	for _, kind := range []string{"native", "model", "mcp", "unknown"} {
 		t.Run(kind, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
+			u.clock = func() time.Time { return time.Unix(0, 0) }
+			u.view.clock = u.clock
 			f := newNativeTraceFixture(t)
 			u.proxy = &mekugiProxy{nativeTrace: &nativeToolTrace{directory: f.root}}
 			f.start("main", "cell", "outer", "source")

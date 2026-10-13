@@ -212,7 +212,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			ok = false
 		}
 		for k := it.first; k <= it.last; k++ {
-			if n := v.entries[k].native; n != nil && n.running {
+			if entry := v.entries[k]; entry.native != nil && (entry.native.running || entry.Kind == "progress" && entry.statusAnimating()) {
 				ok = false
 				break
 			}

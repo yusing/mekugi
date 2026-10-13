@@ -1,2 +1,2 @@
-"\x1b[2mWaiting for agent · \x1b[38;5;133malpha\x1b[m                                                       "
+"\x1b[38;2;96;96;96mWaiting for agent · \x1b[38;5;133;2malpha\x1b[m                                                       "
 "plain                                                                           "

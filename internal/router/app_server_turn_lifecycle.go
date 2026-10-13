@@ -108,12 +108,24 @@ func (u *appServerUI) endTurnWaits(thread, turn string, now time.Time) []activit
 		}
 		for _, entry := range view.entries {
 			n := entry.native
-			if n == nil || n.thread != thread || n.turn != turn || n.wait == nil || (n.phase == "item/completed" || n.phase == "turn/completed") {
+			if n == nil || n.thread != thread || n.turn != turn || (n.phase == "item/completed" || n.phase == "turn/completed") {
 				continue
 			}
-			native, block := *n, *n.wait
-			block.Body = "Wait ended"
-			native.phase, native.wait = "turn/completed", &block
+			wait := n.wait
+			if wait == nil && n.orchestration != nil && n.orchestration.Kind == "progress" {
+				wait = n.orchestration
+			}
+			if wait == nil {
+				continue
+			}
+			native, block := *n, *wait
+			block.Body, block.Live = "Wait ended", false
+			native.phase = "turn/completed"
+			if n.wait != nil {
+				native.wait = &block
+			} else {
+				native.orchestration = &block
+			}
 			entry.native, entry.Text = &native, block.ProgressText()
 			entry.Seq, entry.Observed = u.session.next(), now
 			entries = append(entries, entry.activityPaneEntry)
