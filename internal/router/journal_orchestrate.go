@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -266,14 +267,19 @@ func (s *journalStore) relatedJournals(store *mekugiReplayStore, workspace, call
 // The reader runs under the journal and replay locks.
 func journalRunMembership(workspace, caller string, read func(string, string) (threadJournal, bool, error)) (threadJournal, error) {
 	seen := make(map[string]bool)
+	valid := true
 	var root threadJournal
 	for thread := caller; ; {
 		j, exists, err := read(workspace, thread)
 		if err != nil {
 			return threadJournal{}, err
 		}
-		if !exists || !j.IdentityKnown || j.IdentityConflicted || seen[thread] {
+		if !exists || seen[thread] {
 			return threadJournal{}, nil
+		}
+		valid = valid && j.IdentityKnown && !j.IdentityConflicted
+		if j.Orchestration != nil && (!valid || j.Parent != "") {
+			return threadJournal{}, errors.New("conflicted orchestration identity")
 		}
 		seen[thread] = true
 		if j.Parent == "" {
@@ -333,38 +339,60 @@ func (s *journalStore) orchestrationRequestRoot(ctx context.Context, store *meku
 				return nil
 			}
 		}
+		// Discover scopes without applying compaction's identity gate. Ordinary
+		// recovery may retain incomplete native ancestry; only a run-bearing
+		// chain requires orchestration authorization here.
+		scopes := []string{workspace}
 		if store != nil {
-			retained, err := store.compactionWorkspace(thread)
-			if errors.Is(err, errNoRetainedJournalWorkspace) && parent != "" {
-				retained, err = store.compactionWorkspace(parent)
+			retained, err := store.orchestrationJournalScopes(thread)
+			if err == nil && len(retained) == 0 && parent != "" {
+				retained, err = store.orchestrationJournalScopes(parent)
 			}
-			if err != nil && !errors.Is(err, errNoRetainedJournalWorkspace) {
+			if err != nil {
 				return err
 			}
-			if err == nil {
-				if workspace != "" {
-					rel, err := filepath.Rel(workspace, retained)
-					if err != nil || !filepath.IsLocal(rel) {
-						return nil
-					}
-				}
-				workspace = retained
+			if len(retained) != 0 {
+				scopes = retained
 			}
 		}
-		if workspace == "" {
-			return nil
+		for _, scope := range scopes {
+			if scope == "" {
+				continue
+			}
+			_, exists, err := read(scope, thread)
+			if err != nil {
+				return err
+			}
+			caller := thread
+			if !exists && parent != "" {
+				caller = parent
+			}
+			candidate, err := journalRunMembership(scope, caller, read)
+			if err != nil {
+				return err
+			}
+			if candidate.Orchestration == nil {
+				continue
+			}
+			if len(scopes) != 1 {
+				return errors.New("orchestration workspace is ambiguous")
+			}
+			if store != nil {
+				// A proven run still requires the original unique retained scope,
+				// including execution records outside its journal workspace.
+				if _, err := store.compactionWorkspace(caller); err != nil && !errors.Is(err, errNoRetainedJournalWorkspace) {
+					return err
+				}
+			}
+			if workspace != "" {
+				rel, err := filepath.Rel(workspace, scope)
+				if err != nil || !filepath.IsLocal(rel) {
+					return nil
+				}
+			}
+			root = candidate
 		}
-
-		_, exists, err := read(workspace, thread)
-		if err != nil {
-			return err
-		}
-		caller := thread
-		if !exists && parent != "" {
-			caller = parent
-		}
-		root, err = journalRunMembership(workspace, caller, read)
-		return err
+		return nil
 	}
 	if store != nil {
 		err = store.locked(ctx, resolve)
@@ -372,4 +400,30 @@ func (s *journalStore) orchestrationRequestRoot(ctx context.Context, store *meku
 		err = resolve()
 	}
 	return root, err
+}
+
+// Scope discovery is not membership. Only the requesting session's retained
+// journals are candidates; journalRunMembership validates their run ancestry.
+func (s *mekugiReplayStore) orchestrationJournalScopes(thread string) ([]string, error) {
+	session, err := s.readRetainedSession(storageSessionName(thread))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var scopes []string
+	for name := range session.Files {
+		if !strings.HasPrefix(name, "journal-") {
+			continue
+		}
+		j, _, err := readJournalRecord(filepath.Join(s.directory, name))
+		if err != nil {
+			return nil, err
+		}
+		if j.Thread == thread && filepath.IsAbs(j.Workspace) && filepath.Clean(j.Workspace) == j.Workspace {
+			scopes = append(scopes, j.Workspace)
+		}
+	}
+	return scopes, nil
 }

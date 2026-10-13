@@ -222,3 +222,41 @@ func TestOrchestrateInstructionWorkspaceShapes(t *testing.T) {
 		t.Fatal("conflicting retained identity was accepted")
 	}
 }
+
+func TestOrchestrateInstructionRejectsUncertainRunAncestry(t *testing.T) {
+	for _, mode := range []string{"ambiguous-workspace", "conflicted-native-child"} {
+		t.Run(mode, func(t *testing.T) {
+			replay, err := openMekugiReplayStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, launch := orchestrateIdentityPendingTurnWithReplay(t, replay)
+			orchestrateTestReply(t, u, launch, `{"turn":{"id":"initial"}}`)
+			workspace, thread, parent := t.TempDir(), "main", ""
+			if mode == "conflicted-native-child" {
+				workspace, thread, parent = u.orchestrateThreads["child"].batch.Cwd, "native", "child"
+			}
+			ctx, release, err := replay.beginSession(t.Context(), thread, "identity-fixture")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			if err := u.proxy.journals.initialize(ctx, replay, workspace, thread, "/root", ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := u.proxy.journals.bindIdentity(ctx, replay, workspace, thread, parent, "/root", parent == ""); err != nil {
+				t.Fatal(err)
+			}
+			proxy := newToolPluginTestProxy(t)
+			proxy.replayStore = replay
+			original := orchestrateInstructionConflicts[0][0]
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": mustMarshalJSON(original)}}
+			if _, err := proxy.prepareModelRequest(t.Context(), &request, "", thread, codexTurnMetadata{}, true, true); err == nil {
+				t.Fatal("uncertain retained run ancestry admitted")
+			}
+			if jsonString(request.fields, "instructions") != original {
+				t.Fatal("unproven membership rewrote caller instructions")
+			}
+		})
+	}
+}

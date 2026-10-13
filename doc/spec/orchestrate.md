@@ -649,8 +649,10 @@ nonmatching rules. Runtime section markers inside fenced examples remain literal
 only an unfenced owned section is refreshed. Without one, policy is inserted before
 the caller text so an open example fence cannot absorb it. Projection is idempotent.
 Quoted workflow text cannot select a run;
-ordinary non-orchestration requests retain their existing policy. Fresh children,
-resumed Main/children and context resets use the same retained authority without
+ordinary non-orchestration requests retain their existing policy.
+Non-orchestration history does not impose orchestration identity checks on context
+recovery; compaction retains its own continuity authorization and unavailable-reset notices.
+Fresh children, resumed Main/children and context resets use the same retained authority without
 live parents. Native descendants retain their assigned roles within that division
 of work. Explicit assignments and compatible caller policy remain effective.
 Bare `/orchestrate` opens a picker of this Main's retained batches, reviewers and coordinator.
