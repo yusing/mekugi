@@ -25,6 +25,7 @@ pjdoc:
     - diagnose.md
     - ax.md
     - session.md
+    - session_replay.md
     - metrics.md
     - changes.md
     - execution.md
@@ -64,4 +65,6 @@ linked, not copied.
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-EXECUTION-002`](execution.md): Bash and Linux dash-backed sh command timing and per-segment list tracking
 - [`REQ-EXECUTION-003`](execution.md): approval guard for remote VCS writes
+- [`REQ-EXECUTION-004`](execution.md): sudo command approval and secret password entry
 - [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
+- [`REQ-GUIDE-002`](guide.md): native post-compaction recovery

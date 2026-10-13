@@ -59,7 +59,9 @@ checks, not evidence that a model resumes better or uses fewer task tokens.
 
 The non-repository fixture emitted no compaction workspace metadata. The router
 can recover only a unique prior selected workspace from durable requesting-thread
-records, never its process cwd. Ambiguous retained workspaces keep provider fallback.
+records, never its process cwd. At that time, ambiguous retained workspaces kept
+provider fallback. Under the [current reset policy](spec/journal.md#router-answered-compaction),
+`auto` stops with an error and no provider request; `slice` retains fallback.
 
 `TestJournalSliceResetNativeCodexE2E` also passed with CLI 0.158.0. The shared
 app-server driver requested manual local compaction, accepted the router summary,
@@ -165,10 +167,12 @@ Launch the router and probe together from this repository:
 ```sh
 go run ./cmd/mekugi codex --model gpt-5.6-luna \
   --sandbox workspace-write --ask-for-approval never \
-  exec --ephemeral -C /absolute/path/inside/this/repository "PROMPT"
+  exec --ephemeral -C /absolute/path/to/disposable/fixture "PROMPT"
 ```
 
 Use a disposable temporary directory outside the repository for probes and
-verify the resulting paths. The wrapper stops its router when Codex exits.
+verify the resulting paths. Initialize it as a Git repository when checking
+selected-workspace capture; a non-repository directory may supply no workspace
+metadata. The wrapper stops its router when Codex exits.
 Dated observations do not substitute for focused E2E tests with the installed
 Codex.

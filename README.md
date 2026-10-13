@@ -251,6 +251,12 @@ Coverage is incomplete for runtime-computed commands, `eval`, scripts/sourced fi
 arbitrary programs invoking VCS internally. See [guard
 limits](doc/spec/execution.md#req-execution-003--guard-remote-vcs-writes).
 
+Interactive sudo commands also ask for approval, even with cached credentials or
+passwordless sudo. If authentication is needed afterward, a separate secret password
+dialog keeps the answer out of model input and retained history. Sudo approval works
+independently of `--vcs-guard` and grants no sandbox permissions. See
+[sudo support and limits](doc/spec/execution.md#req-execution-004--unlock-sudo-through-the-native-dialog).
+
 ### Headless slice plans
 
 ```sh
