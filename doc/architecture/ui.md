@@ -33,7 +33,7 @@ composed visible frame and removes their private transport before terminal deliv
 A selection snapshots those annotations with its rows. A scrollable selection
 retains the full rendered document and keeps its own
 viewport, so later streaming cannot change selected or newly exposed source rows.
-The snapshot retains Markdown annotations, original click targets, pinned rows,
+The snapshot retains Markdown annotations, original click targets,
 and saved Diff gutters and change attribution. Main, Activity, saved Diff,
 side-answer docks and output dialogs share the selection mouse and scroll model;
 the caller retains composition and dismissal policy. Output dialogs defer live
