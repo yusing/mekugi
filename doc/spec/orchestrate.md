@@ -551,10 +551,22 @@ Orchestration calls use the shared subagent event presentation in the caller's
 Main or Activity feed. Italic headers and accent-colored rails distinguish
 orchestration from native subagent events without changing their wording.
 Confirmed launches use start events; delivered messages
-and follow-ups use attributed message events. Waiting uses the shared wait
-presentation and names all or the selected batches. Live transcript waits use the
-same breathing style as roster waits; completed, failed, interrupted, and restored
-waits remain static. Consecutive wait calls remain
+and follow-ups use attributed message events. Active waits and pending
+registrations name all or the selected batches. A returned event replaces that
+selection with only its source batch and reason: message, done, failure, blocker,
+question or approval, with its reported status when relevant. A message does not
+claim that its sender or any other selected batch finished. Timeout, cancellation,
+unconfirmed or failed delivery, acknowledged delivery without a repeated event,
+and replies without an event have distinct labels. Event payloads remain in the
+output dialog; the row does not expose message or review text. Logical wait
+registration and later host notifications keep their existing identities and
+delivery behavior. A delayed notification updates the registered row after
+acknowledgement, retaining its host item identity and position. Selected results stay in the run's
+presentation history after delivery; repeated tool calls still omit the delivered
+event. Resume restores these rows without delivering notifications again. Older
+records that no longer contain their event show delivery without an inferred source.
+Live transcript waits use the same breathing style as roster waits;
+completed, failed, interrupted, and restored waits remain static. Consecutive wait calls remain
 peer progress rows, without nested wait bullets. Other calls show concise action labels, supplied targets and observed
 call states. Queued input remains queued, and call completion does not claim
 that a batch's work or integration finished. Errors remain visible in the feed.

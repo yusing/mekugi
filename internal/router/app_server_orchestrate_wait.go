@@ -50,6 +50,9 @@ func (u *appServerUI) waitOrchestratedEvent(command *orchestrateCommand) {
 		return func() {
 			command.reply <- orchestrateResult{wait: &w, err: err}
 			if err == nil {
+				if command.waitCancel != "" && w.State == "canceled" {
+					u.observeOrchestrationWait(command.workspace, command.main, w)
+				}
 				u.advanceOrchestratedWaits(command.workspace, command.main, nil)
 			}
 		}
@@ -211,6 +214,11 @@ func (u *appServerUI) recordOrchestratedWait(r orchestrateRPC, state, message st
 				u.setNotice("Orchestration wait acknowledgement: "+err.Error(), true)
 			} else if message != "" {
 				u.setNotice("Orchestration wait delivery: "+message, true)
+			}
+			if err == nil {
+				wait := *r.wait
+				wait.State, wait.Error = state, message
+				u.observeOrchestrationWait(r.waitWorkspace, r.waitMain, wait)
 			}
 		}
 	})

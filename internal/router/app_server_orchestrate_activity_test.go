@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -88,13 +89,13 @@ func TestUISnapshotOrchestrateActivity(t *testing.T) {
 		completed.Arguments = jsontext.Value(`{"targets":["/root/batch","check"]}`)
 		entries = nil
 		restore(completed, "completed")
-		if len(entries) != 1 || entries[0].Kind != "progress" || entries[0].Text != "Finished waiting · batch, check" {
-			t.Fatal("restored wait lost its target presentation", entries)
+		if len(entries) != 1 || entries[0].Kind != "progress" || entries[0].Text != "Wait ended (no event reported)" {
+			t.Fatal("restored wait invented a result", entries)
 		}
 		completed.Status = "inProgress"
 		entries = nil
 		restore(completed, "interrupted")
-		if len(entries) != 1 || entries[0].Text != "Wait unfinished (history only) · batch, check" || entries[0].native.running || parseLiveActivity(entries[0])[0].Live {
+		if len(entries) != 1 || entries[0].Text != "Wait unfinished (history only)" || entries[0].native.running || parseLiveActivity(entries[0])[0].Live {
 			t.Fatal("restored targeted wait revived work", entries)
 		}
 	}
@@ -110,6 +111,54 @@ func TestOrchestrateActivityOutputRetention(t *testing.T) {
 	block := entry.native.orchestration
 	if len(block.Tail) != 0 || block.TailOmitted != 0 || len(block.Output.View().Lines) != 100 {
 		t.Fatal("raw output reached the feed or dialog retention was lost")
+	}
+}
+
+func TestOrchestrateWaitEventLiveAndHistory(t *testing.T) {
+	// The same returned event is available as MCP structured content or text.
+	// Neither the seven selected targets nor the message body is the wake source.
+	result := `{"id":"wait-id","state":"completed","event_id":"message:report-id","event":{"task_name":"archive_integrated","thread_id":"child","kind":"message","message":"private review payload"}}`
+	for _, structured := range []bool{false, true} {
+		u, wire := newAppServerTestUI()
+		u.session.start("main", t.TempDir())
+		u.agents = newLiveActivityView()
+		item := appServerItem{ID: "wait-id", Type: "mcpToolCall", Server: "orchestrate", Tool: "wait_agent", Status: "inProgress",
+			Arguments: jsontext.Value(`{"targets":["batch","archive_integrated","check","review","docs","tests","cleanup"]}`)}
+		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+		if len(u.view.entries[0].native.orchestration.WaitTargets) != 7 {
+			t.Fatal("active wait lost selected targets")
+		}
+		content := map[string]any{"content": []any{map[string]any{"type": "text", "text": result}}}
+		if structured {
+			content["structuredContent"] = jsontext.Value(result)
+		}
+		item.Status, item.Result = "completed", mustMarshalJSON(content)
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+		const want = "Wait yielded · archive_integrated: Message"
+		if len(u.view.entries) != 1 || u.view.entries[0].Text != want || u.view.entries[0].native.item != "wait-id" {
+			t.Fatal("wait result lost source or call identity", u.view.entries)
+		}
+		for _, agent := range []string{"Main", "/root/batch"} {
+			var entries []activityPaneEntry
+			if agent == "Main" {
+				u.view = newLiveActivityView()
+				u.restoreHistoryItem(appServerHistoryTurn{ID: "turn", Status: "completed"}, item)
+				entries = append(entries, u.view.entries[0].activityPaneEntry)
+			} else {
+				last := -1
+				u.restoreActivityItem(appServerThreadInfo{ID: "child"}, appServerHistoryTurn{ID: "turn", Status: "completed"}, item, agent, time.Time{}, &entries, &last)
+			}
+			if len(entries) != 1 || entries[0].Text != want || entries[0].native.running {
+				t.Fatal("history lost the event or revived work", entries)
+			}
+			block := parseLiveActivity(entries[0])[0]
+			if got := block.Output.View().Lines; len(got) != 1 || got[0] != result {
+				t.Fatal("history changed result identity or payload", got)
+			}
+		}
+		if wire.Len() != 0 {
+			t.Fatal("presentation dispatched host work")
+		}
 	}
 }
 
@@ -249,17 +298,179 @@ func TestUISnapshotOrchestrateLogicalWait(t *testing.T) {
 	u.view.painter.Theme = livediff.DarkTheme
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	for _, state := range []string{"registered", "canceled", "uncertain", "completed"} {
-		args := map[string]any{"targets": []string{"batch"}}
-		if state == "canceled" {
+	for _, tc := range []struct {
+		name, result string
+	}{
+		{"registered", `{"state":"registered"}`},
+		{"message", `{"state":"completed","event":{"task_name":"archive_integrated","kind":"message","message":"private payload"}}`},
+		{"done", `{"state":"completed","event":{"task_name":"batch","kind":"done","status":"completed"}}`},
+		{"failure", `{"state":"completed","event":{"task_name":"batch","kind":"failure","status":"storage_failed"}}`},
+		{"timeout", `{"state":"completed","timed_out":true}`},
+		{"canceled", `{"state":"canceled"}`},
+		{"uncertain", `{"state":"uncertain","event":{"task_name":"batch","kind":"message"}}`},
+		{"delivered", `{"state":"delivered"}`},
+		{"no-event", `{"state":"completed"}`},
+	} {
+		args := map[string]any{"targets": []string{"batch", "archive_integrated", "check", "review", "docs", "tests", "cleanup"}}
+		if tc.name == "canceled" {
 			args = map[string]any{"cancel_id": "wait-id"}
 		}
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
-			"id": state, "type": "mcpToolCall", "server": "orchestrate", "tool": "wait_agent", "status": "completed", "arguments": args,
-			"result": map[string]any{"structuredContent": map[string]any{"id": "wait-id", "state": state}},
+			"id": tc.name, "type": "mcpToolCall", "server": "orchestrate", "tool": "wait_agent", "status": "completed", "arguments": args,
+			"result": map[string]any{"structuredContent": jsontext.Value(tc.result)},
 		}})
 	}
-	rows, _ := u.mainFrame(90, 12, 0)
+	rows, _ := u.mainFrame(100, 23, 0)
 	assertNativeUISnapshot(t, "orchestration-logical-wait", rows)
-	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-logical-wait-styles.txt", append(rows, "plain after wait"), 90)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-logical-wait-styles.txt", append(rows, "plain after wait"), 100)
+}
+
+func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
+	var rows []string
+	cases := []struct{ name, want string }{
+		{"message", "Wait yielded · batch: Message"},
+		{"failure", "Wait yielded · batch: Failure (storage failed)"},
+		{"timeout", "Wait timed out"},
+		{"rejected", "Wait delivery failed · batch: Message"},
+		{"canceled", "Wait canceled"},
+	}
+	ran := 0
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ran++
+			u, launch := orchestrateIdentityPendingTurn(t)
+			orchestrateTestReply(t, u, launch, `{"turn":{"id":"child-turn"}}`)
+			store, workspace := u.proxy.orchestration.store, u.session.cwd
+			now := time.Unix(0, 0)
+			u.clock, u.view.clock = func() time.Time { return now }, func() time.Time { return now }
+			u.view.painter.Theme = livediff.DarkTheme
+			targets := []string{"batch"}
+			if tc.name == "message" {
+				for _, name := range []string{"check", "review", "docs", "tests", "cleanup", "other"} {
+					if _, err := store.Prepare(t.Context(), workspace, "main", name); err != nil {
+						t.Fatal(err)
+					}
+					targets = append(targets, name)
+				}
+			}
+			command := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", tool: "wait_agent", callID: "logical-wait", waitTargets: targets, reply: make(chan orchestrateResult, 1)}
+			if tc.name == "timeout" {
+				command.waitTimeout = 1
+			}
+			u.startOrchestratedChild(command)
+			drainOrchestrateWork(t, u)
+			registration := <-command.reply
+			if registration.err != nil || registration.wait.State != "registered" {
+				t.Fatal("wait did not register", registration)
+			}
+			item := appServerItem{ID: "mcp-item", Type: "mcpToolCall", Server: "orchestrate", Tool: "wait_agent", Status: "completed",
+				Arguments: mustMarshalJSON(map[string]any{"targets": targets}), Result: mustMarshalJSON(map[string]any{
+					"structuredContent": registration.wait,
+					"content":           []any{map[string]any{"type": "text", "text": string(mustMarshalJSON(registration.wait))}},
+				})}
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			if tc.name == "message" {
+				rows = append(rows, u.view.painter.Block(u.view.entries[0].blocks[0], 100)...)
+			}
+			// The coordinator still owns the wait while another root is viewed.
+			u.navigation.viewed = u.navigation.views["child"]
+			wire := u.client.Input.(*appServerTestInput)
+			switch tc.name {
+			case "timeout":
+				now = now.Add(time.Millisecond)
+				u.advanceOrchestratedWaits(workspace, "main", nil)
+			case "canceled":
+				cancel := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", tool: "wait_agent", callID: "cancel", waitCancel: command.callID, reply: make(chan orchestrateResult, 1)}
+				u.startOrchestratedChild(cancel)
+			default:
+				event := orchestrateEvent{ID: "wake-event", Task: "batch", Thread: "child", Kind: "message", Message: "private event payload"}
+				if tc.name == "failure" {
+					event.Kind, event.Status = "failure", "storage_failed"
+				}
+				u.publishOrchestratedEvent(u.orchestrateThreads["child"], event)
+			}
+			drainOrchestrateWork(t, u)
+			if tc.name != "canceled" {
+				if !strings.HasPrefix(u.view.entries[0].Text, "Wait registered") {
+					t.Fatal("unacknowledged delivery claimed completion")
+				}
+				inject := btwTestRequest(t, wire, "thread/inject_items", "main")
+				if tc.name == "rejected" {
+					orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"delivery rejected"}}`, inject.ID))
+				} else {
+					orchestrateTestReply(t, u, inject, `{}`)
+				}
+			}
+			items := []appServerItem{item}
+			assertResult := func(view *appServerUI) {
+				t.Helper()
+				if len(view.view.entries) != len(items) {
+					t.Fatal("delayed result duplicated or lost the wait row", len(view.view.entries))
+				}
+				if row := view.view.entries[0]; row.Text != tc.want || row.native.item != item.ID || row.native.running {
+					t.Fatalf("delayed result row: %q, item=%q, running=%t", row.Text, row.native.item, row.native.running)
+				}
+				var result orchestrate.Wait
+				if err := json.Unmarshal([]byte(strings.Join(view.view.entries[0].blocks[0].Output.View().Lines, "\n")), &result); err != nil || result.ID != command.callID {
+					t.Fatal("result dialog lost wait identity", result, err)
+				}
+				if tc.name != "timeout" && tc.name != "canceled" && (result.EventID != "wake-event" || !strings.Contains(string(result.Event), "private event payload")) {
+					t.Fatal("result dialog lost event identity or payload", result)
+				}
+				if len(items) == 2 {
+					row := view.view.entries[1]
+					if row.Text != "Wait result delivered" || row.native.item != items[1].ID {
+						t.Fatalf("delivery acknowledgement row: %q, item=%q", row.Text, row.native.item)
+					}
+					if got := strings.Join(row.blocks[0].Output.View().Lines, "\n"); got != string(mustMarshalJSON(registration.wait)) {
+						t.Fatalf("delivery acknowledgement changed host output: %s", got)
+					}
+				}
+			}
+			assertResult(u)
+			rows = append(rows, u.view.painter.Block(u.view.entries[0].blocks[0], 100)...)
+			if tc.name == "message" {
+				u.startOrchestratedChild(command)
+				drainOrchestrateWork(t, u)
+				registration = <-command.reply
+				if registration.err != nil || registration.wait.State != "delivered" || len(registration.wait.Event) != 0 {
+					t.Fatal("repeated call did not acknowledge delivery", registration)
+				}
+				repeated := item
+				repeated.ID = "mcp-repeat"
+				repeated.Result = mustMarshalJSON(map[string]any{
+					"structuredContent": registration.wait,
+					"content":           []any{map[string]any{"type": "text", "text": string(mustMarshalJSON(registration.wait))}},
+				})
+				items = append(items, repeated)
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": repeated})
+				assertResult(u)
+				rows = append(rows, u.view.painter.Block(u.view.entries[1].blocks[0], 100)...)
+			}
+			orders := []bool{tc.name == "timeout"}
+			if tc.name == "message" {
+				orders = []bool{false, true}
+			}
+			for _, recoveryFirst := range orders {
+				resumed, resumedWire := resumeOrchestrationMain(t, store, workspace)
+				resumedWire.Reset()
+				if recoveryFirst { // Recovery can finish before history arrives.
+					drainOrchestrateWork(t, resumed)
+				}
+				for _, recorded := range items {
+					resumed.restoreHistoryItem(appServerHistoryTurn{ID: "turn", Status: "completed"}, recorded)
+				}
+				drainOrchestrateWork(t, resumed)
+				assertResult(resumed)
+				if resumedWire.Len() != 0 {
+					t.Fatal("restoration dispatched host work", resumedWire.String())
+				}
+			}
+		})
+	}
+	if t.Failed() || ran != len(cases) { // A combined snapshot requires all cases.
+		return
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/orchestration-delayed-wait.txt", strings.Join(rows, "\n"))
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-delayed-wait-styles.txt", append(rows, "plain after wait"), 100)
 }

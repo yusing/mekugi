@@ -1,0 +1,7 @@
+• Wait registered · batch, check, cleanup, docs, other, review, tests
+• Wait yielded · batch: Message
+• Wait result delivered
+• Wait yielded · batch: Failure (storage failed)
+• Wait timed out
+• Wait delivery failed · batch: Message
+• Wait canceled

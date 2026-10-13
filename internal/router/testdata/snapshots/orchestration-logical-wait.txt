@@ -1,12 +1,23 @@
-• Wait registered · batch
+• Wait registered · batch, archive_integrated, check, review, docs, tests, cleanup
+
+• Wait yielded · archive_integrated: Message
+
+• Wait yielded · batch: Done
+
+• Wait yielded · batch: Failure (storage failed)
+
+• Wait timed out
 
 • Wait canceled
 
-• Wait delivery unconfirmed · batch
+• Wait delivery unconfirmed · batch: Message
 
-• Finished waiting · batch
+• Wait result delivered
+
+• Wait ended (no event reported)
 
 
-╭────────────────────────────────────────────────────────────────────────────────────────╮
-│ ❯                                                                                      │
-╰─────────────────────────────────────────────────────────────────────────────────── 0% ─╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                                │
+╰───────────────────────────────────────────────────────────────────────────────────────────── 0% ─╯

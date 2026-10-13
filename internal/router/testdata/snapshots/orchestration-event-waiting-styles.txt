@@ -1,4 +1,4 @@
-"\x1b[38;2;86;212;221;2;3m• Finished waiting · \x1b[38;5;74mbatch\x1b[38;2;86;212;221m, \x1b[38;5;39mcheck\x1b[m                                     "
+"\x1b[38;2;86;212;221;2;3m• Wait ended (no event reported)\x1b[m                                      "
 "                                                                      "
 "\x1b[38;2;96;96;96;3m• Waiting for agent · \x1b[38;5;170;2mall\x1b[m                                             "
 "                                                                      "

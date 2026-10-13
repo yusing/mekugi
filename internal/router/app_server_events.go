@@ -48,6 +48,8 @@ type appServerSession struct {
 	waitStore       *mekugiReplayStore
 	waitContext     context.Context
 
+	orchestrationWaitResults map[string]*activityui.Block // Retained results by logical wait ID in this root.
+
 	compactionRollout appServerThreadInfo // Host-selected Main rollout, without its history.
 }
 
@@ -152,6 +154,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.commands = make(map[[3]string]*appServerCommandRun)
 	s.summaries = make(map[[3]string]*appServerSummaryRun)
 	s.waits = make(map[[3]string][]appServerWaitTarget)
+	s.orchestrationWaitResults = make(map[string]*activityui.Block)
 	s.waitStore, s.waitContext = nil, nil
 	s.cwd = cwd
 }

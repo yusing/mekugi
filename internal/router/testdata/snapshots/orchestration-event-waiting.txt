@@ -1,4 +1,4 @@
-• Finished waiting · batch, check
+• Wait ended (no event reported)
 
 • Waiting for agent · all
 

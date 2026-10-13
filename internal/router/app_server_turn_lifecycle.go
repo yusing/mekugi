@@ -124,6 +124,7 @@ func (u *appServerUI) endTurnWaits(thread, turn string, now time.Time) []activit
 			if n.wait != nil {
 				native.wait = &block
 			} else {
+				block.Body, block.WaitTargets = "Wait ended (no event reported)", nil
 				native.orchestration = &block
 			}
 			entry.native, entry.Text = &native, block.ProgressText()

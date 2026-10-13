@@ -184,6 +184,8 @@ type liveActivityNativeItem struct {
 	hook               *activityui.HookDetails
 	orchestration      *activityui.Block // Host MCP call observation, never batch execution state.
 	orchestrated       bool              // Call or message from an independent batch.
+
+	orchestrationWaitID string // Logical subscription, independent of the host item identity.
 }
 
 func (n *liveActivityNativeItem) sameItem(other *liveActivityNativeItem) bool {

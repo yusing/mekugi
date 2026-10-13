@@ -4,10 +4,10 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"github.com/yusing/mekugi/internal/orchestrate"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/orchestrate"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -68,6 +68,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 		}
 		if !live && item.Status == "inProgress" {
 			block.Body = "Wait unfinished (history only)"
+			block.WaitTargets = nil
 		}
 		entry.Kind, entry.Text = "progress", block.ProgressText()
 	}
@@ -97,21 +98,17 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 	if len(data) == 0 && len(output) == 1 {
 		data = jsontext.Value(output[0])
 	}
-	_ = json.Unmarshal(data, &outcome)
-	if isWait && item.Error == nil && !result.IsError {
-		switch outcome.State {
-		case "registered":
-			block.Body = "Wait registered"
-		case "canceled":
-			block.Body = "Wait canceled"
-		case "dispatching", "uncertain":
-			block.Body = "Wait delivery unconfirmed"
-		case "rejected":
-			block.Body = "Wait delivery failed"
+	if !isWait {
+		_ = json.Unmarshal(data, &outcome)
+	} else if live || item.Status != "inProgress" {
+		var wait orchestrate.Wait
+		_ = json.Unmarshal(data, &wait)
+		// Only the registration row receives a later logical result. A repeated
+		// call acknowledges delivery without returning the selected event again.
+		if wait.State == "registered" && args.CancelID == "" && item.Error == nil && !result.IsError && item.Status != "failed" {
+			entry.native.orchestrationWaitID = wait.ID
 		}
-		if args.CancelID != "" {
-			block.WaitTargets = nil
-		}
+		orchestrationWaitResult(block, wait)
 		entry.Text = block.ProgressText()
 	}
 
@@ -119,6 +116,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 		reason := cmp.Or(strings.Join(output, "\n"), item.Status, "failed")
 		if isWait {
 			block.Body = "Wait failed"
+			block.WaitTargets = nil
 			entry.Text = block.ProgressText()
 		} else {
 			*block = activityui.Block{Kind: "error", Body: livediff.Safe(strings.TrimSpace(verb+" "+target+": "+reason), false)}
@@ -159,9 +157,107 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 			block.Label = livediff.Safe(strings.TrimSpace(target+" · "+outcome.State), false)
 		}
 	}
+	if entry.native.thread == u.thread && entry.native.orchestrationWaitID != "" {
+		if retained := u.session.orchestrationWaitResults[entry.native.orchestrationWaitID]; retained != nil {
+			*block = *retained
+			entry.Text = block.ProgressText()
+			return true
+		}
+	}
 	if len(output) > 0 {
 		block.Output = u.session.outputs.New()
 		block.Output.Finish(new(strings.Join(output, "\n")), nil)
 	}
 	return true
+}
+
+// A logical result can arrive before or after its MCP registration item, or
+// after the user switches views. Match the subscription inside its owning root;
+// the existing host item still owns the transcript row and its position.
+func (u *appServerUI) observeOrchestrationWait(workspace, main string, wait orchestrate.Wait) {
+	if u.thread != main || u.session.cwd != workspace || wait.ID == "" {
+		return
+	}
+	block := &activityui.Block{Kind: "progress"}
+	orchestrationWaitResult(block, wait)
+	data, _ := json.Marshal(&wait)
+	block.Output = u.session.outputs.New()
+	block.Output.Finish(new(string(data)), nil)
+	if u.session.orchestrationWaitResults == nil {
+		u.session.orchestrationWaitResults = make(map[string]*activityui.Block)
+	}
+	u.session.orchestrationWaitResults[wait.ID] = block
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		if view == nil {
+			continue
+		}
+		for i, record := range view.entries {
+			n := record.native
+			if n == nil || n.thread != main || n.orchestrationWaitID != wait.ID {
+				continue
+			}
+			entry, native := record.activityPaneEntry, *n
+			native.orchestration = block
+			entry.native, entry.Text = &native, block.ProgressText()
+			view.replaceEntry(i, entry, parseLiveActivity(entry))
+			u.dirty = true
+		}
+	}
+}
+
+// Selected targets describe a subscription, never the source of its result.
+// Use only event metadata in the row; message and review payloads stay in the
+// existing output dialog. This projection does not settle the logical wait.
+func orchestrationWaitResult(block *activityui.Block, wait orchestrate.Wait) {
+	if wait.State == "registered" {
+		block.Body = "Wait registered"
+		return
+	}
+	block.WaitTargets = nil
+	block.Body = "Wait ended (no event reported)"
+	switch wait.State {
+	case "canceled":
+		block.Body = "Wait canceled"
+		return
+	case "delivered":
+		block.Body = "Wait result delivered"
+	case "dispatching", "uncertain":
+		block.Body = "Wait delivery unconfirmed"
+	case "rejected":
+		block.Body = "Wait delivery failed"
+	case "ready":
+		block.Body = "Wait result pending delivery"
+	}
+	if wait.TimedOut {
+		if wait.State == "completed" || wait.State == "delivered" {
+			block.Body = "Wait timed out"
+		} else {
+			block.Body += " (timeout)"
+		}
+		return
+	}
+	var event orchestrateEvent
+	if json.Unmarshal(wait.Event, &event) != nil || event.Kind == "" {
+		return
+	}
+	if wait.State == "completed" || wait.State == "delivered" {
+		block.Body = "Wait yielded"
+	} else if block.Body == "Wait ended (no event reported)" {
+		block.Body = "Wait result"
+	}
+	reason := map[string]string{
+		"message": "Message", "done": "Done", "failure": "Failure",
+		"blocked": "Blocked", "question": "Question", "approval": "Approval",
+	}[event.Kind]
+	if reason == "" {
+		reason = event.Kind
+	}
+	if event.Status != "" && event.Status != "completed" && event.Status != event.Kind {
+		reason += " (" + strings.ReplaceAll(event.Status, "_", " ") + ")"
+	}
+	if event.Task == "" {
+		block.Body += " · " + livediff.Safe(reason, false)
+		return
+	}
+	block.WaitTargets = []activityui.WaitTarget{{Name: livediff.Safe(strings.TrimPrefix(event.Task, "/root/"), false), Status: livediff.Safe(reason, false)}}
 }

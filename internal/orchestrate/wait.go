@@ -36,6 +36,15 @@ type WaitState struct {
 	Waits         []Wait            `json:"waits,omitempty"`
 }
 
+// The run retains the event for presentation after restart. Repeated tool
+// replies acknowledge delivery without delivering the event to Main again.
+func (w Wait) reply() Wait {
+	if w.State == "delivered" {
+		w.Event = nil
+	}
+	return w
+}
+
 // RegisterWait retains the call result before returning it. A disconnected caller
 // can repeat its call identity to recover the same result, including an event.
 func (s *Store) RegisterWait(ctx context.Context, workspace, main string, input Wait, now time.Time) (result Wait, err error) {
@@ -55,7 +64,7 @@ func (s *Store) RegisterWait(ctx context.Context, workspace, main string, input 
 			if !slices.Equal(w.Targets, input.Targets) || w.TimeoutMS != input.TimeoutMS {
 				return errors.New("wait call already has different input")
 			}
-			result = w
+			result = w.reply()
 			return nil
 		}
 		for _, target := range input.Targets {
@@ -190,7 +199,7 @@ func (s *Store) CancelWait(ctx context.Context, workspace, main, callID, id stri
 				result = *w
 				return s.save(m, path)
 			}
-			result = *w
+			result = w.reply()
 			if exists {
 				return nil
 			}
@@ -211,7 +220,7 @@ func (s *Store) ClaimWaitDelivery(ctx context.Context, workspace, main, id strin
 				continue
 			}
 			if w.State != "ready" {
-				result = *w
+				result = w.reply()
 				return nil
 			}
 			w.State = "dispatching"
@@ -246,14 +255,28 @@ func (s *Store) RecordWaitDelivery(ctx context.Context, workspace, main, id, sta
 			}
 			w.State, w.Error = state, message
 			if state == "delivered" {
-				// Main holds the result; repeated calls report delivery only.
+				// Keep the selected result as history, not as a queued event.
 				releaseWaitEvent(&m.Wait, id, false)
-				w.Event = nil
 			}
 			return s.save(m, path)
 		}
 		return errors.New("unknown wait identity")
 	})
+}
+
+// WaitHistory reads logical subscription outcomes without registering a wait,
+// delivering an event, or reviving a host request. Immediate completed replies
+// already carry their result in the host tool history.
+func (s *Store) WaitHistory(ctx context.Context, workspace, main string) (waits []Wait, err error) {
+	err = s.withRun(ctx, workspace, main, func(m *manifest, _ string) error {
+		for _, w := range m.Wait.Waits {
+			if w.State != "registered" && w.State != "completed" {
+				waits = append(waits, w)
+			}
+		}
+		return nil
+	})
+	return
 }
 
 // RecoverWaits runs before a restored run delivers results. Deliveries the

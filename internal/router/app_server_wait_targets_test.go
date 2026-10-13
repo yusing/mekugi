@@ -47,6 +47,9 @@ func TestUISnapshotAgentWaitTimeout(t *testing.T) {
 				if kind == "unknown" && phase == "item/started" {
 					name += "-unknown"
 				}
+				if kind == "mcp" && phase == "item/completed" {
+					name += "-orchestrate"
+				}
 				assertNativeUISnapshot(t, name, u.view.painter.Block(blocks[0], 80))
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/"+name+"-style.txt", []string{u.view.painter.Summary(blocks, 80), "plain"}, 80)
 				item.Status = "completed"

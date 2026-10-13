@@ -44,8 +44,13 @@ func (u *appServerUI) recoverOrchestratedRun() {
 	main, workspace, store := u.thread, u.session.cwd, u.proxy.orchestration.store
 	u.orchestrateWork(func() func() {
 		batches, err := store.Snapshot(workspace, main)
+		var waits []orchestrate.Wait
+		var waitErr error
 		if err == nil {
 			err = store.RecoverWaits(u.orchestrateStorageContext, workspace, main)
+		}
+		if err == nil {
+			waits, waitErr = store.WaitHistory(u.orchestrateStorageContext, workspace, main)
 		}
 		return func() {
 			if u.orchestrateClosing || u.thread != main || u.session.cwd != workspace {
@@ -56,6 +61,12 @@ func (u *appServerUI) recoverOrchestratedRun() {
 				return
 			}
 			if err == nil {
+				if waitErr != nil {
+					u.setNotice("Wait results could not be restored: "+waitErr.Error(), true)
+				}
+				for _, wait := range waits {
+					u.observeOrchestrationWait(workspace, main, wait)
+				}
 				u.advanceOrchestratedWaits(workspace, main, nil)
 			}
 			if len(batches) == 0 {

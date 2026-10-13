@@ -147,6 +147,16 @@ func TestWaitRecoveryReconcilesInterruptedDelivery(t *testing.T) {
 	if w, err := s.RegisterWait(t.Context(), workspace, "main", Wait{ID: "acknowledged"}, now); err != nil || w.State != "delivered" || w.Event != nil {
 		t.Fatal("delivered result repeated", w, err)
 	}
+	if w, err := s.CancelWait(t.Context(), workspace, "main", "cancel-delivered", "acknowledged"); err != nil || w.Event != nil {
+		t.Fatal("cancel repeated a delivered event", w, err)
+	}
+	if w, dispatch, err := s.ClaimWaitDelivery(t.Context(), workspace, "main", "acknowledged"); err != nil || dispatch || w.Event != nil {
+		t.Fatal("delivered event was claimed again", w, err)
+	}
+	s = &Store{Directory: s.Directory}
+	if history, err := s.WaitHistory(t.Context(), workspace, "main"); err != nil || len(history) != 2 || history[1].EventID != "late" || string(history[1].Event) != string(events[1].Data) {
+		t.Fatal("restart lost the selected result's presentation evidence", history, err)
+	}
 	if w, err := s.CancelWait(t.Context(), workspace, "main", "cancel-lost", "lost"); err != nil || w.State != "canceled" {
 		t.Fatal(w, err)
 	}
