@@ -1141,7 +1141,10 @@ list items introduce body bullets. Roster status uses each section's collapsed
 transcript label without its body or duration: titled sections show their title,
 untitled summaries too long for the status column show `Thinking…` while streaming
 or `Thought` after completion, and short summaries that fit display directly.
-Consecutive labels are comma-separated.
+Consecutive labels are comma-separated. Roster reasoning uses the same muted
+neutral text color as waiting activity. Live waiting text in Main and Activity,
+roster waiting text, and active roster reasoning share the smooth breathing
+animation. Completed or restored text does not restart the animation.
 Reasoning does not replace `Working` in the composer status.
 Working and its progress overrides shimmer while the turn runs. Other ongoing
 states, such as sending and interrupting, breathe smoothly together from dim to light to dim, using a continuous neutral
@@ -1155,7 +1158,7 @@ Successful completion shows the frozen elapsed turn time in hours, minutes, and
 seconds as needed, for example `Completed in 12s` or `Completed in 1m22s`. Activity retains the
 same bodies for children in both the combined transcript
 and selected-agent detail, including after completion or later activity. The current
-summary updates the agent's roster status with a left-to-right brightness sweep
+summary updates the agent's roster status with the shared breathing animation
 that stops when superseded or finished. The sweep blends between
 the terminal's reported (OSC 10/11) foreground and background; without both
 reports it steps through dim, normal and bold. Raw and encrypted
