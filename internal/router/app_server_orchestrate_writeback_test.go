@@ -17,13 +17,10 @@ import (
 
 // Represent a crash after the first path effect but before its acknowledgement.
 // Resume consumes the durable record through the real MCP entry point.
-func retainShadowProgress(t *testing.T, s *orchestrate.Store, b orchestrate.Batch) {
+func retainShadowProgress(t *testing.T, b orchestrate.Batch) {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(s.Directory, "*", "*.json"))
-	if err != nil || len(paths) != 1 {
-		t.Fatal(paths, err)
-	}
-	data, err := os.ReadFile(paths[0])
+	path := filepath.Dir(b.Checkout) + ".json"
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +36,7 @@ func retainShadowProgress(t *testing.T, s *orchestrate.Store, b orchestrate.Batc
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(paths[0], data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -62,7 +59,7 @@ func TestOrchestrateShadowWritebackRecovery(t *testing.T) {
 	}
 	b.ShadowMerge.State = "applying"
 	b.ShadowMerge.Writes = []orchestrate.ShadowWrite{{Path: "first", State: "applying"}, {Path: "next", State: "pending"}}
-	retainShadowProgress(t, s, b)
+	retainShadowProgress(t, b)
 	reopened := &orchestrate.Store{Directory: s.Directory, ShadowSnapshot: orchestrateShadowSnapshot}
 	u.proxy.orchestration.store = reopened
 	call := orchestrateTargetMCPClient(t, u, "integrate")
@@ -177,7 +174,7 @@ func TestOrchestrateShadowWritebackCancellationAndParentLinks(t *testing.T) {
 	}
 	b.ShadowMerge.State = "applying"
 	b.ShadowMerge.Writes = []orchestrate.ShadowWrite{{Path: "dir/file", State: "pending"}}
-	retainShadowProgress(t, s, b)
+	retainShadowProgress(t, b)
 	external := t.TempDir()
 	writeTestFile(t, filepath.Join(external, "file"), "base")
 	if err := os.Rename(filepath.Join(workspace, "dir"), filepath.Join(workspace, "saved")); err != nil {
@@ -201,7 +198,7 @@ func TestOrchestrateShadowWritebackCancellationAndParentLinks(t *testing.T) {
 	}
 	b.ShadowMerge.Writes[0].State = "applying"
 	b.ShadowMerge.Writes[0].Temp = "dir/.mekugi-orchestrate-retained"
-	retainShadowProgress(t, s, b)
+	retainShadowProgress(t, b)
 	writeTestFile(t, filepath.Join(workspace, "dir", "file"), "child")
 	writeTestFile(t, filepath.Join(workspace, b.ShadowMerge.Writes[0].Temp), "unknown")
 	result = orchestrateTargetMCPClient(t, u, "integrate")("main", true)

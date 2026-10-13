@@ -150,14 +150,11 @@ func TestOrchestrateShadowMergePublicationFailure(t *testing.T) {
 		if err != nil {
 			return "", err
 		}
-		paths, err := filepath.Glob(filepath.Join(s.Directory, "*", "*.json"))
-		if err != nil || len(paths) != 1 {
-			t.Fatal("missing fixture manifest", paths, err)
-		}
-		if err := os.Rename(paths[0], paths[0]+".saved"); err != nil {
+		path := filepath.Dir(u.orchestrateThreads["child"].batch.Checkout) + ".json"
+		if err := os.Rename(path, path+".saved"); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Mkdir(paths[0], 0700); err != nil {
+		if err := os.Mkdir(path, 0700); err != nil {
 			t.Fatal(err)
 		}
 		return tip, nil

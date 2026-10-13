@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -195,9 +197,12 @@ func TestOrchestrateMCP(t *testing.T) {
 			t.Fatal("wait deadline did not match explicit timeout", tc.args, event)
 		}
 	}
-	manifests, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
-	if err != nil || len(manifests) != 1 {
-		t.Fatal("nested preparation created run state", manifests, err)
+	for _, caller := range []struct{ workspace, thread string }{
+		{workspace, "child"}, {b.Cwd, "batch-thread"}, {b.Cwd, "worker"},
+	} {
+		if _, err := store.Snapshot(caller.workspace, caller.thread); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("nested preparation created run state", caller, err)
+		}
 	}
 	if _, err := store.Prepare(ctx, workspace, "foreign-coordinator", "foreign_batch"); err != nil {
 		t.Fatal(err)

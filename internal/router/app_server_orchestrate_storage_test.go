@@ -2,8 +2,6 @@ package router
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi/internal/appserver"
 	"path/filepath"
@@ -37,7 +35,11 @@ func TestAppServerOrchestrateStorageContention(t *testing.T) {
 	u, request := orchestrateIdentityPendingTurn(t)
 	store := u.proxy.orchestration.store
 	workspace := u.session.cwd
-	path := filepath.Join(store.Directory, fmt.Sprintf("%x", sha256.Sum256([]byte(workspace))), fmt.Sprintf("%x.json.lock", sha256.Sum256([]byte("main"))))
+	batches, err := store.Snapshot(workspace, "main")
+	if err != nil || len(batches) == 0 {
+		t.Fatalf("retained run: %+v, %v", batches, err)
+	}
+	path := filepath.Dir(batches[0].Checkout) + ".json.lock"
 	lock := flock.New(path)
 	if err := lock.Lock(); err != nil {
 		t.Fatal(err)
@@ -82,7 +84,7 @@ func TestAppServerOrchestrateStorageContention(t *testing.T) {
 	if result.err == nil {
 		t.Fatal("canceled launch dispatched")
 	}
-	batches, err := store.List(t.Context(), workspace, "main")
+	batches, err = store.List(t.Context(), workspace, "main")
 	if err != nil {
 		t.Fatal(err)
 	}

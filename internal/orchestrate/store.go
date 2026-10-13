@@ -61,7 +61,20 @@ func (s *Store) runPath(workspace, main string) (string, error) {
 	if !filepath.IsAbs(s.Directory) || !filepath.IsAbs(workspace) || main == "" {
 		return "", errors.New("orchestration requires absolute storage and workspace paths and a main thread")
 	}
-	return filepath.Join(s.Directory, fmt.Sprintf("%x", sha256.Sum256([]byte(workspace))), fmt.Sprintf("%x.json", sha256.Sum256([]byte(main)))), nil
+	legacy := filepath.Join(s.Directory, fmt.Sprintf("%x", sha256.Sum256([]byte(workspace))), fmt.Sprintf("%x.json", sha256.Sum256([]byte(main))))
+	// Keep retained runs and their locks in place, including a writer that has
+	// acquired its lock but has not yet published preparation intent.
+	for _, path := range []string{legacy, legacy + ".lock", strings.TrimSuffix(legacy, ".json")} {
+		if _, err := os.Lstat(path); err == nil {
+			return legacy, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+	}
+	// This compact key is only a location. Readers and writers must still
+	// validate the full workspace and thread identity in the manifest.
+	id := sha256.Sum256([]byte(workspace + "\x00" + main))
+	return filepath.Join(s.Directory, fmt.Sprintf("%x.json", id[:8])), nil
 }
 
 // Snapshot reads atomically published facts without waiting for a run lock.

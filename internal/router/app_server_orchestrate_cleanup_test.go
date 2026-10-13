@@ -388,16 +388,13 @@ func TestAppServerOrchestrateCleanupReconciliation(t *testing.T) {
 			store := p.orchestration.store
 			batch := u.orchestrateThreads["child"].batch
 			// Save uncertain intent, then simulate a lost native removal response.
-			paths, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
-			if err != nil || len(paths) != 1 {
-				t.Fatal(paths, err)
-			}
-			data, err := os.ReadFile(paths[0])
+			path := filepath.Dir(batch.Checkout) + ".json"
+			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
 			data = bytes.Replace(data, []byte(`"state":"prepared"`), []byte(`"state":"removing"`), 1)
-			if err := os.WriteFile(paths[0], data, 0600); err != nil {
+			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)
 			}
 			proof, err := p.orchestrateCleanupProof(t.Context(), workspace, "main", "batch", nil)

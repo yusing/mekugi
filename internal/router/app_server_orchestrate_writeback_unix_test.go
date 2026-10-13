@@ -40,7 +40,7 @@ func TestOrchestrateShadowWritebackExecutableUmask(t *testing.T) {
 	}
 	b.ShadowMerge.State = "applying"
 	b.ShadowMerge.Writes = []orchestrate.ShadowWrite{{Path: "script", State: "pending"}}
-	retainShadowProgress(t, s, b)
+	retainShadowProgress(t, b)
 	previous := syscall.Umask(0111)
 	defer syscall.Umask(previous)
 	orchestrateTargetMCPClient(t, u, "integrate")("main", false)

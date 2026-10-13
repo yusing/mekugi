@@ -2,13 +2,28 @@ package orchestrate
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/gofrs/flock"
 )
+
+func legacyRunPath(t *testing.T, store *Store, workspace, main string) string {
+	t.Helper()
+	path := filepath.Join(store.Directory, fmt.Sprintf("%x", sha256.Sum256([]byte(workspace))), fmt.Sprintf("%x.json", sha256.Sum256([]byte(main))))
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
 
 func TestPrepareGit(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
@@ -49,6 +64,10 @@ func TestPrepareGit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	relative, err := filepath.Rel(store.Directory, first.Checkout)
+	if err != nil || len(relative) != len("0123456789abcdef/first") {
+		t.Fatalf("unexpected checkout layout: %q, %v", relative, err)
+	}
 	second, err := store.Prepare(t.Context(), workspace, "main", "second")
 	if err != nil || first.Checkout == second.Checkout || first.Branch == second.Branch || first.Base != second.Base {
 		t.Fatalf("independent batches: %+v, %+v, %v", first, second, err)
@@ -70,9 +89,15 @@ func TestPrepareGit(t *testing.T) {
 	if err != nil || len(batches) != 2 {
 		t.Fatalf("reopen list: %+v, %v", batches, err)
 	}
+	if snapshot, err := reopened.Snapshot(workspace, "main"); err != nil || !reflect.DeepEqual(snapshot, batches) {
+		t.Fatalf("reopen snapshot: %+v, %v", snapshot, err)
+	}
 	other, err := reopened.List(t.Context(), workspace, "other")
 	if err != nil || len(other) != 0 {
 		t.Fatalf("cross-run disclosure: %+v, %v", other, err)
+	}
+	if other, err := reopened.List(t.Context(), repo, "main"); err != nil || len(other) != 0 {
+		t.Fatalf("cross-workspace disclosure: %+v, %v", other, err)
 	}
 	if after := run("diff", "--binary", "HEAD") + run("diff", "--cached", "--binary"); before != after {
 		t.Fatal("source index or uncommitted edits changed")
@@ -126,17 +151,80 @@ func TestPrepareRejectsInvalidInputs(t *testing.T) {
 	if _, err := store.List(ctx, t.TempDir(), "main"); err == nil {
 		t.Fatal("canceled read succeeded")
 	}
-	// Corrupt identities never authorize an existing manifest.
-	workspace := t.TempDir()
-	err := store.withRun(t.Context(), workspace, "main", func(m *manifest, path string) error {
-		m.Main = "other"
-		return store.save(m, path)
-	})
-	if err != nil {
+}
+
+func TestRunIdentityMismatch(t *testing.T) {
+	for _, field := range []string{"workspace", "main"} {
+		t.Run(field, func(t *testing.T) {
+			store, workspace := &Store{Directory: t.TempDir()}, t.TempDir()
+			path, err := store.runPath(workspace, "main")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := manifest{Version: 1, Workspace: workspace, Main: "main", Batches: []Batch{{TaskName: "foreign", State: "prepared"}}}
+			if field == "workspace" {
+				m.Workspace += "-other"
+			} else {
+				m.Main = "other"
+			}
+			if err := store.save(&m, path); err != nil {
+				t.Fatal(err)
+			}
+			if batches, err := store.Snapshot(workspace, "main"); err == nil || len(batches) != 0 {
+				t.Fatalf("snapshot disclosed foreign run: %+v, %v", batches, err)
+			}
+			if batches, err := store.List(t.Context(), workspace, "main"); err == nil || len(batches) != 0 {
+				t.Fatalf("list disclosed foreign run: %+v, %v", batches, err)
+			}
+			if batch, err := store.Prepare(t.Context(), workspace, "main", "foreign"); err == nil || batch.TaskName != "" {
+				t.Fatalf("prepare reused foreign run: %+v, %v", batch, err)
+			}
+		})
+	}
+}
+
+func TestRetainedRunPaths(t *testing.T) {
+	for _, marker := range []string{"manifest", "directory"} {
+		t.Run(marker, func(t *testing.T) {
+			store, workspace := &Store{Directory: t.TempDir()}, t.TempDir()
+			path := legacyRunPath(t, store, workspace, "main")
+			if marker == "directory" {
+				if err := os.Mkdir(strings.TrimSuffix(path, ".json"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if got, err := store.runPath(workspace, "main"); err != nil || got != path {
+					t.Fatalf("directory-only legacy path: %q, %v", got, err)
+				}
+				return
+			}
+			checkout := filepath.Join(strings.TrimSuffix(path, ".json"), "retained")
+			batch := Batch{TaskName: "retained", Branch: "original", Base: "baseline", Checkout: checkout, Cwd: checkout, State: "prepared"}
+			m := manifest{Version: 1, Workspace: workspace, Main: "main", Batches: []Batch{batch}}
+			if err := store.save(&m, path); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := store.Snapshot(workspace, "main"); err != nil || !reflect.DeepEqual(got, m.Batches) {
+				t.Fatalf("retained snapshot: %+v, %v", got, err)
+			}
+			if got, err := store.Prepare(t.Context(), workspace, "main", "retained"); err != nil || !reflect.DeepEqual(got, batch) {
+				t.Fatalf("retained preparation: %+v, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestRetainedRunLockBeforeManifest(t *testing.T) {
+	store, workspace := &Store{Directory: t.TempDir()}, t.TempDir()
+	path := legacyRunPath(t, store, workspace, "main")
+	lock := flock.New(path + ".lock")
+	if err := lock.Lock(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.List(t.Context(), workspace, "main"); err == nil {
-		t.Fatal("accepted mismatched manifest")
+	defer lock.Unlock()
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := store.List(ctx, workspace, "main"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("read bypassed active legacy writer: %v", err)
 	}
 }
 

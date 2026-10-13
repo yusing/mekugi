@@ -187,11 +187,8 @@ func TestJournalOrchestrateCrossCheckout(t *testing.T) {
 	read("child", "/root/worker", "own", false)
 	read("main", "", "combined", true)
 	// Losing run authority must not widen reads or hide local task IDs.
-	path, err := filepath.Glob(filepath.Join(store.Directory, "*", "*.json"))
-	if err != nil || len(path) != 1 {
-		t.Fatal(path, err)
-	}
-	if err := os.WriteFile(path[0], []byte(`{`), 0600); err != nil {
+	path := filepath.Dir(u.orchestrateThreads["child"].batch.Checkout) + ".json"
+	if err := os.WriteFile(path, []byte(`{`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	read("main", "", "combined", true)
