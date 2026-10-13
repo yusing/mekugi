@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yusing/mekugi/internal/orchestrate"
@@ -94,7 +95,14 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err != nil || strings.Count(preparedRecovery, orchestrateCoordinatorInstructions) != 1 {
 		t.Fatal("prepared run did not retain coordinator instructions", err, preparedRecovery)
 	}
-	call("list_agents", map[string]any{}, meta, false)
+	listedAgents := call("list_agents", map[string]any{}, meta, false)
+	var summary struct {
+		Agents []map[string]any `json:"agents"`
+	}
+	if err := json.Unmarshal(mustMarshalJSON(listedAgents.StructuredContent), &summary); err != nil || len(summary.Agents) != 1 || summary.Agents[0]["task_name"] != "batch" || len(summary.Agents[0]) != 2 {
+		t.Fatal("default listing did not return a compact prepared batch", summary, err)
+	}
+	call("list_agents", map[string]any{}, nil, true)
 	call("prepare", map[string]any{"task_name": "no_identity"}, nil, true)
 	call("prepare", map[string]any{"task_name": "no_turn"}, mcp.Meta{"threadId": "main", "sessionId": "host-session"}, true)
 	call("prepare", map[string]any{"task_name": "escape", "workspace": t.TempDir()}, meta, true)
@@ -113,11 +121,36 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := store.ConfigureWorkflow(ctx, workspace, "main", "batch", orchestrate.WorkflowAssignment{Kind: orchestrate.WorkflowImplementation, Scope: "list regression"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := store.BeginLaunch(ctx, workspace, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RecordThread(ctx, workspace, "main", "batch", "batch-thread"); err != nil {
 		t.Fatal(err)
+	}
+	// Resume clears the workflow reason, but an older uncertain host effect
+	// continues to block cleanup and must remain visible in every listing view.
+	for _, err := range []error{
+		store.RecordTurn(ctx, workspace, "main", "batch", "batch-thread", "initial"),
+		store.AdmitCandidate(ctx, workspace, "main", "batch", orchestrate.Candidate{Revision: b.Base}, "report"),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, dispatch, err := store.BeginWorkflowDispatch(ctx, workspace, "main", "batch", "lost", 1, orchestrate.DispatchCorrectness); err != nil || !dispatch {
+		t.Fatal("review dispatch", dispatch, err)
+	}
+	for _, err := range []error{
+		store.FailWorkflowDispatch(ctx, workspace, "main", "batch", "lost", true, "connection lost"),
+		store.StopWorkflow(ctx, workspace, "main", "batch", orchestrate.PhaseNeedsDecision, "connection lost"),
+		store.ResumeWorkflow(ctx, workspace, "main", "batch"),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	run := journalRun{Directory: store.Directory, Workspace: workspace, Main: "main"}
 	childCtx, childRelease, err := replay.beginSession(t.Context(), "batch-thread", "host-session")
@@ -148,17 +181,78 @@ func TestOrchestrateMCP(t *testing.T) {
 	}
 	proxy.journals = newJournalStore()
 	for _, thread := range []string{"batch-thread", "worker"} {
+		call("list_agents", map[string]any{"detail": "full"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session"}, true)
 		call("prepare", map[string]any{"task_name": "nested"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "nested",
 			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
 	}
 	call("prepare", map[string]any{"task_name": "other"}, meta, false)
+	// Selection keeps run-wide unconfirmed deliveries, even from another batch.
+	if _, err := store.RegisterWait(ctx, workspace, "main", orchestrate.Wait{ID: "wait", Targets: []string{"other"}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	waitEvent := mustMarshalJSON(map[string]any{"task": "other", "kind": "completed", "message": strings.Repeat("implementer report and review evidence ", 2000)})
+	if _, _, err := store.AdvanceWaits(ctx, workspace, "main", []orchestrate.WaitEvent{{ID: "event", Task: "other", Data: jsontext.Value(waitEvent)}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, dispatch, err := store.ClaimWaitDelivery(ctx, workspace, "main", "wait"); err != nil || !dispatch {
+		t.Fatal("wait claim", dispatch, err)
+	}
+	if err := store.RecordWaitDelivery(ctx, workspace, "main", "wait", "uncertain", "acknowledgement unavailable"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.List(ctx, workspace, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitsBefore, err := store.UnsettledWaits(ctx, workspace, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, detail := range []string{"", "summary", "checks", "reviews", "full"} {
+		args := map[string]any{"targets": []string{"/root/batch", "batch"}, "detail": detail}
+		wantAgents := 1
+		if detail == "" {
+			args, wantAgents = map[string]any{}, 2
+		}
+		result := call("list_agents", args, meta, false)
+		var selected struct {
+			Agents []orchestrate.Batch `json:"agents"`
+			Waits  []orchestrate.Wait  `json:"unsettled_waits"`
+		}
+		if err := json.Unmarshal(mustMarshalJSON(result.StructuredContent), &selected); err != nil || len(selected.Agents) != wantAgents || selected.Agents[0].TaskName != "batch" || len(selected.Waits) != 1 || selected.Waits[0].State != "uncertain" || selected.Waits[0].EventID != "event" || selected.Waits[0].ID != "wait" || selected.Waits[0].Error != "acknowledgement unavailable" {
+			t.Fatal("selection or unconfirmed wait lost", selected, err)
+		}
+		if detail == "full" {
+			if string(selected.Waits[0].Event) != string(waitEvent) {
+				t.Fatal("full listing lost exact wait payload")
+			}
+		} else if len(selected.Waits[0].Event) != 0 || len(mustMarshalJSON(result.StructuredContent)) > 2000 {
+			t.Fatal("compact listing includes unsolicited wait evidence", detail)
+		}
+		w := selected.Agents[0].Workflow
+		if w == nil || w.Generation != 2 || w.Reason != "" || len(w.Dispatches) != 1 || w.Dispatches[0].Generation != 1 || w.Dispatches[0].Reason != "connection lost" || !workflowUnsettled(selected.Agents[0]) {
+			t.Fatal("resumed workflow hid an unsettled dispatch", detail, w)
+		}
+	}
+	call("list_agents", map[string]any{"targets": "all"}, meta, false)
+	after, err := store.List(ctx, workspace, "main")
+	if err != nil || string(mustMarshalJSON(before)) != string(mustMarshalJSON(after)) {
+		t.Fatal("listing changed retained batches", err)
+	}
+	waitsAfter, err := store.UnsettledWaits(ctx, workspace, "main")
+	if err != nil || string(mustMarshalJSON(waitsBefore)) != string(mustMarshalJSON(waitsAfter)) {
+		t.Fatal("listing changed wait delivery", err)
+	}
 	// Exercise the exposed union schema and retained-run admission before UI dispatch.
 	for _, targets := range []any{nil, "batch", []string{}, []string{""}, []string{"/root/batch/native"}, []any{1}, []string{"unknown"}, []string{"native"}} {
+		call("list_agents", map[string]any{"targets": targets}, meta, true)
 		result := call("wait_agent", map[string]any{"targets": targets}, meta, true)
 		if names, ok := targets.([]string); ok && slices.Contains(names, "unknown") && !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "list_agents") {
 			t.Fatal("unknown target did not explain retained-run discovery", result)
 		}
 	}
+	call("list_agents", map[string]any{"detail": "invalid"}, meta, true)
+	call("list_agents", map[string]any{"workspace": t.TempDir()}, meta, true)
 	for _, args := range []map[string]any{{"cancel_id": "wait", "targets": "all"}, {"cancel_id": "wait", "timeout_ms": 1}, {"timeout_ms": 1500001}, {"timeout_ms": 0}} {
 		call("wait_agent", args, meta, true)
 	}
@@ -208,4 +302,5 @@ func TestOrchestrateMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	call("wait_agent", map[string]any{"targets": []string{"foreign_batch"}}, meta, true)
+	call("list_agents", map[string]any{"targets": []string{"foreign_batch"}, "detail": "full"}, meta, true)
 }

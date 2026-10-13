@@ -28,6 +28,11 @@ type orchestrateWaitInput struct {
 	Targets   jsontext.Value `json:"targets,omitempty"`
 }
 
+type orchestrateListInput struct {
+	Targets jsontext.Value `json:"targets,omitempty"`
+	Detail  string         `json:"detail,omitempty"`
+}
+
 func orchestrateWaitTargets(raw jsontext.Value) ([]string, error) {
 	var all string
 	if len(raw) == 0 || json.Unmarshal(raw, &all) == nil && all == "all" {
@@ -41,7 +46,7 @@ func orchestrateWaitTargets(raw jsontext.Value) ([]string, error) {
 	for _, target := range targets {
 		name := strings.TrimPrefix(target, "/root/")
 		if name == "" {
-			return nil, errors.New("wait targets must contain nonempty task names")
+			return nil, errors.New("targets must contain nonempty task names")
 		}
 		if !slices.Contains(names, name) {
 			names = append(names, name)
@@ -236,10 +241,16 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		return nil, batch, err
 	})
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "list_agents", Description: "List this coordinator's retained batches, including prepared checkouts, and unconfirmed wait deliveries; does not start or resume threads",
+		Name: "list_agents", Description: "Read retained batches in this coordinator's run without starting or resuming threads. Default summary shows identity, checkout state, last host status, workflow phase/candidate and blockers, without prompts/settings/history. Select targets and detail for exact checks, reviews or full records. Unconfirmed wait deliveries remain visible for the whole run; their event payloads require full detail. Retained facts do not prove current filesystem or live host state.",
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)},
-		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{}},
-	}, func(ctx context.Context, request *mcp.CallToolRequest, _ map[string]any) (*mcp.CallToolResult, any, error) {
+		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+			"targets": map[string]any{"description": "All retained batches (default), or selected task names or /root/task_name paths. Unknown targets reject the call.", "oneOf": []any{
+				map[string]any{"type": "string", "const": "all"},
+				map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string", "pattern": "^(/root/)?[a-z][a-z0-9_]{0,63}$"}},
+			}},
+			"detail": map[string]any{"type": "string", "enum": []string{"summary", "checks", "reviews", "full"}, "default": "summary", "description": "summary: compact retained status; checks: summary plus required commands and exact retained check results; reviews: summary plus exact retained verdicts/findings; full: complete batch records including launch settings, reports and dispatch history. Selected evidence is not truncated."},
+		}},
+	}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateListInput) (*mcp.CallToolResult, any, error) {
 		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())
 		if err != nil {
 			return nil, nil, err
@@ -252,11 +263,20 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		if err != nil {
 			return nil, nil, err
 		}
-		result := map[string]any{"agents": batches}
+		agents, err := orchestrateListAgents(batches, input)
+		if err != nil {
+			return nil, nil, err
+		}
+		result := map[string]any{"agents": agents}
 		// Unconfirmed wait deliveries stay visible until Main cancels them.
 		if waits, err := store.UnsettledWaits(ctx, workspace, thread); err != nil {
 			return nil, nil, err
 		} else if len(waits) != 0 {
+			if input.Detail != "full" {
+				for i := range waits {
+					waits[i].Event = nil
+				}
+			}
 			result["unsettled_waits"] = waits
 		}
 		return nil, result, nil

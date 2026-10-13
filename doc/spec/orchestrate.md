@@ -48,6 +48,35 @@ Prepared checkouts remain until integration is accepted or Main requests cleanup
 of an accepted batch. Branches remain after cleanup; ordinary replay retention
 does not remove orchestration resources.
 
+`list_agents` defaults to a compact summary of every retained batch, including
+prepared, failed and removed batches. Each row identifies the task and checkout
+state, available host thread/turn identity and last observed host status. Workflow
+rows include kind, phase, generation, candidate revision, reason, current-generation
+dispatches, older unsettled dispatches and outcome delivery state. Resuming a workflow
+does not hide an older unconfirmed host effect that still needs reconciliation.
+`phase: "ready"` identifies recorded workflow
+readiness, not verified integration. Missing workflow or host observations remain
+unknown. Unconfirmed launch identities, dispatches, evidence failures and shadow
+writeback state remain visible. Summaries omit assignment text, launch settings,
+reports, check output, review findings and settled historical dispatches.
+
+`targets` accepts `"all"` (default) or a nonempty list of task names or
+`/root/task_name` paths in this coordinator's run. Unknown or invalid names reject
+the call; repeated names return one row. Results retain run order. `detail` selects
+`"summary"` (default), `"checks"` (summary plus required commands and exact retained
+check results), `"reviews"` (summary plus exact retained verdicts and findings), or
+`"full"` (complete batch records). For example,
+`tools.mcp__orchestrate__list_agents({targets:["batch"],detail:"reviews"})` retrieves
+one batch's review evidence. Checks and reviews name their candidate revision;
+an empty result is not approval. Explicit detail is not truncated. Full records
+retain all available prompts, settings, reports and dispatch history. Unconfirmed
+wait deliveries remain under `unsettled_waits` for the whole run, even when batch
+targets are selected. Summary, checks and reviews include wait identity, state,
+target/deadline metadata, event identity and reconciliation error, but omit event
+payloads. `detail:"full"` also returns their exact retained event payloads, which
+can contain reports, check output and review findings. All views read retained facts
+without resuming work or changing checkout, workflow or wait state.
+
 Git preparation includes locally initialized submodules, recursively, at the
 gitlink commits recorded in the baseline. Each is an independent local clone
 on the batch branch, with its path, source repository and baseline retained in

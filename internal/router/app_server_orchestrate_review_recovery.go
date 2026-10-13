@@ -14,11 +14,15 @@ func workflowUnsettled(batch orchestrate.Batch) bool {
 		return false
 	}
 	for _, d := range batch.Workflow.Dispatches {
-		if d.State == orchestrate.DispatchIntent || d.State == orchestrate.DispatchUncertain || d.State == orchestrate.DispatchAcknowledged && d.HostStatus == "" && d.ResultItemID == "" {
+		if workflowDispatchUnsettled(d) {
 			return true
 		}
 	}
 	return false
+}
+
+func workflowDispatchUnsettled(d orchestrate.WorkflowDispatch) bool {
+	return d.State == orchestrate.DispatchIntent || d.State == orchestrate.DispatchUncertain || d.State == orchestrate.DispatchAcknowledged && d.HostStatus == "" && d.ResultItemID == ""
 }
 
 // Restore retained workflow identities, then reconcile host history. This never
