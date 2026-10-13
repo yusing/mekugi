@@ -444,6 +444,9 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		entry.native.question = previous.native.question
 		blocks := parseLiveActivity(entry)
 		for _, annotation := range v.entries[i].blocks {
+			if annotation.Repeated != "" && len(blocks) > 0 {
+				blocks[len(blocks)-1].Repeated = annotation.Repeated
+			}
 			if annotation.Kind == "filter" {
 				blocks = append(blocks, annotation)
 			}

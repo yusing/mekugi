@@ -212,6 +212,19 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			continue
 		}
 		v.lastSeq = entry.Seq
+		if entry.Kind == "output_dedupe" {
+			for i, previous := range v.entries {
+				if previous.native == nil || previous.native.item != entry.CallID || entry.native == nil || previous.native.thread != entry.native.thread {
+					continue
+				}
+				v.mutateEntry(i, func(record *liveActivityRecord) {
+					if len(record.blocks) > 0 {
+						record.blocks[len(record.blocks)-1].Repeated = entry.Text
+					}
+				})
+			}
+			continue
+		}
 		if entry.Agent == "Main" && entry.Kind == "text" && entry.native != nil && entry.journal == nil {
 			for _, question := range slices.Backward(v.entries) {
 				if (question.Agent == "You" || question.Kind == "question_reply") && question.native != nil && question.native.thread == entry.native.thread && question.native.turn == entry.native.turn {

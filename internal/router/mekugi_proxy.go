@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/yusing/mekugi/capturer"
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
@@ -674,7 +675,31 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		return nil, err
 	}
 	if p.duplicateOutput {
-		projectDuplicateOutputs(request, hostParts)
+		before := request.fields["input"]
+		summary := projectDuplicateOutputs(request, hostParts)
+		capturer.ObserveOutputDeduplication(ctx, before, request.fields["input"], summary.occurrences)
+		var originalItems []map[string]jsonv1.RawMessage
+		_ = json.Unmarshal(request.originalFields["input"], &originalItems)
+		sources := make(map[string]string)
+		for _, item := range originalItems {
+			if jsonString(item, "type") == "custom_tool_call" {
+				sources[jsonString(item, "call_id")] = jsonString(item, "input")
+			}
+		}
+		for call, label := range summary.calls {
+			target := call
+			source := sources[call]
+			if history, ok := visible[call]; ok {
+				source = history.CarrierPayload
+				if source == "" {
+					source = history.Script
+				}
+			}
+			if commands := p.nativeTrace.readCell(activityThreadID, call, source).execCommands(); len(commands) > 0 {
+				target = commands[len(commands)-1]
+			}
+			p.activity.collectEvent(activityEvent{thread: activityThreadID, source: "output-dedupe\x00" + call, kind: "output_dedupe", callID: target, text: label})
+		}
 	}
 	return transform, nil
 }

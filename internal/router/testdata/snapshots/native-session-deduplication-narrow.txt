@@ -1,0 +1,22 @@
+╭ Session · Overview ─────────────╮
+│                                 │
+│  Output deduplication  ───────  │
+│  Occurrences                    │
+│  12                             │
+│  Saved tokens (estimated)       │
+│  1234                           │
+│  Unmeasured projections         │
+│  0                              │
+│  Launch totals per request      │
+│  projection, including          │
+│  repeated history. Net local    │
+│  estimate includes reference    │
+│  overhead; not provider         │
+│  billing savings.               │
+│                                 │
+│  Requests  ───────────────────  │
+│  Scope                          │
+│  All threads in this launch ·   │
+│  mekugi                         │
+│                                 │
+╰─ ←→ views  ↑↓ scroll  Esc ──────╯

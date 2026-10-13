@@ -227,6 +227,8 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		debug                   string
 	}{
 		{name: "overview", width: 90, height: 65},
+		{name: "deduplication", width: 90, height: 25},
+		{name: "deduplication-narrow", width: 35, height: 22},
 		{name: "storage", width: 90, height: 24},
 		{name: "storage-narrow", width: 35, height: 18},
 		{name: "throughput-narrow", width: 36, height: 22, top: 18},
@@ -254,6 +256,9 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 			m.tab = tc.tab
 			if !tc.missing {
 				m.snapshot = sessionMetricsFixture(t)
+			}
+			if strings.HasPrefix(tc.name, "deduplication") {
+				m.snapshot.OutputDeduplication = capturer.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}
 			}
 			if strings.HasPrefix(tc.name, "storage") {
 				m.snapshot.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}

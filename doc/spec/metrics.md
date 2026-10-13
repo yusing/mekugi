@@ -65,6 +65,14 @@ provider wire request.
 calculations belong to the capturer, not the router, engine, plugin, comparison
 report or session dialog. Journal operation evidence comes from its durable owner.
 
+With `--deduplicate-output`, `/session` shows output-deduplication occurrences
+and estimated saved tokens. An occurrence is one replaced output text part or
+attachment body per request projection. Launch totals include repeated history
+in later requests, across all threads. Saved tokens are the net local content-token
+difference before and after projection, including anchors and references; they can
+be negative and are not provider billing savings. Unmeasured projections are
+counted explicitly. These invocation-local totals are not restored on resume.
+
 With `--debug`, the snapshot includes optional `storage_writes` with cumulative
 `bytes` and a `scope` description, displayed in `/session` Overview and debug
 `metrics.json`. Accounting is invocation-local and counts successful byte counts

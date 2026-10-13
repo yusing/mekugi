@@ -141,7 +141,7 @@ func TestDuplicateOutputEvidenceConsumersReadOriginal(t *testing.T) {
 	defer proxy.activity.mu.Unlock()
 	found := false
 	for _, event := range proxy.activity.events {
-		if event.callID == "failed" {
+		if event.callID == "failed" && event.kind == "error" {
 			found = true
 			if event.errorDetail != "exec script failed: "+strings.TrimPrefix(failure, "Script error:\n") {
 				t.Fatalf("failure observer saw projected content: %q", event.errorDetail)
@@ -456,5 +456,58 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 				t.Fatal("first delivered frame references later text")
 			}
 		}
+	}
+}
+
+func TestDuplicateOutputSummary(t *testing.T) {
+	body := ""
+	for i := range 20 {
+		body += fmt.Sprintf("original line %d of output\n", i)
+	}
+	input := append(duplicateTestInput("a", "a", body), duplicateTestInput("b", "b", body)...)
+	input = append(input, duplicateTestInput("c", "c", body+"new line\n")...)
+	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{"input": input}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := projectDuplicateOutputs(&request, duplicateOutputHostParts(request.fields["input"]))
+	if summary.occurrences != 2 || summary.calls["b"] != "repeated" || summary.calls["c"] != "20 lines repeated" {
+		t.Fatalf("summary = %+v", summary)
+	}
+	proxy := newManagedMekugiProxy(t)
+	proxy.duplicateOutput = true
+	trace := newNativeTraceFixture(t)
+	proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
+	source := `text((await tools.exec_command({cmd:"b"})).output)`
+	trace.start("thread", "runtime", "b", source)
+	trace.tool("thread", "runtime", "nested", "exec_command", `{"cmd":"b"}`)
+	trace.result("thread", "nested", "completed", map[string]any{"exit_code": 0})
+	trace.end("thread", "runtime")
+	duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
+	found := false
+	for _, event := range proxy.activity.events {
+		if event.kind == "output_dedupe" && event.callID == "nested" && event.text == "repeated" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing native suffix receipt: %+v", proxy.activity.events)
+	}
+
+}
+
+func TestUISnapshotOutputDeduplicationTranscript(t *testing.T) {
+	for _, label := range []string{"repeated", "20 lines repeated"} {
+		u := newAppServerSessionTestUI(t, t.TempDir())
+		u.view.conversation = true
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
+			"id": "command", "type": "commandExecution", "command": "cat file.txt", "status": "completed", "exitCode": 0, "aggregatedOutput": "original output\n"}})
+		rollCommandOutput(u)
+		u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: "/root", Kind: "output_dedupe", CallID: "command", Text: label, native: &liveActivityNativeItem{thread: "main"}}}, nil)
+		got := strings.Join(u.view.renderFeed(60, 20).lines, "\n")
+		if !strings.Contains(got, label) {
+			t.Fatalf("missing suffix: %s", got)
+		}
+		assertNativeUISnapshot(t, "output-dedupe-"+strings.ReplaceAll(label, " ", "-"), strings.Split(got, "\n"))
 	}
 }

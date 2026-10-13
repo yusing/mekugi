@@ -293,7 +293,7 @@ func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journal
 }
 
 func nativeObservedActivity(kind string) bool {
-	return kind == "error" || kind == "reply" || kind == "start" || kind == "assignment"
+	return kind == "output_dedupe" || kind == "error" || kind == "reply" || kind == "start" || kind == "assignment"
 }
 
 // takeNativeActivity drains router-owned annotations and authenticated input
@@ -318,6 +318,9 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 		}
 		entries = append(entries, activityPaneEntry{Agent: node.name, Kind: event.kind, Text: event.raw, ErrorDetail: event.errorDetail, CallID: event.callID, Observed: event.observed,
 			assignment: event.assignment, message: event.message, start: event.start})
+		if event.kind == "output_dedupe" {
+			entries[len(entries)-1].native = &liveActivityNativeItem{thread: event.thread}
+		}
 	}
 	clear(a.events[len(kept):])
 	a.events = kept

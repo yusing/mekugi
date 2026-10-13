@@ -168,12 +168,15 @@ Acceptance:
 
 ### Duplicate-output projection
 
-Duplicate-output projection is opt-in in Mekugi mode. Enable it with the launch
-option `--duplicate-output`; it is off by default. It changes only eligible text
+Duplicate-output projection is enabled by default in Mekugi mode. Disable it with
+the launch option `--deduplicate-output=false`. It changes only eligible text
 in the model-visible request input. Passthrough is unchanged. The original request
 input, host result, Codex rollout, retained replay and change evidence, and UI
-keep the full text. Every evidence consumer, including command and patch
-observation, result confirmation, failure observation, retention, and continuation
+keep the full text. Transcript output rows add `N lines repeated` for partial
+replacement or `repeated` for full replacement. A multi-command cell puts its
+returned-output summary on the last command row; the suffix describes the cell
+result, not each command independently. Every evidence consumer, including command
+and patch observation, result confirmation, failure observation, retention, and continuation
 advice, reads the original output before this final projection.
 
 A unit is one host-produced text part of a `function_call_output` or

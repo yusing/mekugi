@@ -140,18 +140,19 @@ type exchangeMetrics struct {
 
 // MetricsSnapshot is a detached, capture-owned metrics view.
 type MetricsSnapshot struct {
-	StorageWrites  *persistence.Snapshot    `json:"storage_writes,omitempty"`
-	Schema         string                   `json:"schema"`
-	Mode           string                   `json:"mode"`
-	Requests       requestTotals            `json:"requests"`
-	Usage          usageMetrics             `json:"usage"`
-	Cache          cacheMetrics             `json:"cache"`
-	Transport      transportMetrics         `json:"transport"`
-	Semantic       semanticOutputMetrics    `json:"semantic"`
-	ProviderTools  map[string]toolAggregate `json:"provider_tools"`
-	DeliveredTools map[string]toolAggregate `json:"delivered_tools"`
-	Exchanges      []exchangeMetrics        `json:"exchanges"`
-	Capture        captureHealth            `json:"capture"`
+	OutputDeduplication OutputDeduplicationMetrics `json:"output_deduplication,omitzero"`
+	StorageWrites       *persistence.Snapshot      `json:"storage_writes,omitempty"`
+	Schema              string                     `json:"schema"`
+	Mode                string                     `json:"mode"`
+	Requests            requestTotals              `json:"requests"`
+	Usage               usageMetrics               `json:"usage"`
+	Cache               cacheMetrics               `json:"cache"`
+	Transport           transportMetrics           `json:"transport"`
+	Semantic            semanticOutputMetrics      `json:"semantic"`
+	ProviderTools       map[string]toolAggregate   `json:"provider_tools"`
+	DeliveredTools      map[string]toolAggregate   `json:"delivered_tools"`
+	Exchanges           []exchangeMetrics          `json:"exchanges"`
+	Capture             captureHealth              `json:"capture"`
 }
 
 // ServeHTTP exposes capture-owned calculations on the router's existing

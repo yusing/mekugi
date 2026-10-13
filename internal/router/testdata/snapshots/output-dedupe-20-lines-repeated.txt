@@ -1,0 +1,2 @@
+└ Read file.txt · 20 lines repeated
+       ┆ original output

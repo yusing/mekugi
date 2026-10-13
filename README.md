@@ -22,10 +22,12 @@ sessions, and patch review. No fork, no config edits, no daemon.
   and review, revert, or reapply captured edits by ID. Gaps in coverage are labeled.
 - **Leaner instructions.** [Omit marked instruction blocks](#troubleshooting-and-integrations)
   for the session without changing instruction files or unmarked policy.
-- **Duplicate-output references.** Opt in with `--duplicate-output` to replace
+- **Output deduplication.** Replace
   unchanged runs in tool output and attached file or skill content with references
-  to earlier visible text in Mekugi mode. Full host results, retained evidence,
-  and the UI stay intact;
+  to earlier visible text by default in Mekugi mode. Full host results, retained evidence,
+  and the UI stay intact. Transcript suffixes mark repeated output; `/session`
+  shows occurrences and estimated saved tokens. Disable with
+  `--deduplicate-output=false`;
   see the [projection contract](doc/spec/execution.md#duplicate-output-projection).
 - **Task journal.** Record plans, results, constraints, and blockers as durable
   work state, rather than repeating status summaries in conversation.
@@ -437,7 +439,7 @@ changing its configuration. Review permissions remain read-only for every role.
 | `--vcs-guard` | `true` | Ask before UI remote writes, even with `--yolo` |
 | `--post-compact-recovery` | `true` | Restore Main after provider compaction |
 | `--journal-compaction` | `auto` | Select reset policy below |
-| `--duplicate-output` | `false` | Reference duplicates in model input; full results/evidence stay intact |
+| `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |
 | `--timeout` | `10m` | Wait for response start |
 | `--stream-idle-timeout` | `4m` | Limit provider-message or HTTP-byte gaps |
