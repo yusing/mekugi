@@ -14,6 +14,7 @@ type capturedActivityEdit struct {
 	thread string
 	calls  []string
 	text   string
+	pages  []activityui.Block // Observed source available before durable outer-cell capture.
 }
 
 func capturedEditActivity(workspace string, history mekugiHistory) *capturedActivityEdit {
@@ -38,6 +39,18 @@ func capturedEditActivity(workspace string, history mekugiHistory) *capturedActi
 }
 
 func (u *appServerUI) applyCapturedEdits() {
+	u.pendingEditReceipts = slices.DeleteFunc(u.pendingEditReceipts, func(receipt *capturedActivityEdit) bool {
+		// Main and Activity receive their host entries together. Keep a grouped
+		// receipt until every host identity has arrived, including its anchor.
+		data := &liveDiffData{order: []string{"observed"}, attempts: map[string]liveDiffAttempt{"observed": {receipt: receipt}}}
+		u.view.applyCapturedEdits(data)
+		u.agents.applyCapturedEdits(data)
+		return !slices.ContainsFunc(receipt.calls, func(call string) bool {
+			return !slices.ContainsFunc(u.agents.entries, func(entry liveActivityRecord) bool {
+				return entry.native != nil && entry.native.thread == receipt.thread && entry.native.item == call
+			})
+		})
+	})
 	if u.shell == nil || u.shell.diff.data == nil {
 		return
 	}

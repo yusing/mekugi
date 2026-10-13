@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -50,9 +51,46 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 func (u *terminalUI) preview(preview diffview.Preview) {
 	if u.main != nil && preview.Complete && preview.EditReceipt != "" && len(preview.HostItems) > 0 {
 		receipt := &capturedActivityEdit{thread: preview.Thread, calls: preview.HostItems, text: preview.EditReceipt}
-		data := &liveDiffData{order: []string{preview.ID}, attempts: map[string]liveDiffAttempt{preview.ID: {receipt: receipt}}}
-		u.main.view.applyCapturedEdits(data)
-		u.main.agents.applyCapturedEdits(data)
+		for _, file := range preview.Files {
+			path := file.AfterPath
+			if path == "" {
+				path = file.BeforePath
+			}
+			receipt.pages = append(receipt.pages, activityui.Block{Kind: "op", Verb: file.Action().Title(),
+				Path: pathdisplay.ForWorkspace(preview.Workspace, path), Code: file.UnifiedDiffForWorkspace(preview.Workspace), Lang: "diff", Fenced: true})
+		}
+		if len(receipt.pages) == 0 {
+			// Large live cards discard Files. Their receipt still carries bounded
+			// observed hunks, including an explicit marker for omitted lines.
+			for _, paragraph := range activityui.Paragraphs(receipt.text) {
+				block := activityui.ParseOperation(paragraph)
+				if block.Lang == "diff" && block.Code != "" {
+					block.Path = activityui.EditPath(block)
+					receipt.pages = append(receipt.pages, block)
+				}
+			}
+		}
+		u.main.pendingEditReceipts = append(u.main.pendingEditReceipts, receipt)
+		u.main.applyCapturedEdits()
+		// Host rows can lag several preview mailbox drains. Bound unmatched
+		// projections by memory, not one mailbox's count. Charge metadata too,
+		// so tiny receipts cannot grow without a bound. These are not durable
+		// changes or evidence of the whole command's success.
+		budget := 32 * (48 << 10)
+		for i := len(u.main.pendingEditReceipts) - 1; i >= 0; i-- {
+			pending := u.main.pendingEditReceipts[i]
+			budget -= 1024 + len(pending.thread) + len(pending.text)
+			for _, call := range pending.calls {
+				budget -= 32 + len(call)
+			}
+			for _, page := range pending.pages {
+				budget -= 1024 + len(page.Path) + len(page.Code) + len(page.Label)
+			}
+			if budget < 0 {
+				u.main.pendingEditReceipts = slices.Delete(u.main.pendingEditReceipts, 0, i+1)
+				break
+			}
+		}
 	}
 	dock := &u.liveDock
 	dock.Retain = true

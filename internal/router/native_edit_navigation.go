@@ -60,6 +60,9 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 		// Codex can finish a nested edit while sibling commands keep its cell
 		// open. Its completed item already carries that invocation's diff;
 		// opening it must not wait for the outer cell's durable capture.
+		if receipt := entry.native.capturedEdit; receipt != nil && len(receipt.pages) > 0 {
+			return receipt.pages, path
+		}
 		return entry.native.editPages, path
 	}
 	return nil, path

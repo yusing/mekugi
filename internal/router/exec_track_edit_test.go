@@ -465,6 +465,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 	for _, tc := range []struct{ script, shell string }{
 		{"cat > source.go <<'EOF'\npackage p; var B=2\nEOF", "bash"},
 		{"tee source.go <<'EOF'\npackage p; var B=2\nEOF\nprintf '// observed suffix\\n' >> source.go", "sh"},
+		{"python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('A=1', 'B=2')\nopen(p,'w').write(s)\nPY", "bash"},
 	} {
 		t.Run(tc.shell+"/"+strings.Fields(tc.script)[0], func(t *testing.T) {
 			script, shell := tc.script, tc.shell
@@ -531,6 +532,16 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 							}
 							if len(u.shell.liveDock.Order) != 0 || strings.Contains(screen.String(), "LIVE ·") {
 								t.Fatal("completed native command retained the live dock")
+							}
+							for _, view := range []*liveActivityView{u.view, u.agents} {
+								for _, entry := range view.entries {
+									if entry.native != nil && entry.native.item == "edit" {
+										if !u.shell.openActivityEdit(view, entry.Seq, "source.go") || !strings.Contains(u.shell.output.pages[0].Code, "+package p; var B=2") {
+											t.Fatal("completed shell edit waited for the next cell or sibling exit to become clickable")
+										}
+										u.shell.outputKey("\x1b")
+									}
+								}
 							}
 							return
 						}

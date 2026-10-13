@@ -1,13 +1,48 @@
 package router
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
+
+func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	file := mekugi.RenderReviewFile("a.go", "a.go", "before\n", "after\n")
+	// The tracker sees host starts on the transport reader. Its completion
+	// can reach the preview mailbox before the UI consumes that same item.
+	u.shell.preview(diffview.Preview{ID: "early", Workspace: u.session.cwd, Thread: "main", Complete: true,
+		HostItems: []string{"cmd"}, Files: []mekugi.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"})
+	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
+	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		for _, entry := range view.entries {
+			if entry.native == nil || entry.native.item != "cmd" {
+				continue
+			}
+			native := *entry.native
+			native.phase = "item/commandExecution/outputDelta"
+			native.capturedEdit = nil // Host refresh carries no router receipt.
+			native.segments = []commandSegment{{source: "python3", text: "Edit `a.go` · python3 (requested)"}, {source: "go test ./...", text: "Run `go test ./...`", running: true}}
+			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 99, Agent: entry.Agent, Kind: "tool", CallID: entry.CallID, Text: entry.Text, native: &native}}})
+			if !u.shell.openActivityEdit(view, entry.Seq, "a.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
+				t.Fatal("early observed source was lost")
+			}
+			u.shell.outputKey("\x1b")
+			for _, block := range view.entries[0].blocks {
+				if block.EditSource != "" && (block.EditOutcome != "" || strings.Contains(block.EditSource, "requested")) {
+					t.Fatalf("stale edit status survived receipt: %+v", block)
+				}
+			}
+		}
+	}
+}
 
 func trackedEditReceiptData(thread string, calls ...string) *liveDiffData {
 	data := newLiveDiffData()
@@ -203,5 +238,91 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 				t.Fatalf("combined output dialog lost content: %q", page.Text)
 			}
 		}
+	}
+}
+
+// Observed edits can cross both live-card clipping and more than one preview
+// mailbox batch before the UI receives their host Activity identities.
+func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		calls, lines int
+	}{
+		{"large clipped source", 1, 4000}, {"delayed host burst", 33, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := newAppServerSessionTestUI(t, t.TempDir())
+			broker := newLiveDiffBroker(t.Context())
+			broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{u.session.cwd: {"main": true}}})
+			sub := broker.subscribe()
+			broker.takePreviews(sub) // Initial scope event.
+			for i := range tc.calls {
+				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
+				file := mekugi.RenderReviewFile(path, path, strings.Repeat(fmt.Sprintf("before source %d\n", i), tc.lines), strings.Repeat(fmt.Sprintf("after source %d\n", i), tc.lines))
+				broker.publishPreview(diffview.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true,
+					HostItems: []string{call}, Files: []mekugi.ReviewFile{file}, EditReceipt: editReceiptText(u.session.cwd,
+						mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: []string{"cat"}}})}, false)
+				events := broker.takePreviews(sub)
+				if len(events) != 1 || events[0].Preview == nil {
+					t.Fatal("completion was not published")
+				}
+				preview := *events[0].Preview
+				if tc.lines == 4000 && (len(preview.Files) != 0 || !preview.Truncated) {
+					t.Fatal("fixture did not cross live-card clipping")
+				}
+				u.shell.preview(preview)
+			}
+			for i := range tc.calls {
+				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
+				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{
+					ID: call, Type: "commandExecution", Command: "cat > " + path + " <<'EOF'\nafter\nEOF\ngo test ./...", Status: "inProgress"}})
+				for _, view := range []*liveActivityView{u.view, u.agents} {
+					found := false
+					for _, entry := range view.entries {
+						if entry.native == nil || entry.native.item != call {
+							continue
+						}
+						found = true
+						if !u.shell.openActivityEdit(view, entry.Seq, path) {
+							t.Fatalf("%s: observed Edited link cannot open before durable capture", call)
+						}
+						code := u.shell.output.pages[0].Code
+						if !strings.Contains(code, fmt.Sprintf("-before source %d", i)) {
+							t.Fatalf("%s: wrong observed source: %q", call, code)
+						}
+						if tc.lines == 4000 && (!strings.Contains(code, "more diff lines") || len(code) > maxEditReceiptDiffBytes) {
+							t.Fatal("clipped source page lost its bound or omission marker")
+						}
+						u.shell.outputKey("\x1b")
+					}
+					if !found {
+						t.Fatalf("%s: host entry absent", call)
+					}
+				}
+			}
+			if len(u.pendingEditReceipts) != 0 {
+				t.Fatal("matched receipts remained pending")
+			}
+			if len(u.shell.diff.data.order) != 0 {
+				t.Fatal("observed pages became durable evidence")
+			}
+		})
+	}
+}
+
+func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	file := mekugi.RenderReviewFile("a.go", "a.go", strings.Repeat("before "+strings.Repeat("x", 90)+"\n", 100), "after\n")
+	receipt := editReceiptText(u.session.cwd, mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: []string{"cat"}}})
+	for i := range 256 {
+		call := fmt.Sprintf("cmd%d", i)
+		u.shell.preview(diffview.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt})
+	}
+	pending := u.pendingEditReceipts
+	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].calls[0] != "cmd255" {
+		t.Fatalf("unmatched receipt budget did not retain a bounded newest window: %d", len(pending))
+	}
+	if len(u.shell.diff.data.order) != 0 {
+		t.Fatal("unmatched receipts became durable evidence")
 	}
 }

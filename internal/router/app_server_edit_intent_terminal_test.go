@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
 func TestAppServerEditIntentTerminalFrames(t *testing.T) {
@@ -106,7 +108,11 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 			}
 		}
 	}
-	u.applyCapturedEdits()
+	// The observer finishes the edit before the command's test and before
+	// the next model request can supply durable outer-cell evidence.
+	u.shell.diff.data = newLiveDiffData()
+	u.shell.preview(diffview.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
+		HostItems: []string{"cmd"}, EditReceipt: receipt.text, Files: history.ReviewFiles})
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
@@ -120,12 +126,27 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 		strings.Contains(frame, "PRIVATE_CAT_BODY") || strings.Contains(frame, "PRIVATE_PY_BODY") {
 		t.Fatalf("terminal retained requested/source/unknown file detail after receipt:\n%s", frame)
 	}
+	for y, row := range strings.Split(frame, "\n") {
+		if x := strings.Index(row, "b.go"); x >= 0 {
+			for _, end := range []string{"M", "m"} {
+				if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%d%s", ansi.StringWidth(row[:x])+1, y+1, end)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			break
+		}
+	}
+	if u.shell.output == nil || !strings.Contains(u.shell.output.pages[u.shell.output.page].Code, "+second") {
+		t.Fatal("observed Edited row did not open its exact source while the test was running")
+	}
+	u.shell.outputKey("\x1b")
 	// A failed command with only unavailable evidence must still show its
 	// exit status after the Capture notice replaces its original Run row.
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "cmd", "type": "commandExecution", "command": command, "exitCode": 2}})
 	history.ReviewFiles = history.ReviewFiles[2:]
 	data.attempts["receipt"] = liveDiffAttempt{receipt: capturedEditActivity(workspace, history)}
+	u.shell.diff.data = data
 	u.applyCapturedEdits()
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)
