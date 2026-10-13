@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -46,6 +47,12 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 	}
 	if u.shellMode() {
 		label = activityui.Red + "Shell Mode" + activityui.Reset + " · " + label
+	}
+	if count := u.runningProcessCount(); count > 0 {
+		if label != "" {
+			label += activityui.Dim + " · " + activityui.Undim
+		}
+		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.painter.Colors) + activityui.Reset
 	}
 	notice := strings.ReplaceAll(livediff.Safe(u.notice, false), "\n", " ")
 	switch {

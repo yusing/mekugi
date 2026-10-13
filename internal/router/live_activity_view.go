@@ -126,7 +126,6 @@ type liveActivityRun struct {
 	questions []uint64              // Clickable question targets, aligned with lines.
 	entryRows map[uint64]int        // Exact Activity entry starts within a grouped run.
 	batch     bool                  // Main operations that fold into one row once out of view.
-	running   []int                 // First row of each running command block.
 }
 
 // liveActivityEvent is an agent's latest standalone entry and when it arrived.
@@ -1369,7 +1368,6 @@ type liveActivityFeed struct {
 	snippets  []liveActivitySnippet // Snippet that owns each line, if any.
 	questions []uint64
 	passing   []liveActivityPassing
-	running   []int // Command headers to keep visible until host completion.
 }
 
 type liveActivityPaint struct {
@@ -1418,9 +1416,6 @@ func (feed *liveActivityFeed) separator() {
 
 // appendRows keeps row content and metadata aligned; each renderer owns heads.
 func (feed *liveActivityFeed) appendRows(run liveActivityRun) {
-	for _, row := range run.running {
-		feed.running = append(feed.running, len(feed.lines)+row)
-	}
 	feed.lines = append(feed.lines, run.lines...)
 	feed.snippets = append(feed.snippets, run.snippets...)
 	feed.questions = append(feed.questions, run.questions...)
@@ -1442,7 +1437,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 		}
 		v.expansionAnchor = nil
 	}
-	offset, _, pins := v.pinnedViewport(feed, rows)
+	offset, _ := v.viewportPosition(feed, rows)
 	for _, paint := range feed.paints {
 		old := v.runs[paint.key]
 		decorate := func(first, last int) {
@@ -1464,12 +1459,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 			}
 			copy(feed.lines[paint.start+first:paint.start+last], run.lines[first:last])
 		}
-		decorate(max(0, offset-paint.start), min(len(old.lines), offset+rows-len(pins)-paint.start))
-		for _, pin := range pins {
-			if row := pin - paint.start; row >= 0 && row < len(old.lines) {
-				decorate(row, row+1)
-			}
-		}
+		decorate(max(0, offset-paint.start), min(len(old.lines), offset+rows-paint.start))
 		old.colored = old.painted != nil && !slices.Contains(old.painted, false)
 		v.runs[paint.key] = old
 	}
@@ -1710,9 +1700,6 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			run.snippets = append(run.snippets, liveActivitySnippet{})
 			run.questions = append(run.questions, 0)
 		}
-		if block.Running {
-			run.running = append(run.running, len(run.lines))
-		}
 		previousMessage, previousSummary = message, block.Kind == "summary"
 		// A merged read row stands for each entry it merged.
 		for _, member := range append([]activityui.Block{block}, block.Members...) {
@@ -1781,60 +1768,14 @@ func (v *liveActivityView) viewportPosition(feed liveActivityFeed, rows int) (in
 	return max(0, min(offset, len(feed.lines)-rows)), following
 }
 
-// pinnedViewport reserves rows for off-screen running headers before resolving
-// scrolling. Transcript offsets remain source-row coordinates, including Home
-// and navigation targets. Narrowing the body can expose more headers to pin.
-func (v *liveActivityView) pinnedViewport(feed liveActivityFeed, rows int) (int, bool, []int) {
-	limit := max(0, rows-1)
-	if rows == 1 {
-		limit = 1
-	}
-	reserved := 0
-	for {
-		body := max(0, rows-reserved)
-		offset, following := v.viewportPosition(feed, body)
-		var pins []int
-		for _, row := range feed.running {
-			if len(pins) >= limit {
-				break
-			}
-			if row >= offset && row < offset+body {
-				continue
-			}
-			if !v.conversation {
-				head := feed.heads[row]
-				if !slices.Contains(pins, head) && len(pins)+1 < limit {
-					pins = append(pins, head)
-				}
-			}
-			pins = append(pins, row)
-		}
-		// Activity's current agent heading also needs its own row: replacing
-		// the body's first row could erase a naturally visible command header.
-		if !v.conversation && len(feed.running) > 0 && offset < len(feed.heads) && len(pins) < limit {
-			head := feed.heads[offset]
-			// Keep a reserved heading row if following crosses a group boundary;
-			// dropping it would widen the body and move back across the boundary.
-			if len(pins) < reserved || head != offset && (len(pins) == 0 || feed.heads[pins[len(pins)-1]] != head) {
-				pins = append(pins, head)
-			}
-		}
-		if len(pins) == reserved {
-			return offset, following, pins
-		}
-		reserved = len(pins)
-	}
-}
-
 // viewport returns exactly rows lines. When scrolled into a run, that run's
 // heading stays pinned on the first row.
 func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	rows = max(0, rows)
-	var pins []int
-	v.offset, v.following, pins = v.pinnedViewport(feed, rows)
+	v.offset, v.following = v.viewportPosition(feed, rows)
 	v.pendingTarget = 0
 	v.feedSpans = feed.spans
-	v.feedLines, v.feedRows = len(feed.lines), max(1, rows-len(pins))
+	v.feedLines, v.feedRows = len(feed.lines), max(1, rows)
 	if v.following {
 		v.unseen = 0
 	}
@@ -1850,10 +1791,7 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	v.feedSnippets = make([]liveActivitySnippet, rows)
 	v.feedQuestions = make([]uint64, rows)
 	for row := range rows {
-		index := v.offset + row - len(pins)
-		if row < len(pins) {
-			index = pins[row]
-		}
+		index := v.offset + row
 		if index < len(feed.lines) {
 			lines[row], v.feedSnippets[row] = feed.lines[index], feed.snippets[index]
 			v.feedQuestions[row] = feed.questions[index]
@@ -1867,17 +1805,14 @@ func (v *liveActivityView) viewport(feed liveActivityFeed, rows int) []string {
 	}
 	// Pin only when the run keeps a visible line under its heading. Main's
 	// transcript items do not always start with a heading, so it never pins.
-	if len(feed.running) == 0 && !v.conversation && rows > 1 && v.offset+1 < len(feed.heads) && feed.heads[v.offset] != v.offset && feed.heads[v.offset+1] == feed.heads[v.offset] {
+	if !v.conversation && rows > 1 && v.offset+1 < len(feed.heads) && feed.heads[v.offset] != v.offset && feed.heads[v.offset+1] == feed.heads[v.offset] {
 		lines[0], v.feedSnippets[0] = feed.lines[feed.heads[v.offset]], liveActivitySnippet{}
 		v.feedQuestions[0] = 0
 	}
 	// Activity's painter flashes its own entries; Main flashes whole items.
 	if target, ok := v.questionRows[v.flashQuestion]; ok && v.conversation && v.now().Before(v.flashUntil) {
 		for row := range lines {
-			index := v.offset + row - len(pins)
-			if row < len(pins) {
-				index = pins[row]
-			}
+			index := v.offset + row
 			if index < len(feed.heads) && feed.heads[index] == target {
 				lines[row] = v.selectRow(lines[row], ansi.StringWidth(lines[row]))
 			}

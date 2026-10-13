@@ -1176,6 +1176,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if text == "/resume" || strings.HasPrefix(text, "/resume ") {
 			return false, u.resumeCommand(text)
 		}
+		if text == "/ps" {
+			u.statusPanel = &appServerStatusReport{title: "Running processes", groups: []string{"Processes"}, processes: true}
+			u.deleteDraftRange(0, len(u.draft))
+			return false, nil
+		}
 		if text == "/session" {
 			u.showSessionMetrics()
 			return false, nil
@@ -1204,7 +1209,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /status, /session, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -1576,7 +1581,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 }
 
 func (u *appServerUI) sessionAnimating() bool {
-	return u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
+	return u.runningProcessCount() > 0 || u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {

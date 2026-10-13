@@ -232,9 +232,6 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				for seq, row := range run.entryRows {
 					run.entryRows[seq] = row + 1
 				}
-				for i := range run.running {
-					run.running[i]++
-				}
 			}
 			return run
 		}
@@ -431,7 +428,6 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	}
 	var out conversationLines
 	var laid []activityui.Block // Tool blocks, indexed by the snippets naming them.
-	var running []int
 	batch := false
 	entryRows := make(map[uint64]int)
 	p := &v.painter
@@ -533,9 +529,6 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 				target = snippet
 			}
 			rows := v.paintBlock(len(toggles), 0, func() []string { return p.Block(block, width-2) })
-			if block.Running && len(rows) > 0 {
-				running = append(running, len(out.lines)+len(toggles))
-			}
 			if len(block.Questions) > 0 {
 				entryRows[block.Source] = len(toggles)
 			}
@@ -588,7 +581,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			}
 		}
 	}
-	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows, batch: batch, running: running}
+	return liveActivityRun{lines: out.lines, blocks: laid, snippets: out.snippets, questions: out.questions, entryRows: entryRows, batch: batch}
 }
 
 // conversationHeading is one item heading: a glyph, a name, optional dim

@@ -1,0 +1,3 @@
+"\x1b[38;2;96;96;96m2 running processes\x1b[m                                                             "
+"\x1b[38;2;160;160;160m2 running processes\x1b[m                                                             "
+"plain                                                                           "
