@@ -349,8 +349,10 @@ session, defaults to on at launch (including resume), and never stops activity,
 preview updates, or capture. Hidden docks reserve no space. Showing the pane
 again displays any still-current cards, not expired work.
 
-Streaming edits with producible source hunks temporarily replace their owner's
-transcript. Non-file targets and hunkless changes leave the transcript visible.
+Streaming edits with arriving source content and producible source hunks temporarily
+replace their owner's transcript. Copy, removal, formatter-only, and generic command
+effects do not open live views. Non-file targets and hunkless changes leave the
+transcript visible.
 Main uses its whole transcript area above the composer; it never hides Activity or a saved
 Diff. Activity substitutes a compact, single-file live view at the editing
 agent's latest entry, hiding that agent's other transcript rows while retaining
@@ -557,7 +559,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of the draft opens a local command
-catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/orchestrate`, `/status`, `/session`, `/copy`,
+catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/orchestrate`, `/status`, `/session`, `/ps`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
@@ -637,6 +639,19 @@ replace a newer dock. The display retains at most 256 KiB across 256 answer item
 and reports truncation; Codex retains the full side context for follow-ups.
 The dock is not persisted or restored on resume, and closing it makes the next
 `/btw` take a new snapshot. No processes or handles are replayed.
+
+### Running processes
+
+Main's composer row shows a breathing `N running processes` label while at least
+one observed command is running in the active thread or its children. At zero,
+the label is absent. Running commands remain ordinary scrollable transcript rows.
+
+`/ps` opens the shared themed, scrollable dialog with each current command and
+its owning agent. The list updates as commands start or complete and shows an
+explicit empty state when none remain. Closing the dialog uses the existing
+dialog controls without interrupting work or submitting a model request. Yielded
+commands remain listed until host completion. Restored history never creates a
+running process, and switching sessions does not retain the prior session's list.
 
 ### Session metrics
 

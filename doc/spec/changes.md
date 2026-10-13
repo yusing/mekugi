@@ -334,14 +334,14 @@ stays neutral.
 ### Live terminal view
 
 In an interactive terminal, Mekugi opens its integrated viewer on the
-first observed editing or execution call. The stream view shows concurrent
+first streamable edit with a producible source hunk. The stream view shows concurrent
 main-agent and child calls. It streams edits only: provisional `apply_patch`
-diffs and the file effects of shell commands, before completion. Stock `cat`
+diffs and recognized shell content writes, before completion. Stock `cat`
 heredoc redirections are always streamed, including from a nested
 `tools.exec_command` call whose arguments are
-still arriving. Literal `cp`, `rm`, and `tee` heredoc commands are
-predicted from current file contents. Moves do not open live source cards:
-they have no arriving source content. Their completed evidence remains in
+still arriving. Literal `tee` heredoc writes also stream. Copies, removals,
+moves, formatter-only writes, and generic command effects do not open live source
+cards: they have no arriving source content. Their completed evidence remains in
 Activity and the saved diff. Independent source writes in the same call still
 stream. A preview does not claim that Codex ran
 or accepted an edit. A nested patch held in an immutable top-level literal
@@ -420,8 +420,8 @@ predicted as if each succeeds. Literal variable assignments, `set`, `echo`, and
 has no target-file preview because its target cannot be resolved.
 Recognized VCS effects have no pending or running live-diff card. Authored
 targets in mixed calls remain visible, using the same provenance admission as
-authored counts. Ordinary command watches remain hidden until a captured
-regular file has a producible source hunk. Sockets and other non-file targets,
+authored counts. Ordinary command watches do not open live source cards; only
+recognized streamable content writes are eligible. Sockets and other non-file targets,
 metadata-only changes, and unavailable or binary content do not open live cards;
 their captured evidence remains available in Activity and saved Diff.
 A `may write` footer distinguishes captured paths from additional
@@ -437,7 +437,7 @@ Changed-file cards say `observed so far` and disappear if the files
 return to their captured state. When a live segment report uniquely matches the
 writer's thread, turn and exact script, and the host invocation started after
 the writer window opened, the card finishes after all recognized
-edit segments (including file copies and Go formatter writes) end or are skipped, independently
+streamable edit segments end or are skipped, independently
 of a following test or other non-edit segment. A uniquely matched native Bash or
 `sh` command completion also finishes its card when no segment report exists,
 including commands with supported literal `env` prefixes, without waiting for
@@ -449,9 +449,9 @@ supply completion. Without tracking, a literal edit's card finishes when its
 captured targets match the fully projected edit. The completed card says
 `observed`; it does not claim that the shell command or tests succeeded. Matching
 uses the pre-call baseline, never a fresh baseline read after execution.
-Untracked, unprojectable effects still require terminal results, background
+Untracked streamable edits still require terminal results, background
 transition, native turn completion, or viewer shutdown to remove their live
-preview. Interruption retires only that thread and turn's previews and polling;
+preview when their observed files do not match the projection. Interruption retires only that thread and turn's previews and polling;
 late frames and viewer resubscription cannot revive them. It neither cancels
 other agents' previews nor finalizes an unfinished host call. Running previews
 and predictions never become durable evidence, and replay does not restart
@@ -674,7 +674,7 @@ Acceptance:
    themselves recorded as revertable changes.
 5. Child handoff and resume use durable ownership, not a live process; replay
    never executes an edit again.
-6. Live `cat`, file-operation, and interpreter projections are presentation
+6. Live `cat`, `tee`, patch, and interpreter projections are presentation
    only and preserve stock PTY, yield, host result, and `write_stdin` behavior.
    The separate duplicate-output projection changes only eligible model input.
 7. A literal nested command produces a record with the
