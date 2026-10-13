@@ -97,7 +97,7 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 		u.waitOrchestratedEvent(command)
 		return
 	case "cleanup":
-		u.cleanOrchestratedChild(command)
+		u.cleanOrchestratedChild(command, func(result orchestrateResult) { command.reply <- result })
 		return
 	case "integrate":
 		u.planOrchestratedMerge(command)

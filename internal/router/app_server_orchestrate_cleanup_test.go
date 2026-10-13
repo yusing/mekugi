@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -170,7 +171,7 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 	}
 }
 
-func TestAppServerOrchestrateCleanupAfterRunningMessage(t *testing.T) {
+func TestAppServerOrchestrateAutomaticCleanupAfterIntegration(t *testing.T) {
 	u := orchestrateCleanupUI(t)
 	w := u.client.Input.(*appServerTestInput)
 	w.Reset()
@@ -189,12 +190,111 @@ func TestAppServerOrchestrateCleanupAfterRunningMessage(t *testing.T) {
 	}
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"working","status":"completed"}}}`)
 	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
+	batch := u.orchestrateThreads["child"].batch
+	writeTestFile(t, filepath.Join(batch.Cwd, "result"), "integrated result")
+	gitTestCommit(t, batch.Cwd)
+	gitTestRun(t, u.session.cwd, "merge", "--ff-only", batch.Branch)
 	if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
 		t.Fatal(err)
 	}
-	orchestrateTargetMCPClient(t, u, "cleanup")("main", false)
+	// The ordinary UI lifecycle consumes the durable acceptance. No cleanup
+	// tool call or extra model turn supplies the missing integration step.
+	if err := u.tickOrchestratedViews(u); err != nil {
+		t.Fatal(err)
+	}
+	drainOrchestrateWork(t, u)
+	if _, err := os.Lstat(batch.Checkout); !os.IsNotExist(err) {
+		t.Fatal("accepted checkout survived automatic cleanup", err)
+	}
+	if worktrees := submoduleCleanupGit(t, u.session.cwd, "worktree", "list", "--porcelain"); strings.Contains(worktrees, batch.Checkout) {
+		t.Fatal("accepted checkout retained its Git registration", worktrees)
+	}
+	retained, err := u.proxy.orchestration.store.Snapshot(u.session.cwd, "main")
+	if err != nil || retained[0].State != "removed" || retained[0].Integration == nil || submoduleCleanupGit(t, u.session.cwd, "rev-parse", batch.Branch) != retained[0].Integration.Tip {
+		t.Fatal("cleanup lost accepted commits or manifest", retained, err)
+	}
+	journal, _, err := readThreadJournal(u.proxy.replayStore, u.session.cwd, "main")
+	if err != nil || journal.Items[0].State != "accepted" || journal.Items[0].Integration == nil {
+		t.Fatal("cleanup lost durable acceptance", journal.Items, err)
+	}
 	if w.Len() != 0 {
 		t.Fatal("accepted delivery required another host turn", w.String())
+	}
+}
+
+func TestAppServerOrchestrateAutomaticCleanupFailure(t *testing.T) {
+	for _, failure := range []string{"pending input", "changed checkout", "uncertain removal", "reopened acceptance"} {
+		t.Run(failure, func(t *testing.T) {
+			u := orchestrateCleanupUI(t)
+			p, workspace := u.proxy, u.session.cwd
+			batch := u.orchestrateThreads["child"].batch
+			accept := []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}
+			if _, err := p.applyJournal(u.ctx, workspace, "main", "rejected", append(slices.Clone(accept), journalMutation{Op: "set", P: "/missing", State: new("done")})); err == nil {
+				t.Fatal("invalid acceptance mutation succeeded")
+			}
+			if len(p.orchestration.journalEvents) != 0 {
+				t.Fatal("failed acceptance scheduled cleanup")
+			}
+			if _, err := p.applyJournal(u.ctx, workspace, "main", "accepted", accept); err != nil {
+				t.Fatal(err)
+			}
+			switch failure {
+			case "pending input":
+				u.navigation.views["child"].draft = "unfinished input"
+			case "changed checkout":
+				writeTestFile(t, filepath.Join(batch.Cwd, "file"), "unfinished work")
+			case "uncertain removal":
+				path := filepath.Dir(batch.Checkout) + ".json"
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, bytes.Replace(data, []byte(`"state":"prepared"`), []byte(`"state":"removing"`), 1), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "reopened acceptance":
+				if _, err := p.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("working")}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			u.flushOrchestratedEvents()
+			drainOrchestrateWork(t, u)
+			if _, err := os.Stat(batch.Checkout); err != nil || !strings.Contains(u.notice, "cleanup:") {
+				t.Fatal("failed cleanup lost checkout or visible failure", err, u.notice)
+			}
+			u.flushOrchestratedEvents()
+			drainOrchestrateWork(t, u)
+			var retained struct {
+				Wait orchestrate.WaitState `json:"wait"`
+			}
+			data, err := os.ReadFile(filepath.Dir(batch.Checkout) + ".json")
+			if err != nil || json.Unmarshal(data, &retained) != nil || !slices.ContainsFunc(retained.Wait.Events, func(e orchestrate.WaitEvent) bool {
+				var event orchestrateEvent
+				return json.Unmarshal(e.Data, &event) == nil && event.Task == "batch" && event.Kind == "failure" && event.Status == "cleanup_failed"
+			}) {
+				t.Fatal("cleanup failure was not retained for Main", err)
+			}
+			// A fresh journal owner and repeated receipt must not retry cleanup.
+			p.journals = newJournalStore()
+			if _, err := p.applyJournal(u.ctx, workspace, "main", "accepted", accept); err != nil || len(p.orchestration.journalEvents) != 0 {
+				t.Fatal("acceptance replay scheduled another cleanup", err)
+			}
+			if failure == "pending input" {
+				if _, err := p.applyJournal(u.ctx, workspace, "main", "already-accepted", accept); err != nil || len(p.orchestration.journalEvents) != 0 {
+					t.Fatal("unchanged acceptance scheduled another cleanup", err)
+				}
+				u.navigation.views["child"].draft = ""
+				u.flushOrchestratedEvents()
+				drainOrchestrateWork(t, u)
+				if _, err := os.Stat(batch.Checkout); err != nil {
+					t.Fatal("idle transition implicitly retried cleanup", err)
+				}
+				orchestrateTargetMCPClient(t, u, "cleanup")("main", false)
+				if _, err := os.Stat(batch.Checkout); !os.IsNotExist(err) {
+					t.Fatal("explicit cleanup retry failed", err)
+				}
+			}
+		})
 	}
 }
 

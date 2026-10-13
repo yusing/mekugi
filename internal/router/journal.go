@@ -675,11 +675,11 @@ func decodeJournalMutations(raw []byte) ([]journalMutation, error) {
 }
 
 func (s *journalStore) apply(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, error) {
-	paths, _, err := s.applyWithBlocks(ctx, store, workspace, thread, receiptID, mutations)
+	paths, _, err := s.applyWithOrchestrateEvents(ctx, store, workspace, thread, receiptID, mutations)
 	return paths, err
 }
 
-func (s *journalStore) applyWithBlocks(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, []orchestrateEvent, error) {
+func (s *journalStore) applyWithOrchestrateEvents(ctx context.Context, store *mekugiReplayStore, workspace, thread, receiptID string, mutations []journalMutation) ([]string, []orchestrateEvent, error) {
 	submitted := mutations
 	finishTurn := ""
 	finishItem := ""
@@ -706,7 +706,7 @@ func (s *journalStore) applyWithBlocks(ctx context.Context, store *mekugiReplayS
 	digest := fmt.Sprintf("%x", sha256.Sum256(encoded))
 	var ids []string
 	var counters *capturer.JournalMetrics
-	var blocks []orchestrateEvent
+	var events []orchestrateEvent
 	err = s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
 		if !exists {
 			return fmt.Errorf("journal state is missing for thread %q in workspace %q; initialization did not complete or session data was cleaned up; retry the request to initialize it", thread, workspace)
@@ -869,25 +869,32 @@ func (s *journalStore) applyWithBlocks(ctx context.Context, store *mekugiReplayS
 				j.countJournalOperation(mutation.Op)
 			}
 		}
-		blockedBefore := make(map[string]bool)
+		statesBefore := make(map[string]string)
 		for _, item := range before {
-			if item.Kind == "task" && item.State == "blocked" {
-				blockedBefore[item.Path] = true
-			}
+			statesBefore[item.Path] = item.State
 		}
 		for _, item := range j.Items {
-			if item.Kind == "task" && item.State == "blocked" && !blockedBefore[item.Path] {
-				blocks = append(blocks, orchestrateEvent{ID: fmt.Sprintf("block:%s:%s:%s:%d", thread, receiptID, item.Path, j.Sequence), Thread: thread, Turn: j.TurnID, Kind: "blocked", Status: "blocked", Path: item.Path, Message: item.Reason})
+			if item.Kind == "task" && item.State == "blocked" && statesBefore[item.Path] != "blocked" {
+				events = append(events, orchestrateEvent{ID: fmt.Sprintf("block:%s:%s:%s:%d", thread, receiptID, item.Path, j.Sequence), Thread: thread, Turn: j.TurnID, Kind: "blocked", Status: "blocked", Path: item.Path, Message: item.Reason})
 			}
 		}
-		blocks = s.scopeOrchestratedBlocks(store.scoped(ctx), workspace, thread, blocks)
+		events = s.scopeOrchestratedBlocks(store.scoped(ctx), workspace, thread, events)
+		// Only a new, validated transition requests cleanup. Receipt replay and
+		// restored history never retry an uncertain filesystem effect.
+		if run := j.Orchestration; run != nil && run.Main == thread {
+			for _, item := range j.Items {
+				if item.Kind == "task" && item.State == "accepted" && statesBefore[item.Path] != "accepted" {
+					events = append(events, orchestrateEvent{main: run.Main, workspace: run.Workspace, directory: run.Directory, ID: fmt.Sprintf("accepted:%s:%s:%d", thread, item.Path, j.Sequence), Task: strings.TrimPrefix(item.Agent, "/root/"), Kind: "accepted", Path: item.Path})
+				}
+			}
+		}
 		counters = j.Counters.Clone()
 		return nil
 	})
 	if err == nil {
 		capturer.ObserveJournal(ctx, counters)
 	}
-	return ids, blocks, err
+	return ids, events, err
 }
 
 // listAgent resolves authorization and reads content in one locked snapshot.

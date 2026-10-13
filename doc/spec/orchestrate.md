@@ -44,8 +44,9 @@ thread. Preparation intent is saved before checkout creation. A failed or
 interrupted preparation remains visible; retry does not blindly repeat its
 filesystem effects. Listing reads retained facts without starting processes or
 claiming that historical preparation state proves current filesystem contents.
-Prepared branches and checkouts remain until explicit cleanup; ordinary replay
-retention does not remove them.
+Prepared checkouts remain until integration is accepted or Main requests cleanup
+of an accepted batch. Branches remain after cleanup; ordinary replay retention
+does not remove orchestration resources.
 
 Git preparation includes locally initialized submodules, recursively, at the
 gitlink commits recorded in the baseline. Each is an independent local clone
@@ -401,9 +402,14 @@ its bound task `accepted`; writeback alone does not accept it.
 
 ## REQ-ORCHESTRATE-009 — Accepted checkout cleanup
 
-Main calls `tools.mcp__orchestrate__cleanup({target:"batch"})` to remove an
-accepted, idle Git or shadow batch checkout, including Git's run-owned submodule
-clones. Shadow cleanup retains the private repository and its history and leaves
+Newly saved journal acceptance requests cleanup of the integrated, idle Git or
+shadow batch checkout, including Git's run-owned submodule clones. Cleanup starts
+only after acceptance and integration evidence are durable. A cleanup failure stays
+visible and preserves the accepted integration; Main can inspect and retry through
+`tools.mcp__orchestrate__cleanup({target:"batch"})`. Restoring accepted journal
+history does not start cleanup or repeat an uncertain removal.
+
+Shadow cleanup retains the private repository and its history and leaves
 the source's files and VCS metadata unchanged. The bound journal task must still
 be `accepted` with the run's integration tips. The checkout must retain its
 exact recorded location, repository, branch and accepted tip and be clean. Pending

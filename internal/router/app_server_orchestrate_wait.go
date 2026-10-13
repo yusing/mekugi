@@ -87,6 +87,14 @@ func (u *appServerUI) flushOrchestratedEvents() {
 	}
 
 	u.orchestrateEvents = nil
+	// Acceptance is a live lifecycle trigger, not a replayable wait event.
+	events = slices.DeleteFunc(events, func(event orchestrateEvent) bool {
+		if event.Kind != "accepted" {
+			return false
+		}
+		u.cleanAcceptedOrchestratedChild(event)
+		return true
+	})
 	// Group by retained run identity. A journal may belong to a hidden view.
 	for len(events) != 0 {
 		first := events[0]
