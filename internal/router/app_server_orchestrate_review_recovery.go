@@ -93,7 +93,7 @@ func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
 	}
 	var pending []orchestrate.WorkflowDispatch
 	for _, d := range w.Dispatches {
-		if d.Generation != w.Generation || d.State == orchestrate.DispatchFailed || d.ResultItemID != "" || child.workflowWork[d.Kind] != nil {
+		if d.Generation != w.Generation || d.State == orchestrate.DispatchFailed || d.ResultItemID != "" || d.Archive != nil || child.workflowWork[d.Kind] != nil {
 			continue
 		}
 		if d.Kind == orchestrate.DispatchCorrection && w.Phase != orchestrate.PhaseCorrection && d.HostStatus != "" {

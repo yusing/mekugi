@@ -171,6 +171,10 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.workflow_test={name="workflow_test",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="workflow_test"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`, "-c", "features.code_mode=true", "-c", "features.code_mode_host=true", "-c", `approval_policy="never"`, "-c", `sandbox_mode="workspace-write"`)
 	cmd.Args = append(cmd.Args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["journal-mcp",`+strconv.Quote(socket)+`]}`)
+	releaseDirectory := os.Getenv(reviewerReleaseProbe)
+	if releaseDirectory != "" {
+		cmd.Args = append(cmd.Args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["review-release-mcp",`+strconv.Quote(socket)+`,`+strconv.Quote(releaseDirectory)+`]}`)
+	}
 	{
 		role := filepath.Join(t.TempDir(), "role.toml")
 		if err := os.WriteFile(role, []byte("developer_instructions = 'Configured correctness rubric'\nmodel = 'gpt-6-sol'\nmodel_reasoning_effort = 'low'\nservice_tier = 'flex'\n"), 0600); err != nil {
@@ -193,6 +197,7 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	defer u.shell.diffScreen.Close()
 	defer u.closeOrchestrateStorage()
 	defer u.closeOrchestratedViews()
+	releaseEvidence := map[string]reviewerReleaseEvidence{}
 	pump := func(done func() bool) {
 		t.Helper()
 		for !done() {
@@ -201,6 +206,7 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 				if !ok {
 					t.Fatal("host closed")
 				}
+				observeReviewerRelease(t, cmd.Process.Pid, releaseDirectory, message, releaseEvidence)
 				if message.Method == "turn/completed" && strings.Contains(string(message.Params), `"failed"`) {
 					t.Logf("failed host turn: %s", message.Params)
 				}
@@ -303,5 +309,9 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	}
 	if !configured {
 		testOrchestrateArchiveNativeCodex(t, u, pump)
+	}
+	if releaseDirectory != "" {
+		pump(func() bool { return len(u.orchestrateJobs) == 0 && len(u.orchestrateRequests) == 0 })
+		verifyReviewerRelease(t, u, cmd.Process.Pid, releaseEvidence)
 	}
 }

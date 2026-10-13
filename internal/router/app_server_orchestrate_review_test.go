@@ -107,6 +107,7 @@ func workflowReview(t *testing.T, u *appServerUI, w *appServerTestInput, purpose
 	}
 	raw, _ := json.Marshal(result)
 	workflowCompleted(t, u, thread, thread+"-turn", string(raw))
+	workflowArchive(t, u, w, thread, false)
 }
 
 // workflowCheck answers the next host check; an "error:" response is an RPC error.
@@ -230,6 +231,8 @@ func TestOrchestrateWorkflowLifecycle(t *testing.T) {
 	}
 	u.driveOrchestrateWorkflows()
 	drainOrchestrateWork(t, u)
+	workflowArchive(t, u, w, "reviewer-s", false)
+	workflowArchive(t, u, w, "reviewer-c", false)
 	if w.Len() != 0 {
 		t.Fatal("terminal outcome delivered twice", w.String())
 	}
@@ -360,6 +363,7 @@ func TestOrchestrateWorkflowFollowupResumesStoppedWorkflow(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "late", "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never"})
 	orchestrateTestReply(t, u, late, string(raw))
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"reviewer","turn":{"id":"reviewer-turn","status":"interrupted"}}}`)
+	workflowArchive(t, u, w, "reviewer", false)
 	if w.Len() != 0 || child.batch.Workflow.Phase != orchestrate.PhaseImplementation || len(child.workflowWork) != 0 {
 		t.Fatal("canceled round affected the resumed round", w.String(), child.batch.Workflow)
 	}
@@ -442,6 +446,7 @@ func TestOrchestrateWorkflowRecoveryReconcilesConcurrentReviews(t *testing.T) {
 	child := u.orchestrateThreads["child"]
 	workflowThreadRead(t, u, w, "reviewer-c", "completed", workflowVerdict(child, orchestrate.ReviewCorrectness))
 	workflowThreadRead(t, u, w, "reviewer-s", "inProgress", "")
+	workflowArchive(t, u, w, "reviewer-c", false)
 	if len(child.batch.Workflow.Reviews) != 1 || child.batch.Workflow.Reviews[0].Purpose != orchestrate.ReviewCorrectness {
 		t.Fatal("recovery lost host review")
 	}
@@ -505,6 +510,7 @@ func TestOrchestrateWorkflowManualInputAndCancellation(t *testing.T) {
 	late, _ := workflowTake(t, u, w, "thread/start", "", orchestrate.DispatchSimplification)
 	raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "late", "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never"})
 	orchestrateTestReply(t, u, late, string(raw))
+	workflowArchive(t, u, w, "reviewer", false)
 	if len(child.workflowWork) != 0 || workflowUnsettled(child.batch) || w.Len() != 0 {
 		t.Fatal("interrupt completion revived work or left active reviewer", w.String())
 	}

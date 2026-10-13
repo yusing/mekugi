@@ -96,6 +96,13 @@ func (u *appServerUI) startWorkflowTurn(work *orchestrateReviewWork) {
 func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 	work, child := r.review, r.child
 	switch r.method {
+	case "thread/archive":
+		var err error
+		if m.Error != nil {
+			err = fmt.Errorf("thread/archive: %s", m.Error.Message)
+		}
+		u.recordWorkflowReviewerArchive(work, true, err)
+		return
 	case "thread/read":
 		u.workflowRecoveryResponse(work, m)
 		return

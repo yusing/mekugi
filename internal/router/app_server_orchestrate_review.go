@@ -460,6 +460,7 @@ func (u *appServerUI) finishWorkflowWork(work *orchestrateReviewWork) {
 	child, c, name, turn, d := work.child, work.child.command, work.child.batch.TaskName, *work.completed, work.dispatch
 	message, item, messageTurn := work.message, work.item, work.messageTurn
 	stopped := u.workflowWorkStopped(work)
+	completionRetained := false
 	if turn.ID != d.TurnID {
 		u.workflowFailure(child, orchestrate.PhaseNeedsDecision, errors.New("workflow host turn identity changed"))
 		return
@@ -468,6 +469,7 @@ func (u *appServerUI) finishWorkflowWork(work *orchestrateReviewWork) {
 		if err := s.RecordWorkflowCompletion(ctx, c.workspace, c.main, name, d.ID, d.ThreadID, turn.ID, turn.Status); err != nil {
 			return err
 		}
+		completionRetained = true
 		if stopped {
 			return nil
 		}
@@ -503,6 +505,9 @@ func (u *appServerUI) finishWorkflowWork(work *orchestrateReviewWork) {
 				phase = orchestrate.PhaseFailed
 			}
 			u.workflowFailure(child, phase, err)
+		}
+		if completionRetained {
+			u.archiveWorkflowReviewer(work)
 		}
 	})
 }

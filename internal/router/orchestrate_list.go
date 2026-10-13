@@ -57,7 +57,7 @@ func orchestrateListAgents(batches []orchestrate.Batch, input orchestrateListInp
 			}
 			var dispatches []orchestrate.WorkflowDispatch
 			for _, d := range w.Dispatches {
-				if d.Generation == w.Generation || workflowDispatchUnsettled(d) {
+				if d.Generation == w.Generation || workflowDispatchUnsettled(d) || d.Archive != nil && d.Archive.State != "archived" {
 					dispatches = append(dispatches, d)
 				}
 			}

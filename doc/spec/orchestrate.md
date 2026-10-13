@@ -316,6 +316,16 @@ workflow completion or failure handling. A newer active turn prevents adoption.
 This observation starts no child turn,
 repeats no review or result delivery, and does not replace integration acceptance.
 
+After authenticated terminal review completion, Mekugi archives that independent
+reviewer through Codex to release its private runtime and owned helpers. Host
+completion, verdict or failure evidence, and available usage are retained first.
+Failed and interrupted reviews can also release their resources after confirmed
+completion. Active or unresolved work stays intact. Main and the implementer are
+not targets of this trigger. Archive intent and its separate outcome remain in
+the review dispatch record. Failures preserve the review outcome and remain
+inspectable; recovery never repeats an unconfirmed archive request. Archival keeps
+private verdicts, workflow receipts, usage and read-only host history available.
+
 Integration remains Main's responsibility within the accepted destination and
 authorization. A reviewed candidate must still match its revision when integration
 is admitted. Workflow readiness does not replace Git ancestry or shadow-writeback
@@ -528,7 +538,8 @@ history does not start cleanup or repeat an uncertain removal.
 
 After checkout removal, Mekugi archives the accepted child batch through
 Codex's native thread archive. Main and independent reviewer threads are not
-archive targets. Native spawned descendants follow Codex's archive semantics.
+targets of accepted-checkout cleanup; terminal reviewers use the review lifecycle
+above. Native spawned descendants follow Codex's archive semantics.
 Archive intent is durable before dispatch and keeps Main's accepted binding
 fixed. Host confirmation is retained separately from checkout removal. Archive
 failure preserves acceptance and history and remains visible; an unconfirmed
