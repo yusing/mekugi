@@ -125,6 +125,7 @@ type appServerUI struct {
 	proxy                     *mekugiProxy
 	execTrack                 *execTrackHub // Per-segment command reports; nil when not tracking.
 	shellEdits                appServerShellEdits
+	pendingEditReceipts       []*capturedActivityEdit // Observed edits can precede their host Activity item.
 	issues                    *CriticalErrors
 	noticeEntries             map[string]bool
 	journalView               nativeJournalView
