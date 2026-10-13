@@ -30,12 +30,24 @@ func workflowDispatchUnsettled(d orchestrate.WorkflowDispatch) bool {
 // replays a turn/start or treats an old running label as a revived process.
 func (u *appServerUI) recoverOrchestratedWorkflows(batches []orchestrate.Batch) {
 	for _, batch := range batches {
-		if batch.Workflow == nil || batch.Workflow.Assignment.Kind != orchestrate.WorkflowImplementation || batch.State == "removed" || batch.State == "removing" {
+		if batch.Workflow == nil || batch.Workflow.Assignment.Kind != orchestrate.WorkflowImplementation {
 			continue
 		}
 		child := &orchestrateChild{batch: batch, command: &orchestrateCommand{ctx: u.ctx, workspace: u.session.cwd, main: u.thread, reply: make(chan orchestrateResult, 1)}, workflowEnding: true, workflowDeferred: true}
 		if batch.Launch == nil || batch.Launch.ThreadID == "" {
 			u.workflowFailure(child, orchestrate.PhaseNeedsDecision, errors.New("implementation launch has no confirmed thread; reconcile host state"))
+			continue
+		}
+		for _, d := range batch.Workflow.Dispatches {
+			if d.ThreadID == "" || d.Kind != orchestrate.DispatchCorrectness && d.Kind != orchestrate.DispatchSimplification {
+				continue
+			}
+			raw, _ := json.Marshal(map[string]any{"thread": appServerThreadInfo{ID: d.ThreadID, Cwd: batch.Cwd}})
+			if err := u.addWorkflowReviewView(child, d, raw, true, func() {}); err != nil {
+				u.setNotice("Review view: "+err.Error(), true)
+			}
+		}
+		if batch.State == "removed" || batch.State == "removing" {
 			continue
 		}
 		if u.orchestrateThreads == nil {

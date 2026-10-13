@@ -44,9 +44,8 @@ func (u *appServerUI) ensureOrchestrationNavigation() *orchestrateNavigation {
 	return u.navigation
 }
 
-func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, ready func()) error {
+func (u *appServerUI) addOrchestratedView(child *orchestrateChild, thread string, raw []byte, ready func()) error {
 	n := u.ensureOrchestrationNavigation()
-	thread := child.batch.Launch.ThreadID
 	if n.views[thread] != nil {
 		ready()
 		return nil
@@ -121,7 +120,9 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, raw []byte, r
 				if release != nil {
 					release()
 				}
-				u.finishOrchestrate(child, context.Canceled)
+				if thread == child.batch.Launch.ThreadID {
+					u.finishOrchestrate(child, context.Canceled)
+				}
 				return
 			}
 			if release != nil {
@@ -212,6 +213,13 @@ func (n *orchestrateNavigation) route(m appserver.Message) (bool, error) {
 	thread := p.ThreadID
 	if p.Thread.ID != "" {
 		thread = p.Thread.ID
+		if n.views[thread] == nil && n.owner.workflowStartingReviewer() {
+			if len(n.pending) == 256 {
+				return true, errors.New("orchestration descendant event capacity exceeded")
+			}
+			n.pending = append(n.pending, m)
+			return true, nil
+		}
 		n.registerAncestry(p.Thread)
 		if err := n.drain(); err != nil {
 			return true, err
@@ -353,6 +361,9 @@ func (n *orchestrateNavigation) drain() error {
 			}
 		} else {
 			n.pending = append(n.pending, m)
+			if n.owner.workflowStartingReviewer() {
+				continue
+			}
 			if err := n.read(thread); err != nil {
 				return err
 			}
@@ -410,6 +421,13 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		to.autoActivity = false
 	}
 	n.viewed = n.views[thread]
+	if review := n.viewed.workflowReview; review != nil && review.restored {
+		review.restored = false
+		if _, err := n.viewed.requestAs("thread/read", "workflow/review/read", map[string]any{"threadId": thread, "includeTurns": true}); err != nil {
+			review.restored = true
+			n.viewed.setNotice("Review history: "+err.Error(), true)
+		}
+	}
 	n.viewed.orchestrationRoster()
 	for _, agent := range n.viewed.agents.orchestration {
 		if n.viewed.agents.orchestrationSources[agent.Name] == n.viewed.agents {
@@ -446,6 +464,9 @@ func (u *appServerUI) orchestrationTitle() string {
 		if u == n.owner {
 			return "main"
 		}
+		if u.workflowReview != nil {
+			return "main › " + u.workflowReview.name
+		}
 		return "main › " + n.owner.orchestrateThreads[u.thread].batch.TaskName
 	}
 	return "Main"
@@ -481,6 +502,10 @@ func (u *appServerUI) orchestrationRoster() {
 				if name == "main" {
 					name = "main batch"
 				}
+			}
+			if v.workflowReview != nil {
+				name = v.workflowReview.name
+				label = v.status
 			}
 			agent.Name = "/Orchestration/" + name
 			v.agents.lineCounts = v.shell.diff.callerCounts
@@ -658,6 +683,9 @@ func (u *appServerUI) pickOrchestratedThread(selected string) bool {
 		return false
 	}
 	for _, thread := range n.order {
+		if review := n.views[thread].workflowReview; review != nil && name == review.name {
+			return pick(thread)
+		}
 		batch := n.owner.orchestrateThreads[thread]
 		if name == "main" && thread == n.owner.thread || batch != nil && (name == batch.batch.TaskName && name != "main" || name == "main batch" && batch.batch.TaskName == "main") {
 			return pick(thread)

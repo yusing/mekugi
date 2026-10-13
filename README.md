@@ -207,14 +207,17 @@ its evidence, instead of relaying each review. A follow-up to a blocked or ready
 starts a new round.
 Choose any existing Codex roles for the two reviews in
 [reviewer settings](#orchestration-reviewers). Without a selection, reviews use
-built-in instructions and inherit Main's execution settings. Review threads remain
-read-only.
+built-in instructions and inherit Main's execution settings. Review threads appear
+in Agents with their own activity and observed usage. They remain runtime-owned and
+read-only. Validation commands stream progress in the batch view without adding
+model threads or token usage.
 
-Bare `/orchestrate` opens this Main's batch picker. Enter on an Orchestration row
+Bare `/orchestrate` opens this Main's batch and reviewer picker. Enter on an Orchestration row
 in Agents switches threads; `Ctrl-B`, then `[` / `]` cycles them. Each thread keeps
 its draft and local Activity filter while background threads continue working.
 Switching keeps the visible Activity, Diff or Journal pane and keyboard focus.
-Input targets the viewed thread; labeled questions and approvals return answers to their source.
+Input targets the viewed thread. Review views accept no manual turns or shell
+commands. Labeled questions and approvals return answers to their source.
 Orchestration calls show their status in Main or Activity; click returned output
 or errors to inspect them. A completed call does not mean its batch is complete.
 
@@ -223,7 +226,8 @@ SVN/unversioned batches with shadow writeback, then accepts their journal tasks.
 accepted, idle, clean run-owned checkouts and unchanged copied evidence. Branches,
 manifests, journals and shadow history remain; unfinished or unintegrated work stays.
 `/quit` asks for confirmation while batches run. Resume restores the roster;
-interrupted turns stay interrupted. Recovered workflows that need further dispatch
+interrupted turns stay interrupted. Retained reviewer history opens without restarting
+the review. Recovered workflows that need further dispatch
 wait for explicit child resume. See the [orchestration contract](doc/spec/orchestrate.md)
 for preparation, integration, cleanup and recovery details.
 

@@ -29,7 +29,10 @@ and roster state, and app-server event reconciliation. It adapts authenticated a
 scoped replay/change observations, accounting, and journal publications into display
 values. Orchestration retains one session controller per subscribed root. The
 viewed controller owns its shell and draft; the coordinator retains run dispatch
-independently of navigation. Questions and approvals retain their source
+independently of navigation. Workflow reviewer roots use the same view and accounting
+owners while the workflow retains exclusive turn dispatch and verdict consumption.
+Validation commands contribute command progress, not model identities or usage.
+Questions and approvals retain their source
 controller; the viewed shell presents its answer editor without moving execution.
 Shared change observations are filtered by each
 controller's host lineage. Switching presents retained state without retiring

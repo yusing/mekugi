@@ -273,6 +273,34 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	if schemas != 2 || len(child.batch.Workflow.Reviews) != 2 || len(child.batch.Workflow.Checks) != 1 || child.batch.Workflow.Checks[0].Outcome != orchestrate.CheckPassed {
 		t.Fatal("missing schema review or validation evidence", schemas)
 	}
+	u.orchestrationRoster()
+	if len(u.agents.orchestration) != 4 || len(u.navigation.pending) != 0 || len(u.navigation.reads) != 0 {
+		t.Fatal("host reviewer roots missing or stranded", u.agents.orchestration, u.navigation.pending, u.navigation.reads)
+	}
+	for _, d := range child.batch.Workflow.Dispatches {
+		if d.Kind != orchestrate.DispatchCorrectness && d.Kind != orchestrate.DispatchSimplification {
+			continue
+		}
+		v := u.navigation.views[d.ThreadID]
+		if v == nil || v.workflowReview == nil {
+			t.Fatal("review has no independent view", d)
+		}
+		a := v.session.agent("/root")
+		v.observeCost(d.ThreadID, a)
+		knownPrice := !configured || d.Kind != orchestrate.DispatchCorrectness // The configured flex tier has no reference price.
+		if a.InputTokens != 30 || a.OutputTokens != 15 || a.Roundtrips != 3 || a.CostKnown != knownPrice || a.Responding {
+			t.Fatalf("review usage or lifecycle missing: %+v", a)
+		}
+	}
+	foundCheck := false
+	for _, entry := range u.navigation.views[child.batch.Launch.ThreadID].view.entries {
+		if entry.native != nil && entry.native.command == "printf workflow-check" {
+			foundCheck = !entry.native.running && strings.Join(entry.outputTail, "\n") == "workflow-check"
+		}
+	}
+	if !foundCheck {
+		t.Fatal("host validation output did not reach the batch view")
+	}
 	if !configured {
 		testOrchestrateArchiveNativeCodex(t, u, pump)
 	}

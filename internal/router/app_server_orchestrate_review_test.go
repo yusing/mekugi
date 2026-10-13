@@ -263,7 +263,7 @@ func TestOrchestrateWorkflowCorrections(t *testing.T) {
 }
 
 func TestOrchestrateWorkflowCheckOutcomes(t *testing.T) {
-	for _, test := range []string{"failed", "rpc-error", "no-exit"} {
+	for _, test := range []string{"failed", "rpc-error", "no-exit", "canceled"} {
 		t.Run(test, func(t *testing.T) {
 			u, w := workflowUI(t, "printf check")
 			workflowCompleted(t, u, "child", "implement", "")
@@ -280,8 +280,21 @@ func TestOrchestrateWorkflowCheckOutcomes(t *testing.T) {
 				workflowCheck(t, u, w, "printf check", "error:sandbox denied")
 			case "no-exit":
 				workflowCheck(t, u, w, "printf check", `{"stdout":"","stderr":""}`)
+			case "canceled":
+				cancel := workflowCancel(t, u)
+				terminate, _ := workflowTake(t, u, w, "command/exec/terminate", "", workflowValidation)
+				orchestrateTestReply(t, u, terminate, `{}`)
+				workflowCheck(t, u, w, "printf check", `{"exitCode":0,"stdout":"late output","stderr":""}`)
+				if result := <-cancel.reply; result.err != nil || child.batch.Workflow.Phase != orchestrate.PhaseCanceled || len(child.batch.Workflow.Checks) != 0 {
+					t.Fatal("late check result revived canceled validation", result, child.batch.Workflow)
+				}
 			}
-			if test == "failed" {
+			for _, entry := range u.navigation.views["child"].view.entries {
+				if entry.native != nil && entry.native.command == "printf check" && entry.native.running {
+					t.Fatal("settled validation check remained running")
+				}
+			}
+			if test == "failed" || test == "canceled" {
 				return
 			}
 			if child.batch.Workflow.Phase != orchestrate.PhaseNeedsDecision {
@@ -393,13 +406,17 @@ func TestOrchestrateWorkflowReviewWaiver(t *testing.T) {
 func TestUISnapshotOrchestrateWorkflowPhase(t *testing.T) {
 	u, w := workflowUI(t)
 	workflowCompleted(t, u, "child", "implement", "")
-	w.Reset()
+	workflowReviewThread(t, u, w, orchestrate.ReviewCorrectness, "reviewer-c")
+	workflowReviewThread(t, u, w, orchestrate.ReviewSimplification, "reviewer-s")
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	for _, v := range u.navigation.views {
 		v.clock = func() time.Time { return now }
 		v.view.clock, v.agents.clock = v.clock, v.clock
 		v.view.painter.Theme, v.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
 		v.modelsLoading = true
+	}
+	for _, thread := range []string{"reviewer-c", "reviewer-s"} {
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": thread + "-turn"}})
 	}
 	u.orchestrationRoster()
 	u.shell.focus = 3
@@ -492,7 +509,7 @@ func TestOrchestrateWorkflowManualInputAndCancellation(t *testing.T) {
 }
 
 func TestOrchestrateWorkflowRejectsMalformedReviewAndPermissionMismatch(t *testing.T) {
-	for _, mode := range []string{"permissions", "malformed", "wrong-revision", "wrong-purpose", "clear-reason", "findings-reason"} {
+	for _, mode := range []string{"permissions", "cwd", "malformed", "wrong-revision", "wrong-purpose", "clear-reason", "findings-reason"} {
 		t.Run(mode, func(t *testing.T) {
 			u, w := workflowUI(t)
 			workflowCompleted(t, u, "child", "implement", "")
@@ -502,9 +519,20 @@ func TestOrchestrateWorkflowRejectsMalformedReviewAndPermissionMismatch(t *testi
 			if mode == "permissions" {
 				sandbox = "dangerFullAccess"
 			}
-			raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": sandbox}, "approvalPolicy": "never"})
+			cwd := child.batch.Cwd
+			if mode == "cwd" {
+				cwd = t.TempDir()
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": cwd}})
+			}
+			raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": cwd}, "sandbox": map[string]any{"type": sandbox}, "approvalPolicy": "never"})
 			orchestrateTestReply(t, u, start, string(raw))
-			if mode != "permissions" {
+			if mode == "cwd" {
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": cwd}})
+				if u.navigation.views["reviewer"] != nil || len(u.navigation.pending) != 0 {
+					t.Fatal("rejected reviewer metadata admitted a workspace or stranded events")
+				}
+			}
+			if mode != "permissions" && mode != "cwd" {
 				turn, _ := workflowTake(t, u, w, "turn/start", "reviewer", "")
 				orchestrateTestReply(t, u, turn, `{"turn":{"id":"review"}}`)
 				text := "Journal\n\n**This turn**\nCompleted source review without findings"

@@ -142,6 +142,7 @@ type appServerUI struct {
 	activeChildren            map[string]bool // Live host lifecycles only, never replayed processes.
 	mainContentPainted        bool
 	status                    string
+	workflowReview            *workflowReviewView
 	exitUsage                 appServerTokenUsage
 	resumeArgv                []string
 	replayDebugDirectory      string

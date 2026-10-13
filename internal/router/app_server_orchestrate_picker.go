@@ -103,6 +103,14 @@ func (u *appServerUI) refreshOrchestratePicker() {
 		}
 		p.choices = append(p.choices, choice)
 	}
+	if n := owner.navigation; n != nil {
+		for _, thread := range n.order {
+			v := n.views[thread]
+			if v.workflowReview != nil {
+				p.choices = append(p.choices, composerChoice{name: thread, display: v.workflowReview.name, description: u.orchestratePickerStatus(v, v.status)})
+			}
+		}
+	}
 	p.selected = min(p.selected, len(p.choices)-1)
 }
 

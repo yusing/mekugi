@@ -6,6 +6,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/appserver"
@@ -174,11 +175,31 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 			return
 		}
 		if r.method == "thread/start" {
-			if policyErr != nil {
+			if result.Thread.Cwd != child.batch.Cwd {
+				// Rejected metadata must not admit a foreign workspace or leave
+				// its early notification waiting for a view we cannot register.
+				if n := u.navigation; n != nil {
+					n.pending = slices.DeleteFunc(n.pending, func(m appserver.Message) bool {
+						var event appServerEvent
+						_ = json.Unmarshal(m.Params, &event)
+						return event.ThreadID == d.ThreadID || event.Thread.ID == d.ThreadID
+					})
+				}
 				u.failWorkflowDispatch(work, false, policyErr)
 				return
 			}
-			u.startWorkflowTurn(work)
+			if u.proxy.usage != nil {
+				u.proxy.usage.markNew(d.ThreadID)
+			}
+			if err := u.addWorkflowReviewView(child, d, m.Result, false, func() {
+				if policyErr != nil {
+					u.failWorkflowDispatch(work, false, policyErr)
+					return
+				}
+				u.startWorkflowTurn(work)
+			}); err != nil {
+				u.failWorkflowDispatch(work, false, err)
+			}
 			return
 		}
 		work.acknowledged = true
@@ -196,7 +217,13 @@ func (u *appServerUI) workflowReviewerMessage(m appserver.Message) bool {
 		return false
 	}
 	var event appServerEvent
-	if json.Unmarshal(m.Params, &event) != nil || event.ThreadID == "" {
+	if json.Unmarshal(m.Params, &event) != nil {
+		return false
+	}
+	if event.Thread.ID != "" {
+		event.ThreadID = event.Thread.ID
+	}
+	if event.ThreadID == "" {
 		return false
 	}
 	for _, child := range u.orchestrateThreads {
@@ -210,6 +237,11 @@ func (u *appServerUI) workflowReviewerMessage(m appserver.Message) bool {
 			}
 		}
 		if work == nil {
+			if child.batch.Workflow != nil && slices.ContainsFunc(child.batch.Workflow.Dispatches, func(d orchestrate.WorkflowDispatch) bool {
+				return d.ThreadID == event.ThreadID && (d.Kind == orchestrate.DispatchCorrectness || d.Kind == orchestrate.DispatchSimplification)
+			}) {
+				return u.navigation == nil || u.navigation.views[event.ThreadID] == nil
+			}
 			continue
 		}
 		if m.Method == "item/completed" && event.Item.Type == "agentMessage" && event.Item.Delivery != "async" {
@@ -217,6 +249,13 @@ func (u *appServerUI) workflowReviewerMessage(m appserver.Message) bool {
 		}
 		if m.Method == "turn/completed" {
 			work.completed = &event.Turn
+			if event.Turn.Status == "failed" {
+				detail := "Review failed"
+				if event.Turn.Error != nil {
+					detail = event.Turn.Error.Message
+				}
+				u.workflowReviewError(event.ThreadID, detail)
+			}
 			u.finishWorkflowWork(work)
 		}
 		if m.Method == "item/tool/requestUserInput" || m.Method == "item/commandExecution/requestApproval" || m.Method == "item/fileChange/requestApproval" {
@@ -224,8 +263,9 @@ func (u *appServerUI) workflowReviewerMessage(m appserver.Message) bool {
 				_ = u.client.Respond(m.ID, map[string]any{"decision": "cancel"})
 			}
 			u.workflowFailure(child, orchestrate.PhaseNeedsDecision, errors.New("read-only review requested interactive input"))
+			return true
 		}
-		return true
+		return u.navigation == nil || u.navigation.views[event.ThreadID] == nil
 	}
 	return false
 }

@@ -11,14 +11,14 @@
 │                                                ││                                                │
 │                                                ││                                                │
 │                                                ││                                                │
-│                                                ││                                                │
-│                                                ││                                                │
 │╭──────────────────────────────────────────────╮││                                                │
 ││ ❯                                            │││                                                │
 │╰────────────────────────── model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
-─ 5 Agents · 2 · 1 working ─────────────────────────────────────────────────────────────────────────
- ● main   Idle
- ◐ batch  Review                                                                                 0%
+─ 5 Agents · 4 · 3 working ─────────────────────────────────────────────────────────────────────────
+ ● main                    Idle
+ ◐ batch                   Review                                                 0%
+ ◐ batch/correctness/1     Working                                                0%  0s · just now
+ ◐ batch/simplification/1  Working                                                0%  0s · just now
 
- 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents¹   enter switch/filter · j/k agent · a only ·
+ 1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents³   enter switch/filter · j/k agent · a only ·

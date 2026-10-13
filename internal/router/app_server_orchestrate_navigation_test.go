@@ -115,7 +115,7 @@ func TestAppServerOrchestrateFreshDiffAdmission(t *testing.T) {
 	// An authenticated request can publish its scope before the launch callback
 	// creates a controller. A repeated includeThread emits no replacement scope.
 	raw := mustMarshalJSON(map[string]any{"thread": appServerThreadInfo{ID: "child2", Cwd: workspace}})
-	if err := u.addOrchestratedView(&second, raw, func() {}); err != nil {
+	if err := u.addOrchestratedView(&second, second.batch.Launch.ThreadID, raw, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	drainOrchestrateWork(t, u)
@@ -594,7 +594,7 @@ func TestAppServerOrchestrateNavigationClosedAdmission(t *testing.T) {
 	second.batch.Launch = &copyLaunch
 	u.orchestrateThreads["child2"] = &second
 	raw := []byte(fmt.Sprintf(`{"thread":{"id":"child2","cwd":%q}}`, second.batch.Cwd))
-	if err := u.addOrchestratedView(&second, raw, func() {}); err != nil {
+	if err := u.addOrchestratedView(&second, second.batch.Launch.ThreadID, raw, func() {}); err != nil {
 		t.Fatal(err)
 	}
 	u.closeOrchestratedViews()

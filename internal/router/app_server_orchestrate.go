@@ -324,6 +324,9 @@ func (u *appServerUI) failOrchestrate(child *orchestrateChild, err error) {
 }
 
 func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
+	if u.workflowReviewHistory(m) || u.workflowCheckMessage(m) {
+		return true
+	}
 	if u.workflowReviewerMessage(m) {
 		return true
 	}
@@ -540,7 +543,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					u.finishOrchestrate(child, err)
 					return
 				}
-				if err := u.addOrchestratedView(child, raw, func() {
+				if err := u.addOrchestratedView(child, thread, raw, func() {
 					if u.orchestrateClosing || child.workflowStopped || c.ctx.Err() != nil {
 						u.finishOrchestrate(child, context.Canceled)
 						return

@@ -228,7 +228,10 @@ exit status is validation evidence, never an agent's completion message. A faile
 check returns to the implementer for correction with its output tail. A check without
 a confirmed exit status requires a decision. An implementation or correction result
 that is not a clean, committed checkout also returns for correction. A changed
-candidate invalidates prior check and review approvals.
+candidate invalidates prior check and review approvals. The batch view shows the
+running validation command and streamed host output through the ordinary command
+presentation. Completion uses the host exit status; missing status stays uncertain.
+Command checks do not create model threads, turns, or token usage.
 
 By default, every implementation candidate requires independent correctness and
 simplification reviews. Mekugi starts fresh review threads with host-enforced read-only
@@ -248,6 +251,17 @@ that preserve the required behavior. The host remains the execution
 and permissions authority. Missing required host capabilities become explicit
 blockers rather than weaker reviews or silent approval. Both reviews of a candidate
 run concurrently, and each batch's workflow progresses independently of the others.
+
+Confirmed reviewers appear as independent threads in Agents and the orchestration
+picker, identified by batch, review purpose and round. Selecting one shows its own
+activity and transcript. Runtime ownership remains unchanged: review views do not
+accept manual turns or shell commands, and verdicts remain private workflow input
+rather than batch completion messages to Main. Full host thread identity owns
+routing, even when concurrent thread IDs share a prefix. Each reviewer contributes
+its own provider-observed usage and statistics once through canonical accounting;
+host context usage is not added to provider totals. Retained review identities and
+available usage survive restart. Selecting retained history reads it without
+resuming review execution or reviving timers.
 
 Each verdict names the candidate and review purpose, with a result of clear,
 findings, or blocked. Findings have stable identifiers. The reason field contains
@@ -581,12 +595,13 @@ working directory when it starts the thread.
 Caller guidance and the explicit assignment retain their own policy.
 Context resets restore these responsibilities once from durable records;
 native descendants retain their existing guidance.
-Bare `/orchestrate` opens a picker of this Main's retained batches and coordinator.
+Bare `/orchestrate` opens a picker of this Main's retained batches, reviewers and coordinator.
 It shows concise task names, lifecycle and available live timer, token and cost metrics.
 Resumed batch roots appear only in this group, never as UUID-named native agents.
 Selecting a subscribed thread switches the viewed shell without starting a turn
 or reloading history. Prepared batches remain visible before launch. Retained
-threads that are not subscribed remain visible and resume when selected.
+batch threads that are not subscribed remain visible and resume when selected.
+Retained reviewers open read-only history without resuming execution.
 Fresh and resumed child views admit the current Diff scope when they open,
 including scope observed before the view registered. Resume restores saved Diff
 before accepting input. Native descendant admission also reapplies current scope
@@ -621,7 +636,7 @@ Raw results, including delivery IDs, stay in the existing output dialog rather
 than appearing as feed tails. Host item identity replaces a started row with its
 result. Restored calls retain their recorded outcomes without reviving work.
 
-The Agents pane (5) lists the coordinator and its batch threads together with
+The Agents pane (5) lists the coordinator, batch threads and runtime reviewers together with
 the viewed thread's native subagents. Independent thread rows use italic and
 accent styling; native subagents retain their identity and role colors. The
 panel has one focus, selection, collapse state and height. Main stays visible.

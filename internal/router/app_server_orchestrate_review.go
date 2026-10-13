@@ -20,6 +20,8 @@ type orchestrateReviewWork struct {
 	child                      *orchestrateChild
 	dispatch                   orchestrate.WorkflowDispatch
 	check                      orchestrate.RequiredCheck
+	checkOutput                string
+	checkEntry                 activityPaneEntry
 	acknowledged               bool
 	completed                  *appServerTurn
 	message, item, messageTurn string
@@ -418,6 +420,7 @@ func (u *appServerUI) beginWorkflowWork(child *orchestrateChild, kind orchestrat
 
 func (u *appServerUI) failWorkflowDispatch(work *orchestrateReviewWork, uncertain bool, err error) {
 	child, c := work.child, work.child.command
+	u.workflowReviewError(work.dispatch.ThreadID, err.Error())
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
 		return s.FailWorkflowDispatch(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, uncertain, err.Error())
 	}, func(saveErr error) {
