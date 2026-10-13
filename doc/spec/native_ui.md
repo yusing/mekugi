@@ -1129,9 +1129,11 @@ the journal instead, with no duplicate progress commentary. Slice resets use the
 durable journal note. Neither adds a reply-context
 (`re:`) line. Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
-does not change Main’s composer. Agent wait starts, completions, and failures appear
+does not change Main’s composer. Native collaboration wait starts, completions, and failures appear
 only as the working caller's latest roster status, never in Main or Activity transcripts
-or as composer overrides. Replayed events do not restart progress.
+or as composer overrides. Orchestration waits retain their
+[transcript presentation](orchestrate.md#accepted-delivery-scope).
+Replayed events do not restart progress.
 Wait status shows named targets using the shared agent display format (`main`,
 or the spawn path below `/root/`) and static muted variants of their identity
 colors when faint is unsupported, or their normal identity colors with ANSI

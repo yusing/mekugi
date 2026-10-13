@@ -383,7 +383,9 @@ Main or Activity feed. Italic headers and accent-colored rails distinguish
 orchestration from native subagent events without changing their wording.
 Confirmed launches use start events; delivered messages
 and follow-ups use attributed message events. Waiting uses the shared wait
-presentation and names all or the selected batches. Consecutive wait calls remain
+presentation and names all or the selected batches. Live transcript waits use the
+same breathing style as roster waits; completed, failed, interrupted, and restored
+waits remain static. Consecutive wait calls remain
 peer progress rows, without nested wait bullets. Other calls show concise action labels, supplied targets and observed
 call states. Queued input remains queued, and call completion does not claim
 that a batch's work or integration finished. Errors remain visible in the feed.
