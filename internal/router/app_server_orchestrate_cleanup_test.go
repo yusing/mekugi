@@ -68,6 +68,7 @@ func orchestrateTargetMCPClient(t *testing.T, u *appServerUI, tool string) func(
 		case command := <-u.orchestrateCommands():
 			u.startOrchestratedChild(command)
 			drainOrchestrateWork(t, u)
+			completeOrchestratedArchive(t, u)
 		case value := <-result:
 			if !wantError || value == nil || !value.IsError {
 				t.Fatal("caller admission", value)
@@ -126,6 +127,7 @@ func TestAppServerOrchestrateCleanupMCP(t *testing.T) {
 	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"native","turn":{"id":"native-turn"}}}`)
 	call("main", true)
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"native","turn":{"id":"native-turn","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/read", "native"), string(mustMarshalJSON(map[string]any{"thread": appServerThreadInfo{ID: "native", ParentThreadID: "child", Cwd: batch.Cwd}})))
 	input := orchestrate.Delivery{ID: "queued", From: "main", Target: "child", Message: "next", Deferred: true}
 	if _, _, err := store.BeginDelivery(t.Context(), workspace, "main", input); err != nil {
 		t.Fatal(err)
@@ -203,6 +205,7 @@ func TestAppServerOrchestrateAutomaticCleanupAfterIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	drainOrchestrateWork(t, u)
+	completeOrchestratedArchive(t, u)
 	if _, err := os.Lstat(batch.Checkout); !os.IsNotExist(err) {
 		t.Fatal("accepted checkout survived automatic cleanup", err)
 	}
@@ -210,7 +213,7 @@ func TestAppServerOrchestrateAutomaticCleanupAfterIntegration(t *testing.T) {
 		t.Fatal("accepted checkout retained its Git registration", worktrees)
 	}
 	retained, err := u.proxy.orchestration.store.Snapshot(u.session.cwd, "main")
-	if err != nil || retained[0].State != "removed" || retained[0].Integration == nil || submoduleCleanupGit(t, u.session.cwd, "rev-parse", batch.Branch) != retained[0].Integration.Tip {
+	if err != nil || retained[0].State != "removed" || retained[0].Archive == nil || retained[0].Archive.State != "archived" || retained[0].Integration == nil || submoduleCleanupGit(t, u.session.cwd, "rev-parse", batch.Branch) != retained[0].Integration.Tip {
 		t.Fatal("cleanup lost accepted commits or manifest", retained, err)
 	}
 	journal, _, err := readThreadJournal(u.proxy.replayStore, u.session.cwd, "main")
@@ -330,6 +333,7 @@ func TestAppServerOrchestrateCleanupRetained(t *testing.T) {
 			}
 			resumeBatchResponses(t, u, w, b, state == "working")
 			drainOrchestrateWork(t, u)
+			completeOrchestratedArchive(t, u)
 			result := <-c.reply
 			if (result.err != nil) != (state != "idle") {
 				t.Fatal("cleanup ignored resumed host state", result.err)

@@ -273,4 +273,7 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	if schemas != 2 || len(child.batch.Workflow.Reviews) != 2 || len(child.batch.Workflow.Checks) != 1 || child.batch.Workflow.Checks[0].Outcome != orchestrate.CheckPassed {
 		t.Fatal("missing schema review or validation evidence", schemas)
 	}
+	if !configured {
+		testOrchestrateArchiveNativeCodex(t, u, pump)
+	}
 }

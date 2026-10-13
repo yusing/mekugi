@@ -65,6 +65,14 @@ func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
 					v.awaitingTurn = false
 					v.resumeThread = thread
 					v.restoring = &appServerActivityRestore{}
+					if batch.Archive != nil {
+						// Archived threads cannot resume. Read retained history without
+						// unarchiving, restoring processes, or writing host settings.
+						if _, err := v.requestAs("thread/read", "archive/history", map[string]any{"threadId": thread, "includeTurns": true}); err != nil {
+							n.finishResume(thread, err)
+						}
+						return
+					}
 					// Invocation model overrides belong to Main. Restore the batch's
 					// own applied settings through the shared resume owner.
 					v.resumeConfig = maps.Clone(v.resumeConfig)
@@ -94,7 +102,7 @@ func (n *orchestrateNavigation) resumeResponse(v *appServerUI, m appserver.Messa
 		n.finishResume(v.thread, fmt.Errorf("restore batch settings: %s", m.Error.Message))
 		return true
 	}
-	if r == nil || method != "resume/settings" && method != "thread/resume" {
+	if r == nil || method != "resume/settings" && method != "thread/resume" && method != "archive/history" {
 		return false
 	}
 	var result struct {
@@ -106,13 +114,47 @@ func (n *orchestrateNavigation) resumeResponse(v *appServerUI, m appserver.Messa
 	} else {
 		err = json.Unmarshal(m.Result, &result)
 		b := n.owner.orchestrateThreads[v.thread].batch
-		if err == nil && (result.Thread.Cwd != b.Cwd || result.Thread.ParentThreadID != "") {
+		if err == nil && (result.Thread.ID != v.thread || result.Thread.Cwd != b.Cwd || result.Thread.ParentThreadID != "") {
 			err = errors.New("host returned a different retained batch identity or cwd")
 		}
 	}
 	if err != nil {
 		delete(v.requests, string(m.ID))
 		n.finishResume(v.thread, err)
+		return true
+	}
+	if method == "archive/history" {
+		delete(v.requests, string(m.ID))
+		v.title = result.Thread.Name
+		v.session.registerThread(result.Thread)
+		v.restoreContextUsage(v.session.agent("/root"), result.Thread)
+		v.restoreUsage(result.Thread)
+		var retained nativeAppliedSettings
+		if v.panes != nil {
+			if state, err := v.panes.read(result.Thread.Cwd, v.thread); err != nil {
+				n.finishResume(v.thread, err)
+				return true
+			} else {
+				retained = state.Settings
+			}
+		}
+		settings := retained.config()
+		if settings == nil {
+			settings = make(map[string]any)
+		}
+		maps.Copy(settings, readResumeSettings(result.Thread, retained.Observed))
+		v.model, _ = settings["model"].(string)
+		v.reasoningEffort, _ = settings["model_reasoning_effort"].(string)
+		v.serviceTier, _ = settings["service_tier"].(string)
+		for _, sink := range []*nativeJournalSink{v.journal, v.unscopedJournal} {
+			if err := v.proxy.journals.restoreNative(v.ctx, v.proxy.replayStore, sink); err != nil {
+				n.finishResume(v.thread, err)
+				return true
+			}
+		}
+		if err := v.restorePaneContent(result.Thread); err != nil {
+			n.finishResume(v.thread, err)
+		}
 		return true
 	}
 	if method == "thread/resume" {

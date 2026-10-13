@@ -100,7 +100,9 @@ func validateJournalAcceptance(j threadJournal, before []journalItem) error {
 		if old.State != "accepted" {
 			continue
 		}
-		batch := slices.IndexFunc(batches, func(b orchestrate.Batch) bool { return old.Agent == "/root/"+b.TaskName && b.State == "removing" })
+		batch := slices.IndexFunc(batches, func(b orchestrate.Batch) bool {
+			return old.Agent == "/root/"+b.TaskName && (b.State == "removing" || b.Archive != nil)
+		})
 		index := slices.IndexFunc(j.Items, func(item journalItem) bool { return item.Path == old.Path })
 		if batch >= 0 && (index < 0 || j.Items[index].State != old.State || j.Items[index].Agent != old.Agent) {
 			return fmt.Errorf("%s: batch cleanup requires the accepted binding to remain fixed", old.Path)

@@ -40,6 +40,7 @@ type Batch struct {
 	Error              string              `json:"error,omitempty"`
 	Launch             *Launch             `json:"launch,omitempty"`
 	Integration        *Integration        `json:"integration,omitempty"`
+	Archive            *Archive            `json:"archive,omitempty"`
 	ShadowMerge        *ShadowMerge        `json:"shadow_merge,omitempty"`
 	Submodules         []Submodule         `json:"submodules,omitempty"`
 	RetainedSubmodules []RetainedSubmodule `json:"retained_submodules,omitempty"`

@@ -124,15 +124,13 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand, reply func(o
 			return
 		}
 		v := u.navigation.views[child.batch.Launch.ThreadID]
-		if workflowUnsettled(child.batch) || len(child.workflowWork) != 0 || child.workflowPending != 0 || implementationWorkflow(child) && !workflowTerminal(child.batch.Workflow) || child.removing || child.turn != "" || len(child.followups) != 0 || v == nil || v.busy() || len(v.activeChildren) != 0 || v.reset.active() || v.questionCount() != 0 || len(v.approvals.pending) != 0 || len(v.btwRequests) != 0 || v.btw != nil && (v.btw.busy || v.btw.starting || v.btw.interrupting) || v.draft != "" || len(v.images)+len(v.files)+len(v.skills)+len(v.selections) != 0 || v.paste || v.shell.paste {
-			reply(orchestrateResult{err: errors.New("cleanup requires an idle subscribed child with no pending input or descendants")})
+		if child.removing {
+			reply(orchestrateResult{err: errors.New("cleanup is already pending")})
 			return
 		}
-		for _, request := range u.orchestrateRequests {
-			if request.child == child {
-				reply(orchestrateResult{err: errors.New("cleanup requires settled child host requests")})
-				return
-			}
+		if err := u.orchestrateCleanupIdle(child, v); err != nil {
+			reply(orchestrateResult{err: err})
+			return
 		}
 		previous := child.batch
 		child.removing = true
@@ -151,15 +149,32 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand, reply func(o
 				}
 			}
 			return func() {
-				child.removing = false
 				child.batch = batch
 				if batch.State == "removed" {
 					v.setNotice("Batch checkout removed; its transcript remains available", false)
+					u.archiveOrchestratedChild(c, child, func(result orchestrateResult) {
+						result.err = errors.Join(err, result.err)
+						reply(result)
+					})
+					return
 				}
+				child.removing = false
 				reply(orchestrateResult{batch: batch, err: err})
 			}
 		})
 		return
 	}
 	reply(orchestrateResult{err: errors.New("cleanup target is not a subscribed batch in this run")})
+}
+
+func (u *appServerUI) orchestrateCleanupIdle(child *orchestrateChild, v *appServerUI) error {
+	if workflowUnsettled(child.batch) || len(child.workflowWork) != 0 || child.workflowPending != 0 || implementationWorkflow(child) && !workflowTerminal(child.batch.Workflow) || child.turn != "" || len(child.followups) != 0 || v == nil || v.busy() || len(v.activeChildren) != 0 || v.reset.active() || v.questionCount() != 0 || len(v.approvals.pending) != 0 || len(v.btwRequests) != 0 || v.btw != nil && (v.btw.busy || v.btw.starting || v.btw.interrupting) || v.draft != "" || len(v.images)+len(v.files)+len(v.skills)+len(v.selections) != 0 || v.paste || v.shell.paste {
+		return errors.New("cleanup requires an idle subscribed child with no pending input or descendants")
+	}
+	for _, request := range u.orchestrateRequests {
+		if request.child == child {
+			return errors.New("cleanup requires settled child host requests")
+		}
+	}
+	return nil
 }

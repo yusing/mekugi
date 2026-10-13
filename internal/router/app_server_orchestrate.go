@@ -49,6 +49,7 @@ type orchestrateRPC struct {
 	method                  string
 	child                   *orchestrateChild
 	cleanup                 bool
+	archiveReply            func(orchestrateResult)
 	followup                *orchestrateCommand
 	delivery                orchestrate.Delivery
 	completion              *orchestrateEvent
@@ -383,6 +384,14 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 	}
 	delete(u.orchestrateRequests, string(m.ID))
 	u.dirty = true
+	if r.archiveReply != nil {
+		var err error
+		if m.Error != nil {
+			err = fmt.Errorf("thread/archive: %s", m.Error.Message)
+		}
+		u.recordOrchestratedArchive(r.child, r.archiveReply, err)
+		return true
+	}
 	if r.review != nil {
 		u.workflowResponse(r, m)
 		return true

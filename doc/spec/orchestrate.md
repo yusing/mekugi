@@ -424,6 +424,14 @@ visible and preserves the accepted integration; Main can inspect and retry throu
 `tools.mcp__orchestrate__cleanup({target:"batch"})`. Restoring accepted journal
 history does not start cleanup or repeat an uncertain removal.
 
+After checkout removal, Mekugi archives the accepted child batch through
+Codex's native thread archive. Main and independent reviewer threads are not
+archive targets. Native spawned descendants follow Codex's archive semantics.
+Archive intent is durable before dispatch and keeps Main's accepted binding
+fixed. Host confirmation is retained separately from checkout removal. Archive
+failure preserves acceptance and history and remains visible; an unconfirmed
+request requires inspection and is never automatically repeated on recovery.
+
 Shadow cleanup retains the private repository and its history and leaves
 the source's files and VCS metadata unchanged. The bound journal task must still
 be `accepted` with the run's integration tips. The checkout must retain its
@@ -440,6 +448,9 @@ still retains the accepted tip. A surviving checkout after uncertain removal
 requires inspection; cleanup never repeats that effect automatically. Branches,
 manifests and journals remain. The subscribed transcript stays
 viewable, with new turns disabled after removal.
+Archived batches remain selectable in the retained run. Reopening their history
+reads it without resuming or unarchiving the thread, changing host settings, or
+starting a turn. Saved Diff and journal history remain available.
 
 After checkout removal, cleanup removes unchanged evidence copies at their exact
 recorded run-owned paths. Changed, redirected, shared, failed or uncertain copies
