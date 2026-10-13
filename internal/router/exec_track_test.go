@@ -254,7 +254,7 @@ func TestExecTrackRelaysExternalCommandIO(t *testing.T) {
 	}{
 		{"single", "cat", execTrackRun{stdout: content}},
 		{"list", execsegment.ShScript(filepath.Join(shell.root, "exec-track.sh"), "cat; cat "+quoteShellWord(input)+" >&2; cat "+quoteShellWord(input)+"; false"), execTrackRun{stdout: content + content, stderr: content, code: 1}},
-		{"late output", "bash -c " + quoteShellWord("(sleep .05; cat "+quoteShellWord(input)+") & printf early") + "; false", execTrackRun{stdout: "early" + content, code: 1}},
+		{"late output", quoteShellWord(execTrackShellExecutable(t, "bash")) + " -c " + quoteShellWord("(sleep .05; cat "+quoteShellWord(input)+") & printf early") + "; false", execTrackRun{stdout: "early" + content, code: 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			key := [3]string{"thread", "turn", tc.script}
@@ -280,7 +280,7 @@ func TestExecTrackRelaysExternalCommandIO(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got := (execTrackRun{stdout.String(), stderr.String(), code}); got != tc.want {
-				t.Fatalf("I/O or status changed: stdout=%d stderr=%d code=%d", stdout.Len(), stderr.Len(), code)
+				t.Fatalf("I/O or status changed: stdout=%d stderr=%d code=%d\nstderr: %s", stdout.Len(), stderr.Len(), code, stderr.String())
 			}
 			if view := shell.awaitView(t, key); !view.complete || view.code != code {
 				t.Fatalf("tracking report incomplete: %+v", view)
@@ -389,7 +389,7 @@ func TestExecTrackLeavesNestedShellsAlone(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
 	key := [3]string{"thread", "turn", "item"}
-	script := "echo outer; bash -c 'echo inner; echo nested'"
+	script := "echo outer; " + quoteShellWord(execTrackShellExecutable(t, "bash")) + " -c 'echo inner; echo nested'"
 	shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(script))
 	// A nested shell's script matches no item; without the guard it would
 	// wait for one before running.

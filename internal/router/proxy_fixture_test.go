@@ -115,8 +115,8 @@ func TestMain(m *testing.M) {
 			os.Exit(code)
 		}
 	}
-	// Debug bundles and failure records now share the state root. Keep all test
-	// publications outside the user's retained data, including parallel cases.
+	// Keep test publications and configuration outside the user's directories,
+	// including parallel cases. Tests that need settings supply their own config.
 	var stateDirectory string
 	var err error
 	// Child test executables must retain their parent's authenticated store path.
@@ -124,6 +124,9 @@ func TestMain(m *testing.M) {
 		stateDirectory, err = os.MkdirTemp("", "mekugi-test-state-")
 		if err == nil {
 			err = os.Setenv("XDG_STATE_HOME", stateDirectory)
+		}
+		if err == nil {
+			err = os.Setenv("XDG_CONFIG_HOME", filepath.Join(stateDirectory, "config"))
 		}
 		if err == nil {
 			err = os.Setenv("MEKUGI_ROUTER_TEST_STATE_ISOLATED", "1")
