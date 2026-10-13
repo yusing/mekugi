@@ -290,8 +290,12 @@ func TestOrchestrateWorkflowCheckOutcomes(t *testing.T) {
 				}
 			}
 			for _, entry := range u.navigation.views["child"].view.entries {
-				if entry.native != nil && entry.native.command == "printf check" && entry.native.running {
-					t.Fatal("settled validation check remained running")
+				if entry.native == nil || entry.native.command != "printf check" {
+					continue
+				}
+				want := map[string]string{"failed": "failed", "rpc-error": "uncertain", "no-exit": "uncertain", "canceled": "interrupted"}[test]
+				if entry.native.running || entry.native.status != want {
+					t.Fatalf("settled validation display: running=%v status=%q, want %q", entry.native.running, entry.native.status, want)
 				}
 			}
 			if test == "failed" || test == "canceled" {

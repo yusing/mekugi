@@ -51,7 +51,7 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, thread string
 		return nil
 	}
 	v := &appServerUI{ctx: u.ctx, client: u.client, proxy: u.proxy, execTrack: u.execTrack,
-		issues: u.issues, view: newLiveActivityView(), agents: newLiveActivityView(),
+		issues: u.issues, sessionCapture: u.sessionCapture, view: newLiveActivityView(), agents: newLiveActivityView(),
 		requests: make(map[string]string), status: "Ready", navigation: n,
 		serviceTiers: u.serviceTiers, approvalMode: u.approvalMode, backendVersion: u.backendVersion,
 		skillEnvironment: u.skillEnvironment,

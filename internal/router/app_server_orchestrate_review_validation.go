@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/orchestrate"
@@ -52,12 +53,13 @@ func (u *appServerUI) startWorkflowCheck(child *orchestrateChild) {
 	u.setWorkflowWork(child, work)
 	if n := u.navigation; n != nil && n.views[child.batch.Launch.ThreadID] != nil {
 		v := n.views[child.batch.Launch.ThreadID]
-		work.checkEntry = activityPaneEntry{Agent: "/root", Kind: "tool", Text: "Run " + commentaryCode(check.Command), CallID: work.dispatch.ID,
+		entry := activityPaneEntry{Seq: v.session.next(), Observed: u.now(), Agent: "/root", Kind: "tool", Text: "Run " + commentaryCode(check.Command), CallID: work.dispatch.ID,
 			native: &liveActivityNativeItem{thread: v.thread, item: work.dispatch.ID, command: check.Command, commandCwd: child.batch.Cwd, phase: "command/exec", running: true, commandStarted: u.now(), output: v.session.outputs.New()}}
-		u.showWorkflowCheck(work, "", "", nil)
+		v.session.commands[[3]string{v.thread, "", work.dispatch.ID}] = &appServerCommandRun{entry: entry}
+		v.applyActivity([]activityPaneEntry{entry}, nil)
 	}
 	if err := u.orchestrateRPCRequest(orchestrateRPC{method: "command/exec", child: child, review: work}, params); err != nil {
-		u.showWorkflowCheck(work, "failed", err.Error(), nil)
+		u.finishWorkflowCheckDisplay(work, "failed", err.Error(), nil)
 		u.endWorkflowWork(work)
 		u.workflowFailure(child, orchestrate.PhaseNeedsDecision, err)
 	}
@@ -72,28 +74,32 @@ func (u *appServerUI) workflowCheckResponse(work *orchestrateReviewWork, m appse
 		Stdout   string `json:"stdout"`
 		Stderr   string `json:"stderr"`
 	}
+	decodeErr := json.Unmarshal(m.Result, &response)
+	output := work.decodeCheckOutput(0, response.Stdout, true) + work.decodeCheckOutput(1, response.Stderr, true)
 	switch {
 	case m.Error != nil:
 		result.Output = "command/exec: " + m.Error.Message
-	case json.Unmarshal(m.Result, &response) != nil || response.ExitCode == nil:
+	case decodeErr != nil || response.ExitCode == nil:
 		result.Output = "host returned no exit status"
 	default:
 		result.ExitCode = response.ExitCode
 		result.Outcome = orchestrate.CheckPassed
 		if *response.ExitCode != 0 {
 			result.Outcome = orchestrate.CheckFailed
-			result.Output = workflowOutputTail(strings.TrimSpace(work.checkOutput + response.Stdout + "\n" + response.Stderr))
+			result.Output = workflowOutputTail(strings.TrimSpace(work.checkOutput + output))
 		}
 	}
 	status := "completed"
 	if result.Outcome != orchestrate.CheckPassed {
 		status = string(result.Outcome)
 	}
-	output := response.Stdout + response.Stderr
 	if result.ExitCode == nil {
 		output = result.Output
 	}
-	u.showWorkflowCheck(work, status, output, result.ExitCode)
+	if u.workflowWorkStopped(work) {
+		status = "interrupted"
+	}
+	u.finishWorkflowCheckDisplay(work, status, output, result.ExitCode)
 	if u.workflowWorkStopped(work) {
 		return
 	}
@@ -114,6 +120,7 @@ func (u *appServerUI) workflowCheckMessage(m appserver.Message) bool {
 	}
 	var event struct {
 		ProcessID   string `json:"processId"`
+		Stream      string `json:"stream"`
 		DeltaBase64 string `json:"deltaBase64"`
 		CapReached  bool   `json:"capReached"`
 	}
@@ -130,40 +137,73 @@ func (u *appServerUI) workflowCheckMessage(m appserver.Message) bool {
 			u.setNotice("Validation output unavailable: "+err.Error(), true)
 			return true
 		}
-		output := string(data)
+		stream := 0
+		if event.Stream == "stderr" {
+			stream = 1
+		} else if event.Stream != "stdout" {
+			u.setNotice("Validation output has an unknown stream", true)
+			return true
+		}
+		output := work.decodeCheckOutput(stream, string(data), event.CapReached)
 		if event.CapReached {
 			output += "\n[host output cap reached]\n"
 		}
-		work.checkOutput += output
-		work.checkOutput = work.checkOutput[max(0, len(work.checkOutput)-workflowCheckOutputLimit):]
-		if work.checkEntry.native != nil {
-			work.checkEntry.native.output.Write(output)
-			u.showWorkflowCheck(work, "", "", nil)
-		}
+		u.appendWorkflowCheckOutput(work, output)
 		return true
 	}
 	return false
 }
 
-func (u *appServerUI) showWorkflowCheck(work *orchestrateReviewWork, outcome, output string, exit *int) {
-	if work.checkEntry.native == nil || u.navigation == nil {
+// Keep incomplete rune bytes with their stream before merging output for display.
+func (work *orchestrateReviewWork) decodeCheckOutput(stream int, data string, final bool) string {
+	data = work.checkUTF8[stream] + data
+	end := len(data)
+	if !final {
+		for i := len(data) - 1; i >= max(0, len(data)-utf8.UTFMax+1); i-- {
+			if utf8.RuneStart(data[i]) {
+				if !utf8.FullRuneInString(data[i:]) {
+					end = i
+				}
+				break
+			}
+		}
+	}
+	work.checkUTF8[stream] = data[end:]
+	return strings.ToValidUTF8(data[:end], "�")
+}
+
+func (u *appServerUI) appendWorkflowCheckOutput(work *orchestrateReviewWork, output string) {
+	work.checkOutput += output
+	work.checkOutput = work.checkOutput[max(0, len(work.checkOutput)-workflowCheckOutputLimit):]
+	if n := u.navigation; n != nil {
+		if v := n.views[work.child.batch.Launch.ThreadID]; v != nil {
+			if run := v.session.commands[[3]string{v.thread, "", work.dispatch.ID}]; run != nil {
+				run.output.Write(output)
+				run.entry.native.output.Write(output)
+				run.dirty = true
+			}
+		}
+	}
+}
+
+func (u *appServerUI) finishWorkflowCheckDisplay(work *orchestrateReviewWork, status, output string, exit *int) {
+	u.appendWorkflowCheckOutput(work, output)
+	if u.navigation == nil {
 		return
 	}
 	v := u.navigation.views[work.child.batch.Launch.ThreadID]
-	entry := work.checkEntry
-	native := *entry.native
-	entry.native, entry.Seq, entry.Observed = &native, v.session.next(), u.now()
-	if outcome != "" {
-		native.running, native.commandEnded, native.status = false, u.now(), outcome
-		native.phase = "command/exec/completed"
-		native.output.Write(output)
-		work.checkOutput += output
-		work.checkOutput = work.checkOutput[max(0, len(work.checkOutput)-workflowCheckOutputLimit):]
-		native.output.Finish(nil, exit)
+	if v == nil {
+		return
 	}
-	entry.outputTail, entry.outputOmit = appServerOutputTail(&work.checkOutput)
-	v.applyActivity([]activityPaneEntry{entry}, nil)
-	v.dirty = true
+	key := [3]string{v.thread, "", work.dispatch.ID}
+	if run := v.session.commands[key]; run != nil {
+		entry, native := run.entry, *run.entry.native
+		entry.native, entry.Seq = &native, v.session.next()
+		native.running, native.commandEnded, native.status, native.phase = false, u.now(), status, "command/exec/completed"
+		native.output.Finish(nil, exit)
+		run.done = v.session.commandDone(entry, appServerItem{Type: "commandExecution", AggregatedOutput: &work.checkOutput, ExitCode: exit}, u.now())
+		v.flushStreamOutput()
+	}
 }
 
 func workflowOutputTail(output string) string {

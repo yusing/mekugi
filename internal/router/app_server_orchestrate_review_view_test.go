@@ -5,11 +5,14 @@ import (
 	"encoding/base64"
 	json "encoding/json/v2"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	vt "github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/orchestrate"
 	"github.com/yusing/mekugi/internal/uisnapshot"
@@ -18,6 +21,17 @@ import (
 func TestOrchestrateWorkflowReviewerVisibility(t *testing.T) {
 	u, w := workflowUI(t)
 	u.proxy.usage = newThreadUsage()
+	capture, err := capturer.New(capturer.Config{Mode: "mekugi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { capture.Close() })
+	u.sessionCapture = capture
+	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"review-response","status":"completed","output":[]}`))
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"test","input":[]}`)))
 	workflowCompleted(t, u, "child", "implement", "")
 	threads := []string{"019eaabb-correctness", "019eaabb-simplification"}
 	purposes := []orchestrate.ReviewPurpose{orchestrate.ReviewCorrectness, orchestrate.ReviewSimplification}
@@ -44,16 +58,47 @@ func TestOrchestrateWorkflowReviewerVisibility(t *testing.T) {
 	if len(u.navigation.pending) != 0 || len(u.navigation.reads) != 0 || len(u.agents.orchestration) != 4 || len(u.agents.orchestrationSources) != 4 {
 		t.Fatal("reviewer identities did not resolve into unique roots", u.navigation.pending, u.navigation.reads, u.agents.orchestration)
 	}
+	var verdicts []string
 	for i, thread := range threads {
 		name := "/Orchestration/" + u.navigation.views[thread].workflowReview.name
 		if !u.pickOrchestratedThread(name) || u.viewedUI().thread != thread {
 			t.Fatal("review row did not navigate to its host thread", name)
 		}
-		workflowCompleted(t, u, thread, thread+"-turn", workflowVerdict(u.orchestrateThreads["child"], purposes[i]))
+		v := u.viewedUI()
+		v.shell.focus = 0
+		appServerTestKeys(t, v, "/session\r")
+		sessionMetricField(t, v, "Requests", "Logical", "1")
+		appServerTestKeys(t, v, "\x1b")
+		before := w.String()
+		appServerTestKeys(t, v, "/compact\r")
+		if w.String() != before || len(v.unsent)+len(v.queued) != 0 || v.compaction.interrupting {
+			t.Fatal("review compaction queued work or interrupted runtime review", w.String())
+		}
+		verdict := workflowVerdict(u.orchestrateThreads["child"], purposes[i])
+		verdicts = append(verdicts, verdict)
+		workflowCompleted(t, u, thread, thread+"-turn", verdict)
 	}
-	workflowNotice(t, u, w)
-	if strings.Contains(w.String(), "FINAL_ANSWER") || u.orchestrateBusy() {
-		t.Fatal("private review verdict escaped or completed reviews left orchestration busy", w.String())
+	var notice struct {
+		Items []struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(workflowNotice(t, u, w)), &notice); err != nil || len(notice.Items) == 0 {
+		t.Fatal("missing Main-bound outcome", err)
+	}
+	for _, item := range notice.Items {
+		for _, content := range item.Content {
+			for _, verdict := range verdicts {
+				if strings.Contains(content.Text, verdict) {
+					t.Fatal("private review verdict escaped to Main", content.Text)
+				}
+			}
+		}
+	}
+	if u.orchestrateBusy() {
+		t.Fatal("completed reviews left orchestration busy", w.String())
 	}
 }
 
@@ -95,8 +140,11 @@ func TestOrchestrateWorkflowReviewerRestoredUsage(t *testing.T) {
 		t.Fatal("retained reviewer not selectable")
 	}
 	read, _ := workflowTake(t, u, w, "thread/read", "reviewer-c", "")
-	raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "reviewer-c", "cwd": v.session.cwd, "turns": []any{map[string]any{"id": "reviewer-c-turn", "status": "completed", "items": []any{map[string]any{"id": "result", "type": "agentMessage", "text": "private retained verdict"}}}}}})
+	raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "reviewer-c", "cwd": v.session.cwd, "turns": []any{map[string]any{"id": "reviewer-c-turn", "status": "inProgress", "items": []any{map[string]any{"id": "result", "type": "agentMessage", "text": "private retained verdict"}}}}}})
 	orchestrateTestReply(t, u, read, string(raw))
+	if v.turn != "" || v.session.agent("/root").Responding || !v.turnStarted.IsZero() || !v.session.agent("/root").WorkTimer.Since.IsZero() || u.orchestrateBusy() {
+		t.Fatal("recorded review history revived live work", v.turn, v.status, v.session.agent("/root"))
+	}
 	if w.Len() != 0 || v.session.agent("/root").Roundtrips != 1 || !strings.Contains(fmt.Sprint(v.view.entries), "private retained verdict") {
 		t.Fatal("history read dispatched work, duplicated usage, or lost the verdict", w.String(), v.view.entries)
 	}
@@ -134,11 +182,14 @@ func TestUISnapshotOrchestrateValidationProgress(t *testing.T) {
 		t.Fatal("validation output is not streamed", params)
 	}
 	work := u.orchestrateThreads["child"].workflowWork[workflowValidation]
-	work.checkEntry.native.commandStarted = now.Add(-time.Second)
+	run := u.navigation.views["child"].session.commands[[3]string{"child", "", work.dispatch.ID}]
+	run.entry.native.commandStarted = now.Add(-time.Second)
 	for _, output := range []string{"PASS parser\n", "FAIL validation\n"} {
 		appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": params["processId"], "stream": "stdout", "deltaBase64": base64.StdEncoding.EncodeToString([]byte(output))})
 	}
 	v := u.navigation.views["child"]
+	run.output.Flush()
+	v.flushStreamOutput()
 	v.shell.focus = 0
 	u.switchOrchestratedThread("child")
 	var frame bytes.Buffer
@@ -150,11 +201,11 @@ func TestUISnapshotOrchestrateValidationProgress(t *testing.T) {
 	_, _ = screen.Write(frame.Bytes())
 	uisnapshot.Assert(t, "testdata/snapshots/orchestration-validation-progress.txt", screen.String()+"\n")
 	// Host byte chunks can split a UTF-8 code point.
-	for _, chunk := range []string{"\xc3", "\xa9chec\n"} {
-		appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": params["processId"], "stream": "stderr", "deltaBase64": base64.StdEncoding.EncodeToString([]byte(chunk))})
+	for _, chunk := range []struct{ stream, data string }{{"stdout", "\xc3"}, {"stderr", "X\n"}, {"stdout", "\xa9chec\n"}} {
+		appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": params["processId"], "stream": chunk.stream, "deltaBase64": base64.StdEncoding.EncodeToString([]byte(chunk.data))})
 	}
 	orchestrateTestReply(t, u, request, `{"exitCode":1,"stdout":"","stderr":""}`)
-	if got := u.orchestrateThreads["child"].batch.Workflow.Checks[0]; got.Output != "PASS parser\nFAIL validation\néchec" || got.Outcome != orchestrate.CheckFailed {
+	if got := u.orchestrateThreads["child"].batch.Workflow.Checks[0]; got.Output != "PASS parser\nFAIL validation\nX\néchec" || got.Outcome != orchestrate.CheckFailed {
 		t.Fatal("streamed failed output not retained", got)
 	}
 	if len(u.navigation.order) != 2 || v.session.agent("/root").Turns != 0 {
@@ -162,6 +213,12 @@ func TestUISnapshotOrchestrateValidationProgress(t *testing.T) {
 	}
 	if report, known := u.proxy.usage.snapshot("child"); known && report.roundtrips != 0 {
 		t.Fatal("command validation fabricated provider usage", report)
+	}
+	for run.output.Pending() > 0 {
+		v.flushStreamOutput()
+	}
+	if len(v.session.commands) != 0 {
+		t.Fatalf("validation command display was not retired: commands=%+v, done=%d, pending=%d, dirty=%v", v.session.commands, len(run.done), run.output.Pending(), run.dirty)
 	}
 	for _, entry := range v.view.entries {
 		if entry.CallID == work.dispatch.ID && entry.native.running {

@@ -82,8 +82,10 @@ func (u *appServerUI) workflowReviewHistory(m appserver.Message) bool {
 		return true
 	}
 	u.registerSessionThread(result.Thread)
-	u.restoreActivityThread(result.Thread)
-	u.restoreMainHistory(result.Thread.Turns, nil, nil)
+	if u.turn == "" {
+		u.restoreActivityThread(result.Thread)
+	}
+	u.restoreMainTranscript(result.Thread.Turns, nil, nil)
 	u.dirty = true
 	return true
 }

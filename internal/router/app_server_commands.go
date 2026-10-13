@@ -77,6 +77,10 @@ func (u *appServerUI) sessionCommand(command string) error {
 }
 
 func (u *appServerUI) submitCompact(queue bool) error {
+	if u.workflowReview != nil {
+		u.setNotice("Runtime review owns this thread; compaction is disabled", true)
+		return nil
+	}
 	if u.thread == "" || u.restoring != nil || u.replacement.pending() {
 		u.setNotice("Wait for the session to be ready", false)
 		return nil

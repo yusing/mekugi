@@ -242,6 +242,22 @@ type appServerHistoryTurn struct {
 // also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
 // another thread. itemAt holds the root's retained item completion times.
 func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
+	u.restoreMainTranscript(turns, placements, itemAt)
+	for _, turn := range turns {
+		if turn.Status == "inProgress" {
+			u.turn, u.status, u.turnStarted = turn.ID, "Working", time.Now()
+		}
+	}
+	root := u.session.agent("/root")
+	root.Started, root.LastResponse = restoredAgentTimes(appServerThreadInfo{Turns: turns})
+	root.WorkTimer = restoredAgentWork(appServerThreadInfo{Turns: turns})
+	root.Turns = uint64(len(turns))
+	root.Responding = u.turn != ""
+	u.applyActivity(nil, u.session.agents)
+}
+
+// restoreMainTranscript hydrates recorded content without adopting live lifecycle.
+func (u *appServerUI) restoreMainTranscript(turns []appServerHistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
 	previousSegments := u.restoredSegments
 	defer func() { u.restoredSegments = previousSegments }()
 	placements = append(placements, u.restoredJournalPlacements(turns, itemAt)...)
@@ -282,18 +298,9 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "error", Text: text,
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
-		if turn.Status == "inProgress" {
-			u.turn, u.status, u.turnStarted = turn.ID, "Working", time.Now()
-		}
 	}
-	root := u.session.agent("/root")
-	root.Started, root.LastResponse = restoredAgentTimes(appServerThreadInfo{Turns: turns})
-	root.WorkTimer = restoredAgentWork(appServerThreadInfo{Turns: turns})
-	root.Turns = uint64(len(turns))
-	root.Responding = u.turn != ""
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
 	u.session.seq = max(u.session.seq, u.view.lastSeq)
-	u.applyActivity(nil, u.session.agents)
 }
 
 func (u *appServerUI) applyRestoredMain(placements []*restoredPlacement) {

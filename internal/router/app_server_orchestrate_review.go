@@ -21,7 +21,7 @@ type orchestrateReviewWork struct {
 	dispatch                   orchestrate.WorkflowDispatch
 	check                      orchestrate.RequiredCheck
 	checkOutput                string
-	checkEntry                 activityPaneEntry
+	checkUTF8                  [2]string // Incomplete stdout/stderr rune bytes, at most three each.
 	acknowledged               bool
 	completed                  *appServerTurn
 	message, item, messageTurn string

@@ -230,7 +230,8 @@ a confirmed exit status requires a decision. An implementation or correction res
 that is not a clean, committed checkout also returns for correction. A changed
 candidate invalidates prior check and review approvals. The batch view shows the
 running validation command and streamed host output through the ordinary command
-presentation. Completion uses the host exit status; missing status stays uncertain.
+presentation. Completion uses the host exit status; missing status stays uncertain,
+while canceled checks show interruption.
 Command checks do not create model threads, turns, or token usage.
 
 By default, every implementation candidate requires independent correctness and
@@ -255,13 +256,15 @@ run concurrently, and each batch's workflow progresses independently of the othe
 Confirmed reviewers appear as independent threads in Agents and the orchestration
 picker, identified by batch, review purpose and round. Selecting one shows its own
 activity and transcript. Runtime ownership remains unchanged: review views do not
-accept manual turns or shell commands, and verdicts remain private workflow input
+accept manual turns, shell commands, or compaction. Verdicts remain private workflow input
 rather than batch completion messages to Main. Full host thread identity owns
 routing, even when concurrent thread IDs share a prefix. Each reviewer contributes
 its own provider-observed usage and statistics once through canonical accounting;
 host context usage is not added to provider totals. Retained review identities and
 available usage survive restart. Selecting retained history reads it without
-resuming review execution or reviving timers.
+resuming review execution or reviving timers, including recorded in-progress turns.
+The `/session` dialog uses the same invocation capture from every thread view; it
+does not add per-view snapshots together.
 
 Each verdict names the candidate and review purpose, with a result of clear,
 findings, or blocked. Findings have stable identifiers. The reason field contains
