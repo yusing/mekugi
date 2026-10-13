@@ -88,6 +88,10 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 		if err != nil || vcs != b.VCS || source != b.Source {
 			return errors.New("shadow source identity changed")
 		}
+		if b.ShadowMerge.State == "applied" {
+			_, err := s.verifyShadowIntegration(ctx, *b)
+			return err
+		}
 		root, err := os.OpenRoot(source)
 		if err != nil {
 			return err
@@ -102,7 +106,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 			return err
 		}
 		plan := b.ShadowMerge
-		if plan.State != "planned" && plan.State != "applying" && plan.State != "applied" {
+		if plan.State != "planned" && plan.State != "applying" {
 			return errors.New("shadow merge has no clean writeback plan")
 		}
 		if plan.State == "planned" {
@@ -152,9 +156,6 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 					return err
 				}
 			}
-		}
-		if plan.State == "applied" {
-			return nil
 		}
 		plan.State = "applying"
 		b.Integration = nil
@@ -371,7 +372,7 @@ func shadowReplace(ctx context.Context, root *os.Root, repository string, w Shad
 	return root.Rename(w.Temp, w.Path)
 }
 
-func verifyShadowIntegration(ctx context.Context, b Batch) (Integration, error) {
+func (s *Store) verifyShadowIntegration(ctx context.Context, b Batch) (Integration, error) {
 	plan := b.ShadowMerge
 	if plan == nil || plan.State != "applied" || b.Integration == nil || *b.Integration != (Integration{Tip: plan.Tip, SourceTip: plan.Tree}) {
 		return Integration{}, errors.New("shadow writeback is not confirmed")
@@ -385,14 +386,61 @@ func verifyShadowIntegration(ctx context.Context, b Batch) (Integration, error) 
 		return Integration{}, err
 	}
 	defer root.Close()
+	for _, w := range plan.Writes {
+		if w.State != "applied" {
+			return Integration{}, errors.New("shadow writeback is not confirmed")
+		}
+		if w.Temp != "" {
+			if _, err := root.Lstat(w.Temp); !errors.Is(err, fs.ErrNotExist) {
+				return Integration{}, fmt.Errorf("%s: retained temporary path requires inspection", w.Temp)
+			}
+		}
+	}
 	after, err := shadowEntries(ctx, b.Repository, plan.Tree)
 	if err != nil {
 		return Integration{}, err
 	}
+	exact := true
 	for _, name := range plan.Paths {
 		if err := shadowMatches(ctx, root, b.Repository, name, after[name], after); err != nil {
-			return Integration{}, fmt.Errorf("%s: integrated source changed: %w", name, err)
+			exact = false
+			break
 		}
+	}
+	if exact {
+		return *b.Integration, nil
+	}
+	if s.ShadowSnapshot == nil {
+		return Integration{}, errors.New("shadow snapshot owner is unavailable")
+	}
+	sourceTip, err := s.ShadowSnapshot(ctx, b.Source, b.Repository)
+	if err != nil {
+		return Integration{}, err
+	}
+	current, err := shadowEntries(ctx, b.Repository, sourceTip)
+	if err != nil {
+		return Integration{}, err
+	}
+	// Ignore rules must not hide a changed integration path from the proof.
+	for _, name := range plan.Paths {
+		if err := shadowMatches(ctx, root, b.Repository, name, current[name], current); err != nil {
+			return Integration{}, fmt.Errorf("%s: source snapshot does not match integrated path: %w", name, err)
+		}
+	}
+	// Replay only the confirmed writeback delta in private objects. It is
+	// contained when merging it into today's source adds nothing and conflicts
+	// with nothing. Later disjoint edits survive, even within the same file.
+	out, err := shadowMergeTrees(ctx, b.Repository, plan.SourceTip, plan.Tree, sourceTip)
+	if err != nil {
+		return Integration{}, fmt.Errorf("integrated source changed: %w", err)
+	}
+	tree, err := shadowGit(ctx, b.Repository, "rev-parse", sourceTip+"^{tree}")
+	if err != nil {
+		return Integration{}, err
+	}
+	merged, _, ok := strings.Cut(string(out), "\x00")
+	if !ok || merged != strings.TrimSpace(string(tree)) {
+		return Integration{}, errors.New("integrated source no longer contains shadow changes")
 	}
 	return *b.Integration, nil
 }

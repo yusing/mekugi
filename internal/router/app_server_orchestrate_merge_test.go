@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"os"
 	"os/exec"
@@ -113,6 +114,78 @@ func TestOrchestrateShadowMergeMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 	call("main", true)
+}
+
+func TestOrchestrateShadowAcceptanceAfterSiblingIntegration(t *testing.T) {
+	workspace := t.TempDir()
+	base := "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\n"
+	file := filepath.Join(workspace, "file.txt")
+	writeTestFile(t, file, base)
+	writeTestFile(t, filepath.Join(workspace, "remove"), "base")
+	u := orchestrateCleanupUIInWorkspace(t, workspace)
+	s, a := u.proxy.orchestration.store, u.orchestrateThreads["child"].batch
+	b, err := s.Prepare(t.Context(), workspace, "main", "sibling")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.BeginLaunch(t.Context(), workspace, "main", "sibling", "work", jsontext.Value(`{}`), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordThread(t.Context(), workspace, "main", "sibling", "sibling-thread"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordTurn(t.Context(), workspace, "main", "sibling", "sibling-thread", "turn"); err != nil {
+		t.Fatal(err)
+	}
+	for i, batch := range []orchestrate.Batch{a, b} {
+		gitTestRun(t, batch.Cwd, "config", "user.name", "test")
+		gitTestRun(t, batch.Cwd, "config", "user.email", "test@example.invalid")
+		old, next := "one", "A"
+		if i == 1 {
+			old, next = "nine", "B"
+		} else if err := os.Remove(filepath.Join(batch.Cwd, "remove")); err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, filepath.Join(batch.Cwd, "file.txt"), strings.Replace(base, old, next, 1))
+		gitTestCommit(t, batch.Cwd)
+	}
+	call := orchestrateTargetMCPClient(t, u, "integrate")
+	call("main", false)
+	proof := *u.orchestrateThreads["child"].batch.Integration
+	if _, err := s.IntegrateShadow(t.Context(), workspace, "main", "sibling", "sibling-thread"); err != nil {
+		t.Fatal(err)
+	}
+	// A fresh owner verifies durable proof without replanning or rewriting A.
+	reopened := &orchestrate.Store{Directory: s.Directory, ShadowSnapshot: orchestrateShadowSnapshot}
+	got, err := reopened.RecordIntegration(t.Context(), workspace, "main", "batch", "child")
+	if err != nil || got != proof {
+		t.Fatal("sibling invalidated A's proof", got, err)
+	}
+	call("main", false)
+	if _, err := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+		t.Fatal("sibling blocked A acceptance", err)
+	}
+	want := strings.Replace(strings.Replace(base, "one", "A", 1), "nine", "B", 1)
+	if got, err := os.ReadFile(file); err != nil || string(got) != want {
+		t.Fatal("verification changed source", string(got), err)
+	}
+	for _, changed := range []string{strings.Replace(want, "A", "one", 1), strings.Replace(want, "A", "overwritten", 1)} {
+		writeTestFile(t, file, changed)
+		call("main", true)
+		if _, err := reopened.RecordIntegration(t.Context(), workspace, "main", "batch", "child"); err == nil {
+			t.Fatal("lost A change authorized acceptance")
+		}
+		if got, err := os.ReadFile(file); err != nil || string(got) != changed {
+			t.Fatal("failed verification rewrote source", string(got), err)
+		}
+	}
+	writeTestFile(t, file, want)
+	writeTestFile(t, filepath.Join(workspace, ".gitignore"), "remove\n")
+	writeTestFile(t, filepath.Join(workspace, "remove"), "restored but ignored")
+	call("main", true)
+	if _, err := reopened.RecordIntegration(t.Context(), workspace, "main", "batch", "child"); err == nil {
+		t.Fatal("ignore rule hid a reverted deletion")
+	}
 }
 
 func TestOrchestrateShadowMergeConflictPaths(t *testing.T) {

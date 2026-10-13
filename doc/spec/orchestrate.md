@@ -305,8 +305,8 @@ task `accepted` only after integration is verified. For Git,
 acceptance verifies that the batch's commits are reachable from the source's
 committed revision or have patch-equivalent commits there. Unmatched commits or
 new merge commits keep acceptance open. For shadow, it verifies
-confirmed writeback and the current merged paths. It records the batch tip and source revision or merged tree
-before changing the task. The child checkout must retain its recorded location
+confirmed writeback and containment of its changes in the current source. It records
+the batch tip and source revision or merged tree before changing the task. The child checkout must retain its recorded location
 and branch and have
 no tracked or untracked changes; ignored prepared inputs may remain. Checkouts
 with assume-unchanged or skip-worktree paths require inspection before acceptance,
@@ -403,6 +403,13 @@ paths can continue when their preimages still match. Source preimages and merged
 blobs remain in the private repository for recovery. Integration evidence becomes
 available only after every changed path is confirmed. Main then marks
 its bound task `accepted`; writeback alone does not accept it.
+
+After confirmed completion, acceptance and repeated integration verify that the
+source still contains the writeback changes. Later nonoverlapping edits, including
+sibling changes to the same file, remain intact and do not invalidate the proof.
+Removed or overwritten changes fail verification. Verification changes neither
+source files nor the retained plan; incomplete or uncertain writeback still uses
+the exact preimage and merged-result checks above.
 
 ## REQ-ORCHESTRATE-009 — Accepted checkout cleanup
 

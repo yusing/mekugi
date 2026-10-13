@@ -33,7 +33,7 @@ func (p *mekugiProxy) prepareJournalAcceptance(ctx context.Context, workspace, t
 	if run == nil || run.Main != thread || run.Workspace != workspace || !current.IdentityKnown || current.IdentityConflicted || current.Parent != "" || current.Author != "/root" {
 		return nil, errors.New("only the orchestration coordinator can accept a batch")
 	}
-	store := &orchestrate.Store{Directory: run.Directory}
+	store := &orchestrate.Store{Directory: run.Directory, ShadowSnapshot: orchestrateShadowSnapshot}
 	batches, err := store.Snapshot(workspace, thread)
 	if err != nil {
 		return nil, err

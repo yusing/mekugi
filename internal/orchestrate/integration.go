@@ -79,7 +79,7 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			if err != nil || vcs != b.VCS || source != b.Source {
 				return errors.New("shadow source identity changed")
 			}
-			proof, err = verifyShadowIntegration(ctx, *b)
+			proof, err = s.verifyShadowIntegration(ctx, *b)
 			if err != nil {
 				return err
 			}

@@ -67,17 +67,11 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		if err != nil {
 			return err
 		}
-		emptyTree, err := shadowGit(ctx, b.Repository, "hash-object", "-w", "-t", "tree", "--stdin")
-		if err != nil {
-			return err
-		}
-		// Snapshot bytes, not checkout attributes or custom merge drivers,
-		// define the source comparison. Git still detects binary conflicts.
 		base := b.Base
 		if b.Integration != nil {
 			base = b.Integration.Tip // Keep the last confirmed base through conflicts.
 		}
-		out, mergeErr := shadowGit(ctx, b.Repository, "--attr-source="+strings.TrimSpace(string(emptyTree)), "merge-tree", "--write-tree", "--merge-base="+base, "-z", "--name-only", "--no-messages", tip, sourceTip)
+		out, mergeErr := shadowMergeTrees(ctx, b.Repository, base, tip, sourceTip)
 		var exit *exec.ExitError
 		conflicted := errors.As(mergeErr, &exit) && exit.ExitCode() == 1 && ctx.Err() == nil
 		if mergeErr != nil && !conflicted {
@@ -118,6 +112,16 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		return nil
 	})
 	return batch, err
+}
+
+// Snapshot bytes, not checkout attributes or custom merge drivers, define both
+// planning and containment. Git still detects binary conflicts.
+func shadowMergeTrees(ctx context.Context, repository, base, tip, sourceTip string) ([]byte, error) {
+	emptyTree, err := shadowGit(ctx, repository, "hash-object", "-w", "-t", "tree", "--stdin")
+	if err != nil {
+		return nil, err
+	}
+	return shadowGit(ctx, repository, "--attr-source="+strings.TrimSpace(string(emptyTree)), "merge-tree", "--write-tree", "--merge-base="+base, "-z", "--name-only", "--no-messages", tip, sourceTip)
 }
 
 // Preserve stdout on merge-tree's conflict exit. Private merges do not use

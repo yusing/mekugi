@@ -74,6 +74,12 @@ func TestOrchestrateShadowWritebackRecovery(t *testing.T) {
 		t.Fatal("recovery overwrote external edit", string(got))
 	}
 	writeTestFile(t, filepath.Join(workspace, "next"), "base")
+	writeTestFile(t, filepath.Join(workspace, "first"), "child\nlater edit\n")
+	call("main", true) // Partial writeback still requires the exact postimage.
+	if _, err := reopened.RecordIntegration(t.Context(), workspace, "main", "batch", "child"); err == nil {
+		t.Fatal("partial writeback authorized acceptance")
+	}
+	writeTestFile(t, filepath.Join(workspace, "first"), "child")
 	writeTestFile(t, filepath.Join(workspace, "unrelated"), "keep")
 	result := call("main", false)
 	data, err := json.Marshal(result.StructuredContent)
