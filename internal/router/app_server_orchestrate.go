@@ -15,6 +15,7 @@ import (
 
 // The MCP workers enqueue work; only the UI loop writes to the host client.
 type orchestrateRuntime struct {
+	reviewers     workflowReviewerRoles
 	store         *orchestrate.Store
 	commands      chan *orchestrateCommand
 	active        atomic.Bool
@@ -42,6 +43,7 @@ type orchestrateResult struct {
 	delivery *orchestrate.Delivery
 }
 type orchestrateRPC struct {
+	review                  *orchestrateReviewWork
 	wait                    *orchestrate.Wait
 	waitMain, waitWorkspace string
 	method                  string
@@ -52,14 +54,21 @@ type orchestrateRPC struct {
 	completion              *orchestrateEvent
 }
 type orchestrateChild struct {
-	command       *orchestrateCommand
-	batch         orchestrate.Batch
-	turn          string
-	completedTurn string
-	messageTurn   string
-	lastMessage   string
-	followups     []*orchestrateCommand
-	removing      bool
+	workflowDeferred   bool
+	workflowStopped    bool
+	workflowWork       map[orchestrate.WorkflowDispatchKind]*orchestrateReviewWork
+	workflowPending    int
+	workflowEnding     bool
+	workflowCompletion *appServerTurn
+	workflowReport     string
+	command            *orchestrateCommand
+	batch              orchestrate.Batch
+	turn               string
+	completedTurn      string
+	messageTurn        string
+	lastMessage        string
+	followups          []*orchestrateCommand
+	removing           bool
 }
 
 func (u *appServerUI) orchestrateCommands() <-chan *orchestrateCommand {
@@ -96,6 +105,10 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 	case "interrupt_agent":
 		for _, child := range u.orchestrateThreads {
 			if (command.target == child.batch.TaskName || command.target == "/root/"+child.batch.TaskName) && child.command.main == command.main && child.command.workspace == command.workspace {
+				if implementationWorkflow(child) {
+					u.interruptWorkflow(child, command)
+					return
+				}
 				if child.turn == "" {
 					command.reply <- orchestrateResult{batch: child.batch}
 					return
@@ -105,6 +118,13 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 				if err := u.orchestrateRequest(&request, "turn/interrupt", map[string]any{"threadId": child.batch.Launch.ThreadID, "turnId": child.turn}); err != nil {
 					fail(err)
 				}
+				return
+			}
+		}
+		for _, request := range u.orchestrateRequests {
+			child := request.child
+			if implementationWorkflow(child) && (command.target == child.batch.TaskName || command.target == "/root/"+child.batch.TaskName) {
+				u.interruptWorkflow(child, command)
 				return
 			}
 		}
@@ -149,6 +169,20 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 				return
 			}
 			u.orchestrateWork(func() func() {
+				if batch.Launch == nil || batch.Workflow != nil {
+					kind := command.input.Kind
+					if kind == "" {
+						kind = orchestrate.WorkflowImplementation
+					}
+					checks := make([]orchestrate.RequiredCheck, 0, len(command.input.RequiredChecks))
+					for i, check := range command.input.RequiredChecks {
+						checks = append(checks, orchestrate.RequiredCheck{ID: fmt.Sprintf("check-%d", i+1), Command: check})
+					}
+					err := store.ConfigureWorkflow(command.ctx, command.workspace, command.main, batch.TaskName, orchestrate.WorkflowAssignment{Kind: kind, Scope: command.input.Message, RequiredChecks: checks})
+					if err != nil {
+						return func() { fail(err) }
+					}
+				}
 				batch, dispatch, err := store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded, policy)
 				return func() {
 					if err != nil || !dispatch {
@@ -246,6 +280,10 @@ func (u *appServerUI) failOrchestrate(child *orchestrateChild, err error) {
 			u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, persistErr)
 			err := errors.Join(err, persistErr)
 			u.finishOrchestrate(child, err)
+			if implementationWorkflow(child) {
+				u.workflowFailure(child, orchestrate.PhaseFailed, err)
+				return
+			}
 			status := "failed"
 			if persistErr != nil {
 				status = "storage_failed"
@@ -257,6 +295,9 @@ func (u *appServerUI) failOrchestrate(child *orchestrateChild, err error) {
 }
 
 func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
+	if u.workflowReviewerMessage(m) {
+		return true
+	}
 	u.observeOrchestratedPrompt(m)
 	if m.Method != "" {
 		if len(u.orchestrateThreads) == 0 || m.Method != "turn/started" && m.Method != "turn/completed" && m.Method != "item/completed" {
@@ -280,9 +321,16 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		switch m.Method {
 		case "turn/started":
 			child.turn, status = event.Turn.ID, "running"
+			// New implementer input after a stop or readiness starts a new round.
+			if workflowResumable(child, event.Turn.ID) {
+				u.resumeWorkflow(child)
+			}
 		case "turn/completed":
 			if event.Turn.ID != "" && child.completedTurn == event.Turn.ID {
 				return false
+			}
+			if implementationWorkflow(child) {
+				child.workflowEnding = true
 			}
 			child.turn, status = "", event.Turn.Status
 			child.completedTurn = event.Turn.ID
@@ -309,6 +357,10 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 						u.setNotice("Orchestration lifecycle: "+err.Error(), true)
 						u.publishOrchestratedEvent(child, orchestrateEvent{Task: name, Thread: event.ThreadID, Turn: event.Turn.ID, Kind: "failure", Status: "storage_failed", Message: err.Error()})
 					} else if m.Method == "turn/completed" {
+						if implementationWorkflow(child) {
+							u.workflowImplementationCompleted(child, event.Turn, resultMessage)
+							return
+						}
 						kind := "done"
 						if status == "failed" {
 							kind = "failure"
@@ -331,6 +383,10 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 	}
 	delete(u.orchestrateRequests, string(m.ID))
 	u.dirty = true
+	if r.review != nil {
+		u.workflowResponse(r, m)
+		return true
+	}
 	if r.wait != nil {
 		state, message := "delivered", ""
 		if m.Error != nil {
@@ -340,6 +396,14 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		return true
 	}
 	if r.completion != nil {
+		if implementationWorkflow(r.child) {
+			var err error
+			if m.Error != nil {
+				err = errors.New(m.Error.Message)
+			}
+			u.workflowOutcomeResponse(r.child, *r.completion, err)
+			return true
+		}
 		if m.Error != nil {
 			u.orchestratedAnswerFailure(r.child, *r.completion, errors.New(m.Error.Message))
 		} else {
@@ -379,6 +443,12 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		return true
 	}
 	if r.method == "thread/start" {
+		if child.batch.Workflow != nil && child.batch.Workflow.Assignment.Kind == orchestrate.WorkflowDiagnosis {
+			if err := workflowReadOnlyConfirmed(m.Result); err != nil {
+				u.failOrchestrate(child, err)
+				return true
+			}
+		}
 		if result.Thread.Cwd != child.batch.Cwd {
 			u.failOrchestrate(child, errors.New("host returned a different child cwd"))
 			return true
@@ -419,7 +489,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					u.failOrchestrate(child, err)
 					return
 				}
-				if u.orchestrateClosing {
+				if u.orchestrateClosing || child.workflowStopped {
 					u.finishOrchestrate(child, context.Canceled)
 					return
 				}
@@ -428,7 +498,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					return
 				}
 				if err := u.addOrchestratedView(child, raw, func() {
-					if u.orchestrateClosing || c.ctx.Err() != nil {
+					if u.orchestrateClosing || child.workflowStopped || c.ctx.Err() != nil {
 						u.finishOrchestrate(child, context.Canceled)
 						return
 					}
@@ -468,7 +538,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			}
 		}
 		// Cancellation cleanup does not wait for acknowledgement persistence.
-		interrupted := c.ctx.Err() != nil
+		interrupted := c.ctx.Err() != nil || child.workflowStopped || implementationWorkflow(child) && workflowTerminal(child.batch.Workflow)
 		var interruptErr error
 		if interrupted {
 			interruptErr = u.orchestrateCleanupInterrupt(child, child.batch.Launch.ThreadID, result.Turn.ID)
@@ -490,6 +560,9 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					return
 				}
 				child.batch.Launch.TurnID = turn
+				if child.workflowCompletion != nil {
+					u.workflowImplementationCompleted(child, *child.workflowCompletion, child.workflowReport)
+				}
 				u.finishOrchestrate(child, c.ctx.Err())
 			}
 		})
@@ -515,7 +588,7 @@ func (u *appServerUI) orchestrateBusy() bool {
 		return true
 	}
 	for _, child := range u.orchestrateThreads {
-		if child.turn != "" || len(child.followups) != 0 {
+		if child.turn != "" || len(child.followups) != 0 || len(child.workflowWork) != 0 || child.workflowPending != 0 {
 			return true
 		}
 	}

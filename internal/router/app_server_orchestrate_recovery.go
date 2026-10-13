@@ -11,6 +11,9 @@ func orchestrateBatchState(batch orchestrate.Batch) string {
 	if batch.State == "integrating" || batch.State == "removing" || batch.State == "removed" {
 		return batch.State
 	}
+	if batch.Workflow != nil && batch.Workflow.Assignment.Kind == orchestrate.WorkflowImplementation {
+		return string(batch.Workflow.Phase)
+	}
 	if batch.Launch != nil {
 		return batch.Launch.HostStatus
 	}
@@ -51,6 +54,7 @@ func (u *appServerUI) recoverOrchestratedRun() {
 			}
 			u.ensureOrchestrationNavigation().retained = batches
 			u.orchestrationRoster()
+			u.recoverOrchestratedWorkflows(batches)
 		}
 	})
 }

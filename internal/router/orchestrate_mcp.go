@@ -189,7 +189,9 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		Name: "spawn_agent", Description: "Similar to mekugi_collaboration.spawn_agent, but starts a fresh independent Codex thread in an isolated checkout from prepare. Native collaboration tools cannot reach these threads. The message carries the complete assignment, constraints and checks. Omitted model, reasoning effort and service tier inherit Main's effective settings. Bind the integration task to /root/task_name; child completion leaves it open. Git integration uses native Git; accept only after verifying reachable or patch-equivalent batch commits and merge-free child/source history after the baseline, including committed submodule gitlinks. SVN and unversioned shadow use integrate. Repeats return retained launch progress without starting another thread.",
 		InputSchema: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"task_name", "message"}, "properties": map[string]any{
 			"task_name": map[string]any{"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"}, "message": map[string]any{"type": "string", "minLength": 1},
-			"model": map[string]any{"type": "string", "minLength": 1}, "reasoning_effort": map[string]any{"type": "string", "minLength": 1}, "service_tier": map[string]any{"type": "string"},
+			"kind":            map[string]any{"type": "string", "enum": []string{"implementation", "diagnosis"}, "default": "implementation"},
+			"required_checks": map[string]any{"type": "array", "items": map[string]any{"type": "string", "minLength": 1}},
+			"model":           map[string]any{"type": "string", "minLength": 1}, "reasoning_effort": map[string]any{"type": "string", "minLength": 1}, "service_tier": map[string]any{"type": "string"},
 		}},
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input orchestrateSpawnInput) (*mcp.CallToolResult, any, error) {
 		ctx, workspace, thread, release, err := journalMCPContext(ctx, proxy, request.Params.GetMeta())

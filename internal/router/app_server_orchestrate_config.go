@@ -14,11 +14,13 @@ import (
 
 // Orchestrated children are independent threads, not native subagents.
 type orchestrateSpawnInput struct {
-	TaskName        string  `json:"task_name"`
-	Message         string  `json:"message"`
-	Model           string  `json:"model,omitempty"`
-	ReasoningEffort string  `json:"reasoning_effort,omitempty"`
-	ServiceTier     *string `json:"service_tier,omitempty"`
+	Kind            orchestrate.WorkflowKind `json:"kind,omitempty"`
+	RequiredChecks  []string                 `json:"required_checks,omitempty"`
+	TaskName        string                   `json:"task_name"`
+	Message         string                   `json:"message"`
+	Model           string                   `json:"model,omitempty"`
+	ReasoningEffort string                   `json:"reasoning_effort,omitempty"`
+	ServiceTier     *string                  `json:"service_tier,omitempty"`
 }
 
 // Source: codex-rs/app-server-protocol/src/protocol/v2/thread.rs:62:120@823ea830c
@@ -91,6 +93,9 @@ func (u *appServerUI) orchestrateThreadRequest(batch orchestrate.Batch, input or
 		}
 	}
 	params["config"] = map[string]any{"model_reasoning_effort": effort}
+	if input.Kind == orchestrate.WorkflowDiagnosis {
+		policy = readOnlyWorkflowParams(params)
+	}
 	return params, policy, nil
 }
 

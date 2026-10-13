@@ -457,7 +457,11 @@ func (u *appServerUI) orchestrationRoster() {
 			name, label := "main", ""
 			if child := n.owner.orchestrateThreads[thread]; child != nil {
 				name = child.batch.TaskName
-				if v.orchestrateCheckoutUnavailable() {
+				if implementationWorkflow(child) {
+					agent.Final = child.batch.Workflow.Phase == orchestrate.PhaseReady
+					agent.Responding = child.turn != "" || workflowResponding(child)
+				}
+				if implementationWorkflow(child) || v.orchestrateCheckoutUnavailable() {
 					label = orchestrateBatchState(child.batch)
 				}
 				if name == "main" {

@@ -1791,6 +1791,13 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
+	if n := u.navigation; n != nil {
+		if child := n.owner.orchestrateThreads[u.thread]; implementationWorkflow(child) && (!workflowTerminal(child.batch.Workflow) || len(child.workflowWork) != 0) {
+			c := &orchestrateCommand{ctx: u.ctx, reply: make(chan orchestrateResult, 1)}
+			n.owner.interruptWorkflow(child, c)
+			return nil
+		}
+	}
 	if u.compaction.running() || u.compaction.ackPending || u.compaction.continueTask {
 		// Restore waiting input when cancellation is admitted, even if Codex
 		// completes compaction successfully before acknowledging the interrupt.

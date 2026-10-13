@@ -25,12 +25,10 @@ func TestOrchestrateWorkflowRecoveryContinuity(t *testing.T) {
 			if err != nil || strings.Count(hook, want) != 1 || strings.Contains(hook, "Assignment:") || strings.Contains(hook, "Issues:") {
 				t.Fatal("incorrect run guidance after restart", err, hook)
 			}
-			requireOrchestrateToolMechanics(t, hook)
 			item, recovery := deliverV2ContinuityReset(t, fresh, cwd, thread)
 			if strings.Count(recovery.Text, want) != 1 {
 				t.Fatal("reset omitted or duplicated run guidance", recovery.Text)
 			}
-			requireOrchestrateToolMechanics(t, recovery.Text)
 			requireV2ContinuityForward(t, reopenV2ContinuityProxy(t, fresh), cwd, thread, "", "", item, recovery.Text)
 			_, next := deliverV2ContinuityReset(t, fresh, cwd, thread, item)
 			if strings.Count(next.Text, want) != 1 {

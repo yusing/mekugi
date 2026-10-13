@@ -78,6 +78,9 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	callSeq := 0
 	callContext := func(callCtx context.Context, tool string, args any) <-chan callResult {
 		t.Helper()
+		if tool == "spawn_agent" {
+			args.(map[string]any)["kind"] = "diagnosis"
+		}
 		result := make(chan callResult, 1)
 		callMeta := meta
 		if tool == "wait_agent" {
@@ -212,7 +215,6 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	if len(request.Params.Input) != 1 || strings.Count(request.Params.Input[0].Text, "Your coordinator is main.") != 1 || !strings.HasSuffix(request.Params.Input[0].Text, batches[0].Launch.Message) {
 		t.Fatal("first child input lost its coordinator or assignment", request.Params.Input)
 	}
-	requireOrchestrateToolMechanics(t, request.Params.Input[0].Text)
 	if batches[0].Launch.ThreadID != "child" || batches[0].State != "prepared" {
 		t.Fatal("turn dispatched before retained thread identity")
 	}

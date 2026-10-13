@@ -81,6 +81,9 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 		if err != nil || tip != b.ShadowMerge.Tip {
 			return errors.New("shadow batch tip changed during writeback")
 		}
+		if err := workflowReady(*b, tip); err != nil {
+			return err
+		}
 		vcs, source, err := sourceRepository(ctx, workspace)
 		if err != nil || vcs != b.VCS || source != b.Source {
 			return errors.New("shadow source identity changed")

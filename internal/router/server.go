@@ -357,6 +357,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		if err != nil {
 			return fmt.Errorf("initialize orchestration MCP: %w", err)
 		}
+		mekugiCalls.orchestration.reviewers = config.Orchestration.Reviewers
 		defer func() { runErr = errors.Join(runErr, stopOrchestrateMCP()) }()
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls)

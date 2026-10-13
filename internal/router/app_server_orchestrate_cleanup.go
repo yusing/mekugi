@@ -11,7 +11,7 @@ import (
 func (u *appServerUI) orchestrateCheckoutUnavailable() bool {
 	if u.navigation != nil {
 		if child := u.navigation.owner.orchestrateThreads[u.thread]; child != nil {
-			return child.batch.State == "removing" || child.batch.State == "removed" || child.batch.State == "integrating"
+			return workflowInputReserved(child) || child.batch.State == "removing" || child.batch.State == "removed" || child.batch.State == "integrating"
 		}
 	}
 	return false
@@ -104,7 +104,7 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand) {
 			return
 		}
 		v := u.navigation.views[child.batch.Launch.ThreadID]
-		if child.removing || child.turn != "" || len(child.followups) != 0 || v == nil || v.busy() || len(v.activeChildren) != 0 || v.reset.active() || v.questionCount() != 0 || len(v.approvals.pending) != 0 || len(v.btwRequests) != 0 || v.btw != nil && (v.btw.busy || v.btw.starting || v.btw.interrupting) || v.draft != "" || len(v.images)+len(v.files)+len(v.skills)+len(v.selections) != 0 || v.paste || v.shell.paste {
+		if workflowUnsettled(child.batch) || len(child.workflowWork) != 0 || child.workflowPending != 0 || implementationWorkflow(child) && !workflowTerminal(child.batch.Workflow) || child.removing || child.turn != "" || len(child.followups) != 0 || v == nil || v.busy() || len(v.activeChildren) != 0 || v.reset.active() || v.questionCount() != 0 || len(v.approvals.pending) != 0 || len(v.btwRequests) != 0 || v.btw != nil && (v.btw.busy || v.btw.starting || v.btw.interrupting) || v.draft != "" || len(v.images)+len(v.files)+len(v.skills)+len(v.selections) != 0 || v.paste || v.shell.paste {
 			c.reply <- orchestrateResult{err: errors.New("cleanup requires an idle subscribed child with no pending input or descendants")}
 			return
 		}

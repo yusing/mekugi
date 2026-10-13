@@ -27,8 +27,16 @@ func (c OpenCodeConfig) Enabled() bool {
 }
 
 type mekugiConfig struct {
-	Providers    OpenCodeConfig    `toml:"providers"`
-	ServiceTiers map[string]string `toml:"service_tiers"`
+	Providers     OpenCodeConfig    `toml:"providers"`
+	ServiceTiers  map[string]string `toml:"service_tiers"`
+	Orchestration struct {
+		Reviewers workflowReviewerRoles `toml:"reviewers"`
+	} `toml:"orchestration"`
+}
+
+type workflowReviewerRoles struct {
+	Correctness    string `toml:"correctness"`
+	Simplification string `toml:"simplification"`
 }
 
 type serviceTierSettings struct {

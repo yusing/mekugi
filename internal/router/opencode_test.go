@@ -90,6 +90,8 @@ func TestOpenCodeConfig(t *testing.T) {
 		t.Fatalf("service-specific disable after shared key: %v", err)
 	}
 	for _, body := range []string{
+		"[orchestration.reviewers]\ncorrectness = 42\n",
+		"[orchestration.reviewers]\nunknown = 'private-secret'\n",
 		"[providers.opencode_go]\napi_key = 'private-secret",
 		"[providers.opencode_go]\napi_keey = 'private-secret'\n",
 	} {

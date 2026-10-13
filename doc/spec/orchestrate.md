@@ -76,6 +76,11 @@ for its live turn. For example, after preparation:
 await tools.mcp__orchestrate__spawn_agent({task_name:"batch",message:"Complete the assigned batch and report its checks."});
 ```
 
+`kind` defaults to `implementation`; `diagnosis` selects a read-only assignment
+without implementation review. For implementation, `required_checks` lists the
+validation commands Main selects for the scope. The runtime runs each command itself
+in the batch cwd before review. Checks cannot be supplied for diagnosis.
+
 Children start as independent Codex threads with fresh context. `message` carries
 the complete assignment. Main can select model, reasoning effort and service tier;
 omitted settings inherit its current effective values. Host-confirmed settings
@@ -171,6 +176,74 @@ logical deadline, not an indefinitely open MCP request. An explicit timeout acce
 one millisecond through twenty-five minutes; expiry delivers `timed_out: true`.
 Recovery reconciles retained logical waits and deadlines without reviving host
 processes, transport requests, or live prompt handles.
+
+## REQ-ORCHESTRATE-011 — Runtime review workflow
+
+New implementation batches enter a runtime-owned workflow. Diagnosis assignments
+remain read-only and do not enter implementation review. The assignment retains
+its accepted scope and required validation commands. Main supplies this assignment;
+neither Main nor the implementer decides whether to dispatch or skip its reviews.
+
+The workflow advances through implementation, candidate validation, queued review,
+review, correction, and readiness for integration. A candidate identifies an exact
+clean, committed revision. Mekugi runs each required check through host command
+execution in the batch checkout with the implementer's permissions; only the host
+exit status is validation evidence, never an agent's completion message. A failed
+check returns to the implementer for correction with its output tail. A check without
+a confirmed exit status requires a decision. An implementation or correction result
+that is not a clean, committed checkout also returns for correction. A changed
+candidate invalidates prior check and review approvals.
+
+Every implementation candidate requires independent correctness and simplification
+reviews. Mekugi starts fresh review threads with host-enforced read-only
+permissions and schema-constrained verdicts. Mekugi's optional
+`[orchestration.reviewers]` settings map `correctness` and `simplification` to
+arbitrary Codex role names. No named role is selected by default. Empty or omitted
+selections use built-in review instructions and inherited execution settings.
+Selected roles supply instructions, model, reasoning effort, and service tier from
+the source workspace's enabled Codex configuration layers and role files. Missing
+fields retain the built-in rubric or inherited execution setting. Mekugi does not
+change user configuration. Explicit per-role service tier takes precedence over
+the coordinator's tier. A missing, unreadable, or malformed selected role is a
+visible blocker. Correctness reviews check the accepted scope and
+retained behavior for concrete defects and validation gaps. Simplification reviews
+check whether the added mechanisms are necessary and identify smaller approaches
+that preserve the required behavior. The host remains the execution
+and permissions authority. Missing required host capabilities become explicit
+blockers rather than weaker reviews or silent approval. Both reviews of a candidate
+run concurrently, and each batch's workflow progresses independently of the others.
+
+Each verdict names the candidate and review purpose, with a result of clear,
+findings, or blocked. Findings have stable identifiers. Missing, malformed,
+wrong-revision, or failed review results do not count as approval. Mekugi collects
+both results before delivering one correction assignment directly to the implementer.
+The implementer can fix or dispute findings but cannot approve its own candidate.
+Each changed candidate receives validation and both reviews again. Two correction
+rounds are permitted for failed checks, unclean results, and findings combined; a
+further rejection then requires a decision.
+
+Host lifecycle events drive dispatch and progress, not model polling or long MCP
+waits. Main receives a single readiness notification with the implementer's final
+report, or a blocker naming its reason, failed check output, review findings, and the
+next actions, instead of intermediate review and correction relays. The UI retains
+phase progress. While Mekugi drives validation, review, or correction, the implementer
+accepts no manual input. New implementer input after a blocker, cancellation, or
+readiness, through a follow-up or the implementer's view, starts a new
+implementation round with a fresh correction budget; late host results from the
+stopped round are not adopted.
+Dispatch intent and confirmed thread/turn identities are retained before dependent
+actions. Recovery discovery reads retained and host state without resuming child
+threads or starting turns. Further dispatch that needs a resumed child waits for
+explicit resume through the existing navigation or messaging path. Uncertain
+dispatch is not repeated blindly. Cancellation stops undispatched transitions and
+uses the existing host interruption path for active work. It never means successful
+completion.
+
+Integration remains Main's responsibility within the accepted destination and
+authorization. A reviewed candidate must still match its revision when integration
+is admitted. Workflow readiness does not replace Git ancestry or shadow-writeback
+verification. Earlier retained batches without workflow records keep their existing
+completion semantics; new implementation batches cannot omit the review gate.
 
 ## REQ-ORCHESTRATE-004 — Batch follow-ups
 
@@ -373,9 +446,10 @@ the checkout; successfully retained commits remain available after a later failu
 
 `/orchestrate ISSUES` enters the workflow through the ordinary composer. One
 user input carries the issues and the division of work: children implement and
-validate requested changes in isolated checkouts; Main coordinates, reviews and
-integrates their results. For change requests, local commits and linear Git
-integration are part of the invoked workflow, subject to explicit user restrictions.
+validate requested changes in isolated checkouts; Mekugi drives reviews and
+corrections; Main coordinates and verifies integration. For change requests, local
+commits and linear Git integration are part of the invoked workflow, subject to
+explicit user restrictions.
 Diagnosis-only assignments remain read-only. Tool descriptions and parameter help belong
 only to MCP metadata, not composer input or recovery instructions. Later ordinary
 input does not repeat the instruction or change tool exposure. Attachments, busy

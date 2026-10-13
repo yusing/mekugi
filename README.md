@@ -52,7 +52,8 @@ sessions, and patch review. No fork, no config edits, no daemon.
 - **Live subagent activity.** See model, effort, progress, and message excerpts
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Isolated parallel work.** [Orchestration](#orchestration) coordinates fresh
-  Codex threads in separate checkouts, then Main reviews and integrates their results.
+  Codex threads in separate checkouts, with automatic validation, independent reviews,
+  and correction routing before Main integrates their results.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
   click an Edit event to open its captured file and hunk.
 - **Readable command output.** Open [searchable retained output](#output-dialog).
@@ -188,7 +189,7 @@ details](doc/spec/native_ui.md).
 ### Orchestration
 
 Use `/orchestrate ISSUES` in Main's composer to have children implement and validate
-changes in isolated checkouts while Main coordinates, reviews and integrates.
+changes in isolated checkouts while Main coordinates and verifies integration.
 For change requests, local commits and linear Git integration are included,
 subject to explicit restrictions; diagnosis-only assignments stay read-only.
 Supported sources are Git, SVN and unversioned directories.
@@ -196,6 +197,18 @@ Git is required; SVN sources also need the SVN client. Git and SVN batches start
 from locally recorded committed baselines, excluding local edits; unversioned
 batches snapshot the current tree with ignore rules. Main prepares required ignored
 inputs before starting each fresh child thread.
+
+Implementation batches pass declared checks, which Mekugi runs in the batch checkout,
+and concurrent correctness and simplification reviews before becoming ready for
+integration. Mekugi routes failed checks, uncommitted results and review findings
+back to the implementer, with at most two correction rounds before requesting a
+decision. Main receives readiness with the implementer's report, or a blocker with
+its evidence, instead of relaying each review. A follow-up to a blocked or ready batch
+starts a new round.
+Choose any existing Codex roles for the two reviews in
+[reviewer settings](#orchestration-reviewers). Without a selection, reviews use
+built-in instructions and inherit Main's execution settings. Review threads remain
+read-only.
 
 Bare `/orchestrate` opens this Main's batch picker. Enter on an Orchestration row
 in Agents switches threads; `Ctrl-B`, then `[` / `]` cycles them. Each thread keeps
@@ -205,12 +218,13 @@ Input targets the viewed thread; labeled questions and approvals return answers 
 Orchestration calls show their status in Main or Activity; click returned output
 or errors to inspect them. A completed call does not mean its batch is complete.
 
-Main reviews and integrates Git batches with linear native Git history, or SVN/unversioned batches
-with shadow writeback, then accepts their journal tasks. Explicit cleanup removes
+Main verifies and integrates ready Git batches with linear native Git history, or
+SVN/unversioned batches with shadow writeback, then accepts their journal tasks. Explicit cleanup removes
 accepted, idle, clean run-owned checkouts and unchanged copied evidence. Branches,
 manifests, journals and shadow history remain; unfinished or unintegrated work stays.
 `/quit` asks for confirmation while batches run. Resume restores the roster;
-interrupted turns stay interrupted. See the [orchestration contract](doc/spec/orchestrate.md)
+interrupted turns stay interrupted. Recovered workflows that need further dispatch
+wait for explicit child resume. See the [orchestration contract](doc/spec/orchestrate.md)
 for preparation, integration, cleanup and recovery details.
 
 ### Approvals
@@ -381,6 +395,28 @@ Exact model IDs select tiers: `auto`, `default`, `fast` (sent as `priority`),
 `priority`, or `flex`, subject to provider support. `/tier` choices override defaults
 for that thread/model during the invocation. The composer shows the effective tier;
 `/session` shows the provider-returned tier.
+
+### Orchestration reviewers
+
+Select Codex roles by name in Mekugi's configuration file:
+
+```toml
+[orchestration.reviewers]
+correctness = "code-auditor"
+simplification = "simplicity-reviewer"
+```
+
+Replace these example names with roles from the source workspace's enabled Codex
+configuration. Each selected role supplies `developer_instructions`, `model`,
+`model_reasoning_effort`, and `service_tier` from its role file. Edit those fields
+there to configure its instructions and execution settings. An explicit role tier
+overrides Main's tier; omitted execution settings inherit Main's settings. Omitted
+instructions use the built-in rubric for that review purpose.
+
+Both selections are optional. An empty or omitted selection uses the built-in
+rubric and inherited execution settings, without selecting a named role. A named
+role that cannot be resolved blocks its review with an error. Restart Mekugi after
+changing its configuration. Review permissions remain read-only for every role.
 
 ### Options
 

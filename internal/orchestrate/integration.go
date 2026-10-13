@@ -80,10 +80,16 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 				return errors.New("shadow source identity changed")
 			}
 			proof, err = verifyShadowIntegration(ctx, *b)
-			return err
+			if err != nil {
+				return err
+			}
+			return workflowReady(*b, proof.Tip)
 		}
 		proof.Tip, err = git(ctx, b.Cwd, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {
+			return err
+		}
+		if err := workflowReady(*b, proof.Tip); err != nil {
 			return err
 		}
 		proof.SourceTip, err = git(ctx, workspace, "rev-parse", "--verify", "HEAD^{commit}")

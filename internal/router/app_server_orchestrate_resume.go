@@ -141,6 +141,11 @@ func (n *orchestrateNavigation) finishResume(thread string, err error) {
 	}
 	delete(n.resumes, thread)
 	if err == nil {
+		child := n.owner.orchestrateThreads[thread]
+		if implementationWorkflow(child) {
+			child.workflowDeferred = false
+			n.owner.reconcileWorkflow(child)
+		}
 		name := n.owner.orchestrateThreads[thread].batch.TaskName
 		if n.owner.notice == "Resuming batch "+name {
 			n.owner.setNotice("Batch "+name+" resumed", false)

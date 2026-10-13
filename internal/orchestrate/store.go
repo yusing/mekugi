@@ -27,6 +27,7 @@ type Store struct {
 }
 
 type Batch struct {
+	Workflow           *Workflow           `json:"workflow,omitempty"`
 	VCS                string              `json:"vcs,omitempty"`
 	Repository         string              `json:"repository,omitempty"`
 	Source             string              `json:"source,omitempty"`

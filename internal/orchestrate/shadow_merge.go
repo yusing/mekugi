@@ -60,6 +60,9 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		if err != nil {
 			return err
 		}
+		if err := workflowReady(*b, tip); err != nil {
+			return err
+		}
 		sourceTip, err := s.ShadowSnapshot(ctx, source, b.Repository)
 		if err != nil {
 			return err
