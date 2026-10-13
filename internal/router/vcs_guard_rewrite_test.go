@@ -111,11 +111,10 @@ func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
 				}
 				return changed
 			}
-			defaultPath := "PATH=" + quoteShellWord(path) + ":\"$PATH\"; command -p git --version"
+			// Git need not exist on the shell's default utility path. Compare its
+			// status and stdout, omitting diagnostics that include script line numbers.
+			defaultPath := "PATH=" + quoteShellWord(path) + ":\"$PATH\"; command -p git --version 2>/dev/null"
 			original := runShell(t, shell.env, name, "-c", defaultPath)
-			if original.code != 0 || original.stderr != "" || !strings.HasPrefix(original.stdout, "git version ") {
-				t.Fatalf("native command -p = %+v", original)
-			}
 			// One workflow preserves denial control flow, dynamic nested-shell
 			// arguments, native function lookup, and both PATH lookup modes.
 			body := git + " push origin main; echo NESTED $? $0 $1"
@@ -129,7 +128,7 @@ func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
 			run := runShell(t, shell.env, name, "-c", rewrite(script))
 			wantOutput := "DENIED 1\nNESTED 1 label argument\nFUNCTION status\nLOCAL_PATH 1\nFUNCTION:-c echo EXTERNAL\n" + original.stdout
 			denied := "mekugi: remote write denied: denied in test\n"
-			if run.code != 0 || run.stdout != wantOutput || run.stderr != strings.Repeat(denied, 4) {
+			if run.code != original.code || run.stdout != wantOutput || run.stderr != strings.Repeat(denied, 4) {
 				t.Fatalf("native workflow = %+v; script=%s", run, script)
 			}
 			if got := shell.invoked(t); !slices.Equal(got, []string{"git_add_-A", "git_commit_-m_x", "git_log", "gh_pr_view_1"}) {
