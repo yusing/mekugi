@@ -71,6 +71,14 @@ func TestAppServerOrchestrateSubmoduleCleanupMCP(t *testing.T) {
 		gitTestRun(t, clone, "update-index", "--no-"+flag, "file")
 		gitTestRun(t, clone, "checkout", "--", "file")
 	}
+	for _, sub := range b.Submodules {
+		clone := filepath.Join(b.Checkout, sub.Path)
+		tip := submoduleCleanupGit(t, clone, "rev-parse", "HEAD")
+		if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err == nil || !strings.Contains(err.Error(), sub.Path) {
+			t.Fatal("accepted source gitlink without its local object", sub.Path, err)
+		}
+		gitTestRun(t, sub.Repository, "-c", "protocol.file.allow=always", "fetch", "--no-recurse-submodules", "--no-write-fetch-head", clone, tip)
+	}
 	acceptSubmoduleCleanup(t, u)
 	// Preserve dirty source work and its original checked-out branches/index.
 	dirs := []string{u.session.cwd}

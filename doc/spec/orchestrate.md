@@ -300,6 +300,10 @@ Child and source history added after each recorded baseline must contain no merg
 commits, including recorded submodules. Existing merges at or before the baseline
 remain unchanged. Main integrates changed submodule commits locally and records
 their results in the source's committed gitlinks before accepting the superproject.
+Each recorded source submodule repository must contain its committed gitlink object,
+including nested submodules. Acceptance reads these objects locally without fetching
+remote objects; an object present only in the batch clone keeps acceptance open.
+Cleanup cannot supply the first import needed for acceptance.
 Shadow batches use `integrate`. Main marks its bound journal
 task `accepted` only after integration is verified. For Git,
 acceptance verifies that the batch's commits are reachable from the source's

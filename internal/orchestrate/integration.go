@@ -43,7 +43,7 @@ func validateCleanCheckout(ctx context.Context, repository string) error {
 
 // Existing history belongs to the baseline. Only added history must be linear.
 func validateLinearHistory(ctx context.Context, repository, base, tip string) error {
-	merges, err := git(ctx, repository, "rev-list", "--min-parents=2", "--max-count=1", base+".."+tip)
+	merges, err := git(ctx, repository, "--no-lazy-fetch", "rev-list", "--min-parents=2", "--max-count=1", base+".."+tip)
 	if err != nil {
 		return err
 	}
@@ -128,13 +128,13 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			if err := validateLinearHistory(ctx, clone, sub.Base, tip); err != nil {
 				return err
 			}
-			repository := sub.Repository
-			if sourceTip == tip {
-				repository = clone // The owned clone proves this exact committed object.
-			} else if err := validateLinearHistory(ctx, repository, sub.Base, sourceTip); err != nil {
+			if _, err := git(ctx, sub.Repository, "--no-lazy-fetch", "cat-file", "-e", sourceTip+"^{commit}"); err != nil {
+				return fmt.Errorf("source submodule %q committed gitlink is unavailable locally; import its commits before acceptance: %w", sub.Path, err)
+			}
+			if err := validateLinearHistory(ctx, sub.Repository, sub.Base, sourceTip); err != nil {
 				return err
 			}
-			parents = append(parents, Submodule{Path: sub.Path, Repository: repository, Base: sourceTip})
+			parents = append(parents, Submodule{Path: sub.Path, Repository: sub.Repository, Base: sourceTip})
 		}
 		unmatched, err := git(ctx, workspace, "log", "--cherry-pick", "--right-only", "--format=%H", proof.SourceTip+"..."+proof.Tip)
 		if err != nil {

@@ -19,7 +19,7 @@ type RetainedSubmodule struct {
 }
 
 func cleanupGitlinks(ctx context.Context, repository, revision string) (map[string]string, error) {
-	tree, err := git(ctx, repository, "ls-tree", "-rz", "--full-tree", revision)
+	tree, err := git(ctx, repository, "--no-lazy-fetch", "ls-tree", "-rz", "--full-tree", revision)
 	if err != nil {
 		return nil, err
 	}

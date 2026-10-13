@@ -61,6 +61,7 @@ func TestPrepareGitSubmodules(t *testing.T) {
 	write(local, "file", "dirty source")
 	run(local, "add", "file")
 	write(nested, "file", "nested dirty")
+	beforeEdits := run(local, "diff", "--cached") + run(nested, "diff")
 	before := run(source, "status", "--porcelain", "--ignore-submodules=none") + run(local, "diff", "--cached") + run(nested, "diff")
 	s := &Store{Directory: t.TempDir()}
 	b, err := s.Prepare(t.Context(), source, "main", "batch")
@@ -118,5 +119,34 @@ func TestPrepareGitSubmodules(t *testing.T) {
 	write(childNested, "file", "unfinished nested work")
 	if _, err := reopened.RecordIntegration(t.Context(), source, "main", "batch", "child"); err == nil {
 		t.Fatal("accepted hidden nested submodule edits")
+	}
+	// Commit nested work, then integrate only the superproject. Its gitlinks
+	// name objects that still exist only in the batch's isolated clones.
+	for _, dir := range []string{childNested, child, b.Checkout} {
+		run(dir, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-qam", "child work")
+	}
+	tip := run(b.Checkout, "rev-parse", "HEAD")
+	run(source, "cherry-pick", tip)
+	// Each locally imported parent must expose its nested gitlink from the
+	// source repository, rather than letting the child's clone supply proof.
+	for _, sub := range b.Submodules {
+		clone := filepath.Join(b.Checkout, sub.Path)
+		subTip := run(clone, "rev-parse", "HEAD")
+		if _, err := git(t.Context(), sub.Repository, "--no-lazy-fetch", "cat-file", "-e", subTip+"^{commit}"); err == nil {
+			t.Fatal("fixture source already contains child object", sub.Path)
+		}
+		if _, err := reopened.RecordIntegration(t.Context(), source, "main", "batch", "child"); err == nil {
+			t.Fatal("accepted source gitlink without its local commit object", sub.Path)
+		} else if !strings.Contains(err.Error(), sub.Path) {
+			t.Fatal("missing-object error does not identify submodule", sub.Path, err)
+		}
+		run(sub.Repository, "-c", "protocol.file.allow=always", "fetch", "--no-recurse-submodules", "--no-write-fetch-head", clone, subTip)
+	}
+	proof, err := reopened.RecordIntegration(t.Context(), source, "main", "batch", "child")
+	if err != nil || proof.Tip != tip || proof.SourceTip != run(source, "rev-parse", "HEAD") {
+		t.Fatal("rejected locally imported submodule objects", proof, err)
+	}
+	if run(local, "diff", "--cached")+run(nested, "diff") != beforeEdits {
+		t.Fatal("integration changed source submodule edits")
 	}
 }

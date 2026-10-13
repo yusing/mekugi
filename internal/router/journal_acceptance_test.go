@@ -210,6 +210,9 @@ func TestJournalOrchestrateAcceptanceLinearHistory(t *testing.T) {
 			}
 			if scenario == "child" || scenario == "nested-child" {
 				gitTestRun(t, u.session.cwd, "merge", "--ff-only", b.Branch)
+				for _, sub := range b.Submodules {
+					gitTestRun(t, sub.Repository, "-c", "protocol.file.allow=always", "fetch", "--no-recurse-submodules", "--no-write-fetch-head", filepath.Join(b.Checkout, sub.Path), b.Branch)
+				}
 			}
 			_, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}})
 			if scenario == "baseline" {
