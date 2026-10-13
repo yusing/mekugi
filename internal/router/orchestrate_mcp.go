@@ -111,7 +111,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return proxy.orchestration.call(command)
 		})
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next selected batch completion, message, journal blocker, failure, question or approval. Other events remain queued. Timeout or cancellation ends only the wait. Messages identify sender; prompts identify host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for the next selected batch completion, message, journal blocker, failure, question or approval. Final answers reach Main automatically as separate notifications; waiting is optional. Other events remain queued. Timeout or cancellation ends only the wait. Messages identify sender; prompts identify host request or question item.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 		"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000, "description": "Wait limit in milliseconds. Omit for no timeout."},
 		"targets": map[string]any{"description": "Batches in this run: all (default), or a nonempty task-name or /root/task_name list. Returns the next event from any selected batch.", "oneOf": []any{
 			map[string]any{"type": "string", "const": "all"},

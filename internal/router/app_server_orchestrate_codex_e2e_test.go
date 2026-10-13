@@ -34,6 +34,15 @@ type orchestrateCodexProvider struct {
 func (p *orchestrateCodexProvider) forwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*http.Response, error) {
 	p.requests <- append([]byte(nil), body...)
 	metadata, _ := decodeCodexTurnMetadata(headers)
+	if strings.Contains(string(body), "Main mailbox probe.") {
+		if strings.Contains(string(body), "Mailbox final answer.") {
+			return routerFaultCodexSuccessResponse(), nil
+		}
+		return mchangesNestedCodexResponse(1, map[string]any{"type": "function_call", "id": "mailbox-wait", "call_id": "mailbox-wait", "namespace": "collaboration", "name": "wait_agent", "arguments": `{"timeout_ms":10000}`, "status": "completed"}), nil
+	}
+	if strings.Contains(string(body), "Mailbox child probe.") {
+		return mchangesNestedCodexResponse(1, map[string]any{"type": "message", "id": "mailbox-answer", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Mailbox final answer."}}}), nil
+	}
 	if strings.Contains(string(body), "Main follow-up probe.") {
 		return routerFaultCodexSuccessResponse(), nil
 	}
@@ -454,7 +463,9 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	if err := u.shell.key('\r'); err != nil {
 		t.Fatal(err)
 	}
-	pump(func() bool { return view.questionCount() == 0 && view.turn == "" && !view.starting() })
+	pump(func() bool {
+		return view.questionCount() == 0 && view.turn == "" && !view.starting() && len(u.orchestrateJobs) == 0 && len(u.orchestrateRequests) == 0
+	})
 	if u.draft != "Main draft" || view.draft != "Batch draft" || u.viewedUI() != u {
 		t.Fatal("installed prompt handling changed viewed drafts or coordinator")
 	}
@@ -507,15 +518,39 @@ func TestAppServerOrchestrateNativeCodex(t *testing.T) {
 	}
 	pump(func() bool { return !u.busy() })
 	mainInputSeen := false
+	finalSeen := false
 	for len(provider.requests) > 0 {
 		body := string(<-provider.requests)
 		if strings.Contains(body, "Child report, not human input.") {
 			t.Fatal("ordinary user input included a child report")
 		}
 		mainInputSeen = strings.Contains(body, "Main follow-up probe. Ordinary input.") || mainInputSeen
+		finalSeen = finalSeen || strings.Contains(body, `Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/batch\nPayload:\nRecovered after a retry.`)
 	}
 	if !mainInputSeen {
 		t.Fatal("ordinary human input did not reach provider")
+	}
+	if !finalSeen {
+		t.Fatal("Main did not receive the batch final answer without waiting")
+	}
+	// An active Main's native mailbox wait wakes on the independent batch answer.
+	u.unsent = []composerDraft{{text: "Main mailbox probe."}}
+	if err := u.flushInput(); err != nil {
+		t.Fatal(err)
+	}
+	pump(func() bool { return len(u.session.waits) > 0 })
+	followup = &orchestrateCommand{ctx: ctx, workspace: workspace, main: main, target: "batch", tool: "followup_task", callID: "mailbox-child", input: orchestrateSpawnInput{Message: "Mailbox child probe."}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(followup)
+	pump(func() bool {
+		return len(followup.reply) > 0 && !u.busy() && view.turn == "" && len(u.orchestrateJobs) == 0 && len(u.orchestrateRequests) == 0
+	})
+	mailboxSeen := false
+	for len(provider.requests) > 0 {
+		body := string(<-provider.requests)
+		mailboxSeen = mailboxSeen || strings.Contains(body, "Main mailbox probe.") && strings.Contains(body, `Sender: /root/batch\nPayload:\nMailbox final answer.`)
+	}
+	if !mailboxSeen {
+		t.Fatal("active Main did not receive the automatic batch result")
 	}
 	if _, err := proxy.applyJournal(ctx, workspace, main, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), State: new("working"), Agent: "/root/batch"}}); err != nil {
 		t.Fatal(err)

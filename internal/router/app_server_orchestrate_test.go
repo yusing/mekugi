@@ -431,6 +431,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	// Completion can precede the turn/start response.
 	u.orchestrateMessage(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"followup-turn","status":"completed"}}`)})
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"followup-turn"}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, w, "thread/inject_items", "main"), `{}`)
 	assertDelivery(take(result, false), "delivered", "followup-turn")
 	result = messageCall(t.Context(), "send_message", "main", "batch", "correction", "running-message")
 	dispatch()

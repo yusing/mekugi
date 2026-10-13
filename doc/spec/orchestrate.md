@@ -121,7 +121,17 @@ the next observed batch completion, message, journal blocker, failure, question 
 `/root/task_name` paths in this run. A targeted wait returns the next event from
 any selected batch; events from other batches remain queued. Invalid or unknown
 targets reject the wait. A wait returns
-the task, available host thread and turn identity, event kind and host status. Prompt events
+the task, available host thread and turn identity, event kind and host status.
+A successfully completed turn delivers its last completed agent message to Main
+as a separate `FINAL_ANSWER` notification through Codex's thread history. Delivery
+preserves the message text; a turn without a message has an empty payload. Delivery
+does not require a wait, start or steer Main, or enter the human composer.
+An active Main receives it through the host mailbox; an idle Main retains it for
+its next turn and resume. The completion wait returns identity and status after
+host acknowledgement, without repeating the answer. Messages from earlier turns,
+native descendants and asynchronous questions do not supply that result.
+Delivery failures are visible and are not retried automatically. Restored history
+does not deliver the answer again. Failed turns retain their host error message. Prompt events
 identify their host request or asynchronous question item. Cross-thread answering
 remains part of the accepted navigation capability below. Events describe
 observations, not a claim that a prompt is still pending when the result is read.

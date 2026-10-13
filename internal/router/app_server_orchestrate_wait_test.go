@@ -2,12 +2,87 @@ package router
 
 import (
 	"context"
+	json "encoding/json/v2"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/yusing/mekugi/internal/appserver"
 )
+
+func TestAppServerOrchestrateFinalMessageNotification(t *testing.T) {
+	u, request := orchestrateIdentityPendingTurn(t)
+	w := u.client.Input.(*appServerTestInput)
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"running-turn"}}`)
+	for i, answer := range []string{"Batch complete.\nChecks passed.", "", "Unphased final response", "Rejected delivery", ""} {
+		turn := fmt.Sprintf("turn-%d", i)
+		c := &orchestrateCommand{ctx: t.Context(), main: "main", workspace: u.session.cwd, tool: "wait_agent", reply: make(chan orchestrateResult, 1)}
+		if i == 2 {
+			u.startOrchestratedChild(c)
+		}
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":"child","turn":{"id":%q}}}`, turn))
+		if i != 1 {
+			orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":"child","turnId":%q,"item":{"id":"commentary","type":"agentMessage","text":"Earlier commentary"}}}`, turn))
+			phase := ""
+			if i == 0 {
+				phase = "final_answer"
+			}
+			orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":"child","turnId":%q,"item":{"id":"answer","type":"agentMessage","phase":%q,"text":%q}}}`, turn, phase, answer))
+			// Other threads and asynchronous questions cannot replace the answer.
+			u.orchestrateMessage(appserver.Message{Method: "item/completed", Params: []byte(fmt.Sprintf(`{"threadId":"native","turnId":%q,"item":{"type":"agentMessage","text":"Native answer"}}`, turn))})
+			orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":"child","turnId":%q,"item":{"type":"agentMessage","delivery":"async","text":"Question"}}}`, turn))
+		}
+		if len(c.reply) != 0 {
+			t.Fatal("message completed the wait before host turn completion")
+		}
+		u.orchestrateMessage(appserver.Message{Method: "turn/completed", Params: []byte(fmt.Sprintf(`{"threadId":"child","turn":{"id":%q,"status":"completed"}}`, turn))})
+		if len(c.reply) != 0 {
+			t.Fatal("answer returned before lifecycle persistence")
+		}
+		drainOrchestrateWork(t, u)
+		var rpc struct {
+			Params struct {
+				Items []struct {
+					Role    string
+					Content []struct{ Text string }
+				}
+			}
+		}
+		if err := json.Unmarshal(w.Bytes(), &rpc, json.MatchCaseInsensitiveNames(true)); err != nil || len(rpc.Params.Items) != 1 {
+			t.Fatal("missing automatic notification", w.String(), err)
+		}
+		item := rpc.Params.Items[0]
+		if item.Role != "assistant" || len(item.Content) != 1 || item.Content[0].Text != "Message Type: FINAL_ANSWER\nTask name: /root\nSender: /root/batch\nPayload:\n"+answer || len(c.reply) != 0 {
+			t.Fatal("wrong notification or premature wait result", item)
+		}
+		inject := btwTestRequest(t, w, "thread/inject_items", "main")
+		if i == 3 {
+			orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"rejected"}}`, inject.ID))
+		} else {
+			orchestrateTestReply(t, u, inject, `{}`)
+		}
+		if i != 2 {
+			u.startOrchestratedChild(c)
+		}
+		event := (<-c.reply).event
+		if i == 3 {
+			if event == nil || event.Status != "delivery_failed" || event.Message != "rejected" || u.orchestrateThreads["child"].batch.Launch.HostStatus != "completed" {
+				t.Fatal("delivery failure lost or changed child outcome", event)
+			}
+		} else if event == nil || event.Message != "" || event.Kind != "done" || event.Turn != turn {
+			t.Fatalf("wait lost completion or repeated the answer: %+v", event)
+		}
+		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":"child","turn":{"id":%q,"status":"completed"}}}`, turn))
+		if w.Len() != 0 || len(u.orchestrateEvents) != 0 {
+			t.Fatal("completion replay repeated delivery or started a turn", w.String())
+		}
+	}
+	batches, err := u.proxy.orchestration.store.List(t.Context(), u.session.cwd, "main")
+	if err != nil || batches[0].Error != "" {
+		t.Fatal("answer was retained as a launch error", batches, err)
+	}
+}
 
 func TestAppServerOrchestrateWaitPersistenceAndScope(t *testing.T) {
 	u, request := orchestrateIdentityPendingTurn(t)
@@ -36,6 +111,7 @@ func TestAppServerOrchestrateWaitPersistenceAndScope(t *testing.T) {
 	default:
 		t.Fatal("an earlier coordinator's wait blocked this coordinator")
 	}
+	u.orchestrateMessage(appserver.Message{Method: "item/completed", Params: []byte(`{"threadId":"child","turnId":"running-turn","item":{"type":"agentMessage","text":"Partial answer"}}`)})
 	u.orchestrateMessage(appserver.Message{Method: "turn/completed", Params: []byte(`{"threadId":"child","turn":{"id":"running-turn","status":"failed","error":{"message":"host failure"}}}`)})
 	select {
 	case <-c.reply:

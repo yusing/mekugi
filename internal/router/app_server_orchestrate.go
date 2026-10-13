@@ -40,17 +40,20 @@ type orchestrateResult struct {
 	delivery *orchestrate.Delivery
 }
 type orchestrateRPC struct {
-	method   string
-	child    *orchestrateChild
-	cleanup  bool
-	followup *orchestrateCommand
-	delivery orchestrate.Delivery
+	method     string
+	child      *orchestrateChild
+	cleanup    bool
+	followup   *orchestrateCommand
+	delivery   orchestrate.Delivery
+	completion *orchestrateEvent
 }
 type orchestrateChild struct {
 	command       *orchestrateCommand
 	batch         orchestrate.Batch
 	turn          string
 	completedTurn string
+	messageTurn   string
+	lastMessage   string
 	followups     []*orchestrateCommand
 	removing      bool
 }
@@ -252,7 +255,7 @@ func (u *appServerUI) failOrchestrate(child *orchestrateChild, err error) {
 func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 	u.observeOrchestratedPrompt(m)
 	if m.Method != "" {
-		if len(u.orchestrateThreads) == 0 || m.Method != "turn/started" && m.Method != "turn/completed" {
+		if len(u.orchestrateThreads) == 0 || m.Method != "turn/started" && m.Method != "turn/completed" && m.Method != "item/completed" {
 			return false
 		}
 		var event appServerEvent
@@ -263,11 +266,20 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		if child == nil {
 			return false
 		}
+		if m.Method == "item/completed" {
+			if event.Item.Type == "agentMessage" && event.Item.Delivery != "async" {
+				child.messageTurn, child.lastMessage = event.TurnID, event.Item.Text
+			}
+			return false
+		}
 		status := ""
 		switch m.Method {
 		case "turn/started":
 			child.turn, status = event.Turn.ID, "running"
 		case "turn/completed":
+			if event.Turn.ID != "" && child.completedTurn == event.Turn.ID {
+				return false
+			}
 			child.turn, status = "", event.Turn.Status
 			child.completedTurn = event.Turn.ID
 		}
@@ -277,6 +289,13 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			message := ""
 			if event.Turn.Error != nil {
 				message = event.Turn.Error.Message
+			}
+			resultMessage := message
+			if m.Method == "turn/completed" {
+				if status == "completed" && event.Turn.ID != "" && child.messageTurn == event.Turn.ID {
+					resultMessage = child.lastMessage
+				}
+				child.messageTurn, child.lastMessage = "", ""
 			}
 			u.orchestrateWork(func() func() {
 				err := store.ObserveLaunch(ctx, c.workspace, c.main, name, status, message)
@@ -290,7 +309,12 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 						if status == "failed" {
 							kind = "failure"
 						}
-						u.publishOrchestratedEvent(child, orchestrateEvent{Task: name, Thread: event.ThreadID, Turn: event.Turn.ID, Kind: kind, Status: status, Message: message})
+						completion := orchestrateEvent{Task: name, Thread: event.ThreadID, Turn: event.Turn.ID, Kind: kind, Status: status, Message: message}
+						if status == "completed" {
+							u.deliverOrchestratedAnswer(child, completion, resultMessage)
+						} else {
+							u.publishOrchestratedEvent(child, completion)
+						}
 					}
 				}
 			})
@@ -303,6 +327,14 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 	}
 	delete(u.orchestrateRequests, string(m.ID))
 	u.dirty = true
+	if r.completion != nil {
+		if m.Error != nil {
+			u.orchestratedAnswerFailure(r.child, *r.completion, errors.New(m.Error.Message))
+		} else {
+			u.publishOrchestratedEvent(r.child, *r.completion)
+		}
+		return true
+	}
 	if r.followup != nil {
 		u.orchestratedFollowupResponse(r, m)
 		return true

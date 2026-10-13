@@ -109,6 +109,7 @@ func TestAppServerOrchestrateDescendantRoster(t *testing.T) {
 		orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"turn"}}}`, thread))
 	}
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"running-turn","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
 	if !u.orchestrateBusy() {
 		t.Fatal("completed batch abandoned live native descendant")
 	}

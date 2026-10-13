@@ -421,6 +421,7 @@ func TestAppServerOrchestrateNavigationBTW(t *testing.T) {
 	u, launch := orchestrateIdentityPendingTurn(t)
 	orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"batch-turn","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
 	v := u.navigation.views["child"]
 	v.draft = "/btw side question"
 	if err := v.shell.key('\r'); err != nil {

@@ -42,9 +42,10 @@ func TestAppServerOrchestrateDescendantExitConfirmation(t *testing.T) {
 	orchestrateTestReply(t, u, launch, `{"turn":{"id":"active"}}`)
 	u.registerSessionThread(appServerThreadInfo{ID: "native", ParentThreadID: "child", Source: []byte(`{"subAgent":{"thread_spawn":{"agent_path":"/root/worker"}}}`)})
 	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"native","turn":{"id":"native-turn"}}}`)
-	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"active","status":"completed"}}}`)
 	w := u.client.Input.(*appServerTestInput)
 	w.Reset()
+	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"active","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, w, "thread/inject_items", "main"), `{}`)
 	appServerTestKeys(t, u, "/quit\r")
 	if !u.quitConfirmation || w.Len() != 0 {
 		t.Fatal("native work did not require confirmation")

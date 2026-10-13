@@ -51,6 +51,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	}
 	for name, description := range map[string]string{
 		"spawn_agent":   "Similar to mekugi_collaboration.spawn_agent",
+		"wait_agent":    "Final answers reach Main automatically as separate notifications; waiting is optional",
 		"send_message":  "Report only a new blocker requiring action or one final handoff per assignment",
 		"followup_task": "Report only a new blocker requiring action or one final handoff per assignment",
 	} {

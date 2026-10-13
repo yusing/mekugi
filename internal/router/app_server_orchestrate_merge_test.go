@@ -47,6 +47,7 @@ func TestOrchestrateShadowMergeMCP(t *testing.T) {
 	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"next"}}}`)
 	call("main", true)
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"next","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
 	gitTestRun(t, b.Cwd, "update-index", "--assume-unchanged", "file.txt")
 	writeTestFile(t, filepath.Join(b.Cwd, "file.txt"), "hidden unfinished work")
 	call("main", true)

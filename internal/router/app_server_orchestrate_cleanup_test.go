@@ -34,6 +34,7 @@ func orchestrateCleanupUIInWorkspace(t *testing.T, workspace string) *appServerU
 		t.Fatal(err)
 	}
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"initial","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
 	return u
 }
 
@@ -187,6 +188,7 @@ func TestAppServerOrchestrateCleanupAfterRunningMessage(t *testing.T) {
 		t.Fatal("running direction was not delivered", result)
 	}
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"working","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
 	if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
 		t.Fatal(err)
 	}
@@ -252,6 +254,7 @@ func TestAppServerOrchestrateCleanupEvidenceMCP(t *testing.T) {
 	u, request := orchestrateIdentityPendingTurnWithEvidence(t, replay, workspace, []orchestrate.EvidenceInput{{Name: "ready", Source: source}, {Name: "changed", Source: source}, {Name: "replaced", Source: source}})
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"initial"}}`)
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"initial","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
 	b := u.orchestrateThreads["child"].batch
 	call := orchestrateTargetMCPClient(t, u, "cleanup")
 	call("main", true) // Evidence cannot be removed before journal acceptance.
@@ -318,6 +321,7 @@ func TestAppServerOrchestrateEvidenceCleanupAcceptance(t *testing.T) {
 	u, request := orchestrateIdentityPendingTurnWithEvidence(t, replay, workspace, []orchestrate.EvidenceInput{{Name: "copy", Source: source}})
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"initial"}}`)
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"initial","status":"completed"}}}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, u.client.Input.(*appServerTestInput), "thread/inject_items", "main"), `{}`)
 	if _, err := u.proxy.applyJournal(u.ctx, workspace, "main", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Integrate batch"), Agent: "/root/batch", State: new("working")}}); err != nil {
 		t.Fatal(err)
 	}
