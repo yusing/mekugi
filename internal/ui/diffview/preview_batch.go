@@ -78,6 +78,7 @@ func (p *PreviewPane) batch(caller string) *previewBatch {
 	})
 	if len(b.order) > 0 && !slices.Contains(b.order, b.selected) {
 		b.selected, b.pinned = b.order[len(b.order)-1], false
+		b.files[b.selected].Paused = false
 	}
 	return b
 }
@@ -196,6 +197,13 @@ func (p *PreviewPane) ScrollBatch(caller string, key byte) bool {
 			at = view.Focus
 		}
 		next, follow, _ := terminalui.PaneScroll(key, at, view.rows, len(view.Source))
+		// Source offsets anchor the bottom row, not the first viewport row.
+		// Reaching the live tip resumes this file without unpinning another
+		// file window or changing transcript scrollback.
+		if key == 'G' {
+			next = view.Focus
+		}
+		follow = follow || key == 'G' || next >= len(view.Source)-1 && next >= at
 		view.ScrollRow, view.Paused = next, !follow
 	}
 	return true
