@@ -77,6 +77,13 @@ func TestOrchestrateWorkflowReviewerVisibility(t *testing.T) {
 		verdict := workflowVerdict(u.orchestrateThreads["child"], purposes[i])
 		verdicts = append(verdicts, verdict)
 		workflowCompleted(t, u, thread, thread+"-turn", verdict)
+		if !u.orchestrateBusy() {
+			t.Fatal("pending reviewer archive lost its host lifecycle guard")
+		}
+		workflowArchive(t, u, w, thread, false)
+		if u.navigation.views[thread] != v || u.viewedUI() != v || !v.orchestrateCheckoutUnavailable() {
+			t.Fatal("archive discarded the selected read-only reviewer view")
+		}
 	}
 	var notice struct {
 		Items []struct {
@@ -114,6 +121,7 @@ func TestOrchestrateWorkflowReviewerRestoredUsage(t *testing.T) {
 			thread = "reviewer-s"
 		}
 		workflowCompleted(t, u, thread, thread+"-turn", workflowVerdict(u.orchestrateThreads["child"], purpose))
+		workflowArchive(t, u, w, thread, thread == "reviewer-c")
 	}
 	workflowNotice(t, u, w)
 	u.proxy.usage.close()
@@ -125,6 +133,15 @@ func TestOrchestrateWorkflowReviewerRestoredUsage(t *testing.T) {
 	batches, err := u.proxy.orchestration.store.Snapshot(u.session.cwd, "main")
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, d := range batches[0].Workflow.Dispatches {
+		want := "archived"
+		if d.ThreadID == "reviewer-c" {
+			want = "uncertain"
+		}
+		if d.Archive == nil || d.Archive.State != want || d.HostStatus != "completed" || d.ResultItemID == "" {
+			t.Fatal("archive outcome changed retained review evidence", d)
+		}
 	}
 	// Checkout cleanup does not remove confirmed reviewer identity or usage.
 	batches[0].State = "removed"

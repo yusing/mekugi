@@ -23,6 +23,7 @@ func TestOrchestrateWorkflowEarlyReviewerStarts(t *testing.T) {
 	for i, thread := range threads {
 		workflowReviewThread(t, u, w, purposes[i], thread)
 		workflowCompleted(t, u, thread, thread+"-turn", workflowVerdict(u.orchestrateThreads["child"], purposes[i]))
+		workflowArchive(t, u, w, thread, false)
 	}
 	workflowNotice(t, u, w)
 	if len(u.navigation.pending) != 0 || len(u.navigation.reads) != 0 || u.orchestrateBusy() {
