@@ -394,6 +394,9 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		})
 		return true
 	}
+	if child := n.owner.orchestrateThreads[thread]; implementationWorkflow(child) {
+		n.owner.reconcileCorrectionLifecycle(child)
+	}
 	if n.viewed != n.views[thread] {
 		n.viewed.quitConfirmationKey("\x1b")
 		from, to := n.viewed.shell, n.views[thread].shell

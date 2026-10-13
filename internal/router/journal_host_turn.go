@@ -7,6 +7,39 @@ import (
 	"time"
 )
 
+// reconcileRootHostTurn consumes authenticated orchestration history. Unlike a
+// live notification it must match the durable turn exactly; independent roots
+// have no native parent trace that could establish a newer turn's identity.
+func (s *journalStore) reconcileRootHostTurn(ctx context.Context, store *mekugiReplayStore, workspace, thread, turn, status string, previous []string) (matched, superseded bool, err error) {
+	state, reason := "done", ""
+	if status != "completed" {
+		if status != "failed" && status != "interrupted" {
+			return false, false, errors.New("journal recovery requires a terminal host result")
+		}
+		state, reason = "blocked", "Host turn "+status
+	}
+	err = s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
+		if !exists || !j.IdentityKnown || j.IdentityConflicted || j.Parent != "" || turn == "" {
+			return errJournalUnchanged
+		}
+		if j.TurnID != turn {
+			// A proven earlier journal turn cannot block normal host-result
+			// consumption. An unmatched active turn cannot be assumed older.
+			superseded = j.TurnID != "" && j.LifecycleState == "working" && !slices.Contains(previous, j.TurnID)
+			return errJournalUnchanged
+		}
+		matched = true
+		if j.LifecycleState == state && j.LifecycleReason == reason && j.WorkPaused {
+			return errJournalUnchanged
+		}
+		now := time.Now().UTC()
+		j.setWorkTimers(false, now)
+		j.LifecycleState, j.LifecycleReason, j.LifecycleAt = state, reason, now.Format(time.RFC3339Nano)
+		return nil
+	})
+	return matched && err == nil, superseded, err
+}
+
 func (p *mekugiProxy) observeJournalHostTurn(ctx context.Context, workspace, method string, event appServerEvent) error {
 	if event.ThreadID != "" {
 		if method == "thread/tokenUsage/updated" {

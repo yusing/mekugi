@@ -32,6 +32,9 @@ func (s *Store) ObserveLaunch(ctx context.Context, workspace, main, name, status
 		if b.Launch == nil {
 			return errors.New("batch has no launch intent")
 		}
+		if b.Launch.HostStatus == status && b.Error == message {
+			return errLaunchUnchanged
+		}
 		b.Launch.HostStatus, b.Error = status, message
 		return nil
 	})

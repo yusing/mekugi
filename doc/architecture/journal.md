@@ -60,6 +60,11 @@ failures exclude that ancestry from reconciliation. Reconciliation writes do not
 add the child record to the caller's retained session. Completed
 evidence persists independently of the disposable trace. A child's
 publication refreshes ancestor views without mutating ancestor event logs or cursors.
+Independent orchestration roots use authenticated implementer history through the
+workflow recovery owner. Terminal correction evidence must match the journal's
+current thread and turn under its transaction lock; it cannot complete a newer
+turn. Journal and launch observations can recover separately after partial
+persistence. These observations create no authored events or acceptance decisions.
 Parent completion validates mounted host lifecycles, not child-authored task states.
 An owned dropped assignment releases failed or interrupted mounts from that gate;
 live and unresolved mounts retain it. This disposition does not change child lifecycle

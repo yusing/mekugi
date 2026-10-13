@@ -24,6 +24,8 @@ type orchestrateReviewWork struct {
 	completed                  *appServerTurn
 	message, item, messageTurn string
 	processing                 bool
+	// lifecycleOnly repairs retained implementer observations, not workflow policy.
+	lifecycleOnly bool
 	// canceled marks work of a stopped round; a later resumed round never
 	// adopts its late host responses.
 	canceled bool
@@ -435,6 +437,9 @@ func (u *appServerUI) setWorkflowWork(child *orchestrateChild, work *orchestrate
 	child.workflowWork[work.dispatch.Kind] = work
 }
 func (u *appServerUI) endWorkflowWork(work *orchestrateReviewWork) {
+	if work.child.lifecycleRecovery == work {
+		work.child.lifecycleRecovery = nil
+	}
 	if work.child.workflowWork[work.dispatch.Kind] == work {
 		delete(work.child.workflowWork, work.dispatch.Kind)
 	}

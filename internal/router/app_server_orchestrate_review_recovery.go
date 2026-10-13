@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"slices"
 
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/orchestrate"
@@ -41,11 +42,30 @@ func (u *appServerUI) recoverOrchestratedWorkflows(batches []orchestrate.Batch) 
 			u.orchestrateThreads = map[string]*orchestrateChild{}
 		}
 		u.orchestrateThreads[batch.Launch.ThreadID] = child
-		if workflowTerminal(batch.Workflow) && !workflowUnsettled(batch) {
-			u.workflowOutcome(child)
-			continue
-		}
 		u.reconcileWorkflow(child)
+	}
+}
+
+func (u *appServerUI) reconcileCorrectionLifecycle(child *orchestrateChild) {
+	w := child.batch.Workflow
+	// A correction advances the candidate generation before its independent
+	// journal necessarily reaches disk. Reconcile that lifecycle even after
+	// reviews settle, without submitting the old result to workflow policy again.
+	if child.turn == "" && child.lifecycleRecovery == nil && child.workflowWork[orchestrate.DispatchCorrection] == nil {
+		for _, d := range slices.Backward(w.Dispatches) {
+			if d.Kind != orchestrate.DispatchCorrection {
+				continue
+			}
+			if (d.Generation != w.Generation || w.Phase != orchestrate.PhaseCorrection) && d.State == orchestrate.DispatchAcknowledged && d.ThreadID == child.batch.Launch.ThreadID && d.TurnID != "" && d.HostStatus != "" {
+				work := &orchestrateReviewWork{child: child, dispatch: d, lifecycleOnly: true}
+				child.lifecycleRecovery = work
+				if err := u.orchestrateRPCRequest(orchestrateRPC{method: "thread/read", child: child, review: work}, map[string]any{"threadId": d.ThreadID, "includeTurns": true}); err != nil {
+					u.endWorkflowWork(work)
+					u.setNotice("Correction lifecycle: "+err.Error(), true)
+				}
+			}
+			break
+		}
 	}
 }
 
@@ -53,7 +73,12 @@ func (u *appServerUI) recoverOrchestratedWorkflows(batches []orchestrate.Batch) 
 // current generation, so concurrent reviews recover independently. Missing
 // checks have no host effect to reconcile; driving reruns them.
 func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
+	u.reconcileCorrectionLifecycle(child)
 	w := child.batch.Workflow
+	if workflowTerminal(w) && !workflowUnsettled(child.batch) {
+		u.workflowOutcome(child)
+		return
+	}
 	var pending []orchestrate.WorkflowDispatch
 	for _, d := range w.Dispatches {
 		if d.Generation != w.Generation || d.State == orchestrate.DispatchFailed || d.ResultItemID != "" || child.workflowWork[d.Kind] != nil {
@@ -95,6 +120,10 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 	}
 	fail := func(err error) {
 		u.endWorkflowWork(work)
+		if work.lifecycleOnly {
+			u.setNotice("Correction lifecycle: "+err.Error(), true)
+			return
+		}
 		u.workflowFailure(child, orchestrate.PhaseNeedsDecision, err)
 	}
 	if m.Error != nil {
@@ -104,7 +133,7 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 	var result struct {
 		Thread appServerThreadInfo `json:"thread"`
 	}
-	if json.Unmarshal(m.Result, &result) != nil || result.Thread.ID != work.dispatch.ThreadID || result.Thread.Cwd != child.batch.Cwd {
+	if json.Unmarshal(m.Result, &result) != nil || result.Thread.ID != work.dispatch.ThreadID || result.Thread.Cwd != child.batch.Cwd || work.dispatch.Kind == orchestrate.DispatchCorrection && result.Thread.ParentThreadID != "" {
 		fail(errors.New("recovered workflow thread identity mismatch"))
 		return
 	}
@@ -116,12 +145,47 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 		}
 		turnID = result.Thread.Turns[0].ID
 	}
-	for _, turn := range result.Thread.Turns {
+	for index, turn := range result.Thread.Turns {
 		if turn.ID != turnID {
 			continue
 		}
 		work.dispatch.TurnID = turnID
-		if turn.Status != "completed" && turn.Status != "failed" && turn.Status != "interrupted" {
+		if work.dispatch.Kind == orchestrate.DispatchCorrection {
+			// History cannot settle a newer turn observed by either the host
+			// snapshot or the live controller while this read was in flight.
+			if child.turn != "" && child.turn != turnID || slices.ContainsFunc(result.Thread.Turns, func(t appServerHistoryTurn) bool {
+				return t.ID != turnID && t.Status != "completed" && t.Status != "failed" && t.Status != "interrupted"
+			}) {
+				u.endWorkflowWork(work)
+				return
+			}
+		}
+		terminal := turn.Status == "completed" || turn.Status == "failed" || turn.Status == "interrupted"
+		if work.lifecycleOnly && (!terminal || turn.Status != work.dispatch.HostStatus) {
+			fail(errors.New("correction terminal result does not match host history"))
+			return
+		}
+		if terminal && work.dispatch.Kind == orchestrate.DispatchCorrection {
+			// Journal host observation uses the same synchronous owner as live
+			// lifecycle events. A later start must not overtake this observation
+			// while launch persistence waits in its ordered storage queue.
+			// The launch precedes every correction. Host history also proves
+			// earlier turns without treating an unknown active turn as old.
+			previous := []string{child.batch.Launch.TurnID}
+			for _, earlier := range result.Thread.Turns[:index] {
+				previous = append(previous, earlier.ID)
+			}
+			matched, superseded, err := u.proxy.journals.reconcileRootHostTurn(u.ctx, u.proxy.replayStore, child.batch.Cwd, result.Thread.ID, turnID, turn.Status, previous)
+			if err != nil {
+				fail(err)
+				return
+			}
+			if superseded || work.lifecycleOnly && !matched {
+				u.endWorkflowWork(work)
+				return
+			}
+		}
+		if !terminal {
 			if work.dispatch.Kind == "" {
 				// A host read confirms active implementation; it does not revive it.
 				child.turn = turnID
@@ -155,22 +219,30 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 		if d.Kind == "" {
 			u.endWorkflowWork(work)
 			child.turn = ""
-			u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
-				return s.ObserveLaunch(ctx, c.workspace, c.main, child.batch.TaskName, turn.Status, "")
-			}, func(err error) {
-				if err != nil {
-					fail(err)
-				} else {
-					u.workflowImplementationCompleted(child, *work.completed, work.message)
-				}
-			})
-			return
 		}
 		u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+			if d.Kind == "" || d.Kind == orchestrate.DispatchCorrection {
+				message := ""
+				if turn.Error != nil {
+					message = turn.Error.Message
+				}
+				if err := s.ObserveLaunch(ctx, c.workspace, c.main, child.batch.TaskName, turn.Status, message); err != nil {
+					return err
+				}
+			}
+			if work.lifecycleOnly || d.Kind == "" {
+				return nil
+			}
 			return s.RecordWorkflowDispatch(ctx, c.workspace, c.main, child.batch.TaskName, d.ID, d.ThreadID, d.TurnID)
 		}, func(err error) {
 			if err != nil {
 				fail(err)
+			} else if work.lifecycleOnly {
+				u.endWorkflowWork(work)
+			} else if d.Kind == "" {
+				u.workflowImplementationCompleted(child, *work.completed, work.message)
+			} else if d.Kind == orchestrate.DispatchCorrection && child.turn != "" && child.turn != turnID {
+				u.endWorkflowWork(work)
 			} else {
 				work.acknowledged = true
 				child.turn = ""

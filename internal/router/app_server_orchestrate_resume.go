@@ -29,6 +29,9 @@ func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
 			return
 		}
 		if n.views[thread] != nil {
+			if child := u.orchestrateThreads[thread]; implementationWorkflow(child) {
+				u.reconcileCorrectionLifecycle(child)
+			}
 			ready(nil)
 			return
 		}

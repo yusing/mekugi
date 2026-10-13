@@ -57,6 +57,7 @@ type orchestrateRPC struct {
 	completion              *orchestrateEvent
 }
 type orchestrateChild struct {
+	lifecycleRecovery  *orchestrateReviewWork
 	workflowDeferred   bool
 	workflowStopped    bool
 	workflowWork       map[orchestrate.WorkflowDispatchKind]*orchestrateReviewWork

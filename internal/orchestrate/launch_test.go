@@ -95,6 +95,31 @@ func TestLaunchRetainsIntentAndAcknowledgements(t *testing.T) {
 	}
 }
 
+func TestLaunchObservationSkipsUnchangedState(t *testing.T) {
+	s, workspace, _ := launchFixture(t)
+	if _, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "handoff", jsontext.Value(`{}`), nil); err != nil {
+		t.Fatal(err)
+	}
+	s.Writes = new(persistence.Counter)
+	for _, observation := range [][2]string{{"running", ""}, {"failed", "host error"}, {"failed", "updated error"}, {"completed", ""}} {
+		status, message := observation[0], observation[1]
+		if err := s.ObserveLaunch(t.Context(), workspace, "main", "batch", status, message); err != nil {
+			t.Fatal(err)
+		}
+		before := s.Writes.Snapshot().Bytes
+		if err := s.ObserveLaunch(t.Context(), workspace, "main", "batch", status, message); err != nil {
+			t.Fatal(err)
+		}
+		if s.Writes.Snapshot().Bytes != before {
+			t.Fatal("unchanged host observation rewrote the manifest")
+		}
+		batches, err := s.Snapshot(workspace, "main")
+		if err != nil || batches[0].Launch.HostStatus != status || batches[0].Error != message {
+			t.Fatalf("changed host observation was not retained: %+v, %v", batches, err)
+		}
+	}
+}
+
 func TestLaunchCheckoutLocation(t *testing.T) {
 	s, workspace, prepared := launchFixture(t)
 	// Existing storage aliases are resolved at preparation, not rejected.

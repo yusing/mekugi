@@ -286,6 +286,16 @@ with the waiver identified separately from review clearance. Existing verdicts a
 findings remain available with their original revisions; no clear verdict is
 created. Failed or uncertain checks retain their normal correction/blocker behavior.
 
+Completed corrections remain eligible for lifecycle reconciliation after review
+readiness. Fresh discovery and explicit admission of an already subscribed batch
+check authenticated host history for the exact implementer thread and correction
+turn. A matching terminal result can repair the launch observation and independent
+journal lifecycle, including a partially saved repair. Journal repair requires
+the same turn; a journal on a proven earlier turn does not suppress ordinary
+workflow completion or failure handling. A newer active turn prevents adoption.
+This observation starts no child turn,
+repeats no review or result delivery, and does not replace integration acceptance.
+
 Integration remains Main's responsibility within the accepted destination and
 authorization. A reviewed candidate must still match its revision when integration
 is admitted. Workflow readiness does not replace Git ancestry or shadow-writeback
@@ -384,8 +394,8 @@ and thread; accepted-only cleanup and archive remain unavailable.
 
 Resuming Main restores its retained run into the Agents roster. Preparation
 failures, uncertain launch records and confirmed child identities remain visible.
-A recorded running turn displays as interrupted after restart; its stored last
-observation remains unchanged. Other recorded outcomes retain their lifecycle.
+A recorded running turn displays as interrupted after restart until authenticated
+host evidence reconciles its lifecycle. Other recorded outcomes retain their lifecycle.
 These rows are unsubscribed facts, with no live timers or usage inferred from them.
 
 Recovery reads the selected Main's manifest without checkout effects, child
