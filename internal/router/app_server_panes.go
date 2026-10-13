@@ -52,11 +52,12 @@ func (s nativeResumeEvidence) config() map[string]any {
 // Model identifies a complete snapshot. Empty effort/tier explicitly select the
 // host default, rather than meaning that a saved value is unknown.
 type nativeAppliedSettings struct {
-	SandboxPolicy string    `json:"sandboxPolicy,omitzero"`
-	Model         string    `json:"model"`
-	Effort        string    `json:"effort"`
-	Tier          string    `json:"tier"`
-	Observed      time.Time `json:"observed"`
+	PermissionProfile string    `json:"permissionProfile,omitzero"`
+	SandboxPolicy     string    `json:"sandboxPolicy,omitzero"`
+	Model             string    `json:"model"`
+	Effort            string    `json:"effort"`
+	Tier              string    `json:"tier"`
+	Observed          time.Time `json:"observed"`
 }
 
 func (s nativeAppliedSettings) config() map[string]any {
@@ -209,7 +210,7 @@ func (p *nativePanePersistence) save(u *terminalUI, now time.Time, flush bool) e
 // Only authoritative start/resume results and settings notifications reach here.
 // Flush applied settings immediately; dragging still uses the existing debounce.
 func (u *appServerUI) retainAppliedSettings() {
-	if u.panes == nil || u.panes.path == "" || u.model == "" || u.settings.restoreEffort || u.resumeSandbox != nil {
+	if u.panes == nil || u.panes.path == "" || u.model == "" || u.settings.restoreEffort || u.resumeSandbox != nil || u.resumePermissionProfile != "" {
 		return
 	}
 	if u.panes.workspace != u.session.cwd || u.panes.thread != u.thread {
@@ -219,7 +220,13 @@ func (u *appServerUI) retainAppliedSettings() {
 		}
 	}
 	u.panes.settings = nativeAppliedSettings{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: u.now()}
-	if u.navigation != nil && u.navigation.owner != u && u.statusConfig.PermissionProfile.Kind() == 'n' && u.statusConfig.Sandbox.Type != "" {
+	var profile struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(u.statusConfig.PermissionProfile, &profile) == nil {
+		u.panes.settings.PermissionProfile = profile.ID
+	}
+	if u.statusConfig.PermissionProfile.Kind() == 'n' && u.statusConfig.Sandbox.Type != "" {
 		policy, err := json.Marshal(&u.statusConfig.Sandbox)
 		if err != nil {
 			u.paneError(err)

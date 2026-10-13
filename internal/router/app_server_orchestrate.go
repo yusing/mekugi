@@ -88,6 +88,10 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 		fail(err)
 		return
 	}
+	if u.replacement.pending() {
+		fail(errors.New("wait for coordinator replacement to finish"))
+		return
+	}
 	if command.tool == "followup_task" || command.tool == "send_message" {
 		u.queueOrchestratedFollowup(command)
 		return
@@ -336,6 +340,9 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		if child == nil {
 			return false
 		}
+		if u.navigation != nil && u.navigation.resumes[event.ThreadID] != nil {
+			return false // History and settings admission own the restored lifecycle.
+		}
 		if m.Method == "item/completed" {
 			if event.Item.Type == "agentMessage" && event.Item.Delivery != "async" {
 				child.messageTurn, child.lastMessage = event.TurnID, event.Item.Text
@@ -377,6 +384,9 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			u.orchestrateWork(func() func() {
 				err := store.ObserveLaunch(ctx, c.workspace, c.main, name, status, message)
 				return func() {
+					if u.orchestrateThreads[event.ThreadID] != child {
+						return
+					}
 					if err != nil {
 						u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, err)
 						u.setNotice("Orchestration lifecycle: "+err.Error(), true)

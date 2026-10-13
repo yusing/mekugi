@@ -42,6 +42,7 @@ func (u *appServerUI) recoverOrchestratedRun() {
 		return
 	}
 	main, workspace, store := u.thread, u.session.cwd, u.proxy.orchestration.store
+	generation := u.orchestrateGeneration
 	u.orchestrateWork(func() func() {
 		batches, err := store.Snapshot(workspace, main)
 		var waits []orchestrate.Wait
@@ -53,7 +54,7 @@ func (u *appServerUI) recoverOrchestratedRun() {
 			waits, waitErr = store.WaitHistory(u.orchestrateStorageContext, workspace, main)
 		}
 		return func() {
-			if u.orchestrateClosing || u.thread != main || u.session.cwd != workspace {
+			if u.orchestrateClosing || u.orchestrateGeneration != generation || u.thread != main || u.session.cwd != workspace {
 				return
 			}
 			if err != nil && !errors.Is(err, os.ErrNotExist) {

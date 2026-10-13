@@ -95,6 +95,7 @@ type appServerUI struct {
 	orchestrateJobs           []func() func()
 	orchestrateCompletions    chan func()
 	orchestrateClosing        bool
+	orchestrateGeneration     uint64
 	orchestrateStorageContext context.Context
 	orchestrateStorageCancel  context.CancelFunc
 	orchestrateStorageErr     error
@@ -530,6 +531,29 @@ func (u *appServerUI) requestAs(method, label string, params any) (string, error
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
+	if u.retiredSessionEvent(m) {
+		if n := u.navigation; n != nil && n.owner == u {
+			var event appServerEvent
+			if json.Unmarshal(m.Params, &event) == nil {
+				thread := cmp.Or(event.ThreadID, event.Thread.ID)
+				root := u.retiredThreads[thread]
+				if r := n.resumes[root]; r != nil && r.authenticated && r.view != nil {
+					// Route the authenticated subtree through ordinary ancestry and
+					// restoration buffering. Input and dispatch remain gated.
+					if _, err := n.route(m); err != nil {
+						n.finishResume(root, err)
+					} else {
+						n.completeResumes()
+					}
+					return nil
+				}
+			}
+		}
+		// Retirement excludes presentation and dispatch, not observed host outcomes.
+		u.issues.observeTurnCompletion(m.Method, m.Params)
+		u.observeShellMessage(m)
+		return nil
+	}
 	if handled := u.orchestrateMessage(m); handled {
 		return nil
 	}
@@ -565,9 +589,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
 	if handled, err := u.btwMessage(m); handled {
 		return err
-	}
-	if u.retiredSessionEvent(m) {
-		return nil
 	}
 	// Any event can make stacked input sendable: an acknowledgement, a turn
 	// start or end, or settled settings.
@@ -762,6 +783,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return u.startThread()
 		case "thread/start", "thread/resume":
 			var result struct {
+				PermissionProfile struct {
+					ID string `json:"id"`
+				} `json:"activePermissionProfile"`
 				Model             string              `json:"model"`
 				ReasoningEffort   string              `json:"reasoningEffort"`
 				ServiceTier       string              `json:"serviceTier"`
@@ -776,6 +800,12 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if method == "thread/resume" && result.Thread.ID != cmp.Or(u.replacement.target, u.resumeThread) {
 				return errors.New("thread/resume returned a different thread identity")
+			}
+			if method == "thread/resume" && u.resumePermissionProfile != "" {
+				if result.PermissionProfile.ID != u.resumePermissionProfile {
+					return errors.New("thread/resume did not restore the retained batch permission profile")
+				}
+				u.resumePermissionProfile = ""
 			}
 			if u.replacement.pending() {
 				if err := u.clearSessionPresentation(); err != nil {

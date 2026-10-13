@@ -136,6 +136,15 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.retiredThreads[thread] = u.thread
 	}
 	if u.navigation != nil {
+		for thread, view := range u.navigation.views {
+			if view == u {
+				continue
+			}
+			u.retiredThreads[thread] = thread
+			for descendant := range view.session.paths {
+				u.retiredThreads[descendant] = thread
+			}
+		}
 		for _, thread := range u.navigation.order {
 			if thread == u.thread {
 				continue
@@ -149,6 +158,20 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.agents.orchestration, u.agents.orchestrationLabels = nil, nil
 		u.agents.orchestrationRetained = nil
 		u.agents.orchestrationSources = nil
+	}
+	// Retained batches are discovery facts, never live subscriptions. Outstanding
+	// storage writes can finish, but their callbacks belong to the retired owner.
+	u.orchestrateGeneration++
+	u.orchestrateThreads, u.orchestrateRequests = nil, nil
+	u.orchestrateWaitRuns, u.orchestrateEvents = nil, nil
+	u.orchestrateStorageErr = nil
+	if u.proxy != nil && u.proxy.orchestration != nil {
+		runtime := u.proxy.orchestration
+		runtime.eventsMu.Lock()
+		runtime.journalEvents = slices.DeleteFunc(runtime.journalEvents, func(event orchestrateEvent) bool {
+			return event.main == u.thread && event.workspace == u.session.cwd
+		})
+		runtime.eventsMu.Unlock()
 	}
 	if u.proxy != nil {
 		u.proxy.activity.detachNativePane(u.thread)
@@ -206,6 +229,7 @@ func (u *appServerUI) retiredSessionEvent(m appserver.Message) bool {
 	if json.Unmarshal(m.Params, &p) != nil {
 		return false
 	}
+	p.Thread = p.Thread.withSourceIdentity()
 	if root := u.retiredThreads[p.Thread.ParentThreadID]; root != "" {
 		u.retiredThreads[p.Thread.ID] = root
 	}

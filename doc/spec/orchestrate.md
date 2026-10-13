@@ -147,8 +147,11 @@ profile, the complete host-confirmed sandbox policy is inherited, including
 network access, writable roots and temporary-directory exclusions. Source-local
 writable roots map to the prepared checkout; external roots remain unchanged.
 The first turn applies this retained policy before any model or tool work.
-Fresh-process batch resume restores the batch's latest host-confirmed custom
+Batch resume restores the latest host-confirmed named permission profile or custom
 sandbox policy before accepting input, including changes made after launch.
+These settings remain retained when the batch is opened through ordinary `/resume`.
+Missing saved batch permissions reject resume instead of inheriting invocation
+defaults. This also applies to older snapshots that did not retain permissions.
 Unavailable permission settings reject launch rather than guessing a profile.
 
 ## REQ-ORCHESTRATE-003 — Batch lifecycle waits
@@ -391,6 +394,14 @@ after restart and requires no child turn. Diagnosis completion retains the check
 and thread; accepted-only cleanup and archive remain unavailable.
 
 ## REQ-ORCHESTRATE-006 — Restored run discovery
+
+Confirmed `/clear` or `/resume` replacement detaches the previous coordinator's
+batch subscriptions, views and live wait state. Failed replacement keeps them
+usable. Checkouts, batches and durable waits remain retained. Returning to Main
+uses ordinary discovery and batch admission again. A host-confirmed resume can
+receive settings, lifecycle and native-descendant events through ordinary
+restoration, including pending approval requests, while input remains gated; late
+results cannot bypass admission or restore detached subscriptions.
 
 Resuming Main restores its retained run into the Agents roster. Preparation
 failures, uncertain launch records and confirmed child identities remain visible.

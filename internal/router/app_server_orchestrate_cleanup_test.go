@@ -316,6 +316,7 @@ func TestAppServerOrchestrateCleanupRetained(t *testing.T) {
 			}
 			old.closeOrchestratedViews()
 			u, w := resumeOrchestrationMain(t, store, workspace, old.proxy.replayStore)
+			retainOrchestratedTestPermissions(t, u, b)
 			drainOrchestrateWork(t, u)
 			w.Reset()
 			ctx, cancel := context.WithCancel(t.Context())

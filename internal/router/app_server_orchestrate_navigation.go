@@ -343,6 +343,10 @@ func (n *orchestrateNavigation) drain() error {
 			n.admitAuthenticated(thread)
 		}
 		if v := n.target(thread); v != nil {
+			if r := n.resumes[v.thread]; r != nil && !r.authenticated {
+				n.pending = append(n.pending, m)
+				continue
+			}
 			n.register(v, thread)
 			if err := v.message(m); err != nil {
 				return err

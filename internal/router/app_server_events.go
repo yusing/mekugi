@@ -159,7 +159,7 @@ func (s *appServerSession) start(thread, cwd string) {
 	s.cwd = cwd
 }
 
-func (s *appServerSession) registerThread(info appServerThreadInfo) {
+func (info appServerThreadInfo) withSourceIdentity() appServerThreadInfo {
 	var source struct {
 		SubAgent struct {
 			ThreadSpawn struct {
@@ -173,6 +173,12 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	spawn := source.SubAgent.ThreadSpawn
 	info.ParentThreadID = cmp.Or(info.ParentThreadID, spawn.ParentThreadID)
 	info.agentPath = cmp.Or(spawn.AgentPath, info.agentPath)
+	info.AgentRole = cmp.Or(info.AgentRole, spawn.AgentRole)
+	return info
+}
+
+func (s *appServerSession) registerThread(info appServerThreadInfo) {
+	info = info.withSourceIdentity()
 	stored := info
 	stored.Turns = nil
 	s.threads[info.ID] = stored
@@ -183,7 +189,7 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 		s.agents = append(s.agents, activityPaneAgent{Name: path})
 	}
 	s.paths[info.ID] = path
-	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
+	s.agent(path).Role = cmp.Or(info.AgentRole, s.agent(path).Role)
 	restoreContextUsage(s.agent(path), info)
 }
 

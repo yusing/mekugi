@@ -78,13 +78,14 @@ func (h *appServerLifecycle) leaveThread() {
 // the source thread's settings gate. Buffered observations are replayed once
 // history restoration completes, never used to revive process resources.
 type appServerResumeOperation struct {
-	resumeThread        string
-	resumeCwd           string
-	resumeConfig        map[string]any
-	resumePendingEffort bool
-	resumeSandbox       *appServerSandboxPolicy
-	resumeEvidence      nativeResumeEvidence
-	resumePending       []appserver.Message
+	resumeThread            string
+	resumeCwd               string
+	resumeConfig            map[string]any
+	resumePendingEffort     bool
+	resumeSandbox           *appServerSandboxPolicy
+	resumePermissionProfile string
+	resumeEvidence          nativeResumeEvidence
+	resumePending           []appserver.Message
 }
 
 func (o *appServerResumeOperation) takeDefaultEffort() bool {

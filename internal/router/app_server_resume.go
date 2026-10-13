@@ -86,7 +86,15 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	}
 	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
 	u.resumeSandbox = nil
-	if u.navigation != nil && u.navigation.owner != u && retained.SandboxPolicy != "" {
+	u.resumePermissionProfile = ""
+	if u.navigation != nil && u.navigation.owner != u && retained.PermissionProfile == "" && retained.SandboxPolicy == "" {
+		return fail("exact batch permissions unavailable; saved permission settings are required before resume")
+	}
+	if u.navigation != nil && u.navigation.owner != u && retained.PermissionProfile != "" {
+		u.resumePermissionProfile = retained.PermissionProfile
+		params["permissions"] = retained.PermissionProfile
+		delete(params, "sandbox")
+	} else if u.navigation != nil && u.navigation.owner != u && retained.SandboxPolicy != "" {
 		var sandbox appServerSandboxPolicy
 		if err := json.Unmarshal([]byte(retained.SandboxPolicy), &sandbox); err != nil {
 			return fail("invalid retained batch sandbox policy")

@@ -75,6 +75,9 @@ func (u *appServerUI) flushOrchestratedEvents() {
 	u.orchestrateEvents = append(u.orchestrateEvents, runtime.journalEvents...)
 	runtime.journalEvents = nil
 	runtime.eventsMu.Unlock()
+	u.orchestrateEvents = slices.DeleteFunc(u.orchestrateEvents, func(event orchestrateEvent) bool {
+		return event.main != u.thread || event.workspace != u.session.cwd
+	})
 	events := u.orchestrateEvents
 	for run, schedule := range u.orchestrateWaitRuns {
 		if schedule.pending != 0 {
@@ -98,24 +101,14 @@ func (u *appServerUI) flushOrchestratedEvents() {
 		u.cleanAcceptedOrchestratedChild(event)
 		return true
 	})
-	// Group by retained run identity. A journal may belong to a hidden view.
-	for len(events) != 0 {
+	if len(events) != 0 {
 		first := events[0]
-		var selected, rest []orchestrateEvent
-		for _, e := range events {
-			if e.main == first.main && e.workspace == first.workspace {
-				selected = append(selected, e)
-			} else {
-				rest = append(rest, e)
-			}
-		}
 		schedule := u.orchestrateWaitRuns[orchestrateWaitRun{first.workspace, first.main}]
 		if schedule != nil && !schedule.retry.IsZero() && u.now().Before(schedule.retry) {
-			u.orchestrateEvents = append(u.orchestrateEvents, selected...)
+			u.orchestrateEvents = append(u.orchestrateEvents, events...)
 		} else {
-			u.advanceOrchestratedWaits(first.workspace, first.main, selected)
+			u.advanceOrchestratedWaits(first.workspace, first.main, events)
 		}
-		events = rest
 	}
 }
 
@@ -136,6 +129,7 @@ func (u *appServerUI) advanceOrchestratedWaits(workspace, main string, events []
 	store := u.proxy.orchestration.store
 	now := u.now()
 	schedule := u.orchestratedWaitSchedule(workspace, main)
+	generation := u.orchestrateGeneration
 	schedule.pending++
 	u.orchestrateWork(func() func() {
 		retained := make([]orchestrate.WaitEvent, 0, len(events))
@@ -149,6 +143,9 @@ func (u *appServerUI) advanceOrchestratedWaits(workspace, main string, events []
 		}
 		ready, deadline, err := store.AdvanceWaits(context.WithoutCancel(u.ctx), workspace, main, retained, now)
 		return func() {
+			if u.orchestrateGeneration != generation {
+				return
+			}
 			schedule.pending--
 			if err != nil {
 				u.orchestrateEvents = append(events, u.orchestrateEvents...)
@@ -172,9 +169,18 @@ func (u *appServerUI) deliverOrchestratedWait(workspace, main string, w orchestr
 		return
 	}
 	store := u.proxy.orchestration.store
+	generation := u.orchestrateGeneration
 	u.orchestrateWork(func() func() {
 		result, dispatch, err := store.ClaimWaitDelivery(context.WithoutCancel(u.ctx), workspace, main, w.ID)
 		return func() {
+			if u.orchestrateGeneration != generation {
+				if dispatch {
+					// Replacement happened before any host dispatch. Keep the result
+					// available to ordinary recovery of its original coordinator.
+					u.recordOrchestratedWait(orchestrateRPC{wait: &result, waitMain: main, waitWorkspace: workspace}, "ready", "")
+				}
+				return
+			}
 			if err != nil {
 				u.orchestratedWaitSchedule(workspace, main).retry = u.now().Add(time.Second)
 				if u.orchestrateStorageErr == nil {
@@ -206,9 +212,13 @@ func (u *appServerUI) deliverOrchestratedWait(workspace, main string, w orchestr
 
 func (u *appServerUI) recordOrchestratedWait(r orchestrateRPC, state, message string) {
 	store := u.proxy.orchestration.store
+	generation := u.orchestrateGeneration
 	u.orchestrateWork(func() func() {
 		err := store.RecordWaitDelivery(context.WithoutCancel(u.ctx), r.waitWorkspace, r.waitMain, r.wait.ID, state, message)
 		return func() {
+			if u.orchestrateGeneration != generation || u.thread != r.waitMain || u.session.cwd != r.waitWorkspace {
+				return
+			}
 			if err != nil {
 				u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, err)
 				u.setNotice("Orchestration wait acknowledgement: "+err.Error(), true)

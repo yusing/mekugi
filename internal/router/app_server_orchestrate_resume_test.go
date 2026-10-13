@@ -16,15 +16,29 @@ import (
 func TestAppServerOrchestrateResumeCustomSandbox(t *testing.T) {
 	for _, rootCount := range []int{0, 50} {
 		t.Run(fmt.Sprintf("roots=%d", rootCount), func(t *testing.T) {
-			stateDir, err := filepath.EvalSymlinks(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
+			var u *appServerUI
+			var w *appServerTestInput
+			var b orchestrate.Batch
+			if rootCount == 0 {
+				u, w = idleOrchestration(t)
+				b = u.orchestrateThreads["child"].batch
+				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": appServerThreadInfo{ID: "native", ParentThreadID: "child"}})
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "native", "turn": map[string]any{"id": "old-native", "status": "completed"}})
+				btwTestReply(t, u, btwTestRequest(t, w, "thread/read", "native"), `{"thread":{"id":"native","parentThreadId":"child"}}`)
+				appServerTestKeys(t, u, "/clear\r")
+				start := btwTestRequest(t, w, "thread/start", "")
+				btwTestReply(t, u, start, fmt.Sprintf(`{"thread":{"id":"other","cwd":%q}}`, u.session.cwd))
+				resumeTestSettle(t, u, w)
+				appServerTestKeys(t, u, "/resume main\r")
+				back := resumeTestPrepared(t, u, w)
+				btwTestReply(t, u, btwTestRPC{ID: back.ID}, fmt.Sprintf(`{"thread":{"id":"main","cwd":%q}}`, u.session.cwd))
+				resumeTestSettle(t, u, w)
+				drainOrchestrateWork(t, u)
+			} else {
+				u, w, b = retainedOrchestratedUI(t)
 			}
-			t.Setenv("XDG_STATE_HOME", stateDir)
-			u, w, b := retainedOrchestratedUI(t)
 			// Save a post-launch policy through the ordinary host-settings consumer.
 			previous, _ := appliedSettingsTestUI(t, b.Cwd, "child")
-			previous.navigation = &orchestrateNavigation{owner: u}
 			roots := make([]any, rootCount)
 			for i := range roots {
 				roots[i] = filepath.Join(b.Cwd, fmt.Sprintf("explicit-writable-root-%03d", i))
@@ -35,7 +49,13 @@ func TestAppServerOrchestrateResumeCustomSandbox(t *testing.T) {
 				"model": "batch-model", "effort": "high", "activePermissionProfile": nil, "sandboxPolicy": policy,
 			}})
 			u.panes = new(nativePanePersistence)
-			u.switchOrchestratedThread("child")
+			var follow *orchestrateCommand
+			if rootCount == 0 {
+				follow = &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "custom-resume", input: orchestrateSpawnInput{Message: "Continue"}, reply: make(chan orchestrateResult, 1)}
+				u.startOrchestratedChild(follow)
+			} else {
+				u.switchOrchestratedThread("child")
+			}
 			drainOrchestrateWork(t, u)
 			read := btwTestRequest(t, w, "thread/read", "child")
 			btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": map[string]any{"id": "child", "cwd": b.Cwd}})))
@@ -94,19 +114,50 @@ func TestAppServerOrchestrateResumeCustomSandbox(t *testing.T) {
 			if !view.settings.pending() {
 				t.Fatal("enqueue acknowledgement claimed policy restoration")
 			}
-			appServerTestNotify(t, view, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+			if rootCount == 0 {
+				appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "resumed-turn"}})
+				if view.turn != "resumed-turn" || u.orchestrateThreads["child"].turn != "" {
+					t.Fatal("pending resume lost lifecycle input or admitted dispatch")
+				}
+				appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "resumed-turn", "status": "interrupted"}})
+				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "native", "turnId": "native-turn", "item": appServerItem{ID: "native-output", Type: "commandExecution", Command: "echo native-output", Status: "completed"}})
+				approvalTestCommand(t, u, "native-approval", map[string]any{"threadId": "native", "turnId": "native-turn"})
+				read := btwTestRequest(t, w, "thread/read", "native")
+				btwTestReply(t, u, read, `{"thread":{"id":"native","parentThreadId":"child"}}`)
+				if len(view.approvals.pending) != 1 || len(u.approvals.pending) != 0 || !view.settings.pending() {
+					t.Fatal("authenticated descendant approval lost its restoring owner")
+				}
+				if !strings.Contains(strings.Join(view.agents.renderFeed(90, 60).lines, "\n"), "native-output") {
+					t.Fatal("authenticated descendant activity was discarded")
+				}
+			}
+			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
 				"model": "batch-model", "effort": "high", "activePermissionProfile": nil, "sandboxPolicy": map[string]any{"type": "readOnly"},
 			}})
 			state, err = view.panes.read(b.Cwd, "child")
 			if err != nil || !view.settings.pending() || state.Settings.SandboxPolicy == "" {
 				t.Fatal("resume-default notification released input or replaced the saved policy")
 			}
-			appServerTestNotify(t, view, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+			appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
 				"model": "batch-model", "effort": "high", "activePermissionProfile": nil, "sandboxPolicy": policy,
 			}})
 			u.navigation.completeResumes()
 			if view.settings.pending() || len(u.navigation.resumes) != 0 {
 				t.Fatal("host-confirmed policy did not admit the batch")
+			}
+			if follow != nil {
+				if !u.openApprovals() {
+					t.Fatal("restoration lost the descendant approval")
+				}
+				if handled, err := u.approvalKey("\r"); !handled || err != nil || !strings.Contains(w.String(), `"id":"native-approval","result":{"decision":"accept"}`) {
+					t.Fatal("restored approval could not answer its host request", err, w.String())
+				}
+				w.Reset()
+				drainOrchestrateWork(t, u)
+				orchestrateTestReply(t, u, btwTestRequest(t, w, "turn/start", "child"), `{"turn":{"id":"next"}}`)
+				if r := <-follow.reply; r.err != nil {
+					t.Fatal(r.err)
+				}
 			}
 			// Switching to a named profile retires the saved custom policy.
 			appServerTestNotify(t, view, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
@@ -120,8 +171,60 @@ func TestAppServerOrchestrateResumeCustomSandbox(t *testing.T) {
 	}
 }
 
+func TestAppServerOrchestrateResumeNamedProfile(t *testing.T) {
+	for _, confirmed := range []bool{true, false} {
+		t.Run(fmt.Sprint(confirmed), func(t *testing.T) {
+			u, w, b := retainedOrchestratedUI(t)
+			workspace := u.session.cwd
+			// Ordinary session navigation must retain the batch's observed profile.
+			appServerTestKeys(t, u, "/resume child\r")
+			ordinary := resumeTestPrepared(t, u, w)
+			btwTestReply(t, u, btwTestRPC{ID: ordinary.ID}, string(mustMarshalJSON(map[string]any{
+				"thread": appServerThreadInfo{ID: "child", Cwd: b.Cwd}, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"},
+			})))
+			resumeTestSettle(t, u, w)
+			drainOrchestrateWork(t, u)
+			appServerTestKeys(t, u, "/resume main\r")
+			back := resumeTestPrepared(t, u, w)
+			btwTestReply(t, u, btwTestRPC{ID: back.ID}, fmt.Sprintf(`{"thread":{"id":"main","cwd":%q},"model":"model"}`, workspace))
+			resumeTestSettle(t, u, w)
+			drainOrchestrateWork(t, u)
+			c := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "named-profile", input: orchestrateSpawnInput{Message: "Continue"}, reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(c)
+			drainOrchestrateWork(t, u)
+			read := btwTestRequest(t, w, "thread/read", "child")
+			btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": map[string]any{"id": "child", "cwd": b.Cwd}})))
+			var resume struct {
+				ID     int            `json:"id"`
+				Params map[string]any `json:"params"`
+			}
+			if err := json.Unmarshal(w.Bytes(), &resume); err != nil {
+				t.Fatal(err)
+			}
+			w.Reset()
+			if resume.Params["permissions"] != ":read-only" {
+				t.Fatal("resume widened the retained profile to invocation permissions", resume.Params)
+			}
+			profile := ":read-only"
+			if !confirmed {
+				profile = ":danger-full-access"
+			}
+			btwTestReply(t, u, btwTestRPC{ID: resume.ID}, string(mustMarshalJSON(map[string]any{
+				"thread": map[string]any{"id": "child", "cwd": b.Cwd}, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": profile},
+			})))
+			if confirmed {
+				resumeTestSettle(t, u, w)
+				drainOrchestrateWork(t, u)
+				orchestrateTestReply(t, u, btwTestRequest(t, w, "turn/start", "child"), `{"turn":{"id":"next"}}`)
+			}
+			if r := <-c.reply; (r.err == nil) != confirmed || w.Len() != 0 {
+				t.Fatal("follow-up did not require the retained permission profile", r.err, w.String())
+			}
+		})
+	}
+}
+
 func TestAppServerOrchestrateResumeUnreadableSettings(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u, w, b := retainedOrchestratedUI(t)
 	u.panes = new(nativePanePersistence)
 	path, err := nativePaneStatePath(b.Cwd, "child")
@@ -135,6 +238,43 @@ func TestAppServerOrchestrateResumeUnreadableSettings(t *testing.T) {
 	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": map[string]any{"id": "child", "cwd": b.Cwd}})))
 	if w.Len() != 0 || len(u.navigation.resumes) != 0 || !strings.Contains(u.notice, "read batch settings") {
 		t.Fatal("unreadable batch settings resumed with invocation permissions", w.String(), u.notice)
+	}
+}
+
+func TestAppServerOrchestrateResumeMissingPermissions(t *testing.T) {
+	for _, missing := range []string{"file", "permissions"} {
+		t.Run(missing, func(t *testing.T) {
+			u, w, b := retainedOrchestratedUI(t)
+			path, err := nativePaneStatePath(b.Cwd, "child")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if missing == "file" {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				state, err := u.panes.read(b.Cwd, "child")
+				if err != nil {
+					t.Fatal(err)
+				}
+				state.Settings.PermissionProfile = ""
+				writeTestFile(t, path, string(mustMarshalJSON(state)))
+			}
+			c := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "missing-permissions", input: orchestrateSpawnInput{Message: "Continue"}, reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(c)
+			drainOrchestrateWork(t, u)
+			read := btwTestRequest(t, w, "thread/read", "child")
+			btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": map[string]any{"id": "child", "cwd": b.Cwd}})))
+			select {
+			case r := <-c.reply:
+				if r.err == nil || !strings.Contains(r.err.Error(), "batch permissions") || w.Len() != 0 {
+					t.Fatal("missing exact permissions admitted batch input", r.err, w.String())
+				}
+			default:
+				t.Fatal("missing exact permissions requested host resume", w.String())
+			}
+		})
 	}
 }
 
@@ -177,7 +317,23 @@ func retainedOrchestratedUI(t *testing.T) (*appServerUI, *appServerTestInput, or
 	u, w := resumeOrchestrationMain(t, store, old.session.cwd, reopened)
 	drainOrchestrateWork(t, u)
 	w.Reset()
+	retainOrchestratedTestPermissions(t, u, b)
 	return u, w, b
+}
+
+func retainOrchestratedTestPermissions(t *testing.T, u *appServerUI, b orchestrate.Batch) {
+	t.Helper()
+	stateDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_STATE_HOME", stateDir)
+	previous, _ := appliedSettingsTestUI(t, b.Cwd, "child")
+	previous.navigation = &orchestrateNavigation{owner: u}
+	appServerTestNotify(t, previous, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+		"model": "batch-model", "effort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"},
+	}})
+	u.panes = new(nativePanePersistence)
 }
 
 func resumeBatchResponses(t *testing.T, u *appServerUI, w *appServerTestInput, b orchestrate.Batch, active bool) {
@@ -186,7 +342,7 @@ func resumeBatchResponses(t *testing.T, u *appServerUI, w *appServerTestInput, b
 	thread := map[string]any{"id": "child", "cwd": b.Cwd}
 	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": thread})))
 	resume := btwTestRequest(t, w, "thread/resume", "child")
-	if _, ok := resume.Params.Config["model"]; ok {
+	if model, ok := resume.Params.Config["model"]; ok && model != "batch-model" {
 		t.Fatal("Main model override replaced batch settings")
 	}
 	status := "completed"
@@ -194,7 +350,7 @@ func resumeBatchResponses(t *testing.T, u *appServerUI, w *appServerTestInput, b
 		status = "inProgress"
 	}
 	thread["turns"] = []any{map[string]any{"id": "history-turn", "status": status, "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Retained batch answer", "channel": "final_answer"}}}}
-	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": thread, "model": "batch-model", "reasoningEffort": "high"})))
+	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": thread, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"}})))
 	if u.viewedUI() != u || len(u.navigation.resumes) != 1 {
 		t.Fatal("resume bypassed history admission")
 	}
@@ -391,6 +547,11 @@ func TestAppServerOrchestrateResumeDiffAdmission(t *testing.T) {
 
 func TestAppServerOrchestrateResumeDefaultEffortRejection(t *testing.T) {
 	u, w, b := retainedOrchestratedUI(t)
+	previous, _ := appliedSettingsTestUI(t, b.Cwd, "child")
+	previous.navigation = &orchestrateNavigation{owner: u}
+	appServerTestNotify(t, previous, "thread/settings/updated", map[string]any{"threadId": "child", "threadSettings": map[string]any{
+		"model": "batch-model", "effort": nil, "activePermissionProfile": map[string]any{"id": ":read-only"},
+	}})
 	u.switchOrchestratedThread("child")
 	drainOrchestrateWork(t, u)
 	read := btwTestRequest(t, w, "thread/read", "child")
@@ -399,7 +560,7 @@ func TestAppServerOrchestrateResumeDefaultEffortRejection(t *testing.T) {
 	thread := map[string]any{"id": "child", "cwd": b.Cwd, "path": rollout}
 	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": thread})))
 	resume := btwTestRequest(t, w, "thread/resume", "child")
-	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": thread, "model": "batch-model", "reasoningEffort": "high", "collaborationMode": map[string]any{"mode": "default", "settings": map[string]any{"model": "batch-model", "reasoning_effort": "high"}}})))
+	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": thread, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"}, "collaborationMode": map[string]any{"mode": "default", "settings": map[string]any{"model": "batch-model", "reasoning_effort": "high"}}})))
 	var update btwTestRPC
 	for _, req := range appServerDrainRequests[btwTestRPC](t, w) {
 		if req.Method == "thread/settings/update" {
@@ -449,7 +610,7 @@ func TestAppServerOrchestrateResumeDescendantDiff(t *testing.T) {
 	root := map[string]any{"id": "child", "cwd": b.Cwd}
 	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": root})))
 	resume := btwTestRequest(t, w, "thread/resume", "child")
-	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": root, "model": "batch-model", "reasoningEffort": "high"})))
+	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": root, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"}})))
 	native := map[string]any{"id": "native", "cwd": b.Cwd, "parentThreadId": "child", "agentNickname": "worker"}
 	for w.Len() > 0 {
 		for _, request := range appServerDrainRequests[btwTestRPC](t, w) {

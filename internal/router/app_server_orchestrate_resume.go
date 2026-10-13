@@ -12,8 +12,9 @@ import (
 )
 
 type orchestrateResume struct {
-	view  *appServerUI
-	ready []func(error)
+	authenticated bool
+	view          *appServerUI
+	ready         []func(error)
 }
 
 func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
@@ -161,6 +162,7 @@ func (n *orchestrateNavigation) resumeResponse(v *appServerUI, m appserver.Messa
 		return true
 	}
 	if method == "thread/resume" {
+		r.authenticated = true
 		v.restoring = nil
 	}
 	return false
@@ -186,6 +188,7 @@ func (n *orchestrateNavigation) finishResume(thread string, err error) {
 	}
 	delete(n.resumes, thread)
 	if err == nil {
+		n.owner.releaseRetired(thread)
 		child := n.owner.orchestrateThreads[thread]
 		if implementationWorkflow(child) {
 			child.workflowDeferred = false

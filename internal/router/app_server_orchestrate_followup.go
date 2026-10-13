@@ -28,7 +28,7 @@ func (u *appServerUI) queueOrchestratedFollowup(c *orchestrateCommand) {
 	}
 	for thread, child := range u.orchestrateThreads {
 		if child.command.main == c.main && child.command.workspace == c.workspace && (c.target != "main" && c.target == child.batch.TaskName || c.target == "/root/"+child.batch.TaskName) && thread != c.caller && child.batch.Launch != nil && child.batch.Launch.TurnID != "" && child.batch.State != "removing" && child.batch.State != "removed" && child.batch.State != "integrating" {
-			if u.navigation.resumes[thread] != nil || child.workflowDeferred && u.navigation.views[thread] == nil {
+			if u.navigation == nil || u.navigation.views[thread] == nil || u.navigation.resumes[thread] != nil {
 				u.resumeOrchestratedBatch(child.batch.TaskName, func(err error) {
 					if err != nil {
 						c.reply <- orchestrateResult{err: err}

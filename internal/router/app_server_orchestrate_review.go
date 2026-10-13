@@ -86,6 +86,7 @@ func workflowResponding(child *orchestrateChild) bool {
 func (u *appServerUI) workflowStore(child *orchestrateChild, apply func(context.Context, *orchestrate.Store) error, next func(error)) {
 	child.workflowPending++
 	c, store := child.command, u.proxy.orchestration.store
+	generation := u.orchestrateGeneration
 	u.orchestrateWork(func() func() {
 		err := apply(u.orchestrateStorageContext, store)
 		batches, readErr := store.Snapshot(c.workspace, c.main)
@@ -100,6 +101,9 @@ func (u *appServerUI) workflowStore(child *orchestrateChild, apply func(context.
 		}
 		return func() {
 			child.workflowPending--
+			if u.orchestrateGeneration != generation {
+				return
+			}
 			if updated != nil {
 				child.batch = *updated
 				if u.navigation != nil {
