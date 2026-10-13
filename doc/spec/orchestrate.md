@@ -235,8 +235,20 @@ while canceled checks show interruption.
 Command checks do not create model threads, turns, or token usage.
 
 By default, every implementation candidate requires independent correctness and
-simplification reviews. Mekugi starts fresh review threads with host-enforced read-only
-permissions and schema-constrained verdicts. Mekugi's optional
+simplification reviews. Mekugi starts fresh review threads with host-enforced
+read-only source access and schema-constrained verdicts. Each reviewer can write
+only to its own temporary/build storage outside the candidate checkout. Temporary
+directories and Go's build cache use that storage; network access and permission
+escalation remain disabled. This uses a thread-local host permission profile, not
+user configuration. Storage ownership is retained across recovery, and cleanup
+waits for confirmed host shutdown of the reviewer. Uncertain shutdown retains the
+storage. Unsupported host permissions produce a blocker rather than writable source.
+
+The review assignment includes retained host validation receipts for the exact
+candidate and generation: commands, checkout, exit status, outcome and bounded
+output tails, including passed checks. Reviewers can reuse these results and run
+focused checks for uncovered behavior. The implementer's report is separately
+labeled as claims, not host validation evidence. Mekugi's optional
 `[orchestration.reviewers]` settings map `correctness` and `simplification` to
 arbitrary Codex role names. No named role is selected by default. Empty or omitted
 selections use built-in review instructions and inherited execution settings.

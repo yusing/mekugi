@@ -80,7 +80,13 @@ func (u *appServerUI) archiveWorkflowReviewer(work *orchestrateReviewWork) {
 func (u *appServerUI) recordWorkflowReviewerArchive(work *orchestrateReviewWork, dispatched bool, hostErr error) {
 	c, child := work.child.command, work.child
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
-		return s.RecordReviewerArchive(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, dispatched, hostErr)
+		if err := s.RecordReviewerArchive(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, dispatched, hostErr); err != nil {
+			return err
+		}
+		if dispatched && hostErr == nil {
+			return s.ReleaseWorkflowReviewStorage(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID)
+		}
+		return nil
 	}, func(err error) {
 		if err = errors.Join(hostErr, err); err != nil {
 			u.setNotice("Reviewer archive: "+err.Error()+"; inspect retained host history before recovery", true)

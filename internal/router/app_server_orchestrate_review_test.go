@@ -79,20 +79,28 @@ func workflowDefaultConfig(t *testing.T, u *appServerUI) {
 	}
 }
 
-// workflowReviewThread acknowledges the read-only review thread and turn for purpose.
+// workflowReviewThread acknowledges the scratch-only review thread and turn.
 func workflowReviewThread(t *testing.T, u *appServerUI, w *appServerTestInput, purpose orchestrate.ReviewPurpose, thread string) {
 	t.Helper()
 	kind := orchestrate.WorkflowDispatchKind(purpose)
 	start, params := workflowTake(t, u, w, "thread/start", "", kind)
-	if params["approvalPolicy"] != "never" || params["sandbox"] != "read-only" || params["permissions"] != nil {
-		t.Fatal("review launch does not use generic read-only thread", params)
+	profile, _ := params["permissions"].(string)
+	if params["approvalPolicy"] != "never" || params["sandbox"] != nil || !strings.HasPrefix(profile, "mekugi-review-") {
+		t.Fatal("review launch does not use scratch-only permissions", params)
 	}
 	child := u.orchestrateThreads["child"]
-	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": thread, "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never"})
+	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": thread, "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": "readOnly"}, "activePermissionProfile": map[string]any{"id": profile}, "approvalPolicy": "never"})
 	orchestrateTestReply(t, u, start, string(response))
 	turn, params := workflowTake(t, u, w, "turn/start", thread, kind)
-	if policy, _ := params["sandboxPolicy"].(map[string]any); params["outputSchema"] == nil || policy["type"] != "readOnly" {
-		t.Fatal("review turn lost schema or read-only policy", params)
+	if params["outputSchema"] == nil || params["sandboxPolicy"] != nil || params["permissions"] != profile {
+		t.Fatal("review turn lost schema or scratch-only policy", params)
+	}
+	assignment := params["input"].([]any)[0].(map[string]any)["text"].(string)
+	for _, receipt := range child.batch.Workflow.Checks {
+		raw, _ := json.Marshal(receipt)
+		if !strings.Contains(assignment, "Runtime validation receipt (host command/exec): "+string(raw)) {
+			t.Fatal("review turn omitted a runtime receipt", assignment)
+		}
 	}
 	orchestrateTestReply(t, u, turn, fmt.Sprintf(`{"turn":{"id":%q}}`, thread+"-turn"))
 }
@@ -145,6 +153,50 @@ func workflowCancel(t *testing.T, u *appServerUI) *orchestrateCommand {
 func workflowVerdict(child *orchestrateChild, purpose orchestrate.ReviewPurpose) string {
 	raw, _ := json.Marshal(orchestrate.ReviewResult{Revision: child.batch.Workflow.Candidate.Revision, Purpose: purpose, Verdict: orchestrate.VerdictClear, Findings: []orchestrate.ReviewFinding{}})
 	return string(raw)
+}
+
+func TestWorkflowReviewAssignmentExactReceipts(t *testing.T) {
+	b := orchestrate.Batch{Base: "baseline", Cwd: "/candidate", Workflow: &orchestrate.Workflow{
+		Generation: 2, Candidate: &orchestrate.Candidate{Revision: "candidate"}, Report: "implementer claim",
+		Checks: []orchestrate.CheckResult{
+			{Generation: 2, Revision: "candidate", Cwd: "/candidate", Command: "current"},
+			{Generation: 1, Revision: "candidate", Cwd: "/candidate", Command: "old generation"},
+			{Generation: 2, Revision: "old revision", Cwd: "/candidate", Command: "old revision"},
+			{Generation: 2, Revision: "candidate", Cwd: "/other", Command: "other checkout"},
+		},
+	}}
+	text := workflowReviewAssignment(b, orchestrate.DispatchCorrectness)
+	if strings.Count(text, "Runtime validation receipt (host command/exec):") != 1 || !strings.Contains(text, `"command":"current"`) || !strings.Contains(text, "Implementer report (claims, not host validation receipts):\nimplementer claim") {
+		t.Fatal("review mixed candidate receipts or report provenance", text)
+	}
+}
+
+func TestWorkflowReviewStorageArchiveRecovery(t *testing.T) {
+	u, w := workflowUI(t)
+	workflowActiveReviews(t, u, w)
+	child := u.orchestrateThreads["child"]
+	workflowCompleted(t, u, "reviewer-c", "reviewer-c-turn", workflowVerdict(child, orchestrate.ReviewCorrectness))
+	workflowArchive(t, u, w, "reviewer-c", true)
+	workflowCompleted(t, u, "reviewer-s", "reviewer-s-turn", workflowVerdict(child, orchestrate.ReviewSimplification))
+	// Persist the successful archive but lose the router before scratch cleanup.
+	workflowTake(t, u, w, "thread/archive", "reviewer-s", "")
+	s := u.proxy.orchestration.store
+	d := child.batch.Workflow.Dispatches[1]
+	if err := s.RecordReviewerArchive(t.Context(), u.session.cwd, "main", "batch", d.ID, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	workflowNotice(t, u, w)
+	workflowRestart(t, u)
+	drainOrchestrateWork(t, u)
+	if _, err := os.Stat(d.Scratch); !os.IsNotExist(err) {
+		t.Fatal("archived scratch survived recovery", err)
+	}
+	if _, err := os.Stat(child.batch.Workflow.Dispatches[0].Scratch); err != nil {
+		t.Fatal("uncertain archive lost its storage", err)
+	}
+	if w.Len() != 0 {
+		t.Fatal("storage recovery dispatched host work", w.String())
+	}
 }
 
 // workflowActiveReviews leaves both concurrent reviews acknowledged and running.
@@ -202,7 +254,7 @@ func TestOrchestrateWorkflowLifecycle(t *testing.T) {
 	appServerTestNotify(t, u, "command/exec/outputDelta", map[string]any{"processId": u.orchestrateThreads["child"].workflowWork[workflowValidation].dispatch.ID, "stream": "stdout", "deltaBase64": base64.StdEncoding.EncodeToString([]byte("verified"))})
 	workflowCheck(t, u, w, "printf verified", `{"exitCode":0,"stdout":"","stderr":""}`)
 	child := u.orchestrateThreads["child"]
-	if len(child.batch.Workflow.Checks) != 1 || child.batch.Workflow.Phase != orchestrate.PhaseReview {
+	if len(child.batch.Workflow.Checks) != 1 || child.batch.Workflow.Checks[0].Output != "verified" || child.batch.Workflow.Phase != orchestrate.PhaseReview {
 		t.Fatal("passed check did not start reviews", child.batch.Workflow)
 	}
 	// Both reviews run concurrently; either may finish first.
@@ -524,18 +576,18 @@ func TestOrchestrateWorkflowRejectsMalformedReviewAndPermissionMismatch(t *testi
 		t.Run(mode, func(t *testing.T) {
 			u, w := workflowUI(t)
 			workflowCompleted(t, u, "child", "implement", "")
-			start, _ := workflowTake(t, u, w, "thread/start", "", orchestrate.DispatchCorrectness)
+			start, params := workflowTake(t, u, w, "thread/start", "", orchestrate.DispatchCorrectness)
 			child := u.orchestrateThreads["child"]
-			sandbox := "readOnly"
+			profile := params["permissions"]
 			if mode == "permissions" {
-				sandbox = "dangerFullAccess"
+				profile = "different-profile"
 			}
 			cwd := child.batch.Cwd
 			if mode == "cwd" {
 				cwd = t.TempDir()
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": cwd}})
 			}
-			raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": cwd}, "sandbox": map[string]any{"type": sandbox}, "approvalPolicy": "never"})
+			raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": cwd}, "activePermissionProfile": map[string]any{"id": profile}, "approvalPolicy": "never"})
 			orchestrateTestReply(t, u, start, string(raw))
 			if mode == "cwd" {
 				appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "reviewer", "cwd": cwd}})
@@ -682,7 +734,7 @@ func TestOrchestrateWorkflowConfiguredReviewer(t *testing.T) {
 		raw, _ := json.Marshal(map[string]any{"layers": []any{map[string]any{"name": map[string]any{"type": "sessionFlags"}, "config": map[string]any{"agents": map[string]any{review.role: map[string]any{"config_file": role, "description": "Configured review"}}}}}})
 		orchestrateTestReply(t, u, config, string(raw))
 		_, p := workflowTake(t, u, w, "thread/start", "", review.kind)
-		if p["developerInstructions"] != "" || p["model"] != "configured-model" || p["serviceTier"] != "flex" || p["config"].(map[string]any)["model_reasoning_effort"] != "low" || p["approvalPolicy"] != "never" || p["sandbox"] != "read-only" {
+		if p["developerInstructions"] != "" || p["model"] != "configured-model" || p["serviceTier"] != "flex" || p["config"].(map[string]any)["model_reasoning_effort"] != "low" || p["approvalPolicy"] != "never" || p["sandbox"] != nil || p["permissions"] == nil {
 			t.Fatal("configured settings or policy lost", p)
 		}
 	}

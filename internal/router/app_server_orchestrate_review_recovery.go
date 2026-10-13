@@ -39,6 +39,15 @@ func (u *appServerUI) recoverOrchestratedWorkflows(batches []orchestrate.Batch) 
 			continue
 		}
 		for _, d := range batch.Workflow.Dispatches {
+			if d.Scratch != "" && (d.Archive != nil && d.Archive.State == "archived" || d.State == orchestrate.DispatchFailed && d.ThreadID == "") {
+				u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+					return s.ReleaseWorkflowReviewStorage(ctx, child.command.workspace, child.command.main, batch.TaskName, d.ID)
+				}, func(err error) {
+					if err != nil {
+						u.setNotice("Reviewer storage: "+err.Error(), true)
+					}
+				})
+			}
 			if d.ThreadID == "" || d.Kind != orchestrate.DispatchCorrectness && d.Kind != orchestrate.DispatchSimplification {
 				continue
 			}

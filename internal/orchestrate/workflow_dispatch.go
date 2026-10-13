@@ -25,6 +25,7 @@ const (
 
 type WorkflowDispatch struct {
 	Archive      *Archive              `json:"archive,omitempty"`
+	Scratch      string                `json:"scratch,omitempty"`
 	HostStatus   string                `json:"host_status,omitempty"`
 	ID           string                `json:"id"`
 	Kind         WorkflowDispatchKind  `json:"kind"`

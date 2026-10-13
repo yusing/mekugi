@@ -14,7 +14,7 @@ import (
 	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
-// workflowCheckOutputLimit bounds the retained output tail of a rejected check.
+// workflowCheckOutputLimit bounds retained check output for review and correction.
 const workflowCheckOutputLimit = 4096
 
 // startWorkflowCheck runs the next required check without a retained result
@@ -82,9 +82,9 @@ func (u *appServerUI) workflowCheckResponse(work *orchestrateReviewWork, m appse
 	default:
 		result.ExitCode = response.ExitCode
 		result.Outcome = orchestrate.CheckPassed
+		result.Output = workflowOutputTail(strings.TrimSpace(work.checkOutput + output))
 		if *response.ExitCode != 0 {
 			result.Outcome = orchestrate.CheckFailed
-			result.Output = workflowOutputTail(strings.TrimSpace(work.checkOutput + output))
 		}
 	}
 	status := "completed"

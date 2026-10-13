@@ -30,6 +30,7 @@ type workflowCodexProvider struct {
 	checkout, revision string
 	schemas            int
 	finishes           int
+	goChecks           int
 	finishOutputs      []string
 	configured         bool
 }
@@ -75,6 +76,9 @@ func (p *workflowCodexProvider) forwardExecution(ctx, responseCtx context.Contex
 	}
 	final := "Implementation complete."
 	if strings.HasPrefix(assignment, "Review candidate") {
+		if !strings.Contains(assignment, "Runtime validation receipt (host command/exec): ") || !strings.Contains(assignment, `"revision":"`+p.revision+`"`) || !strings.Contains(assignment, `"exit_code":0`) || !strings.Contains(assignment, `"output":"workflow-check"`) || !strings.Contains(assignment, "Implementer report (claims, not host validation receipts):") {
+			return nil, fmt.Errorf("review assignment omitted exact-candidate host receipt or report provenance")
+		}
 		if !strings.Contains(assignment, "Otherwise keep reason empty.") || !strings.Contains(assignment, "Return the JSON verdict as your final answer.") {
 			return nil, fmt.Errorf("review assignment omitted verdict completion rules")
 		}
@@ -114,10 +118,22 @@ func (p *workflowCodexProvider) forwardExecution(ctx, responseCtx context.Contex
 		}
 		if call == 1 {
 			p.schemas++
-			args, _ := json.Marshal(map[string]any{"cmd": "printf forbidden > " + strconv.Quote(filepath.Join(p.checkout, "readonly-probe")), "workdir": p.checkout, "shell": "bash"})
-			return mchangesNestedCodexResponse(call, map[string]any{"type": "custom_tool_call", "id": "readonly-" + metadata.ThreadID, "call_id": "readonly-" + metadata.ThreadID, "name": "exec", "input": "text(await tools.exec_command(" + string(args) + "));", "status": "completed"}), nil
+			command := `set -eu; test -n "$TMPDIR"; printf owned > "$TMPDIR/owned-probe"; env GOTOOLCHAIN=local GOFLAGS=-p=1 GOMAXPROCS=2 GOMEMLIMIT=700MiB go test -run '^TestReviewerScratch$' -count=1 .; if printf forbidden > readonly-probe 2>/dev/null; then exit 9; fi; printf runtime-go-check-ok`
+			args, _ := json.Marshal(map[string]any{"cmd": command, "workdir": p.checkout, "shell": "bash", "login": false, "yield_time_ms": 1000})
+			input := "// @exec: {\"yield_time_ms\": 120000}\nlet r = await tools.exec_command(" + string(args) + "); text(r.output); while (r.session_id) { r = await tools.write_stdin({session_id:r.session_id,chars:\"\",yield_time_ms:1000}); text(r.output); } if(r.exit_code !== 0) throw new Error(\"review check failed: \"+JSON.stringify(r));"
+			return mchangesNestedCodexResponse(call, map[string]any{"type": "custom_tool_call", "id": "readonly-" + metadata.ThreadID, "call_id": "readonly-" + metadata.ThreadID, "name": "exec", "input": input, "status": "completed"}), nil
 		}
 		if call == 2 {
+			checked := false
+			for _, item := range request.Input {
+				if item.CallID == "readonly-"+metadata.ThreadID {
+					checked = strings.Contains(strings.Join(executionOutputTexts([]byte(item.Output)), "\n"), "runtime-go-check-ok")
+				}
+			}
+			if !checked {
+				return nil, fmt.Errorf("reviewer Go check or source isolation failed")
+			}
+			p.goChecks++
 			// A successful host finish must still reach the provider for the
 			// constrained verdict, rather than synthesize a Journal final.
 			return mchangesNestedCodexResponse(call, map[string]any{"type": "custom_tool_call", "id": "finish-" + metadata.ThreadID, "call_id": "finish-" + metadata.ThreadID, "name": "exec", "status": "completed", "input": `const check = await tools.exec_command({cmd:"printf reviewed"}); if(check.exit_code !== 0) throw new Error("review check failed"); const r = await tools.mcp__mekugi__journal_mutate({mutations:[{op:"log",text:"Source review complete"},{op:"finish"}]}); if(r.isError) throw new Error(JSON.stringify(r)); text(r);`}), nil
@@ -150,6 +166,9 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 		t.Fatal(err)
 	}
 	workspace := orchestrateVCSWorkspace(t, "git")
+	writeTestFile(t, filepath.Join(workspace, "go.mod"), "module reviewerfixture\n\ngo 1.27\n")
+	writeTestFile(t, filepath.Join(workspace, "scratch_test.go"), "package reviewerfixture\nimport (\"os\"; \"path/filepath\"; \"testing\")\nfunc TestReviewerScratch(t *testing.T) { if err := os.WriteFile(filepath.Join(t.TempDir(), \"result\"), []byte(\"ok\"), 0600); err != nil { t.Fatal(err) } }\n")
+	gitTestCommit(t, workspace)
 	trace := t.TempDir()
 	t.Setenv("CODEX_ROLLOUT_TRACE_ROOT", trace)
 	provider := &workflowCodexProvider{calls: map[string]int{}, configured: configured}
@@ -167,7 +186,7 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	}()
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 180*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.workflow_test={name="workflow_test",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="workflow_test"`, "-c", `model="gpt-6-astra"`, "-c", `model_reasoning_effort="high"`, "-c", "features.code_mode=true", "-c", "features.code_mode_host=true", "-c", `approval_policy="never"`, "-c", `sandbox_mode="workspace-write"`)
 	cmd.Args = append(cmd.Args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["journal-mcp",`+strconv.Quote(socket)+`]}`)
@@ -237,6 +256,31 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 		t.Fatal(err)
 	}
 	store := &orchestrate.Store{Directory: t.TempDir()}
+	// Stop the isolated host before fixture cleanup, including failure paths.
+	defer func() {
+		if err := client.Shutdown(); err != nil {
+			t.Error("review host shutdown", err)
+			return
+		}
+		batches, err := store.Snapshot(workspace, main)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		for _, b := range batches {
+			if b.Workflow == nil {
+				continue
+			}
+			for _, d := range b.Workflow.Dispatches {
+				if d.Scratch == "" {
+					continue
+				}
+				if _, err := os.Stat(d.Scratch); !os.IsNotExist(err) {
+					t.Error("review scratch survived confirmed archival", err)
+				}
+			}
+		}
+	}()
 	proxy.orchestration = &orchestrateRuntime{store: store}
 	if configured {
 		proxy.orchestration.reviewers = loadWorkflowReviewerTestConfig(t, "[orchestration.reviewers]\ncorrectness = 'custom-audit'\n")
@@ -271,6 +315,9 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 		t.Fatal("reviewer escaped read-only sandbox", err)
 	}
 	provider.mu.Lock()
+	if provider.goChecks != 2 {
+		t.Errorf("reviewer Go checks = %d, want 2", provider.goChecks)
+	}
 	if provider.finishes != 2 {
 		t.Errorf("missing successful journal finishes: %q", provider.finishOutputs)
 	}
@@ -310,8 +357,8 @@ func testOrchestrateWorkflowNativeCodex(t *testing.T, configured bool) {
 	if !configured {
 		testOrchestrateArchiveNativeCodex(t, u, pump)
 	}
+	pump(func() bool { return len(u.orchestrateJobs) == 0 && len(u.orchestrateRequests) == 0 })
 	if releaseDirectory != "" {
-		pump(func() bool { return len(u.orchestrateJobs) == 0 && len(u.orchestrateRequests) == 0 })
 		verifyReviewerRelease(t, u, cmd.Process.Pid, releaseEvidence)
 	}
 }

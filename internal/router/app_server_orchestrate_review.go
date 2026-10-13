@@ -422,7 +422,13 @@ func (u *appServerUI) failWorkflowDispatch(work *orchestrateReviewWork, uncertai
 	child, c := work.child, work.child.command
 	u.workflowReviewError(work.dispatch.ThreadID, err.Error())
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
-		return s.FailWorkflowDispatch(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, uncertain, err.Error())
+		if saveErr := s.FailWorkflowDispatch(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, uncertain, err.Error()); saveErr != nil {
+			return saveErr
+		}
+		if !uncertain && work.dispatch.ThreadID == "" {
+			return s.ReleaseWorkflowReviewStorage(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID)
+		}
+		return nil
 	}, func(saveErr error) {
 		if work.dispatch.TurnID == "" {
 			u.endWorkflowWork(work)

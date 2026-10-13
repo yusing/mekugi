@@ -103,6 +103,12 @@ This is read authority only; output recovery belongs to the reader's namespace
 and cannot restore child processes. [Changes](../spec/changes.md#bounded-read-command)
 owns ambiguous-ID selection and mutation behavior.
 
+Reviewer scratch directories belong to their retained orchestration dispatches,
+outside candidate checkouts. A reviewer's host profile grants writes only to its
+own scratch. The reviewer archive owner releases that storage after confirmed host
+shutdown, preserving storage when shutdown is uncertain. Replay restores ownership
+facts, not live scratch processes or execution handles.
+
 Run-owned shadow repositories reuse the workspace snapshot owner's byte and
 ignore policy with complete indexing. Their objects and branches remain outside
 observation-snapshot size and age pruning. Preparation publishes the repository

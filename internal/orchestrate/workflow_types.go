@@ -78,7 +78,7 @@ type HostReceipt struct {
 
 // CheckResult is admitted only from the runtime's own host command execution,
 // never from an implementer message. An absent exit status cannot mean success.
-// Output keeps a bounded tail for correction assignments.
+// Output keeps a bounded tail for review and correction assignments.
 type CheckResult struct {
 	Generation int           `json:"generation"`
 	Phase      WorkflowPhase `json:"phase"`

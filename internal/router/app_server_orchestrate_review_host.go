@@ -2,10 +2,12 @@ package router
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -26,7 +28,22 @@ func workflowReadOnlyConfirmed(raw []byte) error {
 	}
 	return nil
 }
-func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose orchestrate.WorkflowDispatchKind, settings workflowReviewerSettings) (map[string]any, error) {
+func workflowReviewerProfile(scratch string) string {
+	return fmt.Sprintf("mekugi-review-%x", sha256.Sum256([]byte(scratch)))
+}
+
+func workflowReviewerPolicyConfirmed(raw []byte, scratch string) error {
+	var settings appServerStatusConfig
+	var profile struct {
+		ID string `json:"id"`
+	}
+	if scratch == "" || json.Unmarshal(raw, &settings) != nil || json.Unmarshal(settings.PermissionProfile, &profile) != nil || profile.ID != workflowReviewerProfile(scratch) || string(settings.Approval) != `"never"` {
+		return errors.New("host did not confirm the reviewer scratch-only permission profile and approval never")
+	}
+	return nil
+}
+
+func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose orchestrate.WorkflowDispatchKind, settings workflowReviewerSettings, scratch string) (map[string]any, error) {
 	params, _, err := u.orchestrateThreadRequest(child.batch, orchestrateSpawnInput{})
 	if err != nil {
 		return nil, err
@@ -47,7 +64,22 @@ func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose o
 			params["serviceTier"] = *settings.ServiceTier
 		}
 	}
-	readOnlyWorkflowParams(params)
+	delete(params, "sandbox")
+	params["approvalPolicy"] = "never"
+	profile := workflowReviewerProfile(scratch)
+	params["permissions"] = profile
+	config := params["config"].(map[string]any)
+	// Source: codex-rs/core/src/config/permissions.rs@ddb33e34b
+	// Named profiles support scratch writes without making cwd writable. Legacy
+	// workspaceWrite policies include cwd and cannot express this boundary.
+	config["permissions."+profile] = map[string]any{
+		"filesystem": map[string]any{":root": "read", scratch: "write"},
+		"network":    map[string]any{"enabled": false},
+	}
+	config["shell_environment_policy.set"] = map[string]any{
+		"TMPDIR": scratch, "TMP": scratch, "TEMP": scratch, "GOTMPDIR": scratch,
+		"GOCACHE": filepath.Join(scratch, "go-build"), "XDG_CACHE_HOME": filepath.Join(scratch, "cache"),
+	}
 	return params, nil
 }
 
@@ -61,7 +93,19 @@ func workflowReviewerInstructions(purpose orchestrate.WorkflowDispatchKind) stri
 
 // Main owns final wording review of these per-turn assignments.
 func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.WorkflowDispatchKind) string {
-	return "Review candidate " + batch.Workflow.Candidate.Revision + " against baseline " + batch.Base + " for " + string(purpose) + ". Scope: " + batch.Workflow.Assignment.Scope + "\nInspect read-only. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer."
+	w := batch.Workflow
+	var text strings.Builder
+	text.WriteString("Review candidate " + w.Candidate.Revision + " against baseline " + batch.Base + " for " + string(purpose) + ". Scope: " + w.Assignment.Scope + "\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
+	for _, check := range w.Checks {
+		if check.Revision == w.Candidate.Revision && check.Generation == w.Generation && check.Cwd == batch.Cwd {
+			raw, _ := json.Marshal(check)
+			text.WriteString("\nRuntime validation receipt (host command/exec): " + string(raw))
+		}
+	}
+	if w.Report != "" {
+		text.WriteString("\nImplementer report (claims, not host validation receipts):\n" + w.Report)
+	}
+	return text.String()
 }
 func workflowCorrectionAssignment(batch orchestrate.Batch) string {
 	var text strings.Builder
@@ -85,7 +129,7 @@ func (u *appServerUI) startWorkflowTurn(work *orchestrateReviewWork) {
 	default:
 		text = workflowReviewAssignment(child.batch, work.dispatch.Kind)
 		params["approvalPolicy"] = "never"
-		params["sandboxPolicy"] = jsontext.Value(`{"type":"readOnly","networkAccess":false}`)
+		params["permissions"] = workflowReviewerProfile(work.dispatch.Scratch)
 		params["outputSchema"] = jsontext.Value(orchestrate.ReviewResultSchema)
 	}
 	// Correction keeps the implementer's current thread policy.
@@ -126,12 +170,18 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 		}
 		u.orchestrateWork(func() func() {
 			settings, err := resolveWorkflowReviewerSettings(m.Result, role)
+			var scratch string
+			if err == nil {
+				c := child.command
+				scratch, err = u.proxy.orchestration.store.PrepareWorkflowReviewStorage(u.orchestrateStorageContext, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID)
+			}
 			return func() {
 				if err != nil {
 					u.failWorkflowDispatch(work, false, err)
 					return
 				}
-				params, err := u.workflowReviewerRequest(child, work.dispatch.Kind, settings)
+				work.dispatch.Scratch = scratch
+				params, err := u.workflowReviewerRequest(child, work.dispatch.Kind, settings, scratch)
 				if err != nil {
 					u.failWorkflowDispatch(work, false, err)
 					return
@@ -156,7 +206,7 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 			return
 		}
 		work.dispatch.ThreadID = result.Thread.ID
-		policyErr = workflowReadOnlyConfirmed(m.Result)
+		policyErr = workflowReviewerPolicyConfirmed(m.Result, work.dispatch.Scratch)
 		if result.Thread.Cwd != child.batch.Cwd {
 			policyErr = errors.New("review thread cwd mismatch")
 		}
