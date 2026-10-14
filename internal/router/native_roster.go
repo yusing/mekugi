@@ -20,7 +20,11 @@ func (v *liveActivityView) nativeTitle() (string, string) {
 	if v.only {
 		rows := v.feedAgents()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		detail = v.painter.Agent(strings.TrimPrefix(v.selected, "/Orchestration/")) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
+		detail = v.painter.Agent(strings.TrimPrefix(v.selected, "/Orchestration/"))
+		if index >= 0 && rows[index].agent.nativePlaceholder {
+			detail = activityui.Color(v.selected) + rows[index].agent.displayName() + activityui.Reset
+		}
+		detail += activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
 	}
 	if v.historyHint != "" {
 		detail = strings.TrimSpace(activityui.Dim + v.historyHint + activityui.Undim + " " + detail)
@@ -43,6 +47,14 @@ type nativeRosterItem struct {
 
 func nativeThreadRow(name string) bool {
 	return strings.HasPrefix(name, "/Orchestration/")
+}
+
+func (agent activityPaneAgent) displayName() string {
+	name := activityui.AgentDisplayName(agent.Name)
+	if agent.nativePlaceholder {
+		return name[max(0, len(name)-8):]
+	}
+	return name
 }
 
 // Thread rows precede the viewed thread's native tree. Its root already has
@@ -328,7 +340,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		if item.finished != nil {
 			var names []string
 			for _, row := range item.finished {
-				names = append(names, activityui.Color(row.agent.Name)+activityui.AgentDisplayName(row.agent.Name)+activityui.Reset)
+				names = append(names, activityui.Color(row.agent.Name)+row.agent.displayName()+activityui.Reset)
 			}
 			line := " " + activityui.Green + "✓" + activityui.Reset + " " + activityui.Dim + fmt.Sprintf("%d finished · ", len(item.finished)) + activityui.Undim + strings.Join(names, activityui.Dim+", "+activityui.Undim)
 			laid = append(laid, agentLine{finishedLine: ansi.Truncate(line, width, "…")})

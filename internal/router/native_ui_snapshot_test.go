@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/uisnapshot"
 )
@@ -151,6 +152,67 @@ func TestUISnapshotNativeRosterContext(t *testing.T) {
 			}})
 			assertNativeUISnapshot(t, fmt.Sprintf("native-roster-context-%d", width), v.nativeRoster(width, 6, now, true))
 		})
+	}
+}
+
+func TestUISnapshotNativePlaceholderIdentity(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.proxy = &mekugiProxy{usage: newThreadUsage()}
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.Local)
+	u.clock = func() time.Time { return now }
+	u.agents.painter.Theme = livediff.DarkTheme
+	threads := []string{"019f3aba-8c10-7001-8000-00000000e2c8", "019f3aba-8c10-7001-8000-000000015109"}
+	for i, thread := range threads {
+		counts := tokenCounts{InputTokens: uint64(1111 * (i + 1)), UncachedInputTokens: uint64(1111 * (i + 1)), OutputTokens: uint64(33 * (i + 1))}
+		u.proxy.usage.observation(thread, thread, "gpt-6-luna", "").observe(counts)
+		// Events before metadata must retain separate temporary identities.
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})
+		appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": "reason", "delta": fmt.Sprintf("Checking child %d", i+1)})
+		appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": thread, "tokenUsage": map[string]any{"last": map[string]any{"totalTokens": 100 * (i + 1)}, "modelContextWindow": 1000}})
+		id := u.session.metadata[thread]
+		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"thread":{"id":%q,"parentThreadId":"main"}}}`, id, thread))
+	}
+	rows := u.agents.nativeRosterRows()
+	if len(rows) != 3 {
+		t.Fatalf("unnamed children lost roster rows: %+v", rows)
+	}
+	for i, row := range rows[1:] {
+		if row.agent.InputTokens != uint64(1111*(i+1)) || row.agent.OutputTokens != uint64(33*(i+1)) || row.agent.ContextTokens != uint64(100*(i+1)) {
+			t.Fatalf("child %d metrics attributed to another thread: %+v", i+1, row.agent)
+		}
+		if row.agent.Name != "/root/"+threads[i] {
+			t.Fatalf("child %d identity lost its thread ID: %q", i+1, row.agent.Name)
+		}
+	}
+	for _, width := range []int{48, 100} {
+		assertNativeUISnapshot(t, fmt.Sprintf("native-placeholder-identity-%d", width), u.agents.nativeRoster(width, 6, now, true))
+	}
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": threads[0], "turnId": "t", "item": map[string]any{"id": "note", "type": "agentMessage", "phase": "commentary", "text": "Checking child 1."}})
+	u.agents.selected, u.agents.only = u.session.paths[threads[0]], true
+	u.agents.clock, u.view.clock = u.clock, u.clock
+	u.view.painter.Theme = livediff.DarkTheme
+	u.status = "Ready"
+	u.shell.selectNativePane(2)
+	screen := vt.NewEmulator(120, 20)
+	defer screen.Close()
+	if err := u.paint(screen, 120, 20); err != nil {
+		t.Fatal(err)
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/native-placeholder-identity-selected.txt", screen.String()+"\n")
+	// Late real names must rename only their own activity and selection.
+	u.agents.selected = u.session.paths[threads[1]]
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": threads[0], "parentThreadId": "main", "agentNickname": "worker"}})
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": threads[1], "parentThreadId": "main", "source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/checker"}}}}})
+	if u.session.paths[threads[0]] != "/root/worker" || u.session.paths[threads[1]] != "/root/checker" || u.agents.selected != "/root/checker" {
+		t.Fatal("real native names or selection lost", u.session.paths, u.agents.selected)
+	}
+	if len(u.agents.entries) != 3 {
+		t.Fatal("child activity not retained", len(u.agents.entries))
+	}
+	for _, entry := range u.agents.entries {
+		if entry.native != nil && entry.Agent != u.session.paths[entry.native.thread] {
+			t.Fatalf("late name moved another child's activity: %+v", entry)
+		}
 	}
 }
 

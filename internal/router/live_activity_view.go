@@ -1156,7 +1156,7 @@ func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent st
 	}
 	parent := parentAt(index)
 	if rows[index].depth == 0 || parent < 0 {
-		return activityui.AgentDisplayName(rows[index].agent.Name), ""
+		return rows[index].agent.displayName(), ""
 	}
 	var guides []string
 	for i := parent; i >= 0; i = parentAt(i) {
@@ -1175,7 +1175,8 @@ func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent st
 	if continuation(index) {
 		branch, guide = "├ ", "│ "
 	}
-	_, leaf, _ := strings.CutLast(rows[index].agent.Name, "/")
+	name = rows[index].agent.displayName()
+	leaf := name[strings.LastIndex(name, "/")+1:]
 	return prefix + branch + leaf, prefix + guide
 }
 
@@ -1398,7 +1399,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 	var parts []string
 	column := 1
 	for _, row := range rows {
-		name := activityui.AgentDisplayName(row.agent.Name)
+		name := row.agent.displayName()
 		if row.agent.Name == v.selected || row.agent.Name == v.hovered {
 			name = activityui.Underline(name)
 		}
