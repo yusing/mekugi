@@ -307,6 +307,7 @@ func TestUISnapshotOrchestrateLogicalWait(t *testing.T) {
 		name, result string
 	}{
 		{"registered", `{"state":"registered"}`},
+		{"finite", `{"state":"registered","timeout_ms":15000}`},
 		{"message", `{"state":"completed","event":{"task_name":"archive_integrated","kind":"message","message":"private payload"}}`},
 		{"done", `{"state":"completed","event":{"task_name":"batch","kind":"done","status":"completed"}}`},
 		{"failure", `{"state":"completed","event":{"task_name":"batch","kind":"failure","status":"storage_failed"}}`},
@@ -403,10 +404,10 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 			}
 			drainOrchestrateWork(t, u)
 			if tc.name != "canceled" {
-				if !strings.HasPrefix(u.view.entries[0].Text, "Wait registered") {
+				if !strings.HasPrefix(u.view.entries[0].Text, "Waiting for agent") {
 					t.Fatal("unacknowledged delivery claimed completion")
 				}
-				inject := btwTestRequest(t, wire, "thread/inject_items", "main")
+				inject := btwTestRequest(t, wire, "turn/start", "main")
 				if tc.name == "rejected" {
 					orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"message":"delivery rejected"}}`, inject.ID))
 				} else {

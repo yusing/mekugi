@@ -58,7 +58,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	}
 	for name, description := range map[string]string{
 		"spawn_agent":   "Similar to mekugi_collaboration.spawn_agent",
-		"wait_agent":    "Final answers reach Main automatically as separate notifications; waiting is optional",
+		"wait_agent":    "Only a selected event or explicit timeout wakes Main",
 		"send_message":  "Report only a new blocker requiring action or one final handoff per assignment",
 		"followup_task": "Report only a new blocker requiring action or one final handoff per assignment",
 	} {
@@ -79,7 +79,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err := json.Unmarshal(mustMarshalJSON(listed.Tools[waitIndex].InputSchema), &waitSchema); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(waitSchema.Properties["timeout_ms"].Description, "no deadline") ||
+	if !strings.Contains(waitSchema.Properties["timeout_ms"].Description, "no timeout wake") ||
 		!strings.Contains(waitSchema.Properties["targets"].Description, "all (default)") ||
 		strings.Contains(orchestrateCoordinatorInstructions, "wait_agent:") {
 		t.Fatal("wait parameter help must be exposed by MCP, not duplicated in coordinator instructions")
@@ -109,7 +109,7 @@ func TestOrchestrateMCP(t *testing.T) {
 		}
 		return result
 	}
-	meta := mcp.Meta{"threadId": "main", "sessionId": "host-session", "callId": "prepare",
+	meta := mcp.Meta{"threadId": "main", "sessionId": "host-session", "callId": "prepare", "itemId": "host-item",
 		codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "turn"}}
 	call("prepare", map[string]any{"task_name": "batch"}, meta, false)
 	waiver := "User requested correction-only delivery"
@@ -141,7 +141,7 @@ func TestOrchestrateMCP(t *testing.T) {
 		if err := journal.bindIdentity(rootCtx, replay, workspace, thread, "", "/root", true); err != nil {
 			t.Fatal(err)
 		}
-		result := call("prepare", map[string]any{"task_name": "unauthorized"}, mcp.Meta{"threadId": thread, "sessionId": "host-session", "callId": "prepare",
+		result := call("prepare", map[string]any{"task_name": "unauthorized"}, mcp.Meta{"threadId": thread, "sessionId": "host-session", "callId": "prepare", "itemId": "host-item",
 			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "turn"}}, true)
 		if !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "active coordinator") {
 			t.Fatal("proven root did not reach coordinator admission", result)
@@ -266,17 +266,14 @@ func TestOrchestrateMCP(t *testing.T) {
 	if _, _, err := store.AdvanceWaits(ctx, workspace, "main", []orchestrate.WaitEvent{{ID: "event", Task: "other", Data: jsontext.Value(waitEvent)}}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, dispatch, err := store.ClaimWaitDelivery(ctx, workspace, "main", "wait"); err != nil || !dispatch {
-		t.Fatal("wait claim", dispatch, err)
-	}
-	if err := store.RecordWaitDelivery(ctx, workspace, "main", "wait", "uncertain", "acknowledgement unavailable"); err != nil {
+	if _, err := store.UpdateWait(ctx, workspace, "main", "wait", "uncertain", "acknowledgement unavailable"); err != nil {
 		t.Fatal(err)
 	}
 	before, err := store.List(ctx, workspace, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitsBefore, err := store.UnsettledWaits(ctx, workspace, "main")
+	waitsBefore, err := store.Waits(workspace, "main", "uncertain", "rejected")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +308,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err != nil || string(mustMarshalJSON(before)) != string(mustMarshalJSON(after)) {
 		t.Fatal("listing changed retained batches", err)
 	}
-	waitsAfter, err := store.UnsettledWaits(ctx, workspace, "main")
+	waitsAfter, err := store.Waits(workspace, "main", "uncertain", "rejected")
 	if err != nil || string(mustMarshalJSON(waitsBefore)) != string(mustMarshalJSON(waitsAfter)) {
 		t.Fatal("listing changed wait delivery", err)
 	}
@@ -319,7 +316,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	// original Main's run. Admission does not depend on the thread's name.
 	u.thread = "fork"
 	u.session.start("fork", workspace)
-	forkMeta := mcp.Meta{"threadId": "fork", "sessionId": "resumed-session", "callId": "prepare",
+	forkMeta := mcp.Meta{"threadId": "fork", "sessionId": "resumed-session", "callId": "prepare", "itemId": "host-item",
 		codexTurnMetadataHeader: map[string]any{"thread_id": "fork", "turn_id": "turn"}}
 	call("prepare", map[string]any{"task_name": "independent"}, forkMeta, false)
 	u.thread = "main"

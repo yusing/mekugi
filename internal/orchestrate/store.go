@@ -81,6 +81,14 @@ func (s *Store) runPath(workspace, main string) (string, error) {
 // Snapshot reads atomically published facts without waiting for a run lock.
 // It grants no dispatch and performs no checkout effects.
 func (s *Store) Snapshot(workspace, main string) ([]Batch, error) {
+	m, err := s.snapshot(workspace, main)
+	if err != nil {
+		return nil, err
+	}
+	return m.Batches, nil
+}
+
+func (s *Store) snapshot(workspace, main string) (*manifest, error) {
 	path, err := s.runPath(workspace, main)
 	if err != nil {
 		return nil, err
@@ -96,7 +104,7 @@ func (s *Store) Snapshot(workspace, main string) ([]Batch, error) {
 	if m.Version != 1 || m.Workspace != workspace || m.Main != main {
 		return nil, errors.New("orchestration manifest identity mismatch")
 	}
-	return m.Batches, nil
+	return &m, nil
 }
 
 // withRun serializes separate router processes without holding replay-store locks.

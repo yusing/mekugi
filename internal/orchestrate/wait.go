@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"errors"
+	"os"
 	"slices"
 	"time"
 )
@@ -20,6 +21,8 @@ type WaitEvent struct {
 
 type Wait struct {
 	ID        string         `json:"id"`
+	Turn      string         `json:"turn,omitempty"`
+	Item      string         `json:"item,omitempty"`
 	Targets   []string       `json:"targets,omitempty"`
 	TimeoutMS int            `json:"timeout_ms,omitzero"`
 	Deadline  time.Time      `json:"deadline,omitzero"`
@@ -31,9 +34,8 @@ type Wait struct {
 }
 
 type WaitState struct {
-	Events        []WaitEvent       `json:"events,omitempty"`
-	Cancellations map[string]string `json:"cancellations,omitempty"`
-	Waits         []Wait            `json:"waits,omitempty"`
+	Events []WaitEvent `json:"events,omitempty"`
+	Waits  []Wait      `json:"waits,omitempty"`
 }
 
 // The run retains the event for presentation after restart. Repeated tool
@@ -52,16 +54,13 @@ func (s *Store) RegisterWait(ctx context.Context, workspace, main string, input 
 		if input.ID == "" || input.TimeoutMS < 0 || input.TimeoutMS > 1500000 {
 			return errors.New("invalid wait identity or deadline")
 		}
-		if _, exists := m.Wait.Cancellations[input.ID]; exists {
-			return errors.New("wait call already used for cancellation")
-		}
 		slices.Sort(input.Targets)
 		input.Targets = slices.Compact(input.Targets)
 		for _, w := range m.Wait.Waits {
 			if w.ID != input.ID {
 				continue
 			}
-			if !slices.Equal(w.Targets, input.Targets) || w.TimeoutMS != input.TimeoutMS {
+			if !slices.Equal(w.Targets, input.Targets) || w.TimeoutMS != input.TimeoutMS || w.Turn != input.Turn || w.Item != input.Item {
 				return errors.New("wait call already has different input")
 			}
 			result = w.reply()
@@ -134,7 +133,7 @@ func resolveWaits(state *WaitState, now time.Time) bool {
 }
 
 // AdvanceWaits publishes observations and resolves logical deadlines. It never
-// repeats a host effect. Ready results need a separate durable dispatch claim.
+// repeats a host effect. Returned results are durably claimed for one dispatch.
 func (s *Store) AdvanceWaits(ctx context.Context, workspace, main string, events []WaitEvent, now time.Time) (ready []Wait, deadline time.Time, err error) {
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
 		changed := false
@@ -150,9 +149,11 @@ func (s *Store) AdvanceWaits(ctx context.Context, workspace, main string, events
 			changed = true
 		}
 		changed = resolveWaits(&m.Wait, now) || changed
-		for _, w := range m.Wait.Waits {
+		for i := range m.Wait.Waits {
+			w := &m.Wait.Waits[i]
 			if w.State == "ready" {
-				ready = append(ready, w)
+				w.State, changed = "dispatching", true
+				ready = append(ready, *w)
 			}
 			if w.State == "registered" && !w.Deadline.IsZero() && (deadline.IsZero() || w.Deadline.Before(deadline)) {
 				deadline = w.Deadline
@@ -166,88 +167,30 @@ func (s *Store) AdvanceWaits(ctx context.Context, workspace, main string, events
 	return
 }
 
-func (s *Store) CancelWait(ctx context.Context, workspace, main, callID, id string) (result Wait, err error) {
+// UpdateWait records cancellation or a host delivery outcome. A ready result
+// can be restored only when the dispatcher confirms no host call was attempted.
+func (s *Store) UpdateWait(ctx context.Context, workspace, main, id, state, message string) (result Wait, err error) {
+	if state != "canceled" && state != "ready" && state != "delivered" && state != "rejected" && state != "uncertain" {
+		return result, errors.New("invalid wait delivery outcome")
+	}
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
-		if callID == "" {
-			return errors.New("cancellation requires call identity")
-		}
-		target, exists := m.Wait.Cancellations[callID]
-		if exists && target != id {
-			return errors.New("cancellation call already has different input")
-		}
-		if slices.ContainsFunc(m.Wait.Waits, func(w Wait) bool { return w.ID == callID }) {
-			return errors.New("wait call already used for registration")
-		}
-		if m.Wait.Cancellations == nil {
-			m.Wait.Cancellations = make(map[string]string)
-		}
-		m.Wait.Cancellations[callID] = id
-
 		for i := range m.Wait.Waits {
 			w := &m.Wait.Waits[i]
 			if w.ID != id {
 				continue
-			}
-			if w.State == "dispatching" {
-				return errors.New("wait delivery is in progress")
-			}
-			// Canceling an unconfirmed delivery is Main's statement that the
-			// result is absent from its history, so its event is queued again.
-			if w.State == "registered" || w.State == "ready" || w.State == "rejected" || w.State == "uncertain" {
-				releaseWaitEvent(&m.Wait, id, true)
-				w.State, w.EventID, w.Event, w.TimedOut, w.Error = "canceled", "", nil, false, ""
-				result = *w
-				return s.save(m, path)
 			}
 			result = w.reply()
-			if exists {
-				return nil
-			}
-			return s.save(m, path)
-		}
-		return errors.New("unknown wait identity")
-	})
-	return
-}
-
-// ClaimWaitDelivery prevents both concurrent routers and recovery from blindly
-// repeating an injection whose acknowledgement may have been lost.
-func (s *Store) ClaimWaitDelivery(ctx context.Context, workspace, main, id string) (result Wait, dispatch bool, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
-		for i := range m.Wait.Waits {
-			w := &m.Wait.Waits[i]
-			if w.ID != id {
-				continue
-			}
-			if w.State != "ready" {
-				result = w.reply()
-				return nil
-			}
-			w.State = "dispatching"
-			result = *w
-			err := s.save(m, path)
-			dispatch = err == nil
-			return err
-		}
-		return errors.New("unknown wait identity")
-	})
-	return
-}
-
-func (s *Store) RecordWaitDelivery(ctx context.Context, workspace, main, id, state, message string) error {
-	// ready is permitted only when the dispatcher confirms no host call was attempted.
-	if state != "ready" && state != "delivered" && state != "rejected" && state != "uncertain" {
-		return errors.New("invalid wait delivery outcome")
-	}
-	return s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
-		for i := range m.Wait.Waits {
-			w := &m.Wait.Waits[i]
-			if w.ID != id {
-				continue
-			}
-			// A late host acknowledgement also settles a delivery that
-			// recovery marked uncertain.
-			if w.State != "dispatching" && (w.State != "uncertain" || state == "ready") {
+			if state == "canceled" {
+				if w.State == "dispatching" {
+					return errors.New("wait delivery is in progress")
+				}
+				if w.State != "registered" && w.State != "ready" && w.State != "rejected" && w.State != "uncertain" {
+					return nil
+				}
+				// Canceling an unconfirmed result states it is absent from history.
+				releaseWaitEvent(&m.Wait, id, true)
+				w.EventID, w.Event, w.TimedOut = "", nil, false
+			} else if w.State != "dispatching" && (w.State != "uncertain" || state == "ready") {
 				if w.State == state && w.Error == message {
 					return nil
 				}
@@ -255,26 +198,12 @@ func (s *Store) RecordWaitDelivery(ctx context.Context, workspace, main, id, sta
 			}
 			w.State, w.Error = state, message
 			if state == "delivered" {
-				// Keep the selected result as history, not as a queued event.
 				releaseWaitEvent(&m.Wait, id, false)
 			}
+			result = *w
 			return s.save(m, path)
 		}
 		return errors.New("unknown wait identity")
-	})
-}
-
-// WaitHistory reads logical subscription outcomes without registering a wait,
-// delivering an event, or reviving a host request. Immediate completed replies
-// already carry their result in the host tool history.
-func (s *Store) WaitHistory(ctx context.Context, workspace, main string) (waits []Wait, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, _ string) error {
-		for _, w := range m.Wait.Waits {
-			if w.State != "registered" && w.State != "completed" {
-				waits = append(waits, w)
-			}
-		}
-		return nil
 	})
 	return
 }
@@ -299,15 +228,41 @@ func (s *Store) RecoverWaits(ctx context.Context, workspace, main string) error 
 	})
 }
 
-// UnsettledWaits lists deliveries that need Main's reconciliation.
-func (s *Store) UnsettledWaits(ctx context.Context, workspace, main string) (waits []Wait, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, _ string) error {
-		for _, w := range m.Wait.Waits {
-			if w.State == "uncertain" || w.State == "rejected" {
-				waits = append(waits, w)
-			}
+// Waits reads retained outcomes without dispatch or run creation.
+func (s *Store) Waits(workspace, main string, states ...string) ([]Wait, error) {
+	m, err := s.snapshot(workspace, main)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(m.Wait.Waits, func(w Wait) bool { return len(states) != 0 && !slices.Contains(states, w.State) }), nil
+}
+
+// TurnWaits reads suspension evidence without locks or creating a run. A
+// selected result still suppresses journal resume for its originating turn;
+// only the result's host input can wake Main.
+func (s *Store) TurnWaits(workspace, main, turn string) ([]Wait, error) {
+	if turn == "" || workspace == "" {
+		return nil, nil
+	}
+	waits, err := s.Waits(workspace, main, "registered", "ready", "dispatching", "delivered", "uncertain", "rejected")
+	return slices.DeleteFunc(waits, func(w Wait) bool { return w.Turn != turn }), err
+}
+
+// StopWaits cancels only unsent waits. An already dispatched host input remains
+// uncertain until its acknowledgement; stopping never repeats that input.
+func (s *Store) StopWaits(ctx context.Context, workspace, main string) ([]Wait, error) {
+	waits, err := s.Waits(workspace, main, "registered", "ready")
+	if err != nil {
+		return nil, err
+	}
+	for i, w := range waits {
+		waits[i], err = s.UpdateWait(ctx, workspace, main, w.ID, "canceled", "")
+		if err != nil {
+			return nil, err
 		}
-		return nil
-	})
-	return
+	}
+	return waits, nil
 }

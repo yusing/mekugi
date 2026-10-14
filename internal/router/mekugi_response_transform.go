@@ -412,7 +412,9 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
 		observation, observed := t.snapshotExecObservation(captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches)))
 		previewOpened := t.openStockExecWindow(callID, observation, patches, execs, dynamic, true)
-		if len(patches) == 0 && !observed && !previewOpened {
+		// Wait suspension needs exact item provenance even for an exec with no
+		// stock commands: Codex can omit its provider ID on continuation.
+		if len(patches) == 0 && !observed && !previewOpened && t.proxy.orchestration == nil {
 			return false, nil
 		}
 		if observation == nil && len(execs) != 0 {

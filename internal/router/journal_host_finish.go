@@ -51,6 +51,26 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 	if err != nil {
 		return false, err
 	}
+	// Waits share finish's enclosing-host-result proof without journal receipts.
+	waitItems := make(map[string]bool)
+	if runtime := t.proxy.orchestration; runtime != nil {
+		workspace := t.directory
+		if workspace == "" && t.proxy.replayStore != nil {
+			workspace, err = t.proxy.replayStore.retainedJournalWorkspace(t.shellThreadID, false)
+			if err != nil && !errors.Is(err, errNoRetainedJournalWorkspace) {
+				return false, err
+			}
+		}
+		waits, err := runtime.store.TurnWaits(workspace, t.shellThreadID, t.shellTurnID)
+		if err != nil {
+			return false, err
+		}
+		for _, w := range waits {
+			if w.Item != "" {
+				waitItems[w.Item] = true
+			}
+		}
+	}
 	type invocation struct {
 		executionCall
 		origin string
@@ -61,10 +81,12 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 	var candidateCodeMode bool
 	finished := false
 	for _, item := range items {
-		if jsonString(item, "role") == "user" {
+		callID := jsonString(item, "call_id")
+		// Host toolOutput input has no call ID and, like user input, must
+		// reach inference even when the preceding exec requested completion.
+		if jsonString(item, "role") == "user" || jsonString(item, "type") == "function_call_output" && callID == "" {
 			candidate, active, handle, finished = "", "", "", false
 		}
-		callID := jsonString(item, "call_id")
 		if callID == "" {
 			continue
 		}
@@ -76,9 +98,15 @@ func (t *mekugiResponseTransform) journalHostFinished(raw jsonv1.RawMessage) (bo
 				call.origin = prior.origin
 				delete(live, call.resumeHandle)
 			}
+			// Codex omits nonstandard provider item IDs on continuation. Use
+			// only this call's retained provenance, never another wait in the turn.
+			itemID := jsonString(item, "id")
+			if itemID == "" && history.ExecutingThread == t.shellThreadID {
+				itemID = jsonString(history.UpstreamItem, "id")
+			}
 			_, legacyFinish := receipts["runtime:"+journalHostFinishReceipt(t.shellTurnID, callID)]
-			_, mcpFinish := receipts["runtime:"+journalHostFinishReceipt(t.shellTurnID, jsonString(item, "id"))]
-			if legacyFinish && history.JournalFinishTurnID == t.shellTurnID && history.ExecutingThread == t.shellThreadID || mcpFinish {
+			_, mcpFinish := receipts["runtime:"+journalHostFinishReceipt(t.shellTurnID, itemID)]
+			if legacyFinish && history.JournalFinishTurnID == t.shellTurnID && history.ExecutingThread == t.shellThreadID || mcpFinish || waitItems[itemID] {
 				call.origin = callID
 			}
 			calls[callID] = call

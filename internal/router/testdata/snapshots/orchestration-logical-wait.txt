@@ -1,4 +1,6 @@
-• Wait registered · batch, archive_integrated, check, review, docs, tests, cleanup
+• Waiting for agent · batch, archive_integrated, check, review, docs, tests, cleanup
+
+• Waiting for agent (timeout 15s) · batch, archive_integrated, check, review, docs, tests, cleanup
 
 • Wait yielded · archive_integrated: Message
 
@@ -19,8 +21,6 @@
 • Wait result delivered
 
 • Wait ended (no event reported)
-
-
 
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ ❯                                                                                                │

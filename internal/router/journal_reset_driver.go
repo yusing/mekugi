@@ -68,6 +68,12 @@ func (d *journalResetDriver) completed(turn string) error {
 		}
 		return nil
 	}
+	if runtime := d.proxy.orchestration; runtime != nil {
+		waits, err := runtime.store.TurnWaits(d.workspace, d.thread, turn)
+		if err != nil || len(waits) != 0 {
+			return err
+		}
+	}
 	intent, err := d.proxy.journals.completedSlice(d.ctx, d.proxy.replayStore, d.workspace, d.thread, turn)
 	if err != nil || intent == nil {
 		return err
@@ -153,6 +159,15 @@ func (d *journalResetDriver) needsContextReset() bool {
 func (d *journalResetDriver) start() error {
 	if d == nil || d.intent == nil || d.active() {
 		return nil
+	}
+	if runtime := d.proxy.orchestration; runtime != nil {
+		waits, err := runtime.store.TurnWaits(d.workspace, d.thread, d.intent.Turn)
+		if err != nil {
+			return err
+		}
+		if len(waits) != 0 {
+			return d.finish()
+		}
 	}
 	if !d.needsContextReset() {
 		return d.continuePlan(false)

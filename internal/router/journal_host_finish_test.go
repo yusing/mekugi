@@ -3,13 +3,16 @@ package router
 import (
 	"bytes"
 	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"fmt"
+	"github.com/yusing/mekugi/internal/orchestrate"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/capturer"
 )
@@ -28,6 +31,7 @@ func TestJournalHostFinishRequiresMatchingTerminalHostResult(t *testing.T) {
 	done := "Wall time: 0.1 seconds\nProcess exited with code 0\nOutput:\ndone"
 	yielded := "Wall time: 0.1 seconds\nProcess running with session ID 7\nOutput:\n"
 	user := map[string]jsonv1.RawMessage{"role": mustMarshalJSON("user"), "content": mustMarshalJSON("new input")}
+	hostInput := map[string]jsonv1.RawMessage{"type": mustMarshalJSON("function_call_output"), "name": mustMarshalJSON("mailbox"), "output": mustMarshalJSON("new host input")}
 	for _, test := range []struct {
 		name, turn, executingThread string
 		input                       []map[string]jsonv1.RawMessage
@@ -43,6 +47,7 @@ func TestJournalHostFinishRequiresMatchingTerminalHostResult(t *testing.T) {
 		{"missing turn", "", "thread", []map[string]jsonv1.RawMessage{host, output("host", done)}, false},
 		{"wrong executing thread", "turn", "other", []map[string]jsonv1.RawMessage{host, output("host", done)}, false},
 		{"steered", "turn", "thread", []map[string]jsonv1.RawMessage{host, user, output("host", done)}, false},
+		{"host tool input", "turn", "thread", []map[string]jsonv1.RawMessage{host, hostInput, output("host", done)}, false},
 		{"new user after result", "turn", "thread", []map[string]jsonv1.RawMessage{host, output("host", done), user}, false},
 		{"another call pending", "turn", "thread", []map[string]jsonv1.RawMessage{call("other", "lookup", "{}"), host, output("host", done)}, false},
 		{"later unrelated call", "turn", "thread", []map[string]jsonv1.RawMessage{host, output("host", done), call("other", "lookup", "{}"), output("other", "{}")}, false},
@@ -249,5 +254,74 @@ func TestJournalHostFinishCodeModeContinuationChains(t *testing.T) {
 				t.Fatalf("finished = %v, %v; want %v", got, err, test.want)
 			}
 		})
+	}
+}
+
+func TestOrchestrateWaitSuspendsHostAndJournalContinuation(t *testing.T) {
+	d, wire := resetDriverFixture(t, "auto")
+	store := &orchestrate.Store{Directory: t.TempDir()}
+	d.proxy.orchestration = &orchestrateRuntime{store: store}
+	now := time.Now()
+	input := orchestrate.Wait{ID: "wait", Turn: "first-turn", Item: "host-item"}
+	if _, err := store.RegisterWait(t.Context(), d.workspace, d.thread, input, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.start(); err != nil || d.active() || wire.Len() != 0 {
+		t.Fatal("restored intent resumed while waiting", err, wire.String())
+	}
+	transform := &mekugiResponseTransform{ctx: t.Context(), proxy: d.proxy, directory: d.workspace, shellThreadID: d.thread, shellTurnID: input.Turn}
+	raw := mustMarshalJSON([]any{
+		map[string]any{"type": "function_call", "id": input.Item, "call_id": "host", "name": "exec_command", "arguments": `{"cmd":"true"}`},
+		map[string]any{"type": "function_call_output", "call_id": "host", "output": "Wall time: 0.1 seconds\nProcess exited with code 0\nOutput:\n"},
+	})
+	if finished, err := transform.journalHostFinished(raw); err != nil || !finished {
+		t.Fatal("successful enclosing result did not suspend", finished, err)
+	}
+	for _, identity := range []string{"", "unrelated-item"} {
+		var unrelated []map[string]jsonv1.RawMessage
+		if err := json.Unmarshal(raw, &unrelated); err != nil {
+			t.Fatal(err)
+		}
+		unrelated[0]["id"] = mustMarshalJSON(identity)
+		if finished, err := transform.journalHostFinished(mustMarshalJSON(unrelated)); err != nil || finished {
+			t.Fatal("another call in the wait turn acquired suspension", identity, finished, err)
+		}
+	}
+	if err := d.completed(input.Turn); err != nil || wire.Len() != 0 {
+		t.Fatal("journal auto resume woke waiting Main", err, wire.String())
+	}
+	if ready, deadline, err := store.AdvanceWaits(t.Context(), d.workspace, d.thread, nil, now.Add(24*time.Hour)); err != nil || len(ready) != 0 || !deadline.IsZero() {
+		t.Fatal("wait woke without a yield", ready, deadline, err)
+	}
+	event := orchestrate.WaitEvent{ID: "selected", Task: "batch", Data: []byte(`{"kind":"message","task_name":"batch"}`)}
+	if _, _, err := store.AdvanceWaits(t.Context(), d.workspace, d.thread, []orchestrate.WaitEvent{event}, now); err != nil {
+		t.Fatal(err)
+	}
+	var yielded []map[string]jsonv1.RawMessage
+	if err := json.Unmarshal(raw, &yielded); err != nil {
+		t.Fatal(err)
+	}
+	// Codex turn/start toolOutput produces a function output with name and
+	// namespace, without call_id. Its presence, not the dispatch claim or
+	// acknowledgement, is the input boundary that releases suspension.
+	yielded = append(yielded, map[string]jsonv1.RawMessage{
+		"type": mustMarshalJSON("function_call_output"), "namespace": mustMarshalJSON("orchestrate"),
+		"name": mustMarshalJSON("wait_agent"), "output": mustMarshalJSON("WAIT_RESULT"),
+	})
+	for _, state := range []string{"dispatching", "delivered"} {
+		if state == "delivered" {
+			if _, err := store.UpdateWait(t.Context(), d.workspace, d.thread, input.ID, state, ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if finished, err := transform.journalHostFinished(raw); err != nil || !finished {
+			t.Fatal("claim or acknowledgement resumed Main before selected input", state, finished, err)
+		}
+		if finished, err := transform.journalHostFinished(mustMarshalJSON(yielded)); err != nil || finished {
+			t.Fatal("selected host input was swallowed", state, finished, err)
+		}
+	}
+	if err := d.completed(input.Turn); err != nil || wire.Len() != 0 {
+		t.Fatal("journal raced the event-driven wake", err, wire.String())
 	}
 }

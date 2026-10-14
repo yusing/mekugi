@@ -24,18 +24,19 @@ type orchestrateRuntime struct {
 }
 
 type orchestrateCommand struct {
-	ctx             context.Context
-	workspace, main string
-	input           orchestrateSpawnInput
-	prepare         orchestratePrepareInput
-	target          string
-	tool            string
-	waitTimeout     int
-	waitCancel      string
-	waitTargets     []string // Empty selects all batches in this coordinator run.
-	caller, callID  string
-	reviewWaiver    string
-	reply           chan orchestrateResult
+	ctx                context.Context
+	workspace, main    string
+	input              orchestrateSpawnInput
+	prepare            orchestratePrepareInput
+	target             string
+	tool               string
+	waitTurn, waitItem string
+	waitTimeout        int
+	waitCancel         string
+	waitTargets        []string // Empty selects all batches in this coordinator run.
+	caller, callID     string
+	reviewWaiver       string
+	reply              chan orchestrateResult
 }
 
 type orchestrateResult struct {
@@ -47,6 +48,7 @@ type orchestrateResult struct {
 type orchestrateRPC struct {
 	review                  *orchestrateReviewWork
 	wait                    *orchestrate.Wait
+	waitCanceled            bool
 	waitMain, waitWorkspace string
 	method                  string
 	child                   *orchestrateChild

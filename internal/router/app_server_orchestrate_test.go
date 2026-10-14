@@ -70,7 +70,7 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	u.statusConfig.PermissionProfile = []byte(`{"id":":workspace"}`)
 	u.statusConfig.WorkspaceRoots = []string{workspace}
 	proxy.orchestration.active.Store(true)
-	meta := mcp.Meta{"threadId": "main", "sessionId": "session", "callId": "call", codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "main-turn"}}
+	meta := mcp.Meta{"threadId": "main", "sessionId": "session", "callId": "call", "itemId": "host-item", codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "main-turn"}}
 	type callResult struct {
 		value *mcp.CallToolResult
 		err   error

@@ -148,7 +148,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	source := activityui.MarkdownSource(entry.Text)
 	if entry.native != nil && entry.native.orchestration != nil {
 		block := *entry.native.orchestration
-		block.Live = block.Kind == "progress" && entry.native.live && entry.native.phase == "item/started"
+		block.Live = block.Kind == "progress" && entry.native.live && (block.Live || entry.native.phase == "item/started")
 		return []activityui.Block{block}
 	}
 	switch entry.Kind {

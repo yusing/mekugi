@@ -66,7 +66,7 @@ func TestAppServerOrchestrateFinalMessageNotification(t *testing.T) {
 			if !strings.Contains(w.String(), "WAIT_RESULT") {
 				t.Fatal("acknowledged final answer did not settle wait", w.String())
 			}
-			orchestrateTestReply(t, u, btwTestRequest(t, w, "thread/inject_items", "main"), `{}`)
+			orchestrateTestReply(t, u, btwTestRequest(t, w, "turn/start", "main"), `{}`)
 		}
 		u.startOrchestratedChild(c)
 		drainOrchestrateWork(t, u)
@@ -244,10 +244,10 @@ func TestAppServerOrchestrateLogicalWaitHostFlow(t *testing.T) {
 	child := u.orchestrateThreads["child"]
 	u.orchestrateMessage(appserver.Message{ID: []byte(`42`), Method: "item/tool/requestUserInput", Params: []byte(`{"threadId":"child","turnId":"child-turn"}`)})
 	drainOrchestrateWork(t, u)
-	if !strings.Contains(wire.String(), "WAIT_RESULT") || strings.Contains(wire.String(), "FINAL_ANSWER") || strings.Contains(wire.String(), "turn/start") {
+	if !strings.Contains(wire.String(), "WAIT_RESULT") || strings.Contains(wire.String(), "FINAL_ANSWER") {
 		t.Fatal(wire.String())
 	}
-	inject := btwTestRequest(t, wire, "thread/inject_items", "main")
+	inject := btwTestRequest(t, wire, "turn/start", "main")
 	// Lost acknowledgement and restart retain the identity without another effect.
 	u.proxy.orchestration.store = &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
 	u.advanceOrchestratedWaits(u.session.cwd, "main", nil)
@@ -274,7 +274,7 @@ func TestAppServerOrchestrateLogicalWaitHostFlow(t *testing.T) {
 	if !strings.Contains(wire.String(), `\"timed_out\":true`) {
 		t.Fatal("missing asynchronous expiry", wire.String())
 	}
-	orchestrateTestReply(t, u, btwTestRequest(t, wire, "thread/inject_items", "main"), `{}`)
+	orchestrateTestReply(t, u, btwTestRequest(t, wire, "turn/start", "main"), `{}`)
 	if r = call(t.Context(), "cancel-me", "", 0); r.wait.State != "registered" {
 		t.Fatal(r.wait)
 	}
@@ -288,6 +288,14 @@ func TestAppServerOrchestrateLogicalWaitHostFlow(t *testing.T) {
 	}
 	if e := waitTestEvent(t, call(t.Context(), "observe", "", 0)); e.Kind != "approval" {
 		t.Fatal(e)
+	}
+	call(t.Context(), "human-stop", "", 0)
+	if err := u.interruptTurn(); err != nil {
+		t.Fatal(err)
+	}
+	drainOrchestrateWork(t, u)
+	if r := call(t.Context(), "human-stop", "", 0); r.wait.State != "canceled" || wire.Len() != 0 {
+		t.Fatal("idle Main interruption did not cancel the wait", r, wire.String())
 	}
 }
 
@@ -314,10 +322,10 @@ func TestAppServerOrchestrateWaitRecoveryDeadline(t *testing.T) {
 	restored.proxy = &mekugiProxy{orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: store.Directory}}}
 	restored.recoverOrchestratedRun()
 	drainOrchestrateWork(t, restored)
-	if strings.Contains(wire.String(), "thread/resume") || strings.Contains(wire.String(), "turn/start") || !strings.Contains(wire.String(), "WAIT_RESULT") {
+	if strings.Contains(wire.String(), "thread/resume") || !strings.Contains(wire.String(), "WAIT_RESULT") {
 		t.Fatal(wire.String())
 	}
-	orchestrateTestReply(t, restored, btwTestRequest(t, wire, "thread/inject_items", "main"), `{}`)
+	orchestrateTestReply(t, restored, btwTestRequest(t, wire, "turn/start", "main"), `{}`)
 	if w, err := store.RegisterWait(t.Context(), workspace, "main", orchestrate.Wait{ID: "resume", TimeoutMS: 1}, now); err != nil || w.State != "delivered" || !w.TimedOut {
 		t.Fatal(w, err)
 	}

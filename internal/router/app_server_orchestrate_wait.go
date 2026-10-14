@@ -28,12 +28,6 @@ type orchestrateEvent struct {
 	Path                       string         `json:"path,omitempty"`
 }
 
-type orchestrateWaitRun struct{ workspace, main string }
-type orchestrateWaitSchedule struct {
-	deadline, retry time.Time
-	pending         int
-}
-
 // Registration belongs to the durable run, not the MCP request lifetime.
 func (u *appServerUI) waitOrchestratedEvent(command *orchestrateCommand) {
 	u.flushOrchestratedEvents()
@@ -43,9 +37,9 @@ func (u *appServerUI) waitOrchestratedEvent(command *orchestrateCommand) {
 		var w orchestrate.Wait
 		var err error
 		if command.waitCancel != "" {
-			w, err = store.CancelWait(command.ctx, command.workspace, command.main, command.callID, command.waitCancel)
+			w, err = store.UpdateWait(command.ctx, command.workspace, command.main, command.waitCancel, "canceled", "")
 		} else {
-			w, err = store.RegisterWait(command.ctx, command.workspace, command.main, orchestrate.Wait{ID: command.callID, Targets: command.waitTargets, TimeoutMS: command.waitTimeout}, now)
+			w, err = store.RegisterWait(command.ctx, command.workspace, command.main, orchestrate.Wait{ID: command.callID, Turn: command.waitTurn, Item: command.waitItem, Targets: command.waitTargets, TimeoutMS: command.waitTimeout}, now)
 		}
 		return func() {
 			command.reply <- orchestrateResult{wait: &w, err: err}
@@ -79,18 +73,14 @@ func (u *appServerUI) flushOrchestratedEvents() {
 		return event.main != u.thread || event.workspace != u.session.cwd
 	})
 	events := u.orchestrateEvents
-	for run, schedule := range u.orchestrateWaitRuns {
-		if schedule.pending != 0 {
-			continue
+	dueAt := u.orchestrateWaitDeadline
+	if !u.orchestrateWaitRetry.IsZero() {
+		if u.now().Before(u.orchestrateWaitRetry) {
+			return
 		}
-		due := schedule.deadline
-		if !schedule.retry.IsZero() {
-			due = schedule.retry
-		}
-		if !due.IsZero() && !u.now().Before(due) {
-			u.advanceOrchestratedWaits(run.workspace, run.main, nil)
-		}
+		dueAt = u.orchestrateWaitRetry
 	}
+	due := !dueAt.IsZero() && !u.now().Before(dueAt)
 
 	u.orchestrateEvents = nil
 	// Acceptance is a live lifecycle trigger, not a replayable wait event.
@@ -101,36 +91,19 @@ func (u *appServerUI) flushOrchestratedEvents() {
 		u.cleanAcceptedOrchestratedChild(event)
 		return true
 	})
-	if len(events) != 0 {
-		first := events[0]
-		schedule := u.orchestrateWaitRuns[orchestrateWaitRun{first.workspace, first.main}]
-		if schedule != nil && !schedule.retry.IsZero() && u.now().Before(schedule.retry) {
-			u.orchestrateEvents = append(u.orchestrateEvents, events...)
-		} else {
-			u.advanceOrchestratedWaits(first.workspace, first.main, events)
-		}
+	if len(events) != 0 || due {
+		u.orchestrateWaitDeadline, u.orchestrateWaitRetry = time.Time{}, time.Time{}
+		u.advanceOrchestratedWaits(u.session.cwd, u.thread, events)
 	}
-}
-
-func (u *appServerUI) orchestratedWaitSchedule(workspace, main string) *orchestrateWaitSchedule {
-	if u.orchestrateWaitRuns == nil {
-		u.orchestrateWaitRuns = make(map[orchestrateWaitRun]*orchestrateWaitSchedule)
-	}
-	run := orchestrateWaitRun{workspace, main}
-	schedule := u.orchestrateWaitRuns[run]
-	if schedule == nil {
-		schedule = &orchestrateWaitSchedule{}
-		u.orchestrateWaitRuns[run] = schedule
-	}
-	return schedule
 }
 
 func (u *appServerUI) advanceOrchestratedWaits(workspace, main string, events []orchestrateEvent) {
+	if workspace != u.session.cwd || main != u.thread {
+		return
+	}
 	store := u.proxy.orchestration.store
 	now := u.now()
-	schedule := u.orchestratedWaitSchedule(workspace, main)
-	generation := u.orchestrateGeneration
-	schedule.pending++
+	generation, stop := u.orchestrateGeneration, u.orchestrateWaitStop
 	u.orchestrateWork(func() func() {
 		retained := make([]orchestrate.WaitEvent, 0, len(events))
 		for _, e := range events {
@@ -142,69 +115,39 @@ func (u *appServerUI) advanceOrchestratedWaits(workspace, main string, events []
 			retained = append(retained, orchestrate.WaitEvent{ID: id, Task: e.Task, Data: data, Prompt: e.Kind == "question" || e.Kind == "approval"})
 		}
 		ready, deadline, err := store.AdvanceWaits(context.WithoutCancel(u.ctx), workspace, main, retained, now)
-		return func() {
-			if u.orchestrateGeneration != generation {
-				return
-			}
-			schedule.pending--
-			if err != nil {
-				u.orchestrateEvents = append(events, u.orchestrateEvents...)
-				schedule.retry = u.now().Add(time.Second)
-				if u.orchestrateStorageErr == nil {
-					u.orchestrateStorageErr = err
-				}
-				u.setNotice("Orchestration wait: "+err.Error(), true)
-				return
-			}
-			schedule.deadline, schedule.retry = deadline, time.Time{}
-			for _, w := range ready {
-				u.deliverOrchestratedWait(workspace, main, w)
-			}
+		if err != nil {
+			ready = nil
 		}
-	})
-}
-
-func (u *appServerUI) deliverOrchestratedWait(workspace, main string, w orchestrate.Wait) {
-	if u.orchestrateClosing {
-		return
-	}
-	store := u.proxy.orchestration.store
-	generation := u.orchestrateGeneration
-	u.orchestrateWork(func() func() {
-		result, dispatch, err := store.ClaimWaitDelivery(context.WithoutCancel(u.ctx), workspace, main, w.ID)
 		return func() {
-			if u.orchestrateGeneration != generation {
-				if dispatch {
-					// Replacement happened before any host dispatch. Keep the result
-					// available to ordinary recovery of its original coordinator.
-					u.recordOrchestratedWait(orchestrateRPC{wait: &result, waitMain: main, waitWorkspace: workspace}, "ready", "")
+			current := u.orchestrateGeneration == generation && !u.orchestrateClosing
+			if current {
+				u.orchestrateWaitDeadline = deadline
+				if err != nil {
+					u.orchestrateEvents = append(events, u.orchestrateEvents...)
+					u.orchestrateWaitRetry = u.now().Add(time.Second)
+					if u.orchestrateStorageErr == nil {
+						u.orchestrateStorageErr = err
+					}
+					u.setNotice("Orchestration wait: "+err.Error(), true)
+				} else {
+					u.orchestrateWaitRetry = time.Time{}
 				}
-				return
 			}
-			if err != nil {
-				u.orchestratedWaitSchedule(workspace, main).retry = u.now().Add(time.Second)
-				if u.orchestrateStorageErr == nil {
-					u.orchestrateStorageErr = err
+			for _, result := range ready {
+				request := orchestrateRPC{method: "turn/start", wait: &result, waitMain: main, waitWorkspace: workspace}
+				if !current || stop != u.orchestrateWaitStop {
+					// No host call occurred; retain or cancel the selected result.
+					request.waitCanceled = stop != u.orchestrateWaitStop
+					u.recordOrchestratedWait(request, "ready", "")
+					continue
 				}
-				u.setNotice("Orchestration wait: "+err.Error(), true)
-				return
-			}
-			if !dispatch {
-				return
-			}
-			if u.orchestrateClosing {
-				// No host call was attempted. Release only this known-unsent claim.
-				u.recordOrchestratedWait(orchestrateRPC{wait: &result, waitMain: main, waitWorkspace: workspace}, "ready", "")
-				return
-			}
-			notification := result
-			notification.State = "completed"
-			payload, _ := json.Marshal(&notification)
-			text := "Message Type: WAIT_RESULT\nTask name: /root\nSender: orchestrate\nPayload:\n" + string(payload)
-			request := orchestrateRPC{method: "thread/inject_items", wait: &result, waitMain: main, waitWorkspace: workspace}
-			err := u.orchestrateRPCRequest(request, map[string]any{"threadId": main, "items": []any{map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": text}}}}})
-			if err != nil {
-				u.recordOrchestratedWait(request, "uncertain", err.Error())
+				notification := result
+				notification.State = "completed"
+				payload, _ := json.Marshal(&notification)
+				text := "Message Type: WAIT_RESULT\nTask name: /root\nSender: orchestrate\nPayload:\n" + string(payload)
+				if err := u.orchestrateRPCRequest(request, map[string]any{"threadId": main, "input": []any{}, "toolOutput": map[string]any{"namespace": "orchestrate", "name": "wait_agent", "output": text, "retain": true}}); err != nil {
+					u.recordOrchestratedWait(request, "uncertain", err.Error())
+				}
 			}
 		}
 	})
@@ -214,7 +157,10 @@ func (u *appServerUI) recordOrchestratedWait(r orchestrateRPC, state, message st
 	store := u.proxy.orchestration.store
 	generation := u.orchestrateGeneration
 	u.orchestrateWork(func() func() {
-		err := store.RecordWaitDelivery(context.WithoutCancel(u.ctx), r.waitWorkspace, r.waitMain, r.wait.ID, state, message)
+		wait, err := store.UpdateWait(context.WithoutCancel(u.ctx), r.waitWorkspace, r.waitMain, r.wait.ID, state, message)
+		if err == nil && r.waitCanceled {
+			wait, err = store.UpdateWait(context.WithoutCancel(u.ctx), r.waitWorkspace, r.waitMain, r.wait.ID, "canceled", "")
+		}
 		return func() {
 			if u.orchestrateGeneration != generation || u.thread != r.waitMain || u.session.cwd != r.waitWorkspace {
 				return
@@ -226,8 +172,6 @@ func (u *appServerUI) recordOrchestratedWait(r orchestrateRPC, state, message st
 				u.setNotice("Orchestration wait delivery: "+message, true)
 			}
 			if err == nil {
-				wait := *r.wait
-				wait.State, wait.Error = state, message
 				u.observeOrchestrationWait(r.waitWorkspace, r.waitMain, wait)
 			}
 		}
@@ -282,4 +226,26 @@ func (u *appServerUI) observeOrchestratedPrompt(m appserver.Message) {
 	if child := u.orchestrateThreads[root]; child != nil {
 		u.publishOrchestratedEvent(child, orchestrateEvent{Task: child.batch.TaskName, Thread: p.ThreadID, Turn: p.TurnID, Kind: kind, Request: slices.Clone(m.ID), Item: item})
 	}
+}
+
+// Human input supersedes unsent waits without interrupting any child. Storage
+// stays on the existing worker; confirmed cancellation updates the owning row.
+func (u *appServerUI) stopOrchestratedWaits() {
+	if u.proxy == nil || u.proxy.orchestration == nil {
+		return
+	}
+	u.orchestrateWaitStop++
+	store, workspace, main := u.proxy.orchestration.store, u.session.cwd, u.thread
+	u.orchestrateWork(func() func() {
+		waits, err := store.StopWaits(context.WithoutCancel(u.ctx), workspace, main)
+		return func() {
+			if err != nil {
+				u.setNotice("Orchestration wait cancellation: "+err.Error(), true)
+				return
+			}
+			for _, wait := range waits {
+				u.observeOrchestrationWait(workspace, main, wait)
+			}
+		}
+	})
 }

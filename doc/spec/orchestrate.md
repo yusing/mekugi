@@ -173,13 +173,16 @@ the next batch completion, message, journal blocker, failure, question or approv
 any selected batch; events from other batches remain queued. Invalid or unknown
 targets reject the wait. An available event returns immediately with
 the task, available host thread and turn identity, event kind and host status.
-Otherwise the call registers a logical wait and promptly returns its identity.
-The logical wait continues independently of the MCP request. Its result is
-delivered through the existing host notification path, without polling model turns.
+Otherwise the call registers a wait and returns its identity. After the enclosing
+exec succeeds, Main's host turn ends locally, without another model request or
+journal auto resume. Main remains suspended until a selected event or explicit
+timeout yields. No sleep, polling call or finish mutation is needed.
+The yield uses Codex's retained tool-output input to start or continue Main,
+without adding human input. The host still owns turn execution and interruption.
 Repeating the same host call does not register or deliver the wait twice.
 The reply contains a wait `id` and `state`. An immediate completed reply carries
 the selected `event`; `registered` means the subscription remains pending.
-Later results arrive as attributed `WAIT_RESULT` notifications with the same wait
+Later results arrive as attributed `WAIT_RESULT` tool output with the same wait
 identity. A canceled subscription returns `canceled`.
 
 To cancel a subscription, call
@@ -206,7 +209,9 @@ event. An uncertain or rejected delivery, including one interrupted by restart, 
 never dispatched again automatically. `list_agents` reports it under
 `unsettled_waits`; canceling it states that the result is absent from Main's history
 and returns its event to the queue. Canceling a registered wait ends its subscription
-without interrupting a child or consuming an undelivered event. Recovery drops
+without interrupting a child or consuming an undelivered event. Human input or
+interruption also cancels unsent waits. An already dispatched yield remains
+host-owned until its outcome is confirmed. Recovery drops
 unclaimed question and approval events because replay does not revive their host
 requests.
 An authored task newly becoming `blocked` in a confirmed child's journal, including
@@ -218,8 +223,9 @@ restored history do not create another event.
 Terminal outcomes become available only after their run record is saved.
 Persistence failure returns `kind: "failure", status: "storage_failed"`.
 Waiting leaves input and host events responsive. An omitted `timeout_ms` means no
-logical deadline, not an indefinitely open MCP request. An explicit timeout accepts
-one millisecond through twenty-five minutes; expiry delivers `timed_out: true`.
+deadline and no automatic wake. An explicit timeout accepts one millisecond
+through twenty-five minutes and stays visible in the active wait row; only its
+expiry delivers `timed_out: true`. The MCP request need not stay open.
 Recovery reconciles retained logical waits and deadlines without reviving host
 processes, transport requests, or live prompt handles.
 
@@ -703,8 +709,8 @@ Orchestration calls use the shared subagent event presentation in the caller's
 Main or Activity feed. Italic headers and accent-colored rails distinguish
 orchestration from native subagent events without changing their wording.
 Confirmed launches use start events; delivered messages
-and follow-ups use attributed message events. Active waits and pending
-registrations name all or the selected batches. A returned event replaces that
+and follow-ups use attributed message events. Active waits name all or the
+selected batches and show an explicit timeout when supplied. A returned event replaces that
 selection with only its source batch and reason: message, done, failure, blocker,
 question or approval, with its reported status when relevant. A message does not
 claim that its sender or any other selected batch finished. Completion, failure and
@@ -713,9 +719,8 @@ event can belong to an earlier turn or workflow generation; delivery and restora
 preserve that event without inferring its freshness. Timeout, cancellation,
 unconfirmed or failed delivery, acknowledged delivery without a repeated event,
 and replies without an event have distinct labels. Event payloads remain in the
-output dialog; the row does not expose message or review text. Logical wait
-registration and later host notifications keep their existing identities and
-delivery behavior. A delayed notification updates the registered row after
+output dialog; the row does not expose message or review text. Wait registration and later host yields retain their identities.
+A delayed yield updates the waiting row after
 acknowledgement, retaining its host item identity and position. Selected results stay in the run's
 presentation history after delivery; repeated tool calls still omit the delivered
 event. Resume restores these rows without delivering notifications again. Older

@@ -109,6 +109,7 @@ func (u *appServerUI) orchestrationActivity(entry *activityPaneEntry, item appSe
 			entry.native.orchestrationWaitID = wait.ID
 		}
 		orchestrationWaitResult(block, wait)
+		block.Live = live && wait.State == "registered"
 		entry.Text = block.ProgressText()
 	}
 
@@ -210,7 +211,7 @@ func (u *appServerUI) observeOrchestrationWait(workspace, main string, wait orch
 // existing output dialog. This projection does not settle the logical wait.
 func orchestrationWaitResult(block *activityui.Block, wait orchestrate.Wait) {
 	if wait.State == "registered" {
-		block.Body = "Wait registered"
+		block.Body = appServerWaitProgress(appServerItem{Type: "collabAgentToolCall", Tool: "wait", waitTimeoutMS: uint64(wait.TimeoutMS)}, "item/started").Body
 		return
 	}
 	block.WaitTargets = nil

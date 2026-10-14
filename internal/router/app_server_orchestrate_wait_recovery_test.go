@@ -1,7 +1,6 @@
 package router
 
 import (
-	"fmt"
 	"github.com/yusing/mekugi/internal/orchestrate"
 	"strings"
 	"testing"
@@ -9,43 +8,31 @@ import (
 )
 
 func TestAppServerOrchestrateWaitShutdownBeforeDispatch(t *testing.T) {
-	for _, claim := range []bool{false, true} {
-		t.Run(fmt.Sprint(claim), func(t *testing.T) {
-			u, launch := orchestrateIdentityPendingTurn(t)
-			orchestrateTestReply(t, u, launch, `{"turn":{"id":"running"}}`)
-			store, workspace := u.proxy.orchestration.store, u.session.cwd
-			now := time.Now()
-			input := orchestrate.Wait{ID: "shutdown"}
-			if _, err := store.RegisterWait(t.Context(), workspace, "main", input, now); err != nil {
-				t.Fatal(err)
-			}
-			if claim {
-				ready, _, err := store.AdvanceWaits(t.Context(), workspace, "main", []orchestrate.WaitEvent{{ID: "approval", Task: "batch", Data: []byte(`{"kind":"approval"}`)}}, now)
-				if err != nil || len(ready) != 1 {
-					t.Fatal(ready, err)
-				}
-				u.deliverOrchestratedWait(workspace, "main", ready[0])
-			} else {
-				u.advanceOrchestratedWaits(workspace, "main", []orchestrateEvent{{Task: "batch", Kind: "approval", Item: "approval"}})
-			}
-			if err := u.closeOrchestrateStorage(); err != nil {
-				t.Fatal(err)
-			}
-			if w, err := store.RegisterWait(t.Context(), workspace, "main", input, now); err != nil || w.State != "ready" {
-				t.Fatal("shutdown lost unsent result", w, err)
-			}
-			if u.client.Input.(*appServerTestInput).Len() != 0 {
-				t.Fatal("shutdown dispatched injection")
-			}
-			restored, wire := resumeOrchestrationMain(t, store, workspace)
-			wire.Reset() // Model and roster requests were already acknowledged by the fixture.
-			drainOrchestrateWork(t, restored)
-			if !strings.Contains(wire.String(), "WAIT_RESULT") {
-				t.Fatal("recovery lost ready result", wire.String())
-			}
-			orchestrateTestReply(t, restored, btwTestRequest(t, wire, "thread/inject_items", "main"), `{}`)
-		})
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"running"}}`)
+	store, workspace := u.proxy.orchestration.store, u.session.cwd
+	now := time.Now()
+	input := orchestrate.Wait{ID: "shutdown"}
+	if _, err := store.RegisterWait(t.Context(), workspace, "main", input, now); err != nil {
+		t.Fatal(err)
 	}
+	u.advanceOrchestratedWaits(workspace, "main", []orchestrateEvent{{Task: "batch", Kind: "approval", Item: "approval"}})
+	if err := u.closeOrchestrateStorage(); err != nil {
+		t.Fatal(err)
+	}
+	if w, err := store.RegisterWait(t.Context(), workspace, "main", input, now); err != nil || w.State != "ready" {
+		t.Fatal("shutdown lost unsent result", w, err)
+	}
+	if u.client.Input.(*appServerTestInput).Len() != 0 {
+		t.Fatal("shutdown dispatched injection")
+	}
+	restored, wire := resumeOrchestrationMain(t, store, workspace)
+	wire.Reset() // Model and roster requests were already acknowledged by the fixture.
+	drainOrchestrateWork(t, restored)
+	if !strings.Contains(wire.String(), "WAIT_RESULT") {
+		t.Fatal("recovery lost ready result", wire.String())
+	}
+	orchestrateTestReply(t, restored, btwTestRequest(t, wire, "turn/start", "main"), `{}`)
 }
 func TestAppServerOrchestrateWaitNoBatchRecovery(t *testing.T) {
 	u, wire := newAppServerTestUI()
@@ -124,31 +111,24 @@ func TestAppServerOrchestrateWaitTransientExpiryFailure(t *testing.T) {
 	}
 }
 
-func TestAppServerOrchestrateWaitTransientClaimFailure(t *testing.T) {
+func TestAppServerOrchestrateWaitStopBeforeHostDispatch(t *testing.T) {
 	u, launch := orchestrateIdentityPendingTurn(t)
 	orchestrateTestReply(t, u, launch, `{"turn":{"id":"running"}}`)
 	store, workspace := u.proxy.orchestration.store, u.session.cwd
-	directory := store.Directory
-	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
-	u.clock = func() time.Time { return now }
-	wire := u.client.Input.(*appServerTestInput)
-	input := orchestrate.Wait{ID: "claim-failure"}
-	if _, err := store.RegisterWait(t.Context(), workspace, "main", input, now); err != nil {
+	input := orchestrate.Wait{ID: "stop"}
+	if _, err := store.RegisterWait(t.Context(), workspace, "main", input, u.now()); err != nil {
 		t.Fatal(err)
 	}
-	u.advanceOrchestratedWaits(workspace, "main", []orchestrateEvent{{Task: "batch", Kind: "approval", Item: "claim-approval"}})
-	// The advance callback appends its claim after this already-queued job.
-	u.orchestrateWork(func() func() { return func() { store.Directory = "invalid-relative-storage" } })
+	u.advanceOrchestratedWaits(workspace, "main", []orchestrateEvent{{Task: "batch", Kind: "message", Item: "selected"}})
+	// The claim is saved, but its UI callback has not sent anything to Codex.
+	complete := <-u.orchestrateCompletions
+	u.stopOrchestratedWaits()
+	u.completeOrchestrateWork(complete)
 	drainOrchestrateWork(t, u)
-	store.Directory = directory
-	w, err := store.RegisterWait(t.Context(), workspace, "main", input, now)
-	if err != nil || w.State != "ready" {
-		t.Fatal("fixture did not retain ready", w, err)
+	if w, err := store.RegisterWait(t.Context(), workspace, "main", input, u.now()); err != nil || w.State != "canceled" || u.client.Input.(*appServerTestInput).Len() != 0 {
+		t.Fatal("stop dispatched a claimed but unsent result", w, err)
 	}
-	now = now.Add(2 * time.Second)
-	u.flushOrchestratedEvents()
-	drainOrchestrateWork(t, u)
-	if !strings.Contains(wire.String(), "WAIT_RESULT") {
-		t.Fatalf("retained ready result has no retry after transient claim failure: state=%s", w.State)
+	if w, err := store.RegisterWait(t.Context(), workspace, "main", orchestrate.Wait{ID: "next"}, u.now()); err != nil || w.State != "completed" || w.EventID == "" {
+		t.Fatal("stop consumed the selected event", w, err)
 	}
 }

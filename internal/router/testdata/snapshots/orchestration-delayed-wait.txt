@@ -1,4 +1,4 @@
-• Wait registered · batch, check, cleanup, docs, other, review, tests
+• Waiting for agent · batch, check, cleanup, docs, other, review, tests
 • Wait yielded · batch: Message
 • Wait result delivered
 • Wait yielded · batch: Recorded failure (storage failed)

@@ -126,9 +126,9 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 			return proxy.orchestration.call(command)
 		})
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Return an available selected event or promptly register a durable logical wait. Results arrive as attributed host notifications without polling. Omitted timeout has no logical deadline; explicit timeout delivers timed_out asynchronously. cancel_id cancels only the subscription. Repeated host calls return retained state. Unconfirmed deliveries appear in list_agents; cancel one only if its result is absent. Final answers reach Main automatically as separate notifications; waiting is optional.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+	mcp.AddTool(server, &mcp.Tool{Name: "wait_agent", Description: "Wait for a selected event. A pending wait ends Main's host turn after this exec succeeds and skips journal auto resume. Only a selected event or explicit timeout wakes Main with attributed tool output. Omit timeout to wait indefinitely; do not sleep or poll. cancel_id cancels only the subscription. Repeated host calls return retained state. Unconfirmed deliveries appear in list_agents; cancel one only if its result is absent. Final answers also reach Main as separate notifications.", InputSchema: map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
 		"cancel_id":  map[string]any{"type": "string", "minLength": 1, "description": "Cancel a wait by ID without interrupting children. Canceling an unconfirmed delivery requeues its event. Cannot be combined with targets or timeout_ms."},
-		"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000, "description": "Logical deadline in milliseconds. Omit for no deadline. The MCP call returns promptly."},
+		"timeout_ms": map[string]any{"type": "integer", "minimum": 1, "maximum": 1500000, "description": "Deadline in milliseconds, visible while waiting. Omit for no timeout wake."},
 		"targets": map[string]any{"description": "Batches in this run: all (default), or a nonempty task-name or /root/task_name list. Returns the next event from any selected batch.", "oneOf": []any{
 			map[string]any{"type": "string", "const": "all"},
 			map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "string", "pattern": "^(/root/)?[a-z][a-z0-9_]{0,63}$"}},
@@ -172,7 +172,16 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 				return nil, nil, errors.New("timeout_ms must be 1..1500000")
 			}
 		}
-		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, tool: "wait_agent", callID: key, waitTargets: targets, waitTimeout: timeout, waitCancel: input.CancelID, reply: make(chan orchestrateResult, 1)}
+		meta := request.Params.GetMeta()
+		item, _ := meta["itemId"].(string)
+		var host struct {
+			Turn string `json:"turn_id"`
+		}
+		encoded, _ := json.Marshal(meta[codexTurnMetadataHeader])
+		if json.Unmarshal(encoded, &host) != nil || host.Turn == "" || item == "" {
+			return nil, nil, errors.New("wait requires host item and turn identity")
+		}
+		command := &orchestrateCommand{ctx: ctx, workspace: workspace, main: thread, tool: "wait_agent", callID: key, waitTurn: host.Turn, waitItem: item, waitTargets: targets, waitTimeout: timeout, waitCancel: input.CancelID, reply: make(chan orchestrateResult, 1)}
 		return proxy.orchestration.call(command)
 	})
 	for _, tool := range []struct{ name, description string }{
@@ -269,7 +278,7 @@ func newOrchestrateMCPServer(proxy *mekugiProxy, store *orchestrate.Store) *mcp.
 		}
 		result := map[string]any{"agents": agents}
 		// Unconfirmed wait deliveries stay visible until Main cancels them.
-		if waits, err := store.UnsettledWaits(ctx, workspace, thread); err != nil {
+		if waits, err := store.Waits(workspace, thread, "uncertain", "rejected"); err != nil {
 			return nil, nil, err
 		} else if len(waits) != 0 {
 			if input.Detail != "full" {

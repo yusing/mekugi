@@ -101,7 +101,9 @@ type appServerUI struct {
 	orchestrateStorageCancel  context.CancelFunc
 	orchestrateStorageErr     error
 	orchestrateEvents         []orchestrateEvent
-	orchestrateWaitRuns       map[orchestrateWaitRun]*orchestrateWaitSchedule
+	orchestrateWaitDeadline   time.Time
+	orchestrateWaitRetry      time.Time
+	orchestrateWaitStop       uint64
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
 	approvals                 nativeApprovalDock
@@ -1008,6 +1010,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
 			if p.Turn.Status == "interrupted" {
+				u.stopOrchestratedWaits()
 				if err := u.reset.stop(p.Turn.ID); err != nil {
 					u.setNotice("Journal stop: "+err.Error(), true)
 				}
@@ -1822,6 +1825,7 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
+	u.stopOrchestratedWaits()
 	if u.orchestrateStarting != nil {
 		u.orchestrateStarting()
 	}

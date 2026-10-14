@@ -51,7 +51,7 @@ func (u *appServerUI) recoverOrchestratedRun() {
 			err = store.RecoverWaits(u.orchestrateStorageContext, workspace, main)
 		}
 		if err == nil {
-			waits, waitErr = store.WaitHistory(u.orchestrateStorageContext, workspace, main)
+			waits, waitErr = store.Waits(workspace, main, "ready", "dispatching", "delivered", "uncertain", "rejected", "canceled")
 		}
 		return func() {
 			if u.orchestrateClosing || u.orchestrateGeneration != generation || u.thread != main || u.session.cwd != workspace {

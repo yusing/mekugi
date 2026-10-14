@@ -294,7 +294,10 @@ func TestOrchestrateWorkflowLifecycle(t *testing.T) {
 	if notice := workflowNotice(t, u, w); !strings.Contains(notice, "Workflow ready") || !strings.Contains(notice, `Implementer report:\nimplementer claims success`) {
 		t.Fatal("readiness omitted the implementer report", notice)
 	}
-	if notice := workflowNotice(t, u, w); !strings.Contains(notice, "WAIT_RESULT") || !strings.Contains(notice, "ready") {
+	request, params := workflowTake(t, u, w, "turn/start", "main", "")
+	raw, _ := json.Marshal(params)
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"wait-yield"}}`)
+	if notice := string(raw); !strings.Contains(notice, "WAIT_RESULT") || !strings.Contains(notice, "ready") {
 		t.Fatal("wait did not observe terminal workflow readiness", notice)
 	}
 	batches, err := u.proxy.orchestration.store.Snapshot(u.session.cwd, "main")

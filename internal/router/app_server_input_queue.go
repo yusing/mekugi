@@ -248,6 +248,7 @@ func (u *appServerUI) send(parts []composerDraft, steer, fromUnsent bool) error 
 			return nil
 		}
 	}
+	u.stopOrchestratedWaits()
 	params := map[string]any{"threadId": u.thread, "input": input, "clientUserMessageId": s.id}
 	method := "turn/start"
 	if steer {

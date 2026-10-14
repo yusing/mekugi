@@ -125,8 +125,10 @@ The shared app-server reset driver uses that snapshot for the
 [subslice reset threshold](../spec/journal.md#journal-continuation) at dispatch.
 Missing evidence keeps the reset behavior;
 the threshold does not change top-level transitions or host-selected compaction.
-The driver dispatches immediately after successful Main completion and owns
-compaction acknowledgement and matching host turn completion, then immediate
+An orchestration wait suppresses automatic continuation for its originating turn,
+including after its result yields. The wait owner supplies the selected result as
+host tool input; journal work remains unchanged. Otherwise the driver dispatches
+immediately after successful Main completion and owns compaction acknowledgement and matching host turn completion, then immediate
 `turn/start`. In-flight automatic compaction remains inside its existing host turn.
 Terminal presentation does not implement a second policy. A continuation's reserved client-message ID identifies its transcript row;
 its acknowledged host turn ID gates pending input. Dispatched intents never replay

@@ -50,7 +50,7 @@ func TestAppServerOrchestrateCoordinatorReplacement(t *testing.T) {
 			btwTestReply(t, u, request, fmt.Sprintf(`{"thread":{"id":"other","cwd":%q},"model":"model"}`, u.session.cwd))
 			resumeTestSettle(t, u, w)
 			drainOrchestrateWork(t, u)
-			if !n.closed || u.navigation != nil || len(u.orchestrateThreads) != 0 || len(u.orchestrateWaitRuns) != 0 || len(u.orchestrateEvents) != 0 {
+			if !n.closed || u.navigation != nil || len(u.orchestrateThreads) != 0 || !u.orchestrateWaitDeadline.IsZero() || len(u.orchestrateEvents) != 0 {
 				t.Fatal("confirmed replacement retained live orchestration")
 			}
 			appServerTestKeys(t, u, "/resume main\r")
@@ -114,48 +114,36 @@ func TestAppServerOrchestrateReplacementRetiresLifecycleCallback(t *testing.T) {
 	btwTestReply(t, u, request, fmt.Sprintf(`{"thread":{"id":"other","cwd":%q}}`, u.session.cwd))
 	resumeTestSettle(t, u, w)
 	drainOrchestrateWork(t, u)
-	if w.Len() != 0 || len(u.orchestrateThreads) != 0 || len(u.orchestrateWaitRuns) != 0 {
+	if w.Len() != 0 || len(u.orchestrateThreads) != 0 || !u.orchestrateWaitDeadline.IsZero() {
 		t.Fatal("retired lifecycle callback dispatched to the old coordinator", w.String())
 	}
 }
 
 func TestAppServerOrchestrateReplacementRetiresWaitCallbacks(t *testing.T) {
-	for _, claim := range []bool{false, true} {
-		t.Run(fmt.Sprint(claim), func(t *testing.T) {
-			u, w := idleOrchestration(t)
-			store, workspace := u.proxy.orchestration.store, u.session.cwd
-			now := time.Now()
-			// Consume the fixture's already completed batch event first.
-			if _, err := store.RegisterWait(t.Context(), workspace, "main", orchestrate.Wait{ID: "previous"}, now); err != nil {
-				t.Fatal(err)
-			}
-			wait := orchestrate.Wait{ID: "detached"}
-			if _, err := store.RegisterWait(t.Context(), workspace, "main", wait, now); err != nil {
-				t.Fatal(err)
-			}
-			appServerTestKeys(t, u, "/clear\r")
-			request := btwTestRequest(t, w, "thread/start", "")
-			if claim {
-				ready, _, err := store.AdvanceWaits(t.Context(), workspace, "main", []orchestrate.WaitEvent{{ID: "event", Task: "batch", Data: []byte(`{"kind":"done"}`)}}, now)
-				if err != nil || len(ready) != 1 {
-					t.Fatal(ready, err)
-				}
-				u.deliverOrchestratedWait(workspace, "main", ready[0])
-			} else {
-				u.advanceOrchestratedWaits(workspace, "main", []orchestrateEvent{{Task: "batch", Kind: "done"}})
-			}
-			btwTestReply(t, u, request, fmt.Sprintf(`{"thread":{"id":"other","cwd":%q}}`, workspace))
-			resumeTestSettle(t, u, w)
-			drainOrchestrateWork(t, u)
-			// A late journal publication belongs to the detached run as well.
-			u.proxy.orchestration.journalEvents = []orchestrateEvent{{main: "main", workspace: workspace, Task: "batch", Kind: "blocked"}}
-			u.flushOrchestratedEvents()
-			if w.Len() != 0 || len(u.orchestrateWaitRuns) != 0 || len(u.orchestrateEvents) != 0 || len(u.orchestrateJobs) != 0 {
-				t.Fatal("retired callback revived wait delivery", w.String())
-			}
-			if retained, err := store.RegisterWait(t.Context(), workspace, "main", wait, now); err != nil || retained.State != "ready" {
-				t.Fatal("replacement lost the durable wait result", retained, err)
-			}
-		})
+	u, w := idleOrchestration(t)
+	store, workspace := u.proxy.orchestration.store, u.session.cwd
+	now := time.Now()
+	// Consume the fixture's already completed batch event first.
+	if _, err := store.RegisterWait(t.Context(), workspace, "main", orchestrate.Wait{ID: "previous"}, now); err != nil {
+		t.Fatal(err)
+	}
+	wait := orchestrate.Wait{ID: "detached"}
+	if _, err := store.RegisterWait(t.Context(), workspace, "main", wait, now); err != nil {
+		t.Fatal(err)
+	}
+	appServerTestKeys(t, u, "/clear\r")
+	request := btwTestRequest(t, w, "thread/start", "")
+	u.advanceOrchestratedWaits(workspace, "main", []orchestrateEvent{{Task: "batch", Kind: "done"}})
+	btwTestReply(t, u, request, fmt.Sprintf(`{"thread":{"id":"other","cwd":%q}}`, workspace))
+	resumeTestSettle(t, u, w)
+	drainOrchestrateWork(t, u)
+	// A late journal publication belongs to the detached run as well.
+	u.proxy.orchestration.journalEvents = []orchestrateEvent{{main: "main", workspace: workspace, Task: "batch", Kind: "blocked"}}
+	u.flushOrchestratedEvents()
+	if w.Len() != 0 || !u.orchestrateWaitDeadline.IsZero() || len(u.orchestrateEvents) != 0 || len(u.orchestrateJobs) != 0 {
+		t.Fatal("retired callback revived wait delivery", w.String())
+	}
+	if retained, err := store.RegisterWait(t.Context(), workspace, "main", wait, now); err != nil || retained.State != "ready" {
+		t.Fatal("replacement lost the durable wait result", retained, err)
 	}
 }

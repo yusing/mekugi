@@ -167,7 +167,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	// storage writes can finish, but their callbacks belong to the retired owner.
 	u.orchestrateGeneration++
 	u.orchestrateThreads, u.orchestrateRequests = nil, nil
-	u.orchestrateWaitRuns, u.orchestrateEvents = nil, nil
+	u.orchestrateWaitDeadline, u.orchestrateWaitRetry, u.orchestrateEvents = time.Time{}, time.Time{}, nil
 	u.orchestrateStorageErr = nil
 	if u.proxy != nil && u.proxy.orchestration != nil {
 		runtime := u.proxy.orchestration
