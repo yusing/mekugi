@@ -12,8 +12,6 @@ import (
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-const maxOutputTokens = 15_500
-
 const outputReadUsage = "mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]"
 
 type outputReadOptions struct {
@@ -26,7 +24,7 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 	options := outputReadOptions{maxTokens: 8000}
 	seen := make(map[string]bool)
 	for len(arguments) > 0 {
-		arguments = expandMaxTokensOption(arguments)
+		arguments = toolplugin.ExpandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if !strings.HasPrefix(flag, "--") {
@@ -38,7 +36,7 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 		}
 		if seen[flag] {
 			if flag == "--max-tokens" {
-				return options, errors.New(maxTokensArgumentError)
+				return options, errors.New(toolplugin.MaxTokensArgumentError)
 			}
 			return options, fmt.Errorf("duplicate option %s", flag)
 		}
@@ -51,11 +49,11 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 			options.stream = strings.TrimPrefix(flag, "--")
 		case "--max-tokens":
 			if len(arguments) == 0 {
-				return options, errors.New(maxTokensArgumentError)
+				return options, errors.New(toolplugin.MaxTokensArgumentError)
 			}
 			value := arguments[0]
 			arguments = arguments[1:]
-			number, err := parseMaxTokens(value)
+			number, err := toolplugin.ParseMaxTokens(value)
 			if err != nil {
 				return options, err
 			}
@@ -169,8 +167,8 @@ func executeMRead(
 					nextHandles = append(nextHandles, id)
 					return nil
 				}
-				if page.NeededTokens > maxOutputTokens {
-					return fmt.Errorf("next row needs ~%d tokens (maximum %d); use mrun with a byte-oriented command", page.NeededTokens, maxOutputTokens)
+				if page.NeededTokens > toolplugin.MaxOutputTokens {
+					return fmt.Errorf("next row needs ~%d tokens (maximum %d); use mrun with a byte-oriented command", page.NeededTokens, toolplugin.MaxOutputTokens)
 				}
 				return fmt.Errorf("next row needs ~%d tokens; retry: mread %s --max-tokens %d", page.NeededTokens, id, page.NeededTokens)
 			}

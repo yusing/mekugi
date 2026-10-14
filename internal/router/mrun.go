@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	mrunDeliveryTokens   = maxOutputTokens
+	mrunDeliveryTokens   = toolplugin.MaxOutputTokens
 	mrunProcessWaitDelay = 2 * time.Second
 )
 
@@ -30,14 +30,14 @@ type mrunOptions struct {
 func parseMRunArguments(arguments []string) (mrunOptions, []string, error) {
 	var options mrunOptions
 	for len(arguments) > 0 {
-		arguments = expandMaxTokensOption(arguments)
+		arguments = toolplugin.ExpandMaxTokensOption(arguments)
 		switch arguments[0] {
 		case "--max-tokens":
 			if len(arguments) < 2 || options.maxTokens != 0 {
-				return options, nil, errors.New(maxTokensArgumentError)
+				return options, nil, errors.New(toolplugin.MaxTokensArgumentError)
 			}
 			value := arguments[1]
-			number, err := parseMaxTokens(value)
+			number, err := toolplugin.ParseMaxTokens(value)
 			if err != nil {
 				return options, nil, err
 			}
@@ -368,7 +368,7 @@ func mrunRetainedKind(text string) string {
 	if !strings.HasSuffix(text, "\n") {
 		return ""
 	}
-	const rowBudget = maxOutputTokens - 64
+	const rowBudget = toolplugin.MaxOutputTokens - 64
 	for row := range strings.SplitAfterSeq(text, "\n") {
 		if len(row) <= rowBudget {
 			continue

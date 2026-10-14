@@ -6,7 +6,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -62,8 +61,8 @@ func formatNativeOutput(ctx context.Context, args []string) (ExecutionOutput, er
 	if len(args) != 4 {
 		return ExecutionOutput{}, errors.New("invalid mrun output selection")
 	}
-	budget, err := strconv.Atoi(args[0])
-	if err != nil || budget < 1 || budget > nativeMaxTokens || strconv.Itoa(budget) != args[0] {
+	budget, err := ParseMaxTokens(args[0])
+	if err != nil {
 		return ExecutionOutput{}, errors.New("invalid mrun output selection")
 	}
 	counter := nativeBudget{}

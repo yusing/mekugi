@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -18,7 +17,7 @@ import (
 // Scan the entire source even after admission stops. Neither an oversized row
 // nor omitted data can grow memory beyond the reader's recovery bounds.
 func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
-	o, rest, err := nativeReaderOptions(args, true, 6000, "")
+	o, rest, err := ParseReaderOptions(args, true, 6000, "")
 	if err != nil {
 		return nativeFailure("mcat", err, "invalid_arguments"), nil
 	}
@@ -30,12 +29,9 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 	}
 	start, end := 0, 0
 	if len(rest) == 2 {
-		a, b, ok := strings.Cut(strings.ReplaceAll(rest[1], "-", ":"), ":")
-		start, err = strconv.Atoi(a)
-		var e error
-		end, e = strconv.Atoi(b)
-		if !ok || err != nil || e != nil || start < 0 || end < 1 || a != strconv.Itoa(start) || b != strconv.Itoa(end) || max(1, start) > end {
-			return nativeFailure("mcat", errors.New("invalid inclusive line range"), "invalid_arguments"), nil
+		start, end, err = ParseLineRange(rest[1])
+		if err != nil {
+			return nativeFailure("mcat", err, "invalid_arguments"), nil
 		}
 		start = max(1, start)
 	}
@@ -85,7 +81,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 		if (start == 0 || line >= start && line <= end) && !oversized {
 			selected++
 			s := row.String() + "\n"
-			if o.number {
+			if o.Number {
 				s = fmt.Sprintf("%6d\t%s", line, s)
 			}
 			if !unavailable {
@@ -97,10 +93,10 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 					retained.WriteString(s)
 				}
 			}
-			if o.tail {
+			if o.Tail {
 				tailRows = append(tailRows, s)
 				tailBytes += len(s)
-				for (o.lines > 0 && len(tailRows)-tailHead > o.lines) || tailBytes > o.budget*128 {
+				for (o.Lines > 0 && len(tailRows)-tailHead > o.Lines) || tailBytes > o.Budget*128 {
 					tailBytes -= len(tailRows[tailHead])
 					tailRows[tailHead] = ""
 					tailHead++
@@ -111,9 +107,9 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 					tailHead = 0
 				}
 			} else if !incomplete {
-				if o.lines > 0 && selected > o.lines {
+				if o.Lines > 0 && selected > o.Lines {
 					incomplete = true
-				} else if shown.Len()+len(s) > o.budget*128 {
+				} else if shown.Len()+len(s) > o.Budget*128 {
 					incomplete = true
 				} else {
 					shown.WriteString(s)
@@ -156,17 +152,17 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 			continue
 		}
 		open = true
-		if (start != 0 && (line < start || line > end)) || oversized || unavailable && !o.tail && incomplete {
+		if (start != 0 && (line < start || line > end)) || oversized || unavailable && !o.Tail && incomplete {
 			continue
 		}
-		if row.Len()+size > nativeMaxTokens*128 {
+		if row.Len()+size > MaxOutputTokens*128 {
 			oversized = true
 			unavailable = true
 			retained.Reset()
 			row.Reset()
 			incomplete = true
-			reason = fmt.Sprintf("row %d exceeds the %d-byte inspection bound; use mrun with a byte-oriented command such as head -c\n", line, nativeMaxTokens*128)
-			if o.tail {
+			reason = fmt.Sprintf("row %d exceeds the %d-byte inspection bound; use mrun with a byte-oriented command such as head -c\n", line, MaxOutputTokens*128)
+			if o.Tail {
 				tailRows = nil
 				tailHead = 0
 				tailBytes = 0
@@ -182,10 +178,10 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 		return fail(fmt.Errorf("rows %d:%d past EOF (%d rows)", start, end, line-1))
 	}
 	current := shown.String()
-	if o.tail {
+	if o.Tail {
 		current = strings.Join(tailRows[tailHead:], "")
 	}
-	bounded, err := budget.selectRows(current, o.budget, o.tail)
+	bounded, err := budget.selectRows(current, o.Budget, o.Tail)
 	if err != nil {
 		return ExecutionOutput{}, err
 	}
@@ -196,16 +192,16 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 		result.ExitCode = 1
 		result.FailureClass = "output_limit"
 		if reason == "" {
-			reason = fmt.Sprintf("output incomplete: %d-token limit reached\n", o.budget)
-			if o.lines > 0 {
-				reason = fmt.Sprintf("output incomplete: %d-line limit or %d-token limit reached\n", o.lines, o.budget)
+			reason = fmt.Sprintf("output incomplete: %d-token limit reached\n", o.Budget)
+			if o.Lines > 0 {
+				reason = fmt.Sprintf("output incomplete: %d-line limit or %d-token limit reached\n", o.Lines, o.Budget)
 			}
 		}
 		result.Stderr = "mcat: " + reason
 		if !unavailable {
 			all := retained.String()
 			omitted := strings.TrimPrefix(all, current)
-			if o.tail {
+			if o.Tail {
 				omitted = strings.TrimSuffix(all, current)
 			}
 			result.OmittedOutput = &OmittedOutput{Stdout: omitted, StdoutKind: "rows"}

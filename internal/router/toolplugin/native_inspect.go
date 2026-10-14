@@ -194,7 +194,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 		}
 		return ExecutionOutput{Stderr: stderr, ExitCode: 1, FailureClass: inspectClass(code)}
 	}
-	options, rest, err := nativeReaderOptions(args, false, 4000, "")
+	options, rest, err := ParseReaderOptions(args, false, 4000, "")
 	if err != nil {
 		return failure(nil, &inspectFailure{"usage", err.Error()}), nil
 	}
@@ -225,7 +225,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 		if len(s) > 65536 {
 			return false, nil
 		}
-		return counter.fits(s, options.budget)
+		return counter.fits(s, options.Budget)
 	}
 	result := ExecutionOutput{}
 	var output, omitted strings.Builder
@@ -308,7 +308,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			}
 		}
 	}
-	result.Stdout, err = counter.selectRows(output.String(), options.budget, false)
+	result.Stdout, err = counter.selectRows(output.String(), options.Budget, false)
 	if err != nil {
 		return ExecutionOutput{}, err
 	}
