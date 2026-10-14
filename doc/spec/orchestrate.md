@@ -235,7 +235,8 @@ while canceled checks show interruption.
 Command checks do not create model threads, turns, or token usage.
 Each candidate retains its queued checks before dispatch. Recovery can continue a
 known-unsent check after explicit resume, but a dispatch without a confirmed result
-requires host reconciliation, not an automatic rerun. A missing result alone does
+requires host reconciliation before another check, including after follow-up input
+starts a new generation. A missing result alone does
 not prove that a command never executed. Older unfinished validation state without dispatch
 evidence requires a decision. Completed check receipts remain tied to their exact
 candidate, command and checkout and are not rerun during recovery.

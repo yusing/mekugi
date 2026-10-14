@@ -74,6 +74,13 @@ func (s *Store) BeginWorkflowDispatch(ctx context.Context, workspace, main, name
 					if generation != w.Generation || w.Phase != PhaseValidation || w.Candidate == nil || d.Revision != w.Candidate.Revision {
 						return errors.New("check dispatch requires the active validation candidate")
 					}
+					// Follow-up input creates a generation, not proof that an older
+					// command stopped. Only known-unsent or settled checks are safe.
+					for _, previous := range w.Dispatches {
+						if previous.Kind == DispatchValidation && (previous.State == DispatchIntent || previous.State == DispatchUncertain || previous.State == DispatchAcknowledged && previous.HostStatus == "") {
+							return errors.New("validation dispatch " + previous.ID + " requires host reconciliation before another check")
+						}
+					}
 					d.State = DispatchIntent
 					record, dispatch = *d, true
 					return nil

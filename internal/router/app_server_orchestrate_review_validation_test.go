@@ -47,6 +47,17 @@ func TestOrchestrateWorkflowValidationRestart(t *testing.T) {
 					t.Fatal("uncertain dispatch changed the candidate or manufactured a receipt")
 				}
 				workflowNotice(t, u, wire)
+				follow := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "inspect", input: orchestrateSpawnInput{Message: "inspect the validation blocker"}, reply: make(chan orchestrateResult, 1)}
+				u.startOrchestratedChild(follow)
+				drainOrchestrateWork(t, u)
+				start, _ := workflowTake(t, u, wire, "turn/start", "child", "")
+				orchestrateTestReply(t, u, start, `{"turn":{"id":"inspect"}}`)
+				orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"inspect","status":"inProgress"}}}`)
+				workflowCompleted(t, u, "child", "inspect", "candidate unchanged")
+				if child.batch.Workflow.Phase != orchestrate.PhaseNeedsDecision || strings.Contains(wire.String(), `"method":"command/exec"`) || !workflowUnsettled(child.batch) {
+					t.Fatal("follow-up repeated validation with unresolved prior effects", child.batch.Workflow, wire.String())
+				}
+				workflowNotice(t, u, wire)
 				return
 			}
 			if state == "unsent" {

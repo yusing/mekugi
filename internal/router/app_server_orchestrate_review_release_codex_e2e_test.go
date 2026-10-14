@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
 const reviewerReleaseProbe = "MEKUGI_TEST_REVIEWER_RELEASE"
@@ -184,6 +185,9 @@ func verifyReviewerRelease(t *testing.T, u *appServerUI, host int, evidence map[
 			t.Fatal("release unloaded implementer")
 		}
 		for _, d := range child.batch.Workflow.Dispatches {
+			if d.Kind != orchestrate.DispatchCorrectness && d.Kind != orchestrate.DispatchSimplification {
+				continue
+			}
 			if d.Archive == nil || d.Archive.State != "archived" || d.HostStatus != "completed" || d.ResultItemID == "" || slices.Contains(loaded.Data, d.ThreadID) {
 				t.Fatal("reviewer runtime or durable outcome was not released correctly")
 			}
