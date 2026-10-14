@@ -7,6 +7,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -54,23 +55,40 @@ func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose o
 	params["approvalPolicy"] = "never"
 	profile := workflowReviewerProfile(scratch)
 	params["permissions"] = profile
+	if err := workflowReviewerStorageParams(params, child.batch.Checkout, scratch); err != nil {
+		return nil, err
+	}
+	return params, nil
+}
+
+// Reapply storage policy on resume without changing the retained role settings.
+func workflowReviewerStorageParams(params map[string]any, checkout, scratch string) error {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return err
+	}
+	if rel, err := filepath.Rel(checkout, cache); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New("reviewer cache must be outside the candidate checkout")
+	}
+	filesystem := map[string]any{":root": "read", scratch: "write"}
+	filesystem[cache] = "write"
+	filesystem[checkout] = "read"
 	config := params["config"].(map[string]any)
 	// Token-budget compaction bypasses local recovery. Retain this on resume.
 	config["features.token_budget"] = false
 	// Source: codex-rs/core/src/config/permissions.rs@ddb33e34b
 	// Named profiles support scratch writes without making cwd writable. Legacy
 	// workspaceWrite policies include cwd and cannot express this boundary.
-	config["permissions."+profile] = map[string]any{
-		"filesystem": map[string]any{":root": "read", scratch: "write"},
+	config["permissions."+workflowReviewerProfile(scratch)] = map[string]any{
+		"filesystem": filesystem,
 		"network":    map[string]any{"enabled": false},
 	}
 	config["shell_environment_policy.set"] = map[string]any{
-		"TMPDIR": scratch, "TMP": scratch, "TEMP": scratch, "GOTMPDIR": scratch,
-		"GOCACHE": filepath.Join(scratch, "go-build"), "XDG_CACHE_HOME": filepath.Join(scratch, "cache"),
+		"TMPDIR": scratch, "TMP": scratch, "TEMP": scratch,
 		// Run storage may itself have an unrelated ancestor repository.
 		"GIT_CEILING_DIRECTORIES": scratch,
 	}
-	return params, nil
+	return nil
 }
 
 // Main owns these reviewer rubrics. Configured developer instructions replace them.
@@ -99,11 +117,20 @@ func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.Workf
 	reused := slices.ContainsFunc(w.Dispatches, func(d orchestrate.WorkflowDispatch) bool {
 		return d.Kind == purpose && d.Generation != w.Generation && d.ThreadID != ""
 	})
+	// A context reset needs this purpose's retained evidence again.
+	if slices.ContainsFunc(w.Dispatches, func(d orchestrate.WorkflowDispatch) bool {
+		return d.Kind == purpose && d.Generation == w.Generation && d.Compaction != nil
+	}) {
+		reused = false
+	}
+	if purpose == orchestrate.DispatchSimplification {
+		text.WriteString(" Review necessity and simplification; run checks only to resolve an equivalence gap.")
+	}
 	if !delta || !reused {
 		text.WriteString(" Current accepted scope (replaces earlier scope): " + w.Assignment.Scope)
 	}
 	if !reused {
-		text.WriteString("\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
+		text.WriteString("\nCandidate source is read-only. Temporary storage and the standard user cache are writable. Reuse exact-candidate runtime receipts; run checks only for a concrete evidence gap. Return the current-candidate JSON verdict as your final answer. Findings need stable IDs and concrete details; blocked needs a reason.")
 	} else {
 		if !delta {
 			text.WriteString(" Review the retained accepted scope against the full baseline.")
@@ -111,6 +138,9 @@ func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.Workf
 		text.WriteString(" Return the current-candidate JSON verdict as your final answer.")
 	}
 	for _, previous := range w.PreviousReviews {
+		if reused || previous.Result.Purpose != orchestrate.ReviewPurpose(purpose) {
+			continue
+		}
 		raw, _ := json.Marshal(&previous)
 		text.WriteString("\nPrior review (retained verdict and dispatch provenance): " + string(raw))
 	}
@@ -128,7 +158,7 @@ func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.Workf
 func workflowCorrectionAssignment(batch orchestrate.Batch) string {
 	var text strings.Builder
 	w := batch.Workflow
-	text.WriteString("Correct the rejected result within the accepted scope, or dispute a review finding with evidence. Commit corrections linearly and leave the checkout clean. Scope: " + w.Assignment.Scope + "\nRejected because: " + w.Reason)
+	text.WriteString("Correct or dispute the findings within the accepted scope. Follow the commit instructions and leave the checkout clean.\n\nAccepted scope: " + w.Assignment.Scope + "\n\nRejected because: " + w.Reason)
 	writeWorkflowEvidence(&text, w)
 	return text.String()
 }
@@ -442,7 +472,10 @@ func (u *appServerUI) resumeWorkflowReviewer(work *orchestrateReviewWork) {
 			return
 		}
 		params["threadId"], params["excludeTurns"] = work.dispatch.ThreadID, true
-		params["config"].(map[string]any)["features.token_budget"] = false
+		if err := workflowReviewerStorageParams(params, work.child.batch.Checkout, work.dispatch.Scratch); err != nil {
+			u.failWorkflowDispatch(work, false, err)
+			return
+		}
 		u.sendWorkflowRequest(work, "thread/resume", params)
 	})
 }

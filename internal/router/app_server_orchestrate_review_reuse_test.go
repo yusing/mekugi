@@ -322,3 +322,35 @@ func TestWorkflowReviewScratchHistoryOnlyShutdown(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkflowReviewerSharedCachePolicy(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, wire := workflowUI(t)
+	child := u.orchestrateThreads["child"]
+	workflowCompleted(t, u, "child", "implement", "done")
+	for _, kind := range []orchestrate.WorkflowDispatchKind{orchestrate.DispatchCorrectness, orchestrate.DispatchSimplification} {
+		_, params := workflowTake(t, u, wire, "thread/start", "", kind)
+		config := params["config"].(map[string]any)
+		environment := config["shell_environment_policy.set"].(map[string]any)
+		if len(environment) != 4 || environment["GOCACHE"] != nil || environment["GOTMPDIR"] != nil || environment["XDG_CACHE_HOME"] != nil {
+			t.Fatal("reviewer overrides project caches", environment)
+		}
+		filesystem := config["permissions."+params["permissions"].(string)].(map[string]any)["filesystem"].(map[string]any)
+		if filesystem[cache] != "write" || filesystem[child.batch.Checkout] != "read" || filesystem[":root"] != "read" {
+			t.Fatal("cache reuse changed source policy", filesystem)
+		}
+		// Old saved reviewer settings are migrated on resume without resolving roles.
+		environment["GOCACHE"] = "/obsolete/private-cache"
+		params["developerInstructions"] = "retained role"
+		if err := workflowReviewerStorageParams(params, child.batch.Checkout, environment["TMPDIR"].(string)); err != nil {
+			t.Fatal(err)
+		}
+		if config["shell_environment_policy.set"].(map[string]any)["GOCACHE"] != nil || params["developerInstructions"] != "retained role" {
+			t.Fatal("resume lost role or retained cold cache")
+		}
+	}
+}

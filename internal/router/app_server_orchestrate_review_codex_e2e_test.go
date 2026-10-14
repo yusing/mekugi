@@ -144,10 +144,15 @@ func (p *workflowCodexProvider) forwardExecution(ctx, responseCtx context.Contex
 					return nil, fmt.Errorf("post-reset continuation repeats recovered %q", duplicate)
 				}
 			}
-			for _, want := range []string{"Reviewer recovery", "Purpose: " + string(purpose), p.revision, "Journal recovery", "Prior review (retained verdict and dispatch provenance)", "Dispute this fixture finding with evidence"} {
+			for _, want := range []string{"Reviewer recovery", "Purpose: " + string(purpose), p.revision, "Journal recovery", "Prior review (retained verdict and dispatch provenance)"} {
 				if !strings.Contains(recovered, want) {
 					return nil, fmt.Errorf("local reviewer reset lost %q", want)
 				}
+			}
+		}
+		if p.rounds[metadata.ThreadID] == 4 {
+			if strings.Contains(recovered, "Dispute this fixture finding with evidence") != (purpose == orchestrate.DispatchCorrectness) {
+				return nil, fmt.Errorf("reset mixed reviewer purpose findings for %s", purpose)
 			}
 		}
 		if call == 1 {

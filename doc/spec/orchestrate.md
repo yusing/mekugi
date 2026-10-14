@@ -287,10 +287,11 @@ By default, every implementation candidate requires independent correctness and
 simplification reviews. Each batch keeps one ordinary Codex thread per review purpose,
 with role instructions injected at launch and host-enforced
 read-only source access and schema-constrained verdicts. Each reviewer can write
-only to its own temporary/build storage outside the candidate checkout. Temporary
-directories and Go's build cache use that storage; network access and permission
-escalation remain disabled. This uses a thread-local host permission profile, not
-user configuration. Storage ownership is retained across recovery, and cleanup
+to its own temporary storage and the standard user cache directory outside the
+candidate checkout. Tool caches remain reusable across reviewers and restarts;
+the runtime does not override language-specific cache variables. Network access
+and permission escalation remain disabled. This uses a thread-local host permission
+profile, not user configuration. Storage ownership is retained across recovery, and cleanup
 waits for confirmed host shutdown of the reviewer. Uncertain shutdown retains the
 storage. Unsupported host permissions produce a blocker rather than writable source.
 
@@ -307,7 +308,7 @@ the source workspace's enabled Codex configuration layers and role files. Missin
 fields retain the built-in rubric or inherited execution setting. Mekugi does not
 change user configuration. Explicit per-role service tier takes precedence over
 the coordinator's tier. A missing, unreadable, or malformed selected role is a
-visible blocker. The initial reviewer settings remain fixed across follow-ups and
+visible blocker. The initial reviewer role settings remain fixed across follow-ups and
 resume, even if role files or coordinator settings change. Live reviewers accept
 new turns directly; only fresh-host admission restores settings and scratch storage.
 Correctness reviews
@@ -343,8 +344,10 @@ both results before delivering one correction assignment directly to the impleme
 The implementer can fix or dispute findings but cannot approve its own candidate.
 Each changed candidate receives validation and, unless explicitly waived below,
 fresh verdicts from both purposes on their existing threads. Correction reviews use
-short follow-ups with the exact candidate, prior verdicts, unresolved findings, and
-new validation receipts rather than repeating the original assignment. They compare
+short, purpose-specific follow-ups with the exact candidate, new validation
+receipts and implementer response. They reuse prior findings already in the
+thread context. Context reset restores that purpose's retained verdict and
+findings; another reviewer's findings do not become its assignment. They compare
 each purpose's last
 reviewed candidate with the current candidate, addressing unresolved findings,
 disputes and affected existing behavior. They reuse unchanged clear scope, reopening

@@ -102,7 +102,7 @@ func workflowReviewThread(t *testing.T, u *appServerUI, w *appServerTestInput, p
 			base = previous.Result.Revision
 		}
 		raw, _ := json.Marshal(&previous)
-		if !strings.Contains(assignment, "Prior review (retained verdict and dispatch provenance): "+string(raw)) {
+		if previous.Result.Purpose == purpose && !strings.Contains(assignment, "Prior review (retained verdict and dispatch provenance): "+string(raw)) {
 			t.Fatal("review turn lost prior verdict evidence", assignment)
 		}
 	}
@@ -332,7 +332,10 @@ func TestOrchestrateWorkflowCorrections(t *testing.T) {
 			t.Fatal("correction lost the reviewed candidate on restart", batches, err)
 		}
 		assignment := workflowReviewAssignment(batches[0], orchestrate.DispatchSimplification)
-		for _, want := range []string{"Correction review:", "Reuse unchanged clear scope", "unresolved findings/disputes", `"purpose":"correctness","verdict":"findings"`, `"purpose":"simplification","verdict":"clear"`, "disputed"} {
+		if strings.Contains(assignment, "Prior review (") || strings.Contains(assignment, "correctness/F1") {
+			t.Fatal("follow-up repeated prior findings or crossed reviewer purposes", assignment)
+		}
+		for _, want := range []string{"Correction review:", "Reuse unchanged clear scope", "unresolved findings/disputes", "Review necessity and simplification", "disputed"} {
 			if !strings.Contains(assignment, want) {
 				t.Fatalf("restored correction review omitted %q: %s", want, assignment)
 			}
