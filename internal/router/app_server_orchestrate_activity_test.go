@@ -117,47 +117,52 @@ func TestOrchestrateActivityOutputRetention(t *testing.T) {
 func TestOrchestrateWaitEventLiveAndHistory(t *testing.T) {
 	// The same returned event is available as MCP structured content or text.
 	// Neither the seven selected targets nor the message body is the wake source.
-	result := `{"id":"wait-id","state":"completed","event_id":"message:report-id","event":{"task_name":"archive_integrated","thread_id":"child","kind":"message","message":"private review payload"}}`
-	for _, structured := range []bool{false, true} {
-		u, wire := newAppServerTestUI()
-		u.session.start("main", t.TempDir())
-		u.agents = newLiveActivityView()
-		item := appServerItem{ID: "wait-id", Type: "mcpToolCall", Server: "orchestrate", Tool: "wait_agent", Status: "inProgress",
-			Arguments: jsontext.Value(`{"targets":["batch","archive_integrated","check","review","docs","tests","cleanup"]}`)}
-		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-		if len(u.view.entries[0].native.orchestration.WaitTargets) != 7 {
-			t.Fatal("active wait lost selected targets")
-		}
-		content := map[string]any{"content": []any{map[string]any{"type": "text", "text": result}}}
-		if structured {
-			content["structuredContent"] = jsontext.Value(result)
-		}
-		item.Status, item.Result = "completed", mustMarshalJSON(content)
-		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-		const want = "Wait yielded · archive_integrated: Message"
-		if len(u.view.entries) != 1 || u.view.entries[0].Text != want || u.view.entries[0].native.item != "wait-id" {
-			t.Fatal("wait result lost source or call identity", u.view.entries)
-		}
-		for _, agent := range []string{"Main", "/root/batch"} {
-			var entries []activityPaneEntry
-			if agent == "Main" {
-				u.view = newLiveActivityView()
-				u.restoreHistoryItem(appServerHistoryTurn{ID: "turn", Status: "completed"}, item)
-				entries = append(entries, u.view.entries[0].activityPaneEntry)
-			} else {
-				last := -1
-				u.restoreActivityItem(appServerThreadInfo{ID: "child"}, appServerHistoryTurn{ID: "turn", Status: "completed"}, item, agent, time.Time{}, &entries, &last)
+	for _, tc := range []struct{ kind, status, reason string }{
+		{"message", "", "Message"},
+		{"failure", "canceled", "Recorded failure (canceled)"},
+	} {
+		result := fmt.Sprintf(`{"id":"wait-id","state":"completed","event_id":"old-event","event":{"task_name":"archive_integrated","thread_id":"child","kind":%q,"status":%q,"message":"private review payload"}}`, tc.kind, tc.status)
+		for _, structured := range []bool{false, true} {
+			u, wire := newAppServerTestUI()
+			u.session.start("main", t.TempDir())
+			u.agents = newLiveActivityView()
+			item := appServerItem{ID: "wait-id", Type: "mcpToolCall", Server: "orchestrate", Tool: "wait_agent", Status: "inProgress",
+				Arguments: jsontext.Value(`{"targets":["batch","archive_integrated","check","review","docs","tests","cleanup"]}`)}
+			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			if len(u.view.entries[0].native.orchestration.WaitTargets) != 7 {
+				t.Fatal("active wait lost selected targets")
 			}
-			if len(entries) != 1 || entries[0].Text != want || entries[0].native.running {
-				t.Fatal("history lost the event or revived work", entries)
+			content := map[string]any{"content": []any{map[string]any{"type": "text", "text": result}}}
+			if structured {
+				content["structuredContent"] = jsontext.Value(result)
 			}
-			block := parseLiveActivity(entries[0])[0]
-			if got := block.Output.View().Lines; len(got) != 1 || got[0] != result {
-				t.Fatal("history changed result identity or payload", got)
+			item.Status, item.Result = "completed", mustMarshalJSON(content)
+			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+			want := "Wait yielded · archive_integrated: " + tc.reason
+			if len(u.view.entries) != 1 || u.view.entries[0].Text != want || u.view.entries[0].native.item != "wait-id" {
+				t.Fatalf("wait result: got %q, want %q", u.view.entries[0].Text, want)
 			}
-		}
-		if wire.Len() != 0 {
-			t.Fatal("presentation dispatched host work")
+			for _, agent := range []string{"Main", "/root/batch"} {
+				var entries []activityPaneEntry
+				if agent == "Main" {
+					u.view = newLiveActivityView()
+					u.restoreHistoryItem(appServerHistoryTurn{ID: "turn", Status: "completed"}, item)
+					entries = append(entries, u.view.entries[0].activityPaneEntry)
+				} else {
+					last := -1
+					u.restoreActivityItem(appServerThreadInfo{ID: "child"}, appServerHistoryTurn{ID: "turn", Status: "completed"}, item, agent, time.Time{}, &entries, &last)
+				}
+				if len(entries) != 1 || entries[0].Text != want || entries[0].native.running {
+					t.Fatal("history lost the event or revived work", entries)
+				}
+				block := parseLiveActivity(entries[0])[0]
+				if got := block.Output.View().Lines; len(got) != 1 || got[0] != result {
+					t.Fatal("history changed result identity or payload", got)
+				}
+			}
+			if wire.Len() != 0 {
+				t.Fatal("presentation dispatched host work")
+			}
 		}
 	}
 }
@@ -305,6 +310,8 @@ func TestUISnapshotOrchestrateLogicalWait(t *testing.T) {
 		{"message", `{"state":"completed","event":{"task_name":"archive_integrated","kind":"message","message":"private payload"}}`},
 		{"done", `{"state":"completed","event":{"task_name":"batch","kind":"done","status":"completed"}}`},
 		{"failure", `{"state":"completed","event":{"task_name":"batch","kind":"failure","status":"storage_failed"}}`},
+		{"historical-cancellation", `{"state":"completed","event":{"task_name":"batch","kind":"failure","status":"canceled"}}`},
+		{"blocked", `{"state":"completed","event":{"task_name":"batch","kind":"blocked"}}`},
 		{"timeout", `{"state":"completed","timed_out":true}`},
 		{"canceled", `{"state":"canceled"}`},
 		{"uncertain", `{"state":"uncertain","event":{"task_name":"batch","kind":"message"}}`},
@@ -320,7 +327,7 @@ func TestUISnapshotOrchestrateLogicalWait(t *testing.T) {
 			"result": map[string]any{"structuredContent": jsontext.Value(tc.result)},
 		}})
 	}
-	rows, _ := u.mainFrame(100, 23, 0)
+	rows, _ := u.mainFrame(100, 27, 0)
 	assertNativeUISnapshot(t, "orchestration-logical-wait", rows)
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/orchestration-logical-wait-styles.txt", append(rows, "plain after wait"), 100)
 }
@@ -329,7 +336,8 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 	var rows []string
 	cases := []struct{ name, want string }{
 		{"message", "Wait yielded · batch: Message"},
-		{"failure", "Wait yielded · batch: Failure (storage failed)"},
+		{"failure", "Wait yielded · batch: Recorded failure (storage failed)"},
+		{"historical-cancellation", "Wait yielded · batch: Recorded failure (canceled)"},
 		{"timeout", "Wait timed out"},
 		{"rejected", "Wait delivery failed · batch: Message"},
 		{"canceled", "Wait canceled"},
@@ -340,6 +348,7 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 			ran++
 			u, launch := orchestrateIdentityPendingTurn(t)
 			orchestrateTestReply(t, u, launch, `{"turn":{"id":"child-turn"}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"child-turn"}}}`)
 			store, workspace := u.proxy.orchestration.store, u.session.cwd
 			now := time.Unix(0, 0)
 			u.clock, u.view.clock = func() time.Time { return now }, func() time.Time { return now }
@@ -387,6 +396,9 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 				if tc.name == "failure" {
 					event.Kind, event.Status = "failure", "storage_failed"
 				}
+				if tc.name == "historical-cancellation" {
+					event.Kind, event.Status, event.Turn = "failure", "canceled", "earlier-turn"
+				}
 				u.publishOrchestratedEvent(u.orchestrateThreads["child"], event)
 			}
 			drainOrchestrateWork(t, u)
@@ -428,6 +440,9 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 				}
 			}
 			assertResult(u)
+			if child := u.orchestrateThreads["child"]; child.turn != "child-turn" || child.batch.Launch.HostStatus != "running" || wire.Len() != 0 {
+				t.Fatal("wait delivery changed or interrupted current child work", child, wire.String())
+			}
 			rows = append(rows, u.view.painter.Block(u.view.entries[0].blocks[0], 100)...)
 			if tc.name == "message" {
 				u.startOrchestratedChild(command)

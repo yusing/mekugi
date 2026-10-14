@@ -677,7 +677,10 @@ and follow-ups use attributed message events. Active waits and pending
 registrations name all or the selected batches. A returned event replaces that
 selection with only its source batch and reason: message, done, failure, blocker,
 question or approval, with its reported status when relevant. A message does not
-claim that its sender or any other selected batch finished. Timeout, cancellation,
+claim that its sender or any other selected batch finished. Completion, failure and
+blocker labels identify recorded observations, not the batch's current state. An
+event can belong to an earlier turn or workflow generation; delivery and restoration
+preserve that event without inferring its freshness. Timeout, cancellation,
 unconfirmed or failed delivery, acknowledged delivery without a repeated event,
 and replies without an event have distinct labels. Event payloads remain in the
 output dialog; the row does not expose message or review text. Logical wait

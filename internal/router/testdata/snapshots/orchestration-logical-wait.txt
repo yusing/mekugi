@@ -2,9 +2,13 @@
 
 • Wait yielded · archive_integrated: Message
 
-• Wait yielded · batch: Done
+• Wait yielded · batch: Recorded completion
 
-• Wait yielded · batch: Failure (storage failed)
+• Wait yielded · batch: Recorded failure (storage failed)
+
+• Wait yielded · batch: Recorded failure (canceled)
+
+• Wait yielded · batch: Recorded blocker
 
 • Wait timed out
 

@@ -245,9 +245,11 @@ func orchestrationWaitResult(block *activityui.Block, wait orchestrate.Wait) {
 	} else if block.Body == "Wait ended (no event reported)" {
 		block.Body = "Wait result"
 	}
+	// Lifecycle events can precede the current turn or workflow generation.
+	// Describe the recorded observation, never the batch's current state.
 	reason := map[string]string{
-		"message": "Message", "done": "Done", "failure": "Failure",
-		"blocked": "Blocked", "question": "Question", "approval": "Approval",
+		"message": "Message", "done": "Recorded completion", "failure": "Recorded failure",
+		"blocked": "Recorded blocker", "question": "Question", "approval": "Approval",
 	}[event.Kind]
 	if reason == "" {
 		reason = event.Kind
