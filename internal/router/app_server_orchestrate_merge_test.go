@@ -128,7 +128,7 @@ func TestOrchestrateShadowAcceptanceAfterSiblingIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.BeginLaunch(t.Context(), workspace, "main", "sibling", "work", jsontext.Value(`{}`), nil); err != nil {
+	if _, _, err := s.BeginLaunch(t.Context(), workspace, "main", "sibling", "work", jsontext.Value(`{}`), nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordThread(t.Context(), workspace, "main", "sibling", "sibling-thread"); err != nil {

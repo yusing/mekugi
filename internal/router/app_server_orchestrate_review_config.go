@@ -15,7 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-type workflowReviewerSettings struct {
+type configuredRoleSettings struct {
 	DeveloperInstructions *string
 	Model                 *string
 	ReasoningEffort       *string
@@ -34,8 +34,8 @@ type workflowReviewerRole struct {
 // metadata first; a higher role file replaces, rather than merges, its settings.
 // Only the four requested overrides cross this adapter. In particular, an
 // explicit role tier wins here even though native role application resets it.
-func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowReviewerSettings, error) {
-	var settings workflowReviewerSettings
+func resolveConfiguredRoleSettings(raw jsontext.Value, role string) (configuredRoleSettings, error) {
+	var settings configuredRoleSettings
 	if role == "" {
 		return settings, nil
 	}
@@ -51,7 +51,7 @@ func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowR
 		} `json:"layers"`
 	}
 	if json.Unmarshal(raw, &result) != nil || result.Layers == nil {
-		return settings, errors.New("reviewer settings require config/read with includeLayers")
+		return settings, errors.New("agent role settings require config/read with includeLayers")
 	}
 	var selected workflowReviewerRole
 	for _, layer := range slices.Backward(result.Layers) {
@@ -62,20 +62,20 @@ func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowR
 			Agents map[string]jsontext.Value `json:"agents"`
 		}
 		if json.Unmarshal(layer.Config, &config) != nil {
-			return settings, errors.New("reviewer config layer has malformed agents metadata")
+			return settings, errors.New("agent role config layer has malformed agents metadata")
 		}
 		// Source: codex-rs/config/src/state.rs:219:233@ddb33e34b config_folder
 		var folder string
 		switch layer.Name.Type {
 		case "system", "user":
 			if !filepath.IsAbs(layer.Name.File) {
-				return settings, errors.New("reviewer config layer requires an absolute file")
+				return settings, errors.New("agent role config layer requires an absolute file")
 			}
 			folder = filepath.Dir(layer.Name.File)
 		case "project":
 			folder = layer.Name.DotCodexFolder
 			if !filepath.IsAbs(folder) {
-				return settings, errors.New("reviewer config layer requires an absolute folder")
+				return settings, errors.New("agent role config layer requires an absolute folder")
 			}
 		}
 		var current *workflowReviewerRole
@@ -87,7 +87,7 @@ func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowR
 			}
 			if json.Unmarshal(config.Agents[name], &entry) != nil {
 				if name == role {
-					return settings, fmt.Errorf("reviewer %s has malformed role metadata", role)
+					return settings, fmt.Errorf("agent role %s has malformed role metadata", role)
 				}
 				continue
 			}
@@ -131,7 +131,7 @@ func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowR
 				return nil
 			})
 			if err != nil {
-				return settings, fmt.Errorf("reviewer %s agents directory is unreadable", role)
+				return settings, fmt.Errorf("agent role %s agents directory is unreadable", role)
 			}
 			slices.Sort(files)
 			for _, path := range files {
@@ -149,7 +149,7 @@ func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowR
 				current.description = selected.description
 			}
 			if current.description == nil || strings.TrimSpace(*current.description) == "" {
-				return settings, fmt.Errorf("reviewer %s requires a non-empty description", role)
+				return settings, fmt.Errorf("agent role %s requires a non-empty description", role)
 			}
 			if current.file == "" {
 				current.file, current.values = selected.file, selected.values
@@ -158,7 +158,7 @@ func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowR
 		}
 	}
 	if selected.description == nil {
-		return settings, fmt.Errorf("reviewer %s role is unavailable", role)
+		return settings, fmt.Errorf("agent role %s is unavailable", role)
 	}
 	for _, field := range []struct {
 		key string
@@ -172,7 +172,7 @@ func resolveWorkflowReviewerSettings(raw jsontext.Value, role string) (workflowR
 		if value, exists := selected.values[field.key]; exists {
 			text, ok := value.(string)
 			if !ok {
-				return workflowReviewerSettings{}, fmt.Errorf("reviewer %s field %s must be a string", role, field.key)
+				return configuredRoleSettings{}, fmt.Errorf("agent role %s field %s must be a string", role, field.key)
 			}
 			*field.dst = &text
 		}
@@ -189,7 +189,7 @@ func readWorkflowReviewerRole(path, hint, requested string) (string, workflowRev
 	relevant := hint == requested
 	fail := func(reason string) (string, workflowReviewerRole, error) {
 		if relevant {
-			return "", candidate, fmt.Errorf("reviewer %s role file %q %s", requested, path, reason)
+			return "", candidate, fmt.Errorf("agent role %s file %q %s", requested, path, reason)
 		}
 		return "", candidate, nil
 	}
@@ -233,6 +233,43 @@ func readWorkflowReviewerRole(path, hint, requested string) (string, workflowRev
 		}
 		candidate.description = &text
 	}
+	// Nickname metadata is consumed by Codex's role parser even though this
+	// adapter only forwards the four execution overrides.
+	if value, exists := values["nickname_candidates"]; exists {
+		nicknames, ok := value.([]any)
+		if !ok || len(nicknames) == 0 {
+			return fail("has invalid nickname_candidates metadata")
+		}
+		seen := make(map[string]bool)
+		for _, value := range nicknames {
+			name, ok := value.(string)
+			name = strings.TrimSpace(name)
+			if !ok || name == "" || seen[name] || strings.IndexFunc(name, func(r rune) bool {
+				return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == ' ' || r == '-' || r == '_')
+			}) >= 0 {
+				return fail("has invalid nickname_candidates metadata")
+			}
+			seen[name] = true
+		}
+	}
 	candidate.file, candidate.values = path, values
 	return name, candidate, nil
+}
+
+func (settings configuredRoleSettings) apply(params map[string]any) {
+	if settings.DeveloperInstructions != nil {
+		params["developerInstructions"] = *settings.DeveloperInstructions
+	}
+	if settings.Model != nil {
+		params["model"] = *settings.Model
+	}
+	if settings.ReasoningEffort != nil {
+		params["config"].(map[string]any)["model_reasoning_effort"] = *settings.ReasoningEffort
+	}
+	if settings.ServiceTier != nil {
+		params["serviceTier"] = nil
+		if *settings.ServiceTier != "" {
+			params["serviceTier"] = *settings.ServiceTier
+		}
+	}
 }

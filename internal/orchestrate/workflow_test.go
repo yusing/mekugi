@@ -24,7 +24,7 @@ func newWorkflowFixture(t *testing.T, checks []RequiredCheck) *workflowFixture {
 	f := &workflowFixture{t, s, workspace, b}
 	f.ok(s.ConfigureWorkflow(t.Context(), workspace, "main", "batch", WorkflowAssignment{Kind: WorkflowImplementation, Scope: "bounded assignment", RequiredChecks: checks}))
 	f.ok(s.ConfigureWorkflow(t.Context(), workspace, "main", "batch", WorkflowAssignment{Kind: WorkflowImplementation, Scope: "bounded assignment", RequiredChecks: checks}))
-	_, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "implement", jsontext.Value(`{}`), nil)
+	_, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "implement", jsontext.Value(`{}`), nil, nil)
 	f.ok(err)
 	f.ok(s.RecordThread(t.Context(), workspace, "main", "batch", "implementer"))
 	f.ok(s.RecordTurn(t.Context(), workspace, "main", "batch", "implementer", "implementation"))
@@ -416,7 +416,7 @@ func TestWorkflowFailedChecksAndBlockedReview(t *testing.T) {
 
 func TestWorkflowLegacyAndDiagnosis(t *testing.T) {
 	s, workspace, b := launchFixture(t)
-	_, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "legacy", jsontext.Value(`{}`), nil)
+	_, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "legacy", jsontext.Value(`{}`), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +489,7 @@ func TestWorkflowShadowAdmission(t *testing.T) {
 	}
 	f := &workflowFixture{t, s, workspace, b}
 	f.ok(s.ConfigureWorkflow(t.Context(), workspace, "main", "batch", WorkflowAssignment{Kind: WorkflowImplementation, Scope: "shadow change"}))
-	_, _, err = s.BeginLaunch(t.Context(), workspace, "main", "batch", "work", jsontext.Value(`{}`), nil)
+	_, _, err = s.BeginLaunch(t.Context(), workspace, "main", "batch", "work", jsontext.Value(`{}`), nil, nil)
 	f.ok(err)
 	f.ok(s.RecordThread(t.Context(), workspace, "main", "batch", "implementer"))
 	f.ok(s.RecordTurn(t.Context(), workspace, "main", "batch", "implementer", "initial"))

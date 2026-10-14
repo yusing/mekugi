@@ -1,7 +1,9 @@
 package router
 
 import (
+	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -191,51 +193,96 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 				fail(errors.New("prepare this batch before spawning"))
 				return
 			}
-			params, policy, err := u.orchestrateThreadRequest(batch, command.input)
-			if err != nil {
-				fail(err)
+			if command.input.Kind == "" {
+				command.input.Kind = orchestrate.WorkflowImplementation
+			}
+			if batch.Launch != nil && len(batch.Launch.Invocation) != 0 {
+				invocation := jsontext.Value(mustMarshalJSON(command.input))
+				_ = invocation.Canonicalize()
+				if !bytes.Equal(invocation, batch.Launch.Invocation) {
+					fail(errors.New("batch already has a different launch request"))
+				} else {
+					command.reply <- orchestrateResult{batch: batch}
+				}
 				return
 			}
-			encoded, err := json.Marshal(params)
-			if err != nil {
-				fail(err)
+			if command.input.AgentType != "" {
+				if batch.Launch != nil {
+					fail(errors.New("batch already has a different launch request"))
+					return
+				}
+				child := &orchestrateChild{command: command, batch: batch}
+				if err := u.orchestrateRequest(child, "config/read", map[string]any{"cwd": command.workspace, "includeLayers": true}); err != nil {
+					fail(err)
+				}
 				return
 			}
-			u.orchestrateWork(func() func() {
-				if batch.Launch == nil || batch.Workflow != nil {
-					kind := command.input.Kind
-					if kind == "" {
-						kind = orchestrate.WorkflowImplementation
-					}
-					checks := make([]orchestrate.RequiredCheck, 0, len(command.input.RequiredChecks))
-					for i, check := range command.input.RequiredChecks {
-						checks = append(checks, orchestrate.RequiredCheck{ID: fmt.Sprintf("check-%d", i+1), Command: check})
-					}
-					err := store.ConfigureWorkflow(command.ctx, command.workspace, command.main, batch.TaskName, orchestrate.WorkflowAssignment{Kind: kind, Scope: command.input.Message, RequiredChecks: checks})
-					if err != nil {
-						return func() { fail(err) }
-					}
-				}
-				batch, dispatch, err := store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded, policy)
-				return func() {
-					if err != nil || !dispatch {
-						command.reply <- orchestrateResult{batch: batch, err: err}
-						return
-					}
-					child := &orchestrateChild{command: command, batch: batch}
-					if u.orchestrateClosing {
-						u.finishOrchestrate(child, context.Canceled)
-						return
-					}
-					if err := command.ctx.Err(); err != nil {
-						u.failOrchestrate(child, err)
-						return
-					}
-					if err := u.orchestrateRequest(child, "thread/start", params); err != nil {
-						u.failOrchestrate(child, err)
-					}
-				}
-			})
+			u.launchOrchestratedChild(command, batch, configuredRoleSettings{})
+		}
+	})
+}
+
+func (u *appServerUI) launchOrchestratedChild(command *orchestrateCommand, batch orchestrate.Batch, settings configuredRoleSettings) {
+	fail := func(err error) { command.reply <- orchestrateResult{err: err} }
+	store := u.proxy.orchestration.store
+	params, policy, err := u.orchestrateThreadRequest(batch, command.input)
+	if err != nil {
+		fail(err)
+		return
+	}
+	// Explicit invocation settings take precedence over the selected role.
+	if command.input.Model != "" {
+		settings.Model = &command.input.Model
+	}
+	if command.input.ReasoningEffort != "" {
+		settings.ReasoningEffort = &command.input.ReasoningEffort
+	}
+	if command.input.ServiceTier != nil {
+		settings.ServiceTier = command.input.ServiceTier
+	}
+	settings.apply(params)
+	invocation := jsontext.Value(mustMarshalJSON(command.input))
+	if batch.Launch != nil && len(batch.Launch.Invocation) == 0 {
+		invocation = nil // Older launches retain their resolved-configuration repeat check.
+	}
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		fail(err)
+		return
+	}
+	u.orchestrateWork(func() func() {
+		if batch.Launch == nil || batch.Workflow != nil {
+			kind := command.input.Kind
+			if kind == "" {
+				kind = orchestrate.WorkflowImplementation
+			}
+			checks := make([]orchestrate.RequiredCheck, 0, len(command.input.RequiredChecks))
+			for i, check := range command.input.RequiredChecks {
+				checks = append(checks, orchestrate.RequiredCheck{ID: fmt.Sprintf("check-%d", i+1), Command: check})
+			}
+			err := store.ConfigureWorkflow(command.ctx, command.workspace, command.main, batch.TaskName, orchestrate.WorkflowAssignment{Kind: kind, Scope: command.input.Message, RequiredChecks: checks})
+			if err != nil {
+				return func() { fail(err) }
+			}
+		}
+		batch, dispatch, err := store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded, policy, invocation)
+		return func() {
+			if err != nil || !dispatch {
+				command.reply <- orchestrateResult{batch: batch, err: err}
+				return
+			}
+			child := &orchestrateChild{command: command, batch: batch}
+			if u.orchestrateClosing {
+				u.finishOrchestrate(child, context.Canceled)
+				return
+			}
+			if err := command.ctx.Err(); err != nil {
+				u.failOrchestrate(child, err)
+				return
+			}
+			if err := u.orchestrateRequest(child, "thread/start", params); err != nil {
+				u.failOrchestrate(child, err)
+			}
 		}
 	})
 }
@@ -481,6 +528,30 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		}
 		return true
 	}
+	if r.method == "config/read" {
+		if m.Error != nil {
+			c.reply <- orchestrateResult{err: fmt.Errorf("config/read: %s", m.Error.Message)}
+			return true
+		}
+		u.orchestrateWork(func() func() {
+			settings, err := resolveConfiguredRoleSettings(m.Result, c.input.AgentType)
+			return func() {
+				if err == nil {
+					err = c.ctx.Err()
+				}
+				if err == nil && u.orchestrateClosing {
+					err = context.Canceled
+				}
+				if err != nil {
+					c.reply <- orchestrateResult{err: err}
+					return
+				}
+				u.launchOrchestratedChild(c, child.batch, settings)
+			}
+		})
+		return true
+	}
+
 	if m.Error != nil {
 		u.failOrchestrate(child, fmt.Errorf("%s: %s", r.method, m.Error.Message))
 		return true

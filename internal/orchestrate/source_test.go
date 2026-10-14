@@ -49,7 +49,7 @@ func TestRemovedAdapterRetainsWork(t *testing.T) {
 	if _, err := s.Prepare(t.Context(), source, "main", "batch"); err == nil {
 		t.Fatal("removed adapter prepared again")
 	}
-	if _, dispatch, err := s.BeginLaunch(t.Context(), source, "main", "batch", "work", jsontext.Value(`{}`), nil); err == nil || dispatch {
+	if _, dispatch, err := s.BeginLaunch(t.Context(), source, "main", "batch", "work", jsontext.Value(`{}`), nil, nil); err == nil || dispatch {
 		t.Fatal("removed adapter authorized launch", err)
 	}
 	if err := s.withRun(t.Context(), source, "main", func(m *manifest, path string) error {

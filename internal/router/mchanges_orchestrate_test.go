@@ -173,7 +173,7 @@ func TestMChangesOrchestratedChildRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = store.BeginLaunch(t.Context(), mainWorkspace, "main", "sibling", "work", jsontext.Value(`{}`), nil); err != nil {
+	if _, _, err = store.BeginLaunch(t.Context(), mainWorkspace, "main", "sibling", "work", jsontext.Value(`{}`), nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RecordThread(t.Context(), mainWorkspace, "main", "sibling", "sibling"); err != nil {

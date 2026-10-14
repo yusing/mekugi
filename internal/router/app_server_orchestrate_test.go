@@ -554,9 +554,15 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 		t.Fatal("canceled follow-up reached the host")
 	}
 	// Removed options reject at the real MCP schema, before dispatch.
-	for _, option := range []string{"fork_turns", "agent_type"} {
+	for _, option := range []string{"fork_turns"} {
 		take(call("spawn_agent", map[string]any{"task_name": "batch", "message": "work", option: "all"}), true)
 	}
+	// The MCP schema admits the configured role selector before retained-input checks.
+	result = call("spawn_agent", map[string]any{"task_name": "batch", "message": "work", "agent_type": "custom-role"})
+	if selected := dispatch(); selected.input.AgentType != "custom-role" {
+		t.Fatal("MCP lost the role selector")
+	}
+	take(result, true) // An existing launch cannot change its role.
 	// A canceled caller's late thread acknowledgement is retained without a turn.
 	for _, phase := range []string{"thread", "turn", "persist", "rejected"} {
 		take(call("prepare", map[string]any{"task_name": phase}), false)

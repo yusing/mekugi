@@ -115,10 +115,28 @@ validation commands Main selects for the scope. The runtime runs each command it
 in the batch cwd before review. Checks cannot be supplied for diagnosis.
 
 Children start as independent Codex threads with fresh context. `message` carries
-the complete assignment. Main can select model, reasoning effort and service tier;
-omitted settings inherit its current effective values. Host-confirmed settings
-are authoritative; resume reads current settings and history from Codex rather
-than retaining the initial thread-start response. Native subagents stay inside the child's checkout. Host thread
+the complete assignment. Optional `agent_type` selects an existing configured Codex
+role for either assignment kind, using the source workspace's enabled configuration
+layers and role files, as reviewers do. No role is selected automatically. For example,
+after preparing `diagnose`, with a configured role named `investigator`:
+
+```js
+await tools.mcp__orchestrate__spawn_agent({task_name:"diagnose",kind:"diagnosis",agent_type:"investigator",message:"Diagnose the failure and report evidence without edits."});
+```
+
+The selected role supplies developer instructions, model, reasoning effort and service
+tier. Missing fields inherit Main's effective execution settings and the host's default
+instructions. Explicit per-call `model`, `reasoning_effort` and `service_tier` take
+precedence over role settings; an empty explicit tier clears the role's tier. Omitting
+`agent_type` preserves Main inheritance. Role selection does not change host permissions,
+checkout isolation or diagnosis read-only enforcement. Missing, unreadable or invalid
+selected roles reject before child creation.
+
+The resolved invocation is retained before thread creation. Repeating the same spawn
+returns retained progress without rereading role files; changing the role or other
+spawn input rejects. Resume restores retained role instructions and host-confirmed
+execution settings, including later settings changes, without rereading role configuration.
+Native subagents stay inside the child's checkout. Host thread
 identity selects their journal workspace. Presentation keeps identical native agent paths in
 different thread trees separate, without changing host identifiers. Live native
 descendants also prevent coordinator departure.

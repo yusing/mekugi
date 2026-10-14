@@ -16,6 +16,7 @@ import (
 type orchestrateSpawnInput struct {
 	Kind            orchestrate.WorkflowKind `json:"kind,omitempty"`
 	RequiredChecks  []string                 `json:"required_checks,omitempty"`
+	AgentType       string                   `json:"agent_type,omitempty"`
 	TaskName        string                   `json:"task_name"`
 	Message         string                   `json:"message"`
 	Model           string                   `json:"model,omitempty"`
@@ -149,4 +150,66 @@ func orchestrateWorkspaceRoots(sourceCwd string, batch orchestrate.Batch, roots 
 		}
 	}
 	return mapped, nil
+}
+
+// Resume reads the retained invocation, never the selected role's current file.
+// Host-confirmed post-launch execution settings still take precedence. The
+// membership result also selects batch permission restoration for ordinary /resume.
+func (u *appServerUI) restoreOrchestratedRole(info appServerThreadInfo, params, saved map[string]any) (bool, error) {
+	if u.proxy == nil || u.proxy.journals == nil {
+		return false, nil
+	}
+	root, err := u.proxy.journals.orchestrationRequestRoot(u.ctx, u.proxy.replayStore, info.Cwd, info.ID, "")
+	if err != nil {
+		return false, err
+	}
+	if root.Orchestration == nil || root.Thread != info.ID || root.Orchestration.Main == info.ID {
+		return false, nil
+	}
+	run := root.Orchestration
+	batches, err := (&orchestrate.Store{Directory: run.Directory}).Snapshot(run.Workspace, run.Main)
+	if err != nil {
+		return false, err
+	}
+	for _, b := range batches {
+		if b.Launch == nil || b.Launch.ThreadID != info.ID {
+			continue
+		}
+		if len(b.Launch.Invocation) == 0 {
+			return true, nil
+		}
+		var input orchestrateSpawnInput
+		if err := json.Unmarshal(b.Launch.Invocation, &input); err != nil {
+			return false, err
+		}
+		if input.AgentType == "" {
+			return true, nil
+		}
+		if b.Cwd != info.Cwd {
+			return false, errors.New("retained orchestration cwd changed")
+		}
+		var launch struct {
+			DeveloperInstructions *string        `json:"developerInstructions"`
+			Model                 string         `json:"model"`
+			ServiceTier           *string        `json:"serviceTier"`
+			Config                map[string]any `json:"config"`
+		}
+		if err := json.Unmarshal(b.Launch.Params, &launch); err != nil {
+			return false, err
+		}
+		if launch.DeveloperInstructions != nil {
+			params["developerInstructions"] = *launch.DeveloperInstructions
+		}
+		fallback := map[string]any{"model": launch.Model, "model_reasoning_effort": launch.Config["model_reasoning_effort"], "service_tier": nil}
+		if launch.ServiceTier != nil {
+			fallback["service_tier"] = *launch.ServiceTier
+		}
+		for key, value := range fallback {
+			if _, known := saved[key]; !known {
+				saved[key] = value
+			}
+		}
+		return true, nil
+	}
+	return false, errors.New("retained orchestration launch is unavailable")
 }

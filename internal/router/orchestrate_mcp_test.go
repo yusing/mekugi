@@ -189,7 +189,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	if err := store.ConfigureWorkflow(ctx, workspace, "main", "batch", orchestrate.WorkflowAssignment{Kind: orchestrate.WorkflowImplementation, Scope: "list regression"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.BeginLaunch(ctx, workspace, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil {
+	if _, _, err := store.BeginLaunch(ctx, workspace, "main", "batch", "work", jsontext.Value(`{}`), nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RecordThread(ctx, workspace, "main", "batch", "batch-thread"); err != nil {

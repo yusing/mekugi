@@ -459,7 +459,7 @@ func TestOrchestrateWorkflowBlockedJournalAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.BeginLaunch(u.ctx, u.session.cwd, "main", "sibling", "other work", []byte(`{}`), nil); err != nil {
+	if _, _, err := store.BeginLaunch(u.ctx, u.session.cwd, "main", "sibling", "other work", []byte(`{}`), nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, err := range []error{

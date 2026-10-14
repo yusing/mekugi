@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/internal/orchestrate"
@@ -155,5 +156,127 @@ func TestAppServerOrchestrateAliasedWorkspace(t *testing.T) {
 				t.Fatal("dangling link was treated as a missing directory")
 			}
 		})
+	}
+}
+
+func TestAppServerOrchestrateConfiguredRole(t *testing.T) {
+	for _, kind := range []orchestrate.WorkflowKind{orchestrate.WorkflowImplementation, orchestrate.WorkflowDiagnosis} {
+		t.Run(string(kind), func(t *testing.T) {
+			u, w := workflowUI(t)
+			u.panes = new(nativePanePersistence)
+			store := u.proxy.orchestration.store
+			batch, err := store.Prepare(t.Context(), u.session.cwd, "main", "selected")
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			roleFile := filepath.Join(dir, "custom.toml")
+			writeTestFile(t, roleFile, "description = 'Custom role'\ndeveloper_instructions = 'Use the configured role'\nmodel = 'role-model'\nmodel_reasoning_effort = 'medium'\nservice_tier = 'priority'\n")
+			input := orchestrateSpawnInput{TaskName: "selected", Message: "Complete the assignment", Kind: kind, AgentType: "custom-role"}
+			model, effort, tier := "role-model", "medium", any("priority")
+			if kind == orchestrate.WorkflowDiagnosis {
+				input.Model, input.ReasoningEffort, input.ServiceTier = "explicit-model", "low", new("")
+				model, effort, tier = "explicit-model", "low", nil
+			}
+			command := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", tool: "spawn_agent", input: input, reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(command)
+			drainOrchestrateWork(t, u)
+			read, params := workflowTake(t, u, w, "config/read", "", "")
+			if params["cwd"] != u.session.cwd || params["includeLayers"] != true {
+				t.Fatal("role lookup lost source layers", params)
+			}
+			config := map[string]any{"layers": []any{map[string]any{"name": map[string]any{"type": "project", "dotCodexFolder": dir}, "config": map[string]any{"agents": map[string]any{"custom-role": map[string]any{"config_file": "custom.toml"}}}}}}
+			orchestrateTestReply(t, u, read, string(mustMarshalJSON(config)))
+			start, params := workflowTake(t, u, w, "thread/start", "", "")
+			if params["developerInstructions"] != "Use the configured role" || params["model"] != model || params["config"].(map[string]any)["model_reasoning_effort"] != effort || params["serviceTier"] != tier || params["cwd"] != batch.Cwd {
+				t.Fatal("resolved role did not reach thread/start", params)
+			}
+			if kind == orchestrate.WorkflowDiagnosis {
+				if params["sandbox"] != "read-only" || params["permissions"] != nil || params["approvalPolicy"] != "never" {
+					t.Fatal("role widened diagnosis", params)
+				}
+			} else if params["permissions"] != ":workspace" || params["approvalsReviewer"] != "user" {
+				t.Fatal("role changed host permissions", params)
+			}
+			response := map[string]any{"thread": map[string]any{"id": "selected-child", "cwd": batch.Cwd}, "model": model, "reasoningEffort": effort, "serviceTier": tier, "activePermissionProfile": map[string]any{"id": ":read-only"}, "sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never"}
+			orchestrateTestReply(t, u, start, string(mustMarshalJSON(response)))
+			turn, params := workflowTake(t, u, w, "turn/start", "selected-child", "")
+			if kind == orchestrate.WorkflowDiagnosis && params["sandboxPolicy"].(map[string]any)["type"] != "readOnly" {
+				t.Fatal("diagnosis turn became writable", params)
+			}
+			orchestrateTestReply(t, u, turn, `{"turn":{"id":"selected-turn"}}`)
+			result := <-command.reply
+			if result.err != nil || result.batch.Launch.ThreadID != "selected-child" {
+				t.Fatal("launch failed", result.err)
+			}
+			if err := os.Remove(roleFile); err != nil {
+				t.Fatal(err)
+			}
+			// Reopen durable state. Repeats use frozen input/settings, not files or Main's new model.
+			u.proxy.orchestration.store = &orchestrate.Store{Directory: store.Directory}
+			u.model = "changed-main"
+			u.startOrchestratedChild(command)
+			drainOrchestrateWork(t, u)
+			if repeated := <-command.reply; repeated.err != nil || w.Len() != 0 {
+				t.Fatal("repeat reread configuration", repeated.err, w.String())
+			}
+			command.input.AgentType = "different-role"
+			u.startOrchestratedChild(command)
+			drainOrchestrateWork(t, u)
+			if changed := <-command.reply; changed.err == nil || w.Len() != 0 {
+				t.Fatal("changed role reused launch", changed.err, w.String())
+			}
+			// Ordinary fresh-host resume has no live coordinator. Retained role instructions
+			// survive deleted files; newer host execution settings still win.
+			view := u.navigation.views["selected-child"]
+			appServerTestNotify(t, view, "thread/settings/updated", map[string]any{"threadId": "selected-child", "threadSettings": map[string]any{"model": "later-model", "effort": "high", "serviceTier": "flex"}})
+			reopened, err := openMekugiReplayStore(u.proxy.replayStore.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			next, wire := newAppServerTestUI()
+			next.ctx, next.resumeThread, next.panes = t.Context(), "selected-child", new(nativePanePersistence)
+			next.proxy = &mekugiProxy{journals: newJournalStore(), replayStore: reopened}
+			if err := next.requestResume("selected-child"); err != nil {
+				t.Fatal(err)
+			}
+			read = btwTestRequest(t, wire, "thread/read", "selected-child")
+			btwTestReply(t, next, read, string(mustMarshalJSON(map[string]any{"thread": response["thread"]})))
+			_, params = workflowTake(t, next, wire, "thread/resume", "selected-child", "")
+			restored := params["config"].(map[string]any)
+			if params["permissions"] != ":read-only" || params["developerInstructions"] != "Use the configured role" || restored["model"] != "later-model" || restored["model_reasoning_effort"] != "high" || params["serviceTier"] != "flex" {
+				t.Fatal("resume lost frozen role or newer host settings", params)
+			}
+		})
+	}
+}
+
+func TestAppServerOrchestrateRejectedRole(t *testing.T) {
+	u, w := workflowUI(t)
+	store := u.proxy.orchestration.store
+	if _, err := store.Prepare(t.Context(), u.session.cwd, "main", "rejected"); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "agents", "invalid.toml"), "name = 'invalid-native'\ndescription = 'Invalid nickname metadata'\ndeveloper_instructions = 'Diagnose without edits'\nnickname_candidates = 42\n")
+	for _, role := range []string{"missing-role", "invalid-role", "invalid-native"} {
+		command := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", tool: "spawn_agent", input: orchestrateSpawnInput{TaskName: "rejected", Message: "Diagnose", Kind: orchestrate.WorkflowDiagnosis, AgentType: role}, reply: make(chan orchestrateResult, 1)}
+		u.startOrchestratedChild(command)
+		drainOrchestrateWork(t, u)
+		read, _ := workflowTake(t, u, w, "config/read", "", "")
+		config := map[string]any{"layers": []any{map[string]any{"name": map[string]any{"type": "project", "dotCodexFolder": dir}, "config": map[string]any{"agents": map[string]any{"invalid-role": 42}}}}}
+		orchestrateTestReply(t, u, read, string(mustMarshalJSON(config)))
+		select {
+		case result := <-command.reply:
+			if result.err == nil || !strings.Contains(result.err.Error(), role) || w.Len() != 0 {
+				t.Fatal("invalid role reached child creation", result.err, w.String())
+			}
+		default:
+			t.Fatal("invalid role reached child creation", w.String())
+		}
+	}
+	batches, err := store.Snapshot(u.session.cwd, "main")
+	if err != nil || batches[1].Launch != nil || batches[1].Workflow != nil {
+		t.Fatal("rejected role retained a launch", batches, err)
 	}
 }

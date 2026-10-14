@@ -61,7 +61,7 @@ func TestUISnapshotOrchestrateRecoveryResume(t *testing.T) {
 	if _, err := store.Prepare(t.Context(), workspace, "main", "uncertain"); err != nil {
 		t.Fatal(err)
 	}
-	if _, dispatch, err := store.BeginLaunch(t.Context(), workspace, "main", "uncertain", "retained assignment", []byte("{}"), nil); err != nil || !dispatch {
+	if _, dispatch, err := store.BeginLaunch(t.Context(), workspace, "main", "uncertain", "retained assignment", []byte("{}"), nil, nil); err != nil || !dispatch {
 		t.Fatal("uncertain launch fixture failed", err)
 	}
 	u, wire := resumeOrchestrationMain(t, store, workspace)

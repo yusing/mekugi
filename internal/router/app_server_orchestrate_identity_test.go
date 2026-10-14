@@ -189,7 +189,7 @@ func startLegacyOrchestrateFixture(t *testing.T, u *appServerUI, command *orches
 	if err != nil {
 		t.Fatal(err)
 	}
-	batch, _, err = u.proxy.orchestration.store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded, policy)
+	batch, _, err = u.proxy.orchestration.store.BeginLaunch(command.ctx, command.workspace, command.main, batch.TaskName, command.input.Message, encoded, policy, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

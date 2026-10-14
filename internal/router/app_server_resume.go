@@ -75,6 +75,12 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		saved = make(map[string]any)
 	}
 	maps.Copy(saved, readResumeSettings(result.Thread, newerThan))
+	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
+	batch, err := u.restoreOrchestratedRole(result.Thread, params, saved)
+	if err != nil {
+		return fail("restore batch role: " + err.Error())
+	}
+	batch = batch || u.navigation != nil && u.navigation.owner != u
 	u.resumeEvidence.Model, _ = saved["model"].(string)
 	u.resumeEvidence.Effort, _ = saved["model_reasoning_effort"].(string)
 	u.resumeEvidence.Tier, _ = saved["service_tier"].(string)
@@ -84,17 +90,16 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 		u.resumeNotice = "Saved model settings unavailable; using Codex defaults and explicit flags"
 		u.setNotice(u.resumeNotice, true)
 	}
-	params := u.threadPermissions(map[string]any{"threadId": thread, "config": config, "modelProvider": config["model_provider"]})
 	u.resumeSandbox = nil
 	u.resumePermissionProfile = ""
-	if u.navigation != nil && u.navigation.owner != u && retained.PermissionProfile == "" && retained.SandboxPolicy == "" {
+	if batch && retained.PermissionProfile == "" && retained.SandboxPolicy == "" {
 		return fail("exact batch permissions unavailable; saved permission settings are required before resume")
 	}
-	if u.navigation != nil && u.navigation.owner != u && retained.PermissionProfile != "" {
+	if batch && retained.PermissionProfile != "" {
 		u.resumePermissionProfile = retained.PermissionProfile
 		params["permissions"] = retained.PermissionProfile
 		delete(params, "sandbox")
-	} else if u.navigation != nil && u.navigation.owner != u && retained.SandboxPolicy != "" {
+	} else if batch && retained.SandboxPolicy != "" {
 		var sandbox appServerSandboxPolicy
 		if err := json.Unmarshal([]byte(retained.SandboxPolicy), &sandbox); err != nil {
 			return fail("invalid retained batch sandbox policy")

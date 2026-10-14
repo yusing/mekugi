@@ -11,7 +11,7 @@ func TestDeliveryRetainsDispatchAndAcknowledgement(t *testing.T) {
 	if _, dispatch, err := s.BeginDelivery(t.Context(), workspace, "main", input); err == nil || dispatch {
 		t.Fatal("delivery preceded confirmed launch")
 	}
-	if _, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "work", jsontext.Value(`{}`), nil); err != nil {
+	if _, _, err := s.BeginLaunch(t.Context(), workspace, "main", "batch", "work", jsontext.Value(`{}`), nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.RecordThread(t.Context(), workspace, "main", "batch", "child"); err != nil {
@@ -100,7 +100,7 @@ func TestDeliveryRecoversOnlyKnownUnsentLaunch(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			s, workspace, _ := launchFixture(t)
 			ctx, params := t.Context(), jsontext.Value(`{}`)
-			if _, _, err := s.BeginLaunch(ctx, workspace, "main", "batch", "assignment", params, nil); err != nil {
+			if _, _, err := s.BeginLaunch(ctx, workspace, "main", "batch", "assignment", params, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.CancelUnsentTurn(ctx, workspace, "main", "batch"); err == nil {
@@ -117,7 +117,7 @@ func TestDeliveryRecoversOnlyKnownUnsentLaunch(t *testing.T) {
 				t.Fatal(err)
 			}
 			s = &Store{Directory: s.Directory}
-			if b, dispatch, err := s.BeginLaunch(ctx, workspace, "main", "batch", "assignment", params, nil); err != nil || dispatch || !b.Launch.TurnUnsent {
+			if b, dispatch, err := s.BeginLaunch(ctx, workspace, "main", "batch", "assignment", params, nil, nil); err != nil || dispatch || !b.Launch.TurnUnsent {
 				t.Fatal("repeated spawn lost cancellation", b, dispatch, err)
 			}
 			deferred := input

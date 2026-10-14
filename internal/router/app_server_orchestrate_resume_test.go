@@ -178,7 +178,9 @@ func TestAppServerOrchestrateResumeNamedProfile(t *testing.T) {
 			workspace := u.session.cwd
 			// Ordinary session navigation must retain the batch's observed profile.
 			appServerTestKeys(t, u, "/resume child\r")
-			ordinary := resumeTestPrepared(t, u, w)
+			preflight := resumeTestOne(t, w, "thread/read")
+			btwTestReply(t, u, btwTestRPC{ID: preflight.ID}, string(mustMarshalJSON(map[string]any{"thread": appServerThreadInfo{ID: "child", Cwd: b.Cwd}})))
+			ordinary := resumeTestOne(t, w, "thread/resume")
 			btwTestReply(t, u, btwTestRPC{ID: ordinary.ID}, string(mustMarshalJSON(map[string]any{
 				"thread": appServerThreadInfo{ID: "child", Cwd: b.Cwd}, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"},
 			})))

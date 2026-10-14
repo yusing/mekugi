@@ -43,27 +43,13 @@ func workflowReviewerPolicyConfirmed(raw []byte, scratch string) error {
 	return nil
 }
 
-func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose orchestrate.WorkflowDispatchKind, settings workflowReviewerSettings, scratch string) (map[string]any, error) {
+func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose orchestrate.WorkflowDispatchKind, settings configuredRoleSettings, scratch string) (map[string]any, error) {
 	params, _, err := u.orchestrateThreadRequest(child.batch, orchestrateSpawnInput{})
 	if err != nil {
 		return nil, err
 	}
 	params["developerInstructions"] = workflowReviewerInstructions(purpose)
-	if settings.DeveloperInstructions != nil {
-		params["developerInstructions"] = *settings.DeveloperInstructions
-	}
-	if settings.Model != nil {
-		params["model"] = *settings.Model
-	}
-	if settings.ReasoningEffort != nil {
-		params["config"].(map[string]any)["model_reasoning_effort"] = *settings.ReasoningEffort
-	}
-	if settings.ServiceTier != nil {
-		params["serviceTier"] = nil
-		if *settings.ServiceTier != "" {
-			params["serviceTier"] = *settings.ServiceTier
-		}
-	}
+	settings.apply(params)
 	delete(params, "sandbox")
 	params["approvalPolicy"] = "never"
 	profile := workflowReviewerProfile(scratch)
@@ -209,7 +195,7 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 			role = u.proxy.orchestration.reviewers.Simplification
 		}
 		u.orchestrateWork(func() func() {
-			settings, err := resolveWorkflowReviewerSettings(m.Result, role)
+			settings, err := resolveConfiguredRoleSettings(m.Result, role)
 			var scratch string
 			if err == nil {
 				c := child.command
