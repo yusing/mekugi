@@ -67,6 +67,8 @@ func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose o
 	config["shell_environment_policy.set"] = map[string]any{
 		"TMPDIR": scratch, "TMP": scratch, "TEMP": scratch, "GOTMPDIR": scratch,
 		"GOCACHE": filepath.Join(scratch, "go-build"), "XDG_CACHE_HOME": filepath.Join(scratch, "cache"),
+		// Run storage may itself have an unrelated ancestor repository.
+		"GIT_CEILING_DIRECTORIES": scratch,
 	}
 	return params, nil
 }

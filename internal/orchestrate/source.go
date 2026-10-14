@@ -13,7 +13,21 @@ func sourceRepository(ctx context.Context, workspace string) (string, string, er
 	if err != nil {
 		return "", "", err
 	}
+	// Keep our metadata walk within Git's discovery boundary too. Reviewer
+	// temporary fixtures must not inherit a repository above their scratch.
+	ceilings := make(map[string]bool)
+	for _, path := range filepath.SplitList(os.Getenv("GIT_CEILING_DIRECTORIES")) {
+		if filepath.IsAbs(path) {
+			if resolved, err := filepath.EvalSymlinks(path); err == nil {
+				ceilings[resolved] = true
+			}
+		}
+	}
 	for dir := selected; ; dir = filepath.Dir(dir) {
+		// Git excludes ceiling ancestors, but still inspects the selected cwd.
+		if dir != selected && ceilings[dir] {
+			return "shadow", selected, nil
+		}
 		for _, marker := range []string{".jj", ".hg", ".svn", ".bzr", ".git"} {
 			_, err := os.Lstat(filepath.Join(dir, marker))
 			if errors.Is(err, os.ErrNotExist) {

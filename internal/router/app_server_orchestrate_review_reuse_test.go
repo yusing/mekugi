@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +12,35 @@ import (
 
 	"github.com/yusing/mekugi/internal/orchestrate"
 )
+
+func TestWorkflowReviewerScratchFixtureDiscovery(t *testing.T) {
+	u, wire := workflowUI(t)
+	// Reproduce state-root nesting under an unrelated repository, independently
+	// of the candidate's own worktree metadata.
+	ancestor := u.proxy.orchestration.store.Directory
+	gitTestRun(t, ancestor, "init", "--quiet")
+	workflowCompleted(t, u, "child", "implement", "done")
+	for _, kind := range []orchestrate.WorkflowDispatchKind{orchestrate.DispatchCorrectness, orchestrate.DispatchSimplification} {
+		_, params := workflowTake(t, u, wire, "thread/start", "", kind)
+		t.Run(string(kind), func(t *testing.T) {
+			settings := params["config"].(map[string]any)["shell_environment_policy.set"].(map[string]any)
+			for key, value := range settings {
+				t.Setenv(key, value.(string))
+			}
+			for _, vcs := range []string{"shadow", "git"} {
+				workspace := orchestrateVCSWorkspace(t, vcs)
+				s := &orchestrate.Store{Directory: t.TempDir(), ShadowSnapshot: orchestrateShadowSnapshot}
+				batch, err := s.Prepare(t.Context(), workspace, "fixture", "batch")
+				if err != nil || (vcs == "shadow") != (batch.VCS == "shadow") {
+					t.Fatal("review fixture inherited ancestor repository", vcs, batch, err)
+				}
+				if got, err := os.ReadFile(filepath.Join(batch.Cwd, "file")); err != nil || string(got) != "base" {
+					t.Fatal("fixture preparation changed source bytes", err)
+				}
+			}
+		})
+	}
+}
 
 func TestWorkflowReviewerCompactionAttribution(t *testing.T) {
 	for _, outcome := range []string{"completed", "unsupported", "uncertain", "no-recovery"} {
