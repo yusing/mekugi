@@ -188,8 +188,10 @@ func TestOrchestrateWorkflowScopeSettledUncertainDelivery(t *testing.T) {
 			} else {
 				workflowCompleted(t, u, "child", turn, "")
 			}
-			workflowReview(t, u, wire, orchestrate.ReviewCorrectness, orchestrate.VerdictClear)
-			workflowReview(t, u, wire, orchestrate.ReviewSimplification, orchestrate.VerdictClear)
+			if mode != "steer" { // Changed scope needs reviews; unchanged approved input reuses them.
+				workflowReview(t, u, wire, orchestrate.ReviewCorrectness, orchestrate.VerdictClear)
+				workflowReview(t, u, wire, orchestrate.ReviewSimplification, orchestrate.VerdictClear)
+			}
 			workflowNotice(t, u, wire)
 			store := &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
 			retained, _, err := store.BeginDelivery(t.Context(), u.session.cwd, "main", orchestrate.Delivery{ID: c.callID, From: "main", Target: "child", Message: c.input.Message, ReviewScope: c.reviewScope, Deferred: mode == "steer"})

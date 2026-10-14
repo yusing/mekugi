@@ -71,8 +71,8 @@ func (w *Workflow) stopped() bool {
 
 // AdmitCandidate accepts only the runtime's clean, host-observed revision after
 // an implementation or correction turn. A correction may dispute findings without
-// changing revision; it still starts a fresh validation/review generation. No
-// previous approvals survive replacement. Waived reviews remain historical evidence.
+// changing revision; unresolved findings still require fresh review. Exact unchanged
+// candidates can reuse completed clear reviews under the retained scope.
 // The report is the implementer's final
 // message, retained only for the coordinator notification.
 func (s *Store) AdmitCandidate(ctx context.Context, workspace, main, name string, candidate Candidate, report string) error {
@@ -93,7 +93,13 @@ func (s *Store) AdmitCandidate(ctx context.Context, workspace, main, name string
 		if w.Phase == PhaseCorrection && !w.correctionTurnAcknowledged() {
 			return errors.New("correction candidate requires an acknowledged correction turn")
 		}
+		// A cleanliness correction can precede admission of new implementation
+		// input. Its approved prior candidate still identifies full-baseline coverage.
+		newInput := w.Phase == PhaseImplementation || w.Candidate != nil && w.reviewApprovals(w.Candidate.Revision) == nil
 		w.retainPreviousReviews()
+		if newInput && (w.Candidate == nil || *w.Candidate != candidate) {
+			w.PreviousReviews = nil // New implementation input reviews the full changed baseline.
+		}
 		w.Outcome = nil
 		w.Candidate = &candidate
 		w.Generation++
@@ -113,7 +119,7 @@ func (s *Store) AdmitCandidate(ctx context.Context, workspace, main, name string
 		w.Phase = PhaseValidation
 		if len(w.Assignment.RequiredChecks) == 0 {
 			w.Phase = PhaseQueuedReview
-			if w.ReviewWaiver != "" {
+			if w.ReviewWaiver != "" || w.reviewApprovals(candidate.Revision) == nil {
 				w.Phase = PhaseReady
 			}
 		}
@@ -127,8 +133,8 @@ func (w *Workflow) correctionTurnAcknowledged() bool {
 }
 
 // Keep the last reviewed candidate across failed checks and unclean corrections.
-// Dispatch identities retain host provenance; these results are never approvals
-// for the replacement candidate. ResumeWorkflow starts a new scope instead.
+// Dispatch identities retain host provenance. Clear results can approve only the
+// exact unchanged candidate; changed scope clears this evidence at its owner.
 func (w *Workflow) retainPreviousReviews() {
 	if len(w.Reviews) == 0 || w.ReviewWaiver != "" {
 		return
@@ -191,10 +197,14 @@ func (s *Store) ResumeWorkflow(ctx context.Context, workspace, main, name string
 		if !w.stopped() && w.Phase != PhaseReady {
 			return errLaunchUnchanged
 		}
+		if w.ReviewWaiver == "" && w.Phase == PhaseReady && w.Candidate != nil && workflowReady(*b, w.Candidate.Revision) == nil {
+			w.retainPreviousReviews()
+		} else {
+			w.PreviousReviews = nil
+		}
 		w.Phase = PhaseImplementation
 		w.Generation++
 		w.CorrectionRounds = 0
-		w.PreviousReviews = nil
 		w.Checks = nil
 		if w.ReviewWaiver == "" {
 			w.Reviews = nil
@@ -257,7 +267,7 @@ func (s *Store) RecordWorkflowCheck(ctx context.Context, workspace, main, name s
 		}
 		if len(w.Checks) == len(w.Assignment.RequiredChecks) {
 			w.Phase = PhaseQueuedReview
-			if w.ReviewWaiver != "" {
+			if w.ReviewWaiver != "" || w.reviewApprovals(w.Candidate.Revision) == nil {
 				w.Phase = PhaseReady
 			}
 		}
@@ -380,16 +390,38 @@ func workflowReady(b Batch, revision string) error {
 	if w.ReviewWaiver != "" {
 		return nil
 	}
-	if len(w.Reviews) != 2 {
+	return w.reviewApprovals(revision)
+}
+
+// Retained clear verdicts reuse their original dispatch, never a synthetic receipt
+// in the new generation. Incomplete current reviews cannot inherit prior approval.
+func (w *Workflow) reviewApprovals(revision string) error {
+	retained := len(w.Reviews) == 0
+	if !retained && len(w.Reviews) != 2 || retained && len(w.PreviousReviews) != 2 {
 		return errors.New("workflow review approvals are incomplete")
 	}
 	for _, purpose := range []ReviewPurpose{ReviewCorrectness, ReviewSimplification} {
-		i := slices.IndexFunc(w.Reviews, func(r ReviewResult) bool { return r.Purpose == purpose })
+		var r ReviewResult
 		d := w.currentDispatch(WorkflowDispatchKind(purpose))
-		if i < 0 || d == nil || d.State != DispatchAcknowledged || d.ResultItemID == "" {
+		if retained {
+			if d != nil {
+				return errors.New("current review approval is missing")
+			}
+			i := slices.IndexFunc(w.PreviousReviews, func(r PreviousReview) bool { return r.Result.Purpose == purpose })
+			if i >= 0 {
+				previous := w.PreviousReviews[i]
+				r = previous.Result
+				j := slices.IndexFunc(w.Dispatches, func(d WorkflowDispatch) bool { return d.ID == previous.DispatchID })
+				if j >= 0 && w.Dispatches[j].Kind == WorkflowDispatchKind(purpose) && w.Dispatches[j].Revision == revision && w.Dispatches[j].HostStatus == "completed" {
+					d = &w.Dispatches[j]
+				}
+			}
+		} else if i := slices.IndexFunc(w.Reviews, func(r ReviewResult) bool { return r.Purpose == purpose }); i >= 0 {
+			r = w.Reviews[i]
+		}
+		if d == nil || d.State != DispatchAcknowledged || d.ResultItemID == "" || d.ThreadID == "" || d.TurnID == "" {
 			return errors.New("review approval is missing")
 		}
-		r := w.Reviews[i]
 		if r.Validate() != nil || r.Revision != revision || r.Verdict != VerdictClear {
 			return errors.New("review does not approve this candidate")
 		}

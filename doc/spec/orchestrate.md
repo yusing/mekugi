@@ -352,8 +352,13 @@ it only for an evidenced interaction with the correction. Prior verdicts retain
 their candidate and host-dispatch provenance across correction and restart; they
 never approve a new candidate. A purpose without a completed review, including a
 blocked review, reviews the full baseline diff. New implementation input starts a
-full review round with the current accepted scope, including on reused reviewer
-threads. Changed accepted scope does not inherit delta-only coverage.
+full review round with the current accepted scope for a changed candidate,
+including on reused reviewer threads. An exact unchanged candidate under unchanged
+accepted scope reuses both completed clear runtime verdicts with their original
+host receipts, including after restart or context reset. Required checks still run
+for the new implementation round. Initial no-op baselines, missing or blocked
+reviews and unresolved findings do not inherit approval. Changed accepted scope
+invalidates approval and delta-only coverage even when the candidate is unchanged.
 Two correction rounds are permitted for failed checks, unclean results, and findings combined; a
 further rejection then requires a decision.
 

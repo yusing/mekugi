@@ -136,6 +136,39 @@ func TestWorkflowChecksReviewsAndIntegration(t *testing.T) {
 	}
 }
 
+func TestWorkflowUnchangedReviewReuseRequiresCompletedClearPair(t *testing.T) {
+	for _, outcome := range []string{"clear", "findings", "blocked", "missing", "unsettled"} {
+		t.Run(outcome, func(t *testing.T) {
+			f := newWorkflowFixture(t, nil)
+			verdict := VerdictClear
+			if outcome == "findings" || outcome == "blocked" {
+				verdict = ReviewVerdict(outcome)
+			}
+			f.review(DispatchCorrectness, verdict)
+			if outcome != "missing" {
+				f.review(DispatchSimplification, VerdictClear)
+			}
+			for _, d := range f.state().Dispatches {
+				if outcome != "unsettled" {
+					f.ok(f.s.RecordWorkflowCompletion(t.Context(), f.workspace, "main", "batch", d.ID, d.ThreadID, d.TurnID, "completed"))
+				}
+			}
+			if !f.state().stopped() && f.state().Phase != PhaseReady {
+				f.ok(f.s.StopWorkflow(t.Context(), f.workspace, "main", "batch", PhaseCanceled, "follow-up"))
+			}
+			f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
+			f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "unchanged"))
+			want := PhaseQueuedReview
+			if outcome == "clear" {
+				want = PhaseReady
+			}
+			if f.state().Phase != want {
+				t.Fatal("unchanged candidate inherited invalid approval", f.state())
+			}
+		})
+	}
+}
+
 func TestWorkflowCorrectionLimitAndAggregation(t *testing.T) {
 	f := newWorkflowFixture(t, nil)
 	for round := 0; round < 3; round++ {

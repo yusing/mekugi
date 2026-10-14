@@ -31,6 +31,8 @@ func TestWorkflowReviewerCompactionAttribution(t *testing.T) {
 					orchestrateTestReply(t, u, start, fmt.Sprintf(`{"turn":{"id":%q}}`, turn))
 					appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": turn}})
 					drainOrchestrateWork(t, u)
+					// Context-budget coverage needs distinct candidates, not no-effect input.
+					gitTestRun(t, child.batch.Cwd, "commit", "--allow-empty", "-qm", turn)
 				}
 				workflowCompleted(t, u, "child", turn, "")
 				if round == 3 {
@@ -125,6 +127,98 @@ func TestWorkflowReviewerCompactionAttribution(t *testing.T) {
 				t.Fatal("lost exact compaction or verdict attribution", d)
 			}
 		})
+	}
+}
+
+func TestWorkflowUnchangedApprovedCandidate(t *testing.T) {
+	u, wire := workflowUI(t, "required check")
+	child := u.orchestrateThreads["child"]
+	workflowCompleted(t, u, "child", "implement", "done")
+	// Initial no-op baseline still requires checks and both runtime reviews.
+	workflowCheck(t, u, wire, "required check", `{"exitCode":0,"stdout":"passed"}`)
+	workflowReview(t, u, wire, orchestrate.ReviewCorrectness, orchestrate.VerdictClear)
+	workflowReview(t, u, wire, orchestrate.ReviewSimplification, orchestrate.VerdictClear)
+	workflowNotice(t, u, wire)
+	prior := append([]orchestrate.WorkflowDispatch(nil), child.batch.Workflow.Dispatches...)
+	for round := 0; round < 2; round++ {
+		if round == 1 {
+			u.proxy.journalCompaction = "auto"
+			deliverRecoveryCompaction(t, u.proxy, child.batch.Cwd, "child", "no-effect-reset")
+			workflowRestart(t, u) // Fresh state retains approval without live reviewers.
+			child = u.orchestrateThreads["child"]
+			n := u.ensureOrchestrationNavigation()
+			n.resumes = map[string]*orchestrateResume{"child": {}}
+			n.finishResume("child", nil) // Explicit host admission releases recovery's effect gate.
+			drainOrchestrateWork(t, u)
+		}
+		turn := fmt.Sprintf("no-effect-%d", round)
+		follow := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: turn, input: orchestrateSpawnInput{Message: "Confirm the result without edits"}, reply: make(chan orchestrateResult, 1)}
+		if round == 0 {
+			follow.reviewScope = child.batch.Workflow.Assignment.Scope // Equal effective scope preserves approval.
+		}
+		u.startOrchestratedChild(follow)
+		drainOrchestrateWork(t, u)
+		start, _ := workflowTake(t, u, wire, "turn/start", "child", "")
+		orchestrateTestReply(t, u, start, fmt.Sprintf(`{"turn":{"id":%q}}`, turn))
+		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": turn}})
+		drainOrchestrateWork(t, u)
+		if round == 1 {
+			writeTestFile(t, child.batch.Cwd+"/unclean.txt", "discard this temporary input")
+		}
+		workflowCompleted(t, u, "child", turn, "unchanged")
+		if round == 1 {
+			correction, _ := workflowTake(t, u, wire, "turn/start", "child", orchestrate.DispatchCorrection)
+			orchestrateTestReply(t, u, correction, `{"turn":{"id":"restore-cleanliness"}}`)
+			if err := os.Remove(child.batch.Cwd + "/unclean.txt"); err != nil {
+				t.Fatal(err)
+			}
+			workflowCompleted(t, u, "child", "restore-cleanliness", "unchanged clean candidate")
+		}
+		if child.batch.Workflow.Phase != orchestrate.PhaseValidation {
+			t.Fatal("unchanged candidate skipped required validation")
+		}
+		workflowCheck(t, u, wire, "required check", `{"exitCode":0,"stdout":"passed again"}`)
+		if child.batch.Workflow.Phase != orchestrate.PhaseReady || len(child.batch.Workflow.PreviousReviews) != 2 || !reflect.DeepEqual(prior, child.batch.Workflow.Dispatches[:len(prior)]) {
+			t.Fatalf("unchanged candidate lost readiness or original host evidence: phase=%s retained=%d", child.batch.Workflow.Phase, len(child.batch.Workflow.PreviousReviews))
+		}
+		workflowNotice(t, u, wire)
+		if wire.Len() != 0 || len(child.workflowWork) != 0 {
+			t.Fatal("unchanged approved candidate dispatched new review work", wire.String())
+		}
+		if _, err := u.proxy.orchestration.store.RecordIntegration(t.Context(), u.session.cwd, "main", "batch", "child"); err != nil {
+			t.Fatal("retained approval did not reach integration gate", err)
+		}
+	}
+}
+
+func TestWorkflowChangedFollowupFullBaseline(t *testing.T) {
+	u, wire := workflowUI(t)
+	child := u.orchestrateThreads["child"]
+	gitTestRun(t, child.batch.Cwd, "commit", "--allow-empty", "-qm", "initial candidate")
+	workflowCompleted(t, u, "child", "implement", "done")
+	workflowReview(t, u, wire, orchestrate.ReviewCorrectness, orchestrate.VerdictClear)
+	workflowReview(t, u, wire, orchestrate.ReviewSimplification, orchestrate.VerdictClear)
+	workflowNotice(t, u, wire)
+	follow := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: "new-input", input: orchestrateSpawnInput{Message: "Extend the implementation within the retained scope"}, reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(follow)
+	drainOrchestrateWork(t, u)
+	start, _ := workflowTake(t, u, wire, "turn/start", "child", "")
+	orchestrateTestReply(t, u, start, `{"turn":{"id":"new-input"}}`)
+	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "new-input"}})
+	drainOrchestrateWork(t, u)
+	writeTestFile(t, child.batch.Cwd+"/followup.txt", "new implementation")
+	workflowCompleted(t, u, "child", "new-input", "done")
+	correction, _ := workflowTake(t, u, wire, "turn/start", "child", orchestrate.DispatchCorrection)
+	orchestrateTestReply(t, u, correction, `{"turn":{"id":"commit-followup"}}`)
+	gitTestCommit(t, child.batch.Cwd)
+	workflowCompleted(t, u, "child", "commit-followup", "committed")
+	for _, purpose := range []orchestrate.WorkflowDispatchKind{orchestrate.DispatchCorrectness, orchestrate.DispatchSimplification} {
+		work := child.workflowWork[purpose]
+		review, _ := workflowTake(t, u, wire, "turn/start", work.dispatch.ThreadID, purpose)
+		assignment := review.Params.Input[0].Text
+		if !strings.Contains(assignment, " against baseline "+child.batch.Base+" for "+string(purpose)) || strings.Contains(assignment, "Correction review:") {
+			t.Fatalf("changed follow-up inherited delta-only %s coverage: %s", purpose, assignment)
+		}
 	}
 }
 
