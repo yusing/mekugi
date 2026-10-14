@@ -51,6 +51,15 @@ func TestUISnapshotLiveActivitySharedEvents(t *testing.T) {
 	}
 }
 
+func TestUISnapshotSymbolQueryDisplay(t *testing.T) {
+	v := sharedEventsView(false)
+	for i, source := range []string{`msymbol refs sample.go Target`, `msymbol -- refs 'other file.go' Other`, `msymbol def sample.go Target refs other.go Other`, `msymbol refs sample.go`} {
+		entry := activityPaneEntry{Seq: uint64(i + 1), Kind: "tool", Agent: "Main", Text: toolActivityShell(source), Observed: v.now()}
+		v.appendEntry(entry, parseLiveActivity(entry))
+	}
+	uisnapshot.Assert(t, "testdata/snapshots/symbol-query-display.txt", strings.Join(v.renderFeed(80, 100).lines, "\n")+"\n")
+}
+
 func TestLiveActivityChildHostJournalPresentation(t *testing.T) {
 	v := sharedEventsView(true)
 	// Exercise the host message path, not applyJournal, which is Main-only.

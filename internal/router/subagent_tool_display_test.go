@@ -315,6 +315,33 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 	}
 }
 
+func TestSubagentSymbolQueryDisplay(t *testing.T) {
+	for _, tc := range []struct{ args, label string }{
+		{`refs sample.go Target`, "Search"},
+		{`-- refs sample.go Target`, "Search"},
+		{`refs sample.go 12 Target 2`, "Search"},
+		{`--workspace '/a b' --max-tokens=100 def 'sample file.go:12' 'pkg.Target'`, "Read"},
+		{`def sample.go Target refs 'other file.go' Other`, "Search"},
+		{`refs sample.go Target def other.go Other`, "Search"},
+		{`def sample.go Target`, "Read"},
+		{`refs sample.go`, "Run"},
+		{`def sample.go Target 2`, "Run"},
+		{`refs sample.go 0 Target`, "Run"},
+		{`refs sample.go Target --workspace`, "Run"},
+		{`refs sample.go Target --max-tokens=bad`, "Run"},
+		{`def sample.go Target refs other.go`, "Run"},
+	} {
+		source := "msymbol " + tc.args
+		want := tc.label + " " + toolActivityCode(tc.args)
+		if tc.label == "Run" {
+			want = "Run\n" + toolActivityFenced("bash", source)
+		}
+		if got := toolActivityShell(source); got != want {
+			t.Errorf("%s: got %q, want %q", source, got, want)
+		}
+	}
+}
+
 func TestSubagentSedDynamicOperands(t *testing.T) {
 	for _, operand := range []string{
 		`$(project-root)/file.go`, `"$(dirname "$file")/file.go"`,

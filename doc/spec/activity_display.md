@@ -76,6 +76,9 @@ pane; durable change evidence and inline receipts are unchanged. This omission
 applies only to generated tool activity, not authored text. Notes about output
 not returned to the model align with command text on their operation's branch
 and use muted, dimmed styling in either theme.
+Symbol commands use the native CLI grammar for classification: definitions show
+Read, and any reference query makes the invocation Search. Display retains the
+original quoted arguments; malformed invocations keep the generic Run display.
 Consecutive same-action target events by one agent collapse into one row, both
 within a call and across calls. Reads join ranges of the same file; Inspect,
 List, Search, and other target-only actions use the same grouping. A group that

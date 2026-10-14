@@ -57,6 +57,20 @@ const symbolUsage = "msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH
 var symbolDigits = regexp.MustCompile(`^[0-9]+$`)
 var combinedSymbolPath = regexp.MustCompile(`^(.*):([1-9][0-9]*)$`)
 
+// SymbolQueryModes projects the native parser's query modes for command display.
+// It validates the complete invocation without loading sources or running resolvers.
+func SymbolQueryModes(args []string) ([]string, error) {
+	queries, _, _, _, err := parseSymbolQueries(args)
+	if err != nil {
+		return nil, err
+	}
+	modes := make([]string, len(queries))
+	for i, query := range queries {
+		modes[i] = query.mode
+	}
+	return modes, nil
+}
+
 func positiveSymbolInteger(s, label string) (int, error) {
 	n, e := strconv.Atoi(s)
 	if e != nil || n > 9007199254740991 {
