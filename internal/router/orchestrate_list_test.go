@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ func TestOrchestrateListDetails(t *testing.T) {
 			PreviousReviews: []orchestrate.PreviousReview{{DispatchID: "settled", Result: orchestrate.ReviewResult{Revision: strings.Repeat("b", 40), Purpose: orchestrate.ReviewSimplification, Verdict: orchestrate.VerdictClear}}},
 			Dispatches: []orchestrate.WorkflowDispatch{
 				{ID: "settled", Generation: 1, State: orchestrate.DispatchAcknowledged, HostStatus: "completed"},
-				{ID: "old-intent", Generation: 1, State: orchestrate.DispatchIntent},
+				{ID: "old-intent", Generation: 1, State: orchestrate.DispatchIntent, Params: jsontext.Value(`{"developerInstructions":"retained evidence"}`)},
 				{ID: "old-uncertain", Generation: 1, State: orchestrate.DispatchUncertain, Reason: "inspect old host effect"},
 				{ID: "old-active", Generation: 1, State: orchestrate.DispatchAcknowledged},
 				{ID: "current", Generation: 2, State: orchestrate.DispatchUncertain, Reason: "inspect host"},
@@ -37,6 +38,10 @@ func TestOrchestrateListDetails(t *testing.T) {
 		ShadowMerge: &orchestrate.ShadowMerge{State: "writing"},
 	}
 	before := mustMarshalJSON(&b)
+	summaryDispatches := slices.Clone(b.Workflow.Dispatches[1:])
+	for i := range summaryDispatches {
+		summaryDispatches[i].Params = nil
+	}
 	for _, detail := range []string{"", "summary", "checks", "reviews", "full"} {
 		t.Run(detail, func(t *testing.T) {
 			agents, err := orchestrateListAgents([]orchestrate.Batch{b}, orchestrateListInput{Detail: detail})
@@ -53,7 +58,7 @@ func TestOrchestrateListDetails(t *testing.T) {
 			w := a["workflow"].(map[string]any)
 			if a["state"] != b.State || a["error"] != b.Error || w["phase"] != b.Workflow.Phase || w["reason"] != b.Workflow.Reason || w["review_waiver"] != b.Workflow.ReviewWaiver ||
 				!reflect.DeepEqual(w["candidate"], b.Workflow.Candidate) || w["outcome_state"] != orchestrate.DispatchUncertain ||
-				!reflect.DeepEqual(w["dispatches"], b.Workflow.Dispatches[1:]) || a["evidence"] == nil || a["shadow_merge"] == nil {
+				!reflect.DeepEqual(w["dispatches"], summaryDispatches) || a["evidence"] == nil || a["shadow_merge"] == nil {
 				t.Fatal("summary lost retained state or blockers", a)
 			}
 			if !reflect.DeepEqual(a["launch"], map[string]any{"thread_id": "", "turn_id": "", "host_status": ""}) {

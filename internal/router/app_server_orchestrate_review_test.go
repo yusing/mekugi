@@ -121,14 +121,32 @@ func workflowReview(t *testing.T, u *appServerUI, w *appServerTestInput, purpose
 	t.Helper()
 	child := u.orchestrateThreads["child"]
 	thread := fmt.Sprintf("%s-%d", purpose, child.batch.Workflow.Generation)
-	workflowReviewThread(t, u, w, purpose, thread)
+	turnID := thread + "-turn"
+	if work := child.workflowWork[orchestrate.WorkflowDispatchKind(purpose)]; work != nil && work.dispatch.ThreadID != "" {
+		thread = work.dispatch.ThreadID
+		if u.navigation.views[thread].workflowReview.host != u.client {
+			resume, params := workflowTake(t, u, w, "thread/resume", thread, "")
+			response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": thread, "cwd": child.batch.Cwd}, "activePermissionProfile": map[string]any{"id": params["permissions"]}, "approvalPolicy": "never"})
+			orchestrateTestReply(t, u, resume, string(response))
+		}
+		start, params := workflowTake(t, u, w, "turn/start", thread, "")
+		assignment := params["input"].([]any)[0].(map[string]any)["text"].(string)
+		if strings.Contains(assignment, child.batch.Workflow.Assignment.Scope) {
+			t.Fatal("follow-up repeated immutable accepted scope", assignment)
+		}
+		if len(child.batch.Workflow.PreviousReviews) > 0 && (!strings.Contains(assignment, "Correction review:") || strings.Contains(assignment, "Candidate source is read-only")) {
+			t.Fatal("follow-up did not reuse retained instructions", assignment)
+		}
+		orchestrateTestReply(t, u, start, fmt.Sprintf(`{"turn":{"id":%q}}`, turnID))
+	} else {
+		workflowReviewThread(t, u, w, purpose, thread)
+	}
 	result := orchestrate.ReviewResult{Revision: child.batch.Workflow.Candidate.Revision, Purpose: purpose, Verdict: verdict, Findings: []orchestrate.ReviewFinding{}}
 	if verdict == orchestrate.VerdictFindings {
 		result.Findings = []orchestrate.ReviewFinding{{ID: "F1", Detail: "change required"}}
 	}
 	raw, _ := json.Marshal(result)
-	workflowCompleted(t, u, thread, thread+"-turn", string(raw))
-	workflowArchive(t, u, w, thread, false)
+	workflowCompleted(t, u, thread, turnID, string(raw))
 }
 
 // workflowCheck answers the next host check; an "error:" response is an RPC error.
@@ -191,34 +209,6 @@ func TestWorkflowReviewAssignmentExactReceipts(t *testing.T) {
 		if !strings.HasPrefix(text, "Review candidate candidate against baseline baseline for correctness") || strings.Contains(text, "Correction review:") {
 			t.Fatal("first or incomplete purpose review lost full baseline coverage", text)
 		}
-	}
-}
-
-func TestWorkflowReviewStorageArchiveRecovery(t *testing.T) {
-	u, w := workflowUI(t)
-	workflowActiveReviews(t, u, w)
-	child := u.orchestrateThreads["child"]
-	workflowCompleted(t, u, "reviewer-c", "reviewer-c-turn", workflowVerdict(child, orchestrate.ReviewCorrectness))
-	workflowArchive(t, u, w, "reviewer-c", true)
-	workflowCompleted(t, u, "reviewer-s", "reviewer-s-turn", workflowVerdict(child, orchestrate.ReviewSimplification))
-	// Persist the successful archive but lose the router before scratch cleanup.
-	workflowTake(t, u, w, "thread/archive", "reviewer-s", "")
-	s := u.proxy.orchestration.store
-	d := child.batch.Workflow.Dispatches[1]
-	if err := s.RecordReviewerArchive(t.Context(), u.session.cwd, "main", "batch", d.ID, true, nil); err != nil {
-		t.Fatal(err)
-	}
-	workflowNotice(t, u, w)
-	workflowRestart(t, u)
-	drainOrchestrateWork(t, u)
-	if _, err := os.Stat(d.Scratch); !os.IsNotExist(err) {
-		t.Fatal("archived scratch survived recovery", err)
-	}
-	if _, err := os.Stat(child.batch.Workflow.Dispatches[0].Scratch); err != nil {
-		t.Fatal("uncertain archive lost its storage", err)
-	}
-	if w.Len() != 0 {
-		t.Fatal("storage recovery dispatched host work", w.String())
 	}
 }
 
@@ -309,8 +299,6 @@ func TestOrchestrateWorkflowLifecycle(t *testing.T) {
 	}
 	u.driveOrchestrateWorkflows()
 	drainOrchestrateWork(t, u)
-	workflowArchive(t, u, w, "reviewer-s", false)
-	workflowArchive(t, u, w, "reviewer-c", false)
 	if w.Len() != 0 {
 		t.Fatal("terminal outcome delivered twice", w.String())
 	}
@@ -586,7 +574,6 @@ func TestOrchestrateWorkflowFollowupResumesStoppedWorkflow(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "late", "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never"})
 	orchestrateTestReply(t, u, late, string(raw))
 	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"reviewer","turn":{"id":"reviewer-turn","status":"interrupted"}}}`)
-	workflowArchive(t, u, w, "reviewer", false)
 	if w.Len() != 0 || child.batch.Workflow.Phase != orchestrate.PhaseImplementation || len(child.workflowWork) != 0 {
 		t.Fatal("canceled round affected the resumed round", w.String(), child.batch.Workflow)
 	}
@@ -670,7 +657,6 @@ func TestOrchestrateWorkflowRecoveryReconcilesConcurrentReviews(t *testing.T) {
 	child := u.orchestrateThreads["child"]
 	workflowThreadRead(t, u, w, "reviewer-c", "completed", workflowVerdict(child, orchestrate.ReviewCorrectness))
 	workflowThreadRead(t, u, w, "reviewer-s", "inProgress", "")
-	workflowArchive(t, u, w, "reviewer-c", false)
 	if len(child.batch.Workflow.Reviews) != 1 || child.batch.Workflow.Reviews[0].Purpose != orchestrate.ReviewCorrectness {
 		t.Fatal("recovery lost host review")
 	}
@@ -734,7 +720,6 @@ func TestOrchestrateWorkflowManualInputAndCancellation(t *testing.T) {
 	late, _ := workflowTake(t, u, w, "thread/start", "", orchestrate.DispatchSimplification)
 	raw, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "late", "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": "readOnly"}, "approvalPolicy": "never"})
 	orchestrateTestReply(t, u, late, string(raw))
-	workflowArchive(t, u, w, "reviewer", false)
 	if len(child.workflowWork) != 0 || workflowUnsettled(child.batch) || w.Len() != 0 {
 		t.Fatal("interrupt completion revived work or left active reviewer", w.String())
 	}

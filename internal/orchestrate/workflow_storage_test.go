@@ -19,9 +19,7 @@ func TestWorkflowReviewStorageOwnership(t *testing.T) {
 		if filepath.Dir(path) != filepath.Dir(f.batch.Checkout) || path == f.batch.Checkout {
 			t.Fatal("scratch is not outside the checkout", path)
 		}
-		if _, err := f.s.PrepareWorkflowReviewStorage(t.Context(), f.workspace, "main", "batch", id); err == nil {
-			t.Fatal("uncertain storage creation was repeated")
-		}
+
 	}
 	if scratch[0] == scratch[1] {
 		t.Fatal("reviewers share scratch")
@@ -31,12 +29,12 @@ func TestWorkflowReviewStorageOwnership(t *testing.T) {
 	f.ok(os.Symlink(f.batch.Checkout, filepath.Join(scratch[0], "source")))
 	f.ok(os.WriteFile(filepath.Join(scratch[1], "live"), []byte("owned"), 0600))
 	f.s = &Store{Directory: f.s.Directory}
-	if err := f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "main", "batch", string(DispatchCorrectness)); err == nil {
+	if err := f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "main", "batch", string(DispatchCorrectness), false); err == nil {
 		t.Fatal("unconfirmed reviewer storage was released")
 	}
 	f.ok(f.s.FailWorkflowDispatch(t.Context(), f.workspace, "main", "batch", string(DispatchCorrectness), false, "host rejected launch"))
-	f.ok(f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "main", "batch", string(DispatchCorrectness)))
-	f.ok(f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "main", "batch", string(DispatchCorrectness)))
+	f.ok(f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "main", "batch", string(DispatchCorrectness), false))
+	f.ok(f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "main", "batch", string(DispatchCorrectness), false))
 	if _, err := os.Stat(scratch[0]); !os.IsNotExist(err) {
 		t.Fatal("released scratch remains", err)
 	}
@@ -46,7 +44,7 @@ func TestWorkflowReviewStorageOwnership(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(scratch[1], "live")); err != nil {
 		t.Fatal("other reviewer's storage was removed", err)
 	}
-	if err := f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "other-main", "batch", string(DispatchSimplification)); err == nil {
+	if err := f.s.ReleaseWorkflowReviewStorage(t.Context(), f.workspace, "other-main", "batch", string(DispatchSimplification), false); err == nil {
 		t.Fatal("foreign run released storage")
 	}
 }

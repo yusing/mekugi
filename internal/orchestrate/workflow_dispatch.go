@@ -2,6 +2,7 @@ package orchestrate
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"strings"
 )
@@ -27,7 +28,8 @@ const (
 )
 
 type WorkflowDispatch struct {
-	Archive      *Archive              `json:"archive,omitempty"`
+	Params       jsontext.Value        `json:"params,omitempty"` // Initial reviewer settings, retained for same-thread resume.
+	Compaction   *HostReceipt          `json:"compaction,omitempty"`
 	Scratch      string                `json:"scratch,omitempty"`
 	HostStatus   string                `json:"host_status,omitempty"`
 	ID           string                `json:"id"`
@@ -126,6 +128,29 @@ func (s *Store) BeginWorkflowDispatch(ctx context.Context, workspace, main, name
 			return errors.New("invalid workflow dispatch kind")
 		}
 		record = WorkflowDispatch{ID: id, Kind: kind, Generation: generation, Revision: revision, State: DispatchIntent}
+		if kind == DispatchCorrectness || kind == DispatchSimplification {
+			turns := 0
+			for _, prior := range w.Dispatches {
+				if prior.Kind != kind {
+					continue
+				}
+				if prior.State == DispatchIntent || prior.State == DispatchUncertain || prior.State == DispatchAcknowledged && prior.HostStatus == "" {
+					return errors.New("reviewer requires host reconciliation before reuse")
+				}
+				if prior.ThreadID == "" {
+					continue
+				}
+				record.ThreadID, record.Scratch = prior.ThreadID, prior.Scratch
+				if prior.TurnID != "" {
+					turns++
+				}
+			}
+			// One initial assignment and two follow-ups per context budget.
+			// The independent correction-round limit above does not change.
+			if turns > 0 && turns%3 == 0 {
+				record.Compaction = &HostReceipt{ThreadID: record.ThreadID}
+			}
+		}
 		w.Dispatches = append(w.Dispatches, record)
 		dispatch = true
 		return nil
@@ -157,6 +182,9 @@ func (s *Store) RecordWorkflowDispatch(ctx context.Context, workspace, main, nam
 			if d.State == DispatchFailed || d.ThreadID != "" && d.ThreadID != thread || d.TurnID != "" && d.TurnID != turn {
 				return errors.New("dispatch acknowledgement changed")
 			}
+			if turn != "" && d.Compaction != nil && (d.Compaction.TurnID == "" || d.Compaction.ItemID == "" || d.Compaction.TurnID == turn) {
+				return errors.New("review turn requires a completed distinct compaction")
+			}
 			if d.Kind == DispatchCorrection {
 				if b.Launch == nil || thread != b.Launch.ThreadID {
 					return errors.New("correction must use the implementer thread")
@@ -166,8 +194,8 @@ func (s *Store) RecordWorkflowDispatch(ctx context.Context, workspace, main, nam
 					return errors.New("review requires an independent thread")
 				}
 				for _, other := range w.Dispatches {
-					if other.ID != id && other.ThreadID == thread {
-						return errors.New("review requires a fresh independent thread")
+					if other.ID != id && other.ThreadID == thread && (other.Kind != d.Kind || turn != "" && (other.TurnID == turn || other.Compaction != nil && other.Compaction.TurnID == turn)) {
+						return errors.New("review requires an independent purpose and a new turn")
 					}
 				}
 			}
@@ -218,5 +246,59 @@ func (s *Store) FailWorkflowDispatch(ctx context.Context, workspace, main, name,
 			return nil
 		}
 		return errors.New("dispatch has no retained intent")
+	})
+}
+
+// RecordWorkflowCompaction retains exact host completion before the next turn.
+// An intent without this receipt is never replayed on recovery.
+func (s *Store) RecordWorkflowCompaction(ctx context.Context, workspace, main, name, id string, receipt HostReceipt) error {
+	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
+		w, err := workflowFor(b)
+		if err != nil {
+			return err
+		}
+		for i := range w.Dispatches {
+			d := &w.Dispatches[i]
+			if d.ID != id {
+				continue
+			}
+			if d.Compaction == nil || d.State != DispatchIntent || d.ThreadID != receipt.ThreadID || receipt.TurnID == "" || receipt.ItemID == "" {
+				return errors.New("compaction requires the pending reviewer and a host receipt")
+			}
+			for _, prior := range w.Dispatches {
+				if prior.ThreadID == receipt.ThreadID && prior.TurnID == receipt.TurnID {
+					return errors.New("compaction reused a review turn")
+				}
+			}
+			if d.Compaction.TurnID != "" {
+				if *d.Compaction != receipt {
+					return errors.New("compaction receipt changed")
+				}
+				return errLaunchUnchanged
+			}
+			*d.Compaction = receipt
+			return nil
+		}
+		return errors.New("compaction has no retained dispatch")
+	})
+}
+
+func (s *Store) RecordWorkflowReviewerParams(ctx context.Context, workspace, main, name, id string, params jsontext.Value) error {
+	if _, err := launchObject(params); err != nil {
+		return err
+	}
+	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
+		w, err := workflowFor(b)
+		if err != nil {
+			return err
+		}
+		for i := range w.Dispatches {
+			d := &w.Dispatches[i]
+			if d.ID == id && (d.Kind == DispatchCorrectness || d.Kind == DispatchSimplification) && d.State == DispatchIntent && d.ThreadID == "" && len(d.Params) == 0 {
+				d.Params = params.Clone()
+				return nil
+			}
+		}
+		return errors.New("reviewer configuration requires an unsent initial dispatch")
 	})
 }

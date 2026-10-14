@@ -52,7 +52,10 @@ func (f *workflowFixture) dispatch(kind WorkflowDispatchKind) WorkflowDispatch {
 	if !launch {
 		f.t.Fatal("new dispatch not granted")
 	}
-	thread := id
+	thread := d.ThreadID
+	if thread == "" {
+		thread = id
+	}
 	if kind == DispatchCorrection {
 		thread = "implementer"
 	}
@@ -150,6 +153,11 @@ func TestWorkflowCorrectionLimitAndAggregation(t *testing.T) {
 		}
 		if w.Phase != PhaseCorrection || len(w.Reviews) != 2 {
 			t.Fatal("both reviews not aggregated", w)
+		}
+		for _, d := range w.Dispatches {
+			if d.Generation == w.Generation {
+				f.ok(f.s.RecordWorkflowCompletion(t.Context(), f.workspace, "main", "batch", d.ID, d.ThreadID, d.TurnID, "completed"))
+			}
 		}
 		f.dispatch(DispatchCorrection)
 		// A dispute may keep the commit but must invalidate both previous approvals.
@@ -305,6 +313,34 @@ func TestWorkflowDispatchRecoveryAndStops(t *testing.T) {
 	}
 	if err := f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{strings.Repeat("a", 40)}, "report"); err == nil {
 		t.Fatal("canceled workflow resumed")
+	}
+}
+
+func TestWorkflowReviewerMissingAcknowledgementAcrossGenerations(t *testing.T) {
+	f := newWorkflowFixture(t, nil)
+	d, launch, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "pending", 1, DispatchCorrectness)
+	f.ok(err)
+	if !launch || d.ThreadID != "" {
+		t.Fatal("fixture requires an unacknowledged initial launch")
+	}
+	f.ok(f.s.StopWorkflow(t.Context(), f.workspace, "main", "batch", PhaseCanceled, "stop before acknowledgement"))
+	f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
+	f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "new input"))
+	f.s = &Store{Directory: f.s.Directory}
+	for _, uncertain := range []bool{false, true} {
+		if uncertain {
+			f.ok(f.s.FailWorkflowDispatch(t.Context(), f.workspace, "main", "batch", d.ID, true, "connection lost"))
+		}
+		if _, again, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "next", f.state().Generation, DispatchCorrectness); err == nil || again {
+			t.Fatal("missing acknowledgement permitted a replacement reviewer", uncertain)
+		}
+	}
+	f.ok(f.s.RecordWorkflowDispatch(t.Context(), f.workspace, "main", "batch", d.ID, "recovered", "old-turn"))
+	f.ok(f.s.RecordWorkflowCompletion(t.Context(), f.workspace, "main", "batch", d.ID, "recovered", "old-turn", "interrupted"))
+	next, launch, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "next", f.state().Generation, DispatchCorrectness)
+	f.ok(err)
+	if !launch || next.ThreadID != "recovered" || len(f.state().Dispatches) != 2 {
+		t.Fatal("reconciled launch did not reuse its recovered identity", next)
 	}
 }
 
@@ -494,9 +530,13 @@ func TestWorkflowRejectedResultsRouteCorrectionAndInputResumes(t *testing.T) {
 	}
 	f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
 	f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "report"))
-	// The earlier uncertain review belongs to a superseded generation.
+	// A new generation does not settle a missing host acknowledgement.
+	if _, dispatch, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "fresh", f.state().Generation, DispatchCorrectness); err == nil || dispatch {
+		t.Fatal("superseded uncertain launch permitted a replacement reviewer")
+	}
+	f.ok(f.s.FailWorkflowDispatch(t.Context(), f.workspace, "main", "batch", d.ID, false, "host confirmed launch rejected"))
 	if _, dispatch, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "fresh", f.state().Generation, DispatchCorrectness); err != nil || !dispatch {
-		t.Fatal("stale uncertainty blocked a new generation", err)
+		t.Fatal("confirmed no-effect rejection blocked a new generation", err)
 	}
 	if w := f.state(); w.CorrectionRounds != 0 {
 		t.Fatal("resume kept the old correction budget", w)

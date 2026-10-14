@@ -263,7 +263,8 @@ evidence requires a decision. Completed check receipts remain tied to their exac
 candidate, command and checkout and are not rerun during recovery.
 
 By default, every implementation candidate requires independent correctness and
-simplification reviews. Mekugi starts fresh review threads with host-enforced
+simplification reviews. Each batch keeps one ordinary Codex thread per review purpose,
+with role instructions injected at launch and host-enforced
 read-only source access and schema-constrained verdicts. Each reviewer can write
 only to its own temporary/build storage outside the candidate checkout. Temporary
 directories and Go's build cache use that storage; network access and permission
@@ -285,7 +286,11 @@ the source workspace's enabled Codex configuration layers and role files. Missin
 fields retain the built-in rubric or inherited execution setting. Mekugi does not
 change user configuration. Explicit per-role service tier takes precedence over
 the coordinator's tier. A missing, unreadable, or malformed selected role is a
-visible blocker. Correctness reviews check the accepted scope and
+visible blocker. The initial reviewer settings remain fixed across follow-ups and
+resume, even if role files or coordinator settings change. Live reviewers accept
+new turns directly; only fresh-host admission restores settings and scratch storage.
+Correctness reviews
+check the accepted scope and
 retained behavior for concrete defects and validation gaps. Simplification reviews
 check whether the added mechanisms are necessary and identify smaller approaches
 that preserve the required behavior. The host remains the execution
@@ -294,7 +299,7 @@ blockers rather than weaker reviews or silent approval. Both reviews of a candid
 run concurrently, and each batch's workflow progresses independently of the others.
 
 Confirmed reviewers appear as independent threads in Agents and the orchestration
-picker, identified by batch, review purpose and round. Selecting one shows its own
+picker, identified by batch and review purpose. Selecting one shows its own
 activity and transcript. Runtime ownership remains unchanged: review views do not
 accept manual turns, shell commands, or compaction. Verdicts remain private workflow input
 rather than batch completion messages to Main. Full host thread identity owns
@@ -316,7 +321,10 @@ wrong-revision, or failed review results do not count as approval. Mekugi collec
 both results before delivering one correction assignment directly to the implementer.
 The implementer can fix or dispute findings but cannot approve its own candidate.
 Each changed candidate receives validation and, unless explicitly waived below,
-fresh verdicts from both purposes. Correction reviews compare each purpose's last
+fresh verdicts from both purposes on their existing threads. Correction reviews use
+short follow-ups with the exact candidate, prior verdicts, unresolved findings, and
+new validation receipts rather than repeating the original assignment. They compare
+each purpose's last
 reviewed candidate with the current candidate, addressing unresolved findings,
 disputes and affected existing behavior. They reuse unchanged clear scope, reopening
 it only for an evidenced interaction with the correction. Prior verdicts retain
@@ -364,15 +372,27 @@ workflow completion or failure handling. A newer active turn prevents adoption.
 This observation starts no child turn,
 repeats no review or result delivery, and does not replace integration acceptance.
 
-After authenticated terminal review completion, Mekugi archives that independent
-reviewer through Codex to release its private runtime and owned helpers. Host
-completion, verdict or failure evidence, and available usage are retained first.
-Failed and interrupted reviews can also release their resources after confirmed
-completion. Active or unresolved work stays intact. Main and the implementer are
-not targets of this trigger. Archive intent and its separate outcome remain in
-the review dispatch record. Failures preserve the review outcome and remain
-inspectable; recovery never repeats an unconfirmed archive request. Archival keeps
-private verdicts, workflow receipts, usage and read-only host history available.
+Reviewer threads remain available between verdicts. After two follow-ups, Mekugi
+resets context on that same thread before the next review. This context budget is
+separate from the finite correction-round limit. The native `/compact` entry invokes
+Mekugi's local journal/recovery synthesis, never provider summarization. Reviewers
+use enforced invocation-local `auto` reset even when the rest of the session uses
+`off` or `slice`; global configuration is unchanged. Recovery includes accepted
+scope, current candidate, prior findings and journal evidence; Codex retains the
+thread's role instructions.
+Missing identity, evidence, storage or rendering stops reset without provider
+fallback. The host acknowledgement, matching completed compaction item and successful
+terminal turn and matching local recovery evidence are required before another
+review starts. Codex exposes the native entry without a feature flag. Its
+incompatible `token_budget` feature is disabled for reviewer thread admission only.
+Recovery never repeats an uncertain reset or adopts
+an earlier review turn. See [journal ownership](../architecture/journal.md).
+
+Codex's final graceful shutdown releases reviewer runtimes and owned helpers before
+Mekugi removes their retained scratch directories. Unconfirmed shutdown retains
+scratch. A later explicit resume recreates the same private scratch path and
+restores the saved thread settings. Private verdicts, workflow receipts, provider
+usage and host history remain available after shutdown.
 
 Integration remains Main's responsibility within the accepted destination and
 authorization. A reviewed candidate must still match its revision when integration
@@ -586,8 +606,8 @@ history does not start cleanup or repeat an uncertain removal.
 
 After checkout removal, Mekugi archives the accepted child batch through
 Codex's native thread archive. Main and independent reviewer threads are not
-targets of accepted-checkout cleanup; terminal reviewers use the review lifecycle
-above. Native spawned descendants follow Codex's archive semantics.
+targets of accepted-checkout cleanup; reviewer resources remain available until
+final host shutdown. Native spawned descendants follow Codex's archive semantics.
 Archive intent is durable before dispatch and keeps Main's accepted binding
 fixed. Host confirmation is retained separately from checkout removal. Archive
 failure preserves acceptance and history and remains visible; an unconfirmed
@@ -738,7 +758,7 @@ The Agents pane (5) lists the coordinator, batch threads and runtime reviewers t
 the viewed thread's native subagents. Independent thread rows use italic and
 accent styling; native subagents retain their identity and role colors. The
 panel has one focus, selection, collapse state and height. Runtime reviewers
-nest beneath their owning batch and show only their review purpose and round,
+nest beneath their owning batch and show only their review purpose,
 without the batch-name prefix. Groups are collapsed while the parent is idle
 and expanded while its authoritative activity state is working. Existing pane
 collapse and thread navigation controls remain unchanged. Main stays visible.

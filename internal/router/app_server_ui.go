@@ -491,6 +491,9 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		if !exited {
 			if err == nil {
 				err = c.Shutdown()
+				if err == nil {
+					err = errors.Join(owner.closeOrchestrateStorage(), owner.releaseWorkflowReviewStorage())
+				}
 			} else {
 				c.Close()
 				<-c.Done

@@ -18,7 +18,9 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/commentaryid"
+	"github.com/yusing/mekugi/internal/orchestrate"
 	"github.com/yusing/mekugi/internal/responses"
 )
 
@@ -51,6 +53,48 @@ type journalCompactionRecovery struct {
 }
 
 const journalCompactionReferencePrefix = "mekugi:journal:"
+
+// This invocation-local reference selects strict local reset for an acknowledged
+// reviewer. The manifest still owns settings, scope, candidate and verdicts.
+type workflowReviewerReset struct {
+	run      journalRun
+	batch    string
+	dispatch string
+	host     *appserver.Client // Confirmed loaded host; history discovery does not transfer ownership.
+}
+
+func (p *mekugiProxy) journalCompactionPolicy(threads ...string) (string, workflowReviewerReset) {
+	if p == nil {
+		return "", workflowReviewerReset{}
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	for _, thread := range threads {
+		if ref, reviewer := p.reviewerResets[thread]; reviewer {
+			return "auto", *ref
+		}
+	}
+	return p.journalCompaction, workflowReviewerReset{}
+}
+
+func (r workflowReviewerReset) recovery(thread, workspace string) (string, error) {
+	batches, err := (&orchestrate.Store{Directory: r.run.Directory}).Snapshot(r.run.Workspace, r.run.Main)
+	if err != nil {
+		return "", err
+	}
+	for _, b := range batches {
+		if b.TaskName != r.batch || b.Cwd != workspace || b.Workflow == nil || b.Workflow.Candidate == nil {
+			continue
+		}
+		for _, d := range b.Workflow.Dispatches {
+			if d.ThreadID != thread || (d.Kind != orchestrate.DispatchCorrectness && d.Kind != orchestrate.DispatchSimplification) {
+				continue
+			}
+			return "Reviewer recovery\nPurpose: " + string(d.Kind) + "\nAccepted scope: " + b.Workflow.Assignment.Scope + "\n" + workflowReviewAssignment(b, d.Kind) + "\n\n", nil
+		}
+	}
+	return "", errors.New("reviewer reset has no matching retained workflow")
+}
 
 func journalCompactionRecoveryName(workspace, thread, response string) string {
 	return fmt.Sprintf("compaction-%x.json", sha256.Sum256([]byte("recovery\x00"+journalKey(workspace, thread)+"\x00"+response)))
@@ -215,6 +259,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 	if p == nil {
 		return false, nil
 	}
+	mode, reviewer := p.journalCompactionPolicy(a.threadID, a.metadata.ThreadID)
 	if p.replayStore == nil || a.prewarm ||
 		a.threadID == "" || a.metadata.activityIdentityInvalid ||
 		a.metadata.ThreadID != "" && a.metadata.ThreadID != a.threadID ||
@@ -254,7 +299,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		release()
 		return a.journalCompactionUnavailable(err)
 	}
-	if p.journalCompaction != "auto" && p.journalCompaction != "slice" {
+	if mode != "auto" && mode != "slice" {
 		release()
 		return false, nil
 	}
@@ -265,7 +310,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 	}
 	_ = json.Unmarshal(a.metadata.Compaction, &metadata)
 	v2 := metadata.Implementation == "responses_compaction_v2"
-	if p.journalCompaction == "slice" {
+	if mode == "slice" {
 		err = store.locked(ctx, func() error {
 			j, _, err := readThreadJournal(store, workspace, a.threadID)
 			if err != nil {
@@ -285,7 +330,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		}
 	}
 	var guidance *journalGuidance
-	if v2 && (p.journalCompaction == "auto" || metadata.Trigger == "manual" && metadata.Phase == "standalone_turn") {
+	if v2 && (mode == "auto" || metadata.Trigger == "manual" && metadata.Phase == "standalone_turn") {
 		// Snapshot outside the store lock: skill loads run skills-mgr.
 		if items, _, err := journalCompactionInput(&a.request); err == nil {
 			guidance = collectJournalGuidance(ctx, items, jsonString(a.request.fields, "instructions"), workspace, a.request.journalGuidanceOrder, a.request.journalGuidanceSkills, a.request.journalRecoveryTexts...)
@@ -307,7 +352,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		// after the completed slice still names the latest ordinary turn.
 		reset := j.ResetIntent != nil && j.ResetIntent.Phase == "armed" && j.ResetIntent.Turn == j.TurnID &&
 			metadata.Trigger == "manual" && metadata.Phase == "standalone_turn"
-		if p.journalCompaction == "slice" && !reset {
+		if mode == "slice" && !reset {
 			return errJournalUnchanged
 		}
 		summary, err = store.journalSummaryLocked(ctx, j)
@@ -316,6 +361,16 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 		}
 		if !exists && summary.Changes == 0 && summary.Failures == 0 {
 			return errors.New("no durable compaction evidence")
+		}
+		if reviewer.batch != "" {
+			context, err := reviewer.recovery(a.threadID, workspace)
+			if err != nil {
+				return err
+			}
+			if len(context)+len(summary.Text) > maxJournalSummaryBytes {
+				return errors.New("reviewer recovery exceeds local reset capacity")
+			}
+			summary.Text = context + summary.Text
 		}
 		id := "resp_mekugi_compact_" + rand.Text()
 		recovery := journalCompactionRecovery{Workspace: workspace, Thread: a.threadID, Turn: a.metadata.TurnID, ResponseID: id, Text: summary.Text}
@@ -432,7 +487,7 @@ func (s *mekugiReplayStore) bindStandaloneCompactionItem(ctx context.Context, wo
 
 // Slice retains its provider fallback. Auto must never run provider compaction.
 func (a *requestAttempt) journalCompactionUnavailable(err error) (bool, error) {
-	if p := a.executor.mekugiCalls; p != nil && p.journalCompaction == "auto" {
+	if mode, _ := a.executor.mekugiCalls.journalCompactionPolicy(a.threadID, a.metadata.ThreadID); mode == "auto" {
 		a.debug.event(map[string]any{
 			"event": "journal_context_reset_failed", "error": err.Error(),
 			"request_id": a.debugID, "session_id": a.sessionID, "thread_id": a.threadID,

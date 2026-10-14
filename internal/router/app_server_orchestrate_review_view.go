@@ -2,7 +2,6 @@ package router
 
 import (
 	json "encoding/json/v2"
-	"fmt"
 
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/orchestrate"
@@ -11,19 +10,29 @@ import (
 // Reviewers are independent host threads, not implementation batches or native
 // descendants. Their views observe work; only the workflow can submit turns.
 type workflowReviewView struct {
+	*workflowReviewerReset
 	name     string
-	batch    string // Authenticated workflow owner, independent of the display path.
 	restored bool
 }
 
 func (u *appServerUI) addWorkflowReviewView(child *orchestrateChild, d orchestrate.WorkflowDispatch, raw []byte, restored bool, ready func()) error {
+	u.proxy.mu.Lock()
+	if u.proxy.reviewerResets == nil {
+		u.proxy.reviewerResets = make(map[string]*workflowReviewerReset)
+	}
+	ref := u.proxy.reviewerResets[d.ThreadID]
+	if ref == nil {
+		ref = &workflowReviewerReset{run: journalRun{Directory: u.proxy.orchestration.store.Directory, Workspace: child.command.workspace, Main: child.command.main}, batch: child.batch.TaskName, dispatch: d.ID}
+		u.proxy.reviewerResets[d.ThreadID] = ref
+	}
+	u.proxy.mu.Unlock()
 	if err := u.addOrchestratedView(child, d.ThreadID, raw, ready); err != nil {
 		return err
 	}
 	v := u.navigation.views[d.ThreadID]
 	v.awaitingTurn = false
 	v.status = "Ready"
-	v.workflowReview = &workflowReviewView{name: fmt.Sprintf("%s/%s/%d", child.batch.TaskName, d.Kind, d.Generation), batch: child.batch.TaskName, restored: restored}
+	v.workflowReview = &workflowReviewView{workflowReviewerReset: ref, name: child.batch.TaskName + "/" + string(d.Kind), restored: restored}
 	if restored {
 		status := d.HostStatus
 		if d.State == orchestrate.DispatchFailed {

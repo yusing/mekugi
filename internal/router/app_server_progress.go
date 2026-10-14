@@ -54,7 +54,7 @@ func (u *appServerUI) progress(item appServerItem, method, thread, turn string) 
 		}
 		if answered || u.journalResetCompleted(thread, turn) {
 			text = "Context reset from journal"
-		} else if u.proxy != nil && u.proxy.journalCompaction == "auto" {
+		} else if mode, _ := u.proxy.journalCompactionPolicy(u.thread); mode == "auto" {
 			text = "Context reset"
 		}
 	}

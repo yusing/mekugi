@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
-	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
 const reviewerReleaseProbe = "MEKUGI_TEST_REVIEWER_RELEASE"
@@ -75,7 +74,7 @@ func TestOrchestrateReviewerReleaseNativeCodex(t *testing.T) {
 		t.Skip("descriptor proof requires Linux procfs")
 	}
 	t.Setenv(reviewerReleaseProbe, t.TempDir())
-	testOrchestrateWorkflowNativeCodex(t, true)
+	testOrchestrateWorkflowNativeCodex(t, true, "")
 }
 
 type reviewerReleaseEvidence struct {
@@ -135,7 +134,7 @@ func observeReviewerRelease(t *testing.T, host int, directory string, event apps
 	evidence[terminal.ThreadID] = proof
 }
 
-func verifyReviewerRelease(t *testing.T, u *appServerUI, host int, evidence map[string]reviewerReleaseEvidence) {
+func verifyReviewerRelease(t *testing.T, host int, evidence map[string]reviewerReleaseEvidence) {
 	t.Helper()
 	if len(evidence) != 2 {
 		t.Fatal("expected both authenticated reviewer helper identities", len(evidence))
@@ -149,48 +148,10 @@ func verifyReviewerRelease(t *testing.T, u *appServerUI, host int, evidence map[
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatal("archived reviewer retained its helper or host pipe descriptors")
+				t.Fatal("host shutdown retained reviewer helper or pipe descriptors")
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		id, err := u.client.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": true}, true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := awaitHistoryRPC(t, u.client, id)
-		var history struct {
-			Thread appServerThreadInfo `json:"thread"`
-		}
-		if json.Unmarshal(result.Result, &history) != nil || history.Thread.ID != thread || len(history.Thread.Turns) != 1 || history.Thread.Turns[0].Status != "completed" || len(history.Thread.Turns[0].Items) == 0 {
-			t.Fatal("archive lost completed read-only reviewer history")
-		}
-		t.Logf("reviewer %s: helper %d exited; %d owned host pipe descriptors released; archived history readable", thread, proof.pid, len(proof.pipes))
-	}
-	id, err := u.client.Send("thread/loaded/list", map[string]any{}, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := awaitHistoryRPC(t, u.client, id)
-	var loaded struct {
-		Data []string `json:"data"`
-	}
-	if err := json.Unmarshal(result.Result, &loaded); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(loaded.Data, u.thread) {
-		t.Fatal("release unloaded Main")
-	}
-	for thread, child := range u.orchestrateThreads {
-		if !slices.Contains(loaded.Data, thread) {
-			t.Fatal("release unloaded implementer")
-		}
-		for _, d := range child.batch.Workflow.Dispatches {
-			if d.Kind != orchestrate.DispatchCorrectness && d.Kind != orchestrate.DispatchSimplification {
-				continue
-			}
-			if d.Archive == nil || d.Archive.State != "archived" || d.HostStatus != "completed" || d.ResultItemID == "" || slices.Contains(loaded.Data, d.ThreadID) {
-				t.Fatal("reviewer runtime or durable outcome was not released correctly")
-			}
-		}
+		t.Logf("reviewer %s: helper %d exited; %d owned host pipe descriptors released", thread, proof.pid, len(proof.pipes))
 	}
 }

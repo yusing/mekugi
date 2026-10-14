@@ -105,9 +105,11 @@ owns ambiguous-ID selection and mutation behavior.
 
 Reviewer scratch directories belong to their retained orchestration dispatches,
 outside candidate checkouts. A reviewer's host profile grants writes only to its
-own scratch. The reviewer archive owner releases that storage after confirmed host
-shutdown, preserving storage when shutdown is uncertain. Replay restores ownership
+own scratch. The router's final host-shutdown handler releases that storage after
+confirmed shutdown, preserving storage when shutdown is uncertain. Replay restores ownership
 facts, not live scratch processes or execution handles.
+Only reviewers loaded by that host qualify for release. Retained-history discovery
+does not transfer storage ownership to the observing host.
 
 Run-owned shadow repositories reuse the workspace snapshot owner's byte and
 ignore policy with complete indexing. Their objects and branches remain outside

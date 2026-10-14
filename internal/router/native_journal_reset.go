@@ -89,7 +89,7 @@ func (u *appServerUI) journalCompactionAnswered(thread, turn, item string) bool 
 
 // Auto replaces provider compaction for manual and automatic requests.
 func (u *appServerUI) compactionProgressText() string {
-	if u.proxy != nil && u.proxy.journalCompaction == "auto" {
+	if mode, _ := u.proxy.journalCompactionPolicy(u.thread); mode == "auto" {
 		return "Resetting context from journal"
 	}
 	return "Compacting context"
@@ -115,7 +115,7 @@ func (u *appServerUI) journalResetEvent(thread, turn string) bool {
 
 // Keep host/internal compaction identities while displaying the auto reset policy.
 func (u *appServerUI) compactionText(text string) string {
-	if u.proxy != nil && u.proxy.journalCompaction == "auto" {
+	if mode, _ := u.proxy.journalCompactionPolicy(u.thread); mode == "auto" {
 		return strings.NewReplacer("context compaction", "context reset", "Compacting", "Resetting context", "Compaction", "Context reset", "compaction", "context reset").Replace(text)
 	}
 	return text

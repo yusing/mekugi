@@ -1,4 +1,4 @@
 ─ 5 Agents · 4 · 3 working ──────────────────────── ↑4K ↓400 · $0.04 ─
  ● main               Idle                                           
- ◐   └ simplificat…1  Working                       0%  0s · just now 
+ ◐   └ simplificati…  Working                       0%  0s · just now 
    +2 more · scroll

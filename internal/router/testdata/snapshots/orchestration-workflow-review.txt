@@ -16,9 +16,9 @@
 │╰────────────────────────── model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
 ─ 5 Agents · 4 · 3 working ─────────────────────────────────────────────────────────────────────────
- ● main                  Idle
- ◐ batch                 Review                                                   0%
- ◐   ├ correctness/1     Working                                                  0%  0s · just now
- ◐   └ simplification/1  Working                                                  0%  0s · just now
+ ● main                Idle
+ ◐ batch               Review                                                     0%
+ ◐   ├ correctness     Working                                                    0%  0s · just now
+ ◐   └ simplification  Working                                                    0%  0s · just now
 
  1 Main  [ 2 Diff │ 3 Activity │ 4 Journal ]  5 Agents³   enter switch/filter · j/k agent · a only ·

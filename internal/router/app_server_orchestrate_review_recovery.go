@@ -40,9 +40,9 @@ func (u *appServerUI) recoverOrchestratedWorkflows(batches []orchestrate.Batch) 
 			continue
 		}
 		for _, d := range batch.Workflow.Dispatches {
-			if d.Scratch != "" && (d.Archive != nil && d.Archive.State == "archived" || d.State == orchestrate.DispatchFailed && d.ThreadID == "") {
+			if d.Scratch != "" && (d.State == orchestrate.DispatchFailed && d.ThreadID == "") {
 				u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
-					return s.ReleaseWorkflowReviewStorage(ctx, child.command.workspace, child.command.main, batch.TaskName, d.ID)
+					return s.ReleaseWorkflowReviewStorage(ctx, child.command.workspace, child.command.main, batch.TaskName, d.ID, false)
 				}, func(err error) {
 					if err != nil {
 						u.setNotice("Reviewer storage: "+err.Error(), true)
@@ -118,7 +118,7 @@ func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
 			}
 			continue
 		}
-		if d.Generation != w.Generation || d.State == orchestrate.DispatchFailed || d.ResultItemID != "" || d.Archive != nil || child.workflowWork[d.Kind] != nil {
+		if d.Generation != w.Generation || d.State == orchestrate.DispatchFailed || d.ResultItemID != "" || child.workflowWork[d.Kind] != nil {
 			continue
 		}
 		if d.Kind == orchestrate.DispatchCorrection && w.Phase != orchestrate.PhaseCorrection && d.HostStatus != "" {
@@ -176,7 +176,10 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 	}
 	turnID := work.dispatch.TurnID
 	if turnID == "" {
-		if (work.dispatch.Kind != orchestrate.DispatchCorrectness && work.dispatch.Kind != orchestrate.DispatchSimplification) || len(result.Thread.Turns) != 1 {
+		reused := slices.ContainsFunc(child.batch.Workflow.Dispatches, func(d orchestrate.WorkflowDispatch) bool {
+			return d.ID != work.dispatch.ID && d.ThreadID == work.dispatch.ThreadID
+		})
+		if reused || (work.dispatch.Kind != orchestrate.DispatchCorrectness && work.dispatch.Kind != orchestrate.DispatchSimplification) || len(result.Thread.Turns) != 1 {
 			fail(errors.New("dispatch turn identity is uncertain; inspect host history"))
 			return
 		}

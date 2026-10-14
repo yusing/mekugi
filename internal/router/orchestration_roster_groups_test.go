@@ -39,7 +39,7 @@ func TestUISnapshotOrchestrationRosterReviewerGroups(t *testing.T) {
 		}
 	}
 	const parent = "/Orchestration/batch"
-	const reviewer = parent + "/correctness/1"
+	const reviewer = parent + "/correctness"
 	u.agents.rosterSelected, u.shell.focus = parent, 3
 	snapshot("active", 110, 8)
 	rows := u.agents.nativeRosterRows()
@@ -52,12 +52,11 @@ func TestUISnapshotOrchestrationRosterReviewerGroups(t *testing.T) {
 		t.Fatal("reviewer navigation failed", err)
 	}
 	u.switchOrchestratedThread("main")
-	u.agents.rosterSelected = parent + "/simplification/1"
+	u.agents.rosterSelected = parent + "/simplification"
 	snapshot("short", 70, 3)
 	for i, thread := range []string{"reviewer-c", "reviewer-s"} {
 		purpose := []orchestrate.ReviewPurpose{orchestrate.ReviewCorrectness, orchestrate.ReviewSimplification}[i]
 		workflowCompleted(t, u, thread, thread+"-turn", workflowVerdict(u.orchestrateThreads["child"], purpose))
-		workflowArchive(t, u, w, thread, false)
 	}
 	u.agents.rosterSelected = parent
 	snapshot("idle-default", 110, 8)

@@ -133,6 +133,7 @@ type mekugiProxy struct {
 	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
 	contextUsage       map[string]hostContextUsage                  // Latest host context observation, never inherited.
 	btwThreads         map[string]bool                              // Live ephemeral UI threads; never inherited or replayed.
+	reviewerResets     map[string]*workflowReviewerReset            // Reviewer identity and loaded-host ownership survive presentation changes.
 	replayStore        *mekugiReplayStore
 	sessions           map[string]*mekugiHistorySession
 	noticeSink         func(string, string, string, string)

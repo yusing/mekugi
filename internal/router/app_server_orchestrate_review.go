@@ -20,6 +20,7 @@ type orchestrateReviewWork struct {
 	check                      orchestrate.RequiredCheck
 	checkOutput                string
 	checkUTF8                  [2]string // Incomplete stdout/stderr rune bytes, at most three each.
+	resetting                  bool      // The current host effect is context reset, before review.
 	acknowledged               bool
 	completed                  *appServerTurn
 	message, item, messageTurn string
@@ -140,8 +141,14 @@ func (u *appServerUI) workflowFailure(child *orchestrateChild, phase orchestrate
 			}
 			if work.dispatch.Kind == workflowValidation {
 				_ = u.orchestrateRPCRequest(orchestrateRPC{method: "command/exec/terminate", child: child, review: work}, map[string]any{"processId": work.dispatch.ID})
-			} else if work.dispatch.TurnID != "" {
-				_ = u.orchestrateCleanupInterrupt(child, work.dispatch.ThreadID, work.dispatch.TurnID)
+			} else {
+				turn := work.dispatch.TurnID
+				if turn == "" && work.dispatch.Compaction != nil {
+					turn = work.dispatch.Compaction.TurnID
+				}
+				if turn != "" {
+					_ = u.orchestrateCleanupInterrupt(child, work.dispatch.ThreadID, turn)
+				}
 			}
 		}
 	}
@@ -410,12 +417,20 @@ func (u *appServerUI) beginWorkflowWork(child *orchestrateChild, kind orchestrat
 			return
 		}
 		if kind == orchestrate.DispatchCorrectness || kind == orchestrate.DispatchSimplification {
+			if record.ThreadID != "" {
+				if v := u.navigation.views[record.ThreadID]; v != nil && v.workflowReview != nil && v.workflowReview.host == u.client {
+					u.prepareWorkflowReviewTurn(work)
+				} else {
+					u.resumeWorkflowReviewer(work)
+				}
+				return
+			}
 			if err := u.orchestrateRPCRequest(orchestrateRPC{method: "config/read", child: child, review: work}, map[string]any{"cwd": c.workspace, "includeLayers": true}); err != nil {
 				u.failWorkflowDispatch(work, false, err)
 			}
 		} else {
 			work.dispatch.ThreadID = child.batch.Launch.ThreadID
-			u.startWorkflowTurn(work)
+			u.startWorkflowTurn(work, workflowCorrectionAssignment(child.batch))
 		}
 	})
 }
@@ -428,7 +443,7 @@ func (u *appServerUI) failWorkflowDispatch(work *orchestrateReviewWork, uncertai
 			return saveErr
 		}
 		if !uncertain && work.dispatch.ThreadID == "" {
-			return s.ReleaseWorkflowReviewStorage(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID)
+			return s.ReleaseWorkflowReviewStorage(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, false)
 		}
 		return nil
 	}, func(saveErr error) {
@@ -468,16 +483,38 @@ func (u *appServerUI) finishWorkflowWork(work *orchestrateReviewWork) {
 	child, c, name, turn, d := work.child, work.child.command, work.child.batch.TaskName, *work.completed, work.dispatch
 	message, item, messageTurn := work.message, work.item, work.messageTurn
 	stopped := u.workflowWorkStopped(work)
-	completionRetained := false
-	if turn.ID != d.TurnID {
+	expected := d.TurnID
+	if work.resetting {
+		receipt := *d.Compaction // Snapshot before asynchronous persistence.
+		d.Compaction = &receipt
+		expected = receipt.TurnID
+	}
+	if turn.ID != expected {
 		u.workflowFailure(child, orchestrate.PhaseNeedsDecision, errors.New("workflow host turn identity changed"))
 		return
 	}
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+		if work.resetting {
+			if turn.Error != nil {
+				return fmt.Errorf("reviewer context reset: %s", turn.Error.Message)
+			}
+			if turn.Status != "completed" || d.Compaction.ItemID == "" {
+				return errors.New("reviewer context reset did not complete")
+			}
+			replay := u.proxy.replayStore
+			if replay == nil {
+				return errors.New("reviewer context reset has no local recovery store")
+			}
+			replay.bindStandaloneCompactionItem(ctx, child.batch.Cwd, d.ThreadID, turn.ID, d.Compaction.ItemID)
+			recovery, err := replay.compactionRecovery(ctx, child.batch.Cwd, d.ThreadID, turn.ID, d.Compaction.ItemID)
+			if err != nil || recovery == "" {
+				return errors.Join(errors.New("reviewer context reset has no matching local recovery"), err)
+			}
+			return s.RecordWorkflowCompaction(ctx, c.workspace, c.main, name, d.ID, *d.Compaction)
+		}
 		if err := s.RecordWorkflowCompletion(ctx, c.workspace, c.main, name, d.ID, d.ThreadID, turn.ID, turn.Status); err != nil {
 			return err
 		}
-		completionRetained = true
 		if stopped {
 			return nil
 		}
@@ -506,6 +543,15 @@ func (u *appServerUI) finishWorkflowWork(work *orchestrateReviewWork) {
 		}
 		return s.RecordWorkflowReview(ctx, c.workspace, c.main, name, d.ID, orchestrate.HostReceipt{ThreadID: d.ThreadID, TurnID: turn.ID, ItemID: item}, result)
 	}, func(err error) {
+		if work.resetting {
+			if err != nil {
+				u.failWorkflowDispatch(work, true, err)
+				return
+			}
+			work.resetting, work.acknowledged, work.processing, work.completed = false, false, false, nil
+			u.startWorkflowTurn(work, "Review candidate "+d.Revision+" for "+string(d.Kind)+". Use the recovered assignment and evidence. Return the current-candidate JSON verdict as your final answer.")
+			return
+		}
 		u.endWorkflowWork(work)
 		if err != nil && !work.canceled {
 			phase := orchestrate.PhaseNeedsDecision
@@ -513,9 +559,6 @@ func (u *appServerUI) finishWorkflowWork(work *orchestrateReviewWork) {
 				phase = orchestrate.PhaseFailed
 			}
 			u.workflowFailure(child, phase, err)
-		}
-		if completionRetained {
-			u.archiveWorkflowReviewer(work)
 		}
 	})
 }

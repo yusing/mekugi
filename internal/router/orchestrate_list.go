@@ -57,7 +57,8 @@ func orchestrateListAgents(batches []orchestrate.Batch, input orchestrateListInp
 			}
 			var dispatches []orchestrate.WorkflowDispatch
 			for _, d := range w.Dispatches {
-				if d.Generation == w.Generation || workflowDispatchUnsettled(d) || d.Archive != nil && d.Archive.State != "archived" {
+				if d.Generation == w.Generation || workflowDispatchUnsettled(d) {
+					d.Params = nil // Launch configuration belongs to explicit full inspection.
 					dispatches = append(dispatches, d)
 				}
 			}

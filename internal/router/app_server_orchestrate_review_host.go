@@ -69,6 +69,8 @@ func (u *appServerUI) workflowReviewerRequest(child *orchestrateChild, purpose o
 	profile := workflowReviewerProfile(scratch)
 	params["permissions"] = profile
 	config := params["config"].(map[string]any)
+	// Token-budget compaction bypasses local recovery. Retain this on resume.
+	config["features.token_budget"] = false
 	// Source: codex-rs/core/src/config/permissions.rs@ddb33e34b
 	// Named profiles support scratch writes without making cwd writable. Legacy
 	// workspaceWrite policies include cwd and cannot express this boundary.
@@ -96,14 +98,27 @@ func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.Workf
 	w := batch.Workflow
 	var text strings.Builder
 	base := batch.Base
+	delta := false
 	for _, previous := range w.PreviousReviews {
 		if previous.Result.Purpose == orchestrate.ReviewPurpose(purpose) && previous.Result.Verdict != orchestrate.VerdictBlocked {
 			base = previous.Result.Revision
-			text.WriteString("Correction review: inspect the prior-reviewed-candidate to current-candidate delta, unresolved findings/disputes, and affected existing behavior. Reuse unchanged clear scope; reopen it only for an evidenced interaction with the correction. Prior verdicts are context, not approval of this candidate.\n")
+			delta = true
+			text.WriteString("Correction review: inspect delta, unresolved findings/disputes and affected behavior. Reuse unchanged clear scope. Prior verdicts are context, not approval.\n")
 			break
 		}
 	}
-	text.WriteString("Review candidate " + w.Candidate.Revision + " against baseline " + base + " for " + string(purpose) + ". Scope: " + w.Assignment.Scope + "\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
+	text.WriteString("Review candidate " + w.Candidate.Revision + " against baseline " + base + " for " + string(purpose) + ".")
+	reused := slices.ContainsFunc(w.Dispatches, func(d orchestrate.WorkflowDispatch) bool {
+		return d.Kind == purpose && d.Generation != w.Generation && d.ThreadID != ""
+	})
+	if !delta && !reused {
+		text.WriteString(" Scope: " + w.Assignment.Scope + "\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
+	} else {
+		if !delta {
+			text.WriteString(" Review the retained accepted scope against the full baseline.")
+		}
+		text.WriteString(" Return the current-candidate JSON verdict as your final answer.")
+	}
 	for _, previous := range w.PreviousReviews {
 		raw, _ := json.Marshal(&previous)
 		text.WriteString("\nPrior review (retained verdict and dispatch provenance): " + string(raw))
@@ -127,19 +142,13 @@ func workflowCorrectionAssignment(batch orchestrate.Batch) string {
 	return text.String()
 }
 
-func (u *appServerUI) startWorkflowTurn(work *orchestrateReviewWork) {
-	child := work.child
+func (u *appServerUI) startWorkflowTurn(work *orchestrateReviewWork, text string) {
 	if u.workflowWorkStopped(work) {
 		u.failWorkflowDispatch(work, false, context.Canceled)
 		return
 	}
-	text := ""
 	params := map[string]any{"threadId": work.dispatch.ThreadID}
-	switch work.dispatch.Kind {
-	case orchestrate.DispatchCorrection:
-		text = workflowCorrectionAssignment(child.batch)
-	default:
-		text = workflowReviewAssignment(child.batch, work.dispatch.Kind)
+	if work.dispatch.Kind != orchestrate.DispatchCorrection {
 		params["approvalPolicy"] = "never"
 		params["permissions"] = workflowReviewerProfile(work.dispatch.Scratch)
 		params["outputSchema"] = jsontext.Value(orchestrate.ReviewResultSchema)
@@ -152,13 +161,6 @@ func (u *appServerUI) startWorkflowTurn(work *orchestrateReviewWork) {
 func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 	work, child := r.review, r.child
 	switch r.method {
-	case "thread/archive":
-		var err error
-		if m.Error != nil {
-			err = fmt.Errorf("thread/archive: %s", m.Error.Message)
-		}
-		u.recordWorkflowReviewerArchive(work, true, err)
-		return
 	case "thread/read":
 		u.workflowRecoveryResponse(work, m)
 		return
@@ -173,6 +175,29 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 	}
 	if m.Error != nil {
 		u.failWorkflowDispatch(work, false, fmt.Errorf("%s: %s", r.method, m.Error.Message))
+		return
+	}
+	if r.method == "thread/compact/start" {
+		work.acknowledged = true
+		u.finishWorkflowWork(work)
+		return
+	}
+	if r.method == "thread/resume" {
+		var result struct {
+			Thread appServerThreadInfo `json:"thread"`
+		}
+		if json.Unmarshal(m.Result, &result) != nil || result.Thread.ID != work.dispatch.ThreadID || result.Thread.Cwd != child.batch.Cwd {
+			u.failWorkflowDispatch(work, true, errors.New("resumed reviewer identity changed"))
+			return
+		}
+		if err := workflowReviewerPolicyConfirmed(m.Result, work.dispatch.Scratch); err != nil {
+			u.failWorkflowDispatch(work, false, err)
+			return
+		}
+		u.proxy.mu.Lock()
+		u.navigation.views[work.dispatch.ThreadID].workflowReview.host = u.client
+		u.proxy.mu.Unlock()
+		u.prepareWorkflowReviewTurn(work)
 		return
 	}
 	if r.method == "config/read" {
@@ -198,7 +223,17 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 					u.failWorkflowDispatch(work, false, err)
 					return
 				}
-				u.sendWorkflowRequest(work, "thread/start", params)
+				raw := jsontext.Value(mustMarshalJSON(params))
+				c := child.command
+				u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+					return s.RecordWorkflowReviewerParams(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, raw)
+				}, func(err error) {
+					if err != nil {
+						u.failWorkflowDispatch(work, false, err)
+						return
+					}
+					u.sendWorkflowRequest(work, "thread/start", params)
+				})
 			}
 		})
 		return
@@ -265,11 +300,20 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 					u.failWorkflowDispatch(work, false, policyErr)
 					return
 				}
-				u.startWorkflowTurn(work)
+				u.proxy.mu.Lock()
+				u.navigation.views[d.ThreadID].workflowReview.host = u.client
+				u.proxy.mu.Unlock()
+				u.startWorkflowTurn(work, workflowReviewAssignment(child.batch, d.Kind))
 			}); err != nil {
 				u.failWorkflowDispatch(work, false, err)
 			}
 			return
+		}
+		if work.completed != nil && work.completed.ID != d.TurnID {
+			work.completed = nil
+		}
+		if work.messageTurn != d.TurnID {
+			work.message, work.item, work.messageTurn = "", "", ""
 		}
 		work.acknowledged = true
 		if work.completed == nil && d.ThreadID == child.batch.Launch.ThreadID {
@@ -313,6 +357,40 @@ func (u *appServerUI) workflowReviewerMessage(m appserver.Message) bool {
 			}
 			continue
 		}
+		turn := event.TurnID
+		if event.Turn.ID != "" {
+			turn = event.Turn.ID
+		}
+		old := slices.ContainsFunc(child.batch.Workflow.Dispatches, func(d orchestrate.WorkflowDispatch) bool {
+			return d.ID != work.dispatch.ID && d.ThreadID == event.ThreadID && (d.TurnID == turn || d.Compaction != nil && d.Compaction.TurnID == turn)
+		})
+		if old {
+			return true // Retained history must not change the current turn's presentation.
+		}
+		if work.resetting {
+			receipt := work.dispatch.Compaction
+			if m.Method == "turn/started" && turn != "" {
+				if receipt.TurnID != "" && receipt.TurnID != turn {
+					u.failWorkflowDispatch(work, true, errors.New("another turn started during reviewer context reset"))
+					return true
+				}
+				receipt.TurnID = turn
+				if u.workflowWorkStopped(work) {
+					_ = u.orchestrateCleanupInterrupt(child, event.ThreadID, turn)
+				}
+			}
+			if turn != "" && turn != receipt.TurnID {
+				return true
+			}
+			if m.Method == "item/completed" && turn != "" && event.Item.Type == "contextCompaction" {
+				receipt.ItemID = event.Item.ID
+			}
+		} else if turn != "" && (work.dispatch.Compaction != nil && turn == work.dispatch.Compaction.TurnID || work.dispatch.TurnID != "" && turn != work.dispatch.TurnID) {
+			return true
+		}
+		if turn == "" {
+			return u.navigation == nil || u.navigation.views[event.ThreadID] == nil
+		}
 		if m.Method == "item/completed" && event.Item.Type == "agentMessage" && event.Item.Delivery != "async" {
 			work.message, work.item, work.messageTurn = event.Item.Text, event.Item.ID, event.TurnID
 		}
@@ -347,4 +425,44 @@ func (u *appServerUI) sendWorkflowRequest(work *orchestrateReviewWork, method st
 	if err := u.orchestrateRPCRequest(orchestrateRPC{method: method, child: work.child, review: work}, params); err != nil {
 		u.failWorkflowDispatch(work, true, err)
 	}
+}
+
+// Reuse host settings and history, rather than resolving mutable role files again.
+func (u *appServerUI) resumeWorkflowReviewer(work *orchestrateReviewWork) {
+	c := work.child.command
+	u.workflowStore(work.child, func(ctx context.Context, s *orchestrate.Store) error {
+		_, err := s.PrepareWorkflowReviewStorage(ctx, c.workspace, c.main, work.child.batch.TaskName, work.dispatch.ID)
+		return err
+	}, func(err error) {
+		if err != nil {
+			u.failWorkflowDispatch(work, false, err)
+			return
+		}
+		var saved jsontext.Value
+		for _, d := range work.child.batch.Workflow.Dispatches {
+			if d.ThreadID == work.dispatch.ThreadID && len(d.Params) != 0 {
+				saved = d.Params
+				break
+			}
+		}
+		var params map[string]any
+		if json.Unmarshal(saved, &params) != nil || params == nil {
+			u.failWorkflowDispatch(work, false, errors.New("reviewer settings are unavailable for resume"))
+			return
+		}
+		params["threadId"], params["excludeTurns"] = work.dispatch.ThreadID, true
+		params["config"].(map[string]any)["features.token_budget"] = false
+		u.sendWorkflowRequest(work, "thread/resume", params)
+	})
+}
+
+func (u *appServerUI) prepareWorkflowReviewTurn(work *orchestrateReviewWork) {
+	if work.dispatch.Compaction != nil {
+		work.resetting = true
+		// The ordinary /compact RPC enters the reviewer's enforced local
+		// journal reset. Missing host or local recovery capability blocks it.
+		u.sendWorkflowRequest(work, "thread/compact/start", map[string]any{"threadId": work.dispatch.ThreadID})
+		return
+	}
+	u.startWorkflowTurn(work, workflowReviewAssignment(work.child.batch, work.dispatch.Kind))
 }
