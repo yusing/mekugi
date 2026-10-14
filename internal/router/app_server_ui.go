@@ -138,6 +138,7 @@ type appServerUI struct {
 	journalNotifyTurn         string
 	journalLifecycleErrors    map[string]error
 	journalReceipts           map[*nativeJournalSink]bool // Includes workers from replaced sessions.
+	journalRestoring          bool
 	shell                     *terminalUI
 	session                   appServerSession
 	ctx                       context.Context
@@ -260,8 +261,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 	owner := u
 	return func() (runErr error) {
 		defer func() {
-			runErr = errors.Join(runErr, owner.closeOrchestrateStorage())
-			owner.closeOrchestratedViews()
+			runErr = errors.Join(runErr, owner.closeNativeStorage())
 		}()
 		if proxy != nil && proxy.orchestration != nil {
 			proxy.orchestration.active.Store(true)
@@ -276,7 +276,6 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		defer u.shell.diff.close()
 		defer u.shell.diffScreen.Close()
 		if proxy != nil {
-			defer func() { proxy.journals.detachNative(u.journal); proxy.journals.detachNative(u.unscopedJournal) }()
 			defer proxy.activity.releasePane()
 		}
 		defer c.Input.Close()
@@ -875,9 +874,24 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				// Real app-server requests can omit workspace metadata. Keep that
 				// journal namespace distinct; never infer filesystem authority from cwd.
 				u.unscopedJournal = u.proxy.journals.attachNative("", u.thread)
-				for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
-					if err := u.proxy.journals.restoreNative(u.ctx, u.proxy.replayStore, sink); err != nil {
-						u.setNotice("Journal restore: "+err.Error(), true)
+				if method == "thread/resume" {
+					u.queueJournalRestore(func(err error) error {
+						if err != nil {
+							u.setNotice("Journal restore: "+err.Error(), true)
+						}
+						if u.resumeNotice != "" {
+							u.setNotice(u.resumeNotice, true)
+							u.resumeNotice = ""
+						}
+						// Keep discovery and its error notices after journal restore.
+						u.recoverOrchestratedRun()
+						return u.finishRestoredContent()
+					})
+				} else {
+					for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
+						if err := u.proxy.journals.restoreNative(u.ctx, u.proxy.replayStore, sink); err != nil {
+							u.setNotice("Journal restore: "+err.Error(), true)
+						}
 					}
 				}
 				u.proxy.activity.attachNativePane(u.thread)
@@ -934,11 +948,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 						return err
 					}
 				}
-				if u.resumeNotice != "" {
+				if !u.journalRestoring && u.resumeNotice != "" {
 					u.setNotice(u.resumeNotice, true)
 					u.resumeNotice = ""
 				}
-				u.recoverOrchestratedRun()
+				if !u.journalRestoring {
+					u.recoverOrchestratedRun()
+				}
 				if !u.settings.pending() {
 					u.retainAppliedSettings()
 				}

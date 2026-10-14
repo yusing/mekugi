@@ -141,7 +141,7 @@ func TestAppServerOrchestrateArchivedHistory(t *testing.T) {
 	drainOrchestrateWork(t, u)
 	read := btwTestRequest(t, w, "thread/read", "child")
 	thread := map[string]any{"id": "child", "cwd": batch.Cwd, "turns": []any{map[string]any{"id": "initial", "status": "completed", "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Archived batch answer", "channel": "final_answer"}}}}}
-	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": thread})))
+	orchestrateTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": thread})))
 	for range 2 {
 		list := btwTestRequest(t, w, "thread/list", "")
 		btwTestReply(t, u, list, `{"data":[]}`)

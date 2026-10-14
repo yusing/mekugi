@@ -355,7 +355,7 @@ func resumeBatchResponses(t *testing.T, u *appServerUI, w *appServerTestInput, b
 		status = "inProgress"
 	}
 	thread["turns"] = []any{map[string]any{"id": "history-turn", "status": status, "items": []any{map[string]any{"id": "answer", "type": "agentMessage", "text": "Retained batch answer", "channel": "final_answer"}}}}
-	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": thread, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"}})))
+	orchestrateTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": thread, "model": "batch-model", "reasoningEffort": "high", "activePermissionProfile": map[string]any{"id": ":read-only"}})))
 	if u.viewedUI() != u || len(u.navigation.resumes) != 1 {
 		t.Fatal("resume bypassed history admission")
 	}
@@ -652,6 +652,7 @@ func TestAppServerOrchestrateResumeDescendantDiff(t *testing.T) {
 	if err := u.tickOrchestratedViews(u); err != nil {
 		t.Fatal(err)
 	}
+	drainOrchestrateWork(t, u)
 	v := u.navigation.views["child"]
 	if v.restoring != nil || len(u.navigation.resumes) != 0 || u.viewedUI() != v {
 		t.Fatal("descendant scope blocked restored batch admission", v.status)

@@ -18,6 +18,71 @@ func journalWorkContext(caller, storage context.Context) (context.Context, func(
 
 const journalStorageLane = "/journal"
 
+// Drain accepted storage before retiring native sinks. Current sink membership
+// keeps pending failures attributable through deferred error-exit shutdown.
+func (u *appServerUI) closeNativeStorage() error {
+	err := u.closeOrchestrateStorage()
+	u.closeOrchestratedViews()
+	if u.proxy != nil {
+		u.proxy.journals.detachNative(u.journal)
+		u.proxy.journals.detachNative(u.unscopedJournal)
+	}
+	return err
+}
+
+// Restore both namespaces before admitting resumed input. Live journal facts
+// use the same lane, so delayed restoration cannot overwrite a newer event.
+func (u *appServerUI) queueJournalRestore(ready func(error) error) {
+	u.journalRestoring = true
+	owner, generation := u.orchestrationOwner(), u.orchestrateGeneration
+	proxy, caller := u.proxy, u.ctx
+	workspace, thread := u.session.cwd, u.thread
+	scoped, unscoped := u.journal, u.unscopedJournal
+	owner.orchestrateBatchWork(workspace, thread, journalStorageLane, func() func() {
+		ctx, done := journalWorkContext(caller, owner.orchestrateStorageContext)
+		defer done()
+		var err error
+		for _, sink := range []*nativeJournalSink{scoped, unscoped} {
+			err = errors.Join(err, proxy.journals.restoreNative(ctx, proxy.replayStore, sink))
+		}
+		return func() {
+			if generation != u.orchestrateGeneration || u.thread != thread || u.session.cwd != workspace ||
+				u.journal != scoped || u.unscopedJournal != unscoped || proxy.journals.nativeSink(workspace, thread) != scoped {
+				return
+			}
+			if err != nil {
+				owner.orchestrateStorageErr = errors.Join(owner.orchestrateStorageErr, fmt.Errorf("journal restore: %w", err))
+			}
+			if owner.orchestrateClosing || caller.Err() != nil {
+				return
+			}
+			u.journalRestoring = false
+			if resultErr := ready(err); resultErr != nil {
+				if u.navigation != nil && u.navigation.resumes[thread] != nil {
+					u.navigation.finishResume(thread, resultErr)
+				} else {
+					u.setNotice("Journal restore: "+resultErr.Error(), true)
+				}
+				return
+			}
+			if u.navigation != nil {
+				u.navigation.completeResumes()
+			}
+			if proxy.journals.nativeSink(workspace, thread) != scoped {
+				return // A failed archive admission retired this view.
+			}
+			flushErr := u.flushInput()
+			if flushErr == nil {
+				flushErr = u.flushBTW()
+			}
+			if flushErr != nil {
+				u.setNotice("Journal input: "+flushErr.Error(), true)
+			}
+			u.dirty = true
+		}
+	})
+}
+
 // Lifecycle facts and dependent reset work share the existing ordered UI lane.
 // Workspace and ancestry inputs are captured at observation, before navigation
 // or metadata can change the selected session.

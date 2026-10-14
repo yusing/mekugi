@@ -183,6 +183,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.proxy.journals.detachNative(u.unscopedJournal)
 	}
 	u.journal, u.unscopedJournal, u.reset = nil, nil, nil
+	u.journalRestoring = false
 	u.journalView = nativeJournalView{}
 	u.hideQuestions()
 	u.questions = nativeQuestionDock{calls: slices.DeleteFunc(slices.Clone(u.questions.calls), func(c *nativeQuestionCall) bool { return c.sudo == nil || c.resolved })}

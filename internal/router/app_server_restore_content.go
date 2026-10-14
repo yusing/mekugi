@@ -261,7 +261,7 @@ func (u *appServerUI) readNextRestoredChild() error {
 // Codex's history replies have arrived.
 func (u *appServerUI) finishRestoredContent() error {
 	r := u.restoring
-	if r == nil || !r.listed || r.next < len(r.order) {
+	if r == nil || !r.listed || r.next < len(r.order) || u.journalRestoring {
 		return nil
 	}
 	if u.shell != nil && u.shell.auto != nil && u.shell.diffFailure == "" {

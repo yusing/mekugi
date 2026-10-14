@@ -166,12 +166,13 @@ func (n *orchestrateNavigation) resumeResponse(v *appServerUI, m appserver.Messa
 		v.model, _ = settings["model"].(string)
 		v.reasoningEffort, _ = settings["model_reasoning_effort"].(string)
 		v.serviceTier, _ = settings["service_tier"].(string)
-		for _, sink := range []*nativeJournalSink{v.journal, v.unscopedJournal} {
-			if err := v.proxy.journals.restoreNative(v.ctx, v.proxy.replayStore, sink); err != nil {
+		v.queueJournalRestore(func(err error) error {
+			if err != nil {
 				n.finishResume(v.thread, err)
-				return true
+				return nil
 			}
-		}
+			return v.finishRestoredContent()
+		})
 		if err := v.restorePaneContent(result.Thread); err != nil {
 			n.finishResume(v.thread, err)
 		}

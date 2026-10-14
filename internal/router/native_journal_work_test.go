@@ -1,7 +1,10 @@
 package router
 
 import (
+	json "encoding/json/v2"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -528,4 +531,40 @@ func TestHostJournalIOCompactionActivityAfterLaterInput(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestResumeJournalDeferredShutdownFailureRetention(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		owner, _, _, response := resumeJournalFixture(t, false)
+		var result struct {
+			Thread appServerThreadInfo `json:"thread"`
+		}
+		if err := json.Unmarshal(response.Result, &result); err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, filepath.Join(owner.proxy.replayStore.directory, journalFilename(result.Thread.Cwd, "saved")), "invalid retained journal")
+		release := hostJournalIOHold(t, owner, "state")
+		defer release()
+		if err := owner.message(response); err != nil {
+			t.Fatal(err)
+		}
+		primary := errors.New("response consumer stopped")
+		closed := make(chan error, 1)
+		go func() {
+			// Consume the runner's deferred teardown owner, before any restore
+			// completion reaches the ordinary message/paint loop.
+			closed <- func() (runErr error) {
+				defer func() { runErr = errors.Join(runErr, owner.closeNativeStorage()) }()
+				return primary
+			}()
+		}()
+		synctest.Wait()
+		release()
+		if err := <-closed; !errors.Is(err, primary) || !strings.Contains(err.Error(), "journal restore: corrupt journal record") {
+			t.Fatal("deferred shutdown lost the primary or current-session restore error", err)
+		}
+		if owner.proxy.journals.nativeSink(result.Thread.Cwd, "saved") != nil || owner.proxy.journals.nativeSink("", "saved") != nil || len(owner.orchestrateJobs) != 0 {
+			t.Fatal("deferred shutdown retained journal sinks or storage work")
+		}
+	})
 }
