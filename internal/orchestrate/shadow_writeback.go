@@ -23,6 +23,11 @@ type ShadowWrite struct {
 
 type shadowEntry struct{ mode, object string }
 
+// PendingWriteback reserves child input until retained path effects are settled.
+func (b Batch) PendingWriteback() bool {
+	return b.ShadowMerge != nil && b.ShadowMerge.State == "applying"
+}
+
 // IntegrateShadow plans fresh work or continues retained writeback. Only the
 // live coordinator can call it; the router reserves its idle child first.
 func (s *Store) IntegrateShadow(ctx context.Context, workspace, main, name, thread string) (Batch, error) {

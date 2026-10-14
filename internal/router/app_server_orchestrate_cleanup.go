@@ -18,7 +18,7 @@ func (u *appServerUI) orchestrateCheckoutUnavailable() bool {
 			if child.batch.Launch != nil && child.batch.Launch.TurnID == "" {
 				return true
 			}
-			return workflowInputReserved(child) || child.batch.State == "removing" || child.batch.State == "removed" || child.batch.State == "integrating"
+			return workflowInputReserved(child) || child.batch.PendingWriteback() || child.batch.State == "removing" || child.batch.State == "removed" || child.batch.State == "integrating"
 		}
 	}
 	return false
@@ -29,8 +29,12 @@ func (u *appServerUI) orchestrateInputDisabledMessage(input string) string {
 	if u.workflowReview != nil {
 		cause = "Runtime review owns this thread"
 	} else if u.navigation != nil {
-		if child := u.navigation.owner.orchestrateThreads[u.thread]; child != nil && child.batch.Launch != nil && child.batch.Launch.TurnID == "" {
-			cause = "First handoff requires a coordinator follow-up"
+		if child := u.navigation.owner.orchestrateThreads[u.thread]; child != nil {
+			if child.batch.PendingWriteback() {
+				cause = "Finish partial shadow writeback first"
+			} else if child.batch.Launch != nil && child.batch.Launch.TurnID == "" {
+				cause = "First handoff requires a coordinator follow-up"
+			}
 		}
 	}
 	return cause + "; " + input + " are disabled"

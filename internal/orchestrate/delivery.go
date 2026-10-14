@@ -61,6 +61,11 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		if input.ID == "" || (input.Message == "" || input.From == input.Target) || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
 			return errors.New("delivery requires separate confirmed run members")
 		}
+		for _, b := range m.Batches {
+			if b.Launch != nil && b.Launch.ThreadID == input.Target && b.PendingWriteback() {
+				return errors.New("finish partial shadow writeback before sending new batch input")
+			}
+		}
 		if input.ReviewWaiver != "" || input.ReviewScope != "" {
 			if input.ReviewWaiver != "" && strings.TrimSpace(input.ReviewWaiver) == "" || input.ReviewScope != "" && strings.TrimSpace(input.ReviewScope) == "" || input.From != main || input.Target == main || !nextTurn || input.Deferred || input.TurnID != "" {
 				return errors.New("review policy or scope requires a coordinator follow-up to an idle batch and nonblank input")

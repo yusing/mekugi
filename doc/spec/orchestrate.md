@@ -643,7 +643,10 @@ External writers must leave affected paths idle during writeback; checks and
 replacement are not an atomic filesystem transaction.
 
 Intent precedes each path effect. Cancellation or a failed write returns retained
-partial progress. A repeat verifies applied paths and reconciles an uncertain path
+partial progress. Unfinished writeback keeps new batch input disabled across
+restart, including follow-ups, queued messages and local shell commands. Finish
+that writeback before requesting further child changes; retained history stays
+viewable. A repeat verifies applied paths and reconciles an uncertain path
 only if it already matches the merged result; it never blindly repeats uncertain
 replacement. Other uncertain paths require inspection. Temporary paths from an
 interrupted replacement remain identified in the result for inspection. Pending

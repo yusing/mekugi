@@ -64,6 +64,30 @@ func TestOrchestrateShadowWritebackRecovery(t *testing.T) {
 	u.proxy.orchestration.store = reopened
 	call := orchestrateTargetMCPClient(t, u, "integrate")
 	call("main", true) // An uncertain preimage does not authorize replay.
+	// The failed call releases its live reservation, but durable path intent
+	// must still prevent a new child turn or queued input from stranding recovery.
+	w := u.client.Input.(*appServerTestInput)
+	w.Reset()
+	for _, tool := range []string{"followup_task", "send_message"} {
+		c := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", target: "batch", tool: tool, callID: tool, input: orchestrateSpawnInput{Message: "change the child"}, reply: make(chan orchestrateResult, 1)}
+		u.startOrchestratedChild(c)
+		drainOrchestrateWork(t, u)
+		if len(c.reply) == 0 {
+			t.Fatal("partial writeback dispatched host input", tool, w.String())
+		}
+		if result := <-c.reply; result.err == nil || !strings.Contains(result.err.Error(), "partial shadow writeback") {
+			t.Fatal("partial writeback admitted child input", tool, result)
+		}
+	}
+	v := u.navigation.views["child"]
+	if err := v.send([]composerDraft{{text: "keep this draft"}}, false, false); err != nil || v.draft != "keep this draft" {
+		t.Fatal("blocked input lost its draft", err, v.draft)
+	}
+	v.draft = "!echo must not run"
+	if err := v.submitShell(); err != nil || v.draft != "!echo must not run" || !strings.Contains(v.notice, "Finish partial shadow writeback") || w.Len() != 0 {
+		t.Fatal("partial writeback admitted local execution", err, v.notice, w.String())
+	}
+	v.draft = ""
 	if got, _ := os.ReadFile(filepath.Join(workspace, "next")); string(got) != "base" {
 		t.Fatal("uncertain effect repeated", string(got))
 	}
@@ -107,6 +131,12 @@ func TestOrchestrateShadowWritebackRecovery(t *testing.T) {
 	call("main", false)
 	if got, _ := os.ReadFile(filepath.Join(workspace, "first")); string(got) != "child follow-up" {
 		t.Fatal("follow-up conflicted with its own earlier result", string(got))
+	}
+	if v.orchestrateCheckoutUnavailable() {
+		t.Fatal("completed writeback kept input disabled")
+	}
+	if _, _, err := reopened.BeginDelivery(t.Context(), workspace, "main", orchestrate.Delivery{ID: "after-recovery", From: "main", Target: "child", Message: "next change", Deferred: true}); err != nil {
+		t.Fatal("completed writeback kept messages disabled", err)
 	}
 }
 
