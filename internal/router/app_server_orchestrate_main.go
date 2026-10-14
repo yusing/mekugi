@@ -17,9 +17,7 @@ func (u *appServerUI) reportOrchestratedMainMessage(c *orchestrateCommand) {
 				u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: from, Kind: "reply", Text: d.Message, Observed: u.now(),
 					message: &activityMessage{from: from, to: "/root", text: d.Message},
 					native:  &liveActivityNativeItem{thread: c.caller, turn: "collaboration", item: c.callID, phase: "item/completed", orchestrated: true}}}, u.session.agents)
-				u.publishOrchestratedEvent(child, orchestrateEvent{
-					ID: "message:" + d.ID, Task: child.batch.TaskName, Thread: c.caller, Kind: "message", Message: d.Message,
-				})
+				u.advanceOrchestratedWaits(c.workspace, c.main, nil)
 			}
 			c.reply <- orchestrateResult{delivery: &d, err: err}
 		}

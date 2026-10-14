@@ -2,6 +2,7 @@ package orchestrate
 
 import (
 	"context"
+	json "encoding/json/v2"
 	"errors"
 	"slices"
 	"strings"
@@ -79,10 +80,19 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		input.State, input.TurnID, input.Error = "dispatching", "", ""
 		if input.Target == main {
 			// Child reports are attributed observations, never user input.
+			i := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.Launch != nil && b.Launch.ThreadID == input.From })
+			task, id := m.Batches[i].TaskName, "message:"+input.ID
+			data, err := json.Marshal(map[string]string{
+				"event_id": id, "task_name": task, "thread_id": input.From, "kind": "message", "message": input.Message,
+			})
+			if err != nil {
+				return err
+			}
+			m.Wait.Events = append(m.Wait.Events, WaitEvent{ID: id, Task: task, Data: data})
 			input.State = "reported"
 			m.Deliveries = append(m.Deliveries, input)
 			delivery = input
-			err := s.save(m, path)
+			err = s.save(m, path)
 			dispatch = err == nil
 			return err
 		}

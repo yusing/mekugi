@@ -71,6 +71,51 @@ func TestAppServerOrchestrateMainReportsNeverSubmitUserInput(t *testing.T) {
 	}
 }
 
+func TestAppServerOrchestrateMainReportPersistsBeforeCallback(t *testing.T) {
+	u, launch := orchestrateIdentityPendingTurn(t)
+	orchestrateTestReply(t, u, launch, `{"turn":{"id":"child-turn"}}`)
+	c := mainFollowup(t, u, t.Context(), "durable-report", "Report with \"quotes\"\nand a newline")
+	select {
+	case <-u.orchestrateCompletions:
+		// Simulate process loss after persistence, without the UI callback.
+		u.completeOrchestrateWork(func() {})
+	case <-time.After(5 * time.Second):
+		t.Fatal("report persistence timeout")
+	}
+	u.proxy.orchestration.store = &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}
+	restored, wire := resumeOrchestrationMain(t, u.proxy.orchestration.store, u.session.cwd)
+	wire.Reset() // Resume's model and roster requests were acknowledged by the fixture.
+	drainOrchestrateWork(t, restored)
+	for _, consumed := range []bool{false, true} {
+		u.startOrchestratedChild(c)
+		drainOrchestrateWork(t, u)
+		if got := <-c.reply; got.err != nil || got.delivery.State != "reported" || got.delivery.TurnID != "" {
+			t.Fatal("repeated report changed delivery", got)
+		}
+		wait := &orchestrateCommand{ctx: t.Context(), workspace: restored.session.cwd, main: "main", tool: "wait_agent", callID: fmt.Sprint("observe-", consumed), waitTargets: []string{"batch"}, reply: make(chan orchestrateResult, 1)}
+		restored.startOrchestratedChild(wait)
+		drainOrchestrateWork(t, restored)
+		result := <-wait.reply
+		if consumed {
+			if result.err != nil || result.wait == nil || result.wait.State != "registered" || len(result.wait.Event) != 0 {
+				t.Fatal("repeated report duplicated its event", result)
+			}
+		} else if event := waitTestEvent(t, result); event.ID != "message:durable-report" || event.Task != "batch" || event.Thread != "child" || event.Kind != "message" || event.Message != c.input.Message {
+			t.Fatal("persisted report lost attribution or text", event)
+		}
+	}
+	if wire.Len() != 0 || u.client.Input.(*appServerTestInput).Len() != 0 || len(u.view.entries) != 0 {
+		t.Fatal("repeated report dispatched input or repeated presentation", wire.String())
+	}
+	// A new live report must wake the pending wait through the same durable queue.
+	mainFollowup(t, u, t.Context(), "new-report", "Second report")
+	drainOrchestrateWork(t, u)
+	liveWire := u.client.Input.(*appServerTestInput)
+	if !strings.Contains(liveWire.String(), "WAIT_RESULT") || !strings.Contains(liveWire.String(), "message:new-report") {
+		t.Fatal("live report did not wake the registered wait", liveWire.String())
+	}
+}
+
 func TestUISnapshotOrchestrateMainReport(t *testing.T) {
 	u, launch := orchestrateIdentityPendingTurn(t)
 	u.clock = func() time.Time { return time.Date(2026, 10, 12, 12, 0, 0, 0, time.Local) }
