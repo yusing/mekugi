@@ -467,6 +467,11 @@ func (v *liveActivityView) removeThinking(native *liveActivityNativeItem) {
 }
 
 func (v *liveActivityView) visible(entry activityPaneEntry) bool {
+	// Keep source records for streaming and links. Hide an empty opened reply
+	// only when a successfully published report replaces that exact host item.
+	if entry.Agent == "Main" && entry.Kind == "text" && strings.TrimSpace(entry.Text) == "" && entry.native != nil && entry.native.journalReplaced {
+		return false
+	}
 	if entry.native != nil && entry.native.phase == "queued-summary" {
 		return false
 	}

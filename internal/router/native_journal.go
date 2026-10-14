@@ -12,8 +12,14 @@ import (
 )
 
 type nativeJournalCard struct {
-	Journal threadJournal
-	Since   uint64
+	Journal     threadJournal
+	Since       uint64
+	Replacement *commentaryReplacement
+}
+
+func (c *nativeJournalCard) replaces(native *liveActivityNativeItem) bool {
+	return c != nil && c.Replacement != nil && native != nil && c.Replacement.Thread == native.thread &&
+		(c.Replacement.Turn == "" || c.Replacement.Turn == native.turn) && slices.Contains(c.Replacement.Items, native.item)
 }
 
 type nativeJournalView struct {

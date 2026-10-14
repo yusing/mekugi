@@ -160,6 +160,7 @@ type liveActivityNativeItem struct {
 	wait               *activityui.Block // Structured wait progress is roster-only.
 	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
 	replacesItems      []string          // Exact provider items contained in this retained child result.
+	journalReplaced    bool              // Confirmed report replacement, retained with this source item.
 	command, status    string
 	commandCwd         string // Metadata-owned directory for classified paths and receipt refreshes.
 	commandTimeout     string // Explicit timeout from available invocation input.

@@ -16,13 +16,42 @@ type liveActivityRecord struct {
 }
 
 func (v *liveActivityView) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
+	v.bindJournalReplacement(&entry)
 	v.revision++
 	v.entries = append(v.entries, liveActivityRecord{entry, blocks, v.revision})
 }
 
 func (v *liveActivityView) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
+	if entry.native != nil && entry.native.sameItem(v.entries[index].native) {
+		entry.native.journalReplaced = entry.native.journalReplaced || v.entries[index].native.journalReplaced
+	}
+	v.bindJournalReplacement(&entry)
 	v.entries[index] = liveActivityRecord{activityPaneEntry: entry, blocks: blocks}
 	v.reviseEntry(index)
+}
+
+// Both live publications and restored placements bind replacement facts here.
+// The source retains the fact after its earlier report card leaves the feed.
+func (v *liveActivityView) bindJournalReplacement(entry *activityPaneEntry) {
+	if entry.journalCard != nil && entry.journalCard.Replacement != nil {
+		for i, source := range v.entries {
+			if entry.journalCard.replaces(source.native) {
+				v.mutateEntry(i, func(record *liveActivityRecord) {
+					native := *record.native
+					native.journalReplaced = true
+					record.native = &native
+				})
+			}
+		}
+	}
+	if entry.Agent == "Main" && entry.Kind == "text" && entry.native != nil && !entry.native.journalReplaced {
+		for _, report := range v.entries {
+			if report.journalCard.replaces(entry.native) {
+				entry.native.journalReplaced = true
+				break
+			}
+		}
+	}
 }
 
 // mutateEntry keeps in-place source and annotation edits inside the same

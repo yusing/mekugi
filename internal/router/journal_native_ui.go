@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 )
@@ -108,7 +109,8 @@ func (s *nativeJournalSink) publish(journal threadJournal, terminal bool, respon
 			}
 			snapshot := journal.clone()
 			s.publicationSequence++
-			s.pending[id] = nativeJournalPublication{order: s.publicationSequence, card: &nativeJournalCard{Journal: snapshot, Since: journal.FlushSeq}, terminal: true, item: journalItem{ID: id, Updated: journal.Sequence, Author: journal.Author}}
+			s.pending[id] = nativeJournalPublication{order: s.publicationSequence, card: &nativeJournalCard{Journal: snapshot, Since: journal.FlushSeq,
+				Replacement: &commentaryReplacement{Thread: s.thread, Turn: snapshot.TurnID, Items: slices.Sorted(maps.Keys(s.answers))}}, terminal: true, item: journalItem{ID: id, Updated: journal.Sequence, Author: journal.Author}}
 		}
 		return
 	}

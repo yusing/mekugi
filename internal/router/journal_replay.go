@@ -95,8 +95,18 @@ func journalReplayTimeline(j threadJournal, turns []journalReplayTurn) []journal
 			card.Events = slices.DeleteFunc(card.Events, func(event journalEvent) bool { return event.Seq <= since })
 			card.Items = slices.DeleteFunc(card.Items, func(item journalItem) bool { return item.Kind != "task" || journalNodeClosed(item.node()) })
 			if !turn.inline {
+				replacement := &commentaryReplacement{Thread: j.Thread, Turn: turn.id}
+				for _, item := range turn.items {
+					if item.Type == "agentMessage" && item.Phase == "final_answer" {
+						if strings.TrimSpace(item.Text) != "" {
+							replacement.Items = nil
+							break // A substantive final did not use an empty-Outcome replacement.
+						}
+						replacement.Items = append(replacement.Items, item.ID)
+					}
+				}
 				result = append(result, journalReplayPublication{at: end, turn: turn.id, workspace: j.Workspace,
-					publication: nativeJournalPublication{terminal: true, card: &nativeJournalCard{Journal: card, Since: since},
+					publication: nativeJournalPublication{terminal: true, card: &nativeJournalCard{Journal: card, Since: since, Replacement: replacement},
 						item: journalItem{ID: "card:replay:" + turn.id, Updated: snapshot.Sequence, Author: j.Author}}})
 			}
 			since = snapshot.Sequence

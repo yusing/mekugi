@@ -48,7 +48,7 @@ type replayRecord struct {
 	Snapshots    *replaySnapshots `json:",omitempty"`
 }
 
-// A child result contains these exact provider answers. Native presentation can
+// A journal result replaces these exact provider answers. Native presentation can
 // replace their cards without changing host messages or relying on text matches.
 type commentaryReplacement struct {
 	Thread string

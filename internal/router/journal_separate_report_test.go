@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Keep transport checks at the provider boundary: an ordinary answer must have
@@ -240,9 +242,13 @@ func TestJournalSeparateReportEmptyOutcomeRequiresMeaningfulReport(t *testing.T)
 						transform, proxy, _, workspace := newDurableTreeTransform(t)
 						thread := transform.shellThreadID
 						var sink *nativeJournalSink
+						view := newLiveActivityView()
+						view.conversation = true
+						streamed := stream && final == ""
 						if native {
 							sink = proxy.journals.attachNative(workspace, thread)
 							defer proxy.journals.detachNative(sink)
+							view.applyAppServerItem(true, workspace, thread, thread, "turn", "raw-empty-outcome", "item/started", "", appServerItem{Type: "agentMessage"})
 						}
 						if report {
 							if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, thread, "milestone", []journalMutation{{Op: "add", Kind: "note", Title: new("Verified milestone")}}); err != nil {
@@ -259,14 +265,25 @@ func TestJournalSeparateReportEmptyOutcomeRequiresMeaningfulReport(t *testing.T)
 						}
 						separateReportDeliver(transform, frames)
 						if sink != nil {
+							if final != "" {
+								view.applyAppServerItem(true, workspace, thread, thread, "turn", "raw-empty-outcome", "item/completed", "", appServerItem{Type: "agentMessage", Phase: "final_answer", Text: final})
+							}
 							cards := 0
 							for _, pending := range sink.snapshot() {
+								view.applyJournal(journalKey(workspace, thread), pending)
 								if pending.card != nil {
 									cards++
 								}
 							}
 							if (cards > 0) != report {
 								t.Fatalf("native report eligibility=%v cards=%d", report, cards)
+							}
+							if streamed {
+								view.applyAppServerItem(true, workspace, thread, thread, "turn", "raw-empty-outcome", "item/agentMessage/delta", "Sample streamed detail", appServerItem{})
+							}
+							visible := ansi.Strip(strings.Join(view.renderFeed(100, 60).lines, "\n"))
+							if strings.Contains(visible, "● main") != (!report || streamed || final != "") || streamed && !strings.Contains(visible, "Sample streamed detail") || final != "" && !strings.Contains(visible, final) {
+								t.Fatalf("report replacement changed an unrelated empty or streamed reply:\n%s", visible)
 							}
 						} else if report && len(messages) == 0 {
 							t.Fatal("empty outcome suppressed without a replacement report")

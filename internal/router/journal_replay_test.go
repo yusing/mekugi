@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/uisnapshot"
@@ -81,6 +82,8 @@ func journalReplayFixture(t *testing.T) (*mekugiProxy, string, threadJournal, []
 
 func TestJournalResumeRestoresAcknowledgedEventsAndCompletionCards(t *testing.T) {
 	proxy, workspace, j, turns, _ := journalReplayFixture(t)
+	turns[0].Items = []appServerItem{{ID: "empty", Type: "agentMessage", Phase: "final_answer"}}
+	turns[1].Items = []appServerItem{{ID: "reply", Type: "agentMessage", Phase: "final_answer", Text: "Sample response detail"}}
 	u := newAppServerSessionTestUI(t, workspace)
 	u.thread, u.proxy = "root", proxy
 	before, err := os.ReadFile(filepath.Join(proxy.replayStore.directory, journalFilename(workspace, "root")))
@@ -94,8 +97,11 @@ func TestJournalResumeRestoresAcknowledgedEventsAndCompletionCards(t *testing.T)
 			cards = append(cards, entry.journalCard)
 		}
 	}
-	if len(u.view.entries) != 8 || len(cards) != 2 {
+	if len(u.view.entries) != 10 || len(cards) != 2 {
 		t.Fatalf("history lost events or cards: entries=%d cards=%d", len(u.view.entries), len(cards))
+	}
+	if visible := ansi.Strip(strings.Join(u.view.renderFeed(100, 60).lines, "\n")); strings.Count(visible, "● main") != 1 || !strings.Contains(visible, "Sample response detail") {
+		t.Fatalf("restored empty replacement or nonempty reply is wrong:\n%s", visible)
 	}
 	first, second := journalMainCard(cards[0].Journal, cards[0].Since, true), journalMainCard(cards[1].Journal, cards[1].Since, true)
 	if !strings.Contains(first, "Restore journal history") || strings.Contains(first, "Second check") || !strings.Contains(second, "Reopened task") || strings.Contains(second, "First check") {
