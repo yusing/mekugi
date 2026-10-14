@@ -101,6 +101,11 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 				return
 			}
 			if child.turn != turn || first && !child.batch.Launch.TurnUnsent {
+				if d.Deferred && !first && turn != "" && child.completedTurn == turn {
+					// No host request was sent. Keep the original arrival position.
+					u.retainOrchestratedDelivery(child, c, d, "queued", "", nil)
+					return
+				}
 				u.retainOrchestratedDelivery(child, c, d, "rejected", "", errors.New("target lifecycle changed before delivery"))
 				return
 			}
@@ -152,6 +157,12 @@ func (u *appServerUI) retainOrchestratedDelivery(child *orchestrateChild, c *orc
 
 func (u *appServerUI) orchestratedFollowupResponse(r orchestrateRPC, m appserver.Message) {
 	state, turn, err := orchestratedDeliveryResponse(r.method, m)
+	// Codex maps NotSubmitted to this exact invalid-request response, before
+	// consuming input (app-server turn_processor.rs at ddb33e34b). Neither a
+	// transport failure nor similar error text establishes that no effect occurred.
+	if r.delivery.Deferred && r.method == "turn/steer" && m.Error != nil && m.Error.Code == -32600 && m.Error.Message == "no active turn to steer" {
+		state, turn, err = "queued", "", nil
+	}
 	if err == nil && r.method == "turn/start" && r.child.completedTurn != turn {
 		r.child.turn = turn
 	}

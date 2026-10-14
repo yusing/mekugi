@@ -133,7 +133,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 }
 
 func (s *Store) RecordDelivery(ctx context.Context, workspace, main, id, state, turn, message string) (delivery Delivery, err error) {
-	if state != "delivered" && state != "rejected" && state != "canceled" && state != "uncertain" || state == "delivered" && turn == "" {
+	if state != "delivered" && state != "rejected" && state != "canceled" && state != "uncertain" && state != "queued" || state == "delivered" && turn == "" {
 		return delivery, errors.New("invalid delivery acknowledgement")
 	}
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
@@ -141,6 +141,11 @@ func (s *Store) RecordDelivery(ctx context.Context, workspace, main, id, state, 
 			d := &m.Deliveries[i]
 			if d.ID != id {
 				continue
+			}
+			// Only the delivery owner can establish that its original deferred
+			// input was not consumed. Never release a claimed or uncertain input.
+			if state == "queued" && (!d.Deferred || d.Dispatch != "" || turn != "" || message != "") {
+				return errors.New("only unclaimed deferred input can be queued")
 			}
 			if d.State != "dispatching" {
 				if d.State != state || d.TurnID != turn || d.Error != message {
