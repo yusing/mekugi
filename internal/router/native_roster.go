@@ -53,7 +53,9 @@ func (v *liveActivityView) nativeRosterRows() []liveActivityRosterRow {
 		return rows
 	}
 	nativeEnd := len(rows) - len(v.orchestration)
-	threads := rows[nativeEnd:]
+	threads := slices.DeleteFunc(rows[nativeEnd:], func(row liveActivityRosterRow) bool {
+		return v.orchestrationParents[row.agent.Name] != ""
+	})
 	priority := func(row liveActivityRosterRow) int {
 		if row.agent.Name == "/Orchestration/main" {
 			return 0
@@ -66,6 +68,17 @@ func (v *liveActivityView) nativeRosterRows() []liveActivityRosterRow {
 	// Thread order cannot depend on whether the viewed native subtree overflows.
 	// Preserve the native tree's own observation order below these shared rows.
 	slices.SortStableFunc(threads, func(a, b liveActivityRosterRow) int { return priority(a) - priority(b) })
+	var grouped []liveActivityRosterRow
+	for _, parent := range threads {
+		grouped = append(grouped, parent)
+		if parent.agent.Responding {
+			for _, child := range v.orchestration {
+				if v.orchestrationParents[child.Name] == parent.agent.Name {
+					grouped = append(grouped, liveActivityRosterRow{agent: child, depth: 1})
+				}
+			}
+		}
+	}
 	rows = rows[:nativeEnd]
 	rootShown := slices.ContainsFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == "/root" })
 	rows = slices.DeleteFunc(rows, func(row liveActivityRosterRow) bool {
@@ -76,7 +89,7 @@ func (v *liveActivityView) nativeRosterRows() []liveActivityRosterRow {
 			rows[i].depth = max(0, rows[i].depth-1)
 		}
 	}
-	return slices.Concat(threads, rows)
+	return slices.Concat(grouped, rows)
 }
 
 func (v *liveActivityView) scrollNativeRoster(step int) {
@@ -260,7 +273,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		items = slices.DeleteFunc(items, func(item nativeRosterItem) bool {
 			name := item.row.agent.Name
 			if item.finished == nil && len(pinned) < max(1, limit-2) &&
-				(name == "/root" || name == "/Orchestration/main" || item.row.agent.Responding) {
+				(name == "/root" || name == "/Orchestration/main" || item.row.agent.Responding || v.orchestrationParents[name] != "") {
 				pinned = append(pinned, item)
 				return true
 			}
@@ -290,7 +303,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		row := item.row
 		name, _ := rosterTree(rows, slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name }), 0)
 		if nativeThreadRow(row.agent.Name) {
-			name = strings.TrimPrefix(row.agent.Name, "/Orchestration/")
+			name = v.rosterThreadName(row.agent)
 		}
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
@@ -319,7 +332,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		index := slices.IndexFunc(rows, func(other liveActivityRosterRow) bool { return other.agent.Name == row.agent.Name })
 		tree, _ := rosterTree(rows, index, 0)
 		if nativeThreadRow(row.agent.Name) {
-			tree = strings.TrimPrefix(row.agent.Name, "/Orchestration/")
+			tree = v.rosterThreadName(row.agent)
 		}
 		tree = strings.TrimRight(liveActivityMiddle(tree, nameWidth), " ")
 		split := strings.LastIndexAny(tree, " /") + 1
@@ -393,6 +406,30 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	v.rosterOffset, v.rosterEnd = start, end
 	return lines
+}
+
+// Reviewer labels keep their purpose and round even when the parent scrolls off-screen.
+func (v *liveActivityView) rosterThreadName(agent activityPaneAgent) string {
+	name := strings.TrimPrefix(agent.Name, "/Orchestration/")
+	if v.orchestrationParents[agent.Name] != "" {
+		_, name, _ = strings.Cut(name, "/")
+		index := slices.IndexFunc(v.orchestration, func(other activityPaneAgent) bool { return other.Name == agent.Name })
+		if slices.ContainsFunc(v.orchestration[index+1:], func(other activityPaneAgent) bool {
+			return v.orchestrationParents[other.Name] == v.orchestrationParents[agent.Name]
+		}) {
+			return "  ├ " + name
+		}
+		return "  └ " + name
+	}
+	for _, parent := range v.orchestrationParents {
+		if parent == agent.Name {
+			if agent.Responding {
+				return "▾ " + name
+			}
+			return "▸ " + name
+		}
+	}
+	return name
 }
 
 // eachRosterAgent shares the run-wide identity scope between the header and

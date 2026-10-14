@@ -295,6 +295,8 @@ viewed thread's native subagents. Independent thread rows use italic and accent
 styling, while native subagents retain their identity and role colors. The
 roster has one selection and collapse state: click its title or press `c` while
 focused to collapse or expand it; dragging its title adjusts its height.
+Runtime reviewers nest in collapsible batch groups, following the
+[orchestration navigation contract](orchestrate.md#accepted-delivery-scope).
 Thread rows switch the viewed shell; native subagent rows select its local
 Activity filter. Switching keeps the visible Activity, Diff or Journal pane and
 keyboard focus while preserving each thread's local filter.

@@ -34,6 +34,7 @@ type liveActivityView struct {
 	orchestrationSources  map[string]*liveActivityView
 	orchestrationLabels   map[string]string
 	orchestrationRetained map[string]bool
+	orchestrationParents  map[string]string
 	entries               []liveActivityRecord
 	revision              uint64 // Monotonic presentation revision shared by records.
 	lastSeq               uint64

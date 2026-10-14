@@ -147,6 +147,11 @@ func TestOrchestrateWorkflowReviewerRestoredUsage(t *testing.T) {
 	batches[0].State = "removed"
 	u.recoverOrchestratedWorkflows(batches)
 	drainOrchestrateWork(t, u)
+	u.navigation.retained = batches
+	u.orchestrationRoster()
+	if len(u.agents.nativeRosterRows()) != 2 {
+		t.Fatal("restored reviewer group did not start collapsed")
+	}
 	v := u.navigation.views["reviewer-c"]
 	a := v.session.agent("/root")
 	if a.InputTokens != 1200 || a.Roundtrips != 1 || !a.UsagePartial || a.Responding || !a.WorkTimer.Since.IsZero() || w.Len() != 0 {

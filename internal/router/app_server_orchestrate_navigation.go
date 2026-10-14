@@ -491,6 +491,7 @@ func (u *appServerUI) orchestrationRoster() {
 		roster.orchestrationSources = map[string]*liveActivityView{}
 		roster.orchestrationLabels = map[string]string{}
 		roster.orchestrationRetained = map[string]bool{}
+		roster.orchestrationParents = map[string]string{}
 		for _, thread := range n.order {
 			v := n.views[thread]
 			agent := *v.session.agent("/root")
@@ -514,6 +515,13 @@ func (u *appServerUI) orchestrationRoster() {
 				label = v.status
 			}
 			agent.Name = "/Orchestration/" + name
+			if review := v.workflowReview; review != nil {
+				parent := review.batch
+				if parent == "main" {
+					parent = "main batch"
+				}
+				roster.orchestrationParents[agent.Name] = "/Orchestration/" + parent
+			}
 			v.agents.lineCounts = v.shell.diff.callerCounts
 			roster.orchestrationSources[agent.Name] = v.agents
 			roster.orchestration = append(roster.orchestration, agent)

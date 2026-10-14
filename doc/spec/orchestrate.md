@@ -702,10 +702,14 @@ result. Restored calls retain their recorded outcomes without reviving work.
 The Agents pane (5) lists the coordinator, batch threads and runtime reviewers together with
 the viewed thread's native subagents. Independent thread rows use italic and
 accent styling; native subagents retain their identity and role colors. The
-panel has one focus, selection, collapse state and height. Main stays visible.
+panel has one focus, selection, collapse state and height. Runtime reviewers
+nest beneath their owning batch and show only their review purpose and round,
+without the batch-name prefix. Groups are collapsed while the parent is idle
+and expanded while its authoritative activity state is working. Existing pane
+collapse and thread navigation controls remain unchanged. Main stays visible.
 Within available terminal space, the roster expands for Main and working rows;
 when idle/history rows need scrolling, Main and working rows stay pinned above
-them. Independent rows retain that order even when all rows fit; switching
+them. Independent parent rows retain that order even when all rows fit; switching
 threads does not reorder unchanged rows. Actual lifecycle changes can move a
 row into or out of the working group. A very short terminal prioritizes Main. Manual collapse and resize remain
 available. Subscribed threads use
@@ -716,7 +720,7 @@ The roster rule counts agents and working/error states across the whole run.
 The Agents tab badge uses the same run-wide working count.
 Token and cost totals likewise cover the coordinator, batch roots, native
 descendants, and runtime reviewers, counting each authenticated thread once.
-Switching the viewed thread does not change these counts or totals, including
+Collapsing a reviewer group or switching the viewed thread does not change these counts or totals, including
 while updated metrics ease into view. The net edit metric remains the composed
 change evidence for the viewed workspace, not a sum of per-agent counters.
 Unavailable threads retain their observed lifecycle state. Displayed lifecycle

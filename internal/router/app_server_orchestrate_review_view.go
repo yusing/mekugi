@@ -12,6 +12,7 @@ import (
 // descendants. Their views observe work; only the workflow can submit turns.
 type workflowReviewView struct {
 	name     string
+	batch    string // Authenticated workflow owner, independent of the display path.
 	restored bool
 }
 
@@ -22,7 +23,7 @@ func (u *appServerUI) addWorkflowReviewView(child *orchestrateChild, d orchestra
 	v := u.navigation.views[d.ThreadID]
 	v.awaitingTurn = false
 	v.status = "Ready"
-	v.workflowReview = &workflowReviewView{name: fmt.Sprintf("%s/%s/%d", child.batch.TaskName, d.Kind, d.Generation), restored: restored}
+	v.workflowReview = &workflowReviewView{name: fmt.Sprintf("%s/%s/%d", child.batch.TaskName, d.Kind, d.Generation), batch: child.batch.TaskName, restored: restored}
 	if restored {
 		status := d.HostStatus
 		if d.State == orchestrate.DispatchFailed {
