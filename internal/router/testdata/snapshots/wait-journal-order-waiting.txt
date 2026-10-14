@@ -1,0 +1,20 @@
+• Wait canceled
+
+◆ Verified the journal update ›                                                               08:00
+  Same-turn work report
+◆ Late journal milestone ›
+  Same-turn update after wait registration
+
+╭─ ✓ journal · 2 notes ──────────────────────────────────────────────────────────────────── 08:00 ╮
+│ This turn                                                                                       │
+│ ◆ Verified the journal update                                                                   │
+│   Same-turn work report                                                                         │
+│ ◆ Late journal milestone                                                                        │
+│   Same-turn update after wait registration                                                      │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+• Waiting for agent · batch
+
+╭─ ◐ Waiting for agent · batch ────────────────────────────────────────────────────────────────────╮
+│ ❯                                                                                                │
+╰────────────────────────────────────────────────────────────────────────────── model (high) • 0% ─╯

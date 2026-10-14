@@ -18,6 +18,49 @@ type orchestrationWaitView struct {
 	restored bool // Settled history updates its row, not Main's current operation.
 }
 
+// The host reports wait registration before the terminal journal publication.
+// Place that turn's late journal rows and report before its wait row without
+// holding host effects or changing the row's identity or delivery acknowledgement.
+func (u *appServerUI) orderJournalBeforeOrchestrationWait(sink *nativeJournalSink, publication nativeJournalPublication) {
+	turn := publication.card.Journal.TurnID
+	if turn == "" {
+		return
+	}
+	card, before := -1, -1
+	for i, entry := range u.view.entries {
+		n := entry.native
+		if n == nil {
+			continue
+		}
+		if n.thread == journalKey(sink.workspace, sink.thread) && n.item == publication.item.ID {
+			card = i
+		}
+		if before < 0 && n.thread == sink.thread && n.turn == turn && n.orchestrated && n.orchestration != nil && n.orchestration.Kind == "progress" {
+			before = i
+		}
+	}
+	if before < 0 || card < 0 {
+		return
+	}
+	var indices, moved []int
+	for i, entry := range u.view.entries {
+		e := entry.journalEvent
+		journalEvent := e != nil && entry.native != nil && entry.native.thread == journalKey(sink.workspace, sink.thread) &&
+			e.Seq > publication.card.Journal.TurnStartSeq && e.Seq <= publication.card.Journal.Sequence
+		if i > before && (i == card || journalEvent) {
+			moved = append(moved, i)
+		} else {
+			indices = append(indices, i)
+		}
+	}
+	if len(moved) == 0 {
+		return
+	}
+	indices = slices.Insert(indices, before, moved...)
+	u.view.reorderEntries(indices)
+	u.view.historyOrder = true
+}
+
 // Retained wait ownership, not a completed host turn or an old transcript
 // registration, determines whether Main has suspended its operation.
 func (s *appServerSession) orchestrationWaitSuspends(turn string) bool {

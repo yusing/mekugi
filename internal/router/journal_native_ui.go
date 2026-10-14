@@ -349,6 +349,9 @@ func (u *appServerUI) applyJournalPublication(sink *nativeJournalSink, publicati
 			publication.recovery = u.journalResetRecovery(sink.workspace, sink.thread, publication.event.ResetTurn)
 		}
 		u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)
+		if publication.card != nil {
+			u.orderJournalBeforeOrchestrationWait(sink, publication)
+		}
 	}
 }
 
