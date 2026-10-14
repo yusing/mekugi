@@ -78,7 +78,7 @@ func TestAppServerOrchestrateMainReportPersistsBeforeCallback(t *testing.T) {
 	select {
 	case <-u.orchestrateCompletions:
 		// Simulate process loss after persistence, without the UI callback.
-		u.completeOrchestrateWork(func() {})
+		u.orchestrateJobs = nil
 	case <-time.After(5 * time.Second):
 		t.Fatal("report persistence timeout")
 	}

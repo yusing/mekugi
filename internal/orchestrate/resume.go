@@ -18,7 +18,7 @@ func (s *Store) ResumeCleanup(ctx context.Context, workspace, main, name string)
 
 func (s *Store) resume(ctx context.Context, workspace, main, name string, cleanup bool) (Batch, error) {
 	var batch Batch
-	err := s.withRun(ctx, workspace, main, func(m *manifest, _ string) error {
+	err := s.withBatchRun(ctx, workspace, main, name, func(m *manifest, _ string) error {
 		for _, b := range m.Batches {
 			if b.TaskName != name {
 				continue

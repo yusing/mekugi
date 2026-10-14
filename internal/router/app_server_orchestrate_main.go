@@ -7,7 +7,7 @@ import "github.com/yusing/mekugi/internal/orchestrate"
 func (u *appServerUI) reportOrchestratedMainMessage(c *orchestrateCommand) {
 	child := u.orchestrateThreads[c.caller]
 	store := u.proxy.orchestration.store
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(c.workspace, c.main, child.batch.TaskName, func() func() {
 		d, publish, err := store.BeginDelivery(c.ctx, c.workspace, c.main, orchestrate.Delivery{
 			ID: c.callID, From: c.caller, Target: c.main, Message: c.input.Message, Deferred: c.tool == "send_message",
 		})

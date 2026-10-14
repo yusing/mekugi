@@ -92,7 +92,7 @@ type appServerUI struct {
 	navigation                *orchestrateNavigation
 	orchestrateRequests       map[string]orchestrateRPC
 	orchestrateThreads        map[string]*orchestrateChild
-	orchestrateJobs           []func() func()
+	orchestrateJobs           []*orchestrateStorageJob
 	orchestrateCompletions    chan func()
 	orchestrateClosing        bool
 	orchestrateGeneration     uint64

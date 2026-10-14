@@ -86,8 +86,10 @@ registry snapshot.
 Orchestration preparation owns its run manifests and native checkouts separately
 under the state root's `orchestrate` directory. The journal MCP identity resolver
 proves the selected workspace and caller; the orchestration adapter requires a
-coordinator identity before dispatch. `internal/orchestrate` serializes each run
+coordinator identity before dispatch. `internal/orchestrate` orders each batch
 across router processes and publishes intent before invoking the native VCS.
+Long integration and cleanup effects leave unrelated batch persistence and
+delivery available. Run-manifest publication preserves concurrent batch facts.
 Its branches and checkouts are durable work, not observation snapshots
 or replay-retention targets. The [orchestration contract](../spec/orchestrate.md) owns preparation
 states, repeat calls and staged capabilities.

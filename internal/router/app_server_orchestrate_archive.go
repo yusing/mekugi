@@ -7,7 +7,7 @@ import (
 
 func (u *appServerUI) archiveOrchestratedChild(c *orchestrateCommand, child *orchestrateChild, reply func(orchestrateResult)) {
 	name := child.batch.TaskName
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 		batch, err := u.proxy.orchestration.store.BeginArchive(c.ctx, c.workspace, c.main, name, func(publish func() error) error {
 			_, err := u.proxy.orchestrateCleanupProof(c.ctx, c.workspace, c.main, name, publish)
 			return err
@@ -42,7 +42,7 @@ func (u *appServerUI) archiveOrchestratedChild(c *orchestrateCommand, child *orc
 
 func (u *appServerUI) recordOrchestratedArchive(child *orchestrateChild, reply func(orchestrateResult), dispatched bool, hostErr error) {
 	c, name := child.command, child.batch.TaskName
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 		batch, err := u.proxy.orchestration.store.RecordArchive(u.orchestrateStorageContext, c.workspace, c.main, name, dispatched, hostErr)
 		return func() {
 			child.removing = false

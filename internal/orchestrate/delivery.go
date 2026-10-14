@@ -43,7 +43,7 @@ func (s *Store) BeginTurnDelivery(ctx context.Context, workspace, main string, i
 }
 
 func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input Delivery, nextTurn bool) (delivery Delivery, text string, dispatch bool, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withDeliveryRun(ctx, workspace, main, input.From, input.Target, "", func(m *manifest, path string) error {
 		for _, d := range m.Deliveries {
 			if d.ID == input.ID {
 				if d.From != input.From || d.Target != input.Target || d.Message != input.Message || d.Deferred != input.Deferred || d.ReviewWaiver != input.ReviewWaiver || d.ReviewScope != input.ReviewScope {
@@ -193,7 +193,7 @@ func (s *Store) ObserveDeliveryTurn(ctx context.Context, workspace, main, name, 
 	if status != "running" && status != "completed" && status != "failed" && status != "interrupted" {
 		return errors.New("invalid delivery lifecycle status")
 	}
-	return s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	return s.withBatchRun(ctx, workspace, main, name, func(m *manifest, path string) error {
 		i := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.TaskName == name })
 		if i < 0 || m.Batches[i].Launch == nil {
 			return errors.New("delivery lifecycle requires a launched batch")
@@ -236,7 +236,7 @@ func (s *Store) RecordDelivery(ctx context.Context, workspace, main, id, state, 
 	if state != "delivered" && state != "rejected" && state != "canceled" && state != "uncertain" && state != "queued" || state == "delivered" && turn == "" {
 		return delivery, errors.New("invalid delivery acknowledgement")
 	}
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withDeliveryRun(ctx, workspace, main, "", "", id, func(m *manifest, path string) error {
 		for i := range m.Deliveries {
 			d := &m.Deliveries[i]
 			if d.ID != id {

@@ -210,7 +210,7 @@ func (s *Store) RecordTurn(ctx context.Context, workspace, main, name, thread, t
 }
 
 func (s *Store) withBatch(ctx context.Context, workspace, main, name string, apply func(*Batch) error) error {
-	return s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	return s.withBatchRun(ctx, workspace, main, name, func(m *manifest, path string) error {
 		for i := range m.Batches {
 			if m.Batches[i].TaskName == name {
 				if err := apply(&m.Batches[i]); err != nil {

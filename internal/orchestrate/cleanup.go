@@ -12,7 +12,7 @@ import (
 // Cleanup consumes Main's current journal proof, supplied by the router owner.
 // Removal intent prevents new deliveries and never authorizes repeating an effect.
 func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof Integration, authorize func(publishIntent func() error) error) (batch Batch, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withEffects(ctx, workspace, main, name, func(m *manifest, path string, publish func() error) error {
 		for i := range m.Batches {
 			b := &m.Batches[i]
 			if b.TaskName != name {
@@ -87,7 +87,7 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				b.State, b.Error = "removing", ""
 				// The journal owner rechecks current acceptance and publishes intent
 				// in that transaction. The Git effect runs after its locks release.
-				if err := authorize(func() error { return s.save(m, path) }); err != nil {
+				if err := authorize(publish); err != nil {
 					return err
 				}
 				batch = *b
@@ -98,7 +98,7 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				if _, err := git(ctx, repository, append(args, "--", b.Checkout)...); err != nil {
 					b.Error = err.Error()
 					batch = *b
-					return errors.Join(err, s.save(m, path))
+					return errors.Join(err, publish())
 				}
 			}
 			if b.State == "removed" && len(b.Evidence) != 0 {
@@ -108,13 +108,13 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 					return errors.New("evidence cleanup requires current journal authorization")
 				}
 				b.State = "removing"
-				if err := authorize(func() error { return s.save(m, path) }); err != nil {
+				if err := authorize(publish); err != nil {
 					return err
 				}
 			}
-			err = s.cleanupEvidence(ctx, m, path, b)
+			err = s.cleanupEvidence(ctx, m, path, b, publish)
 			b.State, b.Error = "removed", ""
-			err = errors.Join(err, s.save(m, path))
+			err = errors.Join(err, publish())
 			batch = *b
 			return err
 		}

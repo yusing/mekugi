@@ -50,7 +50,7 @@ func (u *appServerUI) planOrchestratedMerge(c *orchestrateCommand) {
 		previous := child.batch
 		child.removing = true
 		child.batch.State = "integrating" // Reserve input before leaving the UI loop.
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 			batch, err := store.IntegrateShadow(c.ctx, c.workspace, c.main, name, thread)
 			return func() {
 				child.removing = false

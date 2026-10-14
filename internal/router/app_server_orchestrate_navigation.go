@@ -100,7 +100,7 @@ func (u *appServerUI) addOrchestratedView(child *orchestrateChild, thread string
 	v.guardHookCheck.hash = u.guardHookCheck.hash
 	v.journal = u.proxy.journals.attachNative(child.batch.Cwd, thread)
 	v.unscopedJournal = u.proxy.journals.attachNative("", thread)
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(child.command.workspace, child.command.main, child.batch.TaskName, func() func() {
 		ctx := u.orchestrateStorageContext
 		var release func()
 		var waitErr error

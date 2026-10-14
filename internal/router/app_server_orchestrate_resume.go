@@ -48,7 +48,7 @@ func (u *appServerUI) admitOrchestratedBatch(name string, ready func(error), cle
 		n.resumes[thread] = r
 		u.setNotice("Resuming batch "+name, false)
 		workspace, main, store := u.session.cwd, u.thread, u.proxy.orchestration.store
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(workspace, main, name, func() func() {
 			resume := store.Resume
 			if cleanup {
 				resume = store.ResumeCleanup

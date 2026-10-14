@@ -80,7 +80,7 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 	store := u.proxy.orchestration.store
 	turn := child.turn
 	first := child.batch.Launch.TurnUnsent
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(c.workspace, c.main, child.batch.TaskName, func() func() {
 		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, TurnID: turn, Deferred: c.tool == "send_message", ReviewWaiver: c.reviewWaiver, ReviewScope: c.reviewScope}
 		var d orchestrate.Delivery
 		var dispatch bool
@@ -144,7 +144,7 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 
 func (u *appServerUI) retainOrchestratedDelivery(child *orchestrateChild, c *orchestrateCommand, d orchestrate.Delivery, state, turn string, outcome error) {
 	ctx, store := u.orchestrateStorageContext, u.proxy.orchestration.store
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(c.workspace, c.main, child.batch.TaskName, func() func() {
 		message := ""
 		if outcome != nil {
 			message = outcome.Error()

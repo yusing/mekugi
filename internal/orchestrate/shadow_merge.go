@@ -25,7 +25,7 @@ type ShadowMerge struct {
 // PlanShadowMerge writes only run-owned objects and the manifest. The router
 // supplies confirmed live coordinator and child admission before calling it.
 func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thread string) (batch Batch, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withEffects(ctx, workspace, main, name, func(m *manifest, path string, publish func() error) error {
 		index := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.TaskName == name })
 		if index < 0 {
 			return errors.New("shadow merge target is not in this run")
@@ -105,7 +105,7 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 			return err
 		}
 		b.ShadowMerge = plan
-		if err := s.save(m, path); err != nil {
+		if err := publish(); err != nil {
 			return err
 		}
 		batch = *b

@@ -83,12 +83,12 @@ func workflowResponding(child *orchestrateChild) bool {
 	return false
 }
 
-// All run mutations use the existing asynchronous, ordered storage queue.
+// Batch mutations share their asynchronous, ordered storage lane.
 func (u *appServerUI) workflowStore(child *orchestrateChild, apply func(context.Context, *orchestrate.Store) error, next func(error)) {
 	child.workflowPending++
 	c, store := child.command, u.proxy.orchestration.store
 	generation := u.orchestrateGeneration
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(c.workspace, c.main, child.batch.TaskName, func() func() {
 		err := apply(u.orchestrateStorageContext, store)
 		batches, readErr := store.Snapshot(c.workspace, c.main)
 		var updated *orchestrate.Batch
@@ -570,5 +570,5 @@ func (u *appServerUI) interruptWorkflow(child *orchestrateChild, c *orchestrateC
 		_ = u.orchestrateCleanupInterrupt(child, child.batch.Launch.ThreadID, child.turn)
 	}
 	u.workflowFailure(child, orchestrate.PhaseCanceled, errors.New("workflow interrupted"))
-	u.orchestrateWork(func() func() { return func() { c.reply <- orchestrateResult{batch: child.batch} } })
+	u.orchestrateBatchWork(c.workspace, c.main, child.batch.TaskName, func() func() { return func() { c.reply <- orchestrateResult{batch: child.batch} } })
 }

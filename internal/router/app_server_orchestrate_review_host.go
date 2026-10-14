@@ -226,7 +226,7 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 		if work.dispatch.Kind == orchestrate.DispatchSimplification {
 			role = u.proxy.orchestration.reviewers.Simplification
 		}
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(child.command.workspace, child.command.main, child.batch.TaskName, func() func() {
 			settings, err := resolveConfiguredRoleSettings(m.Result, role)
 			var scratch string
 			if err == nil {

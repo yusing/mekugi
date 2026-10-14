@@ -38,7 +38,7 @@ func (s *Store) RetainEvidence(ctx context.Context, workspace, main, name string
 		}
 		seen[input.Name] = true
 	}
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withBatchRun(ctx, workspace, main, name, func(m *manifest, path string) error {
 		for i := range m.Batches {
 			b := &m.Batches[i]
 			if b.TaskName != name {
@@ -165,7 +165,7 @@ func validateEvidence(e Evidence) error {
 
 // cleanupEvidence runs only after the accepted checkout's removal is confirmed.
 // It removes exact files, never directories or uncertain surviving copies.
-func (s *Store) cleanupEvidence(ctx context.Context, m *manifest, path string, b *Batch) error {
+func (s *Store) cleanupEvidence(ctx context.Context, m *manifest, path string, b *Batch, publish func() error) error {
 	if len(b.Evidence) == 0 {
 		return nil
 	}
@@ -208,7 +208,7 @@ func (s *Store) cleanupEvidence(ctx context.Context, m *manifest, path string, b
 				err = validateEvidence(*e)
 				if err == nil {
 					e.State, e.Error = "removing", ""
-					if err := s.save(m, path); err != nil {
+					if err := publish(); err != nil {
 						return errors.Join(failures, err)
 					}
 					// Recheck after publishing intent so changed files remain intact.
@@ -238,7 +238,7 @@ func (s *Store) cleanupEvidence(ctx context.Context, m *manifest, path string, b
 			failures = errors.Join(failures, fmt.Errorf("evidence %q: %w", e.Name, err))
 		}
 		if *e != previous {
-			if err := s.save(m, path); err != nil {
+			if err := publish(); err != nil {
 				return errors.Join(failures, err)
 			}
 		}

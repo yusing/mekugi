@@ -7,6 +7,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -113,7 +114,7 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 			return
 		}
 		proxy, store := u.proxy, u.proxy.orchestration.store
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(command.workspace, command.main, command.prepare.TaskName, func() func() {
 			var batch orchestrate.Batch
 			err := orchestrateMain(command.ctx, proxy, command.workspace, command.main, command.prepare.TaskName)
 			if err == nil {
@@ -171,7 +172,7 @@ func (u *appServerUI) startOrchestratedChild(command *orchestrateCommand) {
 		return
 	}
 	store := u.proxy.orchestration.store
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(command.workspace, command.main, command.input.TaskName, func() func() {
 		batches, err := store.List(command.ctx, command.workspace, command.main)
 		return func() {
 			if u.orchestrateClosing {
@@ -250,7 +251,7 @@ func (u *appServerUI) launchOrchestratedChild(command *orchestrateCommand, batch
 		fail(err)
 		return
 	}
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(command.workspace, command.main, batch.TaskName, func() func() {
 		if batch.Launch == nil || batch.Workflow != nil {
 			kind := command.input.Kind
 			if kind == "" {
@@ -287,36 +288,53 @@ func (u *appServerUI) launchOrchestratedChild(command *orchestrateCommand, batch
 	})
 }
 
-// Storage effects run in event order. Only their completions touch UI state or
-// dispatch host requests; no UI callback waits for a run lock or Git process.
+type orchestrateStorageJob struct {
+	key  [3]string
+	work func() func()
+}
+
+// Run-level work has its own ordered lane. Batch lanes preserve event order
+// through their UI completions without delaying independent batch progress.
 func (u *appServerUI) orchestrateWork(work func() func()) {
+	u.orchestrateBatchWork("", "", "", work)
+}
+
+func (u *appServerUI) orchestrateBatchWork(workspace, main, name string, work func() func()) {
 	if u.orchestrateCompletions == nil {
 		u.orchestrateStorageContext, u.orchestrateStorageCancel = context.WithCancel(context.WithoutCancel(u.ctx))
 		u.orchestrateCompletions = make(chan func(), 1)
 	}
-	u.orchestrateJobs = append(u.orchestrateJobs, work)
-	if len(u.orchestrateJobs) == 1 {
-		u.runOrchestrateWork()
+	job := &orchestrateStorageJob{key: [3]string{workspace, main, name}, work: work}
+	busy := slices.ContainsFunc(u.orchestrateJobs, func(other *orchestrateStorageJob) bool { return other.key == job.key })
+	u.orchestrateJobs = append(u.orchestrateJobs, job)
+	if !busy {
+		u.runOrchestrateWork(job)
 	}
 }
-func (u *appServerUI) runOrchestrateWork() {
-	work, ctx, completed := u.orchestrateJobs[0], u.orchestrateStorageContext, u.orchestrateCompletions
+func (u *appServerUI) runOrchestrateWork(job *orchestrateStorageJob) {
+	ctx, completed := u.orchestrateStorageContext, u.orchestrateCompletions
 	go func() {
-		result := work()
+		result := job.work()
+		complete := func() {
+			// Reserve the lane through callbacks that can append dependent work.
+			result()
+			i := slices.Index(u.orchestrateJobs, job)
+			u.orchestrateJobs = slices.Delete(u.orchestrateJobs, i, i+1)
+			for _, next := range u.orchestrateJobs {
+				if next.key == job.key {
+					u.runOrchestrateWork(next)
+					break
+				}
+			}
+		}
 		select {
-		case completed <- result:
+		case completed <- complete:
 		case <-ctx.Done():
 		}
 	}()
 }
 func (u *appServerUI) completeOrchestrateWork(complete func()) {
-	// Keep this job reserved during its callback, which can append dependent work.
 	complete()
-	u.orchestrateJobs[0] = nil
-	u.orchestrateJobs = u.orchestrateJobs[1:]
-	if len(u.orchestrateJobs) != 0 {
-		u.runOrchestrateWork()
-	}
 	u.dirty = true
 }
 
@@ -354,7 +372,7 @@ func (u *appServerUI) finishOrchestrate(child *orchestrateChild, err error) {
 
 func (u *appServerUI) failOrchestrate(child *orchestrateChild, err error) {
 	c, store, ctx, name := child.command, u.proxy.orchestration.store, u.orchestrateStorageContext, child.batch.TaskName
-	u.orchestrateWork(func() func() {
+	u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 		persistErr := store.ObserveLaunch(ctx, c.workspace, c.main, name, "failed", err.Error())
 		return func() {
 			u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, persistErr)
@@ -450,7 +468,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 				})
 				return false
 			}
-			u.orchestrateWork(func() func() {
+			u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 				err := store.ObserveDeliveryTurn(ctx, c.workspace, c.main, name, event.Turn.ID, status)
 				if err == nil {
 					err = store.ObserveLaunch(ctx, c.workspace, c.main, name, status, message)
@@ -547,7 +565,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			c.reply <- orchestrateResult{err: fmt.Errorf("config/read: %s", m.Error.Message)}
 			return true
 		}
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(c.workspace, c.main, child.batch.TaskName, func() func() {
 			settings, err := resolveConfiguredRoleSettings(m.Result, c.input.AgentType)
 			return func() {
 				if err == nil {
@@ -602,7 +620,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		u.registerSessionThread(result.Thread)
 		ctx, name, cwd, thread, raw := u.orchestrateStorageContext, child.batch.TaskName, child.batch.Cwd, result.Thread.ID, m.Result
 		journals, replay := u.proxy.journals, u.proxy.replayStore
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 			err := store.RecordThread(ctx, c.workspace, c.main, name, thread)
 			if err == nil {
 				var release func()
@@ -630,7 +648,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 				}
 				if err := u.addOrchestratedView(child, thread, raw, func() {
 					if u.orchestrateClosing || child.workflowStopped || c.ctx.Err() != nil {
-						u.orchestrateWork(func() func() {
+						u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 							err := store.CancelUnsentTurn(ctx, c.workspace, c.main, name)
 							return func() {
 								child.batch.Launch.TurnUnsent = err == nil
@@ -672,7 +690,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			interruptErr = u.orchestrateCleanupInterrupt(child, child.batch.Launch.ThreadID, result.Turn.ID)
 		}
 		ctx, name, thread, turn := u.orchestrateStorageContext, child.batch.TaskName, child.batch.Launch.ThreadID, result.Turn.ID
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(c.workspace, c.main, name, func() func() {
 			persistErr := errors.Join(store.RecordTurn(ctx, c.workspace, c.main, name, thread, turn), interruptErr)
 			return func() {
 				if c.ctx.Err() != nil && !interrupted && child.turn != "" && !u.orchestrateClosing {

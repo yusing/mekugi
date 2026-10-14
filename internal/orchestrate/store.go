@@ -152,6 +152,122 @@ func (s *Store) save(m *manifest, path string) error {
 	return persistence.AtomicFile(path, ".orchestrate-*", data, s.Writes)
 }
 
+func (s *Store) withBatchLocks(ctx context.Context, workspace, main string, names []string, work func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	path, err := s.runPath(workspace, main)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	names = slices.Clone(names)
+	slices.Sort(names)
+	for _, name := range slices.Compact(names) {
+		// Retained/caller names are identifiers, never filesystem operands.
+		id := sha256.Sum256([]byte(name))
+		lock := flock.New(fmt.Sprintf("%s.batch-%x.lock", path, id[:8]), flock.SetPermissions(0600))
+		locked, err := lock.TryLockContext(ctx, 25*time.Millisecond)
+		if err != nil {
+			return err
+		}
+		if !locked {
+			return ctx.Err()
+		}
+		defer lock.Unlock()
+	}
+	return work()
+}
+
+func (s *Store) withBatchRun(ctx context.Context, workspace, main, name string, apply func(*manifest, string) error) error {
+	return s.withBatchLocks(ctx, workspace, main, []string{name}, func() error {
+		return s.withRun(ctx, workspace, main, apply)
+	})
+}
+
+func (s *Store) withDeliveryRun(ctx context.Context, workspace, main, from, target, id string, apply func(*manifest, string) error) error {
+	m, err := s.snapshot(workspace, main)
+	if err != nil {
+		return err
+	}
+	if id != "" {
+		for _, d := range m.Deliveries {
+			if d.ID == id {
+				from, target = d.From, d.Target
+				break
+			}
+		}
+	}
+	members := func(m *manifest) []string {
+		var names []string
+		for _, b := range m.Batches {
+			if b.Launch != nil && (b.Launch.ThreadID == from || b.Launch.ThreadID == target) {
+				names = append(names, b.TaskName)
+			}
+		}
+		return names
+	}
+	names := members(m)
+	return s.withBatchLocks(ctx, workspace, main, names, func() error {
+		return s.withRun(ctx, workspace, main, func(current *manifest, path string) error {
+			if !slices.Equal(names, members(current)) {
+				return errors.New("delivery membership changed before reservation")
+			}
+			return apply(current, path)
+		})
+	})
+}
+
+// withEffects serializes checkout/source effects, not independent run progress.
+// Each publication merges only the selected batch into the latest manifest.
+// Batch locks preserve same-batch ordering across router processes.
+func (s *Store) withEffects(ctx context.Context, workspace, main, name string, apply func(*manifest, string, func() error) error) error {
+	return s.withBatchLocks(ctx, workspace, main, []string{name}, func() error {
+		path, err := s.runPath(workspace, main)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return err
+		}
+		lock := flock.New(path+".effects.lock", flock.SetPermissions(0600))
+		locked, err := lock.TryLockContext(ctx, 25*time.Millisecond)
+		if err != nil {
+			return err
+		}
+		if !locked {
+			return ctx.Err()
+		}
+		defer lock.Unlock()
+		var m manifest
+		err = s.withRun(ctx, workspace, main, func(current *manifest, _ string) error {
+			m = *current
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		index := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.TaskName == name })
+		if index < 0 {
+			return fmt.Errorf("batch %q has not been prepared", name)
+		}
+		publish := func() error {
+			// Once an effect ran, cancellation must not discard its completion facts.
+			return s.withRun(context.WithoutCancel(ctx), workspace, main, func(current *manifest, path string) error {
+				i := slices.IndexFunc(current.Batches, func(b Batch) bool { return b.TaskName == name })
+				if i < 0 {
+					return errors.New("effect batch disappeared")
+				}
+				current.Batches[i] = m.Batches[index]
+				return s.save(current, path)
+			})
+		}
+		return apply(&m, path, publish)
+	})
+}
+
 // Start retains an explicitly selected run before its first model turn or batch.
 // It creates no checkout and preserves any existing manifest.
 func (s *Store) Start(ctx context.Context, workspace, main string) error {
@@ -179,7 +295,7 @@ func (s *Store) Prepare(ctx context.Context, workspace, main, name string) (batc
 	if !taskName.MatchString(name) {
 		return batch, errors.New("task_name must match [a-z][a-z0-9_]{0,63}")
 	}
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withBatchRun(ctx, workspace, main, name, func(m *manifest, path string) error {
 		for _, existing := range m.Batches {
 			if existing.TaskName == name {
 				batch = existing

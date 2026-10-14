@@ -128,7 +128,7 @@ func TestOrchestrateCorrectionRecovery(t *testing.T) {
 			if mode == "later-save-turn" {
 				// Hold launch persistence while a newer live turn starts.
 				release := make(chan struct{})
-				u.orchestrateWork(func() func() { <-release; return func() {} })
+				u.orchestrateBatchWork(u.session.cwd, "main", "batch", func() func() { <-release; return func() {} })
 				btwTestReply(t, u, request, response)
 				appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"later"}}}`)
 				close(release)
@@ -201,7 +201,7 @@ func TestOrchestrateCorrectionUnsettledRecovery(t *testing.T) {
 			response := string(mustMarshalJSON(map[string]any{"thread": thread}))
 			if mode == "later-save-turn" {
 				release := make(chan struct{})
-				u.orchestrateWork(func() func() { <-release; return func() {} })
+				u.orchestrateBatchWork(u.session.cwd, "main", "batch", func() func() { <-release; return func() {} })
 				btwTestReply(t, u, request, response)
 				appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"later"}}}`)
 				close(release)

@@ -128,7 +128,7 @@ func TestCleanupEvidenceRecords(t *testing.T) {
 				e[6].Path, e[9].Identity = source, ""
 				m.Batches = append(m.Batches, Batch{TaskName: "other", Evidence: []Evidence{e[4]}})
 			}
-			return s.cleanupEvidence(t.Context(), m, path, &m.Batches[0])
+			return s.cleanupEvidence(t.Context(), m, path, &m.Batches[0], func() error { return s.save(m, path) })
 		})
 	}
 	if err := clean(true); err == nil {

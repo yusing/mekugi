@@ -115,7 +115,7 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand, reply func(o
 			if b.Launch == nil || (c.target != b.TaskName && c.target != "/root/"+b.TaskName) || (n.views[b.Launch.ThreadID] != nil && n.resumes[b.Launch.ThreadID] == nil) {
 				continue
 			}
-			u.orchestrateWork(func() func() {
+			u.orchestrateBatchWork(c.workspace, c.main, b.TaskName, func() func() {
 				_, err := u.proxy.orchestrateCleanupProof(c.ctx, c.workspace, c.main, b.TaskName, nil)
 				return func() {
 					if err == nil {
@@ -171,7 +171,7 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand, reply func(o
 		}
 		child.removing = true
 		child.batch.State = "removing" // Reserve the live target before storage waits.
-		u.orchestrateWork(func() func() {
+		u.orchestrateBatchWork(c.workspace, c.main, previous.TaskName, func() func() {
 			proof, err := u.proxy.orchestrateCleanupProof(c.ctx, c.workspace, c.main, previous.TaskName, nil)
 			batch := previous
 			if err == nil {

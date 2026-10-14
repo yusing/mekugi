@@ -11,7 +11,7 @@ import (
 // The private run directory, not the checkout or a caller-supplied path, owns
 // reviewer scratch. Publish the allocated directory before starting the host.
 func (s *Store) PrepareWorkflowReviewStorage(ctx context.Context, workspace, main, name, id string) (scratch string, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withBatchRun(ctx, workspace, main, name, func(m *manifest, path string) error {
 		for i := range m.Batches {
 			b := &m.Batches[i]
 			if b.TaskName != name {
@@ -59,7 +59,7 @@ func (s *Store) PrepareWorkflowReviewStorage(ctx context.Context, workspace, mai
 // ReleaseWorkflowReviewStorage requires confirmed host shutdown or pre-launch
 // rejection. Uncertain dispatch or shutdown must retain storage.
 func (s *Store) ReleaseWorkflowReviewStorage(ctx context.Context, workspace, main, name, id string, hostStopped bool) error {
-	return s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	return s.withBatchRun(ctx, workspace, main, name, func(m *manifest, path string) error {
 		for _, b := range m.Batches {
 			if b.TaskName != name || b.Workflow == nil {
 				continue

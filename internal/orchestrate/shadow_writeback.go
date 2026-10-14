@@ -61,7 +61,7 @@ func (s *Store) IntegrateShadow(ctx context.Context, workspace, main, name, thre
 }
 
 func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thread string) (batch Batch, err error) {
-	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+	err = s.withEffects(ctx, workspace, main, name, func(m *manifest, path string, publish func() error) error {
 		index := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.TaskName == name })
 		if index < 0 {
 			return errors.New("shadow merge target is not in this run")
@@ -164,7 +164,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 		}
 		plan.State = "applying"
 		b.Integration = nil
-		if err := s.save(m, path); err != nil {
+		if err := publish(); err != nil {
 			return err
 		}
 		for i := range plan.Writes {
@@ -183,7 +183,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 				if after[w.Path].mode != "" && after[w.Path].mode != "040000" {
 					w.Temp = filepath.Join(filepath.Dir(w.Path), ".mekugi-orchestrate-"+rand.Text())
 				}
-				if err := s.save(m, path); err != nil {
+				if err := publish(); err != nil {
 					return err
 				}
 				if noEffect, err := shadowReplace(ctx, root, b.Repository, *w, after[w.Path]); err != nil {
@@ -192,7 +192,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 					if noEffect {
 						if _, tempErr := root.Lstat(w.Temp); w.Temp == "" || errors.Is(tempErr, fs.ErrNotExist) {
 							w.State, w.Temp = "pending", ""
-							err = errors.Join(err, s.save(m, path))
+							err = errors.Join(err, publish())
 						}
 					}
 					return fmt.Errorf("%s: writeback incomplete: %w", w.Path, err)
@@ -200,13 +200,13 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 			}
 			// An applying path from a previous call passed its postimage check.
 			w.State = "applied"
-			if err := s.save(m, path); err != nil {
+			if err := publish(); err != nil {
 				return err
 			}
 		}
 		plan.State = "applied"
 		b.Integration = &Integration{Tip: plan.Tip, SourceTip: plan.Tree}
-		return s.save(m, path)
+		return publish()
 	})
 	if err != nil {
 		// Failed publication cannot turn attempted progress into retained proof.
