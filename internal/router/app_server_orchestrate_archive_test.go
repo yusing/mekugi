@@ -70,6 +70,9 @@ func TestAppServerOrchestrateArchiveUnsentRetry(t *testing.T) {
 			defer cancel()
 			c := &orchestrateCommand{ctx: ctx, workspace: u.session.cwd, main: "main", target: "batch", tool: "cleanup", reply: make(chan orchestrateResult, 1)}
 			u.startOrchestratedChild(c)
+			joined := *c
+			joined.ctx, joined.reply = t.Context(), make(chan orchestrateResult, 1)
+			u.startOrchestratedChild(&joined)
 			for step := range 2 {
 				select {
 				case complete := <-u.orchestrateCompletions:
@@ -91,6 +94,9 @@ func TestAppServerOrchestrateArchiveUnsentRetry(t *testing.T) {
 			result := <-c.reply
 			if result.err == nil || result.batch.Archive == nil || result.batch.Archive.State != "not_sent" || u.client.Input.(*appServerTestInput).Len() != 0 {
 				t.Fatal("known-unsent archive was not retained correctly", result)
+			}
+			if got := <-joined.reply; got.err != result.err || got.batch.Archive.State != "not_sent" {
+				t.Fatal("joined caller lost the owner's failure", got)
 			}
 			// A fresh store owner must permit an explicit retry, once idle.
 			store := &orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}

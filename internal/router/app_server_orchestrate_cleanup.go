@@ -142,6 +142,10 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand, reply func(o
 			return
 		}
 		v := u.navigation.views[child.batch.Launch.ThreadID]
+		if len(child.cleanupReplies) != 0 {
+			child.cleanupReplies = append(child.cleanupReplies, reply)
+			return
+		}
 		if child.removing {
 			reply(orchestrateResult{err: errors.New("cleanup is already pending")})
 			return
@@ -151,6 +155,16 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand, reply func(o
 			return
 		}
 		previous := child.batch
+		// Join only this live cleanup, through archive confirmation. The shared
+		// removing reservation also covers integration and is not a cleanup owner.
+		child.cleanupReplies = []func(orchestrateResult){reply}
+		reply = func(result orchestrateResult) {
+			replies := child.cleanupReplies
+			child.cleanupReplies = nil
+			for _, complete := range replies {
+				complete(result)
+			}
+		}
 		child.removing = true
 		child.batch.State = "removing" // Reserve the live target before storage waits.
 		u.orchestrateWork(func() func() {

@@ -76,6 +76,7 @@ type orchestrateChild struct {
 	lastMessage        string
 	followups          []*orchestrateCommand
 	removing           bool
+	cleanupReplies     []func(orchestrateResult)
 }
 
 func (u *appServerUI) orchestrateCommands() <-chan *orchestrateCommand {

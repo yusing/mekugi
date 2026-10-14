@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	json "encoding/json/v2"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -296,6 +298,111 @@ func TestAppServerOrchestrateAutomaticCleanupFailure(t *testing.T) {
 				if _, err := os.Stat(batch.Checkout); !os.IsNotExist(err) {
 					t.Fatal("explicit cleanup retry failed", err)
 				}
+			}
+		})
+	}
+}
+
+func TestAppServerOrchestrateCleanupCoalesces(t *testing.T) {
+	for _, scenario := range []string{"automatic first", "explicit first", "dirty checkout", "archive failure"} {
+		t.Run(scenario, func(t *testing.T) {
+			u := orchestrateCleanupUI(t)
+			child := u.orchestrateThreads["child"]
+			if _, err := u.proxy.applyJournal(u.ctx, u.session.cwd, "main", "accept", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "dirty checkout" {
+				writeTestFile(t, filepath.Join(child.batch.Cwd, "file"), "unfinished work")
+			}
+			var calls []*orchestrateCommand
+			join := func() {
+				c := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "/root/batch", tool: "cleanup", reply: make(chan orchestrateResult, 2)}
+				u.startOrchestratedChild(c)
+				calls = append(calls, c)
+			}
+			if scenario == "explicit first" {
+				join()
+			}
+			// Do not consume storage completions until acceptance and explicit
+			// callers have raced at the UI owner, regardless of worker timing.
+			u.flushOrchestratedEvents()
+			join()
+			join()
+			pending := func() {
+				t.Helper()
+				for _, c := range calls {
+					select {
+					case result := <-c.reply:
+						t.Fatalf("duplicate cleanup completed before its owner: state=%q error=%v", result.batch.State, result.err)
+					default:
+					}
+				}
+				if strings.Contains(u.notice, "cleanup:") {
+					t.Fatal("automatic duplicate reported a failure", u.notice)
+				}
+			}
+			pending()
+			if len(u.orchestrateJobs) != 1 {
+				t.Fatal("duplicate dispatched storage work", len(u.orchestrateJobs))
+			}
+			if scenario == "automatic first" {
+				// Cancel only a joined MCP caller, not the live cleanup owner.
+				runtime := u.proxy.orchestration
+				runtime.active.Store(true)
+				runtime.commands = make(chan *orchestrateCommand, 1)
+				c := *calls[0]
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				c.ctx, c.reply = ctx, make(chan orchestrateResult, 1)
+				done := make(chan error, 1)
+				go func() { _, _, err := runtime.call(&c); done <- err }()
+				u.startOrchestratedChild(<-runtime.commands)
+				cancel()
+				if err := <-done; !errors.Is(err, context.Canceled) {
+					t.Fatal("joined caller lost cancellation", err)
+				}
+			}
+			drainOrchestrateWork(t, u)
+			wantError := scenario == "dirty checkout" || scenario == "archive failure"
+			if scenario != "dirty checkout" {
+				pending() // Removal alone is not a completed cleanup result.
+				join()    // Also coalesce while native archival is pending.
+				pending()
+				w := u.client.Input.(*appServerTestInput)
+				request := btwTestRequest(t, w, "thread/archive", "child")
+				if w.Len() != 0 || len(u.orchestrateJobs) != 0 || len(u.orchestrateRequests) != 1 {
+					t.Fatal("duplicate removal or archive dispatch", w.String())
+				}
+				if scenario == "archive failure" {
+					orchestrateTestMessage(t, u, `{"id":`+strconv.Itoa(request.ID)+`,"error":{"code":-32603,"message":"archive failed"}}`)
+				} else {
+					orchestrateTestReply(t, u, request, `{}`)
+				}
+				if _, err := os.Stat(child.batch.Checkout); !os.IsNotExist(err) {
+					t.Fatal("checkout survived successful removal", err)
+				}
+			} else if _, err := os.Stat(child.batch.Checkout); err != nil {
+				t.Fatal("failed cleanup removed checkout", err)
+			}
+			var first orchestrateResult
+			for i, c := range calls {
+				if len(c.reply) != 1 {
+					t.Fatal("caller did not receive exactly one result", len(c.reply))
+				}
+				result := <-c.reply
+				if (result.err != nil) != wantError || i != 0 && !reflect.DeepEqual(result, first) {
+					t.Fatal("callers did not share the actual cleanup result", first, result)
+				}
+				if !wantError && (result.batch.State != "removed" || result.batch.Archive == nil || result.batch.Archive.State != "archived") {
+					t.Fatal("caller did not receive confirmed removal and archival", result)
+				}
+				first = result
+			}
+			if wantError && (!strings.Contains(u.notice, first.err.Error()) || len(u.orchestrateEvents) != 1) {
+				t.Fatal("actual automatic cleanup failure was not reported once", u.notice, u.orchestrateEvents)
+			}
+			if child.removing || len(u.orchestrateJobs) != 0 || len(u.orchestrateRequests) != 0 {
+				t.Fatal("completed cleanup retained live work")
 			}
 		})
 	}
