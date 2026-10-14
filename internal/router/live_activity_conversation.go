@@ -124,7 +124,6 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		heads:     make([]int, 0, rowCapacity),
 		snippets:  make([]liveActivitySnippet, 0, rowCapacity),
 		questions: make([]uint64, 0, rowCapacity),
-		paints:    make([]liveActivityPaint, 0, len(items)),
 	}
 	v.questionRows = make(map[uint64]int)
 	used := make(map[liveActivityRunKey]liveActivityRun, len(items))
@@ -217,23 +216,26 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				break
 			}
 		}
-		render := func() liveActivityRun {
-			window := v.syntaxWindow
-			if window != nil && it.lead >= 0 {
-				v.syntaxWindow = &liveActivitySyntaxWindow{window.first - 1, window.last - 1}
-			}
-			run := v.conversationItem(it.first, it.last, width, thread)
-			v.syntaxWindow = window
-			if it.lead >= 0 {
-				continuation := v.paintBlock(0, 1, func() []string { return []string{v.continuation(it.lead, width)} })
-				run.lines = append(continuation, run.lines...)
-				run.snippets = append([]liveActivitySnippet{{}}, run.snippets...)
-				run.questions = append([]uint64{0}, run.questions...)
-				for seq, row := range run.entryRows {
-					run.entryRows[seq] = row + 1
+		var render func() liveActivityRun
+		if !ok || !run.colored {
+			render = func() liveActivityRun {
+				window := v.syntaxWindow
+				if window != nil && it.lead >= 0 {
+					v.syntaxWindow = &liveActivitySyntaxWindow{window.first - 1, window.last - 1}
 				}
+				run := v.conversationItem(it.first, it.last, width, thread)
+				v.syntaxWindow = window
+				if it.lead >= 0 {
+					continuation := v.paintBlock(0, 1, func() []string { return []string{v.continuation(it.lead, width)} })
+					run.lines = append(continuation, run.lines...)
+					run.snippets = append([]liveActivitySnippet{{}}, run.snippets...)
+					run.questions = append([]uint64{0}, run.questions...)
+					for seq, row := range run.entryRows {
+						run.entryRows[seq] = row + 1
+					}
+				}
+				return run
 			}
-			return run
 		}
 		if !ok {
 			run = render()
@@ -245,6 +247,9 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		}
 		head := len(feed.lines)
 		if !run.colored {
+			if feed.paints == nil {
+				feed.paints = make([]liveActivityPaint, 0, len(items)-k)
+			}
 			feed.paints = append(feed.paints, liveActivityPaint{head, key, render})
 		}
 		// A sent message or batch shrinking above a scrolled viewport keeps its rows still.

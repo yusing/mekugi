@@ -9,6 +9,23 @@ import (
 	"github.com/yusing/mekugi/internal/execsegment"
 )
 
+func BenchmarkActivityTimingParse(b *testing.B) {
+	for _, entry := range []activityPaneEntry{
+		{Kind: "journal_event", Text: "Completed the focused checks", native: &liveActivityNativeItem{}},
+		{Kind: "tool", Text: "Run `go test ./...`", native: &liveActivityNativeItem{command: "go test ./...", running: true}},
+		{Kind: "tool", Text: "Run `echo one`\n\nRun `echo two`", native: &liveActivityNativeItem{command: "echo one; echo two", running: true}},
+	} {
+		b.Run(entry.Kind+"/"+entry.native.command, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if len(parseLiveActivity(entry)) == 0 {
+					b.Fatal("activity disappeared")
+				}
+			}
+		})
+	}
+}
+
 func TestActivitySingleCommandActualTime(t *testing.T) {
 	t.Parallel()
 	for _, script := range []string{"sleep .02", "time sleep .02", "bash -c 'sleep .02; printf ok; exit 7'", "printf ok | cat"} {

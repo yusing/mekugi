@@ -53,6 +53,21 @@ func TestPinnedTokenIDs(t *testing.T) {
 	}
 }
 
+func BenchmarkCount(b *testing.B) {
+	c, err := New()
+	if err != nil {
+		b.Fatal(err)
+	}
+	text := strings.Repeat("Review the implementation and preserve exact input. 世界🙂\n", 1000)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(text)))
+	for b.Loop() {
+		if _, err := c.Count(text); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestVocabularyAndConcurrentCodecs(t *testing.T) {
 	vocabulary, err := loadVocabulary()
 	if err != nil {

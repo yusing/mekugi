@@ -47,12 +47,12 @@ func (c *codec) Encode(input string) ([]uint, []string, error) {
 }
 
 func (c *codec) tokenize(input string, yield func(uint, string)) error {
-	match, err := c.splitRegexp.FindStringMatch(input)
+	matches, err := c.splitRegexp.FindAllStringIndex(input, -1)
 	if err != nil {
 		return fmt.Errorf("error matching: %v", err)
 	}
-	for match != nil {
-		piece := match.String()
+	for _, match := range matches {
+		piece := input[match[0]:match[1]]
 		if id, ok := c.vocabulary[piece]; ok {
 			yield(id, piece)
 		} else {
@@ -67,10 +67,6 @@ func (c *codec) tokenize(input string, yield func(uint, string)) error {
 				token := piece[parts[i].offset:parts[i+1].offset]
 				yield(c.vocabulary[token], token)
 			}
-		}
-		match, err = c.splitRegexp.FindNextMatch(match)
-		if err != nil {
-			return fmt.Errorf("error matching: %v", err)
 		}
 	}
 

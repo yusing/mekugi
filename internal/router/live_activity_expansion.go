@@ -51,12 +51,18 @@ func (v *liveActivityView) retainRuns(used map[liveActivityRunKey]liveActivityRu
 		key.expansion, key.clip, key.tail, key.excerpt = 0, 0, 0, false
 		return key
 	}
-	active := make(map[liveActivityRunKey]bool, len(used))
-	for key := range used {
-		active[base(key)] = true
-	}
+	var active map[liveActivityRunKey]bool
 	for key, run := range v.runs {
-		if key.expansion != v.expansion && active[base(key)] {
+		if key.expansion == v.expansion {
+			continue
+		}
+		if active == nil {
+			active = make(map[liveActivityRunKey]bool, len(used))
+			for key := range used {
+				active[base(key)] = true
+			}
+		}
+		if active[base(key)] {
 			used[key] = run
 		}
 	}
