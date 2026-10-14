@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
 func notificationTestOutput(t *testing.T, u *appServerUI) *bytes.Buffer {
@@ -120,6 +122,52 @@ func TestAppServerNotificationCompletion(t *testing.T) {
 			}
 			if out.String() != want {
 				t.Fatalf("completion output = %q, want %q", out.String(), want)
+			}
+		})
+	}
+}
+
+func TestAppServerNotificationOrchestrationCompletion(t *testing.T) {
+	for _, viewed := range []string{"main", "child", "correctness"} {
+		t.Run(viewed, func(t *testing.T) {
+			u, w := workflowUI(t)
+			out := notificationTestOutput(t, u)
+			u.notifications.settings.Events = []byte("true")
+			for _, v := range u.promptViews() {
+				v.notifications = u.notifications
+			}
+			orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"coordinator-turn"}}}`)
+			if viewed == "child" {
+				u.switchOrchestratedThread(viewed)
+			}
+			orchestrateTestMessage(t, u, `{"method":"thread/started","params":{"thread":{"id":"native","parentThreadId":"main","agentNickname":"worker"}}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"native","turn":{"id":"native-turn"}}}`)
+			workflowCompleted(t, u, "native", "native-turn", "")
+			quiet := func(source string) {
+				t.Helper()
+				if out.Len() != 0 {
+					t.Errorf("%s completion emitted %q while coordinator runs", source, out.String())
+				}
+				out.Reset()
+			}
+			quiet("native child")
+			workflowCompleted(t, u, "child", "implement", "")
+			quiet("batch")
+			purposes := []orchestrate.ReviewPurpose{orchestrate.ReviewCorrectness, orchestrate.ReviewSimplification}
+			for _, purpose := range purposes {
+				workflowReviewThread(t, u, w, purpose, string(purpose))
+			}
+			u.switchOrchestratedThread(viewed)
+			for _, purpose := range purposes {
+				workflowCompleted(t, u, string(purpose), string(purpose)+"-turn", workflowVerdict(u.orchestrateThreads["child"], purpose))
+				quiet("reviewer")
+			}
+			workflowNotice(t, u, w)
+			for range 2 {
+				workflowCompleted(t, u, "main", "coordinator-turn", "")
+			}
+			if want := "\x1b]9;Agent turn complete\a"; out.String() != want {
+				t.Fatalf("final coordinator notification = %q, want %q", out.String(), want)
 			}
 		})
 	}

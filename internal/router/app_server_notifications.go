@@ -78,7 +78,7 @@ func (u *appServerUI) writeTerminalTitle(now time.Time) {
 		return
 	}
 	parts := []string{"Mekugi"}
-	if u.questionCount() > 0 || len(n.blocked) > 0 || len(u.approvals.pending) > 0 {
+	if u.questionSource() != nil || len(n.blocked) > 0 || u.approvalSource() != nil {
 		parts = append(parts, "[ ! ] Action Required")
 	} else if _, waiting := u.session.orchestrationWaitStatus(); waiting || u.turn != "" || u.starting() || u.reset.active() {
 		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
@@ -149,6 +149,9 @@ func (n *nativeNotifications) allows(event string) bool {
 
 func (u *appServerUI) notify(event, message string) {
 	if event == "agent-turn-complete" {
+		if n := u.navigation; n != nil && n.owner != u {
+			return
+		}
 		if label, _ := u.session.orchestrationWaitStatus(); label != "" {
 			return
 		}

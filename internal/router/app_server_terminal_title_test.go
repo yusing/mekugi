@@ -2,6 +2,8 @@ package router
 
 import (
 	"bytes"
+	json "encoding/json/v2"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -57,6 +59,64 @@ func TestAppServerTerminalTitleLifecycle(t *testing.T) {
 	}
 	// Returning from the external editor must republish the title.
 	title("Mekugi project")
+}
+
+func TestAppServerTerminalTitleOrchestrationPrompts(t *testing.T) {
+	u, source := orchestratePromptUI(t)
+	second := *u.orchestrateThreads["child"]
+	second.batch.TaskName = "second"
+	launch := *second.batch.Launch
+	launch.ThreadID = "child2"
+	second.batch.Launch = &launch
+	u.orchestrateThreads["child2"] = &second
+	raw := mustMarshalJSON(map[string]any{"thread": appServerThreadInfo{ID: "child2", Cwd: second.batch.Cwd}})
+	if err := u.addOrchestratedView(&second, "child2", raw, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	drainOrchestrateWork(t, u)
+	u.navigation.views["child2"].awaitingTurn = false
+	out := notificationTestOutput(t, u)
+	for _, v := range u.promptViews() {
+		v.notifications = u.notifications
+	}
+	check := func(action bool) {
+		t.Helper()
+		for _, thread := range []string{"main", "child2"} {
+			u.switchOrchestratedThread(thread)
+			viewed := u.viewedUI()
+			u.clearTerminalTitle()
+			out.Reset()
+			viewed.writeTerminalTitle(time.Unix(0, 0))
+			want := "Mekugi"
+			if action {
+				want += " [ ! ] Action Required"
+			}
+			want += " " + filepath.Base(viewed.session.cwd)
+			if got := out.String(); got != "\x1b]0;"+want+"\a" {
+				t.Fatalf("viewing %s: title = %q, want %q", thread, got, want)
+			}
+		}
+	}
+	orchestratePromptQuestion(t, u, false)
+	check(true)
+	source.resolveQuestionCall(source.questions.calls[0], "answered")
+	check(false)
+	var turns []appServerHistoryTurn
+	if err := json.Unmarshal([]byte(`[{"id":"past","status":"completed","items":[{"id":"restored","type":"agentMessage","delivery":"async","questions":[{"title":"Which scope?","options":["Narrow"]}]}]}]`), &turns); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	source.restoreHistory(turns)
+	if out.Len() != 0 {
+		t.Fatalf("restoration emitted notification %q", out.String())
+	}
+	check(true)
+	source.resolveQuestionCall(source.questions.calls[len(source.questions.calls)-1], "answered")
+	check(false)
+	approvalTestCommand(t, u, "batch-approval", map[string]any{"threadId": "child", "turnId": "batch-turn", "command": "echo batch"})
+	check(true)
+	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "child", "requestId": "batch-approval"})
+	check(false)
 }
 
 func TestAppServerTerminalTitleUnsupportedRequests(t *testing.T) {
