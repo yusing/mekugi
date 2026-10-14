@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"unicode/utf8"
 
 	"github.com/yusing/mekugi/capturer"
 )
@@ -83,14 +82,10 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 					continue
 				}
 			}
-			end := min(len(text), textBytes)
-			for end > 0 && !utf8.ValidString(text[:end]) {
-				end--
-			}
 			if entry.Text == nil {
 				entry.Text = make(map[string]inspectedText)
 			}
-			entry.Text[key] = inspectedText{Text: text[:end], Bytes: len(text), OmittedBytes: len(text) - end}
+			entry.Text[key] = inspectText(text, true, textBytes)
 		}
 		result.Evidence = append(result.Evidence, entry)
 	}

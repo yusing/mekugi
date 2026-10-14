@@ -631,6 +631,21 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 	if history.ExecOutcome == nil || history.ExecOutcome.Status != "" {
 		t.Fatalf("missing host exit must not claim a command result: %+v", history.ExecOutcome)
 	}
+	// Consume the actual producer's retained record through the offline CLI.
+	rollout := filepath.Join(t.TempDir(), "rollout.jsonl")
+	writeStockRollout(t, rollout,
+		map[string]any{"type": "session_meta", "payload": map[string]any{"cwd": workspace}},
+		stockRolloutItem(call),
+	)
+	var stdout, stderr strings.Builder
+	if code := RunSessionInspection(t.Context(), []string{"--session", rollout, "--replay-dir", proxy.replayStore.directory}, &stdout, &stderr); code != 0 {
+		t.Fatalf("inspection: %d %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"outcome":"unconfirmed"`) ||
+		!strings.Contains(stdout.String(), `"review_files":1`) ||
+		!strings.Contains(stdout.String(), `"change_id":"`+history.ChangeID+`"`) {
+		t.Fatalf("derived shell evidence missing: %s", stdout.String())
+	}
 }
 
 func TestLiveDiffTeeHeredocPreview(t *testing.T) {

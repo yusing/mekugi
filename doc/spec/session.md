@@ -83,7 +83,21 @@ Selected text is an exact UTF-8 prefix capped by `--text-bytes` (default 4096, 1
 Every field reports full byte size and omitted bytes. Diagnostics use retained result evidence rather than interpretation of model prose. Output is the last observed tool output;
 non-string output retains its JSON representation.
 
-`applied` requires a completed observed stock patch result and workspace outcome.
+Retained shell-effect observations are resolved through the parent call's command
+observation in the selected workspace. The optional `effects` object identifies the
+derived call, replay availability, command status, exit code when known, coverage,
+reviewed-file count, change ID when allocated, and shared-effect owner when present.
+Missing observations have no file count. Shared observations name their owner without
+claiming zero effects for the referring call. Command reports and scope diagnostics
+join the selected bounded text fields; the original call input and identity remain unchanged.
+Shell observations do not contribute to patch-based AX edit counts.
+
+`applied` requires a completed observed stock patch or command result and workspace outcome.
+Failed commands remain `rejected` even when files changed; effects retain that file count.
+Unconfirmed command status and shared effects are `unconfirmed`. Empty partial
+shell coverage cannot by itself establish `no_changes`.
+A missing derived shell record is `unavailable`, never `no_changes`.
+Coverage remains explicit even when completed commands have observed changes.
 `already_satisfied`, `rejected`, `unconfirmed`, and `unavailable` remain distinct;
 partial workspace effects may accompany a failed result without becoming
 successful edits. Missing output is not success. No outcome claims semantic
@@ -114,6 +128,32 @@ Acceptance:
 
 `--ax`, `--read-log`, and `--defects` add whole-rollout AX reporting under
 [REQ-AX-001](ax.md); table selection and pagination do not narrow its evidence scope.
+
+### Offline journal inspection
+
+`mekugi inspect-session --session PATH --journal` reads the selected thread's retained
+journal without a router, journal mutation, lock creation, or host reconciliation.
+It resolves `session_meta.id`, not a fork's `session_id`, with the last
+`session_meta.cwd`; `--workspace` explicitly overrides that directory. Turn-level
+command directories do not select another journal. Missing thread identity fails;
+missing workspace reports `workspace_unavailable` without searching other workspaces.
+
+The result is `mekugi.session.journal.v1` JSON with `thread_id`, selected `workspace`,
+`availability`, and a flat `nodes` page in retained item order. Stable paths preserve
+parent relationships. Nodes include kind, state, author, bound agent, supersession,
+and creation/update stamps. Only this thread's own retained nodes are read; bound
+agents are references, not mounted trees. The snapshot is current retained state,
+not journal state reconstructed at the rollout's last timestamp. Corrupt or mismatched
+records fail. A missing record reports `missing`, with no node count; a readable empty
+journal reports `matched` with `total_nodes: 0`.
+
+`--offset` and `--limit` paginate nodes with `total_nodes` and optional `next_offset`.
+Private title, body, reason, and question text is omitted by default but retains
+byte counts. `--field title|body|reason|question|all` selects text under the existing
+UTF-8 `--text-bytes` bound. This mode cannot combine call selection, AX generation,
+debug bundles, or failure-reference lookup. The shared rollout validation and exit
+statuses apply. Reading neither acknowledges delivery nor restores live timers,
+processes, or permissions.
 
 ### Corpus friction inspection
 

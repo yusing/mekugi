@@ -46,6 +46,7 @@ Inspection runs no recorded operations. Default reports omit private text; selec
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
+mekugi inspect-session --session /path/to/rollout.jsonl --journal --field all --limit 20
 mekugi inspect-session --debug-dir /path/to/debug --field diagnostic
 ```
 

@@ -49,7 +49,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Journal writing rules and projected agent guidance | Prose source: `guidance/frontend_guidance.md.tmpl`; generated output: `internal/router/frontend_guidance.md`; embedding: `internal/router/frontend_guidance.go`; journal consumer: `internal/router/journal_tool.go`. Generation/check: `TestGeneratedFrontendGuidanceIsCurrent` in `internal/router/frontend_guidance_generation_test.go`. Frontend tool descriptions remain owned by their executable tool sources. |
 | Inherited instruction conflict cleanup and prepared-request role projection | `internal/router/instruction_conflicts.go`, `internal/router/instruction_orchestrate.go` (retained run policy), `internal/router/instruction_cache_test.go`, `internal/router/stock_guidance_workflow_test.go`; recorded stock fixtures in `internal/router/testdata/instruction-cleanup/`, contract in `doc/spec/guide.md` |
 | AX runtime evidence and offline measurements | `capturer/ax.go`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
-| Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `cmd/mekugi/main.go` |
+| Offline logical session inspection | `internal/router/session_inspect.go`, `internal/router/session_inspect_journal.go`, dispatched by `cmd/mekugi/main.go` |
 | Offline UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage in `docs/contributing/development.md` |
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
 | Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
@@ -74,6 +74,8 @@ independent user sessions. The logical inspection interface is in `doc/spec/sess
 
 - `mekugi inspect-session --session /absolute/path/to/rollout.jsonl` reads call identities and
   outcomes without running recorded operations. Select private text only when needed.
+- Add `--journal --field all` to inspect the selected thread's retained journal without
+  resolving storage filenames. `--offset`, `--limit`, and `--text-bytes` bound the page.
 - For debug bundles, use `mekugi inspect-session --debug-dir /absolute/path/to/debug --field
   diagnostic --limit 5 --text-bytes 512`; narrow further with `--request-id ID` when known.
   Paginate remaining evidence with `--offset`. Select JSON fields for a smaller view rather

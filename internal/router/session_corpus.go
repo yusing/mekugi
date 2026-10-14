@@ -259,7 +259,7 @@ func inspectCorpusSession(ctx context.Context, path string, calls []sessionInspe
 				return session, err
 			}
 		}
-		_, err = inspectSessionCall(call, record, found, nil, "", 1)
+		_, err = inspectSessionCall(call, record, found, nil, nil, "", 1)
 		if err != nil {
 			return session, err
 		}
