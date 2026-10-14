@@ -7,10 +7,14 @@ import (
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const displayGuardDirectory = "/tmp/mekugi-tools-222415842-41c84ab42cecccced7ab3f107aa419ed127f6777c2b00517efb95c6723c6f413/vcs-guard"
+
+var displaySudoDirectory = strings.TrimSuffix(displayGuardDirectory, vcsguard.Directory) + sudoask.Directory
+
 const displayGuardHelper = "/opt/mekugi/bin/mekugi-exec"
 
 func TestGuardCommandDisplayProjection(t *testing.T) {
@@ -18,6 +22,12 @@ func TestGuardCommandDisplayProjection(t *testing.T) {
 		"git log -1 --format='%H%n%s'",
 		"git commit -F - <<'EOF'\nfix: quoted message\n\nKeep `$PATH`, \"quotes\", and \\ escapes literal.\nEOF",
 		"git status --porcelain",
+		`sudo journalctl -k --since '2026-10-14 10:20:00' --until '2026-10-14 10:29:00' --no-pager -g 'oom|Out of memory|Killed process'`,
+		`PATH='/user tools' sudo id; git status`,
+		`command -p sudo id; env -i '/user tools/sudo' id; "$tools/sudo" id`,
+		`echo "$(sudo id)"; cat <<'EOF'
+sudo id
+EOF`,
 		`git cat-file commit HEAD | awk '/^gpgsig / {print "signature_present"; exit}'`,
 		`PATH='/user tools' TOKEN="$token" git status; printf '%s' 'git status'`,
 		`command -p git status && env -i '/user tools/git' log; "$tools/git" show HEAD`,
@@ -25,7 +35,7 @@ func TestGuardCommandDisplayProjection(t *testing.T) {
 git status
 EOF`,
 	} {
-		guarded, err := vcsguard.RewriteForItem(source, displayGuardHelper, displayGuardDirectory, "cmd")
+		guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,8 +50,49 @@ EOF`,
 }
 
 func TestAppServerGuardCommandDisplay(t *testing.T) {
-	source := "git log -1; git status --porcelain"
-	guarded, err := vcsguard.Rewrite(source, displayGuardHelper, displayGuardDirectory)
+	for _, source := range []string{"git log -1; git status --porcelain", "sudo journalctl -k --no-pager"} {
+		guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := toolActivityShell(source)
+		for _, thread := range []string{"main", "child"} {
+			t.Run(thread, func(t *testing.T) {
+				command := workerCommand("/bin/bash", []string{"-lc", guarded})
+				item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "completed", ExitCode: new(0)}
+				check := func(u *appServerUI) {
+					t.Helper()
+					view := u.view
+					if thread == "child" {
+						view = u.agents
+					}
+					if len(view.entries) != 1 || view.entries[0].Text != want || view.entries[0].native.command != command {
+						t.Fatalf("command entries = %+v; want display %q with unchanged host command", view.entries, want)
+					}
+				}
+				u := newAppServerSessionTestUI(t, t.TempDir())
+				for _, method := range []string{"item/started", "item/completed"} {
+					appServerTestNotify(t, u, method, map[string]any{"threadId": thread, "turnId": "t", "item": item})
+					check(u)
+				}
+				restored := newAppServerSessionTestUI(t, t.TempDir())
+				turns := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}
+				if thread == "main" {
+					restored.restoreHistory(turns)
+				} else {
+					info := appServerThreadInfo{ID: thread, AgentNickname: "worker", Turns: turns}
+					restored.session.registerThread(info)
+					restored.restoreActivityThread(info)
+				}
+				check(restored)
+			})
+		}
+	}
+}
+
+func TestSudoGuardDisplayWithoutVCS(t *testing.T) {
+	const source = "sudo id; command -p sudo id; git status"
+	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, "", displaySudoDirectory, "cmd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +132,19 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 
 func TestGuardCommandDisplayPreservesUserSource(t *testing.T) {
 	prefix := "PATH='" + displayGuardDirectory + "':\"${PATH-/bin:/usr/bin}\" "
+	sudoPrefix := strings.Replace(prefix, vcsguard.Directory, sudoask.Directory, 1)
 	for _, source := range []string{
 		`PATH='/user/vcs-guard':"${PATH-/bin:/usr/bin}" git status`,
 		`PATH='/tmp/mekugi-tools-user/vcs-guard':"${PATH-/bin:/usr/bin}" git status`,
 		"PATH='" + displayGuardDirectory + "':\"$PATH\" git status",
 		prefix + "echo git status",
+		`PATH='/user/sudo-guard':"${PATH-/bin:/usr/bin}" sudo id`,
+		strings.Replace(sudoPrefix, "${PATH-/bin:/usr/bin}", "$PATH", 1) + "sudo id",
+		sudoPrefix + "git status",
+		prefix + "sudo id",
+		"printf '%s' " + quoteShellWord(sudoPrefix+"sudo id"),
+		"cat <<'EOF'\n" + sudoPrefix + "sudo id\nEOF",
+		quoteShellWord(displayGuardHelper) + " --vcs-command " + quoteShellWord(displaySudoDirectory) + " sudo id",
 		"printf '%s' " + quoteShellWord(prefix+"git status"),
 		"cat <<'EOF'\n" + prefix + "git status\nEOF",
 		prefix + "git 'unfinished",
@@ -99,8 +158,8 @@ func TestGuardCommandDisplayPreservesUserSource(t *testing.T) {
 
 func TestGuardCommandDisplayCustomRuntimeDirectory(t *testing.T) {
 	directory := strings.Replace(displayGuardDirectory, "/tmp/", "/run/user's tools/", 1)
-	for _, source := range []string{"git status", "command git status"} {
-		guarded, err := vcsguard.Rewrite(source, displayGuardHelper, directory)
+	for _, source := range []string{"git status", "command git status", "sudo id", "command sudo id"} {
+		guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, directory, strings.Replace(directory, vcsguard.Directory, sudoask.Directory, 1), "cmd")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -179,15 +238,15 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.painter.Theme = livediff.DarkTheme
-	source := "git log -1 --format='%H%n%s'; git status --porcelain"
-	guarded, err := vcsguard.Rewrite(source, displayGuardHelper, displayGuardDirectory)
+	source := "git status --porcelain; sudo journalctl -k --no-pager"
+	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
 	if err != nil {
 		t.Fatal(err)
 	}
 	command := workerCommand("/bin/bash", []string{"-lc", guarded})
-	output := "9a9860a fix(ui): align loaded skills links and dialog selection\n"
+	output := "-- No entries --\n"
 	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
-		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0),
+		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
 	entry := u.view.entries[0]
 	pages := u.view.commandOutputPages(entry.Seq)

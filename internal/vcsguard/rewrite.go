@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sudoask"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -40,41 +41,28 @@ func RewriteCommands(script, helper, directory, sudoDirectory, item string) (str
 			return true
 		}
 		word := call.Args[i]
-		value, static := staticWord(word)
-		name := filepath.Base(value)
-		tool := directory != "" && ((static && IsTool(name)) || (!static && vcsPathSuffix(word)))
-		sudo := sudoDirectory != "" && ((static && name == "sudo") || (!static && toolPathSuffix(word, "sudo")))
-		shell := directory != "" && static && slices.Contains(Shells, name)
-		if tool || shell || sudo {
-			commandDirectory := directory
-			if sudo {
-				commandDirectory = sudoDirectory
+		guard, bare := commandGuard(word)
+		if guard == nil {
+			return true
+		}
+		commandDirectory := directory
+		if guard.directory == sudoask.Directory {
+			commandDirectory = sudoDirectory
+		}
+		if commandDirectory == "" {
+			return true
+		}
+		start, end := int(word.Pos().Offset()), int(word.End().Offset())
+		if i == 0 && bare {
+			// Preserve aliases and shell functions. Only external lookup needs
+			// our PATH entry, after any command-local PATH assignment.
+			prefix := itemPathPrefix(commandDirectory, item)
+			if !strings.HasSuffix(script[int(call.Pos().Offset()):start], prefix) {
+				edits = append(edits, sourceEdit{start, start, prefix})
 			}
-			start, end := int(word.Pos().Offset()), int(word.End().Offset())
-			if i == 0 && static && value == name {
-				// Preserve aliases and shell functions. Only external lookup needs
-				// our PATH entry, after any command-local PATH assignment.
-				prefix := itemPathPrefix(commandDirectory, item)
-				if !strings.HasSuffix(script[int(call.Pos().Offset()):start], prefix) {
-					edits = append(edits, sourceEdit{start, start, prefix})
-				}
-			} else {
-				mode := "--vcs-command"
-				if sudo {
-					mode = "--sudo-command"
-				}
-				if shell {
-					mode = "--vcs-shell"
-				}
-				if defaultPath {
-					mode += "-default"
-				}
-				prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(commandDirectory) + " "
-				if item != "" {
-					prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
-				}
-				edits = append(edits, sourceEdit{start, end, prefix + script[start:end]})
-			}
+		} else {
+			prefix := guard.helperPrefix(helper, commandDirectory, item, defaultPath)
+			edits = append(edits, sourceEdit{start, end, prefix + script[start:end]})
 		}
 		return true
 	})
@@ -123,10 +111,59 @@ type sourceEdit struct {
 
 var Shells = []string{"sh", "bash", "dash", "ksh"}
 
-// vcsPathSuffix recognizes a dynamic directory while leaving its expansion
-// to the native shell, for example "$tools/git" or ${tools}/git.
-func vcsPathSuffix(word *syntax.Word) bool { return toolPathSuffix(word, "") }
+// commandGuards owns executable recognition, runtime directory names and helper
+// modes for both instrumentation and its display projection.
+var commandGuards = []commandGuardSpec{
+	{Directory, "--vcs-command", Tools, true},
+	{Directory, "--vcs-shell", Shells, false},
+	{sudoask.Directory, "--sudo-command", []string{"sudo"}, true},
+}
 
+type commandGuardSpec struct {
+	directory, mode string
+	tools           []string
+	dynamic         bool
+}
+
+func commandGuard(word *syntax.Word) (*commandGuardSpec, bool) {
+	value, static := staticWord(word)
+	name := filepath.Base(value)
+	for i := range commandGuards {
+		guard := &commandGuards[i]
+		for _, tool := range guard.tools {
+			if static && name == tool || !static && guard.dynamic && toolPathSuffix(word, tool) {
+				return guard, static && value == name
+			}
+		}
+	}
+	return nil, false
+}
+
+// IsGuardDirectory recognizes an instrumentation directory name. Callers must
+// separately validate its session registry or exact invocation-local path.
+func IsGuardDirectory(directory string) bool {
+	for _, guard := range commandGuards {
+		if filepath.Base(directory) == guard.directory {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *commandGuardSpec) helperPrefix(helper, directory, item string, defaultPath bool) string {
+	mode := g.mode
+	if defaultPath {
+		mode += "-default"
+	}
+	prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " "
+	if item != "" {
+		prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
+	}
+	return prefix
+}
+
+// toolPathSuffix recognizes a dynamic directory while leaving its expansion
+// to the native shell, for example "$tools/git" or ${tools}/git.
 func toolPathSuffix(word *syntax.Word, name string) bool {
 	parts := word.Parts
 	if len(parts) == 0 {
@@ -139,7 +176,7 @@ func toolPathSuffix(word *syntax.Word, name string) bool {
 		return false
 	}
 	last, ok := parts[len(parts)-1].(*syntax.Lit)
-	return ok && strings.Contains(last.Value, "/") && ((name == "" && IsTool(last.Value)) || (name != "" && filepath.Base(last.Value) == name))
+	return ok && strings.Contains(last.Value, "/") && filepath.Base(last.Value) == name
 }
 
 // staticWord only unquotes literal text. In particular, expand must never see

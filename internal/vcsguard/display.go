@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -14,7 +13,9 @@ import (
 // It does not read the filesystem or evaluate expansions. Unrecognized source
 // stays intact, including user assignments, quoted text and heredoc bodies.
 func DisplayScript(script string, isGuardDirectory func(string) bool) string {
-	if !strings.Contains(script, "/"+Directory) {
+	if !slices.ContainsFunc(commandGuards, func(guard commandGuardSpec) bool {
+		return strings.Contains(script, "/"+guard.directory)
+	}) {
 		return script
 	}
 	tree, err := parseScript(script)
@@ -29,14 +30,13 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 		}
 		if len(call.Assigns) > 0 {
 			assign := call.Assigns[len(call.Assigns)-1]
-			value, static := staticWord(call.Args[0])
-			if assign.Name != nil && assign.Name.Value == "PATH" && assign.Value != nil && len(assign.Value.Parts) >= 3 && static &&
-				(slices.Contains(Tools, value) || slices.Contains(Shells, value)) {
+			guard, bare := commandGuard(call.Args[0])
+			if assign.Name != nil && assign.Name.Value == "PATH" && assign.Value != nil && len(assign.Value.Parts) >= 3 && guard != nil && bare {
 				// Quote may split a directory containing an apostrophe into
 				// several literal parts. The final two parts are : and PATH.
 				parts := assign.Value.Parts
 				directory, literal := staticWord(&syntax.Word{Parts: parts[:len(parts)-2]})
-				if literal && isGuardDirectory(directory) {
+				if literal && filepath.Base(directory) == guard.directory && isGuardDirectory(directory) {
 					start, end := int(assign.Pos().Offset()), int(call.Args[0].Pos().Offset())
 					item := ""
 					if len(call.Assigns) > 1 {
@@ -76,18 +76,13 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 			target += 2
 		}
 		word := call.Args[target]
-		value, static := staticWord(word)
-		tool := static && slices.Contains(Tools, filepath.Base(value)) || !static && vcsPathSuffix(word)
-		shell := static && slices.Contains(Shells, filepath.Base(value))
-		if !(tool && (mode == "--vcs-command" || mode == "--vcs-command-default") ||
-			shell && (mode == "--vcs-shell" || mode == "--vcs-shell-default")) {
+		guard, _ := commandGuard(word)
+		if guard == nil || filepath.Base(directory) != guard.directory ||
+			(mode != guard.mode && mode != guard.mode+"-default") {
 			return true
 		}
 		start, end := int(call.Args[i].Pos().Offset()), int(word.Pos().Offset())
-		prefix := shellsyntax.Quote(helper) + " " + mode + " " + shellsyntax.Quote(directory) + " "
-		if item != "" {
-			prefix += ItemFlag + " " + shellsyntax.Quote(item) + " "
-		}
+		prefix := guard.helperPrefix(helper, directory, item, mode == guard.mode+"-default")
 		if script[start:end] == prefix {
 			edits = append(edits, sourceEdit{start: start, end: end})
 		}
