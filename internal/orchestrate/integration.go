@@ -136,7 +136,8 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			}
 			parents = append(parents, Submodule{Path: sub.Path, Repository: sub.Repository, Base: sourceTip})
 		}
-		unmatched, err := git(ctx, workspace, "log", "--cherry-pick", "--right-only", "--format=%H", proof.SourceTip+"..."+proof.Tip)
+		// Baseline history is not batch work, even if Main has squashed it.
+		unmatched, err := git(ctx, workspace, "log", "--cherry-pick", "--right-only", "--format=%H", proof.SourceTip+"..."+proof.Tip, "^"+b.Base)
 		if err != nil {
 			return err
 		}
