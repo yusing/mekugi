@@ -6,7 +6,11 @@ Codex owns editing, filesystem permissions, sandboxing, command execution, and
 live process continuation. Mekugi receives the selected metadata directory
 from the request. Relative observation paths require that directory; the
 router never substitutes its own cwd or imposes an unrelated root-library
-confinement policy. Observation cannot authorize a host effect.
+confinement policy. Observation cannot authorize a host effect. Mekugi-owned reads
+and evidence copies must obey the originating caller's read authorization, rather
+than inherit broader router access. Workspace selection and caller-supplied metadata
+do not by themselves establish authority. Cross-thread input must retain authenticated
+source provenance; a user-role transport carrier does not make agent text human input.
 
 The replay store retains completed stock-call identity, bounded known-edit
 baselines, endpoint differences, change IDs, host results, and managed omitted
