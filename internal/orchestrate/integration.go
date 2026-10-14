@@ -142,7 +142,23 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			return err
 		}
 		if unmatched != "" {
-			return errors.New("batch commits are not integrated into source HEAD")
+			// Prove the net batch effect, including squashed review corrections.
+			// A merge that changes source HEAD still has undelivered batch changes.
+			repository, err := git(ctx, workspace, "rev-parse", "--absolute-git-dir")
+			if err != nil {
+				return err
+			}
+			merged, err := shadowMergeTrees(ctx, repository, b.Base, proof.Tip, proof.SourceTip)
+			if err != nil {
+				return fmt.Errorf("batch changes are not integrated into source HEAD: %w", err)
+			}
+			tree, err := git(ctx, workspace, "rev-parse", proof.SourceTip+"^{tree}")
+			if err != nil {
+				return err
+			}
+			if result, _, _ := strings.Cut(string(merged), "\x00"); result != tree {
+				return errors.New("batch commits are not integrated into source HEAD")
+			}
 		}
 		b.Integration = &proof
 		return nil

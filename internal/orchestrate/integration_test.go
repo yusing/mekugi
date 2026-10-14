@@ -59,3 +59,42 @@ func TestRecordIntegrationBatchCommitsAfterBaselineSquash(t *testing.T) {
 		t.Fatal("wrong reachable-commit proof", proof)
 	}
 }
+
+func TestRecordIntegrationSquashedCorrections(t *testing.T) {
+	s, source, _ := launchFixture(t)
+	f := &workflowFixture{t: t, s: s, workspace: source}
+	b, err := s.Prepare(t.Context(), source, "main", "squash")
+	f.ok(err)
+	_, _, err = s.BeginLaunch(t.Context(), source, "main", "squash", "implement", jsontext.Value(`{}`), nil, nil)
+	f.ok(err)
+	f.ok(s.RecordThread(t.Context(), source, "main", "squash", "worker"))
+	run := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := git(t.Context(), dir, append([]string{"-c", "user.name=test", "-c", "user.email=test@example.com"}, args...)...)
+		f.ok(err)
+		return out
+	}
+	for _, content := range []string{"initial change", "corrected change"} {
+		f.ok(os.WriteFile(filepath.Join(b.Cwd, "delta"), []byte(content), 0600))
+		run(b.Cwd, "add", "delta")
+		run(b.Cwd, "commit", "-qm", content)
+	}
+	run(source, "checkout", b.Branch, "--", "delta")
+	run(source, "commit", "-qm", "squashed change")
+	proof, err := s.RecordIntegration(t.Context(), source, "main", "squash", "worker")
+	f.ok(err)
+	if proof.Tip != run(b.Cwd, "rev-parse", "HEAD") {
+		t.Fatal("lost candidate identity")
+	}
+	f.ok(os.WriteFile(filepath.Join(source, "unrelated"), []byte("retained"), 0600))
+	run(source, "add", "unrelated")
+	run(source, "commit", "-qm", "unrelated change")
+	_, err = s.RecordIntegration(t.Context(), source, "main", "squash", "worker")
+	f.ok(err)
+	f.ok(os.WriteFile(filepath.Join(source, "delta"), []byte("lost correction"), 0600))
+	run(source, "add", "delta")
+	run(source, "commit", "-qm", "replace batch change")
+	if _, err := s.RecordIntegration(t.Context(), source, "main", "squash", "worker"); err == nil {
+		t.Fatal("accepted overwritten batch changes")
+	}
+}

@@ -509,6 +509,8 @@ owner when a read is ambiguous. This read authority does not grant cross-checkou
 apply/revert or expose sibling evidence to another child.
 
 Git batches use linear native Git integration, preserving unrelated source edits.
+Main squashes coupled review corrections into their owning change. Acceptance
+can verify a squashed candidate's net changes independently of commit identities.
 Child and source history added after each recorded baseline must contain no merge
 commits, including recorded submodules. Existing merges at or before the baseline
 remain unchanged. Main integrates changed submodule commits locally and records
@@ -519,9 +521,10 @@ remote objects; an object present only in the batch clone keeps acceptance open.
 Cleanup cannot supply the first import needed for acceptance.
 Shadow batches use `integrate`. Main marks its bound journal
 task `accepted` only after integration is verified. For Git,
-acceptance verifies that the batch's commits are reachable from the source's
-committed revision or have patch-equivalent commits there. Unmatched commits or
-new merge commits keep acceptance open. For shadow, it verifies
+acceptance verifies reachable or patch-equivalent batch commits. For squashed
+commits, an attribute-free merge of the candidate's net changes must leave the
+source's committed tree unchanged. Missing changes, conflicts or new merge commits
+keep acceptance open. For shadow, it verifies
 confirmed writeback and containment of its changes in the current source. It records
 the batch tip and source revision or merged tree before changing the task. The child checkout must retain its recorded location
 and branch and have
