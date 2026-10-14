@@ -427,7 +427,8 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 		to.focus, to.side = from.focus, from.side
 		to.rosterHeight, to.agentsCollapsed = from.rosterHeight, from.agentsCollapsed
 		to.journalOpen, to.diffOpen, to.activityOpen = from.journalOpen, from.diffOpen, from.activityOpen
-		to.autoActivity = false
+		// Navigation carries temporary visibility, not an explicit Activity choice.
+		to.autoActivity = from.autoActivity
 	}
 	n.viewed = n.views[thread]
 	if review := n.viewed.workflowReview; review != nil && review.restored {

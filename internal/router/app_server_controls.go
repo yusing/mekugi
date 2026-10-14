@@ -92,7 +92,18 @@ func (u *appServerUI) updateAgentPane(method string, event appServerEvent) {
 	case "turn/completed":
 		delete(u.activeChildren, thread)
 		if len(u.activeChildren) == 0 && u.shell != nil && u.shell.autoActivity {
-			u.shell.journalOpen, u.shell.autoActivity = true, false
+			u.restoreAgentJournal()
+			// A switch can carry temporary Activity into an otherwise idle view.
+			if viewed := u.viewedUI(); viewed != u && len(viewed.activeChildren) == 0 {
+				viewed.restoreAgentJournal()
+			}
 		}
+	}
+}
+
+func (u *appServerUI) restoreAgentJournal() {
+	if u.shell != nil && u.shell.autoActivity {
+		u.shell.journalOpen, u.shell.autoActivity = true, false
+		u.dirty = true
 	}
 }

@@ -88,6 +88,87 @@ func TestAppServerOrchestrateSwitchPane(t *testing.T) {
 	}
 }
 
+func TestUISnapshotOrchestrationTemporaryActivity(t *testing.T) {
+	for _, scenario := range []string{"returned", "completed-away", "manual-activity"} {
+		t.Run(scenario, func(t *testing.T) {
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			u, launch := orchestrateIdentityPendingTurn(t)
+			orchestrateTestReply(t, u, launch, `{"turn":{"id":"batch-turn"}}`)
+			v := u.navigation.views["child"]
+			now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+			for _, view := range []*appServerUI{u, v} {
+				view.clock = func() time.Time { return now }
+				view.view.clock, view.agents.clock = view.clock, view.clock
+				view.view.painter.Theme, view.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+				view.status, view.model, view.turn = "Ready", "snapshot-model", ""
+				view.modelsLoading = true
+			}
+			assertPane := func(view *appServerUI, journal, temporary bool, focus int) {
+				t.Helper()
+				if view.shell.journalOpen != journal || view.shell.autoActivity != temporary || view.shell.focus != focus {
+					t.Fatalf("%s pane journal=%v temporary=%v focus=%d", view.thread, view.shell.journalOpen, view.shell.autoActivity, view.shell.focus)
+				}
+				p := new(nativePanePersistence)
+				if err := p.open(view.shell, view.session.cwd, view.thread, false); err != nil {
+					t.Fatal(err)
+				}
+				p.pending = true
+				if err := p.save(view.shell, now, true); err != nil {
+					t.Fatal(err)
+				}
+				state, err := p.read(view.session.cwd, view.thread)
+				if err != nil || state.JournalOpen != (journal || temporary) || state.Focus != focus {
+					t.Fatalf("saved preference=%+v err=%v", state, err)
+				}
+			}
+			snapshot := func(view *appServerUI, name string) {
+				t.Helper()
+				view.shell.paintedRows = nil
+				var frame bytes.Buffer
+				if err := view.paint(&frame, 100, 28); err != nil {
+					t.Fatal(err)
+				}
+				screen := vt.NewEmulator(100, 28)
+				defer screen.Close()
+				if _, err := screen.Write(frame.Bytes()); err != nil {
+					t.Fatal(err)
+				}
+				uisnapshot.Assert(t, "testdata/snapshots/orchestration-temporary-activity-"+name+".txt", screen.String()+"\n")
+			}
+			u.switchOrchestratedThread("child")
+			assertPane(v, true, false, 0)
+			appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "worker", "parentThreadId": "child", "agentNickname": "worker"}})
+			assertPane(v, false, true, 0)
+			snapshot(v, "started")
+			u.switchOrchestratedThread("main")
+			assertPane(u, false, true, 0)
+			if scenario == "manual-activity" {
+				for _, key := range []byte{2, '3'} {
+					if err := u.shell.key(key); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if scenario != "completed-away" {
+				u.switchOrchestratedThread("child")
+			}
+			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "worker", "turn": map[string]any{"id": "work", "status": "completed"}})
+			if scenario == "completed-away" {
+				assertPane(u, true, false, 0)
+				snapshot(u, scenario)
+				u.switchOrchestratedThread("child")
+			}
+			manual := scenario == "manual-activity"
+			focus := 0
+			if manual {
+				focus = 2
+			}
+			assertPane(v, !manual, false, focus)
+			snapshot(v, map[bool]string{false: "returned", true: "manual"}[manual])
+		})
+	}
+}
+
 func TestAppServerOrchestrateFreshDiffAdmission(t *testing.T) {
 	replay, err := openMekugiReplayStore(t.TempDir())
 	if err != nil {
