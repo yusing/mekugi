@@ -75,6 +75,27 @@ func TestJournalNativeInputsAreOperationSpecific(t *testing.T) {
 	if plan.AdditionalProperties || !reflect.DeepEqual(plan.Required, []string{"title"}) || len(plan.Properties) != 6 || plan.Properties["agent"] != nil {
 		t.Fatalf("planned task input is not closed: %+v", plan)
 	}
+	for name, raw := range map[string]jsonv1.RawMessage{
+		"plan": plan.Properties["state"],
+		"add":  input.Items.AnyOf[1].Properties["state"],
+		"set":  input.Items.AnyOf[3].Properties["state"],
+	} {
+		var state struct {
+			Type string   `json:"type"`
+			Enum []string `json:"enum"`
+		}
+		if err := json.Unmarshal(raw, &state); err != nil {
+			t.Fatal(err)
+		}
+		if state.Type != "string" || !slices.Equal(state.Enum, []string{"pending", "working", "done", "accepted", "blocked", "dropped"}) {
+			t.Fatalf("%s state schema changed: %+v", name, state)
+		}
+		for _, value := range append(slices.Clone(state.Enum), "", "unknown", "DONE", " done ") {
+			if got, want := validJournalState(value), slices.Contains(state.Enum, value); got != want {
+				t.Errorf("%s state %q: runtime accepts=%v, schema accepts=%v", name, value, got, want)
+			}
+		}
+	}
 	for _, tasks := range []jsonv1.RawMessage{input.Items.AnyOf[0].Properties["tasks"], plan.Properties["tasks"]} {
 		var array struct {
 			Items struct {
