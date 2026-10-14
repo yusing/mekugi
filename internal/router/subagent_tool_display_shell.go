@@ -10,6 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
@@ -762,70 +763,13 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 			return "", false
 		}
 	case "msymbol":
-		var operands []string
-		seenOptions := make(map[string]bool)
-		for index := 1; index < len(argv); index++ {
-			name, value, inline := strings.Cut(argv[index], "=")
-			if name == "--workspace" || name == "--max-tokens" {
-				if inline && name != "--max-tokens" || seenOptions[name] {
-					return "", false
-				}
-				seenOptions[name] = true
-				if !inline {
-					index++
-					if index >= len(argv) {
-						return "", false
-					}
-					value = argv[index]
-				}
-				if value == "" {
-					return "", false
-				}
-				if name == "--max-tokens" {
-					if _, valid := toolActivityPositiveDecimal(value, maxOutputTokens); !valid {
-						return "", false
-					}
-				}
-				continue
-			}
-			operands = append(operands, argv[index])
-		}
-		label := "Read"
-		if len(operands) == 0 {
+		modes, err := toolplugin.SymbolQueryModes(argv[1:])
+		if err != nil {
 			return "", false
 		}
-		for index := 0; index < len(operands); {
-			mode := operands[index]
-			if (mode != "def" && mode != "refs") || index+2 >= len(operands) {
-				return "", false
-			}
-			if mode == "refs" {
-				label = "Search"
-			}
-			inputPath := operands[index+1]
-			if inputPath == "" {
-				return "", false
-			}
-			index += 2
-			_, row, combined := strings.CutLast(inputPath, ":")
-			_, hasLine := toolActivityPositiveDecimal(row, 1<<53-1)
-			hasLine = combined && hasLine
-			if !hasLine && index < len(operands) {
-				if _, valid := toolActivityPositiveDecimal(operands[index], 1<<53-1); valid {
-					hasLine = true
-					index++
-				}
-			}
-			if mode == "refs" && !hasLine || index >= len(operands) || operands[index] == "" {
-				return "", false
-			}
-			index++ // symbol
-			if index < len(operands) && operands[index] != "def" && operands[index] != "refs" {
-				if _, valid := toolActivityPositiveDecimal(operands[index], 1<<53-1); !valid {
-					return "", false
-				}
-				index++
-			}
+		label := "Read"
+		if slices.Contains(modes, "refs") {
+			label = "Search"
 		}
 		add(label, script[int(call.Args[1].Pos().Offset()):int(call.End().Offset())])
 
