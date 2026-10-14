@@ -30,14 +30,21 @@ acceptance cases, not a blanket request to implement every listed concern.
   invocation-local and user configuration untouched. See [execution](doc/spec/execution.md),
   [plugins](doc/spec/plugin.md), and [launch](doc/spec/router.md).
 - **Change evidence:** `mchanges` owns retained edit evidence. Preserve ordinary editing/LiveDiff,
-  including ignored known targets. Preview is provisional; confirm actual host/workspace outcomes.
+  including ignored known targets. Preview is provisional. Source recognition must not gate
+  observed effects. Keep segment completion, observed file changes, and terminal host completion
+  separate.
   Persist completed evidence/output before exposing dependent references. Failures and missing
   coverage are not success, zero, or no-ops. Replay validates retained facts without rerunning tools.
   See [changes](doc/spec/changes.md) and [storage](doc/architecture/boundary.md).
 - **Scope/isolation:** resolve filesystem operands from selected metadata, never router cwd;
   reject relative operands without it. Keep request views, thread identity, workspace replay, and
   process resources separate; reclaim only owned resources and protect running/shared dependencies.
-  See [boundary](doc/architecture/boundary.md) and [activity identity](doc/architecture/activity.md).
+  Mekugi-owned reads and copies retain caller authorization; cross-thread input retains its
+  originating authority. See [boundary](doc/architecture/boundary.md) and
+  [activity identity](doc/architecture/activity.md).
+- **Orchestration:** isolated batch threads and native collaboration have separate capabilities
+  and limits. Use the exposed runtime interface, not features inferred from source HEAD. Read
+  [orchestration](doc/spec/orchestrate.md) for lifecycle, guidance, reviews, integration, or cleanup.
 - **Continuity:** preserve existing behavior for affected forks, side threads, switching, and
   fresh resume. Restore inherited authorization from durable records/visible history, never live
   parents; replay cannot revive processes or handles. See [replay](doc/spec/plugin.md),
@@ -55,6 +62,8 @@ acceptance cases, not a blanket request to implement every listed concern.
   Journal guidance belongs to its tool projection and frontend guidance to the authenticated
   registry; preserve caller base policy except declared omissions/conflicts. See
   [plugin boundary](doc/architecture/plugin.md) and [guide](doc/spec/guide.md).
+- **Responsiveness:** slow storage or unresolved observations for one owner must not stall
+  unrelated input, cancellation, or lifecycle delivery. See [UI ownership](doc/architecture/ui.md).
 - **Auxiliary behavior:** progress, capture, and diagnostics remain non-invasive and independently
   bounded. Remove generated history by provenance, not text resemblance. Keep secrets/content out
   of sanitized metrics and credentials isolated by provider. Provider usage, local estimates, and

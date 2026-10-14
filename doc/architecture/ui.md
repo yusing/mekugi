@@ -7,6 +7,11 @@ capture, accounting, or replay authority. Observable terminal behavior belongs t
 [UI contract](../spec/native_ui.md); the session dialog consumes the
 [capture-owned metrics contract](metrics.md).
 
+Storage and observation work must leave input, cancellation, rendering, and unrelated
+lifecycle delivery responsive. Running work outside the UI loop is insufficient if a
+shared queue or lock still blocks independent owners. Unresolved metadata and exhausted
+observation capacity must remain visible and bounded without terminating unrelated work.
+
 - `internal/ui/activity` owns display blocks, journal-result layout, Markdown and
   syntax presentation, source-aware Markdown copy annotations and reconstruction,
   agent labels/colors, and reasoning/status animation. Its journal

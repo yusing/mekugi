@@ -75,14 +75,14 @@ func TestJournalRulesHaveOneOwnerInPreparedRequests(t *testing.T) {
 		"answer interim questions conversationally, then continue the active work", "do not close, block or drop tasks to make `finish` pass",
 		"without tool search, whether or not Codex lists the MCP tools", "p?:existingChildPath", "before?:siblingPath", "creation and binding validate together",
 		"recovery shows only its pointer line", "read-only subtree appears under that task", "Input declarations for planning and type-checking",
-		"bound implementation batch task accepted", "Main completes a bound diagnosis task with done", "this retains its checkout",
+		"bound implementation batch task accepted", "candidate net changes in committed source", "including squashed corrections", "Main completes a bound diagnosis task with done", "this retains its checkout",
 		// Codex defers the MCP tools, so guidance carries their schema declarations.
 		"type JournalMutation =", `| { before?: string; body?: string; kind?: "note" | "context"; op: "add"; title: string; under?: string; }`, "tasks?: Array<string | JournalTask>", "// Node path to read"} {
 		if !strings.Contains(codeModeJournalGuidance, contract) || !strings.Contains(codeModeSubagentJournalGuidance, contract) {
 			t.Errorf("shared MCP guidance missing: %s", contract)
 		}
 	}
-	for _, retired := range []string{"await journal(", "declare function journal", "<journal-input-types", "exec-local journal helper", "Native `exec_command` or `write_stdin` journal arrays"} {
+	for _, retired := range []string{"await journal(", "declare function journal", "<journal-input-types", "exec-local journal helper", "Native `exec_command` or `write_stdin` journal arrays", "verified Git ancestry"} {
 		if strings.Contains(combined, retired) || strings.Contains(codeModeSubagentJournalGuidance, retired) {
 			t.Errorf("retired journal interface remains: %s", retired)
 		}

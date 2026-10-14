@@ -6,7 +6,11 @@ Codex owns editing, filesystem permissions, sandboxing, command execution, and
 live process continuation. Mekugi receives the selected metadata directory
 from the request. Relative observation paths require that directory; the
 router never substitutes its own cwd or imposes an unrelated root-library
-confinement policy. Observation cannot authorize a host effect.
+confinement policy. Observation cannot authorize a host effect. Mekugi-owned reads
+and evidence copies must obey the originating caller's read authorization, rather
+than inherit broader router access. Workspace selection and caller-supplied metadata
+do not by themselves establish authority. Cross-thread input must retain authenticated
+source provenance; a user-role transport carrier does not make agent text human input.
 
 The replay store retains completed stock-call identity, bounded known-edit
 baselines, endpoint differences, change IDs, host results, and managed omitted
@@ -104,10 +108,12 @@ and cannot restore child processes. [Changes](../spec/changes.md#bounded-read-co
 owns ambiguous-ID selection and mutation behavior.
 
 Reviewer scratch directories belong to their retained orchestration dispatches,
-outside candidate checkouts. A reviewer's host profile grants writes only to its
-own scratch. The router's final host-shutdown handler releases that storage after
-confirmed shutdown, preserving storage when shutdown is uncertain. Replay restores ownership
-facts, not live scratch processes or execution handles.
+outside candidate checkouts. A reviewer's host profile grants writes to its own
+scratch and the standard user cache outside the candidate checkout, preserving
+language-specific cache settings. The router's final host-shutdown handler releases
+owned scratch after confirmed shutdown. Shared caches and scratch with uncertain
+shutdown remain. Replay restores ownership facts, not live scratch processes or
+execution handles.
 Only reviewers loaded by that host qualify for release. Retained-history discovery
 does not transfer storage ownership to the observing host.
 

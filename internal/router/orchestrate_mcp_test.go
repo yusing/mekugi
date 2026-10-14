@@ -67,6 +67,13 @@ func TestOrchestrateMCP(t *testing.T) {
 			t.Fatalf("%s discovery lacks tool guidance", name)
 		}
 	}
+	for _, tool := range listed.Tools {
+		if tool.Name == "spawn_agent" {
+			if !strings.Contains(tool.Description, "candidate net changes in committed source, including squashed corrections") || strings.Contains(tool.Description, "reachable or patch-equivalent batch commits") {
+				t.Fatal("spawn guidance must permit squashed integration")
+			}
+		}
+	}
 	waitIndex := slices.IndexFunc(listed.Tools, func(tool *mcp.Tool) bool { return tool.Name == "wait_agent" })
 	if waitIndex < 0 {
 		t.Fatal("wait tool missing from MCP discovery")
