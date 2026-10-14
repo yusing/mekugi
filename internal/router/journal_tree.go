@@ -189,8 +189,10 @@ func journalReadOnlyError(item journalItem) error {
 	return fmt.Errorf("%s: router-owned journal node is read-only (%s %.80q); record a note or update your owned task", item.Path, item.Kind, item.Title)
 }
 
+var journalStates = [...]string{"pending", "working", "done", "blocked", "dropped"}
+
 func validJournalState(state string) bool {
-	return slices.Contains([]string{"pending", "working", "done", "blocked", "dropped"}, state)
+	return slices.Contains(journalStates[:], state)
 }
 
 func (j *threadJournal) treeEvent(op string, index int, transition bool) error {
