@@ -41,7 +41,7 @@ func (s *Store) IntegrateShadow(ctx context.Context, workspace, main, name, thre
 			return b, err
 		}
 	} else if b.ShadowMerge.State == "applied" {
-		tip, err := sourceBase(ctx, b.Cwd)
+		tip, err := sourceBase(ctx, b.Checkout)
 		if err != nil {
 			return b, err
 		}
@@ -77,7 +77,7 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 		if err := validateCleanCheckout(ctx, b.Checkout); err != nil {
 			return err
 		}
-		tip, err := sourceBase(ctx, b.Cwd)
+		tip, err := sourceBase(ctx, b.Checkout)
 		if err != nil || tip != b.ShadowMerge.Tip {
 			return errors.New("shadow batch tip changed during writeback")
 		}
@@ -393,7 +393,7 @@ func (s *Store) verifyShadowIntegration(ctx context.Context, b Batch) (Integrati
 	if plan == nil || plan.State != "applied" || b.Integration == nil || *b.Integration != (Integration{Tip: plan.Tip, SourceTip: plan.Tree}) {
 		return Integration{}, errors.New("shadow writeback is not confirmed")
 	}
-	tip, err := sourceBase(ctx, b.Cwd)
+	tip, err := sourceBase(ctx, b.Checkout)
 	if err != nil || tip != plan.Tip {
 		return Integration{}, errors.New("shadow batch tip changed")
 	}

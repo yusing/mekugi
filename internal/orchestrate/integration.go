@@ -85,25 +85,29 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			}
 			return workflowReady(*b, proof.Tip)
 		}
-		proof.Tip, err = git(ctx, b.Cwd, "rev-parse", "--verify", "HEAD^{commit}")
+		source, err := sourceCheckout(ctx, workspace, *b)
+		if err != nil {
+			return err
+		}
+		proof.Tip, err = git(ctx, b.Checkout, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {
 			return err
 		}
 		if err := workflowReady(*b, proof.Tip); err != nil {
 			return err
 		}
-		proof.SourceTip, err = git(ctx, workspace, "rev-parse", "--verify", "HEAD^{commit}")
+		proof.SourceTip, err = git(ctx, source, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {
 			return err
 		}
-		if err := validateLinearHistory(ctx, b.Cwd, b.Base, proof.Tip); err != nil {
+		if err := validateLinearHistory(ctx, b.Checkout, b.Base, proof.Tip); err != nil {
 			return err
 		}
-		if err := validateLinearHistory(ctx, workspace, b.Base, proof.SourceTip); err != nil {
+		if err := validateLinearHistory(ctx, source, b.Base, proof.SourceTip); err != nil {
 			return err
 		}
 		// Follow committed source gitlinks, never the source's dirty submodule HEADs.
-		parents := []Submodule{{Repository: workspace, Base: proof.SourceTip}}
+		parents := []Submodule{{Repository: source, Base: proof.SourceTip}}
 		for _, sub := range b.Submodules {
 			parent := parents[0]
 			for _, candidate := range parents[1:] {
@@ -137,14 +141,14 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			parents = append(parents, Submodule{Path: sub.Path, Repository: sub.Repository, Base: sourceTip})
 		}
 		// Baseline history is not batch work, even if Main has squashed it.
-		unmatched, err := git(ctx, workspace, "log", "--cherry-pick", "--right-only", "--format=%H", proof.SourceTip+"..."+proof.Tip, "^"+b.Base)
+		unmatched, err := git(ctx, source, "log", "--cherry-pick", "--right-only", "--format=%H", proof.SourceTip+"..."+proof.Tip, "^"+b.Base)
 		if err != nil {
 			return err
 		}
 		if unmatched != "" {
 			// Prove the net batch effect, including squashed review corrections.
 			// A merge that changes source HEAD still has undelivered batch changes.
-			repository, err := git(ctx, workspace, "rev-parse", "--absolute-git-dir")
+			repository, err := git(ctx, source, "rev-parse", "--absolute-git-dir")
 			if err != nil {
 				return err
 			}
@@ -152,7 +156,7 @@ func (s *Store) RecordIntegration(ctx context.Context, workspace, main, name, th
 			if err != nil {
 				return fmt.Errorf("batch changes are not integrated into source HEAD: %w", err)
 			}
-			tree, err := git(ctx, workspace, "rev-parse", proof.SourceTip+"^{tree}")
+			tree, err := git(ctx, source, "rev-parse", proof.SourceTip+"^{tree}")
 			if err != nil {
 				return err
 			}

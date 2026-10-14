@@ -100,6 +100,9 @@ func validateLaunchCheckout(ctx context.Context, b Batch) error {
 	if err := validateCheckoutIdentity(ctx, b); err != nil {
 		return err
 	}
+	if info, err := os.Stat(b.Cwd); err != nil || !info.IsDir() {
+		return errors.New("prepared cwd is unavailable")
+	}
 	base, err := sourceBase(ctx, b.Cwd)
 	if err != nil || base != b.Base {
 		return errors.New("prepared checkout baseline changed")
@@ -115,7 +118,7 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 	if checkout != b.Checkout {
 		return errors.New("prepared checkout location changed")
 	}
-	cwd, err := filepath.EvalSymlinks(b.Cwd)
+	cwd, err := existingDirectory(b.Cwd)
 	if err != nil {
 		return err
 	}
@@ -124,12 +127,12 @@ func validateCheckoutIdentity(ctx context.Context, b Batch) error {
 		return errors.New("prepared checkout is unavailable or redirected")
 	}
 	relative, err := filepath.Rel(b.Checkout, b.Cwd)
-	if err != nil || !filepath.IsLocal(relative) || cwd != filepath.Join(checkout, relative) {
+	if err != nil || !filepath.IsLocal(relative) {
 		return errors.New("prepared checkout or cwd was redirected")
 	}
-	info, err = os.Stat(cwd)
-	if err != nil || !info.IsDir() {
-		return errors.New("prepared cwd is unavailable")
+	resolved, err := filepath.EvalSymlinks(cwd)
+	if err != nil || resolved != cwd {
+		return errors.New("prepared checkout or cwd was redirected")
 	}
 	if b.VCS != "" && !shadowVCS(b.VCS) {
 		return errors.New("unsupported checkout VCS")

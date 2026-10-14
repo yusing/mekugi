@@ -54,6 +54,52 @@ func sourceRepository(ctx context.Context, workspace string) (string, string, er
 
 func shadowVCS(vcs string) bool { return vcs == "shadow" || vcs == "svn" }
 
+// A retained selected directory may have been deleted by the batch. Find its
+// surviving ancestor without following dangling links or accepting a file.
+func existingDirectory(path string) (string, error) {
+	for {
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) && filepath.Dir(path) != path {
+			path = filepath.Dir(path)
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			info, err = os.Stat(path)
+		}
+		if err != nil || !info.IsDir() {
+			return "", errors.New("retained directory is unavailable")
+		}
+		return path, nil
+	}
+}
+
+// Source operations use the same repository even after integration deletes the
+// selected subdirectory. The run remains keyed by its original workspace.
+func sourceCheckout(ctx context.Context, workspace string, b Batch) (string, error) {
+	directory, err := existingDirectory(workspace)
+	if err != nil {
+		return "", err
+	}
+	root, err := git(ctx, directory, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	physical, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		return "", err
+	}
+	missing, err := filepath.Rel(directory, workspace)
+	selected, selectedErr := filepath.Rel(root, filepath.Join(physical, missing))
+	expected, expectedErr := filepath.Rel(b.Checkout, b.Cwd)
+	if err != nil || selectedErr != nil || expectedErr != nil || !filepath.IsLocal(expected) || selected != expected {
+		return "", errors.New("retained source no longer belongs to its repository")
+	}
+	return root, nil
+}
+
 func sourceBase(ctx context.Context, cwd string) (string, error) {
 	return git(ctx, cwd, "rev-parse", "--verify", "HEAD^{commit}")
 }

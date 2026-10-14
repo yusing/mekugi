@@ -579,6 +579,12 @@ intact; resume neither repeats launch nor revives prior processes. Uncertain
 launches without confirmed thread identity remain inspectable. Subscribed rows
 keep their live state and replace the matching retained row.
 
+A batch may delete its selected starting directory. Candidate observation,
+integration, retained-thread admission and cleanup still use the exact retained
+checkout. The recorded cwd and host identity stay unchanged; no directory is
+recreated and no replacement cwd is sent to the host. Redirected paths and missing
+checkouts still reject admission. Initial launch requires its selected directory.
+
 ## REQ-ORCHESTRATE-008 — Unversioned shadow batches
 
 Unversioned sources can prepare a shadow batch in a run-owned private Git

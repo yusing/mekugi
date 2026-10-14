@@ -56,7 +56,7 @@ func (s *Store) PlanShadowMerge(ctx context.Context, workspace, main, name, thre
 		if b.ShadowMerge != nil && b.ShadowMerge.State != "planned" && b.ShadowMerge.State != "conflicted" && b.ShadowMerge.State != "applied" {
 			return errors.New("unfinished shadow writeback requires recovery")
 		}
-		tip, err := sourceBase(ctx, b.Cwd)
+		tip, err := sourceBase(ctx, b.Checkout)
 		if err != nil {
 			return err
 		}

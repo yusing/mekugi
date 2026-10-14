@@ -30,6 +30,12 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 					return errors.New("cleanup shadow repository is unavailable or redirected")
 				}
 			}
+			if b.VCS == "" {
+				repository, err = sourceCheckout(ctx, workspace, *b)
+				if err != nil {
+					return err
+				}
+			}
 			for _, d := range m.Deliveries {
 				if d.Target != main && (d.Target == b.Launch.ThreadID || d.From == b.Launch.ThreadID) && (d.State == "queued" || d.State == "dispatching" || d.State == "uncertain") {
 					return errors.New("cleanup requires settled batch deliveries")
@@ -61,15 +67,15 @@ func (s *Store) Cleanup(ctx context.Context, workspace, main, name string, proof
 				if err != nil {
 					return err
 				}
-				common, err := git(ctx, b.Cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+				common, err := git(ctx, b.Checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")
 				if err != nil || common != source {
 					return errors.New("cleanup checkout repository changed")
 				}
-				status, err := git(ctx, b.Cwd, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
+				status, err := git(ctx, b.Checkout, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
 				if err != nil || status != "" {
 					return errors.New("cleanup requires a clean batch checkout")
 				}
-				head, err := sourceBase(ctx, b.Cwd)
+				head, err := sourceBase(ctx, b.Checkout)
 				if err != nil || head != proof.Tip {
 					return errors.New("cleanup checkout tip changed after acceptance")
 				}

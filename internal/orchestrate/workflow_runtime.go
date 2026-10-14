@@ -27,7 +27,7 @@ func (s *Store) ObserveCandidate(ctx context.Context, workspace, main, name stri
 		if err := validateCleanCheckout(ctx, b.Checkout); err != nil {
 			return err
 		}
-		candidate.Revision, err = sourceBase(ctx, b.Cwd)
+		candidate.Revision, err = sourceBase(ctx, b.Checkout)
 		if err != nil {
 			return err
 		}

@@ -37,11 +37,15 @@ func (s *Store) resume(ctx context.Context, workspace, main, name string, cleanu
 				return err
 			}
 			if b.VCS == "" {
-				source, err := git(ctx, workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")
+				repository, err := sourceCheckout(ctx, workspace, b)
 				if err != nil {
 					return err
 				}
-				child, err := git(ctx, b.Cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+				source, err := git(ctx, repository, "rev-parse", "--path-format=absolute", "--git-common-dir")
+				if err != nil {
+					return err
+				}
+				child, err := git(ctx, b.Checkout, "rev-parse", "--path-format=absolute", "--git-common-dir")
 				if err != nil || source != child {
 					return errors.New("retained checkout repository changed")
 				}

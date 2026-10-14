@@ -456,6 +456,61 @@ func TestAppServerOrchestrateCleanupRetained(t *testing.T) {
 	}
 }
 
+func TestAppServerOrchestrateDeletedStartingDirectory(t *testing.T) {
+	source := orchestrateVCSWorkspace(t, "git")
+	workspace := filepath.Join(source, "selected", "nested")
+	writeTestFile(t, filepath.Join(workspace, "file"), "base")
+	gitTestCommit(t, source)
+	old := orchestrateCleanupUIInWorkspace(t, workspace)
+	store := old.proxy.orchestration.store
+	b := old.orchestrateThreads["child"].batch
+	gitTestRun(t, b.Checkout, "rm", "-r", "selected")
+	gitTestCommit(t, b.Checkout)
+	// A missing directory is admissible, but a redirected ancestor is not.
+	if err := os.Symlink(t.TempDir(), filepath.Dir(b.Cwd)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Resume(t.Context(), workspace, "main", "batch"); err == nil {
+		t.Fatal("resume admitted a redirected selected directory")
+	}
+	if err := os.Remove(filepath.Dir(b.Cwd)); err != nil {
+		t.Fatal(err)
+	}
+	gitTestRun(t, source, "cherry-pick", b.Branch)
+	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+		t.Fatal("source selected directory survived integration", err)
+	}
+	if _, err := store.RecordIntegration(t.Context(), workspace, "main", "batch", "child"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.proxy.applyJournal(old.ctx, workspace, "main", "", []journalMutation{{Op: "set", P: "/1", State: new("accepted")}}); err != nil {
+		t.Fatal(err)
+	}
+	old.closeOrchestratedViews()
+	u, w := resumeOrchestrationMain(t, store, workspace, old.proxy.replayStore)
+	retainOrchestratedTestPermissions(t, u, b)
+	drainOrchestrateWork(t, u)
+	w.Reset()
+	c := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", target: "/root/batch", tool: "cleanup", reply: make(chan orchestrateResult, 1)}
+	u.startOrchestratedChild(c)
+	drainOrchestrateWork(t, u)
+	if len(c.reply) != 0 {
+		t.Fatal("cleanup did not reach host admission", <-c.reply)
+	}
+	resumeBatchResponses(t, u, w, b, false)
+	drainOrchestrateWork(t, u)
+	completeOrchestratedArchive(t, u)
+	if result := <-c.reply; result.err != nil {
+		t.Fatal(result.err)
+	}
+	if _, err := os.Stat(b.Checkout); !os.IsNotExist(err) {
+		t.Fatal("accepted checkout was not removed", err)
+	}
+	if w.Len() != 0 || u.viewedUI() != u {
+		t.Fatal("cleanup started a turn or switched views", w.String())
+	}
+}
+
 func TestAppServerOrchestrateCleanupEvidenceMCP(t *testing.T) {
 	workspace, source := orchestrateVCSWorkspace(t, "git"), filepath.Join(t.TempDir(), "source")
 	writeTestFile(t, source, "original")
