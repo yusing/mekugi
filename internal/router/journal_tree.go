@@ -548,13 +548,16 @@ func journalTree(items []journalItem, path string, depth *int) ([]journalNode, e
 	if depth != nil && *depth < 0 {
 		return nil, errors.New("journal depth must be nonnegative")
 	}
+	children := make(map[string][]int)
+	for i, item := range items {
+		parent := journalParent(item.Path)
+		children[parent] = append(children[parent], i)
+	}
 	var build func(string, int) []journalNode
 	build = func(parent string, level int) []journalNode {
-		nodes := []journalNode{}
-		for _, item := range items {
-			if journalParent(item.Path) != parent {
-				continue
-			}
+		nodes := make([]journalNode, 0, len(children[parent]))
+		for _, index := range children[parent] {
+			item := items[index]
 			node := item.node()
 			if depth == nil || level < *depth {
 				node.Children = build(item.Path, level+1)
