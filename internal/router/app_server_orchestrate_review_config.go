@@ -54,6 +54,7 @@ func resolveConfiguredRoleSettings(raw jsontext.Value, role string) (configuredR
 		return settings, errors.New("agent role settings require config/read with includeLayers")
 	}
 	var selected workflowReviewerRole
+	var discoveryErr error
 	for _, layer := range slices.Backward(result.Layers) {
 		if layer.DisabledReason != nil {
 			continue
@@ -137,7 +138,12 @@ func resolveConfiguredRoleSettings(raw jsontext.Value, role string) (configuredR
 			for _, path := range files {
 				name, candidate, err := readWorkflowReviewerRole(path, "", role)
 				if err != nil {
-					return settings, err
+					// Source: codex-rs/agent-roles/src/loader.rs:302:315@ddb33e34b
+					// Invalid discovered files cannot shadow a valid role.
+					if discoveryErr == nil {
+						discoveryErr = err
+					}
+					continue
 				}
 				if name == role && current == nil {
 					current = &candidate
@@ -158,6 +164,9 @@ func resolveConfiguredRoleSettings(raw jsontext.Value, role string) (configuredR
 		}
 	}
 	if selected.description == nil {
+		if discoveryErr != nil {
+			return settings, discoveryErr
+		}
 		return settings, fmt.Errorf("agent role %s is unavailable", role)
 	}
 	for _, field := range []struct {
@@ -226,6 +235,16 @@ func readWorkflowReviewerRole(path, hint, requested string) (string, workflowRev
 		return name, workflowReviewerRole{file: path}, nil
 	}
 	relevant = true
+	// Source: codex-rs/agent-roles/src/agent_role_config.rs:133:158@ddb33e34b
+	// Discovered roles require instructions; declared roles may inherit them.
+	if value, exists := values["developer_instructions"]; exists {
+		text, ok := value.(string)
+		if !ok || strings.TrimSpace(text) == "" {
+			return fail("has invalid developer_instructions")
+		}
+	} else if hint == "" {
+		return fail("requires developer_instructions")
+	}
 	if value, exists := values["description"]; exists {
 		text, ok := value.(string)
 		if !ok || strings.TrimSpace(text) == "" {

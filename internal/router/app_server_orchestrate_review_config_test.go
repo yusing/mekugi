@@ -49,6 +49,7 @@ func TestWorkflowReviewerSettings(t *testing.T) {
 	t.Run("discovered nested local shape and sorted duplicate precedence", func(t *testing.T) {
 		dir := t.TempDir()
 		write(t, filepath.Join(dir, "agents", "unrelated.toml"), "name = 'other'\nmodel = [")
+		write(t, filepath.Join(dir, "agents", "0.toml"), "name = 'audit-custom'\ndescription = 'Malformed earlier definition'\n")
 		write(t, filepath.Join(dir, "agents", "a", "custom.toml"), "name = ' audit-custom '\ndescription = 'Review changes'\nnickname_candidates = [' Agent-1_2 ', 'Other Agent']\ndeveloper_instructions = 'Custom rubric'\nmodel = 'gpt-6-astra'\nmodel_reasoning_effort = 'high'\nservice_tier = 'priority'\nmodel_provider = 'ignored'\n[features]\nshell_tool = false\n")
 		write(t, filepath.Join(dir, "agents", "z.toml"), "name = 'audit-custom'\ndescription = 'Duplicate'\nmodel = 'loser'\n")
 		got, err := resolve(t, "audit-custom", layer(dir, nil))
@@ -70,7 +71,7 @@ func TestWorkflowReviewerSettings(t *testing.T) {
 	})
 	t.Run("higher file replaces settings and metadata inherits", func(t *testing.T) {
 		low, high, disabled := t.TempDir(), t.TempDir(), t.TempDir()
-		write(t, filepath.Join(low, "agents", "audit-custom.toml"), "name = 'audit-custom'\ndescription = 'Inherited description'\nmodel = 'low'\nservice_tier = 'priority'\n")
+		write(t, filepath.Join(low, "agents", "audit-custom.toml"), "name = 'audit-custom'\ndescription = 'Inherited description'\ndeveloper_instructions = 'Inherited rubric'\nmodel = 'low'\nservice_tier = 'priority'\n")
 		write(t, filepath.Join(high, "override.toml"), "model = 'high'\n")
 		hi := layer(high, map[string]any{"audit-custom": map[string]any{"config_file": "override.toml"}})
 		hi["name"] = map[string]any{"type": "project", "dotCodexFolder": high}
@@ -79,10 +80,14 @@ func TestWorkflowReviewerSettings(t *testing.T) {
 		off["config"] = map[string]any{"agents": "invalid disabled content"}
 		got, err := resolve(t, "audit-custom", off, hi, layer(low, nil))
 		check(t, got, err, configuredRoleSettings{Model: ptr("high")})
+		// A malformed discovered role in a higher layer leaves lower settings intact.
+		write(t, filepath.Join(high, "agents", "invalid.toml"), "name = 'audit-custom'\ndescription = 'Missing instructions'\n")
+		got, err = resolve(t, "audit-custom", layer(high, nil), layer(low, nil))
+		check(t, got, err, configuredRoleSettings{DeveloperInstructions: ptr("Inherited rubric"), Model: ptr("low"), ServiceTier: ptr("priority")})
 		// A metadata-only higher role keeps the lower config file.
 		hi["config"] = map[string]any{"agents": map[string]any{"audit-custom": map[string]any{"description": "Updated"}}}
 		got, err = resolve(t, "audit-custom", hi, layer(low, nil))
-		check(t, got, err, configuredRoleSettings{Model: ptr("low"), ServiceTier: ptr("priority")})
+		check(t, got, err, configuredRoleSettings{DeveloperInstructions: ptr("Inherited rubric"), Model: ptr("low"), ServiceTier: ptr("priority")})
 	})
 	t.Run("absolute session flag file and renamed declaration", func(t *testing.T) {
 		dir := t.TempDir()
@@ -99,12 +104,13 @@ func TestWorkflowReviewerSettings(t *testing.T) {
 	})
 	t.Run("explicit empty overrides remain present", func(t *testing.T) {
 		dir := t.TempDir()
-		write(t, filepath.Join(dir, "role.toml"), "developer_instructions = ''\nmodel = ''\nmodel_reasoning_effort = ''\nservice_tier = ''\n")
+		write(t, filepath.Join(dir, "role.toml"), "model = ''\nmodel_reasoning_effort = ''\nservice_tier = ''\n")
 		got, err := resolve(t, "reduce-custom", layer(dir, map[string]any{"reduce-custom": map[string]any{"config_file": "role.toml", "description": "Review"}}))
-		check(t, got, err, configuredRoleSettings{ptr(""), ptr(""), ptr(""), ptr("")})
+		check(t, got, err, configuredRoleSettings{nil, ptr(""), ptr(""), ptr("")})
 	})
 	t.Run("requested errors are visible and sanitized", func(t *testing.T) {
 		for _, contents := range []string{
+			"developer_instructions = ''", "developer_instructions = '  '", "developer_instructions = 42",
 			"model = 'secret'\nbroken = [", "model = ['secret']", "description = ''", "name = 42",
 			"nickname_candidates = 42", "nickname_candidates = []", "nickname_candidates = ['secret', 1]",
 			"nickname_candidates = [' ']", "nickname_candidates = [' secret ', 'secret']", "nickname_candidates = ['secret!']",
@@ -126,9 +132,18 @@ func TestWorkflowReviewerSettings(t *testing.T) {
 		if err == nil {
 			t.Fatal("malformed selected role accepted")
 		}
-		write(t, filepath.Join(dir, "agents", "custom-name.toml"), "name = 'audit-custom'\ndescription = 'Review'\nmodel = ['secret']")
+		write(t, filepath.Join(dir, "agents", "custom-name.toml"), "name = 'audit-custom'\ndescription = 'Review'\ndeveloper_instructions = 'Review rubric'\nmodel = ['secret']")
 		if _, err := resolve(t, "audit-custom", layer(dir, nil)); err == nil {
 			t.Fatal("identified reviewer with invalid typed settings was ignored")
+		}
+	})
+	t.Run("discovered absent or blank instructions", func(t *testing.T) {
+		for _, instructions := range []string{"", "developer_instructions = '  '\n"} {
+			dir := t.TempDir()
+			write(t, filepath.Join(dir, "agents", "audit.toml"), "name = 'audit-custom'\ndescription = 'Review'\n"+instructions)
+			if _, err := resolve(t, "audit-custom", layer(dir, nil)); err == nil {
+				t.Fatal("discovered role without nonblank instructions accepted")
+			}
 		}
 	})
 	t.Run("layer ownership is required", func(t *testing.T) {

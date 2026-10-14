@@ -425,6 +425,10 @@ func (u *appServerUI) beginWorkflowWork(child *orchestrateChild, kind orchestrat
 				}
 				return
 			}
+			if u.workflowReviewerRole(kind) == "" {
+				u.prepareWorkflowReviewer(work, nil)
+				return
+			}
 			if err := u.orchestrateRPCRequest(orchestrateRPC{method: "config/read", child: child, review: work}, map[string]any{"cwd": c.workspace, "includeLayers": true}); err != nil {
 				u.failWorkflowDispatch(work, false, err)
 			}

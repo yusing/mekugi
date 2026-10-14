@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +36,6 @@ func workflowCompleted(t *testing.T, u *appServerUI, thread, turn, text string) 
 	}
 	raw, _ := json.Marshal(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": thread, "turn": map[string]any{"id": turn, "status": "completed"}}})
 	orchestrateTestMessage(t, u, string(raw))
-	workflowDefaultConfig(t, u)
 }
 
 // workflowTake removes the first buffered request matching method, thread, and,
@@ -64,20 +64,6 @@ func workflowTake(t *testing.T, u *appServerUI, w *appServerTestInput, method, t
 	t.Fatalf("no %s %s request on %q in %s", kind, method, thread, w.String())
 	return btwTestRPC{}, nil
 }
-func workflowDefaultConfig(t *testing.T, u *appServerUI) {
-	t.Helper()
-	if roles := u.proxy.orchestration.reviewers; roles.Correctness != "" || roles.Simplification != "" {
-		return
-	}
-	w := u.client.Input.(*appServerTestInput)
-	for strings.Contains(w.String(), `"method":"config/read"`) {
-		request, params := workflowTake(t, u, w, "config/read", "", "")
-		if params["cwd"] != u.session.cwd || params["includeLayers"] != true {
-			t.Fatal("review config must use coordinator source layers", params)
-		}
-		orchestrateTestReply(t, u, request, `{"layers":[]}`)
-	}
-}
 
 // workflowReviewThread acknowledges the scratch-only review thread and turn.
 func workflowReviewThread(t *testing.T, u *appServerUI, w *appServerTestInput, purpose orchestrate.ReviewPurpose, thread string) {
@@ -89,6 +75,17 @@ func workflowReviewThread(t *testing.T, u *appServerUI, w *appServerTestInput, p
 		t.Fatal("review launch does not use scratch-only permissions", params)
 	}
 	child := u.orchestrateThreads["child"]
+	var retained map[string]any
+	for _, dispatch := range child.batch.Workflow.Dispatches {
+		if dispatch.Kind == kind && dispatch.Generation == child.batch.Workflow.Generation {
+			if err := json.Unmarshal(dispatch.Params, &retained); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if !reflect.DeepEqual(retained, params) {
+		t.Fatal("review launch differs from retained parameters", retained, params)
+	}
 	response, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": thread, "cwd": child.batch.Cwd}, "sandbox": map[string]any{"type": "readOnly"}, "activePermissionProfile": map[string]any{"id": profile}, "approvalPolicy": "never"})
 	orchestrateTestReply(t, u, start, string(response))
 	turn, params := workflowTake(t, u, w, "turn/start", thread, kind)
@@ -164,7 +161,6 @@ func workflowCheck(t *testing.T, u *appServerUI, w *appServerTestInput, command,
 		return
 	}
 	orchestrateTestReply(t, u, request, response)
-	workflowDefaultConfig(t, u)
 }
 func workflowNotice(t *testing.T, u *appServerUI, w *appServerTestInput) string {
 	t.Helper()
@@ -876,6 +872,45 @@ func TestOrchestrateWorkflowRecoveredActiveReviewersExplicitCancel(t *testing.T)
 	}
 }
 
+func TestOrchestrateWorkflowDefaultReviewerRPCSequence(t *testing.T) {
+	u, w := workflowUI(t)
+	workflowCompleted(t, u, "child", "implement", "")
+	if strings.Contains(w.String(), `"method":"config/read"`) || strings.Contains(w.String(), `"method":"turn/start"`) {
+		t.Fatal("default review read unused config or started before host thread confirmation", w.String())
+	}
+	child := u.orchestrateThreads["child"]
+	for _, kind := range []orchestrate.WorkflowDispatchKind{orchestrate.DispatchCorrectness, orchestrate.DispatchSimplification} {
+		work := child.workflowWork[kind]
+		if work.dispatch.Scratch == "" {
+			t.Fatal("default review lost private storage", kind)
+		}
+		if _, err := os.Stat(work.dispatch.Scratch); err != nil {
+			t.Fatal(err)
+		}
+		workflowReviewThread(t, u, w, orchestrate.ReviewPurpose(kind), "default-"+string(kind))
+	}
+	if w.Len() != 0 {
+		t.Fatal("unexpected default-review RPC", w.String())
+	}
+}
+
+func TestOrchestrateWorkflowReviewerConfigErrorIsolation(t *testing.T) {
+	u, w := workflowUI(t)
+	u.proxy.orchestration.reviewers = workflowReviewerRoles{Correctness: "custom-audit"}
+	workflowCompleted(t, u, "child", "implement", "")
+	read, _ := workflowTake(t, u, w, "config/read", "", orchestrate.DispatchCorrectness)
+	workflowReviewThread(t, u, w, orchestrate.ReviewSimplification, "default-simplification")
+	if w.Len() != 0 {
+		t.Fatal("default sibling depends on configured-role RPC", w.String())
+	}
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-32600,"message":"role config unavailable"}}`, read.ID))
+	drainOrchestrateWork(t, u)
+	child := u.orchestrateThreads["child"]
+	if child.batch.Workflow.Phase != orchestrate.PhaseFailed || !strings.Contains(child.batch.Workflow.Reason, "config/read: role config unavailable") || strings.Contains(w.String(), `"method":"thread/start"`) {
+		t.Fatal("configured-role failure was ignored or launched a reviewer", child.batch.Workflow, w.String())
+	}
+}
+
 func TestOrchestrateWorkflowConfiguredReviewer(t *testing.T) {
 	u, w := workflowUI(t)
 	u.serviceTier = "priority"
@@ -886,15 +921,26 @@ func TestOrchestrateWorkflowConfiguredReviewer(t *testing.T) {
 		role string
 		kind orchestrate.WorkflowDispatchKind
 	}{{"custom-audit", orchestrate.DispatchCorrectness}, {"custom-reduce", orchestrate.DispatchSimplification}} {
-		config, _ := workflowTake(t, u, w, "config/read", "", review.kind)
-		role := filepath.Join(t.TempDir(), "role.toml")
-		if err := os.WriteFile(role, []byte("developer_instructions = ''\nmodel = 'configured-model'\nmodel_reasoning_effort = 'low'\nservice_tier = 'flex'\n"), 0600); err != nil {
-			t.Fatal(err)
+		config, configParams := workflowTake(t, u, w, "config/read", "", review.kind)
+		if configParams["cwd"] != u.session.cwd || configParams["includeLayers"] != true || strings.Contains(w.String(), `"method":"thread/start"`) {
+			t.Fatal("configured review did not wait for source config layers", configParams, w.String())
 		}
-		raw, _ := json.Marshal(map[string]any{"layers": []any{map[string]any{"name": map[string]any{"type": "sessionFlags"}, "config": map[string]any{"agents": map[string]any{review.role: map[string]any{"config_file": role, "description": "Configured review"}}}}}})
+		dir := t.TempDir()
+		instructions := ""
+		wantInstructions := workflowReviewerInstructions(review.kind)
+		agents := map[string]any{review.role: map[string]any{"config_file": "agents/role.toml"}}
+		if review.kind == orchestrate.DispatchCorrectness {
+			// Discovery requires instructions; a declared role can inherit them.
+			agents = nil
+			instructions = "developer_instructions = 'Configured rubric'\n"
+			wantInstructions = "Configured rubric"
+		}
+		writeTestFile(t, filepath.Join(dir, "agents", "role.toml"), fmt.Sprintf("name = %q\ndescription = 'Configured review'\n", review.role)+instructions+"model = 'configured-model'\nmodel_reasoning_effort = 'low'\nservice_tier = 'flex'\n")
+		writeTestFile(t, filepath.Join(dir, "agents", "z.toml"), fmt.Sprintf("name = %q\ndescription = 'Unused discovered duplicate'\n", review.role))
+		raw, _ := json.Marshal(map[string]any{"layers": []any{map[string]any{"name": map[string]any{"type": "project", "dotCodexFolder": dir}, "config": map[string]any{"agents": agents}}}})
 		orchestrateTestReply(t, u, config, string(raw))
 		_, p := workflowTake(t, u, w, "thread/start", "", review.kind)
-		if p["developerInstructions"] != "" || p["model"] != "configured-model" || p["serviceTier"] != "flex" || p["config"].(map[string]any)["model_reasoning_effort"] != "low" || p["approvalPolicy"] != "never" || p["sandbox"] != nil || p["permissions"] == nil {
+		if p["developerInstructions"] != wantInstructions || p["model"] != "configured-model" || p["serviceTier"] != "flex" || p["config"].(map[string]any)["model_reasoning_effort"] != "low" || p["approvalPolicy"] != "never" || p["sandbox"] != nil || p["permissions"] == nil {
 			t.Fatal("configured settings or policy lost", p)
 		}
 	}
@@ -902,6 +948,7 @@ func TestOrchestrateWorkflowConfiguredReviewer(t *testing.T) {
 
 func TestOrchestrateWorkflowCancelPendingRoleConfig(t *testing.T) {
 	u, w := workflowUI(t)
+	u.proxy.orchestration.reviewers = workflowReviewerRoles{Correctness: "audit", Simplification: "reduce"}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"implement","status":"completed"}}}`)
 	drainOrchestrateWork(t, u)
 	var reads []btwTestRPC
@@ -920,14 +967,29 @@ func TestOrchestrateWorkflowCancelPendingRoleConfig(t *testing.T) {
 }
 
 func TestOrchestrateWorkflowMissingSelectedReviewer(t *testing.T) {
-	u, w := workflowUI(t)
-	u.proxy.orchestration.reviewers = workflowReviewerRoles{Correctness: "not-installed"}
-	workflowCompleted(t, u, "child", "implement", "")
-	config, _ := workflowTake(t, u, w, "config/read", "", orchestrate.DispatchCorrectness)
-	orchestrateTestReply(t, u, config, `{"layers":[]}`)
-	child := u.orchestrateThreads["child"]
-	if child.batch.Workflow.Phase != orchestrate.PhaseFailed || child.batch.Workflow.Reason == "" {
-		t.Fatal("missing selected reviewer did not block visibly", child.batch.Workflow)
+	for _, failure := range []string{"unavailable", "requires developer_instructions"} {
+		t.Run(failure, func(t *testing.T) {
+			u, w := workflowUI(t)
+			u.proxy.orchestration.reviewers = workflowReviewerRoles{Correctness: "not-installed"}
+			workflowCompleted(t, u, "child", "implement", "")
+			config, _ := workflowTake(t, u, w, "config/read", "", orchestrate.DispatchCorrectness)
+			response := `{"layers":[]}`
+			if failure != "unavailable" {
+				dir := t.TempDir()
+				writeTestFile(t, filepath.Join(dir, "agents", "role.toml"), "name = 'not-installed'\ndescription = 'Discovered review'\n")
+				response = string(mustMarshalJSON(map[string]any{"layers": []any{map[string]any{"name": map[string]any{"type": "project", "dotCodexFolder": dir}, "config": map[string]any{}}}}))
+			}
+			orchestrateTestReply(t, u, config, response)
+			child := u.orchestrateThreads["child"]
+			if child.batch.Workflow.Phase != orchestrate.PhaseFailed || !strings.Contains(child.batch.Workflow.Reason, failure) {
+				t.Fatal("invalid selected reviewer did not block visibly", child.batch.Workflow)
+			}
+			for _, request := range u.orchestrateRequests {
+				if request.method == "thread/start" && request.review != nil && request.review.dispatch.Kind == orchestrate.DispatchCorrectness {
+					t.Fatal("invalid selected reviewer reached thread/start")
+				}
+			}
+			workflowNotice(t, u, w)
+		})
 	}
-	workflowNotice(t, u, w)
 }

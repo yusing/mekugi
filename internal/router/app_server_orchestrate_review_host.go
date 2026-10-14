@@ -179,6 +179,49 @@ func (u *appServerUI) startWorkflowTurn(work *orchestrateReviewWork, text string
 	u.sendWorkflowRequest(work, "turn/start", params)
 }
 
+func (u *appServerUI) workflowReviewerRole(kind orchestrate.WorkflowDispatchKind) string {
+	if kind == orchestrate.DispatchSimplification {
+		return u.proxy.orchestration.reviewers.Simplification
+	}
+	return u.proxy.orchestration.reviewers.Correctness
+}
+
+func (u *appServerUI) prepareWorkflowReviewer(work *orchestrateReviewWork, raw jsontext.Value) {
+	child := work.child
+	role := u.workflowReviewerRole(work.dispatch.Kind)
+	u.orchestrateBatchWork(child.command.workspace, child.command.main, child.batch.TaskName, func() func() {
+		settings, err := resolveConfiguredRoleSettings(raw, role)
+		var scratch string
+		if err == nil {
+			c := child.command
+			scratch, err = u.proxy.orchestration.store.PrepareWorkflowReviewStorage(u.orchestrateStorageContext, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID)
+		}
+		return func() {
+			if err != nil {
+				u.failWorkflowDispatch(work, false, err)
+				return
+			}
+			work.dispatch.Scratch = scratch
+			params, err := u.workflowReviewerRequest(child, work.dispatch.Kind, settings, scratch)
+			if err != nil {
+				u.failWorkflowDispatch(work, false, err)
+				return
+			}
+			raw := jsontext.Value(mustMarshalJSON(params))
+			c := child.command
+			u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+				return s.RecordWorkflowReviewerParams(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, raw)
+			}, func(err error) {
+				if err != nil {
+					u.failWorkflowDispatch(work, false, err)
+					return
+				}
+				u.sendWorkflowRequest(work, "thread/start", params)
+			})
+		}
+	})
+}
+
 func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 	work, child := r.review, r.child
 	switch r.method {
@@ -222,41 +265,7 @@ func (u *appServerUI) workflowResponse(r orchestrateRPC, m appserver.Message) {
 		return
 	}
 	if r.method == "config/read" {
-		role := u.proxy.orchestration.reviewers.Correctness
-		if work.dispatch.Kind == orchestrate.DispatchSimplification {
-			role = u.proxy.orchestration.reviewers.Simplification
-		}
-		u.orchestrateBatchWork(child.command.workspace, child.command.main, child.batch.TaskName, func() func() {
-			settings, err := resolveConfiguredRoleSettings(m.Result, role)
-			var scratch string
-			if err == nil {
-				c := child.command
-				scratch, err = u.proxy.orchestration.store.PrepareWorkflowReviewStorage(u.orchestrateStorageContext, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID)
-			}
-			return func() {
-				if err != nil {
-					u.failWorkflowDispatch(work, false, err)
-					return
-				}
-				work.dispatch.Scratch = scratch
-				params, err := u.workflowReviewerRequest(child, work.dispatch.Kind, settings, scratch)
-				if err != nil {
-					u.failWorkflowDispatch(work, false, err)
-					return
-				}
-				raw := jsontext.Value(mustMarshalJSON(params))
-				c := child.command
-				u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
-					return s.RecordWorkflowReviewerParams(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, raw)
-				}, func(err error) {
-					if err != nil {
-						u.failWorkflowDispatch(work, false, err)
-						return
-					}
-					u.sendWorkflowRequest(work, "thread/start", params)
-				})
-			}
-		})
+		u.prepareWorkflowReviewer(work, m.Result)
 		return
 	}
 	var result struct {
