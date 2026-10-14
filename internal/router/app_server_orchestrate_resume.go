@@ -18,6 +18,10 @@ type orchestrateResume struct {
 }
 
 func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
+	u.admitOrchestratedBatch(name, ready, false)
+}
+
+func (u *appServerUI) admitOrchestratedBatch(name string, ready func(error), cleanup bool) {
 	u = u.orchestrationOwner()
 	n := u.ensureOrchestrationNavigation()
 	for _, b := range n.retained {
@@ -44,7 +48,11 @@ func (u *appServerUI) resumeOrchestratedBatch(name string, ready func(error)) {
 		u.setNotice("Resuming batch "+name, false)
 		workspace, main, store := u.session.cwd, u.thread, u.proxy.orchestration.store
 		u.orchestrateWork(func() func() {
-			batch, err := store.Resume(u.orchestrateStorageContext, workspace, main, name)
+			resume := store.Resume
+			if cleanup {
+				resume = store.ResumeCleanup
+			}
+			batch, err := resume(u.orchestrateStorageContext, workspace, main, name)
 			return func() {
 				if u.orchestrateClosing || n.closed {
 					err = context.Canceled

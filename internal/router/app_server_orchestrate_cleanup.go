@@ -121,13 +121,13 @@ func (u *appServerUI) cleanOrchestratedChild(c *orchestrateCommand, reply func(o
 						reply(orchestrateResult{err: err})
 						return
 					}
-					u.resumeOrchestratedBatch(b.TaskName, func(err error) {
+					u.admitOrchestratedBatch(b.TaskName, func(err error) {
 						if err != nil {
 							reply(orchestrateResult{err: err})
 						} else {
 							u.cleanOrchestratedChild(c, reply)
 						}
-					})
+					}, true)
 				}
 			})
 			return

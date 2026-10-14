@@ -609,6 +609,47 @@ func TestAppServerOrchestrateCleanupReconciliation(t *testing.T) {
 			if err := os.WriteFile(path, data, 0600); err != nil {
 				t.Fatal(err)
 			}
+			u.closeOrchestratedViews()
+			// Use new store, journal and controller owners, not the old live child.
+			retry := func(wantError bool) orchestrateResult {
+				t.Helper()
+				replay, err := openMekugiReplayStore(p.replayStore.directory)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fresh, w := resumeOrchestrationMain(t, store, workspace, replay)
+				retainOrchestratedTestPermissions(t, fresh, batch)
+				drainOrchestrateWork(t, fresh)
+				w.Reset()
+				if len(fresh.orchestrateThreads) != 0 {
+					t.Fatal("recovery implicitly resumed cleanup")
+				}
+				c := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", target: "/root/batch", tool: "cleanup", reply: make(chan orchestrateResult, 1)}
+				fresh.startOrchestratedChild(c)
+				drainOrchestrateWork(t, fresh)
+				if len(c.reply) != 0 {
+					t.Fatal("cleanup failed before retained host admission", <-c.reply)
+				}
+				resumeBatchResponses(t, fresh, w, batch, false)
+				drainOrchestrateWork(t, fresh)
+				completeOrchestratedArchive(t, fresh)
+				result := <-c.reply
+				if (result.err != nil) != wantError || w.Len() != 0 || fresh.viewedUI() != fresh {
+					t.Fatal("explicit cleanup lost reconciliation or started a turn", result, w.String())
+				}
+				fresh.closeOrchestratedViews()
+				return result
+			}
+			writeTestFile(t, filepath.Join(batch.Cwd, "unfinished"), "keep uncertain work")
+			if result := retry(true); result.batch.State != "removing" || !strings.Contains(result.err.Error(), "inspect removal") {
+				t.Fatal("uncertain surviving checkout did not reach storage reconciliation", result)
+			}
+			if content, err := os.ReadFile(filepath.Join(batch.Cwd, "unfinished")); err != nil || string(content) != "keep uncertain work" {
+				t.Fatal("cleanup changed uncertain work", string(content), err)
+			}
+			if err := os.Remove(filepath.Join(batch.Cwd, "unfinished")); err != nil {
+				t.Fatal(err)
+			}
 			proof, err := p.orchestrateCleanupProof(t.Context(), workspace, "main", "batch", nil)
 			if err != nil {
 				t.Fatal(err)
@@ -632,10 +673,11 @@ func TestAppServerOrchestrateCleanupReconciliation(t *testing.T) {
 				repository = batch.Repository
 			}
 			gitTestRun(t, repository, "worktree", "remove", "--", batch.Checkout)
-			got, err := reopened.Cleanup(t.Context(), workspace, "main", "batch", proof, nil)
-			if err != nil || got.State != "removed" {
-				t.Fatal("failed to reconcile confirmed removal", got, err)
+			got := retry(false)
+			if got.batch.State != "removed" || got.batch.Archive == nil || got.batch.Archive.State != "archived" {
+				t.Fatal("failed to reconcile confirmed removal and archive", got)
 			}
+			gitTestRun(t, repository, "merge-base", "--is-ancestor", proof.Tip, "refs/heads/"+batch.Branch)
 		})
 	}
 }
