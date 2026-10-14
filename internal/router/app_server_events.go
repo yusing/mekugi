@@ -191,10 +191,8 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 		s.agents = append(s.agents, activityPaneAgent{Name: path})
 	}
 	s.paths[info.ID] = path
-	agent := s.agent(path)
-	agent.nativePlaceholder = path == appServerPlaceholder(info.ID) && info.AgentNickname == "" && info.agentPath == ""
-	agent.Role = cmp.Or(info.AgentRole, agent.Role)
-	restoreContextUsage(agent, info)
+	s.agent(path).Role = cmp.Or(info.AgentRole, s.agent(path).Role)
+	restoreContextUsage(s.agent(path), info)
 }
 
 func (s *appServerSession) agent(path string) *activityPaneAgent {
@@ -213,13 +211,12 @@ func (s *appServerSession) path(thread string) string {
 	}
 	path := appServerPlaceholder(thread)
 	s.paths[thread] = path
-	s.agents = append(s.agents, activityPaneAgent{Name: path, nativePlaceholder: true})
+	s.agents = append(s.agents, activityPaneAgent{Name: path})
 	return path
 }
 
 func appServerPlaceholder(thread string) string {
-	// Presentation may shorten this name; identity must retain the complete ID.
-	return "/root/" + thread
+	return "/root/" + thread[:min(8, len(thread))]
 }
 
 func (s *appServerSession) next() uint64 {
@@ -434,7 +431,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 						path = s.scopedAgentPath(p.ThreadID, item.AgentPath)
 					}
 					s.agent(old).Name = path
-					s.agent(path).nativePlaceholder = false
 					s.paths[item.AgentThreadID] = path
 					u.renameThreadActivity(old, path)
 				}

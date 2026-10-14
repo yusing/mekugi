@@ -57,8 +57,6 @@ type activityPaneAgent struct {
 	ContextTokens uint64 `json:",omitzero"`
 	ContextWindow uint64 `json:",omitzero"`
 	ContextKnown  bool   `json:",omitzero"`
-
-	nativePlaceholder bool // Native identity stays in Name; only its roster label is short.
 }
 
 type activityPaneEvent struct {
