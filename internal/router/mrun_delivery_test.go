@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/tokenizer"
+
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 func TestShellRunnerMRunAcceptedMaximumDoesNotCreateContinuation(t *testing.T) {
@@ -163,13 +165,13 @@ func mrunOversizedLFRow(t *testing.T, word string) (string, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for units := maxOutputTokens; ; units += 128 {
+	for units := toolplugin.MaxOutputTokens; ; units += 128 {
 		row := strings.Repeat(word+" ", units) + "\n"
 		count, err := codec.Count(row)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if count > maxOutputTokens {
+		if count > toolplugin.MaxOutputTokens {
 			return row, units
 		}
 	}

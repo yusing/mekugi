@@ -749,7 +749,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 					}
 					value = argv[i]
 				}
-				if _, valid := toolActivityPositiveDecimal(value, maxOutputTokens); !valid {
+				if _, valid := toolActivityPositiveDecimal(value, toolplugin.MaxOutputTokens); !valid {
 					return "", false
 				}
 				continue

@@ -84,7 +84,7 @@ func positiveSymbolInteger(s, label string) (int, error) {
 
 // Source: plugins/msymbol.ts:132:176@[543de4f3] parseQueries
 func parseSymbolQueries(args []string) ([]*symbolQuery, string, bool, int, error) {
-	o, rest, err := nativeReaderOptions(args, false, 4000, "--workspace")
+	o, rest, err := ParseReaderOptions(args, false, 4000, "--workspace")
 	if err != nil {
 		return nil, "", false, 0, err
 	}
@@ -161,7 +161,7 @@ func parseSymbolQueries(args []string) ([]*symbolQuery, string, bool, int, error
 	if len(queries) == 0 {
 		return nil, "", false, 0, fmt.Errorf("usage: %s", symbolUsage)
 	}
-	return queries, workspace, explicit, o.budget, nil
+	return queries, workspace, explicit, o.Budget, nil
 }
 func outsideSymbolWorkspace(root, path string) bool {
 	relative, err := filepath.Rel(root, path)

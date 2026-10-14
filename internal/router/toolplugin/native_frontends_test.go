@@ -109,6 +109,7 @@ func TestNativeMCatLogicalRowsAndRanges(t *testing.T) {
 		{"whole", []string{path}, "\ufefffirst\n\nthird\nfourth\n"},
 		{"colon", []string{path, "2:3"}, "\nthird\n"},
 		{"dash", []string{path, "2-3"}, "\nthird\n"},
+		{"native integer ceiling", []string{path, "1:9007199254740992"}, "\ufefffirst\n\nthird\nfourth\n"},
 		{"zero and EOF clamp", []string{path, "0:99"}, "\ufefffirst\n\nthird\nfourth\n"},
 		{"number blank rows", []string{path, "2:3", "--number"}, "     2\t\n     3\tthird\n"},
 	} {

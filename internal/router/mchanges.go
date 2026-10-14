@@ -41,7 +41,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		options.view, arguments = arguments[0], arguments[1:]
 	}
 	for len(arguments) > 0 {
-		arguments = expandMaxTokensOption(arguments)
+		arguments = toolplugin.ExpandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if flag == "--" {
@@ -61,7 +61,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		}
 		if seen[flag] {
 			if flag == "--max-tokens" {
-				return options, errors.New(maxTokensArgumentError)
+				return options, errors.New(toolplugin.MaxTokensArgumentError)
 			}
 			return options, fmt.Errorf("duplicate option %s", flag)
 		}
@@ -83,7 +83,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		case "--workspace", "--max-tokens":
 			if len(arguments) == 0 {
 				if flag == "--max-tokens" {
-					return options, errors.New(maxTokensArgumentError)
+					return options, errors.New(toolplugin.MaxTokensArgumentError)
 				}
 				return options, fmt.Errorf("%s requires a value", flag)
 			}
@@ -94,7 +94,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 				options.workspace = value
 				options.workspaceSet = true
 			case "--max-tokens":
-				number, err := parseMaxTokens(value)
+				number, err := toolplugin.ParseMaxTokens(value)
 				if err != nil {
 					return options, err
 				}

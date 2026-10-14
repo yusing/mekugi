@@ -22,67 +22,31 @@ type readBundleSpec struct {
 }
 
 func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
-	budget := 6000
+	options, rest, err := toolplugin.ParseReaderOptions(args, true, 6000, "")
+	if err != nil {
+		return nil, 0, err
+	}
 	var operands []string
-	optionsEnded, tokenOption, lineOption, tailOption, numberOption := false, false, false, false, false
-	for i := 0; i < len(args); i++ {
-		if !optionsEnded && strings.HasPrefix(args[i], "--max-tokens=") {
-			args = append(append([]string(nil), args[:i]...), expandMaxTokensOption(args[i:])...)
-		}
-		arg := args[i]
-		if optionsEnded || !strings.HasPrefix(arg, "-") {
-			operands = append(operands, arg)
+	ended := false
+	for _, arg := range rest {
+		if !ended && arg == "--" {
+			ended = true
 			continue
 		}
-		switch arg {
-		case "--":
-			optionsEnded = true
-		case "--max-tokens":
-			if tokenOption || i+1 == len(args) {
-				return nil, 0, errors.New(maxTokensArgumentError)
-			}
-			i++
-			n, err := parseMaxTokens(args[i])
-			if err != nil {
-				return nil, 0, err
-			}
-			budget, tokenOption = n, true
-		case "-n":
-			if lineOption || i+1 == len(args) {
-				return nil, 0, errors.New("-n requires one value and cannot repeat")
-			}
-			i++
-			if readBundleRange.MatchString(args[i]) {
-				return nil, 0, fmt.Errorf("-n takes a row count, not a range; retry: mcat PATH %s", strings.ReplaceAll(args[i], "-", ":"))
-			}
-			n, err := strconv.ParseUint(args[i], 10, 64)
-			if err != nil || n == 0 || n > 1<<53-1 || strconv.FormatUint(n, 10) != args[i] {
-				return nil, 0, errors.New("-n must be a positive integer")
-			}
-			lineOption = true
-		case "--tail":
-			if tailOption {
-				return nil, 0, errors.New("--tail cannot repeat")
-			}
-			tailOption = true
-		case "--number":
-			if numberOption {
-				return nil, 0, errors.New("--number cannot repeat")
-			}
-			numberOption = true
-		default:
+		if !ended && strings.HasPrefix(arg, "-") {
 			return nil, 0, fmt.Errorf("unknown option %q", arg)
 		}
+		operands = append(operands, arg)
 	}
 	var specs []readBundleSpec
 	for _, operand := range operands {
-		if readBundleRange.MatchString(operand) {
+		if toolplugin.LineRangePattern.MatchString(operand) {
 			if len(specs) == 0 {
 				return nil, 0, fmt.Errorf("range-like paths require ./; retry: %s", workerCommand("mcat", []string{"./" + operand}))
 			}
 			operand = strings.ReplaceAll(operand, "-", ":")
-			if _, _, err := parseReadBundleRange(operand); err != nil {
-				return nil, 0, err
+			if start, end, err := toolplugin.ParseLineRange(operand); err != nil || start > 1<<53-1 || end > 1<<53-1 {
+				return nil, 0, errors.New("line range must be START:END with canonical safe integers and START not after END")
 			}
 			if specs[len(specs)-1].span == "" {
 				specs[len(specs)-1].span = operand
@@ -115,16 +79,12 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 		calls := (len(specs) + maxReadBundleReads - 1) / maxReadBundleReads
 		return nil, 0, fmt.Errorf("received %d reads after argument expansion, exceeding the %d-read limit; split into %d mcat calls of at most %d reads each; repeat the path when splitting its ranges", len(specs), maxReadBundleReads, calls, maxReadBundleReads)
 	}
-	if tailOption && !tokenOption && !lineOption {
-		return nil, 0, errors.New("--tail requires -n or --max-tokens")
-	}
-	if len(specs) > 1 && (lineOption || tailOption) {
+	if len(specs) > 1 && (options.Lines != 0 || options.Tail) {
 		return nil, 0, errors.New("-n and --tail require a single path")
 	}
-	return specs, budget, nil
+	return specs, options.Budget, nil
 }
 
-var readBundleRange = regexp.MustCompile(`^[0-9]+[:-][0-9]+$`)
 var readRowNumber = regexp.MustCompile(`^[0-9]+$`)
 var readMalformedRange = regexp.MustCompile(`^([0-9]+)(:\+|,)([0-9]+)$`)
 
@@ -145,17 +105,6 @@ func correctedReadRange(operand string) string {
 		return parts[1] + ":END"
 	}
 	return fmt.Sprintf("%d:%d", max(1, start), max(1, start)+count-1)
-}
-
-func parseReadBundleRange(span string) (uint64, uint64, error) {
-	first, last, _ := strings.Cut(span, ":")
-	start, startErr := strconv.ParseUint(first, 10, 64)
-	end, endErr := strconv.ParseUint(last, 10, 64)
-	if startErr != nil || endErr != nil || start > 1<<53-1 || end == 0 || end > 1<<53-1 ||
-		strconv.FormatUint(start, 10) != first || strconv.FormatUint(end, 10) != last || start > end {
-		return 0, 0, errors.New("line range must be START:END with canonical safe integers and START not after END")
-	}
-	return start, end, nil
 }
 
 // executeMCat owns the executable frontend's one AX observation. Single-file
@@ -469,8 +418,8 @@ func readBundleStart(spec readBundleSpec) uint64 {
 	if spec.span == "" {
 		return 1
 	}
-	parsed, _, _ := parseReadBundleRange(spec.span)
-	return max(1, parsed)
+	parsed, _, _ := toolplugin.ParseLineRange(spec.span)
+	return uint64(max(1, parsed))
 }
 
 func readMCatBundleFile(

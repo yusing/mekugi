@@ -13,6 +13,8 @@ import (
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/tokenizer"
+
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
@@ -218,7 +220,7 @@ func TestParseChangeRead(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"read", "amber1"}, {"amber1", "--path", "file"}, {"amber1", "--", ""},
 		{"--summary", "--summary", "amber1"}, {"--max-tokens", "01", "amber1"},
-		{"--max-tokens", strconv.Itoa(maxOutputTokens + 1), "amber1"},
+		{"--max-tokens", strconv.Itoa(toolplugin.MaxOutputTokens + 1), "amber1"},
 		{"--workspace", workspace, "--workspace", workspace, "amber1"},
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
 		{"--list", "--", "file"}, {"--list", "--summary"},

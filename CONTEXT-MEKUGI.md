@@ -56,6 +56,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Coordinator reads of isolated child change evidence | `internal/router/mchanges_orchestrate.go`; durable locator in `internal/router/handle_scope.go`; retained membership in `internal/router/journal_orchestrate.go` and `internal/orchestrate`; fresh-worker coverage in `internal/router/mchanges_orchestrate_test.go` |
 | Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
 | Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
+| Shared frontend options, token ceilings, and inclusive range parsing | `internal/router/toolplugin/frontend_options.go`; command-specific acceptance and multi-target framing remain with their callers |
 | Built-in tool sources, output tokenization, and plugin runtime | `internal/router/toolplugin/native_*.go`; plugin loading and embedded assets in `internal/router/toolplugin/runtime.go` |
 | Router process signals, wrapped Codex lifecycle, and top-level exit | `cmd/mekugi/main.go`, `cmd/mekugi/wrap.go` |
 | Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
