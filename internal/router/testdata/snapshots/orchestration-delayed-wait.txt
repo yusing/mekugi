@@ -1,3 +1,4 @@
+• Wait returned queued event · batch: Recorded failure (needs decision)
 • Waiting for agent · batch, check, cleanup, docs, other, review, tests
 • Wait yielded · batch: Message
 • Wait result delivered

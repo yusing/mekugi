@@ -2,15 +2,15 @@
 
 • Waiting for agent (timeout 15s) · batch, archive_integrated, check, review, docs, tests, cleanup
 
-• Wait yielded · archive_integrated: Message
+• Wait returned queued event · archive_integrated: Message
 
-• Wait yielded · batch: Recorded completion
+• Wait returned queued event · batch: Recorded completion
 
-• Wait yielded · batch: Recorded failure (storage failed)
+• Wait returned queued event · batch: Recorded failure (storage failed)
 
-• Wait yielded · batch: Recorded failure (canceled)
+• Wait returned queued event · batch: Recorded failure (canceled)
 
-• Wait yielded · batch: Recorded blocker
+• Wait returned queued event · batch: Recorded blocker
 
 • Wait timed out
 

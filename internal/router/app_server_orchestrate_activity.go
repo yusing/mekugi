@@ -341,7 +341,9 @@ func orchestrationWaitResult(block *activityui.Block, wait orchestrate.Wait) {
 	if json.Unmarshal(wait.Event, &event) != nil || event.Kind == "" {
 		return
 	}
-	if wait.State == "completed" || wait.State == "delivered" {
+	if wait.State == "completed" {
+		block.Body = "Wait returned queued event"
+	} else if wait.State == "delivered" {
 		block.Body = "Wait yielded"
 	} else if block.Body == "Wait ended (no event reported)" {
 		block.Body = "Wait result"

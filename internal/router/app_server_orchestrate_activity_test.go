@@ -138,7 +138,7 @@ func TestOrchestrateWaitEventLiveAndHistory(t *testing.T) {
 			}
 			item.Status, item.Result = "completed", mustMarshalJSON(content)
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
-			want := "Wait yielded · archive_integrated: " + tc.reason
+			want := "Wait returned queued event · archive_integrated: " + tc.reason
 			if len(u.view.entries) != 1 || u.view.entries[0].Text != want || u.view.entries[0].native.item != "wait-id" {
 				t.Fatalf("wait result: got %q, want %q", u.view.entries[0].Text, want)
 			}
@@ -336,6 +336,7 @@ func TestUISnapshotOrchestrateLogicalWait(t *testing.T) {
 func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 	var rows []string
 	cases := []struct{ name, want string }{
+		{"queued-failure", "Wait returned queued event · batch: Recorded failure (needs decision)"},
 		{"message", "Wait yielded · batch: Message"},
 		{"failure", "Wait yielded · batch: Recorded failure (storage failed)"},
 		{"historical-cancellation", "Wait yielded · batch: Recorded failure (canceled)"},
@@ -363,14 +364,23 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 					targets = append(targets, name)
 				}
 			}
-			command := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", tool: "wait_agent", callID: "logical-wait", waitTargets: targets, reply: make(chan orchestrateResult, 1)}
+			command := &orchestrateCommand{ctx: t.Context(), workspace: workspace, main: "main", tool: "wait_agent", callID: "logical-wait", waitTurn: "turn", waitTargets: targets, reply: make(chan orchestrateResult, 1)}
+			if tc.name == "queued-failure" {
+				// A resumed child can still have an earlier failure in the event queue.
+				u.publishOrchestratedEvent(u.orchestrateThreads["child"], orchestrateEvent{ID: "wake-event", Task: "batch", Thread: "child", Turn: "earlier-turn", Kind: "failure", Status: "needs_decision", Message: "private event payload"})
+				drainOrchestrateWork(t, u)
+			}
 			if tc.name == "timeout" {
 				command.waitTimeout = 1
 			}
 			u.startOrchestratedChild(command)
 			drainOrchestrateWork(t, u)
 			registration := <-command.reply
-			if registration.err != nil || registration.wait.State != "registered" {
+			state := "registered"
+			if tc.name == "queued-failure" {
+				state = "completed"
+			}
+			if registration.err != nil || registration.wait.State != state {
 				t.Fatal("wait did not register", registration)
 			}
 			item := appServerItem{ID: "mcp-item", Type: "mcpToolCall", Server: "orchestrate", Tool: "wait_agent", Status: "completed",
@@ -386,6 +396,7 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 			u.navigation.viewed = u.navigation.views["child"]
 			wire := u.client.Input.(*appServerTestInput)
 			switch tc.name {
+			case "queued-failure": // The MCP reply already contains the retained event.
 			case "timeout":
 				now = now.Add(time.Millisecond)
 				u.advanceOrchestratedWaits(workspace, "main", nil)
@@ -403,7 +414,7 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 				u.publishOrchestratedEvent(u.orchestrateThreads["child"], event)
 			}
 			drainOrchestrateWork(t, u)
-			if tc.name != "canceled" {
+			if tc.name != "canceled" && tc.name != "queued-failure" {
 				if !strings.HasPrefix(u.view.entries[0].Text, "Waiting for agent") {
 					t.Fatal("unacknowledged delivery claimed completion")
 				}
@@ -443,6 +454,16 @@ func TestUISnapshotOrchestrateDelayedWait(t *testing.T) {
 			assertResult(u)
 			if child := u.orchestrateThreads["child"]; child.turn != "child-turn" || child.batch.Launch.HostStatus != "running" || wire.Len() != 0 {
 				t.Fatal("wait delivery changed or interrupted current child work", child, wire.String())
+			}
+			if tc.name == "queued-failure" {
+				u.session.orchestrationWaitTurn = "turn"
+				if label, active := u.session.orchestrationWaitStatus(); label != "" || active || u.session.orchestrationWaitSuspends("turn") {
+					t.Fatal("immediate event claimed a suspended composer", label, active)
+				}
+				u.orchestrationRoster()
+				if len(u.agents.orchestration) != 2 || !u.agents.orchestration[1].Responding || u.agents.orchestrationLabels["/Orchestration/batch"] != "" {
+					t.Fatal("queued failure replaced current child roster state", u.agents.orchestration)
+				}
 			}
 			rows = append(rows, u.view.painter.Block(u.view.entries[0].blocks[0], 100)...)
 			if tc.name == "message" {
