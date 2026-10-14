@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json/jsontext"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -57,6 +58,25 @@ func TestJournalTreePlanAndStablePaths(t *testing.T) {
 	}
 	if got := treeApply(t, proxy, workspace, journalMutation{Op: "remove", P: "/1/1"}, journalMutation{Op: "add", Under: "/1", Kind: "task", Title: new("Replacement")}); !reflect.DeepEqual(got[len(got)-1:], []string{"/1/3"}) {
 		t.Fatalf("deleted ordinal was reused: %v", got)
+	}
+}
+
+func BenchmarkNativeJournalRebuild(b *testing.B) {
+	j := &threadJournal{}
+	for parent := 1; parent <= 50; parent++ {
+		path := fmt.Sprintf("/%d", parent)
+		j.Items = append(j.Items, journalItem{Path: path, Kind: "task", Title: "Active assignment", State: "working"})
+		for child := 1; child <= 20; child++ {
+			j.Items = append(j.Items, journalItem{Path: fmt.Sprintf("%s/%d", path, child), Kind: "note", Title: "Retained result"})
+		}
+	}
+	v := &nativeJournalView{}
+	b.ReportAllocs()
+	for b.Loop() {
+		v.rebuild(j)
+	}
+	if len(v.rows) != len(j.Items) {
+		b.Fatal("journal rebuild lost visible rows", len(v.rows))
 	}
 }
 
