@@ -106,6 +106,26 @@ func TestAppServerOrchestrateQuestionRouting(t *testing.T) {
 	}
 }
 
+func TestUISnapshotOrchestrationQuestionBanner(t *testing.T) {
+	for _, source := range []string{"main", "child"} {
+		t.Run(source, func(t *testing.T) {
+			u, _ := orchestratePromptUI(t)
+			if source == "main" {
+				questionTestAsync(t, u, "main-question", "Who receives it?", "Who approves it?")
+			} else {
+				orchestratePromptQuestion(t, u, false)
+			}
+			assertNativeUISnapshot(t, "orchestration-question-banner-"+source, u.questionRows(80, 10))
+			if source == "child" {
+				orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"batch-turn","status":"completed"}}}`)
+				assertNativeUISnapshot(t, "orchestration-question-banner-child", u.questionRows(80, 10))
+				u.switchOrchestratedThread("child")
+				assertNativeUISnapshot(t, "orchestration-question-banner-child-viewed", u.questionRows(80, 10))
+			}
+		})
+	}
+}
+
 func TestAppServerOrchestratePromptResolution(t *testing.T) {
 	u, v := orchestratePromptUI(t)
 	u.draft = ""

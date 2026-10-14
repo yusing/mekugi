@@ -200,12 +200,11 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		}
 	})
 	t.Run("supersede and steer", func(t *testing.T) {
-		u, _ := newAppServerTestUI()
+		u, v := orchestratePromptUI(t)
 		u.draft = "new prompt"
 		questionTestAsync(t, u, "pending", "Who receives it?")
-		if got := strings.Join(u.questionRows(80, 10), " "); !strings.Contains(got, "dismisses 1 questions") {
-			t.Fatalf("missing supersede warning: %q", got)
-		}
+		orchestratePromptQuestion(t, u, false)
+		orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"batch-turn","status":"completed"}}}`)
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 			"id": "steer", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": "a same-turn steer"}},
 		}})
@@ -217,6 +216,9 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		}})
 		if got := u.questions.calls[0].questions[0].outcome; got != "superseded" {
 			t.Fatalf("new-turn outcome = %q", got)
+		}
+		if v.questionCount() != 1 {
+			t.Fatal("Main's new turn superseded a child's question")
 		}
 	})
 }

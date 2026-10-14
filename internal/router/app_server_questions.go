@@ -839,6 +839,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 	}
 }
 func (u *appServerUI) questionRows(width, height int) []string {
+	viewed := u.viewedUI()
 	u = u.questionSource()
 	if u == nil {
 		return nil
@@ -851,10 +852,16 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	accent, dim, reset := p.Theme.Accent(), activityui.Dim, activityui.Reset
 	if d.active == nil {
 		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
-		if source := u.promptLabel(u.thread); source != "" {
+		source := u.promptLabel(u.thread)
+		if source != "" {
 			label = strings.Replace(label, "main asks", livediff.Safe(source, false)+" asks", 1)
-		} else if u.turn == "" && u.draft != "" {
-			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", u.questionCount()) + reset
+		}
+		if u == viewed && u.turn == "" && u.draft != "" {
+			warning := fmt.Sprintf("enter starts a new turn · dismisses %d questions", u.questionCount())
+			if source != "" {
+				warning = livediff.Safe(source, false) + " · " + warning
+			}
+			label = dim + warning + reset
 		}
 		return []string{ansi.Truncate(label, width, "…")}
 	}
