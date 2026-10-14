@@ -3,13 +3,13 @@
 
 
 ╭─ Ran · combined output ──────────────────────────────────────── [×] ─╮
-│ 1 line · exit 0                                                      │
+│ 1 line · exit 1                                                      │
 ├──────────────────────────────────────────────────────────────────────┤
-│ 1 │ git log -1 --format='%H%n%s'; git status --porcelain             │
+│ 1 │ git status --porcelain; sudo journalctl -k --no-pager            │
 │                                                                      │
 │ Per-command output boundaries were not retained for this invocation. │
 │                                                                      │
-│ 1 ┆ 9a9860a fix(ui): align loaded skills links and dialog selection  │
+│ 1 ┆ -- No entries --                                                 │
 ╰─ ↑↓ PgUp/PgDn g/G scroll · / find · y copy · esc ────────────────────╯
 
 

@@ -354,8 +354,9 @@ Single-command reports retain host output unchanged. Terminal and lossy reports
 retain their observed segment statuses but not separate output. If any segment's bounded
 output was truncated or released before persistence, restored output likewise
 stays combined rather than presenting a partial stream as complete. Activity and
-output dialogs hide literal host shell wrappers and generated VCS guard
-instrumentation, preserving user PATH assignments and other shell source.
+output dialogs hide literal host shell wrappers and generated VCS and sudo guard
+instrumentation in live and restored main/child activity, preserving user PATH
+assignments and other shell source. This also applies with the VCS guard disabled.
 This display projection leaves guard execution and stored commands unchanged.
 The per-command overhead is one reporting helper start and two acknowledgments
 per segment, plus managed storage of a completed report. A supported single

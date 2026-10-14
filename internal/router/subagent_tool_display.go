@@ -67,7 +67,7 @@ func toolActivityShellInDirectory(script, cwd string) string {
 
 func toolActivityShellSource(script string) string {
 	return vcsguard.DisplayScript(execsegment.ShOriginal(script), func(directory string) bool {
-		if !filepath.IsAbs(directory) || filepath.Base(directory) != vcsguard.Directory {
+		if !filepath.IsAbs(directory) || !vcsguard.IsGuardDirectory(directory) {
 			return false
 		}
 		_, ok := toolRegistryIDFromDirectory(filepath.Dir(directory))
