@@ -421,14 +421,6 @@ func (v *liveActivityView) rosterThreadName(agent activityPaneAgent) string {
 		}
 		return "  └ " + name
 	}
-	for _, parent := range v.orchestrationParents {
-		if parent == agent.Name {
-			if agent.Responding {
-				return "▾ " + name
-			}
-			return "▸ " + name
-		}
-	}
 	return name
 }
 

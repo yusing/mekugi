@@ -1,5 +1,5 @@
 ─ 5 Agents · 4 · 3 working ──────────────────────────────────────────────────────────────── ↑4K ↓400 · $0.04 ─
  ● main                  Idle                                                                 ↑1K ↓100       
- ◐ ▾ batch               Review                                            0%                 ↑1K ↓100        
+ ◐ batch                 Review                                            0%                 ↑1K ↓100        
  ◐   ├ correctness/1     Working                                           0%  0s · just now  ↑1K ↓100  $0.01
  ◐   └ simplification/1  Working                                           0%  0s · just now  ↑1K ↓100  $0.01
