@@ -15,6 +15,11 @@ make lint
 
 The suite needs Node.js 24+/ripgrep; lint needs `golangci-lint`/`deadcode` and installs neither.
 Focus tests with `TEST_PACKAGES`/`TEST_RUN`/`TEST_FLAGS`; `-count=1` bypasses caching.
+Make builds use `-trimpath` so unchanged packages reuse the Go build cache across
+worktrees and staged snapshot checks. Set `GO_BUILD_FLAGS=` when absolute source
+paths are needed. Make defaults to `GOMAXPROCS=2` and `GOMEMLIMIT=1536MiB`;
+override either for local build and test budgets. The memory limit is soft and
+applies to each Go process, not the combined memory of concurrent builds.
 Use `make test-host` for the focused installed-Codex checks with local mock providers;
 see [host acceptance](../../CONTEXT-AUTOMATED-TESTS.md).
 Built-ins are Go; Bun is for separate plugin tests. `make preview-native-ui` uses no models.

@@ -1,4 +1,10 @@
 GO ?= go
+# Reuse compiled packages across implementation, review, and staged checkouts.
+GO_BUILD_FLAGS ?= -trimpath
+# Bound concurrent compiler work; callers can select larger local budgets.
+GOMAXPROCS ?= 2
+GOMEMLIMIT ?= 1536MiB
+export GOMAXPROCS GOMEMLIMIT
 
 .PHONY: install uninstall mekugi-pprof preview-assets preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
@@ -18,15 +24,15 @@ SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/livediff ./internal/router ./cmd/mekugi
 
 install: preview-assets
-	$(GO) install ./cmd/mekugi ./cmd/mekugi-exec
+	$(GO) install $(GO_BUILD_FLAGS) ./cmd/mekugi ./cmd/mekugi-exec
 
 uninstall:
 	$(GO) clean -i ./cmd/mekugi ./cmd/mekugi-exec
 
 # Diagnostic build, with symbols and the same optimized code as production.
 mekugi-pprof: preview-assets
-	$(GO) build -tags pprof -o bin/mekugi-pprof ./cmd/mekugi
-	$(GO) build -o bin/mekugi-exec ./cmd/mekugi-exec
+	$(GO) build $(GO_BUILD_FLAGS) -tags pprof -o bin/mekugi-pprof ./cmd/mekugi
+	$(GO) build $(GO_BUILD_FLAGS) -o bin/mekugi-exec ./cmd/mekugi-exec
 
 preview-assets:
 	go generate ./internal/router/toolplugin
@@ -35,18 +41,18 @@ preview-assets:
 # Plays a fake session automatically; keys act as in the real UI (Ctrl-C clears,
 # interrupts, then exits).
 preview-native-ui:
-	env -u BASH_ENV MEKUGI_NATIVE_UI_PREVIEW=1 $(GO) test ./internal/router -run '^TestNativeUIPreview$$' -count=1 -timeout 0
+	env -u BASH_ENV MEKUGI_NATIVE_UI_PREVIEW=1 $(GO) test $(GO_BUILD_FLAGS) ./internal/router -run '^TestNativeUIPreview$$' -count=1 -timeout 0
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test:
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(TEST_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
 
 # Installed Codex, isolated local mocks, no installation or live model requests.
 test-host:
 	@codex --version
 	@set -eu; \
 	pattern="^($$(printf '%s' '$(strip $(HOST_ACCEPTANCE_TESTS))' | tr ' ' '|'))$$"; \
-	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test -tags=journal_e2e ./internal/router -list "$$pattern")"; then \
+	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) -tags=journal_e2e ./internal/router -list "$$pattern")"; then \
 		printf '%s\n' "$$available"; exit 1; \
 	fi; \
 	for name in $(HOST_ACCEPTANCE_TESTS); do \
@@ -61,8 +67,8 @@ lint:
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test ./internal/uisnapshot $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) ./internal/uisnapshot $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
-	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO) test $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(GO) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1

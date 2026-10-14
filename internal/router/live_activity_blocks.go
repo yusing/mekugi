@@ -44,6 +44,10 @@ func setCommandTiming(blocks []activityui.Block, entry activityPaneEntry) {
 }
 
 func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry) bool {
+	compound := len(blocks) > 1 || len(entry.native.segments) > 0
+	if compound || entry.native.command == "" {
+		return compound
+	}
 	command := entry.native.command
 	if script, ok := appServerShellScript(command); ok {
 		command = script
@@ -52,7 +56,6 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 		// the tracking envelope is not authored compound work.
 		command = execsegment.ShOriginal(command)
 	}
-	compound := len(blocks) > 1 || len(entry.native.segments) > 0
 	if program, err := syntax.NewParser().Parse(strings.NewReader(command), ""); err == nil {
 		// A setup script is deliberately one full-source Run event, so its
 		// invocation clock belongs to that row, not a second shell batch row.
