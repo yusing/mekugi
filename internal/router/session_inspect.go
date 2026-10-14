@@ -27,7 +27,19 @@ type inspectedText struct {
 	OmittedBytes int    `json:"omitted_bytes"`
 }
 
+type inspectedEffects struct {
+	CallID      string `json:"call_id"`
+	Replay      string `json:"replay"`
+	Status      string `json:"status"`
+	Coverage    string `json:"coverage"`
+	Exit        *int   `json:"exit,omitempty"`
+	ReviewFiles *int   `json:"review_files,omitempty"`
+	ChangeID    string `json:"change_id,omitempty"`
+	SharedWith  string `json:"shared_with,omitempty"`
+}
+
 type inspectedCall struct {
+	Effects       *inspectedEffects        `json:"effects,omitempty"`
 	CallID        string                   `json:"call_id"`
 	Workspace     string                   `json:"workspace,omitempty"`
 	Tool          string                   `json:"tool"`
@@ -99,20 +111,21 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	requestID := flags.String("request-id", "", "select one request in a debug bundle")
 	workspace := flags.String("workspace", "", "override workspace inferred from rollout metadata")
 	replayDir := flags.String("replay-dir", "", "replay directory (default platform state directory)")
+	journal := flags.Bool("journal", false, "inspect the selected thread's retained journal instead of calls")
 	ax := flags.Bool("ax", false, "include whole-rollout AX measurements, independent of call pagination")
 	failures := flags.Bool("failures", false, "list sanitized failures, optionally selecting one reference")
 	readLog := flags.String("read-log", "", "runtime AX read journal; implies --ax")
 	defects := flags.String("defects", "", "JSON defect assessments with evidence paths; implies --ax")
 	callID := flags.String("call-id", "", "select one call identity")
-	offset := flags.Int("offset", 0, "skip this many matching logical calls")
-	limit := flags.Int("limit", 50, "maximum calls returned (1-500)")
-	field := flags.String("field", "", "include text: script, report, diagnostic, output, or all")
+	offset := flags.Int("offset", 0, "skip this many matching calls or journal nodes")
+	limit := flags.Int("limit", 50, "maximum calls or journal nodes returned (1-500)")
+	field := flags.String("field", "", "include text: script, report, diagnostic, output, or all; journal: title, body, reason, question, or all")
 	textBytes := flags.Int("text-bytes", 4096, "maximum UTF-8 bytes per included field (1-65536)")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --session PATH [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session --debug-dir DIR [--request-id ID] [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session [--replay-dir PATH] --failures [REF]")
-		fmt.Fprintln(stderr, "Read local logical calls without running them. Text is omitted unless --field is selected.")
+		fmt.Fprintln(stderr, "Read local calls or retained journal nodes without running operations. Text is omitted unless --field is selected.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -126,8 +139,11 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 1
 	}
 	fields := []string{"script", "report", "diagnostic", "output"}
+	if *journal {
+		fields = []string{"title", "body", "reason", "question"}
+	}
 	if *debugDir != "" {
-		if flags.NArg() != 0 || *session != "" || *failures || *ax || *readLog != "" || *defects != "" ||
+		if flags.NArg() != 0 || *session != "" || *journal || *failures || *ax || *readLog != "" || *defects != "" ||
 			*callID != "" || *workspace != "" || *replayDir != "" || *offset < 0 || *limit < 1 || *limit > 500 ||
 			*textBytes < 1 || *textBytes > 65536 || (*field != "" && *field != "all" && *field != "diagnostic") {
 			flags.Usage()
@@ -140,7 +156,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 2
 	}
 	if *failures {
-		if flags.NArg() > 1 || *session != "" || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
+		if flags.NArg() > 1 || *session != "" || *journal || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
 			*offset != 0 || *limit != 50 || *textBytes != 4096 {
 			flags.Usage()
 			return 2
@@ -158,6 +174,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 0
 	}
 	if *session == "" || flags.NArg() != 0 || *offset < 0 ||
+		(*journal && (*ax || *readLog != "" || *defects != "" || *callID != "")) ||
 		*limit < 1 || *limit > 500 || *textBytes < 1 || *textBytes > 65536 ||
 		(*field != "" && *field != "all" && !slices.Contains(fields, *field)) {
 		flags.Usage()
@@ -187,6 +204,12 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	calls, err := readSessionInspection(ctx, *session, &observations)
 	if err != nil {
 		return fail(err)
+	}
+	if *journal {
+		if err := inspectSessionJournal(ctx, store, observations, override, *field, *offset, *limit, *textBytes, stdout); err != nil {
+			return fail(err)
+		}
+		return 0
 	}
 	allCalls := calls
 	if *callID != "" {
@@ -248,11 +271,26 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 				}
 			}
 		}
+		var effects *mekugiHistory
+		if found && record.History.ExecObservation != nil {
+			derivedID := execDerivedCallID(call.item.CallID, record.History.ExecObservation.CodeMode)
+			derived, exists, readErr := store.read(root, derivedID, false)
+			if readErr != nil {
+				return fail(fmt.Errorf("call %q effects: %w", call.item.CallID, readErr))
+			}
+			if exists {
+				if derived.History.CorrelationID != call.item.CallID+"\x00exec" ||
+					derived.History.ToolName != nativeExecCommandToolName || derived.History.ExecOutcome == nil {
+					return fail(fmt.Errorf("call %q: inconsistent effect observation", call.item.CallID))
+				}
+				effects = &derived.History
+			}
+		}
 		selectedField := ""
 		if selected[call.item.CallID] {
 			selectedField = *field
 		}
-		projected, err := inspectSessionCall(call, record, found, observed, selectedField, *textBytes)
+		projected, err := inspectSessionCall(call, record, found, observed, effects, selectedField, *textBytes)
 		if err != nil {
 			return fail(err)
 		}
@@ -475,7 +513,7 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 	return calls, nil
 }
 
-func inspectSessionCall(call sessionInspectionCall, record replayRecord, found bool, observed []mekugiHistory, field string, limit int) (inspectedCall, error) {
+func inspectSessionCall(call sessionInspectionCall, record replayRecord, found bool, observed []mekugiHistory, effects *mekugiHistory, field string, limit int) (inspectedCall, error) {
 	result := inspectedCall{
 		CallID: call.item.CallID, Tool: qualifiedToolName(call.item.Namespace, call.item.Name), Replay: "missing",
 		Outcome: "unavailable", Text: make(map[string]inspectedText),
@@ -560,18 +598,62 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 			}
 		}
 	}
-	for name, value := range values {
-		shown := ""
-		if field == "all" || field == name {
-			end := min(len(value), limit)
-			for end > 0 && !utf8.ValidString(value[:end]) {
-				end--
-			}
-			shown = value[:end]
+	if found && record.History.ExecObservation != nil {
+		result.Effects = &inspectedEffects{
+			CallID: execDerivedCallID(call.item.CallID, record.History.ExecObservation.CodeMode),
+			Replay: "missing", Status: "unavailable", Coverage: "unavailable",
 		}
-		result.Text[name] = inspectedText{Text: shown, Bytes: len(value), OmittedBytes: len(value) - len(shown)}
+		if effects == nil {
+			result.Outcome = "unavailable"
+		} else {
+			outcome := effects.ExecOutcome
+			result.Effects.Replay = "matched"
+			result.Effects.Status, result.Effects.Coverage = outcome.Status, outcome.Coverage
+			if outcome.Status == "" {
+				result.Effects.Status = "unconfirmed"
+			}
+			result.Effects.Exit, result.Effects.ChangeID = outcome.Exit, effects.ChangeID
+			result.Effects.SharedWith = outcome.SharedWith
+			if outcome.SharedWith == "" {
+				result.Effects.ReviewFiles = new(len(effects.ReviewFiles))
+			}
+			for _, extra := range []struct{ name, text string }{
+				{"report", effects.Report}, {"diagnostic", outcome.ScopeReason}, {"diagnostic", outcome.Unswept},
+			} {
+				if extra.text != "" {
+					if values[extra.name] != "" {
+						values[extra.name] += "\n"
+					}
+					values[extra.name] += extra.text
+				}
+			}
+			switch {
+			case outcome.Status == execStatusFailed:
+				result.Outcome = "rejected"
+			case outcome.Status != execStatusCompleted || outcome.SharedWith != "":
+				result.Outcome = "unconfirmed"
+			case len(effects.ReviewFiles) != 0:
+				result.Outcome = "applied"
+			case outcome.Coverage != execCoverageExact && result.Outcome == "no_changes":
+				result.Outcome = "unconfirmed"
+			}
+		}
+	}
+	for name, value := range values {
+		result.Text[name] = inspectText(value, field == "all" || field == name, limit)
 	}
 	return result, nil
+}
+
+func inspectText(value string, include bool, limit int) inspectedText {
+	end := 0
+	if include {
+		end = min(len(value), limit)
+		for end > 0 && !utf8.ValidString(value[:end]) {
+			end--
+		}
+	}
+	return inspectedText{Text: value[:end], Bytes: len(value), OmittedBytes: len(value) - end}
 }
 
 func sessionInspectionPayload(item sessionInspectionItem) string {
