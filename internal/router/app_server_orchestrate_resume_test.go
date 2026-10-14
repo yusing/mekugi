@@ -218,6 +218,9 @@ func TestAppServerOrchestrateResumeNamedProfile(t *testing.T) {
 				resumeTestSettle(t, u, w)
 				drainOrchestrateWork(t, u)
 				orchestrateTestReply(t, u, btwTestRequest(t, w, "turn/start", "child"), `{"turn":{"id":"next"}}`)
+			} else {
+				unsubscribe := btwTestRequest(t, w, "thread/unsubscribe", "child")
+				btwTestReply(t, u, unsubscribe, `{"status":"unsubscribed"}`)
 			}
 			if r := <-c.reply; (r.err == nil) != confirmed || w.Len() != 0 {
 				t.Fatal("follow-up did not require the retained permission profile", r.err, w.String())
@@ -495,6 +498,13 @@ func TestAppServerOrchestrateResumeAdmission(t *testing.T) {
 				} else {
 					btwTestReply(t, u, req, string(mustMarshalJSON(map[string]any{"thread": map[string]any{"id": id, "cwd": cwd}})))
 				}
+				if mode == "resume-thread" {
+					if w.Len() == 0 {
+						t.Fatal("rejected host identity left the resumed thread subscribed")
+					}
+					unsubscribe := btwTestRequest(t, w, "thread/unsubscribe", "child")
+					btwTestReply(t, u, unsubscribe, `{"status":"unsubscribed"}`)
+				}
 			}
 			if u.viewedUI() != u || len(u.navigation.resumes) != 0 || len(u.navigation.views) != 1 || !strings.Contains(u.notice, "Orchestration resume:") || w.Len() != 0 {
 				t.Fatal("resume failure admitted a view or input", u.notice, w.String())
@@ -547,7 +557,7 @@ func TestAppServerOrchestrateResumeDiffAdmission(t *testing.T) {
 	}
 }
 
-func TestAppServerOrchestrateResumeDefaultEffortRejection(t *testing.T) {
+func TestAppServerOrchestrateResumeAdmissionSubscriptionDefaultEffortRejection(t *testing.T) {
 	u, w, b := retainedOrchestratedUI(t)
 	previous, _ := appliedSettingsTestUI(t, b.Cwd, "child")
 	previous.navigation = &orchestrateNavigation{owner: u}
@@ -575,6 +585,17 @@ func TestAppServerOrchestrateResumeDefaultEffortRejection(t *testing.T) {
 	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"cannot clear"}}`, update.ID))
 	if u.viewedUI() != u || len(u.navigation.resumes) != 0 || len(u.navigation.views) != 1 || u.orchestrateBusy() || !strings.Contains(u.notice, "cannot clear") {
 		t.Fatal("reasoning rejection stranded resume", u.notice)
+	}
+	if w.Len() == 0 {
+		t.Fatal("failed resume settings admission left the host thread subscribed")
+	}
+	unsubscribe := btwTestRequest(t, w, "thread/unsubscribe", "child")
+	if w.Len() != 0 || u.navigation.views["main"] != u || u.thread != "main" {
+		t.Fatal("failed admission disturbed Main or replayed a turn", w.String())
+	}
+	btwTestReply(t, u, unsubscribe, `{"status":"unsubscribed"}`)
+	if u.requests[fmt.Sprint(unsubscribe.ID)] != "" || !strings.Contains(u.notice, "cannot clear") {
+		t.Fatal("subscription release lost response correlation or admission error", u.notice)
 	}
 }
 

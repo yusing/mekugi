@@ -175,6 +175,8 @@ func TestAppServerOrchestrateCanceledLaunchRecovery(t *testing.T) {
 				}
 				orchestrateTestReply(t, u, btwTestRequest(t, w, "thread/resume", "recover-child"), string(mustMarshalJSON(map[string]any{"thread": thread, "activePermissionProfile": map[string]any{"id": ":workspace"}})))
 				if mode == "host-turn" {
+					unsubscribe := btwTestRequest(t, w, "thread/unsubscribe", "recover-child")
+					btwTestReply(t, u, unsubscribe, `{"status":"unsubscribed"}`)
 					if r := <-follow.reply; r.err == nil || w.Len() != 0 {
 						t.Fatal("host execution evidence admitted recovery", r.err, w.String())
 					}

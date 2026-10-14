@@ -13,6 +13,7 @@ import (
 
 type orchestrateResume struct {
 	authenticated bool
+	subscribed    bool
 	view          *appServerUI
 	ready         []func(error)
 }
@@ -117,6 +118,10 @@ func (n *orchestrateNavigation) resumeResponse(v *appServerUI, m appserver.Messa
 	if r == nil || method != "resume/settings" && method != "thread/resume" && method != "archive/history" {
 		return false
 	}
+	if method == "thread/resume" && m.Error == nil {
+		// Host resume subscribes before local identity/settings admission.
+		r.subscribed = true
+	}
 	var result struct {
 		Thread appServerThreadInfo `json:"thread"`
 	}
@@ -211,6 +216,9 @@ func (n *orchestrateNavigation) finishResume(thread string, err error) {
 		}
 	}
 	if err != nil {
+		if r.subscribed && !n.closed { // Navigation retirement already releases its subscriptions.
+			err = errors.Join(err, n.owner.request("thread/unsubscribe", map[string]any{"threadId": thread}))
+		}
 		n.owner.setNotice("Orchestration resume: "+err.Error(), true)
 		if v := n.views[thread]; v != nil {
 			v.closeOrchestratedView()

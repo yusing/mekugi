@@ -101,6 +101,9 @@ func TestAppServerOrchestrateShadowIntegrateRecovery(t *testing.T) {
 						t.Fatal("integration dispatched unexpected host work", method)
 					}
 				}
+			} else {
+				unsubscribe := btwTestRequest(t, w, "thread/unsubscribe", "child")
+				btwTestReply(t, u, unsubscribe, `{"status":"unsubscribed"}`)
 			}
 			drainOrchestrateWork(t, u)
 			r := <-c.reply
