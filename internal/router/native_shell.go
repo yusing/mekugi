@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -374,7 +375,10 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			}
 			diffRows := content
 			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
-			if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
+			if u.diffScreen.Emulator == nil {
+				u.diffScreen.Emulator = vt.NewEmulator(iw, max(1, diffRows))
+				u.diff.dirty = true
+			} else if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
 				u.diffScreen.Resize(iw, max(1, diffRows))
 				u.diff.dirty = true
 			}
