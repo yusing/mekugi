@@ -276,7 +276,7 @@ func TestJournalCompactionV2ContinuityApprovalWithoutWorkspace(t *testing.T) {
 }
 
 func TestJournalCompactionV2ContinuityRejectsChangedCallBeforeFallback(t *testing.T) {
-	t.Parallel()
+	// Keep the bounded operation outside parallel fixture contention.
 	transform, proxy, _, workspace := newDurableTreeTransform(t)
 	thread := transform.shellThreadID
 	proxy.journalCompaction = "auto"

@@ -169,7 +169,7 @@ func TestLiveDiffPythonCoverageRejectsUnsupportedLoopsAndMutations(t *testing.T)
 }
 
 func TestLiveDiffPythonCoverageSharedIterationBound(t *testing.T) {
-	t.Parallel()
+	// Keep the bounded operation outside parallel fixture contention.
 	literal := func(n int) string { return "[" + strings.Repeat("'x',", n) + "]" }
 	for _, tc := range []struct {
 		name, loops string
