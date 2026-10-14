@@ -296,10 +296,20 @@ func git(ctx context.Context, directory string, args ...string) (string, error) 
 	// Materialize a full worktree without changing the source's sparse settings.
 	command := exec.CommandContext(ctx, "git", append([]string{"-c", "core.hooksPath=" + os.DevNull,
 		"-c", "submodule.recurse=false", "-c", "core.sparseCheckout=false", "-C", directory}, args...)...)
-	// A parent shell's Git location must not override the authenticated workspace.
-	command.Env = slices.DeleteFunc(os.Environ(), func(entry string) bool {
+	// Git owns the repository-local variable list. Querying it needs no repository
+	// setup, even when the inherited environment points at unavailable objects.
+	environment := os.Environ()
+	query := exec.CommandContext(ctx, command.Path, "rev-parse", "--local-env-vars")
+	query.Env = environment
+	local, err := query.Output()
+	if err != nil {
+		return "", fmt.Errorf("git repository environment: %w", err)
+	}
+	keys := strings.Fields(string(local))
+	// Preserve execution settings while selecting only the authenticated workspace.
+	command.Env = slices.DeleteFunc(environment, func(entry string) bool {
 		key, _, _ := strings.Cut(entry, "=")
-		return key == "GIT_DIR" || key == "GIT_WORK_TREE" || key == "GIT_INDEX_FILE" || key == "GIT_COMMON_DIR"
+		return slices.Contains(keys, key)
 	})
 	output, err := command.Output()
 	if err != nil {

@@ -133,6 +133,39 @@ func TestPrepareGit(t *testing.T) {
 	}
 }
 
+func TestPrepareGitEnvironment(t *testing.T) {
+	store, repo, initial := launchFixture(t)
+	for _, name := range []string{"objects", "repository"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GIT_OBJECT_DIRECTORY", t.TempDir())
+			if name == "repository" {
+				for _, key := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+					"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_SHALLOW_FILE", "GIT_GRAFT_FILE"} {
+					t.Setenv(key, filepath.Join(t.TempDir(), "absent"))
+				}
+				t.Setenv("GIT_CONFIG_PARAMETERS", "invalid inherited config")
+				t.Setenv("GIT_CONFIG_COUNT", "invalid")
+			}
+			trace := filepath.Join(t.TempDir(), "trace")
+			t.Setenv("GIT_TRACE", trace)
+			batch, err := store.Prepare(t.Context(), repo, "main", name)
+			if err != nil || batch.State != "prepared" || batch.Base != initial.Base {
+				t.Fatalf("prepare under inherited %s: %+v, %v", name, batch, err)
+			}
+			if tip, err := sourceBase(t.Context(), batch.Cwd); err != nil || tip != initial.Base {
+				t.Fatalf("prepared tip under inherited %s: %q, %v", name, tip, err)
+			}
+			data, err := os.ReadFile(trace)
+			if err != nil || !strings.Contains(string(data), "rev-parse --verify") {
+				t.Fatalf("Git execution tracing was lost: %s, %v", data, err)
+			}
+			if config, err := git(t.Context(), repo, "config", "--global", "--list"); err != nil || config != "" {
+				t.Fatalf("isolated global config was lost: %q, %v", config, err)
+			}
+		})
+	}
+}
+
 func TestPrepareRejectsInvalidInputs(t *testing.T) {
 	store := &Store{Directory: t.TempDir()}
 	for _, name := range []string{"", "../escape", "two/parts", "-option"} {
