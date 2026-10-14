@@ -15,6 +15,9 @@ func (u *appServerUI) orchestrateCheckoutUnavailable() bool {
 	}
 	if u.navigation != nil {
 		if child := u.navigation.owner.orchestrateThreads[u.thread]; child != nil {
+			if child.batch.Launch != nil && child.batch.Launch.TurnID == "" {
+				return true
+			}
 			return workflowInputReserved(child) || child.batch.State == "removing" || child.batch.State == "removed" || child.batch.State == "integrating"
 		}
 	}
@@ -25,6 +28,10 @@ func (u *appServerUI) orchestrateInputDisabledMessage(input string) string {
 	cause := "Batch checkout unavailable"
 	if u.workflowReview != nil {
 		cause = "Runtime review owns this thread"
+	} else if u.navigation != nil {
+		if child := u.navigation.owner.orchestrateThreads[u.thread]; child != nil && child.batch.Launch != nil && child.batch.Launch.TurnID == "" {
+			cause = "First handoff requires a coordinator follow-up"
+		}
 	}
 	return cause + "; " + input + " are disabled"
 }

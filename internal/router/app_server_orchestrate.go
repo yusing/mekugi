@@ -371,6 +371,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 			child.completedTurn = event.Turn.ID
 		}
 		if status != "" {
+			child.batch.Launch.TurnUnsent = false
 			child.batch.Launch.HostStatus = status
 			c, store, ctx, name := child.command, u.proxy.orchestration.store, u.orchestrateStorageContext, child.batch.TaskName
 			message := ""
@@ -535,29 +536,18 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 					u.failOrchestrate(child, err)
 					return
 				}
-				if u.orchestrateClosing || child.workflowStopped {
-					u.finishOrchestrate(child, context.Canceled)
-					return
-				}
-				if err := c.ctx.Err(); err != nil {
-					u.finishOrchestrate(child, err)
-					return
-				}
 				if err := u.addOrchestratedView(child, thread, raw, func() {
 					if u.orchestrateClosing || child.workflowStopped || c.ctx.Err() != nil {
-						u.finishOrchestrate(child, context.Canceled)
+						u.orchestrateWork(func() func() {
+							err := store.CancelUnsentTurn(ctx, c.workspace, c.main, name)
+							return func() {
+								child.batch.Launch.TurnUnsent = err == nil
+								u.finishOrchestrate(child, errors.Join(context.Canceled, err))
+							}
+						})
 						return
 					}
-					input := orchestrateChildInstructions + "Assignment:\n" + c.input.Message
-					if len(child.batch.Evidence) != 0 {
-						paths := make(map[string]string, len(child.batch.Evidence))
-						for _, e := range child.batch.Evidence {
-							paths[e.Name] = e.Path
-						}
-						encoded, _ := json.Marshal(paths, json.Deterministic(true))
-						input = "Evidence files: " + string(encoded) + "\n" + input
-					}
-					params := map[string]any{"threadId": thread, "input": appserver.Input(input)}
+					params := map[string]any{"threadId": thread, "input": appserver.Input(orchestrateFirstInput(child.batch))}
 					if len(child.batch.Launch.SandboxPolicy) != 0 {
 						params["sandboxPolicy"] = child.batch.Launch.SandboxPolicy
 					}
@@ -614,6 +604,19 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		})
 	}
 	return true
+}
+
+func orchestrateFirstInput(batch orchestrate.Batch) string {
+	input := orchestrateChildInstructions + "Assignment:\n" + batch.Launch.Message
+	if len(batch.Evidence) != 0 {
+		paths := make(map[string]string, len(batch.Evidence))
+		for _, e := range batch.Evidence {
+			paths[e.Name] = e.Path
+		}
+		encoded, _ := json.Marshal(paths, json.Deterministic(true))
+		input = "Evidence files: " + string(encoded) + "\n" + input
+	}
+	return input
 }
 
 func (u *appServerUI) orchestrateBusy() bool {

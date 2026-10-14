@@ -46,7 +46,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		}
 		member := func(thread string) bool {
 			return slices.ContainsFunc(m.Batches, func(b Batch) bool {
-				return (b.VCS == "" || shadowVCS(b.VCS)) && b.State != "removing" && b.State != "removed" && b.Launch != nil && b.Launch.TurnID != "" && b.Launch.ThreadID == thread
+				return (b.VCS == "" || shadowVCS(b.VCS)) && b.State != "removing" && b.State != "removed" && b.Launch != nil && b.Launch.ThreadID == thread && (b.Launch.TurnID != "" || nextTurn && !input.Deferred && input.TurnID == "" && input.From == main && input.Target == thread && b.Launch.TurnUnsent)
 			})
 		}
 		if input.ID == "" || (input.Message == "" || input.From == input.Target) || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
@@ -100,6 +100,19 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		}
 		parts = append(parts, input.Message)
 		text = strings.Join(parts, "\n")
+		for i := range m.Batches {
+			b := &m.Batches[i]
+			if b.Launch != nil && b.Launch.ThreadID == input.Target {
+				if b.Launch.TurnUnsent {
+					for _, evidence := range b.Evidence {
+						if err := validateEvidence(evidence); err != nil {
+							return err
+						}
+					}
+				}
+				b.Launch.TurnUnsent = false // Intent may reach the host; no automatic retry.
+			}
+		}
 		m.Deliveries = append(m.Deliveries, input)
 		delivery = input
 		err := s.save(m, path)
@@ -127,6 +140,15 @@ func (s *Store) RecordDelivery(ctx context.Context, workspace, main, id, state, 
 				return nil
 			}
 			d.State, d.TurnID, d.Error = state, turn, message
+			for j := range m.Batches {
+				launch := m.Batches[j].Launch
+				if launch != nil && launch.ThreadID == d.Target && launch.TurnID == "" {
+					if state == "delivered" {
+						launch.TurnID = turn
+					}
+					launch.TurnUnsent = (state == "canceled" || state == "rejected") && launch.HostStatus == ""
+				}
+			}
 			delivery = *d
 			for j := range m.Deliveries {
 				queued := &m.Deliveries[j]

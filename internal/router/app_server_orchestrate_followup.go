@@ -27,7 +27,7 @@ func (u *appServerUI) queueOrchestratedFollowup(c *orchestrateCommand) {
 		return
 	}
 	for thread, child := range u.orchestrateThreads {
-		if child.command.main == c.main && child.command.workspace == c.workspace && (c.target != "main" && c.target == child.batch.TaskName || c.target == "/root/"+child.batch.TaskName) && thread != c.caller && child.batch.Launch != nil && child.batch.Launch.TurnID != "" && child.batch.State != "removing" && child.batch.State != "removed" && child.batch.State != "integrating" {
+		if child.command.main == c.main && child.command.workspace == c.workspace && (c.target != "main" && c.target == child.batch.TaskName || c.target == "/root/"+child.batch.TaskName) && thread != c.caller && child.batch.Launch != nil && child.batch.Launch.ThreadID != "" && child.batch.State != "removing" && child.batch.State != "removed" && child.batch.State != "integrating" {
 			if u.navigation == nil || u.navigation.views[thread] == nil || u.navigation.resumes[thread] != nil {
 				u.resumeOrchestratedBatch(child.batch.TaskName, func(err error) {
 					if err != nil {
@@ -51,7 +51,7 @@ func (u *appServerUI) queueOrchestratedFollowup(c *orchestrateCommand) {
 	}
 	if n := u.navigation; n != nil {
 		for _, b := range n.retained {
-			if b.State != "removing" && b.State != "removed" && b.Launch != nil && b.Launch.TurnID != "" && b.Launch.ThreadID != c.caller && n.views[b.Launch.ThreadID] == nil && (c.target != "main" && c.target == b.TaskName || c.target == "/root/"+b.TaskName) {
+			if b.State != "removing" && b.State != "removed" && b.Launch != nil && b.Launch.ThreadID != "" && b.Launch.ThreadID != c.caller && n.views[b.Launch.ThreadID] == nil && (c.target != "main" && c.target == b.TaskName || c.target == "/root/"+b.TaskName) {
 				u.resumeOrchestratedBatch(b.TaskName, func(err error) {
 					if err != nil {
 						c.reply <- orchestrateResult{err: err}
@@ -79,6 +79,7 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 	c := child.followups[0]
 	store := u.proxy.orchestration.store
 	turn := child.turn
+	first := child.batch.Launch.TurnUnsent
 	u.orchestrateWork(func() func() {
 		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, TurnID: turn, Deferred: c.tool == "send_message", ReviewWaiver: c.reviewWaiver}
 		var d orchestrate.Delivery
@@ -99,11 +100,15 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 				u.retainOrchestratedDelivery(child, c, d, "canceled", "", context.Canceled)
 				return
 			}
-			if child.turn != turn {
-				u.retainOrchestratedDelivery(child, c, d, "rejected", "", errors.New("target turn changed before delivery"))
+			if child.turn != turn || first && !child.batch.Launch.TurnUnsent {
+				u.retainOrchestratedDelivery(child, c, d, "rejected", "", errors.New("target lifecycle changed before delivery"))
 				return
 			}
 			method := "turn/start"
+			if first {
+				child.batch.Launch.TurnUnsent = false
+				text = orchestrateFirstInput(child.batch) + "\n" + text
+			}
 			params := map[string]any{"threadId": d.Target, "input": appserver.Input(text)}
 			if child.turn != "" {
 				method = "turn/steer"
@@ -127,6 +132,15 @@ func (u *appServerUI) retainOrchestratedDelivery(child *orchestrateChild, c *orc
 		}
 		result, err := store.RecordDelivery(ctx, c.workspace, c.main, d.ID, state, turn, message)
 		return func() {
+			if err == nil && child.batch.Launch.TurnID == "" {
+				child.batch.Launch.TurnUnsent = (result.State == "canceled" || result.State == "rejected") && child.batch.Launch.HostStatus == ""
+				if result.State == "delivered" {
+					child.batch.Launch.TurnID = result.TurnID
+					if child.workflowCompletion != nil {
+						u.workflowImplementationCompleted(child, *child.workflowCompletion, child.workflowReport)
+					}
+				}
+			}
 			if err != nil {
 				u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, err)
 				u.setNotice("Orchestration delivery was not retained: "+err.Error(), true)

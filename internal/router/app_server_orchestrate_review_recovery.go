@@ -95,6 +95,11 @@ func (u *appServerUI) reconcileCorrectionLifecycle(child *orchestrateChild) {
 // current generation, so concurrent reviews recover independently. Missing
 // validation results cannot prove that a command was never dispatched.
 func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
+	if child.batch.Launch.TurnUnsent {
+		// Only explicit coordinator input may start this known-unsent turn.
+		child.workflowEnding = false
+		return
+	}
 	u.reconcileCorrectionLifecycle(child)
 	w := child.batch.Workflow
 	if workflowTerminal(w) && !workflowUnsettled(child.batch) {

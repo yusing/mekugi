@@ -21,6 +21,19 @@ type Launch struct {
 	ThreadID      string         `json:"thread_id,omitempty"`
 	TurnID        string         `json:"turn_id,omitempty"`
 	HostStatus    string         `json:"host_status,omitempty"`
+	TurnUnsent    bool           `json:"turn_unsent,omitzero"` // Canceled before first-turn dispatch.
+}
+
+// CancelUnsentTurn records only a first turn which the caller has not dispatched.
+// Missing acknowledgement alone must never authorize a retry.
+func (s *Store) CancelUnsentTurn(ctx context.Context, workspace, main, name string) error {
+	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
+		if b.Launch == nil || b.Launch.ThreadID == "" || b.Launch.TurnID != "" || b.Launch.HostStatus != "" {
+			return errors.New("launch has no undispatched first turn")
+		}
+		b.Launch.TurnUnsent = true
+		return nil
+	})
 }
 
 var errLaunchUnchanged = errors.New("launch unchanged")
@@ -32,9 +45,10 @@ func (s *Store) ObserveLaunch(ctx context.Context, workspace, main, name, status
 		if b.Launch == nil {
 			return errors.New("batch has no launch intent")
 		}
-		if b.Launch.HostStatus == status && b.Error == message {
+		if b.Launch.HostStatus == status && b.Error == message && !b.Launch.TurnUnsent {
 			return errLaunchUnchanged
 		}
+		b.Launch.TurnUnsent = false
 		b.Launch.HostStatus, b.Error = status, message
 		return nil
 	})
@@ -182,7 +196,7 @@ func (s *Store) RecordTurn(ctx context.Context, workspace, main, name, thread, t
 		if b.Launch.TurnID == turn {
 			return errLaunchUnchanged
 		}
-		b.Launch.TurnID = turn
+		b.Launch.TurnID, b.Launch.TurnUnsent = turn, false
 		return nil
 	})
 }

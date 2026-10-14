@@ -140,13 +140,23 @@ run-storage waits leave input and host events responsive. Running batches requir
 exit confirmation and prevent replacing the coordinator. Viewing another thread
 leaves its work subscribed and does not replace the coordinator.
 
+A confirmed thread whose first turn was retained as canceled before dispatch
+stays idle across recovery and repeated spawn calls. After the user requests
+resume, Main can send `followup_task` to start that thread with its original
+assignment, evidence and new input, using current host permissions rather than
+reapplying launch defaults. Recovery admits the retained thread and exact
+cwd through the normal host settings/history checks. A missing turn acknowledgement
+without proof of unsent input remains uncertain and cannot authorize this retry.
+In Main's orchestration view, the canceled batch's composer stays disabled until
+Main's first handoff is acknowledged.
+
 The prepared checkout replaces the source repository in runtime workspace roots;
 explicit external roots and an empty root list remain inherited. Named permission
 profiles and approval-review routing remain intact. When Codex reports no active
 profile, the complete host-confirmed sandbox policy is inherited, including
 network access, writable roots and temporary-directory exclusions. Source-local
 writable roots map to the prepared checkout; external roots remain unchanged.
-The first turn applies this retained policy before any model or tool work.
+Initial spawn dispatch applies this retained policy before any model or tool work.
 Batch resume restores the latest host-confirmed named permission profile or custom
 sandbox policy before accepting input, including changes made after launch.
 These settings remain retained when the batch is opened through ordinary `/resume`.

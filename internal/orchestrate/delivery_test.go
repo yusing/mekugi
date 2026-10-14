@@ -94,3 +94,78 @@ func TestDeliveryRetainsDispatchAndAcknowledgement(t *testing.T) {
 		t.Fatal("unconfirmed caller accepted")
 	}
 }
+
+func TestDeliveryRecoversOnlyKnownUnsentLaunch(t *testing.T) {
+	for _, outcome := range []string{"canceled", "rejected", "uncertain", "delivered", "observed"} {
+		t.Run(outcome, func(t *testing.T) {
+			s, workspace, _ := launchFixture(t)
+			ctx, params := t.Context(), jsontext.Value(`{}`)
+			if _, _, err := s.BeginLaunch(ctx, workspace, "main", "batch", "assignment", params, nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.CancelUnsentTurn(ctx, workspace, "main", "batch"); err == nil {
+				t.Fatal("cancellation invented a thread identity")
+			}
+			if err := s.RecordThread(ctx, workspace, "main", "batch", "child"); err != nil {
+				t.Fatal(err)
+			}
+			input := Delivery{ID: "resume", From: "main", Target: "child", Message: "continue"}
+			if _, _, dispatch, err := s.BeginTurnDelivery(ctx, workspace, "main", input); err == nil || dispatch {
+				t.Fatal("missing acknowledgement authorized a retry")
+			}
+			if err := s.CancelUnsentTurn(ctx, workspace, "main", "batch"); err != nil {
+				t.Fatal(err)
+			}
+			s = &Store{Directory: s.Directory}
+			if b, dispatch, err := s.BeginLaunch(ctx, workspace, "main", "batch", "assignment", params, nil); err != nil || dispatch || !b.Launch.TurnUnsent {
+				t.Fatal("repeated spawn lost cancellation", b, dispatch, err)
+			}
+			deferred := input
+			deferred.Deferred = true
+			if _, dispatch, err := s.BeginDelivery(ctx, workspace, "main", deferred); err == nil || dispatch {
+				t.Fatal("message authorized a first turn")
+			}
+			if _, text, dispatch, err := s.BeginTurnDelivery(ctx, workspace, "main", input); err != nil || !dispatch || text != input.Message {
+				t.Fatal("explicit follow-up did not reserve the first turn", text, dispatch, err)
+			}
+			s = &Store{Directory: s.Directory}
+			if d, _, dispatch, err := s.BeginTurnDelivery(ctx, workspace, "main", input); err != nil || dispatch || d.State != "dispatching" {
+				t.Fatal("restart repeated recovery intent", d, dispatch, err)
+			}
+			input.ID = "second"
+			if _, _, dispatch, err := s.BeginTurnDelivery(ctx, workspace, "main", input); err == nil || dispatch {
+				t.Fatal("new call repeated uncertain first input")
+			}
+			turn := ""
+			if outcome == "delivered" {
+				turn = "first-turn"
+			}
+			state := outcome
+			if outcome == "observed" {
+				if err := s.ObserveLaunch(ctx, workspace, "main", "batch", "interrupted", ""); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.CancelUnsentTurn(ctx, workspace, "main", "batch"); err == nil {
+					t.Fatal("cancellation replaced observed host execution")
+				}
+				state = "rejected"
+			}
+			if _, err := s.RecordDelivery(ctx, workspace, "main", "resume", state, turn, ""); err != nil {
+				t.Fatal(err)
+			}
+			s = &Store{Directory: s.Directory}
+			b, err := s.Resume(ctx, workspace, "main", "batch")
+			if err != nil || b.Launch.TurnID != turn || b.Launch.TurnUnsent != (outcome == "canceled" || outcome == "rejected") {
+				t.Fatal("recovery acknowledgement lost launch facts", b, err)
+			}
+			_, _, dispatch, err := s.BeginTurnDelivery(ctx, workspace, "main", input)
+			if outcome == "uncertain" || outcome == "observed" {
+				if err == nil || dispatch {
+					t.Fatal("uncertain recovery authorized another first turn")
+				}
+			} else if err != nil || !dispatch {
+				t.Fatal("settled recovery blocked new authorized input", dispatch, err)
+			}
+		})
+	}
+}

@@ -121,6 +121,9 @@ func (n *orchestrateNavigation) resumeResponse(v *appServerUI, m appserver.Messa
 		if err == nil && (result.Thread.ID != v.thread || result.Thread.Cwd != b.Cwd || result.Thread.ParentThreadID != "") {
 			err = errors.New("host returned a different retained batch identity or cwd")
 		}
+		if err == nil && b.Launch.TurnUnsent && len(result.Thread.Turns) != 0 {
+			err = errors.New("canceled launch has host turns; inspect history before retrying")
+		}
 	}
 	if err != nil {
 		delete(v.requests, string(m.ID))
