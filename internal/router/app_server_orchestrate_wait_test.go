@@ -13,7 +13,17 @@ import (
 )
 
 func TestAppServerOrchestrateFinalMessageNotification(t *testing.T) {
-	u, request := orchestrateIdentityPendingTurn(t)
+	for _, kind := range []orchestrate.WorkflowKind{"", orchestrate.WorkflowDiagnosis} {
+		t.Run(string(kind), func(t *testing.T) { testOrchestrateFinalMessageNotification(t, kind) })
+	}
+}
+
+func testOrchestrateFinalMessageNotification(t *testing.T, kind orchestrate.WorkflowKind) {
+	var assignment *orchestrateSpawnInput
+	if kind != "" {
+		assignment = &orchestrateSpawnInput{TaskName: "batch", Kind: kind, Message: "diagnose"}
+	}
+	u, request := orchestratePendingWorkflow(t, nil, orchestrateVCSWorkspace(t, "git"), nil, assignment)
 	w := u.client.Input.(*appServerTestInput)
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"running-turn"}}`)
 	for i, answer := range []string{"Batch complete.\nChecks passed.", "", "Unphased final response", "Rejected delivery", ""} {

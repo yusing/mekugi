@@ -19,7 +19,7 @@ const (
 type WorkflowDispatchState string
 
 const (
-	// DispatchQueued is a validation command confirmed not yet sent to the host.
+	// DispatchQueued is a host effect confirmed not yet sent to the host.
 	DispatchQueued       WorkflowDispatchState = "queued"
 	DispatchIntent       WorkflowDispatchState = "intent"
 	DispatchAcknowledged WorkflowDispatchState = "acknowledged"

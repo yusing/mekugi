@@ -436,6 +436,20 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 				}
 				child.messageTurn, child.lastMessage = "", ""
 			}
+			if m.Method == "turn/completed" && status == "completed" && child.batch.Workflow != nil && child.batch.Workflow.Assignment.Kind == orchestrate.WorkflowDiagnosis {
+				u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+					return s.RetainDiagnosisAnswer(ctx, c.workspace, c.main, name, event.ThreadID, event.Turn.ID, resultMessage)
+				}, func(err error) {
+					if err != nil {
+						u.orchestrateStorageErr = errors.Join(u.orchestrateStorageErr, err)
+						u.setNotice("Orchestration lifecycle: "+err.Error(), true)
+						u.publishOrchestratedEvent(child, orchestrateEvent{Task: name, Thread: event.ThreadID, Turn: event.Turn.ID, Kind: "failure", Status: "storage_failed", Message: err.Error()})
+						return
+					}
+					u.deliverDiagnosisOutcome(child)
+				})
+				return false
+			}
 			u.orchestrateWork(func() func() {
 				err := store.ObserveDeliveryTurn(ctx, c.workspace, c.main, name, event.Turn.ID, status)
 				if err == nil {
@@ -497,7 +511,7 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 		return true
 	}
 	if r.completion != nil {
-		if implementationWorkflow(r.child) {
+		if r.child.batch.Workflow != nil {
 			var err error
 			if m.Error != nil {
 				err = errors.New(m.Error.Message)

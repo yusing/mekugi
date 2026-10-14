@@ -78,6 +78,17 @@ func (u *appServerUI) recoverOrchestratedRun() {
 			}
 			u.ensureOrchestrationNavigation().retained = batches
 			u.orchestrationRoster()
+			for _, batch := range batches {
+				if batch.Workflow == nil || batch.Workflow.Assignment.Kind != orchestrate.WorkflowDiagnosis || batch.Workflow.Outcome == nil || batch.Launch == nil || batch.Launch.ThreadID == "" {
+					continue
+				}
+				child := &orchestrateChild{batch: batch, command: &orchestrateCommand{ctx: u.ctx, workspace: workspace, main: main}, completedTurn: batch.Workflow.Outcome.TurnID}
+				if u.orchestrateThreads == nil {
+					u.orchestrateThreads = map[string]*orchestrateChild{}
+				}
+				u.orchestrateThreads[batch.Launch.ThreadID] = child
+				u.deliverDiagnosisOutcome(child)
+			}
 			u.recoverOrchestratedWorkflows(batches)
 		}
 	})

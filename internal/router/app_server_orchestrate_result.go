@@ -1,6 +1,47 @@
 package router
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"slices"
+
+	"github.com/yusing/mekugi/internal/orchestrate"
+)
+
+func (u *appServerUI) deliverDiagnosisOutcome(child *orchestrateChild) {
+	var queued []*orchestrate.WorkflowOutcome
+	for outcome := child.batch.Workflow.Outcome; outcome != nil; outcome = outcome.Previous {
+		if outcome.State == orchestrate.DispatchQueued {
+			queued = append(queued, outcome)
+		}
+	}
+	if len(queued) == 0 {
+		return
+	}
+	slices.Reverse(queued)
+	c := child.command
+	var dispatches []*orchestrate.WorkflowOutcome
+	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+		for _, outcome := range queued {
+			dispatch, err := s.BeginWorkflowOutcome(ctx, c.workspace, c.main, child.batch.TaskName, outcome.Message, outcome.TurnID)
+			if err != nil {
+				return err
+			}
+			if dispatch {
+				dispatches = append(dispatches, outcome)
+			}
+		}
+		return nil
+	}, func(err error) {
+		if err != nil {
+			u.setNotice("Diagnosis outcome: "+err.Error(), true)
+		}
+		for _, outcome := range dispatches {
+			event := orchestrateEvent{Task: child.batch.TaskName, Thread: child.batch.Launch.ThreadID, Turn: outcome.TurnID, Kind: "done", Status: "completed"}
+			u.deliverOrchestratedAnswer(child, event, outcome.Message)
+		}
+	})
+}
 
 // Codex queues these items for an active turn or records them for an idle thread.
 // It owns mailbox wake-up, history retention and the next model continuation.
@@ -14,7 +55,11 @@ func (u *appServerUI) deliverOrchestratedAnswer(child *orchestrateChild, event o
 		}},
 	})
 	if err != nil {
-		u.orchestratedAnswerFailure(child, event, err)
+		if child.batch.Workflow != nil && child.batch.Workflow.Assignment.Kind == orchestrate.WorkflowDiagnosis {
+			u.workflowOutcomeResponse(child, event, err)
+		} else {
+			u.orchestratedAnswerFailure(child, event, err)
+		}
 	}
 }
 

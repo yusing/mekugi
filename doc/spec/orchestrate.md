@@ -214,8 +214,11 @@ An active Main receives it through the host mailbox; an idle Main retains it for
 its next turn and resume. The completion wait returns identity and status after
 host acknowledgement, without repeating the answer. Messages from earlier turns,
 native descendants and asynchronous questions do not supply that result.
-Delivery failures are visible and are not retried automatically. Restored history
-does not deliver the answer again. Failed turns retain their host error message. Prompt events
+Diagnosis completion retains its exact answer before delivery. Restart delivers
+a retained answer only when it is known not to have been dispatched, without
+replaying the diagnosis turn. Delivery failures and unconfirmed dispatches remain
+inspectable and are not retried automatically. Restored history does not deliver
+an acknowledged or unconfirmed answer again. Failed turns retain their host error message. Prompt events
 identify their host request or asynchronous question item. Cross-thread answering
 remains part of the accepted navigation capability below. Events describe
 observations, not a claim that a prompt is still pending when the result is read.

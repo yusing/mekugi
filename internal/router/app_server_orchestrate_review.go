@@ -177,7 +177,7 @@ func (u *appServerUI) workflowOutcome(child *orchestrateChild) {
 	dispatch := false
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
 		var err error
-		dispatch, err = s.BeginWorkflowOutcome(ctx, c.workspace, c.main, child.batch.TaskName, text)
+		dispatch, err = s.BeginWorkflowOutcome(ctx, c.workspace, c.main, child.batch.TaskName, text, "")
 		return err
 	}, func(err error) {
 		if err != nil {
@@ -256,7 +256,7 @@ func writeWorkflowEvidence(text *strings.Builder, w *orchestrate.Workflow) {
 func (u *appServerUI) workflowOutcomeResponse(child *orchestrateChild, event orchestrateEvent, hostErr error) {
 	c := child.command
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
-		return s.RecordWorkflowOutcome(ctx, c.workspace, c.main, child.batch.TaskName, hostErr == nil)
+		return s.RecordWorkflowOutcome(ctx, c.workspace, c.main, child.batch.TaskName, event.Turn, hostErr == nil)
 	}, func(err error) {
 		if err = errors.Join(hostErr, err); err != nil {
 			u.orchestratedAnswerFailure(child, event, err)

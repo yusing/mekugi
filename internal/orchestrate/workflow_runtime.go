@@ -77,17 +77,54 @@ func (s *Store) RecordWorkflowCompletion(ctx context.Context, workspace, main, n
 }
 
 type WorkflowOutcome struct {
-	Phase   WorkflowPhase         `json:"phase"`
-	Message string                `json:"message"`
-	State   WorkflowDispatchState `json:"state"`
+	Phase    WorkflowPhase         `json:"phase"`
+	Message  string                `json:"message"`
+	State    WorkflowDispatchState `json:"state"`
+	TurnID   string                `json:"turn_id,omitempty"`  // Diagnosis completion identity.
+	Previous *WorkflowOutcome      `json:"previous,omitempty"` // Earlier diagnosis turns retain their delivery receipts.
+}
+
+func workflowOutcomeForTurn(w *Workflow, turn string) *WorkflowOutcome {
+	for outcome := w.Outcome; outcome != nil; outcome = outcome.Previous {
+		if outcome.TurnID == turn {
+			return outcome
+		}
+	}
+	return nil
+}
+
+// RetainDiagnosisAnswer saves completion and its unsent answer together. A
+// queued outcome can be dispatched after restart; intent cannot be replayed.
+func (s *Store) RetainDiagnosisAnswer(ctx context.Context, workspace, main, name, thread, turn, answer string) error {
+	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
+		if b.Workflow == nil || b.Workflow.Assignment.Kind != WorkflowDiagnosis || b.Launch == nil || b.Launch.ThreadID != thread || turn == "" {
+			return errors.New("answer requires a confirmed diagnosis turn")
+		}
+		w := b.Workflow
+		if workflowOutcomeForTurn(w, turn) != nil {
+			return errLaunchUnchanged
+		}
+		b.Launch.HostStatus, b.Launch.TurnUnsent, b.Error = "completed", false, ""
+		w.Outcome = &WorkflowOutcome{Phase: w.Phase, Message: answer, TurnID: turn, State: DispatchQueued, Previous: w.Outcome}
+		return nil
+	})
 }
 
 // BeginWorkflowOutcome reserves the single terminal notification before host
 // injection. An uncertain notification is inspectable, never automatically resent.
-func (s *Store) BeginWorkflowOutcome(ctx context.Context, workspace, main, name, message string) (dispatch bool, err error) {
+func (s *Store) BeginWorkflowOutcome(ctx context.Context, workspace, main, name, message, turn string) (dispatch bool, err error) {
 	err = s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
-		w, e := workflowFor(b)
-		if e != nil {
+		w := b.Workflow
+		if w != nil && w.Assignment.Kind == WorkflowDiagnosis {
+			outcome := workflowOutcomeForTurn(w, turn)
+			if outcome == nil || outcome.State != DispatchQueued {
+				return errLaunchUnchanged
+			}
+			outcome.State = DispatchIntent
+			dispatch = true
+			return nil
+		}
+		if _, e := workflowFor(b); e != nil {
 			return e
 		}
 		if w.Outcome != nil {
@@ -108,26 +145,32 @@ func (s *Store) BeginWorkflowOutcome(ctx context.Context, workspace, main, name,
 	}
 	return
 }
-func (s *Store) RecordWorkflowOutcome(ctx context.Context, workspace, main, name string, acknowledged bool) error {
+func (s *Store) RecordWorkflowOutcome(ctx context.Context, workspace, main, name, turn string, acknowledged bool) error {
 	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
-		w, e := workflowFor(b)
-		if e != nil {
-			return e
+		w := b.Workflow
+		if w == nil {
+			return errors.New("batch has no workflow")
 		}
-		if w.Outcome == nil {
+		if w.Assignment.Kind != WorkflowDiagnosis {
+			if _, err := workflowFor(b); err != nil {
+				return err
+			}
+		}
+		outcome := workflowOutcomeForTurn(w, turn)
+		if outcome == nil {
 			return errors.New("outcome has no retained intent")
 		}
 		state := DispatchUncertain
 		if acknowledged {
 			state = DispatchAcknowledged
 		}
-		if w.Outcome.State == state {
+		if outcome.State == state {
 			return errLaunchUnchanged
 		}
-		if w.Outcome.State != DispatchIntent {
+		if outcome.State != DispatchIntent {
 			return errors.New("outcome already settled")
 		}
-		w.Outcome.State = state
+		outcome.State = state
 		return nil
 	})
 }
