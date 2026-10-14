@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/internal/uisnapshot"
 )
 
 func TestUnderlinePreservesStyledRows(t *testing.T) {
@@ -139,4 +140,10 @@ func TestWrappedLinksDoNotStylePaddingOrGutters(t *testing.T) {
 			t.Fatalf("lost link content: %q", linked.String())
 		}
 	}
+}
+
+func TestUISnapshotReviewFindingLinkBoundaries(t *testing.T) {
+	p := activityui.Painter{FileLink: func(path string) bool { return strings.HasPrefix(path, "/src/") }}
+	rows := p.Markdown("correctness/AO-001: [P1] Preserve activeChildren[native] at [retain](/src/navigation.go:279).\n\nSee [array[index]](/src/array.go:3).", 60)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/review-finding-links.txt", rows, 60)
 }
