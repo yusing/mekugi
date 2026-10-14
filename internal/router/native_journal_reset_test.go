@@ -115,7 +115,7 @@ func TestNativeJournalResetRequiresSuccessfulHostCompletion(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ctx, u.proxy, u.thread, u.turn = t.Context(), proxy, thread, "turn"
 			u.reset = &journalResetDriver{ctx: t.Context(), proxy: proxy, client: u.client, workspace: workspace, thread: thread}
-			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+thread+`","turn":{"id":"turn","status":"`+status+`"}}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+thread+`","turn":{"id":"turn","status":"`+status+`"}}}`)
 			if status == "completed" {
 				resetDriverRequireMethods(t, wire, "turn/start")
 			} else {

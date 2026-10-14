@@ -809,8 +809,9 @@ func TestOrchestrateWorkflowCancelBeforeReviewThreadAcknowledgement(t *testing.T
 func TestOrchestrateWorkflowCancelBeforeDispatchIntentAcknowledgement(t *testing.T) {
 	u, w := workflowUI(t)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"implement","status":"completed"}}}`)
-	// Run ObserveLaunch and candidate admission, leaving BeginWorkflowDispatch pending.
-	for i := 0; i < 2; i++ {
+	// Consume independent lifecycle results and candidate admission, leaving
+	// BeginWorkflowDispatch pending at its owning state boundary.
+	for len(u.orchestrateThreads["child"].workflowWork) == 0 {
 		u.completeOrchestrateWork(<-u.orchestrateCompletions)
 	}
 	if len(u.orchestrateThreads["child"].workflowWork) == 0 {

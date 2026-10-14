@@ -172,7 +172,7 @@ func TestNativeJournalAutoResumeStopsForInputAndCancellation(t *testing.T) {
 			case "stale":
 				turn = "stale"
 			}
-			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+thread+`","turn":{"id":"`+turn+`","status":"`+status+`"}}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+thread+`","turn":{"id":"`+turn+`","status":"`+status+`"}}}`)
 			if d.active() != (scenario == "natural") {
 				t.Fatalf("active=%v", d.active())
 			}
@@ -356,13 +356,13 @@ func TestJournalAutoResumeUserStopSurvivesLaterQuestions(t *testing.T) {
 				if err := u.shell.send("\x1b"); err != nil {
 					t.Fatal(err)
 				}
-				appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"`+d.thread+`","turn":{"id":"continued"}}}`)
+				orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"`+d.thread+`","turn":{"id":"continued"}}}`)
 				resetDriverRequireMethods(t, wire, "turn/start", "turn/interrupt")
 				wire.Reset()
 			} else if scenario == "native-interrupted" {
 				u, _ := newAppServerTestUI()
 				u.ctx, u.proxy, u.client, u.thread, u.turn, u.reset = t.Context(), d.proxy, d.client, d.thread, "answer", d
-				appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+d.thread+`","turn":{"id":"answer","status":"interrupted"}}}`)
+				orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"`+d.thread+`","turn":{"id":"answer","status":"interrupted"}}}`)
 			} else if scenario == "headless-interrupted" {
 				h := &headlessAppServer{ctx: t.Context(), proxy: d.proxy, client: d.client, reset: d, thread: d.thread, turn: "answer", output: jsontext.NewEncoder(io.Discard)}
 				if err := headlessTestMessage(t, h, "turn/completed", `{"threadId":"`+d.thread+`","turn":{"id":"answer","status":"interrupted"}}`); err == nil {

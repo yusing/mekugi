@@ -289,8 +289,8 @@ func (u *appServerUI) launchOrchestratedChild(command *orchestrateCommand, batch
 }
 
 type orchestrateStorageJob struct {
-	key  [3]string
-	work func() func()
+	key     [3]string
+	prepare func() func() func()
 }
 
 // Run-level work has its own ordered lane. Batch lanes preserve event order
@@ -300,11 +300,16 @@ func (u *appServerUI) orchestrateWork(work func() func()) {
 }
 
 func (u *appServerUI) orchestrateBatchWork(workspace, main, name string, work func() func()) {
+	u.orchestratePreparedBatchWork(workspace, main, name, func() func() func() { return work })
+}
+
+// Prepare snapshots on the UI owner only when the preceding lane result has applied.
+func (u *appServerUI) orchestratePreparedBatchWork(workspace, main, name string, prepare func() func() func()) {
 	if u.orchestrateCompletions == nil {
 		u.orchestrateStorageContext, u.orchestrateStorageCancel = context.WithCancel(context.WithoutCancel(u.ctx))
 		u.orchestrateCompletions = make(chan func(), 1)
 	}
-	job := &orchestrateStorageJob{key: [3]string{workspace, main, name}, work: work}
+	job := &orchestrateStorageJob{key: [3]string{workspace, main, name}, prepare: prepare}
 	busy := slices.ContainsFunc(u.orchestrateJobs, func(other *orchestrateStorageJob) bool { return other.key == job.key })
 	u.orchestrateJobs = append(u.orchestrateJobs, job)
 	if !busy {
@@ -313,8 +318,9 @@ func (u *appServerUI) orchestrateBatchWork(workspace, main, name string, work fu
 }
 func (u *appServerUI) runOrchestrateWork(job *orchestrateStorageJob) {
 	ctx, completed := u.orchestrateStorageContext, u.orchestrateCompletions
+	work := job.prepare()
 	go func() {
-		result := job.work()
+		result := work()
 		complete := func() {
 			// Reserve the lane through callbacks that can append dependent work.
 			result()
@@ -743,7 +749,7 @@ func (u *appServerUI) orchestrateBusy() bool {
 			}
 		}
 	}
-	if len(u.orchestrateRequests) != 0 || len(u.orchestrateJobs) != 0 {
+	if len(u.orchestrateRequests) != 0 || slices.ContainsFunc(u.orchestrateJobs, func(job *orchestrateStorageJob) bool { return job.key[2] != journalStorageLane }) {
 		return true
 	}
 	for _, child := range u.orchestrateThreads {

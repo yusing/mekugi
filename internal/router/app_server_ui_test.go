@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	json "encoding/json/v2"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func (*appServerTestInput) Close() error { return nil }
 
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
-	u := &appServerUI{client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
+	u := &appServerUI{ctx: context.Background(), client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
 	u.view.painter.FileLink = u.markdownFileExists
 	return u, w
 }

@@ -23,7 +23,7 @@ func TestUISnapshotWaitJournalOrder(t *testing.T) {
 			u.clock, u.view.clock, u.agents.clock = func() time.Time { return now }, func() time.Time { return now }, func() time.Time { return now }
 			u.view.painter.Theme = livediff.DarkTheme
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "older-turn", "item": appServerItem{ID: "older-wait", Type: "mcpToolCall", Server: "orchestrate", Tool: "wait_agent", Status: "completed", Result: mustMarshalJSON(map[string]any{"structuredContent": map[string]any{"state": "canceled"}})}})
-			appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"waiting-turn"}}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"waiting-turn"}}}`)
 			if err := u.proxy.journals.beginJournalTurn(t.Context(), proxy.replayStore, workspace, "main", "waiting-turn"); err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +75,7 @@ func TestUISnapshotWaitJournalOrder(t *testing.T) {
 			}
 			transform.Delivered(output)
 			transform.ReleaseDelivery()
-			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"waiting-turn","status":"completed"}}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"waiting-turn","status":"completed"}}}`)
 			rows, _ := u.mainFrame(100, 20, 0)
 			visible := strings.Join(rows, "\n")
 			wait := "Waiting for agent"

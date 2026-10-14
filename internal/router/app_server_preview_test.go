@@ -124,6 +124,12 @@ func TestNativeUIPreview(t *testing.T) {
 				if err := paint(); err != nil {
 					return err
 				}
+			case complete := <-p.ui.orchestrateCompletions:
+				p.ui.completeOrchestrateWork(complete)
+				p.serve()
+				if err := paint(); err != nil {
+					return err
+				}
 			case key, ok := <-keys:
 				if !ok {
 					return io.EOF
@@ -320,7 +326,7 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 			if err := p.ui.shell.key(key); err != nil {
 				t.Fatal(err)
 			}
-			p.serve()
+			p.settle()
 		}
 	}
 	p.until("main streams its patch")
@@ -370,7 +376,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 			if err := p.ui.shell.key(key); err != nil {
 				t.Fatal(err)
 			}
-			p.serve()
+			p.settle()
 		}
 	}
 	render := func() string {
@@ -393,7 +399,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		t.Fatalf("queued compact absent from rendered frame:\n%s", frame)
 	}
 	p.until("done")
-	p.serve()
+	p.settle()
 	p.ui.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 	if p.ui.turn != "" || p.ui.compaction.ackPending || !strings.Contains(render(), "Context compacted") {
 		t.Fatal("queued compaction did not complete visibly")
@@ -521,6 +527,9 @@ func newNativePreview(t *testing.T) *nativePreview {
 
 func (p *nativePreview) close() {
 	p.ui.cancelPickerScan()
+	if err := p.ui.closeOrchestrateStorage(); err != nil {
+		p.t.Error(err)
+	}
 	p.ui.shell.diff.close()
 	p.ui.shell.diffScreen.Close()
 }
@@ -1200,6 +1209,25 @@ func (p *nativePreview) serve() {
 	}
 }
 
+// Offline assertions wait for durable UI results and the RPCs they release.
+// Interactive playback consumes these results in its input select instead.
+func (p *nativePreview) settle() {
+	p.serve()
+	for len(p.ui.orchestrateJobs) != 0 {
+		drainOrchestrateWork(p.t, p.ui)
+		p.serve()
+	}
+}
+
+func TestHostJournalIOPreviewClosesPendingWork(t *testing.T) {
+	p := newNativePreview(t)
+	p.notify("item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: "compaction", Type: "contextCompaction"}})
+	p.close()
+	if len(p.ui.orchestrateJobs) != 0 || p.ui.orchestrateStorageContext.Err() == nil {
+		t.Fatal("preview cleanup retained journal work or its storage context")
+	}
+}
+
 func (p *nativePreview) reply(id jsontext.Value, result any) {
 	wire, err := json.Marshal(result)
 	if err != nil {
@@ -1446,11 +1474,11 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 	rows, _ := p.ui.mainFrame(72, 28, 0)
 	t.Logf("question dock:\n%s", ansi.Strip(strings.Join(rows, "\n")))
 	appServerTestKeys(t, p.ui, "1\r")
-	p.serve()
+	p.settle()
 	p.ui.openQuestions()
 	p.ui.mainFrame(72, 28, 0)
 	appServerTestKeys(t, p.ui, "2\r")
-	p.serve()
+	p.settle()
 	if p.ui.questionCount() != 0 || p.ui.draft != "Keep my draft" {
 		t.Fatal("preview did not resolve both questions and restore its draft")
 	}

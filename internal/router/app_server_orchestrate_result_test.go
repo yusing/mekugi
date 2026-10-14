@@ -87,16 +87,27 @@ func TestAppServerOrchestrateDiagnosisAnswerRestart(t *testing.T) {
 			completion := `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"diagnosis","status":"completed"}}}`
 			appServerTestMessage(t, old, completion)
 			// Crash after the completion write, before its UI callback can dispatch.
-			select {
-			case <-old.orchestrateCompletions:
-				old.orchestrateJobs = nil
-			case <-time.After(5 * time.Second):
-				t.Fatal("completion persistence timeout")
-			}
+			// Independent journal lifecycle results share this UI channel.
 			store, workspace := old.proxy.orchestration.store, old.session.cwd
-			batches, err := store.Snapshot(workspace, "main")
-			if err != nil || batches[0].Launch.HostStatus != "completed" || batches[0].Workflow.Outcome == nil || batches[0].Workflow.Outcome.Message != answer || batches[0].Workflow.Outcome.State != orchestrate.DispatchQueued {
-				t.Fatal("completion did not retain its exact unsent answer", batches, err)
+			for {
+				select {
+				case complete := <-old.orchestrateCompletions:
+					batches, err := store.Snapshot(workspace, "main")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if batches[0].Launch.HostStatus != "completed" {
+						old.completeOrchestrateWork(complete)
+						continue
+					}
+					if batches[0].Workflow.Outcome == nil || batches[0].Workflow.Outcome.Message != answer || batches[0].Workflow.Outcome.State != orchestrate.DispatchQueued {
+						t.Fatal("completion did not retain its exact unsent answer", batches)
+					}
+					old.orchestrateJobs = nil
+				case <-time.After(5 * time.Second):
+					t.Fatal("completion persistence timeout")
+				}
+				break
 			}
 			if old.client.Input.(*appServerTestInput).Len() != 0 {
 				t.Fatal("answer dispatched before crash boundary")
@@ -121,7 +132,7 @@ func TestAppServerOrchestrateDiagnosisAnswerRestart(t *testing.T) {
 					t.Fatal("completion wait changed or repeated answer", event)
 				}
 			}
-			batches, err = store.Snapshot(workspace, "main")
+			batches, err := store.Snapshot(workspace, "main")
 			want := orchestrate.DispatchIntent
 			if acknowledge {
 				want = orchestrate.DispatchAcknowledged

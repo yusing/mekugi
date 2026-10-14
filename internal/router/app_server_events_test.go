@@ -5,6 +5,7 @@ import (
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,19 @@ func appServerTestNotify(t *testing.T, u *appServerUI, method string, params any
 	}
 	if err := u.message(appserver.Message{Method: method, Params: jsontext.Value(wire)}); err != nil {
 		t.Fatal(err)
+	}
+	// Match the terminal's worker-result consumption before checking presentation.
+	owner := u
+	if u.navigation != nil {
+		owner = u.navigation.owner
+	}
+	for slices.ContainsFunc(owner.orchestrateJobs, func(job *orchestrateStorageJob) bool { return job.key[2] == journalStorageLane }) {
+		select {
+		case complete := <-owner.orchestrateCompletions:
+			owner.completeOrchestrateWork(complete)
+		case <-time.After(5 * time.Second):
+			t.Fatal("native journal storage completion timeout")
+		}
 	}
 }
 

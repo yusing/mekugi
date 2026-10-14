@@ -134,6 +134,9 @@ type appServerUI struct {
 	journalView               nativeJournalView
 	journal                   *nativeJournalSink
 	unscopedJournal           *nativeJournalSink
+	journalResetEpoch         uint64
+	journalNotifyTurn         string
+	journalLifecycleErrors    map[string]error
 	journalReceipts           map[*nativeJournalSink]bool // Includes workers from replaced sessions.
 	shell                     *terminalUI
 	session                   appServerSession
@@ -575,26 +578,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	}
 	defer u.refreshPicker()
 	u.ensureJournalReset()
-	if u.reset != nil {
-		pendingCompletion := u.reset.pendingCompleted
-		handled, resetErr := u.reset.message(m)
-		if resetErr != nil {
-			u.setNotice("Journal slice: "+resetErr.Error(), true)
-		}
-		u.showResetNotice()
-		if handled {
-			if !u.reset.active() {
-				u.interruption.cancelDeferred()
-			}
-			if pendingCompletion != "" && pendingCompletion == u.reset.continuationTurn && !u.reset.active() && u.questionCount() == 0 {
-				u.notify("agent-turn-complete", "Agent turn complete")
-			}
-			return u.flushInput()
-		}
-	}
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
 	if handled, err := u.btwMessage(m); handled {
 		return err
+	}
+	u.queueJournalHostMessage(m)
+	if u.reset != nil {
+		if u.queueJournalResetMessage(m) {
+			return nil
+		}
 	}
 	// Any event can make stacked input sendable: an acknowledgement, a turn
 	// start or end, or settled settings.
@@ -996,6 +988,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	switch m.Method {
 	case "turn/started":
 		if p.ThreadID == u.thread {
+			u.journalNotifyTurn = ""
 			u.session.orchestrationWaitTurn = ""
 			u.started(p.Turn.ID)
 			u.status, u.alert, u.turnStarted = "Working", false, u.now()
@@ -1017,9 +1010,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			if p.Turn.Status == "interrupted" {
 				u.stopOrchestratedWaits()
-				if err := u.reset.stop(p.Turn.ID); err != nil {
-					u.setNotice("Journal stop: "+err.Error(), true)
-				}
+				u.stopJournalReset(p.Turn.ID, false)
 			}
 			u.completed(p.Turn.Status == "completed")
 			u.endSyncQuestions(p.Turn.ID)
@@ -1032,13 +1023,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
+				u.journalNotifyTurn = p.Turn.ID
 				if !u.orchestrateCheckoutUnavailable() && u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
-					if err := u.reset.completed(p.Turn.ID); err != nil {
-						u.setNotice("Slice continuation: "+err.Error(), true)
-					}
+					u.queueJournalResetWork("Slice continuation", func(d *journalResetDriver) error { return d.completed(p.Turn.ID) })
 				}
 				if !u.reset.active() {
 					u.notify("agent-turn-complete", "Agent turn complete")
+					u.journalNotifyTurn = ""
 				}
 			}
 			for _, c := range u.questions.calls {
@@ -1863,13 +1854,8 @@ func (u *appServerUI) interruptTurn() error {
 	}
 	u.compaction.cancelContinuation()
 	if u.turn == "" {
-		if u.reset.active() && u.reset.intent != nil {
-			d := u.reset
-			if err := d.proxy.journals.stopJournalTurn(d.ctx, d.proxy.replayStore, d.workspace, d.thread, d.intent.Turn); err != nil {
-				u.setNotice("Journal stop: "+err.Error(), true)
-			} else {
-				d.intent = nil // The RPC remains host-owned until its start or rejection.
-			}
+		if u.reset.active() {
+			u.stopJournalReset("", true)
 		}
 		if u.starting() || u.submission.text != "" || u.reset.active() {
 			u.interruption.deferUntilStart()
@@ -1883,9 +1869,7 @@ func (u *appServerUI) interruptTurn() error {
 	if !u.interruption.begin(u.turn) {
 		return nil
 	}
-	if err := u.reset.stop(u.turn); err != nil {
-		u.setNotice("Journal stop: "+err.Error(), true)
-	}
+	u.stopJournalReset(u.turn, false)
 	u.endSyncQuestions(u.turn)
 	u.status = "Interrupting…"
 	if u.compaction.interrupting {

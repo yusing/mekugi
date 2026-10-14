@@ -22,6 +22,7 @@ type nativeJournalSink struct {
 	current             map[string]uint64
 	inflight            map[string]nativeJournalPublication
 	acknowledged        <-chan error
+	resetPending        map[string]bool
 }
 
 type nativeJournalPublication struct {
@@ -186,7 +187,18 @@ func (s *nativeJournalSink) snapshot() []nativeJournalPublication {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items := make([]nativeJournalPublication, 0, len(s.pending))
+	var resetBarrier uint64
 	for _, item := range s.pending {
+		if item.event != nil && item.event.Op == "reset" && s.resetPending[item.event.ResetTurn] && (resetBarrier == 0 || item.item.Updated < resetBarrier) {
+			resetBarrier = item.item.Updated
+		}
+	}
+	for _, item := range s.pending {
+		// Tree receipts are high-water marks. Later milestones must not
+		// acknowledge a reset whose disclosure has not been painted yet.
+		if resetBarrier != 0 && item.item.Updated >= resetBarrier {
+			continue
+		}
 		if held, ok := s.inflight[item.item.ID]; ok && held.item.Updated == item.item.Updated && held.terminal == item.terminal {
 			continue
 		}
@@ -208,6 +220,29 @@ func (s *nativeJournalSink) snapshot() []nativeJournalPublication {
 		return 0
 	})
 	return items
+}
+
+// A live reset's disclosure is read by its ordered worker, before the
+// publication is eligible for presentation or its successful-paint receipt.
+func (s *nativeJournalSink) holdResetRecovery(turn string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.resetPending == nil {
+		s.resetPending = make(map[string]bool)
+	}
+	s.resetPending[turn] = true
+}
+
+func (s *nativeJournalSink) finishResetRecovery(turn, recovery string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, item := range s.pending {
+		if item.event != nil && item.event.Op == "reset" && item.event.ResetTurn == turn {
+			item.recovery = recovery
+			s.pending[id] = item
+		}
+	}
+	delete(s.resetPending, turn)
 }
 
 // Receipts belong to the journal owner and follow the successful terminal write.
@@ -345,7 +380,7 @@ func (u *appServerUI) applyJournalPublication(sink *nativeJournalSink, publicati
 		return
 	}
 	if publication.event == nil || publication.item.Text != "" { // Non-transition edits render no row.
-		if publication.event != nil && publication.event.Op == "reset" {
+		if publication.event != nil && publication.event.Op == "reset" && publication.recovery == "" {
 			publication.recovery = u.journalResetRecovery(sink.workspace, sink.thread, publication.event.ResetTurn)
 		}
 		u.view.applyJournal(journalKey(sink.workspace, sink.thread), publication)

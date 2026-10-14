@@ -41,20 +41,7 @@ func (s *journalStore) reconcileRootHostTurn(ctx context.Context, store *mekugiR
 }
 
 func (p *mekugiProxy) observeJournalHostTurn(ctx context.Context, workspace, method string, event appServerEvent) error {
-	if event.ThreadID != "" {
-		if method == "thread/tokenUsage/updated" {
-			usage := event.TokenUsage
-			used := uint64(0)
-			if usage.Last != nil {
-				used = usage.Last.TotalTokens
-			}
-			p.observeContextSliceUsage(event.ThreadID, usage.Last != nil, used, usage.ModelContextWindow)
-		} else if method == "item/completed" && event.Item.Type == "contextCompaction" {
-			p.mu.Lock()
-			delete(p.contextUsage, event.ThreadID)
-			p.mu.Unlock()
-		}
-	}
+	p.observeJournalContextUsage(method, event)
 	state, reason := "", ""
 	if method == "turn/started" {
 		state = "working"
@@ -88,6 +75,23 @@ func (p *mekugiProxy) observeJournalHostTurn(ctx context.Context, workspace, met
 		err = errors.Join(err, p.journals.observeLifecycle(ctx, p.replayStore, "", event.ThreadID, state, reason))
 	}
 	return err
+}
+
+func (p *mekugiProxy) observeJournalContextUsage(method string, event appServerEvent) {
+	if event.ThreadID != "" {
+		if method == "thread/tokenUsage/updated" {
+			usage := event.TokenUsage
+			used := uint64(0)
+			if usage.Last != nil {
+				used = usage.Last.TotalTokens
+			}
+			p.observeContextSliceUsage(event.ThreadID, usage.Last != nil, used, usage.ModelContextWindow)
+		} else if method == "item/completed" && event.Item.Type == "contextCompaction" {
+			p.mu.Lock()
+			delete(p.contextUsage, event.ThreadID)
+			p.mu.Unlock()
+		}
+	}
 }
 
 func (p *mekugiProxy) refreshJournalChildLifecycles(ctx context.Context, workspace, caller string) error {

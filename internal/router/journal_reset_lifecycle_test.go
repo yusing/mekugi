@@ -64,13 +64,13 @@ func TestNativeJournalContinuationStopBeforeHostStart(t *testing.T) {
 				}
 				wire.Reset()
 				if outcome == "rejected" {
-					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"rejected"}}`, requestID))
+					orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"rejected"}}`, requestID))
 					if u.interruption.beforeStart || d.active() {
 						t.Fatal("rejected start retained deferred interruption")
 					}
 					resetDriverRequireMethods(t, wire)
 				} else {
-					appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"`+d.thread+`","turn":{"id":"next"}}}`)
+					orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"`+d.thread+`","turn":{"id":"next"}}}`)
 					resetDriverRequireMethods(t, wire, "turn/interrupt")
 				}
 			})

@@ -25,30 +25,42 @@ type journalResetDriver struct {
 	continuationTurn, lastStartedTurn     string
 	notice                                string
 	pendingCompleted                      string
+	pending                               int // Native storage jobs gate input, not policy execution.
+	deferRequest                          func(string, string, any)
+	contextSnapshot                       func() (hostContextUsage, bool)
 }
 
-func (d *journalResetDriver) active() bool { return d != nil && (d.phase != "" || d.startPending) }
+func (d *journalResetDriver) active() bool {
+	return d != nil && (d.phase != "" || d.startPending || d.pending != 0)
+}
 
 func (d *journalResetDriver) send(phase, method string, params any) error {
+	if d.deferRequest != nil {
+		d.phase, d.requestID = phase, ""
+		d.deferRequest(phase, method, params)
+		return nil
+	}
 	id, err := d.client.Send(method, params, true)
 	if err != nil {
-		d.startPending = false
-		d.phase, d.requestID = "", ""
-		d.notice = "Slice request outcome unknown; not retried."
-		if d.intent != nil {
-			// Keep the evidence, but an armed intent must not answer a later,
-			// unrelated manual compaction.
-			_ = d.change(func(_ *threadJournal, intent *journalResetIntent) error {
-				if intent.Phase == "armed" {
-					intent.Phase = "unknown"
-				}
-				return nil
-			})
-		}
-		return err
+		return d.sendFailed(err)
 	}
 	d.phase, d.requestID = phase, id
 	return nil
+}
+
+func (d *journalResetDriver) sendFailed(err error) error {
+	d.startPending = false
+	d.phase, d.requestID = "", ""
+	d.notice = "Slice request outcome unknown; not retried."
+	if d.intent != nil {
+		_ = d.change(func(_ *threadJournal, intent *journalResetIntent) error {
+			if intent.Phase == "armed" {
+				intent.Phase = "unknown"
+			}
+			return nil
+		})
+	}
+	return err
 }
 
 func (d *journalResetDriver) change(mutate func(*threadJournal, *journalResetIntent) error) error {
@@ -150,9 +162,15 @@ func (d *journalResetDriver) needsContextReset() bool {
 	if journalParent(d.intent.Path) == "" {
 		return true
 	}
-	d.proxy.mu.RLock()
-	usage, known := d.proxy.contextUsage[d.thread]
-	d.proxy.mu.RUnlock()
+	var usage hostContextUsage
+	var known bool
+	if d.contextSnapshot != nil {
+		usage, known = d.contextSnapshot()
+	} else {
+		d.proxy.mu.RLock()
+		usage, known = d.proxy.contextUsage[d.thread]
+		d.proxy.mu.RUnlock()
+	}
 	return !known || usage.tokens >= 150_000
 }
 
@@ -343,6 +361,9 @@ func (d *journalResetDriver) label() string {
 		return "Journal slice · Resetting context"
 	case "starting":
 		return "Journal slice · Continuing plan"
+	}
+	if d.pending != 0 {
+		return "Journal slice · Saving journal"
 	}
 	return ""
 }

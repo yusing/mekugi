@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -246,22 +245,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		return true, u.hookEvent(m.Method, p)
 	}
 	u.observeProgress(m.Method, p)
-	if u.proxy != nil && u.proxy.journals != nil && p.ThreadID != "" {
-		workspace := s.threadWorkspace(p.ThreadID)
-		var scopeErr error
-		if workspace == "" && u.proxy.replayStore != nil && (m.Method == "turn/started" || m.Method == "turn/completed" || m.Method == "thread/status/changed") {
-			// A provider request can establish ownership before thread/read replies.
-			workspace, scopeErr = u.proxy.replayStore.retainedJournalWorkspace(p.ThreadID, true)
-			if errors.Is(scopeErr, errNoRetainedJournalWorkspace) {
-				workspace, scopeErr = u.journalDescendantWorkspace(p.ThreadID)
-			}
-		}
-		if scopeErr == nil {
-			if err := u.proxy.observeJournalHostTurn(u.ctx, workspace, m.Method, p); err != nil {
-				u.setNotice("Journal lifecycle: "+err.Error(), true)
-			}
-		}
-	}
 	if m.Method == "item/started" {
 		u.observeShellItem(p.ThreadID, p.Item)
 	}
@@ -408,6 +391,10 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			if dropped := s.dropThinking(p.ThreadID); len(dropped) != 0 {
 				u.applyActivity(dropped, nil)
 			}
+		}
+		if item.Type == "contextCompaction" && m.Method == "item/completed" && p.ThreadID == u.thread {
+			u.queueJournalCompactionProgress(item, p.ThreadID, p.TurnID, activityPaneEntry{Agent: agent, Kind: "progress", Observed: now, native: native})
+			break
 		}
 		if text, wait, handled := u.progress(item, m.Method, p.ThreadID, p.TurnID); handled {
 			if text != "" {

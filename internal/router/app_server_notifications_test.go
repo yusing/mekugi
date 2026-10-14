@@ -112,10 +112,10 @@ func TestAppServerNotificationCompletion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			out := notificationTestOutput(t, u)
-			appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
+			orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
 			wire := fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":%q,"status":%q}}}`, tc.thread, tc.turn, tc.status)
-			appServerTestMessage(t, u, wire)
-			appServerTestMessage(t, u, wire)
+			orchestrateTestMessage(t, u, wire)
+			orchestrateTestMessage(t, u, wire)
 			want := ""
 			if tc.want {
 				want = "\x1b]9;Agent turn complete\a"
@@ -182,8 +182,8 @@ func TestAppServerNotificationAutoContinue(t *testing.T) {
 			out := notificationTestOutput(t, u)
 			complete := func(turn string) {
 				t.Helper()
-				appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":%q}}}`, d.thread, turn))
-				appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":%q,"status":"completed"}}}`, d.thread, turn))
+				orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":%q}}}`, d.thread, turn))
+				orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":%q,"status":"completed"}}}`, d.thread, turn))
 			}
 			complete("answer")
 			if out.Len() != 0 || !d.active() {
@@ -199,7 +199,7 @@ func TestAppServerNotificationAutoContinue(t *testing.T) {
 			}
 			reply := fmt.Sprintf(`{"id":%s,"result":{"turn":{"id":"continued"}}}`, d.requestID)
 			if !lateReply {
-				appServerTestMessage(t, u, reply)
+				orchestrateTestMessage(t, u, reply)
 			}
 			if err := d.proxy.journals.beginJournalTurn(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "continued"); err != nil {
 				t.Fatal(err)
@@ -212,7 +212,7 @@ func TestAppServerNotificationAutoContinue(t *testing.T) {
 				if out.Len() != 0 {
 					t.Fatal("completion notified before continuation decision settled")
 				}
-				appServerTestMessage(t, u, reply)
+				orchestrateTestMessage(t, u, reply)
 			}
 			if want := "\x1b]9;Agent turn complete\a"; out.String() != want || d.active() {
 				t.Fatalf("real completion: notification=%q active=%v", out.String(), d.active())
@@ -244,7 +244,7 @@ func TestAppServerNotificationQuestions(t *testing.T) {
 				t.Fatalf("question output = %q, want %q", out.String(), want)
 			}
 			if async {
-				appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
+				orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 				if out.String() != want {
 					t.Fatal("pending question also emitted completion")
 				}
@@ -315,8 +315,8 @@ func TestAppServerNotificationOutputFailureNonfatal(t *testing.T) {
 	notificationTestOutput(t, u)
 	failing := new(notificationFailWriter)
 	u.notifications.out = failing
-	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
-	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
+	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`)
+	orchestrateTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 	u.notify("agent-turn-complete", "again")
 	if u.turn != "" || !strings.HasPrefix(u.status, "Completed") || failing.calls != 1 || u.notice == "" {
 		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.turn, u.status, failing.calls, u.notice)
@@ -331,20 +331,20 @@ func TestAppServerNotificationCompactionAck(t *testing.T) {
 	if err := d.start(); err != nil {
 		t.Fatal(err)
 	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{}}`, d.requestID))
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"compact"}}}`, d.thread))
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{}}`, d.requestID))
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"compact"}}}`, d.thread))
 	if err := d.change(func(_ *threadJournal, intent *journalResetIntent) error { intent.Phase = "consumed"; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"compact","item":{"type":"contextCompaction","id":"compact-item"}}}`, d.thread))
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":"compact","status":"completed"}}}`, d.thread))
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"compact","item":{"type":"contextCompaction","id":"compact-item"}}}`, d.thread))
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":"compact","status":"completed"}}}`, d.thread))
 	u.writeTerminalTitle(time.Unix(0, 0))
 	if u.notifications.lastTitle != "Mekugi ⠋" {
 		t.Fatal("next slice awaiting acknowledgement reported terminal idle")
 	}
 	out.Reset()
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"continued"}}}`, d.thread))
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"turn":{"id":"continued"}}}`, d.requestID))
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"continued"}}}`, d.thread))
+	orchestrateTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"turn":{"id":"continued"}}}`, d.requestID))
 	if out.Len() != 0 {
 		t.Fatalf("false completion while turn %q runs: %q", u.turn, out.String())
 	}
