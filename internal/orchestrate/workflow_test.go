@@ -502,3 +502,21 @@ func TestWorkflowRejectedResultsRouteCorrectionAndInputResumes(t *testing.T) {
 		t.Fatal("resume kept the old correction budget", w)
 	}
 }
+
+func TestWorkflowBlockedCandidateRetainsReport(t *testing.T) {
+	f := newWorkflowFixture(t, nil)
+	if err := f.s.BlockWorkflowCandidate(t.Context(), f.workspace, "main", "batch", "blocked /1", "report"); err == nil {
+		t.Fatal("blocker replaced an admitted candidate")
+	}
+	f.ok(f.s.StopWorkflow(t.Context(), f.workspace, "main", "batch", PhaseNeedsDecision, "decision"))
+	f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
+	f.ok(f.s.BlockWorkflowCandidate(t.Context(), f.workspace, "main", "batch", "blocked /1", "current report"))
+	if w := f.state(); w.Phase != PhaseNeedsDecision || w.Reason != "blocked /1" || w.Report != "current report" || w.CorrectionRounds != 0 {
+		t.Fatal("blocker or report not durable", w)
+	}
+	f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
+	f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "resolved"))
+	if w := f.state(); w.Phase != PhaseQueuedReview || w.Reason != "" || w.Report != "resolved" {
+		t.Fatal("historical blocker prevented later admission", w)
+	}
+}

@@ -259,9 +259,9 @@ func (u *appServerUI) workflowOutcomeResponse(child *orchestrateChild, event orc
 	})
 }
 
-// Successful implementation and correction turns admit only an actual clean
-// committed checkout. Completion prose is never candidate/check evidence; it is
-// retained as the report for the coordinator.
+// Successful implementation and correction turns require an unblocked owned
+// journal and a clean committed checkout. Prose is retained as the coordinator
+// report, never as candidate or check evidence.
 func (u *appServerUI) workflowImplementationCompleted(child *orchestrateChild, turn appServerTurn, report string) {
 	if child.batch.Launch.TurnID == "" {
 		child.workflowCompletion, child.workflowReport = &turn, report
@@ -283,9 +283,8 @@ func (u *appServerUI) workflowImplementationCompleted(child *orchestrateChild, t
 		u.workflowFailure(child, orchestrate.PhaseFailed, fmt.Errorf("implementation turn %s", turn.Status))
 		return
 	}
-	c, name := child.command, child.batch.TaskName
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
-		return admitWorkflowResult(ctx, s, c, name, report)
+		return u.admitWorkflowResult(ctx, s, child, report)
 	}, func(err error) {
 		if err != nil {
 			u.workflowFailure(child, orchestrate.PhaseNeedsDecision, err)
@@ -293,9 +292,14 @@ func (u *appServerUI) workflowImplementationCompleted(child *orchestrateChild, t
 	})
 }
 
-// admitWorkflowResult routes an implementer result that is not a clean
-// committed checkout back to correction instead of stopping the workflow.
-func admitWorkflowResult(ctx context.Context, s *orchestrate.Store, c *orchestrateCommand, name, report string) error {
+// admitWorkflowResult checks journal authority before observing a candidate.
+// Unclean checkouts route to correction; authored blockers require a decision.
+func (u *appServerUI) admitWorkflowResult(ctx context.Context, s *orchestrate.Store, child *orchestrateChild, report string) error {
+	c, name := child.command, child.batch.TaskName
+	run := journalRun{Directory: s.Directory, Workspace: c.workspace, Main: c.main}
+	if err := u.proxy.journals.implementationBlocker(ctx, u.proxy.replayStore, child.batch.Cwd, child.batch.Launch.ThreadID, run); err != nil {
+		return s.BlockWorkflowCandidate(ctx, c.workspace, c.main, name, "candidate admission: "+err.Error(), report)
+	}
 	candidate, err := s.ObserveCandidate(ctx, c.workspace, c.main, name)
 	if err != nil {
 		return s.RouteWorkflowCorrection(ctx, c.workspace, c.main, name, "result is not a clean committed checkout: "+err.Error(), report)
@@ -481,7 +485,7 @@ func (u *appServerUI) finishWorkflowWork(work *orchestrateReviewWork) {
 			return fmt.Errorf("workflow %s turn %s", d.Kind, turn.Status)
 		}
 		if d.Kind == orchestrate.DispatchCorrection {
-			return admitWorkflowResult(ctx, s, c, name, message)
+			return u.admitWorkflowResult(ctx, s, child, message)
 		}
 		candidate, err := s.ObserveCandidate(ctx, c.workspace, c.main, name)
 		if err != nil {

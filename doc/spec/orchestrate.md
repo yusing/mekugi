@@ -237,7 +237,12 @@ execution in the batch checkout with the implementer's permissions; only the hos
 exit status is validation evidence, never an agent's completion message. A failed
 check returns to the implementer for correction with its output tail. A check without
 a confirmed exit status requires a decision. An implementation or correction result
-that is not a clean, committed checkout also returns for correction. A changed
+that is not a clean, committed checkout also returns for correction. Current blocked
+tasks in the implementer's authenticated owned journal require a decision before
+candidate admission, even when a successful host turn has no final message. The
+outcome retains the blocked path and reason. Missing or unreadable journal state
+also requires a decision. Resolved historical blockers and tasks owned by other
+journals do not prevent admission. A changed
 candidate invalidates prior check and review approvals. The batch view shows the
 running validation command and streamed host output through the ordinary command
 presentation. Completion uses the host exit status; missing status stays uncertain,

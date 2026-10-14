@@ -26,6 +26,20 @@ type journalRunMember struct {
 	err     error
 }
 
+// Admission uses current owned tasks, just as journal continuation does. Mounted
+// native descendants and historical blocked events do not change that ownership.
+func (s *journalStore) implementationBlocker(ctx context.Context, store *mekugiReplayStore, workspace, thread string, run journalRun) error {
+	return s.transaction(ctx, store, workspace, thread, func(j *threadJournal, exists bool) error {
+		if !exists || !run.admitsRoot(*j) {
+			return errors.New("implementation journal authority is unavailable")
+		}
+		if blocker := j.continuationBlocker(); blocker != nil {
+			return fmt.Errorf("implementation journal blocked at %s: %s", blocker.Path, blocker.Reason)
+		}
+		return errJournalUnchanged
+	})
+}
+
 func (run journalRun) admitsRoot(j threadJournal) bool {
 	return j.IdentityKnown && !j.IdentityConflicted && j.Parent == "" && j.Author == "/root" &&
 		j.Orchestration != nil && *j.Orchestration == run

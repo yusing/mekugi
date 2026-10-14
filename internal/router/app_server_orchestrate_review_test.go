@@ -434,6 +434,127 @@ func TestOrchestrateWorkflowUncommittedResultRoutesCorrection(t *testing.T) {
 	}
 }
 
+func TestOrchestrateWorkflowBlockedJournalAdmission(t *testing.T) {
+	u, w := workflowUI(t, "printf verified")
+	child := u.orchestrateThreads["child"]
+	apply := func(workspace, thread string, mutations ...journalMutation) {
+		t.Helper()
+		if _, err := u.proxy.journals.apply(u.ctx, u.proxy.replayStore, workspace, thread, "", mutations); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply(child.batch.Cwd, "child",
+		journalMutation{Op: "add", Kind: "task", Title: new("Acceptance"), State: new("working")},
+		journalMutation{Op: "add", Under: "/1", Kind: "task", Title: new("Installed host"), State: new("blocked"), Reason: new("installed-host acceptance failed")},
+		journalMutation{Op: "finish", finishTurn: "implement", finishItem: "finish-item"})
+	// A fresh owner must read the durable current tree, not an event notification.
+	u.proxy.journals = newJournalStore()
+	workflowCompleted(t, u, "child", "implement", "")
+	if wf := child.batch.Workflow; wf.Phase != orchestrate.PhaseNeedsDecision || wf.Candidate != nil || len(wf.Dispatches) != 0 || wf.Report != "" {
+		t.Fatal("blocked finish admitted a candidate", wf)
+	}
+	if notice := workflowNotice(t, u, w); !strings.Contains(notice, "/1/1: installed-host acceptance failed") || strings.Contains(notice, "Workflow ready") {
+		t.Fatal("outcome lost the authored blocker", notice)
+	}
+	j, exists, err := readThreadJournal(u.proxy.replayStore, child.batch.Cwd, "child")
+	if err != nil || !exists || j.LifecycleState != "done" || child.batch.Launch.HostStatus != "completed" {
+		t.Fatal("admission changed successful host lifecycle", j.LifecycleState, child.batch.Launch, err)
+	}
+	// Main and a completed native descendant can retain their own blockers. The
+	// implementer's owned tree, including its resolved history, is the boundary.
+	apply(u.session.cwd, "main", journalMutation{Op: "add", Kind: "task", Title: new("Other work"), State: new("blocked"), Reason: new("unrelated")})
+	store := u.proxy.orchestration.store
+	sibling, err := store.Prepare(u.ctx, u.session.cwd, "main", "sibling")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.BeginLaunch(u.ctx, u.session.cwd, "main", "sibling", "other work", []byte(`{}`), nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, err := range []error{
+		store.RecordThread(u.ctx, u.session.cwd, "main", "sibling", "sibling"),
+		u.proxy.journals.initialize(u.ctx, u.proxy.replayStore, sibling.Cwd, "sibling", "/root", ""),
+		u.proxy.journals.bindIdentity(u.ctx, u.proxy.replayStore, sibling.Cwd, "sibling", "", "/root", true),
+		u.proxy.journals.bindRun(u.ctx, u.proxy.replayStore, sibling.Cwd, "sibling", *j.Orchestration),
+		u.proxy.journals.initialize(u.ctx, u.proxy.replayStore, child.batch.Cwd, "native", "/root/worker", ""),
+		u.proxy.journals.bindIdentity(u.ctx, u.proxy.replayStore, child.batch.Cwd, "native", "child", "/root/worker", true),
+		u.proxy.journals.observeLifecycle(u.ctx, u.proxy.replayStore, child.batch.Cwd, "native", "done", ""),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply(sibling.Cwd, "sibling", journalMutation{Op: "add", Kind: "task", Title: new("Sibling work"), State: new("blocked"), Reason: new("sibling-owned")})
+	apply(child.batch.Cwd, "native", journalMutation{Op: "add", Kind: "task", Title: new("Native work"), State: new("blocked"), Reason: new("native-owned")})
+	apply(child.batch.Cwd, "child",
+		journalMutation{Op: "set", P: "/1/1", State: new("done")},
+		journalMutation{Op: "set", P: "/1", State: new("done")},
+		journalMutation{Op: "add", Kind: "task", Title: new("Native result"), Agent: "/root/worker", State: new("done")})
+	u.proxy.journals = newJournalStore()
+	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"resolved","status":"inProgress"}}}`)
+	workflowCompleted(t, u, "child", "resolved", "resolved acceptance")
+	workflowCheck(t, u, w, "printf verified", `{"exitCode":0,"stdout":"verified","stderr":""}`)
+	workflowReview(t, u, w, orchestrate.ReviewCorrectness, orchestrate.VerdictClear)
+	workflowReview(t, u, w, orchestrate.ReviewSimplification, orchestrate.VerdictClear)
+	if notice := workflowNotice(t, u, w); child.batch.Workflow.Phase != orchestrate.PhaseReady || !strings.Contains(notice, "resolved acceptance") {
+		t.Fatal("resolved or unrelated blockers prevented readiness", notice)
+	}
+}
+
+func TestOrchestrateWorkflowBlockedCorrectionReport(t *testing.T) {
+	u, w := workflowUI(t, "check")
+	workflowCompleted(t, u, "child", "implement", "initial report")
+	workflowCheck(t, u, w, "check", `{"exitCode":1,"stdout":"failed","stderr":""}`)
+	correction, _ := workflowTake(t, u, w, "turn/start", "child", orchestrate.DispatchCorrection)
+	orchestrateTestReply(t, u, correction, `{"turn":{"id":"correction"}}`)
+	child := u.orchestrateThreads["child"]
+	if _, err := u.proxy.journals.apply(u.ctx, u.proxy.replayStore, child.batch.Cwd, "child", "", []journalMutation{{Op: "add", Kind: "task", Title: new("Production requirement"), State: new("blocked"), Reason: new("net-negative requirement unmet")}}); err != nil {
+		t.Fatal(err)
+	}
+	workflowCompleted(t, u, "child", "correction", "needs a scope decision")
+	if notice := workflowNotice(t, u, w); child.batch.Workflow.Phase != orchestrate.PhaseNeedsDecision || !strings.Contains(notice, "/1: net-negative requirement unmet") || !strings.Contains(notice, `Implementer report:\nneeds a scope decision`) {
+		t.Fatal("correction lost its blocker or report", notice)
+	}
+	for _, dispatch := range child.batch.Workflow.Dispatches {
+		if dispatch.Kind == orchestrate.DispatchCorrection && dispatch.HostStatus != "completed" {
+			t.Fatal("blocked correction lost host completion", dispatch)
+		}
+	}
+}
+
+func TestOrchestrateWorkflowUnavailableJournalAdmission(t *testing.T) {
+	for _, state := range []string{"missing", "corrupt", "wrong-run", "conflicted"} {
+		t.Run(state, func(t *testing.T) {
+			u, w := workflowUI(t)
+			child := u.orchestrateThreads["child"]
+			path := filepath.Join(u.proxy.replayStore.directory, journalFilename(child.batch.Cwd, "child"))
+			var err error
+			switch state {
+			case "missing":
+				err = os.Remove(path)
+			case "corrupt":
+				err = os.WriteFile(path, []byte("{"), 0600)
+			default:
+				err = u.proxy.journals.transaction(u.ctx, u.proxy.replayStore, child.batch.Cwd, "child", func(j *threadJournal, _ bool) error {
+					if state == "wrong-run" {
+						j.Orchestration.Main = "other-main"
+					} else {
+						j.IdentityConflicted = true
+					}
+					return nil
+				})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			workflowCompleted(t, u, "child", "implement", "report survives")
+			if notice := workflowNotice(t, u, w); child.batch.Workflow.Phase != orchestrate.PhaseNeedsDecision || !strings.Contains(notice, "candidate admission:") || !strings.Contains(notice, "report survives") {
+				t.Fatal("unavailable journal certified admission or lost report", notice)
+			}
+		})
+	}
+}
+
 func TestOrchestrateWorkflowFollowupResumesStoppedWorkflow(t *testing.T) {
 	u, w := workflowUI(t)
 	workflowCompleted(t, u, "child", "implement", "")

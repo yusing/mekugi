@@ -313,6 +313,25 @@ func (s *Store) RecordWorkflowReview(ctx context.Context, workspace, main, name,
 	})
 }
 
+// BlockWorkflowCandidate retains an implementation result requiring a decision,
+// without admitting a candidate or spending an automatic correction round.
+func (s *Store) BlockWorkflowCandidate(ctx context.Context, workspace, main, name, reason, report string) error {
+	if strings.TrimSpace(reason) == "" {
+		return errors.New("candidate blocker requires a reason")
+	}
+	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
+		w, err := workflowFor(b)
+		if err != nil {
+			return err
+		}
+		if w.Phase != PhaseImplementation && (w.Phase != PhaseCorrection || !w.correctionTurnAcknowledged()) {
+			return errors.New("workflow is not awaiting a candidate")
+		}
+		w.Phase, w.Reason, w.Report = PhaseNeedsDecision, reason, report
+		return nil
+	})
+}
+
 func (s *Store) StopWorkflow(ctx context.Context, workspace, main, name string, phase WorkflowPhase, reason string) error {
 	if phase != PhaseNeedsDecision && phase != PhaseCanceled && phase != PhaseFailed || strings.TrimSpace(reason) == "" {
 		return errors.New("workflow stop requires a terminal phase and reason")
