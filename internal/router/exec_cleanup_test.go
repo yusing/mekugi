@@ -112,7 +112,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		const previewID = "running:cleanup-test"
 		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
-		}, nil)
+		}, nil, nil)
 		synctest.Wait()
 		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged scope should stay out of the pane")
 
@@ -190,7 +190,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		const previewID = "running:admission-retry"
 		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
-		}, nil)
+		}, nil, nil)
 		synctest.Wait()
 		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged scope should not seek broker admission")
 		assertExecCleanupPreviewNotActive(t, broker, previewID)
@@ -244,7 +244,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 		const previewID = "running:large-unchanged"
 		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{
 			ID: previewID, Workspace: root, Thread: "thread",
-		}, nil)
+		}, nil, nil)
 		advanceExecCleanupPreviewTicker(t)
 		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged large file became a running change")
 		broker.mu.Lock()

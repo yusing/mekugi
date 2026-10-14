@@ -21,12 +21,13 @@ import (
 )
 
 // The window registry owns display cancellation, not process continuation.
-// Running previews never sweep, persist evidence, or re-run a provider query.
+// Source-card polling never sweeps or re-runs a provider query. Completed
+// boundaries can compare private snapshots; neither path persists evidence.
 var execRunningPreviewSlots = make(chan struct{}, 16)
 
 const execRunningPreviewBytes = 1 << 20
 
-func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *liveDiffBroker, workspace, thread, caller string) {
+func (r *execWindowRegistry) preview(ref string, observation execObservation, broker *liveDiffBroker, workspace, thread, caller string, snapshots *workspaceSnapshots) {
 	// VCS effects use the same provenance admission as authored counts.
 	// Only source-content projections admit paths, never generic watch effects.
 	excludedVCS := func(origin string) bool {
@@ -36,6 +37,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	if r == nil || broker == nil {
 		return
 	}
+	observed := observation
 	projected := make(map[string]bool)
 	commands := observation.Commands
 	observation.Commands = nil
@@ -55,7 +57,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	})
 	observation.Omitted = slices.DeleteFunc(slices.Clone(observation.Omitted), func(omission execOmission) bool { return excludedVCS(omission.Origin) })
 	observation.Listings = slices.DeleteFunc(slices.Clone(observation.Listings), func(listing execListing) bool { return excludedVCS(listing.Origin) })
-	if r == nil || broker == nil || len(observation.Files) == 0 {
+	if len(observation.Files) == 0 && r.tracker == nil {
 		return
 	}
 	r.mu.Lock()
@@ -71,10 +73,11 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	}
 	ctx, cancel := context.WithCancel(broker.ctx)
 	window.previewCancel = cancel
-	tracking := newExecPreviewTrack(r.tracker, window.thread, window.turn, observation.Commands)
+	tracking := newExecPreviewTrack(r.tracker, window.thread, window.turn, observed.Commands)
 	if tracking != nil {
 		tracking.streamable = make(map[string]bool)
 		for _, command := range observation.Commands {
+			tracking.streamable[tracking.authoredScript(command.Command, "")] = true
 			segments, _ := execsegment.Split(command.Command)
 			directory := command.Workdir
 			for _, segment := range segments {
@@ -96,7 +99,8 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	turn := window.turn
 	go func() {
 		defer func() { <-execRunningPreviewSlots }()
-		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking)
+		capture := &execPreviewCapture{registry: r, ref: ref, observation: observed, snapshots: snapshots}
+		runExecScopePreview(ctx, broker, observation, diffview.Preview{ID: "running:" + ref, Workspace: workspace, Thread: thread, Turn: turn, Caller: caller}, tracking, capture)
 	}()
 }
 
@@ -206,7 +210,58 @@ func execPreviewExpected(ctx context.Context, observation execObservation) map[s
 	return expected
 }
 
-func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview, tracking *execPreviewTrack) {
+// The running watcher owns both source cards and completed Activity evidence.
+// Only cards require prediction. Receipts compare the original capture scope.
+type execPreviewCapture struct {
+	registry    *execWindowRegistry
+	ref         string
+	observation execObservation
+	snapshots   *workspaceSnapshots
+	completed   int
+	text        string
+	calls       []string
+	next        time.Time
+}
+
+func (c *execPreviewCapture) update(ctx context.Context, broker *liveDiffBroker, preview diffview.Preview, tracking *execPreviewTrack, state execPreviewState) {
+	if state.completed <= c.completed || time.Now().Before(c.next) {
+		return
+	}
+	c.next = time.Now().Add(500 * time.Millisecond)
+	view := c.registry.view([]string{c.ref}, false)
+	env := execReconcileEnv{excluded: view.excluded}
+	// Only unnamed effects require an isolated workspace snapshot. A sibling
+	// on another target must not suppress captured named baselines.
+	if c.snapshots != nil && c.observation.Tree != "" && view.snapshot && len(view.overlaps) == 0 && len(view.background) == 0 {
+		var err error
+		env.snapshot, _, err = c.snapshots.since(ctx, preview.Workspace, c.observation.Tree, view.claims)
+		if err != nil {
+			return
+		} // Keep the boundary pending for retry.
+	}
+	scope := c.observation
+	// This receipt is an observed endpoint, not a claim of complete intermediate
+	// write history. Returning to the baseline must withdraw the earlier endpoint.
+	scope.RepeatedPaths = false
+	files, complete, _, _ := reconcileExecObservation(scope, env)
+	// Another writer may have started while the filesystem comparison ran.
+	if current := tracking.state(); current.completed != state.completed || !slices.Equal(current.calls, state.calls) || ctx.Err() != nil {
+		return
+	}
+	text := editReceiptText(preview.Workspace, mekugiHistory{Source: execPreviewTool(c.observation), ReviewFiles: files, ExecOutcome: &execOutcome{Labels: c.observation.Labels}})
+	if (complete || text != "") && (text != c.text || text != "" && !slices.Equal(state.calls, c.calls)) {
+		preview.ID, preview.Files = "observed:"+c.ref, files
+		preview.EditReceipt, preview.HostItems, preview.Complete = text, slices.Clone(state.calls), true
+		preview.Status, preview.Footer = "", "observed edit"
+		broker.publishPreview(preview, false)
+		c.text, c.calls = text, slices.Clone(state.calls)
+	}
+	if complete {
+		c.completed = state.completed
+	}
+}
+
+func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview, tracking *execPreviewTrack, capture *execPreviewCapture) {
 	preview.Tool = execPreviewTool(observation)
 	defer tracking.close()
 	defer broker.discardRunningPreview(preview)
@@ -226,14 +281,21 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 	settledPaths := make(map[string]bool)
 	cursor := 0
 	for {
-		_, _, lifecycle := tracking.state()
+		state := tracking.state()
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-		case <-lifecycle:
+		case <-state.changed:
 		}
-		tracked, settled, _ := tracking.state()
+		state = tracking.state()
+		if capture != nil && tracking != nil {
+			capture.update(ctx, broker, preview, tracking, state)
+		}
+		if preview.Complete || len(observation.Files) == 0 {
+			continue
+		}
+		tracked, settled := state.tracked, state.settled
 		deadline := time.Now().Add(30 * time.Millisecond)
 		budget := execRunningPreviewBytes
 		updated := false
@@ -341,29 +403,16 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 		// alive, not this edit's live card. This does not close the observation
 		// window or persist a command outcome or completed change receipt.
 		if settled && len(settledPaths) == len(observation.Files) || !tracked && len(expected) > 0 && len(matched) == len(expected) {
-			if tracked && settled {
-				tracking.hub.mu.Lock()
-				for _, command := range observation.Commands {
-					if match := tracking.matches[tracking.authoredScript(command.Command, "")]; match != nil {
-						if match.ambiguous || match.track == nil {
-							preview.HostItems = nil
-							break
-						}
-						preview.HostItems = append(preview.HostItems, match.key[2])
-					}
-				}
-				tracking.hub.mu.Unlock()
-				if len(preview.HostItems) > 0 {
-					preview.EditReceipt = editReceiptText(preview.Workspace, mekugiHistory{ReviewFiles: preview.Files,
-						ExecOutcome: &execOutcome{Labels: observation.Labels}})
-				}
-			}
 			if len(preview.Files) > 0 && ctx.Err() == nil {
 				preview.Status, preview.Complete = diffview.PreviewRunning, true
 				preview.Footer = "observed edit"
 				broker.publishPreview(preview, false)
 			}
-			return
+			if capture == nil || tracking == nil {
+				return
+			}
+			preview.Complete = true
+			continue
 		}
 		if len(preview.Files) == 0 {
 			broker.discardRunningPreview(preview)

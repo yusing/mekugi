@@ -430,9 +430,19 @@ targets describe incomplete command-wide coverage, not a failure to resolve the
 displayed file; for example, a literal edit followed by arbitrary test code
 retains its known edit target without claiming to know every test side effect.
 
+Completed shell segments also trigger an observed Activity receipt, independently
+of live-card prediction. Arbitrary interpreter code and computed filenames use
+the captured paths and private workspace checkpoint, with the same ignore,
+content and isolation limits as terminal capture. A following long-running
+command does not delay these rows. These intermediate observations neither claim
+durable changes nor complete the host invocation. Live-card admission remains
+limited to streamable source content.
+
 While a writer window is open, display-only polling runs about every 500 ms over
-captured paths, reading content only after a stat change. Polling is bounded by
+captured paths, reading content only after a stat change. Source-card polling is bounded by
 path, time, and content budgets; it never runs a workspace sweep or provider query.
+Completed-boundary receipts can compare the existing private workspace checkpoint
+for computed targets.
 Changed-file cards say `observed so far` and disappear if the files
 return to their captured state. When a live segment report uniquely matches the
 writer's thread, turn and exact script, and the host invocation started after

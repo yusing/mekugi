@@ -1,0 +1,3 @@
+Edited  source.go     +3 -1 ━━━━━━━━ via python3, cat
+Deleted obsolete.txt  -1    ━━━━━━━━
+        other.go      +3 -1 ━━━━━━━━

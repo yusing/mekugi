@@ -30,9 +30,13 @@ Markdown styling. Requested edit intent keeps the requested verb, such as `Edit`
 in amber and never reads `Edited`; the first row ends with `· requested`, and its
 `(requested)` marker is not shown as source text. Once tracked writers finish,
 observed file differences replace their intent with past-tense rows and captured
-counts, even while following commands still run. These rows describe observed
+counts, even while following commands still run. Completion reporting uses actual
+filesystem differences, independent of source prediction or interpreter syntax.
+Computed targets use the existing workspace snapshot coverage. These rows describe observed
 filesystem effects; they do not complete the host invocation or publish a durable
 change ID. The terminal host result still owns retained change evidence.
+Later observed endpoints replace earlier counts, including withdrawing them when
+the files return to their baseline. A failed comparison is retried; it is not a no-op.
 A successful tracked edit without observed differences shows
 `Edit PATH via TOOL · ran`, including no-ops and unavailable capture.
 Running and untracked

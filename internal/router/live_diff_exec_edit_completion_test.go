@@ -110,7 +110,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		runExecScopePreview(ctx, broker, *observation, diffview.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"}, nil)
+		runExecScopePreview(ctx, broker, *observation, diffview.Preview{ID: "fast-edit", Workspace: workspace, Thread: "thread", Caller: "/root"}, nil, nil)
 	}()
 	select {
 	case <-finished:
@@ -193,7 +193,7 @@ func TestExecEditCompletionBeforeFollowingTestFinishes(t *testing.T) {
 	sub := broker.subscribe()
 	registry := &execWindowRegistry{}
 	registry.open(&execWindow{ref: "edit-then-test", roots: []string{workspace}, thread: "thread"})
-	registry.preview("edit-then-test", observation, broker, workspace, "thread", "/root")
+	registry.preview("edit-then-test", observation, broker, workspace, "thread", "/root", nil)
 	if err := os.WriteFile(path, []byte("aft"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +290,7 @@ func TestExecEditCompletionTerminalFrameBeforeHostExit(t *testing.T) {
 	registry := &execWindowRegistry{}
 	registry.open(&execWindow{ref: "edit-and-test", roots: []string{workspace}, thread: "thread"})
 	defer registry.close("edit-and-test")
-	registry.preview("edit-and-test", observation, broker, workspace, "thread", "/root")
+	registry.preview("edit-and-test", observation, broker, workspace, "thread", "/root", nil)
 	writeTestFile(t, path, "aft")
 	terminal.frame(t, func(frame string) bool {
 		frame = ansi.Strip(frame)

@@ -438,6 +438,7 @@ type execPreviewTrack struct {
 	hub          *execTrackHub
 	thread, turn string
 	matches      map[string]*execPreviewMatch
+	order        []string
 	streamable   map[string]bool // Optional source-only segment scope.
 	after        uint64          // Only host invocations started after this window opened.
 }
@@ -447,6 +448,7 @@ type execPreviewMatch struct {
 	track         *execTrack
 	ambiguous     bool
 	hostCompleted bool
+	mayWrite      bool
 }
 
 func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []execCommandInput) *execPreviewTrack {
@@ -454,13 +456,15 @@ func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []exec
 		return nil
 	}
 	p := &execPreviewTrack{hub: hub, thread: thread, turn: turn, matches: make(map[string]*execPreviewMatch)}
-	// The caller supplies only admitted source-writing commands.
+	// Completion observation also admits commands without predictable source.
 	for _, command := range commands {
 		script := p.authoredScript(command.Command, "")
 		if previous := p.matches[script]; previous != nil {
 			previous.ambiguous = true
 		} else {
-			p.matches[script] = &execPreviewMatch{}
+			plan := execscope.Classify(execscope.Input{Command: command.Command, Directory: command.Workdir, Shell: command.Shell})
+			p.matches[script] = &execPreviewMatch{mayWrite: plan.Class != execscope.Neutral && (len(plan.Programs) == 0 || slices.ContainsFunc(plan.Programs, func(program execscope.Program) bool { return program.Direct }))}
+			p.order = append(p.order, script)
 		}
 	}
 	if len(p.matches) == 0 {
@@ -536,19 +540,26 @@ func (p *execPreviewTrack) close() {
 	}
 }
 
-func (p *execPreviewTrack) state() (tracked, settled bool, changed <-chan struct{}) {
+type execPreviewState struct {
+	tracked, settled bool
+	completed        int
+	calls            []string
+	changed          <-chan struct{}
+}
+
+func (p *execPreviewTrack) state() (state execPreviewState) {
 	if p == nil {
-		return false, false, nil
+		return state
 	}
 	h := p.hub
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	changed = h.changed
-	settled = true
-	allTracked := true
-	for script, retained := range p.matches {
+	state.changed, state.settled = h.changed, true
+	allTracked, writing := true, false
+	for _, script := range p.order {
+		retained := p.matches[script]
 		if retained.ambiguous {
-			return true, false, changed
+			return execPreviewState{tracked: true, changed: h.changed}
 		}
 		match := retained.track
 		matches := 0
@@ -561,29 +572,54 @@ func (p *execPreviewTrack) state() (tracked, settled bool, changed <-chan struct
 			}
 		}
 		if matches > 1 {
-			return true, false, changed
+			return execPreviewState{tracked: true, changed: h.changed}
 		}
+		streamable := p.streamable == nil || p.streamable[script]
 		if match != nil && retained.hostCompleted {
-			tracked = true
+			state.completed++
+			for _, segment := range match.segments {
+				if segment.ended {
+					state.completed++
+				}
+			}
+			state.calls = append(state.calls, retained.key[2])
+			state.tracked = state.tracked || streamable
 			continue
 		}
 		if match == nil || match.hostOnly || match.ended && !match.done {
-			allTracked = false
+			allTracked = allTracked && !streamable
+			writing = writing || match != nil && retained.mayWrite
 			continue
 		}
-		tracked = true
-		last := match.lastStarted()
+		state.tracked = state.tracked || streamable
+		last, completed := match.lastStarted(), 0
 		for i, segment := range match.segments {
+			if segment.ended {
+				completed++
+			}
 			writer := segment.edit
 			if p.streamable != nil {
 				writer = p.streamable[p.authoredScript(segment.source, "")]
 			}
-			if writer && !segment.ended && !match.done && (segment.began || i > last) {
-				settled = false
+			if streamable && writer && !segment.ended && !match.done && (segment.began || i > last) {
+				state.settled = false
 			}
 		}
+		// A receipt covers observed endpoints of this invocation. A later
+		// command in the same shell does not hold its earlier edits hostage.
+		// A sibling with no completed boundary cannot lend its writes to it.
+		writing = writing || completed == 0 && last >= 0 && retained.mayWrite && !match.done
+		if completed > 0 {
+			state.completed += completed
+			state.calls = append(state.calls, retained.key[2])
+		}
 	}
-	return tracked && allTracked, tracked && allTracked && settled, changed
+	state.tracked = state.tracked && allTracked
+	state.settled = state.tracked && state.settled
+	if writing {
+		state.completed, state.calls = 0, nil
+	}
+	return state
 }
 
 // Top-level list segments execute in source order. Beginning a later one

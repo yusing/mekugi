@@ -491,7 +491,11 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 	}
 	t.proxy.execWindows.open(window)
 	if observation != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
-		t.proxy.execWindows.preview(callID, *observation, t.proxy.autoLiveDiff.events, t.directory, t.threadID, t.operationCaller())
+		var snapshots *workspaceSnapshots
+		if t.proxy.replayStore != nil {
+			snapshots = t.proxy.replayStore.snapshots
+		}
+		t.proxy.execWindows.preview(callID, *observation, t.proxy.autoLiveDiff.events, t.directory, t.threadID, t.operationCaller(), snapshots)
 	}
 }
 
@@ -503,6 +507,9 @@ func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *e
 		env := t.execCaptureEnvironment(patches)
 		env.previewOnly = true
 		if preview, ok := captureExecObservation(commands, dynamic, codeMode, env); ok {
+			if authored != nil {
+				preview.Tree = authored.Tree
+			}
 			display = preview
 		}
 	}

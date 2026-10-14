@@ -92,7 +92,7 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 	for index := range 8 {
 		ref := fmt.Sprintf("watch-%d", index)
 		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
-		registry.preview(ref, execObservation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller")
+		registry.preview(ref, execObservation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller", nil)
 	}
 	broker.publishPreview(diffview.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
 		Status: diffview.PreviewEdit, Input: "cat /tmp/example\n"}, false)
@@ -152,7 +152,7 @@ func TestLiveDiffStreamableAdmissionPreservesCapture(t *testing.T) {
 				registry := &execWindowRegistry{}
 				window := &execWindow{ref: "admission", thread: "main", roots: []string{workspace}}
 				registry.open(window)
-				registry.preview(window.ref, *observation, broker, workspace, "main", "/root")
+				registry.preview(window.ref, *observation, broker, workspace, "main", "/root", nil)
 				if (window.previewCancel != nil) != mixed {
 					t.Fatalf("source admission = %v, mixed = %v", window.previewCancel != nil, mixed)
 				}
@@ -198,7 +198,7 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 			window := &execWindow{ref: "vcs", roots: []string{repo}, thread: "thread"}
 			registry.open(window)
 			defer registry.close("vcs")
-			registry.preview("vcs", *observation, broker, repo, "thread", "/root")
+			registry.preview("vcs", *observation, broker, repo, "thread", "/root", nil)
 			registry.mu.Lock()
 			watching := window.previewCancel != nil
 			registry.mu.Unlock()
@@ -257,7 +257,7 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 		t.Fatal(err)
 	}
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	registry.preview("call-1", *observation, broker, repo, "thread", "exec-test-caller")
+	registry.preview("call-1", *observation, broker, repo, "thread", "exec-test-caller", nil)
 	runExecVCSTestGit(t, repo, "restore", "--", "restored.txt")
 
 	if err := os.WriteFile(tracked, []byte("restored bytes\n"), 0o600); err != nil {
@@ -328,7 +328,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			registry.open(&execWindow{ref: refs[index], roots: []string{repo}, thread: "thread"})
 		}
 		for _, ref := range refs {
-			registry.preview(ref, *observation, broker, repo, "thread", "bounded-test")
+			registry.preview(ref, *observation, broker, repo, "thread", "bounded-test", nil)
 		}
 		writeTestFile(t, tracked, "observed bytes\n")
 		for _, ref := range refs[:16] {
@@ -362,7 +362,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			})
 			registry := &execWindowRegistry{}
 			registry.open(&execWindow{ref: "lifecycle", roots: []string{repo}, thread: "thread", turn: "old-turn", session: "session:42"})
-			registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test")
+			registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test", nil)
 			writeTestFile(t, tracked, "observed bytes\n")
 			waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
 				return preview.ID == "running:lifecycle" && preview.Status == diffview.PreviewRunning
@@ -370,7 +370,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 
 			if lifecycle == "background" {
 				registry.markBackground("thread", "new-turn")
-				registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test")
+				registry.preview("lifecycle", *observation, broker, repo, "thread", "lifecycle-test", nil)
 			} else {
 				stopBroker()
 			}

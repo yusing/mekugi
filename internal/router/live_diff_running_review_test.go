@@ -33,7 +33,7 @@ func TestExecRunningPreviewOmitsOversizedFile(t *testing.T) {
 		defer cancel()
 		broker := newLiveDiffBroker(ctx)
 		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil)
+		go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: []execFileSnapshot{before}}, diffview.Preview{ID: "oversized", Workspace: root, Thread: "thread"}, nil, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
 		if len(broker.previews) != 0 {
@@ -67,7 +67,7 @@ func TestLiveDiffSocketAndNewRegularFile(t *testing.T) {
 		defer cancel()
 		broker := newLiveDiffBroker(ctx)
 		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{root: {"thread": true}}})
-		go runExecScopePreview(ctx, broker, execObservation{Files: []execFileSnapshot{before, beforeRegular}}, diffview.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil)
+		go runExecScopePreview(ctx, broker, execObservation{Files: []execFileSnapshot{before, beforeRegular}}, diffview.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
 		preview := broker.previews["socket"]
@@ -106,7 +106,7 @@ func TestExecRunningPreviewRetriesBudgetedFiles(t *testing.T) {
 	const previewID = "running:budgeted"
 	go runExecScopePreview(ctx, broker, execObservation{Class: execscope.Scoped.String(), Files: files}, diffview.Preview{
 		ID: previewID, Workspace: root, Thread: "thread", Caller: "budget-test",
-	}, nil)
+	}, nil, nil)
 	preview := waitExecScopePreview(t, broker, func(preview diffview.Preview) bool {
 		return preview.ID == previewID && preview.Status == diffview.PreviewRunning && len(preview.Files) == 2
 	})

@@ -49,7 +49,7 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 
 // preview updates the shared dock by call ID, including caller-less completion markers.
 func (u *terminalUI) preview(preview diffview.Preview) {
-	if u.main != nil && preview.Complete && preview.EditReceipt != "" && len(preview.HostItems) > 0 {
+	if u.main != nil && preview.Complete && len(preview.HostItems) > 0 {
 		receipt := &capturedActivityEdit{thread: preview.Thread, calls: preview.HostItems, text: preview.EditReceipt}
 		for _, file := range preview.Files {
 			path := file.AfterPath
