@@ -15,6 +15,8 @@ make lint
 
 The suite needs Node.js 24+/ripgrep; lint needs `golangci-lint`/`deadcode` and installs neither.
 Focus tests with `TEST_PACKAGES`/`TEST_RUN`/`TEST_FLAGS`; `-count=1` bypasses caching.
+Use `make test-host` for the focused installed-Codex checks with local mock providers;
+see [host acceptance](../../CONTEXT-AUTOMATED-TESTS.md).
 Built-ins are Go; Bun is for separate plugin tests. `make preview-native-ui` uses no models.
 `make test-ui-snapshots` checks fixtures; review before updating. See [test procedures](../../CONTEXT-TESTS.md).
 Enable the repository's commit gate once per clone:

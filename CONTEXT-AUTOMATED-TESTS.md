@@ -4,6 +4,20 @@ Tagged router fixtures use the installed Codex consumer with a deterministic
 local provider. They exercise stock execution and native collaboration without
 credentials or live model usage. These tests require the `journal_e2e` build tag.
 
+## Focused host acceptance
+
+Run `make test-host` for the shared installed-Codex acceptance set. It checks configured
+frontends, PTY yield/continuation, durable nested edit evidence, journal MCP reads,
+host-result completion, post-compaction recovery, and command sandbox reporting.
+The recipe verifies that every named test is present before running a fresh verbose
+suite. Missing Codex or tests fail the target. It neither generates assets nor installs
+binaries. Prepare missing embedded assets with `make preview-assets` first.
+
+Platform-specific skips remain visible in verbose output; sandbox reporting is Linux-only.
+A skip is unavailable coverage, not a pass for that boundary. This focused set does not
+replace the offline suite or feature-specific host fixtures listed below. It uses local
+mock providers and does not establish live-model behavior.
+
 ## internal/router
 
 The fixtures are the `internal/router/*_codex_e2e_test.go` files. List them with

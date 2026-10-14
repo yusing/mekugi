@@ -1,12 +1,19 @@
 GO ?= go
 
-.PHONY: install uninstall mekugi-pprof preview-assets preview-native-ui test lint test-ui-snapshots update-ui-snapshots
+.PHONY: install uninstall mekugi-pprof preview-assets preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
 TEST_PACKAGES ?= ./...
 TEST_RUN ?= .
 TEST_FLAGS ?=
 # Process/PTY fixtures spend most of their time waiting, not using a CPU.
 TEST_PARALLEL ?= 32
+HOST_ACCEPTANCE_TESTS := TestConfiguredToolFrontendNativeCodexE2E \
+	TestMRunNativeCodexYieldAndWriteStdinE2E \
+	TestMChangesNestedNativeCodexE2E \
+	TestJournalMCPNativeCodexReadE2E \
+	TestJournalHostFinishNativeCodexSpawnE2E \
+	TestPostCompactNativeCodexE2E \
+	TestAppServerExecTrackNativeCodexSandbox
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/livediff ./internal/router ./cmd/mekugi
 
@@ -33,6 +40,19 @@ preview-native-ui:
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test:
 	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(TEST_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+
+# Installed Codex, isolated local mocks, no installation or live model requests.
+test-host:
+	@codex --version
+	@set -eu; \
+	pattern="^($$(printf '%s' '$(strip $(HOST_ACCEPTANCE_TESTS))' | tr ' ' '|'))$$"; \
+	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test -tags=journal_e2e ./internal/router -list "$$pattern")"; then \
+		printf '%s\n' "$$available"; exit 1; \
+	fi; \
+	for name in $(HOST_ACCEPTANCE_TESTS); do \
+		printf '%s\n' "$$available" | grep -Fxq "$$name" || { printf 'Missing host acceptance test: %s\n' "$$name" >&2; exit 1; }; \
+	done; \
+	$(MAKE) --no-print-directory test TEST_PACKAGES=./internal/router TEST_RUN="$$pattern" TEST_FLAGS='-tags=journal_e2e -count=1 -v'
 
 lint:
 	env -u BASH_ENV golangci-lint run

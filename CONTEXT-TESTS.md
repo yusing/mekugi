@@ -25,7 +25,8 @@ A focused pass does not cover unselected tests.
 
 The release workflow runs the full fresh offline Go suite on Linux amd64;
 other platforms retain command and welcome/version checks. Tagged Codex and
-Bun plugin-host checks remain separate acceptance routes below.
+Bun plugin-host checks remain separate acceptance routes below. `make test-host` runs
+the focused installed-Codex set described in `CONTEXT-AUTOMATED-TESTS.md`.
 The full suite includes configured-plugin fixtures, so it requires Node.js 24+
 and ripgrep even when the tested application uses only built-in frontends.
 
