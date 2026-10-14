@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -37,9 +38,9 @@ func (s *Store) BeginDelivery(ctx context.Context, workspace, main string, input
 	return
 }
 
-// BeginTurnDelivery reserves queued input with the new turn's dispatch intent.
+// BeginTurnDelivery prepares attributed host input and reserves queued input only for a new turn.
 func (s *Store) BeginTurnDelivery(ctx context.Context, workspace, main string, input Delivery) (delivery Delivery, text string, dispatch bool, err error) {
-	return s.beginDelivery(ctx, workspace, main, input, true)
+	return s.beginDelivery(ctx, workspace, main, input, input.TurnID == "" && !input.Deferred)
 }
 
 func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input Delivery, nextTurn bool) (delivery Delivery, text string, dispatch bool, err error) {
@@ -138,6 +139,18 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 			dispatch = err == nil
 			return err
 		}
+		tasks := make(map[string]string, len(m.Batches))
+		for _, b := range m.Batches {
+			if b.Launch != nil {
+				tasks[b.Launch.ThreadID] = "/root/" + b.TaskName
+			}
+		}
+		message := func(d Delivery) string {
+			if d.From == main {
+				return d.Message
+			}
+			return fmt.Sprintf("Message Type: MESSAGE\nTask name: %s\nSender: %s\nPayload:\n%s", tasks[d.Target], tasks[d.From], d.Message)
+		}
 		var parts []string
 		if queue {
 			input.State = "queued"
@@ -147,11 +160,11 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 				if d.Target == input.Target && d.State == "queued" {
 					d.State, d.Dispatch = "dispatching", input.ID
 					d.ObservedTurnID, d.ObservedStatus = "", ""
-					parts = append(parts, d.Message)
+					parts = append(parts, message(*d))
 				}
 			}
 		}
-		parts = append(parts, input.Message)
+		parts = append(parts, message(input))
 		for i := range m.Batches {
 			b := &m.Batches[i]
 			if b.Launch != nil && b.Launch.ThreadID == input.Target {

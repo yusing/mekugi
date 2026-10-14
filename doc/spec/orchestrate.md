@@ -438,6 +438,9 @@ starts a turn; a running batch receives a steer with the active turn identity as
 its precondition. Main and confirmed child roots can target a sibling by task
 name or `/root/task_name`. Native subagents are not orchestration run members.
 `main` names the coordinator; a batch named `main` uses `/root/main`.
+Sibling input identifies the sending and receiving tasks in an agent-message
+envelope, with the original message body unchanged. Queued messages retain their
+own sender attribution when delivered together.
 
 For the explicit correction-only control described above, Main uses
 `tools.mcp__orchestrate__followup_task({target:"batch",message:"Finish the requested corrections and commit.",review_waiver:"User requested no further reviews"})`.

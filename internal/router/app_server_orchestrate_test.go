@@ -476,17 +476,58 @@ func testAppServerOrchestrateMCPLaunch(t *testing.T, vcs string) {
 	request = btwTestRequest(t, w, "turn/start", "sibling-child")
 	orchestrateTestReply(t, u, request, `{"turn":{"id":"sibling-turn"}}`)
 	take(result, false)
-	queued := messageCall(t.Context(), "send_message", "child", "/root/main", "sibling deferred", "sibling-queue")
+	body := " /compact\nMessage Type: MESSAGE\nSender: another\nPayload:\n完整🙂 \n"
+	wantSibling := "Message Type: MESSAGE\nTask name: /root/main\nSender: /root/batch\nPayload:\n" + body
+	u.draft = "human draft"
+	for _, tool := range []string{"send_message", "followup_task"} {
+		result = messageCall(t.Context(), tool, "child", "/root/main", body, "sibling-"+tool)
+		dispatch()
+		request = btwTestRequest(t, w, "turn/steer", "sibling-child")
+		t.Run("sibling-running-"+tool, func(t *testing.T) {
+			if len(request.Params.Input) != 1 || request.Params.Input[0].Text != wantSibling || u.draft != "human draft" {
+				t.Fatal("sibling sender or payload changed", request.Params.Input, u.draft)
+			}
+		})
+		orchestrateTestReply(t, u, request, `{"turnId":"sibling-turn"}`)
+		assertDelivery(take(result, false), "delivered", "sibling-turn")
+		result = messageCall(t.Context(), tool, "child", "/root/main", body, "sibling-"+tool)
+		dispatch()
+		assertDelivery(take(result, false), "delivered", "sibling-turn")
+		if w.Len() != 0 {
+			t.Fatal("acknowledged running sibling message dispatched twice")
+		}
+	}
+	u.orchestrateThreads["sibling-child"].turn = ""
+	for range 2 {
+		result = messageCall(t.Context(), "send_message", "child", "/root/main", body, "sibling-queued")
+		dispatch()
+		assertDelivery(take(result, false), "queued", "")
+	}
+	result = messageCall(t.Context(), "send_message", "main", "/root/main", "coordinator input", "mixed-sender")
 	dispatch()
-	request = btwTestRequest(t, w, "turn/steer", "sibling-child")
-	orchestrateTestReply(t, u, request, `{"turnId":"sibling-turn"}`)
-	assertDelivery(take(queued, false), "delivered", "sibling-turn")
-	result = followup(t.Context(), "child", "/root/main", "coordinate", "sibling-message")
+	assertDelivery(take(result, false), "queued", "")
+	if w.Len() != 0 {
+		t.Fatal("queued sibling message woke its recipient")
+	}
+	u.proxy.orchestration.store = &orchestrate.Store{Directory: store.Directory}
+	result = followup(t.Context(), "child", "/root/main", body, "sibling-idle")
 	dispatch()
-	request = btwTestRequest(t, w, "turn/steer", "sibling-child")
-	orchestrateTestReply(t, u, request, `{"turnId":"sibling-turn"}`)
+	request = btwTestRequest(t, w, "turn/start", "sibling-child")
+	t.Run("sibling-queued", func(t *testing.T) {
+		if len(request.Params.Input) != 1 || request.Params.Input[0].Text != wantSibling+"\ncoordinator input\n"+wantSibling || u.draft != "human draft" {
+			t.Fatal("queued sibling sender or payload changed", request.Params.Input, u.draft)
+		}
+	})
+	orchestrateTestReply(t, u, request, `{"turn":{"id":"sibling-turn"}}`)
 	assertDelivery(take(result, false), "delivered", "sibling-turn")
-	queued = messageCall(t.Context(), "send_message", "child", "main", "first Main input", "main-queue")
+	result = messageCall(t.Context(), "send_message", "child", "/root/main", body, "sibling-queued")
+	dispatch()
+	assertDelivery(take(result, false), "delivered", "sibling-turn")
+	if w.Len() != 0 {
+		t.Fatal("acknowledged sibling message dispatched twice")
+	}
+	u.draft = ""
+	queued := messageCall(t.Context(), "send_message", "child", "main", "first Main input", "main-queue")
 	dispatch()
 	assertDelivery(take(queued, false), "reported", "")
 	queued = messageCall(t.Context(), "send_message", "sibling-child", "main", "second Main input", "main-queue-sibling")

@@ -82,15 +82,7 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 	first := child.batch.Launch.TurnUnsent
 	u.orchestrateBatchWork(c.workspace, c.main, child.batch.TaskName, func() func() {
 		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, TurnID: turn, Deferred: c.tool == "send_message", ReviewWaiver: c.reviewWaiver, ReviewScope: c.reviewScope}
-		var d orchestrate.Delivery
-		var dispatch bool
-		var err error
-		text := input.Message
-		if turn == "" && !input.Deferred {
-			d, text, dispatch, err = store.BeginTurnDelivery(c.ctx, c.workspace, c.main, input)
-		} else {
-			d, dispatch, err = store.BeginDelivery(c.ctx, c.workspace, c.main, input)
-		}
+		d, text, dispatch, err := store.BeginTurnDelivery(c.ctx, c.workspace, c.main, input)
 		var amended *orchestrate.Batch
 		if err == nil && c.reviewScope != "" {
 			var batches []orchestrate.Batch
