@@ -181,7 +181,15 @@ func (s *Store) applyShadowMerge(ctx context.Context, workspace, main, name, thr
 				if err := s.save(m, path); err != nil {
 					return err
 				}
-				if err := shadowReplace(ctx, root, b.Repository, *w, after[w.Path]); err != nil {
+				if noEffect, err := shadowReplace(ctx, root, b.Repository, *w, after[w.Path]); err != nil {
+					// Only this invocation's confirmed failure before a source
+					// effect can undo intent. Restart still requires a postimage.
+					if noEffect {
+						if _, tempErr := root.Lstat(w.Temp); w.Temp == "" || errors.Is(tempErr, fs.ErrNotExist) {
+							w.State, w.Temp = "pending", ""
+							err = errors.Join(err, s.save(m, path))
+						}
+					}
 					return fmt.Errorf("%s: writeback incomplete: %w", w.Path, err)
 				}
 			}
@@ -304,19 +312,25 @@ func shadowMatches(ctx context.Context, root *os.Root, repository, name string, 
 	return nil
 }
 
-func shadowReplace(ctx context.Context, root *os.Root, repository string, w ShadowWrite, entry shadowEntry) error {
+// shadowReplace reports true only for failure before a source mutation.
+// The caller must also confirm that no temporary path remains before retry.
+func shadowReplace(ctx context.Context, root *os.Root, repository string, w ShadowWrite, entry shadowEntry) (bool, error) {
 	if entry.mode == "" || entry.mode == "040000" {
 		if err := root.Remove(w.Path); !errors.Is(err, fs.ErrNotExist) {
-			return err
+			return false, err
 		}
-		return nil
+		return false, nil
 	}
 	data, err := shadowGit(ctx, repository, "cat-file", "blob", entry.object)
 	if err != nil {
-		return err
+		return true, err
 	}
-	if err := root.MkdirAll(filepath.Dir(w.Path), 0755); err != nil {
-		return err
+	parent := filepath.Dir(w.Path)
+	info, statErr := root.Stat(parent)
+	// Parent creation can itself leave source effects on failure.
+	noEffect := statErr == nil && info.IsDir()
+	if err := root.MkdirAll(parent, 0755); err != nil {
+		return false, err
 	}
 	if entry.mode == "120000" {
 		err = root.Symlink(string(data), w.Temp)
@@ -330,7 +344,7 @@ func shadowReplace(ctx context.Context, root *os.Root, repository string, w Shad
 		}
 		f, e := root.OpenFile(w.Temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 		if e != nil {
-			return e
+			return noEffect, e
 		}
 		_, err = f.Write(data)
 		if err == nil {
@@ -339,15 +353,15 @@ func shadowReplace(ctx context.Context, root *os.Root, repository string, w Shad
 		err = errors.Join(err, f.Close())
 		if err != nil {
 			root.Remove(w.Temp)
-			return err
+			return noEffect, err
 		}
 	}
 	if err != nil {
-		return err
+		return noEffect, err
 	}
 	defer root.Remove(w.Temp) // This invocation created the exact temporary path.
 	if err := ctx.Err(); err != nil {
-		return err
+		return noEffect, err
 	}
 	if info, err := root.Lstat(w.Path); err == nil && info.IsDir() {
 		// Only empty directories can remain after planned leaf deletions.
@@ -362,16 +376,16 @@ func shadowReplace(ctx context.Context, root *os.Root, repository string, w Shad
 			dirs = append(dirs, name)
 			return nil
 		}); err != nil {
-			return err
+			return noEffect, err
 		}
 		slices.Reverse(dirs)
 		for _, dir := range dirs {
 			if err := root.Remove(dir); err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
-	return root.Rename(w.Temp, w.Path)
+	return false, root.Rename(w.Temp, w.Path)
 }
 
 func (s *Store) verifyShadowIntegration(ctx context.Context, b Batch) (Integration, error) {
