@@ -338,46 +338,69 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 }
 
 func TestExecPreviewTrackGuardIdentity(t *testing.T) {
-	const original = "gofmt -w source.go; git --version"
-	const guard = "/private/session/vcs-guard"
-	for _, scenario := range []string{"current", "item-bound", "wrong item", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
-		t.Run(scenario, func(t *testing.T) {
-			hub := &execTrackHub{directory: "/private/session/exec", changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
-			script, directory := original, guard
-			if scenario == "foreign" {
-				directory = "/private/other/vcs-guard"
-			}
-			if scenario == "lookalike helper" {
-				script = "gofmt -w source.go; /usr/bin/git --version"
-			}
-			item := ""
-			if scenario == "item-bound" {
-				item = "command"
-			} else if scenario == "wrong item" {
-				item = "other"
-			}
-			wrapped, err := vcsguard.RewriteForItem(script, "/unrelated/mekugi-exec", directory, item)
-			if err != nil {
-				t.Fatal(err)
-			}
-			commands := []execCommandInput{{Command: script}}
-			if scenario == "captured guarded" {
-				commands[0].Command = wrapped
-			}
-			p := newExecPreviewTrack(hub, "main", "turn", commands)
-			defer p.close()
-			key := [3]string{"main", "turn", "command"}
-			hub.start(key, "/bin/bash -lc "+quoteShellWord(wrapped))
-			if _, _, ok := hub.claim(t.Context(), execsegment.Message{Thread: "main", Script: wrapped}); !ok {
-				t.Fatal("raw report ownership failed")
-			}
-			hub.completed(key)
-			if scenario == "pending duplicate" {
-				hub.start([3]string{"main", "turn", "pending"}, "/bin/bash -lc "+quoteShellWord(original))
-			}
-			settled := p.state().settled
-			if settled != (scenario == "current" || scenario == "item-bound" || scenario == "captured guarded") {
-				t.Fatalf("preview settled = %v", settled)
+	for _, command := range []struct {
+		name, tail string
+		vcs        bool
+	}{
+		{"vcs", "git --version", true},
+		{"sudo", "sudo id", false},
+		{"mixed", "git --version; sudo id", true},
+		{"vcs disabled", "git --version; sudo id", false},
+	} {
+		t.Run(command.name, func(t *testing.T) {
+			original := "gofmt -w source.go; " + command.tail
+			const guard = "/private/session/vcs-guard"
+			for _, scenario := range []string{"current", "item-bound", "wrong item", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
+				t.Run(scenario, func(t *testing.T) {
+					hub := &execTrackHub{directory: "/private/session/exec", changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
+					script, directory := original, guard
+					sudoDirectory := "/private/session/sudo-guard"
+					if !command.vcs {
+						directory = ""
+					}
+					if scenario == "foreign" {
+						if command.vcs {
+							directory = "/private/other/vcs-guard"
+						}
+						sudoDirectory = "/private/other/sudo-guard"
+					}
+					if scenario == "lookalike helper" {
+						if command.vcs {
+							script = strings.Replace(script, "git --version", "/usr/bin/git --version", 1)
+						} else {
+							script = strings.Replace(script, "sudo id", "/usr/bin/sudo id", 1)
+						}
+					}
+					item := ""
+					if scenario == "item-bound" {
+						item = "command"
+					} else if scenario == "wrong item" {
+						item = "other"
+					}
+					wrapped, err := vcsguard.RewriteCommands(script, "/unrelated/mekugi-exec", directory, sudoDirectory, item)
+					if err != nil {
+						t.Fatal(err)
+					}
+					commands := []execCommandInput{{Command: script}}
+					if scenario == "captured guarded" {
+						commands[0].Command = wrapped
+					}
+					p := newExecPreviewTrack(hub, "main", "turn", commands)
+					defer p.close()
+					key := [3]string{"main", "turn", "command"}
+					hub.start(key, "/bin/bash -lc "+quoteShellWord(wrapped))
+					if _, _, ok := hub.claim(t.Context(), execsegment.Message{Thread: "main", Script: wrapped}); !ok {
+						t.Fatal("raw report ownership failed")
+					}
+					hub.completed(key)
+					if scenario == "pending duplicate" {
+						hub.start([3]string{"main", "turn", "pending"}, "/bin/bash -lc "+quoteShellWord(original))
+					}
+					settled := p.state().settled
+					if settled != (scenario == "current" || scenario == "item-bound" || scenario == "captured guarded") {
+						t.Fatalf("preview settled = %v", settled)
+					}
+				})
 			}
 		})
 	}

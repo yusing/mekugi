@@ -381,8 +381,9 @@ Acceptance:
 6. Edit intent and running diff cards use segment lifecycle rather than waiting
    for later non-edit commands. Preview matching requires exact thread, turn and
    authored script identity after removing exact PATH-prefix instrumentation for
-   the current session's VCS guard. Helper wrappers, unrecognized source, and
-   other-session source stay intact;
+   the current session's VCS and sudo guards, including sudo with the VCS guard
+   disabled. Item-bound instrumentation must match the exact command item.
+   Helper wrappers, unrecognized source, and other-session source stay intact;
    ambiguous matches are rejected. Report matching and host inputs remain unchanged.
    These live observations never
    finalize the host command or create durable change receipts.

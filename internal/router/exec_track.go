@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/internal/sudoask"
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -511,20 +512,32 @@ func (p *execPreviewTrack) retain(key [3]string, track *execTrack) {
 // Only the current session's exact guard instrumentation may differ from the
 // captured authored source. Host/report matching keeps the executing script.
 func (p *execPreviewTrack) authoredScript(script, item string) string {
-	guard := filepath.Join(filepath.Dir(p.hub.directory), vcsguard.Directory)
-	source := vcsguard.DisplayScript(script, func(directory string) bool { return directory == guard })
+	session := filepath.Dir(p.hub.directory)
+	// Reapply only observed guards: sudo also runs with the VCS guard disabled.
+	var guard, sudo string
+	source := vcsguard.DisplayScript(script, func(directory string) bool {
+		switch directory {
+		case filepath.Join(session, vcsguard.Directory):
+			guard = directory
+		case filepath.Join(session, sudoask.Directory):
+			sudo = directory
+		default:
+			return false
+		}
+		return true
+	})
 	if source == script {
 		return script
 	}
 	// This owner has no authenticated helper executable. An inverse rewrite
 	// with no helper must match exactly, so only injected PATH prefixes qualify.
-	rewritten, err := vcsguard.Rewrite(source, "", guard)
+	rewritten, err := vcsguard.RewriteCommands(source, "", guard, sudo, "")
 	if err != nil || rewritten != script {
 		if item == "" {
 			return script
 		}
 		// The host hook also binds the guard to this exact command item.
-		rewritten, err = vcsguard.RewriteForItem(source, "", guard, item)
+		rewritten, err = vcsguard.RewriteCommands(source, "", guard, sudo, item)
 		if err != nil || rewritten != script {
 			return script
 		}
