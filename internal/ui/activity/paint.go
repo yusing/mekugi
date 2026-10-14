@@ -399,8 +399,20 @@ func rawFilePath(path string) bool {
 // Parse local paths, file URLs and HTTP(S) URLs independently of clickability,
 // so missing destinations retain the same visible label and copy annotations.
 func liveActivityLink(s string) (label, target string, end int, ok bool) {
-	close := strings.Index(s, "](")
-	if close < 2 || s[0] != '[' {
+	close, depth := -1, 0
+	for i, c := range s {
+		if c == '[' {
+			depth++
+		}
+		if c == ']' {
+			depth--
+			if depth == 0 {
+				close = i
+				break
+			}
+		}
+	}
+	if close < 2 || s[0] != '[' || close+1 >= len(s) || s[close+1] != '(' {
 		return
 	}
 	rest := s[close+2:]
