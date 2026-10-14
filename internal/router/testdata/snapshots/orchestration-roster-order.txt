@@ -1,13 +1,43 @@
-─ 5 Agents · 3 · 1 working ───────────────────────────────────────────────────────────────
- ● main             Idle                                                                 
- ◐ review_protocol  Working                                                            0%
- ✓ done             Done                                                               0%
-─ 5 Agents · 5 · 1 working ───────────────────────────────────────────────────────────────
- ● main             Idle                                                                 
- ◐ review_protocol  Working                                                            0%
- ✓ done             Done                                                               0%
+─ 5 Agents · 9 · 2 working ───────────────────────────────────────────────────────────────────────────────────
+ ● main             Idle                                                                                     
+ ◐ review_protocol  Working                                                                0%                
+ ◐ active           Working                                                                0%                
+ ✓ donea            Done                                                                   0%  1m · 2s ago   
+ ✓ doned            Done                                                                   0%  1m · 9s ago    
+ ✓ donee            Done                                                                   0%  1m · 9s ago   
+ ✓ donec            Done                                                                   0%  1m · 28s ago  
+ ✓ doneb            Done                                                                   0%  1m · 1m55s ago
+ ✓ donef            Done                                                                   0%                
+─ 5 Agents · 9 · 2 working ───────────────────────────────────────────────────────────────────────────────────
+ ● main             Idle                                                                                     
+ ◐ review_protocol  Working                                                                   0%             
+ ◐ active           Working                                                                   0%             
+ ✓ doned            Done                                                                      0%  1m · 9s ago 
+   +5 more · scroll
+─ 5 Agents · 11 · 2 working ──────────────────────────────────────────────────────────────────────────────────
+ ● main             Idle                                                                                     
+ ◐ review_protocol  Working                                                                0%                
+ ◐ active           Working                                                                0%                
+ ✓ donea            Done                                                                   0%  1m · 2s ago   
+ ✓ doned            Done                                                                   0%  1m · 9s ago    
+ ✓ donee            Done                                                                   0%  1m · 9s ago   
+ ✓ donec            Done                                                                   0%  1m · 28s ago  
+ ✓ doneb            Done                                                                   0%  1m · 1m55s ago
+ ✓ donef            Done                                                                   0%                
    +2 more · scroll
-─ 5 Agents · 3 ───────────────────────────────────────────────────────────────────────────
- ● main             Idle                                                                 
- ✓ done             Done                                                               0%
- ✓ review_protocol  Done                                                               0%
+─ 5 Agents · 11 · 2 working ──────────────────────────────────────────────────────────────────────────────────
+ ● main             Idle                                                                                     
+ ◐ review_protocol  Working                                                                   0%             
+ ◐ active           Working                                                                   0%             
+ ✓ doned            Done                                                                      0%  1m · 9s ago 
+   +7 more · scroll
+─ 5 Agents · 9 · 1 working ───────────────────────────────────────────────────────────────────────────────────
+ ● main             Idle                                                                                     
+ ◐ active           Working                                                                0%                
+ ✓ review_protocol  Done                                                                   0%                
+ ✓ donea            Done                                                                   0%  1m · 2s ago   
+ ✓ doned            Done                                                                   0%  1m · 9s ago    
+ ✓ donee            Done                                                                   0%  1m · 9s ago   
+ ✓ donec            Done                                                                   0%  1m · 28s ago  
+ ✓ doneb            Done                                                                   0%  1m · 1m55s ago
+ ✓ donef            Done                                                                   0%                

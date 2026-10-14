@@ -67,7 +67,13 @@ func (v *liveActivityView) nativeRosterRows() []liveActivityRosterRow {
 	}
 	// Thread order cannot depend on whether the viewed native subtree overflows.
 	// Preserve the native tree's own observation order below these shared rows.
-	slices.SortStableFunc(threads, func(a, b liveActivityRosterRow) int { return priority(a) - priority(b) })
+	// Inactive threads use retained response times; missing times stay oldest.
+	slices.SortStableFunc(threads, func(a, b liveActivityRosterRow) int {
+		if order := priority(a) - priority(b); order != 0 || priority(a) != 2 {
+			return order
+		}
+		return b.agent.LastResponse.Compare(a.agent.LastResponse)
+	})
 	var grouped []liveActivityRosterRow
 	for _, parent := range threads {
 		grouped = append(grouped, parent)

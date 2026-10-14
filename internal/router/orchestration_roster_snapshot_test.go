@@ -1,6 +1,7 @@
 package router
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,22 +15,51 @@ import (
 func TestUISnapshotOrchestrationRosterOrder(t *testing.T) {
 	v := newLiveActivityView()
 	v.painter.Theme = livediff.DarkTheme
-	v.orchestration = []activityPaneAgent{{Name: "/Orchestration/main"}, {Name: "/Orchestration/done", Final: true}, {Name: "/Orchestration/review_protocol", Responding: true}}
+	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	v.orchestration = []activityPaneAgent{{Name: "/Orchestration/main"}, {Name: "/Orchestration/review_protocol", Responding: true}, {Name: "/Orchestration/active", Responding: true}}
+	for i, age := range []time.Duration{2 * time.Second, 115 * time.Second, 28 * time.Second, 9 * time.Second, 9 * time.Second, 0} {
+		agent := activityPaneAgent{Name: "/Orchestration/done" + string(rune('a'+i)), Final: true}
+		if age != 0 {
+			agent.Started, agent.LastResponse = now.Add(-time.Hour), now.Add(-age)
+			agent.WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(time.Minute)}
+		}
+		v.orchestration = append(v.orchestration, agent)
+	}
 	v.orchestrationSources = map[string]*liveActivityView{"/Orchestration/main": v}
+	v.rosterSelected = "/Orchestration/doned"
+	names := func() []string {
+		var names []string
+		for _, row := range v.nativeRosterRows() {
+			if nativeThreadRow(row.agent.Name) {
+				names = append(names, strings.TrimPrefix(row.agent.Name, "/Orchestration/"))
+			}
+		}
+		return names
+	}
+	if got := names(); !slices.Equal(got, []string{"main", "review_protocol", "active", "donea", "doned", "donee", "donec", "doneb", "donef"}) {
+		t.Fatal("roster lost recency, active order, or stable unknown/tied times", got)
+	}
 	var frames []string
 	for _, native := range [][]activityPaneAgent{nil, {{Name: "/root/worker"}, {Name: "/root/another"}}} {
 		v.agents = native
-		frames = append(frames, v.nativeRoster(90, 4, time.Unix(0, 0), true)...)
+		frames = append(frames, v.nativeRoster(110, 10, now, true)...)
+		frames = append(frames, v.nativeRoster(110, 5, now, true)...)
 		if len(v.hits) < 2 || v.hits[0].agent != "/Orchestration/main" || v.hits[1].agent != "/Orchestration/review_protocol" {
 			t.Fatal("working thread moved across overflow threshold", v.hits)
 		}
 	}
-	// Actual completion returns the row to stable observation order.
-	v.orchestration[2].Responding, v.orchestration[2].Final = false, true
+	// Completion moves the row ahead of older responses without changing selection.
+	v.orchestration[1].Responding, v.orchestration[1].Final = false, true
+	v.orchestration[1].LastResponse = now
 	v.agents = nil
-	frames = append(frames, v.nativeRoster(90, 4, time.Unix(0, 0), true)...)
-	if v.hits[1].agent != "/Orchestration/done" {
-		t.Fatal("completed thread remained working-pinned")
+	frames = append(frames, v.nativeRoster(110, 10, now, true)...)
+	if got := names(); !slices.Equal(got, []string{"main", "active", "review_protocol", "donea", "doned", "donee", "donec", "doneb", "donef"}) || v.rosterSelected != "/Orchestration/doned" {
+		t.Fatal("completion changed selection identity or did not move by recency", got, v.rosterSelected)
+	}
+	ui := terminalUI{agents: v, main: &appServerUI{navigation: &orchestrateNavigation{}}}
+	ui.handleNativeRosterKey("", 'j')
+	if v.rosterSelected != "/Orchestration/donee" {
+		t.Fatal("keyboard navigation used stale row position", v.rosterSelected)
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/orchestration-roster-order.txt", strings.Join(frames, "\n")+"\n")
 }

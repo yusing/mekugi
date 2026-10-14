@@ -454,6 +454,12 @@ The upstream subset and layout come from
 
 The main agent and its children appear as a canonical-path tree in observation order, with each agent's
 current activity and an elapsed-time timer (`elapsed · age ago`, or `just now`).
+Independent orchestration rows keep Main first and active children in stable
+observation order, followed by inactive children newest first by retained
+response/completion time. Equal times retain observation order; rows without
+retained times follow known times in observation order. Restoration does not
+invent timestamps. Reviewers stay grouped under their
+active parent, and reordering preserves selection by agent identity.
 The timer is absent before the first turn starts; opening or registering a thread
 does not start it. Restored timers use retained turn timestamps, not thread creation
 or metadata-update times. Elapsed time accumulates active work intervals, excluding
