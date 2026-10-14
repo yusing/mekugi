@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/appserver"
@@ -1782,7 +1781,7 @@ func (u *appServerUI) ensureShell() {
 		auto = u.proxy.autoLiveDiff
 	}
 	u.agents.bare = true
-	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, journalOpen: true, auto: auto, diffScreen: vt.NewEmulator(1, 3)}
+	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, journalOpen: true, auto: auto, diffScreen: new(nativeDiffScreen)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
 	shell.diff.native, shell.diff.diffMode = true, true
 	shell.diff.stdout = shell.diffScreen

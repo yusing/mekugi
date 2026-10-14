@@ -421,6 +421,9 @@ func (u *appServerUI) switchOrchestratedThread(thread string) bool {
 	if n.viewed != n.views[thread] {
 		n.viewed.quitConfirmationKey("\x1b")
 		from, to := n.viewed.shell, n.views[thread].shell
+		to.diffScreen.Close()
+		to.diffScreen.Emulator, from.diffScreen.Emulator = from.diffScreen.Emulator, nil
+		to.diff.dirty = true // The reused terminal contains the previous root's cells.
 		to.focus, to.side = from.focus, from.side
 		to.rosterHeight, to.agentsCollapsed = from.rosterHeight, from.agentsCollapsed
 		to.journalOpen, to.diffOpen, to.activityOpen = from.journalOpen, from.diffOpen, from.activityOpen

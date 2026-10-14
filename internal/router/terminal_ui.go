@@ -23,7 +23,7 @@ type terminalUI struct {
 	hostReplyDiscard, hostReplyEscape              bool
 	diffFailure                                    string
 	output                                         *outputDialog // Open over both panes, taking every key.
-	diffScreen                                     *vt.Emulator
+	diffScreen                                     *nativeDiffScreen
 	diff                                           *liveDiffTerminalController
 	agents                                         *liveActivityView
 	main                                           *appServerUI
@@ -51,6 +51,19 @@ type terminalUI struct {
 	paintedCopy                                    [][]activityui.CopySpan
 	paintedWidth                                   int
 	faint                                          bool // Output capability is local to this terminal, not request or global state.
+}
+
+// The native Diff emulator is allocated only for a painted pane and moves with
+// the viewed shell. Controllers retain their models and scroll, not a parser.
+type nativeDiffScreen struct{ *vt.Emulator }
+
+func (s *nativeDiffScreen) Close() error {
+	if s.Emulator == nil {
+		return nil
+	}
+	err := s.Emulator.Close()
+	s.Emulator = nil
+	return err
 }
 
 type nativeRosterPress struct {
