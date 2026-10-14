@@ -145,6 +145,12 @@ func execPathWithin(path, root string) bool {
 // roots that were open at any time during them. The refs are merged into one
 // record, so they are neither overlaps nor exclusions of each other.
 func (r *execWindowRegistry) close(refs ...string) execWindowView {
+	return r.view(refs, true)
+}
+
+// Intermediate display comparisons use the same isolation as terminal capture,
+// without closing the window or claiming durable effects.
+func (r *execWindowRegistry) view(refs []string, complete bool) execWindowView {
 	var view execWindowView
 	if r == nil {
 		return view
@@ -155,7 +161,7 @@ func (r *execWindowRegistry) close(refs ...string) execWindowView {
 	var selves []*execWindow
 	for _, ref := range refs {
 		if window := r.find(ref); window != nil {
-			if window.closed.IsZero() {
+			if complete && window.closed.IsZero() {
 				window.closed = now
 				if window.previewCancel != nil {
 					window.previewCancel()
@@ -177,7 +183,11 @@ func (r *execWindowRegistry) close(refs ...string) execWindowView {
 			if self.background {
 				continue
 			}
-			if !execRootsMeet(other.roots, self.roots) || !other.opened.Before(self.closed) ||
+			until := self.closed
+			if until.IsZero() {
+				until = now
+			}
+			if !execRootsMeet(other.roots, self.roots) || !other.opened.Before(until) ||
 				!other.closed.IsZero() && other.closed.Before(self.opened) {
 				continue
 			}

@@ -9,12 +9,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi"
+
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -26,11 +29,19 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 	t.Parallel()
 	edits := []string{"cat > source.go <<'EOF'\nafter\nEOF", "python3 - <<'PY'\nfrom pathlib import Path\nPath('source.go').write_text('package p\\n\\nvar A = 1\\n')\nPath('other.go').write_text('package p\\n\\nvar B = 2\\n')\nPY\ngit --version >/dev/null\ngofmt -w source.go other.go"}
 	edits = append(edits, strings.ReplaceAll(edits[len(edits)-1], "git --version >/dev/null\n", ""))
+	edits = append(edits,
+		"python3 - <<'PY'\nfrom pathlib import Path\np=Path('source.go')\np.write_text('package p\\n\\nvar A = 1\\n')\nPath('obsolete.txt').unlink()\nPY\ncat > other.go <<'EOF'\npackage p\n\nvar B = 2\nEOF",
+		"python3 - <<'PY'\nexec(\"from pathlib import Path\\nfor name, letter in [('source', 'A'), ('other', 'B')]:\\n Path(name + '.go').write_text('package p\\\\n\\\\nvar ' + letter + ' = 1\\\\n')\")\nPY",
+	)
 	for _, edit := range edits {
 		t.Run(filepath.Base(strings.Fields(edit)[0]), func(t *testing.T) {
 			shell := newExecTrackShell(t)
 			workspace := t.TempDir()
 			delayedUI := strings.HasPrefix(edit, "python3") && !strings.Contains(edit, "git --version")
+			opaque := strings.Contains(edit, "unlink()") || strings.Contains(edit, "exec(")
+			if strings.Contains(edit, "unlink()") {
+				writeTestFile(t, filepath.Join(workspace, "obsolete.txt"), "delete me\n")
+			}
 			before, after, completedText := "before\n", "+after", "Edited"
 			if strings.HasPrefix(edit, "python3") {
 				after = "+var A = 1"
@@ -47,8 +58,25 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if delayedUI {
 				script = edit + "\nmake test"
 			}
+			if strings.Contains(edit, "exec(") {
+				script = edit + "\npython3 -c 'import sys; print(\"test running\", flush=True); assert sys.stdin.readline().strip() == \"continue\"'"
+			}
 			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
-			if !ok || observation == nil || len(observation.Files) == 0 {
+			var snapshots *workspaceSnapshots
+			if observation == nil || !ok && !opaque {
+				t.Fatal("missing observation")
+			}
+			if opaque {
+				snapshots = newWorkspaceSnapshots(t.TempDir())
+				defer snapshots.close()
+				observation.Tree = snapshots.checkpoint(t.Context(), workspace)
+				if observation.Tree == "" {
+					t.Fatal("missing workspace baseline")
+				}
+				if files, _ := execPreviewProjected(t.Context(), *observation); len(files) != 0 {
+					t.Fatal("regression must bypass source prediction")
+				}
+			} else if !ok || observation == nil || len(observation.Files) == 0 {
 				t.Fatal("missing edit capture")
 			}
 			if strings.Contains(edit, "git --version") {
@@ -75,7 +103,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			registry := &execWindowRegistry{tracker: shell.hub}
 			registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 			defer registry.close("edit")
-			registry.preview("edit", *observation, broker, workspace, "main", "/root")
+			registry.preview("edit", *observation, broker, workspace, "main", "/root", snapshots)
 			params := map[string]any{"threadId": "main", "turnId": "turn", "item": item}
 			if delayedUI {
 				wire, err := json.Marshal(&params)
@@ -88,7 +116,9 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			}
 			// Seed the same running dock before execution so completion must
 			// actively retire it, rather than simply avoid opening a new card.
-			u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"})
+			if !opaque {
+				u.shell.preview(diffview.Preview{ID: "running:edit", Workspace: workspace, Thread: "main", Caller: "/root", Status: diffview.PreviewRunning, Input: "observing edit"})
+			}
 			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-lc", script)
 			cmd.Dir, cmd.Env = workspace, shell.env
 			if strings.Contains(edit, "gofmt") {
@@ -138,15 +168,27 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				}
 				appServerTestNotify(t, u, "item/started", params)
 			}
+			wantFiles := 1
+			if strings.HasPrefix(edit, "python3") {
+				wantFiles = 2
+			}
+			if strings.Contains(edit, "unlink()") {
+				wantFiles++
+			}
 			var completed *diffview.Preview
-			for completed == nil {
+			streamDone := opaque
+			for completed == nil || !streamDone {
 				select {
 				case <-sub.previewReady:
 					for _, event := range broker.takePreviews(sub) {
 						if event.Preview != nil {
 							u.shell.preview(*event.Preview)
 							if event.Preview.Complete {
-								completed = event.Preview
+								if event.Preview.EditReceipt != "" && len(event.Preview.Files) == wantFiles {
+									completed = event.Preview
+								} else {
+									streamDone = true
+								}
 							}
 						}
 					}
@@ -154,14 +196,10 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 					t.Fatal("edit preview waited for the following command")
 				}
 			}
-			wantFiles := 1
-			if strings.HasPrefix(edit, "python3") {
-				wantFiles = 2
-			}
 			if len(completed.Files) != wantFiles || completed.Footer != "observed edit" {
 				t.Fatalf("completion lacks actual observed edit: %+v", completed)
 			}
-			if !strings.Contains(completed.Files[0].Diff, after) {
+			if !slices.ContainsFunc(completed.Files, func(file mekugi.ReviewFile) bool { return strings.Contains(file.Diff, after) }) {
 				t.Fatalf("completion lost observed source content: %+v", completed.Files)
 			}
 			awaitMain(t, u, completedText)
@@ -173,7 +211,14 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 						rows = append(rows, u.view.painter.Block(block, 120)...)
 					}
 				}
-				assertNativeUISnapshot(t, "tracked-python-edited-before-test", rows)
+				name := "tracked-python-edited-before-test"
+				if opaque {
+					name = "tracked-python-opaque-before-test"
+				}
+				if strings.Contains(edit, "exec(") {
+					name = "tracked-python-computed-before-test"
+				}
+				assertNativeUISnapshot(t, name, rows)
 			}
 			u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 			if len(u.shell.liveDock.Order) != 0 || u.status != "Working" || !registry.find("edit").closed.IsZero() {
@@ -283,7 +328,8 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 					tracking.retain(key, track)
 				}
 			}
-			tracked, settled, _ := tracking.state()
+			state := tracking.state()
+			tracked, settled := state.tracked, state.settled
 			if tracked != tc.wantTracked || settled != tc.wantSettled {
 				t.Fatalf("state = %v, %v", tracked, settled)
 			}
@@ -329,7 +375,7 @@ func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 			if scenario == "pending duplicate" {
 				hub.start([3]string{"main", "turn", "pending"}, "/bin/bash -lc "+quoteShellWord(original))
 			}
-			_, settled, _ := p.state()
+			settled := p.state().settled
 			if settled != (scenario == "current" || scenario == "item-bound" || scenario == "captured guarded") {
 				t.Fatalf("preview settled = %v", settled)
 			}
@@ -369,8 +415,8 @@ func TestAppServerTrackedSkippedEditBeforeHostExit(t *testing.T) {
 	if !strings.Contains(shown, "Running go test") || strings.Contains(shown, "requested") || strings.Contains(shown, "skipped · skipped") {
 		t.Fatalf("skipped edit waited for host exit:\n%s", shown)
 	}
-	if tracked, settled, _ := tracking.state(); !tracked || !settled {
-		t.Fatalf("skipped edit kept its preview live: tracked=%v settled=%v", tracked, settled)
+	if state := tracking.state(); !state.tracked || !state.settled {
+		t.Fatalf("skipped edit kept its preview live: tracked=%v settled=%v", state.tracked, state.settled)
 	}
 }
 
@@ -443,7 +489,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 		select {
 		case <-sub.previewReady:
 			for _, event := range auto.events.takePreviews(sub) {
-				if event.Preview == nil || !event.Preview.Complete {
+				if event.Preview == nil || !event.Preview.Complete || event.Preview.EditReceipt != "" {
 					continue
 				}
 				if len(event.Preview.Files) != 1 || !strings.Contains(event.Preview.Files[0].Diff, "-before") || !strings.Contains(event.Preview.Files[0].Diff, "+after") {
@@ -511,6 +557,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "test", "type": "commandExecution", "command": "/bin/bash -lc 'go test ./...'", "status": "inProgress"}})
 			timer := time.NewTimer(5 * time.Second)
 			defer timer.Stop()
+			streamDone, receiptDone := false, false
 			for {
 				select {
 				case <-sub.previewReady:
@@ -524,6 +571,11 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 								t.Fatal("edit completion ended enclosing cell or sibling test")
 							}
 							u.shell.preview(*event.Preview)
+							streamDone = streamDone || event.Preview.EditReceipt == ""
+							receiptDone = receiptDone || event.Preview.EditReceipt != ""
+							if !streamDone || !receiptDone {
+								continue
+							}
 							u.shell.animating(time.Now().Add(nativeDockMinimum + time.Millisecond))
 							screen := vt.NewEmulator(100, 30)
 							defer screen.Close()
@@ -571,7 +623,7 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	registry := &execWindowRegistry{tracker: hub}
 	registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 	defer registry.close("edit")
-	registry.preview("edit", *observation, broker, workspace, "main", "/root")
+	registry.preview("edit", *observation, broker, workspace, "main", "/root", nil)
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)

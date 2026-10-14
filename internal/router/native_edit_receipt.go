@@ -152,6 +152,8 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			summary += " · " + strings.Join(exec.Labels, ", ")
 		} else if history.ToolName == applyPatchToolName {
 			summary += " · apply_patch"
+		} else if history.Source != "" && history.Source != nativeExecCommandToolName {
+			summary += " · " + history.Source
 		}
 		if !file.Binary {
 			if hunks := editReceiptHunks(file.Diff, &budget); hunks != "" {

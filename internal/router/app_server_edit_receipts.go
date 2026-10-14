@@ -22,9 +22,6 @@ func capturedEditActivity(workspace string, history mekugiHistory) *capturedActi
 		return nil
 	}
 	receipt := &capturedActivityEdit{thread: history.ExecutingThread, text: editReceiptText(workspace, history)}
-	if receipt.text == "" {
-		return nil
-	}
 	if !history.ExecOutcome.CodeMode {
 		if call, ok := strings.CutSuffix(history.CorrelationID, "\x00exec"); ok {
 			receipt.calls = append(receipt.calls, call)
@@ -34,6 +31,9 @@ func capturedEditActivity(workspace string, history mekugiHistory) *capturedActi
 		if result.Tool == "exec_command" || result.Tool == "userShell" {
 			receipt.calls = append(receipt.calls, result.CallID)
 		}
+	}
+	if receipt.text == "" && len(receipt.calls) == 0 {
+		return nil
 	}
 	return receipt
 }
@@ -88,6 +88,16 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			// Host refreshes replace the native item; unchanged projections already
 			// carry this immutable receipt and need no shell classification.
 			if entry.native.capturedEdit == receipt {
+				continue
+			}
+			if receipt.text == "" {
+				if entry.native.capturedEdit != nil {
+					native := *entry.native
+					native.capturedEdit = nil
+					entry.native = &native
+					entry.Text = toolActivityShellInDirectory(appServerDisplayCommand(native.command), native.commandCwd)
+					v.replaceEntry(i, entry, parseLiveActivity(entry))
+				}
 				continue
 			}
 			exit := 0
