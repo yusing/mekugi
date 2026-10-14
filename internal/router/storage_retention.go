@@ -916,7 +916,7 @@ func (s *mekugiReplayStore) lockStorageSnapshot(ctx context.Context) (func(), er
 // Age-based cleanup is router maintenance, not part of any request's replay
 // view. An unrelated catalog must not prevent a new thread from starting.
 func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, notice func(error)) {
-	var debugSweep time.Time
+	var debugSweep, sessionSweep time.Time
 	cleanup := func() {
 		if time.Since(debugSweep) >= time.Hour {
 			debugSweep = time.Now()
@@ -924,7 +924,29 @@ func runStorageRetention(ctx context.Context, store func() *mekugiReplayStore, n
 				notice(fmt.Errorf("debug bundle cleanup: %w", err))
 			}
 		}
-		if err := store().cleanupSessions(ctx); err != nil && ctx.Err() == nil && notice != nil {
+		s := store()
+		if s == nil {
+			return
+		}
+		var err error
+		if time.Since(sessionSweep) < time.Minute {
+			// Bound full age replanning when publications invalidate ownership.
+			// Pressure still gets the worker's one-second response interval.
+			var pressure *storagePressureRequest
+			err = s.locked(ctx, func() error {
+				var err error
+				pressure, err = s.readStoragePressure()
+				return err
+			})
+			if err == nil && pressure == nil {
+				return
+			}
+		}
+		if err == nil {
+			sessionSweep = time.Now()
+			err = s.cleanupSessions(ctx)
+		}
+		if err != nil && ctx.Err() == nil && notice != nil {
 			notice(fmt.Errorf("session cleanup: %w", err))
 		}
 	}
