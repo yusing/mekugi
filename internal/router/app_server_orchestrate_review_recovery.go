@@ -102,7 +102,7 @@ func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
 	}
 	u.reconcileCorrectionLifecycle(child)
 	w := child.batch.Workflow
-	if workflowTerminal(w) && !workflowUnsettled(child.batch) {
+	if workflowTerminal(w) && !workflowUnsettled(child.batch) && child.batch.Launch.DeliveryTurnID == "" {
 		u.workflowOutcome(child)
 		return
 	}
@@ -126,8 +126,12 @@ func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
 		}
 		pending = append(pending, d)
 	}
-	if len(pending) == 0 && w.Phase == orchestrate.PhaseImplementation && child.workflowWork[""] == nil {
-		pending = append(pending, orchestrate.WorkflowDispatch{ThreadID: child.batch.Launch.ThreadID, TurnID: child.batch.Launch.TurnID})
+	if len(pending) == 0 && (w.Phase == orchestrate.PhaseImplementation || child.batch.Launch.DeliveryTurnID != "") && child.workflowWork[""] == nil {
+		turn := child.batch.Launch.TurnID
+		if child.batch.Launch.DeliveryTurnID != "" {
+			turn = child.batch.Launch.DeliveryTurnID
+		}
+		pending = append(pending, orchestrate.WorkflowDispatch{ThreadID: child.batch.Launch.ThreadID, TurnID: turn})
 	}
 	if len(pending) == 0 {
 		u.driveOrchestrateWorkflows()
@@ -190,7 +194,7 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 			continue
 		}
 		work.dispatch.TurnID = turnID
-		if work.dispatch.Kind == orchestrate.DispatchCorrection {
+		if work.dispatch.Kind == orchestrate.DispatchCorrection || work.dispatch.Kind == "" && child.batch.Launch.DeliveryTurnID != "" {
 			// History cannot settle a newer turn observed by either the host
 			// snapshot or the live controller while this read was in flight.
 			if child.turn != "" && child.turn != turnID || slices.ContainsFunc(result.Thread.Turns, func(t appServerHistoryTurn) bool {
@@ -267,6 +271,9 @@ func (u *appServerUI) workflowRecoveryResponse(work *orchestrateReviewWork, m ap
 		}
 		u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
 			if d.Kind == "" || d.Kind == orchestrate.DispatchCorrection {
+				if err := s.ObserveDeliveryTurn(ctx, c.workspace, c.main, child.batch.TaskName, turn.ID, turn.Status); err != nil {
+					return err
+				}
 				message := ""
 				if turn.Error != nil {
 					message = turn.Error.Message

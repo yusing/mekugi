@@ -240,6 +240,11 @@ func TestWorkflowReviewWaiverRetainsEvidenceAndValidation(t *testing.T) {
 	if _, _, _, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", changed); err == nil {
 		t.Fatal("changed waiver reused delivery identity")
 	}
+	if _, _, _, err := f.s.BeginTurnDelivery(t.Context(), f.workspace, "main", Delivery{ID: "scope", From: "main", Target: "implementer", Message: "continue", ReviewScope: "narrowed assignment"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.s.RecordDelivery(t.Context(), f.workspace, "main", "scope", "delivered", "narrowed", "")
+	f.ok(err)
 	f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
 	f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "corrections complete"))
 	w := f.state()

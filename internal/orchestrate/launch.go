@@ -15,13 +15,14 @@ import (
 // serialized thread/start configuration; SandboxPolicy is the exact first-turn
 // override when the host has no re-selectable profile. Both precede dispatch.
 type Launch struct {
-	SandboxPolicy jsontext.Value `json:"sandbox_policy,omitempty"`
-	Message       string         `json:"message"`
-	Params        jsontext.Value `json:"params"`
-	ThreadID      string         `json:"thread_id,omitempty"`
-	TurnID        string         `json:"turn_id,omitempty"`
-	HostStatus    string         `json:"host_status,omitempty"`
-	TurnUnsent    bool           `json:"turn_unsent,omitzero"` // Canceled before first-turn dispatch.
+	SandboxPolicy  jsontext.Value `json:"sandbox_policy,omitempty"`
+	Message        string         `json:"message"`
+	Params         jsontext.Value `json:"params"`
+	ThreadID       string         `json:"thread_id,omitempty"`
+	TurnID         string         `json:"turn_id,omitempty"`
+	HostStatus     string         `json:"host_status,omitempty"`
+	TurnUnsent     bool           `json:"turn_unsent,omitzero"`       // Canceled before first-turn dispatch.
+	DeliveryTurnID string         `json:"delivery_turn_id,omitempty"` // Observed manual turn awaiting terminal reconciliation.
 }
 
 // CancelUnsentTurn records only a first turn which the caller has not dispatched.

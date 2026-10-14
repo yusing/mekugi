@@ -111,8 +111,11 @@ func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.Workf
 	reused := slices.ContainsFunc(w.Dispatches, func(d orchestrate.WorkflowDispatch) bool {
 		return d.Kind == purpose && d.Generation != w.Generation && d.ThreadID != ""
 	})
-	if !delta && !reused {
-		text.WriteString(" Scope: " + w.Assignment.Scope + "\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
+	if !delta || !reused {
+		text.WriteString(" Current accepted scope (replaces earlier scope): " + w.Assignment.Scope)
+	}
+	if !reused {
+		text.WriteString("\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
 	} else {
 		if !delta {
 			text.WriteString(" Review the retained accepted scope against the full baseline.")

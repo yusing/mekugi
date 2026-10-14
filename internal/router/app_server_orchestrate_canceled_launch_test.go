@@ -121,6 +121,9 @@ func TestAppServerOrchestrateCanceledLaunchRecovery(t *testing.T) {
 				}
 			}
 			follow := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "recover", tool: "followup_task", callID: "resume-canceled", input: orchestrateSpawnInput{Message: "User requested resume"}, reply: make(chan orchestrateResult, 1)}
+			if mode == "live" || mode == "restart" || mode == "uncertain-restart" || mode == "recovery-uncertain" {
+				follow.reviewScope = "Amended scope after canceled first input"
+			}
 			u.startOrchestratedChild(follow)
 			if mode == "inflight-host-turn" {
 				// Host completion revokes unsent proof while reservation is in progress.
@@ -204,6 +207,9 @@ func TestAppServerOrchestrateCanceledLaunchRecovery(t *testing.T) {
 			}
 			req = btwTestRequest(t, w, "turn/start", "recover-child")
 			text := req.Params.Input[0].Text
+			if follow.reviewScope != "" && !strings.Contains(text, follow.reviewScope) {
+				t.Fatal("known-unsent input lost scope amendment", text)
+			}
 			if !strings.Contains(text, "original assignment") || !strings.Contains(text, follow.input.Message) || !strings.Contains(text, batch.Evidence[0].Path) || strings.Count(text, "Your coordinator is main.") != 1 {
 				t.Fatal("recovery lost the initial handoff", text)
 			}

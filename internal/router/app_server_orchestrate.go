@@ -36,6 +36,7 @@ type orchestrateCommand struct {
 	waitTargets        []string // Empty selects all batches in this coordinator run.
 	caller, callID     string
 	reviewWaiver       string
+	reviewScope        string
 	reply              chan orchestrateResult
 }
 
@@ -388,7 +389,10 @@ func (u *appServerUI) orchestrateMessage(m appserver.Message) bool {
 				child.messageTurn, child.lastMessage = "", ""
 			}
 			u.orchestrateWork(func() func() {
-				err := store.ObserveLaunch(ctx, c.workspace, c.main, name, status, message)
+				err := store.ObserveDeliveryTurn(ctx, c.workspace, c.main, name, event.Turn.ID, status)
+				if err == nil {
+					err = store.ObserveLaunch(ctx, c.workspace, c.main, name, status, message)
+				}
 				return func() {
 					if u.orchestrateThreads[event.ThreadID] != child {
 						return

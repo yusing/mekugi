@@ -81,7 +81,7 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 	turn := child.turn
 	first := child.batch.Launch.TurnUnsent
 	u.orchestrateWork(func() func() {
-		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, TurnID: turn, Deferred: c.tool == "send_message", ReviewWaiver: c.reviewWaiver}
+		input := orchestrate.Delivery{ID: c.callID, From: c.caller, Target: child.batch.Launch.ThreadID, Message: c.input.Message, TurnID: turn, Deferred: c.tool == "send_message", ReviewWaiver: c.reviewWaiver, ReviewScope: c.reviewScope}
 		var d orchestrate.Delivery
 		var dispatch bool
 		var err error
@@ -91,7 +91,21 @@ func (u *appServerUI) dispatchOrchestratedFollowup(child *orchestrateChild) {
 		} else {
 			d, dispatch, err = store.BeginDelivery(c.ctx, c.workspace, c.main, input)
 		}
+		var amended *orchestrate.Batch
+		if err == nil && c.reviewScope != "" {
+			var batches []orchestrate.Batch
+			batches, err = store.Snapshot(c.workspace, c.main)
+			for _, batch := range batches {
+				if batch.TaskName == child.batch.TaskName {
+					amended = &batch
+					break
+				}
+			}
+		}
 		return func() {
+			if amended != nil {
+				child.batch.Workflow, child.batch.Integration = amended.Workflow, amended.Integration
+			}
 			if err != nil || !dispatch {
 				u.finishOrchestratedFollowup(child, c, d, err)
 				return

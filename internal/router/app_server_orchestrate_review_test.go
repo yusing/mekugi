@@ -131,8 +131,8 @@ func workflowReview(t *testing.T, u *appServerUI, w *appServerTestInput, purpose
 		}
 		start, params := workflowTake(t, u, w, "turn/start", thread, "")
 		assignment := params["input"].([]any)[0].(map[string]any)["text"].(string)
-		if strings.Contains(assignment, child.batch.Workflow.Assignment.Scope) {
-			t.Fatal("follow-up repeated immutable accepted scope", assignment)
+		if len(child.batch.Workflow.PreviousReviews) == 0 && !strings.Contains(assignment, child.batch.Workflow.Assignment.Scope) {
+			t.Fatal("full review omitted current accepted scope", assignment)
 		}
 		if len(child.batch.Workflow.PreviousReviews) > 0 && (!strings.Contains(assignment, "Correction review:") || strings.Contains(assignment, "Candidate source is read-only")) {
 			t.Fatal("follow-up did not reuse retained instructions", assignment)
@@ -566,7 +566,7 @@ func TestOrchestrateWorkflowFollowupResumesStoppedWorkflow(t *testing.T) {
 	orchestrateTestReply(t, u, start, `{"turn":{"id":"resumed"}}`)
 	orchestrateTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"child","turn":{"id":"resumed","status":"inProgress"}}}`)
 	child := u.orchestrateThreads["child"]
-	if wf := child.batch.Workflow; wf.Phase != orchestrate.PhaseImplementation || wf.CorrectionRounds != 0 || wf.Outcome != nil || child.workflowStopped {
+	if wf := child.batch.Workflow; wf.Phase != orchestrate.PhaseImplementation || wf.CorrectionRounds != 0 || wf.Outcome != nil || child.workflowStopped || wf.Assignment.Scope != "bounded implementation" {
 		t.Fatal("follow-up did not resume the workflow", wf)
 	}
 	// Late host responses from the canceled round never run in the new round.

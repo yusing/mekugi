@@ -112,16 +112,19 @@ func TestOrchestrateMCP(t *testing.T) {
 	meta := mcp.Meta{"threadId": "main", "sessionId": "host-session", "callId": "prepare", "itemId": "host-item",
 		codexTurnMetadataHeader: map[string]any{"thread_id": "main", "turn_id": "turn"}}
 	call("prepare", map[string]any{"task_name": "batch"}, meta, false)
-	waiver := "User requested correction-only delivery"
 	received := make(chan *orchestrateCommand, 1)
-	go func() {
-		command := <-proxy.orchestration.commands
-		received <- command
-		command.reply <- orchestrateResult{delivery: &orchestrate.Delivery{State: "delivered"}}
-	}()
-	call("followup_task", map[string]any{"target": "batch", "message": "finish", "review_waiver": waiver}, meta, false)
-	if command := <-received; command.reviewWaiver != waiver || command.main != "main" || command.workspace != workspace {
-		t.Fatal("authenticated coordinator waiver was not dispatched", command)
+	for _, field := range []string{"review_waiver", "review_scope"} {
+		go func() {
+			command := <-proxy.orchestration.commands
+			received <- command
+			command.reply <- orchestrateResult{delivery: &orchestrate.Delivery{State: "delivered"}}
+		}()
+		call("followup_task", map[string]any{"target": "batch", "message": "finish", field: "explicit coordinator input"}, meta, false)
+		command := <-received
+		got := map[string]string{"review_waiver": command.reviewWaiver, "review_scope": command.reviewScope}
+		if got[field] != "explicit coordinator input" || command.main != "main" || command.workspace != workspace {
+			t.Fatal("authenticated coordinator input was not dispatched", command)
+		}
 	}
 	// Proven roots include runtime reviewers and /btw forks. Neither is
 	// the session coordinator, even when its journal has no retained run.
@@ -245,10 +248,12 @@ func TestOrchestrateMCP(t *testing.T) {
 	for _, thread := range []string{"batch-thread", "worker"} {
 		u.thread = thread
 		u.session.start(thread, b.Cwd)
-		denied := call("followup_task", map[string]any{"target": "batch", "message": "finish", "review_waiver": "skip reviews"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "waive",
-			codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
-		if reason := string(mustMarshalJSON(denied.Content)); !strings.Contains(reason, "coordinator") && !strings.Contains(reason, "proven main thread") {
-			t.Fatal("waiver failed outside coordinator authorization", reason)
+		for _, field := range []string{"review_waiver", "review_scope"} {
+			denied := call("followup_task", map[string]any{"target": "batch", "message": "finish", field: "replace authority"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "amend",
+				codexTurnMetadataHeader: map[string]any{"thread_id": thread, "turn_id": "resumed-turn"}}, true)
+			if reason := string(mustMarshalJSON(denied.Content)); !strings.Contains(reason, "coordinator") && !strings.Contains(reason, "proven main thread") {
+				t.Fatal("amendment failed outside coordinator authorization", reason)
+			}
 		}
 		call("list_agents", map[string]any{"detail": "full"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session"}, true)
 		call("prepare", map[string]any{"task_name": "nested"}, mcp.Meta{"threadId": thread, "sessionId": "resumed-session", "callId": "nested",
@@ -258,6 +263,7 @@ func TestOrchestrateMCP(t *testing.T) {
 	u.session.start("main", workspace)
 	call("prepare", map[string]any{"task_name": "other"}, meta, false)
 	call("send_message", map[string]any{"target": "batch", "message": "finish", "review_waiver": "skip reviews"}, meta, true)
+	call("send_message", map[string]any{"target": "batch", "message": "finish", "review_scope": "different scope"}, meta, true)
 	// Selection keeps run-wide unconfirmed deliveries, even from another batch.
 	if _, err := store.RegisterWait(ctx, workspace, "main", orchestrate.Wait{ID: "wait", Targets: []string{"other"}}, time.Now()); err != nil {
 		t.Fatal(err)

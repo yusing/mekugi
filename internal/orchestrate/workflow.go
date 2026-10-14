@@ -43,7 +43,11 @@ func (s *Store) ConfigureWorkflow(ctx context.Context, workspace, main, name str
 	}
 	return s.withBatch(ctx, workspace, main, name, func(b *Batch) error {
 		if b.Workflow != nil {
-			if b.Workflow.Assignment.Kind == assignment.Kind && b.Workflow.Assignment.Scope == assignment.Scope && slices.Equal(b.Workflow.Assignment.RequiredChecks, assignment.RequiredChecks) {
+			scope := b.Workflow.Assignment.Scope
+			if b.Launch != nil {
+				scope = b.Launch.Message // Replay validates the original request, not amended review authority.
+			}
+			if b.Workflow.Assignment.Kind == assignment.Kind && scope == assignment.Scope && slices.Equal(b.Workflow.Assignment.RequiredChecks, assignment.RequiredChecks) {
 				return errLaunchUnchanged
 			}
 			return errors.New("workflow assignment changed")

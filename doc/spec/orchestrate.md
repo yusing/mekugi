@@ -331,7 +331,8 @@ it only for an evidenced interaction with the correction. Prior verdicts retain
 their candidate and host-dispatch provenance across correction and restart; they
 never approve a new candidate. A purpose without a completed review, including a
 blocked review, reviews the full baseline diff. New implementation input starts a
-full review round, so changed accepted scope does not inherit delta-only coverage.
+full review round with the current accepted scope, including on reused reviewer
+threads. Changed accepted scope does not inherit delta-only coverage.
 Two correction rounds are permitted for failed checks, unclean results, and findings combined; a
 further rejection then requires a decision.
 
@@ -413,6 +414,31 @@ For the explicit correction-only control described above, Main uses
 `tools.mcp__orchestrate__followup_task({target:"batch",message:"Finish the requested corrections and commit.",review_waiver:"User requested no further reviews"})`.
 The reason and delivery intent are saved together before a turn starts. Omission
 preserves the batch's current policy. Children and `send_message` cannot select it.
+
+Main can replace the accepted scope with `review_scope` on an idle, stopped or
+ready implementation batch after earlier host work settles, or when its first
+turn is confirmed unsent. This explicit field
+updates the authoritative assignment and invalidates old approvals, readiness and
+delta coverage. Assignment kind, required checks, permissions and review policy
+stay unchanged. Ordinary message text, sibling messages, implementer reports and
+journal notes do not amend scope. The current scope reaches fresh and reused
+reviewers, correction turns and local reset recovery.
+
+The amendment and delivery intent are saved together before host dispatch. Once
+saved, the amendment remains accepted even if delivery is canceled, rejected or
+uncertain; these states describe delivery of the input, not scope authority.
+Cancellation before persistence changes neither. Repeating that call returns its
+retained delivery state; different scope under the same call identity rejects.
+A later authorized idle follow-up carries the current scope without replaying
+canceled or rejected messages. Original spawn replay still validates the original
+launch request. New amendments reject unresolved manual delivery intent as well as
+unsettled workflow dispatches; unconfirmed input requires authenticated host
+reconciliation, not a message claiming that the host is idle.
+An authenticated active recipient turn or a new live turn observed after delivery
+intent supplies the settlement identity. Its matching terminal lifecycle or host
+history releases the effect gate without changing the original delivery outcome
+to success. Retained observations survive restart; an unidentified turn or a
+completion from before the intent cannot settle the delivery.
 
 The run saves delivery intent before host dispatch and saves acknowledgement
 before returning success. Repeating the same host call returns its retained

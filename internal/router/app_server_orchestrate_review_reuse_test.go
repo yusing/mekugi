@@ -22,6 +22,9 @@ func TestWorkflowReviewerCompactionAttribution(t *testing.T) {
 				if round > 0 {
 					turn = fmt.Sprintf("implementation-%d", round)
 					follow := &orchestrateCommand{ctx: t.Context(), workspace: u.session.cwd, main: "main", target: "batch", tool: "followup_task", callID: turn, input: orchestrateSpawnInput{Message: "Continue the same scope"}, reply: make(chan orchestrateResult, 1)}
+					if round == 3 && outcome == "completed" {
+						follow.reviewScope = "Attribution only; exclude transport redesign"
+					}
 					u.startOrchestratedChild(follow)
 					drainOrchestrateWork(t, u)
 					start, _ := workflowTake(t, u, wire, "turn/start", "child", "")
@@ -73,7 +76,10 @@ func TestWorkflowReviewerCompactionAttribution(t *testing.T) {
 				if _, err := u.proxy.journals.apply(t.Context(), u.proxy.replayStore, child.batch.Cwd, thread, "", []journalMutation{{Op: "add", Kind: "context", Title: new("Review evidence")}}); err != nil {
 					t.Fatal(err)
 				}
-				deliverRecoveryCompaction(t, u.proxy, child.batch.Cwd, thread, "compact")
+				_, recovery := deliverRecoveryCompaction(t, u.proxy, child.batch.Cwd, thread, "compact")
+				if !strings.Contains(recovery, child.batch.Workflow.Assignment.Scope) || strings.Contains(recovery, "bounded implementation") {
+					t.Fatal("local reset restored stale scope", recovery)
+				}
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "compact"}})
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "compact", "item": map[string]any{"id": "summary", "type": "contextCompaction"}})

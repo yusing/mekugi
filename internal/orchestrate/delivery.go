@@ -11,6 +11,7 @@ import (
 // Delivery records one host call. Dispatching is intent, not confirmed input.
 type Delivery struct {
 	ReviewWaiver string `json:"review_waiver,omitempty"`
+	ReviewScope  string `json:"review_scope,omitempty"`
 	ID           string `json:"id"`
 	From         string `json:"from"`
 	Target       string `json:"target"`
@@ -20,6 +21,13 @@ type Delivery struct {
 	Error        string `json:"error,omitempty"`
 	Deferred     bool   `json:"deferred,omitzero"`
 	Dispatch     string `json:"dispatch,omitempty"`
+	// Observation settles host effects without claiming that this input was delivered.
+	ObservedTurnID string `json:"observed_turn_id,omitempty"`
+	ObservedStatus string `json:"observed_status,omitempty"`
+}
+
+func (d Delivery) unsettled() bool {
+	return (d.State == "dispatching" || d.State == "uncertain") && (d.ObservedTurnID == "" || d.ObservedStatus != "completed" && d.ObservedStatus != "failed" && d.ObservedStatus != "interrupted")
 }
 
 // BeginDelivery uses input.TurnID to identify an active recipient turn.
@@ -38,7 +46,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 	err = s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
 		for _, d := range m.Deliveries {
 			if d.ID == input.ID {
-				if d.From != input.From || d.Target != input.Target || d.Message != input.Message || d.Deferred != input.Deferred || d.ReviewWaiver != input.ReviewWaiver {
+				if d.From != input.From || d.Target != input.Target || d.Message != input.Message || d.Deferred != input.Deferred || d.ReviewWaiver != input.ReviewWaiver || d.ReviewScope != input.ReviewScope {
 					return errors.New("delivery call already has different input")
 				}
 				delivery = d
@@ -53,9 +61,9 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		if input.ID == "" || (input.Message == "" || input.From == input.Target) || input.From != main && !member(input.From) || input.Target != main && !member(input.Target) {
 			return errors.New("delivery requires separate confirmed run members")
 		}
-		if input.ReviewWaiver != "" {
-			if strings.TrimSpace(input.ReviewWaiver) == "" || input.From != main || input.Target == main || !nextTurn || input.Deferred || input.TurnID != "" {
-				return errors.New("review waiver requires a coordinator follow-up to an idle batch and a user reason")
+		if input.ReviewWaiver != "" || input.ReviewScope != "" {
+			if input.ReviewWaiver != "" && strings.TrimSpace(input.ReviewWaiver) == "" || input.ReviewScope != "" && strings.TrimSpace(input.ReviewScope) == "" || input.From != main || input.Target == main || !nextTurn || input.Deferred || input.TurnID != "" {
+				return errors.New("review policy or scope requires a coordinator follow-up to an idle batch and nonblank input")
 			}
 			i := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.Launch != nil && b.Launch.ThreadID == input.Target })
 			b := &m.Batches[i] // The confirmed membership check above establishes this target.
@@ -63,20 +71,49 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 			if err != nil {
 				return err
 			}
-			if !w.stopped() && w.Phase != PhaseReady {
-				return errors.New("interrupt the workflow before selecting a review waiver")
+			unsentScope := input.ReviewScope != "" && input.ReviewWaiver == "" && b.Launch.TurnUnsent && b.Launch.TurnID == "" && b.Launch.HostStatus == ""
+			if !unsentScope && !w.stopped() && w.Phase != PhaseReady {
+				return errors.New("interrupt the workflow before changing review policy or scope")
 			}
-			if b.Launch.HostStatus != "completed" && b.Launch.HostStatus != "interrupted" && b.Launch.HostStatus != "failed" {
-				return errors.New("review waiver requires confirmed implementer completion")
+			if !unsentScope && b.Launch.HostStatus != "completed" && b.Launch.HostStatus != "interrupted" && b.Launch.HostStatus != "failed" {
+				return errors.New("review policy or scope requires confirmed implementer completion")
+			}
+			if input.ReviewScope != "" {
+				for _, d := range m.Deliveries {
+					if d.Target == input.Target && d.unsettled() {
+						return errors.New("review scope requires settled deliveries; reconcile unconfirmed host input")
+					}
+				}
 			}
 			for _, d := range w.Dispatches {
 				if d.State != DispatchQueued && d.State != DispatchFailed && (d.State != DispatchAcknowledged || d.HostStatus == "") {
-					return errors.New("review waiver requires settled host dispatches")
+					return errors.New("review policy or scope requires settled host dispatches")
 				}
 			}
-			w.ReviewWaiver = input.ReviewWaiver
+			if input.ReviewWaiver != "" {
+				w.ReviewWaiver = input.ReviewWaiver
+			}
+			if input.ReviewScope != "" && input.ReviewScope != w.Assignment.Scope {
+				// The coordinator's amendment and its delivery intent commit together.
+				// Host acknowledgement records message delivery, not scope authority.
+				w.Assignment.Scope = input.ReviewScope
+				w.PreviousReviews, w.Checks = nil, nil
+				if w.ReviewWaiver == "" {
+					w.Reviews = nil
+				}
+				w.Outcome = nil
+				b.Integration = nil
+				w.Phase, w.Reason = PhaseNeedsDecision, "review scope amended; awaiting implementer input"
+				if unsentScope {
+					w.Phase, w.Reason = PhaseImplementation, ""
+				}
+			}
 		}
 		queue := input.Deferred && input.TurnID == ""
+		input.ObservedTurnID, input.ObservedStatus = input.TurnID, ""
+		if input.TurnID != "" {
+			input.ObservedStatus = "running" // The runtime supplied the active recipient turn.
+		}
 		input.State, input.TurnID, input.Error = "dispatching", "", ""
 		if input.Target == main {
 			// Child reports are attributed observations, never user input.
@@ -104,15 +141,23 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 				d := &m.Deliveries[i]
 				if d.Target == input.Target && d.State == "queued" {
 					d.State, d.Dispatch = "dispatching", input.ID
+					d.ObservedTurnID, d.ObservedStatus = "", ""
 					parts = append(parts, d.Message)
 				}
 			}
 		}
 		parts = append(parts, input.Message)
-		text = strings.Join(parts, "\n")
 		for i := range m.Batches {
 			b := &m.Batches[i]
 			if b.Launch != nil && b.Launch.ThreadID == input.Target {
+				if input.ObservedTurnID != "" {
+					b.Launch.DeliveryTurnID = input.ObservedTurnID
+				}
+				// After an amendment, idle continuations carry current authority even
+				// when its earlier delivery was canceled or rejected. Messages are not replayed.
+				if nextTurn && b.Workflow != nil && (input.ReviewScope != "" || slices.ContainsFunc(m.Deliveries, func(d Delivery) bool { return d.Target == input.Target && d.ReviewScope != "" })) {
+					parts = append(parts, "Coordinator review scope (replaces the previous accepted scope):\n"+b.Workflow.Assignment.Scope)
+				}
 				if b.Launch.TurnUnsent {
 					for _, evidence := range b.Evidence {
 						if err := validateEvidence(evidence); err != nil {
@@ -123,6 +168,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 				b.Launch.TurnUnsent = false // Intent may reach the host; no automatic retry.
 			}
 		}
+		text = strings.Join(parts, "\n")
 		m.Deliveries = append(m.Deliveries, input)
 		delivery = input
 		err := s.save(m, path)
@@ -130,6 +176,55 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 		return err
 	})
 	return
+}
+
+// ObserveDeliveryTurn consumes authenticated live lifecycle or exact-turn history.
+// Only a new live start after intent can bind an uncertain delivery. A terminal
+// observation must match that retained turn; old or unidentified turns cannot settle it.
+func (s *Store) ObserveDeliveryTurn(ctx context.Context, workspace, main, name, turn, status string) error {
+	if turn == "" {
+		return nil
+	}
+	if status != "running" && status != "completed" && status != "failed" && status != "interrupted" {
+		return errors.New("invalid delivery lifecycle status")
+	}
+	return s.withRun(ctx, workspace, main, func(m *manifest, path string) error {
+		i := slices.IndexFunc(m.Batches, func(b Batch) bool { return b.TaskName == name })
+		if i < 0 || m.Batches[i].Launch == nil {
+			return errors.New("delivery lifecycle requires a launched batch")
+		}
+		b := &m.Batches[i]
+		known := turn == b.Launch.TurnID || slices.ContainsFunc(m.Deliveries, func(d Delivery) bool {
+			return d.Target == b.Launch.ThreadID && (d.TurnID == turn || d.ObservedTurnID == turn)
+		})
+		if b.Workflow != nil {
+			known = known || slices.ContainsFunc(b.Workflow.Dispatches, func(d WorkflowDispatch) bool { return d.ThreadID == b.Launch.ThreadID && d.TurnID == turn })
+		}
+		changed := false
+		for i := range m.Deliveries {
+			d := &m.Deliveries[i]
+			if d.Target != b.Launch.ThreadID {
+				continue
+			}
+			if status == "running" {
+				if !known && d.unsettled() && d.ObservedTurnID == "" {
+					d.ObservedTurnID, d.ObservedStatus = turn, status
+					b.Launch.DeliveryTurnID = turn
+					changed = true
+				}
+			} else if d.ObservedTurnID == turn && d.ObservedStatus == "running" {
+				d.ObservedStatus = status
+				if b.Launch.DeliveryTurnID == turn {
+					b.Launch.DeliveryTurnID = ""
+				}
+				changed = true
+			}
+		}
+		if changed {
+			return s.save(m, path)
+		}
+		return nil
+	})
 }
 
 func (s *Store) RecordDelivery(ctx context.Context, workspace, main, id, state, turn, message string) (delivery Delivery, err error) {
