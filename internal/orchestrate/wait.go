@@ -141,7 +141,8 @@ func (s *Store) AdvanceWaits(ctx context.Context, workspace, main string, events
 			if e.ID == "" || !e.Data.IsValid() {
 				return errors.New("invalid wait event")
 			}
-			if slices.ContainsFunc(m.Wait.Events, func(old WaitEvent) bool { return old.ID == e.ID }) {
+			if slices.ContainsFunc(m.Wait.Events, func(old WaitEvent) bool { return old.ID == e.ID }) ||
+				slices.ContainsFunc(m.Wait.Waits, func(w Wait) bool { return w.EventID == e.ID }) {
 				continue
 			}
 			e.Owner = ""

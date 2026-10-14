@@ -463,6 +463,7 @@ func (s *journalStore) initialize(ctx context.Context, store *mekugiReplayStore,
 		j.Events = slices.Clone(source.Events)
 		for i := range j.Events {
 			j.Events[i].RootRetraction = false
+			j.Events[i].BlockID, j.Events[i].BlockTurn = "", ""
 		}
 		j.NextOrdinal = maps.Clone(source.NextOrdinal)
 		j.SliceParents = maps.Clone(source.SliceParents)
@@ -879,6 +880,26 @@ func (s *journalStore) applyWithOrchestrateEvents(ctx context.Context, store *me
 			}
 		}
 		events = s.scopeOrchestratedBlocks(store.scoped(ctx), workspace, thread, events)
+		// Pin the validated notification identity to its final authored event in
+		// the same save as the blocker. Recovery reads that evidence, not current
+		// task state, which may have reopened or changed its reason meanwhile.
+		if len(events) != 0 {
+			for _, block := range events {
+				for i := len(j.Events) - 1; i >= 0; i-- {
+					if j.Events[i].Path == block.Path {
+						j.Events[i].BlockID, j.Events[i].BlockTurn = block.ID, block.Turn
+						break
+					}
+				}
+			}
+			size := 0
+			for _, event := range j.Events {
+				size += journalEventSize(event)
+			}
+			if size > maxJournalEventBytes {
+				return errJournalEventLimit
+			}
+		}
 		// Only a new, validated transition requests cleanup. Receipt replay and
 		// restored history never retry an uncertain filesystem effect.
 		if run := j.Orchestration; run != nil && run.Main == thread {

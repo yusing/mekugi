@@ -87,6 +87,10 @@ func (s *journalStore) scopeOrchestratedBlocks(store *mekugiReplayStore, workspa
 	if err != nil {
 		return nil
 	}
+	return scopeJournalBlocks(journals, failures, thread, blocks)
+}
+
+func scopeJournalBlocks(journals map[string]threadJournal, failures map[string]error, thread string, blocks []orchestrateEvent) []orchestrateEvent {
 	chain := journalAncestry(journals, thread)
 	if len(chain) < 2 {
 		return nil
@@ -106,6 +110,35 @@ func (s *journalStore) scopeOrchestratedBlocks(store *mekugiReplayStore, workspa
 		blocks[i].Task = strings.TrimPrefix(child.Author, "/root/")
 	}
 	return blocks
+}
+
+// Reuse retained authored events to repair publication interrupted after the
+// journal save. The wait owner deduplicates queued and already selected IDs.
+func (s *journalStore) orchestratedBlocks(ctx context.Context, store *mekugiReplayStore, run journalRun) ([]orchestrateEvent, error) {
+	var blocks []orchestrateEvent
+	err := s.transaction(ctx, store, run.Workspace, run.Main, func(j *threadJournal, exists bool) error {
+		if !exists || j.Orchestration == nil {
+			return errJournalUnchanged
+		}
+		if !run.admitsRoot(*j) {
+			return errors.New("orchestration coordinator journal authority is unavailable")
+		}
+		journals, failures, err := s.relatedJournals(store.scoped(ctx), run.Workspace, run.Main)
+		if err != nil {
+			return err
+		}
+		for _, thread := range slices.Sorted(maps.Keys(journals)) {
+			var owned []orchestrateEvent
+			for _, event := range journals[thread].Events {
+				if event.BlockID != "" {
+					owned = append(owned, orchestrateEvent{ID: event.BlockID, Thread: thread, Turn: event.BlockTurn, Kind: "blocked", Status: "blocked", Path: event.Path, Message: event.Fields.Reason})
+				}
+			}
+			blocks = append(blocks, scopeJournalBlocks(journals, failures, thread, owned)...)
+		}
+		return errJournalUnchanged
+	})
+	return blocks, err
 }
 
 func (s *journalStore) bindRun(ctx context.Context, store *mekugiReplayStore, workspace, thread string, run journalRun) error {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/internal/orchestrate"
 	"github.com/yusing/mekugi/internal/uisnapshot"
@@ -12,12 +13,19 @@ import (
 
 func resumeOrchestrationMain(t *testing.T, store *orchestrate.Store, workspace string, replay ...*mekugiReplayStore) (*appServerUI, *appServerTestInput) {
 	t.Helper()
+	var retained *mekugiReplayStore
+	if len(replay) != 0 {
+		retained = replay[0]
+	}
+	return resumeOrchestrationMainAfterSettings(t, store, workspace, retained, nil)
+}
+
+func resumeOrchestrationMainAfterSettings(t *testing.T, store *orchestrate.Store, workspace string, replay *mekugiReplayStore, afterSettings func()) (*appServerUI, *appServerTestInput) {
+	t.Helper()
 	u, wire := newAppServerTestUI()
 	u.ctx, u.thread, u.resumeThread = t.Context(), "", "main"
 	u.proxy = &mekugiProxy{journals: newJournalStore(), activity: newSubagentActivity(), orchestration: &orchestrateRuntime{store: &orchestrate.Store{Directory: store.Directory}}}
-	if len(replay) != 0 {
-		u.proxy.replayStore = replay[0]
-	}
+	u.proxy.replayStore = replay
 	u.ensureShell()
 	t.Cleanup(func() {
 		u.closeOrchestrateStorage()
@@ -32,6 +40,9 @@ func resumeOrchestrationMain(t *testing.T, store *orchestrate.Store, workspace s
 	thread := map[string]any{"id": "main", "cwd": workspace}
 	btwTestReply(t, u, read, string(mustMarshalJSON(map[string]any{"thread": thread})))
 	resume := btwTestRequest(t, wire, "thread/resume", "main")
+	if afterSettings != nil {
+		afterSettings()
+	}
 	btwTestReply(t, u, resume, string(mustMarshalJSON(map[string]any{"thread": thread, "model": "model", "reasoningEffort": "high"})))
 	// Resume's ordinary model lookup and two roster pages retain their existing owner.
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[]}}`)
@@ -160,5 +171,39 @@ func TestAppServerOrchestrateRecoveryReadAdmission(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAppServerOrchestrateRecoveryUnreadableCoordinatorJournal(t *testing.T) {
+	old, _ := workflowUI(t, "check")
+	store, replay, workspace := old.proxy.orchestration.store, old.proxy.replayStore, old.session.cwd
+	if _, err := old.proxy.journals.apply(old.ctx, replay, old.orchestrateThreads["child"].batch.Cwd, "child", "block", []journalMutation{{Op: "add", Kind: "task", Title: new("Build"), State: new("blocked"), Reason: new("Missing input")}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RegisterWait(t.Context(), workspace, "main", orchestrate.Wait{ID: "retained"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := openMekugiReplayStore(replay.directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Resume settings require valid authority. Inject corruption after admission,
+	// before the acknowledged resume discovers the run's retained observations.
+	u, wire := resumeOrchestrationMainAfterSettings(t, store, workspace, fresh, func() {
+		writeTestFile(t, filepath.Join(replay.directory, journalFilename(workspace, "main")), "unreadable journal")
+	})
+	drainOrchestrateWork(t, u)
+	if wait := u.session.orchestrationWaitResults["retained"]; wait == nil || !wait.restored || wait.wait.State != "registered" || len(wait.wait.Event) != 0 {
+		t.Fatal("manifest-backed wait was lost or claimed an unverified blocker", wait)
+	}
+	if !strings.Contains(u.notice, "Blocker notifications could not be restored: corrupt journal record") {
+		t.Fatal("blocker reconstruction failure was hidden", u.notice)
+	}
+	if u.navigation == nil || len(u.navigation.retained) != 1 || u.navigation.retained[0].TaskName != "batch" || u.orchestrateThreads["child"] == nil {
+		t.Fatal("journal failure suppressed batch or workflow recovery")
+	}
+	workflowTake(t, u, wire, "thread/read", "child", "")
+	if strings.Contains(wire.String(), "turn/start") || strings.Contains(wire.String(), "thread/resume") {
+		t.Fatal("workflow discovery resumed execution", wire.String())
 	}
 }

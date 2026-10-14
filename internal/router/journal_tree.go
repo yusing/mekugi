@@ -47,6 +47,8 @@ type journalNode struct {
 }
 
 type journalEvent struct {
+	BlockID        string      `json:"block_id,omitempty"`
+	BlockTurn      string      `json:"block_turn,omitempty"`
 	ResetTurn      string      `json:"reset_turn,omitempty"`
 	RootRetraction bool        `json:"root_retraction,omitzero"`
 	Legacy         bool        `json:"legacy,omitzero"`
@@ -659,7 +661,7 @@ func (j *threadJournal) appendEvent(event journalEvent) error {
 		compact := make([]journalEvent, 0, len(j.Events))
 		for _, e := range j.Events {
 			n := len(compact)
-			if n > 0 && e.Op == "set" && !e.Transition && compact[n-1].Op == "set" && !compact[n-1].Transition && compact[n-1].Path == e.Path {
+			if n > 0 && e.Op == "set" && !e.Transition && e.BlockID == "" && compact[n-1].Op == "set" && !compact[n-1].Transition && compact[n-1].BlockID == "" && compact[n-1].Path == e.Path {
 				compact[n-1] = e
 			} else {
 				compact = append(compact, e)
@@ -680,7 +682,7 @@ func (j *threadJournal) appendEvent(event journalEvent) error {
 
 func journalEventSize(event journalEvent) int {
 	node := event.Fields
-	return len(node.Title) + len(node.Body) + len(node.Reason) + len(node.Question) + len(event.Path) + len(event.Author) + 256
+	return len(node.Title) + len(node.Body) + len(node.Reason) + len(node.Question) + len(event.Path) + len(event.Author) + len(event.BlockID) + len(event.BlockTurn) + 256
 }
 
 // Sparse v1/native receipts bridge historical item delivery to ordered cursors.

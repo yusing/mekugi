@@ -46,9 +46,16 @@ func (u *appServerUI) recoverOrchestratedRun() {
 	u.orchestrateWork(func() func() {
 		batches, err := store.Snapshot(workspace, main)
 		var waits []orchestrate.Wait
-		var waitErr error
+		var blocks []orchestrateEvent
+		var waitErr, blockErr error
 		if err == nil {
 			err = store.RecoverWaits(u.orchestrateStorageContext, workspace, main)
+		}
+		if err == nil && u.proxy.journals != nil {
+			blocks, blockErr = u.proxy.journals.orchestratedBlocks(u.orchestrateStorageContext, u.proxy.replayStore, journalRun{Directory: store.Directory, Workspace: workspace, Main: main})
+			if blockErr != nil {
+				blocks = nil
+			}
 		}
 		if err == nil {
 			waits, waitErr = store.Waits(workspace, main, "registered", "ready", "dispatching", "delivered", "uncertain", "rejected", "canceled")
@@ -62,6 +69,9 @@ func (u *appServerUI) recoverOrchestratedRun() {
 				return
 			}
 			if err == nil {
+				if blockErr != nil {
+					u.setNotice("Blocker notifications could not be restored: "+blockErr.Error(), true)
+				}
 				if waitErr != nil {
 					u.setNotice("Wait results could not be restored: "+waitErr.Error(), true)
 				}
@@ -71,7 +81,7 @@ func (u *appServerUI) recoverOrchestratedRun() {
 						result.restored = true
 					}
 				}
-				u.advanceOrchestratedWaits(workspace, main, nil)
+				u.advanceOrchestratedWaits(workspace, main, blocks)
 			}
 			if len(batches) == 0 {
 				return

@@ -229,6 +229,86 @@ func waitTestEvent(t *testing.T, r orchestrateResult) *orchestrateEvent {
 	return &e
 }
 
+func TestAppServerOrchestrateJournalBlockerRecovery(t *testing.T) {
+	replay, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, launch := orchestrateIdentityPendingTurnWithReplay(t, replay)
+	orchestrateTestReply(t, old, launch, `{"turn":{"id":"child-turn"}}`)
+	workspace := old.orchestrateThreads["child"].batch.Cwd
+	ctx, release, err := replay.beginSession(t.Context(), "child", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	blocked := journalMutation{Op: "add", Kind: "task", Title: new("Build batch"), State: new("blocked"), Reason: new("Missing input")}
+	// Persist the mutation, then lose its returned notification before the UI
+	// or wait owner receives it. Final batch state supplies the exact reason.
+	_, expected, err := old.proxy.journals.applyWithOrchestrateEvents(ctx, replay, workspace, "child", "block", []journalMutation{blocked, {Op: "set", P: "/1", Reason: new("Final reason\nExact details")}})
+	if err != nil || len(expected) != 1 {
+		t.Fatal("blocker fixture", expected, err)
+	}
+	if _, err := old.proxy.journals.apply(ctx, replay, workspace, "child", "edit", []journalMutation{{Op: "set", P: "/1", Reason: new("Current reason")}}); err != nil {
+		t.Fatal(err)
+	}
+	workerCtx, workerRelease, err := replay.beginSession(t.Context(), "worker", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer workerRelease()
+	if err := old.proxy.journals.initialize(workerCtx, replay, workspace, "worker", "/root/worker", "child"); err != nil {
+		t.Fatal(err)
+	}
+	// Inherited blocked work is not a new notification when ancestry completes.
+	if err := old.proxy.journals.bindIdentity(workerCtx, replay, workspace, "worker", "child", "/root/worker", true); err != nil {
+		t.Fatal(err)
+	}
+	_, native, err := old.proxy.journals.applyWithOrchestrateEvents(workerCtx, replay, workspace, "worker", "new", []journalMutation{blocked})
+	if err != nil || len(native) != 1 {
+		t.Fatal("native blocker fixture", native, err)
+	}
+	expected = append(expected, native...)
+	// A descendant sorted before its source cannot take its notification identity.
+	if err := old.proxy.journals.initialize(ctx, replay, workspace, "a-worker", "/root/worker/fork", "worker"); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.proxy.journals.bindIdentity(ctx, replay, workspace, "a-worker", "worker", "/root/worker/fork", true); err != nil {
+		t.Fatal(err)
+	}
+	for restart := range 2 {
+		fresh, err := openMekugiReplayStore(replay.directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, wire := resumeOrchestrationMain(t, old.proxy.orchestration.store, old.session.cwd, fresh)
+		drainOrchestrateWork(t, u)
+		wire.Reset()
+		for index := range len(expected) + 1 {
+			c := &orchestrateCommand{ctx: t.Context(), callID: fmt.Sprintf("recovered-%d-%d", restart, index), main: "main", workspace: old.session.cwd, tool: "wait_agent", reply: make(chan orchestrateResult, 1)}
+			u.startOrchestratedChild(c)
+			drainOrchestrateWork(t, u)
+			result := <-c.reply
+			if restart == 0 && index < len(expected) {
+				if result.err != nil || result.wait == nil || result.wait.State != "completed" {
+					t.Fatal("saved blocker was lost across restart", result)
+				}
+				event := waitTestEvent(t, result)
+				want := expected[index]
+				if event.ID != want.ID || event.Task != "batch" || event.Thread != want.Thread || event.Turn != want.Turn || event.Kind != "blocked" || event.Status != "blocked" || event.Path != want.Path || event.Message != want.Message {
+					t.Fatal("recovery changed the notification", event, want)
+				}
+			} else if result.err != nil || result.wait == nil || result.wait.State != "registered" || len(result.wait.Event) != 0 {
+				t.Fatal("recovery duplicated publication or notified existing work", result)
+			}
+		}
+		j, exists, err := readThreadJournal(fresh, workspace, "child")
+		if err != nil || !exists || len(j.Items) != 1 || j.Items[0].State != "blocked" || j.Items[0].Reason != "Current reason" || j.Sequence != 3 || wire.Len() != 0 || len(u.orchestrateThreads) != 0 {
+			t.Fatal("recovery replayed a mutation or host effect", j, err, wire.String())
+		}
+	}
+}
+
 func TestAppServerOrchestrateLogicalWaitHostFlow(t *testing.T) {
 	u, launch := orchestrateIdentityPendingTurn(t)
 	orchestrateTestReply(t, u, launch, `{"turn":{"id":"child-turn"}}`)
