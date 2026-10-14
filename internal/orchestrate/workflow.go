@@ -20,6 +20,7 @@ type Workflow struct {
 	Generation       int                `json:"generation"`
 	Checks           []CheckResult      `json:"checks,omitempty"`
 	Reviews          []ReviewResult     `json:"reviews,omitempty"`
+	PreviousReviews  []PreviousReview   `json:"previous_reviews,omitempty"`
 	CorrectionRounds int                `json:"correction_rounds"`
 	Dispatches       []WorkflowDispatch `json:"dispatches,omitempty"`
 	Reason           string             `json:"reason,omitempty"`
@@ -88,6 +89,7 @@ func (s *Store) AdmitCandidate(ctx context.Context, workspace, main, name string
 		if w.Phase == PhaseCorrection && !w.correctionTurnAcknowledged() {
 			return errors.New("correction candidate requires an acknowledged correction turn")
 		}
+		w.retainPreviousReviews()
 		w.Outcome = nil
 		w.Candidate = &candidate
 		w.Generation++
@@ -120,6 +122,21 @@ func (w *Workflow) correctionTurnAcknowledged() bool {
 	return d != nil && d.State == DispatchAcknowledged
 }
 
+// Keep the last reviewed candidate across failed checks and unclean corrections.
+// Dispatch identities retain host provenance; these results are never approvals
+// for the replacement candidate. ResumeWorkflow starts a new scope instead.
+func (w *Workflow) retainPreviousReviews() {
+	if len(w.Reviews) == 0 || w.ReviewWaiver != "" {
+		return
+	}
+	w.PreviousReviews = nil
+	for _, review := range w.Reviews {
+		if d := w.currentDispatch(WorkflowDispatchKind(review.Purpose)); d != nil && d.ResultItemID != "" {
+			w.PreviousReviews = append(w.PreviousReviews, PreviousReview{DispatchID: d.ID, Result: review})
+		}
+	}
+}
+
 // routeCorrection sends a rejected generation back to the implementer until the
 // round budget is spent; then the coordinator decides.
 func (w *Workflow) routeCorrection(reason string) {
@@ -146,6 +163,7 @@ func (s *Store) RouteWorkflowCorrection(ctx context.Context, workspace, main, na
 		if w.Phase != PhaseImplementation && (w.Phase != PhaseCorrection || !w.correctionTurnAcknowledged()) {
 			return errors.New("workflow is not awaiting a candidate")
 		}
+		w.retainPreviousReviews()
 		w.Outcome = nil
 		w.Generation++
 		w.Checks = nil
@@ -172,6 +190,7 @@ func (s *Store) ResumeWorkflow(ctx context.Context, workspace, main, name string
 		w.Phase = PhaseImplementation
 		w.Generation++
 		w.CorrectionRounds = 0
+		w.PreviousReviews = nil
 		w.Checks = nil
 		if w.ReviewWaiver == "" {
 			w.Reviews = nil

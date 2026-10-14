@@ -295,7 +295,15 @@ wrong-revision, or failed review results do not count as approval. Mekugi collec
 both results before delivering one correction assignment directly to the implementer.
 The implementer can fix or dispute findings but cannot approve its own candidate.
 Each changed candidate receives validation and, unless explicitly waived below,
-both reviews again. Two correction rounds are permitted for failed checks, unclean results, and findings combined; a
+fresh verdicts from both purposes. Correction reviews compare each purpose's last
+reviewed candidate with the current candidate, addressing unresolved findings,
+disputes and affected existing behavior. They reuse unchanged clear scope, reopening
+it only for an evidenced interaction with the correction. Prior verdicts retain
+their candidate and host-dispatch provenance across correction and restart; they
+never approve a new candidate. A purpose without a completed review, including a
+blocked review, reviews the full baseline diff. New implementation input starts a
+full review round, so changed accepted scope does not inherit delta-only coverage.
+Two correction rounds are permitted for failed checks, unclean results, and findings combined; a
 further rejection then requires a decision.
 
 Host lifecycle events drive dispatch and progress, not model polling or long MCP

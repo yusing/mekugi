@@ -102,6 +102,12 @@ type ReviewResult struct {
 	Reason   string          `json:"reason"`
 }
 
+// PreviousReview preserves one purpose's verdict and its exact host dispatch.
+type PreviousReview struct {
+	DispatchID string       `json:"dispatch_id"`
+	Result     ReviewResult `json:"result"`
+}
+
 // ReviewResultSchema constrains a generic read-only host turn. DecodeReviewResult
 // also checks cross-field meaning; the schema alone is not an approval gate.
 const ReviewResultSchema = `{"type":"object","additionalProperties":false,"required":["revision","purpose","verdict","findings","reason"],"properties":{"revision":{"type":"string","pattern":"^([0-9a-f]{40}|[0-9a-f]{64})$"},"purpose":{"type":"string","enum":["correctness","simplification"]},"verdict":{"type":"string","enum":["clear","findings","blocked"],"description":"clear requires empty findings and reason. findings requires nonempty findings and an empty reason. blocked requires empty findings and a nonblank reason."},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","detail"],"properties":{"id":{"type":"string","minLength":1},"detail":{"type":"string","minLength":1}}}},"reason":{"type":"string","description":"Blocker only. Must be empty for clear or findings. Do not put summaries or validation notes here."}}}`

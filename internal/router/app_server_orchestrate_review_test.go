@@ -96,6 +96,19 @@ func workflowReviewThread(t *testing.T, u *appServerUI, w *appServerTestInput, p
 		t.Fatal("review turn lost schema or scratch-only policy", params)
 	}
 	assignment := params["input"].([]any)[0].(map[string]any)["text"].(string)
+	base := child.batch.Base
+	for _, previous := range child.batch.Workflow.PreviousReviews {
+		if previous.Result.Purpose == purpose {
+			base = previous.Result.Revision
+		}
+		raw, _ := json.Marshal(&previous)
+		if !strings.Contains(assignment, "Prior review (retained verdict and dispatch provenance): "+string(raw)) {
+			t.Fatal("review turn lost prior verdict evidence", assignment)
+		}
+	}
+	if !strings.Contains(assignment, "Review candidate "+child.batch.Workflow.Candidate.Revision+" against baseline "+base+" for "+string(purpose)) {
+		t.Fatal("review turn used the wrong candidate comparison", assignment)
+	}
 	for _, receipt := range child.batch.Workflow.Checks {
 		raw, _ := json.Marshal(receipt)
 		if !strings.Contains(assignment, "Runtime validation receipt (host command/exec): "+string(raw)) {
@@ -168,6 +181,16 @@ func TestWorkflowReviewAssignmentExactReceipts(t *testing.T) {
 	text := workflowReviewAssignment(b, orchestrate.DispatchCorrectness)
 	if strings.Count(text, "Runtime validation receipt (host command/exec):") != 1 || !strings.Contains(text, `"command":"current"`) || !strings.Contains(text, "Implementer report (claims, not host validation receipts):\nimplementer claim") {
 		t.Fatal("review mixed candidate receipts or report provenance", text)
+	}
+	for _, previous := range [][]orchestrate.PreviousReview{nil,
+		{{Result: orchestrate.ReviewResult{Revision: "previous", Purpose: orchestrate.ReviewSimplification, Verdict: orchestrate.VerdictClear}}},
+		{{Result: orchestrate.ReviewResult{Revision: "previous", Purpose: orchestrate.ReviewCorrectness, Verdict: orchestrate.VerdictBlocked}}},
+	} {
+		b.Workflow.PreviousReviews = previous
+		text = workflowReviewAssignment(b, orchestrate.DispatchCorrectness)
+		if !strings.HasPrefix(text, "Review candidate candidate against baseline baseline for correctness") || strings.Contains(text, "Correction review:") {
+			t.Fatal("first or incomplete purpose review lost full baseline coverage", text)
+		}
 	}
 }
 
@@ -292,6 +315,8 @@ func TestOrchestrateWorkflowLifecycle(t *testing.T) {
 
 func TestOrchestrateWorkflowCorrections(t *testing.T) {
 	u, w := workflowUI(t)
+	child := u.orchestrateThreads["child"]
+	submoduleCleanupGit(t, child.batch.Cwd, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "candidate")
 	workflowCompleted(t, u, "child", "implement", "done")
 	for round := 0; round < 3; round++ {
 		workflowReview(t, u, w, orchestrate.ReviewCorrectness, orchestrate.VerdictFindings)
@@ -306,7 +331,21 @@ func TestOrchestrateWorkflowCorrections(t *testing.T) {
 		}
 		turn := fmt.Sprintf("correction-%d", round)
 		orchestrateTestReply(t, u, correction, fmt.Sprintf(`{"turn":{"id":%q}}`, turn))
+		prior := child.batch.Workflow.Candidate.Revision
+		if round == 0 {
+			submoduleCleanupGit(t, child.batch.Cwd, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "correction")
+		}
 		workflowCompleted(t, u, "child", turn, "disputed")
+		batches, err := (&orchestrate.Store{Directory: u.proxy.orchestration.store.Directory}).Snapshot(u.session.cwd, "main")
+		if err != nil || len(batches[0].Workflow.PreviousReviews) != 2 || batches[0].Workflow.PreviousReviews[0].Result.Revision != prior {
+			t.Fatal("correction lost the reviewed candidate on restart", batches, err)
+		}
+		assignment := workflowReviewAssignment(batches[0], orchestrate.DispatchSimplification)
+		for _, want := range []string{"Correction review:", "Reuse unchanged clear scope", "unresolved findings/disputes", `"purpose":"correctness","verdict":"findings"`, `"purpose":"simplification","verdict":"clear"`, "disputed"} {
+			if !strings.Contains(assignment, want) {
+				t.Fatalf("restored correction review omitted %q: %s", want, assignment)
+			}
+		}
 	}
 	if u.orchestrateThreads["child"].batch.Workflow.Phase != orchestrate.PhaseNeedsDecision {
 		t.Fatal("correction limit not enforced")
@@ -316,6 +355,11 @@ func TestOrchestrateWorkflowCorrections(t *testing.T) {
 		if !strings.Contains(notice, want) {
 			t.Fatalf("blocker notice omits %q: %s", want, notice)
 		}
+	}
+	workflowRestart(t, u)
+	drainOrchestrateWork(t, u)
+	if strings.Contains(w.String(), `"method":"turn/start"`) || strings.Contains(w.String(), `"method":"thread/start"`) {
+		t.Fatal("restored prior reviews revived host work", w.String())
 	}
 }
 

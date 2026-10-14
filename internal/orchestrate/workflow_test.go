@@ -6,6 +6,7 @@ import (
 	json "encoding/json/v2"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -153,12 +154,45 @@ func TestWorkflowCorrectionLimitAndAggregation(t *testing.T) {
 		f.dispatch(DispatchCorrection)
 		// A dispute may keep the commit but must invalidate both previous approvals.
 		f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "report"))
-		if len(f.state().Reviews) != 0 {
-			t.Fatal("dispute reused approvals")
+		next := f.state() // Reload from disk, including exact prior verdict provenance.
+		if len(next.Reviews) != 0 || len(next.PreviousReviews) != 2 {
+			t.Fatal("dispute reused approvals or lost prior context", next)
+		}
+		for i, previous := range next.PreviousReviews {
+			d := w.currentDispatch(WorkflowDispatchKind(previous.Result.Purpose))
+			if !reflect.DeepEqual(previous.Result, w.Reviews[i]) || previous.DispatchID != d.ID || d.ResultItemID != "result" {
+				t.Fatal("prior verdict lost its candidate, purpose, findings, or host provenance", previous)
+			}
 		}
 	}
 	if _, _, err := f.s.BeginWorkflowDispatch(t.Context(), f.workspace, "main", "batch", "extra", 3, DispatchCorrection); err == nil {
 		t.Fatal("third correction dispatched")
+	}
+	f.ok(f.s.ResumeWorkflow(t.Context(), f.workspace, "main", "batch"))
+	f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "new scope"))
+	if len(f.state().PreviousReviews) != 0 {
+		t.Fatal("new implementation scope inherited delta review context")
+	}
+}
+
+func TestWorkflowPriorReviewsSurviveRejectedCorrections(t *testing.T) {
+	f := newWorkflowFixture(t, []RequiredCheck{{"check", "command"}})
+	r := CheckResult{Generation: 1, Phase: PhaseValidation, Command: "command", Cwd: f.batch.Cwd, Revision: f.batch.Base, CheckID: "check", Outcome: CheckPassed, ExitCode: new(0)}
+	f.check(r)
+	f.review(DispatchCorrectness, VerdictFindings)
+	f.review(DispatchSimplification, VerdictClear)
+	f.dispatch(DispatchCorrection)
+	f.ok(f.s.RouteWorkflowCorrection(t.Context(), f.workspace, "main", "batch", "unclean correction", "disputed F1"))
+	previous := f.state().PreviousReviews
+	if len(previous) != 2 || previous[0].Result.Findings[0].ID != "F1" {
+		t.Fatal("unclean correction lost the original findings", previous)
+	}
+	f.dispatch(DispatchCorrection)
+	f.ok(f.s.AdmitCandidate(t.Context(), f.workspace, "main", "batch", Candidate{f.batch.Base}, "committed"))
+	r.Generation, r.Outcome, r.ExitCode = f.state().Generation, CheckFailed, new(1)
+	f.check(r)
+	if w := f.state(); !reflect.DeepEqual(w.PreviousReviews, previous) || len(w.Reviews) != 0 || w.Phase != PhaseNeedsDecision {
+		t.Fatal("failed validation lost review context or reused approvals", w)
 	}
 }
 

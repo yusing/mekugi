@@ -23,6 +23,7 @@ func TestOrchestrateListDetails(t *testing.T) {
 			Checks: []orchestrate.CheckResult{{Generation: 2, Revision: strings.Repeat("a", 40), CheckID: "check", Outcome: orchestrate.CheckUncertain, Output: text}},
 			Reviews: []orchestrate.ReviewResult{{Revision: strings.Repeat("a", 40), Purpose: orchestrate.ReviewCorrectness,
 				Verdict: orchestrate.VerdictFindings, Findings: []orchestrate.ReviewFinding{{ID: "finding", Detail: text}}}},
+			PreviousReviews: []orchestrate.PreviousReview{{DispatchID: "settled", Result: orchestrate.ReviewResult{Revision: strings.Repeat("b", 40), Purpose: orchestrate.ReviewSimplification, Verdict: orchestrate.VerdictClear}}},
 			Dispatches: []orchestrate.WorkflowDispatch{
 				{ID: "settled", Generation: 1, State: orchestrate.DispatchAcknowledged, HostStatus: "completed"},
 				{ID: "old-intent", Generation: 1, State: orchestrate.DispatchIntent},
@@ -64,7 +65,7 @@ func TestOrchestrateListDetails(t *testing.T) {
 					t.Fatal("check selection lost or mixed evidence")
 				}
 			case "reviews":
-				if !reflect.DeepEqual(w["reviews"], b.Workflow.Reviews) || w["checks"] != nil {
+				if !reflect.DeepEqual(w["reviews"], b.Workflow.Reviews) || !reflect.DeepEqual(w["previous_reviews"], b.Workflow.PreviousReviews) || w["checks"] != nil {
 					t.Fatal("review selection lost or mixed evidence")
 				}
 			default:

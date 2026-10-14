@@ -69,6 +69,9 @@ func orchestrateListAgents(batches []orchestrate.Batch, input orchestrateListInp
 				workflow["required_checks"], workflow["checks"] = w.Assignment.RequiredChecks, w.Checks
 			case "reviews":
 				workflow["reviews"] = w.Reviews
+				if len(w.PreviousReviews) != 0 {
+					workflow["previous_reviews"] = w.PreviousReviews
+				}
 			}
 			agent["workflow"] = workflow
 		}

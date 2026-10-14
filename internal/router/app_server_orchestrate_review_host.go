@@ -95,7 +95,19 @@ func workflowReviewerInstructions(purpose orchestrate.WorkflowDispatchKind) stri
 func workflowReviewAssignment(batch orchestrate.Batch, purpose orchestrate.WorkflowDispatchKind) string {
 	w := batch.Workflow
 	var text strings.Builder
-	text.WriteString("Review candidate " + w.Candidate.Revision + " against baseline " + batch.Base + " for " + string(purpose) + ". Scope: " + w.Assignment.Scope + "\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
+	base := batch.Base
+	for _, previous := range w.PreviousReviews {
+		if previous.Result.Purpose == orchestrate.ReviewPurpose(purpose) && previous.Result.Verdict != orchestrate.VerdictBlocked {
+			base = previous.Result.Revision
+			text.WriteString("Correction review: inspect the prior-reviewed-candidate to current-candidate delta, unresolved findings/disputes, and affected existing behavior. Reuse unchanged clear scope; reopen it only for an evidenced interaction with the correction. Prior verdicts are context, not approval of this candidate.\n")
+			break
+		}
+	}
+	text.WriteString("Review candidate " + w.Candidate.Revision + " against baseline " + base + " for " + string(purpose) + ". Scope: " + w.Assignment.Scope + "\nCandidate source is read-only. Run needed focused checks using the writable TMPDIR and GOCACHE supplied by the host. Reuse exact-candidate runtime receipts below; rerun only for a concrete evidence gap. Return only the required JSON verdict for this revision and purpose. Findings need stable IDs and concrete details. If missing evidence prevents completing the review, return blocked with a reason. Otherwise keep reason empty. Return the JSON verdict as your final answer.")
+	for _, previous := range w.PreviousReviews {
+		raw, _ := json.Marshal(&previous)
+		text.WriteString("\nPrior review (retained verdict and dispatch provenance): " + string(raw))
+	}
 	for _, check := range w.Checks {
 		if check.Revision == w.Candidate.Revision && check.Generation == w.Generation && check.Cwd == batch.Cwd {
 			raw, _ := json.Marshal(check)
