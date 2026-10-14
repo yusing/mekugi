@@ -313,10 +313,16 @@ func readManagedOutputFile(name string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxReplayRecordBytes+1))
+	// Managed records are atomically replaced, so their stat size usually
+	// matches the complete read. Reserve one read's spare capacity to avoid
+	// geometric io.ReadAll growth, while retaining the bound if size changes.
+	var buffer bytes.Buffer
+	buffer.Grow(int(info.Size()) + bytes.MinRead)
+	_, err = buffer.ReadFrom(io.LimitReader(file, maxReplayRecordBytes+1))
 	if err != nil {
 		return nil, err
 	}
+	data := buffer.Bytes()
 	if len(data) > maxReplayRecordBytes || !utf8.Valid(data) {
 		return nil, errors.New("invalid read recovery record encoding or size")
 	}
