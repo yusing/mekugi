@@ -9,6 +9,7 @@ import (
 type WorkflowDispatchKind string
 
 const (
+	DispatchValidation     WorkflowDispatchKind = "validation"
 	DispatchCorrectness    WorkflowDispatchKind = "correctness"
 	DispatchSimplification WorkflowDispatchKind = "simplification"
 	DispatchCorrection     WorkflowDispatchKind = "correction"
@@ -17,6 +18,8 @@ const (
 type WorkflowDispatchState string
 
 const (
+	// DispatchQueued is a validation command confirmed not yet sent to the host.
+	DispatchQueued       WorkflowDispatchState = "queued"
 	DispatchIntent       WorkflowDispatchState = "intent"
 	DispatchAcknowledged WorkflowDispatchState = "acknowledged"
 	DispatchUncertain    WorkflowDispatchState = "uncertain"
@@ -29,6 +32,7 @@ type WorkflowDispatch struct {
 	HostStatus   string                `json:"host_status,omitempty"`
 	ID           string                `json:"id"`
 	Kind         WorkflowDispatchKind  `json:"kind"`
+	CheckID      string                `json:"check_id,omitempty"`
 	Generation   int                   `json:"generation"`
 	Revision     string                `json:"revision"`
 	State        WorkflowDispatchState `json:"state"`
@@ -60,12 +64,21 @@ func (s *Store) BeginWorkflowDispatch(ctx context.Context, workspace, main, name
 		if e != nil {
 			return e
 		}
-		for _, d := range w.Dispatches {
+		for i := range w.Dispatches {
+			d := &w.Dispatches[i]
 			if d.ID == id {
 				if d.Generation != generation || d.Kind != kind {
 					return errors.New("dispatch identity reused with different input")
 				}
-				record = d
+				if kind == DispatchValidation && d.State == DispatchQueued {
+					if generation != w.Generation || w.Phase != PhaseValidation || w.Candidate == nil || d.Revision != w.Candidate.Revision {
+						return errors.New("check dispatch requires the active validation candidate")
+					}
+					d.State = DispatchIntent
+					record, dispatch = *d, true
+					return nil
+				}
+				record = *d
 				return errLaunchUnchanged
 			}
 		}
@@ -100,6 +113,8 @@ func (s *Store) BeginWorkflowDispatch(ctx context.Context, workspace, main, name
 				revision = w.Candidate.Revision
 			}
 			w.CorrectionRounds++
+		case DispatchValidation:
+			return errors.New("validation check has no retained queued dispatch; reconcile host state without rerunning")
 		default:
 			return errors.New("invalid workflow dispatch kind")
 		}

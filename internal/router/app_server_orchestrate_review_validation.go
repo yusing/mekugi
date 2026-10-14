@@ -39,6 +39,35 @@ func (u *appServerUI) startWorkflowCheck(child *orchestrateChild) {
 		Generation: w.Generation,
 		Revision:   w.Candidate.Revision,
 	}}
+	u.setWorkflowWork(child, work)
+	c := child.command
+	var dispatch bool
+	var record orchestrate.WorkflowDispatch
+	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+		var err error
+		record, dispatch, err = s.BeginWorkflowDispatch(ctx, c.workspace, c.main, child.batch.TaskName, work.dispatch.ID, w.Generation, workflowValidation)
+		return err
+	}, func(err error) {
+		if err != nil || !dispatch {
+			u.endWorkflowWork(work)
+			if err == nil {
+				err = errors.New("validation dispatch needs host reconciliation; do not rerun the command")
+			}
+			u.workflowFailure(child, orchestrate.PhaseNeedsDecision, err)
+			return
+		}
+		work.dispatch = record
+		if u.workflowWorkStopped(work) {
+			u.failWorkflowDispatch(work, false, context.Canceled)
+			return
+		}
+		u.sendWorkflowCheck(work)
+	})
+}
+
+// The durable dispatch intent must precede command/exec, including its display.
+func (u *appServerUI) sendWorkflowCheck(work *orchestrateReviewWork) {
+	child, check := work.child, work.check
 	params := map[string]any{"command": []string{"bash", "-c", check.Command}, "processId": work.dispatch.ID, "cwd": child.batch.Cwd, "disableTimeout": true, "streamStdoutStderr": true}
 	if len(child.batch.Launch.SandboxPolicy) != 0 {
 		params["sandboxPolicy"] = child.batch.Launch.SandboxPolicy
@@ -50,7 +79,6 @@ func (u *appServerUI) startWorkflowCheck(child *orchestrateChild) {
 			params["permissionProfile"] = launch.Permissions
 		}
 	}
-	u.setWorkflowWork(child, work)
 	if n := u.navigation; n != nil && n.views[child.batch.Launch.ThreadID] != nil {
 		v := n.views[child.batch.Launch.ThreadID]
 		entry := activityPaneEntry{Seq: v.session.next(), Observed: u.now(), Agent: "/root", Kind: "tool", Text: "Run " + commentaryCode(check.Command), CallID: work.dispatch.ID,
@@ -60,8 +88,7 @@ func (u *appServerUI) startWorkflowCheck(child *orchestrateChild) {
 	}
 	if err := u.orchestrateRPCRequest(orchestrateRPC{method: "command/exec", child: child, review: work}, params); err != nil {
 		u.finishWorkflowCheckDisplay(work, "failed", err.Error(), nil)
-		u.endWorkflowWork(work)
-		u.workflowFailure(child, orchestrate.PhaseNeedsDecision, err)
+		u.failWorkflowDispatch(work, true, err)
 	}
 }
 
@@ -94,14 +121,18 @@ func (u *appServerUI) workflowCheckResponse(work *orchestrateReviewWork, m appse
 	if result.ExitCode == nil {
 		output = result.Output
 	}
-	if u.workflowWorkStopped(work) {
+	stopped := u.workflowWorkStopped(work)
+	if stopped {
 		status = "interrupted"
 	}
 	u.finishWorkflowCheckDisplay(work, status, output, result.ExitCode)
-	if u.workflowWorkStopped(work) {
+	if stopped && result.ExitCode == nil {
 		return
 	}
 	u.workflowStore(child, func(ctx context.Context, s *orchestrate.Store) error {
+		if stopped {
+			return s.RecordWorkflowCompletion(ctx, c.workspace, c.main, name, d.ID, "", "", "completed")
+		}
 		return s.RecordWorkflowCheck(ctx, c.workspace, c.main, name, result)
 	}, func(err error) {
 		if err != nil && !work.canceled {

@@ -10,9 +10,7 @@ import (
 	"github.com/yusing/mekugi/internal/orchestrate"
 )
 
-// workflowValidation keys an in-flight host check. Checks have no durable
-// dispatch; recovery reruns any check without a retained result.
-const workflowValidation orchestrate.WorkflowDispatchKind = "validation"
+const workflowValidation = orchestrate.DispatchValidation
 
 // A work item owns one host effect. Durable dispatch and completion identities
 // live in the store; these fields only serialize live event/ack arrival.

@@ -69,7 +69,7 @@ func (s *Store) beginDelivery(ctx context.Context, workspace, main string, input
 				return errors.New("review waiver requires confirmed implementer completion")
 			}
 			for _, d := range w.Dispatches {
-				if d.State != DispatchFailed && (d.State != DispatchAcknowledged || d.HostStatus == "") {
+				if d.State != DispatchQueued && d.State != DispatchFailed && (d.State != DispatchAcknowledged || d.HostStatus == "") {
 					return errors.New("review waiver requires settled host dispatches")
 				}
 			}

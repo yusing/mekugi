@@ -55,6 +55,11 @@ func (s *Store) RecordWorkflowCompletion(ctx context.Context, workspace, main, n
 			if d.ID != id {
 				continue
 			}
+			if d.Kind == DispatchValidation && (d.State == DispatchIntent || d.State == DispatchUncertain) && thread == "" && turn == "" {
+				// A late command exit settles the host effect without approving a
+				// canceled or superseded validation round.
+				d.State = DispatchAcknowledged
+			}
 			if d.State != DispatchAcknowledged || d.ThreadID != thread || d.TurnID != turn {
 				return errors.New("completion does not match acknowledged work")
 			}

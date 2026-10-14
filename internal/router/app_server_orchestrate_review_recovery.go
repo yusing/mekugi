@@ -4,6 +4,7 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/yusing/mekugi/internal/appserver"
@@ -92,7 +93,7 @@ func (u *appServerUI) reconcileCorrectionLifecycle(child *orchestrateChild) {
 
 // reconcileWorkflow reads host history for every unsettled dispatch of the
 // current generation, so concurrent reviews recover independently. Missing
-// checks have no host effect to reconcile; driving reruns them.
+// validation results cannot prove that a command was never dispatched.
 func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
 	u.reconcileCorrectionLifecycle(child)
 	w := child.batch.Workflow
@@ -102,6 +103,16 @@ func (u *appServerUI) reconcileWorkflow(child *orchestrateChild) {
 	}
 	var pending []orchestrate.WorkflowDispatch
 	for _, d := range w.Dispatches {
+		if d.Kind == workflowValidation {
+			if work := child.workflowWork[d.Kind]; work != nil && work.dispatch.ID == d.ID {
+				continue
+			}
+			if workflowDispatchUnsettled(d) {
+				u.workflowFailure(child, orchestrate.PhaseNeedsDecision, fmt.Errorf("validation check %s at %s has uncertain effects; reconcile host state without rerunning", d.CheckID, d.Revision))
+				return
+			}
+			continue
+		}
 		if d.Generation != w.Generation || d.State == orchestrate.DispatchFailed || d.ResultItemID != "" || d.Archive != nil || child.workflowWork[d.Kind] != nil {
 			continue
 		}

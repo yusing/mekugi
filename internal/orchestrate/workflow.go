@@ -92,6 +92,13 @@ func (s *Store) AdmitCandidate(ctx context.Context, workspace, main, name string
 		w.Candidate = &candidate
 		w.Generation++
 		w.Checks = nil
+		for _, check := range w.Assignment.RequiredChecks {
+			w.Dispatches = append(w.Dispatches, WorkflowDispatch{
+				ID:   fmt.Sprintf("workflow/%s/%d/check/%s", name, w.Generation, check.ID),
+				Kind: DispatchValidation, CheckID: check.ID, Generation: w.Generation,
+				Revision: candidate.Revision, State: DispatchQueued,
+			})
+		}
 		if w.ReviewWaiver == "" {
 			w.Reviews = nil
 		}
@@ -202,6 +209,18 @@ func (s *Store) RecordWorkflowCheck(ctx context.Context, workspace, main, name s
 		}
 		if w.Phase != PhaseValidation {
 			return errors.New("workflow is not awaiting validation")
+		}
+		d := slices.IndexFunc(w.Dispatches, func(d WorkflowDispatch) bool {
+			return d.Kind == DispatchValidation && d.Generation == result.Generation && d.CheckID == result.CheckID && d.Revision == result.Revision
+		})
+		if d < 0 || w.Dispatches[d].State != DispatchIntent && w.Dispatches[d].State != DispatchUncertain {
+			return errors.New("check has no retained dispatch intent")
+		}
+		w.Dispatches[d].State = DispatchAcknowledged
+		w.Dispatches[d].HostStatus = "completed"
+		if result.Outcome == CheckUncertain {
+			w.Dispatches[d].State = DispatchUncertain
+			w.Dispatches[d].HostStatus = ""
 		}
 		w.Checks = append(w.Checks, result)
 		switch result.Outcome {

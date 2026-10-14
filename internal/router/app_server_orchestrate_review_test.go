@@ -351,6 +351,9 @@ func TestUISnapshotOrchestrateCheckOutcomes(t *testing.T) {
 				if result := <-cancel.reply; result.err != nil || child.batch.Workflow.Phase != orchestrate.PhaseCanceled || len(child.batch.Workflow.Checks) != 0 {
 					t.Fatal("late check result revived canceled validation", result, child.batch.Workflow)
 				}
+				if workflowUnsettled(child.batch) {
+					t.Fatal("confirmed late exit left validation dispatch unsettled")
+				}
 			}
 			uisnapshot.Assert(t, "testdata/snapshots/orchestration-check-"+test+".txt", strings.Join(v.view.renderFeed(100, 30).lines, "\n")+"\n")
 			if test == "failed" || test == "canceled" {
@@ -457,7 +460,8 @@ func TestOrchestrateWorkflowReviewWaiver(t *testing.T) {
 			if notice := workflowNotice(t, u, w); !strings.Contains(notice, "Further reviews waived") || !strings.Contains(notice, follow.reviewWaiver) || !strings.Contains(notice, "corrections complete") {
 				t.Fatal("waived readiness lost its authority or report", notice)
 			}
-			if len(u.orchestrateThreads["child"].batch.Workflow.Dispatches) != 0 || w.Len() != 0 {
+			workflow := u.orchestrateThreads["child"].batch.Workflow
+			if workflowDispatched(workflow, orchestrate.DispatchCorrectness) || workflowDispatched(workflow, orchestrate.DispatchSimplification) || w.Len() != 0 {
 				t.Fatal("correction-only completion scheduled a review", w.String())
 			}
 		})
