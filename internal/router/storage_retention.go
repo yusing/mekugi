@@ -604,14 +604,23 @@ func (s *mekugiReplayStore) storageSnapshotContext(ctx context.Context) (storage
 	// from a filename or borrow another workspace's session.
 	// Expand dependencies even for older catalogs and uncatalogued calls.
 	// Process calls before considering orphan blobs as legacy candidates.
+	dependenciesByCall := make(map[string][]string)
 	addDependencies := func(candidate *storageCandidate) error {
 		for _, name := range slices.Sorted(maps.Keys(candidate.files)) {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			dependencies, err := s.snapshotDependencies(name)
-			if err != nil {
-				return err
+			if !strings.HasPrefix(name, "call-") {
+				continue
+			}
+			dependencies, seen := dependenciesByCall[name]
+			if !seen {
+				var err error
+				dependencies, err = s.snapshotDependencies(name)
+				if err != nil {
+					return err
+				}
+				dependenciesByCall[name] = dependencies
 			}
 			for _, dependency := range dependencies {
 				if !candidate.files[dependency] {
