@@ -72,6 +72,7 @@ type liveActivityView struct {
 	rosterEasing          bool                        // The last roster frame showed metrics still easing.
 	rosterTotalPace       *rosterMetricPace           // Run-wide header easing, owned by the coordinator's view.
 	mainView              *liveActivityView           // Roster reads Main's state without duplicating its feed entries.
+	mainWaitStatus        func() (string, bool)       // Owned wait presentation; host lifecycle stays unchanged.
 	painter               activityui.Painter
 	osc                   livediff.OSC
 	runs                  map[liveActivityRunKey]liveActivityRun
@@ -554,6 +555,14 @@ func (v *liveActivityView) agentStatus(agent activityPaneAgent) rune {
 		source, name = source.mainView, "Main"
 	}
 	latest := source.latest(name)
+	if (name == "Main" || name == "/root") && source.mainWaitStatus != nil {
+		if label, active := source.mainWaitStatus(); label != "" {
+			if active {
+				return '◐'
+			}
+			return '·'
+		}
+	}
 	switch {
 	case agent.Responding:
 		return '◐'

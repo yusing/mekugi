@@ -737,6 +737,15 @@ func (v *liveActivityView) agentState(agent activityPaneAgent, width int, now ti
 	if agent.Name == "/root" && v.mainView != nil {
 		source, owner = v.mainView, "Main"
 	}
+	if (owner == "Main" || owner == "/root") && source.mainWaitStatus != nil {
+		if label, active := source.mainWaitStatus(); label != "" {
+			label = liveActivityMiddle(label, width)
+			if active {
+				return activityui.StatusPulse(label, now, v.painter.Colors)
+			}
+			return label
+		}
+	}
 	var blocks []activityui.Block
 	var kind string
 	for i, entry := range slices.Backward(source.entries) {

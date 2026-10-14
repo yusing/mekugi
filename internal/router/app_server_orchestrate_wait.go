@@ -44,7 +44,7 @@ func (u *appServerUI) waitOrchestratedEvent(command *orchestrateCommand) {
 		return func() {
 			command.reply <- orchestrateResult{wait: &w, err: err}
 			if err == nil {
-				if command.waitCancel != "" && w.State == "canceled" {
+				if w.State == "registered" || w.State == "canceled" {
 					u.observeOrchestrationWait(command.workspace, command.main, w)
 				}
 				u.advanceOrchestratedWaits(command.workspace, command.main, nil)

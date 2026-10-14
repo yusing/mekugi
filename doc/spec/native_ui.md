@@ -1281,7 +1281,12 @@ transcript. The Main turn supplies the work spinner; pending questions (includin
 hidden or resumed async questions), pending approvals and unsupported server
 requests take priority with `Action Required`. Automatic journal continuation keeps
 the spinner through context reset and next-turn acknowledgement.
-Settled Main turns without automatic continuation remove the spinner; child completion
+An owned orchestration wait keeps Main's composer and roster visibly waiting and
+keeps the title spinner after its host turn ends. Wait results, cancellation and
+interruption replace that waiting presentation; a new host turn restores ordinary
+turn presentation. Resume uses the retained wait, not an old registration row.
+Settled Main turns without automatic continuation or an owned wait remove the
+spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when
 the native client exits or yields the terminal to an external editor.
@@ -1292,7 +1297,8 @@ reads Codex's effective `tui.notifications`, `tui.notification_method`, and
 without editing configuration. Events are `agent-turn-complete`,
 `approval-requested`, `plan-mode-prompt` (synchronous input), and `async-question`.
 Only successful live Main completion notifies; pending questions take priority.
-Stops that the journal will automatically continue do not notify. The final
+Stops that the journal will automatically continue and orchestration wait
+suspensions do not notify. The final
 completion still notifies when no automatic continuation remains.
 History restoration and duplicate question events do not notify again.
 

@@ -997,6 +997,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	switch m.Method {
 	case "turn/started":
 		if p.ThreadID == u.thread {
+			u.session.orchestrationWaitTurn = ""
 			u.started(p.Turn.ID)
 			u.status, u.alert, u.turnStarted = "Working", false, u.now()
 			if u.interruption.beforeStart {
@@ -1012,6 +1013,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
+			if p.Turn.Status == "completed" && u.session.orchestrationWaitSuspends(p.Turn.ID) {
+				u.session.orchestrationWaitTurn = p.Turn.ID
+			}
 			if p.Turn.Status == "interrupted" {
 				u.stopOrchestratedWaits()
 				if err := u.reset.stop(p.Turn.ID); err != nil {
@@ -1238,6 +1242,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		if u.cancelQueuedCompact() {
 			return false, nil
+		}
+		if _, waiting := u.session.orchestrationWaitStatus(); waiting {
+			return false, u.keyboardInterrupt()
 		}
 		if u.turn == "" && !u.starting() && !u.reset.active() && u.orchestrateStarting == nil && u.orchestrateBusy() {
 			u.setNotice("Interrupt orchestration batches before quitting", true)
@@ -1691,6 +1698,9 @@ func composerBorder(open, close, left, right string, width int, color string) st
 }
 
 func (u *appServerUI) sessionAnimating() bool {
+	if _, active := u.session.orchestrationWaitStatus(); active {
+		return true
+	}
 	return u.runningProcessCount() > 0 || u.btw != nil && (u.btw.busy || u.btw.starting) || !u.alert && (u.turn != "" || u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "")
 }
 
@@ -1701,6 +1711,13 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 		return ""
 	case u.alert:
 		return activityui.Red + "✗ " + activityui.ErrorPreview(u.status) + activityui.Reset
+	case u.session.orchestrationWaitTurn != "" && u.turn == "" && !u.starting() && u.submission.text == "":
+		if label, active := u.session.orchestrationWaitStatus(); label != "" {
+			if active {
+				return "\x1b[39m◐ " + activityui.StatusPulse(label, now, u.view.painter.Colors) + activityui.Reset
+			}
+			return "\x1b[39m" + label + activityui.Reset
+		}
 	case u.turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
 		if status == "Working" {
@@ -1745,6 +1762,7 @@ func scrollLabel(v *liveActivityView) string {
 }
 
 func (u *appServerUI) ensureShell() {
+	u.view.mainWaitStatus = u.session.orchestrationWaitStatus
 	u.view.conversation = true
 	u.view.painter.FileLink = u.markdownFileExists
 	u.journalView.fileLink = u.markdownFileExists

@@ -1,0 +1,10 @@
+• Waiting for agent · batch
+
+
+
+╭─ ◐ Waiting for agent · batch · ✗ Saved model settings unavailable; using Code… ── [✓] ─╮
+│ ❯                                                                                      │
+╰──────────────────────────────────────────────────────────────────── model (high) • 0% ─╯
+─ 5 Agents · 2 · 1 working ───────────────────────────────────────────────────────────────
+ ◐ main   Waiting for agent · batch                                                       
+ ● batch   · not subscribed                                                              

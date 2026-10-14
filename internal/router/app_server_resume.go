@@ -242,6 +242,10 @@ type appServerHistoryTurn struct {
 // also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
 // another thread. itemAt holds the root's retained item completion times.
 func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
+	u.session.orchestrationWaitTurn = ""
+	if len(turns) != 0 && turns[len(turns)-1].Status == "completed" {
+		u.session.orchestrationWaitTurn = turns[len(turns)-1].ID
+	}
 	u.restoreMainTranscript(turns, placements, itemAt)
 	for _, turn := range turns {
 		if turn.Status == "inProgress" {
