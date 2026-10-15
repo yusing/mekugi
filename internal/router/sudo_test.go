@@ -292,3 +292,47 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 		}
 	}
 }
+
+func TestSudoInstrumentedArgv0(t *testing.T) {
+	t.Parallel()
+	helper, err := execTrackHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	target := filepath.Join(directory, "sudo")
+	source := filepath.Join(directory, "argv.go")
+	// A native executable is necessary: a shebang interpreter replaces argv0.
+	if err := os.WriteFile(source, []byte(`package main
+import ("fmt"; "os")
+func main() { fmt.Println(os.Args[0]) }
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.CommandContext(t.Context(), "go", "build", "-o", target, source).CombinedOutput(); err != nil {
+		t.Fatalf("build native argv fixture: %v\n%s", err, output)
+	}
+	for _, prefix := range []string{"", "exec -a caller-selected ", "env --argv0=caller-selected "} {
+		t.Run(prefix, func(t *testing.T) {
+			if strings.HasPrefix(prefix, "env ") {
+				help, err := exec.CommandContext(t.Context(), execTrackShellExecutable(t, "env"), "--help").Output()
+				if err != nil || !strings.Contains(string(help), "--argv0") {
+					t.Skip("env --argv0 is unavailable")
+				}
+			}
+			// Listing mode avoids approval and authentication, isolating forwarding.
+			script, err := shellinstrumentation.RewriteCommands(prefix+quoteShellWord(target)+" -l", helper, "", directory, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			run := runShell(t, []string{"PATH=" + execTrackPath()}, "bash", "-c", script)
+			want := "caller-selected\n"
+			if prefix == "" {
+				want = target + "\n"
+			}
+			if run.code != 0 || run.stdout != want || run.stderr != "" {
+				t.Fatalf("argv0 run = %+v; want %q", run, want)
+			}
+		})
+	}
+}

@@ -66,7 +66,7 @@ func main() {
 			os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4])
 			os.Args = append(os.Args[:3], os.Args[5:]...)
 		}
-		os.Exit(sudoCommand(os.Args[2], os.Args[3], os.Args[3], strings.HasSuffix(os.Args[1], "-default"), os.Args[4:]))
+		os.Exit(sudoCommand(os.Args[2], os.Args[3], forwardedArgv0(os.Args[3]), strings.HasSuffix(os.Args[1], "-default"), os.Args[4:]))
 	}
 
 	if len(os.Args) == 4 && os.Args[1] == "--sh-open" {
@@ -85,10 +85,7 @@ func main() {
 		}
 		defaultPath := strings.HasSuffix(os.Args[1], "-default")
 		target := os.Args[3]
-		argv0 := target
-		if self, err := os.Executable(); err == nil && os.Args[0] != self {
-			argv0 = os.Args[0] // Preserve exec -a and env --argv0.
-		}
+		argv0 := forwardedArgv0(target)
 		if strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell" {
 			os.Exit(guardShell(os.Args[2], target, argv0, defaultPath, os.Args[4:]))
 		}
@@ -112,6 +109,15 @@ func main() {
 	// write; the relay ends with their output, not with the signal.
 	signal.Ignore(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGPIPE)
 	os.Exit(run(os.Args[1:]))
+}
+
+// Instrumentation replaces the executable word, while exec -a and env --argv0
+// still select the caller's argument zero for the eventual target.
+func forwardedArgv0(target string) string {
+	if self, err := os.Executable(); err == nil && os.Args[0] != self {
+		return os.Args[0]
+	}
+	return target
 }
 
 // run declines by exiting before replying; the shell then runs the original
