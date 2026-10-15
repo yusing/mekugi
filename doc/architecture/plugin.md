@@ -24,6 +24,8 @@ catalog before authenticating the manifest and selected frontend. The catalog pr
 `msymbol`, `mread`, `mchanges`, and `mrun`. It does not execute declarations from
 user configuration or own a JavaScript/WASM plugin runtime. Reader parsing,
 output budgeting, and resolver orchestration remain with their native owners.
+Frontend operands never select launcher commands; a filename such as `mcp-bridge`
+remains an operand of the authenticated frontend.
 
 Commands return omitted payloads or a pure delivery plan over already captured
 output. For coordinated results, the host reserves reference identities before

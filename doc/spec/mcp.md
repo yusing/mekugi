@@ -13,7 +13,8 @@ input validation and feature policy. Endpoint shutdown closes owned connections
 and removes only its invocation's resources. Concurrent invocations remain
 independent. Transport does not schedule work, persist task state, or control
 context reset. The internal `mcp-bridge` command remains available; normal launch
-does not register it with Codex.
+does not register it with Codex. Frontend invocations cannot select this launcher
+command through their operands.
 
 ### Acceptance
 

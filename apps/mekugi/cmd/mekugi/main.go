@@ -22,7 +22,12 @@ func main() {
 func run() (exitCode int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if len(os.Args) > 1 && os.Args[1] == "mcp-bridge" {
+	worker, err := router.RecognizeToolWorker(os.Args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if worker == nil && len(os.Args) > 1 && os.Args[1] == "mcp-bridge" {
 		if len(os.Args) != 3 {
 			fmt.Fprintln(os.Stderr, "mekugi: mcp-bridge requires one socket path")
 			return 2
@@ -32,11 +37,6 @@ func run() (exitCode int) {
 			return 1
 		}
 		return 0
-	}
-	worker, err := router.RecognizeToolWorker(os.Args[0])
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
 	}
 	operation := ""
 	if len(os.Args) > 1 {
