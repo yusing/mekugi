@@ -776,7 +776,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
-	awaitMain(t, u, "requested")
+	awaitMain(t, u, "Running go test ./...")
 	// The first call edited one file; an unrelated change makes the sibling
 	// watch visible too. Neither can acquire completion from this report.
 	writeTestFile(t, filepath.Join(workspace, "one", "source.go"), "after\n")
