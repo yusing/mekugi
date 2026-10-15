@@ -138,7 +138,7 @@ func storagePublicationError(err error) error {
 	return storageIOError(err)
 }
 
-var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*)\b`)
+var retainedReadReference = regexp.MustCompile(`(?:\b|\\[nr])mread(?:[ \t]|\\t)+([a-z]+[0-9]*\b(?:(?:[ \t]|\\t)+[a-z]+[0-9]*\b)*)`)
 
 // Retain the complete visible history in one locked catalog update. A fork
 // shares immutable records with its source; removing either chat keeps facts
@@ -186,11 +186,13 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 			if err != nil {
 				return err
 			}
-			dependencies, err := session.Dependencies(match[1])
-			if err != nil {
-				return err
+			for id := range strings.FieldsSeq(strings.ReplaceAll(match[1], `\t`, " ")) {
+				dependencies, err := session.Dependencies(id)
+				if err != nil {
+					return err
+				}
+				names = append(names, dependencies...)
 			}
-			names = append(names, dependencies...)
 		}
 		if releaseSnapshot != nil {
 			// store.lock now bridges validation to ownership publication;

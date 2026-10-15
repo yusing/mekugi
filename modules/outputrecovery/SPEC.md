@@ -69,6 +69,8 @@ pinned frontend and stock executor, preserves stdout, stderr, and status, and
 does not route through a private command dispatcher. The worker binds
 `CODEX_THREAD_ID` before reading, so unrelated sessions cannot use equal handles
 while inherited fork and side-thread ownership survives restart and cleanup.
+Visible combined next calls retain every referenced output and its dependencies,
+so adopting one command does not lose its later handles when the parent expires.
 
 ## Lifecycle
 
