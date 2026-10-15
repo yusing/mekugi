@@ -1,4 +1,4 @@
-package toolplugin
+package query
 
 import (
 	"bufio"
@@ -16,11 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/structure"
 )
 
-const nativeResolverTimeout = 30 * time.Second
-const nativeResolverDrain = time.Second
+const resolverTimeout = 30 * time.Second
+const resolverDrain = time.Second
 
 // Source: internal/router/toolplugin/invoke.go:110:121@[c0258bba] boundedHostOutput
 type boundedResolverOutput struct {
@@ -49,27 +51,27 @@ func resolverStartError(name string, err error) error {
 	}
 	return fmt.Errorf("cannot start %s: %w", name, err)
 }
-func nativeResolverCommand(ctx context.Context, root, name string, args ...string) *exec.Cmd {
+func resolverCommand(ctx context.Context, root, name string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = root
-	cmd.WaitDelay = nativeResolverDrain
-	if !hostProcessGroupOwned(ctx) {
-		ConfigureProcessGroup(cmd)
+	cmd.WaitDelay = resolverDrain
+	if command.ProcessScopeFrom(ctx) == command.StandaloneProcess {
+		configureProcessGroup(cmd)
 	}
 	return cmd
 }
-func retireNativeResolver(cmd *exec.Cmd, ctx context.Context) {
+func retireResolver(cmd *exec.Cmd, ctx context.Context) {
 	if cmd.Process == nil {
 		return
 	}
-	if !hostProcessGroupOwned(ctx) {
+	if command.ProcessScopeFrom(ctx) == command.StandaloneProcess {
 		_ = cmd.Cancel()
 	} else {
 		_ = cmd.Process.Kill()
 	}
 }
 
-type nativeRPCMessage struct {
+type rpcMessage struct {
 	ID     jsontext.Value `json:"id,omitempty"`
 	Method string         `json:"method,omitempty"`
 	Params jsontext.Value `json:"params,omitempty"`
@@ -79,21 +81,21 @@ type nativeRPCMessage struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 }
-type nativeRPCEvent struct {
-	message nativeRPCMessage
+type rpcEvent struct {
+	message rpcMessage
 	err     error
 }
-type nativeLSP struct {
+type lspClient struct {
 	input   io.Writer
-	events  <-chan nativeRPCEvent
+	events  <-chan rpcEvent
 	nextID  int
 	folders []map[string]string
 }
 
-func readNativeRPC(reader io.Reader, events chan<- nativeRPCEvent, stop <-chan struct{}) {
+func readRPC(reader io.Reader, events chan<- rpcEvent, stop <-chan struct{}) {
 	defer close(events)
 	r := bufio.NewReaderSize(reader, 8192)
-	send := func(event nativeRPCEvent) bool {
+	send := func(event rpcEvent) bool {
 		select {
 		case events <- event:
 			return true
@@ -107,11 +109,11 @@ func readNativeRPC(reader io.Reader, events chan<- nativeRPCEvent, stop <-chan s
 			lineBytes, e := r.ReadSlice('\n')
 			line := string(lineBytes)
 			if e != nil {
-				send(nativeRPCEvent{err: e})
+				send(rpcEvent{err: e})
 				return
 			}
 			if len(line) > 8192 {
-				send(nativeRPCEvent{err: errors.New("oversized LSP header")})
+				send(rpcEvent{err: errors.New("oversized LSP header")})
 				return
 			}
 			line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
@@ -126,26 +128,26 @@ func readNativeRPC(reader io.Reader, events chan<- nativeRPCEvent, stop <-chan s
 				}
 			}
 		}
-		if length < 0 || length > nativeRetainedBytes {
-			send(nativeRPCEvent{err: errors.New("invalid LSP Content-Length")})
+		if length < 0 || length > retainedBytes {
+			send(rpcEvent{err: errors.New("invalid LSP Content-Length")})
 			return
 		}
 		data := make([]byte, length)
 		if _, e := io.ReadFull(r, data); e != nil {
-			send(nativeRPCEvent{err: e})
+			send(rpcEvent{err: e})
 			return
 		}
-		var message nativeRPCMessage
+		var message rpcMessage
 		if e := json.Unmarshal(data, &message); e != nil {
-			send(nativeRPCEvent{err: fmt.Errorf("invalid LSP message: %w", e)})
+			send(rpcEvent{err: fmt.Errorf("invalid LSP message: %w", e)})
 			return
 		}
-		if !send(nativeRPCEvent{message: message}) {
+		if !send(rpcEvent{message: message}) {
 			return
 		}
 	}
 }
-func (l *nativeLSP) write(v any) error {
+func (l *lspClient) write(v any) error {
 	data, e := json.Marshal(v)
 	if e != nil {
 		return e
@@ -153,10 +155,10 @@ func (l *nativeLSP) write(v any) error {
 	_, e = fmt.Fprintf(l.input, "Content-Length: %d\r\n\r\n%s", len(data), data)
 	return e
 }
-func (l *nativeLSP) notify(method string, params any) error {
+func (l *lspClient) notify(method string, params any) error {
 	return l.write(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 }
-func (l *nativeLSP) request(ctx context.Context, method string, params any) (jsontext.Value, error) {
+func (l *lspClient) request(ctx context.Context, method string, params any) (jsontext.Value, error) {
 	if err := ctx.Err(); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, resolverTimeoutError()
@@ -228,7 +230,7 @@ func (l *nativeLSP) request(ctx context.Context, method string, params any) (jso
 		}
 	}
 }
-func parseNativeLocations(raw jsontext.Value, mode string) ([]symbolLocation, error) {
+func parseLocations(raw jsontext.Value, mode string) ([]symbolLocation, error) {
 	if string(raw) == "null" {
 		return nil, nil
 	}
@@ -289,8 +291,8 @@ func parseNativeLocations(raw jsontext.Value, mode string) ([]symbolLocation, er
 }
 
 // Source: plugins/lsp.ts:119:279@[543de4f3] runLSPQueries
-func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQuery) {
-	deadline, cancel := context.WithTimeout(ctx, nativeResolverTimeout)
+func runLSP(ctx context.Context, root, resolver string, queries []*symbolQuery) {
+	deadline, cancel := context.WithTimeout(ctx, resolverTimeout)
 	defer cancel()
 	name, args := "tsc", []string{"--lsp", "--stdio"}
 	if resolver == "python" {
@@ -304,7 +306,7 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 			q.err = err
 		}
 	}
-	cmd := nativeResolverCommand(deadline, root, name, args...)
+	cmd := resolverCommand(deadline, root, name, args...)
 	inputR, inputW, err := os.Pipe()
 	if err != nil {
 		failAll(err)
@@ -319,7 +321,7 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 	}
 	defer outputR.Close()
 	defer outputW.Close()
-	stderr := &boundedResolverOutput{limit: nativeRetainedBytes + 1}
+	stderr := &boundedResolverOutput{limit: retainedBytes + 1}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = inputR, outputW, stderr
 	if err := cmd.Start(); err != nil {
 		failAll(resolverStartError(name, err))
@@ -339,18 +341,18 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 		select {
 		case <-done:
 			select {
-			case <-time.After(nativeResolverDrain):
+			case <-time.After(resolverDrain):
 				_ = outputR.Close()
 			case <-stop:
 			}
 		case <-stop:
 		}
 	}()
-	events := make(chan nativeRPCEvent, 16)
-	go readNativeRPC(outputR, events, stop)
-	lsp := nativeLSP{input: inputW, events: events, folders: []map[string]string{{"uri": symbolFileURI(root), "name": filepath.Base(root)}}}
+	events := make(chan rpcEvent, 16)
+	go readRPC(outputR, events, stop)
+	lsp := lspClient{input: inputW, events: events, folders: []map[string]string{{"uri": symbolFileURI(root), "name": filepath.Base(root)}}}
 	defer func() {
-		grace := nativeResolverDrain
+		grace := resolverDrain
 		if resolver == "gopls" {
 			// Queries are finished. gopls shutdown can otherwise
 			// wait for unrelated background diagnostics; do not charge that work
@@ -365,11 +367,11 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 		select {
 		case <-done:
 		case <-shutdown.Done():
-			retireNativeResolver(cmd, ctx)
+			retireResolver(cmd, ctx)
 			<-done
 		}
-		retireNativeResolver(cmd, ctx)
-		if stderr.Len() > nativeRetainedBytes {
+		retireResolver(cmd, ctx)
+		if stderr.Len() > retainedBytes {
 			for _, q := range queries {
 				if q.err == nil {
 					q.err = &symbolFailure{"output_limit", "resolver stderr exceeds the 16 MiB bound"}
@@ -447,6 +449,6 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 			q.err = e
 			continue
 		}
-		q.locations, q.err = parseNativeLocations(raw, q.mode)
+		q.locations, q.err = parseLocations(raw, q.mode)
 	}
 }

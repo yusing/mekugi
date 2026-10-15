@@ -1,6 +1,6 @@
 //go:build unix
 
-package toolplugin
+package query
 
 import (
 	"bufio"
@@ -20,6 +20,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/command"
 )
 
 // Dedicated helpers isolate cwd, PATH, environment and process ownership.
@@ -70,7 +72,7 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 					cmd.Dir = directory
 					cmd.Env = append(os.Environ(), "PATH="+directory, "MEKUGI_CLEANUP_FIXTURE="+directory,
 						"FIXTURE_OWNER="+owner, "FIXTURE_KIND="+kind, "FIXTURE_OUTCOME="+outcome, "FIXTURE_SOURCE="+filepath.Join(directory, name))
-					ConfigureProcessGroup(cmd)
+					configureProcessGroup(cmd)
 					cmd.WaitDelay = time.Second
 					output, err := cmd.CombinedOutput()
 					if err != nil {
@@ -88,13 +90,13 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 // Virtual time validates the 30-second session deadline without a process sleep
 // or production timer seam. Subprocess cases validate real interruption cleanup.
 func TestNativeResolverSessionDeadline(t *testing.T) {
-	if nativeResolverTimeout != 30*time.Second || nativeResolverDrain != time.Second {
-		t.Fatalf("resolver timing = %s / %s, want 30s / 1s", nativeResolverTimeout, nativeResolverDrain)
+	if resolverTimeout != 30*time.Second || resolverDrain != time.Second {
+		t.Fatalf("resolver timing = %s / %s, want 30s / 1s", resolverTimeout, resolverDrain)
 	}
 	synctest.Test(t, func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(t.Context(), nativeResolverTimeout)
+		ctx, cancel := context.WithTimeout(t.Context(), resolverTimeout)
 		defer cancel()
-		server := nativeLSP{input: io.Discard, events: make(chan nativeRPCEvent)}
+		server := lspClient{input: io.Discard, events: make(chan rpcEvent)}
 		started := time.Now()
 		_, err := server.request(ctx, "textDocument/references", nil)
 		var failure *symbolFailure
@@ -130,12 +132,7 @@ func TestResolverCleanupProcess(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if os.Getenv("FIXTURE_OWNER") == "frontend" {
-		ctx = WithHostProcessGroup(ctx)
-		var err error
-		ctx, err = EnableFrontendOrphanCleanup(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
+		ctx = command.WithProcessScope(ctx, command.DedicatedHostProcess)
 	}
 	outcome, kind := os.Getenv("FIXTURE_OUTCOME"), os.Getenv("FIXTURE_KIND")
 	if outcome == "deadline" {
@@ -163,7 +160,7 @@ func TestResolverCleanupProcess(t *testing.T) {
 		name, row, line = "input.ts", "1", "const Target = 1;"
 	}
 	started := time.Now()
-	result, err := ExecuteBuiltin(ctx, "msymbol", []string{"refs", name, row, "Target"})
+	result, err := Execute(ctx, []string{"refs", name, row, "Target"}, nil)
 	if elapsed := time.Since(started); elapsed >= 5*time.Second {
 		t.Fatalf("cleanup exceeded bound: %s", elapsed)
 	}

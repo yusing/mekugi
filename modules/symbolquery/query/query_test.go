@@ -1,4 +1,4 @@
-package toolplugin
+package query
 
 import (
 	"bufio"
@@ -237,7 +237,7 @@ func TestNativeSymbolGoLSPExactExpansion(t *testing.T) {
 	source := "\ufeffpackage p\n// 😀 名稱\nfunc Pick() {\n println(1)\n}\n"
 	path := writeSymbolSource(t, "sample.go", source)
 	log := installSymbolResolvers(t, map[string]symbolResolverFixture{"gopls": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 2, 5, 9)}}})
-	out := nativeExecute(t, "msymbol", "def", "sample.go", "pkg.Pick")
+	out := executeQuery(t, "def", "sample.go", "pkg.Pick")
 	want := "\"sample.go\":3-5\nfunc Pick() {\n println(1)\n}\n"
 	if out.ExitCode != 0 || out.Stdout != want || out.Stderr != "" {
 		t.Fatalf("definition expansion: %+v", out)
@@ -270,7 +270,7 @@ func TestNativeSymbolSelectionAndConfinementBeforeStartup(t *testing.T) {
 		{"refs", "path with spaces.go", "3", "Name"}, {"refs", "path with spaces.go", "名稱"},
 		{"refs", outside, "3", "名稱", "1"}, {"refs", "escaped.go", "3", "名稱", "1"},
 	} {
-		out := nativeExecute(t, "msymbol", args...)
+		out := executeQuery(t, args...)
 		if out.ExitCode != 1 || out.Stdout != "" || out.Stderr == "" {
 			t.Fatalf("invalid selector %q: %+v", args, out)
 		}
@@ -278,7 +278,7 @@ func TestNativeSymbolSelectionAndConfinementBeforeStartup(t *testing.T) {
 	if events := readSymbolLog(t, log); len(events) != 0 {
 		t.Fatalf("resolver started for invalid selection: %+v", events)
 	}
-	out := nativeExecute(t, "msymbol", "refs", "\"path with spaces.go\":3", "名稱", "2")
+	out := executeQuery(t, "refs", "\"path with spaces.go\":3", "名稱", "2")
 	if out.ExitCode != 0 || out.Stdout != "" || out.Stderr != "" {
 		t.Fatalf("second true token: %+v", out)
 	}
@@ -315,7 +315,7 @@ func TestNativeSymbolOneLSPPerLanguageAndTupleOrder(t *testing.T) {
 		"gopls": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(goPath, 1, 5, 9)}, References: []symbolFixtureLocation{nativeSymbolFixtureLocation(goPath, 1, 5, 9), nativeSymbolFixtureLocation(goPath, 4, 13, 17), nativeSymbolFixtureLocation(goPath, 4, 13, 17)}},
 		"tsc":   {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(tsPath, 0, 16, 20)}, References: []symbolFixtureLocation{nativeSymbolFixtureLocation(tsPath, 0, 16, 20), nativeSymbolFixtureLocation(tsPath, 3, 0, 4)}},
 	})
-	out := nativeExecute(t, "msymbol", "def", "sample.go:2", "Pick", "def", "sample.ts:1", "Pick", "refs", "sample.go:5", "Pick", "refs", "sample.ts:4", "Pick")
+	out := executeQuery(t, "def", "sample.go:2", "Pick", "def", "sample.ts:1", "Pick", "refs", "sample.go:5", "Pick", "refs", "sample.ts:4", "Pick")
 	want := "\"sample.go\":2-4\nfunc Pick() {\n println(1)\n}\n\"sample.ts\":1-3\nexport function Pick() {\n return 1;\n}\n\"sample.go\":\n2 func Pick() {\n5 func Use() { Pick() }\n\"sample.ts\":\n1 export function Pick() {\n4 Pick();\n"
 	if out.ExitCode != 0 || out.Stdout != want || out.Stderr != "" {
 		t.Fatalf("ordered mixed-language batch: %+v", out)
@@ -353,7 +353,7 @@ func TestNativeSymbolUTF16AndUnrelatedSyntaxError(t *testing.T) {
 	source := "export function Pick() {\n return 1;\n}\nconst icon = '😀'; Pick();\nfunction broken( {\n"
 	path := writeSymbolSource(t, "sample.ts", source)
 	log := installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}}})
-	out := nativeExecute(t, "msymbol", "def", "sample.ts", "4", "Pick")
+	out := executeQuery(t, "def", "sample.ts", "4", "Pick")
 	want := "\"sample.ts\":1-3\nexport function Pick() {\n return 1;\n}\n"
 	if out.ExitCode != 0 || out.Stdout != want {
 		t.Fatalf("error-free declaration expansion: %+v", out)
@@ -376,13 +376,13 @@ func TestNativeSymbolMixedInvalidTuplesAndProtocolErrors(t *testing.T) {
 	source := "export function Pick() {}\n"
 	path := writeSymbolSource(t, "sample.ts", source)
 	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}, References: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}}})
-	out := nativeExecute(t, "msymbol", "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "99", "Pick", "def", "missing.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick")
+	out := executeQuery(t, "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "99", "Pick", "def", "missing.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick")
 	want := "\"sample.ts\":1-1\n" + source + "\"sample.ts\":\n1 " + source
 	if out.ExitCode != 1 || out.Stdout != want || !strings.Contains(out.Stderr, "line 99 is past EOF") || !strings.Contains(out.Stderr, "missing.ts") {
 		t.Fatalf("mixed valid/invalid tuples: %+v", out)
 	}
 	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {ErrorMethod: "textDocument/definition", References: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}}})
-	out = nativeExecute(t, "msymbol", "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick")
+	out = executeQuery(t, "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick")
 	if out.ExitCode != 1 || out.Stdout != "\"sample.ts\":\n1 "+source || !strings.Contains(out.Stderr, "fixture query rejected") {
 		t.Fatalf("protocol failure suppressed later tuple: %+v", out)
 	}
@@ -397,7 +397,7 @@ func TestNativeSymbolChangedInputPreservesIndependentTuple(t *testing.T) {
 		t.Fatal(err)
 	}
 	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(other, 0, 16, 21)}, MutateMethod: "textDocument/definition", MutatePath: path, MutatedSource: source + "Pick();\n"}})
-	out := nativeExecute(t, "msymbol", "def", "sample.ts", "1", "Pick", "def", "other.ts", "1", "Other")
+	out := executeQuery(t, "def", "sample.ts", "1", "Pick", "def", "other.ts", "1", "Other")
 	if out.ExitCode != 1 || out.Stdout != "\"other.ts\":1-1\n"+otherSource || !strings.Contains(out.Stderr, "input changed during query") {
 		t.Fatalf("changed input isolation: %+v", out)
 	}
@@ -410,7 +410,7 @@ func TestNativeSymbolGoChangedInput(t *testing.T) {
 		References:   []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 1, 5, 9)},
 		MutateMethod: "textDocument/references", MutatePath: path, MutatedSource: source + "func Use() { Pick() }\n",
 	}})
-	out := nativeExecute(t, "msymbol", "refs", "sample.go", "Pick")
+	out := executeQuery(t, "refs", "sample.go", "Pick")
 	if out.ExitCode != 1 || out.Stdout != "" || !strings.Contains(out.Stderr, "input changed during query") {
 		t.Fatalf("changed Go input was not rejected: %+v", out)
 	}
@@ -425,7 +425,7 @@ func TestNativeSymbolDefinitionCanonicalWorkspaceConfinement(t *testing.T) {
 		t.Fatal(err)
 	}
 	installSymbolResolvers(t, map[string]symbolResolverFixture{"tsc": {Definitions: []symbolFixtureLocation{nativeSymbolFixtureLocation(alias, 0, 16, 20)}, References: []symbolFixtureLocation{nativeSymbolFixtureLocation(path, 0, 16, 20)}}})
-	out := nativeExecute(t, "msymbol", "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick")
+	out := executeQuery(t, "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "1", "Pick")
 	if out.ExitCode != 1 || out.Stdout != "\"sample.ts\":\n1 "+source || !strings.Contains(out.Stderr, "definition has no editable workspace location") {
 		t.Fatalf("escaped result confinement: %+v", out)
 	}
@@ -433,7 +433,7 @@ func TestNativeSymbolDefinitionCanonicalWorkspaceConfinement(t *testing.T) {
 	workspace := filepath.Dir(path)
 	caller := t.TempDir()
 	t.Chdir(caller)
-	out = nativeExecute(t, "msymbol", "--workspace", workspace, "def", "sample.ts", "Pick")
+	out = executeQuery(t, "--workspace", workspace, "def", "sample.ts", "Pick")
 	want := fmt.Sprintf("%q:1-1\n%s", path, source)
 	if out.ExitCode != 0 || out.Stdout != want {
 		t.Fatalf("explicit workspace result: %+v, want %q", out, want)
@@ -450,7 +450,7 @@ func TestNativeSymbolSharedBudgetRetainsCompleteRows(t *testing.T) {
 	definition := "\"sample.ts\":1-3\nexport function Pick() {\n return 1;\n}\n"
 	references := "\"sample.ts\":\n1 export function Pick() {\n4 Pick();\n"
 	budget := nativeTokens(t, definition)
-	out := nativeExecute(t, "msymbol", "--max-tokens", strconv.Itoa(budget), "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "4", "Pick")
+	out := executeQuery(t, "--max-tokens", strconv.Itoa(budget), "def", "sample.ts", "1", "Pick", "refs", "sample.ts", "4", "Pick")
 	if out.ExitCode != 1 || out.Stdout != definition || out.OmittedOutput == nil || out.OmittedOutput.Stdout != references || out.OmittedOutput.StdoutKind != "rows" || nativeTokens(t, out.Stdout) > budget {
 		t.Fatalf("shared output budget: %+v", out)
 	}

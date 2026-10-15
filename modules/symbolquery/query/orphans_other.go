@@ -1,6 +1,6 @@
 //go:build !linux
 
-package toolplugin
+package query
 
 func enableFrontendSubreaper() error { return nil }
 

@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/symbolquery/query"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/internal/execsegment"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -765,7 +766,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 			return "", false
 		}
 	case "msymbol":
-		modes, err := toolplugin.SymbolQueryModes(argv[1:])
+		modes, err := query.Modes(argv[1:])
 		if err != nil {
 			return "", false
 		}

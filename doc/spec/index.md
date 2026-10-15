@@ -19,7 +19,6 @@ pjdoc:
     - activity_display.md
     - usage.md
     - read.md
-    - symbol.md
     - plugin.md
     - ax.md
     - session.md
@@ -55,7 +54,7 @@ Module-owned contracts live with their implementation:
 - [`REQ-ACTIVITY-DISPLAY-001`](activity_display.md): native operation rows and agent feeds
 - [`REQ-USAGE-001`](usage.md): per-thread provider accounting and reference costs
 - [`REQ-READ-001`](read.md): authenticated raw-row reading and managed continuation
-- [`REQ-SYMBOL-001`](symbol.md): routed semantic symbol lookup with raw source rows
+- [`REQ-SYMBOL-001`](../../modules/symbolquery/SPEC.md): routed semantic symbol lookup with raw source rows
 - [`REQ-INSPECT-001`](../../modules/sourceoutline/SPEC.md): executable structural file inspection with numeric spans
 - [`REQ-PLUGIN-001`](plugin.md): authenticated compiled executable tools
 - [`REQ-AX-001`](ax.md): runtime reads and evidence-backed AX reporting

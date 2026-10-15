@@ -16,17 +16,13 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 // RunToolPluginWorker handles the private child-process mode used by a
 // stable contributed-tool frontend.
 func RunOwnedToolPluginWorker(service *history.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	return RunToolPluginWorker(service, commands, context.WithValue(ctx, frontendProcessOwnerKey{}, true), argv0, args, stdin, stdout, stderr)
+	return RunToolPluginWorker(service, commands, command.WithProcessScope(ctx, command.DedicatedHostProcess), argv0, args, stdin, stdout, stderr)
 }
-
-type frontendProcessOwnerKey struct{}
 
 func RunToolPluginWorker(service *history.Service, commands []command.Contribution,
 	ctx context.Context,
@@ -117,7 +113,6 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 	stdin *os.File,
 	stdout, stderr io.Writer,
 ) (bool, int) {
-	ctx = toolplugin.WithHostProcessGroup(ctx)
 	fail := func(err error) (bool, int) {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return true, 1
@@ -160,12 +155,10 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 	if err := validateToolContribution(*contribution); err != nil {
 		return fail(err)
 	}
-	if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned && contribution.NativeExecutor == "msymbol" {
-		ctx, err = toolplugin.EnableFrontendOrphanCleanup(ctx)
-		if err != nil {
-			return fail(fmt.Errorf("prepare frontend process cleanup: %w", err))
-		}
+	if command.ProcessScopeFrom(ctx) != command.DedicatedHostProcess {
+		ctx = command.WithProcessScope(ctx, command.HostProcessGroup)
 	}
+
 	if manifest.ReplayDirectory != "" {
 		store, err := shellOutputStore(manifest)
 		if err != nil {
@@ -218,12 +211,6 @@ func frontendExecutor(contribution toolContribution, commands []command.Contribu
 	case "mcat":
 		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeMCat(ctx, manifest, args)
-		}
-	case "msymbol":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
-			return executeFrontendReader(ctx, manifest, args, contribution.Name, nil, func(ctx context.Context, args []string, _ *os.File) (command.Output, error) {
-				return toolplugin.ExecuteBuiltin(ctx, contribution.Name, args)
-			})
 		}
 	case "mread":
 		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {

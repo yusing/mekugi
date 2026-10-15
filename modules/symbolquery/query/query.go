@@ -1,4 +1,4 @@
-package toolplugin
+package query
 
 import (
 	"context"
@@ -60,9 +60,9 @@ const symbolUsage = "msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH
 var symbolDigits = regexp.MustCompile(`^[0-9]+$`)
 var combinedSymbolPath = regexp.MustCompile(`^(.*):([1-9][0-9]*)$`)
 
-// SymbolQueryModes projects the native parser's query modes for command display.
+// Modes projects the parser's query modes for command display.
 // It validates the complete invocation without loading sources or running resolvers.
-func SymbolQueryModes(args []string) ([]string, error) {
+func Modes(args []string) ([]string, error) {
 	queries, _, _, _, err := parseSymbolQueries(args)
 	if err != nil {
 		return nil, err
@@ -250,7 +250,7 @@ func absSymbol(n int) int {
 	}
 	return n
 }
-func selectNativeSymbol(q *symbolQuery) error {
+func selectSymbol(q *symbolQuery) error {
 	s := q.file.parsed
 	if q.line == 0 {
 		var entries []structure.Entry
@@ -322,10 +322,22 @@ func symbolURIPath(uri string) (string, error) {
 	}
 	return filepath.FromSlash(u.Path), nil
 }
-func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
+
+// Execute runs one command-local set of semantic queries.
+func Execute(ctx context.Context, args []string, _ *os.File) (command.Output, error) {
+	if err := ctx.Err(); err != nil {
+		return command.Output{}, err
+	}
+	dedicated := command.ProcessScopeFrom(ctx) == command.DedicatedHostProcess
+	if dedicated {
+		if err := enableFrontendSubreaper(); err != nil {
+			return command.Output{}, fmt.Errorf("prepare frontend process cleanup: %w", err)
+		}
+	}
+
 	queries, root, explicit, budget, err := parseSymbolQueries(args)
 	if err != nil {
-		return nativeFailure("msymbol", err, "invalid_arguments"), nil
+		return failure(err, "invalid_arguments"), nil
 	}
 	if root == "" {
 		root, err = os.Getwd()
@@ -344,14 +356,14 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 		}
 	}
 	if err != nil {
-		return nativeFailure("msymbol", err, "invalid_source"), nil
+		return failure(err, "invalid_source"), nil
 	}
 	cache := map[string]*symbolSource{}
 	groups := map[string][]*symbolQuery{}
 	for _, q := range queries {
 		q.file, q.err = loadSymbolSource(ctx, root, q.path, "", cache)
 		if q.err == nil {
-			q.err = selectNativeSymbol(q)
+			q.err = selectSymbol(q)
 		}
 		if q.err == nil {
 			resolver := q.file.parsed.Format.SemanticResolver
@@ -361,11 +373,11 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 	var wg sync.WaitGroup
 	for resolver, group := range groups {
 		wg.Go(func() {
-			runNativeLSP(ctx, root, resolver, group)
+			runLSP(ctx, root, resolver, group)
 		})
 	}
 	wg.Wait()
-	if enabled, _ := ctx.Value(frontendOrphanCleanupKey{}).(bool); enabled {
+	if dedicated {
 		cleanupFrontendOrphans()
 	}
 	if err := ctx.Err(); err != nil {
@@ -391,7 +403,7 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 		if retentionFailed {
 			return &symbolFailure{"output_limit", "complete reference output exceeds the 16 MiB retention bound"}
 		}
-		if retained.Len()+len(row) > nativeRetainedBytes {
+		if retained.Len()+len(row) > retainedBytes {
 			retentionFailed = true
 			return &symbolFailure{"output_limit", "complete reference output exceeds the 16 MiB retention bound"}
 		}
@@ -419,7 +431,7 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 			if q.line > 0 {
 				line = strconv.Itoa(q.line)
 			}
-			label = fmt.Sprintf("%s %s %s %s: ", q.mode, nativeJSON(q.path), line, q.name)
+			label = fmt.Sprintf("%s %s %s %s: ", q.mode, quotePath(q.path), line, q.name)
 		}
 		result.Stderr += "msymbol: " + label + e.Error() + "\n"
 		result.ExitCode = 1
@@ -496,7 +508,7 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 				if !explicit {
 					label, _ = filepath.Rel(root, file.path)
 				}
-				label = nativeJSON(filepath.ToSlash(label))
+				label = quotePath(filepath.ToSlash(label))
 				if q.mode == "def" {
 					if line > headerEnd {
 						headerEnd = line
@@ -511,7 +523,7 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 				} else {
 					formatted := fmt.Sprintf("%d %s\n", line, row)
 					referenceBytes += len(formatted)
-					if referenceBytes > nativeRetainedBytes {
+					if referenceBytes > retainedBytes {
 						queryErr = &symbolFailure{"output_limit", "complete reference output exceeds the 16 MiB retention bound"}
 						break
 					}

@@ -1,4 +1,4 @@
-package toolplugin
+package query
 
 import (
 	"os"

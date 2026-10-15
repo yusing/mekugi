@@ -55,6 +55,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
+| Semantic symbol queries | `./modules/symbolquery/...`, plus router symbol/activity/AX and recovery consumers |
 | Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/...`, then authenticated router frontend/recovery tests |
 | Native reader frontends | `./internal/router/toolplugin`, then `./internal/router` |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
@@ -81,14 +82,14 @@ Go symbol checks require an existing `gopls` and install nothing. Opt in to real
 cross-package/test reference and source-freshness acceptance with:
 
 ```sh
-env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./internal/router/toolplugin TEST_RUN='^TestNativeSymbolRealGoplsReferences$'
+env MEKUGI_TEST_REAL_GOPLS=1 make test TEST_PACKAGES=./modules/symbolquery/query TEST_RUN='^TestNativeSymbolRealGoplsReferences$'
 ```
 
 Fresh-process resolver and authenticated frontend benchmarks use normal caches;
 the frontend measurements exclude registry creation and active-session leases:
 
 ```sh
-make test TEST_PACKAGES='./internal/router/toolplugin ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
+make test TEST_PACKAGES='./modules/symbolquery/query ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
 Frontend prose has a separate generated consumer. Edit

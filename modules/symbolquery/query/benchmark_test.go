@@ -1,4 +1,4 @@
-package toolplugin
+package query
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ func BenchmarkNativeSymbol(b *testing.B) {
 				b.Fatal(err)
 			}
 			q := &symbolQuery{mode: "refs", path: path, name: "generate", file: file}
-			if err := selectNativeSymbol(q); err != nil {
+			if err := selectSymbol(q); err != nil {
 				b.Fatal(err)
 			}
 			for b.Loop() {
@@ -39,7 +39,7 @@ func BenchmarkNativeSymbol(b *testing.B) {
 					}
 					continue
 				case "lsp":
-					runNativeLSP(b.Context(), root, "gopls", []*symbolQuery{q})
+					runLSP(b.Context(), root, "gopls", []*symbolQuery{q})
 				}
 				if q.err != nil || len(q.locations) == 0 {
 					b.Fatalf("resolver: %v %s locations=%d", q.err, q.stderr, len(q.locations))

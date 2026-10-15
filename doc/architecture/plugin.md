@@ -24,7 +24,10 @@ output budgeting, and resolver orchestration remain with their native owners.
 Managed output is published before a recovery reference is returned. Storage
 failure cannot claim recovery is available. Replay consumes retained results
 without executing workers. Cleanup owns only invocation-created frontends,
-snapshot files, and leased worker resources.
+snapshot files, and leased worker resources. Command execution scope distinguishes
+direct callers, the host process group, and a dedicated authenticated worker.
+Only the dedicated worker permits process-wide descendant cleanup; resolver
+process policy stays with the symbol-query owner.
 
 Host effects and change evidence belong to
 [CTR-EXECUTION-001](execution.md); measurements belong to

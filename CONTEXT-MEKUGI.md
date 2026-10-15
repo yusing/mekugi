@@ -54,7 +54,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Retained publication, namespaces, allocation, leases, and retention | `modules/sessionhistory/history`; composed record kinds in `apps/mekugi/internal/composition`, feature codecs in `internal/router/retained_record_kinds.go` |
 | Durable replay meaning, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
 | Authenticated compiled frontend catalog, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
-| Symbol command arguments and activity display | `internal/router/toolplugin/native_symbol.go` owns parsing; `internal/router/subagent_tool_display_shell.go` consumes it |
+| Symbol command arguments and activity display | `modules/symbolquery/query` owns parsing; `internal/router/subagent_tool_display_shell.go` consumes it |
 | Shared frontend options, token ceilings, and inclusive range parsing | `libraries/commandargs`; consumers include native readers and `internal/router/shell_read_bundle.go`; command-specific acceptance and multi-target framing remain with their callers |
 | Bounded foreground command execution | `modules/boundedcommand`; authenticated dispatch in `internal/router/tool_plugin_worker.go` |
 | Structural inspection | `modules/sourceoutline`; shared declarations and source coordinates in `libraries/sourceanalysis/structure` |

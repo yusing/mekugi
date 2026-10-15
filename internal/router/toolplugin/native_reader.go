@@ -21,8 +21,6 @@ func ExecuteBuiltin(ctx context.Context, name string, args []string) (command.Ou
 	switch name {
 	case "mcat":
 		return nativeMCat(ctx, args)
-	case "msymbol":
-		return nativeSymbol(ctx, args)
 	default:
 		return command.Output{}, fmt.Errorf("native reader %q is unavailable", name)
 	}

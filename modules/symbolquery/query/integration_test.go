@@ -1,4 +1,4 @@
-package toolplugin
+package query
 
 import (
 	"fmt"
@@ -57,7 +57,7 @@ func TestNativeSymbolRealGoplsReferences(t *testing.T) {
 				for range tuples {
 					args = append(args, "refs", "core/core.go", "Pick")
 				}
-				out := nativeExecute(t, "msymbol", args...)
+				out := executeQuery(t, args...)
 				if out.ExitCode != 0 || out.Stderr != "" || out.OmittedOutput != nil {
 					t.Fatalf("semantic query failed or incomplete: %+v", out)
 				}

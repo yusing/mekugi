@@ -1,6 +1,17 @@
-# Executable semantic symbol lookup
+# Symbol query
 
-## REQ-SYMBOL-001 — Executable semantic symbol lookup
+## Purpose
+
+Resolve current semantic definitions and references through `msymbol`.
+
+## Scope
+
+Host-authorized, workspace-confined semantic queries. Structural parsing supplies
+selectors and declaration spans; language servers supply semantic locations.
+
+## Behavior
+
+### REQ-SYMBOL-001: Semantic symbol lookup
 
 The wrapped session supplies an authenticated `msymbol` executable on Codex's
 session-private `PATH`:
@@ -9,14 +20,12 @@ session-private `PATH`:
 msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N]
 ```
 
-Stock `tools.exec_command` launches the frontend under Codex's cwd, environment,
-sandbox, signals, and process lifecycle. The frontend validates the pinned registry,
-then runs the native symbol implementation. It is not a
-model-visible custom tool or a private shell command. Output uses the shared
-[reader token ceiling and read continuation](read.md). Reader options and
+The [authenticated frontend contract](../../doc/spec/plugin.md) owns execution,
+caller authority, pinned identity, and stream delivery. Output uses the shared
+[reader token ceiling and continuation](../../doc/spec/read.md). Reader options and
 `--workspace ROOT` may surround the query operands.
 
-The canonical workspace defaults to `realpath(process.cwd())`. An optional
+The canonical workspace defaults to the host process working directory. An optional
 `--workspace ROOT` selects another existing canonical directory for resolver scope
 and relative input paths without changing the caller's working directory. `PATH`
 may be relative or absolute, but its canonical target must remain within that
@@ -52,7 +61,7 @@ Several `(def|refs) PATH [LINE] SYMBOL [N]` tuples may follow each other in one
 invocation. Each input is validated before resolver startup; invalid inputs are reported while valid tuples continue. Tuples share one
 language-server session per language in the selected workspace, and one combined
 output budget. Results follow tuple order. Go queries, including single queries, use one
-invocation-owned gopls LSP server. Its unused Staticcheck diagnostics are disabled
+command-owned gopls LSP server. Its unused Staticcheck diagnostics are disabled
 without changing semantic workspace or test coverage. No detached cross-invocation
 daemon is started. The session deadline is 30 seconds, shared by its queries;
 timeouts use `resolver_timeout` and suggest a narrower `--workspace ROOT`. Final pipe
@@ -90,9 +99,8 @@ Empty `refs` is successful. A `def` without an editable workspace location is
 nonzero.
 
 Token-limited results retain all formatted rows up to 16 MiB and return only
-omitted rows to the host's managed output recovery store. The `mread` receipt and
-pagination follow the managed read contract without rerunning the resolver or
-writing temporary dumps, even after source changes or router shutdown. Display
+omitted rows for [managed continuation](../../doc/spec/read.md#managed-read-continuation).
+The host owns publication, replay, and continuation delivery. Display
 truncation remains nonzero, and skipped locations still prevent claiming a
 complete definition or reference set. Location skip counts cover the complete
 resolver result. Exceeding the retention bound or failing to save the snapshot
@@ -110,11 +118,38 @@ an error-free declaration's range. Go boundaries use the shared `go/parser` owne
 Token admission never emits a partial result row.
 
 The authenticated frontend owns one AX read observation without retaining command,
-path, source, or result content. Msymbol remains excluded from custom-tool routing
-. `def` activity is labeled `Read`;
+path, source, or result content. `def` activity is labeled `Read`;
 `refs` activity is labeled `Search`.
 
-Acceptance:
+## Lifecycle
+
+Host-operation lifetime. Resolver sessions, pipes, deadlines, and source snapshots
+belong to one command; language workers settle before the result returns. No
+resolver survives across command invocations.
+
+Direct callers own resolver process groups. Authenticated frontends preserve the
+host process group. Only a dedicated authenticated worker may enable process-wide
+orphan adoption and cleanup; a shared application or test process cannot grant
+that authority merely by invoking a symbol query.
+
+## Codex connection
+
+One required executable frontend. Command-contract execution scope conveys host
+process ownership; the binding receives no resolver internals. The frontend host
+observes read completion independently of semantic success.
+
+## Records
+
+No owned records. The command returns omitted rows for host publication before a
+recovery reference is emitted. It never opens a retained-output store.
+
+## Failure
+
+Missing prerequisites and partial results remain explicit. Independent tuples
+continue, preserving successful output in request order. Cancellation and bounded
+cleanup never fabricate a completed semantic reply or rerun a query.
+
+## Acceptance
 
 1. A current use-site token resolves through one language-appropriate semantic
    query and emits compact, complete source rows.
