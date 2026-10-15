@@ -421,3 +421,47 @@ func TestSessionTitleThirdPartyRequestWithoutCodexAuth(t *testing.T) {
 		}
 	})
 }
+
+func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
+	u, wire := newAppServerTestUI()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	started, release := make(chan struct{}), make(chan struct{})
+	g := newSessionTitleGenerator(ctx, serverProviderFunc(func(_, responseCtx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+		close(started)
+		select {
+		case <-release:
+			return serverHTTPResponse(generatedTitleResponse), nil
+		case <-responseCtx.Done():
+			return nil, responseCtx.Err()
+		}
+	}))
+	u.titleGenerator = g
+	g.register(appServerThreadInfo{ID: "main"})
+	g.observe("main", "First request", sessionTitleAuthHeaders(), true)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("naming inference did not start")
+	}
+	appServerTestKeys(t, u, "/title Manual intent\r")
+	save := sessionTitleTestOne(t, wire)
+	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"save failed"}}`, save.ID))
+	if u.notice == "" {
+		t.Fatal("manual save failure was not reported")
+	}
+	// Detach the original view, then resume its still-unnamed completed turn.
+	u.replacement.clear()
+	u.requests["100"] = "thread/start"
+	appServerTestMessage(t, u, `{"id":100,"result":{"thread":{"id":"other"}}}`)
+	_ = resumeTestRequests(t, wire)
+	u.replacement.resume("main")
+	u.requests["101"] = "thread/resume"
+	appServerTestMessage(t, u, `{"id":101,"result":{"thread":{"id":"main","turns":[{"id":"first","status":"completed","items":[]}]}}}`)
+	_ = resumeTestRequests(t, wire)
+	close(release)
+	u.persistSessionTitle(awaitSessionTitle(t, g))
+	if wire.Len() != 0 {
+		t.Fatalf("failed manual suppression lost on resume: %s", wire.String())
+	}
+}

@@ -48,7 +48,7 @@ func (g *sessionTitleGenerator) register(thread appServerThreadInfo) {
 	defer g.mu.Unlock()
 	if job, exists := g.jobs[thread.ID]; exists {
 		if thread.Name != "" || len(thread.Turns) != 0 {
-			job.started, job.named = true, thread.Name != ""
+			job.started, job.named = true, job.named || thread.Name != ""
 		}
 		return
 	}
