@@ -96,9 +96,6 @@ func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testin
 				Bytes int `json:"bytes"`
 			} `json:"client_request"`
 			Attempts []struct {
-				ProjectedRequest *struct {
-					Bytes int `json:"bytes"`
-				} `json:"projected_request"`
 				Request struct {
 					Bytes int `json:"bytes"`
 				} `json:"request"`
@@ -125,9 +122,6 @@ func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testin
 	for _, exchange := range snapshot.Exchanges {
 		if exchange.Request.Bytes == 0 && len(exchange.Attempts) == 1 {
 			automatic = true
-			if exchange.Attempts[0].ProjectedRequest == nil || exchange.Attempts[0].ProjectedRequest.Bytes != 0 {
-				t.Fatal("missing zero-byte projected request for automatic successor")
-			}
 			if exchange.Attempts[0].Request.Bytes != 0 {
 				t.Fatal("fabricated provider request for automatic successor")
 			}

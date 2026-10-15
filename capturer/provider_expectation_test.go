@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -82,25 +83,53 @@ func TestRecorderDistinguishesNoGenerateFromMissingProvider(t *testing.T) {
 	}
 }
 
-func TestRecorderMarksMissingProjectedRequestIncomplete(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer recorder.Close()
-	state, err := recorder.beginRequest(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := []byte(`{"model":"test","input":[]}`)
-	terminal := []byte(`{"status":"completed","output":[]}`)
-	response := observedPayload{content: terminal, bytes: uint64(len(terminal))}
-	attempt := state.beginProviderAttempt()
-	recorder.recordExchange(state, "provider", attempt, time.Now(), request, response, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
-	recorder.recordExchange(state, "codex", 0, time.Now(), request, response, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
-	snapshot := recorder.snapshot()
-	if snapshot.Capture.CaptureErrors != 1 || len(snapshot.Exchanges) != 1 ||
-		len(snapshot.Exchanges[0].ProviderAttempts) != 1 || snapshot.Exchanges[0].ProviderAttempts[0].ProjectedRequest != nil {
-		t.Fatalf("missing projected request was presented as complete: %+v", snapshot)
+func TestRecorderProjectedRequestObservation(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		observe bool
+		body    []byte
+	}{
+		{name: "missing"},
+		{name: "empty automatic successor", observe: true},
+		{name: "valid", observe: true, body: []byte(`{"model":"test","input":["projected"]}`)},
+		{name: "invalid fingerprint", observe: true, body: []byte(`{`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder, err := New(Config{Mode: "mekugi"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer recorder.Close()
+			state, err := recorder.beginRequest(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.observe {
+				ObserveProjectedRequest(context.WithValue(t.Context(), captureKey{}, state), tc.body)
+			}
+			request := []byte(`{"model":"test","input":[]}`)
+			terminal := []byte(`{"status":"completed","output":[]}`)
+			response := observedPayload{content: terminal, bytes: uint64(len(terminal))}
+			attempt := state.beginProviderAttempt()
+			recorder.recordExchange(state, "provider", attempt, time.Now(), request, response, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
+			recorder.recordExchange(state, "codex", 0, time.Now(), request, response, http.StatusOK, "application/json", "", nil, providerResponseEvidence{})
+			snapshot := recorder.snapshot()
+			if len(snapshot.Exchanges) != 1 || len(snapshot.Exchanges[0].ProviderAttempts) != 1 {
+				t.Fatalf("missing exchange or attempt: %+v", snapshot)
+			}
+			got := snapshot.Exchanges[0].ProviderAttempts[0]
+			wantError := ""
+			var wantErrors uint64
+			if !tc.observe {
+				wantError = "missing projected request observation"
+				wantErrors = 1
+			}
+			if snapshot.Capture.CaptureErrors != wantErrors || got.CaptureError != wantError {
+				t.Fatalf("observation health = %+v, attempt = %+v", snapshot.Capture, got)
+			}
+			if !reflect.DeepEqual(got.ProjectedFingerprint, recorder.requestFingerprint(tc.body)) {
+				t.Fatalf("projected fingerprint = %+v", got.ProjectedFingerprint)
+			}
+		})
 	}
 }

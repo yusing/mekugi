@@ -98,7 +98,6 @@ type providerAttemptMetrics struct {
 	Request              payloadMetrics            `json:"request"`
 	Fingerprint          *requestFingerprint       `json:"cache_fingerprint,omitempty"`
 	ProjectedFingerprint *requestFingerprint       `json:"projected_fingerprint,omitempty"`
-	ProjectedRequest     *payloadMetrics           `json:"projected_request,omitempty"`
 	Response             payloadMetrics            `json:"response"`
 	FinalOutput          payloadMetrics            `json:"final_output,omitzero"`
 	FinalText            payloadMetrics            `json:"final_text,omitzero"`
@@ -223,8 +222,7 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 			Attempt:          provider.ProviderAttempt, Model: provider.RequestModel, Status: provider.ResponseStatus,
 			ResponseComplete: provider.ResponseComplete,
 			Fingerprint:      provider.Fingerprint, ProjectedFingerprint: provider.ProjectedFingerprint,
-			ProjectedRequest: provider.ProjectedRequest,
-			Request:          provider.Request, Response: provider.Response, FinalOutput: provider.FinalOutput, FinalText: provider.FinalText,
+			Request: provider.Request, Response: provider.Response, FinalOutput: provider.FinalOutput, FinalText: provider.FinalText,
 		}
 		if provider.RequestModel != "" {
 			exchange.Model = provider.RequestModel
@@ -285,9 +283,6 @@ func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProviderResponse = cloneProviderEvidence(attempt.ProviderResponse)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].Fingerprint = cloneFingerprint(attempt.Fingerprint)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedFingerprint = cloneFingerprint(attempt.ProjectedFingerprint)
-			if attempt.ProjectedRequest != nil {
-				clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedRequest = new(*attempt.ProjectedRequest)
-			}
 			if attempt.Usage != nil {
 				usage := *attempt.Usage
 				clone.Exchanges[index].ProviderAttempts[attemptIndex].Usage = &usage

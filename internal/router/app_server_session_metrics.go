@@ -292,9 +292,6 @@ func (u *appServerUI) renderSessionMetrics() {
 			add(group, "Complete", a.ResponseComplete)
 			add(group, "Capture error", a.CaptureError)
 			payload(group, "Request", a.Request.Bytes, a.Request.Tokens)
-			if a.ProjectedRequest != nil {
-				payload(group, "Post replay", a.ProjectedRequest.Bytes, a.ProjectedRequest.Tokens)
-			}
 			payload(group, "Stream", a.Response.Bytes, a.Response.Tokens)
 			payload(group, "Model output", a.FinalOutput.Bytes, a.FinalOutput.Tokens)
 			payload(group, "Final text", a.FinalText.Bytes, a.FinalText.Tokens)

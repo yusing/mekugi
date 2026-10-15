@@ -22,7 +22,6 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
     "compaction_summary_bytes":30,"compaction_changes":2,"compaction_failures":1,
     "journal":{"operations":{"log":2},"last_outcome_empty":false},
     "provider_attempts":[{"attempt":1,"usage":{"input_tokens":12},
-      "projected_request":{"bytes":40,"tokens":4},
       "provider_response":{"cached_tokens_state":"present","cached_tokens":0}}]}]}`), &recorder.metrics, json.RejectUnknownMembers(true))
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +65,6 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 		{"journal-optional", func(s *MetricsSnapshot) { *s.Exchanges[0].Journal.LastOutcomeEmpty = true }},
 		{"attempt-slice", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].Attempt = 99 }},
 		{"attempt-usage", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].Usage.InputTokens = 99 }},
-		{"projected-request", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].ProjectedRequest.Bytes = 99 }},
 		{"provider-evidence", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].ProviderResponse.Model = "mutated" }},
 		{"explicit-cached-telemetry", func(s *MetricsSnapshot) { *s.Exchanges[0].ProviderAttempts[0].ProviderResponse.CachedTokens = 99 }},
 	} {

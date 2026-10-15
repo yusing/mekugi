@@ -46,7 +46,6 @@ A durable record MUST contain only:
   provider summaries have measured text bytes when complete and unknown evidence
   counts. Missing answerer fields in older exports mean unknown, not provider;
 - provider usage counters;
-- the measured `projected_request` after history replay and tool projection, on provider records;
 - decoded assistant `final_text` sizes, separate from complete output arrays;
   this includes Chat assistant string content as well as Responses text parts, so
   provider and client text can be compared as separate observed sizes;
@@ -57,8 +56,7 @@ A durable record MUST contain only:
 It MUST NOT contain authorization material, prompts, instructions, message content, tool arguments,
 command output, response text, script text, patches, reports, or diagnostics beyond the stable code.
 If the projected-request observation is missing, the provider record MUST have
-a capture error and no `projected_request`, rather than substituting the
-provider wire request.
+a capture error rather than substituting the provider wire request for cache diagnostics.
 
 `GET /api/metrics` MUST return `mekugi.capture.metrics.v7`. Provider and transport
 calculations belong to the capturer, not the router, engine, plugin, comparison
@@ -228,9 +226,10 @@ reinterpreted as corrected measurements because they do not retain the raw outpu
 
 JSON whitespace, key order, and equivalent string escaping MUST leave all content estimates unchanged while observed bytes may differ. Literal model-visible escape sequences MUST retain their token cost.
 
-The router supplies the actual projected request at its post-replay observation seam. The
-capturer measures it, discards the bytes immediately, and correlates the sizes with each
-provider attempt. Missing projected-request observation is incomplete evidence, not a
+The router supplies the actual projected request at its post-replay observation seam.
+The capturer retains only its privacy-safe fingerprint, discards the bytes immediately,
+and correlates the fingerprint with each provider attempt. It does not measure projected
+payload size or tokens. Missing projected-request observation is incomplete evidence, not a
 reason to substitute raw client history. WebSocket metadata and the `response.create`
 envelope remain part of measured provider transport costs. Only paired authoritative
 provider usage measures actual model-consumption changes.

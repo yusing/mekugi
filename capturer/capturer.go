@@ -85,7 +85,6 @@ type captureRecord struct {
 	Request              payloadMetrics                     `json:"request"`
 	Fingerprint          *requestFingerprint                `json:"cache_fingerprint,omitempty"`
 	ProjectedFingerprint *requestFingerprint                `json:"projected_fingerprint,omitempty"`
-	ProjectedRequest     *payloadMetrics                    `json:"projected_request,omitempty"`
 	RequestTools         []string                           `json:"request_tools,omitempty"`
 	StatusCode           int                                `json:"status_code"`
 	ResponseComplete     bool                               `json:"response_complete"`
@@ -114,27 +113,26 @@ type Recorder struct {
 }
 
 type requestState struct {
-	journal               *JournalMetrics
-	compaction            CompactionMetrics
-	requestKind           string
-	noProvider            bool
-	predecessorSequence   uint64
-	recorder              *Recorder
-	projectedRequest      *payloadMetrics
-	projectedRequestError bool
-	projectedFingerprint  *requestFingerprint
-	providerRouting       map[uint64]requestRouting
-	clientTurnState       string
-	mu                    sync.Mutex
-	captureID             string
-	sequence              uint64
-	providerAttempts      uint64
-	requestID             string
-	sessionID             string
-	threadID              string
-	subagent              string
-	providers             []captureRecord
-	providerUsage         map[uint64]ProviderUsage
+	journal              *JournalMetrics
+	compaction           CompactionMetrics
+	requestKind          string
+	noProvider           bool
+	predecessorSequence  uint64
+	recorder             *Recorder
+	projectedObserved    bool
+	projectedFingerprint *requestFingerprint
+	providerRouting      map[uint64]requestRouting
+	clientTurnState      string
+	mu                   sync.Mutex
+	captureID            string
+	sequence             uint64
+	providerAttempts     uint64
+	requestID            string
+	sessionID            string
+	threadID             string
+	subagent             string
+	providers            []captureRecord
+	providerUsage        map[uint64]ProviderUsage
 }
 
 type requestRouting struct {
@@ -188,20 +186,18 @@ func ObserveProviderUsage(ctx context.Context, usage ProviderUsage) {
 }
 
 // ObserveProjectedRequest supplies the actual request after replay and tool
-// projection. Measurement is capture-owned; no raw body is retained.
+// projection. Only a privacy-safe fingerprint is retained, not the raw body.
 // It is observation only and cannot fail or change the routed operation.
 func ObserveProjectedRequest(ctx context.Context, body []byte) {
 	state, ok := ctx.Value(captureKey{}).(*requestState)
 	if !ok {
 		return
 	}
-	measured, err := state.recorder.measure(body)
 	fingerprint := state.recorder.requestFingerprint(body)
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	state.projectedRequest = &measured
+	state.projectedObserved = true
 	state.projectedFingerprint = fingerprint
-	state.projectedRequestError = err != nil
 }
 
 // New creates one in-process recorder. It never starts a server.
@@ -447,16 +443,9 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 			}
 		}
 
-		if state.projectedRequest != nil {
-			baseline := *state.projectedRequest
-			record.ProjectedRequest = &baseline
-		}
-		baselineError := state.projectedRequestError
+		projectedObserved := state.projectedObserved
 		state.mu.Unlock()
-		if baselineError {
-			record.CaptureError = "measure projected request"
-		}
-		if record.ProjectedRequest == nil {
+		if !projectedObserved {
 			record.CaptureError = "missing projected request observation"
 		}
 	}
