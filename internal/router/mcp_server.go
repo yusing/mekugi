@@ -40,10 +40,12 @@ func startMCP(ctx context.Context, server *mcp.Server) (string, func() error, er
 			})
 		}
 	})
-	return socket, func() error {
+	stop := sync.OnceValue(func() error {
 		cancel()
 		err := listener.Close()
 		workers.Wait()
 		return errors.Join(err, os.RemoveAll(directory))
-	}, nil
+	})
+	context.AfterFunc(ctx, func() { _ = stop() })
+	return socket, stop, nil
 }

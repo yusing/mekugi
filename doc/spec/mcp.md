@@ -9,8 +9,9 @@ specified in [execution](execution.md#req-execution-003--guard-remote-vcs-writes
 
 An explicit transport invocation owns its private endpoint and connections.
 The stdio bridge relays protocol bytes and cancellation; registered handlers own
-input validation and feature policy. Endpoint shutdown closes owned connections
-and removes only its invocation's resources. Concurrent invocations remain
+input validation and feature policy. Parent cancellation and explicit shutdown
+close owned connections and remove only the invocation's resources. Repeated or concurrent stop calls
+wait for the same completed cleanup. Concurrent invocations remain
 independent. Transport does not schedule work, persist task state, or control
 context reset. The internal `mcp-bridge` command remains available; normal launch
 does not register it with Codex. Frontend invocations cannot select this launcher
