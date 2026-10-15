@@ -10,6 +10,8 @@ import (
 	"slices"
 	"syscall"
 
+	"github.com/yusing/mekugi/libraries/mcptransport"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"github.com/yusing/mekugi/internal/router"
 )
@@ -32,7 +34,7 @@ func run() (exitCode int) {
 			fmt.Fprintln(os.Stderr, "mekugi: mcp-bridge requires one socket path")
 			return 2
 		}
-		if err := router.RunMCPBridge(ctx, os.Args[2], os.Stdin, os.Stdout); err != nil {
+		if err := mcptransport.RelayStdio(ctx, os.Args[2], os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi:", err)
 			return 1
 		}

@@ -1,4 +1,4 @@
-package router
+package mcptransport
 
 import (
 	"context"
@@ -29,7 +29,7 @@ func TestMCPServiceStop(t *testing.T) {
 			})
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			socket, stop, err := startMCP(ctx, server)
+			socket, stop, err := Start(ctx, server)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -137,7 +137,7 @@ func TestMCPBridgeCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- RunMCPBridge(ctx, socket, input, output) }()
+	go func() { done <- RelayStdio(ctx, socket, input, output) }()
 	if err := <-congested; err == nil || !errors.Is(err, os.ErrDeadlineExceeded) {
 		t.Fatalf("output did not become backpressured: %v", err)
 	}

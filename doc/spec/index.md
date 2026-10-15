@@ -6,7 +6,6 @@ pjdoc:
   status: draft
   revision: "70"
   files:
-    - mcp.md
     - router.md
     - native_ui.md
     - transport.md
@@ -41,7 +40,7 @@ Module-owned contracts live with their implementation:
 ## Inventory
 
 - [`REQ-CONTEXT-RESET-001`](../../modules/contextreset/SPEC.md): retained inactive instruction-file loading
-- [`REQ-MCP-001`](mcp.md): reserved invocation-local MCP transport
+- [`REQ-MCP-001`](../../libraries/mcptransport/SPEC.md): reserved invocation-local MCP transport
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
 - [`REQ-TRANSPORT-001`](transport.md): Codex-facing and provider Responses transports

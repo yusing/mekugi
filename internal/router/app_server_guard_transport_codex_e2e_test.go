@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/mcptransport"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -56,18 +58,17 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 			var inject func() error
 			if failure == "disconnected-mcp" {
 				server := mcp.NewServer(&mcp.Implementation{Name: "reserved", Version: "1"}, nil)
-				socket, stop, err := startMCP(t.Context(), server)
+				socket, stop, err := mcptransport.Start(t.Context(), server)
 				if err != nil {
 					t.Fatal(err)
 				}
-				closeEndpoint := sync.OnceValue(stop)
 				t.Cleanup(func() {
-					if err := closeEndpoint(); err != nil {
+					if err := stop(); err != nil {
 						t.Error(err)
 					}
 				})
 				inject = func() error {
-					if err := closeEndpoint(); err != nil {
+					if err := stop(); err != nil {
 						return err
 					}
 					if _, err := os.Stat(socket); !os.IsNotExist(err) {

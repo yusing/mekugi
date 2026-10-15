@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/mcptransport"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -37,7 +39,7 @@ func setCodexFrontendLoginEnvironment(t *testing.T, directory string) {
 // Pinned test workers use the same authenticated dispatch as the executable.
 func init() {
 	if len(os.Args) == 3 && os.Args[1] == "mcp-bridge" {
-		if err := RunMCPBridge(context.Background(), os.Args[2], os.Stdin, os.Stdout); err != nil {
+		if err := mcptransport.RelayStdio(context.Background(), os.Args[2], os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

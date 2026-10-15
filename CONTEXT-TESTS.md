@@ -54,7 +54,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Provider credentials and model metadata | `./providers/grok/... ./providers/opencode/...`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, and accounting consumers |
 | Provider request encoding and stream normalization | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router Grok/OpenCode integration and capture tests |
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
-| Reserved MCP transport | `./internal/router -run '^TestMCP'` |
+| Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |
 | Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./internal/vcsguard ./internal/router -run 'TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestVCSGuardHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |

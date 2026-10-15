@@ -1,4 +1,4 @@
-package router
+package mcptransport
 
 import (
 	"context"
@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 )
 
-// RunMCPBridge relays the dedicated child process's stdio to the router.
+// Source: internal/router/mcp_bridge.go:12:46@dbe80c66
+// RelayStdio relays a dedicated child process's stdio to a local MCP endpoint.
 // It owns both stdio files and closes them when the router or host ends the connection.
-func RunMCPBridge(ctx context.Context, socket string, stdin, stdout *os.File) error {
+func RelayStdio(ctx context.Context, socket string, stdin, stdout *os.File) error {
 	if !filepath.IsAbs(socket) {
 		return errors.New("MCP socket must be absolute")
 	}

@@ -1,4 +1,4 @@
-package router
+package mcptransport
 
 import (
 	"context"
@@ -11,9 +11,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// startMCP serves registered handlers in the router. The private directory
+// Source: internal/router/mcp_server.go:14:51@dbe80c66
+// Start serves explicitly registered handlers on a private local endpoint. The private directory
 // restricts access to this user's processes; no network endpoint is exposed.
-func startMCP(ctx context.Context, server *mcp.Server) (string, func() error, error) {
+func Start(ctx context.Context, server *mcp.Server) (string, func() error, error) {
 	// Unix socket paths are short even when TMPDIR is nested or aliased.
 	directory, err := os.MkdirTemp("/tmp", "mekugi-mcp-")
 	if err != nil {

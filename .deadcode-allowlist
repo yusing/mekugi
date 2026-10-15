@@ -19,5 +19,5 @@ github.com/yusing/mekugi/modules/contextreset/codexbinding.messageContentText
 github.com/yusing/mekugi/modules/sourceoutline/outline.Service.InspectSource
 github.com/yusing/mekugi/libraries/commandanalysis.ExecCommandArguments
 
-# Reserved MCP endpoint: doc/spec/mcp.md.
-github.com/yusing/mekugi/internal/router.startMCP
+# Reserved MCP endpoint: libraries/mcptransport/SPEC.md.
+github.com/yusing/mekugi/libraries/mcptransport.Start
