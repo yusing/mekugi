@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/modules/sourceoutline/outline"
+
 	"github.com/yusing/mekugi/internal/responses"
 
 	jsonv1 "encoding/json"
@@ -19,7 +21,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 	"mvdan.cc/sh/v3/syntax"
@@ -520,7 +521,7 @@ func resetGuidanceSnapshot(ctx context.Context, path string, named func(string) 
 		return "", errors.New("not UTF-8")
 	}
 	if structural {
-		outline, err := toolplugin.InspectSource(ctx, path, data)
+		outline, err := outline.InspectSource(ctx, path, data)
 		return header + outline, err
 	}
 	return header + strings.TrimRight(string(data), "\n") + "\n", nil

@@ -26,8 +26,9 @@ startup drain in reverse order, including the partially started owner.
 
 Typed dependency closures resolve earlier handles. The command host receives the
 complete collected slot, including later contributors, and accepts an empty list.
-The bounded-command descriptor contributes its compiled `mrun` implementation
-and description. The authenticated worker dispatches the selected implementation;
+The bounded-command and source-outline descriptors contribute compiled `mrun`
+and `inspect_file` implementations and descriptions. Reader contributions declare
+read observation so the host retains AX evidence without command-specific dispatch. The authenticated worker dispatches the selected implementation;
 adding another extracted command requires no new name switch. The application
 supplies the remaining legacy catalog until those owners are extracted.
 The session-history descriptor hosts the record-kind slot. It receives feature

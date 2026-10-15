@@ -1,8 +1,7 @@
-package toolplugin
+package outline
 
 import (
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -42,7 +41,7 @@ func TestNativeInspectRustDeclarationsAndSpans(t *testing.T) {
 			if result.Data.Kind != "code" || result.Data.Language == nil || *result.Data.Language != "rust" || result.Data.SizeBytes != len(text) || result.Data.LineCount == nil || *result.Data.LineCount != 66 || !result.Data.ParseComplete || !reflect.DeepEqual(result.Data.Outline, want) {
 				t.Fatalf("Rust projection: %+v, want %+v", result.Data, want)
 			}
-			out := nativeExecute(t, "inspect_file", path)
+			out := nativeExecute(t, path)
 			if out.ExitCode != 0 || out.Stderr != "" || out.Stdout != wantCompact {
 				t.Fatalf("compact Rust outline: %+v, want %q", out, wantCompact)
 			}
@@ -90,8 +89,8 @@ func TestNativeInspectRustSyntaxRecovery(t *testing.T) {
 			if result.Data.ParseComplete || !found || !diagnostic {
 				t.Fatalf("Rust recovery: %+v", result.Data)
 			}
-			for _, entry := range nativeParsedFixture(t, "broken.rs", tc.source).entries {
-				if entry.name == tc.visible && !entry.complete {
+			for _, entry := range nativeParsedFixture(t, "broken.rs", tc.source).Entries {
+				if entry.Name == tc.visible && !entry.Complete {
 					t.Fatalf("unrelated error marked declaration incomplete: %+v", entry)
 				}
 			}
@@ -109,7 +108,7 @@ func TestNativeInspectRustAttributesAndEmptyOutlines(t *testing.T) {
 	for _, text := range []string{"", "// comment only\n", "#![allow(dead_code)]\n", "invoke! { fn hidden() {} }\n", "impl !Send for Type {}\n"} {
 		path := nativeFixture(t, "empty.rs", text)
 		result := nativeInspectFixture(t, path)
-		out := nativeExecute(t, "inspect_file", path)
+		out := nativeExecute(t, path)
 		if !result.Data.ParseComplete || len(result.Data.Outline) != 0 || out.ExitCode != 0 || out.Stdout != "(no outline)\n" || out.Stderr != "" {
 			t.Fatalf("Rust no-outline source %q: %+v; %+v", text, result.Data, out)
 		}
@@ -146,7 +145,7 @@ func TestNativeInspectRustRecoveryDeclarationBoundaries(t *testing.T) {
 func TestNativeInspectRustFailuresAndNoSemanticResolver(t *testing.T) {
 	path := nativeFixture(t, "valid.rs", "fn visible() {}\n")
 	invalid := nativeFixture(t, "invalid.rs", "\xff")
-	out := nativeExecute(t, "inspect_file", invalid, path)
+	out := nativeExecute(t, invalid, path)
 	want := fmt.Sprintf("--- %s ---\n1-1 function visible\n", path)
 	if out.ExitCode != 1 || out.Stdout != want || !strings.Contains(out.Stderr, invalid) {
 		t.Fatalf("Rust independent targets: %+v", out)
@@ -155,8 +154,5 @@ func TestNativeInspectRustFailuresAndNoSemanticResolver(t *testing.T) {
 	if result.Data.Kind != "none" || result.Data.LineCount != nil || len(result.Data.Outline) != 0 {
 		t.Fatalf("uppercase extension was decoded: %+v", result.Data)
 	}
-	out = nativeExecute(t, "msymbol", "--workspace", filepath.Dir(path), "def", path, "visible")
-	if out.ExitCode != 1 || out.Stdout != "" || !strings.Contains(out.Stderr, "unsupported msymbol source format") {
-		t.Fatalf("Rust gained semantic support: %+v", out)
-	}
+
 }

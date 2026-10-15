@@ -15,6 +15,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/structure"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/outputbudget"
@@ -24,13 +26,9 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
-type symbolPosition struct {
-	Line      int `json:"line"`
-	Character int `json:"character"`
-}
 type symbolRange struct {
-	Start symbolPosition `json:"start"`
-	End   symbolPosition `json:"end"`
+	Start structure.Position `json:"start"`
+	End   structure.Position `json:"end"`
 }
 type symbolLocation struct {
 	outside  bool
@@ -47,7 +45,7 @@ type symbolQuery struct {
 }
 type symbolSource struct {
 	path   string
-	parsed *parsedSource
+	parsed *structure.Source
 }
 type symbolFailure struct{ class, message string }
 
@@ -215,7 +213,7 @@ func loadSymbolSource(ctx context.Context, root, path, resolver string, cache ma
 	if !utf8.Valid(data) {
 		return nil, &symbolSourceFailure{"not UTF-8", "path is not UTF-8"}
 	}
-	parsed, err := parseNativeSource(ctx, string(data), format)
+	parsed, err := structure.Parse(ctx, string(data), format)
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +221,12 @@ func loadSymbolSource(ctx context.Context, root, path, resolver string, cache ma
 	cache[canonical] = file
 	return file, nil
 }
-func nearbySymbolLines(s *parsedSource, name string, line int) string {
+func nearbySymbolLines(s *structure.Source, name string, line int) string {
 	var lines []int
 	seen := map[int]bool{}
-	for _, t := range s.tokens {
-		if t.text == name {
-			n := s.lines.at(t.from)
+	for _, t := range s.Tokens {
+		if t.Text == name {
+			n := s.Lines.At(t.From)
 			if !seen[n] {
 				lines = append(lines, n)
 				seen[n] = true
@@ -255,16 +253,16 @@ func absSymbol(n int) int {
 func selectNativeSymbol(q *symbolQuery) error {
 	s := q.file.parsed
 	if q.line == 0 {
-		var entries []outlineEntry
-		for _, e := range s.entries {
-			if e.kind != "parse_error" && e.name == q.name && e.nameFrom >= 0 {
+		var entries []structure.Entry
+		for _, e := range s.Entries {
+			if e.Kind != "parse_error" && e.Name == q.name && e.NameFrom >= 0 {
 				entries = append(entries, e)
 			}
 		}
 		if len(entries) > 1 {
 			var lines []string
 			for _, e := range entries {
-				lines = append(lines, strconv.Itoa(s.lines.at(e.nameFrom)))
+				lines = append(lines, strconv.Itoa(s.Lines.At(e.NameFrom)))
 			}
 			return fmt.Errorf("%s has %d outline matches (lines %s); supply LINE", q.name, len(entries), strings.Join(lines, ", "))
 		}
@@ -275,23 +273,23 @@ func selectNativeSymbol(q *symbolQuery) error {
 			}
 			return fmt.Errorf("%s has no outline declaration; %s", q.name, hint)
 		}
-		if !entries[0].complete {
+		if !entries[0].Complete {
 			return fmt.Errorf("%s has an incomplete outline declaration; supply LINE", q.name)
 		}
-		q.offset = entries[0].nameFrom
-		q.line = s.lines.at(q.offset)
+		q.offset = entries[0].NameFrom
+		q.line = s.Lines.At(q.offset)
 		return nil
 	}
-	if _, ok := s.lines.row(q.line); !ok {
+	if _, ok := s.Lines.Row(q.line); !ok {
 		return fmt.Errorf("line %d is past EOF", q.line)
 	}
-	if s.format.Language == "go" && !token.IsIdentifier(q.name) {
+	if s.Format.Language == "go" && !token.IsIdentifier(q.name) {
 		return errors.New("SYMBOL must be a non-keyword Go identifier")
 	}
 	var offsets []int
-	for _, t := range s.tokens {
-		if t.text == q.name && s.lines.at(t.from) == q.line {
-			offsets = append(offsets, t.from)
+	for _, t := range s.Tokens {
+		if t.Text == q.name && s.Lines.At(t.From) == q.line {
+			offsets = append(offsets, t.From)
 		}
 	}
 	if len(offsets) == 0 {
@@ -356,7 +354,7 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 			q.err = selectNativeSymbol(q)
 		}
 		if q.err == nil {
-			resolver := q.file.parsed.format.SemanticResolver
+			resolver := q.file.parsed.Format.SemanticResolver
 			groups[resolver] = append(groups[resolver], q)
 		}
 	}
@@ -380,7 +378,7 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 		}
 		path, e := filepath.EvalSymlinks(q.file.path)
 		data, readErr := os.ReadFile(q.file.path)
-		if e != nil || readErr != nil || path != q.file.path || string(data) != q.file.parsed.source {
+		if e != nil || readErr != nil || path != q.file.path || string(data) != q.file.parsed.Source {
 			q.err = errors.New("input changed during query")
 		}
 	}
@@ -457,7 +455,7 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 				skip("outside workspace")
 				continue
 			}
-			file, e := loadSymbolSource(ctx, root, loc.path, q.file.parsed.format.SemanticResolver, cache)
+			file, e := loadSymbolSource(ctx, root, loc.path, q.file.parsed.Format.SemanticResolver, cache)
 			if e != nil {
 				if f, ok := errors.AsType[*symbolSourceFailure](e); ok {
 					skip(f.reason)
@@ -466,8 +464,8 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 				queryErr = e
 				break
 			}
-			from, ok1 := file.parsed.lines.offset(loc.position.Start)
-			to, ok2 := file.parsed.lines.offset(loc.position.End)
+			from, ok1 := file.parsed.Lines.Offset(loc.position.Start)
+			to, ok2 := file.parsed.Lines.Offset(loc.position.End)
 			if !ok1 || !ok2 || to < from {
 				skip("unavailable")
 				continue
@@ -475,16 +473,16 @@ func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 			start := loc.position.Start.Line + 1
 			end := start
 			if q.mode == "def" {
-				for _, entry := range file.parsed.entries {
-					if entry.kind != "import" && entry.complete && entry.nameFrom == from && entry.nameTo == to {
-						start, end = entry.line, entry.endLine
+				for _, entry := range file.parsed.Entries {
+					if entry.Kind != "import" && entry.Complete && entry.NameFrom == from && entry.NameTo == to {
+						start, end = entry.Line, entry.EndLine
 						break
 					}
 				}
 			}
 			headerEnd := start - 1
 			for line := start; line <= end; line++ {
-				row, ok := file.parsed.lines.row(line)
+				row, ok := file.parsed.Lines.Row(line)
 				if !ok {
 					skip("unavailable")
 					break

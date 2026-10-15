@@ -10,7 +10,6 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 const codexThreadIDEnvironment = "CODEX_THREAD_ID"
@@ -21,9 +20,11 @@ func executeFrontendReader(
 	ctx context.Context,
 	manifest toolWorkerManifest,
 	args []string,
-	contribution toolContribution,
+	name string,
+	stdin *os.File,
+	run func(context.Context, []string, *os.File) (command.Output, error),
 ) (execution command.Output, err error) {
-	finish := beginFrontendRead(manifest, contribution.Name)
+	finish := beginFrontendRead(manifest, name)
 	defer func() {
 		class := frontendExecutionFailure(execution, err)
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -34,7 +35,7 @@ func executeFrontendReader(
 		finish(&execution, err, err == nil && execution.ExitCode == 0 && ctx.Err() == nil, class)
 	}()
 
-	return toolplugin.ExecuteBuiltin(ctx, contribution.Name, args)
+	return run(ctx, args, stdin)
 }
 
 func frontendExecutionFailure(execution command.Output, err error) string {

@@ -14,7 +14,8 @@ implementation before snapshot publication. The dispatch owner supplies that
 availability check; the manifest remains authenticated and validated at use.
 
 Each extracted command contribution pairs its description with its compiled
-implementation. The worker receives the composed catalog before authenticating
+implementation and whether the host observes read completion. Observation failure
+cannot prevent command execution. The worker receives the composed catalog before authenticating
 the selected frontend. The catalog provides descriptions and native dispatch for `mcat`, `inspect_file`,
 `msymbol`, `mread`, `mchanges`, and `mrun`. It does not execute declarations from
 user configuration or own a JavaScript/WASM plugin runtime. Reader parsing,

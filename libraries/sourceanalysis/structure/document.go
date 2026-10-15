@@ -1,4 +1,6 @@
-package toolplugin
+package structure
+
+// Source: internal/router/toolplugin/native_document.go@[25ed2c2d]
 
 import (
 	"context"
@@ -11,6 +13,8 @@ import (
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	jsonlang "github.com/tree-sitter/tree-sitter-json/bindings/go"
@@ -128,35 +132,27 @@ func decodeJSString(literal string) (string, bool) {
 }
 
 // Source: plugins/inspect_file_document.ts:146:210@[543de4f3] jsonOutline
-func (s *parsedSource) jsonDocument(ctx context.Context) error {
+func (s *Source) jsonDocument(ctx context.Context) error {
 	strict := *s
-	strict.entries = nil
-	strict.tokens = nil
+	strict.Entries = nil
+	strict.Tokens = nil
 	invalidOffset, err := strict.strictJSON(ctx)
 	if err == nil {
-		s.entries = strict.entries
-		s.tokens = strict.tokens
+		s.Entries = strict.Entries
+		s.Tokens = strict.Tokens
 		return nil
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-
-	parser := sitter.NewParser()
-	defer parser.Close()
-	if err := parser.SetLanguage(sitter.NewLanguage(jsonlang.Language())); err != nil {
-		return err
-	}
-	data := []byte(s.source)
-	if strings.HasPrefix(s.source, "\ufeff") {
+	data := []byte(s.Source)
+	if strings.HasPrefix(s.Source, "\ufeff") {
 		copy(data, []byte("   "))
 	}
-	tree := parser.ParseWithOptions(func(offset int, _ sitter.Point) []byte {
-		if offset >= len(data) {
-			return nil
-		}
-		return data[offset:]
-	}, nil, &sitter.ParseOptions{ProgressCallback: func(sitter.ParseState) bool { return ctx.Err() != nil }})
+	tree, err := sourceparse.Parse(data, sitter.NewLanguage(jsonlang.Language()), func() bool { return ctx.Err() != nil })
+	if err != nil {
+		return err
+	}
 	if tree == nil {
 		return ctx.Err()
 	}
@@ -174,9 +170,9 @@ func (s *parsedSource) jsonDocument(ctx context.Context) error {
 		}
 		from, to := int(n.StartByte()), int(n.EndByte())
 		s.add("json", "", from, to, -1, -1, !n.HasError())
-		e := &s.entries[len(s.entries)-1]
-		e.pointer = pointer
-		e.valueType = typ
+		e := &s.Entries[len(s.Entries)-1]
+		e.Pointer = pointer
+		e.ValueType = typ
 		if kind == "object" {
 			for _, pair := range nodeChildren(n) {
 				if pair.Kind() != "pair" {
@@ -219,7 +215,7 @@ func (s *parsedSource) jsonDocument(ctx context.Context) error {
 		case "object", "array", "string", "number", "true", "false", "null":
 			value(n, "")
 		}
-		if len(s.entries) > 0 {
+		if len(s.Entries) > 0 {
 			break
 		}
 	}
@@ -227,7 +223,7 @@ func (s *parsedSource) jsonDocument(ctx context.Context) error {
 	visit = func(n *sitter.Node) {
 		if n.Kind() == "string" && !n.HasError() {
 			if v, ok := decodeNativeJSONString(s.text(n)); ok {
-				s.tokens = append(s.tokens, sourceToken{int(n.StartByte()) + 1, v})
+				s.Tokens = append(s.Tokens, Token{int(n.StartByte()) + 1, v})
 			}
 			return
 		}
@@ -243,33 +239,33 @@ func (s *parsedSource) jsonDocument(ctx context.Context) error {
 var yamlErrorLine = regexp.MustCompile(`line ([0-9]+)`)
 
 // Source: plugins/inspect_file_document.ts:23:133@[543de4f3] markdownOutline
-func (s *parsedSource) markdown() {
+func (s *Source) markdown() {
 	endFront := 0
-	if first, ok := s.lines.row(1); ok && strings.TrimPrefix(first, "\ufeff") == "---" {
+	if first, ok := s.Lines.Row(1); ok && strings.TrimPrefix(first, "\ufeff") == "---" {
 		closing := 0
-		for i := 2; i <= len(s.lines.starts); i++ {
-			row, _ := s.lines.row(i)
+		for i := 2; i <= len(s.Lines.starts); i++ {
+			row, _ := s.Lines.Row(i)
 			if row == "---" {
 				closing = i
 				break
 			}
 		}
 		if closing > 0 {
-			start := s.lines.starts[1]
-			end := s.lines.starts[closing-1]
-			endFront = len(s.source)
-			if closing < len(s.lines.starts) {
-				endFront = s.lines.starts[closing]
+			start := s.Lines.starts[1]
+			end := s.Lines.starts[closing-1]
+			endFront = len(s.Source)
+			if closing < len(s.Lines.starts) {
+				endFront = s.Lines.starts[closing]
 			}
 			var doc yaml.Node
-			err := yaml.Unmarshal([]byte(s.source[start:end]), &doc)
+			err := yaml.Unmarshal([]byte(s.Source[start:end]), &doc)
 			if err != nil {
 				line := 2
 				if match := yamlErrorLine.FindStringSubmatch(err.Error()); len(match) > 1 {
 					n, _ := strconv.Atoi(match[1])
-					line = min(len(s.lines.starts), n+1)
+					line = min(len(s.Lines.starts), n+1)
 				}
-				s.parseError(s.lines.starts[line-1])
+				s.parseError(s.Lines.starts[line-1])
 			}
 			if len(doc.Content) > 0 && doc.Content[0].Kind == yaml.MappingNode {
 				mapping := doc.Content[0]
@@ -280,19 +276,19 @@ func (s *parsedSource) markdown() {
 						continue
 					}
 					line := key.Line + 1
-					offset := s.lines.starts[line-1] + key.Column - 1
+					offset := s.Lines.starts[line-1] + key.Column - 1
 					to := offset + len(key.Value)
 					if key.Style == yaml.DoubleQuotedStyle || key.Style == yaml.SingleQuotedStyle {
-						quote := s.source[offset]
+						quote := s.Source[offset]
 						to = offset + 1
-						for to < len(s.source) {
-							if s.source[to] == '\\' && quote == '"' {
+						for to < len(s.Source) {
+							if s.Source[to] == '\\' && quote == '"' {
 								to += 2
 								continue
 							}
-							if s.source[to] == quote {
+							if s.Source[to] == quote {
 								to++
-								if quote == '\'' && to < len(s.source) && s.source[to] == quote {
+								if quote == '\'' && to < len(s.Source) && s.Source[to] == quote {
 									to++
 									continue
 								}
@@ -301,7 +297,7 @@ func (s *parsedSource) markdown() {
 							to++
 						}
 					}
-					to = min(to, len(s.source))
+					to = min(to, len(s.Source))
 					s.add("frontmatter", key.Value, offset, to, -1, -1, true)
 					if seen[key.Value] {
 						s.parseError(offset)
@@ -311,7 +307,7 @@ func (s *parsedSource) markdown() {
 			}
 		}
 	}
-	data := []byte(s.source)
+	data := []byte(s.Source)
 	// Goldmark's line scanner uses LF. Normalize without changing source offsets.
 	for i := range data {
 		if data[i] == '\r' && (i+1 == len(data) || data[i+1] != '\n') {
@@ -326,15 +322,15 @@ func (s *parsedSource) markdown() {
 		}
 		segment := heading.Lines().At(0)
 		offset := segment.Start
-		line := s.lines.at(offset)
+		line := s.Lines.At(offset)
 		// Goldmark's heading span is already inside its blockquote/list
 		// container. Walk back over only its ATX marker, not the whole row.
 		markerEnd := offset
-		for markerEnd > s.lines.starts[line-1] && (s.source[markerEnd-1] == ' ' || s.source[markerEnd-1] == '\t') {
+		for markerEnd > s.Lines.starts[line-1] && (s.Source[markerEnd-1] == ' ' || s.Source[markerEnd-1] == '\t') {
 			markerEnd--
 		}
 		from := markerEnd
-		for from > s.lines.starts[line-1] && s.source[from-1] == '#' {
+		for from > s.Lines.starts[line-1] && s.Source[from-1] == '#' {
 			from--
 		}
 		if markerEnd-from != heading.Level || from < endFront {
@@ -342,8 +338,8 @@ func (s *parsedSource) markdown() {
 		}
 		name := strings.TrimSpace(string(segment.Value(data)))
 		if name != "" {
-			s.add("heading", name, from, s.lines.ends[line-1], -1, -1, true)
-			s.entries[len(s.entries)-1].level = heading.Level
+			s.add("heading", name, from, s.Lines.ends[line-1], -1, -1, true)
+			s.Entries[len(s.Entries)-1].Level = heading.Level
 		}
 		return ast.WalkContinue, nil
 	})
@@ -359,15 +355,15 @@ func decodeNativeJSONString(literal string) (string, bool) {
 // Tree-sitter supplies recovery only. JSON's authoritative grammar is the
 // standard decoder, which rejects comments/multiple roots and accepts exponent
 // signs. Duplicate properties and escaped lone surrogates remain source facts.
-func (s *parsedSource) strictJSON(ctx context.Context) (int, error) {
+func (s *Source) strictJSON(ctx context.Context) (int, error) {
 	base := 0
-	if strings.HasPrefix(s.source, "\ufeff") {
+	if strings.HasPrefix(s.Source, "\ufeff") {
 		base = 3
 	}
-	decoder := jsontext.NewDecoder(strings.NewReader(s.source[base:]), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true))
+	decoder := jsontext.NewDecoder(strings.NewReader(s.Source[base:]), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true))
 	tokenStart := func() int {
 		offset := base + int(decoder.InputOffset())
-		for offset < len(s.source) && strings.ContainsRune(" \t\r\n,:", rune(s.source[offset])) {
+		for offset < len(s.Source) && strings.ContainsRune(" \t\r\n,:", rune(s.Source[offset])) {
 			offset++
 		}
 		return offset
@@ -379,11 +375,11 @@ func (s *parsedSource) strictJSON(ctx context.Context) (int, error) {
 			return "", err
 		}
 		to := base + int(decoder.InputOffset())
-		name, ok := decodeJSString(s.source[from:to])
+		name, ok := decodeJSString(s.Source[from:to])
 		if !ok {
 			return "", errors.New("invalid JSON string")
 		}
-		s.tokens = append(s.tokens, sourceToken{from + 1, name})
+		s.Tokens = append(s.Tokens, Token{from + 1, name})
 		return name, nil
 	}
 	value = func(pointer string) error {
@@ -410,10 +406,10 @@ func (s *parsedSource) strictJSON(ctx context.Context) (int, error) {
 			_, err := decoder.ReadToken()
 			return err
 		}
-		index := len(s.entries)
+		index := len(s.Entries)
 		s.add("json", "", from, from, -1, -1, true)
-		s.entries[index].pointer = pointer
-		s.entries[index].valueType = typ
+		s.Entries[index].Pointer = pointer
+		s.Entries[index].ValueType = typ
 		if kind == '"' {
 			if _, err := readString(from); err != nil {
 				return err
@@ -449,7 +445,7 @@ func (s *parsedSource) strictJSON(ctx context.Context) (int, error) {
 				return err
 			}
 		}
-		s.entries[index].endLine = s.lines.at(max(from, base+int(decoder.InputOffset())-1))
+		s.Entries[index].EndLine = s.Lines.At(max(from, base+int(decoder.InputOffset())-1))
 		return nil
 	}
 	err := value("")

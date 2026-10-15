@@ -10,5 +10,7 @@ import (
 // omitted output before returning streams and status to Codex.
 type Contribution struct {
 	Spec
-	Run func(context.Context, []string, *os.File) (Output, error)
+	// ObserveRead requests auxiliary read-completion evidence from the host.
+	ObserveRead bool
+	Run         func(context.Context, []string, *os.File) (Output, error)
 }

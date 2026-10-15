@@ -57,6 +57,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Symbol command arguments and activity display | `internal/router/toolplugin/native_symbol.go` owns parsing; `internal/router/subagent_tool_display_shell.go` consumes it |
 | Shared frontend options, token ceilings, and inclusive range parsing | `libraries/commandargs`; consumers include native readers and `internal/router/shell_read_bundle.go`; command-specific acceptance and multi-target framing remain with their callers |
 | Bounded foreground command execution | `modules/boundedcommand`; authenticated dispatch in `internal/router/tool_plugin_worker.go` |
+| Structural inspection | `modules/sourceoutline`; shared declarations and source coordinates in `libraries/sourceanalysis/structure` |
 | Native readers and shared output admission | `internal/router/toolplugin/native_*.go`; `libraries/outputbudget`; remaining legacy descriptions in `internal/router/toolplugin/native_builtins.go` |
 | Router process signals, wrapped Codex lifecycle, and top-level exit | `apps/mekugi/cmd/mekugi/main.go`, `apps/mekugi/cmd/mekugi/wrap.go` |
 | Normative interface requirements | `doc/spec/index.md` and the listed requirement file |

@@ -206,7 +206,10 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 func frontendExecutor(contribution toolContribution, commands []command.Contribution) func(context.Context, toolWorkerManifest, []string, *os.File) (command.Output, error) {
 	for _, compiled := range commands {
 		if compiled.Name == contribution.NativeExecutor && compiled.Run != nil {
-			return func(ctx context.Context, _ toolWorkerManifest, args []string, stdin *os.File) (command.Output, error) {
+			return func(ctx context.Context, manifest toolWorkerManifest, args []string, stdin *os.File) (command.Output, error) {
+				if compiled.ObserveRead {
+					return executeFrontendReader(ctx, manifest, args, compiled.Name, stdin, compiled.Run)
+				}
 				return compiled.Run(ctx, args, stdin)
 			}
 		}
@@ -216,9 +219,11 @@ func frontendExecutor(contribution toolContribution, commands []command.Contribu
 		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeMCat(ctx, manifest, args)
 		}
-	case "msymbol", "inspect_file":
+	case "msymbol":
 		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
-			return executeFrontendReader(ctx, manifest, args, contribution)
+			return executeFrontendReader(ctx, manifest, args, contribution.Name, nil, func(ctx context.Context, args []string, _ *os.File) (command.Output, error) {
+				return toolplugin.ExecuteBuiltin(ctx, contribution.Name, args)
+			})
 		}
 	case "mread":
 		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {

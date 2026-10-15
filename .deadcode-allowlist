@@ -13,7 +13,7 @@ github.com/yusing/mekugi/internal/router.resetGuidanceSnapshot
 github.com/yusing/mekugi/internal/router.instructionPathPosition
 github.com/yusing/mekugi/internal/router.messageContentText
 github.com/yusing/mekugi/internal/router.openResetGuidanceFile
-github.com/yusing/mekugi/internal/router/toolplugin.InspectSource
+github.com/yusing/mekugi/modules/sourceoutline/outline.InspectSource
 
 # Reserved MCP endpoint: doc/spec/mcp.md.
 github.com/yusing/mekugi/internal/router.startMCP

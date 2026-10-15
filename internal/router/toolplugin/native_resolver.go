@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/sourceanalysis/structure"
 )
 
 const nativeResolverTimeout = 30 * time.Second
@@ -274,7 +276,7 @@ func parseNativeLocations(raw jsontext.Value, mode string) ([]symbolLocation, er
 		if uri == "" || selected == nil || selected.Start == nil || selected.End == nil || selected.Start.Line == nil || selected.Start.Character == nil || selected.End.Line == nil || selected.End.Character == nil {
 			return nil, errors.New("invalid language-server location")
 		}
-		p := symbolRange{symbolPosition{*selected.Start.Line, *selected.Start.Character}, symbolPosition{*selected.End.Line, *selected.End.Character}}
+		p := symbolRange{structure.Position{*selected.Start.Line, *selected.Start.Character}, structure.Position{*selected.End.Line, *selected.End.Character}}
 		if p.Start.Line < 0 || p.Start.Character < 0 || p.End.Line < 0 || p.End.Character < 0 {
 			return nil, errors.New("invalid language-server location")
 		}
@@ -419,7 +421,7 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 	for _, q := range queries {
 		uri := symbolFileURI(q.file.path)
 		if !opened[uri] {
-			format := q.file.parsed.format
+			format := q.file.parsed.Format
 			language := format.Language
 			if format.Kind == "json" {
 				language = "json"
@@ -427,7 +429,7 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 			if format.JSX {
 				language += "react"
 			}
-			err = lsp.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{"uri": uri, "languageId": language, "version": 1, "text": q.file.parsed.source}})
+			err = lsp.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{"uri": uri, "languageId": language, "version": 1, "text": q.file.parsed.Source}})
 			if err != nil {
 				q.err = err
 				continue
@@ -435,7 +437,7 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 			opened[uri] = true
 		}
 		method := "textDocument/definition"
-		params := map[string]any{"textDocument": map[string]string{"uri": uri}, "position": q.file.parsed.lines.position(q.offset)}
+		params := map[string]any{"textDocument": map[string]string{"uri": uri}, "position": q.file.parsed.Lines.Position(q.offset)}
 		if q.mode == "refs" {
 			method = "textDocument/references"
 			params["context"] = map[string]bool{"includeDeclaration": true}

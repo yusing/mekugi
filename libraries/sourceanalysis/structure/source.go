@@ -1,4 +1,5 @@
-package toolplugin
+// Package structure extracts declarations, lexical tokens, and logical source coordinates.
+package structure
 
 import (
 	"context"
@@ -13,6 +14,8 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
+
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
 	python "github.com/tree-sitter/tree-sitter-python/bindings/go"
@@ -22,13 +25,21 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
-type sourceLines struct {
+// Source: internal/router/toolplugin/native_outline.go@[25ed2c2d]
+
+// Position is a zero-based logical line and UTF-16 code-unit coordinate.
+type Position struct {
+	Line      int `json:"line"`
+	Character int `json:"character"`
+}
+
+type Lines struct {
 	text         string
 	starts, ends []int
 }
 
-func newSourceLines(s string) sourceLines {
-	l := sourceLines{text: s}
+func newLines(s string) Lines {
+	l := Lines{text: s}
 	for start := 0; start < len(s); {
 		end := start
 		for end < len(s) && s[end] != '\r' && s[end] != '\n' {
@@ -47,24 +58,26 @@ func newSourceLines(s string) sourceLines {
 	}
 	return l
 }
-func (l sourceLines) at(offset int) int {
+func (l Lines) Len() int { return len(l.starts) }
+
+func (l Lines) At(offset int) int {
 	return max(1, sort.Search(len(l.starts), func(i int) bool { return l.starts[i] > offset }))
 }
-func (l sourceLines) row(n int) (string, bool) {
+func (l Lines) Row(n int) (string, bool) {
 	if n < 1 || n > len(l.starts) {
 		return "", false
 	}
 	return l.text[l.starts[n-1]:l.ends[n-1]], true
 }
-func (l sourceLines) position(offset int) symbolPosition {
-	line := l.at(offset) - 1
+func (l Lines) Position(offset int) Position {
+	line := l.At(offset) - 1
 	character := 0
 	for _, r := range l.text[l.starts[line]:offset] {
 		character += utf16.RuneLen(r)
 	}
-	return symbolPosition{line, character}
+	return Position{line, character}
 }
-func (l sourceLines) offset(p symbolPosition) (int, bool) {
+func (l Lines) Offset(p Position) (int, bool) {
 	if p.Line < 0 || p.Line >= len(l.starts) || p.Character < 0 {
 		return 0, false
 	}
@@ -78,81 +91,86 @@ func (l sourceLines) offset(p symbolPosition) (int, bool) {
 	return offset, remaining == 0
 }
 
-type outlineEntry struct {
-	kind, name, receiver, pointer, valueType     string
-	line, endLine, level, from, nameFrom, nameTo int
-	complete                                     bool
+// Entry is a structural navigation fact. Byte offsets select its declaration
+// and name; line spans are one-based and inclusive.
+type Entry struct {
+	Kind, Name, Receiver, Pointer, ValueType     string
+	Line, EndLine, Level, From, NameFrom, NameTo int
+	Complete                                     bool
 }
 
-func (e outlineEntry) MarshalJSON() ([]byte, error) {
-	switch e.kind {
+func (e Entry) MarshalJSON() ([]byte, error) {
+	switch e.Kind {
 	case "method":
 		return json.Marshal(struct {
-			Kind     string        `json:"kind"`
-			Name     outlineString `json:"name"`
-			Receiver string        `json:"receiver"`
-			Line     int           `json:"line"`
-			End      int           `json:"line_end"`
-		}{e.kind, outlineString(e.name), e.receiver, e.line, e.endLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
+			Kind     string `json:"kind"`
+			Name     String `json:"name"`
+			Receiver string `json:"receiver"`
+			Line     int    `json:"line"`
+			End      int    `json:"line_end"`
+		}{e.Kind, String(e.Name), e.Receiver, e.Line, e.EndLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
 	case "json":
 		return json.Marshal(struct {
-			Kind      string        `json:"kind"`
-			Pointer   outlineString `json:"pointer"`
-			ValueType string        `json:"value_type"`
-			Line      int           `json:"line"`
-			End       int           `json:"line_end"`
-		}{e.kind, outlineString(e.pointer), e.valueType, e.line, e.endLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
+			Kind      string `json:"kind"`
+			Pointer   String `json:"pointer"`
+			ValueType string `json:"value_type"`
+			Line      int    `json:"line"`
+			End       int    `json:"line_end"`
+		}{e.Kind, String(e.Pointer), e.ValueType, e.Line, e.EndLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
 	case "heading":
 		return json.Marshal(struct {
-			Kind  string        `json:"kind"`
-			Name  outlineString `json:"name"`
-			Level int           `json:"level"`
-			Line  int           `json:"line"`
-			End   int           `json:"line_end"`
-		}{e.kind, outlineString(e.name), e.level, e.line, e.endLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
+			Kind  string `json:"kind"`
+			Name  String `json:"name"`
+			Level int    `json:"level"`
+			Line  int    `json:"line"`
+			End   int    `json:"line_end"`
+		}{e.Kind, String(e.Name), e.Level, e.Line, e.EndLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
 	default:
 		return json.Marshal(struct {
-			Kind string        `json:"kind"`
-			Name outlineString `json:"name"`
-			Line int           `json:"line"`
-			End  int           `json:"line_end"`
-		}{e.kind, outlineString(e.name), e.line, e.endLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
+			Kind string `json:"kind"`
+			Name String `json:"name"`
+			Line int    `json:"line"`
+			End  int    `json:"line_end"`
+		}{e.Kind, String(e.Name), e.Line, e.EndLine}, jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
 	}
 }
 
-type parsedSource struct {
-	source  string
-	lines   sourceLines
-	format  sourcekind.Format
-	entries []outlineEntry
-	tokens  []sourceToken
+// Source is a parsed snapshot. Consumers leave its source facts unchanged.
+type Source struct {
+	Source  string
+	Lines   Lines
+	Format  sourcekind.Format
+	Entries []Entry
+	Tokens  []Token
 }
-type sourceToken struct {
-	from int
-	text string
+type Token struct {
+	From int
+	Text string
 }
 
-func (s *parsedSource) add(kind, name string, from, to, nameFrom, nameTo int, complete bool) {
-	s.entries = append(s.entries, outlineEntry{kind: kind, name: name, from: from, line: s.lines.at(from), endLine: s.lines.at(max(from, to-1)), nameFrom: nameFrom, nameTo: nameTo, complete: complete})
+func (s *Source) add(kind, name string, from, to, nameFrom, nameTo int, complete bool) {
+	s.Entries = append(s.Entries, Entry{Kind: kind, Name: name, From: from, Line: s.Lines.At(from), EndLine: s.Lines.At(max(from, to-1)), NameFrom: nameFrom, NameTo: nameTo, Complete: complete})
 }
-func (s *parsedSource) parseError(offset int) {
-	offset = min(offset, max(0, len(s.source)-1))
-	line := s.lines.at(offset)
-	for _, e := range s.entries {
-		if e.kind == "parse_error" && e.line == line {
+func (s *Source) parseError(offset int) {
+	offset = min(offset, max(0, len(s.Source)-1))
+	line := s.Lines.At(offset)
+	for _, e := range s.Entries {
+		if e.Kind == "parse_error" && e.Line == line {
 			return
 		}
 	}
 	s.add("parse_error", "syntax error", offset, offset, -1, -1, false)
 }
-func parseNativeSource(ctx context.Context, source string, format sourcekind.Format) (*parsedSource, error) {
-	s := &parsedSource{source: source, lines: newSourceLines(source), format: format}
+
+// Parse extracts source facts without opening files or starting resolvers.
+func Parse(ctx context.Context, source string, format sourcekind.Format) (*Source, error) {
+	s := &Source{Source: source, Lines: newLines(source), Format: format}
 	switch {
 	case format.Language == "go":
 		doc := gooutline.Parse(source)
 		for _, e := range doc.Entries {
 			s.add(e.Kind, e.Name, e.From, e.To, e.NameFrom, e.NameTo, e.Complete)
-			s.entries[len(s.entries)-1].receiver = e.Receiver
+			s.Entries[len(s.Entries)-1].Receiver = e.Receiver
 		}
 		for _, e := range doc.Errors {
 			s.parseError(e.Offset)
@@ -168,7 +186,7 @@ func parseNativeSource(ctx context.Context, source string, format sourcekind.For
 			}
 			if tok == token.IDENT {
 				from := f.Offset(pos)
-				s.tokens = append(s.tokens, sourceToken{from, lit})
+				s.Tokens = append(s.Tokens, Token{from, lit})
 			}
 		}
 	case format.Kind == "markdown":
@@ -195,11 +213,6 @@ func parseNativeSource(ctx context.Context, source string, format sourcekind.For
 		default:
 			return nil, fmt.Errorf("unsupported source language %q", format.Language)
 		}
-		parser := sitter.NewParser()
-		defer parser.Close()
-		if err := parser.SetLanguage(language); err != nil {
-			return nil, err
-		}
 		// Preserve byte offsets while making bare CR and a BOM parser whitespace.
 		data := []byte(source)
 		if strings.HasPrefix(source, "\ufeff") {
@@ -210,12 +223,10 @@ func parseNativeSource(ctx context.Context, source string, format sourcekind.For
 				data[i] = '\n'
 			}
 		}
-		tree := parser.ParseWithOptions(func(offset int, _ sitter.Point) []byte {
-			if offset >= len(data) {
-				return nil
-			}
-			return data[offset:]
-		}, nil, &sitter.ParseOptions{ProgressCallback: func(sitter.ParseState) bool { return ctx.Err() != nil }})
+		tree, err := sourceparse.Parse(data, language, func() bool { return ctx.Err() != nil })
+		if err != nil {
+			return nil, err
+		}
 		if tree == nil {
 			return nil, fmt.Errorf("source parsing canceled: %w", ctx.Err())
 		}
@@ -228,7 +239,7 @@ func parseNativeSource(ctx context.Context, source string, format sourcekind.For
 			}
 			kind := n.Kind()
 			if kind == "identifier" || kind == "property_identifier" || kind == "private_property_identifier" || kind == "type_identifier" || kind == "shorthand_property_identifier" || kind == "shorthand_property_identifier_pattern" {
-				s.tokens = append(s.tokens, sourceToken{int(n.StartByte()), n.Utf8Text(data)})
+				s.Tokens = append(s.Tokens, Token{int(n.StartByte()), n.Utf8Text(data)})
 			}
 			for i := uint(0); i < n.ChildCount(); i++ {
 				visit(n.Child(i))
@@ -236,7 +247,7 @@ func parseNativeSource(ctx context.Context, source string, format sourcekind.For
 		}
 		visit(tree.RootNode())
 	}
-	slices.SortStableFunc(s.entries, func(a, b outlineEntry) int { return a.from - b.from })
+	slices.SortStableFunc(s.Entries, func(a, b Entry) int { return a.From - b.From })
 	return s, nil
 }
 func nodeChildren(n *sitter.Node) []*sitter.Node {
@@ -248,18 +259,18 @@ func nodeChildren(n *sitter.Node) []*sitter.Node {
 	}
 	return out
 }
-func (s *parsedSource) text(n *sitter.Node) string {
+func (s *Source) text(n *sitter.Node) string {
 	if n == nil {
 		return ""
 	}
-	return s.source[n.StartByte():n.EndByte()]
+	return s.Source[n.StartByte():n.EndByte()]
 }
-func (s *parsedSource) addNode(kind string, n, span, name *sitter.Node, receiver string) {
+func (s *Source) addNode(kind string, n, span, name *sitter.Node, receiver string) {
 	if name == nil {
 		return
 	}
 	s.add(kind, s.text(name), int(span.StartByte()), int(span.EndByte()), int(name.StartByte()), int(name.EndByte()), !n.HasError() && !span.HasError())
-	s.entries[len(s.entries)-1].receiver = receiver
+	s.Entries[len(s.Entries)-1].Receiver = receiver
 }
 func bindingNodes(n *sitter.Node) []*sitter.Node {
 	if n == nil {
@@ -287,8 +298,8 @@ func bindingNodes(n *sitter.Node) []*sitter.Node {
 // Source: plugins/inspect_file_code.ts:141:449@[543de4f3] codeOutline
 // Only declaration-owned bindings are projected. Never walk initializer bodies
 // to discover names, or recursively collect methods from nested classes.
-func (s *parsedSource) codeOutline(root *sitter.Node) {
-	if s.format.Language == "rust" {
+func (s *Source) codeOutline(root *sitter.Node) {
+	if s.Format.Language == "rust" {
 		s.rustDeclarations(root, "")
 		return
 	}
@@ -299,7 +310,7 @@ func (s *parsedSource) codeOutline(root *sitter.Node) {
 
 // Rust attributes are siblings of their declarations, not declaration wrappers.
 // Only source-file declarations and direct trait/impl/extern members are visited.
-func (s *parsedSource) rustDeclarations(root *sitter.Node, receiver string) {
+func (s *Source) rustDeclarations(root *sitter.Node, receiver string) {
 	children := nodeChildren(root)
 	if root != nil && root.IsError() {
 		// Recovery can flatten an unfinished body into ERROR alongside its local
@@ -346,11 +357,11 @@ func (s *parsedSource) rustDeclarations(root *sitter.Node, receiver string) {
 	}
 }
 
-func (s *parsedSource) rustDeclaration(n *sitter.Node, from int, receiver string) {
+func (s *Source) rustDeclaration(n *sitter.Node, from int, receiver string) {
 	add := func(kind string, name *sitter.Node) {
 		if name != nil && !name.IsMissing() {
 			s.add(kind, s.text(name), from, int(n.EndByte()), int(name.StartByte()), int(name.EndByte()), !n.HasError())
-			s.entries[len(s.entries)-1].receiver = receiver
+			s.Entries[len(s.Entries)-1].Receiver = receiver
 		}
 	}
 	switch n.Kind() {
@@ -441,7 +452,7 @@ func (s *parsedSource) rustDeclaration(n *sitter.Node, from int, receiver string
 
 // Receivers are type navigation names, never raw type expressions. In particular,
 // generic arguments and array lengths can contain values or entire Rust bodies.
-func (s *parsedSource) rustReceiver(n *sitter.Node) string {
+func (s *Source) rustReceiver(n *sitter.Node) string {
 	if n == nil {
 		return ""
 	}
@@ -490,7 +501,7 @@ func (s *parsedSource) rustReceiver(n *sitter.Node) string {
 	}
 	return "_"
 }
-func (s *parsedSource) codeDeclaration(n, span *sitter.Node) {
+func (s *Source) codeDeclaration(n, span *sitter.Node) {
 	kind := n.Kind()
 	if kind == "export_statement" || kind == "ambient_declaration" || kind == "decorated_definition" {
 		for _, child := range nodeChildren(n) {
@@ -502,7 +513,7 @@ func (s *parsedSource) codeDeclaration(n, span *sitter.Node) {
 	}
 	switch kind {
 	case "import_statement", "import_from_statement":
-		if s.format.Language == "python" {
+		if s.Format.Language == "python" {
 			for _, c := range nodeChildren(n) {
 				if c.Kind() == "dotted_name" || c.Kind() == "aliased_import" {
 					if module := n.ChildByFieldName("module_name"); module != nil && module.StartByte() == c.StartByte() {
@@ -595,13 +606,13 @@ func (s *parsedSource) codeDeclaration(n, span *sitter.Node) {
 	case "type_alias_declaration", "interface_declaration", "enum_declaration", "type_alias_statement":
 		s.addNode("type", n, span, n.ChildByFieldName("name"), "")
 	case "expression_statement":
-		if s.format.Language == "python" {
+		if s.Format.Language == "python" {
 			for _, c := range nodeChildren(n) {
 				s.pythonAssignment(c, span)
 			}
 		}
 	case "assignment":
-		if s.format.Language == "python" {
+		if s.Format.Language == "python" {
 			s.pythonAssignment(n, span)
 		}
 	case "ERROR": // Recovery may leave otherwise complete top-level declarations here.
@@ -610,7 +621,7 @@ func (s *parsedSource) codeDeclaration(n, span *sitter.Node) {
 		}
 	}
 }
-func (s *parsedSource) pythonAssignment(n, span *sitter.Node) {
+func (s *Source) pythonAssignment(n, span *sitter.Node) {
 	if n.Kind() != "assignment" {
 		return
 	}
@@ -622,11 +633,11 @@ func (s *parsedSource) pythonAssignment(n, span *sitter.Node) {
 	}
 }
 
-// outlineString serializes the otherwise unrepresentable lone-surrogate names
+// String serializes the otherwise unrepresentable lone-surrogate names
 // accepted by ECMAScript and JSON without corrupting them into replacement text.
-type outlineString string
+type String string
 
-func (s outlineString) MarshalJSON() ([]byte, error) {
+func (s String) MarshalJSON() ([]byte, error) {
 	value := string(s)
 	if utf8.ValidString(value) {
 		return json.Marshal(value)

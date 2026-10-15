@@ -1,13 +1,17 @@
-package toolplugin
+package outline
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/sourceanalysis/structure"
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -17,13 +21,13 @@ import (
 )
 
 type inspectionData struct {
-	Path     string         `json:"path"`
-	Kind     string         `json:"kind"`
-	Language *string        `json:"language"`
-	Size     int64          `json:"size_bytes"`
-	Lines    *int           `json:"line_count"`
-	Complete bool           `json:"parse_complete"`
-	Outline  []outlineEntry `json:"outline"`
+	Path     string            `json:"path"`
+	Kind     string            `json:"kind"`
+	Language *string           `json:"language"`
+	Size     int64             `json:"size_bytes"`
+	Lines    *int              `json:"line_count"`
+	Complete bool              `json:"parse_complete"`
+	Outline  []structure.Entry `json:"outline"`
 }
 type inspectFailure struct{ code, message string }
 
@@ -48,12 +52,12 @@ func inspectClass(code string) string {
 }
 func inspectDisplay(s string) string {
 	if !utf8.ValidString(s) {
-		value, _ := outlineString(s).MarshalJSON()
+		value, _ := structure.String(s).MarshalJSON()
 		return string(value)
 	}
 	for _, r := range s {
 		if r < 32 || r == 127 {
-			return nativeJSON(s)
+			return encodeJSON(s)
 		}
 	}
 	return s
@@ -64,7 +68,7 @@ func inspectEnvelope(data inspectionData, reason string, count int) string {
 		truncation = map[string]any{"reason": reason, "after_entries": count}
 		data.Outline = data.Outline[:count]
 	}
-	return nativeJSON(struct {
+	return encodeJSON(struct {
 		OK         bool           `json:"ok"`
 		Data       inspectionData `json:"data"`
 		Truncated  bool           `json:"truncated"`
@@ -86,7 +90,7 @@ func inspectNativePath(ctx context.Context, path string) (inspectionData, error)
 	if !info.Mode().IsRegular() {
 		return inspectionData{}, &inspectFailure{"not_regular", "path is not a regular file"}
 	}
-	data := inspectionData{Path: filepath.ToSlash(path), Kind: "none", Size: info.Size(), Complete: true, Outline: []outlineEntry{}}
+	data := inspectionData{Path: filepath.ToSlash(path), Kind: "none", Size: info.Size(), Complete: true, Outline: []structure.Entry{}}
 	format, ok := sourcekind.Classify(path)
 	if !ok || !format.Outline {
 		return data, nil
@@ -117,7 +121,7 @@ func inspectSource(ctx context.Context, data inspectionData, bytes []byte, forma
 	if !utf8.Valid(bytes) {
 		return data, &inspectFailure{"not_utf8", "supported file is not valid UTF-8"}
 	}
-	parsed, err := parseNativeSource(ctx, string(bytes), format)
+	parsed, err := structure.Parse(ctx, string(bytes), format)
 	if err != nil {
 		return data, &inspectFailure{"parse", err.Error()}
 	}
@@ -126,10 +130,10 @@ func inspectSource(ctx context.Context, data inspectionData, bytes []byte, forma
 		data.Language = new(format.Language)
 	}
 	data.Size = int64(len(bytes))
-	data.Lines = new(len(parsed.lines.starts))
-	for _, entry := range parsed.entries {
+	data.Lines = new(parsed.Lines.Len())
+	for _, entry := range parsed.Entries {
 		data.Outline = append(data.Outline, entry)
-		if entry.kind == "parse_error" {
+		if entry.Kind == "parse_error" {
 			data.Complete = false
 		}
 	}
@@ -138,8 +142,8 @@ func inspectSource(ctx context.Context, data inspectionData, bytes []byte, forma
 func compactNativeOutline(data inspectionData) []string {
 	importsStart, importsEnd := 0, 0
 	for _, e := range data.Outline {
-		if e.kind == "import" {
-			start, end := e.line, e.endLine
+		if e.Kind == "import" {
+			start, end := e.Line, e.EndLine
 			if importsStart == 0 || start < importsStart {
 				importsStart = start
 			}
@@ -148,7 +152,7 @@ func compactNativeOutline(data inspectionData) []string {
 	}
 	var rows []string
 	for _, e := range data.Outline {
-		kind := e.kind
+		kind := e.Kind
 		if kind == "import" {
 			if importsStart > 0 {
 				rows = append(rows, fmt.Sprintf("%d-%d import\n", importsStart, importsEnd))
@@ -156,18 +160,18 @@ func compactNativeOutline(data inspectionData) []string {
 			}
 			continue
 		}
-		name := e.name
+		name := e.Name
 		if kind == "method" {
-			name = e.receiver + "." + name
+			name = e.Receiver + "." + name
 		}
 		if kind == "json" {
-			name = e.pointer
+			name = e.Pointer
 			if name == "" {
 				name = "/"
 			}
-			name += " " + e.valueType
+			name += " " + e.ValueType
 		}
-		rows = append(rows, fmt.Sprintf("%d-%d %s %s\n", e.line, e.endLine, kind, inspectDisplay(name)))
+		rows = append(rows, fmt.Sprintf("%d-%d %s %s\n", e.Line, e.EndLine, kind, inspectDisplay(name)))
 	}
 	if len(rows) == 0 {
 		return []string{"(no outline)\n"}
@@ -176,7 +180,10 @@ func compactNativeOutline(data inspectionData) []string {
 }
 
 // Source: plugins/inspect_file.ts:139:356@[543de4f3] success/createInspectFileTool
-func nativeInspect(ctx context.Context, args []string) (command.Output, error) {
+func Execute(ctx context.Context, args []string, _ *os.File) (command.Output, error) {
+	if err := ctx.Err(); err != nil {
+		return command.Output{}, err
+	}
 	asJSON := false
 	for _, a := range args {
 		if a == "--" {
@@ -194,7 +201,7 @@ func nativeInspect(ctx context.Context, args []string) (command.Output, error) {
 		}
 		stderr += err.Error() + "\n"
 		if asJSON {
-			stderr = nativeJSON(map[string]any{"ok": false, "path": path, "error": map[string]string{"code": code, "message": err.Error()}}) + "\n"
+			stderr = encodeJSON(map[string]any{"ok": false, "path": path, "error": map[string]string{"code": code, "message": err.Error()}}) + "\n"
 		}
 		return command.Output{Stderr: stderr, ExitCode: 1, FailureClass: inspectClass(code)}
 	}
@@ -282,8 +289,8 @@ func nativeInspect(ctx context.Context, args []string) (command.Output, error) {
 			result.Stdout = inspectEnvelope(data, reason, selected)
 			result.ExitCode = 1
 			result.FailureClass = "output_limit"
-			retained := nativeJSON(data.Outline[selected:])
-			if len(retained) > nativeRetainedBytes {
+			retained := encodeJSON(data.Outline[selected:])
+			if len(retained) > retainedBytes {
 				result.Stderr = "inspect_file: recovery unavailable: omitted outline exceeds the 16 MiB recovery bound; use bounded mcat reads\n"
 			} else {
 				result.OmittedOutput = &command.OmittedOutput{Stdout: retained, StdoutKind: "json"}
@@ -302,7 +309,7 @@ func nativeInspect(ctx context.Context, args []string) (command.Output, error) {
 			} else {
 				incomplete = true
 				if !unavailable {
-					if omitted.Len()+len(row) > nativeRetainedBytes {
+					if omitted.Len()+len(row) > retainedBytes {
 						unavailable = true
 						omitted.Reset()
 					} else {
@@ -319,7 +326,7 @@ func nativeInspect(ctx context.Context, args []string) (command.Output, error) {
 	if len(result.Stdout) < output.Len() {
 		incomplete = true
 		if !unavailable {
-			if output.Len()-len(result.Stdout)+omitted.Len() > nativeRetainedBytes {
+			if output.Len()-len(result.Stdout)+omitted.Len() > retainedBytes {
 				unavailable = true
 			} else {
 				remaining := output.String()[len(result.Stdout):] + omitted.String()
@@ -342,4 +349,14 @@ func nativeInspect(ctx context.Context, args []string) (command.Output, error) {
 		}
 	}
 	return result, nil
+}
+
+const retainedBytes = 16 << 20
+
+func encodeJSON(v any) string {
+	data, err := json.Marshal(v, json.Deterministic(true), jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }

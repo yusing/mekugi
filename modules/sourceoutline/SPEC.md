@@ -1,8 +1,18 @@
-# Executable structural file inspection
+# Source outline
 
-## REQ-INSPECT-001 — Executable structural file inspection
+## Purpose
 
-The model-private `inspect_file [--json] [--max-tokens N] PATH [PATH ...]` command remains available
+Expose structural navigation without source bodies through `inspect_file`.
+
+## Scope
+
+Inspection is host-authorized, read-only, and independent of semantic resolvers.
+
+## Behavior
+
+### REQ-INSPECT-001: Structural file inspection
+
+The `inspect_file [--json] [--max-tokens N] PATH [PATH ...]` command is available
 through its authenticated session frontend and stock command execution. It accepts shell-separated
 paths, relative to the process working directory or absolute, like mcat. Parent
 paths and symlinks are allowed; the target must be a host-readable regular file.
@@ -51,16 +61,15 @@ their logical row position. Results contain no raw excerpts, bodies, fields, com
 JSON scalar values, or source text.
 
 The complete successful stdout, including its final LF, is at most 65,536 UTF-8 bytes and
-uses the shared [reader token ceiling](read.md). Options may precede or follow the path.
+uses the shared [reader token ceiling](../../doc/spec/read.md). Options may precede or follow the path.
 When necessary, compact output emits a complete row prefix, exits nonzero, and
 retains the rest for `mread`. Single-file JSON returns
 `truncation: {"reason":"output_bytes"|"output_tokens","after_entries":N}`.
 Omitted complete entries are available as JSON arrays through the shared `mread` interface,
 without repeating the prefix or reopening the source. Multi-file JSON retains
 omitted JSONL documents as an exact byte stream; a continuation may split a JSONL
-document. Go uses the host toolchain's native `go/parser` grammar, including the repository's supported Go syntax. JavaScript, TypeScript, Python, Rust, and JSON use native
-Tree-sitter grammars with syntax recovery. JSON syntax is validated independently
-of its recovery grammar, including exponent signs and exactly one root value;
+document. Supported Go syntax follows the product toolchain. JSON validation
+accepts exponent signs and exactly one root value;
 comments and malformed number/string literals mark parsing incomplete. Parser recovery or YAML
 frontmatter diagnostics set `parse_complete: false` independently of output truncation. There is
 no input-size or entry-count limit. If an empty-outline success envelope cannot fit, the command
@@ -74,11 +83,31 @@ closed LF-terminated envelope to stderr. Stdout contains only successful documen
 and a failed path does not suppress other requested paths. Stable codes are `usage`, `not_found`, `not_regular`, `not_utf8`,
 `read`, `parse`, and `output_limit`. The centralized Codex guidance and
 private call contract describe compact rows and the JSON option without embedding a schema.
-Stock execution keeps the original call and output; inspect_file is
-not model-visible, shell-routed, or included in mekugi recovery ancestry. Passthrough mode
-installs and advertises none of these surfaces.
+Stock execution keeps the original call and output. The executable frontend
+shares the host tool identity. Passthrough installs and advertises no frontends.
 
-Acceptance:
+## Lifecycle
+
+Stateless. Every call finishes its parsing before returning. Snapshot inspection
+accepts caller-supplied bytes without reopening the source.
+
+## Codex connection
+
+One required executable frontend, registered by `codexbinding`. The authenticated
+host observes read completion independently of the command's success.
+
+## Records
+
+No owned records. Omitted output is returned to the frontend host for publication
+before a recovery reference becomes visible.
+
+## Failure
+
+Independent paths are attempted even when another fails. Cancellation terminates
+the call. Recovery and observation failures cannot turn an incomplete read into
+success or cause the command to rerun.
+
+## Acceptance
 
 1. Each default language projection returns only its declared navigation identifiers and exact
    inclusive numeric line spans, while malformed recoverable input remains a successful
@@ -89,7 +118,7 @@ Acceptance:
 3. Unsupported files are checked as regular without content reads, UTF-8 validation,
    line counting, content detection, or command-level truncation.
 4. Frontend authentication, model visibility, replay, and passthrough isolation follow
-   [REQ-READ-001](read.md). Instruction and executable-frontend behavior remain owned by
+   [REQ-READ-001](../../doc/spec/read.md). Instruction and executable-frontend behavior remain owned by
    `REQ-GUIDE-001` and `REQ-PLUGIN-001`.
 
 5. Absolute, parent-relative, and symlink paths outside the current directory work
