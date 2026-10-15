@@ -63,10 +63,10 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
   "cache":{"provider_cache_rate":0},
   "capture":{"records":5,"dropped_exchange_details":7},
   "transport":{
-    "client_requests":{"bytes":100,"tokens":10},"provider_attempt_requests":{"bytes":250,"tokens":25},
-    "provider_responses":{"bytes":900,"tokens":90},"client_responses":{"bytes":950,"tokens":95},
-    "client_control_requests":{"bytes":11,"tokens":1},"client_control_responses":{"bytes":22,"tokens":2},
-    "provider_control_requests":{"bytes":33,"tokens":3},"provider_control_responses":{"bytes":44,"tokens":4}},
+    "client_requests":{"bytes":100},"provider_attempt_requests":{"bytes":250},
+    "provider_responses":{"bytes":900},"client_responses":{"bytes":950},
+    "client_control_requests":{"bytes":11},"client_control_responses":{"bytes":22},
+    "provider_control_requests":{"bytes":33},"provider_control_responses":{"bytes":44}},
   "exchanges":[
     {"sequence":8,"thread_id":"main","model":"gpt-6-sol","status":"completed","duration_ms":1200,"status_code":200,"response_complete":true,
       "provider_attempts":[{"attempt":1,"transport":"http","status":"failed","provider_response":{"cached_tokens_state":"missing"}}]},
@@ -118,12 +118,12 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	if u.statusPanel.metrics.tab != 1 || u.statusPanel.top != 0 {
 		t.Fatal("tab switch did not reset scroll")
 	}
-	sessionMetricField(t, u, "Transport", "Provider requests", "250 bytes · 25 estimated tokens")
+	sessionMetricField(t, u, "Transport", "Provider requests", "250 bytes")
 	for _, tc := range []struct{ label, want string }{
-		{"Client control requests", "11 bytes · 1 estimated tokens"},
-		{"Client control responses", "22 bytes · 2 estimated tokens"},
-		{"Provider control requests", "33 bytes · 3 estimated tokens"},
-		{"Provider control responses", "44 bytes · 4 estimated tokens"},
+		{"Client control requests", "11 bytes"},
+		{"Client control responses", "22 bytes"},
+		{"Provider control requests", "33 bytes"},
+		{"Provider control responses", "44 bytes"},
 	} {
 		sessionMetricField(t, u, "Transport", tc.label, tc.want)
 	}

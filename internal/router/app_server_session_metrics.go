@@ -111,8 +111,8 @@ func (u *appServerUI) renderSessionMetrics() {
 		}
 		p.fields = append(p.fields, statusField{group: group, label: label, value: text})
 	}
-	payload := func(group, label string, bytes, tokens uint64) {
-		add(group, label, fmt.Sprintf("%d bytes · %d estimated tokens", bytes, tokens))
+	payload := func(group, label string, bytes uint64) {
+		add(group, label, fmt.Sprintf("%d bytes", bytes))
 	}
 	usage := func(group string, input, cached, uncached, output, reasoning uint64) {
 		for _, row := range []struct {
@@ -185,21 +185,21 @@ func (u *appServerUI) renderSessionMetrics() {
 			add("Capture", row.label, row.value)
 		}
 	case 1:
-		add("Transport", "", "Exact wire bytes; decoded-content token estimates. Includes router-generated commentary.")
+		add("Transport", "", "Exact wire bytes, including router-generated commentary.")
 		for _, row := range []struct {
-			label         string
-			bytes, tokens uint64
+			label string
+			bytes uint64
 		}{
-			{"Client requests", s.Transport.ClientRequests.Bytes, s.Transport.ClientRequests.Tokens},
-			{"Provider requests", s.Transport.ProviderAttemptRequests.Bytes, s.Transport.ProviderAttemptRequests.Tokens},
-			{"Provider responses", s.Transport.ProviderResponses.Bytes, s.Transport.ProviderResponses.Tokens},
-			{"Client responses", s.Transport.ClientResponses.Bytes, s.Transport.ClientResponses.Tokens},
-			{"Client control requests", s.Transport.ClientControlRequests.Bytes, s.Transport.ClientControlRequests.Tokens},
-			{"Client control responses", s.Transport.ClientControlResponses.Bytes, s.Transport.ClientControlResponses.Tokens},
-			{"Provider control requests", s.Transport.ProviderControlRequests.Bytes, s.Transport.ProviderControlRequests.Tokens},
-			{"Provider control responses", s.Transport.ProviderControlResponses.Bytes, s.Transport.ProviderControlResponses.Tokens},
+			{"Client requests", s.Transport.ClientRequests.Bytes},
+			{"Provider requests", s.Transport.ProviderAttemptRequests.Bytes},
+			{"Provider responses", s.Transport.ProviderResponses.Bytes},
+			{"Client responses", s.Transport.ClientResponses.Bytes},
+			{"Client control requests", s.Transport.ClientControlRequests.Bytes},
+			{"Client control responses", s.Transport.ClientControlResponses.Bytes},
+			{"Provider control requests", s.Transport.ProviderControlRequests.Bytes},
+			{"Provider control responses", s.Transport.ProviderControlResponses.Bytes},
 		} {
-			payload("Transport", row.label, row.bytes, row.tokens)
+			payload("Transport", row.label, row.bytes)
 		}
 	case 2:
 		if len(s.Exchanges) == 0 {
@@ -224,8 +224,8 @@ func (u *appServerUI) renderSessionMetrics() {
 		}
 		add("Exchange", "Complete", e.ResponseComplete)
 		add("Exchange", "Capture error", e.CaptureError)
-		payload("Exchange", "Client request", e.ClientRequest.Bytes, e.ClientRequest.Tokens)
-		payload("Exchange", "Client stream", e.ClientResponse.Bytes, e.ClientResponse.Tokens)
+		payload("Exchange", "Client request", e.ClientRequest.Bytes)
+		payload("Exchange", "Client stream", e.ClientResponse.Bytes)
 		if e.Usage == nil {
 			add("Exchange", "Usage", "unavailable")
 		} else {
@@ -285,8 +285,8 @@ func (u *appServerUI) renderSessionMetrics() {
 			}
 			add(group, "Complete", a.ResponseComplete)
 			add(group, "Capture error", a.CaptureError)
-			payload(group, "Request", a.Request.Bytes, a.Request.Tokens)
-			payload(group, "Stream", a.Response.Bytes, a.Response.Tokens)
+			payload(group, "Request", a.Request.Bytes)
+			payload(group, "Stream", a.Response.Bytes)
 			if a.Usage == nil {
 				add(group, "Usage", "unavailable")
 			} else {

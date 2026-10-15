@@ -39,11 +39,6 @@ func TestWebSocketCaptureUsesActualMessageBytes(t *testing.T) {
 	if attempt.Request.Bytes != uint64(len(request)) || attempt.Response.Bytes != uint64(len(first)+len(terminal)) {
 		t.Fatalf("framing changed byte counts: %+v", attempt)
 	}
-	firstMetric, _ := recorder.measure(first)
-	terminalMetric, _ := recorder.measure(terminal)
-	if attempt.Response.Tokens != firstMetric.Tokens+terminalMetric.Tokens {
-		t.Fatal("JSON event token/output accounting differs")
-	}
 	if attempt.Usage == nil || attempt.Usage.CachedInputTokens != 2 || attempt.ProviderResponse.RequestID != "request-first" || attempt.ProviderResponse.ServiceTier != "flex" || attempt.ProviderResponse.CachedTokens == nil || *attempt.ProviderResponse.CachedTokens != 2 {
 		t.Fatalf("usage/evidence lost: %+v", attempt)
 	}
@@ -88,7 +83,7 @@ func TestWebSocketCaptureBoundsAndIncomplete(t *testing.T) {
 	observation.Message(oversized)
 	observation.Finish(nil)
 	records := state.providerRecords()
-	if len(records) != 1 || records[0].Response.Bytes != uint64(len(oversized)) || records[0].ResponseComplete || records[0].Response.Tokens != 0 || records[0].CaptureError != "response payload exceeds capture observation limit" {
+	if len(records) != 1 || records[0].Response.Bytes != uint64(len(oversized)) || records[0].ResponseComplete || records[0].CaptureError != "response payload exceeds capture observation limit" {
 		t.Fatalf("overflow became valid: %+v", records)
 	}
 }

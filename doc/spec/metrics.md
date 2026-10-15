@@ -28,15 +28,15 @@ Observation MUST preserve the routed behavior. It MUST preserve streaming flushe
 request and response bytes, response headers and status, provider retry behavior, and response-body
 ownership. Raw bodies MUST be discarded after measurement. Response observation MUST retain at most
 8 MiB per boundary while continuing to forward and count every byte. Crossing that bound MUST mark
-capture health incomplete rather than buffering the remaining content or publishing partial token
-and structured-response measurements as complete.
+capture health incomplete rather than buffering the remaining content or publishing partial
+structured-response evidence as complete.
 
 A durable record MUST contain only:
 
 - schema version, boundary, private capture identity, logical sequence, and provider attempt;
 - mode, provider request model, and correlation fields already supplied
   by Codex;
-- complete transport byte counts and framing-independent GPT-5 content estimates;
+- complete transport byte counts;
 - HTTP and Responses status, completeness, duration, a bounded capture-error category, and an optional `transport: "websocket"` marker;
 - optional `request_kind`, restricted to `turn`, `prewarm`, or `compaction`, supplied
   from validated router metadata and preserved in the corresponding exchange snapshot;
@@ -66,6 +66,12 @@ difference before and after projection, including anchors and references; they c
 be negative and are not provider billing savings. Unmeasured projections are
 counted explicitly. These invocation-local totals are not restored on resume.
 
+Output-deduplication estimates count decoded JSON keys and scalar values independently,
+excluding punctuation, field ordering, whitespace and string-escape spelling. Equivalent
+numeric spellings normalize without losing precision. Arrays retain every element.
+Literal content, including code and JSON strings, keeps its internal escapes. These
+local GPT-5 estimates must not be labeled as exact provider input or billed tokens.
+
 With `--debug`, the snapshot includes optional `storage_writes` with cumulative
 `bytes` and a `scope` description, displayed in `/session` Overview and debug
 `metrics.json`. Accounting is invocation-local and counts successful byte counts
@@ -81,7 +87,7 @@ resume or combined with another router's state.
 
 Exchange and provider-attempt details retain wall-clock duration in milliseconds,
 HTTP status, response completeness and bounded capture-error codes. Exchange duration
-includes local compaction. Local token estimates are not provider usage or savings.
+includes local compaction. Transport byte counts are not provider usage or savings.
 
 Usage totals retain normalized provider observations, with attempt coverage partitioned
 into `complete_attempts` (`evidence_complete: true`), `incomplete_attempts` (false),
@@ -177,15 +183,9 @@ decoded UTF-8 bytes before journal rendering, including `Done.` and answers too
 large to capture. Empty Outcome follows the journal rule. These are observed
 response measurements, not acknowledgements of downstream delivery or savings.
 
-Provider usage is authoritative for model consumption. Local token estimates MUST count decoded
-JSON object keys and scalar values independently, excluding JSON punctuation, field ordering,
-whitespace, and string-escape spelling. Equivalent numeric spellings MUST normalize without losing
-precision. Arrays retain every element. Strings containing code or JSON remain literal content:
-backslashes and escapes inside that content still count. SSE estimates count each decoded event's
-content, not event/data framing; repeated events remain stream evidence, not final model output.
-Non-JSON text is counted as literal text. Transport byte counts MUST remain exact observed bytes.
-These reproducible GPT-5 content estimates include envelope and opaque reasoning values when
-present; they MUST NOT be labeled as exact provider input or billed generated tokens.
+Provider usage is authoritative for model consumption. Transport observations retain
+exact observed bytes, not local token estimates. Output-deduplication savings remain
+separate local content estimates, not provider usage or billing savings.
 The snapshot is the source of published measurements. Readers MAY independently reconcile it
 against sanitized records and measured result usage, but MUST NOT replace capturer calculations
 with alternate formulas. Incomplete capture health is not a zero measurement.
@@ -209,8 +209,6 @@ Acceptance:
 
 Schema-7 records and metrics v7 retain transport observations and provider usage.
 Capture does not reconstruct output arrays or measure compaction-summary sizes.
-
-JSON whitespace, key order, and equivalent string escaping MUST leave all content estimates unchanged while observed bytes may differ. Literal model-visible escape sequences MUST retain their token cost.
 
 The router supplies the actual projected request at its post-replay observation seam.
 The capturer retains only its privacy-safe fingerprint, discards the bytes immediately,
@@ -340,7 +338,7 @@ are terminal errors rather than missing output or successful responses.
 Request bytes MUST measure the exact sent JSON message, including transport
 metadata. Response bytes MUST measure the observed provider JSON payloads,
 without synthetic SSE framing, WebSocket frame headers, or control frames.
-Content token estimates sum each decoded message independently. Terminal status,
+Terminal status,
 bounded 8 MiB parsing, usage, and private provider-response evidence follow the
 same rules as SSE. First-handshake
 response evidence MUST NOT be reused as evidence for later exchanges.
@@ -370,7 +368,7 @@ Codex result MUST exclude only logical exchanges whose sanitized client record e
 Application-level control messages, including `response.steer` and
 `response.steer.*`, are measured separately from logical response exchanges.
 Each observed client or provider control payload MUST immediately contribute
-exact payload bytes and decoded-content token estimates to its own boundary and
+exact payload bytes to its own boundary and
 direction, even if steering fails or the socket closes before a successor.
 Sanitized `codex_control` and `provider_control` records MUST contain only
 measurement and direction metadata, never raw control payloads. They MUST NOT

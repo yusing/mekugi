@@ -123,14 +123,10 @@ func TestResponsesWebSocketCapturesLogicalExchanges(t *testing.T) {
 		snapshot.Capture.MissingProvider != 0 || snapshot.Capture.AttemptGaps != 0 {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
-	clientControlMetric, _ := recorder.measure(clientControl)
-	providerControlMetric, _ := recorder.measure(providerControl)
-	providerAcceptedMetric, _ := recorder.measure(providerAccepted)
-	clientAcceptedMetric, _ := recorder.measure(clientAccepted)
-	if snapshot.Transport.ClientControlRequests != payloadTotals(clientControlMetric) ||
-		snapshot.Transport.ProviderControlRequests != payloadTotals(providerControlMetric) ||
-		snapshot.Transport.ProviderControlResponses != payloadTotals(providerAcceptedMetric) ||
-		snapshot.Transport.ClientControlResponses != payloadTotals(clientAcceptedMetric) {
+	if snapshot.Transport.ClientControlRequests.Bytes != uint64(len(clientControl)) ||
+		snapshot.Transport.ProviderControlRequests.Bytes != uint64(len(providerControl)) ||
+		snapshot.Transport.ProviderControlResponses.Bytes != uint64(len(providerAccepted)) ||
+		snapshot.Transport.ClientControlResponses.Bytes != uint64(len(clientAccepted)) {
 		t.Fatalf("control transport accounting = %+v", snapshot.Transport)
 	}
 	rebuilt, err := metricsFromRecords(recorder.mode, records)

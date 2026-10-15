@@ -1,7 +1,7 @@
     ╭ Session · Exchanges ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
-    │  Request         0 bytes · 0 estimated tokens                                  │
-    │  Stream          0 bytes · 0 estimated tokens                                  │
+    │  Request         0 bytes                                                       │
+    │  Stream          0 bytes                                                       │
     │  Usage           unavailable                                                   │
     │  Service tier    unavailable                                                   │
     │  Telemetry       unavailable                                                   │
@@ -12,8 +12,8 @@
     │  Duration        1800 ms                                                       │
     │  HTTP status     101                                                           │
     │  Complete        true                                                          │
-    │  Request         0 bytes · 0 estimated tokens                                  │
-    │  Stream          0 bytes · 0 estimated tokens                                  │
+    │  Request         0 bytes                                                       │
+    │  Stream          0 bytes                                                       │
     │  Input           120                                                           │
     │  Cached input    0                                                             │
     │  Uncached input  120                                                           │

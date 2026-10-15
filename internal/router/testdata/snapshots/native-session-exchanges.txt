@@ -10,8 +10,8 @@
     │  Duration          2500 ms                                                     │
     │  HTTP status       200                                                         │
     │  Complete          true                                                        │
-    │  Client request    0 bytes · 0 estimated tokens                                │
-    │  Client stream     0 bytes · 0 estimated tokens                                │
+    │  Client request    0 bytes                                                     │
+    │  Client stream     0 bytes                                                     │
     │  Input             120                                                         │
     │  Cached input      0                                                           │
     │  Uncached input    120                                                         │
@@ -28,8 +28,8 @@
     │  HTTP status       429                                                         │
     │  Complete          true                                                        │
     │  Capture error     missing_projected_request                                   │
-    │  Request           0 bytes · 0 estimated tokens                                │
-    │  Stream            0 bytes · 0 estimated tokens                                │
+    │  Request           0 bytes                                                     │
+    │  Stream            0 bytes                                                     │
     │  Usage             unavailable                                                 │
     │  Service tier      unavailable                                                 │
     │  Telemetry         unavailable                                                 │
@@ -40,8 +40,8 @@
     │  Duration          1800 ms                                                     │
     │  HTTP status       101                                                         │
     │  Complete          true                                                        │
-    │  Request           0 bytes · 0 estimated tokens                                │
-    │  Stream            0 bytes · 0 estimated tokens                                │
+    │  Request           0 bytes                                                     │
+    │  Stream            0 bytes                                                     │
     │  Input             120                                                         │
     │  Cached input      0                                                           │
     │  Uncached input    120                                                         │

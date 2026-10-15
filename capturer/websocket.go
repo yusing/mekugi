@@ -116,10 +116,7 @@ func (capture *responsesWebSocketCapture) observeControl(boundary ResponsesWebSo
 		capture.recorder.mu.Unlock()
 		return
 	}
-	measurement, err := capture.recorder.measure(payload)
-	if err != nil {
-		measurement.Bytes = uint64(len(payload))
-	}
+	measurement := payloadMetrics{Bytes: uint64(len(payload))}
 	record := captureRecord{
 		SchemaVersion:    schemaVersion,
 		Boundary:         string(boundary) + "_control",
@@ -140,10 +137,6 @@ func (capture *responsesWebSocketCapture) observeControl(boundary ResponsesWebSo
 		record.Request = measurement
 	} else {
 		record.Response = measurement
-	}
-	if err != nil {
-		record.CaptureError = "measure WebSocket control payload"
-		record.ResponseComplete = false
 	}
 	capture.recorder.write(record, nil)
 }

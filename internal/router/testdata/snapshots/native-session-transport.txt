@@ -21,18 +21,18 @@
     ╭ Session · Transport ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
     │  Transport  ─────────────────────────────────────────────────────────────────  │
-    │  Exact wire bytes; decoded-content token estimates. Includes router-generated  │
-    │  commentary.                                                                   │
-    │  Client requests             100 bytes · 10 estimated tokens                   │
-    │  Provider requests           250 bytes · 25 estimated tokens                   │
-    │  Provider responses          900 bytes · 90 estimated tokens                   │
-    │  Client responses            950 bytes · 95 estimated tokens                   │
-    │  Client control requests     11 bytes · 1 estimated tokens                     │
-    │  Client control responses    22 bytes · 2 estimated tokens                     │
-    │  Provider control requests   33 bytes · 3 estimated tokens                     │
-    │  Provider control responses  44 bytes · 4 estimated tokens                     │
+    │  Exact wire bytes, including router-generated commentary.                      │
+    │  Client requests             100 bytes                                         │
+    │  Provider requests           250 bytes                                         │
+    │  Provider responses          900 bytes                                         │
+    │  Client responses            950 bytes                                         │
+    │  Client control requests     11 bytes                                          │
+    │  Client control responses    22 bytes                                          │
+    │  Provider control requests   33 bytes                                          │
+    │  Provider control responses  44 bytes                                          │
     │                                                                                │
     ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ─────────────────────────────────╯
+
 
 
 

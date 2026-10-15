@@ -661,7 +661,7 @@ capture-error codes, cache-prefix diagnostics, and compaction/journal observatio
 `[` and `]` navigate older/newer
 retained exchanges; newest follows new observations, while an older selection stays on its sequence until retention
 reclaims it. Each view distinguishes absent usage from explicit zero evidence
-and identifies local token estimates separately from provider usage.
+and identifies output-deduplication estimates separately from provider usage.
 
 The dialog consumes the capture-owned snapshot directly, refreshed once per
 second only while open; `r` refreshes immediately. It covers all threads in this

@@ -9,11 +9,11 @@ HTTP and WebSocket observers share request-scoped correlation without sending pr
 headers or changing byte streams, retries, cancellation, or response ownership.
 
 Raw bodies exist only while a boundary is measured. Durable capture retains bounded sizes,
-token estimates, status, timing, provider usage, request tool names, and allowlisted outcomes,
+status, timing, provider usage, request tool names, and allowlisted outcomes,
 but not credentials, prompts, instructions, arguments, command output, response text,
 patches, or reports. Missing, truncated, evicted, malformed, or old evidence is marked
 unavailable or incomplete, never inferred as zero or success. Provider usage remains
-authoritative over local token estimates.
+authoritative. Local token estimates are limited to output-deduplication savings.
 
 Production feature owners supply only validated observation facts at existing seams. They
 do not keep synthetic baselines, metric callbacks, parallel histories, or presentation-owned

@@ -37,8 +37,7 @@ type cacheMetrics struct {
 }
 
 type payloadTotals struct {
-	Bytes  uint64 `json:"bytes"`
-	Tokens uint64 `json:"tokens"`
+	Bytes uint64 `json:"bytes"`
 }
 
 type transportMetrics struct {
@@ -317,5 +316,4 @@ func addUsage(total *usageMetrics, usage usageMetrics) {
 
 func addPayload(total *payloadTotals, payload payloadMetrics) {
 	total.Bytes += payload.Bytes
-	total.Tokens += payload.Tokens
 }

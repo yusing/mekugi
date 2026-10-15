@@ -129,7 +129,7 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 		first.RequestSequence != 1 || second.RequestSequence != 1 || front.RequestSequence != 1 ||
 		first.ResponseStatus != "http_error" || !first.ResponseComplete || first.Usage != nil ||
 		second.RequestModel != "model" || second.Usage == nil || second.Usage.InputTokens != 20 ||
-		second.Request.Bytes == 0 || second.Response.Tokens == 0 || front.Request.Tokens == 0 || front.Response.Bytes == 0 {
+		second.Request.Bytes == 0 || second.Response.Bytes == 0 || front.Request.Bytes == 0 || front.Response.Bytes == 0 {
 		t.Fatalf("captured exchanges = %#v", records)
 	}
 	snapshot := recorder.snapshot()

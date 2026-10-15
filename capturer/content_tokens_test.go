@@ -16,18 +16,17 @@ func TestContentTokensIgnoreJSONFraming(t *testing.T) {
 		`{"input":"<hello>&\nworld","tools":[{"name":"lookup"}],"n":1000}`,
 		" { \"n\": 1.0e3, \"tools\": [ { \"name\" : \"lookup\" } ], \"input\" : \"\\u003chello\\u003e\\u0026\\nworld\" } ",
 	}
-	recorder := &Recorder{codec: codec}
-	want, err := recorder.measure([]byte(variants[0]))
+	want, err := contentTokens([]byte(variants[0]), codec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, value := range variants[1:] {
-		got, err := recorder.measure([]byte(value))
+		got, err := contentTokens([]byte(value), codec)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Tokens != want.Tokens || got.Bytes == want.Bytes {
-			t.Fatalf("framing changed tokens or hid wire bytes: %v vs %v", got, want)
+		if got != want {
+			t.Fatalf("framing changed content tokens: %v vs %v", got, want)
 		}
 	}
 	literal, _ := contentTokens([]byte(`{"input":"<"}`), codec)

@@ -58,8 +58,7 @@ type ProviderUsage struct {
 }
 
 type payloadMetrics struct {
-	Bytes  uint64 `json:"bytes"`
-	Tokens uint64 `json:"tokens"`
+	Bytes uint64 `json:"bytes"`
 }
 
 type captureRecord struct {
@@ -421,11 +420,7 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	if exchangeErr != nil {
 		record.CaptureError = "request or response stream failed"
 	}
-	if measured, err := r.measure(requestBody); err != nil {
-		record.CaptureError = "measure request payload"
-	} else {
-		record.Request = measured
-	}
+	record.Request.Bytes = uint64(len(requestBody))
 	record.Fingerprint = r.requestFingerprint(requestBody)
 	if boundary == "codex" && record.Fingerprint != nil {
 		value := state.clientTurnState
@@ -474,21 +469,16 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	} else if err != nil {
 		record.CaptureError = "unsupported or invalid response content encoding"
 	} else if len(observedContent) != 0 {
-		if measured, measureErr := r.measureResponse(observedContent, contentType); measureErr != nil {
-			record.CaptureError = "measure response payload"
-		} else {
-			record.Response.Tokens = measured.Tokens
-			lowerContentType := strings.ToLower(contentType)
-			if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices ||
-				strings.Contains(lowerContentType, "json") || strings.Contains(lowerContentType, "text/event-stream") ||
-				capturedPayloadLooksLikeSSE(observedContent) {
-				if evidence.wireFormat == "anthropic" {
-					observeAnthropicResponse(observedContent, &record)
-				} else if len(requestEnvelope.Messages) > 0 {
-					observeChatResponse(observedContent, contentType, &record)
-				} else {
-					observeResponse(observedContent, contentType, &record)
-				}
+		lowerContentType := strings.ToLower(contentType)
+		if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices ||
+			strings.Contains(lowerContentType, "json") || strings.Contains(lowerContentType, "text/event-stream") ||
+			capturedPayloadLooksLikeSSE(observedContent) {
+			if evidence.wireFormat == "anthropic" {
+				observeAnthropicResponse(observedContent, &record)
+			} else if len(requestEnvelope.Messages) > 0 {
+				observeChatResponse(observedContent, contentType, &record)
+			} else {
+				observeResponse(observedContent, contentType, &record)
 			}
 		}
 	}
@@ -509,17 +499,6 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 		state.addProvider(record)
 	}
 	r.write(record, state)
-}
-
-func (r *Recorder) measure(payload []byte) (payloadMetrics, error) {
-	count, err := contentTokens(payload, r.codec)
-	if err != nil {
-		return payloadMetrics{}, err
-	}
-	if count < 0 {
-		return payloadMetrics{}, errors.New("capture tokenizer returned a negative count")
-	}
-	return payloadMetrics{Bytes: uint64(len(payload)), Tokens: uint64(count)}, nil
 }
 
 func (r *Recorder) write(record captureRecord, state *requestState) {
@@ -728,19 +707,4 @@ func randomCaptureID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(value[:]), nil
-}
-
-func (r *Recorder) measureResponse(payload []byte, contentType string) (payloadMetrics, error) {
-	if contentType != webSocketContentType {
-		return r.measure(payload)
-	}
-	measured := payloadMetrics{Bytes: uint64(len(payload))}
-	for message := range webSocketMessages(payload) {
-		value, err := r.measure(message)
-		if err != nil {
-			return payloadMetrics{}, err
-		}
-		measured.Tokens += value.Tokens
-	}
-	return measured, nil
 }
