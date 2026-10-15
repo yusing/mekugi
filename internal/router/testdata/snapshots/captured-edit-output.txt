@@ -1,0 +1,9 @@
+● child
+│ ├ Edited a.go  +3 -1 ━━━━━━━━ via cat
+│ │        b.go  +1 -2 ━━━━━━━━
+│ ├ Edited a.go · 1s
+│ │        ┆ a.go diagnostic
+│ ├ Ran    go vet ./... · 2s
+│ │        ┆ ./... diagnostic
+│ └ Edited b.go · 3s
+│          ┆ b.go diagnostic

@@ -3,11 +3,14 @@ package router
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -114,8 +117,10 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 				var outputKept, testKept, failedKept, skippedKept bool
 				for _, block := range view.entries[0].blocks {
 					switch {
-					case block.Verb == "Run" && block.Code == sources[0]:
-						outputKept = block.Output == output && block.ExitCode == 0
+					case block.Code == sources[0]:
+						t.Fatalf("successful edit source leaked into Activity: %+v", block)
+					case block.Verb == "Edited" && block.Output == output:
+						outputKept = block.ExitCode == 0 && block.Segment && block.Label == "`a.go`" && block.EditSource == ""
 					case block.Verb == "Run" && block.Code == sources[2]:
 						testKept = block.ExitCode == 2 && strings.Join(block.Tail, "") == "test failed"
 					case block.Verb == "Move" && strings.Contains(block.Label, "failed.go"):
@@ -132,6 +137,54 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Each successful edit command's output and timing follow its own Edited row;
+// its source appears only in the output dialog, which the output row opens.
+func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	started := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	var segments []commandSegment
+	for i, source := range []string{"cat > a.go", "go vet ./...", "cat > b.go"} {
+		line := strings.Fields(source)[len(strings.Fields(source))-1] + " diagnostic"
+		output := u.session.outputs.New()
+		output.Finish(new(line), new(0))
+		elapsed := time.Duration(i+1) * time.Second
+		segments = append(segments, commandSegment{source: source, text: execSegmentText(source), output: output, tail: []string{line},
+			timing: execsegment.Timing{Started: started, Ended: started.Add(elapsed), ElapsedNS: int64(elapsed)}})
+	}
+	command := "cat > a.go; go vet ./...; cat > b.go"
+	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
+		Seq: 1, Agent: "/root/child", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
+		native: &liveActivityNativeItem{thread: "child", item: "cmd", command: command, segments: segments},
+	}}})
+	u.agents.applyCapturedEdits(trackedEditReceiptData("child", "cmd"))
+	var outputs []string
+	for _, block := range u.agents.entries[0].blocks {
+		if block.Output == nil {
+			continue
+		}
+		if block.Code == "cat > a.go" || block.Code == "cat > b.go" || block.EditSource != "" {
+			t.Fatalf("edit output row leaked source or edit navigation: %+v", block)
+		}
+		outputs = append(outputs, block.Verb+" "+block.Label+" "+block.Duration.String())
+	}
+	if want := []string{"Edited `a.go` 1s", "Run  2s", "Edited `b.go` 3s"}; !slices.Equal(outputs, want) {
+		t.Fatalf("output placement = %q, want %q", outputs, want)
+	}
+	pages := u.agents.commandOutputPages(1)
+	if len(pages) != 3 || pages[0].Code != "cat > a.go" || pages[2].Code != "cat > b.go" {
+		t.Fatalf("edit output dialog: %+v", pages)
+	}
+	feed := u.agents.renderFeed(100, 20)
+	assertNativeUISnapshot(t, "captured-edit-output", feed.lines)
+	row := slices.IndexFunc(feed.lines, func(line string) bool { return strings.Contains(ansi.Strip(line), "a.go diagnostic") })
+	if row < 0 || feed.snippets[row].block == editNavigationSnippet || !u.shell.openOutput(u.agents, feed.snippets[row]) {
+		t.Fatalf("output row does not open its output: row %d", row)
+	}
+	rows := make([]string, 12)
+	u.shell.paintOutput(rows, 100, len(rows))
+	assertNativeUISnapshot(t, "captured-edit-output-dialog", rows)
 }
 
 func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
@@ -231,7 +284,7 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		for range 2 {
 			u.view.applyCapturedEdits(data)
 			blocks := u.view.entries[0].blocks
-			if len(blocks) != 1 || blocks[0].Verb != "Run" || blocks[0].Output != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
+			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || blocks[0].Output != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
 			if page := u.view.painter.DialogPage(blocks[0], 100); page.Text != "host diagnostic" {

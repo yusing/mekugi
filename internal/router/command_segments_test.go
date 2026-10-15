@@ -413,7 +413,7 @@ func TestCommandSegmentsRestoreRichChangeRows(t *testing.T) {
 	// History starts collapsed; inspect the expanded retained command.
 	var rows []string
 	for _, restored := range u.view.entries {
-		for _, block := range commandSegmentBlocks(restored.activityPaneEntry) {
+		for _, block := range commandSegmentBlocks(restored.activityPaneEntry, false) {
 			block.Collapsed = false
 			rows = append(rows, u.view.painter.Block(block, 90)...)
 		}

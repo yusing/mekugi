@@ -230,7 +230,7 @@ func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
 	entry := activityPaneEntry{Kind: "tool", Text: "Run `echo one`; Run `echo two`", native: &liveActivityNativeItem{
 		segments: []commandSegment{{text: "Run `echo one`", output: first}, {text: "Run `echo two`", output: second, exit: 2}},
 	}}
-	blocks := commandSegmentBlocks(entry)
+	blocks := commandSegmentBlocks(entry, false)
 	if len(blocks) != 2 || blocks[0].Output != first || blocks[1].Output != second {
 		t.Fatalf("tracked segment output ownership = %+v", blocks)
 	}

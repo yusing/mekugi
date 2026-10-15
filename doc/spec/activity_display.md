@@ -53,6 +53,9 @@ the group's largest. Confirmed capture counts and past-tense verbs replace succe
 rows even when the shell invocation has tracked segments. A grouped capture
 appears once on its owning invocation, not once per segment; neighboring command
 output, failed/skipped edits, and per-command exit statuses remain visible.
+Output and timing of a successful edit command appear beneath an `Edited` row
+naming the paths it wrote, not as a `Ran` row repeating the command. That row
+opens the command's output dialog, the only place its source appears.
 Live and restored grouped captures replace successful sibling edit intent even
 when the sibling has a shell-batch timing row. That row retains its duration and
 output; its presence does not imply failure.

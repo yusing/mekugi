@@ -184,7 +184,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		return []activityui.Block{{Kind: "compaction", Body: text}}
 	case "tool":
 		if entry.native != nil && len(entry.native.segments) > 0 {
-			return commandSegmentBlocks(entry)
+			return commandSegmentBlocks(entry, false)
 		}
 		blocks := activityui.FoldStages(toolOperationBlocks(text))
 		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
@@ -326,13 +326,21 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 // commandSegmentBlocks shows each segment of a tracked command as its own
 // operations, with that segment's state, exit status, and output after its
 // last operation. Without per-segment output, the host's combined output
-// follows the last segment shown.
-func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
+// follows the last segment shown. A captured edit's output and timing follow
+// an Edited row naming its paths; only dialog pages carry the edit's source.
+func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Block {
 	var blocks []activityui.Block
 	receipt := entry.native.capturedEdit
 	if receipt != nil && len(receipt.calls) > 0 && receipt.calls[0] == entry.native.item {
 		// Counts belong to the capture as a whole, not any individual segment.
 		blocks = append(blocks, toolOperationBlocks(livediff.Safe(receipt.text, false))...)
+	}
+	edited := func(paths []string, source string) activityui.Block {
+		block := activityui.Block{Kind: "op", Verb: "Edited", Label: strings.Join(paths, ", ")}
+		if dialog {
+			block.Code, block.Lang, block.Fenced = livediff.Safe(source, false), "bash", true
+		}
+		return block
 	}
 	// Classify decoration in the full script, not as a standalone segment.
 	// Keep failed headings visible, and retain every segment for replay/output.
@@ -350,18 +358,23 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 		operations := toolOperationBlocks(livediff.Safe(segment.text, false))
 		if receipt != nil && !segment.running && !segment.skipped && segment.exit == 0 {
 			writer := execSegmentEdits(segment.source)
+			var paths []string
 			operations = slices.DeleteFunc(operations, func(block activityui.Block) bool {
-				return slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) || writer && block.Verb == "Run"
+				edit := slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb)
+				if path := activityui.EditPath(block); edit && path != "" {
+					paths = append(paths, "`"+path+"`")
+				}
+				return edit || writer && block.Verb == "Run"
 			})
-			// The capture replaces edit intent, never the host's output. Keep
-			// an output-bearing edit-only segment as its real shell command.
+			// The capture replaces edit intent, never the host's output.
 			hasOutput := len(segment.tail) > 0 || segment.omit > 0
 			if segment.output != nil {
 				output := segment.output.View()
 				hasOutput = hasOutput || len(output.Lines) > 0 || output.Dropped > 0 || output.Released
 			}
 			if len(operations) == 0 && hasOutput {
-				operations = []activityui.Block{{Kind: "op", Verb: "Run", Code: livediff.Safe(segment.source, false), Lang: "bash", Fenced: true}}
+				// Its own row keeps output clicks on the output, not the diff.
+				operations = []activityui.Block{edited(paths, segment.source)}
 			}
 		}
 		for i := range operations {
@@ -402,7 +415,9 @@ func commandSegmentBlocks(entry activityPaneEntry) []activityui.Block {
 	if hasCombinedOutput {
 		// Grouped sibling edits may have no remaining intent rows, while
 		// terminal/lossy tracking still supplies invocation-level output.
-		if len(blocks) == 0 {
+		if len(blocks) == 0 && receipt != nil {
+			blocks = append(blocks, edited(nil, command))
+		} else if len(blocks) == 0 {
 			blocks = append(blocks, activityui.Block{Kind: "op", Verb: "Run", Code: livediff.Safe(command, false), Lang: "bash", Fenced: true})
 		}
 		for i := len(blocks) - 1; i >= 0; i-- {

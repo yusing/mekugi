@@ -64,7 +64,7 @@ func VerbColor(verb string) string {
 		return "\x1b[38;5;141m"
 	case "Run", "Running", "Send", "Sleep", "Wait", "Still", "Stop":
 		return Amber
-	case "Edit", "Create", "Delete", "Update", "Write", "Move", "Rename":
+	case "Edit", "Edited", "Create", "Delete", "Update", "Write", "Move", "Rename":
 		return Green
 	case "MCP", "Tool", "Browse", "Generate":
 		return "\x1b[38;5;80m"

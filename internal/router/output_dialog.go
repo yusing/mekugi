@@ -213,7 +213,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			return pages
 		}
 		var pages []activityui.Block
-		for _, block := range commandSegmentBlocks(entry.activityPaneEntry) {
+		for _, block := range commandSegmentBlocks(entry.activityPaneEntry, true) {
 			if block.Segment {
 				block.Source = source
 				pages = append(pages, block)
