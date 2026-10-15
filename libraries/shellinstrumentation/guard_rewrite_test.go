@@ -1,4 +1,4 @@
-package vcsguard
+package shellinstrumentation
 
 import (
 	"strings"

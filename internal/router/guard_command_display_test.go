@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/sudoask"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const displayGuardDirectory = "/tmp/mekugi-tools-222415842-41c84ab42cecccced7ab3f107aa419ed127f6777c2b00517efb95c6723c6f413/vcs-guard"
 
-var displaySudoDirectory = strings.TrimSuffix(displayGuardDirectory, vcsguard.Directory) + sudoask.Directory
+var displaySudoDirectory = strings.TrimSuffix(displayGuardDirectory, shellinstrumentation.VCSDirectory) + shellinstrumentation.SudoDirectory
 
 const displayGuardHelper = "/opt/mekugi/bin/mekugi-exec"
 
@@ -35,7 +35,7 @@ EOF`,
 git status
 EOF`,
 	} {
-		guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
+		guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,7 +51,7 @@ EOF`,
 
 func TestAppServerGuardCommandDisplay(t *testing.T) {
 	for _, source := range []string{"git log -1; git status --porcelain", "sudo journalctl -k --no-pager"} {
-		guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
+		guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,7 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 
 func TestSudoGuardDisplayWithoutVCS(t *testing.T) {
 	const source = "sudo id; command -p sudo id; git status"
-	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, "", displaySudoDirectory, "cmd")
+	guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, "", displaySudoDirectory, "cmd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestSudoGuardDisplayWithoutVCS(t *testing.T) {
 
 func TestGuardCommandDisplayPreservesUserSource(t *testing.T) {
 	prefix := "PATH='" + displayGuardDirectory + "':\"${PATH-/bin:/usr/bin}\" "
-	sudoPrefix := strings.Replace(prefix, vcsguard.Directory, sudoask.Directory, 1)
+	sudoPrefix := strings.Replace(prefix, shellinstrumentation.VCSDirectory, shellinstrumentation.SudoDirectory, 1)
 	for _, source := range []string{
 		`PATH='/user/vcs-guard':"${PATH-/bin:/usr/bin}" git status`,
 		`PATH='/tmp/mekugi-tools-user/vcs-guard':"${PATH-/bin:/usr/bin}" git status`,
@@ -130,7 +130,7 @@ func TestGuardCommandDisplayPreservesUserSource(t *testing.T) {
 func TestGuardCommandDisplayCustomRuntimeDirectory(t *testing.T) {
 	directory := strings.Replace(displayGuardDirectory, "/tmp/", "/run/user's tools/", 1)
 	for _, source := range []string{"git status", "command git status", "sudo id", "command sudo id"} {
-		guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, directory, strings.Replace(directory, vcsguard.Directory, sudoask.Directory, 1), "cmd")
+		guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, directory, strings.Replace(directory, shellinstrumentation.VCSDirectory, shellinstrumentation.SudoDirectory, 1), "cmd")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +142,7 @@ func TestGuardCommandDisplayCustomRuntimeDirectory(t *testing.T) {
 
 func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	source := "timeout 90s git commit -F - <<'EOF'\ndocs(ui): describe content-detected inline highlighting\nEOF"
-	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, "", "")
+	guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
 	source := "git log -1 --format='%H%n%s'; git status --porcelain; git cat-file commit HEAD | awk '/^gpgsig / {print \"signature_present\"; exit}'"
-	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, "", "")
+	guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.painter.Theme = livediff.DarkTheme
 	source := "git status --porcelain; sudo journalctl -k --no-pager"
-	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
+	guarded, err := shellinstrumentation.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, displaySudoDirectory, "cmd")
 	if err != nil {
 		t.Fatal(err)
 	}

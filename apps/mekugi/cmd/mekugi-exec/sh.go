@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/execsegment"
 )
 
@@ -29,7 +31,7 @@ func dashScript() (string, bool) {
 	for i := 1; i+1 < len(args); i++ {
 		if string(args[i]) == "-c" || string(args[i]) == "-lc" {
 			script := string(args[i+1])
-			original := execsegment.ShOriginal(script)
+			original := shellinstrumentation.ShOriginal(script)
 			return original, original != script
 		}
 	}

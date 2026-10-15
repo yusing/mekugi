@@ -1,8 +1,6 @@
-// Package execsegment splits a Codex command script into its top-level
-// segments and instruments them for per-segment tracking. The helper that
-// runs inside the command shell and the router that displays it share this
-// split, so their segment indices always agree.
-package execsegment
+package shellinstrumentation
+
+// Source: internal/execsegment/segment.go:1:266@[465a8ff3]
 
 import (
 	"fmt"

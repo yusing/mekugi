@@ -10,7 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
@@ -84,14 +85,14 @@ func RewriteHook(request HookInput) (any, error) {
 	changed := *request.Input.Command
 	if request.Directory != "" || request.SudoDirectory != "" {
 		var err error
-		changed, err = RewriteCommands(changed, request.Helper, request.Directory, request.SudoDirectory, request.Item)
+		changed, err = shellinstrumentation.RewriteCommands(changed, request.Helper, request.Directory, request.SudoDirectory, request.Item)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if tracker := request.Tracker; tracker != "" {
 		if info, err := os.Stat(tracker); err == nil && info.Mode().IsRegular() {
-			changed = execsegment.ShScript(tracker, changed)
+			changed = shellinstrumentation.ShScript(tracker, changed)
 		}
 	}
 	var response any = map[string]any{}

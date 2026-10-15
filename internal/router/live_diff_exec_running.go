@@ -12,12 +12,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/execsegment"
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 // The window registry owns display cancellation, not process continuation.
@@ -32,7 +33,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	// Only source-content projections admit paths, never generic watch effects.
 	excludedVCS := func(origin string) bool {
 		tool, _, _ := strings.Cut(origin, " ")
-		return vcsguard.IsTool(tool) && !authoredReview(mekugi.ReviewFile{Origin: origin})
+		return commandanalysis.IsVCSTool(tool) && !authoredReview(mekugi.ReviewFile{Origin: origin})
 	}
 	if r == nil || broker == nil {
 		return
@@ -82,7 +83,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 		tracking.streamable = make(map[string]bool)
 		for _, command := range observation.Commands {
 			tracking.streamable[tracking.authoredScript(command.Command, "")] = true
-			segments, _ := execsegment.Split(command.Command)
+			segments, _ := shellinstrumentation.Split(command.Command)
 			directory := command.Workdir
 			for _, segment := range segments {
 				statements, _, _, _ := liveDiffShellStatements(segment.Source, directory)

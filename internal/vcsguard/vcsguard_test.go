@@ -1,9 +1,6 @@
 package vcsguard
 
 import (
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -185,34 +182,6 @@ func TestPaths(t *testing.T) {
 	directory, channel := Paths("/run/mekugi-tools-1/bin")
 	if directory != "/run/mekugi-tools-1/vcs-guard" || channel != "/run/mekugi-tools-1/vcs-approval.sock" || ChannelOf(directory) != channel {
 		t.Fatalf("paths = %q %q", directory, channel)
-	}
-}
-
-func TestKnownPaths(t *testing.T) {
-	root := t.TempDir()
-	bin, cellar, guard, plain := filepath.Join(root, "bin"), filepath.Join(root, "cellar", "bin"), filepath.Join(root, Directory), filepath.Join(root, "plain")
-	for _, directory := range []string{bin, cellar, guard, plain} {
-		if err := os.MkdirAll(directory, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for path, mode := range map[string]os.FileMode{filepath.Join(cellar, "git"): 0o700, filepath.Join(guard, "gh"): 0o700, filepath.Join(plain, "hg"): 0o600} {
-		if err := os.WriteFile(path, nil, mode); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Symlink(filepath.Join(cellar, "git"), filepath.Join(bin, "git")); err != nil {
-		t.Fatal(err)
-	}
-	got := KnownPaths(strings.Join([]string{bin, guard, plain, "relative"}, string(os.PathListSeparator)), Tools)
-	var mine []string
-	for _, path := range got {
-		if strings.HasPrefix(path, root) {
-			mine = append(mine, path)
-		}
-	}
-	if want := []string{filepath.Join(bin, "git"), filepath.Join(cellar, "git")}; !slices.Equal(mine, want) {
-		t.Fatalf("KnownPaths = %q, want %q", mine, want)
 	}
 }
 

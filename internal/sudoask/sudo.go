@@ -4,16 +4,19 @@ package sudoask
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 )
 
 const (
-	Directory            = "sudo-guard"
 	Askpass              = "mekugi-sudo-askpass"
 	DirectoryEnvironment = "MEKUGI_SUDO_DIRECTORY"
 	CommandEnvironment   = "MEKUGI_SUDO_COMMAND"
 )
 
-func Path(frontend string) string { return filepath.Join(filepath.Dir(frontend), Directory) }
+func Path(frontend string) string {
+	return filepath.Join(filepath.Dir(frontend), shellinstrumentation.SudoDirectory)
+}
 
 // Interactive leaves explicitly selected input modes to sudo.
 func Interactive(args []string) bool {

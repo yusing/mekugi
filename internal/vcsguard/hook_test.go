@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 )
 
 func TestRewriteHookNativeUpdatedInput(t *testing.T) {
@@ -32,7 +34,7 @@ func TestRewriteHookNativeUpdatedInput(t *testing.T) {
 	if err := json.Unmarshal(output, &response); err != nil {
 		t.Fatal(err)
 	}
-	expected, err := RewriteCommands(command, "/private/helper", "/private/guard", "", "cmd")
+	expected, err := shellinstrumentation.RewriteCommands(command, "/private/helper", "/private/guard", "", "cmd")
 	if err != nil {
 		t.Fatal(err)
 	}

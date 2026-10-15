@@ -1,4 +1,4 @@
-package execsegment
+package shellinstrumentation
 
 import (
 	"slices"

@@ -74,11 +74,19 @@ PATH directory. Its frontend workers implement bounded readers and output
 retention inside Codex-started processes; they do not own Codex command
 sessions or continuation handles. Each frontend runs its native implementation under the same worker authentication.
 
-Segment tracking (`REQ-EXECUTION-002`) has four owners:
+Shell instrumentation lives in `libraries/shellinstrumentation`. The native hook,
+launcher, helper, capture observer and display projection share its rewrite and
+recognition rules. It generates source and discovers executable paths for startup;
+execution, approval decisions and report transport remain with their callers.
+`libraries/commandanalysis` owns VCS executable recognition, while its `shellsyntax`
+package owns wrapper operands and non-evaluating command-word classification.
 
-- `internal/execsegment` owns the split, the list rewrite, single-command
-  observation, the Bash hook, and the report protocol. The helper and the router share it, so they
-  always agree on segment indices.
+Segment tracking (`REQ-EXECUTION-002`) has these owners:
+
+- `libraries/shellinstrumentation` owns segment splitting, list rewriting,
+  single-command observation source, Bash startup and POSIX instrumentation.
+  The helper and report hub use the same splitter and agree on segment indices.
+- `internal/execsegment` owns the report protocol and FIFO connection helpers.
 - `mekugi-exec` runs inside the Codex-started shell as its coprocess. It owns
   only the list's output relay and boundary reports. Single-command observation
   leaves the shell's output descriptors unchanged. The helper never starts,

@@ -8,13 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/modules/fileread/read"
 
 	"github.com/yusing/mekugi/modules/symbolquery/query"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -115,7 +116,7 @@ func toolActivityReads(script, cwd string) (string, bool) {
 	if err != nil || len(program.Stmts) == 0 {
 		return "", false
 	}
-	hasSetup := execsegment.HasShellSetup(program)
+	hasSetup := shellinstrumentation.HasShellSetup(program)
 	// Heredoc bodies may occur after another statement on the same line,
 	// outside Stmt.End(). Preserve the whole source rather than slicing them.
 	hasHeredoc := false

@@ -20,6 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/internal/execscope"
@@ -29,7 +31,6 @@ import (
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const (
@@ -423,7 +424,7 @@ func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode
 	for _, managed := range []bool{false, true} {
 		for _, entry := range scope {
 			tool, _, _ := strings.Cut(entry.Origin, " ")
-			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "" || vcsguard.IsTool(tool)) {
+			if (entry.Origin != "") == managed && (env.previewOnly || entry.Origin == "" || commandanalysis.IsVCSTool(tool)) {
 				capture.entry(entry)
 			}
 		}

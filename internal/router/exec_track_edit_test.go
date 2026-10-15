@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi"
@@ -22,7 +24,6 @@ import (
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
@@ -81,13 +82,13 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			}
 			if strings.Contains(edit, "git --version") {
 				var err error
-				script, err = vcsguard.RewriteCommands(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), vcsguard.Directory), "", "edit")
+				script, err = shellinstrumentation.RewriteCommands(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), shellinstrumentation.VCSDirectory), "", "edit")
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
 			if delayedUI {
-				script = execsegment.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
+				script = shellinstrumentation.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
 			}
 			u := newAppServerSessionTestUI(t, workspace)
 			u.execTrack = shell.hub
@@ -377,7 +378,7 @@ func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 					} else if scenario == "wrong item" {
 						item = "other"
 					}
-					wrapped, err := vcsguard.RewriteCommands(script, "/unrelated/mekugi-exec", directory, sudoDirectory, item)
+					wrapped, err := shellinstrumentation.RewriteCommands(script, "/unrelated/mekugi-exec", directory, sudoDirectory, item)
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -15,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -23,27 +26,8 @@ import (
 // that receives none is denied.
 const Timeout = 5 * time.Minute
 
-// Directory names the per-session directory of guarded command names, beside
-// the frontend directory.
-const Directory = "vcs-guard"
-
 // Channel names the session-local Unix approval socket.
 const Channel = "vcs-approval.sock"
-
-// ItemEnvironment carries the exact host command identity to a PATH guard.
-const ItemEnvironment = "MEKUGI_VCS_ITEM"
-
-// ItemFlag carries the same identity through wrappers that clear the environment.
-const ItemFlag = "--vcs-item"
-
-// Tools are the command names the guard intercepts.
-var Tools = []string{"git", "gh", "hg", "svn", "jj"}
-
-// IsTool identifies a version-control executable independently of whether
-// its invocation needs remote-write approval.
-func IsTool(name string) bool {
-	return slices.Contains(Tools, filepath.Base(name))
-}
 
 // Message asks the router to approve one remote write.
 type Message struct {
@@ -69,7 +53,7 @@ const MaxMessage = 1 << 20
 // directory.
 func Paths(frontendDirectory string) (directory, channel string) {
 	root := filepath.Dir(frontendDirectory)
-	return filepath.Join(root, Directory), filepath.Join(root, Channel)
+	return filepath.Join(root, shellinstrumentation.VCSDirectory), filepath.Join(root, Channel)
 }
 
 // ChannelOf returns the approval channel beside a guard directory.
@@ -80,9 +64,6 @@ func ChannelOf(directory string) string {
 // Lookup resolves a Git alias with the invocation's global options. It
 // reports false when the name is not an alias.
 type Lookup func(globals []string, name string) (string, bool)
-
-// dynamic stands for a shell word whose value is known only at run time.
-const dynamic = "\x00"
 
 // Writes reports whether argv, whose first element names the tool, may
 // write to a remote repository or hosting service.
@@ -126,8 +107,8 @@ func scriptWrites(script string, lookup Lookup, depth int) bool {
 		if !ok || found {
 			return !found
 		}
-		at, _ := executableWord(call.Args)
-		if at < 0 || !IsTool(literal(call.Args[at])) {
+		at, _ := shellsyntax.ExecutableWord(call.Args)
+		if at < 0 || !commandanalysis.IsVCSTool(literal(call.Args[at])) {
 			return true
 		}
 		words := make([]string, len(call.Args)-at)
@@ -153,12 +134,12 @@ func literal(word *syntax.Word) string {
 			for _, inner := range part.Parts {
 				lit, ok := inner.(*syntax.Lit)
 				if !ok {
-					return dynamic
+					return shellsyntax.Dynamic
 				}
 				value.WriteString(lit.Value)
 			}
 		default:
-			return dynamic
+			return shellsyntax.Dynamic
 		}
 	}
 	return value.String()
@@ -240,7 +221,7 @@ func gitWrites(args []string, lookup Lookup, depth int) bool {
 	if command == "" {
 		return false
 	}
-	if command == dynamic {
+	if command == shellsyntax.Dynamic {
 		return true
 	}
 	if helps(rest) && command != "submodule" && command != "rebase" && command != "bisect" {
@@ -250,13 +231,13 @@ func gitWrites(args []string, lookup Lookup, depth int) bool {
 	case "push", "send-email", "send-pack":
 		return !dryRun(rest)
 	case "subtree":
-		return slices.Contains(rest, "push") || slices.Contains(rest, dynamic)
+		return slices.Contains(rest, "push") || slices.Contains(rest, shellsyntax.Dynamic)
 	case "svn":
-		return len(rest) > 0 && slices.Contains([]string{"dcommit", "commit-diff", "set-tree", "branch", "tag", dynamic}, rest[0])
+		return len(rest) > 0 && slices.Contains([]string{"dcommit", "commit-diff", "set-tree", "branch", "tag", shellsyntax.Dynamic}, rest[0])
 	case "p4":
-		return len(rest) > 0 && (rest[0] == "submit" || rest[0] == dynamic)
+		return len(rest) > 0 && (rest[0] == "submit" || rest[0] == shellsyntax.Dynamic)
 	case "lfs":
-		return len(rest) > 0 && slices.Contains([]string{"push", "lock", "unlock", dynamic}, rest[0])
+		return len(rest) > 0 && slices.Contains([]string{"push", "lock", "unlock", shellsyntax.Dynamic}, rest[0])
 	case "submodule":
 		at := slices.Index(rest, "foreach")
 		if at < 0 {
@@ -275,7 +256,7 @@ func gitWrites(args []string, lookup Lookup, depth int) bool {
 			} else if !ok && strings.HasPrefix(arg, "-x") && len(arg) > 2 {
 				script, ok = arg[2:], true
 			}
-			if ok && (script == dynamic || scriptWrites(script, lookup, depth+1)) {
+			if ok && (script == shellsyntax.Dynamic || scriptWrites(script, lookup, depth+1)) {
 				return true
 			}
 		}
@@ -283,8 +264,8 @@ func gitWrites(args []string, lookup Lookup, depth int) bool {
 	case "bisect":
 		if len(rest) > 1 && rest[0] == "run" {
 			words := rest[1:]
-			at, _ := commandWord(words)
-			return words[0] == dynamic || at >= 0 && IsTool(words[at]) && writes(words[at:], lookup, depth+2)
+			at, _ := shellsyntax.CommandWord(words)
+			return words[0] == shellsyntax.Dynamic || at >= 0 && commandanalysis.IsVCSTool(words[at]) && writes(words[at:], lookup, depth+2)
 		}
 		return false
 	}
@@ -358,7 +339,7 @@ func splitAlias(text string) ([]string, bool) {
 }
 
 func quote(word string) string {
-	if word == dynamic {
+	if word == shellsyntax.Dynamic {
 		return `"$1"`
 	}
 	return shellsyntax.Quote(word)
@@ -466,7 +447,7 @@ func ghAPIWrites(args []string) bool {
 			}
 		}
 	}
-	if endpoint == "" || endpoint == dynamic || method == dynamic {
+	if endpoint == "" || endpoint == shellsyntax.Dynamic || method == shellsyntax.Dynamic {
 		return true
 	}
 	if endpoint == "graphql" || endpoint == "/graphql" {
@@ -475,7 +456,7 @@ func ghAPIWrites(args []string) bool {
 		}
 		for _, field := range fields {
 			_, value, _ := strings.Cut(field, "=")
-			if strings.HasPrefix(field, "@") || strings.HasPrefix(value, "@") || strings.Contains(field, dynamic) || strings.Contains(strings.ToLower(value), "mutation") {
+			if strings.HasPrefix(field, "@") || strings.HasPrefix(value, "@") || strings.Contains(field, shellsyntax.Dynamic) || strings.Contains(strings.ToLower(value), "mutation") {
 				return true
 			}
 		}
@@ -503,7 +484,7 @@ func hgWrites(args []string) bool {
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		if arg == dynamic {
+		if arg == shellsyntax.Dynamic {
 			return true
 		}
 		if helps(args[i+1:]) {
@@ -553,13 +534,13 @@ func svnWrites(args []string) bool {
 		return false
 	}
 	switch {
-	case command == dynamic:
+	case command == shellsyntax.Dynamic:
 		return true
 	case slices.Contains([]string{"commit", "ci", "import", "lock", "unlock"}, command):
 		return true
 	case slices.Contains(svnURLWrites, command):
 		return slices.ContainsFunc(rest, func(arg string) bool {
-			return arg == "--revprop" || arg == dynamic || strings.Contains(arg, "://") || strings.HasPrefix(arg, "^/")
+			return arg == "--revprop" || arg == shellsyntax.Dynamic || strings.Contains(arg, "://") || strings.HasPrefix(arg, "^/")
 		})
 	}
 	return false
@@ -598,9 +579,9 @@ func jjWrites(args []string) bool {
 	}
 	switch words[0] {
 	case "git":
-		return len(words) > 1 && (words[1] == "push" || words[1] == dynamic) && !slices.Contains(args, "--dry-run")
+		return len(words) > 1 && (words[1] == "push" || words[1] == shellsyntax.Dynamic) && !slices.Contains(args, "--dry-run")
 	case "gerrit":
-		return len(words) > 1 && (words[1] == "upload" || words[1] == dynamic) && !slices.Contains(args, "--dry-run")
+		return len(words) > 1 && (words[1] == "upload" || words[1] == shellsyntax.Dynamic) && !slices.Contains(args, "--dry-run")
 	}
 	return !slices.Contains(jjCommands, words[0])
 }
@@ -621,7 +602,7 @@ func GitReadOnlyCommand(command string) bool { return gitReadOnlySubcommands[com
 // write out repository content. Unknown commands remain possible writers. This is effect
 // attribution, independent of remote-write approval.
 func WorktreeWrites(argv []string) bool {
-	if len(argv) == 0 || !IsTool(argv[0]) {
+	if len(argv) == 0 || !commandanalysis.IsVCSTool(argv[0]) {
 		return false
 	}
 	args := argv[1:]

@@ -1,14 +1,18 @@
-package vcsguard
+package shellinstrumentation
+
+// Source: internal/vcsguard/display.go:1:96@[465a8ff3]
 
 import (
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// DisplayScript removes Rewrite's exact instrumentation from a display copy.
+// DisplayScript removes RewriteCommands' exact instrumentation from a display copy.
 // The caller identifies session registry directories, including retained ones.
 // It does not read the filesystem or evaluate expansions. Unrecognized source
 // stays intact, including user assignments, quoted text and heredoc bodies.
@@ -35,14 +39,14 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 				// Quote may split a directory containing an apostrophe into
 				// several literal parts. The final two parts are : and PATH.
 				parts := assign.Value.Parts
-				directory, literal := staticWord(&syntax.Word{Parts: parts[:len(parts)-2]})
+				directory, literal := shellsyntax.StaticWord(&syntax.Word{Parts: parts[:len(parts)-2]})
 				if literal && filepath.Base(directory) == guard.directory && isGuardDirectory(directory) {
 					start, end := int(assign.Pos().Offset()), int(call.Args[0].Pos().Offset())
 					item := ""
 					if len(call.Assigns) > 1 {
 						identity := call.Assigns[len(call.Assigns)-2]
 						if identity.Name != nil && identity.Name.Value == ItemEnvironment && identity.Value != nil {
-							if value, ok := staticWord(identity.Value); ok && value != "" {
+							if value, ok := shellsyntax.StaticWord(identity.Value); ok && value != "" {
 								item, start = value, int(identity.Pos().Offset())
 							}
 						}
@@ -53,23 +57,23 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 				}
 			}
 		}
-		i, _ := executableWord(call.Args)
+		i, _ := shellsyntax.ExecutableWord(call.Args)
 		if i < 0 || i+3 >= len(call.Args) {
 			return true
 		}
-		helper, static := staticWord(call.Args[i])
+		helper, static := shellsyntax.StaticWord(call.Args[i])
 		if !static || !filepath.IsAbs(helper) || filepath.Base(helper) != "mekugi-exec" {
 			return true
 		}
-		mode, _ := staticWord(call.Args[i+1])
-		directory, static := staticWord(call.Args[i+2])
+		mode, _ := shellsyntax.StaticWord(call.Args[i+1])
+		directory, static := shellsyntax.StaticWord(call.Args[i+2])
 		if !static || !isGuardDirectory(directory) {
 			return true
 		}
 		target := i + 3
 		item := ""
-		if flag, _ := staticWord(call.Args[target]); flag == ItemFlag && target+2 < len(call.Args) {
-			item, static = staticWord(call.Args[target+1])
+		if flag, _ := shellsyntax.StaticWord(call.Args[target]); flag == ItemFlag && target+2 < len(call.Args) {
+			item, static = shellsyntax.StaticWord(call.Args[target+1])
 			if !static || item == "" {
 				return true
 			}

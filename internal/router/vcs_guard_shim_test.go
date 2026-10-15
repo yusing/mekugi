@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
@@ -55,7 +57,7 @@ exit 127
 				if err != nil {
 					t.Fatal(err)
 				}
-				script, err := vcsguard.RewriteCommands("printf 'RAN <%s>\\n' \"$1\" | { cat; sleep .04; }; git push origin main", helper, guard, "", "")
+				script, err := shellinstrumentation.RewriteCommands("printf 'RAN <%s>\\n' \"$1\" | { cat; sleep .04; }; git push origin main", helper, guard, "", "")
 				if err != nil {
 					t.Fatal(err)
 				}

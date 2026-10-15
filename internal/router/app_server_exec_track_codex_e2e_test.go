@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
@@ -31,7 +32,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracker := filepath.Join(shell.root, "exec-track.sh")
-	if err := os.WriteFile(tracker, []byte(execsegment.ShTracker(helper, shell.hub.requests.Name(), shell.hub.directory)), 0o600); err != nil {
+	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, shell.hub.requests.Name(), shell.hub.directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	hook, state, _, err := vcsguard.HookConfig(helper, "", "", tracker)
@@ -142,7 +143,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 		}
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-		environment: []string{"PATH=" + execTrackPath(), execsegment.ShTrackerEnvironment + "=" + tracker},
+		environment: []string{"PATH=" + execTrackPath(), shellinstrumentation.ShTrackerEnvironment + "=" + tracker},
 		codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
 		duringTurn:  during, afterPrompt: after,
 	})

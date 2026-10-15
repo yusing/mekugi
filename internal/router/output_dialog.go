@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -187,7 +188,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			// operations describe intent; only the batch owns output and exit.
 			classified := toolOperationBlocks(toolActivityShellInDirectory(appServerDisplayCommand(entry.native.command), entry.native.commandCwd))
 			if slices.ContainsFunc(classified, func(block activityui.Block) bool { return block.EditSource != "" }) {
-				if segments, ok := execsegment.Split(pages[0].Code); ok {
+				if segments, ok := shellinstrumentation.Split(pages[0].Code); ok {
 					classified = nil
 					for _, segment := range segments {
 						classified = append(classified, toolOperationBlocks(execSegmentTextInDirectory(segment.Source, entry.native.commandCwd))...)

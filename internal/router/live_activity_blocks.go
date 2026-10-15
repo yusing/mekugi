@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
@@ -54,13 +55,13 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 	} else {
 		// Offline replay retains a tracked script without its shell argv;
 		// the tracking envelope is not authored compound work.
-		command = execsegment.ShOriginal(command)
+		command = shellinstrumentation.ShOriginal(command)
 	}
 	if program, err := syntax.NewParser().Parse(strings.NewReader(command), ""); err == nil {
 		// A setup script is deliberately one full-source Run event, so its
 		// invocation clock belongs to that row, not a second shell batch row.
 		if len(blocks) == 1 && blocks[0].Verb == "Run" &&
-			blocks[0].Code == livediff.Safe(toolActivityShellSource(command), false) && execsegment.HasShellSetup(program) {
+			blocks[0].Code == livediff.Safe(toolActivityShellSource(command), false) && shellinstrumentation.HasShellSetup(program) {
 			return compound
 		}
 		compound = compound || len(program.Stmts) > 1

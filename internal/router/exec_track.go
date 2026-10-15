@@ -12,10 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
-	"github.com/yusing/mekugi/internal/sudoask"
 
 	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -330,7 +331,7 @@ func (h *execTrackHub) serve(ctx context.Context, report, reply *os.File, work s
 	}
 	// The segments must be those of the script this router would split, or
 	// the display would attribute statuses to the wrong commands.
-	segments, ok := execsegment.Split(hello.Script)
+	segments, ok := shellinstrumentation.Split(hello.Script)
 	if !ok || len(segments) != len(hello.Segments) {
 		_ = writeExecTrackReply(reply, false)
 		return
@@ -342,7 +343,7 @@ func (h *execTrackHub) serve(ctx context.Context, report, reply *os.File, work s
 		}
 	}
 	if len(segments) > 1 {
-		if err := os.WriteFile(filepath.Join(work, "script"), []byte(execsegment.Rewrite(hello.Script, segments)), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(work, "script"), []byte(shellinstrumentation.Rewrite(hello.Script, segments)), 0o600); err != nil {
 			return
 		}
 	}
@@ -516,11 +517,11 @@ func (p *execPreviewTrack) authoredScript(script, item string) string {
 	session := filepath.Dir(p.hub.directory)
 	// Reapply only observed guards: sudo also runs with the VCS guard disabled.
 	var guard, sudo string
-	source := vcsguard.DisplayScript(script, func(directory string) bool {
+	source := shellinstrumentation.DisplayScript(script, func(directory string) bool {
 		switch directory {
-		case filepath.Join(session, vcsguard.Directory):
+		case filepath.Join(session, shellinstrumentation.VCSDirectory):
 			guard = directory
-		case filepath.Join(session, sudoask.Directory):
+		case filepath.Join(session, shellinstrumentation.SudoDirectory):
 			sudo = directory
 		default:
 			return false
@@ -532,13 +533,13 @@ func (p *execPreviewTrack) authoredScript(script, item string) string {
 	}
 	// This owner has no authenticated helper executable. An inverse rewrite
 	// with no helper must match exactly, so only injected PATH prefixes qualify.
-	rewritten, err := vcsguard.RewriteCommands(source, "", guard, sudo, "")
+	rewritten, err := shellinstrumentation.RewriteCommands(source, "", guard, sudo, "")
 	if err != nil || rewritten != script {
 		if item == "" {
 			return script
 		}
 		// The host hook also binds the guard to this exact command item.
-		rewritten, err = vcsguard.RewriteCommands(source, "", guard, sudo, item)
+		rewritten, err = shellinstrumentation.RewriteCommands(source, "", guard, sudo, item)
 		if err != nil || rewritten != script {
 			return script
 		}

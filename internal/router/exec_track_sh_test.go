@@ -12,7 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
@@ -30,11 +31,11 @@ func TestExecTrackDashMissingHelperRunsOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracker := filepath.Join(shell.root, "exec-track.sh")
-	if err := os.WriteFile(tracker, []byte(execsegment.ShTracker(entrypoint, shell.hub.requests.Name(), shell.hub.directory)), 0o600); err != nil {
+	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(entrypoint, shell.hub.requests.Name(), shell.hub.directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	script := "printf 'ORIGINAL\\n'; printf 'STDERR\\n' >&2; false"
-	command := execsegment.ShScript(tracker, script)
+	command := shellinstrumentation.ShScript(tracker, script)
 	shell.hub.start([3]string{"thread", "turn", "missing-helper"}, "/bin/sh -c "+shellsyntax.Quote(command))
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
@@ -61,7 +62,7 @@ func TestExecTrackDashSegments(t *testing.T) {
 	}
 	channel, directory := ExecTrackPaths(filepath.Join(shell.root, "bin"))
 	tracker := filepath.Join(shell.root, "exec-track.sh")
-	if err := os.WriteFile(tracker, []byte(execsegment.ShTracker(helper, channel, directory)), 0o600); err != nil {
+	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, channel, directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, script := range []string{
@@ -78,8 +79,8 @@ func TestExecTrackDashSegments(t *testing.T) {
 		"exit",
 	} {
 		t.Run(script, func(t *testing.T) {
-			instrumented := execsegment.ShScript(tracker, script)
-			if original := execsegment.ShOriginal(instrumented); original != script {
+			instrumented := shellinstrumentation.ShScript(tracker, script)
+			if original := shellinstrumentation.ShOriginal(instrumented); original != script {
 				t.Fatalf("envelope lost script: %q", original)
 			}
 			key := [3]string{"thread", "turn", script}
@@ -90,7 +91,7 @@ func TestExecTrackDashSegments(t *testing.T) {
 				t.Fatalf("tracked=%+v, plain=%+v", tracked, plain)
 			}
 			view := shell.awaitView(t, key)
-			segments, _ := execsegment.Split(script)
+			segments, _ := shellinstrumentation.Split(script)
 			if !view.ended || !view.complete || view.code != plain.code || len(view.segments) != len(segments) {
 				t.Fatalf("incomplete report: %+v", view)
 			}
@@ -119,7 +120,7 @@ func TestExecTrackShEnvelopeKeepsBash(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
 	script := "printf first; false; printf last"
-	wrapped := execsegment.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
+	wrapped := shellinstrumentation.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
 	key := [3]string{"thread", "turn", "bash"}
 	shell.hub.start(key, "/bin/bash -c "+shellsyntax.Quote(wrapped))
 	plainEnv := slices.DeleteFunc(slices.Clone(shell.env), func(entry string) bool { return strings.HasPrefix(entry, "BASH_ENV=") })

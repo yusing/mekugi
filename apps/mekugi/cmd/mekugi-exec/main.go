@@ -25,6 +25,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -59,8 +62,8 @@ func main() {
 		os.Exit(sudoCommand("", "sudo", os.Args[0], false, os.Args[1:]))
 	}
 	if len(os.Args) >= 4 && strings.TrimSuffix(os.Args[1], "-default") == "--sudo-command" {
-		if os.Args[3] == vcsguard.ItemFlag && len(os.Args) >= 6 {
-			os.Setenv(vcsguard.ItemEnvironment, os.Args[4])
+		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
+			os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4])
 			os.Args = append(os.Args[:3], os.Args[5:]...)
 		}
 		os.Exit(sudoCommand(os.Args[2], os.Args[3], os.Args[3], strings.HasSuffix(os.Args[1], "-default"), os.Args[4:]))
@@ -73,8 +76,8 @@ func main() {
 		return
 	}
 	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
-		if os.Args[3] == vcsguard.ItemFlag && len(os.Args) >= 6 {
-			if err := os.Setenv(vcsguard.ItemEnvironment, os.Args[4]); err != nil {
+		if os.Args[3] == shellinstrumentation.ItemFlag && len(os.Args) >= 6 {
+			if err := os.Setenv(shellinstrumentation.ItemEnvironment, os.Args[4]); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
@@ -90,7 +93,7 @@ func main() {
 			os.Exit(guardShell(os.Args[2], target, argv0, defaultPath, os.Args[4:]))
 		}
 		name := filepath.Base(target)
-		if !slices.Contains(vcsguard.Tools, name) {
+		if !slices.Contains(commandanalysis.VCSTools, name) {
 			os.Exit(1)
 		}
 		explicit := ""
@@ -99,10 +102,10 @@ func main() {
 		}
 		os.Exit(guardCommand(os.Args[2], name, explicit, argv0, defaultPath, os.Args[4:]))
 	}
-	if name := filepath.Base(os.Args[0]); slices.Contains(vcsguard.Tools, name) {
+	if name := filepath.Base(os.Args[0]); slices.Contains(commandanalysis.VCSTools, name) {
 		os.Exit(guard(name, os.Args[1:]))
 	}
-	if name := filepath.Base(os.Args[0]); slices.Contains(vcsguard.Shells, name) {
+	if name := filepath.Base(os.Args[0]); slices.Contains(shellinstrumentation.Shells, name) {
 		os.Exit(guardShell("", name, os.Args[0], false, os.Args[1:]))
 	}
 	// The shell's process group may be signaled while its commands still
@@ -130,8 +133,8 @@ func run(args []string) int {
 	if len(args) != 3 {
 		return 2
 	}
-	channel, directory, script := args[0], args[1], execsegment.ShOriginal(args[2])
-	segments, ok := execsegment.Split(script)
+	channel, directory, script := args[0], args[1], shellinstrumentation.ShOriginal(args[2])
+	segments, ok := shellinstrumentation.Split(script)
 	if !ok {
 		return 0
 	}

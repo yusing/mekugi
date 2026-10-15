@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/responses"
 
 	json "encoding/json/v2"
@@ -23,7 +25,6 @@ import (
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 )
 
@@ -57,7 +58,7 @@ type execTrackShell struct {
 func execTrackPath() string {
 	entries := filepath.SplitList(os.Getenv("PATH"))
 	entries = slices.DeleteFunc(entries, func(entry string) bool {
-		return filepath.Base(entry) == vcsguard.Directory
+		return filepath.Base(entry) == shellinstrumentation.VCSDirectory
 	})
 	return strings.Join(entries, string(os.PathListSeparator))
 }
@@ -99,11 +100,11 @@ func newExecTrackShell(t *testing.T) *execTrackShell {
 	}
 	t.Cleanup(hub.close)
 	tracker := filepath.Join(root, "exec-track.bash")
-	if err := os.WriteFile(tracker, []byte(execsegment.Tracker(helper, socket, directory)), 0o600); err != nil {
+	if err := os.WriteFile(tracker, []byte(shellinstrumentation.Tracker(helper, socket, directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	startup := filepath.Join(root, "bash-env")
-	if err := os.WriteFile(startup, []byte(execsegment.Hook(tracker)), 0o600); err != nil {
+	if err := os.WriteFile(startup, []byte(shellinstrumentation.Hook(tracker)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	home := t.TempDir()
@@ -264,7 +265,7 @@ func TestExecTrackMktempKeepsUtilityResult(t *testing.T) {
 	}
 	channel, directory := ExecTrackPaths(filepath.Join(shell.root, "bin"))
 	shTracker := filepath.Join(shell.root, "exec-track.sh")
-	if err := os.WriteFile(shTracker, []byte(execsegment.ShTracker(helper, channel, directory)), 0o600); err != nil {
+	if err := os.WriteFile(shTracker, []byte(shellinstrumentation.ShTracker(helper, channel, directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	utility, err := exec.LookPath("mktemp")
@@ -307,7 +308,7 @@ c.XXXXXX"`, created: 1, reported: true},
 				}
 				command := tc.script
 				if name == "sh" {
-					command = execsegment.ShScript(shTracker, tc.script)
+					command = shellinstrumentation.ShScript(shTracker, tc.script)
 				}
 				key := [3]string{"thread", "turn", name + "-" + tc.name}
 				shell.hub.start(key, name+" -c "+quoteShellWord(command))
@@ -450,7 +451,7 @@ func TestExecTrackRelaysExternalCommandIO(t *testing.T) {
 		want         execTrackRun
 	}{
 		{"single", "cat", execTrackRun{stdout: content}},
-		{"list", execsegment.ShScript(filepath.Join(shell.root, "exec-track.sh"), "cat; cat "+quoteShellWord(input)+" >&2; cat "+quoteShellWord(input)+"; false"), execTrackRun{stdout: content + content, stderr: content, code: 1}},
+		{"list", shellinstrumentation.ShScript(filepath.Join(shell.root, "exec-track.sh"), "cat; cat "+quoteShellWord(input)+" >&2; cat "+quoteShellWord(input)+"; false"), execTrackRun{stdout: content + content, stderr: content, code: 1}},
 		{"late output", quoteShellWord(execTrackShellExecutable(t, "bash")) + " -c " + quoteShellWord("(sleep .05; cat "+quoteShellWord(input)+") & printf early") + "; false", execTrackRun{stdout: "early" + content, code: 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -621,7 +622,7 @@ func dialExecTrackReport(t *testing.T, hub *execTrackHub, script string) *execTr
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conn.Close(); answer.Close() })
-	segments, ok := execsegment.Split(script)
+	segments, ok := shellinstrumentation.Split(script)
 	if !ok {
 		t.Fatalf("script %q is not tracked", script)
 	}
@@ -1007,7 +1008,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 				t.Fatal(err)
 			}
 			marker, gate := filepath.Join(root, "ready"), filepath.Join(root, "gate")
-			tracker := execsegment.Tracker(helper, channel, directory)
+			tracker := shellinstrumentation.Tracker(helper, channel, directory)
 			name := "bash"
 			pause := "touch " + quoteShellWord(marker) + "\nwhile [ ! -e " + quoteShellWord(gate) + " ]; do sleep 0.01; done\n"
 			at := "case $__mekugi_m in\n"
@@ -1019,7 +1020,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			}
 			if strings.HasPrefix(phase, "sh_") {
 				name = "sh"
-				tracker = execsegment.ShTracker(helper, channel, directory)
+				tracker = shellinstrumentation.ShTracker(helper, channel, directory)
 				at = "      relay)"
 				if phase == "sh_after_acquisition" {
 					at = "        printf 'o\\n'"
@@ -1034,7 +1035,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			}
 			tracker = strings.Replace(tracker, at, replacement, 1)
 			trackerPath, startup := filepath.Join(root, "tracker"), filepath.Join(root, "startup")
-			for path, source := range map[string]string{trackerPath: tracker, startup: execsegment.Hook(trackerPath)} {
+			for path, source := range map[string]string{trackerPath: tracker, startup: shellinstrumentation.Hook(trackerPath)} {
 				if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -1042,7 +1043,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			script := "echo FIRST; echo SECOND >&2; false"
 			command := script
 			if name == "sh" {
-				command = execsegment.ShScript(trackerPath, script)
+				command = shellinstrumentation.ShScript(trackerPath, script)
 			}
 			hub.start([3]string{"thread", "turn", "item"}, name+" -c "+quoteShellWord(command))
 			commandCtx, stop := context.WithTimeout(t.Context(), 5*time.Second)

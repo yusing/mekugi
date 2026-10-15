@@ -13,7 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/sudoask"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 )
@@ -24,8 +25,8 @@ import (
 // the router's approval; a denial, timeout or unreachable router exits 1
 // without running it, so only this command fails and the shell continues.
 func guard(name string, args []string) int {
-	explicit := os.Getenv(vcsguard.RealEnvironment)
-	os.Unsetenv(vcsguard.RealEnvironment) // Neither the tool nor its children inherit it.
+	explicit := os.Getenv(shellinstrumentation.RealEnvironment)
+	os.Unsetenv(shellinstrumentation.RealEnvironment) // Neither the tool nor its children inherit it.
 	argv0 := os.Args[0]
 	if explicit != "" {
 		argv0 = explicit
@@ -72,7 +73,7 @@ func guardCommand(directory, name, explicit, argv0 string, defaultPath bool, arg
 // preserving the guarded PATH for the real command and its children.
 func guardEnvironment(real string) []string {
 	environment := slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, vcsguard.ItemEnvironment+"=")
+		return strings.HasPrefix(entry, shellinstrumentation.ItemEnvironment+"=")
 	})
 	resolved, err := filepath.EvalSymlinks(real)
 	if err != nil || filepath.Base(real) == "mise" || filepath.Base(resolved) != "mise" {
@@ -93,7 +94,7 @@ func guardEnvironment(real string) []string {
 	for i, entry := range environment {
 		if path, ok := strings.CutPrefix(entry, "PATH="); ok {
 			paths := slices.DeleteFunc(filepath.SplitList(path), func(directory string) bool {
-				if filepath.Base(directory) != vcsguard.Directory {
+				if filepath.Base(directory) != shellinstrumentation.VCSDirectory {
 					return false
 				}
 				info, err := os.Stat(filepath.Join(directory, filepath.Base(real)))
@@ -160,7 +161,7 @@ func guardPaths(name, explicit string, defaultPath bool) (directory, real string
 			}
 			continue
 		}
-		if filepath.Base(entry) == vcsguard.Directory || filepath.Base(entry) == sudoask.Directory {
+		if filepath.Base(entry) == shellinstrumentation.VCSDirectory || filepath.Base(entry) == shellinstrumentation.SudoDirectory {
 			continue
 		}
 		if !strings.Contains(candidate, "/") {
@@ -193,7 +194,7 @@ func approve(directory, executable string, argv []string, kind string) (bool, st
 		return false, unavailable
 	}
 	cwd, _ := os.Getwd()
-	message := vcsguard.Message{Kind: kind, Thread: os.Getenv("CODEX_THREAD_ID"), Item: os.Getenv(vcsguard.ItemEnvironment), Cwd: cwd, Argv: argv, Executable: executable}
+	message := vcsguard.Message{Kind: kind, Thread: os.Getenv("CODEX_THREAD_ID"), Item: os.Getenv(shellinstrumentation.ItemEnvironment), Cwd: cwd, Argv: argv, Executable: executable}
 	data, err := json.Marshal(&message)
 	if err != nil || len(data) > vcsguard.MaxMessage {
 		return false, "invalid approval request"

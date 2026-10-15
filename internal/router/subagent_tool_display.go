@@ -4,8 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/execsegment"
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 )
 
 // Use one label table for native calls and normalized exec identifiers.
@@ -66,8 +65,8 @@ func toolActivityShellInDirectory(script, cwd string) string {
 }
 
 func toolActivityShellSource(script string) string {
-	return vcsguard.DisplayScript(execsegment.ShOriginal(script), func(directory string) bool {
-		if !filepath.IsAbs(directory) || !vcsguard.IsGuardDirectory(directory) {
+	return shellinstrumentation.DisplayScript(shellinstrumentation.ShOriginal(script), func(directory string) bool {
+		if !filepath.IsAbs(directory) || !shellinstrumentation.IsGuardDirectory(directory) {
 			return false
 		}
 		_, ok := toolRegistryIDFromDirectory(filepath.Dir(directory))

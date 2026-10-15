@@ -1,4 +1,6 @@
-package vcsguard
+package shellinstrumentation
+
+// Source: internal/vcsguard/shell.go:1:87@[465a8ff3]
 
 import (
 	"os"
@@ -26,7 +28,7 @@ var standardDirectories = []string{
 func KnownPaths(pathList string, tools []string) []string {
 	var paths []string
 	for _, directory := range slices.Concat(filepath.SplitList(pathList), standardDirectories) {
-		if !filepath.IsAbs(directory) || filepath.Base(directory) == Directory {
+		if !filepath.IsAbs(directory) || filepath.Base(directory) == VCSDirectory {
 			continue
 		}
 		for _, tool := range tools {
@@ -69,7 +71,7 @@ func Functions(guardDirectory string, known, tools []string) string {
   __mekugi_ps=(` + list.String() + ` )
   read -r -a __mekugi_ds <<<"$PATH"
   for __mekugi_d in "${__mekugi_ds[@]}"; do
-    case $__mekugi_d in /*/` + Directory + `|/` + Directory + `) continue ;; /*) ;; *) continue ;; esac
+    case $__mekugi_d in /*/` + VCSDirectory + `|/` + VCSDirectory + `) continue ;; /*) ;; *) continue ;; esac
     for __mekugi_t in ` + strings.Join(tools, " ") + `; do __mekugi_ps+=("$__mekugi_d/$__mekugi_t"); done
   done
   for __mekugi_p in "${__mekugi_ps[@]}"; do

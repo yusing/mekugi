@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -109,7 +111,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 			}
 			shell := newVCSGuardShell(t)
 			script := "#!/bin/sh\nprintf 'FAKE %s\\n' \"${0##*/} $*\"\n"
-			for _, tool := range vcsguard.Tools {
+			for _, tool := range commandanalysis.VCSTools {
 				if err := os.WriteFile(filepath.Join(shell.real, tool), []byte(script), 0o700); err != nil {
 					t.Fatal(err)
 				}

@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -41,11 +42,11 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 	// Commands that start while the dialog is open join it in start order,
 	// shown as transcript rows show them, without Mekugi instrumentation.
-	guarded, err := vcsguard.RewriteCommands("git fetch && go test", displayGuardHelper, displayGuardDirectory, "", "")
+	guarded, err := shellinstrumentation.RewriteCommands("git fetch && go test", displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := "/usr/bin/bash -lc " + quoteShellWord(execsegment.ShScript("/private/exec-track.sh", guarded))
+	command := "/usr/bin/bash -lc " + quoteShellWord(shellinstrumentation.ShScript("/private/exec-track.sh", guarded))
 	processNotify(t, u, "main", "cmd", command, "inProgress")
 	processNotify(t, u, "child", "cmd", "make test", "inProgress")
 	processNotify(t, u, "child", "cmd", "make test", "inProgress") // Repeated starts keep host identity.

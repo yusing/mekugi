@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -37,7 +40,7 @@ func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 	if err := os.MkdirAll(guard, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range slices.Concat(vcsguard.Tools, vcsguard.Shells) {
+	for _, tool := range slices.Concat(commandanalysis.VCSTools, shellinstrumentation.Shells) {
 		if err := os.Symlink(helper, filepath.Join(guard, tool)); err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +61,7 @@ func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 		t.Fatal(err)
 	}
 	front := "PATH=" + quoteShellWord(guard+string(os.PathListSeparator)+real) + ":\"$PATH\"; export PATH\n"
-	if err := os.WriteFile(startup, append([]byte(front+vcsguard.Functions(guard, nil, vcsguard.Tools)), hook...), 0o600); err != nil {
+	if err := os.WriteFile(startup, append([]byte(front+shellinstrumentation.Functions(guard, nil, commandanalysis.VCSTools)), hook...), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Plain sh has no startup hook. Its nested commands must also find only
@@ -217,7 +220,7 @@ func TestVCSGuardSkipsAnotherSessionsGuard(t *testing.T) {
 	if err := os.WriteFile(other, binary, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	guard := filepath.Join(t.TempDir(), vcsguard.Directory)
+	guard := filepath.Join(t.TempDir(), shellinstrumentation.VCSDirectory)
 	if err := os.Mkdir(guard, 0o700); err != nil {
 		t.Fatal(err)
 	}

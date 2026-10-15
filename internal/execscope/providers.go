@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -86,7 +87,7 @@ func (w *execShellWalker) provider(identity string, args []*syntax.Word) bool {
 			}
 		}
 	}
-	if provider == nil || w.authoredOnly && !w.program.Direct && !vcsguard.IsTool(key) {
+	if provider == nil || w.authoredOnly && !w.program.Direct && !commandanalysis.IsVCSTool(key) {
 		return false
 	}
 	if w.depth >= 3 {

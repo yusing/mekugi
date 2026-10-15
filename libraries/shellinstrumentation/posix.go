@@ -1,4 +1,6 @@
-package execsegment
+package shellinstrumentation
+
+// Source: internal/execsegment/sh.go:1:123@[465a8ff3]
 
 import (
 	"regexp"

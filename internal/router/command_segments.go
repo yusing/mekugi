@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/execsegment"
 )
 
@@ -47,7 +49,7 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 		return
 	}
 	script, ok := appServerShellScript(item.Command)
-	parts, split := execsegment.Split(script)
+	parts, split := shellinstrumentation.Split(script)
 	if !ok || !split || len(parts) != len(view.segments) || !view.complete || view.code != *item.ExitCode {
 		return
 	}
@@ -218,7 +220,7 @@ func readCommandSegments(store *mekugiReplayStore, workspace, turn string, item 
 		return nil, nil
 	}
 	script, ok := appServerShellScript(item.Command)
-	parts, split := execsegment.Split(script)
+	parts, split := shellinstrumentation.Split(script)
 	if !ok || !split {
 		return nil, nil
 	}

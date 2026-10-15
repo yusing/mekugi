@@ -8,14 +8,15 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/sudoask"
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"golang.org/x/sys/unix"
 )
 
 // A nested -c payload is available after the parent shell expands it. Rewrite
 // then exec the requested shell, preserving its positional arguments and flags.
 func guardShell(directory, target, argv0 string, defaultPath bool, args []string) int {
-	if !slices.Contains(vcsguard.Shells, filepath.Base(target)) {
+	if !slices.Contains(shellinstrumentation.Shells, filepath.Base(target)) {
 		return 1
 	}
 	helper, err := os.Executable()
@@ -56,7 +57,7 @@ func guardShell(directory, target, argv0 string, defaultPath bool, args []string
 		}
 	}
 	if commandString && payload >= 0 && payload < len(args) {
-		args[payload], err = vcsguard.RewriteCommands(args[payload], helper, directory, os.Getenv(sudoask.DirectoryEnvironment), os.Getenv(vcsguard.ItemEnvironment))
+		args[payload], err = shellinstrumentation.RewriteCommands(args[payload], helper, directory, os.Getenv(sudoask.DirectoryEnvironment), os.Getenv(shellinstrumentation.ItemEnvironment))
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -65,8 +66,8 @@ func guardShell(directory, target, argv0 string, defaultPath bool, args []string
 	environment := guardEnvironment(real)
 	// Script files are not rewritten; their descendant PATH guards still
 	// belong to this host invocation.
-	if item := os.Getenv(vcsguard.ItemEnvironment); item != "" {
-		environment = append(environment, vcsguard.ItemEnvironment+"="+item)
+	if item := os.Getenv(shellinstrumentation.ItemEnvironment); item != "" {
+		environment = append(environment, shellinstrumentation.ItemEnvironment+"="+item)
 	}
 	if err := unix.Exec(real, append([]string{argv0}, args...), environment); err != nil {
 		fmt.Fprintln(os.Stderr, err)

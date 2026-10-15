@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -59,7 +61,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 					}
 					body = quoteShellWord(executable) + " id"
 					startup = filepath.Join(real, "bash-env")
-					if err := os.WriteFile(startup, []byte(vcsguard.Functions(directory, []string{executable}, []string{"sudo"})), 0o600); err != nil {
+					if err := os.WriteFile(startup, []byte(shellinstrumentation.Functions(directory, []string{executable}, []string{"sudo"})), 0o600); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -73,13 +75,13 @@ func TestSudoUnlockDialog(t *testing.T) {
 				if tc.shell == "sh" {
 					script = "env -i " + script
 				}
-				script, err = vcsguard.RewriteCommands(script, helper, "", directory, "cmd")
+				script, err = shellinstrumentation.RewriteCommands(script, helper, "", directory, "cmd")
 				if err != nil {
 					t.Fatal(err)
 				}
 				cmd = exec.Command(execTrackShellExecutable(t, tc.shell), "-c", script)
 			}
-			cmd.Env = []string{"PATH=" + directory + ":" + real + ":" + execTrackPath(), "CODEX_THREAD_ID=main", vcsguard.ItemEnvironment + "=cmd"}
+			cmd.Env = []string{"PATH=" + directory + ":" + real + ":" + execTrackPath(), "CODEX_THREAD_ID=main", shellinstrumentation.ItemEnvironment + "=cmd"}
 			if startup != "" {
 				cmd.Env = append(cmd.Env, "BASH_ENV="+startup)
 			}

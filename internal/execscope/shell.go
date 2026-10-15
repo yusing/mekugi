@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -745,7 +747,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 		w.loseDirectory()
 		return
 	}
-	if vcsguard.IsTool(identity) {
+	if commandanalysis.IsVCSTool(identity) {
 		w.vcsOrigin = w.program.Label
 		values, literal := shellsyntax.Args(args)
 		w.program.VCS = !literal || vcsguard.WorktreeWrites(append([]string{identity}, values...))

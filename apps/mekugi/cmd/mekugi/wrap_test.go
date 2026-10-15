@@ -17,8 +17,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
@@ -124,7 +125,7 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 // Discover installed native shells without live session guards.
 func frontendFixtureShell(name string) (string, error) {
 	for _, directory := range filepath.SplitList(os.Getenv("PATH")) {
-		if filepath.Base(directory) == vcsguard.Directory {
+		if filepath.Base(directory) == shellinstrumentation.VCSDirectory {
 			continue
 		}
 		candidate, err := filepath.Abs(filepath.Join(directory, name))
@@ -851,14 +852,14 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$3\" > \"$MEKUGI_TEST_TRACK_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, "CODEX_THREAD_ID=outer-thread", execsegment.Guard + "=1", execsegment.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, "CODEX_THREAD_ID=outer-thread", shellinstrumentation.Guard + "=1", shellinstrumentation.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(environment, "PATH="+frontend+":"+sudoask.Path(frontend)+":"+os.Getenv("PATH")) {
 		t.Fatalf("unguarded environment = %q", environment)
 	}
-	if slices.Contains(environment, execsegment.Guard+"=1") || !slices.Contains(environment, execsegment.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {
+	if slices.Contains(environment, shellinstrumentation.Guard+"=1") || !slices.Contains(environment, shellinstrumentation.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {
 		t.Fatalf("new session inherited shell tracking state: %q", environment)
 	}
 	if slices.Contains(environment, "CODEX_THREAD_ID=outer-thread") {
@@ -902,7 +903,7 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 
 func TestFrontendNestedGuardOptOut(t *testing.T) {
 	root := t.TempDir()
-	outer, inner, real := filepath.Join(root, "outer", "bin"), filepath.Join(root, "inner", "bin"), filepath.Join(root, "user", vcsguard.Directory)
+	outer, inner, real := filepath.Join(root, "outer", "bin"), filepath.Join(root, "inner", "bin"), filepath.Join(root, "user", shellinstrumentation.VCSDirectory)
 	for _, path := range []string{outer, inner, real} {
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)

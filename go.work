@@ -10,6 +10,7 @@ use (
 	./libraries/outputbudget
 	./libraries/pathdisplay
 	./libraries/persistence
+	./libraries/shellinstrumentation
 	./libraries/sourceanalysis
 	./modules/boundedcommand
 	./modules/fileread

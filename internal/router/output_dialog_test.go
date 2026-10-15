@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/execsegment"
@@ -20,7 +22,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{string(command), execsegment.ShScript("/private/exec-track.sh", string(command))} {
+	for _, command := range []string{string(command), shellinstrumentation.ShScript("/private/exec-track.sh", string(command))} {
 		output := new(activityui.Retention).New()
 		output.Write("build failed\n")
 		output.Finish(nil, new(2))

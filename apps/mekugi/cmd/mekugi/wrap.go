@@ -14,10 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
@@ -184,7 +186,7 @@ func wrapCodex(frontends *composition.Runtime, ctx context.Context, routerArgs, 
 				if value, ok := strings.CutPrefix(entry, sudoask.DirectoryEnvironment+"="); ok {
 					sudoDirectory = value
 				}
-				if value, ok := strings.CutPrefix(entry, execsegment.ShTrackerEnvironment+"="); ok {
+				if value, ok := strings.CutPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"="); ok {
 					tracker = value
 				}
 			}
@@ -338,7 +340,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	var inheritedGuards []string
 	if userBashEnvSet && filepath.Base(previous) == "frontend-bash-env" {
 		if data, err := os.ReadFile(previous); err == nil && strings.HasPrefix(string(data), frontendBashEnvMarker) {
-			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), vcsguard.Directory), sudoask.Path(filepath.Join(filepath.Dir(previous), "bin")))
+			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), shellinstrumentation.VCSDirectory), sudoask.Path(filepath.Join(filepath.Dir(previous), "bin")))
 			previous = userBashEnv
 		}
 	}
@@ -371,7 +373,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		if err := os.MkdirAll(guardDirectory, 0o700); err != nil {
 			return nil, fmt.Errorf("prepare VCS write guard: %w", err)
 		}
-		for _, tool := range slices.Concat(vcsguard.Tools, vcsguard.Shells) {
+		for _, tool := range slices.Concat(commandanalysis.VCSTools, shellinstrumentation.Shells) {
 			if err := os.Symlink(helper, filepath.Join(guardDirectory, tool)); err != nil && !errors.Is(err, os.ErrExist) {
 				return nil, fmt.Errorf("prepare VCS write guard: %w", err)
 			}
@@ -384,28 +386,28 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
 	if guard {
 		guardDirectory, _ := vcsguard.Paths(directory)
-		startup += vcsguard.Functions(guardDirectory, vcsguard.KnownPaths(basePath, vcsguard.Tools), vcsguard.Tools)
+		startup += shellinstrumentation.Functions(guardDirectory, shellinstrumentation.KnownPaths(basePath, commandanalysis.VCSTools), commandanalysis.VCSTools)
 	}
 	if helper != "" {
 		tools := []string{"sudo"}
-		startup += vcsguard.Functions(sudoask.Path(directory), vcsguard.KnownPaths(basePath, tools), tools)
+		startup += shellinstrumentation.Functions(sudoask.Path(directory), shellinstrumentation.KnownPaths(basePath, tools), tools)
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, execsegment.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, execsegment.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=")
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=")
 	})
 	if helper != "" {
 		environment = append(environment, sudoask.DirectoryEnvironment+"="+sudoask.Path(directory))
 		socket, trackDirectory := router.ExecTrackPaths(directory)
 		tracker := filepath.Join(filepath.Dir(directory), "exec-track.bash")
-		if err := os.WriteFile(tracker, []byte(execsegment.Tracker(helper, socket, trackDirectory)), 0o600); err != nil {
+		if err := os.WriteFile(tracker, []byte(shellinstrumentation.Tracker(helper, socket, trackDirectory)), 0o600); err != nil {
 			return nil, fmt.Errorf("prepare command tracking: %w", err)
 		}
-		startup += execsegment.Hook(tracker)
+		startup += shellinstrumentation.Hook(tracker)
 		shTracker := filepath.Join(filepath.Dir(directory), "exec-track.sh")
-		if err := os.WriteFile(shTracker, []byte(execsegment.ShTracker(helper, socket, trackDirectory)), 0o600); err != nil {
+		if err := os.WriteFile(shTracker, []byte(shellinstrumentation.ShTracker(helper, socket, trackDirectory)), 0o600); err != nil {
 			return nil, fmt.Errorf("prepare sh command tracking: %w", err)
 		}
-		environment = append(environment, execsegment.ShTrackerEnvironment+"="+shTracker)
+		environment = append(environment, shellinstrumentation.ShTrackerEnvironment+"="+shTracker)
 	}
 	path := filepath.Join(filepath.Dir(directory), "frontend-bash-env")
 	if err := os.WriteFile(path, []byte(startup), 0o600); err != nil {
