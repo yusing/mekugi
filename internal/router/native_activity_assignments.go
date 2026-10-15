@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -54,7 +55,7 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 	}
 	var assignments []*activityAssignment
 	for _, item := range items {
-		text, ok := nativeAssignmentText(item, recipient)
+		text, ok := binding.NativeAssignmentText(item, recipient)
 		if !ok || strings.TrimSpace(text) == "" {
 			continue // Opaque tasks never become an inferred plaintext assignment.
 		}

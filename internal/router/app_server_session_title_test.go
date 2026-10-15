@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -106,7 +108,7 @@ func TestAppServerSessionTitleOldThreadIsolation(t *testing.T) {
 
 func TestAppServerSessionTitleManualRenameWinsGeneration(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.titleGenerator = newSessionTitleGenerator(t.Context(), nil)
+	u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 	u.titleGenerator.register(appServerThreadInfo{ID: "main"})
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Manual host title"}}`)
 	u.persistSessionTitle(sessionTitleUpdate{thread: "main", name: "Late generated title"})
@@ -117,13 +119,14 @@ func TestAppServerSessionTitleManualRenameWinsGeneration(t *testing.T) {
 
 func TestAppServerSessionTitleSkippedNamingPreservesHostMetadata(t *testing.T) {
 	u, wire := newAppServerTestUI()
-	u.titleGenerator = newSessionTitleGenerator(t.Context(), nil)
+	u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 	u.titleGenerator.register(appServerThreadInfo{ID: "main"})
 	u.titleUpdates = u.titleGenerator.updates
 	u.status, u.turn, u.draft = "Working", "active-turn", "unsent input"
 	u.setNotice("Existing host notice", false)
 	u.dirty = false
-	u.titleGenerator.observe("main", "First user message", nil, true)
+	u.titleGenerator.observeInput("main", responses.MustMarshalJSON("First user message"))
+	u.titleGenerator.completed("main", nil)
 	select {
 	case update := <-u.titleUpdates:
 		t.Fatalf("unavailable naming emitted update: %+v", update)
@@ -159,14 +162,14 @@ func TestAppServerSessionTitleComposerRename(t *testing.T) {
 		t.Run(fmt.Sprint(busy), func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.title = "Saved title"
-			u.titleGenerator = newSessionTitleGenerator(t.Context(), nil)
+			u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 			u.titleGenerator.register(appServerThreadInfo{ID: "main"})
 			if busy {
 				u.turn, u.status = "active-turn", "Working"
 			}
 			appServerTestKeys(t, u, "/title 修復 session title\r")
 			request := sessionTitleTestOne(t, wire)
-			if request.Params.ThreadID != "main" || request.Params.Name != "修復 session title" || u.draft != "" || u.title != "Saved title" || u.titleGenerator.needsPrompt("main") {
+			if request.Params.ThreadID != "main" || request.Params.Name != "修復 session title" || u.draft != "" || u.title != "Saved title" || u.titleGenerator.acceptCandidate("main") {
 				t.Fatalf("manual rename: request=%+v draft=%q saved=%q", request, u.draft, u.title)
 			}
 			if busy && (u.turn != "active-turn" || u.status != "Working") {
@@ -211,7 +214,7 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 		t.Run(method, func(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.thread, u.resumeThread = "", "saved"
-			u.titleGenerator = newSessionTitleGenerator(t.Context(), nil)
+			u.titleGenerator = newTestSessionNaming(t.Context(), nil)
 			appServerTestKeys(t, u, "/title First name\r/title Final name\r")
 			if wire.Len() != 0 || u.pendingTitle != "Final name" || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
 				t.Fatalf("pre-session title: pending=%q wire=%q", u.pendingTitle, wire.String())
@@ -226,14 +229,14 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 			if len(requests) != wantRequests || requests[0].Method != "thread/name/set" || requests[0].Params.ThreadID != "saved" || requests[0].Params.Name != "Final name" || requests[1].Method != "model/list" {
 				t.Fatalf("start title persistence: %+v", requests)
 			}
-			if u.pendingTitle != "" || u.titleGenerator.needsPrompt("saved") || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
+			if u.pendingTitle != "" || u.titleGenerator.acceptCandidate("saved") || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
 				t.Fatal("thread creation lost the manual title or enabled generation")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, requests[0].ID))
 			// Fresh process registration uses only the durable host name.
-			fresh := newSessionTitleGenerator(t.Context(), nil)
+			fresh := newTestSessionNaming(t.Context(), nil)
 			fresh.register(appServerThreadInfo{ID: "saved", Name: u.title})
-			if fresh.needsPrompt("saved") || !fresh.named("saved", nil) {
+			if fresh.acceptCandidate("saved") {
 				t.Fatal("fresh process would regenerate the saved manual title")
 			}
 		})

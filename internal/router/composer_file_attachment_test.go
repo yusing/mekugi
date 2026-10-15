@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -60,7 +62,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	}
 	providerParts := []map[string]any{{"type": "input_text", "text": input[0].Text}, {"type": "input_image", "image_url": "data:image/png;base64,test"}, {"type": "input_text", "text": input[1].Text}}
 	raw := responses.MustMarshalJSON([]any{map[string]any{"type": "message", "role": "user", "content": providerParts}})
-	if question := requestUserTextFromInput(raw, "/root", false); question != draft.text {
+	if question := binding.SubmittedUserText(raw, "/root", false); question != draft.text {
 		t.Fatalf("attachment became naming text: %q", question)
 	}
 	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}

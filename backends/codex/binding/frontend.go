@@ -13,6 +13,7 @@ type Registrar interface {
 	Frontend(command.Spec) error
 	InputProjection(InputProjection) error
 	Guidance(Guidance) error
+	SessionNaming(SessionNaming) error
 }
 
 type Binder interface {
@@ -30,11 +31,15 @@ type Registry struct {
 	commands    []command.Spec
 	projections []InputProjection
 	guidance    *Guidance
+	naming      *SessionNaming
 }
 
 func (r *Registry) Capability(mechanism capability.Mechanism) capability.Result {
 	if mechanism == capability.ExecutableFrontend {
 		return capability.Result{State: capability.Available, Reason: "compiled frontend registration"}
+	}
+	if mechanism == capability.ThreadNaming {
+		return capability.Result{State: capability.Available, Reason: "logical thread naming observations and operation admission"}
 	}
 	if mechanism == capability.GuidanceProjection {
 		return capability.Result{State: capability.Available, Reason: "phased request guidance and frontend assembly"}

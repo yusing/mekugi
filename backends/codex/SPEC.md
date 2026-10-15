@@ -53,6 +53,17 @@ The same registration assembles selected frontend descriptions and refreshes or
 removes its marked tool-description section. Duplicate or incomplete registrations
 fail activation. No registration means these effects are absent.
 
+## Logical-thread naming observations
+
+A composed naming factory supplies one typed policy callback bundle per accepted
+Main thread scope. Application-owned scopes survive view switches until invocation
+shutdown. The callbacks receive metadata, name changes, original model input, and
+successful upstream-exchange completion. Atomic admission returns an operation;
+the application runs it with the triggering exchange's bound inference adapter
+and delivers its candidate with its original thread identity. Candidate policy is
+rechecked before host persistence. No registration means no automatic naming.
+Manual name-save control and host-title presentation remain application-owned.
+
 ## Retained rollout evidence
 
 The rollout reader accepts an absolute path supplied for an identified host

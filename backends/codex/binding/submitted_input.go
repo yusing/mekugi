@@ -1,4 +1,5 @@
-package router
+// Source: internal/router/request_user_text.go:1:160@[e2ee92a9] submitted input identity.
+package binding
 
 import (
 	"encoding/json"
@@ -10,7 +11,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAttachedFiles bool) string {
+func SubmittedUserText(raw json.RawMessage, recipient string, includeAttachedFiles bool) string {
 	input, err := responses.DecodeInput(raw)
 	if err != nil {
 		return ""
@@ -23,7 +24,7 @@ func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAtta
 		if !ok {
 			continue
 		}
-		if text, task := nativeAssignmentText(item.Fields, recipient); task {
+		if text, task := NativeAssignmentText(item.Fields, recipient); task {
 			return text
 		}
 		if item.Role != "user" || item.Type != "" && item.Type != "message" {
@@ -93,7 +94,7 @@ func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAtta
 // and codex-rs/core/src/context/inter_agent_message.rs InterAgentMessage::body.
 // Only a native NEW_TASK addressed to this child is an assignment. Ordinary
 // messages and completion notifications must not replace the question source.
-func nativeAssignmentText(item map[string]json.RawMessage, recipient string) (string, bool) {
+func NativeAssignmentText(item map[string]json.RawMessage, recipient string) (string, bool) {
 	if !strings.HasPrefix(recipient, "/root/") || strings.ContainsAny(recipient, "\r\n\x00") ||
 		responses.StringField(item, "type") != "agent_message" || responses.StringField(item, "recipient") != recipient {
 		return "", false

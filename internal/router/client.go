@@ -52,7 +52,7 @@ var (
 
 type providerClient struct {
 	thirdPartyOnly    bool
-	titleGenerator    *sessionTitleGenerator
+	titleGenerator    *sessionNaming
 	serviceTiers      *serviceTierSettings
 	websockets        *providerWebSockets
 	opencode          map[string]*grokClient

@@ -35,6 +35,8 @@ Module-owned contracts live with their implementation:
 [session history](../../modules/sessionhistory/SPEC.md),
 [completed command-segment reports](../../modules/commandsegments/SPEC.md), and
 [bounded commands](../../modules/boundedcommand/SPEC.md).
+[Session naming](../../modules/sessionnaming/SPEC.md) owns optional automatic title
+policy; the native UI contract owns manual name-save interaction and rendering.
 
 ## Inventory
 

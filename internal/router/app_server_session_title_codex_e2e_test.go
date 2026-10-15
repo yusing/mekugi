@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
@@ -71,7 +73,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 				w.WriteHeader(400)
 				return
 			}
-			if request.reasoningEffort() != "medium" || requestUserTextFromInput(request.fields["input"], "/root", true) != "Explain native session naming" {
+			if request.reasoningEffort() != "medium" || binding.SubmittedUserText(request.fields["input"], "/root", true) != "Explain native session naming" {
 				t.Error("naming request lost medium effort or first prompt")
 			}
 			close(namingStarted)
@@ -94,7 +96,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	// Unblock a gated upstream before httptest.Server.Close on any failure.
 	defer release()
 	provider := newProviderClient(upstream.URL, upstream.Client())
-	generator := newSessionTitleGenerator(ctx, provider)
+	generator := newTestSessionNaming(ctx, provider)
 	provider.titleGenerator = generator
 	handler := responsesHandler(ctx, time.Minute, provider, nil, nil)
 	threads := make(chan string, 8)
@@ -115,7 +117,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 		cmd.Env, cmd.Dir = environment, workspace
 		return cmd
 	}
-	start := func(resume string, naming *sessionTitleGenerator) (func(string, func(string) bool), func(string), func()) {
+	start := func(resume string, naming *sessionNaming) (func(string, func(string) bool), func(string), func()) {
 		t.Helper()
 		runCtx, stop := context.WithCancel(ctx)
 		outer, inner, err := pty.Open()
@@ -246,11 +248,11 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	await("host-confirmed Main title", headerHasTitle)
 	quit()
 	// A fresh generator and host process restore only durable title metadata.
-	fresh := newSessionTitleGenerator(ctx, provider)
+	fresh := newTestSessionNaming(ctx, provider)
 	provider.titleGenerator = fresh
 	awaitResume, sendResume, quitResume := start(thread, fresh)
 	awaitResume("persisted title after fresh app-server resume", func(frame string) bool { return headerHasTitle(frame) && strings.Contains(frame, "Ready") })
-	if fresh.needsPrompt(thread) || !fresh.named(thread, nil) {
+	if fresh.acceptCandidate(thread) {
 		t.Fatal("fresh process remained eligible for title generation")
 	}
 	if manual {

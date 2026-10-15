@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/yusing/mekugi/modules/agentguidance"
+	"github.com/yusing/mekugi/modules/sessionnaming"
 
 	"github.com/yusing/mekugi/modules/outputdeduplication"
 
@@ -34,6 +35,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c.Add(symbolquery.Module, func() symbolquery.Deps { return symbolquery.Deps{} })
 	c.Add(outputdeduplication.Module, func() outputdeduplication.Deps { return outputdeduplication.Deps{} })
 	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{} })
+	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
 	binder := new(binding.Registry)
 	runtime, err := c.Activate(ctx, binder)
 	if err != nil {

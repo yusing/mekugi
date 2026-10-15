@@ -71,7 +71,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
@@ -190,7 +190,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	var frontendDirectory string
 	titleCtx, cancelTitles := context.WithCancel(ctx)
 	defer cancelTitles()
-	provider.titleGenerator = newSessionTitleGenerator(titleCtx, provider)
+	provider.titleGenerator = newSessionNaming(titleCtx, provider, naming)
 	if issues != nil {
 		issues.persistFailures = true
 		issues.history = service
@@ -228,7 +228,9 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			projections = nil
 		}
 		mekugiCalls = newMekugiProxy(registry, projections)
-		provider.titleGenerator.usage = mekugiCalls.usage
+		if provider.titleGenerator != nil {
+			provider.titleGenerator.usage = mekugiCalls.usage
+		}
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
 			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}
@@ -505,7 +507,7 @@ func responsesHandler(
 	mekugiCalls *mekugiProxy,
 ) http.HandlerFunc {
 	var serviceTiers *serviceTierSettings
-	var titleGenerator *sessionTitleGenerator
+	var titleGenerator *sessionNaming
 	if client, ok := provider.(*providerClient); ok {
 		serviceTiers = client.serviceTiers
 		titleGenerator = client.titleGenerator

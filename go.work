@@ -24,6 +24,7 @@ use (
 	./modules/fileread
 	./modules/outputdeduplication
 	./modules/outputrecovery
+	./modules/sessionnaming
 	./modules/sessionhistory
 	./modules/sourceoutline
 	./modules/symbolquery

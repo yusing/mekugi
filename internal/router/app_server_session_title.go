@@ -43,7 +43,7 @@ func (u *appServerUI) renameSessionTitle(name string) {
 	}
 	u.titleRenames[u.thread] = name
 	// Stop naming before persistence, including a result already in flight.
-	u.titleGenerator.named(u.thread, &name)
+	u.titleGenerator.nameChanged(u.thread, name)
 	u.flushTitleRename(u.thread)
 }
 
@@ -64,7 +64,7 @@ func (u *appServerUI) flushTitleRename(thread string) {
 
 // Automatic naming results are displayed only after host confirmation.
 func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
-	if u.titleRenames[update.thread] != "" || u.titleGenerator.named(update.thread, nil) {
+	if u.titleRenames[update.thread] != "" || !u.titleGenerator.acceptCandidate(update.thread) {
 		return // A host rename won the race against automatic naming.
 	}
 	u.requestSessionTitle(update, false)
@@ -120,7 +120,7 @@ func (u *appServerUI) confirmSessionTitle(thread, name string) {
 		return
 	}
 	if u.titleGenerator != nil {
-		u.titleGenerator.named(thread, &name)
+		u.titleGenerator.nameChanged(thread, name)
 	}
 	if thread == u.thread {
 		u.title, u.dirty = name, true

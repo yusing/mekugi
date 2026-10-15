@@ -78,7 +78,7 @@ type appServerUI struct {
 	title                     string            // Host-confirmed thread name, independent of naming work.
 	pendingTitle              string            // Manual name entered before the host thread exists.
 	titleRenames              map[string]string // Latest manual name awaiting host confirmation, by thread.
-	titleGenerator            *sessionTitleGenerator
+	titleGenerator            *sessionNaming
 	titleUpdates              <-chan sessionTitleUpdate
 	titleRequests             map[string]sessionTitleRequest
 	btw                       *appServerBTW
@@ -177,7 +177,7 @@ func StartAppServerUI(service *history.Service, ctx context.Context, cmd *exec.C
 }
 
 // Codex approval policy and the invocation-local VCS guard are independent.
-func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator, approvals bool) (func() error, error) {
+func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, vcsguard.HookEnvironment+"="); ok {

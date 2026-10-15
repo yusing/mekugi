@@ -108,7 +108,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			args := []string{"--max-tokens", "3000"}
 			for range tuples {
-				args = append(args, "refs", "internal/router/session_title_generate.go", "generate")
+				args = append(args, "refs", "internal/router/naming_inference.go", "namingCompletion")
 			}
 			for b.Loop() {
 				cmd := exec.CommandContext(b.Context(), registry.frontends["msymbol"], args...)
@@ -119,9 +119,8 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 					b.Fatalf("symbol frontend: %v\n%s", err, output)
 				}
 				text := string(output)
-				if strings.Count(text, "func (g *sessionTitleGenerator) generate(") != tuples ||
-					strings.Count(text, "_, _ = g.generate(t.Context(), \"main\", \"Question\", nil)") != tuples ||
-					!strings.Contains(text, "session_title_generate_test.go") {
+				if strings.Count(text, "func namingCompletion(") != tuples ||
+					!strings.Contains(text, "session_naming_fixture_test.go") {
 					b.Fatalf("symbol frontend lost declaration or test references:\n%s", text)
 				}
 			}

@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -494,7 +496,7 @@ func TestAppServerSiblingInputProvenanceNativeCodexE2E(t *testing.T) {
 				if mixed {
 					wantQuestion = payload
 				}
-				if question := requestUserTextFromInput(responses.MustMarshalJSON(request.Input), provider.recipient, false); question != wantQuestion {
+				if question := binding.SubmittedUserText(responses.MustMarshalJSON(request.Input), provider.recipient, false); question != wantQuestion {
 					t.Fatalf("native message replaced the user request: %q", question)
 				}
 				provider.mu.Lock()

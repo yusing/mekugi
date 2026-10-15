@@ -161,6 +161,14 @@ func (r *moduleRegistrar) Guidance(guidance binding.Guidance) error {
 	return nil
 }
 
+func (r *moduleRegistrar) SessionNaming(naming binding.SessionNaming) error {
+	if err := r.binder.SessionNaming(naming); err != nil {
+		return err
+	}
+	r.runtime.Naming = &naming
+	return nil
+}
+
 type Gap struct {
 	Module    module.ID
 	Mechanism capability.Mechanism
@@ -168,6 +176,7 @@ type Gap struct {
 }
 
 type Runtime struct {
+	Naming           *binding.SessionNaming
 	Guidance         *binding.Guidance
 	InputProjections []binding.InputProjection
 	Changes          changes.Service

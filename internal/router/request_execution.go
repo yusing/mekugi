@@ -21,7 +21,7 @@ type responseProvider interface {
 
 // requestExecutor owns the services used to execute a request.
 type requestExecutor struct {
-	titleGenerator *sessionTitleGenerator
+	titleGenerator *sessionNaming
 	serviceTiers   *serviceTierSettings
 	provider       responseProvider
 	output         io.Writer
@@ -138,8 +138,8 @@ func (a *requestAttempt) prepare() error {
 		capturer.ObserveRequestKind(a.startCtx, string(a.metadata.RequestKind))
 	}
 	a.threadID = codexThreadID(a.headers)
-	if a.metadataValid && a.metadata.RequestKind == responses.Turn && a.executor.titleGenerator.needsPrompt(a.threadID) {
-		a.executor.titleGenerator.observe(a.threadID, requestUserTextFromInput(a.request.fields["input"], "/root", true), a.headers, false)
+	if a.metadataValid && a.metadata.RequestKind == responses.Turn {
+		a.executor.titleGenerator.observeInput(a.threadID, a.request.fields["input"])
 	}
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
@@ -522,7 +522,7 @@ func (a *requestAttempt) observeTitleSuccess() {
 	if a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
 		a.response.StatusCode >= 200 && a.response.StatusCode < 300 &&
 		a.finalization.upstreamTerminalState == responseTerminalCompleted {
-		a.executor.titleGenerator.observe(a.threadID, "", a.headers, true)
+		a.executor.titleGenerator.completed(a.threadID, a.headers)
 	}
 }
 

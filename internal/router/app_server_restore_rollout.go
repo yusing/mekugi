@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -138,7 +140,7 @@ func readRestoredRollout(info appServerThreadInfo, agent string) restoredRollout
 			}
 			p := message.Payload
 			sender := responses.StringField(p, "author")
-			if text, ok := nativeAssignmentText(p, agent); ok {
+			if text, ok := binding.NativeAssignmentText(p, agent); ok {
 				if strings.TrimSpace(text) == "" {
 					continue // Opaque tasks never become an inferred plaintext assignment.
 				}

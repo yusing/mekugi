@@ -13,6 +13,10 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
@@ -22,7 +26,7 @@ func sessionTitleAuthHeaders() http.Header {
 	return http.Header{"Authorization": {"Bearer test"}, chatGPTAccountIDHeader: {"account"}}
 }
 
-func awaitSessionTitle(t *testing.T, g *sessionTitleGenerator) sessionTitleUpdate {
+func awaitSessionTitle(t *testing.T, g *sessionNaming) sessionTitleUpdate {
 	t.Helper()
 	select {
 	case update := <-g.updates:
@@ -46,7 +50,7 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 				if parsed.model() != "gpt-6-luna" || parsed.reasoningEffort() != "medium" || !parsed.streamResponse {
 					t.Errorf("naming settings: %s", body)
 				}
-				if strings.Contains(string(body), "tools") || requestUserTextFromInput(parsed.fields["input"], "/root", true) != "First request" {
+				if strings.Contains(string(body), "tools") || binding.SubmittedUserText(parsed.fields["input"], "/root", true) != "First request" {
 					t.Errorf("naming input: %s", body)
 				}
 				if headers.Get("Authorization") != "Bearer test" || headers.Get(chatGPTAccountIDHeader) != "account" || headers.Get(codexTurnMetadataHeader) != "" || headers.Get(threadIDHeader) != "" || cacheKey != "" {
@@ -57,13 +61,14 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 				}
 				return serverHTTPResponse(generatedTitleResponse), nil
 			})
-			g := newSessionTitleGenerator(t.Context(), provider)
+			g := newTestSessionNaming(t.Context(), provider)
 			g.register(appServerThreadInfo{ID: "main"})
 			headers := sessionTitleAuthHeaders()
 			headers.Set(codexTurnMetadataHeader, "private-turn")
 			headers.Set(threadIDHeader, "main")
-			g.observe("main", "First request", headers, false)
-			g.observe("main", "Later request", headers, true)
+			g.observeInput("main", responses.MustMarshalJSON("First request"))
+			g.observeInput("main", responses.MustMarshalJSON("Later request"))
+			g.completed("main", headers)
 			update := awaitSessionTitle(t, g)
 			if update.name != "Improve session naming" || update.thread != "main" {
 				t.Fatalf("update = %+v", update)
@@ -75,7 +80,7 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 func TestSessionTitleGenerationEligibility(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var calls atomic.Int32
-		g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+		g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 			calls.Add(1)
 			return serverHTTPResponse(generatedTitleResponse), nil
 		}))
@@ -83,19 +88,22 @@ func TestSessionTitleGenerationEligibility(t *testing.T) {
 		g.register(appServerThreadInfo{ID: "resumed", Turns: []appServerHistoryTurn{{ID: "old"}}})
 		g.register(appServerThreadInfo{ID: "fork", Name: "Inherited title"})
 		for _, thread := range []string{"saved", "resumed", "fork", "child", "side"} {
-			g.observe(thread, "Question", sessionTitleAuthHeaders(), true)
+			g.observeInput(thread, responses.MustMarshalJSON("Question"))
+			g.completed(thread, sessionTitleAuthHeaders())
 		}
 		synctest.Wait()
 		g.register(appServerThreadInfo{ID: "fresh"})
-		g.observe("fresh", "Question", sessionTitleAuthHeaders(), false)
+		g.observeInput("fresh", responses.MustMarshalJSON("Question"))
 		if calls.Load() != 0 {
 			t.Fatal("generation preceded successful upstream completion")
 		}
-		g.observe("fresh", "Question", sessionTitleAuthHeaders(), true)
+		g.observeInput("fresh", responses.MustMarshalJSON("Question"))
+		g.completed("fresh", sessionTitleAuthHeaders())
 		awaitSessionTitle(t, g)
 		g.register(appServerThreadInfo{ID: "fresh"})
 		for range 3 {
-			g.observe("fresh", "Follow-up", sessionTitleAuthHeaders(), true)
+			g.observeInput("fresh", responses.MustMarshalJSON("Follow-up"))
+			g.completed("fresh", sessionTitleAuthHeaders())
 		}
 		synctest.Wait()
 		if calls.Load() != 1 {
@@ -112,10 +120,10 @@ func TestSessionTitleGenerationFailures(t *testing.T) {
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Partial\"}\n\n",
 	} {
 		t.Run(body, func(t *testing.T) {
-			g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+			g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 				return serverHTTPResponse(body), nil
 			}))
-			if _, err := g.generate(t.Context(), "main", "Question", nil); err == nil {
+			if _, err := runNamingOperation(t.Context(), g, "main", "Question"); err == nil {
 				t.Fatal("unsuccessful naming response accepted")
 			}
 		})
@@ -123,13 +131,14 @@ func TestSessionTitleGenerationFailures(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		started := make(chan struct{})
-		g := newSessionTitleGenerator(ctx, serverProviderFunc(func(_, responseCtx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+		g := newTestSessionNaming(ctx, serverProviderFunc(func(_, responseCtx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 			close(started)
 			<-responseCtx.Done()
 			return nil, responseCtx.Err()
 		}))
 		g.register(appServerThreadInfo{ID: "main"})
-		g.observe("main", "Question", sessionTitleAuthHeaders(), true)
+		g.observeInput("main", responses.MustMarshalJSON("Question"))
+		g.completed("main", sessionTitleAuthHeaders())
 		<-started
 		cancel()
 		synctest.Wait()
@@ -144,7 +153,7 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 		for _, status := range []string{"completed", "failed", "incomplete"} {
 			t.Run(fmt.Sprintf("%t/%s", stream, status), func(t *testing.T) {
 				var calls atomic.Int32
-				g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+				g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 					calls.Add(1)
 					return serverHTTPResponse(generatedTitleResponse), nil
 				}))
@@ -170,10 +179,7 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 						t.Fatal("wrong title update", update)
 					}
 				} else {
-					g.mu.Lock()
-					started := g.jobs["main"].started
-					g.mu.Unlock()
-					if started || calls.Load() != 0 {
+					if g.scope("main").Admit() == nil || calls.Load() != 0 {
 						t.Fatal("failed upstream request triggered title generation")
 					}
 				}
@@ -185,15 +191,15 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 func TestSessionTitleNewHostMetadataStopsNaming(t *testing.T) {
 	for _, resumed := range []bool{false, true} {
 		t.Run(fmt.Sprint(resumed), func(t *testing.T) {
-			g := newSessionTitleGenerator(t.Context(), nil)
+			g := newTestSessionNaming(t.Context(), nil)
 			g.register(appServerThreadInfo{ID: "main"})
 			if resumed {
 				g.register(appServerThreadInfo{ID: "main", Name: "Saved elsewhere"})
 			} else {
 				name := "Manual name"
-				g.named("main", &name)
+				g.nameChanged("main", name)
 			}
-			if g.needsPrompt("main") {
+			if g.acceptCandidate("main") {
 				t.Fatal("host-named thread remained eligible for automatic naming")
 			}
 		})
@@ -233,7 +239,7 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	}))
 	defer upstream.Close()
 	provider := newProviderClient(upstream.URL, upstream.Client())
-	g := newSessionTitleGenerator(t.Context(), provider)
+	g := newTestSessionNaming(t.Context(), provider)
 	provider.titleGenerator = g
 	g.register(appServerThreadInfo{ID: "main"})
 	handler := responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, nil)
@@ -271,7 +277,7 @@ func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_image", "image_url": "image"}}},
 	}))
 	raw := string(request.fields["input"])
-	if got := requestUserTextFromInput(request.fields["input"], "/root", true); got != "" {
+	if got := binding.SubmittedUserText(request.fields["input"], "/root", true); got != "" {
 		t.Fatalf("media-only request selected old attachment: %q", got)
 	}
 	if string(request.fields["input"]) != raw {
@@ -282,7 +288,7 @@ func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
 func TestSessionTitleUsageAccounting(t *testing.T) {
 	for _, transportFailure := range []bool{false, true} {
 		t.Run(fmt.Sprint(transportFailure), func(t *testing.T) {
-			g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+			g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 				if transportFailure {
 					return nil, errors.New("connection ended after admission")
 				}
@@ -290,7 +296,7 @@ func TestSessionTitleUsageAccounting(t *testing.T) {
 				return serverHTTPResponse(response), nil
 			}))
 			g.usage = newThreadUsage()
-			_, _ = g.generate(t.Context(), "main", "Question", nil)
+			_, _ = runNamingOperation(t.Context(), g, "main", "Question")
 			report, ok := g.usage.snapshot("main")
 			if !ok || !strings.Contains(report.model, "gpt-6-luna medium") {
 				t.Fatalf("missing naming accounting: %+v", report)
@@ -329,11 +335,13 @@ func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
 				if tc.noProvider {
 					provider = nil
 				}
-				g := newSessionTitleGenerator(t.Context(), provider)
+				g := newTestSessionNaming(t.Context(), provider)
 				g.usage = newThreadUsage()
 				g.register(appServerThreadInfo{ID: "main"})
-				g.observe("main", "First request", tc.headers, true)
-				g.observe("main", "Later request", sessionTitleAuthHeaders(), true)
+				g.observeInput("main", responses.MustMarshalJSON("First request"))
+				g.completed("main", tc.headers)
+				g.observeInput("main", responses.MustMarshalJSON("Later request"))
+				g.completed("main", sessionTitleAuthHeaders())
 				synctest.Wait()
 				if calls.Load() != 0 || len(g.updates) != 0 {
 					t.Fatal("skipped naming called a provider or emitted a title update")
@@ -365,7 +373,7 @@ func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				var calls atomic.Int32
-				g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+				g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
 					calls.Add(1)
 					request, _ := parseResponsesRequest(body)
 					if request.model() != sessionTitleModel || request.reasoningEffort() != "medium" {
@@ -379,9 +387,11 @@ func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
 					return response, nil
 				}))
 				g.register(appServerThreadInfo{ID: "main"})
-				g.observe("main", "Question", sessionTitleAuthHeaders(), true)
+				g.observeInput("main", responses.MustMarshalJSON("Question"))
+				g.completed("main", sessionTitleAuthHeaders())
 				synctest.Wait()
-				g.observe("main", "Follow-up", sessionTitleAuthHeaders(), true)
+				g.observeInput("main", responses.MustMarshalJSON("Follow-up"))
+				g.completed("main", sessionTitleAuthHeaders())
 				synctest.Wait()
 				if calls.Load() != 1 || len(g.updates) != 0 {
 					t.Fatal("unavailable Luna emitted an update, retried, or fell back")
@@ -394,7 +404,7 @@ func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
 func TestSessionTitleThirdPartyRequestWithoutCodexAuth(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var namingCalls atomic.Int32
-		g := newSessionTitleGenerator(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+		g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 			namingCalls.Add(1)
 			return serverHTTPResponse(generatedTitleResponse), nil
 		}))
@@ -427,7 +437,7 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	started, release := make(chan struct{}), make(chan struct{})
-	g := newSessionTitleGenerator(ctx, serverProviderFunc(func(_, responseCtx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+	g := newTestSessionNaming(ctx, serverProviderFunc(func(_, responseCtx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 		close(started)
 		select {
 		case <-release:
@@ -438,7 +448,8 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	}))
 	u.titleGenerator = g
 	g.register(appServerThreadInfo{ID: "main"})
-	g.observe("main", "First request", sessionTitleAuthHeaders(), true)
+	g.observeInput("main", responses.MustMarshalJSON("First request"))
+	g.completed("main", sessionTitleAuthHeaders())
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):

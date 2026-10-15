@@ -53,6 +53,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Shell/source execution-scope classification | `./libraries/commandanalysis/... ./libraries/sourceanalysis/sourceparse ./internal/execscope`, plus router observation, native trace, preview, and display tests |
 | Provider credentials and model metadata | `./providers/grok/... ./providers/opencode/...`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, and accounting consumers |
 | Provider request encoding and stream normalization | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router Grok/OpenCode integration and capture tests |
+| Optional session naming | `./modules/sessionnaming/...`, plus router `SessionTitle`, `NativeSessionTitle`, `TerminalTitle`, and submitted-assignment consumers; installed persistence/resume cases in `app_server_session_title_codex_e2e_test.go` |
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
 | Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |
 | Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./internal/vcsguard ./internal/router -run 'TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestVCSGuardHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
