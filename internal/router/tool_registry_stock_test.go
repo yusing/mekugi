@@ -25,7 +25,7 @@ func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 		found := false
 		for _, contribution := range registry.ordered {
 			if contribution.Name == name {
-				found = contribution.NativeExecutor == name && !contribution.Builtin
+				found = contribution.NativeExecutor == name
 			}
 		}
 		if !found {

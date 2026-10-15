@@ -69,7 +69,7 @@ func buildToolRegistryAt(
 	var contributions []toolContribution
 	if diagnose {
 		contributions = append(contributions, toolContribution{
-			Name: reportIssueToolName, Builtin: true,
+			Name: reportIssueToolName,
 		})
 	}
 	var validationErrors []error
@@ -108,7 +108,6 @@ func buildToolRegistryAt(
 	guidanceHash := sha256.Sum256([]byte(frontendGuidance))
 	manifest := toolWorkerManifest{
 		ReplayDirectory: replayDirectory,
-		HookDirectory:   dataDirectory,
 		Version:         2,
 		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
 		Tools:           slices.Clone(contributions),
@@ -150,7 +149,6 @@ func buildToolRegistryAt(
 	return &toolRegistry{
 		SnapshotDir:       snapshotDirectory,
 		frontendDirectory: filepath.Join(snapshotDirectory, "bin"),
-		runtimeDirectory:  runtimeDirectory,
 		ordered:           contributions,
 		frontendGuidance:  frontendGuidance,
 		wrappers:          wrappers,
