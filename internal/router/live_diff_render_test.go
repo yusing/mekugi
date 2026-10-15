@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestLiveDiffNativeRows(t *testing.T) {
@@ -163,7 +164,7 @@ func TestLiveDiffNativeErrors(t *testing.T) {
 	if err == nil || len(render.Lines) != 0 {
 		t.Fatalf("malformed capture returned a partial successful view: %+v %v", render, err)
 	}
-	chunk.Review.Diff = strings.Repeat("x", maxChangeReadBytes+1)
+	chunk.Review.Diff = strings.Repeat("x", changes.MaxReadBytes+1)
 	if _, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Chunks: []livediff.Chunk{chunk}}}, "", 80); err == nil {
 		t.Fatal("unbounded source accepted")
 	}

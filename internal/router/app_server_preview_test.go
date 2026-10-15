@@ -637,7 +637,7 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 	p.calls++
 	id := fmt.Sprintf("call-%d", p.calls)
 	caller := p.ui.session.path(edit.thread)
-	if change, err := p.store.reserveChange(p.ui.ctx, p.workspace, edit.thread, edit.item+"\x000"); err == nil {
+	if change, err := p.store.changes.Reserve(p.ui.ctx, p.store.scoped(p.ui.ctx).changeScope(), p.workspace, edit.thread, edit.item+"\x000"); err == nil {
 		_ = p.store.put(p.ui.ctx, p.workspace, map[string]mekugiHistory{id: {
 			ToolName: applyPatchToolName, Caller: caller, ChangeID: change, CorrelationID: edit.item + "\x000", ExecutingThread: edit.thread,
 			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(beforePath, absolute, string(before), after)},

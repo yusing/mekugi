@@ -185,93 +185,14 @@ fresh router process. Allocation survives restart and never reuses another
 workspace's IDs. Retention belongs to [REQ-ROUTER-001](router.md); replay never
 repeats a host edit.
 
-### Bounded read command
+### Bounded reads, revert, and apply
 
-The session-private `mchanges` executable lists the current thread's change
-IDs or reads selected IDs and ranges:
+The [change-history module](../../modules/changehistory/SPEC.md) owns retained
+change selection, bounded reads, recovery, and apply/revert behavior. Host
+observation still owns capture of those commands' effects; a recovery continuation
+never repeats a mutation.
 
-```text
-mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N]
-mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...]
-mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]
-```
-
-A bare `mchanges` or `--mine` selects every allocated ID owned by the calling
-thread, including explicit markers for retired evidence. Forked threads inherit
-their visible stream under the fork's identity; resume uses the durable identity.
-`--list` without operands selects the calling thread; explicit IDs and ranges may
-select captured changes across agents. It shows IDs and counts, without execution outcomes or capture diagnostics.
-It compresses consecutive comparable complete IDs and
-shows known direct `+N -N` capture counts, not a composed net total. Partial or unswept IDs remain separate;
-`?` marks unknown authored counts. Observation-only and tool-managed IDs
-are omitted from the authored list. Pending and retired IDs remain visible;
-sibling threads' IDs are not exposed by implicit selection. Explicit IDs can still be read across
-agents in the shared namespace. The default view shows each ID and unified
-file diff. `--summary` prefixes each path's added and removed line counts with the same
-file status as the diff pane (`A`, `M`, `D`, `R`, `RM`, `UU`, or `?` for incomplete evidence), aggregating across
-selected records in durable capture order, regardless of argument or author order.
-Counts come from the composed file differences, not the sum of repeated attempts.
-Only authored evidence participates in this composition; historical managed
-records remain diagnostic history rather than authored edits. Inconsistent chains have unknown counts and a retained reason.
-A created-then-deleted file has no summary row, matching the empty saved diff.
-Paths inside the selected workspace are shortened. Pending selections get per-ID status rows. Unavailable selections, including
-retired or never-allocated IDs, report target-qualified stderr and nonzero status
-without suppressing available results in any read mode. Explicit ranges extending
-past the latest ID still return available IDs. When no selected ID is readable and
-IDs are missing, stdout instead reports `available IDs:` ranges retained in those
-IDs' streams. These are recovery suggestions, not substituted diffs or a claim of
-complete evidence; retired gaps are not bridged and unrelated streams are not
-listed. This recovery is shared by all read modes, including `--list` and `--net`.
-`--net` composes available evidence
-and reports skipped or uncomposable targets rather than claiming complete coverage.
-Successful output stays on stdout. `apply` and `revert` retain dependency checks
-and do not skip failed dependencies. It is not a net workspace diff;
-binary or incomplete files have unknown counts. Incomplete path rows append quoted retained
-reasons after the path column. Missing evidence cannot establish a modification, even when
-the record contains both path names. A sequence containing an incomplete file
-capture stays `?`. Historical observation-only directory records are diagnostic history, not authored
-changes. Native edit receipts show incomplete named targets separately from
-confirmed edits and link to `mchanges --summary` for their retained reasons.
-Changing admission rules does not recover missing historical baselines.
-Numeric range ends such as
-`amber1..3` are equivalent to `amber1..amber3`. A path operand belongs after `--`;
-unknown options are diagnosed as options. Missing-ID errors distinguish retired
-from never allocated and give the latest allocation for a never-allocated ID in a
-known stream. If the stream is unknown, the error identifies the selected
-workspace so callers can correct `--workspace`. Consecutive missing IDs in one
-stream with the same failure reason share one range-qualified diagnostic.
-Ranges do not bridge available IDs, unselected IDs, or different failure reasons.
-
-`--net` composes selected completed captures in recorded capture order using the
-same review composition as the live view. It follows moves; diff output and edit
-dialogs show workspace-relative paths inside the owning workspace and preserve
-absolute paths outside it. Retained evidence keeps canonical paths. It never reads
-the live workspace. Pending or retired history and
-inconsistent, incomplete, partial-coverage, or binary capture chains
-fail rather than claim a complete net diff; ordinary reads preserve that evidence.
-Complete captured diffs remain composable regardless of command exit status,
-including older retained records. Normal views
-describe captured file differences, not command outcomes; execution and capture
-diagnostics are available in `--history` only.
-Path filters apply to the composed files. An empty composition is explicit and
-distinct from no selected captures or a path filter matching no captured files.
-An empty own-thread selection names the workspace and suggests explicit IDs for
-other agents; it does not imply that their captures are missing.
-Mutations still require explicit IDs; `--mine` never selects writes. `--history` includes the original observed patch or command input, the
-host result, and for a command the observed scope. Paths after `--` filter review files without re-reading the
-current filesystem. `--workspace ..` selects the owning workspace index when
-the command runs from a subdirectory; paths after `--` only filter entries in
-the selected record. `--max-tokens` bounds displayed output. When output is
-omitted, an `mread` reference retrieves the retained remainder on complete-row
-boundaries. The receipt freezes the selected attempts, allocation state and view
-under the read lock, and retains those exact attempt dependencies. Appended
-attempts or a pending change completing cannot change an existing continuation;
-its original pending/retired markers remain visible. Older receipts without a
-frozen selection retain their digest-check behavior. Pending, expired, or incomplete
-history is explicit; no missing evidence becomes an empty successful diff.
-In `--history`, a record with file changes is `applied`; a no-effect attempt
-is `no changes`. The original command's results and errors are separate debug
-information. Only unfinished work is `pending`.
+### Edit receipts
 
 Completed file changes can publish a generated `Create` or `Edit` commentary
 summary, including changes left by a command that exits nonzero. Classification
@@ -288,58 +209,6 @@ The separate duplicate-output projection may reference repeated host text in
 model input; it leaves the appended change notice intact.
 No-effect and unfinished calls receive no notice; partial edits report only
 retained evidence. Continuations receive the notice when they finish the edit.
-
-### Revert and apply
-
-`mchanges revert` undoes the selected completed records in the workspace, latest
-capture first; `mchanges apply` replays them in capture order. Paths after `--`
-select files within the records. Records hold only hunk context, not source
-files, so each hunk is located near its recorded position: first exactly, then
-by its leading and trailing context, dropping outer or inner context lines while
-at least one line anchors each side that is not a file boundary. A located
-region that has drifted is merged three ways against the requested side.
-Changes on one side apply cleanly; overlapping or adjacent changes on both sides
-leave git-style `<<<<<<< workspace`, `=======`, and `>>>>>>> mchanges revert ID`
-markers. A hunk whose context cannot be found is printed and left unapplied, not
-guessed. A hunk already in the requested state is counted as already reverted
-or applied. Undoing a creation whose file gained other content keeps the file
-as a conflict, like git's modify/delete. Binary, incomplete, symlink (a link on
-either recorded side), and unreadable entries are skipped with their reason. A file with a conflict takes
-no further hunks from later records in the same command. All merges complete in
-memory before the workspace is written; creations and updates are written
-before removals, and a move's source is removed only after its destination is
-written. A write that replaces a directory, or that needs a file removed where
-its parent directory belongs, waits until the removals are done. A directory is
-replaced only once it is empty, so a file swapped for a directory, or the
-reverse, is restored without deleting unrelated files. Recreated files are written with mode 0644, since records do not hold
-modes.
-
-Each touched file reports its state relative to recorded mchanges history, not
-version control. The file's retained captures, in store-wide capture order, are
-composed with the command's own effect, following moves, deletion, and
-re-creation. `clean` means the composed net change is empty. Otherwise the line
-shows ` M`, ` A`, ` D`, or ` R` and the net `+N -N` rows. `UU` marks conflicts,
-and `??` marks a file whose stat is unknown: its content before the command
-disagrees with the composed history, such as after an unobserved edit; its
-history cannot be read; or its write failed. History loading is limited to
-records connected to the selected paths through moves, and a failure there
-degrades the stat rather than blocking the mutation. The command exits 1 when
-any file conflicts, is skipped, or leaves a hunk unapplied. The summary or undo
-line comes first so that paging cannot hide it. A continuation retains the
-report as plain output and never repeats the mutation; when the report cannot
-be paged or retained, it is printed in full with the reason on stderr.
-
-The router classifies `mchanges revert` and `apply` as declared writers whose
-scope is every path named by the selected records, read from the change index
-before the call is forwarded. The host runs the command once; its observed
-effects become a new change record like any declared command. A revert is
-therefore revertable, and a clean command prints `undo: mchanges apply ID ...`
-or `undo: mchanges revert ID ...`, with the same paths after `--`. When some hunk was already in the requested
-state, skipped, or conflicted, the inverse command is not an exact undo, so the
-report instead points to reverting the command's own change. Without a readable
-change index, or when the subcommand or a mutation operand is dynamic, the
-command has no source-resolved recording scope. A read with dynamic operands
-stays neutral.
 
 ### Live terminal view
 

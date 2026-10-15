@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/charmbracelet/x/ansi"
@@ -217,7 +219,7 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 				t.Fatal("VCS diagnostic evidence missing")
 			}
 			for _, file := range files {
-				if authoredReview(file) {
+				if changes.AuthoredReview(file) {
 					t.Fatalf("VCS scope became authored: %+v", file)
 				}
 			}

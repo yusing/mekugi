@@ -62,7 +62,7 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer release()
-		index, err := f.store.scoped(ctx).readChangeIndex(workspace)
+		index, err := f.store.scoped(ctx).changes.Inspect(f.store.scoped(ctx).changeScope(), workspace)
 		if err != nil || len(index.Changes) != 1 {
 			t.Fatalf("shell captures: %+v, %v", index, err)
 		}

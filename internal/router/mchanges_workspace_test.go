@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -28,7 +30,7 @@ func TestMChangesWorkspaceAllocationIgnoresForeignIndexPayload(t *testing.T) {
 			if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			id, err := store.reserveChange(t.Context(), t.TempDir(), "current", "capture")
+			id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), t.TempDir(), "current", "capture")
 			if namespace == "" {
 				if err == nil || id != "" {
 					t.Fatalf("matching corrupt index accepted: id=%q err=%v", id, err)
@@ -47,7 +49,7 @@ func TestMChangesWorkspaceStreamIDsSurviveRestartAndBranch(t *testing.T) {
 	f := newMChangesSliceFixture(t, "workspace-streams")
 	other := t.TempDir()
 	first := f.reserve(t, f.thread, "first")
-	second, err := f.store.reserveChange(f.ctx, other, f.thread, "second")
+	second, err := f.store.changes.Reserve(f.ctx, f.store.scoped(f.ctx).changeScope(), other, f.thread, "second")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +66,7 @@ func TestMChangesWorkspaceStreamIDsSurviveRestartAndBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	third, err := reopened.reserveChange(resume, f.workspace, "other-agent", "third")
+	third, err := reopened.changes.Reserve(resume, reopened.scoped(resume).changeScope(), f.workspace, "other-agent", "third")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,7 @@ func TestMChangesWorkspaceStreamIDsSurviveRestartAndBranch(t *testing.T) {
 	}
 	defer releaseFork()
 	forkCtx = bindTestHandleScope(t, reopened, forkCtx, "", f.thread)
-	forkID, err := reopened.reserveChange(forkCtx, filepath.Join(t.TempDir(), "fork"), forkThread, "fork-edit")
+	forkID, err := reopened.changes.Reserve(forkCtx, reopened.scoped(forkCtx).changeScope(), filepath.Join(t.TempDir(), "fork"), forkThread, "fork-edit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,27 +94,27 @@ func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "legacy-workspace-streams")
 	for i, thread := range []string{f.thread, "legacy-agent-one", "legacy-agent-two"} {
-		id, err := f.store.reserveChange(f.ctx, f.workspace, thread, "legacy-"+thread)
+		id, err := f.store.changes.Reserve(f.ctx, f.store.scoped(f.ctx).changeScope(), f.workspace, thread, "legacy-"+thread)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := changeHandle(changeStreamName(i), 1); id != want {
+		if want := []string{"amber1", "apple1", "arch1"}[i]; id != want {
 			t.Fatalf("legacy seed stream %d = %q, want %q", i, id, want)
 		}
 	}
 	store := f.store.scoped(f.ctx)
 	if err := store.locked(f.ctx, func(store *mekugiReplayStore) error {
-		index, err := store.readChangeIndex(f.workspace)
+		index, err := store.changes.Inspect(store.changeScope(), f.workspace)
 		if err != nil {
 			return err
 		}
 		for i := range index.Streams {
 			index.Streams[i].Name = ""
 		}
-		if err := store.writeChangeIndex(index); err != nil {
+		if err := writeChangeIndexFixture(store, index); err != nil {
 			return err
 		}
-		scope, _, err := store.publication.ReadScope(store.handleNamespace())
+		scope, _, err := store.publication.ReadScope(store.session.Namespace)
 		if err != nil {
 			return err
 		}
@@ -121,7 +123,7 @@ func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	newID, err := f.store.reserveChange(f.ctx, t.TempDir(), f.thread, "new-workspace")
+	newID, err := f.store.changes.Reserve(f.ctx, f.store.scoped(f.ctx).changeScope(), t.TempDir(), f.thread, "new-workspace")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +140,7 @@ func TestMChangesWrongWorkspaceReadKeepsValidTargets(t *testing.T) {
 	f.publish(t, valid, "valid", "valid-call", mekugiHistory{
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
 	})
-	foreign, err := f.store.reserveChange(f.ctx, other, f.thread, "foreign")
+	foreign, err := f.store.changes.Reserve(f.ctx, f.store.scoped(f.ctx).changeScope(), other, f.thread, "foreign")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,18 +165,18 @@ func TestMChangesWrongWorkspaceMutationIsAtomic(t *testing.T) {
 	f.publish(t, valid, "valid", "valid-call", mekugiHistory{
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
 	})
-	foreign, err := f.store.reserveChange(f.ctx, other, f.thread, "foreign")
+	foreign, err := f.store.changes.Reserve(f.ctx, f.store.scoped(f.ctx).changeScope(), other, f.thread, "foreign")
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(f.workspace, "file.txt")
 	writeTestFile(t, path, "new\n")
 	for _, operation := range []string{"revert", "apply"} {
-		options, err := parseChangeRead([]string{operation, valid, foreign}, f.workspace)
+		options, err := testChanges().Parse([]string{operation, valid, foreign}, f.workspace)
 		if err != nil {
 			t.Fatal(err)
 		}
-		output, status, err := f.store.mutateChanges(f.ctx, options)
+		output, status, err := mutateChangeFixture(f.store, f.ctx, options)
 		if err == nil || status == 0 || !strings.Contains(err.Error(), foreign) || readTestFile(t, path) != "new\n" {
 			t.Errorf("%s mutated a partial selection: output=%q status=%d err=%v", operation, output, status, err)
 		}
@@ -197,22 +199,22 @@ func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) 
 					ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("discarded.txt", "discarded.txt", versions[attempt], versions[attempt+1])},
 				})
 			}
-			options := changeReadOptions{workspace: f.workspace, ids: []string{broken, valid}, view: view}
-			text, snapshot, err := f.store.readChangeView(f.ctx, options)
+			options := changes.Query{Workspace: f.workspace, IDs: []string{broken, valid}, View: view}
+			text, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), options)
 			if err != nil {
 				t.Fatal(err)
 			}
-			reference, err := f.store.putChangeRead(f.ctx, snapshot, text, 0)
+			reference, err := putHistoricalChangeRead(f.store, f.ctx, options, text, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(filepath.Join(f.store.directory, legacycall.Name(f.workspace, "later", false)), []byte("{"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			output, selected, err := f.store.readChangeView(f.ctx, options)
-			if err == nil || !strings.Contains(err.Error(), broken) || len(selected.IDs) != 1 || selected.IDs[0] != valid ||
+			output, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), options)
+			if err == nil || !strings.Contains(err.Error(), broken) ||
 				strings.Contains(output, "discarded.txt") || strings.Contains(output, broken) {
-				t.Fatalf("partial read: output=%q selection=%+v error=%v", output, selected, err)
+				t.Fatalf("partial read: output=%q error=%v", output, err)
 			}
 			marker := "kept.txt"
 			if view == "list" {

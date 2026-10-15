@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -233,7 +235,7 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 				(len(history.ReviewFiles) != 0) != test.change {
 				t.Fatalf("completed patch = %+v", history)
 			}
-			listed, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{workspace: workspace, view: "list"})
+			listed, err := proxy.replayStore.changes.Read(transform.ctx, proxy.replayStore.scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, View: "list"})
 			want := ""
 			if test.change {
 				want = history.ChangeID + " +1 -1\n"
@@ -324,7 +326,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 					}
 				}
 			}
-			net, err := proxy.replayStore.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: ids, view: "net", maxTokens: 4000})
+			net, err := proxy.replayStore.changes.Read(t.Context(), proxy.replayStore.scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})
 			if err != nil || strings.Count(net, "-old\n") != 1 || strings.Count(net, "+final\n") != 1 || strings.Contains(net, "middle") {
 				t.Fatalf("cell-window net = %q, %v", net, err)
 			}

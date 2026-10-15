@@ -2,21 +2,13 @@ package router
 
 import (
 	"context"
-	json "encoding/json/v2"
 	"errors"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
-
-	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
-
-func (s *mekugiReplayStore) handleNamespace() string {
-	return s.session.Namespace
-}
 
 func (s *mekugiReplayStore) prepareHandleScope(ctx context.Context, metadata codexTurnMetadata) (context.Context, error) {
 	if s == nil {
@@ -61,42 +53,19 @@ func (s *mekugiReplayStore) initializeHandleScope(visibleFiles []string, release
 }
 
 func (s *mekugiReplayStore) cloneHandleData(source, dest, fork string, visibleFiles []string, releaseSnapshot func()) error {
+	plan, err := s.changes.PrepareFork(s.changeScope(), source, dest, fork)
+	if err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(s.directory)
 	if err != nil {
 		return err
 	}
 	files := make(map[string]bool)
-	for _, file := range visibleFiles {
-		files[file] = true
+	for _, name := range append(visibleFiles, plan.Dependencies()...) {
+		files[name] = true
 	}
-	var indexes []changeIndex
 	for _, entry := range entries {
-		if hashedRecordName(entry.Name(), changeIndexPrefix) {
-			data, err := history.ReadRecord(filepath.Join(s.directory, entry.Name()))
-			if err != nil {
-				return err
-			}
-			var index changeIndex
-			if err := json.Unmarshal(data, &index); err != nil {
-				return err
-			}
-			if index.Namespace != source {
-				continue
-			}
-			if index.Version != 1 || changeIndexName(index.Workspace, source) != entry.Name() || index.Changes == nil {
-				return errors.New("invalid cloned change index identity")
-			}
-			if err := validateChangeIndex(index); err != nil {
-				return err
-			}
-			indexes = append(indexes, index)
-			for _, change := range index.Changes {
-				for _, call := range change.Calls {
-					files[legacycall.Name(index.Workspace, call.ID, false)] = true
-				}
-			}
-			continue
-		}
 		if !history.CatalogName(entry.Name()) {
 			continue
 		}
@@ -108,43 +77,16 @@ func (s *mekugiReplayStore) cloneHandleData(source, dest, fork string, visibleFi
 		if err != nil {
 			return err
 		}
-		if scope.Namespace != source {
-			continue
+		if scope.Namespace == source {
+			maps.Copy(files, catalog.Files)
 		}
-		maps.Copy(files, catalog.Files)
 	}
-	// Pin dependencies before any cloned index write can trigger cleanup.
+	// The caller's transaction bridges validated dependencies to retained ownership.
 	if releaseSnapshot != nil {
-		// store.lock now protects the validated facts. Release the shared
-		// snapshot lease before our own quota check may need exclusive cleanup.
 		releaseSnapshot()
 	}
 	if err := s.retainFiles(slices.Collect(maps.Keys(files))...); err != nil {
 		return err
 	}
-	for _, index := range indexes {
-		index.Namespace = dest
-		for i := range index.Streams {
-			if index.Streams[i].Thread == fork {
-				// Preserve the original author when the cloned stream changes owner.
-				for id, change := range index.Changes {
-					stream, _, _ := parseChangeID(id)
-					if stream != index.streamName(i) {
-						continue
-					}
-					for j := range change.Calls {
-						if change.Calls[j].Thread == "" {
-							change.Calls[j].Thread = fork
-						}
-					}
-					index.Changes[id] = change
-				}
-				index.Streams[i].Thread = dest
-			}
-		}
-		if err := s.writeChangeIndex(index); err != nil {
-			return err
-		}
-	}
-	return nil
+	return changeError(plan.Publish(s.transaction))
 }

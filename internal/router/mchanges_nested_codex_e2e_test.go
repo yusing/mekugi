@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/responses"
 
 	json "encoding/json/v2"
@@ -115,7 +117,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 			if err != nil {
 				return nil, err
 			}
-			list, err := p.store.readChanges(pendingCtx, changeReadOptions{workspace: p.workspace, view: "list"})
+			list, err := p.store.changes.Read(pendingCtx, p.store.scoped(pendingCtx).changeScope(), changes.Query{Workspace: p.workspace, View: "list"})
 			release()
 			if err != nil || list != "" {
 				return nil, fmt.Errorf("completed cell finalized a running process: %q, %v", list, err)
@@ -135,7 +137,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 				if err != nil {
 					return nil, err
 				}
-				list, err := p.store.readChanges(pendingCtx, changeReadOptions{workspace: p.workspace, view: "list"})
+				list, err := p.store.changes.Read(pendingCtx, p.store.scoped(pendingCtx).changeScope(), changes.Query{Workspace: p.workspace, View: "list"})
 				release()
 				if err != nil || list != "" {
 					return nil, fmt.Errorf("yielded edits finalized prematurely: %q, %v", list, err)
@@ -274,7 +276,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 	defer releaseRoot()
 	rootStore := store.scoped(rootContext)
-	index, err := rootStore.readChangeIndex(workspace)
+	index, err := rootStore.changes.Inspect(rootStore.changeScope(), workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +346,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 	defer releaseFailed()
 	failedStore := store.scoped(failedContext)
-	failedIndex, err := failedStore.readChangeIndex(failureWorkspace)
+	failedIndex, err := failedStore.changes.Inspect(failedStore.changeScope(), failureWorkspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,15 +482,21 @@ func mchangesThreadIDs(t *testing.T, store *mekugiReplayStore, workspace, thread
 		t.Fatal(err)
 	}
 	defer release()
-	index, err := store.scoped(ctx).readChangeIndex(workspace)
+	index, err := store.scoped(ctx).changes.Inspect(store.scoped(ctx).changeScope(), workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := threadChangeIDs(index, thread)
-	if err != nil {
-		t.Fatal(err)
+	for _, stream := range index.Streams {
+		if stream.Thread != thread {
+			continue
+		}
+		ids := make([]string, stream.Next)
+		for number := range stream.Next {
+			ids[number] = changes.ID(stream.Name, number+1)
+		}
+		return ids
 	}
-	return ids
+	return nil
 }
 
 func runMChangesNestedCodexCell(

@@ -103,7 +103,7 @@ func TestShortHandlesRejectLegacyReferences(t *testing.T) {
 	if _, ok := history.ParseHandle("r_AAAAAAAAAAAAAAAAAAAAAA"); ok {
 		t.Fatal("accepted legacy read reference")
 	}
-	if _, err := expandChangeRefs([]string{"hp_a1"}); err == nil {
+	if _, err := testChanges().Parse([]string{"hp_a1"}, t.TempDir()); err == nil {
 		t.Fatal("accepted legacy change reference")
 	}
 }

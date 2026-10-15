@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
@@ -123,7 +125,7 @@ func TestWorkspaceSnapshotRecordsUnnamedEditsWithinIgnoreRules(t *testing.T) {
 	if strings.Contains(paths, "node_modules") || len(history.ReviewFiles) != 4 {
 		t.Fatalf("ignored or extra paths were recorded:\n%s", paths)
 	}
-	net, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "net"})
+	net, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"})
 	if err != nil || !strings.Contains(net, "-func old() {}") || !strings.Contains(net, "+func renamed() {}") {
 		t.Fatalf("net review: %q, %v", net, err)
 	}
@@ -163,7 +165,7 @@ func TestWorkspaceSnapshotRetainedIgnoredPathDoesNotBecomeDeletion(t *testing.T)
 	if paths := strings.Join(reviewPaths(history), "\n"); strings.Contains(paths, "cache.bin") || !strings.Contains(paths, "tracked.log") || len(history.ReviewFiles) != 2 {
 		t.Fatalf("ignore transition review: %s", paths)
 	}
-	if _, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "net"}); err != nil {
+	if _, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "net"}); err != nil {
 		t.Fatalf("ignored artifact made the net diff incomplete: %v", err)
 	}
 	// Source-named edits retain coverage even when their path is ignored.
@@ -234,7 +236,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 	if len(second.ReviewFiles) != 1 || !strings.Contains(second.ReviewFiles[0].Diff, "-two") || !strings.Contains(second.ReviewFiles[0].Diff, "+three") {
 		t.Fatalf("overlapping record repeated the earlier effect: %+v", second.ReviewFiles)
 	}
-	net, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{first.ChangeID, second.ChangeID}, view: "net"})
+	net, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{first.ChangeID, second.ChangeID}, View: "net"})
 	if err != nil || !strings.Contains(net, "-one") || !strings.Contains(net, "+three") {
 		t.Fatalf("overlapping records do not compose: %q, %v", net, err)
 	}
@@ -422,7 +424,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(resumed.snapshots.close)
-			list, err := resumed.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "list"})
+			list, err := resumed.changes.Read(ctx, resumed.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -437,7 +439,7 @@ func TestWorkspaceSnapshotVCSChangesStayOutOfAuthoredTotals(t *testing.T) {
 			if err != nil || len(data.files()) != map[bool]int{false: 0, true: 1}[mixed] {
 				t.Fatalf("saved Diff: %+v, %v", data, err)
 			}
-			diagnostic, err := resumed.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "history"})
+			diagnostic, err := resumed.changes.Read(ctx, resumed.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "history"})
 			if err != nil || !strings.Contains(diagnostic, "+imported") {
 				t.Fatalf("VCS history missing: %q, %v", diagnostic, err)
 			}

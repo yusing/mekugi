@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -489,8 +491,8 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 				t.Fatalf("derived record = %+v found=%v err=%v", history, found, err)
 			}
-			if history.ExecOutcome == nil || !strings.Contains(history.ExecOutcome.text(), test.wantOutcome) {
-				t.Fatalf("host outcome = %+v, want %q", history.ExecOutcome, test.wantOutcome)
+			if history.ExecOutcome == nil {
+				t.Fatal("missing host outcome")
 			}
 			if strings.HasPrefix(test.name, "failed") {
 				if history.ExecOutcome.OutputRef == "" {
@@ -505,11 +507,11 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 					t.Fatalf("failed output reference is not readable after restart: %+v, %v", output, err)
 				}
 			}
-			changes, err := proxy.replayStore.readChanges(next.ctx, changeReadOptions{
-				workspace: workspace, ids: []string{history.ChangeID}, view: "history", maxTokens: 4000,
+			changes, err := proxy.replayStore.changes.Read(next.ctx, proxy.replayStore.scoped(next.ctx).changeScope(), changes.Query{
+				Workspace: workspace, IDs: []string{history.ChangeID}, View: "history", MaxTokens: 4000,
 			})
 			if err != nil || !strings.Contains(changes, "-gone") || !strings.Contains(changes, "exec_command input:\nrm a.txt") ||
-				!strings.Contains(changes, "observed scope: a.txt") {
+				!strings.Contains(changes, "observed scope: a.txt") || !strings.Contains(changes, test.wantOutcome) {
 				t.Fatalf("mchanges history = %q, %v", changes, err)
 			}
 			// Replay of the same visible input neither re-reads nor re-allocates.
@@ -576,7 +578,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 					if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 						t.Fatal(err)
 					}
-					index, err := proxy.replayStore.readChangeIndex(workspace)
+					index, err := proxy.replayStore.changes.Inspect(proxy.replayStore.changeScope(), workspace)
 					if err != nil || len(index.Changes) != 0 {
 						t.Fatalf("read-only exec command allocated changes: %+v, %v", index, err)
 					}
@@ -589,7 +591,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 						map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
 						map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
 					})
-					index, err := proxy.replayStore.readChangeIndex(workspace)
+					index, err := proxy.replayStore.changes.Inspect(proxy.replayStore.changeScope(), workspace)
 					if err != nil || len(index.Changes) != 0 {
 						t.Fatalf("read-only native command allocated changes: %+v, %v", index, err)
 					}

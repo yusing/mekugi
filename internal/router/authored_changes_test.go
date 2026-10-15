@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -61,7 +63,7 @@ func TestAuthoredChangesKnownEditsIgnoreIncidentalEffectsAndGitIgnore(t *testing
 			if err != nil || !found || record.ChangeID == "" || len(record.ReviewFiles) != 1 || record.ReviewFiles[0].Incomplete != "" {
 				t.Fatalf("durable known edit: %+v, %v", record, err)
 			}
-			net, err := reopened.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{record.ChangeID}, view: "net"})
+			net, err := reopened.changes.Read(f.ctx, reopened.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{record.ChangeID}, View: "net"})
 			if err != nil || !strings.Contains(net, "FIXME.md") || strings.Contains(net, "generated") || strings.Contains(net, "incidental") {
 				t.Fatalf("net acquired incidental output: %q, %v", net, err)
 			}
@@ -101,12 +103,12 @@ func TestAuthoredChangesLegacyObservationNoiseExcluded(t *testing.T) {
 	file.OriginNote = execInventoryNote
 	f.publish(t, id, "window", execDerivedCallID("outer", false), mekugiHistory{ToolName: nativeExecCommandToolName, ExecOutcome: &execOutcome{Class: "opaque", Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}})
 	for _, view := range []string{"list", "summary", "", "net"} {
-		text, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id}, view: view})
+		text, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id}, View: view})
 		if err != nil || strings.Contains(text, "generated") || strings.Contains(text, "incomplete captured scope") || strings.Contains(text, "1000") {
 			t.Fatalf("legacy noise in %q: %q, %v", view, text, err)
 		}
 	}
-	history, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id}, view: "history"})
+	history, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id}, View: "history"})
 	if err != nil || !strings.Contains(history, "generated") {
 		t.Fatalf("diagnostic history lost: %q, %v", history, err)
 	}
@@ -173,7 +175,7 @@ func TestAuthoredChangesNamedFormatterKeepsFinalSourceEdits(t *testing.T) {
 	if err != nil || !found || record.ChangeID == "" {
 		t.Fatalf("named formatter missing: %+v, %v", record, err)
 	}
-	net, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{record.ChangeID}, view: "net"})
+	net, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{record.ChangeID}, View: "net"})
 	if err != nil || !strings.Contains(net, "+var A = 1") || strings.Contains(net, "other.go") {
 		t.Fatalf("final authored source not reviewable: %q, %v", net, err)
 	}

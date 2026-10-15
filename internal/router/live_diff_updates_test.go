@@ -24,7 +24,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	store := testReplayStore(mekugiReplayStore{directory: directory})
 	publish := func(call string, reviews []diffmodel.ReviewFile, outcome *execOutcome) mekugiHistory {
 		t.Helper()
-		id, err := store.reserveChange(t.Context(), workspace, "thread", call)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "thread", call)
 		if err != nil {
 			t.Fatal(err)
 		}

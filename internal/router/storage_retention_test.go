@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	retainedhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -263,7 +265,7 @@ func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	old, release := retentionTestSession(t, store, "old", 0)
-	id, err := store.reserveChange(old, "/w", "old", "first")
+	id, err := store.changes.Reserve(old, store.scoped(old).changeScope(), "/w", "old", "first")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +278,7 @@ func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
 	if err := store.cleanupSessions(current); err != nil {
 		t.Fatal(err)
 	}
-	index, err := store.scoped(old).readChangeIndex("/w")
+	index, err := store.scoped(old).changes.Inspect(store.scoped(old).changeScope(), "/w")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +286,7 @@ func TestStorageCleanupRetiresChangesWithoutReusingIDs(t *testing.T) {
 		t.Fatal("expired change remains")
 	}
 	resumed, _ := retentionTestSession(t, store, "old", 0)
-	next, err := store.reserveChange(resumed, "/w", "old", "second")
+	next, err := store.changes.Reserve(resumed, store.scoped(resumed).changeScope(), "/w", "old", "second")
 	if err != nil || next != "amber2" {
 		t.Fatalf("next change = %s, %v", next, err)
 	}
@@ -297,7 +299,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 		t.Fatal(err)
 	}
 	parent, release := retentionTestSession(t, store, "parent", 0)
-	id, err := store.reserveChange(parent, "/w", "parent", "edit")
+	id, err := store.changes.Reserve(parent, store.scoped(parent).changeScope(), "/w", "parent", "edit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,12 +308,12 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	options := changeReadOptions{workspace: "/w", ids: []string{id}, view: "history"}
-	text, snapshot, err := store.readChangeView(parent, options)
+	options := changes.Query{Workspace: "/w", IDs: []string{id}, View: "history"}
+	text, err := store.changes.Read(parent, store.scoped(parent).changeScope(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reference, err := store.putChangeRead(parent, snapshot, text, 1)
+	reference, err := putHistoricalChangeRead(store, parent, options, text, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +413,7 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 	}
 	old, release := retentionTestSession(t, store, "old", 0)
 	correlation := strings.Repeat("x", maxReplayRecordBytes-2048)
-	id, err := store.reserveChange(old, "/w", "old", correlation)
+	id, err := store.changes.Reserve(old, store.scoped(old).changeScope(), "/w", "old", correlation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,10 +424,10 @@ func TestStorageIndexLimitReclaimsInactiveChanges(t *testing.T) {
 	current = bindTestHandleScope(t, store, current, "old", "")
 	var next string
 	retentionTestPressureRetry(t, store, current, func() error {
-		next, err = store.reserveChange(current, "/w", "current", strings.Repeat("y", 4096))
+		next, err = store.changes.Reserve(current, store.scoped(current).changeScope(), "/w", "current", strings.Repeat("y", 4096))
 		return err
 	})
-	index, err := store.scoped(current).readChangeIndex("/w")
+	index, err := store.scoped(current).changes.Inspect(store.scoped(current).changeScope(), "/w")
 	if err != nil || next == id || index.Streams[0].Retired != 1 || len(index.Changes) != 1 || index.Changes[next].Correlation != strings.Repeat("y", 4096) {
 		t.Fatalf("index reclamation: next=%s retired=%+v err=%v", next, index.Streams, err)
 	}
@@ -449,11 +451,11 @@ func TestStorageAdmissionDoesNotPruneUnrelatedSessions(t *testing.T) {
 				retentionTestAge(t, store, "old", 30*24*time.Hour)
 			}
 			current, _ := retentionTestSession(t, store, "current", 0)
-			if _, err := store.reserveChange(current, "/w", "current", "new"); err != nil {
+			if _, err := store.changes.Reserve(current, store.scoped(current).changeScope(), "/w", "current", "new"); err != nil {
 				t.Fatal(err)
 			}
 			if err := store.locked(current, func(store *mekugiReplayStore) error {
-				index, err := store.scoped(current).readChangeIndex("/w")
+				index, err := store.scoped(current).changes.Inspect(store.scoped(current).changeScope(), "/w")
 				if err != nil {
 					return err
 				}
@@ -486,7 +488,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	old, release := retentionTestSession(t, store, "old", 0)
-	id, err := store.reserveChange(old, "/w", "old", "original")
+	id, err := store.changes.Reserve(old, store.scoped(old).changeScope(), "/w", "old", "original")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,10 +520,10 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	correlation := strings.Repeat("y", 1024)
 	var next string
 	retentionTestPressureRetry(t, store, current, func() error {
-		next, err = store.reserveChange(current, "/w", "current", correlation)
+		next, err = store.changes.Reserve(current, store.scoped(current).changeScope(), "/w", "current", correlation)
 		return err
 	})
-	index, err := store.scoped(current).readChangeIndex("/w")
+	index, err := store.scoped(current).changes.Inspect(store.scoped(current).changeScope(), "/w")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,10 +663,10 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	oldIndex := strings.Replace(changeIndexName(workspace, ""), changeIndexPrefix, "changes-", 1)
 	for name, data := range map[string][]byte{
 		oldOutput: []byte(`{"version":1,"id":"r_AAAAAAAAAAAAAAAAAAAAAA","stdout":"old output","stderr":"","exit_code":0,"position":[0,0]}`),
-		oldIndex: responses.MustMarshalJSON(changeIndex{
+		oldIndex: responses.MustMarshalJSON(historicalChangeIndex{
 			Version: 1, Workspace: workspace,
-			Streams: []changeStream{{Thread: "old", Next: 1}},
-			Changes: map[string]trackedChange{"hp_a1": {Correlation: "old-call"}},
+			Streams: []changes.Stream{{Thread: "old", Next: 1}},
+			Changes: map[string]changes.Change{"hp_a1": {Correlation: "old-call"}},
 		}),
 	} {
 		if err := os.WriteFile(filepath.Join(store.directory, name), data, 0600); err != nil {
@@ -675,7 +677,7 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	if err := store.retainInput(current, workspace, nil, nil, nil); err != nil {
 		t.Fatalf("new request blocked by leftover names: %v", err)
 	}
-	id, err := store.reserveChange(current, workspace, "current", "new-call")
+	id, err := store.changes.Reserve(current, store.scoped(current).changeScope(), workspace, "current", "new-call")
 	if err != nil || id != "amber1" {
 		t.Fatalf("new index allocation = %q, %v", id, err)
 	}
@@ -695,7 +697,7 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 			t.Fatalf("obsolete name entered retained accounting: %s", name)
 		}
 	}
-	index, err := store.scoped(current).readChangeIndex(workspace)
+	index, err := store.scoped(current).changes.Inspect(store.scoped(current).changeScope(), workspace)
 	if err != nil || index.Changes[id].Correlation != "new-call" {
 		t.Fatalf("leftover names damaged current index: %+v, %v", index, err)
 	}
@@ -791,13 +793,13 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 	}
 	b.Cleanup(release)
 	const existing = 128
-	index := changeIndex{
+	index := historicalChangeIndex{
 		Version: 1, Workspace: "/w",
-		Streams: []changeStream{{Thread: "current", Next: existing}},
-		Changes: make(map[string]trackedChange, existing),
+		Streams: []changes.Stream{{Thread: "current", Next: existing}},
+		Changes: make(map[string]changes.Change, existing),
 	}
 	for number := 1; number <= existing; number++ {
-		index.Changes[changeHandle("a", number)] = trackedChange{
+		index.Changes[changes.ID("a", number)] = changes.Change{
 			Correlation: strings.Repeat("x", 2048) + strconv.Itoa(number),
 		}
 	}
@@ -819,12 +821,12 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 			b.Fatal(err)
 		}
 		b.StartTimer()
-		id, err := store.reserveChange(ctx, index.Workspace, "current", "next")
-		if err != nil || id != changeHandle("a", existing+1) {
+		id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), index.Workspace, "current", "next")
+		if err != nil || id != changes.ID("a", existing+1) {
 			b.Fatalf("reserve change = %q, %v", id, err)
 		}
 	}
-	persisted, err := store.readChangeIndex(index.Workspace)
+	persisted, err := store.changes.Inspect(store.changeScope(), index.Workspace)
 	if err != nil || len(persisted.Changes) != existing+1 || persisted.Changes["amber129"].Correlation != "next" {
 		b.Fatalf("persisted reservation: changes=%d err=%v", len(persisted.Changes), err)
 	}

@@ -1,4 +1,6 @@
-package router
+package retained
+
+// Source: internal/router/mchanges_view.go@[1a1981ba] retained change behavior.
 
 import (
 	"context"
@@ -7,12 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
-func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
+func (s *store) renderChangeList(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
 	type row struct {
 		first, last, status, coverage string
 		added, removed                int
@@ -68,7 +72,7 @@ changes:
 				hasFiles = hasFiles || len(history.ReviewFiles) != 0
 				if history.ExecOutcome != nil {
 					next.coverage = history.ExecOutcome.Coverage
-					next.unknown = next.unknown || next.coverage != "" && next.coverage != execCoverageExact
+					next.unknown = next.unknown || next.coverage != "" && next.coverage != "exact"
 				}
 				for _, file := range history.ReviewFiles {
 					next.unknown = next.unknown || file.Incomplete != ""
@@ -97,13 +101,13 @@ changes:
 		// individual known counts so an agent can select the useful capture.
 		consecutive := false
 		if previous != nil {
-			previousStream, previousNumber, _ := parseChangeID(previous.last)
-			stream, number, _ := parseChangeID(id)
+			previousStream, previousNumber, _ := changes.ParseID(previous.last)
+			stream, number, _ := changes.ParseID(id)
 			consecutive = stream == previousStream && number == previousNumber+1
 		}
 		if consecutive && previous.status == next.status && previous.coverage == next.coverage &&
 			!previous.unknown && !next.unknown &&
-			next.coverage != execCoveragePartial && next.coverage != execCoverageUnswept {
+			next.coverage != "partial" && next.coverage != "unswept" {
 			previous.last = id
 			previous.added += next.added
 			previous.removed += next.removed
@@ -111,7 +115,7 @@ changes:
 			flush()
 			previous = &next
 		}
-		if output.Len() > maxChangeReadBytes {
+		if output.Len() > changes.MaxReadBytes {
 			return "", errors.New("change list exceeds 64 MiB")
 		}
 	}
@@ -119,7 +123,7 @@ changes:
 	return output.String(), nil
 }
 
-func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
+func (s *store) renderNetChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
 	if len(options.ids) == 0 {
 		return fmt.Sprintf("no captures selected in workspace %q; own-thread selection excludes other agents, use explicit IDs\n", options.workspace), nil
 	}
@@ -151,7 +155,7 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 		for _, file := range capture.files {
 			matched = matched || changePathMatches(options, file.BeforePath) || changePathMatches(options, file.AfterPath)
 		}
-		if capture.coverage != "" && capture.coverage != execCoverageExact {
+		if capture.coverage != "" && capture.coverage != "exact" {
 			failures = append(failures, fmt.Errorf("change %s has partial captured effects; read without --net to inspect them", capture.id))
 			continue
 		}
@@ -187,7 +191,7 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 				continue
 			}
 			output.WriteString(file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(options.workspace, file.BeforePath), pathdisplay.ForWorkspace(options.workspace, file.AfterPath)))
-			if output.Len() > maxChangeReadBytes {
+			if output.Len() > changes.MaxReadBytes {
 				return "", errors.New("change read exceeds 64 MiB; narrow the range or paths after --")
 			}
 		}

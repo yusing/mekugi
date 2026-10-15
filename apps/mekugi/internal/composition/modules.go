@@ -3,9 +3,10 @@ package composition
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/changehistory"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/internal/router"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/modules/boundedcommand"
 	"github.com/yusing/mekugi/modules/commandsegments"
 	"github.com/yusing/mekugi/modules/fileread"
@@ -15,12 +16,12 @@ import (
 	"github.com/yusing/mekugi/modules/symbolquery"
 )
 
-// Frontends is the application composition entry. Command implementations remain
-// in the migration source until their feature extraction; the same registrations
-// now reach the retained authenticated router through the Codex binding.
+// Frontends composes feature-owned commands and records for the authenticated
+// frontend host. Host observation records remain application contributions.
 func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
-	c := Composition{LegacyCommands: toolplugin.Builtins(), LegacyRecordKinds: router.RetainedRecordKinds(), LegacyReferences: router.ChangeReferences()}
+	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+	changes := c.Add(changehistory.Module, func() changehistory.Deps { return changehistory.Deps{History: history.Value()} })
 	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
 	recovery := c.Add(outputrecovery.Module, func() outputrecovery.Deps { return outputrecovery.Deps{History: history.Value()} })
 	c.Add(boundedcommand.Module, func() boundedcommand.Deps { return boundedcommand.Deps{} })
@@ -32,6 +33,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	runtime.Changes = changes.Value()
 	runtime.History = history.Value()
 	runtime.Recovery = recovery.Value()
 	runtime.Segments = segments.Value()

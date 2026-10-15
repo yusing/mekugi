@@ -233,14 +233,7 @@ func frontendExecutor(contribution toolContribution, commands []command.Contribu
 			}, compiled.ObserveRead
 		}
 	}
-	switch contribution.NativeExecutor {
-	case "mchanges":
-		return func(ctx context.Context, manifest toolWorkerManifest, request command.Request) (command.Output, error) {
-			return executeMChanges(ctx, manifest, request.Args), nil
-		}, false
-	default:
-		return nil, false
-	}
+	return nil, false
 }
 
 func toolRegistryIDFromDirectory(directory string) (string, bool) {

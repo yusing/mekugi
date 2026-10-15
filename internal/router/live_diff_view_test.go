@@ -93,7 +93,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			}
 			files = append(files, diffmodel.RenderReviewFile(beforePath, path, string(before), edit.after))
 		}
-		id, err := store.reserveChange(t.Context(), workspace, "thread", call)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "thread", call)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,4 +1,6 @@
-package router
+package retained
+
+// Source: internal/router/change_stream.go@[1a1981ba] retained change behavior.
 
 import (
 	json "encoding/json/v2"
@@ -12,7 +14,7 @@ import (
 
 // allocateChangeStream runs under store.lock. The namespace-wide high-water
 // mark outlives payload retention, so another workspace cannot reuse a base ID.
-func (s *mekugiReplayStore) allocateChangeStream() (string, error) {
+func (s *store) allocateChangeStream() (string, error) {
 	scope, _, err := s.publication.ReadScope(s.handleNamespace())
 	if err != nil {
 		return "", err

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
@@ -47,7 +49,7 @@ func TestGitDiscardProvidersCaptureExactBeforeBytes(t *testing.T) {
 			runExecVCSTestGit(t, repo, strings.Fields(test.command)[1:]...)
 			reviews := reconcileExecVCSTestExact(t, observation)
 			for _, file := range reviews {
-				if authoredReview(file) {
+				if changes.AuthoredReview(file) {
 					t.Fatal("VCS discard counted as an authored edit")
 				}
 			}
@@ -326,7 +328,7 @@ func TestVCSFallbackScopesKeepManagedProvenance(t *testing.T) {
 				t.Fatal("VCS evidence missing")
 			}
 			for _, file := range files {
-				if authoredReview(file) {
+				if changes.AuthoredReview(file) {
 					t.Fatalf("VCS counted as authored: %+v", file)
 				}
 			}
@@ -340,7 +342,7 @@ func TestVCSReadSiblingKeepsUnnamedInterpreterEdit(t *testing.T) {
 	attachTestReplayStore(t, proxy)
 	command := "git -c core.fsmonitor=false status --short; python3 -c " + shellsyntax.QuoteArgument("from pathlib import Path; name='authored'; name += '.txt'; Path(name).write_text('after\\n')")
 	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-read", command, func() { writeTestFile(t, filepath.Join(workspace, "authored.txt"), "after\n") })
-	list, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "list"})
+	list, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
 	if err != nil || list != history.ChangeID+" +1 -1\n" {
 		t.Fatalf("read-only VCS hid interpreter edit: %q, %v", list, err)
 	}
@@ -352,7 +354,7 @@ func TestVCSOutputFilesStayOutOfAuthoredCounts(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	history, ctx := runSnapshotExec(t, proxy, workspace, "vcs-output", "git diff --output=export.patch", func() { gitTestRun(t, workspace, "diff", "--output=export.patch") })
-	list, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "list"})
+	list, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "list"})
 	if err != nil || list != "" {
 		t.Fatalf("VCS output counted as authored: %q, %v", list, err)
 	}

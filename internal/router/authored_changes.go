@@ -1,30 +1,20 @@
 package router
 
 import (
-	"slices"
-
-	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
-// Provenance, not paths or ignore rules, determines whether retained evidence
-// describes an agent edit. Old observer/managed records remain in --history.
-func authoredReview(file diffmodel.ReviewFile) bool {
-	return file.Origin == "" && file.OriginNote != execInventoryNote
-}
-
-func authoredChangeHistory(history mekugiHistory) mekugiHistory {
-	filtered := slices.ContainsFunc(history.ReviewFiles, func(file diffmodel.ReviewFile) bool { return !authoredReview(file) })
-	if !filtered {
-		return history
+// Adapt the captured host outcome to the change owner's provenance projection.
+func authoredChangeHistory(value mekugiHistory) mekugiHistory {
+	coverage := ""
+	if value.ExecOutcome != nil {
+		coverage = value.ExecOutcome.Coverage
 	}
-	history.ReviewFiles = slices.DeleteFunc(slices.Clone(history.ReviewFiles), func(file diffmodel.ReviewFile) bool { return !authoredReview(file) })
-	if history.ExecOutcome != nil {
-		outcome := *history.ExecOutcome
-		outcome.Coverage = execCoverageExact
-		if slices.ContainsFunc(history.ReviewFiles, func(file diffmodel.ReviewFile) bool { return file.Incomplete != "" }) {
-			outcome.Coverage = execCoveragePartial
-		}
-		history.ExecOutcome = &outcome
+	value.ReviewFiles, coverage = changes.AuthoredEvidence(value.ReviewFiles, coverage)
+	if value.ExecOutcome != nil && value.ExecOutcome.Coverage != coverage {
+		outcome := *value.ExecOutcome
+		outcome.Coverage = coverage
+		value.ExecOutcome = &outcome
 	}
-	return history
+	return value
 }

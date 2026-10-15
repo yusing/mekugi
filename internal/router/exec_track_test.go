@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -225,12 +227,12 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			t.Cleanup(resumed.snapshots.close)
 			ids := []string{creation.ChangeID, deletion.ChangeID}
 			for i, id := range ids {
-				history, err := resumed.readChanges(next.ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "net", maxTokens: 4000})
+				history, err := resumed.changes.Read(next.ctx, resumed.scoped(next.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "net", MaxTokens: 4000})
 				if err != nil || !strings.Contains(history, []string{"+entry", "-entry"}[i]) || strings.Contains(history, "unrelated") {
 					t.Fatalf("retained %s: %q, %v", id, history, err)
 				}
 			}
-			net, err := resumed.readChanges(next.ctx, changeReadOptions{workspace: workspace, ids: ids, view: "net", maxTokens: 4000})
+			net, err := resumed.changes.Read(next.ctx, resumed.scoped(next.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "net", MaxTokens: 4000})
 			if err != nil || strings.Contains(net, "entry") {
 				t.Fatalf("creation and deletion do not cancel: %q, %v", net, err)
 			}

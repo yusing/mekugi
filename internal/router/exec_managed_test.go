@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -19,17 +21,17 @@ func TestManagedExecMChangesSurface(t *testing.T) {
 	id := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "managed", []diffmodel.ReviewFile{managed})
 	direct := diffmodel.RenderReviewFile("", "direct.txt", "", "authored body\n")
 	mixed := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "mixed", []diffmodel.ReviewFile{managed, direct})
-	list, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id, mixed}, view: "list"})
+	list, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id, mixed}, View: "list"})
 	if err != nil || list != mixed+" +1 -0\n" {
 		t.Fatalf("authored list: %q, %v", list, err)
 	}
 	for _, mode := range []string{"", "summary", "net"} {
-		text, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id, mixed}, view: mode})
+		text, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id, mixed}, View: mode})
 		if err != nil || strings.Contains(text, "generated") || strings.Contains(text, "managed") || !strings.Contains(text, "direct.txt") {
 			t.Fatalf("managed noise in %s: %q, %v", mode, text, err)
 		}
 	}
-	text, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id}, view: "history"})
+	text, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id}, View: "history"})
 	if err != nil || !strings.Contains(text, "generated body") {
 		t.Fatalf("diagnostic history lost: %q, %v", text, err)
 	}
@@ -47,7 +49,7 @@ func saveManagedExecChange(
 	files []diffmodel.ReviewFile,
 ) string {
 	t.Helper()
-	id, err := store.reserveChange(ctx, workspace, thread, correlation)
+	id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, thread, correlation)
 	if err != nil {
 		t.Fatal(err)
 	}

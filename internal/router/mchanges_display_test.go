@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -125,7 +127,7 @@ func TestMChangesOutputRowsReadStoreOutput(t *testing.T) {
 		{diffmodel.RenderReviewFile("before.go", "after => b.go", "a\n", "a\n")},
 	} {
 		call := strconv.Itoa(i)
-		id, err := store.reserveChange(ctx, workspace, "author", call)
+		id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "author", call)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -134,16 +136,16 @@ func TestMChangesOutputRowsReadStoreOutput(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	pending, err := store.reserveChange(ctx, workspace, "author", "pending")
+	pending, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "author", "pending")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, view := range []string{"summary", "list"} {
-		options := changeReadOptions{workspace: workspace, ids: append(ids, pending), view: view}
+		options := changes.Query{Workspace: workspace, IDs: append(ids, pending), View: view}
 		if view == "list" {
-			options.ids = nil
+			options.IDs = nil
 		}
-		output, err := store.readChanges(ctx, options)
+		output, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), options)
 		if err != nil {
 			t.Fatal(err)
 		}

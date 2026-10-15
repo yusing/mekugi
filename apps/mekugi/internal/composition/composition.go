@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
@@ -47,11 +49,7 @@ type entry struct {
 }
 
 type Composition struct {
-	// LegacyCommands is the existing application catalog until step 3 moves its
-	// implementations into descriptors. It is not represented as a fake module.
-	LegacyCommands    []command.Contribution
 	LegacyRecordKinds []recordkind.Spec
-	LegacyReferences  []reference.Resolver
 	entries           []entry
 	sealed            bool
 }
@@ -147,6 +145,7 @@ type Gap struct {
 }
 
 type Runtime struct {
+	Changes  changes.Service
 	Segments *segments.Service
 	Recovery *recovery.Service
 	History  *history.Service
@@ -174,9 +173,9 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, errors.New("composition is already activated")
 	}
 	c.sealed = true
-	runtime := &Runtime{Commands: slices.Clone(c.LegacyCommands)}
+	runtime := new(Runtime)
 	records := slices.Clone(c.LegacyRecordKinds)
-	references := slices.Clone(c.LegacyReferences)
+	var references []reference.Resolver
 	positions := make(map[module.ID]int)
 	var failures []error
 	for i, node := range c.entries {
@@ -241,11 +240,6 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	for _, spec := range c.LegacyCommands {
-		if err := binder.Frontend(spec.Spec); err != nil {
-			return nil, err
-		}
 	}
 	for _, node := range c.entries {
 		if err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references)}, binder); err != nil {

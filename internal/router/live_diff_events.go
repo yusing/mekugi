@@ -1,11 +1,12 @@
 package router
 
 import (
-	"cmp"
 	"context"
 	"maps"
 	"slices"
 	"sync"
+
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -16,7 +17,7 @@ type liveDiffChange struct {
 	Thread    string
 	Stream    int
 	ID        string
-	Change    trackedChange
+	Change    changes.Change
 }
 
 type liveDiffEvent struct {
@@ -208,36 +209,4 @@ func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 		sub.previewReady <- struct{}{}
 	}
 	return sub
-}
-
-// notifyLiveDiff runs only after a successful atomic index publication. Events
-// carry one committed batch, not an instruction to rescan the whole store.
-func (s *mekugiReplayStore) notifyLiveDiff(index changeIndex, updates map[string][]trackedCall) {
-	if s.liveDiff == nil {
-		return
-	}
-	var changes []liveDiffChange
-	for id, calls := range updates {
-		streamName, _, err := parseChangeID(id)
-		if err != nil {
-			continue // The durable index validator already owns this check.
-		}
-		for stream, info := range index.Streams {
-			if index.streamName(stream) == streamName {
-				byThread := make(map[string][]trackedCall)
-				for _, call := range calls {
-					thread := cmp.Or(call.Thread, info.Thread)
-					byThread[thread] = append(byThread[thread], call)
-				}
-				for _, thread := range slices.Sorted(maps.Keys(byThread)) {
-					changes = append(changes, liveDiffChange{
-						Workspace: index.Workspace, Namespace: index.Namespace, Thread: thread, Stream: stream, ID: id,
-						Change: trackedChange{Correlation: index.Changes[id].Correlation, Calls: byThread[thread]},
-					})
-				}
-				break
-			}
-		}
-	}
-	s.liveDiff(changes)
 }

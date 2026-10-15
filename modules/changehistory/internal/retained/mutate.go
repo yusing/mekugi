@@ -1,4 +1,6 @@
-package router
+package retained
+
+// Source: internal/router/mchanges_apply.go@[1a1981ba] retained change behavior.
 
 import (
 	"cmp"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -37,7 +40,7 @@ type changeCapture struct {
 // Non-nil paths keep only review files connected to them through moves; other
 // diffs are dropped while reading, so only what is kept is held and bounded.
 // It runs under store.lock and never reads the workspace.
-func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace string, index changeIndex, ids, paths []string, unavailable changeReadFailures) ([]changeCapture, error) {
+func (s *store) loadChangeCaptures(ctx context.Context, workspace string, index changeIndex, ids, paths []string, unavailable changeReadFailures) ([]changeCapture, error) {
 	if ids == nil {
 		ids = slices.Sorted(func(yield func(string) bool) {
 			for id := range index.Changes {
@@ -65,15 +68,15 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 	}
 	bytes := 0
 	retain := func(diff string) error {
-		if bytes += len(diff); bytes > maxChangeReadBytes {
+		if bytes += len(diff); bytes > changes.MaxReadBytes {
 			return errors.New("change history exceeds 64 MiB")
 		}
 		return nil
 	}
-	read := func(id string, call string) (replayRecord, error) {
+	read := func(id string, call string) (capturedRecord, error) {
 		record, err := s.readChangeRecord(workspace, id, index.Changes[id].Correlation, call)
 		if err != nil {
-			return replayRecord{}, err
+			return capturedRecord{}, err
 		}
 		record.History = authoredChangeHistory(record.History)
 		return record, nil
@@ -121,7 +124,7 @@ changes:
 			if observation := record.History.ExecObservation; observation != nil {
 				capture.exec = true
 				for _, file := range observation.Files {
-					if file.Kind == execFileSymlink {
+					if file.Kind == "symlink" {
 						capture.links[canonical(file.Path)] = true
 					}
 				}
@@ -161,7 +164,7 @@ changes:
 			}
 		}
 		for i := range captures {
-			var record *replayRecord
+			var record *capturedRecord
 			for j, file := range captures[i].files {
 				if !dropped[[2]int{i, j}] || !keeps(file) {
 					continue
@@ -190,7 +193,7 @@ changes:
 }
 
 // selectedChangeCaptures validates that every selected change has completed.
-func (s *mekugiReplayStore) selectedChangeCaptures(ctx context.Context, options changeReadOptions, index changeIndex) ([]changeCapture, error) {
+func (s *store) selectedChangeCaptures(ctx context.Context, options changeReadOptions, index changeIndex) ([]changeCapture, error) {
 	for _, id := range options.ids {
 		if change, exists := index.Changes[id]; exists && len(change.Calls) == 0 {
 			return nil, fmt.Errorf("change %s is pending (no completed result)", id)
@@ -201,10 +204,9 @@ func (s *mekugiReplayStore) selectedChangeCaptures(ctx context.Context, options 
 
 // changeMutationPaths names every path mchanges revert or apply may write, so
 // the router can capture them before the host runs the command.
-func (s *mekugiReplayStore) changeMutationPaths(ctx context.Context, options changeReadOptions) ([]string, error) {
-	s = s.scoped(ctx)
+func (s *store) changeMutationPaths(ctx context.Context, options changeReadOptions) ([]string, error) {
 	var paths []string
-	err := s.locked(ctx, func(s *mekugiReplayStore) error {
+	err := s.locked(ctx, func(s *store) error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
@@ -307,7 +309,7 @@ func (m *changeMutation) file(path string) *mutationFile {
 		file.blocked = "symlink changes are not replayed"
 	case !info.Mode().IsRegular():
 		file.blocked = "not a regular file"
-	case info.Size() > maxChangeReadBytes:
+	case info.Size() > changes.MaxReadBytes:
 		file.blocked = "file exceeds 64 MiB"
 	}
 	if file.blocked != "" {
@@ -319,11 +321,11 @@ func (m *changeMutation) file(path string) *mutationFile {
 		return file
 	}
 	defer handle.Close()
-	data, err := io.ReadAll(io.LimitReader(handle, maxChangeReadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(handle, changes.MaxReadBytes+1))
 	switch {
 	case err != nil:
 		file.blocked = err.Error()
-	case len(data) > maxChangeReadBytes:
+	case len(data) > changes.MaxReadBytes:
 		file.blocked = "file exceeds 64 MiB"
 	case !utf8.Valid(data) || slices.Contains(data, 0):
 		file.blocked = "binary content is not replayed"
@@ -549,16 +551,15 @@ func (m *changeMutation) write() {
 // mutateChanges reverts or reapplies recorded changes in the workspace. The
 // router observes this command like any declared writer, so the result is
 // itself a change that can be reverted.
-func (s *mekugiReplayStore) mutateChanges(ctx context.Context, options changeReadOptions) (string, int, error) {
-	s = s.scoped(ctx)
+func (s *store) mutateChanges(ctx context.Context, options changeReadOptions) (string, int, error) {
 	var selected, history []changeCapture
 	var historyErr error
-	err := s.locked(ctx, func(s *mekugiReplayStore) error {
+	err := s.locked(ctx, func(s *store) error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
 		}
-		names, err := s.changeDependencyNames(options.workspace, options.ids)
+		names, err := changeDependencies(index, options.ids, false)
 		if err != nil {
 			return err
 		}

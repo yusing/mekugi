@@ -243,7 +243,7 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	ui.write(t, "v")
-	id, err := store.reserveChange(t.Context(), workspace, "thread", "nearby")
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "thread", "nearby")
 	if err != nil {
 		t.Fatal(err)
 	}

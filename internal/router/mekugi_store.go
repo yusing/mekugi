@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -28,6 +30,7 @@ const maxReplayRecordBytes = history.MaxRecordBytes
 // Durable records are immutable translation facts. Request-local confirmation and
 // ordering are intentionally absent. Session retention removes only inactive, unshared records.
 type mekugiReplayStore struct {
+	changes            changes.Service
 	recovery           *recovery.Service
 	writes             *persistence.Counter
 	directory          string
@@ -174,7 +177,11 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 				return err
 			}
 		}
-		return s.publishChanges(workspace, histories)
+		updates, err := s.changes.Publish(s.transaction, s.changeScope(), workspace, changePublications(histories))
+		if err == nil {
+			s.notifyChanges(updates)
+		}
+		return changeError(err)
 	})
 }
 

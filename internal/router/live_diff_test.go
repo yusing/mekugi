@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -127,7 +128,7 @@ func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
 
 func liveDiffTestChange(t *testing.T, store *mekugiReplayStore, workspace, call, path string) {
 	t.Helper()
-	id, err := store.reserveChange(t.Context(), workspace, "thread", call)
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "thread", call)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,8 +398,8 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 
 func TestLiveDiffOutputBound(t *testing.T) {
 	var out livediff.Output
-	out.Grow(maxChangeReadBytes)
-	out.WriteString(strings.Repeat("x", maxChangeReadBytes))
+	out.Grow(changes.MaxReadBytes)
+	out.WriteString(strings.Repeat("x", changes.MaxReadBytes))
 	if _, err := out.WriteString("overflow"); err == nil {
 		t.Fatal("unbounded renderer output")
 	}
@@ -412,7 +413,7 @@ func TestLiveDiffDoesNotInferPrivateScopeFromScriptText(t *testing.T) {
 		t.Fatal(err)
 	}
 	liveDiffTestChange(t, store, workspace, "workspace", "public.go")
-	id, err := store.reserveChange(t.Context(), workspace, "thread", "private")
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "thread", "private")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +505,7 @@ func testLiveDiffTerminalCancel(t *testing.T, keys string) {
 
 func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, call, from, to, before, after string) {
 	t.Helper()
-	id, err := store.reserveChange(t.Context(), workspace, "identity-thread", call)
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "identity-thread", call)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
@@ -33,7 +35,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	// Only source-content projections admit paths, never generic watch effects.
 	excludedVCS := func(origin string) bool {
 		tool, _, _ := strings.Cut(origin, " ")
-		return commandanalysis.IsVCSTool(tool) && !authoredReview(diffmodel.ReviewFile{Origin: origin})
+		return commandanalysis.IsVCSTool(tool) && !changes.AuthoredReview(diffmodel.ReviewFile{Origin: origin})
 	}
 	if r == nil || broker == nil {
 		return

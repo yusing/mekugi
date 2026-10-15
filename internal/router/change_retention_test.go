@@ -54,7 +54,7 @@ func TestChangeRetirementThroughSessionHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, release := retentionTestSession(t, store, "old", 0)
-	id, err := store.reserveChange(ctx, "/w", "old", "correlation")
+	id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), "/w", "old", "correlation")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,12 +65,12 @@ func TestChangeRetirementThroughSessionHistory(t *testing.T) {
 	if err := store.put(ctx, "/w", histories); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.reserveChange(ctx, "/w", "old", "pending"); err != nil {
+	if _, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), "/w", "old", "pending"); err != nil {
 		t.Fatal(err)
 	}
 	release()
 	retentionTestAge(t, store, "old", 30*24*time.Hour)
-	name := changeIndexName("/w", store.scoped(ctx).handleNamespace())
+	name := changeIndexName("/w", store.scoped(ctx).session.Namespace)
 	path := filepath.Join(store.directory, name)
 	before, err := os.ReadFile(path)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestChangeRetirementThroughSessionHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index, err := reopened.scoped(ctx).readChangeIndex("/w")
+	index, err := reopened.scoped(ctx).changes.Inspect(reopened.scoped(ctx).changeScope(), "/w")
 	if err != nil {
 		t.Fatal(err)
 	}

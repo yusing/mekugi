@@ -22,7 +22,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	}
 	publish := func(thread, caller, call, beforePath, afterPath, before, after string) {
 		t.Helper()
-		id, err := store.reserveChange(t.Context(), workspace, thread, call)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, thread, call)
 		if err != nil {
 			t.Fatal(err)
 		}

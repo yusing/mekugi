@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -91,7 +93,7 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 || len(history.HostResults) != 1 || history.HostResults[0].CallID != item || history.HostResults[0].Tool != "userShell" {
 			t.Fatalf("durable shell edit: %+v, %v, %v", history, found, err)
 		}
-		text, err := fresh.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "history"})
+		text, err := fresh.changes.Read(ctx, fresh.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{history.ChangeID}, View: "history"})
 		if err != nil || !strings.Contains(text, "mchanges "+mutation+" "+id) {
 			t.Fatalf("shell change history: %q, %v", text, err)
 		}

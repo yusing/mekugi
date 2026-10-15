@@ -1,14 +1,17 @@
-package router
+package retained
+
+// Source: internal/router/change_retention.go@[1a1981ba] retained change behavior.
 
 import (
 	"context"
 	"maps"
 	"slices"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/internal/responses"
 )
 
 func changeRetirementPlanner(original changeIndex) recordkind.RetirementPlanner {
@@ -20,7 +23,7 @@ func changeRetirementPlanner(original changeIndex) recordkind.RetirementPlanner 
 		if !retireStoredChanges(&index, retirement.Deleted, retirement.Thread) {
 			return nil, nil
 		}
-		data, err := responses.MarshalJSON(&index)
+		data, err := marshalIndex(&index)
 		if err != nil {
 			return nil, err
 		}
@@ -37,7 +40,7 @@ func retireStoredChanges(index *changeIndex, deleted map[string]bool, thread str
 		return candidate.Thread == thread && thread != ""
 	})
 	for id, change := range index.Changes {
-		stream, _, _ := parseChangeID(id)
+		stream, _, _ := changes.ParseID(id)
 		pending := len(change.Calls) == 0 && position >= 0 && index.streamName(position) == stream
 		if !pending && !slices.ContainsFunc(change.Calls, func(call trackedCall) bool {
 			return deleted[legacycall.Name(index.Workspace, call.ID, false)]
@@ -70,7 +73,7 @@ func retireStoredChanges(index *changeIndex, deleted map[string]bool, thread str
 }
 
 // Source: internal/router/storage_retention.go:656:698@efcbf71f reconcileRetiredChanges.
-func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) (bool, error) {
+func (s *store) reconcileRetiredChanges(index *changeIndex) (bool, error) {
 	copy := *s
 	copy.session.Namespace = index.Namespace
 	s = &copy
@@ -84,7 +87,7 @@ func (s *mekugiReplayStore) reconcileRetiredChanges(index *changeIndex) (bool, e
 			continue
 		}
 		for id := range index.Changes {
-			owner, number, _ := parseChangeID(id)
+			owner, number, _ := changes.ParseID(id)
 			if owner == index.streamName(position) && number <= stream.Next {
 				if _, exists := current.Changes[id]; !exists {
 					delete(index.Changes, id)

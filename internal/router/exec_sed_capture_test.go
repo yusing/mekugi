@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/responses"
 )
 
@@ -46,8 +48,8 @@ func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
 	if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
 		t.Fatalf("persisted sed edit = %+v, found = %v, err = %v", history, found, err)
 	}
-	changes, err := proxy.replayStore.readChanges(next.ctx, changeReadOptions{
-		workspace: workspace, ids: []string{history.ChangeID}, view: "history", maxTokens: 4000,
+	changes, err := proxy.replayStore.changes.Read(next.ctx, proxy.replayStore.scoped(next.ctx).changeScope(), changes.Query{
+		Workspace: workspace, IDs: []string{history.ChangeID}, View: "history", MaxTokens: 4000,
 	})
 	if err != nil {
 		t.Fatal(err)

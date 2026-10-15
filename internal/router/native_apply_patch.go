@@ -551,11 +551,11 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		// Attempts remain durable, but IDs select actual or incomplete file
 		// evidence, not successful no-ops or rejected patches with no effects.
 		changeID := ""
-		if len(reviews) != 0 {
+		if len(reviews) != 0 && p.replayStore != nil {
 			var err error
-			changeID, err = p.replayStore.reserveChange(ctx, workspace, thread, correlation)
+			changeID, err = p.replayStore.changes.Reserve(ctx, p.replayStore.scoped(ctx).changeScope(), workspace, thread, correlation)
 			if err != nil {
-				return err
+				return changeError(err)
 			}
 		}
 		success := history.ToolName == applyPatchToolName && reportedSuccess && complete
@@ -606,7 +606,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			attempt.Report += "\nMekugi could not capture complete file evidence."
 		}
 		if err := p.replayStore.put(context.WithoutCancel(ctx), workspace, map[string]mekugiHistory{derivedCallID: attempt}); err != nil {
-			return err
+			return changeError(err)
 		}
 		if len(reviews) != 0 {
 			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, responses.StringField(history.UpstreamItem, "id"))

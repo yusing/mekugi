@@ -521,8 +521,12 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			delete(execGroups, key)
 		}
 	}
-	if err := p.replayStore.repairVisibleChangeCalls(ctx, workspace, visible); err != nil {
-		return nil, err
+	if p.replayStore != nil {
+		updates, err := p.replayStore.changes.Repair(ctx, p.replayStore.scoped(ctx).changeScope(), workspace, changePublications(visible))
+		if err != nil {
+			return nil, changeError(err)
+		}
+		p.replayStore.notifyChanges(updates)
 	}
 	for _, completed := range completedPatches {
 		item := editOutputs[completed.callID]

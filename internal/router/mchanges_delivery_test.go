@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func deliveryMutationFixture(t *testing.T) (*mchangesSliceFixture, string, string) {
@@ -70,17 +72,15 @@ func TestMChangesDeliveryReadPreparationUsesReservedReferencesRepeatably(t *test
 	f := newMChangesSliceFixture(t, "read-delivery")
 	id := f.reserve(t, f.thread, "read")
 	f.publish(t, id, "read", "read-call", mekugiHistory{Script: strings.Repeat("original source row\n", 100)})
-	manifest, err := readToolWorkerManifest(filepath.Join(f.registry.SnapshotDir, toolPluginManifestFilename))
+	full, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id}, View: "history"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest.history, manifest.recovery = testHistory(), testRecovery()
-	output := executeMChanges(f.ctx, manifest, []string{"--workspace", f.workspace, "--history", "--max-tokens", "12", id})
-	plan, ok := output.Delivery.(*changeReadDelivery)
-	if !ok {
-		t.Fatalf("no frozen read delivery: %+v", output)
+	output, err := f.store.changes.Execute(f.ctx, command.Request{Args: []string{"--workspace", f.workspace, "--history", "--max-tokens", "12", id}, Scope: retainedScope(f.ctx, f.store.directory)})
+	if err != nil || output.Delivery == nil {
+		t.Fatalf("no frozen read delivery: %+v %v", output, err)
 	}
-	original := plan.snapshot
+	plan := output.Delivery
 	session, err := f.store.recoverySession(f.ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestMChangesDeliveryReadPreparationUsesReservedReferencesRepeatably(t *test
 		t.Fatal(err)
 	}
 	repeated, err := plan.Prepare(handles[:1])
-	if err != nil || !reflect.DeepEqual(first, repeated) || !reflect.DeepEqual(original, plan.snapshot) {
+	if err != nil || !reflect.DeepEqual(first, repeated) {
 		t.Fatalf("preparation changed the captured plan or repeated result: %v", err)
 	}
 	if !reflect.DeepEqual(first.Recovery, second.Recovery) || first.Referenced.Stdout != output.Stdout || first.Unreferenced.Stderr != "" {
@@ -116,7 +116,7 @@ func TestMChangesDeliveryReadPreparationUsesReservedReferencesRepeatably(t *test
 			t.Fatalf("publication replaced reserved reference: %q %v", published, err)
 		}
 		remainder, diag, status := f.run(t, "mread "+handles[i]+" --stdout --max-tokens 15500")
-		if status != 0 || diag != "" || output.Stdout+remainder != plan.text {
+		if status != 0 || diag != "" || output.Stdout+remainder != full {
 			t.Fatalf("reserved reference does not recover captured read: stdout=%q stderr=%q status=%d", remainder, diag, status)
 		}
 	}
@@ -145,18 +145,21 @@ func TestMChangesDeliveryWorkerPrepublicationFailureAndCancellation(t *testing.T
 		t.Run(fmt.Sprintf("canceled=%t", canceled), func(t *testing.T) {
 			f, id, want := deliveryMutationFixture(t)
 			t.Setenv(codexThreadIDEnvironment, f.thread)
-			manifest, err := readToolWorkerManifest(filepath.Join(f.registry.SnapshotDir, toolPluginManifestFilename))
-			if err != nil {
-				t.Fatal(err)
-			}
-			manifest.history, manifest.recovery = testHistory(), testRecovery()
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			var plan *faultChangeDelivery
 			calls := 0
-			commands := append(testCommands(), command.Contribution{Name: "mchanges", Run: func(ctx context.Context, request command.Request) (command.Output, error) {
+			commands := testCommands()
+			position := slices.IndexFunc(commands, func(c command.Contribution) bool { return c.Name == "mchanges" })
+			if position < 0 {
+				t.Fatal("missing mchanges contribution")
+			}
+			commands[position].Run = func(ctx context.Context, request command.Request) (command.Output, error) {
 				calls++
-				output := executeMChanges(ctx, manifest, request.Args)
+				output, err := f.store.changes.Execute(ctx, request)
+				if err != nil {
+					return output, err
+				}
 				if output.Delivery == nil {
 					t.Fatalf("no completed mutation delivery: %+v", output)
 				}
@@ -166,7 +169,7 @@ func TestMChangesDeliveryWorkerPrepublicationFailureAndCancellation(t *testing.T
 					cancel()
 				}
 				return output, nil
-			}})
+			}
 			var out, diag bytes.Buffer
 			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, f.registry.frontends["mchanges"],
 				[]string{"revert", "--workspace", f.workspace, id, "--max-tokens", "12"}, nil, &out, &diag)

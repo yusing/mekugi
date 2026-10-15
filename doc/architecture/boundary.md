@@ -75,6 +75,12 @@ mixed envelopes stay in place. Both forms are validated together before a report
 is adopted or reused. Explicit inspection selects a genuine retained envelope
 without adopting it or creating a publication lock.
 
+[Change history](../../modules/changehistory/SPEC.md) owns retained change
+identities, review and mutation semantics, and index retirement. Cross-owner
+evidence publication and fork initialization borrow the session transaction;
+committed membership reaches live presentation as neutral values. Private index
+encoding and frozen selection meaning stay with the change owner.
+
 The live-diff renderer consumes provisional inputs and completed review files
 without owning workspace effects or replay locks. Commentary and capture are
 auxiliary consumers of observed facts; they cannot replace a stock result or

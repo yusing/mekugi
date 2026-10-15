@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
@@ -38,7 +40,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	invocation := newShellWorkerTestInvocation(workspace,
 		"XDG_STATE_HOME="+t.TempDir(), "MEKUGI_RUNTIME_DIR="+t.TempDir(), "CODEX_THREAD_ID=reviewer-thread",
 		routerTestWorkerUnscopedEnvironment+"=0")
-	id, err := store.reserveChange(ctx, workspace, "implementer-thread", "edited")
+	id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "implementer-thread", "edited")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +60,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		"mchanges --list", nil, invocation); status != 0 || stderr != "" || stdout != "" {
 		t.Fatalf("other thread's changes leaked into list: %q, %q, %d", stdout, stderr, status)
 	}
-	ownID, err := store.reserveChange(ctx, workspace, "reviewer-thread", "own-edit")
+	ownID, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "reviewer-thread", "own-edit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +80,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	if err := command.Run(); err != nil || directOut.String() != "A\t12\t0\tfile.txt\n" || directErr.Len() != 0 {
 		t.Fatalf("stock frontend: output %q, stderr %q, error %v", directOut.String(), directErr.String(), err)
 	}
-	want, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, paths: []string{"file.txt", "new name.txt"}})
+	want, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, Paths: []string{"file.txt", "new name.txt"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,9 +141,9 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 	}
 	for _, interpreter := range []string{"bash", "sh"} {
 		for _, view := range []string{"", "--summary", "--history"} {
-			filtered, err := store.readChanges(ctx, changeReadOptions{
-				workspace: workspace, ids: []string{id}, paths: []string{"file.txt", "new name.txt"},
-				view: strings.TrimPrefix(view, "--"),
+			filtered, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{
+				Workspace: workspace, IDs: []string{id}, Paths: []string{"file.txt", "new name.txt"},
+				View: strings.TrimPrefix(view, "--"),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -198,23 +200,23 @@ func TestParseChangeRead(t *testing.T) {
 		{"amber1", "--summary", "--", "first", "--history", "apple2", "first"},
 		{"--summary", "amber1", "--", "first", "--history", "apple2", "first"},
 	} {
-		options, err := parseChangeRead(arguments, workspace)
-		if err != nil || strings.Join(options.paths, ",") != "first,--history,apple2,first" ||
-			strings.Join(options.ids, ",") != "amber1" || options.view != "summary" {
+		options, err := testChanges().Parse(arguments, workspace)
+		if err != nil || strings.Join(options.Paths, ",") != "first,--history,apple2,first" ||
+			strings.Join(options.IDs, ",") != "amber1" || options.View != "summary" {
 			t.Fatalf("paths after --: %+v, %v", options, err)
 		}
 	}
 	for _, arguments := range [][]string{{"amber1"}, {"amber1", "--"}} {
-		options, err := parseChangeRead(arguments, workspace)
-		if err != nil || len(options.paths) != 0 || strings.Join(options.ids, ",") != "amber1" {
+		options, err := testChanges().Parse(arguments, workspace)
+		if err != nil || len(options.Paths) != 0 || strings.Join(options.IDs, ",") != "amber1" {
 			t.Fatalf("unfiltered read: %+v, %v", options, err)
 		}
 	}
-	if options, err := parseChangeRead([]string{"--list", "--max-tokens", "32"}, workspace); err != nil || options.view != "list" || len(options.ids) != 0 {
+	if options, err := testChanges().Parse([]string{"--list", "--max-tokens", "32"}, workspace); err != nil || options.View != "list" || len(options.IDs) != 0 {
 		t.Fatalf("list options: %+v, %v", options, err)
 	}
-	options, err := parseChangeRead([]string{"amber1..amber2", "--summary", "apple1", "--", "file"}, workspace)
-	if err != nil || strings.Join(options.ids, ",") != "amber1,amber2,apple1" {
+	options, err := testChanges().Parse([]string{"amber1..amber2", "--summary", "apple1", "--", "file"}, workspace)
+	if err != nil || strings.Join(options.IDs, ",") != "amber1,amber2,apple1" {
 		t.Fatalf("range and flags: %+v, %v", options, err)
 	}
 	for _, arguments := range [][]string{
@@ -225,39 +227,9 @@ func TestParseChangeRead(t *testing.T) {
 		{"--cursor"}, {"--cursor", "", "amber1"}, {"--unknown", "amber1"},
 		{"--list", "--", "file"}, {"--list", "--summary"},
 	} {
-		if _, err := parseChangeRead(arguments, workspace); err == nil {
+		if _, err := testChanges().Parse(arguments, workspace); err == nil {
 			t.Fatalf("accepted %q", arguments)
 		}
-	}
-}
-
-func TestChangePathSpellings(t *testing.T) {
-	t.Parallel()
-	workspace := t.TempDir()
-	for _, test := range []struct {
-		path, recorded string
-		want           bool
-	}{
-		{"file.txt", filepath.Join(workspace, "file.txt"), true},
-		{filepath.Join(workspace, "file.txt"), "file.txt", true},
-		{"./file.txt", "file.txt", true},
-		{"other.txt", "file.txt", false},
-		{"file.txt", "", false},
-	} {
-		got := changePathMatches(changeReadOptions{workspace: workspace, paths: []string{test.path}}, test.recorded)
-		if got != test.want {
-			t.Errorf("%+v: got %v", test, got)
-		}
-	}
-	if changePathMatches(changeReadOptions{paths: []string{"./file.txt", "/file.txt"}}, "file.txt") {
-		t.Fatal("no-directory selection must not invent a path base")
-	}
-	options, err := parseChangeRead([]string{"amber1", "--workspace", ""}, workspace)
-	if err != nil || options.workspace != "" {
-		t.Fatalf("no-directory selection: %+v, %v", options, err)
-	}
-	if changePathMatches(options, "file.txt") {
-		t.Fatal("empty selection unexpectedly matched")
 	}
 }
 
@@ -275,7 +247,7 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 		{diffmodel.RenderReviewFile("unknown", "unknown", "a\n", "b\n")},
 	} {
 		call := strconv.Itoa(i)
-		id, err := store.reserveChange(t.Context(), workspace, "author", call)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "author", call)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -286,21 +258,21 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	options := changeReadOptions{workspace: workspace, ids: ids, view: "summary"}
-	got, err := store.readChanges(t.Context(), options)
+	options := changes.Query{Workspace: workspace, IDs: ids, View: "summary"}
+	got, err := store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), options)
 	if want := "M\t2\t1\tfile\nA\t0\t0\tempty\n?\t-\t-\tunknown\t\"missing capture\"\n"; err != nil || got != want {
 		t.Fatalf("summary = %q, %v; want %q", got, err, want)
 	}
-	options.paths = []string{"file"}
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t2\t1\tfile\n" {
+	options.Paths = []string{"file"}
+	if got, err := store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), options); err != nil || got != "M\t2\t1\tfile\n" {
 		t.Fatalf("filtered summary = %q, %v", got, err)
 	}
-	pending, err := store.reserveChange(t.Context(), workspace, "author", "pending")
+	pending, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "author", "pending")
 	if err != nil {
 		t.Fatal(err)
 	}
-	options.ids = append(ids, pending)
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != pending+" pending (no completed result)\nM\t2\t1\tfile\n" {
+	options.IDs = append(ids, pending)
+	if got, err := store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), options); err != nil || got != pending+" pending (no completed result)\nM\t2\t1\tfile\n" {
 		t.Fatalf("pending summary = %q, %v", got, err)
 	}
 }
@@ -312,7 +284,7 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	id, err := store.reserveChange(t.Context(), workspace, "author", "original")
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "author", "original")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,18 +298,21 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	options := changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"}
-	if got, err := store.readChanges(t.Context(), options); err != nil || got != "M\t2\t1\tfile\n" {
+	options := changes.Query{Workspace: workspace, IDs: []string{id}, View: "summary"}
+	if got, err := store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), options); err != nil || got != "M\t2\t1\tfile\n" {
 		t.Fatalf("recovery summary = %q, %v", got, err)
 	}
-	index, err := store.readChangeIndex(workspace)
+	index, err := store.changes.Inspect(store.changeScope(), workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
 	change := index.Changes[id]
 	change.RetiredCalls = 1
 	index.Changes[id] = change
-	if got, err := store.renderChanges(t.Context(), options, index); err != nil || got != id+" retired (partial history)\nM\t2\t1\tfile\n" {
+	if err := store.locked(t.Context(), func(s *mekugiReplayStore) error { return writeChangeIndexFixture(s, index) }); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := store.changes.Read(t.Context(), store.changeScope(), options); err != nil || got != id+" retired (partial history)\nM\t2\t1\tfile\n" {
 		t.Fatalf("retired summary = %q, %v", got, err)
 	}
 }

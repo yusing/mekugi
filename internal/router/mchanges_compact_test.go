@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -20,7 +22,7 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	id, err := store.reserveChange(ctx, workspace, "author", "mixed")
+	id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "author", "mixed")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,23 +35,23 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"mixed": history}); err != nil {
 		t.Fatal(err)
 	}
-	list, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
+	list, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, View: "list"})
 	if err != nil || list != id+" +1 -1\n" {
 		t.Fatalf("compact list: %q %v", list, err)
 	}
-	summary, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary"})
+	summary, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "summary"})
 	if err != nil || summary != "M\t1\t1\tdirect.go\n" {
 		t.Fatalf("compact summary: %q %v", summary, err)
 	}
-	details, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "history"})
+	details, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "history"})
 	if err != nil || !strings.Contains(details, "unread.go") || !strings.Contains(details, "capture deadline") {
 		t.Fatalf("suggested history view lost managed gap details: %q %v", details, err)
 	}
-	review, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}})
+	review, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}})
 	if err != nil || !strings.Contains(review, "+new\n") || strings.Contains(review, "+package p\n") {
 		t.Fatalf("managed content leaked into default diff: %q %v", review, err)
 	}
-	named, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "summary", paths: []string{"formatted.go"}})
+	named, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{id}, View: "summary", Paths: []string{"formatted.go"}})
 	if err != nil || !strings.Contains(named, "no files match paths after --") || strings.Contains(named, "incomplete") {
 		t.Fatalf("explicit managed path unavailable: %q %v", named, err)
 	}
@@ -69,7 +71,7 @@ func TestMChangesListCompressesAppliedChangesRegardlessOfCommandAttribution(t *t
 	defer release()
 	save := func(call string, overlaps []string) string {
 		t.Helper()
-		id, err := store.reserveChange(ctx, workspace, "author", call)
+		id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "author", call)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -82,7 +84,7 @@ func TestMChangesListCompressesAppliedChangesRegardlessOfCommandAttribution(t *t
 	}
 	shared := save("shared", []string{"other-call"})
 	exclusive := save("exclusive", nil)
-	list, err := store.readChanges(ctx, changeReadOptions{workspace: workspace, view: "list"})
+	list, err := store.changes.Read(ctx, store.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, View: "list"})
 	if err != nil || list != shared+".."+exclusive+" +2 -2\n" {
 		t.Fatalf("applied change range: %q %v", list, err)
 	}
@@ -144,7 +146,7 @@ func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
 				t.Fatal(err)
 			}
 			workspace := t.TempDir()
-			id, err := store.reserveChange(t.Context(), workspace, "author", "edit")
+			id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "author", "edit")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +155,7 @@ func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
 			}
 			ids := []string{id}
 			if len(test.later) > 0 {
-				laterID, err := store.reserveChange(t.Context(), workspace, "other-author", "later")
+				laterID, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "other-author", "later")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -162,12 +164,12 @@ func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
 				}
 				ids = append(ids, laterID)
 			}
-			got, err := store.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: ids, view: "summary"})
+			got, err := store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "summary"})
 			if err != nil || got != test.want {
 				t.Fatalf("summary = %q, %v; want %q", got, err, test.want)
 			}
 			if len(ids) > 1 {
-				got, err = store.readChanges(t.Context(), changeReadOptions{workspace: workspace, ids: []string{ids[1], ids[0]}, view: "summary"})
+				got, err = store.changes.Read(t.Context(), store.scoped(t.Context()).changeScope(), changes.Query{Workspace: workspace, IDs: []string{ids[1], ids[0]}, View: "summary"})
 				if err != nil || got != test.want {
 					t.Fatalf("reversed cross-author summary = %q, %v; want %q", got, err, test.want)
 				}

@@ -6,6 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/modules/changehistory"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -13,7 +17,7 @@ import (
 )
 
 func testHistory() *history.Service {
-	service, err := history.NewService(append(append(RetainedRecordKinds(), recovery.RecordKinds()...), reports.RecordKinds()...))
+	service, err := history.NewService(append(append(append(RetainedRecordKinds(), changehistory.Module.Contributes.RecordKinds...), recovery.RecordKinds()...), reports.RecordKinds()...))
 	if err != nil {
 		panic(err)
 	}
@@ -23,19 +27,19 @@ func testHistory() *history.Service {
 func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
 	store, err := openReplayStore(context.Background(), testHistory(), directory)
 	if store != nil {
-		store.recovery = testRecovery()
+		store.recovery, store.changes = testRecovery(), testChanges()
 	}
 	return store, err
 }
 
 func testReplayStore(store mekugiReplayStore) *mekugiReplayStore {
 	store.publication = testHistory().Attach(store.directory)
-	store.recovery = testRecovery()
+	store.recovery, store.changes = testRecovery(), testChanges()
 	return &store
 }
 
 func testRecovery() *recovery.Service {
-	service, err := recovery.New(testHistory(), ChangeReferences())
+	service, err := recovery.New(testHistory(), changehistory.Module.Contributes.References)
 	if err != nil {
 		panic(err)
 	}
@@ -75,6 +79,14 @@ func executeRecovery(ctx context.Context, manifest toolWorkerManifest, args []st
 
 func testReports() *reports.Service {
 	service, err := reports.New(testHistory())
+	if err != nil {
+		panic(err)
+	}
+	return service
+}
+
+func testChanges() changes.Service {
+	service, err := changehistory.Module.New(changehistory.Deps{History: testHistory()}, module.Slots{})
 	if err != nil {
 		panic(err)
 	}

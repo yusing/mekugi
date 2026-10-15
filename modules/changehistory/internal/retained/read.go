@@ -1,20 +1,22 @@
-package router
+package retained
+
+// Source: internal/router/mchanges.go@[1a1981ba] retained change behavior.
 
 import (
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"unicode"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -22,8 +24,6 @@ import (
 )
 
 const changesReadUsage = "mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
-
-const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
 	// Only initial reads collect unavailable targets; frozen recovery stays strict.
@@ -48,13 +48,13 @@ func (failures changeReadFailures) skip(id string, err error) bool {
 	return true
 }
 
-func (s *mekugiReplayStore) readChangeRecord(workspace, id, correlation, call string) (replayRecord, error) {
+func (s *store) readChangeRecord(workspace, id, correlation, call string) (capturedRecord, error) {
 	record, found, err := s.read(workspace, call, false)
 	if err != nil {
-		return replayRecord{}, fmt.Errorf("change %s: %w", id, err)
+		return capturedRecord{}, fmt.Errorf("change %s: %w", id, err)
 	}
 	if !found || record.History.ChangeID != id || record.History.CorrelationID != correlation {
-		return replayRecord{}, fmt.Errorf("change %s has a missing or inconsistent attempt", id)
+		return capturedRecord{}, fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 	}
 	return record, nil
 }
@@ -79,7 +79,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		}
 		if !strings.HasPrefix(flag, "-") {
 			start, _, _ := strings.Cut(flag, "..")
-			if _, _, err := parseChangeID(start); err != nil {
+			if _, _, err := changes.ParseID(start); err != nil {
 				return options, fmt.Errorf("invalid change operand %q; paths belong after -- PATH", flag)
 			}
 			refs = append(refs, flag)
@@ -160,7 +160,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 	return options, nil
 }
 
-func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
+func (s *store) readChanges(ctx context.Context, options changeReadOptions) (string, error) {
 	text, _, err := s.readChangeView(ctx, options)
 	return text, err
 }
@@ -168,10 +168,10 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 // partialChangeReadError accompanies usable output from independent change reads.
 type partialChangeReadError struct{ error }
 
-func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
+func (s *store) readChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
 	var text string
 	var snapshot *changeReadSnapshot
-	err := s.scoped(ctx).locked(ctx, func(store *mekugiReplayStore) error {
+	err := s.locked(ctx, func(store *store) error {
 		var err error
 		text, snapshot, err = store.readChangeViewLocked(ctx, options, store.retainFiles)
 		return err
@@ -179,7 +179,7 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 	return text, snapshot, err
 }
 
-func (s *mekugiReplayStore) readChangeViewLocked(ctx context.Context, options changeReadOptions, retain func(...string) error) (string, *changeReadSnapshot, error) {
+func (s *store) readChangeViewLocked(ctx context.Context, options changeReadOptions, retain func(...string) error) (string, *changeReadSnapshot, error) {
 	if options.view == "list" && len(options.ids) == 0 {
 		options.mine = true
 	}
@@ -211,12 +211,12 @@ func (s *mekugiReplayStore) readChangeViewLocked(ctx context.Context, options ch
 			change, exists := index.Changes[id]
 			if !exists {
 				if !options.mine || options.view == "net" {
-					stream, number, _ := parseChangeID(id)
+					stream, number, _ := changes.ParseID(id)
 					state, _ := missingChangeState(index, id)
 					last := id
 					for position+1 < len(options.ids) {
 						next := options.ids[position+1]
-						if next != changeHandle(stream, number+1) {
+						if next != changes.ID(stream, number+1) {
 							break
 						}
 						nextState, _ := missingChangeState(index, next)
@@ -285,12 +285,12 @@ func threadChangeIDs(index changeIndex, thread string) ([]string, error) {
 		if stream.Thread != thread {
 			continue
 		}
-		if stream.Next > maxChangeReadBytes/32 {
+		if stream.Next > changes.MaxReadBytes/32 {
 			return nil, errors.New("change list exceeds 64 MiB; select explicit IDs")
 		}
 		ids := make([]string, stream.Next)
 		for number := 1; number <= stream.Next; number++ {
-			ids[number-1] = changeHandle(index.streamName(position), number)
+			ids[number-1] = changes.ID(index.streamName(position), number)
 		}
 		return ids, nil
 	}
@@ -298,15 +298,15 @@ func threadChangeIDs(index changeIndex, thread string) ([]string, error) {
 }
 
 func missingChangeState(index changeIndex, id string) (string, string) {
-	name, number, _ := parseChangeID(id)
+	name, number, _ := changes.ParseID(id)
 	for position, stream := range index.Streams {
 		if index.streamName(position) != name {
 			continue
 		}
 		if number <= stream.Next {
-			return "retired", changeHandle(name, stream.Next)
+			return "retired", changes.ID(name, stream.Next)
 		}
-		return "unknown", changeHandle(name, stream.Next)
+		return "unknown", changes.ID(name, stream.Next)
 	}
 	return "unknown", "none in this stream"
 }
@@ -337,7 +337,7 @@ func missingChangeRangeError(index changeIndex, first, last string) error {
 func availableChangeRanges(index changeIndex, streams map[string]bool) string {
 	numbers := make(map[string][]int)
 	for id := range index.Changes {
-		stream, number, _ := parseChangeID(id)
+		stream, number, _ := changes.ParseID(id)
 		if streams[stream] {
 			numbers[stream] = append(numbers[stream], number)
 		}
@@ -352,9 +352,9 @@ func availableChangeRanges(index changeIndex, streams map[string]bool) string {
 			for end+1 < len(ids) && ids[end+1] == ids[end]+1 {
 				end++
 			}
-			fmt.Fprintf(&output, "available IDs: %s", changeHandle(stream, ids[start]))
+			fmt.Fprintf(&output, "available IDs: %s", changes.ID(stream, ids[start]))
 			if end != start {
-				fmt.Fprintf(&output, "..%s", changeHandle(stream, ids[end]))
+				fmt.Fprintf(&output, "..%s", changes.ID(stream, ids[end]))
 			}
 			output.WriteByte('\n')
 			start = end + 1
@@ -363,7 +363,7 @@ func availableChangeRanges(index changeIndex, streams map[string]bool) string {
 	return output.String()
 }
 
-func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
+func (s *store) renderChanges(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
 	if options.view == "list" {
 		return s.renderChangeList(ctx, options, index)
 	}
@@ -392,7 +392,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 	var summary []changeCapture
 	summaryBytes := 0
 	for _, id := range options.ids {
-		if output.Len() > maxChangeReadBytes {
+		if output.Len() > changes.MaxReadBytes {
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 		}
 		if err := ctx.Err(); err != nil {
@@ -407,7 +407,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			fmt.Fprintf(&output, "%s %s\n", id, state)
 			continue
 		}
-		records := make([]replayRecord, len(change.Calls))
+		records := make([]capturedRecord, len(change.Calls))
 		excludedOnly := len(change.Calls) != 0
 		var readErr error
 		for i, call := range change.Calls {
@@ -417,7 +417,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				break
 			}
 			records[i] = record
-			excludedOnly = excludedOnly && len(record.History.ReviewFiles) != 0 && !slices.ContainsFunc(record.History.ReviewFiles, authoredReview)
+			excludedOnly = excludedOnly && len(record.History.ReviewFiles) != 0 && !slices.ContainsFunc(record.History.ReviewFiles, changes.AuthoredReview)
 		}
 		if readErr != nil {
 			if options.unavailable.skip(id, readErr) {
@@ -469,13 +469,13 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				fmt.Fprintf(&output, "observed alongside %s\n", strings.Join(alongside, ", "))
 			}
 			status := "no changes"
-			if history.ExecOutcome != nil && history.ExecOutcome.Coverage != "" && history.ExecOutcome.Coverage != execCoverageExact {
+			if history.ExecOutcome != nil && history.ExecOutcome.Coverage != "" && history.ExecOutcome.Coverage != "exact" {
 				status = "incomplete captured scope"
 				if options.view == "summary" || options.view == "" {
 					fmt.Fprintf(&output, "%s incomplete captured scope\n", id)
 				}
 			}
-			if slices.ContainsFunc(history.ReviewFiles, authoredReview) {
+			if slices.ContainsFunc(history.ReviewFiles, changes.AuthoredReview) {
 				status = "applied"
 			}
 			if options.view == "history" && len(change.Calls) == 1 {
@@ -485,10 +485,10 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			}
 			if options.view == "history" {
 				for _, result := range history.HostResults {
-					fmt.Fprintln(&output, result.text())
+					fmt.Fprintln(&output, hostResultText(result))
 				}
 				if history.ExecOutcome != nil {
-					fmt.Fprintln(&output, history.ExecOutcome.text())
+					fmt.Fprintln(&output, outcomeText(*history.ExecOutcome))
 				}
 				fmt.Fprintf(&output, "%s input:\n%s\n", history.ToolName, history.Script)
 				if history.ExecOutcome != nil && history.ExecOutcome.ScopeReason != "" {
@@ -511,7 +511,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				}
 			}
 			for _, file := range history.ReviewFiles {
-				if options.view != "history" && !authoredReview(file) {
+				if options.view != "history" && !changes.AuthoredReview(file) {
 					continue
 				}
 				if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
@@ -520,7 +520,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				matched = true
 				if options.view == "summary" {
 					summaryBytes += len(file.Diff)
-					if summaryBytes > maxChangeReadBytes {
+					if summaryBytes > changes.MaxReadBytes {
 						return "", errors.New("change summary exceeds 64 MiB; narrow the range or paths after --")
 					}
 					summary = append(summary, changeCapture{order: record.CaptureOrder, files: []diffmodel.ReviewFile{file}})
@@ -534,7 +534,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					output.WriteString(file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(options.workspace, file.BeforePath), pathdisplay.ForWorkspace(options.workspace, file.AfterPath)))
 				}
 			}
-			if output.Len() > maxChangeReadBytes {
+			if output.Len() > changes.MaxReadBytes {
 				return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 			}
 		}
@@ -627,7 +627,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		} else {
 			fmt.Fprintf(&output, "%s\t%d\t%d\t%s\n", entry.status.ShortCode(), entry.added, entry.removed, path)
 		}
-		if output.Len() > maxChangeReadBytes {
+		if output.Len() > changes.MaxReadBytes {
 			return "", errors.New("change read exceeds 64 MiB; narrow the range, view, or paths after --")
 		}
 	}
@@ -659,72 +659,4 @@ func changePathMatches(options changeReadOptions, recorded string) bool {
 		}
 	}
 	return false
-}
-
-func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments []string) command.Output {
-	fail := func(err error) command.Output {
-		return command.Output{Stderr: fmt.Sprintf("mchanges: %v\n", err), ExitCode: 1}
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fail(fmt.Errorf("resolve working directory: %w", err))
-	}
-	options, err := parseChangeRead(arguments, cwd)
-	if err != nil {
-		return fail(err)
-	}
-	// The authenticated manifest pins the router's store. Do not derive it from
-	// mutable child environment or create a store as a side effect of reading.
-	if manifest.ReplayDirectory == "" {
-		return fail(errors.New("change storage is unavailable"))
-	}
-	if info, err := os.Lstat(filepath.Join(manifest.ReplayDirectory, "store.lock")); err != nil || !info.Mode().IsRegular() {
-		return fail(errors.New("change storage is missing or invalid"))
-	}
-	store := &mekugiReplayStore{publication: manifest.history.Attach(manifest.ReplayDirectory), recovery: manifest.recovery, directory: manifest.ReplayDirectory}
-	if options.view == "revert" || options.view == "apply" {
-		text, status, err := store.mutateChanges(ctx, options)
-		if err != nil {
-			return fail(err)
-		}
-		// A continuation must not repeat the mutation, so the remainder is
-		// retained as plain output instead of a re-rendered change read. The
-		// workspace has already changed; any paging failure keeps the full report.
-		whole := func(err error) command.Output {
-			return command.Output{Stdout: text, Stderr: "mchanges: report not paged: " + err.Error() + "\n", ExitCode: status}
-		}
-		selected, err := selectReadPage(ctx, text, options.maxTokens)
-		if err != nil {
-			return whole(err)
-		}
-		execution := command.Output{Stdout: selected, ExitCode: status}
-		if len(selected) < len(text) {
-			execution.Delivery = &changeMutationDelivery{report: text, selected: selected, status: status}
-			execution.ExitCode = 1
-		}
-		return execution
-	}
-	text, snapshot, err := store.readChangeView(ctx, options)
-	diagnostics := ""
-	if err != nil {
-		if _, partial := errors.AsType[*partialChangeReadError](err); !partial {
-			return fail(err)
-		}
-		diagnostics = fmt.Sprintf("mchanges: %v\n", err)
-	}
-	selected, err := selectReadPage(ctx, text, options.maxTokens)
-	if err != nil {
-		return fail(err)
-	}
-	execution := command.Output{Stdout: selected, Stderr: diagnostics}
-	if diagnostics != "" {
-		execution.ExitCode = 1
-		if len(selected) < len(text) {
-			execution.OmittedOutput = &command.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
-		}
-	} else if len(selected) < len(text) {
-		execution.ExitCode = 1
-		execution.Delivery = &changeReadDelivery{snapshot: *snapshot, text: text, selected: selected}
-	}
-	return execution
 }

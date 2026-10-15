@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -44,7 +46,7 @@ func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
 			t.Fatalf("generator creation baseline missing: %+v", file)
 		}
 	}
-	net, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{record.ChangeID}, view: "net"})
+	net, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{record.ChangeID}, View: "net"})
 	if err != nil || !strings.Contains(net, "+first") || !strings.Contains(net, "+body") {
 		t.Fatalf("generator net: %q, %v", net, err)
 	}
@@ -117,7 +119,7 @@ func TestMChangesSummaryComposesManagedAndDirectEdits(t *testing.T) {
 		file.Origin = origin
 		f.publish(t, id, correlation, correlation, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
 	}
-	summary, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, mine: true, view: "summary"})
+	summary, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, Mine: true, View: "summary"})
 	if err != nil || summary != "M\t2\t1\tfile.txt\n" {
 		t.Fatalf("summary summed attempts or split ownership: %q, %v", summary, err)
 	}
@@ -306,7 +308,7 @@ func TestMChangesFilteredZeroNetIsNotPathMismatch(t *testing.T) {
 				ids = append(ids, id)
 				f.publish(t, id, call, call, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
 			}
-			output, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: ids, view: "net", paths: []string{"file.txt"}})
+			output, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: ids, View: "net", Paths: []string{"file.txt"}})
 			if err != nil || output != "no net changes in selected captured history\n" {
 				t.Fatalf("matching zero net misreported: %q, %v", output, err)
 			}

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -94,8 +96,8 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			if patchHistory.ChangeID == "" || patchHistory.TranslationError != "" || len(patchHistory.ReviewFiles) != 1 {
 				t.Fatalf("real patch evidence missing: %+v", patchHistory)
 			}
-			diff, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{
-				workspace: workspace, ids: []string{patchHistory.ChangeID}, maxTokens: 4000,
+			diff, err := proxy.replayStore.changes.Read(transform.ctx, proxy.replayStore.scoped(transform.ctx).changeScope(), changes.Query{
+				Workspace: workspace, IDs: []string{patchHistory.ChangeID}, MaxTokens: 4000,
 			})
 			if err != nil || !strings.Contains(diff, "-before") || !strings.Contains(diff, "+after") {
 				t.Fatalf("patch evidence = %q, %v", diff, err)
@@ -116,13 +118,12 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 					strings.Contains(command.ExecOutcome.ScopeReason, "intermediate writes") {
 					t.Fatalf("reader repetition lost results or invented intermediate writes: %+v", command)
 				}
-				index, err := p.replayStore.scoped(transform.ctx).readChangeIndex(workspace)
+				index, err := p.replayStore.scoped(transform.ctx).changes.Inspect(p.replayStore.scoped(transform.ctx).changeScope(), workspace)
 				if err != nil {
 					t.Fatal(err)
 				}
-				ids, err := threadChangeIDs(index, "thread-1")
-				if err != nil || !slices.Equal(ids, []string{patchHistory.ChangeID}) {
-					t.Fatalf("wanted only patch change ID %s, got %v: %v", patchHistory.ChangeID, ids, err)
+				if _, found := index.Changes[patchHistory.ChangeID]; !found || len(index.Changes) != 1 {
+					t.Fatalf("wanted only patch change ID %s, got %v", patchHistory.ChangeID, index.Changes)
 				}
 			}
 			assertCommandAndIDs(proxy)

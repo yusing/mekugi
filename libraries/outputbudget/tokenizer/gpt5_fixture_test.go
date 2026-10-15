@@ -1,4 +1,4 @@
-package toolplugin
+package tokenizer_test
 
 import (
 	"encoding/json"

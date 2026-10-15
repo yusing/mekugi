@@ -36,7 +36,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		{"child", "python-call", "cell-call", "nested.go", "python3", true},
 	}
 	for _, cmd := range commands {
-		id, err := store.reserveChange(t.Context(), workspace, cmd.thread, cmd.carrier)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, cmd.thread, cmd.carrier)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -17,8 +17,8 @@ func TestFrontendInlineBudgets(t *testing.T) {
 			return budget, err
 		},
 		"mchanges": func(args []string) (int, error) {
-			options, err := parseChangeRead(append(args, "amber1"), workspace)
-			return options.maxTokens, err
+			options, err := testChanges().Parse(append(args, "amber1"), workspace)
+			return options.MaxTokens, err
 		},
 	}
 	for name, parse := range parsers {
@@ -35,8 +35,8 @@ func TestFrontendInlineBudgets(t *testing.T) {
 			}
 		})
 	}
-	options, err := parseChangeRead([]string{"amber1", "--", "--max-tokens=99"}, workspace)
-	if err != nil || options.maxTokens != 4000 || !reflect.DeepEqual(options.paths, []string{"--max-tokens=99"}) {
+	options, err := testChanges().Parse([]string{"amber1", "--", "--max-tokens=99"}, workspace)
+	if err != nil || options.MaxTokens != 4000 || !reflect.DeepEqual(options.Paths, []string{"--max-tokens=99"}) {
 		t.Fatalf("path boundary: %+v %v", options, err)
 	}
 }

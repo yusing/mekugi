@@ -171,18 +171,15 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 		if err := s.initializeHandleScope(names, releaseSnapshot); err != nil {
 			return err
 		}
-		index, err := s.readChangeIndex(workspace)
+		var ids []string
+		for _, item := range histories {
+			ids = append(ids, item.ChangeID)
+		}
+		dependencies, err := s.changes.Dependencies(s.changeScope(), workspace, ids, true)
 		if err != nil {
 			return err
 		}
-		for _, history := range histories {
-			if change, exists := index.Changes[history.ChangeID]; exists {
-				names = append(names, changeIndexName(workspace, index.Namespace))
-				for _, attempt := range change.Calls {
-					names = append(names, legacycall.Name(workspace, attempt.ID, false))
-				}
-			}
-		}
+		names = append(names, dependencies...)
 		for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
 			session, err := s.recoverySession(ctx)
 			if err != nil {
@@ -198,29 +195,11 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 		}
 		if releaseSnapshot != nil {
 			// store.lock now bridges validation to ownership publication;
-			// cleanup inside retainFiles can safely acquire the snapshot lease.
+			// ownership publication proceeds without retaining the reader lease.
 			releaseSnapshot()
 		}
 		return s.retainFiles(names...)
 	})
-}
-
-func (s *mekugiReplayStore) changeDependencyNames(workspace string, ids []string) ([]string, error) {
-	index, err := s.readChangeIndex(workspace)
-	if err != nil {
-		return nil, err
-	}
-	names := []string{changeIndexName(workspace, index.Namespace)}
-	for _, id := range ids {
-		change, exists := index.Changes[id]
-		if !exists {
-			return nil, missingChangeError(index, id)
-		}
-		for _, call := range change.Calls {
-			names = append(names, legacycall.Name(workspace, call.ID, false))
-		}
-	}
-	return names, nil
 }
 
 func storageCapacityError(resource string, required, limit int64, action string) error {

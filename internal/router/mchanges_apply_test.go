@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
@@ -19,7 +22,7 @@ import (
 
 func putTestChange(t *testing.T, ctx context.Context, store *mekugiReplayStore, workspace, correlation string, files ...diffmodel.ReviewFile) string {
 	t.Helper()
-	id, err := store.reserveChange(ctx, workspace, "stock-thread", correlation)
+	id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "stock-thread", correlation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,11 +35,11 @@ func putTestChange(t *testing.T, ctx context.Context, store *mekugiReplayStore, 
 
 func mutateTestChanges(t *testing.T, ctx context.Context, store *mekugiReplayStore, workspace string, arguments ...string) (string, int) {
 	t.Helper()
-	options, err := parseChangeRead(arguments, workspace)
+	options, err := testChanges().Parse(arguments, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, status, err := store.mutateChanges(ctx, options)
+	output, status, err := mutateChangeFixture(store, ctx, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,12 +174,12 @@ func TestMChangesRevertParsing(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	for _, arguments := range [][]string{{"revert"}, {"apply", "--summary", "amber1"}, {"revert", "--list"}} {
-		if _, err := parseChangeRead(arguments, workspace); err == nil {
+		if _, err := testChanges().Parse(arguments, workspace); err == nil {
 			t.Fatalf("%q parsed", arguments)
 		}
 	}
-	options, err := parseChangeRead([]string{"revert", "amber1..amber2", "--", "a.txt"}, workspace)
-	if err != nil || options.view != "revert" || len(options.ids) != 2 || options.paths[0] != "a.txt" {
+	options, err := testChanges().Parse([]string{"revert", "amber1..amber2", "--", "a.txt"}, workspace)
+	if err != nil || options.View != "revert" || len(options.IDs) != 2 || options.Paths[0] != "a.txt" {
 		t.Fatalf("options = %+v, %v", options, err)
 	}
 }
@@ -244,11 +247,11 @@ func TestMChangesMutationClassification(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	resolver := func(arguments []string, directory string, _ time.Time) execscope.ChangeResolution {
-		options, err := parseChangeRead(arguments, directory)
+		options, err := testChanges().Parse(arguments, directory)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if options.view != "revert" || options.workspace != workspace || len(options.ids) != 1 {
+		if options.View != "revert" || options.Workspace != workspace || len(options.IDs) != 1 {
 			t.Fatalf("resolver options = %+v", options)
 		}
 		return execscope.ChangeResolution{Paths: []string{filepath.Join(workspace, "a.txt")}}
@@ -307,7 +310,7 @@ func TestMChangesRevertReportsUnknownStat(t *testing.T) {
 
 	// An unreadable unrelated record degrades the stat without blocking.
 	other := putTestChange(t, ctx, store, workspace, "other", diffmodel.RenderReviewFile("", "b.txt", "", "b\n"))
-	index, err := store.scoped(ctx).readChangeIndex(workspace)
+	index, err := store.scoped(ctx).changes.Inspect(store.scoped(ctx).changeScope(), workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +381,7 @@ func TestMChangesFrontendRevertsWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := store.reserveChange(ctx, workspace, "revert-thread", "frontend-edit")
+	id, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "revert-thread", "frontend-edit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,7 +477,7 @@ func TestMChangesSkipsRecordedSymlinks(t *testing.T) {
 	link.Link = true
 	flagged := putTestChange(t, ctx, store, workspace, "flagged", link)
 	// Records made before ReviewFile.Link carry only the exec review text.
-	legacyID, err := store.reserveChange(ctx, workspace, "stock-thread", "legacy")
+	legacyID, err := store.changes.Reserve(ctx, store.scoped(ctx).changeScope(), workspace, "stock-thread", "legacy")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,4 +520,19 @@ func TestMChangesHistoryFollowsMovesToDroppedDiffs(t *testing.T) {
 	if status != 0 || output != want {
 		t.Fatalf("revert = %d %q, want %q", status, output, want)
 	}
+}
+
+func mutateChangeFixture(store *mekugiReplayStore, ctx context.Context, query changes.Query) (string, int, error) {
+	args := append([]string{query.View, "--workspace", query.Workspace, "--max-tokens", "15500"}, query.IDs...)
+	if len(query.Paths) > 0 {
+		args = append(append(args, "--"), query.Paths...)
+	}
+	output, err := store.changes.Execute(ctx, command.Request{Args: args, Scope: retainedScope(ctx, store.directory)})
+	if err != nil {
+		return output.Stdout, output.ExitCode, err
+	}
+	if output.Stderr != "" {
+		return output.Stdout, output.ExitCode, errors.New(strings.TrimSpace(output.Stderr))
+	}
+	return output.Stdout, output.ExitCode, nil
 }

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestCompactionCapturesCompletedNativePatch(t *testing.T) {
@@ -196,7 +198,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 						t.Fatalf("repeated compaction allocated a new change: %q -> %q", changeID, history.ChangeID)
 					}
 					changeID = history.ChangeID
-					changes, err := reopened.readChanges(readCtx, changeReadOptions{workspace: workspace, ids: []string{changeID}, maxTokens: 4000})
+					changes, err := reopened.changes.Read(readCtx, reopened.scoped(readCtx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{changeID}, MaxTokens: 4000})
 					if err != nil || strings.Count(changes, "-old\n") != 1 || strings.Count(changes, "+new\n") != 1 {
 						t.Fatalf("retained changes lost or duplicated actual diff: %q, %v", changes, err)
 					}

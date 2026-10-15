@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -25,8 +27,6 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/boundedcommand/run"
-
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 
 	"github.com/dlclark/regexp2/v2"
 	"github.com/yusing/mekugi/capturer"
@@ -184,7 +184,7 @@ func TestMain(m *testing.M) {
 }
 
 func testCommands() []command.Contribution {
-	commands := toolplugin.Builtins()
+	commands := []command.Contribution{moduletest.BindCommand(changes.Command, testChanges())}
 	return append(commands, moduletest.BindCommand(recovery.Command, testRecovery()), moduletest.BindCommand(run.Command, run.Service{}), moduletest.BindCommand(outline.Command, outline.Service{}), moduletest.BindCommand(read.Command, read.Service{}), moduletest.BindCommand(query.Command, query.Service{}))
 }
 

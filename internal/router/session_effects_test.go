@@ -52,7 +52,7 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 				derived.ExecOutcome.Exit = &exit
 			}
 			if tc.files {
-				derived.ChangeID, err = store.reserveChange(t.Context(), root, "", derived.CorrelationID)
+				derived.ChangeID, err = store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), root, "", derived.CorrelationID)
 				if err != nil {
 					t.Fatal(err)
 				}

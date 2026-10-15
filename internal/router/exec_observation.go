@@ -204,25 +204,6 @@ const (
 	execCoverageUnswept = "unswept"
 )
 
-func (o execOutcome) text() string {
-	label := "exec"
-	if len(o.Labels) != 0 {
-		label += " " + strings.Join(o.Labels, ", ")
-	}
-	parts := []string{label}
-	if o.Status == execStatusCompleted || o.Status == execStatusFailed {
-		parts = append(parts, "command "+o.Status)
-	}
-	if o.Exit != nil {
-		parts = append(parts, "exit "+strconv.Itoa(*o.Exit))
-	}
-	parts = append(parts, o.Class+", "+o.Coverage+" coverage")
-	if o.Unswept != "" {
-		parts = append(parts, o.Unswept)
-	}
-	return strings.Join(parts, " · ")
-}
-
 // execCommandArguments decodes stock exec_command arguments and resolves the
 // working directory against the selected metadata directory. A command without
 // its own shell runs in the session shell. A command for another environment
@@ -1612,10 +1593,10 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		ReplayCarrier:   true,
 		UpstreamItem:    execDerivedUpstreamItem(derivedCallID, arguments),
 	}
-	if len(reviews) != 0 {
-		changeID, err := p.replayStore.reserveChange(ctx, workspace, thread, correlation)
+	if len(reviews) != 0 && p.replayStore != nil {
+		changeID, err := p.replayStore.changes.Reserve(ctx, p.replayStore.scoped(ctx).changeScope(), workspace, thread, correlation)
 		if err != nil {
-			return err
+			return changeError(err)
 		}
 		record.ChangeID = changeID
 	}

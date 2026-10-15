@@ -1,4 +1,6 @@
-package router
+package retained
+
+// Source: internal/router/change_references.go@[1a1981ba] retained change behavior.
 
 import (
 	"context"
@@ -8,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
@@ -30,8 +34,7 @@ type changeReadSnapshot struct {
 	Digest        string                   `json:"digest"`
 }
 
-// ChangeReferences supplies the retained evidence owner's existing selection
-// format until changehistory becomes its own composition entry.
+// ChangeReferences resolves the historical retained selection format.
 func ChangeReferences() []reference.Resolver {
 	return []reference.Resolver{{
 		Field: "changes", Canonicalize: canonicalChangeSelection, Resolve: resolveChangeSelection, Dependencies: changeSelectionDependencies,
@@ -56,7 +59,7 @@ func validateChangeSelection(selection *changeReadSnapshot) error {
 	if selection.Frozen {
 		ids := make(map[string]bool, len(selection.IDs))
 		for _, id := range selection.IDs {
-			if _, _, err := parseChangeID(id); err != nil || ids[id] {
+			if _, _, err := changes.ParseID(id); err != nil || ids[id] {
 				return errors.New("invalid frozen change IDs")
 			}
 			ids[id] = true
@@ -76,8 +79,8 @@ func validateChangeSelection(selection *changeReadSnapshot) error {
 	}
 	return nil
 }
-func changeSelectionStore(selected scope.Retained) *mekugiReplayStore {
-	return &mekugiReplayStore{directory: selected.Directory, session: storageSessionIdentity{Namespace: selected.Namespace, Thread: selected.Thread}}
+func changeSelectionStore(selected scope.Retained) *store {
+	return &store{directory: selected.Directory, session: scope.Retained{Namespace: selected.Namespace, Thread: selected.Thread}}
 }
 func resolveChangeSelection(ctx context.Context, view reference.View, data []byte) (command.OmittedOutput, error) {
 	var selection changeReadSnapshot
@@ -111,7 +114,7 @@ func changeSelectionDependencies(selected scope.Retained, data []byte) ([]string
 		return nil, err
 	}
 	if !selection.Frozen {
-		return changeSelectionStore(selected).changeDependencyNames(selection.Workspace, selection.IDs)
+		return changeSelectionStore(selected).dependencies(selection.Workspace, selection.IDs, false)
 	}
 	var names []string
 	for _, id := range selection.IDs {

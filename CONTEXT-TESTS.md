@@ -55,11 +55,12 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./internal/vcsguard ./internal/router -run 'TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestVCSGuardHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
-| Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
+| Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./capturer` |
 | Capture metrics and AX evidence | `./capturer` |
 | Semantic symbol queries | `./modules/symbolquery/...`, plus router symbol/activity/AX and recovery consumers |
 | Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/...`, then authenticated router frontend/recovery tests |
 | Raw source reading | `./modules/fileread/...`, then router read/recovery/AX and activity consumers |
+| Retained changes, frozen selections, and mutation | `./modules/changehistory/...`, plus router `MChanges`, `Changes`, retention/fork/recovery, and live-view consumers |
 | Retained paging | `./modules/outputrecovery/...`, then router mread/storage/fork integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
 | Bounded commands | `./modules/boundedcommand/...`, plus `./internal/router -run MRun` for authenticated delivery and process lifecycle |

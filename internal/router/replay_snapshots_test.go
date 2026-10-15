@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -260,21 +262,22 @@ func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent, release := retentionTestSession(t, store, "parent", 0)
-	id, err := store.reserveChange(parent, "/w", "parent", "edit")
+	id, err := store.changes.Reserve(parent, store.scoped(parent).changeScope(), "/w", "parent", "edit")
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := snapshotTestHistory()
 	h.ChangeID, h.CorrelationID, h.Attempt = id, "edit", 1
 	snapshotTestPut(t, store, parent, "edit-call", h)
-	text, snapshot, err := store.readChangeView(parent, changeReadOptions{workspace: "/w", ids: []string{id}})
+	query := changes.Query{Workspace: "/w", IDs: []string{id}}
+	text, err := store.changes.Read(parent, store.scoped(parent).changeScope(), query)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(text, "-old\n+new") {
 		t.Fatalf("missing actual persisted edit: %q", text)
 	}
-	reference, err := store.putChangeRead(parent, snapshot, text, 1)
+	reference, err := putHistoricalChangeRead(store, parent, query, text, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

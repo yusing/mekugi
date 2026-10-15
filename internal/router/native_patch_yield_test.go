@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	jsonv1 "encoding/json"
 	"fmt"
@@ -99,7 +100,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if err != nil || !strings.Contains(notice, first.ChangeID) {
 		t.Fatalf("completed patch has no immediate edit notice: notice=%q err=%v", notice, err)
 	}
-	firstDiff, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{workspace: workspace, ids: []string{first.ChangeID}, maxTokens: 4000})
+	firstDiff, err := proxy.replayStore.changes.Read(transform.ctx, proxy.replayStore.scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}, MaxTokens: 4000})
 	if err != nil || !strings.Contains(firstDiff, "-old") || !strings.Contains(firstDiff, "+middle") || strings.Contains(firstDiff, "+final") {
 		t.Fatalf("first capture before next edit = %q, %v", firstDiff, err)
 	}
@@ -138,14 +139,14 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if !found || firstAgain.ChangeID != first.ChangeID {
 		t.Fatalf("first patch changed after second edit: found=%v evidence=%+v", found, firstAgain)
 	}
-	firstDiffAgain, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{workspace: workspace, ids: []string{first.ChangeID}, maxTokens: 4000})
+	firstDiffAgain, err := proxy.replayStore.changes.Read(transform.ctx, proxy.replayStore.scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}, MaxTokens: 4000})
 	if err != nil || firstDiffAgain != firstDiff {
 		t.Fatalf("first patch snapshot drifted: before=%q after=%q err=%v", firstDiff, firstDiffAgain, err)
 	}
 	assertNet := func() {
 		t.Helper()
-		net, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{
-			workspace: workspace, ids: []string{first.ChangeID, second.ChangeID}, view: "net", maxTokens: 4000,
+		net, err := proxy.replayStore.changes.Read(transform.ctx, proxy.replayStore.scoped(transform.ctx).changeScope(), changes.Query{
+			Workspace: workspace, IDs: []string{first.ChangeID, second.ChangeID}, View: "net", MaxTokens: 4000,
 		})
 		if err != nil || !strings.Contains(net, "-old") || !strings.Contains(net, "+final") || strings.Contains(net, "+middle") || strings.Contains(net, "-middle") {
 			t.Fatalf("two patch captures did not compose: net=%q err=%v", net, err)
@@ -177,7 +178,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	if !found || firstLast.ChangeID != first.ChangeID {
 		t.Fatalf("first patch changed after command exit: found=%v evidence=%+v", found, firstLast)
 	}
-	firstDiffLast, err := proxy.replayStore.readChanges(transform.ctx, changeReadOptions{workspace: workspace, ids: []string{first.ChangeID}, maxTokens: 4000})
+	firstDiffLast, err := proxy.replayStore.changes.Read(transform.ctx, proxy.replayStore.scoped(transform.ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{first.ChangeID}, MaxTokens: 4000})
 	if err != nil || firstDiffLast != firstDiff {
 		t.Fatalf("late command completion rewrote first patch: before=%q after=%q err=%v", firstDiff, firstDiffLast, err)
 	}

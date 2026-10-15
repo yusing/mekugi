@@ -15,6 +15,7 @@ use (
 	./libraries/shellinstrumentation
 	./libraries/sourceanalysis
 	./modules/boundedcommand
+	./modules/changehistory
 	./modules/commandsegments
 	./modules/fileread
 	./modules/outputrecovery

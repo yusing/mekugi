@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -26,7 +28,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				file := diffmodel.RenderIncompleteReviewFile("/w/plugins/node_modules", "/w/plugins/node_modules", "dependency directory metadata capture incomplete")
 				file.OriginNote = execInventoryNote
 				call := fmt.Sprintf("command-%d", i)
-				id, err := store.reserveChange(t.Context(), "/w", "stock-thread", call)
+				id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), "/w", "stock-thread", call)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -49,7 +51,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				}
 			}
 			for _, mode := range []string{"", "summary", "history"} {
-				out, err := reader.readChanges(t.Context(), changeReadOptions{workspace: "/w", ids: ids, view: mode})
+				out, err := reader.changes.Read(t.Context(), reader.scoped(t.Context()).changeScope(), changes.Query{Workspace: "/w", IDs: ids, View: mode})
 				if err != nil || strings.Contains(out, "node_modules") != (mode == "history") || strings.Contains(out, "incomplete") != (mode == "history") {
 					t.Fatalf("%s lost coverage or exposed observation as edit: %q, %v", mode, out, err)
 				}

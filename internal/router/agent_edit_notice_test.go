@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/internal/responses"
 
 	jsonv1 "encoding/json"
@@ -62,7 +64,7 @@ func assertEditNotice(t *testing.T, ctx context.Context, proxy *mekugiProxy, wor
 	if err != nil || !found || record.ChangeID == "" {
 		t.Fatalf("missing durable change for %s: %+v found=%v err=%v", recordCall, record, found, err)
 	}
-	summary, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{record.ChangeID}, view: "summary"})
+	summary, err := proxy.replayStore.changes.Read(ctx, proxy.replayStore.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: []string{record.ChangeID}, View: "summary"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +206,7 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 	var ids []string
 	for index := range 2 {
 		call := nativePatchDerivedCallID("many-patches", index)
-		id, err := proxy.replayStore.reserveChange(t.Context(), workspace, "author", call)
+		id, err := proxy.replayStore.changes.Reserve(t.Context(), proxy.replayStore.scoped(t.Context()).changeScope(), workspace, "author", call)
 		if err != nil {
 			t.Fatal(err)
 		}

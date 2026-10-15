@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/responses"
@@ -225,12 +226,12 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if err := data.reconcile(t.Context(), store, scope); err != nil {
 		t.Fatalf("unchanged membership reread an immutable capture: %v", err)
 	}
-	index, err := store.readChangeIndex(workspace)
+	index, err := store.changes.Inspect(store.changeScope(), workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	index.Changes["amber1"] = trackedChange{Correlation: "one"}
-	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return store.writeChangeIndex(index) }); err != nil {
+	index.Changes["amber1"] = changes.Change{Correlation: "one"}
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return writeChangeIndexFixture(store, index) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := data.reconcile(t.Context(), store, scope); err == nil {
@@ -295,7 +296,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	<-sub.events
 	histories := make(map[string]mekugiHistory)
 	for _, name := range []string{"first", "second"} {
-		id, err := store.reserveChange(t.Context(), workspace, transform.shellThreadID, name)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, transform.shellThreadID, name)
 		if err != nil {
 			t.Fatal(err)
 		}

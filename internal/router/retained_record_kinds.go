@@ -1,18 +1,13 @@
 package router
 
 import (
-	"context"
 	"encoding/hex"
-	jsonv1 "encoding/json"
-	json "encoding/json/v2"
-	"errors"
 	"path/filepath"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // RetainedRecordKinds supplies the existing owners while their feature modules
@@ -24,22 +19,6 @@ func RetainedRecordKinds() []recordkind.Spec {
 			return legacycall.Dependencies(record.Name, record.Data)
 		}},
 		{ID: "snapshot", Match: legacycall.ValidSnapshotName},
-		{ID: "changes", Match: func(name string) bool { return hashedRecordName(name, changeIndexPrefix) }, Keep: true, MaxRecordBytes: history.MaxRecordBytes, Retirement: func(ctx context.Context, record recordkind.Record) (recordkind.RetirementPlanner, error) {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-			var index changeIndex
-			if err := json.Unmarshal(record.Data, &index, jsonv1.DefaultOptionsV1()); err != nil {
-				return nil, err
-			}
-			if changeIndexName(index.Workspace, index.Namespace) != record.Name {
-				return nil, errors.New("invalid background change index identity")
-			}
-			if err := validateChangeIndex(index); err != nil {
-				return nil, err
-			}
-			return changeRetirementPlanner(index), nil
-		}},
 	}
 	for _, prefix := range []string{"commentary-", "failure-", "usage-", "wait-", "hooks-"} {
 		kind := recordkind.Spec{ID: strings.TrimSuffix(prefix, "-"), Match: func(name string) bool {

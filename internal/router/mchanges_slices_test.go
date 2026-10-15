@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -81,7 +83,7 @@ func (f *mchangesSliceFixture) invocationFor(directory, thread string) shellWork
 
 func (f *mchangesSliceFixture) reserve(t *testing.T, thread, correlation string) string {
 	t.Helper()
-	id, err := f.store.reserveChange(f.ctx, f.workspace, thread, correlation)
+	id, err := f.store.changes.Reserve(f.ctx, f.store.scoped(f.ctx).changeScope(), f.workspace, thread, correlation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,13 +106,13 @@ func (f *mchangesSliceFixture) publish(t *testing.T, id, correlation, callID str
 
 func (f *mchangesSliceFixture) retire(t *testing.T, id string) {
 	t.Helper()
-	stream, _, err := parseChangeID(id)
+	stream, _, err := changes.ParseID(id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store := f.store.scoped(f.ctx)
 	if err := store.locked(f.ctx, func(store *mekugiReplayStore) error {
-		index, err := store.readChangeIndex(f.workspace)
+		index, err := store.changes.Inspect(store.changeScope(), f.workspace)
 		if err != nil {
 			return err
 		}
@@ -119,7 +121,7 @@ func (f *mchangesSliceFixture) retire(t *testing.T, id string) {
 		}
 		position := -1
 		for candidate := range index.Streams {
-			if index.streamName(candidate) == stream {
+			if index.Streams[candidate].Name == stream {
 				position = candidate
 				break
 			}
@@ -129,7 +131,7 @@ func (f *mchangesSliceFixture) retire(t *testing.T, id string) {
 		}
 		delete(index.Changes, id)
 		index.Streams[position].Retired++
-		return store.writeChangeIndex(index)
+		return writeChangeIndexFixture(store, index)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +196,8 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 		description = definition.Description
 		break
 	}
-	agentUsage := strings.Replace(changesReadUsage, "--summary|--history|--net", "--summary|--net", 1)
+	_, usageErr := testChanges().Parse([]string{"--invalid"}, f.workspace)
+	agentUsage := strings.Replace(strings.TrimPrefix(usageErr.Error(), "unknown option --invalid; "), "--summary|--history|--net", "--summary|--net", 1)
 	if !strings.Contains(description, "Usage: `"+agentUsage+"`") {
 		t.Fatalf("agent-facing mchanges usage does not match parser usage: %q", description)
 	}
@@ -298,8 +301,8 @@ func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) 
 	})
 	pendingCorrelation := "pending-finalizes"
 	pending := f.reserve(t, f.thread, pendingCorrelation)
-	options := changeReadOptions{workspace: f.workspace, ids: []string{completed, pending}, view: "history"}
-	expected, err := f.store.readChanges(f.ctx, options)
+	options := changes.Query{Workspace: f.workspace, IDs: []string{completed, pending}, View: "history"}
+	expected, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +326,7 @@ func TestMChangesSlicesPageKeepsOriginalPendingAndAttemptSnapshot(t *testing.T) 
 	f.publish(t, pending, pendingCorrelation, "pending-finalized-call", mekugiHistory{
 		Script: "finalized-after-page\n",
 	})
-	updated, err := f.store.readChanges(f.ctx, options)
+	updated, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,15 +494,17 @@ func TestMChangesFrozenOverlapLabelSurvivesUnselectedRetirement(t *testing.T) {
 	f.publish(t, selected, "selected", "selected-call", mekugiHistory{
 		Script: "captured input\n", ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact, Overlaps: []string{"overlap-call"}},
 	})
-	text, snapshot, err := f.store.readChangeView(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{selected}, view: "history"})
-	if err != nil || !strings.Contains(text, "observed alongside "+other+"\n") {
-		t.Fatalf("overlap snapshot: %q, %v", text, err)
+	text, diag, status := f.run(t, "mchanges "+selected+" --history --max-tokens 15500")
+	if status != 0 || diag != "" || !strings.Contains(text, "observed alongside "+other+"\n") {
+		t.Fatalf("overlap read: %q %q %d", text, diag, status)
 	}
-	offset := strings.IndexByte(text, '\n') + 1
-	reference, err := f.store.putChangeRead(f.ctx, snapshot, text, offset)
-	if err != nil {
-		t.Fatal(err)
+	shown, diag, status := f.run(t, "mchanges "+selected+" --history --max-tokens 12")
+	const marker = "read: incomplete; next_call: mread "
+	if status != 1 || shown == "" || !strings.HasPrefix(diag, marker) {
+		t.Fatalf("bounded read: %q %q %d", shown, diag, status)
 	}
+	reference := strings.TrimSpace(strings.TrimPrefix(diag, marker))
+	offset := len(shown)
 	f.retire(t, other)
 	resumed, err := openMekugiReplayStore(f.store.directory)
 	if err != nil {

@@ -1,4 +1,6 @@
-package router
+package retained
+
+// Source: internal/router/shell_read_page.go@[1a1981ba] retained change behavior.
 
 import (
 	"context"

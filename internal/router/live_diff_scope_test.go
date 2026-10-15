@@ -26,7 +26,7 @@ func (s *mekugiReplayStore) liveDiffSnapshotFiles(ctx context.Context, scope liv
 
 func liveDiffScopeCapture(t *testing.T, store *mekugiReplayStore, workspace, thread, call, path, before, after string) {
 	t.Helper()
-	id, err := store.reserveChange(t.Context(), workspace, thread, call)
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, thread, call)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestLiveDiffFreshSnapshotComposesCrossStreamCaptures(t *testing.T) {
 		{"B", "insert", "--- target\n+++ target\n@@ -0,0 +1 @@\n+prefix\n"},
 		{"A", "replace", "--- target\n+++ target\n@@ -21 +21 @@\n-old\n+new\n"},
 	} {
-		id, err := store.reserveChange(t.Context(), workspace, capture.thread, capture.call)
+		id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, capture.thread, capture.call)
 		if err != nil {
 			t.Fatal(err)
 		}

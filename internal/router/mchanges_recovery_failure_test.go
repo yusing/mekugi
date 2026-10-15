@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/changehistory"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -41,7 +44,7 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			faultRecovery, err := recovery.New(faultHistory, ChangeReferences())
+			faultRecovery, err := recovery.New(faultHistory, changehistory.Module.Contributes.References)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,7 +87,8 @@ func TestMChangesRecoveryPublicationFailurePreservesOutput(t *testing.T) {
 			if status != 1 {
 				t.Errorf("paged read status=%d, want 1", status)
 			}
-			admitted, err := selectReadPage(t.Context(), full, 12)
+			selected, err := testChanges().Execute(f.ctx, command.Request{Args: args, Scope: retainedScope(f.ctx, f.store.directory)})
+			admitted := selected.Stdout
 			if err != nil || admitted == "" || admitted == full {
 				t.Fatalf("invalid bounded fixture: err=%v admitted=%q", err, admitted)
 			}

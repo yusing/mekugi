@@ -3,16 +3,14 @@ package router
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -80,7 +78,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			}
 			file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
 			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key) + len(origin.Caller) + len(origin.Source)
-			if d.bytes > maxChangeReadBytes {
+			if d.bytes > changes.MaxReadBytes {
 				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
 			attempt.chunks = append(attempt.chunks, livediff.Chunk{
@@ -119,7 +117,7 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 		if !filepath.IsAbs(workspace) {
 			return errors.New("live diff workspace must be absolute")
 		}
-		indexes, err := s.liveDiffIndexes(workspace, scope.Workspaces[workspace])
+		indexes, err := s.changes.InspectVisible(s.changeScope(), workspace, scope.Workspaces[workspace])
 		if err != nil {
 			return err
 		}
@@ -127,10 +125,10 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 		for _, index := range indexes {
 			for stream, info := range index.Streams {
 				for number := 1; number <= info.Next; number++ {
-					id := changeHandle(index.streamName(stream), number)
+					id := changes.ID(index.Streams[stream].Name, number)
 					change := index.Changes[id]
 					change.Calls = slices.Clone(change.Calls)
-					change.Calls = slices.DeleteFunc(change.Calls, func(call trackedCall) bool {
+					change.Calls = slices.DeleteFunc(change.Calls, func(call changes.Call) bool {
 						return threads != nil && !threads[cmp.Or(call.Thread, info.Thread)]
 					})
 					for _, call := range change.Calls {
@@ -152,52 +150,4 @@ func (d *liveDiffData) reconcile(ctx context.Context, s *mekugiReplayStore, scop
 		}
 	}
 	return nil
-}
-
-func (s *mekugiReplayStore) liveDiffIndexes(workspace string, threads map[string]bool) ([]changeIndex, error) {
-	names := map[string]bool{changeIndexName(workspace, ""): true}
-	if threads == nil {
-		entries, err := os.ReadDir(s.directory)
-		if err != nil {
-			return nil, err
-		}
-		for _, entry := range entries {
-			if hashedRecordName(entry.Name(), changeIndexPrefix) {
-				names[entry.Name()] = true
-			}
-		}
-	} else {
-		for thread := range threads {
-			scope, _, err := s.publication.ReadScope(thread)
-			if err != nil {
-				return nil, err
-			}
-			names[changeIndexName(workspace, scope.Namespace)] = true
-		}
-	}
-	var indexes []changeIndex
-	for _, name := range slices.Sorted(maps.Keys(names)) {
-		data, err := history.ReadRecord(filepath.Join(s.directory, name))
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		var index changeIndex
-		if err := json.Unmarshal(data, &index); err != nil {
-			return nil, err
-		}
-		if index.Version != 1 || index.Changes == nil || changeIndexName(index.Workspace, index.Namespace) != name {
-			return nil, errors.New("invalid live diff change index identity")
-		}
-		if index.Workspace != workspace {
-			continue
-		}
-		if err := validateChangeIndex(index); err != nil {
-			return nil, err
-		}
-		indexes = append(indexes, index)
-	}
-	return indexes, nil
 }

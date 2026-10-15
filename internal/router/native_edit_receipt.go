@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -35,7 +37,7 @@ func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, t
 			record.History.ExecutingThread != thread {
 			return fmt.Errorf("edit receipt not found")
 		}
-		index, err := s.readChangeIndex(workspace)
+		index, err := s.changes.Inspect(s.changeScope(), workspace)
 		if err != nil {
 			return err
 		}
@@ -80,7 +82,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 					continue
 				}
 				// Missing content does not undo the confirmed removal of a path.
-				if file.AfterPath != "" || !authoredReview(file) {
+				if file.AfterPath != "" || !changes.AuthoredReview(file) {
 					removed = false
 				}
 				if !file.Directory {
@@ -93,7 +95,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		}
 	}
 	for _, file := range history.ReviewFiles {
-		if !authoredReview(file) {
+		if !changes.AuthoredReview(file) {
 			continue
 		}
 		if file.Incomplete != "" {
@@ -246,7 +248,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 		// Find their durable derived attempts, not the disposable native trace.
 		scoped := s.scoped(ctx)
 		if err := scoped.locked(ctx, func(scoped *mekugiReplayStore) error {
-			index, err := scoped.readChangeIndex(workspace)
+			index, err := scoped.changes.Inspect(scoped.changeScope(), workspace)
 			if err != nil {
 				return err
 			}
@@ -296,7 +298,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 	}
 	// Put every ID before the bounded statistics, including multi-patch cells.
 	header := "mchanges " + strings.Join(ids, " ") + " --summary\n"
-	summary, err := s.readChanges(ctx, changeReadOptions{workspace: workspace, ids: ids, view: "summary"})
+	summary, err := s.changes.Read(ctx, s.scoped(ctx).changeScope(), changes.Query{Workspace: workspace, IDs: ids, View: "summary"})
 	if err != nil {
 		return "", err
 	}

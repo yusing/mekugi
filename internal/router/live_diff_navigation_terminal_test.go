@@ -25,7 +25,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 		path := filepath.Join(workspace, fmt.Sprintf("internal/router/file%03d.go", i))
 		files[i] = diffmodel.RenderReviewFile("", path, "", strings.Repeat(fmt.Sprintf("file_%03d_content\n", i), 30))
 	}
-	id, err := store.reserveChange(t.Context(), workspace, "thread", "many")
+	id, err := store.changes.Reserve(t.Context(), store.scoped(t.Context()).changeScope(), workspace, "thread", "many")
 	if err != nil {
 		t.Fatal(err)
 	}
