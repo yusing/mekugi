@@ -527,11 +527,6 @@ func journalGuidanceSnapshot(ctx context.Context, path string, named func(string
 	return header + strings.TrimRight(string(data), "\n") + "\n", nil
 }
 
-// journalNamesToken reports whether text names form as a whole path token.
-func journalNamesToken(text, form string) bool {
-	return journalNamePosition(text, form) >= 0
-}
-
 func journalNamePosition(text, form string) int {
 	pathByte := func(c byte) bool {
 		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("._-/~$", c) >= 0
