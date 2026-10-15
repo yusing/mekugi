@@ -16,8 +16,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func approvalTestCommand(t *testing.T, u *appServerUI, id any, params map[string]any) {
