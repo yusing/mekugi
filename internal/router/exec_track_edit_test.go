@@ -70,9 +70,15 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if opaque {
 				snapshots = newWorkspaceSnapshots(t.TempDir())
 				defer snapshots.close()
-				observation.Tree = snapshots.checkpoint(t.Context(), workspace)
-				if observation.Tree == "" {
-					t.Fatal("missing workspace baseline")
+				// This fixture requires a baseline. Use the error-bearing snapshot
+				// operation rather than the production best-effort fallback, which
+				// deliberately hides setup failures and narrows capture coverage.
+				baselineCtx, cancel := context.WithTimeout(t.Context(), workspaceSnapshotWarm)
+				var err error
+				observation.Tree, err = snapshots.repo(workspace).snapshot(baselineCtx)
+				cancel()
+				if err != nil {
+					t.Fatalf("prepare workspace baseline: %v", err)
 				}
 				if files, _ := execPreviewProjected(t.Context(), *observation); len(files) != 0 {
 					t.Fatal("regression must bypass source prediction")
