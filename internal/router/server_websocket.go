@@ -536,7 +536,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	var metadata map[string]json.RawMessage
 	if json.Unmarshal(requestFields["client_metadata"], &metadata) == nil {
 		for _, key := range []string{codexTurnMetadataHeader, "x-codex-turn-state", threadIDHeader, codexWindowIDHeader, openAISubagentHeader} {
-			if value, ok := decodeJSONString(metadata[key]); ok {
+			if value, ok := responseevents.DecodeString(metadata[key]); ok {
 				headers.Set(key, value)
 			}
 		}
@@ -626,7 +626,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		return nil, err
 	}
 	if len(previous) != 0 {
-		payload, err = replaceRawField(payload, "previous_response_id", previous)
+		payload, err = responseevents.ReplaceField(payload, "previous_response_id", previous)
 		if err != nil {
 			return nil, err
 		}

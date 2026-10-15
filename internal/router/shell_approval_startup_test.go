@@ -37,7 +37,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					t.Fatal(err)
 				}
 				ready := false
-				err = RunSession(testHistory(), testRecovery(), segments, testChanges(), ctx, testCommands(), testInputProjections(), options, NewCriticalErrors(), func(session Session) {
+				err = RunSession(testHistory(), testRecovery(), segments, testChanges(), ctx, testCommands(), testInputProjections(), testGuidance(), options, NewCriticalErrors(), func(session Session) {
 					ready = true
 					defer cancel()
 					// Stop at backend launch, after the production approval startup boundary.

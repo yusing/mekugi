@@ -299,7 +299,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := request.responseTools()
-		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
+		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, p.registry.guidance)
 		if err != nil {
 			return nil, err
 		}
@@ -307,8 +307,10 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 			return nil, nil
 		}
 	}
-	if err := rewriteRequestInstructionConflicts(request); err != nil {
-		return nil, err
+	if p.registry.guidance != nil {
+		if err := request.projectInstructions(p.registry.guidance.ForExecution); err != nil {
+			return nil, err
+		}
 	}
 
 	recipient := metadata.AgentName
@@ -329,7 +331,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	originalTools = bytes.Clone(originalTools)
 	originalToolChoice, originalToolChoicePresent := request.fields["tool_choice"]
 	originalToolChoice = bytes.Clone(originalToolChoice)
-	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
+	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, p.registry.guidance)
 	if err != nil {
 		return nil, err
 	}

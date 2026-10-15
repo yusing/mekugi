@@ -8,34 +8,6 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-func TestStripInstructionOmissions(t *testing.T) {
-	block := instructionOmitStart + "use rtk" + instructionOmitEnd
-	for _, test := range []struct{ name, input, want string }{
-		{"plain", "keep", "keep"},
-		{"block", "before\n" + block + "\nafter", "before\n\nafter"},
-		{"multiple", block + "keep" + block, "keep"},
-		{"empty", instructionOmitStart + instructionOmitEnd, ""},
-		{"nested", "a" + instructionOmitStart + block + "outer" + instructionOmitEnd + "b", "ab"},
-		{"unclosed", "a" + instructionOmitStart + "keep", "a" + instructionOmitStart + "keep"},
-		{"orphan close", instructionOmitEnd + "keep", instructionOmitEnd + "keep"},
-		{"unclosed outer", instructionOmitStart + block, instructionOmitStart + block},
-		{"complete then unclosed", block + instructionOmitStart + "keep", instructionOmitStart + "keep"},
-		{"fenced", "```\n" + block + "\n```", "```\n\n```"},
-		{"crlf", "a\r\n" + block + "\r\nb", "a\r\n\r\nb"},
-		{"near match", "<!-- mekugi:omit-->keep<!-- /mekugi:omit-->", "<!-- mekugi:omit-->keep<!-- /mekugi:omit-->"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got := stripInstructionOmissions(test.input)
-			if got != test.want {
-				t.Fatalf("got %q, want %q", got, test.want)
-			}
-			if again := stripInstructionOmissions(got); again != got {
-				t.Fatalf("not idempotent: %q", again)
-			}
-		})
-	}
-}
-
 func TestStripRequestInstructionOmissions(t *testing.T) {
 	block := instructionOmitStart + "use rtk" + instructionOmitEnd
 	wrapper := "# AGENTS.md instructions for /workspace\n<INSTRUCTIONS>keep" + block + "</INSTRUCTIONS>\n<environment_context>unchanged</environment_context>"
@@ -66,7 +38,7 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 						map[string]string{"type": "function_call_output", "call_id": "call", "output": block},
 					}),
 				}}
-				if err := stripRequestInstructionOmissions(&request); err != nil {
+				if err := request.projectInstructions(testGuidance().BeforePreparation); err != nil {
 					t.Fatal(err)
 				}
 				if got := responses.StringField(request.fields, "instructions"); got != "base" {
@@ -81,7 +53,7 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 					t.Fatalf("input = %s, want %s", request.fields["input"], wantInput)
 				}
 				before := string(request.fields["input"])
-				if err := stripRequestInstructionOmissions(&request); err != nil || string(request.fields["input"]) != before {
+				if err := request.projectInstructions(testGuidance().BeforePreparation); err != nil || string(request.fields["input"]) != before {
 					t.Fatalf("repeat changed input: %v", err)
 				}
 			})
@@ -94,7 +66,7 @@ func TestStripDirectorylessAgentInstructions(t *testing.T) {
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
 		"input": responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": text}}),
 	}}
-	if err := stripRequestInstructionOmissions(&request); err != nil {
+	if err := request.projectInstructions(testGuidance().BeforePreparation); err != nil {
 		t.Fatal(err)
 	}
 	want := responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": "# AGENTS.md instructions\n<INSTRUCTIONS>keep</INSTRUCTIONS>"}})

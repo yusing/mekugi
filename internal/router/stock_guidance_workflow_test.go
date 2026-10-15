@@ -14,7 +14,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 	checkStableRefresh := func(t *testing.T, fields map[string]jsonv1.RawMessage) {
 		t.Helper()
 		before := responses.MustMarshalJSON(fields)
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil {
 			t.Fatal(err)
 		}
 		if !sameJSONValue(before, responses.MustMarshalJSON(fields)) {
@@ -25,7 +25,7 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 	t.Run("exec exec_command", func(t *testing.T) {
 		const stock = testCodeModeDescription
 		fields := map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools(stock)})}
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
+		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil {
 			t.Fatal(err)
 		}
 		catalog := decodeResponsesToolCatalog(fields)

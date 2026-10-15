@@ -47,7 +47,7 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		if bytes.Contains(data, []byte(`"encrypted":true`)) || !bytes.Contains(data, []byte(`"namespace":"mekugi_collaboration"`)) {
 			t.Fatalf("projection=%s", data)
 		}
-		if responses.StringField(request.fields, "instructions") != "keep" || !bytes.Contains(data, responses.MustMarshalJSON(embeddedInstruction("collaboration_namespace"))) {
+		if responses.StringField(request.fields, "instructions") != "keep" || !bytes.Contains(data, responses.MustMarshalJSON(collaborationNamespaceInstruction)) {
 			t.Fatal("bridge guidance changed base instructions or is missing from the projected namespace")
 		}
 		item := map[string]any{"type": "function_call", "namespace": subagentBridgeNamespace, "name": "spawn_agent", "call_id": "c1", "arguments": `{"message":"plain"}`}
@@ -284,7 +284,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				property := properties[name].(map[string]any)
 				description := property["description"].(string)
 				native := original[name].(map[string]any)["description"].(string)
-				if name != "model" && description != native+"\n"+embeddedInstruction("grok_"+name) {
+				if name != "model" && description != native+"\n"+map[string]string{"fork_turns": grokForkTurnsInstruction, "reasoning_effort": grokReasoningEffortInstruction}[name] {
 					t.Fatalf("%s guidance = %q", name, description)
 				}
 				if name == "model" {
@@ -360,7 +360,7 @@ func TestSubagentBridgeWithoutGrok(t *testing.T) {
 			bytes.Contains(wire, []byte(`"encrypted":true`)) {
 			t.Fatalf("ordinary projection exposes wrong contract: %s", wire)
 		}
-		if !bytes.Contains(wire, responses.MustMarshalJSON(embeddedInstruction("collaboration_namespace"))) || responses.StringField(request.fields, "instructions") != "keep" {
+		if !bytes.Contains(wire, responses.MustMarshalJSON(collaborationNamespaceInstruction)) || responses.StringField(request.fields, "instructions") != "keep" {
 			t.Fatal("missing plaintext guidance")
 		}
 	}

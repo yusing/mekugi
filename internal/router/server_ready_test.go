@@ -194,5 +194,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 	if err != nil {
 		return err
 	}
-	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), ctx, commands, testInputProjections(), options, issues, ready, artifacts)
+	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), ctx, commands, testInputProjections(), testGuidance(), options, issues, ready, artifacts)
 }

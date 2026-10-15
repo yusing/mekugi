@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/internal/runtimepath"
 )
@@ -20,7 +21,7 @@ const (
 	toolPluginManifestFilename = "workers.json"
 )
 
-func buildToolRegistry(ctx context.Context, commands []command.Contribution) (*toolRegistry, error) {
+func buildToolRegistry(ctx context.Context, commands []command.Contribution, guidance *binding.Guidance) (*toolRegistry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -32,12 +33,13 @@ func buildToolRegistry(ctx context.Context, commands []command.Contribution) (*t
 	if err != nil {
 		return nil, err
 	}
-	return buildToolRegistryAt(ctx, commands, runtimeDirectory, replayDirectory)
+	return buildToolRegistryAt(ctx, commands, guidance, runtimeDirectory, replayDirectory)
 }
 
 func buildToolRegistryAt(
 	ctx context.Context,
 	commands []command.Contribution,
+	guidance *binding.Guidance,
 	runtimeDirectory, replayDirectory string,
 ) (*toolRegistry, error) {
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
@@ -95,9 +97,16 @@ func buildToolRegistryAt(
 	if len(validationErrors) != 0 {
 		return fail(errors.Join(validationErrors...))
 	}
-	frontendGuidance, err := frontendGuidanceFromRegistry(contributions)
-	if err != nil {
-		return fail(err)
+	var frontendGuidance string
+	if guidance != nil {
+		specs := make([]command.Spec, len(commands))
+		for i, contribution := range commands {
+			specs[i] = contribution.Spec
+		}
+		frontendGuidance, err = guidance.Frontends(specs)
+		if err != nil {
+			return fail(err)
+		}
 	}
 
 	guidanceHash := sha256.Sum256([]byte(frontendGuidance))
@@ -146,6 +155,7 @@ func buildToolRegistryAt(
 		frontendDirectory: filepath.Join(snapshotDirectory, "bin"),
 		ordered:           contributions,
 		frontendGuidance:  frontendGuidance,
+		guidance:          guidance,
 		wrappers:          wrappers,
 		frontends:         frontends,
 	}, nil

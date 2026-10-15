@@ -65,7 +65,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 	t.finalAnswer.observe(payload)
 	switch {
 	case envelope.Type == responseevents.OutputItemAdded:
-		item, ok := decodeResponsesItem(envelope.Item)
+		item, ok := responseevents.DecodeItem(envelope.Item)
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Unrelated output items pass through unchanged.
 		}
@@ -75,12 +75,12 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		name := item.Name
 		if t.codeModeToolName != "" && name == t.codeModeToolName {
 			if item.Type == "custom_tool_call" && item.ID != "" {
-				t.nativeExecCalls[item.ID] = item.cloneFields()
+				t.nativeExecCalls[item.ID] = item.CloneFields()
 				if item.Input != nil {
 					t.previewStockDelta(item.ID, name, *item.Input)
 				}
 			} else if item.Type == "function_call" && item.ID != "" {
-				t.nativeExecCalls[item.ID] = item.cloneFields()
+				t.nativeExecCalls[item.ID] = item.CloneFields()
 			}
 			return [][]byte{payload}, nil
 		}
@@ -106,14 +106,14 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 				addedFields["call_id"] = responseevents.MustMarshalJSON(callID)
 				original := maps.Clone(addedFields)
 				original["input"] = responseevents.MustMarshalJSON(envelope.Input)
-				item := newResponsesItem(original)
+				item := responseevents.NewItem(original)
 				changed, err := t.transformOutputItem(&item)
 				if err != nil {
 					return nil, err
 				}
 				event := payload
 				if changed {
-					event, err = replaceRawField(payload, "input", item.fields["input"])
+					event, err = responseevents.ReplaceField(payload, "input", item.Fields["input"])
 					if err != nil {
 						return nil, err
 					}
@@ -131,11 +131,11 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.OutputItemDone:
-		item, ok := decodeResponsesItem(envelope.Item)
+		item, ok := responseevents.DecodeItem(envelope.Item)
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
-		t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(item.fields)
+		t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(item.Fields)
 		t.setToolInputEmission(item.ID, false)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
@@ -176,7 +176,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if err != nil {
 			return nil, criticalDiagnostic(err, "output_item_encode", "Mekugi could not encode a completed output item", true)
 		}
-		event, err := replaceRawField(payload, "item", transformed)
+		event, err := responseevents.ReplaceField(payload, "item", transformed)
 		if err != nil {
 			return nil, criticalDiagnostic(err, "output_item_event_projection", "Mekugi could not project a completed output-item event", true)
 		}
@@ -188,7 +188,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if err != nil {
 			return nil, err
 		}
-		event, err := replaceRawField(payload, "response", transformed)
+		event, err := responseevents.ReplaceField(payload, "response", transformed)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +196,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			Status string `json:"status"`
 		}
 		if envelope.Type == responseevents.Completed && json.Unmarshal(transformed, &terminal) == nil && terminal.Status == "failed" {
-			event, err = replaceRawField(event, "type", responseevents.MustMarshalJSON(responseevents.Failed))
+			event, err = responseevents.ReplaceField(event, "type", responseevents.MustMarshalJSON(responseevents.Failed))
 		}
 		if err != nil {
 			return nil, err
@@ -242,7 +242,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(fields)
 			t.finalAnswer.substantive = t.finalAnswer.substantive || isSubstantiveAnswer(fields)
 			t.finalAnswer.blocked = t.finalAnswer.blocked || blocksTokenUsage(fields)
-			item := newResponsesItem(fields)
+			item := responseevents.NewItem(fields)
 			// An interrupted response can contain partial calls. Only complete items
 			// or calls whose complete input was already delivered may be projected.
 			_, delivered := t.local[item.CallID]
@@ -253,7 +253,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			if _, err := t.transformOutputItem(&item); err != nil {
 				return nil, err
 			}
-			transformedOutput = append(transformedOutput, item.fields)
+			transformedOutput = append(transformedOutput, item.Fields)
 		}
 		encoded, err := responseevents.MarshalJSON(transformedOutput)
 		if err != nil {
@@ -294,7 +294,7 @@ func (t *mekugiResponseTransform) restoreResponseContract(object map[string]json
 	}
 }
 
-func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool, error) {
+func (t *mekugiResponseTransform) transformOutputItem(item *responseevents.Item) (bool, error) {
 	name := item.Name
 	if t.codeModeToolName != "" && name == t.codeModeToolName &&
 		item.Type == "custom_tool_call" {
@@ -311,9 +311,9 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 				return false, criticalDiagnostic(fmt.Errorf("exec call %q changed input", callID),
 					"code_mode_call_input_changed", "the completed exec call changed its earlier input", true)
 			}
-			retained.UpstreamItem = item.cloneFields()
+			retained.UpstreamItem = item.CloneFields()
 			t.local[callID] = retained
-			item.setInput(retained.CarrierPayload)
+			item.SetInput(retained.CarrierPayload)
 			return retained.CarrierPayload != originalInput, nil
 		}
 		patches := nativePatchesInCall(name, originalInput, t.directory)
@@ -336,7 +336,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		history := mekugiHistory{
 			ToolName: name,
 			Script:   originalInput, CarrierKind: codeModeCarrierCustom,
-			CarrierName: name, CarrierPayload: originalInput, UpstreamItem: item.cloneFields(),
+			CarrierName: name, CarrierPayload: originalInput, UpstreamItem: item.CloneFields(),
 			ReplayCarrier:   true,
 			NativePatches:   patches,
 			ExecObservation: observation,
@@ -431,13 +431,4 @@ func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *e
 		authored.Group = display.Group
 	}
 	return display != nil
-}
-
-func replaceRawField(payload []byte, name string, value json.RawMessage) ([]byte, error) {
-	var object map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &object); err != nil || object == nil {
-		return nil, errors.New("decode stream event")
-	}
-	object[name] = value
-	return responseevents.MarshalJSON(object)
 }

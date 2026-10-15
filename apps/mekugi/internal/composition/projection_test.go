@@ -21,12 +21,14 @@ import (
 
 func TestFrontendsRunSessionInputProjection(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		flags     []string
-		projected bool
+		name            string
+		flags           []string
+		projected       bool
+		withoutGuidance bool
 	}{
 		{name: "default", projected: true},
 		{name: "launch opt-out", flags: []string{"--deduplicate-output=false"}},
+		{name: "guidance absent", projected: true, withoutGuidance: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, key := range []string{"XDG_STATE_HOME", "XDG_CONFIG_HOME", "CODEX_HOME", "MEKUGI_RUNTIME_DIR"} {
@@ -45,6 +47,12 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 			}()
 			if len(runtime.InputProjections) != 1 {
 				t.Fatalf("frontend projections = %d", len(runtime.InputProjections))
+			}
+			if runtime.Guidance == nil {
+				t.Fatal("composed guidance is missing")
+			}
+			if tc.withoutGuidance {
+				runtime.Guidance = nil
 			}
 			// Use the existing default-transport boundary to route the production
 			// provider client exclusively to a local TLS WebSocket fixture.
@@ -85,7 +93,7 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 			go func() {
 				defer close(done)
 				done <- router.RunSession(runtime.History, runtime.Recovery, runtime.Segments, runtime.Changes,
-					ctx, runtime.Commands, runtime.InputProjections, options, router.NewCriticalErrors(),
+					ctx, runtime.Commands, runtime.InputProjections, runtime.Guidance, options, router.NewCriticalErrors(),
 					func(session router.Session) { ready <- session }, nil)
 			}()
 			defer func() {
@@ -104,11 +112,13 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 			}
 			body := strings.Repeat("snapshot line "+strings.Repeat("x", 80)+"\n", 3)
 			input := []map[string]any{
+				{"type": "message", "role": "developer", "content": "Keep policy.\n- You share updates in the `commentary` channel.\n"},
 				{"type": "custom_tool_call_output", "call_id": "source", "output": body},
 				{"type": "custom_tool_call_output", "call_id": "repeat", "output": body},
 			}
 			tools := []map[string]any{{"type": "custom", "name": "exec", "description": "Run JavaScript with tools.\n### `exec_command`\nexec_command(args: { cmd: string }): Promise<unknown>;\n### `apply_patch`\napply_patch(input: string): Promise<unknown>;"}}
-			payload, err := json.Marshal(map[string]any{"model": "local-test", "stream": true, "input": input, "tools": tools})
+			const instructions = "Keep authority.<!-- mekugi:omit -->omit me<!-- /mekugi:omit -->"
+			payload, err := json.Marshal(map[string]any{"model": "local-test", "stream": true, "instructions": instructions, "input": input, "tools": tools})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,8 +149,13 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 				t.Fatal("model request was not delivered")
 			}
 			var modelRequest struct {
+				Instructions string `json:"instructions"`
+				Tools        []struct {
+					Description string `json:"description"`
+				} `json:"tools"`
 				Input []struct {
-					Output string `json:"output"`
+					Output  string `json:"output"`
+					Content string `json:"content"`
 				} `json:"input"`
 			}
 			if err := json.Unmarshal(wire, &modelRequest); err != nil {
@@ -150,8 +165,18 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 			if tc.projected {
 				wantSource, wantRepeat = "[O1]\n"+body, "[same as O1]\n"
 			}
-			if len(modelRequest.Input) != 2 || modelRequest.Input[0].Output != wantSource || modelRequest.Input[1].Output != wantRepeat {
+			if len(modelRequest.Input) != 3 || modelRequest.Input[1].Output != wantSource || modelRequest.Input[2].Output != wantRepeat {
 				t.Fatalf("provider input = %+v", modelRequest.Input)
+			}
+			wantInstructions, wantContent := "Keep authority.", "Keep policy.\n\n"
+			if tc.withoutGuidance {
+				wantInstructions, wantContent = instructions, input[0]["content"].(string)
+			}
+			if modelRequest.Instructions != wantInstructions || modelRequest.Input[0].Content != wantContent {
+				t.Fatalf("provider guidance: instructions=%q content=%q", modelRequest.Instructions, modelRequest.Input[0].Content)
+			}
+			if len(modelRequest.Tools) != 1 || strings.Contains(modelRequest.Tools[0].Description, "<!-- mekugi-frontends:start -->") == tc.withoutGuidance {
+				t.Fatalf("provider command guidance: %+v", modelRequest.Tools)
 			}
 		})
 	}

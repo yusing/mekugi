@@ -100,13 +100,13 @@ the frontend measurements exclude registry creation and active-session leases:
 make test TEST_PACKAGES='./modules/symbolquery/query ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
-Frontend prose has a separate generated consumer. Edit
-`guidance/frontend_guidance.md.tmpl` or the executable helper's description owner,
-then regenerate and check the prepared-request projection:
+Frontend descriptions and supplementary `guidance.md` live with their command
+modules. `modules/agentguidance` renders the selected invocation catalog directly;
+its Codex binding owns the shared layout and instruction projection. Check the
+actual authenticated snapshot and prepared-request projection after prose changes:
 
 ```sh
-env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestGeneratedFrontendGuidanceIsCurrent$'
-make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
+make test TEST_PACKAGES='./modules/agentguidance/... ./internal/router ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
 ```
 
 ## Static checks

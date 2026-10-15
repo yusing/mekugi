@@ -230,7 +230,7 @@ func TestFinalAnswerStreamTerminalFinishesPartialLifecycle(t *testing.T) {
 					prefix, status = answer, "completed"
 				}
 				for _, event := range prefix {
-					event, err := replaceRawField(event, "output_index", mustTestJSON(t, 7))
+					event, err := responses.ReplaceField(event, "output_index", mustTestJSON(t, 7))
 					if err != nil {
 						t.Fatal(err)
 					}

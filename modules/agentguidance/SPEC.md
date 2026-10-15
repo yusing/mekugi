@@ -1,6 +1,11 @@
 # Agent guidance
 
-## REQ-GUIDE-001 — Current agent guidance
+## Purpose and scope
+
+Assemble contributed frontend guidance and project explicit omissions, pinned stock
+conflicts, and selected-skill identities without changing caller authority.
+
+## Behavior
 
 Mekugi preserves the caller's base `instructions` value and every system or developer message,
 except for complete explicit omission blocks and pinned inherited stock-prompt conflicts.
@@ -20,15 +25,15 @@ Stock line and paragraph matches preserve caller-added qualifications. Planning
 guidance and the stock plan tool remain host-owned. Invocation-local Codex flags omit
 collaboration-mode instructions.
 
-Each executable helper's tool source owns its description. A template outside router produces a
-checked-in standalone Markdown file with XML-framed built-in frontends and named guidance used by
-router tools. Router embeds the generated file without keeping instruction prose in Go. The
-compiled frontend descriptions form the session frontend section in the pinned registry
-snapshot. This section is appended to the authoritative `exec` description when it exposes
-`tools.exec_command`. It does not publish a second catalog or
-change stock tool names, schemas, inputs, results, or execution authority. Refresh replaces the
-marked section in place; malformed or duplicate markers reject before forwarding. The session guide
-uses the embedded generated frontend section, not a model-specific prompt file or routing-session ID.
+Each executable helper owns its description and supplementary guidance. The guidance
+slot collects command-keyed supplements; absent command contributions contribute
+no text. The module renders the exact validated invocation catalog directly from
+these values and its embedded layout. No checked-in duplicate catalog is required.
+The application authenticates and publishes the resulting invocation snapshot
+before exposing its commands. The guide is appended to the authoritative `exec`
+description when it exposes `tools.exec_command`. Stock names, schemas, inputs,
+results, and execution authority stay unchanged. Refresh replaces the marked
+section in place; malformed or duplicate markers reject before forwarding.
 
 The projected helper guidance explains when the tools reduce work, not just their syntax:
 structural outlines for navigation, semantic references for caller-impacting edits, bounded
@@ -76,7 +81,20 @@ path; managed snapshots take precedence by name. Omission notices do not suppres
 Codex's available instructions. Unrelated messages and quoted
 examples remain unchanged; Codex still owns its selection and execution.
 
-Acceptance:
+## Lifecycle, Codex connection, records, and failure
+
+The module is stateless, with no records or background resources. Its binding
+registers early omission filtering, execution-only conflict projection, late
+selected-skill projection, frontend assembly, and marked-description replacement.
+Omissions run before preparation, including compaction and execution-free requests.
+Execution conflicts retain their existing preparation position; unsupported prewarm
+handshakes bypass them. Attachment matching precedes selected-skill compaction.
+Projection errors stop forwarding. With zero guidance contributions, the module
+still handles its instruction policies and descriptions of selected commands.
+Removing the module removes all its projections and assembly; command execution
+remains available. Provider compatibility prose belongs to its backend consumers.
+
+## Acceptance
 
 1. Stock, custom, missing, null, top-level, and developer-carried base instructions are forwarded
    unchanged except for complete explicit omission blocks and exact inherited conflict fragments.
@@ -89,11 +107,12 @@ Acceptance:
    requests derive frontend guidance from their authenticated catalog. Guidance does
    not depend on a live parent or earlier prompt rewrite. Supported prewarm catalogs
    receive the same frontend section as generating requests.
-4. Each helper has one description owner. The built-in section of the generated Markdown
-   matches those descriptions, and session projection uses the authenticated registry.
+4. Each helper has one description owner. The invocation guide includes the selected
+   descriptions exactly once and excludes absent command supplements. Changed valid
+   descriptions render directly; the snapshot and projected bytes match.
 5. Omission filtering preserves unmatched markers and all bytes outside complete owned blocks.
 6. In Mekugi mode with `skills-mgr` in PATH, Codex launches disable stock skill-catalog instructions
    after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
    In passthrough mode or without `skills-mgr`, neither projection occurs.
 7. Compaction uses the host/provider path without a recovery-injection hook. The retained
-   inactive instruction-file loader has a separate [contract](../../modules/contextreset/SPEC.md).
+   inactive instruction-file loader has a separate [contract](../contextreset/SPEC.md).

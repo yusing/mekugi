@@ -140,7 +140,7 @@ func subagentResponse(item map[string]json.RawMessage) (text, sender string, fin
 }
 
 func isFinalAnswerMessage(item map[string]json.RawMessage) bool {
-	return responseMessageFacts(item).FinalAnswerCandidate()
+	return responses.Facts(item).FinalAnswerCandidate()
 }
 
 // Source: codex-rs/protocol/src/models.rs ContentItem and MessagePhase.

@@ -45,9 +45,9 @@ func providerCodecDiagnostics(name, subject, prefix, contentCode string) codexre
 func providerCodecPolicy(d codexresponses.Diagnostics) codexresponses.Policy {
 	return codexresponses.Policy{Diagnostics: d,
 		NoHostedSearchInstruction: providerNoHostedSearchInstruction,
-		CustomInputInstruction:    embeddedInstruction("grok_input"),
-		ExecInstruction:           embeddedInstruction("grok_exec"),
-		FormatInstructionPrefix:   embeddedInstruction("grok_format_prefix"),
+		CustomInputInstruction:    grokInputInstruction,
+		ExecInstruction:           grokExecInstruction,
+		FormatInstructionPrefix:   grokFormatPrefixInstruction,
 	}
 }
 

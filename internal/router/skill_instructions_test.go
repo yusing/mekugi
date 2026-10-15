@@ -6,28 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
-
-func TestRewriteSelectedSkillInstructions(t *testing.T) {
-	selected := "<skill>\n<name>golang-best-practices</name>\n<path>/home/user/.agents/skills/golang-best-practices/SKILL.md</path>\n---\nname: golang-best-practices\n---\n\n</skill>"
-	want := `<skill name="golang-best-practices"/>`
-	for _, test := range []struct{ name, input, want string }{
-		{"selected skill", selected, want},
-		{"surrounding whitespace", " \n" + selected + "\n ", " \n" + want + "\n "},
-		{"resource access collapsed", "<skill>\n<name>remote</name>\n<path>skill://remote/SKILL.md</path>\n<resource_access>{}</resource_access>\nbody\n</skill>", `<skill name="remote"/>`},
-		{"name escaped", "<skill>\n<name>a & \"b\"</name>\n<path>/tmp/SKILL.md</path>\nbody\n</skill>", `<skill name="a &amp; &#34;b&#34;"/>`},
-		{"ordinary user text", "Please quote " + selected, "Please quote " + selected},
-		{"missing name", "<skill>\n<path>/tmp/SKILL.md</path>\nbody\n</skill>", "<skill>\n<path>/tmp/SKILL.md</path>\nbody\n</skill>"},
-		{"path in body", "<skill>\n<name>demo</name>\nbody <path>keep</path>\n</skill>", "<skill>\n<name>demo</name>\nbody <path>keep</path>\n</skill>"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if got := rewriteSelectedSkillInstructions(test.input); got != test.want {
-				t.Fatalf("got %q, want %q", got, test.want)
-			}
-		})
-	}
-}
 
 func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 	selected := "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nbody\n</skill>"
@@ -39,7 +21,9 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 			map[string]string{"role": "user", "content": "quote " + selected},
 		}),
 	}}
-	if err := rewriteRequestSelectedSkillInstructions(&request, true); err != nil {
+	if err := request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+		return testGuidance().AfterAttachments(input, true)
+	}); err != nil {
 		t.Fatal(err)
 	}
 	wantInput := responses.MustMarshalJSON([]any{
@@ -51,7 +35,9 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 		t.Fatalf("input = %s, want %s", request.fields["input"], wantInput)
 	}
 	before := string(request.fields["input"])
-	if err := rewriteRequestSelectedSkillInstructions(&request, true); err != nil || string(request.fields["input"]) != before {
+	if err := request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+		return testGuidance().AfterAttachments(input, true)
+	}); err != nil || string(request.fields["input"]) != before {
 		t.Fatalf("repeat changed input: %v", err)
 	}
 }
@@ -61,7 +47,9 @@ func TestRewriteRequestSelectedSkillInstructionsDisabled(t *testing.T) {
 		"role": "user", "content": "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nbody\n</skill>",
 	}})
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": input}}
-	if err := rewriteRequestSelectedSkillInstructions(&request, false); err != nil || !sameJSONValue(request.fields["input"], input) {
+	if err := request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+		return testGuidance().AfterAttachments(input, false)
+	}); err != nil || !sameJSONValue(request.fields["input"], input) {
 		t.Fatalf("disabled rewrite changed input: %v, %s", err, request.fields["input"])
 	}
 }

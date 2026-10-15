@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -179,8 +180,10 @@ func (a *requestAttempt) prepare() error {
 	}
 
 	if a.executor.mekugiCalls != nil {
-		if err := stripRequestInstructionOmissions(&a.request); err != nil {
-			return err
+		if guidance := a.executor.mekugiCalls.registry.guidance; guidance != nil {
+			if err := a.request.projectInstructions(guidance.BeforePreparation); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -255,8 +258,12 @@ func (a *requestAttempt) prepareWire() error {
 	attachmentsProjected := projectFileAttachments(&a.request)
 	// Match attachment sources before compact skill rewriting drops native paths.
 	if a.executor.mekugiCalls != nil {
-		if err := rewriteRequestSelectedSkillInstructions(&a.request, a.executor.mekugiCalls.skillsManager); err != nil {
-			return err
+		if guidance := a.executor.mekugiCalls.registry.guidance; guidance != nil {
+			if err := a.request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+				return guidance.AfterAttachments(input, a.executor.mekugiCalls.skillsManager)
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	nativeBody, err := a.request.wireBody(a.request.fields)

@@ -3,6 +3,8 @@ package composition
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/agentguidance"
+
 	"github.com/yusing/mekugi/modules/outputdeduplication"
 
 	"github.com/yusing/mekugi/modules/changehistory"
@@ -31,6 +33,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c.Add(fileread.Module, func() fileread.Deps { return fileread.Deps{} })
 	c.Add(symbolquery.Module, func() symbolquery.Deps { return symbolquery.Deps{} })
 	c.Add(outputdeduplication.Module, func() outputdeduplication.Deps { return outputdeduplication.Deps{} })
+	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{} })
 	binder := new(binding.Registry)
 	runtime, err := c.Activate(ctx, binder)
 	if err != nil {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -22,6 +24,7 @@ type (
 		frontendDirectory string
 		ordered           []toolContribution
 		frontendGuidance  string
+		guidance          *binding.Guidance
 		wrappers          map[string]string
 		frontends         map[string]string
 

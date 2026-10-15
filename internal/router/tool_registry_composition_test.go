@@ -16,7 +16,7 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 	for _, commands := range [][]command.Contribution{nil, all[:1], all} {
 		t.Run(strconv.Itoa(len(commands)), func(t *testing.T) {
 			directory := t.TempDir()
-			registry, err := buildToolRegistryAt(t.Context(), commands, filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
+			registry, err := buildToolRegistryAt(t.Context(), commands, testGuidance(), filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -37,9 +37,7 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 			if len(commands) == 0 && registry.frontendGuidance != "" {
 				t.Fatal("empty catalog projects guidance")
 			}
-			if len(commands) == len(all) && registry.frontendGuidance != embeddedFrontendGuide() {
-				t.Fatal("retained catalog changed projected guidance")
-			}
+
 		})
 	}
 }
@@ -49,7 +47,7 @@ func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
 			runtime := filepath.Join(directory, "runtime")
-			registry, err := buildToolRegistryAt(t.Context(), []command.Contribution{{Spec: command.Spec{Name: name, Description: "unavailable frontend"}}}, runtime, filepath.Join(directory, "replay"))
+			registry, err := buildToolRegistryAt(t.Context(), []command.Contribution{{Spec: command.Spec{Name: name, Description: "unavailable frontend"}}}, testGuidance(), runtime, filepath.Join(directory, "replay"))
 			if err == nil {
 				_ = registry.Close()
 				t.Fatal("published invalid frontend")

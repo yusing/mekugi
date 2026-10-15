@@ -20,13 +20,13 @@ type subagentBridge struct {
 }
 
 func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnprefixed bool, openCode ...string) (*subagentBridge, error) {
-	grokModelNote := strings.ReplaceAll(embeddedInstruction("grok_model"), "%MODELS%", "`grok:"+strings.Join(grokModels, "`, `grok:")+"`")
+	grokModelNote := strings.ReplaceAll(grokModelInstruction, "%MODELS%", "`grok:"+strings.Join(grokModels, "`, `grok:")+"`")
 	if grokUnprefixed {
 		grokModelNote = strings.ReplaceAll(grokModelNote, "grok:", "")
 	}
 	openCodeNote := ""
 	if len(openCode) > 0 {
-		openCodeNote = " " + strings.ReplaceAll(embeddedInstruction("opencode_spawn"), "%MODELS%", strings.Join(openCode, ", "))
+		openCodeNote = " " + strings.ReplaceAll(opencodeSpawnInstruction, "%MODELS%", strings.Join(openCode, ", "))
 	}
 	bridge := &subagentBridge{names: make(map[string]bool)}
 	var projectTools func(json.RawMessage) (json.RawMessage, error)
@@ -43,7 +43,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 			case subagentBridgeNamespace:
 				return nil, errors.New("tool namespace mekugi_collaboration is reserved by the collaboration bridge")
 			case "collaboration":
-				namespaceDescription := strings.TrimSpace(responses.StringField(tool, "description") + "\n" + embeddedInstruction("collaboration_namespace"))
+				namespaceDescription := strings.TrimSpace(responses.StringField(tool, "description") + "\n" + collaborationNamespaceInstruction)
 				tool["description"] = responses.MustMarshalJSON(namespaceDescription)
 				var functions []map[string]json.RawMessage
 				if err := json.Unmarshal(tool["tools"], &functions); err != nil {
@@ -76,8 +76,8 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 						if grokEnabled && responses.StringField(fn, "name") == "spawn_agent" {
 							for name, note := range map[string]string{
 								"model":            grokModelNote,
-								"fork_turns":       embeddedInstruction("grok_fork_turns"),
-								"reasoning_effort": embeddedInstruction("grok_reasoning_effort"),
+								"fork_turns":       grokForkTurnsInstruction,
+								"reasoning_effort": grokReasoningEffortInstruction,
 							} {
 								raw, exists := properties[name]
 								if !exists {

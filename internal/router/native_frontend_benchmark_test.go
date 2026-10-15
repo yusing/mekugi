@@ -16,7 +16,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := buildToolRegistryAt(b.Context(), testCommands(), filepath.Join(directory, "runtime"), replay)
+	registry, err := buildToolRegistryAt(b.Context(), testCommands(), testGuidance(), filepath.Join(directory, "runtime"), replay)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := buildToolRegistryAt(b.Context(), testCommands(), filepath.Join(directory, "runtime"), replay)
+	registry, err := buildToolRegistryAt(b.Context(), testCommands(), testGuidance(), filepath.Join(directory, "runtime"), replay)
 	if err != nil {
 		b.Fatal(err)
 	}

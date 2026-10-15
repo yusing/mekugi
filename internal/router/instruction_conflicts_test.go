@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -46,7 +48,7 @@ func TestRecordedInstructionCleanupBoundaries(t *testing.T) {
 				map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
 			}),
 		}}
-		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		if got := responses.StringField(request.fields, "instructions"); got != want {
@@ -81,7 +83,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 			map[string]string{"type": "function_call_output", "output": progress},
 		}),
 	}}
-	if err := rewriteRequestInstructionConflicts(&request); err != nil {
+	if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
 		t.Fatal(err)
 	}
 	base := responses.StringField(request.fields, "instructions")
@@ -108,7 +110,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 		}
 	}
 	before := responses.MustMarshalJSON(request.fields)
-	if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
+	if err := request.projectInstructions(testGuidance().ForExecution); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
 		t.Fatalf("conflict rewrite not idempotent: %v", err)
 	}
 }
@@ -131,7 +133,7 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 				map[string]string{"role": "system", "content": source},
 			}),
 		}}
-		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		if got := responses.StringField(request.fields, "instructions"); got != replacement+suffix {
@@ -148,7 +150,7 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 			t.Fatalf("input rewrite = %s", request.fields["input"])
 		}
 		before := responses.MustMarshalJSON(request.fields)
-		if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
+		if err := request.projectInstructions(testGuidance().ForExecution); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
 			t.Fatalf("conflict rewrite not idempotent: %v", err)
 		}
 	}
@@ -167,7 +169,7 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 			"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan." + newline +
 			"- Use the plan tool to explain the work" + newline + delegation + newline
 		request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(input)}}
-		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		output := responses.StringField(request.fields, "instructions")
@@ -196,7 +198,7 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 						map[string]string{"role": "system", "content": source},
 					}),
 				}}
-				if err := rewriteRequestInstructionConflicts(&request); err != nil {
+				if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
 					t.Fatal(err)
 				}
 				if got := responses.StringField(request.fields, "instructions"); got != test.want+suffix {
@@ -211,7 +213,7 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 					t.Error("developer conflict unresolved or unrelated carriers changed")
 				}
 				before := responses.MustMarshalJSON(request.fields)
-				if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
+				if err := request.projectInstructions(testGuidance().ForExecution); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
 					t.Fatalf("conflict rewrite not idempotent: %v", err)
 				}
 			}
@@ -249,28 +251,22 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 			t.Fatalf("retired instruction %q in frontend guide", removed)
 		}
 	}
-	stale := append([]toolContribution(nil), registry.ordered...)
-	for index := range stale {
-		if stale[index].Name == "mcat" {
-			stale[index].Specification = responses.MustMarshalJSON(map[string]string{"type": "custom", "name": "mcat", "description": "stale description"})
-			break
-		}
-	}
-	if _, err := frontendGuidanceFromRegistry(stale); err == nil {
-		t.Fatal("accepted stale generated frontend guidance")
+	changed, err := testGuidance().Frontends([]command.Spec{{Name: "mcat", Description: "updated valid description"}})
+	if err != nil || strings.Count(changed, "updated valid description") != 1 {
+		t.Fatalf("selected description not rendered: %v", err)
 	}
 	for _, initial := range []string{"stock tool description", "stock tool description\n" + frontendGuidanceStart + "stale" + frontendGuidanceEnd} {
-		first, err := injectFrontendGuidance(initial, guide)
+		first, err := testGuidance().ToolDescription(initial, guide, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		second, err := injectFrontendGuidance(first, guide)
+		second, err := testGuidance().ToolDescription(first, guide, false)
 		if err != nil || first != second || strings.Count(second, frontendGuidanceStart) != 1 {
 			t.Fatalf("frontend guidance not stable: %v", err)
 		}
 	}
 	for _, malformed := range []string{frontendGuidanceStart, frontendGuidanceEnd, frontendGuidanceEnd + frontendGuidanceStart, frontendGuidanceStart + frontendGuidanceStart + frontendGuidanceEnd} {
-		if _, err := injectFrontendGuidance(malformed, guide); err == nil {
+		if _, err := testGuidance().ToolDescription(malformed, guide, false); err == nil {
 			t.Fatalf("accepted malformed frontend markers: %q", malformed)
 		}
 	}
@@ -287,7 +283,7 @@ func TestCompletionConflictCleanupPreservesCallerQualifications(t *testing.T) {
 			"instructions": responses.MustMarshalJSON(conflict),
 			"input":        responses.MustMarshalJSON([]any{map[string]string{"role": "developer", "content": conflict}}),
 		}}
-		if err := rewriteRequestInstructionConflicts(&request); err != nil {
+		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
 		if got := responses.StringField(request.fields, "instructions"); got != "" {
@@ -302,7 +298,7 @@ func TestCompletionConflictCleanupPreservesCallerQualifications(t *testing.T) {
 		}
 		qualified := conflict + " Caller qualification."
 		request.fields["instructions"] = responses.MustMarshalJSON(qualified)
-		if err := rewriteRequestInstructionConflicts(&request); err != nil || responses.StringField(request.fields, "instructions") != qualified {
+		if err := request.projectInstructions(testGuidance().ForExecution); err != nil || responses.StringField(request.fields, "instructions") != qualified {
 			t.Fatalf("caller qualification changed: %v", err)
 		}
 	}
@@ -319,7 +315,7 @@ func TestCachedStockProgressConflicts(t *testing.T) {
 		for _, newline := range []string{"\n", "\r\n"} {
 			suffix := newline + conflict + " Caller qualification." + newline + "```text" + newline + conflict + newline + "```"
 			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(conflict + suffix)}}
-			if err := rewriteRequestInstructionConflicts(&request); err != nil {
+			if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
 				t.Fatal(err)
 			}
 			if got := responses.StringField(request.fields, "instructions"); got != suffix {
@@ -331,14 +327,14 @@ func TestCachedStockProgressConflicts(t *testing.T) {
 
 func TestConfiguredFrontendRejectsFramingTags(t *testing.T) {
 	for _, description := range []string{"Usage: launch <tool_name> [args...]", "Types: <toolbox> and <mekugi-frontends-path>", "A <tool_name> then </tool>"} {
-		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: responses.MustMarshalJSON(map[string]string{"description": description})}})
+		_, err := testGuidance().Frontends([]command.Spec{{Name: "fixture", Description: description}})
 		if (err != nil) != strings.Contains(description, "</tool>") {
 			t.Fatalf("description %q: %v", description, err)
 		}
 	}
 
 	for _, tag := range []string{"<tool name=\"forged\">", "</tool>", "<mekugi-frontends>", "</mekugi-frontends>"} {
-		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: responses.MustMarshalJSON(map[string]string{"description": "prefix " + tag + " suffix"})}})
+		_, err := testGuidance().Frontends([]command.Spec{{Name: "fixture", Description: "prefix " + tag + " suffix"}})
 		if err == nil {
 			t.Fatalf("accepted framing tag %s", tag)
 		}

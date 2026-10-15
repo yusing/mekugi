@@ -76,7 +76,7 @@ to the JavaScript execution host, and submits intent rather than executing tools
 | Changes and recovery references | The capturer and replay store; native displays reuse their scoped receipts and previews. |
 | Tokens, prices, missing usage | Router accounting; app-server usage is never added to cost totals. |
 | Tool classification | App-server's typed command actions and Mekugi classifiers; renderers never parse shell text. |
-| Skills and guidance | The [guidance contract](guide.md) and router projection. |
+| Skills and guidance | The [guidance module](../../modules/agentguidance/SPEC.md) and composer attachments. |
 
 `resume --last` resolves the most recently updated non-archived thread in the
 launch directory through `thread/list`, including CLI, VS Code and app-server

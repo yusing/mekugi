@@ -5,6 +5,7 @@ import (
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"errors"
 )
 
 // MarshalJSON preserves the protocol and retained-record spelling: legacy JSON
@@ -27,4 +28,15 @@ func StringField(object map[string]jsonv1.RawMessage, name string) string {
 	var value string
 	_ = json.Unmarshal(object[name], &value, jsonv1.DefaultOptionsV1())
 	return value
+}
+
+// Source: internal/router/mekugi_response_transform.go:436:443@[7a069269].
+// ReplaceField preserves all other raw object fields.
+func ReplaceField(payload []byte, name string, value jsonv1.RawMessage) ([]byte, error) {
+	var object map[string]jsonv1.RawMessage
+	if err := jsonv1.Unmarshal(payload, &object); err != nil || object == nil {
+		return nil, errors.New("decode stream event")
+	}
+	object[name] = value
+	return MarshalJSON(object)
 }

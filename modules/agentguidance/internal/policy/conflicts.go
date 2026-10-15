@@ -1,21 +1,21 @@
-package router
+// Source: internal/router/instruction_conflicts.go:11:118@[7a069269] pinned conflict policy.
+package policy
 
 import (
-	"fmt"
+	_ "embed"
 	"regexp"
 	"strings"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-// Match Codex's uninstalled-plugin advertisement, not caller-authored plugin
-// policy. Names and IDs come from the host's current recommendation list.
+//go:embed wait.md
+var waitGuidance string
+
 var stockRecommendedPlugins = regexp.MustCompile(`(?m)^<recommended_plugins>\r?\nHere is a list of plugins that are available but not installed\.\r?\n\r?\n(?:- [^\r\n<>]+ \([^\r\n<>]+\)\r?\n)+</recommended_plugins>(\r?)$`)
 
 // Exact stock-fragment rewrites handle current stock-prompt conflicts in the
 // request's instruction carriers, excluding fenced examples. Frontend
 // descriptions remain registry-owned.
-func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
+func newConflictRewriter() func(string) string {
 	pairs := []string{
 		"Put this explanation in a short, separate paragraph at the end of both commentary and final, after any permission question.",
 		"",
@@ -56,7 +56,7 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 	// Rewrite the pinned wait conflict without changing caller-added
 	// qualifications. Newlines restrict these replacements to whole physical lines.
 	for _, pair := range [][2]string{
-		{"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.", embeddedInstruction("interruptible_wait")},
+		{"- Avoid performing blocking sleep or wait calls longer than 60 seconds, as they may prevent you from communicating with the user for their duration.", strings.TrimSpace(waitGuidance)},
 	} {
 		pairs = append(pairs, "\n"+pair[0]+"\n", "\n"+pair[1]+"\n")
 	}
@@ -74,7 +74,7 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 		pairs = append(pairs, "\n"+line+"\n", "\n\n")
 	}
 	replacer := strings.NewReplacer(pairs...)
-	rewriteText := func(source string) string {
+	return func(source string) string {
 		var output strings.Builder
 		var plain strings.Builder
 		flushPlain := func() {
@@ -116,19 +116,4 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 		flushPlain()
 		return output.String()
 	}
-	if original, ok := decodeJSONString(request.fields["instructions"]); ok {
-		if updated := rewriteText(original); updated != original {
-			request.fields["instructions"] = responses.MustMarshalJSON(updated)
-		}
-	}
-	return rewriteRequestMessages(request, "instruction conflicts", func(item responsesItem) ([]byte, bool, error) {
-		if item.Role != "developer" {
-			return nil, false, nil
-		}
-		content, found, err := transformResponsesTextContent(item.Content, rewriteText, isResponsesInputTextPart)
-		if err != nil {
-			return nil, false, fmt.Errorf("rewrite developer instruction conflicts: %w", err)
-		}
-		return content, found && string(content) != string(item.Content), nil
-	})
 }

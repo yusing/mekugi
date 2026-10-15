@@ -17,7 +17,7 @@ In Mekugi mode, `mcat` is a session-private executable on the wrapped Codex
 `PATH`. Stock `tools.exec_command` owns its execution. The router authenticates
 the executable against the pinned tool snapshot, but does not expose `mcat` as a
 model-visible custom tool or intercept it as a private shell command. The
-[agent-guidance contract](../../doc/spec/guide.md) owns persistent workflow guidance.
+[agent-guidance contract](../agentguidance/SPEC.md) owns persistent workflow guidance.
 
 `mcat` accepts one or more files:
 

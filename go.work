@@ -16,6 +16,7 @@ use (
 	./libraries/persistence
 	./libraries/shellinstrumentation
 	./libraries/sourceanalysis
+	./modules/agentguidance
 	./modules/boundedcommand
 	./modules/changehistory
 	./modules/commandsegments

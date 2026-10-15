@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "70"
+  revision: "71"
   files:
     - router.md
     - native_ui.md
@@ -23,7 +23,6 @@ pjdoc:
     - metrics.md
     - changes.md
     - execution.md
-    - guide.md
 ---
 # Mekugi interface contracts
 
@@ -65,4 +64,4 @@ Module-owned contracts live with their implementation:
 - [`REQ-EXECUTION-002`](execution.md): Bash and Linux dash-backed sh command timing and per-segment list tracking
 - [`REQ-EXECUTION-003`](execution.md): approval guard for remote VCS writes
 - [`REQ-EXECUTION-004`](execution.md): sudo command approval and secret password entry
-- [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
+- [Agent guidance](../../modules/agentguidance/SPEC.md): caller-preserving additive tool guidance

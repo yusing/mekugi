@@ -81,7 +81,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	}
 	defer store.snapshots.close()
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	registry, err := buildToolRegistry(t.Context(), testCommands())
+	registry, err := buildToolRegistry(t.Context(), testCommands(), testGuidance())
 	if err != nil {
 		t.Fatal(err)
 	}

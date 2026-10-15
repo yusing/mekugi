@@ -41,6 +41,18 @@ binding API also owns recognition of Codex execution headers and live-session
 JSON, shared by projection and continuation observation. These recognizers inspect
 host metadata; they never interpret printed body text as a new host outcome.
 
+## Guidance projection
+
+One composed guidance registration provides three explicit request phases: before
+preparation, at execution preparation, and after attachment matching. It receives
+only instruction/input bytes, returns changed-field flags, and can reject malformed
+owned carriers. The application applies changed input through its catalog-indexing
+boundary; provider-prefix reconciliation remains later in the request pipeline.
+Late selected-skill projection receives invocation-discovered manager availability.
+The same registration assembles selected frontend descriptions and refreshes or
+removes its marked tool-description section. Duplicate or incomplete registrations
+fail activation. No registration means these effects are absent.
+
 ## Retained rollout evidence
 
 The rollout reader accepts an absolute path supplied for an identified host

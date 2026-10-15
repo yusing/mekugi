@@ -1,20 +1,16 @@
-package router
+// Source: internal/router/instruction_omit.go:11:70@[7a069269] explicit omission policy.
+package policy
 
-import (
-	"fmt"
-	"strings"
-
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-)
+import "strings"
 
 const (
 	instructionOmitStart = "<!-- mekugi:omit -->"
 	instructionOmitEnd   = "<!-- /mekugi:omit -->"
 )
 
-// stripInstructionOmissions removes complete, exact marker pairs, including
+// Omissions removes complete, exact marker pairs, including
 // nested blocks. Unmatched markers and all bytes outside a block stay intact.
-func stripInstructionOmissions(text string) string {
+func Omissions(text string) string {
 	var result strings.Builder
 	cursor, start, depth := 0, 0, 0
 	for pos := 0; pos < len(text); {
@@ -51,7 +47,7 @@ func stripInstructionOmissions(text string) string {
 
 // User-role instruction context is carried in Codex's INSTRUCTIONS wrapper.
 // Ordinary user messages, tool results, and assistant history are not instructions.
-func stripUserInstructionOmissions(text string) string {
+func UserOmissions(text string) string {
 	start := strings.Index(text, "<INSTRUCTIONS>")
 	if start < 0 {
 		return text
@@ -66,33 +62,5 @@ func stripUserInstructionOmissions(text string) string {
 		return text
 	}
 	end += start
-	return text[:start] + stripInstructionOmissions(text[start:end]) + text[end:]
-}
-
-func stripRequestInstructionOmissions(request *parsedResponsesRequest) error {
-	if text, ok := decodeJSONString(request.fields["instructions"]); ok {
-		if stripped := stripInstructionOmissions(text); stripped != text {
-			request.fields["instructions"] = responses.MustMarshalJSON(stripped)
-		}
-	}
-	return rewriteRequestMessages(request, "instruction omissions", func(item responsesItem) ([]byte, bool, error) {
-		transform := stripInstructionOmissions
-		switch item.Role {
-		case "system", "developer":
-		case "user":
-			transform = stripUserInstructionOmissions
-		default:
-			return nil, false, nil
-		}
-		textChanged := false
-		content, _, err := transformResponsesTextContent(item.Content, func(text string) string {
-			stripped := transform(text)
-			textChanged = textChanged || stripped != text
-			return stripped
-		}, isResponsesInputTextPart)
-		if err != nil {
-			return nil, false, fmt.Errorf("strip instruction omissions: %w", err)
-		}
-		return content, textChanged, nil
-	})
+	return text[:start] + Omissions(text[start:end]) + text[end:]
 }

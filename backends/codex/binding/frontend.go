@@ -12,6 +12,7 @@ import (
 type Registrar interface {
 	Frontend(command.Spec) error
 	InputProjection(InputProjection) error
+	Guidance(Guidance) error
 }
 
 type Binder interface {
@@ -28,11 +29,15 @@ type Bindings[S any] struct {
 type Registry struct {
 	commands    []command.Spec
 	projections []InputProjection
+	guidance    *Guidance
 }
 
 func (r *Registry) Capability(mechanism capability.Mechanism) capability.Result {
 	if mechanism == capability.ExecutableFrontend {
 		return capability.Result{State: capability.Available, Reason: "compiled frontend registration"}
+	}
+	if mechanism == capability.GuidanceProjection {
+		return capability.Result{State: capability.Available, Reason: "phased request guidance and frontend assembly"}
 	}
 	if mechanism == capability.InputProjection {
 		return capability.Result{State: capability.Available, Reason: "request-local input projection"}

@@ -5,6 +5,7 @@ type Mechanism string
 const (
 	ExecutableFrontend Mechanism = "executable-frontend"
 	InputProjection    Mechanism = "input-projection"
+	GuidanceProjection Mechanism = "guidance-projection"
 )
 
 type State uint8

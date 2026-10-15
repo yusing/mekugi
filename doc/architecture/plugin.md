@@ -27,6 +27,12 @@ output budgeting, and resolver orchestration remain with their native owners.
 Frontend operands never select launcher commands; a filename such as `mcp-bridge`
 remains an operand of the authenticated frontend.
 
+The [guidance module](../../modules/agentguidance/SPEC.md) renders the selected
+validated descriptions and command-owned supplements. The registry hashes the
+result into its identity and publishes its invocation snapshot before exposing
+commands. Guidance assembly is optional; its absence leaves the authenticated
+command catalog and dispatch intact.
+
 Commands return omitted payloads or a pure delivery plan over already captured
 output or a frozen retained-evidence selection. For coordinated results, the host reserves reference identities before
 the command finalizes exact framing and admission. The plan receives identities,

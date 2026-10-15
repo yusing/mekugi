@@ -45,7 +45,7 @@ acceptance cases, not a blanket request to implement every listed concern.
 - **Continuity:** preserve existing behavior for affected forks, side threads, switching, and
   fresh resume. Restore inherited authorization from durable records/visible history, never live
   parents; replay cannot revive processes or handles. See [replay](doc/spec/plugin.md),
-  [changes](doc/spec/changes.md), and [guide](doc/spec/guide.md).
+  [changes](doc/spec/changes.md), and [guide](modules/agentguidance/SPEC.md).
 - **Read boundaries:** independent multi-target reads attempt all targets, preserve successful
   stdout and target-qualified stderr, and fail nonzero if any target fails. Mutation dependencies
   remain mandatory for apply/revert. See [changes](doc/spec/changes.md).
@@ -58,7 +58,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   capturers rather than duplicate policy in adapters. Validate registry exposure at its owner.
   Frontend guidance belongs to the authenticated registry; preserve caller base policy except
   declared omissions/conflicts. See
-  [plugin boundary](doc/architecture/plugin.md) and [guide](doc/spec/guide.md).
+  [plugin boundary](doc/architecture/plugin.md) and [guide](modules/agentguidance/SPEC.md).
 - **Responsiveness:** slow storage or unresolved observations for one owner must not stall
   unrelated input, cancellation, or lifecycle delivery. See [UI ownership](doc/architecture/ui.md).
 - **Auxiliary behavior:** progress, capture, and diagnostics remain non-invasive and independently

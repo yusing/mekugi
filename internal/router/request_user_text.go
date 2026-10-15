@@ -11,25 +11,25 @@ import (
 )
 
 func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAttachedFiles bool) string {
-	input, err := decodeResponsesInput(raw)
+	input, err := responses.DecodeInput(raw)
 	if err != nil {
 		return ""
 	}
-	if input.text != nil {
-		return submittedUserText(*input.text)
+	if input.Text != nil {
+		return submittedUserText(*input.Text)
 	}
-	for _, v := range slices.Backward(input.items) {
-		item, ok := decodeResponsesItem(v)
+	for _, v := range slices.Backward(input.Items) {
+		item, ok := responses.DecodeItem(v)
 		if !ok {
 			continue
 		}
-		if text, task := nativeAssignmentText(item.fields, recipient); task {
+		if text, task := nativeAssignmentText(item.Fields, recipient); task {
 			return text
 		}
 		if item.Role != "user" || item.Type != "" && item.Type != "message" {
 			continue
 		}
-		if text, ok := decodeJSONString(item.Content); ok {
+		if text, ok := responses.DecodeString(item.Content); ok {
 			if !hostContextText(text) {
 				return submittedUserText(text)
 			}
@@ -45,7 +45,7 @@ func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAtta
 		var metadata struct {
 			Kinds []string `json:"content_item_kinds"`
 		}
-		_ = json.Unmarshal(item.fields["internal_chat_message_metadata_passthrough"], &metadata)
+		_ = json.Unmarshal(item.Fields["internal_chat_message_metadata_passthrough"], &metadata)
 		var text, files []string
 		userContent := false
 		for index, part := range parts {

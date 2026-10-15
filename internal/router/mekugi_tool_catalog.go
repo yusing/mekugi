@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -22,7 +24,7 @@ type executionOwner struct {
 // adds session-helper guidance to the owning execution description. It never
 // removes, replaces, or rewrites apply_patch, exec_command, or the JavaScript
 // execution contract.
-func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog, frontendGuidance string) (*executionOwner, error) {
+func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog, frontendGuidance string, guidance *binding.Guidance) (*executionOwner, error) {
 	if catalog.top.present && catalog.top.err != nil {
 		return nil, fmt.Errorf("decode responses tools: %w", catalog.top.err)
 	}
@@ -53,9 +55,13 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 			if tool.Type != "custom" {
 				return nil
 			}
-			stockDescription, err := removeFrontendGuidance(tool.Description)
-			if err != nil {
-				return err
+			stockDescription := tool.Description
+			if guidance != nil {
+				var err error
+				stockDescription, err = guidance.ToolDescription(stockDescription, "", true)
+				if err != nil {
+					return err
+				}
 			}
 			if !codeModeOwnsStockExecution(stockDescription) {
 				return nil
@@ -93,18 +99,14 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 	if result != nil {
 		owner := result
 		description := owner.section.tools[owner.toolIndex].Description
-		var err error
-		if owner.command {
-			description, err = injectFrontendGuidance(description, frontendGuidance)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			description, err = removeFrontendGuidance(description)
+		if guidance != nil {
+			var err error
+			description, err = guidance.ToolDescription(description, frontendGuidance, !owner.command)
 			if err != nil {
 				return nil, err
 			}
 		}
+
 		owner.section.tools[owner.toolIndex].setDescription(description)
 		if owner.group == nil {
 			if owner.namespace != nil {

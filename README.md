@@ -365,7 +365,7 @@ readable while their [storage](#replay-storage) is retained.
 - **Instructions:** wrapped sessions disable `/goal`; `<!-- mekugi:omit -->` through
   `<!-- /mekugi:omit -->` omits marked blocks without changing files/unmarked policy.
   With `skills-mgr`, managed selections attach instructions and the stock catalog is
-  disabled for the session. See [guidance](doc/spec/guide.md).
+  disabled for the session. See [guidance](modules/agentguidance/SPEC.md).
 - **Recovery:** see [resets](#context-reset-and-recovery) and [storage](#replay-storage).
 - **Frontend commands:** [compiled helpers](doc/spec/plugin.md) run through stock
   execution. JavaScript plugin loading has been removed; existing plugin files

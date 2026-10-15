@@ -19,6 +19,12 @@ semantics, sorted keys, unescaped HTML, and the absence of a trailing newline.
 Event and item facts retain the protocol's exact identities, including recognized
 Codex wire extensions.
 
+Raw input and item views preserve unknown provider fields while exposing their
+standard text, message, and tool-call shapes. Content changes retain unrelated
+fields; consumers decide which roles or carriers may change. String decoding
+keeps the existing permissive wire semantics, including null-as-empty string.
+The protocol helpers do not authorize an instruction rewrite or execute a call.
+
 ## Submitted attachment envelopes
 
 The shared attachment codec recognizes the bounded durable envelope for submitted
