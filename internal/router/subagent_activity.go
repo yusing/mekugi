@@ -47,7 +47,6 @@ type subagentActivity struct {
 
 type activityThread struct {
 	parent, name          string
-	role                  string
 	child, conflicted     bool
 	seen                  map[string]struct{}
 	order, responding     int
