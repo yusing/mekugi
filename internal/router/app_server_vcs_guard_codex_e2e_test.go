@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/charmbracelet/x/vt"
@@ -135,7 +137,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				t.Fatal(err)
 			}
 			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-			hook, state, hash, err := vcsguard.HookConfig(helper, guard, "", "")
+			hook, state, hash, err := shellhook.Config(helper, guard, "", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -190,7 +192,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				}
 			}
 			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-				environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "=" + hash},
+				environment: []string{"PATH=" + execTrackPath(), shellhook.Environment + "=" + hash},
 				codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 				approvals:   false,
 				duringTurn:  during,

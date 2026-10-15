@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
 )
 
 func TestGuardHookTrustedResources(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "must-not-execute")
 	for _, command := range []string{"printf '%s' 'git push'", `git push "$(touch '` + marker + `')"; printf '%s' "$HOME"`} {
 		t.Run(command, func(t *testing.T) {
-			request := vcsguard.HookInput{Helper: "/forged/helper", Directory: "/forged/guard", SudoDirectory: "/forged/sudo", Tracker: "/forged/tracker", Event: "PreToolUse", Tool: "Bash", Item: "call"}
+			request := shellhook.Input{Helper: "/forged/helper", Directory: "/forged/guard", SudoDirectory: "/forged/sudo", Tracker: "/forged/tracker", Event: "PreToolUse", Tool: "Bash", Item: "call"}
 			request.Input.Command = &command
 			input, err := json.Marshal(request)
 			if err != nil {
@@ -30,7 +30,7 @@ func TestGuardHookTrustedResources(t *testing.T) {
 			}
 			request.Helper, request.Directory = "/trusted/helper", "/trusted/guard"
 			request.SudoDirectory, request.Tracker = "", ""
-			expected, err := vcsguard.RewriteHook(request)
+			expected, err := shellhook.Rewrite(request)
 			if err != nil {
 				t.Fatal(err)
 			}

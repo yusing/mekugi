@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -35,7 +36,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	hook, state, _, err := vcsguard.HookConfig(helper, "", "", tracker)
+	hook, state, _, err := shellhook.Config(helper, "", "", tracker)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +172,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The command hook instruments without executing the command script.
-	hook, state, _, err := vcsguard.HookConfig(helper, "", "", "")
+	hook, state, _, err := shellhook.Config(helper, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

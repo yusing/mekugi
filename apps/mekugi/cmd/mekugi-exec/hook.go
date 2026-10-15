@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
 )
 
 // guardHook reads the host event, then binds resources from the trusted command
@@ -27,13 +27,13 @@ func guardHook(helper string, args []string, input io.Reader, output, stderr io.
 	if len(data) > limit {
 		return fail(errors.New("hook input exceeds 4 MiB"))
 	}
-	var request vcsguard.HookInput
+	var request shellhook.Input
 	if err := json.Unmarshal(data, &request); err != nil {
 		return fail(err)
 	}
 	request.Helper = helper
 	request.Directory, request.SudoDirectory, request.Tracker = args[0], args[1], args[2]
-	result, err := vcsguard.RewriteHook(request)
+	result, err := shellhook.Rewrite(request)
 	if err != nil {
 		return fail(err)
 	}

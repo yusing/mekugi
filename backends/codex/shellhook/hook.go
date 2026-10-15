@@ -1,4 +1,5 @@
-package vcsguard
+// Source: internal/vcsguard/hook.go:18:106@[2ba2151a] native hook protocol.
+package shellhook
 
 import (
 	"crypto/sha256"
@@ -15,15 +16,15 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
-const HookKey = "/<session-flags>/config.toml:pre_tool_use:0:0"
+const Key = "/<session-flags>/config.toml:pre_tool_use:0:0"
 
-const HookEnvironment = "MEKUGI_VCS_GUARD_HOOK"
+const Environment = "MEKUGI_VCS_GUARD_HOOK"
 
-const HookFlag = "--guard-hook"
+const Flag = "--guard-hook"
 
-// HookInput binds session resources in the trusted hook configuration. The
+// Input binds session resources in the trusted hook configuration. The
 // remaining fields are expanded from Codex's native hook event, not router cwd.
-type HookInput struct {
+type Input struct {
 	Helper        string `json:"helper"`
 	Directory     string `json:"directory"`
 	SudoDirectory string `json:"sudo_directory"`
@@ -36,15 +37,15 @@ type HookInput struct {
 	} `json:"tool_input"`
 }
 
-// HookConfig uses the native session-layer hook and exact trust identity. It
+// Config uses the native session-layer hook and exact trust identity. It
 // neither changes user files nor grants sandbox permissions.
-func HookConfig(helper, directory, sudoDirectory, tracker string) (config, state, identityHash string, err error) {
+func Config(helper, directory, sudoDirectory, tracker string) (config, state, identityHash string, err error) {
 	// Hook runs carry only this description of what the hook does.
 	status := "Tracking shell segments"
 	if directory != "" {
 		status = "Applying VCS guard"
 	}
-	arguments := []string{helper, HookFlag, directory, sudoDirectory, tracker}
+	arguments := []string{helper, Flag, directory, sudoDirectory, tracker}
 	for i := range arguments {
 		arguments[i] = shellsyntax.Quote(arguments[i])
 	}
@@ -64,13 +65,13 @@ func HookConfig(helper, directory, sudoDirectory, tracker string) (config, state
 	hash := sha256.Sum256(data)
 	identityHash = "sha256:" + hex.EncodeToString(hash[:])
 	config = fmt.Sprintf(`hooks.PreToolUse=[{matcher="^Bash$",hooks=[{type="command",command=%q,timeout=5,async=false,statusMessage=%q}]}]`, command, status)
-	state = strconv.Quote(HookKey) + "={trusted_hash=" + strconv.Quote(identityHash) + "}"
+	state = strconv.Quote(Key) + "={trusted_hash=" + strconv.Quote(identityHash) + "}"
 	return config, state, identityHash, nil
 }
 
-// RewriteHook only instruments the command. Approval occurs in the shell's helper
+// Rewrite only instruments the command. Approval occurs in the shell's helper
 // when the command is actually reached, never for an unexecuted branch.
-func RewriteHook(request HookInput) (any, error) {
+func Rewrite(request Input) (any, error) {
 	if request.Event != "PreToolUse" || request.Tool != "Bash" || request.Input.Command == nil {
 		return nil, fmt.Errorf("unexpected hook input")
 	}

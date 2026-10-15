@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	"github.com/yusing/mekugi/libraries/mcptransport"
 
 	"github.com/charmbracelet/x/vt"
@@ -50,7 +52,7 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 				helper = hookHelper
 			}
 			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-			hook, state, hash, err := vcsguard.HookConfig(helper, guard, "", "")
+			hook, state, hash, err := shellhook.Config(helper, guard, "", "")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -97,7 +99,7 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 			}
 			prompted := false
 			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-				environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "=" + hash},
+				environment: []string{"PATH=" + execTrackPath(), shellhook.Environment + "=" + hash},
 				codexArgs:   args,
 				duringTurn: func(t *testing.T, outer io.Writer, _ func(string), awaitFrame func(func(string) bool), screen *vt.Emulator) {
 					awaitFrame(func(frame string) bool {

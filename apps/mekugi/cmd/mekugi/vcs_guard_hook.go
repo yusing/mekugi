@@ -5,14 +5,15 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 // vcsGuardHookArgs adds the guard to this invocation. Preserve other events
 // and trust entries, including caller-owned session hooks.
 func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker string) ([]string, string, error) {
-	config, state, hash, err := vcsguard.HookConfig(helper, directory, sudoDirectory, tracker)
+	config, state, hash, err := shellhook.Config(helper, directory, sudoDirectory, tracker)
 	if err != nil {
 		return args, "", err
 	}
@@ -35,7 +36,7 @@ func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker s
 			if _, err := toml.Decode("state="+value, &parsed); err != nil {
 				return args, "", fmt.Errorf("read CLI hook state: %w", err)
 			}
-			if _, exists := parsed.State[vcsguard.HookKey]; exists {
+			if _, exists := parsed.State[shellhook.Key]; exists {
 				return args, "", fmt.Errorf("explicit CLI state for the shell hook conflicts")
 			}
 			value = strings.TrimSpace(value)

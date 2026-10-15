@@ -4,8 +4,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 func TestVCSGuardHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
@@ -36,7 +37,7 @@ func TestVCSGuardHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
 	if len(config.Hooks.State) != 2 || config.Hooks.State["other"].TrustedHash != "existing" {
 		t.Fatalf("existing hook trust lost: %+v", config.Hooks.State)
 	}
-	guard := config.Hooks.State[vcsguard.HookKey]
+	guard := config.Hooks.State[shellhook.Key]
 	// Pin command-hook identity encoding; host acceptance checks effective trust.
 	const hash = "sha256:47b7079ef39b8b57cfded0198db6e9f97b09b47f190c8008f2f3ee390265f081"
 	if guard.TrustedHash != hash || identity != hash || guard.Enabled != nil {

@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -171,7 +173,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 
 	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.CodeModeEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
 	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, vcsguard.HookEnvironment+"=")
+		return strings.HasPrefix(entry, shellhook.Environment+"=")
 	}), "MEKUGI_BASE_URL="+session.BaseURL)
 	if session.NativeTraceDirectory != "" {
 		cmd.Env = append(cmd.Env, "CODEX_ROLLOUT_TRACE_ROOT="+session.NativeTraceDirectory)
@@ -221,7 +223,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 				}
 				fmt.Fprintln(os.Stderr, "mekugi: sh segment tracking unavailable:", err)
 			} else if guard {
-				cmd.Env = append(cmd.Env, vcsguard.HookEnvironment+"="+hash)
+				cmd.Env = append(cmd.Env, shellhook.Environment+"="+hash)
 			}
 		}
 	}

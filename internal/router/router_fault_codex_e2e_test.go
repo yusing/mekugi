@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellhook"
 )
 
 type routerFaultCodexProvider struct {
@@ -143,7 +143,7 @@ func routerFaultCodexEnvironment(t *testing.T) []string {
 	environment := make([]string, 0, len(os.Environ())+2)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" || key == vcsguard.HookEnvironment {
+		if key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" || key == shellhook.Environment {
 			continue
 		}
 		if key == "PATH" {

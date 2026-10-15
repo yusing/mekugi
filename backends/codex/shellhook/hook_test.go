@@ -1,4 +1,4 @@
-package vcsguard
+package shellhook
 
 import (
 	json "encoding/json/v2"
@@ -12,9 +12,9 @@ import (
 func TestRewriteHookNativeUpdatedInput(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "must-not-execute")
 	command := `git push "$(touch '` + marker + `')"; printf '%s' "$HOME"`
-	input := HookInput{Helper: "/private/helper", Directory: "/private/guard", Event: "PreToolUse", Tool: "Bash", Item: "cmd"}
+	input := Input{Helper: "/private/helper", Directory: "/private/guard", Event: "PreToolUse", Tool: "Bash", Item: "cmd"}
 	input.Input.Command = &command
-	result, err := RewriteHook(input)
+	result, err := Rewrite(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRewriteHookNoChangeAndInvalidInput(t *testing.T) {
 		{"relative resource", `{"directory":"relative/guard","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"git push"}}`, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			var input HookInput
+			var input Input
 			err := json.Unmarshal([]byte(tt.input), &input)
 			if input.Helper == "" {
 				input.Helper = "/helper"
@@ -71,7 +71,7 @@ func TestRewriteHookNoChangeAndInvalidInput(t *testing.T) {
 			}
 			var output any
 			if err == nil {
-				output, err = RewriteHook(input)
+				output, err = Rewrite(input)
 			}
 			if (err != nil) != tt.fail {
 				t.Fatalf("output=%v error=%v", output, err)

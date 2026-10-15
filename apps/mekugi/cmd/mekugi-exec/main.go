@@ -25,11 +25,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/internal/sudoask"
-	"github.com/yusing/mekugi/internal/vcsguard"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -48,7 +49,7 @@ const (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == vcsguard.HookFlag {
+	if len(os.Args) > 1 && os.Args[1] == shellhook.Flag {
 		os.Exit(guardHook(os.Args[0], os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 	if len(os.Args) == 3 && os.Args[1] == "--created-path" {

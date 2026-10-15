@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/shellhook"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -23,7 +25,6 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"golang.org/x/term"
@@ -180,7 +181,7 @@ func StartAppServerUI(service *history.Service, ctx context.Context, cmd *exec.C
 func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
-		if hash, ok := strings.CutPrefix(entry, vcsguard.HookEnvironment+"="); ok {
+		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
 			guardHash = hash
 		}
 	}

@@ -1,4 +1,4 @@
-package vcsguard
+package shellhook
 
 import (
 	"bytes"
@@ -33,7 +33,7 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 				}
 			}
 			resources := []string{filepath.Join(directory, "guard's"), "", filepath.Join(directory, "tracker's")}
-			config, _, _, err := HookConfig(helper, resources[0], resources[1], resources[2])
+			config, _, _, err := Config(helper, resources[0], resources[1], resources[2])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +58,7 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 					t.Fatalf("error=%v stdout=%s stderr=%s", err, &output, &stderr)
 				}
 			} else {
-				expected := strings.Join(append([]string{HookFlag}, resources...), "\n") + "\nnative input\n"
+				expected := strings.Join(append([]string{Flag}, resources...), "\n") + "\nnative input\n"
 				if err != nil || output.String() != expected || stderr.Len() != 0 {
 					t.Fatalf("error=%v stdout=%q want=%q stderr=%s", err, output.String(), expected, &stderr)
 				}

@@ -27,6 +27,21 @@ closes input and allows Codex three seconds to drain before forced termination;
 the caller receives shutdown and process errors. A process and live RPC handle
 are never restored from retained evidence.
 
+## Native shell hooks
+
+The backend owns the native PreToolUse schema, command-hook registration and
+trust identity, supported-tool matching, and effective-hook validation. The
+helper replaces event-supplied resource paths with trusted invocation bindings
+before instrumentation.
+Instrumentation returns updated command text without executing it; approval is
+requested only when the selected shell reaches a guarded command.
+
+The command adapter translates helper launch or process failure into a blocking
+native hook result. Host hook-shell launch, timeout and delivery failures retain
+Codex's external-hook policy. The application checks effective workspace hooks
+before admitting each new user turn and preserves drafts on failure. Feature
+approval policy and session grants remain separate from this protocol owner.
+
 ## Input projection
 
 Bindings register named two-phase projections in composition order. Preparation
