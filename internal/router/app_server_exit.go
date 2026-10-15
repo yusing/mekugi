@@ -34,7 +34,9 @@ func (u *appServerUI) writeExitSummary(w io.Writer, color bool) error {
 		}
 		return command
 	}
-	if u.thread != "" {
+	if u.archived {
+		fmt.Fprintf(&text, "Session archived: %s\n", livediff.Safe(u.thread, false))
+	} else if u.thread != "" {
 		argv := slices.Clone(u.resumeArgv)
 		if len(argv) == 0 {
 			argv = []string{"mekugi", "codex", "--yolo"}

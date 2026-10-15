@@ -280,6 +280,7 @@ const (
 	replacementIdle replacementPhase = iota
 	replacementClear
 	replacementResume
+	replacementArchive
 )
 
 type appServerReplacementOperation struct {

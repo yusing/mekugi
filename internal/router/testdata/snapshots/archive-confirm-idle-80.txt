@@ -1,0 +1,12 @@
+AGENTS · waiting for subagent activity                               CONNECTING
+
+
+
+
+
+  Archive this session?
+  Are you sure? This will archive the current session.
+› No, don't archive  Return to the current session                              
+  Yes, archive       Archive this session now
+
+  ↑/↓ navigate · enter select · esc cancel

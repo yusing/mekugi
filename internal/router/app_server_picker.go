@@ -182,7 +182,7 @@ func (u *appServerUI) refreshPicker() {
 			p.open = false
 		}
 	}()
-	if p.modal == "menu" || p.modal == "copy" || p.modal == "settings" {
+	if p.modal == "menu" || p.modal == "copy" || p.modal == "settings" || p.modal == "archive" {
 		p.open = true
 		return
 	}
@@ -438,6 +438,9 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 
 func (u *appServerUI) pickerKey(key string) bool {
 	p := &u.picker
+	if p.modal == "archive" && p.open {
+		return u.archivePickerKey(key)
+	}
 	if p.modal == "settings" && p.open {
 		return u.settingsPickerKey(key)
 	}

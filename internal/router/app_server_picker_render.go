@@ -18,6 +18,8 @@ func (u *appServerUI) pickerHeight(width int) int {
 	p := &u.picker
 	rows := min(8, max(1, len(p.choices)))
 	switch p.modal {
+	case "archive":
+		return rows + 3 + len(pickerWrap(u.archivePrompt(), max(1, width-4)))
 	case "menu":
 		return 8
 	case "manage":
@@ -141,6 +143,19 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 		}
 	}
 	if height > 1 {
+		if p.modal == "archive" {
+			put(0, "  "+bold+"Archive this session?"+reset)
+			if height >= 5 {
+				for _, line := range pickerWrap(u.archivePrompt(), max(1, width-4)) {
+					if first >= height-3 {
+						break
+					}
+					put(first, "  "+dim+line+reset)
+					first++
+				}
+			}
+			footer = "  ↑/↓ navigate · enter select · esc cancel"
+		}
 		if p.modal == "settings" {
 			title := "Choose " + strings.TrimPrefix(u.settingsChoices, "/")
 			put(0, "  "+bold+title+reset)

@@ -112,6 +112,7 @@ type appServerUI struct {
 	session                   appServerSession
 	ctx                       context.Context
 	quitRequested             bool
+	archived                  bool
 	interruptLocked           bool
 	mainContentPainted        bool
 	status                    string
@@ -315,7 +316,7 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							exited = true
 							return errors.Join(errors.New("app-server disconnected; active work may be incomplete"), <-c.Done)
 						}
-						if err := u.message(message); err != nil {
+						if err := u.message(message); err != nil || u.quitRequested {
 							return err
 						}
 						u.dirty = true
@@ -516,6 +517,15 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		delete(u.requests, string(m.ID))
+		if method == "thread/archive" {
+			if m.Error != nil {
+				u.replacement.finish()
+				u.setNotice("Failed to archive current thread: "+m.Error.Message, true)
+			} else {
+				u.archived, u.quitRequested = true, true
+			}
+			return nil
+		}
 		if strings.HasPrefix(method, "activity-skills/") {
 			return u.skillHistoryResponse(strings.TrimPrefix(method, "activity-skills/"), m)
 		}
@@ -1039,6 +1049,10 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case 22:
 		u.pasteImage()
 	case 3:
+		if u.replacement.phase == replacementArchive {
+			u.setNotice("Archiving session…", false)
+			return false, nil
+		}
 		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
 		// then cancels queued compaction, interrupts the active turn, or quits.
 		if u.draft != "" {
@@ -1068,7 +1082,15 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case '\n':
 		u.insertDraft("\n")
 	case '\r':
+		if u.replacement.phase == replacementArchive {
+			u.setNotice("Archiving session…", false)
+			return false, nil
+		}
 		text := strings.TrimSpace(u.draft)
+		if text == "/archive" {
+			u.showArchivePicker()
+			return false, nil
+		}
 		if handled, err := u.controlsCommand(text); handled {
 			return false, err
 		}
@@ -1119,7 +1141,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, err
 		}
 		if strings.HasPrefix(text, "/") {
-			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
+			u.setNotice("Unknown command "+strings.Fields(text)[0]+" · /title, /compact, /clear, /resume, /archive, /btw, /status, /session, /ps, /copy, /skills, /model, /effort, /reasoning, /tier, /live, /quit", true)
 			return false, nil
 		}
 		if text == "" || u.thread == "" || u.restoring != nil {
@@ -1458,6 +1480,9 @@ func (u *appServerUI) sessionAnimating() bool {
 }
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
+	if u.replacement.phase == replacementArchive {
+		return activityui.StatusPulse("Archiving session…", now, u.view.painter.Colors) + activityui.Reset
+	}
 	status := strings.ReplaceAll(livediff.Safe(u.status, false), "\n", " ")
 	switch {
 	case status == "":

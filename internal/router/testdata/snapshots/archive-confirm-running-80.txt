@@ -1,0 +1,12 @@
+AGENTS · waiting for subagent activity                               CONNECTING
+
+
+
+
+
+  Archive this session?
+  This will stop the current turn and archive the session.
+› No, don't archive  Return to the current session                              
+  Yes, archive       Archive this session now
+
+  ↑/↓ navigate · enter select · esc cancel

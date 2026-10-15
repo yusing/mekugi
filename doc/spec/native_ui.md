@@ -55,7 +55,8 @@ main thread's latest cumulative app-server usage, including restored usage on
 resume, not child-thread or router cost totals. Displayed input and total exclude
 cached input; cached and reasoning counts appear separately when nonzero.
 Zero or unavailable usage omits the token line; no established thread omits the
-resume and replay hints. Noninteractive commands retain Codex's own exit output.
+resume and replay hints. A successfully archived session prints `Session archived: THREAD_ID`
+instead of continuation and replay hints. Noninteractive commands retain Codex's own exit output.
 An unexpected app-server exit retains its diagnostic alongside the child's exit
 status; the normal session summary must not make a disconnect look like a clean quit.
 Temporary event bursts or paused presentation do not drop RPC messages or
@@ -536,7 +537,7 @@ results. Loading, empty, and failure states remain visible without polluting
 the conversation.
 
 Typing `/` at the start of the draft opens a local command
-catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/btw`, `/status`, `/session`, `/ps`, `/copy`,
+catalog with descriptions for `/title`, `/compact`, `/clear`, `/resume`, `/archive`, `/btw`, `/status`, `/session`, `/ps`, `/copy`,
 `/model`, `/effort`, `/reasoning`, `/tier`, `/live`, `/skills`, and `/quit`.
 Typing filters commands with fuzzy matching; Up/Down selects, Tab
 completes without executing, Enter runs the selected command, and Escape closes
@@ -544,6 +545,14 @@ the catalog without changing the draft. Completion replaces only the command tok
 preserving trailing images and other draft content. Moving into arguments closes
 completion. Pasted text does not activate the catalog. The catalog uses the shared picker viewport and
 visible-row column sizing; it never submits a command to the model.
+
+`/archive` asks whether to archive the current Main session, with No selected by
+default. Escape or No returns to the session. Confirmation delegates archival and
+stopping any running turn to Codex, then exits only after host success. While
+archival is pending, new submissions and session switches wait. Failure keeps the
+session open with actionable feedback so the user can retry. Archiving requires
+an established session and is unavailable during restoration or replacement.
+Selecting a child transcript does not change the archive target.
 
 `/copy` opens a local picker for the latest completed response in the active
 thread, including restored history. Whole response preserves
@@ -968,8 +977,8 @@ actionable errors remain until editing or clicking the check button (`[✓]`).
 An ellipsis marks omitted error details; clicking a truncated composer error opens
 its complete text, including the full router-error batch, in the shared error dialog.
 Composer feedback stays user-only; model-visible error evidence
-keeps its red transcript display and details dialog. Only
-`/quit` is a command, and only while idle;
+keeps its red transcript display and details dialog.
+`/quit` exits only while idle;
 unknown commands are reported, never sent as prompts. The
 composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
 session title, scroll position and unseen-message count. History

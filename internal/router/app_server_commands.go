@@ -25,6 +25,7 @@ var nativeCommands = []composerChoice{
 	{name: "/status", description: "Show session settings and usage limits"},
 	{name: "/copy", description: "Copy the last response or part of it"},
 	{name: "/resume", description: "Resume a saved session"},
+	{name: "/archive", description: "Archive this session"},
 	{name: "/compact", description: "Compact context now; Tab queues while busy"},
 	{name: "/clear", description: "Clear the transcript and start a new session"},
 	{name: "/lock", description: "Prevent accidental keyboard interruption"},
