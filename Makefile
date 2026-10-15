@@ -9,6 +9,7 @@ export GOMAXPROCS GOMEMLIMIT
 .PHONY: install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
 TEST_PACKAGES ?= ./...
+TEST_SUPPORT_PACKAGES := ./testdata/uisnapshot
 TEST_RUN ?= .
 TEST_FLAGS ?=
 # Process/PTY fixtures spend most of their time waiting, not using a CPU.
@@ -42,7 +43,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test:
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
 
 # Installed Codex, isolated local mocks, no installation or live model requests.
 test-host:
@@ -58,13 +59,15 @@ test-host:
 	$(MAKE) --no-print-directory test TEST_PACKAGES=./internal/router TEST_RUN="$$pattern" TEST_FLAGS='-tags=journal_e2e -count=1 -v'
 
 lint:
-	env -u BASH_ENV golangci-lint run
-	@set -e; findings="$$(env -u BASH_ENV deadcode -test ./...)"; \
+	env -u BASH_ENV golangci-lint run ./... $(TEST_SUPPORT_PACKAGES)
+	@set -e; findings="$$(env -u BASH_ENV deadcode ./...)"; \
+	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
+	@set -e; findings="$$(env -u BASH_ENV deadcode -test ./... $(TEST_SUPPORT_PACKAGES))"; \
 	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) ./internal/uisnapshot $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) $(TEST_SUPPORT_PACKAGES) $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:

@@ -6,7 +6,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func TestUISnapshotJournalChildHandoffRemaining(t *testing.T) {

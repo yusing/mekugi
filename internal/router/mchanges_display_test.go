@@ -11,7 +11,7 @@ import (
 	mekugi "github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func mchangesDisplay(t *testing.T, command, output string) *appServerUI {

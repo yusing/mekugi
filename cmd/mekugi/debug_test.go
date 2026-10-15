@@ -12,7 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func TestUISnapshotAppServerExitSummaryUsage(t *testing.T) {

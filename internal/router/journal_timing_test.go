@@ -6,7 +6,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func TestJournalActiveWorkTiming(t *testing.T) {

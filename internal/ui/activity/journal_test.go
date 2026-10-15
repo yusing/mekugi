@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 // Tree journal results carry no author heading: the answer is Markdown, then

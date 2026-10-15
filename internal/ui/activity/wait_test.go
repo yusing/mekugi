@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func TestMutedAgentPalette(t *testing.T) {

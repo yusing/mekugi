@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func composerShellKeys(t *testing.T, u *appServerUI, text string) {

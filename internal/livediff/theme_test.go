@@ -10,7 +10,7 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func testThemeChunk(key, path, diff string) Chunk {

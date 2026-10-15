@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func assertNativeUISnapshot(t *testing.T, name string, rows []string) {

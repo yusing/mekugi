@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func TestUISnapshotActivityBlocks(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 	"golang.org/x/term"
 )
 

@@ -15,7 +15,7 @@ import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope liveDiffScope) (string, *liveDiffBroker, context.CancelFunc) {

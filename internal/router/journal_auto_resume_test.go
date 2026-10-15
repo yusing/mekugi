@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/appserver"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 func autoResumeFixture(t *testing.T) (*journalResetDriver, *appServerTestInput) {

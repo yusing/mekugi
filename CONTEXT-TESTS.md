@@ -16,7 +16,9 @@ make test TEST_PACKAGES=./internal/router TEST_RUN='^TestShellRunnerMRun'
 make test TEST_PACKAGES='./internal/appserver ./internal/router' TEST_RUN=AppServer
 ```
 
-The default is `./...`. Unchanged successful tests can use Go's test cache; use
+The default is `./...`. The runner also includes the shared test-only snapshot
+harness in `testdata/uisnapshot`, which Go wildcard package discovery excludes.
+Unchanged successful tests can use Go's test cache; use
 `TEST_FLAGS='-count=1'` for a fresh run, `TEST_FLAGS='-count=3 -shuffle=on'` for
 repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
 does not regenerate assets or install binaries. A focused pass does not cover unselected tests.
@@ -99,7 +101,8 @@ make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|Pr
 ## Static checks
 
 Run `make lint` with `golangci-lint` and `deadcode` on PATH. It uses `.golangci.yml`
-and includes test executables in deadcode analysis. Tool errors and reported findings
+and checks production reachability separately from test reachability, including
+the shared snapshot harness tests. Tool errors and reported findings
 fail the target. Linux amd64 CI installs the versions pinned in the release workflow.
 
 ## Terminal UI snapshots
@@ -122,10 +125,10 @@ Launcher debug handoffs live in `cmd/mekugi/testdata/snapshots/`.
 Shared Diff syntax and row styles live in `internal/livediff/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories.
 
-`internal/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
+`testdata/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
 wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
 nondeterministic inputs before invoking the actual renderer. Text snapshots do
-not establish color/style correctness. `internal/uisnapshot.AssertTerminal`
+not establish color/style correctness. `testdata/uisnapshot.AssertTerminal`
 paints actual renderer rows into the shared VT emulator at a fixed width, then
 stores its canonical ANSI output as quoted rows. These fixtures cover terminal
 cell colors, emphasis, links, padding, and style restoration without depending on

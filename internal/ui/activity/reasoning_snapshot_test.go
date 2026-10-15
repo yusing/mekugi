@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/uisnapshot"
+	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
 const reasoningSnapshotBody = "First I will inspect the stream renderer and its existing dialog.\n" +
