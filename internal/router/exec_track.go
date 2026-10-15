@@ -47,6 +47,7 @@ func ExecTrackPaths(frontendDirectory string) (channel, directory string) {
 type execTrackHub struct {
 	requests  *os.File
 	directory string
+	cancel    context.CancelFunc
 	mu        sync.Mutex
 	started   []execTrackCommand // Live, unmatched command items, oldest first.
 	changed   chan struct{}      // Closed and replaced at command/segment lifecycle boundaries.
@@ -112,7 +113,8 @@ func listenExecTrack(ctx context.Context, channel, directory string) (*execTrack
 	if err != nil {
 		return nil, err
 	}
-	h := &execTrackHub{requests: requests, directory: directory, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack), approvals: make(chan *vcsApproval), approvalTimeout: vcsguard.Timeout}
+	ctx, cancel := context.WithCancel(ctx)
+	h := &execTrackHub{requests: requests, directory: directory, cancel: cancel, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack), approvals: make(chan *vcsApproval), approvalTimeout: vcsguard.Timeout}
 	h.wg.Go(func() {
 		reader := bufio.NewReader(requests)
 		for {
@@ -179,12 +181,16 @@ func (h *execTrackHub) close() {
 	h.closed = true
 	guard := h.guardClose
 	h.mu.Unlock()
+	if h.cancel != nil {
+		h.cancel()
+	}
 	if h.requests != nil {
 		h.requests.Close()
 	}
 	if guard != nil {
 		guard()
 	}
+	h.wg.Wait()
 }
 
 // Match shell reports before queued presentation can exhaust the startup deadline.

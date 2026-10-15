@@ -247,6 +247,9 @@ resources leave the original script to run once; after tracking is accepted,
 router cancellation cannot suppress its execution. Codex still owns command
 cancellation.
 
+Closing tracking cancels its report connections and waits for its handlers to
+release their private resources. It does not cancel host commands.
+
 For dash-backed sh, Codex's native `PreToolUse` command hook adds inline
 instrumentation to supported POSIX scripts. It runs in Codex's selected shell,
 without launching a substitute interpreter, and uses the same segment reports,

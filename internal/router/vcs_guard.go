@@ -70,7 +70,6 @@ func (h *execTrackHub) listenVCSGuard(ctx context.Context, path string) error {
 		return errors.New("command tracking stopped")
 	}
 	h.guardClose = cleanup
-	h.mu.Unlock()
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(ctx, cleanup)
 	h.wg.Go(func() {
@@ -85,6 +84,8 @@ func (h *execTrackHub) listenVCSGuard(ctx context.Context, path string) error {
 			h.wg.Go(func() { h.approve(ctx, conn) })
 		}
 	})
+	// Register the listener before close can begin joining owned handlers.
+	h.mu.Unlock()
 	return nil
 }
 
