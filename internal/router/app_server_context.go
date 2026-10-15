@@ -8,6 +8,8 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 // Restore only observational context from the host-selected rollout. Reading a
@@ -77,7 +79,7 @@ func openThreadRollout(info appServerThreadInfo) (*os.File, os.FileInfo, bool) {
 	if !filepath.IsAbs(info.Path) {
 		return nil, nil, false
 	}
-	f, err := os.Open(info.Path)
+	f, err := sourceparse.Open(info.Path)
 	if err != nil {
 		return nil, nil, false
 	}

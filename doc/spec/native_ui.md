@@ -1003,6 +1003,7 @@ including reductions after compaction and replayed usage on resume.
 Startup and child metadata also restore the latest saved context snapshot from
 the absolute rollout path supplied by Codex, validating its session identity.
 This observational read never resumes children or replaces newer live usage.
+Only regular files are evidence; named pipes are rejected without waiting for a writer.
 Restoration reads at most the last 8 MiB and a 64 KiB metadata prefix; absent,
 unreadable, mismatched, or unavailable snapshots leave the initial display intact.
 Roster edit counts use green for additions and red for removals, independent of
