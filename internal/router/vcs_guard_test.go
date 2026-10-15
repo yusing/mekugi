@@ -15,8 +15,25 @@ import (
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
-type vcsGuardShell struct {
+type approvalShell struct {
 	*execTrackShell
+	guard *shellApprovalServer
+}
+
+func newApprovalShell(t *testing.T, timeout time.Duration) *approvalShell {
+	t.Helper()
+	shell := newExecTrackShell(t)
+	_, channel := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	guard, err := listenShellApprovals(t.Context(), channel, timeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(guard.close)
+	return &approvalShell{execTrackShell: shell, guard: guard}
+}
+
+type vcsGuardShell struct {
+	*approvalShell
 	log  string // One line per real git or gh invocation.
 	real string // Directory of the fake git and gh behind the guard.
 }
@@ -25,18 +42,16 @@ type vcsGuardShell struct {
 // arguments, as the wrapper puts it ahead of the frontend directory.
 func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 	t.Helper()
-	shell := newExecTrackShell(t)
+	wait := vcsguard.Timeout
+	if len(timeout) > 0 {
+		wait = timeout[0]
+	}
+	shell := newApprovalShell(t, wait)
 	helper, err := execTrackHelper()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(timeout) > 0 {
-		shell.hub.approvalTimeout = timeout[0]
-	}
-	guard, channel := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-	if err := shell.hub.listenVCSGuard(t.Context(), channel); err != nil {
-		t.Fatal(err)
-	}
+	guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
 	if err := os.MkdirAll(guard, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +82,7 @@ func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 	// Plain sh has no startup hook. Its nested commands must also find only
 	// this fixture's guard and fake tools before the isolated host PATH.
 	shell.env[0] = "PATH=" + guard + string(os.PathListSeparator) + real + string(os.PathListSeparator) + execTrackPath()
-	return &vcsGuardShell{execTrackShell: shell, log: log, real: real}
+	return &vcsGuardShell{approvalShell: shell, log: log, real: real}
 }
 
 func (s *vcsGuardShell) invoked(t *testing.T) []string {
@@ -89,7 +104,7 @@ func (s *vcsGuardShell) answer(t *testing.T, ok bool) <-chan []string {
 	go func() {
 		for {
 			select {
-			case request := <-s.hub.approvals:
+			case request := <-s.guard.requests:
 				asked <- request.argv
 				request.reply <- vcsguard.Reply{OK: ok, Reason: "denied in test"}
 			case <-t.Context().Done():
@@ -188,7 +203,7 @@ func TestVCSGuardDeniesWithoutAnswer(t *testing.T) {
 		t.Fatalf("unreceived run = %+v", run)
 	}
 	taken := make(chan *vcsApproval, 1)
-	go func() { taken <- <-shell.hub.approvals }()
+	go func() { taken <- <-shell.guard.requests }()
 	run = runExecTrackShell(t, shell.env, "gh pr merge 1; echo $?")
 	if run.stdout != "1\n" || !strings.Contains(run.stderr, "no answer within 5 minutes") {
 		t.Fatalf("received run = %+v", run)
@@ -242,7 +257,7 @@ func TestVCSGuardWithdrawalAndUnreachableRouter(t *testing.T) {
 	t.Parallel()
 	shell := newVCSGuardShell(t)
 	taken := make(chan *vcsApproval, 1)
-	go func() { taken <- <-shell.hub.approvals }()
+	go func() { taken <- <-shell.guard.requests }()
 	run := runExecTrackShell(t, shell.env, "timeout 1 git push; echo $?")
 	if run.stdout != "124\n" {
 		t.Fatalf("interrupted run = %+v", run)
@@ -256,7 +271,7 @@ func TestVCSGuardWithdrawalAndUnreachableRouter(t *testing.T) {
 	if request.outcome != "withdrawn" {
 		t.Fatalf("outcome = %q", request.outcome)
 	}
-	shell.hub.close()
+	shell.guard.close()
 	run = runExecTrackShell(t, shell.env, "git push; echo $?; git status")
 	if run.stdout != "1\n" || run.stderr != "mekugi: remote write denied: Mekugi approval is unavailable\n" {
 		t.Fatalf("unreachable run = %+v", run)
@@ -312,7 +327,7 @@ func TestVCSGuardConcurrentApprovalRequests(t *testing.T) {
 	seen := make(map[string]bool)
 	for range commands {
 		select {
-		case request := <-shell.hub.approvals:
+		case request := <-shell.guard.requests:
 			if len(request.argv) != 5 || request.argv[0] != "gh" || request.argv[3] != "--body" {
 				t.Fatalf("request = %q", request.argv)
 			}
@@ -350,12 +365,13 @@ func TestVCSGuardClosesPendingApproval(t *testing.T) {
 	go func() { results <- runExecTrackShell(t, shell.env, "git push") }()
 	var request *vcsApproval
 	select {
-	case request = <-shell.hub.approvals:
+	case request = <-shell.guard.requests:
 	case <-time.After(5 * time.Second):
 		t.Fatal("approval did not arrive")
 	}
 	proxy := newManagedMekugiProxy(t)
 	proxy.execTrack = shell.hub
+	proxy.guard = shell.guard
 	if err := proxy.Close(); err != nil {
 		t.Fatal(err)
 	}

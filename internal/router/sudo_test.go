@@ -99,7 +99,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 			for i, keys := range tc.keys {
 				var request *vcsApproval
 				select {
-				case request = <-shell.hub.approvals:
+				case request = <-shell.guard.requests:
 					kind := "sudo"
 					if i > 0 {
 						kind = "sudo-password"
@@ -207,18 +207,14 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	}
 }
 
-func newSudoShell(t *testing.T) (*execTrackShell, string, string) {
+func newSudoShell(t *testing.T) (*approvalShell, string, string) {
 	t.Helper()
-	shell := newExecTrackShell(t)
+	shell := newApprovalShell(t, vcsguard.Timeout)
 	helper, err := execTrackHelper()
 	if err != nil {
 		t.Fatal(err)
 	}
 	frontend := filepath.Join(shell.root, "bin")
-	_, channel := vcsguard.Paths(frontend)
-	if err := shell.hub.listenVCSGuard(t.Context(), channel); err != nil {
-		t.Fatal(err)
-	}
 	directory := sudoask.Path(frontend)
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
@@ -266,7 +262,7 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 		}()
 		if tc.approval {
 			select {
-			case request := <-shell.hub.approvals:
+			case request := <-shell.guard.requests:
 				if request.kind != "sudo" || !slices.Equal(request.argv, append([]string{"sudo"}, args...)) {
 					t.Fatal("command approval lost exact arguments")
 				}
@@ -289,7 +285,7 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 			if !allow && (got.code != 1 || got.stdout != "mekugi: sudo command denied: fixture denial\n") {
 				t.Fatalf("denied sudo ran: %+v", got)
 			}
-		case request := <-shell.hub.approvals:
+		case request := <-shell.guard.requests:
 			t.Fatalf("unexpected request kind=%s", request.kind)
 		case <-time.After(10 * time.Second):
 			t.Fatal("sudo did not complete")

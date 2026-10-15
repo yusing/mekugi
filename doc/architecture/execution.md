@@ -81,6 +81,12 @@ execution, approval decisions and report transport remain with their callers.
 `libraries/commandanalysis` owns VCS executable recognition, while its `shellsyntax`
 package owns wrapper operands and non-evaluating command-word classification.
 
+The invocation's shell-approval server owns the VCS/sudo decision socket, pending
+requests, cancellation, and shutdown join independently of segment reporting.
+The UI consumes that server's requests; report arrival or transport closure does
+not grant approval or complete a pending decision. Application startup coordinates
+both services and keeps guarded startup fail-closed.
+
 Segment tracking (`REQ-EXECUTION-002`) has these owners:
 
 - `libraries/shellinstrumentation` owns segment splitting, list rewriting,

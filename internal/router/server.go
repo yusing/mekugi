@@ -320,7 +320,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 				hub, err := listenExecTrack(ctx, socket, directory)
 				if err == nil {
 					_, channel := vcsguard.Paths(frontendDirectory)
-					if err = hub.listenVCSGuard(ctx, channel); err != nil {
+					if mekugiCalls.guard, err = listenShellApprovals(ctx, channel, vcsguard.Timeout); err != nil {
 						hub.close()
 					}
 				}

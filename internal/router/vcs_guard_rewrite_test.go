@@ -22,7 +22,7 @@ func TestVCSGuardHostItemIdentity(t *testing.T) {
 	go func() {
 		for range 4 {
 			select {
-			case request := <-shell.hub.approvals:
+			case request := <-shell.guard.requests:
 				items <- request.item
 				request.reply <- vcsguard.Reply{OK: true}
 			case <-t.Context().Done():

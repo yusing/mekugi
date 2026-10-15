@@ -334,7 +334,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			image := answerImageFixture(t)
 			u.attachImage(image)
 			kept := u.draft
-			request := <-shell.hub.approvals
+			request := <-shell.guard.requests
 			if request.executable != shell.real+"/git" {
 				t.Fatalf("resolved executable = %q", request.executable)
 			}

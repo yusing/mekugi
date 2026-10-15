@@ -107,6 +107,7 @@ type appServerUI struct {
 	view                      *liveActivityView
 	agents                    *liveActivityView
 	proxy                     *mekugiProxy
+	guard                     *shellApprovalServer
 	execTrack                 *execTrackHub // Per-segment command reports; nil when not tracking.
 	shellEdits                appServerShellEdits
 	pendingEditReceipts       []*capturedActivityEdit // Observed edits can precede their host Activity item.
@@ -183,7 +184,7 @@ func startAppServerUI(service *history.Service, segments *reports.Service, ctx c
 			guardHash = hash
 		}
 	}
-	if guardHash != "" && (proxy == nil || proxy.execTrack == nil || proxy.execTrack.guardClose == nil) {
+	if guardHash != "" && (proxy == nil || proxy.guard == nil) {
 		return nil, errors.New("VCS guard approval channel is unavailable")
 	}
 	var resumeCwd string
@@ -213,6 +214,7 @@ func startAppServerUI(service *history.Service, segments *reports.Service, ctx c
 	}
 	if proxy != nil {
 		u.execTrack = proxy.execTrack
+		u.guard = proxy.guard
 		if proxy.skillsManager {
 			u.skillEnvironment = cmd.Environ()
 		}

@@ -11,9 +11,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/shell"
 )
 
@@ -82,12 +82,12 @@ func (u *appServerUI) threadPermissions(params map[string]any) map[string]any {
 	return params
 }
 
-// guardRequests receives guarded remote writes; nil without command tracking.
+// guardRequests receives shell decisions from the invocation approval server.
 func (u *appServerUI) guardRequests() <-chan *vcsApproval {
-	if u.execTrack == nil {
+	if u.guard == nil {
 		return nil
 	}
-	return u.execTrack.approvals
+	return u.guard.requests
 }
 
 func (u *appServerUI) approvalAgent(thread string) string {

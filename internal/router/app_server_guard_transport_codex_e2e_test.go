@@ -28,6 +28,7 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			proxy.execTrack = shell.hub
+			proxy.guard = shell.guard
 			helper, err := execTrackHelper()
 			if err != nil {
 				t.Fatal(err)

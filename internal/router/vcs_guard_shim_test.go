@@ -82,7 +82,7 @@ exit 127
 				}
 				var request *vcsApproval
 				select {
-				case request = <-shell.hub.approvals:
+				case request = <-shell.guard.requests:
 				case <-ctx.Done():
 					t.Fatal("second command did not reach its approval")
 				}

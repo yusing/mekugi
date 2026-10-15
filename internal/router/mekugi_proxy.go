@@ -27,6 +27,7 @@ type mekugiProxy struct {
 	usage            *threadUsage
 	autoLiveDiff     *autoLiveDiff
 	activity         *subagentActivity
+	guard            *shellApprovalServer
 	execTrack        *execTrackHub // Set for the UI when command shells are tracked.
 	skillsManager    bool
 	execWindows      *execWindowRegistry
@@ -84,6 +85,7 @@ func (p *mekugiProxy) Close() error {
 	if p.execTrack != nil {
 		p.execTrack.close()
 	}
+	p.guard.close()
 	var cleanupErr error
 	for _, release := range p.storageLeases {
 		release()

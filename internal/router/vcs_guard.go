@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
-	"errors"
 	"io"
 	"net"
 	"os"
@@ -38,62 +37,76 @@ func (a *vcsApproval) finished() bool {
 	}
 }
 
-// listenVCSGuard accepts one connection per command. VCS approval does not
-// support sandboxes that prevent connecting to the session-local socket.
-func (h *execTrackHub) listenVCSGuard(ctx context.Context, path string) error {
-	// Snapshot paths can exceed Unix socket address limits. Keep the socket in
-	// a short private directory and link it from this session's snapshot.
+// shellApprovalServer owns the shared VCS/sudo decision channel independently
+// of command reports. Request completion and secret handling stay with callers.
+type shellApprovalServer struct {
+	requests chan *vcsApproval
+	timeout  time.Duration
+	cancel   context.CancelFunc
+	done     chan struct{}
+}
+
+// listenShellApprovals accepts one connection per command. The invoking host
+// must permit connecting to the session-local approval socket.
+func listenShellApprovals(ctx context.Context, path string, timeout time.Duration) (*shellApprovalServer, error) {
+	// Frontend paths can exceed Unix socket limits. The link stays in the
+	// authenticated frontend snapshot; the actual socket has a short private path.
 	directory, err := os.MkdirTemp("/tmp", "mekugi-vcs-")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	socket := filepath.Join(directory, "approval.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		os.Remove(directory)
-		return err
+		return nil, err
 	}
 	if err := os.Symlink(socket, path); err != nil {
 		listener.Close()
 		os.Remove(directory)
-		return err
+		return nil, err
 	}
 	cleanup := sync.OnceFunc(func() {
 		listener.Close()
 		os.Remove(path)
 		os.Remove(directory)
 	})
-	h.mu.Lock()
-	if h.closed {
-		h.mu.Unlock()
-		cleanup()
-		return errors.New("command tracking stopped")
-	}
-	h.guardClose = cleanup
 	ctx, cancel := context.WithCancel(ctx)
+	server := &shellApprovalServer{requests: make(chan *vcsApproval), timeout: timeout, cancel: cancel, done: make(chan struct{})}
 	stop := context.AfterFunc(ctx, cleanup)
-	h.wg.Go(func() {
-		defer cleanup()
-		defer cancel() // Closing the listener also withdraws accepted requests.
-		defer stop()
+	go func() {
+		var requests sync.WaitGroup
+		defer func() {
+			cancel()
+			cleanup()
+			stop()
+			requests.Wait()
+			close(server.done)
+		}()
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
 				return
 			}
-			h.wg.Go(func() { h.approve(ctx, conn) })
+			requests.Go(func() { server.approve(ctx, conn) })
 		}
-	})
-	// Register the listener before close can begin joining owned handlers.
-	h.mu.Unlock()
-	return nil
+	}()
+	return server, nil
 }
 
-func (h *execTrackHub) approve(ctx context.Context, conn net.Conn) {
+func (s *shellApprovalServer) close() {
+	if s == nil {
+		return
+	}
+	s.cancel()
+	<-s.done
+}
+
+func (h *shellApprovalServer) approve(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
-	deadline := time.Now().Add(h.approvalTimeout)
+	deadline := time.Now().Add(h.timeout)
 	if err := conn.SetDeadline(deadline); err != nil {
 		return
 	}
@@ -120,7 +133,7 @@ func (h *execTrackHub) approve(ctx context.Context, conn net.Conn) {
 	defer timer.Stop()
 	answer := vcsguard.Reply{Reason: "no answer within 5 minutes"}
 	select {
-	case h.approvals <- request:
+	case h.requests <- request:
 		select {
 		case answer = <-request.reply:
 			request.outcome = ""
