@@ -37,8 +37,8 @@ func TestVCSGuardHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
 		t.Fatalf("existing hook trust lost: %+v", config.Hooks.State)
 	}
 	guard := config.Hooks.State[vcsguard.HookKey]
-	// Reported as trusted by `codex app-server` hooks/list for this exact hook.
-	const hash = "sha256:16ebe25cea81aca7a47215fe1edd9a5c2bcdb9ed2c6a520a3ab8b3f0d3f56048"
+	// Pin command-hook identity encoding; host acceptance checks effective trust.
+	const hash = "sha256:47b7079ef39b8b57cfded0198db6e9f97b09b47f190c8008f2f3ee390265f081"
 	if guard.TrustedHash != hash || identity != hash || guard.Enabled != nil {
 		t.Fatalf("guard trust identity or enablement changed: %+v", guard)
 	}

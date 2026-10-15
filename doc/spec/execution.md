@@ -271,7 +271,7 @@ resources leave the original script to run once; after tracking is accepted,
 router cancellation cannot suppress its execution. Codex still owns command
 cancellation.
 
-For dash-backed sh, Codex's native `PreToolUse` MCP hook adds inline
+For dash-backed sh, Codex's native `PreToolUse` command hook adds inline
 instrumentation to supported POSIX scripts. It runs in Codex's selected shell,
 without launching a substitute interpreter, and uses the same segment reports,
 measured timing, output retention and UI as Bash. Bash keeps its startup path.
@@ -280,7 +280,7 @@ status message, part of its invocation-local trust identity, describes it in hoo
 rows: `Applying VCS guard` with the guard enabled, otherwise `Tracking shell segments`.
 With the VCS guard disabled, explicit caller `PreToolUse` conflicts leave caller
 settings intact and sh untracked; an enabled guard rejects a conflicting launch.
-Missing or incompatible hook resources leave commands running once
+Missing or incompatible tracking resources leave commands running once
 with aggregate host output. This support is limited to Linux dash-backed sh;
 other sh implementations are not promised segment tracking.
 
@@ -430,10 +430,9 @@ approvals and sandboxing, not this guard. Sandboxed guard execution is unsupport
 Mekugi does not silently change the user's configuration, approval policy or
 sandbox settings.
 
-The guard uses Codex's native MCP hook through the existing Mekugi bridge to
-instrument shell command text before execution without starting a shell or
-helper process for each hook call. The hook tool is not exposed in the model's
-tool catalog. It leaves expansion and control flow to Codex's selected
+The guard uses Codex's synchronous native command hook to invoke the local
+`mekugi-exec` helper and instrument shell command text before execution. It
+requires no MCP endpoint and exposes no model-facing tool. It leaves expansion and control flow to Codex's selected
 shell, including Bash and sh, rather than running the
 whole script in a substitute interpreter. It preserves all other tool arguments,
 permissions, sandbox settings, process ownership and continuation semantics.
@@ -458,7 +457,7 @@ retain shell-function lookup and use the command-local PATH; `command -p`
 retains its default-path lookup.
 
 The enabled guard requires Mekugi mode, the installed `mekugi-exec` sibling,
-Codex's native MCP-hook support and the approval channel. Before each new
+Codex's native command-hook support and the approval channel. Before each new
 user turn, the UI verifies the workspace's effective hooks. A missing, disabled
 or untrusted guard, a changed hook identity, or a competing trusted synchronous
 shell hook blocks the turn with an explanation and preserves the draft. Explicit CLI overrides of
@@ -467,7 +466,9 @@ requires explicit `--vcs-guard=false`, rather than `--yolo`. Invocation-local ho
 setup preserves recovery-hook trust and leaves user configuration files unchanged.
 
 Guard instrumentation failures reject the native tool with the actual failure
-reason. Expanded hook events and their output dialog retain that reason.
+reason. The hook's shell adapter also converts missing or failing helper
+processes into a native denial. Host hook-shell launch failures, timeouts, and
+result-delivery failures still follow Codex's external-hook failure policy. Expanded hook events and their output dialog retain that reason.
 
 Denial, no answer within 5 minutes, or a blocked or unreachable approval channel
 prints `mekugi: remote write denied: REASON` to stderr and exits 1 without running the
@@ -551,6 +552,9 @@ Acceptance:
    resolved executable require another decision; closing and resuming clears
    the grant. Denial with or without a reason emits the specified stderr and
    exits 1 without running the real command.
+9. Loss of an unrelated MCP endpoint does not bypass approval. A missing or
+   failing local hook helper produces native denial before an absolute-path
+   write executes. This excludes host hook-shell launch and timeout failures.
 
 ## REQ-EXECUTION-004 — Unlock sudo through the native dialog
 
@@ -582,7 +586,7 @@ not grant sandbox permissions or change sudo policy. It requires the interactive
 UI, the installed `mekugi-exec` helper and access to its local approval channel;
 headless and passthrough commands retain their existing behavior. Direct sudo
 names and executable paths through supported command wrappers are instrumented
-by the native MCP hook. Shell functions keep their existing lookup.
+by the native command hook. Shell functions keep their existing lookup.
 Inside script files, inherited PATH guards cover bare sudo names. Bash startup
 also covers direct known absolute sudo paths, independently of the VCS guard.
 Scripts keep their original bytes, interpreter, arguments and exit status;

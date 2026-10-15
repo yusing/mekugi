@@ -11,14 +11,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func newMCPServer() *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "mekugi", Version: "1"}, &mcp.ServerOptions{
-		Capabilities: &mcp.ServerCapabilities{},
-	})
-	registerMCPShellHook(server)
-	return server
-}
-
 // startMCP serves registered handlers in the router. The private directory
 // restricts access to this user's processes; no network endpoint is exposed.
 func startMCP(ctx context.Context, server *mcp.Server) (string, func() error, error) {

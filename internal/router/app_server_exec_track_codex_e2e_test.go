@@ -144,7 +144,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
 		environment: []string{"PATH=" + execTrackPath(), execsegment.ShTrackerEnvironment + "=" + tracker},
 		codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
-		mcp:         true, duringTurn: during, afterPrompt: after,
+		duringTurn:  during, afterPrompt: after,
 	})
 	if !report.done || report.code != 1 || len(report.segments) != 5 {
 		t.Fatalf("dash report = %+v", report)
@@ -169,7 +169,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The MCP hook must not launch a helper or shell before instrumentation.
+	// The command hook instruments without executing the command script.
 	hook, state, _, err := vcsguard.HookConfig(helper, "", "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -206,7 +206,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 		}
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-		environment: environment, afterPrompt: after, mcp: true,
+		environment: environment, afterPrompt: after,
 		codexArgs: []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
 	})
 }

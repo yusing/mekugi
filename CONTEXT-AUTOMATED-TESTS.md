@@ -45,6 +45,17 @@ checks waiting before public text, two incremental public-summary updates before
 completion, elapsed-duration display, and folding after completion.
 It does not establish a real provider's public-summary delivery cadence.
 
+The guard fixtures use fake VCS executables and the installed host to verify
+native command-hook dispatch, approvals, denial, and helper failure blocking:
+
+```sh
+make test TEST_PACKAGES=./internal/router TEST_RUN='^(TestAppServerVCSGuardNativeCodexYolo|TestAppServerGuardTransportFailureNativeCodex)$' TEST_FLAGS='-tags=codex_e2e -count=1'
+```
+
+The transport-failure cases disconnect an unrelated MCP endpoint or remove/fail
+the hook helper after turn admission. Effect markers must remain absent. These
+checks do not establish fail-closed host hook-shell launch or timeout behavior.
+
 The segment-report fixtures in `app_server_exec_track_codex_e2e_test.go` check
 installed Codex execution and measured reports under read-only and workspace-write
 sandboxes. Run the affected acceptance without changing the host policy:

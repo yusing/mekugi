@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	json "encoding/json/v2"
 	"errors"
 	"io"
 	"net"
@@ -12,56 +11,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
-
-func TestMCPShellHook(t *testing.T) {
-	t.Parallel()
-	server := newMCPServer()
-	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	session, err := server.Connect(t.Context(), serverTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-	client, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).Connect(t.Context(), clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer client.Close()
-	listed, err := client.ListTools(t.Context(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(listed.Tools) != 1 || listed.Tools[0].Name != vcsguard.HookTool {
-		t.Fatalf("independent hook catalog: %+v", listed.Tools)
-	}
-	visibility, err := json.Marshal(listed.Tools[0].Meta["ui"])
-	if err != nil || string(visibility) != `{"visibility":["app"]}` {
-		t.Fatalf("hook visibility: %s, %v", visibility, err)
-	}
-	for _, command := range []any{"git push '\"", 42} {
-		result, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: vcsguard.HookTool, Arguments: map[string]any{
-			"helper": "/helper", "directory": "/guard", "sudo_directory": "", "tracker": "",
-			"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "item", "tool_input": map[string]any{"command": command},
-		}})
-		if err != nil || result.IsError {
-			t.Fatalf("hook failed instead of returning a native decision: %+v, %v", result, err)
-		}
-		var response struct {
-			Output struct {
-				Decision string `json:"permissionDecision"`
-				Reason   string `json:"permissionDecisionReason"`
-			} `json:"hookSpecificOutput"`
-		}
-		if err := json.Unmarshal([]byte(result.Content[0].(*mcp.TextContent).Text), &response); err != nil {
-			t.Fatal(err)
-		}
-		if response.Output.Decision != "deny" || response.Output.Reason == "" {
-			t.Fatalf("instrumentation failure allowed: %+v", response)
-		}
-	}
-}
 
 func TestMCPServiceStop(t *testing.T) {
 	t.Parallel()

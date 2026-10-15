@@ -70,8 +70,6 @@ func validateGuardHook(data []byte, cwd, hash string) error {
 				Key     string `json:"key"`
 				Event   string `json:"eventName"`
 				Handler string `json:"handlerType"`
-				Server  string `json:"server"`
-				Tool    string `json:"tool"`
 				Hash    string `json:"currentHash"`
 				Matcher string `json:"matcher"`
 				Trust   string `json:"trustStatus"`
@@ -92,7 +90,7 @@ func validateGuardHook(data []byte, cwd, hash string) error {
 			if hook.Event != "preToolUse" || !hook.Enabled || (hook.Trust != "trusted" && hook.Trust != "managed") {
 				continue
 			}
-			if hook.Key == vcsguard.HookKey && hook.Handler == "mcpTool" && hook.Server == vcsguard.HookServer && hook.Tool == vcsguard.HookTool && hook.Hash == hash && hook.Matcher == "^Bash$" && !hook.Async {
+			if hook.Key == vcsguard.HookKey && hook.Handler == "command" && hook.Hash == hash && hook.Matcher == "^Bash$" && !hook.Async {
 				found = true
 				continue
 			}

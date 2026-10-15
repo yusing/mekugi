@@ -40,7 +40,7 @@ linked, not copied.
 ## Inventory
 
 - [`REQ-CONTEXT-RESET-001`](context_reset.md): retained inactive instruction-file loading
-- [`REQ-MCP-001`](mcp.md): invocation-local MCP dispatch
+- [`REQ-MCP-001`](mcp.md): reserved invocation-local MCP transport
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
 - [`REQ-TRANSPORT-001`](transport.md): Codex-facing and provider Responses transports

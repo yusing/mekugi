@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"reflect"
 	"strconv"
@@ -110,7 +109,6 @@ type appServerPreview struct {
 	environment               []string // Appended to Codex's isolated environment.
 	codexArgs                 []string // Appended to the app-server invocation.
 	approvals                 bool     // Run in approval mode rather than --yolo's policy.
-	mcp                       bool     // Register the existing bridge for native hooks.
 	beforePrompt, afterPrompt appServerPreviewHook
 	duringTurn                appServerPreviewHook // Runs after the prompt is sent, before the turn must finish.
 }
@@ -134,18 +132,7 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
 	args := []string{"app-server", "-c", `model_providers.preview={name="preview",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false"}
-	if options.mcp {
-		socket, stop, err := startMCP(ctx, newMCPServer())
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			if err := stop(); err != nil {
-				t.Error(err)
-			}
-		}()
-		args = append(args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["mcp-bridge",`+strconv.Quote(socket)+`]}`)
-	}
+
 	cmd := exec.CommandContext(ctx, codex, append(args, options.codexArgs...)...)
 	cmd.Env = append(routerFaultCodexEnvironment(t), environment...)
 	cmd.Dir = t.TempDir()
@@ -215,7 +202,7 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 		}
 	}
 	await("Ready")
-	await("4 Agents")
+	await("3 Agents")
 	if beforePrompt != nil {
 		beforePrompt(t, outer, await, awaitFrame, screen)
 	}

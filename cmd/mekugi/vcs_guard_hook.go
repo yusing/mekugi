@@ -10,7 +10,7 @@ import (
 )
 
 // vcsGuardHookArgs adds the guard to this invocation. Preserve other events
-// and trust entries, including the session recovery hook registered earlier.
+// and trust entries, including caller-owned session hooks.
 func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker string) ([]string, string, error) {
 	config, state, hash, err := vcsguard.HookConfig(helper, directory, sudoDirectory, tracker)
 	if err != nil {
@@ -26,7 +26,7 @@ func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker s
 		key, value, _ := strings.Cut(setting, "=")
 		key = strings.TrimSpace(key)
 		if key == "hooks" || key == "hooks.PreToolUse" || strings.HasPrefix(key, "hooks.PreToolUse.") {
-			return args, "", fmt.Errorf("MCP hook conflicts with explicit CLI PreToolUse configuration")
+			return args, "", fmt.Errorf("shell hook conflicts with explicit CLI PreToolUse configuration")
 		}
 		if key == "hooks.state" {
 			var parsed struct {
@@ -36,7 +36,7 @@ func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker s
 				return args, "", fmt.Errorf("read CLI hook state: %w", err)
 			}
 			if _, exists := parsed.State[vcsguard.HookKey]; exists {
-				return args, "", fmt.Errorf("explicit CLI state for the MCP hook conflicts")
+				return args, "", fmt.Errorf("explicit CLI state for the shell hook conflicts")
 			}
 			value = strings.TrimSpace(value)
 			if !strings.HasPrefix(value, "{") || !strings.HasSuffix(value, "}") {

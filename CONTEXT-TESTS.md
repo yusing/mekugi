@@ -47,7 +47,8 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Router behavior | `./internal/router` |
 | Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
 | Provider request encoding and stream normalization | `./internal/providercodec`, plus router Grok/OpenCode integration tests |
-| MCP transport, shell hook and registration | `./internal/router ./cmd/mekugi -run '^TestMCP'` |
+| Reserved MCP transport | `./internal/router -run '^TestMCP'` |
+| Shell-hook helper, registration, and effective configuration | `./cmd/mekugi ./cmd/mekugi-exec ./internal/vcsguard ./internal/router -run 'TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestVCSGuardHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |

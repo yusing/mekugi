@@ -45,6 +45,9 @@ const (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == vcsguard.HookFlag {
+		os.Exit(guardHook(os.Args[0], os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+	}
 	if len(os.Args) == 3 && os.Args[1] == "--created-path" {
 		reportCreatedPath(os.Args[2])
 		return

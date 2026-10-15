@@ -147,14 +147,6 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 	}
 
-	if session.MCPSocket != "" {
-		worker, err := os.Executable()
-		if err != nil {
-			cancel()
-			return 1, errors.Join(err, <-routerDone)
-		}
-		args = mcpArgs(args, worker, session)
-	}
 	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.CodeModeEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
 	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, vcsguard.HookEnvironment+"=")

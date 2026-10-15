@@ -8,16 +8,17 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
 const HookKey = "/<session-flags>/config.toml:pre_tool_use:0:0"
 
 const HookEnvironment = "MEKUGI_VCS_GUARD_HOOK"
 
-const HookServer = "mekugi"
-const HookTool = "guard_rewrite"
+const HookFlag = "--guard-hook"
 
 // HookInput binds session resources in the trusted hook configuration. The
 // remaining fields are expanded from Codex's native hook event, not router cwd.
@@ -42,12 +43,18 @@ func HookConfig(helper, directory, sudoDirectory, tracker string) (config, state
 	if directory != "" {
 		status = "Applying VCS guard"
 	}
-	input := map[string]any{"helper": helper, "directory": directory, "sudo_directory": sudoDirectory, "tracker": tracker,
-		"hook_event_name": "${hook_event_name}", "tool_name": "${tool_name}", "tool_use_id": "${tool_use_id}",
-		"tool_input": map[string]string{"command": "${tool_input.command}"}}
+	arguments := []string{helper, HookFlag, directory, sudoDirectory, tracker}
+	for i := range arguments {
+		arguments[i] = shellsyntax.Quote(arguments[i])
+	}
+	// The host may continue after an ordinary nonzero hook exit. A surviving
+	// adapter translates helper launch/process failure into its blocking form.
+	// Use sh explicitly so the selected hook shell need not parse POSIX control flow.
+	adapter := "if " + strings.Join(arguments, " ") + "; then :; else printf '%s\\n' 'mekugi: approval guard hook failed; command blocked' >&2; exit 2; fi"
+	command := "/bin/sh -c " + shellsyntax.Quote(adapter)
 	identity := map[string]any{
 		"event_name": "pre_tool_use", "matcher": "^Bash$",
-		"hooks": []map[string]any{{"type": "mcp_tool", "server": HookServer, "tool": HookTool, "input": input, "timeout": 5, "statusMessage": status}},
+		"hooks": []map[string]any{{"type": "command", "command": command, "timeout": 5, "async": false, "statusMessage": status}},
 	}
 	data, err := json.Marshal(identity, json.Deterministic(true))
 	if err != nil {
@@ -55,7 +62,7 @@ func HookConfig(helper, directory, sudoDirectory, tracker string) (config, state
 	}
 	hash := sha256.Sum256(data)
 	identityHash = "sha256:" + hex.EncodeToString(hash[:])
-	config = fmt.Sprintf(`hooks.PreToolUse=[{matcher="^Bash$",hooks=[{type="mcp_tool",server=%q,tool=%q,input={helper=%q,directory=%q,sudo_directory=%q,tracker=%q,hook_event_name="${hook_event_name}",tool_name="${tool_name}",tool_use_id="${tool_use_id}",tool_input={command="${tool_input.command}"}},timeout=5,statusMessage=%q}]}]`, HookServer, HookTool, helper, directory, sudoDirectory, tracker, status)
+	config = fmt.Sprintf(`hooks.PreToolUse=[{matcher="^Bash$",hooks=[{type="command",command=%q,timeout=5,async=false,statusMessage=%q}]}]`, command, status)
 	state = strconv.Quote(HookKey) + "={trusted_hash=" + strconv.Quote(identityHash) + "}"
 	return config, state, identityHash, nil
 }

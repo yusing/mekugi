@@ -167,7 +167,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 					if _, err := io.WriteString(outer, "\x1b"); err != nil {
 						t.Fatal(err)
 					}
-					awaitFrame(func(frame string) bool { return !strings.Contains(frame, "mcpTool · 1 line") })
+					awaitFrame(func(frame string) bool { return !strings.Contains(frame, "╭─ Hook Blocked") })
 				}
 				for i, answer := range tc.answers {
 					// Each request shows once the previous one has ended.
@@ -190,7 +190,6 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "=" + hash},
 				codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 				approvals:   false,
-				mcp:         true,
 				duringTurn:  during,
 			})
 			provider.mu.Lock()

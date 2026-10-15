@@ -57,7 +57,6 @@ type Session struct {
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
-	MCPSocket            string
 }
 
 // RunSession owns the private router for one wrapped Codex process.
@@ -296,19 +295,10 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
-	var mcpSocket string
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	registerCodexAuxiliaryRoutes(mux, ctx, *flags.timeout, provider)
-	if mekugiCalls != nil {
-		var stopMCP func() error
-		mcpServer := newMCPServer()
-		mcpSocket, stopMCP, err = startMCP(ctx, mcpServer)
-		if err != nil {
-			return fmt.Errorf("initialize MCP: %w", err)
-		}
-		defer func() { runErr = errors.Join(runErr, stopMCP()) }()
-	}
+
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
@@ -330,7 +320,6 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if ready != nil && ctx.Err() == nil {
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: *flags.mode == "mekugi", VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
-			session.MCPSocket = mcpSocket
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls, issues)
 			}

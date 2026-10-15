@@ -18,7 +18,7 @@ func guardHookTestResult(t *testing.T, cwd string, hooks ...map[string]any) []by
 }
 
 func guardHookTestEntry(hash string) map[string]any {
-	return map[string]any{"key": vcsguard.HookKey, "eventName": "preToolUse", "handlerType": "mcpTool", "server": vcsguard.HookServer, "tool": vcsguard.HookTool, "currentHash": hash, "matcher": "^Bash$", "trustStatus": "trusted", "enabled": true, "async": false}
+	return map[string]any{"key": vcsguard.HookKey, "eventName": "preToolUse", "handlerType": "command", "currentHash": hash, "matcher": "^Bash$", "trustStatus": "trusted", "enabled": true, "async": false}
 }
 
 func TestValidateGuardHookEffectiveConfiguration(t *testing.T) {
@@ -29,7 +29,7 @@ func TestValidateGuardHookEffectiveConfiguration(t *testing.T) {
 	}{
 		{"disabled", "enabled", false}, {"untrusted", "trustStatus", "untrusted"},
 		{"wrong key", "key", "/user/config.toml:pre_tool_use:0:0"},
-		{"wrong hash", "currentHash", hash + " extra"}, {"wrong server", "server", "other"}, {"wrong tool", "tool", "other"}, {"wrong type", "handlerType", "command"}, {"wrong matcher", "matcher", ".*"},
+		{"wrong hash", "currentHash", hash + " extra"}, {"wrong type", "handlerType", "mcpTool"}, {"wrong matcher", "matcher", ".*"},
 		{"asynchronous", "async", true}, {"wrong event", "eventName", "postToolUse"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

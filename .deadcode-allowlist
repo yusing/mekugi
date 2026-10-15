@@ -14,3 +14,6 @@ github.com/yusing/mekugi/internal/router.instructionPathPosition
 github.com/yusing/mekugi/internal/router.messageContentText
 github.com/yusing/mekugi/internal/router.openResetGuidanceFile
 github.com/yusing/mekugi/internal/router/toolplugin.InspectSource
+
+# Reserved MCP endpoint: doc/spec/mcp.md.
+github.com/yusing/mekugi/internal/router.startMCP
