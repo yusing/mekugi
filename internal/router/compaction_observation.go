@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -85,7 +87,7 @@ func (s *mekugiReplayStore) retainedCallWorkspace(thread string) (string, error)
 		var record replayRecord
 		// Persisted command hashes use the version-1 numeric byte-array format.
 		if json.Unmarshal(data, &record, jsonv1.FormatByteArrayAsArray(true)) != nil ||
-			(record.Version != 1 && record.Version != 2) || record.Commentary || replayRecordName(record.Workspace, record.CallID, false) != name {
+			(record.Version != 1 && record.Version != 2) || record.Commentary || legacycall.Name(record.Workspace, record.CallID, false) != name {
 			return "", errors.New("invalid retained call workspace evidence")
 		}
 		if record.History.ExecutingThread != thread {

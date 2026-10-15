@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -42,7 +44,7 @@ func TestStorageAdmissionTracksScopedWritesAndFailedPublication(t *testing.T) {
 	}
 	ctx, _ := retentionTestSession(t, store, "current", 0)
 	for _, commentary := range []bool{false, true} {
-		name := replayRecordName("/w", "changing", commentary)
+		name := legacycall.Name("/w", "changing", commentary)
 		for _, size := range []int{100, 20} {
 			data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "changing", Commentary: commentary, History: mekugiHistory{Script: strings.Repeat("x", size)}})
 			if err := store.locked(ctx, func(store *mekugiReplayStore) error {
@@ -54,7 +56,7 @@ func TestStorageAdmissionTracksScopedWritesAndFailedPublication(t *testing.T) {
 		}
 	}
 	err = store.locked(ctx, func(store *mekugiReplayStore) error {
-		return store.scoped(ctx).writeManagedFile(replayRecordName("/w", "record", false), "missing-directory/pending-", []byte("record"))
+		return store.scoped(ctx).writeManagedFile(legacycall.Name("/w", "record", false), "missing-directory/pending-", []byte("record"))
 	})
 	if err == nil {
 		t.Fatal("invalid publication succeeded")
@@ -81,7 +83,7 @@ func TestStorageAdmissionRefreshesAfterPeerPublicationAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
-	name := replayRecordName("/w", "peer-growth", false)
+	name := legacycall.Name("/w", "peer-growth", false)
 	data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "peer-growth", History: mekugiHistory{Script: strings.Repeat("x", 100)}})
 	if err := peer.locked(t.Context(), func(peer *mekugiReplayStore) error { return peer.transaction.Write(name, "call-pending-", data) }); err != nil {
 		t.Fatal(err)
@@ -113,7 +115,7 @@ func BenchmarkStorageAdmissionPublication(b *testing.B) {
 				b.Fatal(err)
 			}
 			for i := range 1000 {
-				name := replayRecordName("/w", fmt.Sprint(i), false)
+				name := legacycall.Name("/w", fmt.Sprint(i), false)
 				data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: fmt.Sprint(i)})
 				if err := os.WriteFile(filepath.Join(store.directory, name), data, 0600); err != nil {
 					b.Fatal(err)
@@ -124,7 +126,7 @@ func BenchmarkStorageAdmissionPublication(b *testing.B) {
 				b.Fatal(err)
 			}
 			b.Cleanup(release)
-			record := replayRecordName("/w", "changing", false)
+			record := legacycall.Name("/w", "changing", false)
 			iteration := 0
 			b.ReportAllocs()
 			for b.Loop() {

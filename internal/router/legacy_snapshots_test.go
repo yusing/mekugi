@@ -8,11 +8,35 @@ import (
 	"errors"
 	"slices"
 
+	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/internal/responses"
 )
 
+type snapshotFiles struct {
+	Exec   []execFileSnapshot        `json:",omitempty"`
+	Native []nativePatchFileSnapshot `json:",omitempty"`
+	Review []mekugi.ReviewFile       `json:",omitempty"`
+	Texts  map[int]string            `json:",omitempty"`
+}
+
+func (files *snapshotFiles) textSlots() []*string {
+	var slots []*string
+	for i := range files.Exec {
+		slots = append(slots, &files.Exec[i].Content)
+	}
+	for i := range files.Native {
+		slots = append(slots, &files.Native[i].Before, &files.Native[i].TargetBefore)
+	}
+	for i := range files.Review {
+		slots = append(slots, &files.Review[i].Diff)
+	}
+	return slots
+}
+
 // Encoder retained solely to construct historical fixtures for read compatibility.
-func (b *snapshotBatch) putFiles(files snapshotFiles, refs *replaySnapshots) (string, error) {
+func (b *snapshotBatch) putFiles(files snapshotFiles, refs *legacycall.Snapshots) (string, error) {
 	for i, slot := range files.textSlots() {
 		if len(*slot) < 1024 {
 			continue
@@ -49,7 +73,7 @@ func (b *snapshotBatch) put(value any) (string, error) {
 	if len(data) > maxReplayRecordBytes {
 		return "", errors.New("snapshot exceeds size limit")
 	}
-	name := snapshotName(data)
+	name := legacycall.SnapshotName(data)
 	if b.seen[name] {
 		return name, nil
 	}
@@ -57,7 +81,7 @@ func (b *snapshotBatch) put(value any) (string, error) {
 		b.seen = make(map[string]bool)
 	}
 	b.seen[name] = true
-	_, exists, err := b.store.snapshotData(name)
+	_, exists, err := legacycall.SnapshotData(b.store.directory, name, maxReplayRecordBytes)
 	if err != nil || exists {
 		return name, err
 	}
@@ -76,7 +100,7 @@ func (b *snapshotBatch) put(value any) (string, error) {
 // compactSnapshots moves filesystem evidence into snapshot blobs and returns
 // the blobs that still need publication.
 func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) ([]managedFile, error) {
-	refs := new(replaySnapshots)
+	refs := new(legacycall.Snapshots)
 	batch := &snapshotBatch{store: s}
 	var err error
 	h := &r.History
@@ -141,7 +165,7 @@ func (s *mekugiReplayStore) compactSnapshots(r *replayRecord) ([]managedFile, er
 		}
 		h.ReviewFiles = nil
 	}
-	if len(refs.names()) > 0 {
+	if len(refs.Names()) > 0 {
 		slices.Sort(refs.Contents)
 		refs.Contents = slices.Compact(refs.Contents)
 		r.Version, r.Snapshots = 2, refs
@@ -167,7 +191,7 @@ func putLegacySnapshotFixture(store *mekugiReplayStore, ctx context.Context, cal
 		if err != nil {
 			return err
 		}
-		return store.writeLegacySnapshotFiles(managedFile{name: replayRecordName("/w", call, false), pattern: "call-pending-", data: data}, record.Snapshots.names(), blobs)
+		return store.writeLegacySnapshotFiles(managedFile{name: legacycall.Name("/w", call, false), pattern: "call-pending-", data: data}, record.Snapshots.Names(), blobs)
 	})
 }
 

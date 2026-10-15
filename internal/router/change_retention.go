@@ -5,6 +5,8 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -38,7 +40,7 @@ func retireStoredChanges(index *changeIndex, deleted map[string]bool, thread str
 		stream, _, _ := parseChangeID(id)
 		pending := len(change.Calls) == 0 && position >= 0 && index.streamName(position) == stream
 		if !pending && !slices.ContainsFunc(change.Calls, func(call trackedCall) bool {
-			return deleted[replayRecordName(index.Workspace, call.ID, false)]
+			return deleted[legacycall.Name(index.Workspace, call.ID, false)]
 		}) {
 			continue
 		}
@@ -49,7 +51,7 @@ func retireStoredChanges(index *changeIndex, deleted map[string]bool, thread str
 		}
 		before := len(change.Calls)
 		change.Calls = slices.DeleteFunc(slices.Clone(change.Calls), func(call trackedCall) bool {
-			return deleted[replayRecordName(index.Workspace, call.ID, false)]
+			return deleted[legacycall.Name(index.Workspace, call.ID, false)]
 		})
 		if len(change.Calls) == 0 {
 			delete(index.Changes, id)

@@ -63,6 +63,12 @@ when their final owner expires, after referencing envelopes. Cross-owner fork
 initialization retains inherited records before publishing the new scope.
 Neither retirement nor a retained reference grants execution authority.
 
+The frozen call-envelope codec in `libraries/legacycall` validates the complete
+historical record, including mixed feature fields and referenced snapshots.
+Reading one feature's projection does not bypass validation of the other retained
+facts. The codec reads retained files only; publication and retention remain with
+session history, and current feature semantics remain with their owners.
+
 The live-diff renderer consumes provisional inputs and completed review files
 without owning workspace effects or replay locks. Commentary and capture are
 auxiliary consumers of observed facts; they cannot replace a stock result or

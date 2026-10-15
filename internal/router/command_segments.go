@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/internal/execsegment"
@@ -187,7 +189,7 @@ func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appS
 					continue
 				}
 				accepted[item.ID] = candidate
-				names = append(names, replayRecordName(workspace, commandSegmentsID(turn.ID, item.ID), false))
+				names = append(names, legacycall.Name(workspace, commandSegmentsID(turn.ID, item.ID), false))
 			}
 			if len(names) == 0 {
 				return nil
@@ -201,7 +203,7 @@ func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appS
 				// smaller neighbors that still fit, or records already owned.
 				for _, item := range items {
 					if candidate := accepted[item.ID]; candidate != nil {
-						if err := store.retainFiles(replayRecordName(workspace, commandSegmentsID(turn.ID, item.ID), false)); err == nil {
+						if err := store.retainFiles(legacycall.Name(workspace, commandSegmentsID(turn.ID, item.ID), false)); err == nil {
 							result[item.ID] = candidate
 						}
 					}

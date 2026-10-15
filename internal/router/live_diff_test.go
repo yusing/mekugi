@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
@@ -153,7 +155,7 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 	if err != nil || len(files) != 1 || len(files[0].Chunks) != 1 || files[0].Chunks[0].Status != "" {
 		t.Fatalf("Files: %#v, %v", files, err)
 	}
-	if err := os.Rename(filepath.Join(store.directory, replayRecordName(workspace, "one", false)), filepath.Join(store.directory, "removed-record")); err != nil {
+	if err := os.Rename(filepath.Join(store.directory, legacycall.Name(workspace, "one", false)), filepath.Join(store.directory, "removed-record")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}}); err == nil {
@@ -173,7 +175,7 @@ func TestLiveDiffLegacyChangeFlagsDoNotAffectSavedEdits(t *testing.T) {
 		t.Fatalf("legacy index fixture: %v, %v", indices, err)
 	}
 	for _, fixture := range []struct{ path, before, after string }{
-		{filepath.Join(store.directory, replayRecordName(workspace, "one", false)), `"History":{`, `"History":{"Applied":false,"ExecObservation":{"Sweep":true,"Class":"scoped","Commands":[{"Command":"python3 edit.py"}]},`},
+		{filepath.Join(store.directory, legacycall.Name(workspace, "one", false)), `"History":{`, `"History":{"Applied":false,"ExecObservation":{"Sweep":true,"Class":"scoped","Commands":[{"Command":"python3 edit.py"}]},`},
 		{indices[0], `"ID":"one"`, `"Confirmed":false,"ID":"one"`},
 	} {
 		data, err := os.ReadFile(fixture.path)

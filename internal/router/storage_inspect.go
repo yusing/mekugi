@@ -13,6 +13,8 @@ import (
 	"slices"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -83,7 +85,7 @@ func RunStorageInspection(service *history.Service, ctx context.Context, args []
 		result.Target = *object
 		var found bool
 		var err error
-		data, found, err = store.snapshotData(*object)
+		data, found, err = legacycall.SnapshotData(store.directory, *object, maxReplayRecordBytes)
 		if err != nil {
 			return fail(fmt.Errorf("object %s: %w", *object, err))
 		}
@@ -94,7 +96,7 @@ func RunStorageInspection(service *history.Service, ctx context.Context, args []
 			return fail(fmt.Errorf("object %s contains invalid JSON", *object))
 		}
 	} else {
-		result.Target = replayRecordName(*workspace, *callID, false)
+		result.Target = legacycall.Name(*workspace, *callID, false)
 		r, found, err := store.read(*workspace, *callID, false)
 		if err != nil {
 			return fail(fmt.Errorf("call %s: %w", *callID, err))

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi"
 )
 
@@ -204,7 +206,7 @@ func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(f.store.directory, replayRecordName(f.workspace, "later", false)), []byte("{"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(f.store.directory, legacycall.Name(f.workspace, "later", false)), []byte("{"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			output, selected, err := f.store.readChangeView(f.ctx, options)

@@ -15,6 +15,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/internal/responses"
 )
 
@@ -137,7 +139,7 @@ func TestReplayStorageDefaultIsFourGiB(t *testing.T) {
 		}
 	}
 	for number := range 33 {
-		name := replayRecordName("/w", "existing-"+strconv.Itoa(number), false)
+		name := legacycall.Name("/w", "existing-"+strconv.Itoa(number), false)
 		file, err := os.Create(filepath.Join(store.directory, name))
 		if err != nil {
 			t.Fatal(err)

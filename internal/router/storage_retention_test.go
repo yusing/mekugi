@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	retainedhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/gofrs/flock"
@@ -240,7 +242,7 @@ func TestStorageRetentionDoesNotFollowSymlinksOrRemoveUnknownFiles(t *testing.T)
 	if err := os.WriteFile(outside, []byte("original chat"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	name := replayRecordName("/w", "link", false)
+	name := legacycall.Name("/w", "link", false)
 	if err := os.Symlink(outside, filepath.Join(store.directory, name)); err != nil {
 		t.Fatal(err)
 	}

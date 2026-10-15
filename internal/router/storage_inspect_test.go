@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 )
 
 func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
@@ -126,11 +128,11 @@ func TestStorageInspectionMissingContentNamesExactObject(t *testing.T) {
 	h := snapshotTestHistory()
 	h.ResolvedBaseline.Files[0].Content = strings.Repeat("source", 256)
 	snapshotTestPut(t, store, t.Context(), "selected", h)
-	data, err := os.ReadFile(filepath.Join(store.directory, replayRecordName("/w", "selected", false)))
+	data, err := os.ReadFile(filepath.Join(store.directory, legacycall.Name("/w", "selected", false)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var envelope struct{ Snapshots *replaySnapshots }
+	var envelope struct{ Snapshots *legacycall.Snapshots }
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -154,13 +156,13 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 	return s.locked(ctx, func(s *mekugiReplayStore) error {
 		var names []string
 		for call := range histories {
-			names = append(names, replayRecordName(workspace, call, false))
+			names = append(names, legacycall.Name(workspace, call, false))
 		}
 		var items []map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &items)
 		for _, item := range items {
 			if responses.StringField(item, "type") == "message" {
-				name := replayRecordName(workspace, responses.StringField(item, "id"), true)
+				name := legacycall.Name(workspace, responses.StringField(item, "id"), true)
 				if info, err := os.Lstat(filepath.Join(s.directory, name)); err == nil && info.Mode().IsRegular() {
 					names = append(names, name)
 				}
@@ -177,7 +179,7 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 			if change, exists := index.Changes[history.ChangeID]; exists {
 				names = append(names, changeIndexName(workspace, index.Namespace))
 				for _, attempt := range change.Calls {
-					names = append(names, replayRecordName(workspace, attempt.ID, false))
+					names = append(names, legacycall.Name(workspace, attempt.ID, false))
 				}
 			}
 		}
@@ -215,7 +217,7 @@ func (s *mekugiReplayStore) changeDependencyNames(workspace string, ids []string
 			return nil, missingChangeError(index, id)
 		}
 		for _, call := range change.Calls {
-			names = append(names, replayRecordName(workspace, call.ID, false))
+			names = append(names, legacycall.Name(workspace, call.ID, false))
 		}
 	}
 	return names, nil

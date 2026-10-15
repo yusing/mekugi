@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -77,7 +79,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(store.directory, replayRecordName(workspace, commandSegmentsID(turn.ID, corrupt.ID), false)), []byte("broken"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.directory, legacycall.Name(workspace, commandSegmentsID(turn.ID, corrupt.ID), false)), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	u := &appServerUI{ctx: t.Context(), thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}}
@@ -90,7 +92,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 		if (got[item.ID] != nil) != valid[item.ID] {
 			t.Errorf("%s: accepted = %v, want %v", item.ID, got[item.ID] != nil, valid[item.ID])
 		}
-		name := replayRecordName(workspace, commandSegmentsID(turn.ID, item.ID), false)
+		name := legacycall.Name(workspace, commandSegmentsID(turn.ID, item.ID), false)
 		if catalog.Files[name] != valid[item.ID] {
 			t.Errorf("%s: durable ownership = %v, want %v", item.ID, catalog.Files[name], valid[item.ID])
 		}

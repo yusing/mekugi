@@ -11,6 +11,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 )
 
 // Retained calls are shared by fork catalogs. Planning needs their envelope
@@ -109,7 +111,7 @@ func TestRetentionWorkerCoalescesPublicationConflicts(t *testing.T) {
 						t.Fatalf("stale plan published sweep marker: %v", err)
 					}
 					for i := range 8 {
-						if _, err := os.Stat(filepath.Join(store.directory, replayRecordName("/w", fmt.Sprint(i), false))); err != nil {
+						if _, err := os.Stat(filepath.Join(store.directory, legacycall.Name("/w", fmt.Sprint(i), false))); err != nil {
 							t.Fatal(err)
 						}
 					}

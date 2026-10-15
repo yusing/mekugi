@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
@@ -47,7 +47,7 @@ type replayRecord struct {
 	Commentary   bool
 	CaptureOrder uint64 `json:",omitzero"`
 	History      mekugiHistory
-	Snapshots    *replaySnapshots `json:",omitempty"`
+	Snapshots    *legacycall.Snapshots `json:",omitempty"`
 }
 
 // Keep request-local state out of immutable replay comparisons as well as JSON.
@@ -120,13 +120,6 @@ func openReplayStore(ctx context.Context, service *history.Service, directory st
 	}
 	return &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory), publication: publication}, nil
 }
-func replayRecordName(workspace, callID string, commentary bool) string {
-	prefix := "call-"
-	if commentary {
-		prefix = "commentary-"
-	}
-	return prefix + fmt.Sprintf("%x.json", sha256.Sum256(fmt.Appendf(nil, "%t\x00%s\x00%s", commentary, workspace, callID)))
-}
 func (s *mekugiReplayStore) locked(ctx context.Context, fn func(*mekugiReplayStore) error) error {
 	if s.transaction != nil {
 		return errors.New("nested replay publication transaction")
@@ -139,64 +132,11 @@ func (s *mekugiReplayStore) locked(ctx context.Context, fn func(*mekugiReplaySto
 	})
 }
 func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (replayRecord, bool, error) {
-	name := filepath.Join(s.directory, replayRecordName(workspace, callID, commentary))
-	info, err := os.Lstat(name)
-	if errors.Is(err, os.ErrNotExist) {
-		return replayRecord{}, false, nil
+	record, found, err := legacycall.Read(s.directory, workspace, callID, commentary, maxReplayRecordBytes)
+	if err != nil || !found {
+		return replayRecord{}, found, err
 	}
-	if err != nil {
-		return replayRecord{}, false, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > maxReplayRecordBytes {
-		return replayRecord{}, false, errors.New("invalid replay record file")
-	}
-	f, err := os.Open(name)
-	if err != nil {
-		return replayRecord{}, false, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxReplayRecordBytes+1))
-	if err != nil {
-		return replayRecord{}, false, err
-	}
-	if len(data) > maxReplayRecordBytes {
-		return replayRecord{}, false, errors.New("replay record exceeds size limit")
-	}
-	var r replayRecord
-	// Older records contain a tool-success flag in History. Accept it only
-	// at the wire boundary; it is not part of the saved filesystem changes.
-	wire := struct {
-		*replayRecord
-		History struct {
-			*mekugiHistory
-			LegacyToolSuccess bool `json:"Applied"`
-			ExecObservation   *struct {
-				execObservation
-				LegacySweep bool `json:"Sweep"`
-			}
-		}
-	}{replayRecord: &r}
-	wire.History.mekugiHistory = &r.History
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&wire); err != nil {
-		return r, false, fmt.Errorf("decode replay record: %w", err)
-	}
-	if wire.History.ExecObservation != nil {
-		r.History.ExecObservation = &wire.History.ExecObservation.execObservation
-	}
-	if err := dec.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return r, false, errors.New("trailing replay record data")
-	}
-	if (r.Version != 1 && r.Version != 2) || r.Workspace != workspace || r.CallID != callID || r.Commentary != commentary {
-		return r, false, errors.New("replay record identity/version mismatch")
-	}
-	if err := s.restoreSnapshots(&r); err != nil {
-		return r, false, err
-	}
-	// Consumers and immutable comparisons use the expanded version-1 facts.
-	r.Version, r.Snapshots = 1, nil
-	return r, true, nil
+	return replayRecord{Version: record.Version, Workspace: record.Workspace, CallID: record.CallID, Commentary: record.Commentary, CaptureOrder: record.CaptureOrder, History: legacyHistory(record.History)}, true, nil
 }
 func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string) (h mekugiHistory, found bool, err error) {
 	if s == nil {
@@ -325,7 +265,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	if len(data) > maxReplayRecordBytes {
 		return storageCapacityError("replay record", int64(len(data)), maxReplayRecordBytes, "Split the tool call or reduce its retained output before retrying.")
 	}
-	name := replayRecordName(r.Workspace, r.CallID, r.Commentary)
+	name := legacycall.Name(r.Workspace, r.CallID, r.Commentary)
 	prefix := "call-"
 	if r.Commentary {
 		prefix = "commentary-"

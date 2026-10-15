@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -18,8 +20,10 @@ import (
 // moves, without changing the retained record's identity or encoding.
 func RetainedRecordKinds() []recordkind.Spec {
 	kinds := []recordkind.Spec{
-		{ID: "call", Match: func(name string) bool { return hashedRecordName(name, "call-") }, Dependencies: replayRecordDependencies},
-		{ID: "snapshot", Match: validSnapshotName},
+		{ID: "call", Match: func(name string) bool { return hashedRecordName(name, "call-") }, Dependencies: func(record recordkind.Record) ([]string, error) {
+			return legacycall.Dependencies(record.Name, record.Data)
+		}},
+		{ID: "snapshot", Match: legacycall.ValidSnapshotName},
 		{ID: "changes", Match: func(name string) bool { return hashedRecordName(name, changeIndexPrefix) }, Keep: true, MaxRecordBytes: history.MaxRecordBytes, Retirement: func(ctx context.Context, record recordkind.Record) (recordkind.RetirementPlanner, error) {
 			if err := ctx.Err(); err != nil {
 				return nil, err

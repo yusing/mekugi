@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -90,7 +92,7 @@ func (s *mekugiReplayStore) cloneHandleData(source, dest, fork string, visibleFi
 			indexes = append(indexes, index)
 			for _, change := range index.Changes {
 				for _, call := range change.Calls {
-					files[replayRecordName(index.Workspace, call.ID, false)] = true
+					files[legacycall.Name(index.Workspace, call.ID, false)] = true
 				}
 			}
 			continue

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi"
@@ -93,7 +95,7 @@ func TestReplaySnapshotsRoundTripDedupAndLegacy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
-		return store.transaction.Write(replayRecordName("/w", "legacy", false), "legacy-pending-", data)
+		return store.transaction.Write(legacycall.Name("/w", "legacy", false), "legacy-pending-", data)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +345,7 @@ func TestReplaySnapshotsLegacyCatalogProtectsDependencies(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		catalog.Files = map[string]bool{replayRecordName("/w", "call", false): true}
+		catalog.Files = map[string]bool{legacycall.Name("/w", "call", false): true}
 		data, err := json.Marshal(catalog)
 		if err != nil {
 			return err

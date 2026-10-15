@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -260,7 +262,7 @@ func (s *mekugiReplayStore) readChangeViewLocked(ctx context.Context, options ch
 		snapshot.IDs = slices.DeleteFunc(readable, func(id string) bool { return options.unavailable[id] != nil })
 		for _, id := range snapshot.IDs {
 			for _, call := range snapshot.Selected[id].Calls {
-				names = append(names, replayRecordName(options.workspace, call.ID, false))
+				names = append(names, legacycall.Name(options.workspace, call.ID, false))
 			}
 		}
 		if retainErr := retain(names...); retainErr != nil {

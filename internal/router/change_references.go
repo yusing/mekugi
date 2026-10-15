@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/reference"
 	"github.com/yusing/mekugi/contracts/scope"
@@ -114,7 +116,7 @@ func changeSelectionDependencies(selected scope.Retained, data []byte) ([]string
 	var names []string
 	for _, id := range selection.IDs {
 		for _, call := range selection.Selected[id].Calls {
-			names = append(names, replayRecordName(selection.Workspace, call.ID, false))
+			names = append(names, legacycall.Name(selection.Workspace, call.ID, false))
 		}
 	}
 	return names, nil

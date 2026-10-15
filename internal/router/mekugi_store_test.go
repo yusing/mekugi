@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/internal/responses"
 )
 
@@ -151,7 +153,7 @@ func TestMekugiReplayStoreConcurrencyAndCorruption(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if err := os.WriteFile(dir+"/"+replayRecordName("/w", "c", false), []byte("corrupt"), 0600); err != nil {
+	if err := os.WriteFile(dir+"/"+legacycall.Name("/w", "c", false), []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.lookup(t.Context(), "/w", "c"); err == nil {
@@ -187,7 +189,7 @@ func TestTerminalResponseReplayPersistenceFailureIsClassified(t *testing.T) {
 	transform, _, _, _ := newMekugiTestTransformWithProxy(t, proxy)
 	transform.local["completed-call"] = mekugiHistory{Script: "completed"}
 	if err := os.Symlink(filepath.Join(t.TempDir(), "absent"),
-		filepath.Join(proxy.replayStore.directory, replayRecordName(transform.directory, "completed-call", false))); err != nil {
+		filepath.Join(proxy.replayStore.directory, legacycall.Name(transform.directory, "completed-call", false))); err != nil {
 		t.Fatal(err)
 	}
 	_, err := transform.TransformSSE([]byte(`{"type":"response.completed","response":{"status":"completed","output":[]}}`))
@@ -244,7 +246,7 @@ func TestMekugiReplayStoreRejectsSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target+"/outside", dir+"/"+replayRecordName("/w", "c", false)); err != nil {
+	if err := os.Symlink(target+"/outside", dir+"/"+legacycall.Name("/w", "c", false)); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {Script: "x"}}); err == nil {

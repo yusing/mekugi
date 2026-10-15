@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/responses"
@@ -86,7 +88,7 @@ func TestLiveDiffDirectPublicationAndDurableReload(t *testing.T) {
 		t.Fatalf("publication lost saved edit: %+v", files)
 	}
 	callID := event.Change.Calls[0].ID
-	if err := os.Remove(filepath.Join(store.directory, replayRecordName(workspace, callID, false))); err != nil {
+	if err := os.Remove(filepath.Join(store.directory, legacycall.Name(workspace, callID, false))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.liveDiffSnapshot(t.Context(), broker.scope); err == nil {
@@ -217,7 +219,7 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(store.directory, replayRecordName(workspace, "one", false))); err != nil {
+	if err := os.Remove(filepath.Join(store.directory, legacycall.Name(workspace, "one", false))); err != nil {
 		t.Fatal(err)
 	}
 	if err := data.reconcile(t.Context(), store, scope); err != nil {

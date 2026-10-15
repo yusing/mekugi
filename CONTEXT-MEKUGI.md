@@ -52,6 +52,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
 | Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Retained publication, namespaces, allocation, leases, and retention | `modules/sessionhistory/history`; composed record kinds in `apps/mekugi/internal/composition`, feature codecs in `internal/router/retained_record_kinds.go` |
+| Historical call-envelope decoding and snapshot validation | `libraries/legacycall`; router conversion in `internal/router/legacy_call.go` |
 | Durable replay meaning, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `modules/outputrecovery` |
 | Authenticated compiled frontend catalog, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
 | Symbol command arguments and activity display | `modules/symbolquery/query` owns parsing; `internal/router/subagent_tool_display_shell.go` consumes it |

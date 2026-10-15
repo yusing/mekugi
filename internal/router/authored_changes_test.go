@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -126,7 +128,7 @@ func TestAuthoredChangesInlineEvidenceSurvivesRestart(t *testing.T) {
 	if blobs := snapshotTestBlobs(t, store); len(blobs) != 0 {
 		t.Fatalf("new shared snapshots: %v", blobs)
 	}
-	data, err := os.ReadFile(filepath.Join(store.directory, replayRecordName("/w", "inline", false)))
+	data, err := os.ReadFile(filepath.Join(store.directory, legacycall.Name("/w", "inline", false)))
 	if err != nil || !strings.Contains(string(data), "before\\r\\n") {
 		t.Fatalf("evidence not inline: %v", err)
 	}

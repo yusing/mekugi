@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
@@ -310,7 +312,7 @@ func TestMChangesRevertReportsUnknownStat(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, call := range index.Changes[other].Calls {
-		if err := os.Remove(filepath.Join(store.directory, replayRecordName(workspace, call.ID, false))); err != nil {
+		if err := os.Remove(filepath.Join(store.directory, legacycall.Name(workspace, call.ID, false))); err != nil {
 			t.Fatal(err)
 		}
 	}

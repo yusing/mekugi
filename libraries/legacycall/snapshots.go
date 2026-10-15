@@ -1,9 +1,11 @@
-package router
+package legacycall
 
 import (
 	"compress/gzip"
 	"crypto/sha256"
-	"encoding/json/v2"
+	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -12,16 +14,13 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/contracts/recordkind"
-	"github.com/yusing/mekugi/internal/responses"
 )
 
+// Source: internal/router/replay_snapshots.go:21:285@[ff834f05] snapshot decoding
 // Version 2 moves only filesystem evidence out of the call envelope. Inputs,
 // outcomes, identity and ordering remain call-local. Hashes identify the exact
 // uncompressed JSON, not a compressed spelling or a live workspace file.
-type replaySnapshots struct {
+type Snapshots struct {
 	ExecFiles     string `json:",omitempty"`
 	BaselineFiles string `json:",omitempty"`
 	// Inventory files of the command observation or, for a cell whose
@@ -33,7 +32,7 @@ type replaySnapshots struct {
 	Contents               []string `json:",omitempty"`
 }
 
-func (refs *replaySnapshots) names() []string {
+func (refs *Snapshots) Names() []string {
 	if refs == nil {
 		return nil
 	}
@@ -47,10 +46,10 @@ func (refs *replaySnapshots) names() []string {
 // slot indexes distinguish references from literal file contents that happen
 // to look like a hash. Small strings stay inline to avoid tiny disk objects.
 type snapshotFiles struct {
-	Exec   []execFileSnapshot        `json:",omitempty"`
-	Native []nativePatchFileSnapshot `json:",omitempty"`
-	Review []mekugi.ReviewFile       `json:",omitempty"`
-	Texts  map[int]string            `json:",omitempty"`
+	Exec   []File         `json:",omitempty"`
+	Native []NativeFile   `json:",omitempty"`
+	Review []ReviewFile   `json:",omitempty"`
+	Texts  map[int]string `json:",omitempty"`
 }
 
 func (files *snapshotFiles) textSlots() []*string {
@@ -67,11 +66,11 @@ func (files *snapshotFiles) textSlots() []*string {
 	return slots
 }
 
-func snapshotName(data []byte) string {
+func SnapshotName(data []byte) string {
 	return fmt.Sprintf("snapshot-%x.json.gz", sha256.Sum256(data))
 }
 
-func validSnapshotName(name string) bool {
+func ValidSnapshotName(name string) bool {
 	hash, ok := strings.CutPrefix(name, "snapshot-")
 	if !ok {
 		return false
@@ -80,11 +79,11 @@ func validSnapshotName(name string) bool {
 	return ok && len(hash) == 64 && strings.Trim(hash, "0123456789abcdef") == ""
 }
 
-func (s *mekugiReplayStore) snapshotData(name string) ([]byte, bool, error) {
-	if !validSnapshotName(name) {
+func SnapshotData(directory, name string, limit int) ([]byte, bool, error) {
+	if !ValidSnapshotName(name) {
 		return nil, false, errors.New("invalid snapshot reference")
 	}
-	path := filepath.Join(s.directory, name)
+	path := filepath.Join(directory, name)
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, false, nil
@@ -92,7 +91,7 @@ func (s *mekugiReplayStore) snapshotData(name string) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	if !info.Mode().IsRegular() || info.Size() > maxReplayRecordBytes {
+	if !info.Mode().IsRegular() || info.Size() > int64(limit) {
 		return nil, false, errors.New("invalid snapshot file")
 	}
 	f, err := os.Open(path)
@@ -100,22 +99,22 @@ func (s *mekugiReplayStore) snapshotData(name string) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	defer f.Close()
-	z, err := gzip.NewReader(io.LimitReader(f, maxReplayRecordBytes+1))
+	z, err := gzip.NewReader(io.LimitReader(f, int64(limit)+1))
 	if err != nil {
 		return nil, false, fmt.Errorf("decode snapshot: %w", err)
 	}
 	defer z.Close()
-	data, err := io.ReadAll(io.LimitReader(z, maxReplayRecordBytes+1))
+	data, err := io.ReadAll(io.LimitReader(z, int64(limit)+1))
 	if err != nil {
 		return nil, false, fmt.Errorf("read snapshot: %w", err)
 	}
-	if len(data) > maxReplayRecordBytes || snapshotName(data) != name {
+	if len(data) > limit || SnapshotName(data) != name {
 		return nil, false, errors.New("snapshot size/hash mismatch")
 	}
 	return data, true, nil
 }
 
-func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
+func restoreSnapshots(directory string, r *Record, limit int) error {
 	refs := r.Snapshots
 	if refs == nil {
 		return nil
@@ -124,11 +123,11 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 		return errors.New("snapshot references require replay version 2")
 	}
 	// Bound the combined expansion, not just individual compressed objects.
-	remaining := maxReplayRecordBytes
-	remainingText := maxReplayRecordBytes
+	remaining := limit
+	remainingText := limit
 	contents := make(map[string]bool, len(refs.Contents))
 	for _, name := range refs.Contents {
-		if !validSnapshotName(name) {
+		if !ValidSnapshotName(name) {
 			return errors.New("invalid snapshot content dependency")
 		}
 		contents[name] = false
@@ -138,7 +137,7 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 		if name == "" {
 			return files, nil
 		}
-		data, exists, err := s.snapshotData(name)
+		data, exists, err := SnapshotData(directory, name, limit)
 		if err != nil {
 			return files, fmt.Errorf("snapshot %s: %w", name, err)
 		}
@@ -160,7 +159,7 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 				return files, errors.New("invalid snapshot content slot/dependency")
 			}
 			contents[ref] = true
-			data, exists, err := s.snapshotData(ref)
+			data, exists, err := SnapshotData(directory, ref, limit)
 			if err != nil {
 				return files, fmt.Errorf("snapshot content %s: %w", ref, err)
 			}
@@ -204,7 +203,7 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 		}
 		h.ResolvedBaseline.Files = files.Exec
 	}
-	restoreInventory := func(name string, inventory *execInventory, kind string) error {
+	restoreInventory := func(name string, inventory *Inventory, kind string) error {
 		if name == "" {
 			return nil
 		}
@@ -221,7 +220,7 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 		inventory.Files = files.Exec
 		return nil
 	}
-	var observed, resolved *execInventory
+	var observed, resolved *Inventory
 	if h.ExecObservation != nil {
 		observed = h.ExecObservation.Inventory
 	}
@@ -274,41 +273,12 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 	}
 	expanded := *r
 	expanded.Version, expanded.Snapshots = 1, nil
-	data, err := responses.MarshalJSON(expanded)
+	data, err := json.Marshal(&expanded, jsonv1.DefaultOptionsV1(), jsontext.EscapeForHTML(false))
 	if err != nil {
 		return err
 	}
-	if len(data) > maxReplayRecordBytes {
+	if len(data) > limit {
 		return errors.New("expanded replay record exceeds size limit")
 	}
 	return nil
-}
-
-// Read only envelope references for ownership/cleanup, never decompress all
-// baselines just to enumerate dependencies. Identity is checked before use.
-func replayRecordDependencies(record recordkind.Record) ([]string, error) {
-	name, data := record.Name, record.Data
-	// Do not decode History here. Its older wire types (for example fixed byte
-	// arrays in command-segment evidence) retain their version-1 JSON semantics.
-	var r struct {
-		Version    int
-		Workspace  string
-		CallID     string
-		Commentary bool
-		Snapshots  *replaySnapshots
-	}
-	if err := json.Unmarshal(data, &r); err != nil {
-		return nil, err
-	}
-	if (r.Version != 1 && r.Version != 2) || replayRecordName(r.Workspace, r.CallID, r.Commentary) != name || r.Version == 1 && r.Snapshots != nil {
-		return nil, errors.New("invalid snapshot dependency envelope")
-	}
-	names := r.Snapshots.names()
-	for _, ref := range names {
-		if !validSnapshotName(ref) {
-			return nil, errors.New("invalid snapshot dependency identity")
-		}
-	}
-	slices.Sort(names)
-	return slices.Compact(names), nil
 }
