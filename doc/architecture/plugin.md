@@ -13,7 +13,9 @@ Contributions use portable executable leaf names and resolve to a compiled
 implementation before snapshot publication. The dispatch owner supplies that
 availability check; the manifest remains authenticated and validated at use.
 
-The catalog provides descriptions and native dispatch for `mcat`, `inspect_file`,
+Each extracted command contribution pairs its description with its compiled
+implementation. The worker receives the composed catalog before authenticating
+the selected frontend. The catalog provides descriptions and native dispatch for `mcat`, `inspect_file`,
 `msymbol`, `mread`, `mchanges`, and `mrun`. It does not execute declarations from
 user configuration or own a JavaScript/WASM plugin runtime. Reader parsing,
 output budgeting, and resolver orchestration remain with their native owners.

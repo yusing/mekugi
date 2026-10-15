@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 	"text/template"
-
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 // The checked-in Markdown is generated from the external layout and the
@@ -19,7 +17,7 @@ func TestGeneratedFrontendGuidanceIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tmpl.Execute(&rendered, toolplugin.Builtins()); err != nil {
+	if err := tmpl.Execute(&rendered, testCommands()); err != nil {
 		t.Fatal(err)
 	}
 	want := []byte(strings.TrimRight(rendered.String(), "\r\n"))

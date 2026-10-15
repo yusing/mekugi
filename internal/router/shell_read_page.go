@@ -3,11 +3,10 @@ package router
 import (
 	"context"
 	"errors"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/libraries/outputbudget"
 )
 
 func selectReadPage(ctx context.Context, text string, maxTokens int) (string, error) {
@@ -18,12 +17,11 @@ func selectReadPage(ctx context.Context, text string, maxTokens int) (string, er
 	for end < len(text) && !utf8.RuneStart(text[end]) {
 		end--
 	}
-	formatted, err := toolplugin.FormatOutput(ctx,
-		[]string{strconv.Itoa(maxTokens), "head", text[:end], ""})
+	formatted, err := outputbudget.Select(ctx, maxTokens, "head", text[:end], "")
 	if err != nil {
 		return "", err
 	}
-	if formatted.ExitCode != 0 || !strings.HasPrefix(text, formatted.Stdout) {
+	if !strings.HasPrefix(text, formatted.Stdout) {
 		return "", errors.New("read output selection failed")
 	}
 	if len(formatted.Stdout) < len(text) {

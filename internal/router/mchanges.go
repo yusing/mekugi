@@ -12,8 +12,10 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
@@ -64,7 +66,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		options.view, arguments = arguments[0], arguments[1:]
 	}
 	for len(arguments) > 0 {
-		arguments = toolplugin.ExpandMaxTokensOption(arguments)
+		arguments = commandargs.ExpandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if flag == "--" {
@@ -84,7 +86,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		}
 		if seen[flag] {
 			if flag == "--max-tokens" {
-				return options, errors.New(toolplugin.MaxTokensArgumentError)
+				return options, errors.New(commandargs.MaxTokensArgumentError)
 			}
 			return options, fmt.Errorf("duplicate option %s", flag)
 		}
@@ -106,7 +108,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 		case "--workspace", "--max-tokens":
 			if len(arguments) == 0 {
 				if flag == "--max-tokens" {
-					return options, errors.New(toolplugin.MaxTokensArgumentError)
+					return options, errors.New(commandargs.MaxTokensArgumentError)
 				}
 				return options, fmt.Errorf("%s requires a value", flag)
 			}
@@ -116,7 +118,7 @@ func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) 
 			case "--workspace":
 				options.workspace = value
 			case "--max-tokens":
-				number, err := toolplugin.ParseMaxTokens(value)
+				number, err := commandargs.ParseMaxTokens(value)
 				if err != nil {
 					return options, err
 				}
@@ -648,9 +650,9 @@ func changePathMatches(options changeReadOptions, recorded string) bool {
 	return false
 }
 
-func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments []string) toolplugin.ExecutionOutput {
-	fail := func(err error) toolplugin.ExecutionOutput {
-		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mchanges: %v\n", err), ExitCode: 1}
+func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments []string) command.Output {
+	fail := func(err error) command.Output {
+		return command.Output{Stderr: fmt.Sprintf("mchanges: %v\n", err), ExitCode: 1}
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -677,16 +679,16 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 		// A continuation must not repeat the mutation, so the remainder is
 		// retained as plain output instead of a re-rendered change read. The
 		// workspace has already changed; any paging failure keeps the full report.
-		whole := func(err error) toolplugin.ExecutionOutput {
-			return toolplugin.ExecutionOutput{Stdout: text, Stderr: "mchanges: report not paged: " + err.Error() + "\n", ExitCode: status}
+		whole := func(err error) command.Output {
+			return command.Output{Stdout: text, Stderr: "mchanges: report not paged: " + err.Error() + "\n", ExitCode: status}
 		}
 		selected, err := selectReadPage(ctx, text, options.maxTokens)
 		if err != nil {
 			return whole(err)
 		}
-		execution := toolplugin.ExecutionOutput{Stdout: selected, ExitCode: status}
+		execution := command.Output{Stdout: selected, ExitCode: status}
 		if len(selected) < len(text) {
-			execution.OmittedOutput = &toolplugin.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
+			execution.OmittedOutput = &command.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
 			execution.ExitCode = 1
 			if execution, err = retainExecutionOutput(ctx, manifest, execution); err != nil {
 				return whole(err)
@@ -707,9 +709,9 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 		return fail(err)
 	}
 	if diagnostics != "" {
-		execution := toolplugin.ExecutionOutput{Stdout: selected, Stderr: diagnostics, ExitCode: 1}
+		execution := command.Output{Stdout: selected, Stderr: diagnostics, ExitCode: 1}
 		if len(selected) < len(text) {
-			execution.OmittedOutput = &toolplugin.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
+			execution.OmittedOutput = &command.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
 			retained, err := retainExecutionOutput(ctx, manifest, execution)
 			if err != nil {
 				return fail(err)
@@ -726,7 +728,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 		}
 	}
 	if next != "" {
-		return toolplugin.ExecutionOutput{Stdout: selected, Stderr: readNextCall(next), ExitCode: 1}
+		return command.Output{Stdout: selected, Stderr: readNextCall(next), ExitCode: 1}
 	}
-	return toolplugin.ExecutionOutput{Stdout: selected}
+	return command.Output{Stdout: selected}
 }

@@ -14,10 +14,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/internal/responses"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 const maxShellOutputBytes = 16 << 20
@@ -65,8 +66,8 @@ func (s *mekugiReplayStore) putChangeRead(ctx context.Context, snapshot *changeR
 	return s.putReadRecord(ctx, shellOutputRecord{Version: 1, ID: handles[0], Changes: snapshot})
 }
 
-func (s *mekugiReplayStore) readSourceStreams(ctx context.Context, record shellOutputRecord) (toolplugin.OmittedOutput, error) {
-	output := toolplugin.OmittedOutput{
+func (s *mekugiReplayStore) readSourceStreams(ctx context.Context, record shellOutputRecord) (command.OmittedOutput, error) {
+	output := command.OmittedOutput{
 		Stdout: record.Stdout, Stderr: record.Stderr, StdoutKind: record.StdoutKind, StderrKind: record.StderrKind,
 	}
 	if record.Changes == nil {
@@ -125,7 +126,7 @@ func validReadKind(kind string) bool {
 	return kind == "" || kind == "rows" || kind == "json"
 }
 
-func (s *mekugiReplayStore) putTypedOutput(ctx context.Context, output toolplugin.OmittedOutput, exitCode int) (string, error) {
+func (s *mekugiReplayStore) putTypedOutput(ctx context.Context, output command.OmittedOutput, exitCode int) (string, error) {
 	handles, err := s.allocateHandles(ctx, 1)
 	if err != nil {
 		return "", err
@@ -330,7 +331,7 @@ func (s *mekugiReplayStore) readShellOutput(ctx context.Context, id string) (she
 	return record, err
 }
 
-func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, execution toolplugin.ExecutionOutput) (toolplugin.ExecutionOutput, error) {
+func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, execution command.Output) (command.Output, error) {
 	if execution.OmittedOutput == nil {
 		return execution, nil
 	}

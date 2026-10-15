@@ -55,7 +55,9 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
-| Native frontends and output formatting | `./internal/router/toolplugin`, then `./internal/router` |
+| Native reader frontends | `./internal/router/toolplugin`, then `./internal/router` |
+| Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
+| Bounded commands | `./modules/boundedcommand/...`, plus `./internal/router -run MRun` for authenticated delivery and process lifecycle |
 | Router process entry point | `./apps/mekugi/cmd/mekugi` |
 | Native frontend host acceptance | `-tags codex_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags codex_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |

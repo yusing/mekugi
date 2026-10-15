@@ -6,8 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 func TestToolWorkerSurvivesExecutableReplacement(t *testing.T) {
@@ -47,7 +45,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 		return
 	}
 	if stage == "worker" {
-		handled, status := RunToolPluginWorker(testHistory(), t.Context(), os.Args[0], []string{"--max-tokens", "100", "--", "printf", "pinned"}, os.Stdin, os.Stdout, os.Stderr)
+		handled, status := RunToolPluginWorker(testHistory(), testCommands(), t.Context(), os.Args[0], []string{"--max-tokens", "100", "--", "printf", "pinned"}, os.Stdin, os.Stdout, os.Stderr)
 		if !handled {
 			os.Exit(99)
 		}
@@ -83,7 +81,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	}
 	defer store.snapshots.close()
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	registry, err := buildToolRegistry(t.Context(), toolplugin.Builtins())
+	registry, err := buildToolRegistry(t.Context(), testCommands())
 	if err != nil {
 		t.Fatal(err)
 	}

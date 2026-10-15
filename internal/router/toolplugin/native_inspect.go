@@ -9,6 +9,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/outputbudget"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
@@ -172,7 +176,7 @@ func compactNativeOutline(data inspectionData) []string {
 }
 
 // Source: plugins/inspect_file.ts:139:356@[543de4f3] success/createInspectFileTool
-func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) {
+func nativeInspect(ctx context.Context, args []string) (command.Output, error) {
 	asJSON := false
 	for _, a := range args {
 		if a == "--" {
@@ -182,7 +186,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			asJSON = true
 		}
 	}
-	failure := func(path *string, err error) ExecutionOutput {
+	failure := func(path *string, err error) command.Output {
 		code := inspectCode(err)
 		stderr := "inspect_file: "
 		if path != nil {
@@ -192,9 +196,9 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 		if asJSON {
 			stderr = nativeJSON(map[string]any{"ok": false, "path": path, "error": map[string]string{"code": code, "message": err.Error()}}) + "\n"
 		}
-		return ExecutionOutput{Stderr: stderr, ExitCode: 1, FailureClass: inspectClass(code)}
+		return command.Output{Stderr: stderr, ExitCode: 1, FailureClass: inspectClass(code)}
 	}
-	options, rest, err := ParseReaderOptions(args, false, 4000, "")
+	options, rest, err := commandargs.ParseReaderOptions(args, false, 4000, "")
 	if err != nil {
 		return failure(nil, &inspectFailure{"usage", err.Error()}), nil
 	}
@@ -220,19 +224,19 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 	if len(paths) == 0 {
 		return failure(nil, &inspectFailure{"usage", "inspect_file expects PATH [PATH ...]"}), nil
 	}
-	counter := nativeBudget{}
+	counter := outputbudget.Budget{}
 	fits := func(s string) (bool, error) {
 		if len(s) > 65536 {
 			return false, nil
 		}
-		return counter.fits(s, options.Budget)
+		return counter.Fits(s, options.Budget)
 	}
-	result := ExecutionOutput{}
+	result := command.Output{}
 	var output, omitted strings.Builder
 	incomplete, unavailable := false, false
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
-			return ExecutionOutput{}, err
+			return command.Output{}, err
 		}
 		data, e := inspectNativePath(ctx, path)
 		if e != nil {
@@ -248,7 +252,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			complete := inspectEnvelope(data, "", 0)
 			fit, e := fits(complete)
 			if e != nil {
-				return ExecutionOutput{}, e
+				return command.Output{}, e
 			}
 			if fit {
 				result.Stdout = complete
@@ -263,7 +267,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 				mid := (low + high) / 2
 				fit, e := fits(inspectEnvelope(data, reason, mid))
 				if e != nil {
-					return ExecutionOutput{}, e
+					return command.Output{}, e
 				}
 				if fit {
 					selected = mid
@@ -282,7 +286,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			if len(retained) > nativeRetainedBytes {
 				result.Stderr = "inspect_file: recovery unavailable: omitted outline exceeds the 16 MiB recovery bound; use bounded mcat reads\n"
 			} else {
-				result.OmittedOutput = &OmittedOutput{Stdout: retained, StdoutKind: "json"}
+				result.OmittedOutput = &command.OmittedOutput{Stdout: retained, StdoutKind: "json"}
 			}
 			return result, nil
 		}
@@ -308,9 +312,9 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			}
 		}
 	}
-	result.Stdout, err = counter.selectRows(output.String(), options.Budget, false)
+	result.Stdout, err = counter.SelectRows(output.String(), options.Budget, false)
 	if err != nil {
-		return ExecutionOutput{}, err
+		return command.Output{}, err
 	}
 	if len(result.Stdout) < output.Len() {
 		incomplete = true
@@ -334,7 +338,7 @@ func nativeInspect(ctx context.Context, args []string) (ExecutionOutput, error) 
 			if asJSON {
 				kind = ""
 			}
-			result.OmittedOutput = &OmittedOutput{Stdout: omitted.String(), StdoutKind: kind}
+			result.OmittedOutput = &command.OmittedOutput{Stdout: omitted.String(), StdoutKind: kind}
 		}
 	}
 	return result, nil

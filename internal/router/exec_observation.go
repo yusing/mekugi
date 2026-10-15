@@ -20,6 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/responses"
@@ -27,7 +29,6 @@ import (
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -1623,7 +1624,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	if p.replayStore != nil && outcome.Status == execStatusFailed && len(failureReports) != 0 {
 		// Retain the bounded host evidence, not an invented reconstruction of
 		// output the host omitted. This never changes the host's tool result.
-		output := toolplugin.OmittedOutput{Stdout: strings.Join(failureReports, "\n")}
+		output := command.OmittedOutput{Stdout: strings.Join(failureReports, "\n")}
 		// The read record's status only marks the output failed; the observed
 		// exit, including an unknown or out-of-range one, stays on the outcome.
 		exit := 1

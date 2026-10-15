@@ -64,7 +64,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, ctx context.Context, commands []command.Spec, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, ctx context.Context, commands []command.Contribution, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	flags := newRouterFlags(io.Discard)
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

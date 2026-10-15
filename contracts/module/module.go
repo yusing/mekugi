@@ -14,14 +14,15 @@ type Lifetime string
 type NoBindings struct{}
 
 const (
-	Stateless  Lifetime = "stateless"
-	Invocation Lifetime = "invocation"
+	Stateless     Lifetime = "stateless"
+	Invocation    Lifetime = "invocation"
+	HostOperation Lifetime = "host-operation"
 )
 
 // Slots contains the contribution families implemented by the current binder.
 // Further families are added with their first consumer, rather than placeholders.
 type Slots struct {
-	Commands    []command.Spec
+	Commands    []command.Contribution
 	RecordKinds []recordkind.Spec
 }
 

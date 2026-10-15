@@ -16,8 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
-
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
 )
@@ -572,7 +570,7 @@ func TestRunSessionUsesProviderWebSocketsByDefault(t *testing.T) {
 	ready := make(chan string, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--mode", "passthrough"}, nil, func(session Session) { ready <- session.BaseURL }, nil)
+		done <- RunSession(testHistory(), ctx, testCommands(), []string{"--mode", "passthrough"}, nil, func(session Session) { ready <- session.BaseURL }, nil)
 	}()
 	var baseURL string
 	select {

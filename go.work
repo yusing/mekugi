@@ -5,11 +5,13 @@ use (
 	./apps/mekugi
 	./backends/codex
 	./contracts
+	./libraries/commandargs
 	./libraries/commandanalysis
 	./libraries/outputbudget
 	./libraries/pathdisplay
 	./libraries/persistence
 	./libraries/sourceanalysis
+	./modules/boundedcommand
 	./modules/sessionhistory
 	./testsupport/moduletest
 	./testsupport/uisnapshot

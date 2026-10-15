@@ -15,8 +15,8 @@ migration source. Existing features remain there until their own migration step;
 there is one implementation and one retained store.
 
 The initial descriptor surface supports typed dependencies, executable command
-contributions, record-kind contributions, capability requirements, and stateless
-or invocation lifetimes.
+contributions, record-kind contributions, capability requirements, and stateless,
+invocation, or host-operation lifetimes.
 Composition validates the complete list before construction: unique identities
 and command names, dependency presence and order, lifecycle consistency, and
 required capabilities. Optional unavailable mechanisms remain explicit gaps.
@@ -26,8 +26,10 @@ startup drain in reverse order, including the partially started owner.
 
 Typed dependency closures resolve earlier handles. The command host receives the
 complete collected slot, including later contributors, and accepts an empty list.
-The application currently supplies the retained catalog directly; feature
-descriptors replace those entries when the corresponding modules are extracted.
+The bounded-command descriptor contributes its compiled `mrun` implementation
+and description. The authenticated worker dispatches the selected implementation;
+adding another extracted command requires no new name switch. The application
+supplies the remaining legacy catalog until those owners are extracted.
 The session-history descriptor hosts the record-kind slot. It receives feature
 recognition, dependency inspection, budgets, and semantic retirement functions;
 feature schemas remain with their owners. Its constructed service is passed to

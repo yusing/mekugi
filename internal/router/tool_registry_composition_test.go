@@ -9,12 +9,11 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
-	all := toolplugin.Builtins()
-	for _, commands := range [][]command.Spec{nil, all[:1], all} {
+	all := testCommands()
+	for _, commands := range [][]command.Contribution{nil, all[:1], all} {
 		t.Run(strconv.Itoa(len(commands)), func(t *testing.T) {
 			directory := t.TempDir()
 			registry, err := buildToolRegistryAt(t.Context(), commands, filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
@@ -30,7 +29,7 @@ func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
 				t.Fatalf("selected %d commands, registered %d and pinned %d", len(commands), len(registry.ordered), len(registry.wrappers))
 			}
 			for _, spec := range all {
-				selected := slices.Contains(commands, spec)
+				selected := slices.ContainsFunc(commands, func(c command.Contribution) bool { return c.Spec == spec.Spec })
 				if strings.Contains(registry.frontendGuidance, "<tool name=\""+spec.Name+"\">") != selected {
 					t.Fatalf("%s guidance does not match selection", spec.Name)
 				}
@@ -50,7 +49,7 @@ func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			directory := t.TempDir()
 			runtime := filepath.Join(directory, "runtime")
-			registry, err := buildToolRegistryAt(t.Context(), []command.Spec{{Name: name, Description: "unavailable frontend"}}, runtime, filepath.Join(directory, "replay"))
+			registry, err := buildToolRegistryAt(t.Context(), []command.Contribution{{Spec: command.Spec{Name: name, Description: "unavailable frontend"}}}, runtime, filepath.Join(directory, "replay"))
 			if err == nil {
 				_ = registry.Close()
 				t.Fatal("published invalid frontend")

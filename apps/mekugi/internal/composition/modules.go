@@ -6,6 +6,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/modules/boundedcommand"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 )
 
@@ -15,12 +16,12 @@ import (
 func Frontends(ctx context.Context) (*Runtime, error) {
 	c := Composition{LegacyCommands: toolplugin.Builtins(), LegacyRecordKinds: router.RetainedRecordKinds()}
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+	c.Add(boundedcommand.Module, func() boundedcommand.Deps { return boundedcommand.Deps{} })
 	binder := new(binding.Registry)
 	runtime, err := c.Activate(ctx, binder)
 	if err != nil {
 		return nil, err
 	}
-	runtime.Commands = binder.Commands()
 	runtime.History = history.Value()
 	return runtime, nil
 }

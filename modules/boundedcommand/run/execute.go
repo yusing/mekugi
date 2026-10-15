@@ -1,4 +1,4 @@
-package router
+package run
 
 import (
 	"bytes"
@@ -12,12 +12,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/outputbudget"
+
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 const (
-	mrunDeliveryTokens   = toolplugin.MaxOutputTokens
+	mrunDeliveryTokens   = commandargs.MaxOutputTokens
 	mrunProcessWaitDelay = 2 * time.Second
 )
 
@@ -30,14 +33,14 @@ type mrunOptions struct {
 func parseMRunArguments(arguments []string) (mrunOptions, []string, error) {
 	var options mrunOptions
 	for len(arguments) > 0 {
-		arguments = toolplugin.ExpandMaxTokensOption(arguments)
+		arguments = commandargs.ExpandMaxTokensOption(arguments)
 		switch arguments[0] {
 		case "--max-tokens":
 			if len(arguments) < 2 || options.maxTokens != 0 {
-				return options, nil, errors.New(toolplugin.MaxTokensArgumentError)
+				return options, nil, errors.New(commandargs.MaxTokensArgumentError)
 			}
 			value := arguments[1]
-			number, err := toolplugin.ParseMaxTokens(value)
+			number, err := commandargs.ParseMaxTokens(value)
 			if err != nil {
 				return options, nil, err
 			}
@@ -253,14 +256,16 @@ func trimMRunBoundary(value string, tail bool) string {
 	return value
 }
 
-func executeMRun(
+// Execute runs one foreground command under the calling host process.
+// Source: internal/router/mrun.go:256:386@[e702dffa] executeMRun/mrunRetainedKind.
+func Execute(
 	ctx context.Context,
 	arguments []string,
 	stdin *os.File,
-) (toolplugin.ExecutionOutput, error) {
-	options, command, err := parseMRunArguments(arguments)
+) (command.Output, error) {
+	options, argv, err := parseMRunArguments(arguments)
 	if err != nil {
-		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mrun: %v\n", err), ExitCode: 2}, nil
+		return command.Output{Stderr: fmt.Sprintf("mrun: %v\n", err), ExitCode: 2}, nil
 	}
 	// Source: plugins/tokens.ts MAX_POSSIBLE_GPT5_TOKEN_BYTES.
 	// No GPT-5 token spans more than 128 bytes. Keep a small UTF-8 boundary
@@ -268,26 +273,26 @@ func executeMRun(
 	byteLimit := options.maxTokens*128 + utf8.UTFMax
 	stdout := mrunCapture{buffer: make([]byte, byteLimit), tail: options.tail, maxLines: options.maxLines}
 	stderr := mrunCapture{buffer: make([]byte, byteLimit), tail: options.tail, maxLines: options.maxLines}
-	path, err := exec.LookPath(command[0])
+	path, err := exec.LookPath(argv[0])
 	if err != nil {
-		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintln(err), ExitCode: 127}, nil
+		return command.Output{Stderr: fmt.Sprintln(err), ExitCode: 127}, nil
 	}
-	child := exec.CommandContext(ctx, path, command[1:]...)
-	child.Args = command
+	child := exec.CommandContext(ctx, path, argv[1:]...)
+	child.Args = argv
 	child.Stdin, child.Stdout, child.Stderr = stdin, &stdout, &stderr
 	child.WaitDelay = mrunProcessWaitDelay
 	runErr := child.Run()
 	if ctx.Err() != nil {
-		return toolplugin.ExecutionOutput{}, ctx.Err()
+		return command.Output{}, ctx.Err()
 	}
 	exitCode := 0
 	if runErr != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
 			exitCode = mrunProcessExitCode(exitErr)
 		} else if _, ok := errors.AsType[*exec.Error](runErr); ok {
-			return toolplugin.ExecutionOutput{Stderr: fmt.Sprintln(runErr), ExitCode: 127}, nil
+			return command.Output{Stderr: fmt.Sprintln(runErr), ExitCode: 127}, nil
 		} else {
-			return toolplugin.ExecutionOutput{}, runErr
+			return command.Output{}, runErr
 		}
 	}
 
@@ -302,13 +307,9 @@ func executeMRun(
 	if options.maxTokens > 0 && (len(outText)+len(errText) > options.maxTokens || outText != "" && len(errText) > options.maxTokens/2) {
 		// A token always contains at least one source byte. Only invoke the exact
 		// tokenizer when the captured byte count cannot prove the output fits.
-		formatted, err := toolplugin.FormatOutput(ctx,
-			[]string{strconv.Itoa(options.maxTokens), mode, outText, errText})
+		formatted, err := outputbudget.Select(ctx, options.maxTokens, mode, outText, errText)
 		if err != nil {
-			return toolplugin.ExecutionOutput{}, fmt.Errorf("select output: %w", err)
-		}
-		if formatted.ExitCode != 0 {
-			return toolplugin.ExecutionOutput{}, errors.New("output selection failed")
+			return command.Output{}, fmt.Errorf("select output: %w", err)
 		}
 		selectedOut, selectedErr = formatted.Stdout, formatted.Stderr
 	}
@@ -323,7 +324,7 @@ func executeMRun(
 		}
 		notice = fmt.Sprintf("mrun: output incomplete: %s reached\n", limit)
 	}
-	execution := toolplugin.ExecutionOutput{Stdout: selectedOut, Stderr: selectedErr, ExitCode: exitCode}
+	execution := command.Output{Stdout: selectedOut, Stderr: selectedErr, ExitCode: exitCode}
 	appendNotice := func() {
 		if notice != "" {
 			if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
@@ -336,16 +337,15 @@ func executeMRun(
 		appendNotice()
 		return execution, nil
 	}
-	formatted, err := toolplugin.FormatOutput(ctx,
-		[]string{strconv.Itoa(mrunDeliveryTokens), "rows", selectedOut, selectedErr})
+	formatted, err := outputbudget.Select(ctx, mrunDeliveryTokens, "rows", selectedOut, selectedErr)
 	if err != nil {
-		return toolplugin.ExecutionOutput{}, fmt.Errorf("select retained output: %w", err)
+		return command.Output{}, fmt.Errorf("select retained output: %w", err)
 	}
-	if formatted.ExitCode != 0 || !strings.HasPrefix(selectedOut, formatted.Stdout) || !strings.HasPrefix(selectedErr, formatted.Stderr) {
-		return toolplugin.ExecutionOutput{}, errors.New("retained output selection failed")
+	if !strings.HasPrefix(selectedOut, formatted.Stdout) || !strings.HasPrefix(selectedErr, formatted.Stderr) {
+		return command.Output{}, errors.New("retained output selection failed")
 	}
 	execution.Stdout, execution.Stderr = formatted.Stdout, formatted.Stderr
-	omitted := toolplugin.OmittedOutput{
+	omitted := command.OmittedOutput{
 		Stdout: selectedOut[len(formatted.Stdout):],
 		Stderr: selectedErr[len(formatted.Stderr):],
 	}
@@ -368,7 +368,7 @@ func mrunRetainedKind(text string) string {
 	if !strings.HasSuffix(text, "\n") {
 		return ""
 	}
-	const rowBudget = toolplugin.MaxOutputTokens - 64
+	const rowBudget = commandargs.MaxOutputTokens - 64
 	for row := range strings.SplitAfterSeq(text, "\n") {
 		if len(row) <= rowBudget {
 			continue

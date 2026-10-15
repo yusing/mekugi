@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
@@ -23,7 +26,7 @@ type readBundleSpec struct {
 }
 
 func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
-	options, rest, err := toolplugin.ParseReaderOptions(args, true, 6000, "")
+	options, rest, err := commandargs.ParseReaderOptions(args, true, 6000, "")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -41,12 +44,12 @@ func parseReadBundle(args []string) ([]readBundleSpec, int, error) {
 	}
 	var specs []readBundleSpec
 	for _, operand := range operands {
-		if toolplugin.LineRangePattern.MatchString(operand) {
+		if commandargs.LineRangePattern.MatchString(operand) {
 			if len(specs) == 0 {
 				return nil, 0, fmt.Errorf("range-like paths require ./; retry: %s", shellCommandString("mcat", []string{"./" + operand}))
 			}
 			operand = strings.ReplaceAll(operand, "-", ":")
-			if start, end, err := toolplugin.ParseLineRange(operand); err != nil || start > 1<<53-1 || end > 1<<53-1 {
+			if start, end, err := commandargs.ParseLineRange(operand); err != nil || start > 1<<53-1 || end > 1<<53-1 {
 				return nil, 0, errors.New("line range must be START:END with canonical safe integers and START not after END")
 			}
 			if specs[len(specs)-1].span == "" {
@@ -116,7 +119,7 @@ func executeMCat(
 	ctx context.Context,
 	manifest toolWorkerManifest,
 	args []string,
-) (execution toolplugin.ExecutionOutput, err error) {
+) (execution command.Output, err error) {
 	finish := beginFrontendRead(manifest, "mcat")
 	defer func() {
 		class := frontendExecutionFailure(execution, err)
@@ -128,7 +131,7 @@ func executeMCat(
 
 	specs, budget, parseErr := parseReadBundle(args)
 	if parseErr != nil {
-		return toolplugin.ExecutionOutput{
+		return command.Output{
 			Stderr:       "mcat: " + parseErr.Error() + "\n",
 			ExitCode:     1,
 			FailureClass: "invalid_arguments",
@@ -184,9 +187,9 @@ func executeMCatBundle(
 	specs []readBundleSpec,
 	budget int,
 	numbered bool,
-) (toolplugin.ExecutionOutput, error) {
-	fail := func(message string, class string) (toolplugin.ExecutionOutput, error) {
-		return toolplugin.ExecutionOutput{
+) (command.Output, error) {
+	fail := func(message string, class string) (command.Output, error) {
+		return command.Output{
 			Stderr:       "mcat: " + message + "\n",
 			ExitCode:     1,
 			FailureClass: class,
@@ -194,13 +197,13 @@ func executeMCatBundle(
 	}
 	codec, err := tokenizer.New()
 	if err != nil {
-		return toolplugin.ExecutionOutput{}, err
+		return command.Output{}, err
 	}
 	reserve := 16
 	for _, spec := range specs {
 		pathTokens, err := codec.Count(string(responses.MustMarshalJSON(spec.path)))
 		if err != nil {
-			return toolplugin.ExecutionOutput{}, err
+			return command.Output{}, err
 		}
 		reserve += pathTokens*2 + 48
 	}
@@ -208,18 +211,18 @@ func executeMCatBundle(
 		return fail("budget cannot fit the bundle manifest; increase --max-tokens or select fewer paths", "invalid_arguments")
 	}
 	share := (budget - reserve) / len(specs)
-	executions := make([]toolplugin.ExecutionOutput, len(specs))
+	executions := make([]command.Output, len(specs))
 	unused, pending := budget-reserve-share*len(specs), 0
 	for i, spec := range specs {
 		execution, err := readMCatBundleFile(ctx, spec, share, numbered)
 		if err != nil {
-			return toolplugin.ExecutionOutput{}, err
+			return command.Output{}, err
 		}
 		executions[i] = execution
 		if execution.ExitCode == 0 {
 			used, err := codec.Count(execution.Stdout)
 			if err != nil {
-				return toolplugin.ExecutionOutput{}, err
+				return command.Output{}, err
 			}
 			unused += max(0, share-used)
 		} else if execution.OmittedOutput != nil {
@@ -233,14 +236,14 @@ func executeMCatBundle(
 			}
 			execution, err := readMCatBundleFile(ctx, specs[i], share+unused/pending, numbered)
 			if err != nil {
-				return toolplugin.ExecutionOutput{}, err
+				return command.Output{}, err
 			}
 			executions[i] = execution
 		}
 	}
 	store, err := shellOutputStore(manifest)
 	if err != nil {
-		return toolplugin.ExecutionOutput{}, err
+		return command.Output{}, err
 	}
 	entries := make([]readBundleEntry, 0, len(specs))
 	var diagnostics strings.Builder
@@ -248,7 +251,7 @@ func executeMCatBundle(
 	failureClass := ""
 	for i, spec := range specs {
 		if err := ctx.Err(); err != nil {
-			return toolplugin.ExecutionOutput{}, err
+			return command.Output{}, err
 		}
 		execution := executions[i]
 		state := "complete"
@@ -272,14 +275,14 @@ func executeMCatBundle(
 			}
 			diagnostics.WriteString(prefixReadBundleDiagnostic(spec.path, line))
 		}
-		var remainder toolplugin.OmittedOutput
+		var remainder command.OmittedOutput
 		if execution.OmittedOutput != nil {
 			remainder = *execution.OmittedOutput
 			omitted = bundleRowSpan(start+bundleRowCount(execution.Stdout), remainder.Stdout)
 		}
 		handles, err := store.allocateHandles(ctx, 1)
 		if err != nil {
-			return toolplugin.ExecutionOutput{}, err
+			return command.Output{}, err
 		}
 		entries = append(entries, readBundleEntry{
 			path: spec.path, start: start, shown: execution.Stdout, omitted: omitted, state: state,
@@ -309,7 +312,7 @@ func executeMCatBundle(
 	for {
 		used, err := codec.Count(render())
 		if err != nil {
-			return toolplugin.ExecutionOutput{}, err
+			return command.Output{}, err
 		}
 		if used <= budget {
 			break
@@ -337,7 +340,7 @@ func executeMCatBundle(
 	for _, entry := range entries {
 		if entry.record.Stdout != "" || entry.record.Stderr != "" {
 			if _, err := store.putReadRecord(ctx, entry.record); err != nil {
-				return toolplugin.ExecutionOutput{}, err
+				return command.Output{}, err
 			}
 		}
 	}
@@ -345,7 +348,7 @@ func executeMCatBundle(
 	if incomplete {
 		status = 1
 	}
-	return toolplugin.ExecutionOutput{
+	return command.Output{
 		Stdout:       render(),
 		Stderr:       diagnostics.String(),
 		ExitCode:     status,
@@ -419,7 +422,7 @@ func readBundleStart(spec readBundleSpec) uint64 {
 	if spec.span == "" {
 		return 1
 	}
-	parsed, _, _ := toolplugin.ParseLineRange(spec.span)
+	parsed, _, _ := commandargs.ParseLineRange(spec.span)
 	return uint64(max(1, parsed))
 }
 
@@ -428,7 +431,7 @@ func readMCatBundleFile(
 	spec readBundleSpec,
 	tokens int,
 	numbered bool,
-) (toolplugin.ExecutionOutput, error) {
+) (command.Output, error) {
 	args := []string{"--max-tokens", strconv.Itoa(tokens), "--", spec.path}
 	if numbered {
 		args = []string{"--number", "--max-tokens", strconv.Itoa(tokens), "--", spec.path}

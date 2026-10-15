@@ -2,11 +2,12 @@ package router
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
@@ -24,7 +25,7 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 	options := outputReadOptions{maxTokens: 8000}
 	seen := make(map[string]bool)
 	for len(arguments) > 0 {
-		arguments = toolplugin.ExpandMaxTokensOption(arguments)
+		arguments = commandargs.ExpandMaxTokensOption(arguments)
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if !strings.HasPrefix(flag, "--") {
@@ -36,7 +37,7 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 		}
 		if seen[flag] {
 			if flag == "--max-tokens" {
-				return options, errors.New(toolplugin.MaxTokensArgumentError)
+				return options, errors.New(commandargs.MaxTokensArgumentError)
 			}
 			return options, fmt.Errorf("duplicate option %s", flag)
 		}
@@ -49,11 +50,11 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 			options.stream = strings.TrimPrefix(flag, "--")
 		case "--max-tokens":
 			if len(arguments) == 0 {
-				return options, errors.New(toolplugin.MaxTokensArgumentError)
+				return options, errors.New(commandargs.MaxTokensArgumentError)
 			}
 			value := arguments[0]
 			arguments = arguments[1:]
-			number, err := toolplugin.ParseMaxTokens(value)
+			number, err := commandargs.ParseMaxTokens(value)
 			if err != nil {
 				return options, err
 			}
@@ -72,9 +73,9 @@ func executeMRead(
 	ctx context.Context,
 	manifest toolWorkerManifest,
 	arguments []string,
-) toolplugin.ExecutionOutput {
-	fail := func(err error) toolplugin.ExecutionOutput {
-		return toolplugin.ExecutionOutput{Stderr: fmt.Sprintf("mread: %v\n", err), ExitCode: 1}
+) command.Output {
+	fail := func(err error) command.Output {
+		return command.Output{Stderr: fmt.Sprintf("mread: %v\n", err), ExitCode: 1}
 	}
 	options, err := parseOutputRead(arguments)
 	if err != nil {
@@ -127,48 +128,22 @@ func executeMRead(
 			if err != nil {
 				return err
 			}
-			request := struct {
-				Stdout     string `json:"stdout"`
-				Stderr     string `json:"stderr"`
-				StdoutKind string `json:"stdoutKind"`
-				StderrKind string `json:"stderrKind"`
-				Position   [2]int `json:"position"`
-				Stream     string `json:"stream"`
-				SourceRow  uint64 `json:"sourceRow,omitzero"`
-				Label      string `json:"label,omitempty"`
-			}{Stdout: output.Stdout, Stderr: output.Stderr, StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
+			request := toolplugin.ReadRequest{Stdout: output.Stdout, Stderr: output.Stderr, StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
 				Position: cursor.Position, Stream: stream, SourceRow: source.SourceRow}
 			if len(options.ids) > 1 {
 				request.Label = id
 			}
-			data, err := json.Marshal(request)
+			page, err := toolplugin.Page(ctx, request, remaining)
 			if err != nil {
 				return err
-			}
-			formatted, err := toolplugin.FormatOutput(ctx,
-				[]string{strconv.Itoa(remaining), "read", string(data), ""})
-			if err != nil {
-				return err
-			}
-			var page struct {
-				Text         string `json:"text"`
-				Position     [2]int `json:"position"`
-				Complete     bool   `json:"complete"`
-				NeededTokens int    `json:"neededTokens"`
-			}
-			if formatted.ExitCode != 0 {
-				return fmt.Errorf("page selection failed: %s", strings.TrimSpace(formatted.Stderr))
-			}
-			if json.Unmarshal([]byte(formatted.Stdout), &page) != nil {
-				return errors.New("invalid read page")
 			}
 			if page.NeededTokens > 0 {
 				if result.Len() != 0 {
 					nextHandles = append(nextHandles, id)
 					return nil
 				}
-				if page.NeededTokens > toolplugin.MaxOutputTokens {
-					return fmt.Errorf("next row needs ~%d tokens (maximum %d); use mrun with a byte-oriented command", page.NeededTokens, toolplugin.MaxOutputTokens)
+				if page.NeededTokens > commandargs.MaxOutputTokens {
+					return fmt.Errorf("next row needs ~%d tokens (maximum %d); use mrun with a byte-oriented command", page.NeededTokens, commandargs.MaxOutputTokens)
 				}
 				return fmt.Errorf("next row needs ~%d tokens; retry: mread %s --max-tokens %d", page.NeededTokens, id, page.NeededTokens)
 			}
@@ -218,11 +193,11 @@ func executeMRead(
 		if options.maxTokens != 8000 {
 			budget = options.maxTokens
 		}
-		return toolplugin.ExecutionOutput{Stdout: result.String(), Stderr: diagnostics.String() + readNextCall(strings.Join(nextHandles, " "), budget), ExitCode: 1}
+		return command.Output{Stdout: result.String(), Stderr: diagnostics.String() + readNextCall(strings.Join(nextHandles, " "), budget), ExitCode: 1}
 	}
 	status := 0
 	if diagnostics.Len() > 0 {
 		status = 1
 	}
-	return toolplugin.ExecutionOutput{Stdout: result.String(), Stderr: diagnostics.String(), ExitCode: status}
+	return command.Output{Stdout: result.String(), Stderr: diagnostics.String(), ExitCode: status}
 }

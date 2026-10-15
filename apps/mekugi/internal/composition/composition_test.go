@@ -3,6 +3,7 @@ package composition
 import (
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -15,11 +16,11 @@ import (
 
 type testService struct {
 	name     string
-	commands []command.Spec
+	commands []command.Contribution
 }
 type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings[*testService]]
 
-func descriptor(id module.ID, specs ...command.Spec) testDescriptor {
+func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 	return testDescriptor{
 		ID: id, Lifetime: module.Stateless, Contributes: module.Slots{Commands: specs},
 		New: func(_ struct{}, slots module.Slots) (*testService, error) {
@@ -27,7 +28,7 @@ func descriptor(id module.ID, specs ...command.Spec) testDescriptor {
 		},
 		Bindings: binding.Bindings[*testService]{Register: func(r binding.Registrar, _ *testService) error {
 			for _, spec := range specs {
-				if err := r.Frontend(spec); err != nil {
+				if err := r.Frontend(spec.Spec); err != nil {
 					return err
 				}
 			}
@@ -36,8 +37,8 @@ func descriptor(id module.ID, specs ...command.Spec) testDescriptor {
 	}
 }
 func emptyDeps() struct{} { return struct{}{} }
-func frontend(name string) command.Spec {
-	return command.Spec{Name: name, Description: "test frontend"}
+func frontend(name string) command.Contribution {
+	return command.Contribution{Spec: command.Spec{Name: name, Description: "test frontend"}, Run: func(context.Context, []string, *os.File) (command.Output, error) { return command.Output{}, nil }}
 }
 
 func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
@@ -68,7 +69,7 @@ func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {
 	if len(base.Value().commands) != 0 {
 		t.Fatal("non-host received slots")
 	}
-	if host.Value().name != "base" || !slices.Equal(host.Value().commands, []command.Spec{contribution}) || !slices.Equal(registry.Commands(), runtime.Commands) {
+	if host.Value().name != "base" || !slices.EqualFunc(host.Value().commands, []command.Contribution{contribution}, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) || !slices.EqualFunc(registry.Commands(), runtime.Commands, func(a command.Spec, b command.Contribution) bool { return a == b.Spec }) {
 		t.Fatalf("host=%+v registered=%v runtime=%v", host.Value(), registry.Commands(), runtime.Commands)
 	}
 }
@@ -84,7 +85,7 @@ func TestCompositionValidatesBeforeConstruction(t *testing.T) {
 		{"order", []testDescriptor{func() testDescriptor { d := descriptor("consumer"); d.Requires = []module.ID{"dependency"}; return d }(), descriptor("dependency")}, "requires dependency before it"},
 		{"duplicate module", []testDescriptor{descriptor("same"), descriptor("same")}, "duplicate module same"},
 		{"duplicate frontend", []testDescriptor{descriptor("first", frontend("same")), descriptor("second", frontend("same"))}, "duplicate frontend"},
-		{"invalid frontend", []testDescriptor{descriptor("invalid", command.Spec{Name: "bad"})}, "inconsistent executable contribution"},
+		{"invalid frontend", []testDescriptor{descriptor("invalid", command.Contribution{Spec: command.Spec{Name: "bad"}})}, "inconsistent executable contribution"},
 		{"capability", []testDescriptor{func() testDescriptor {
 			d := descriptor("required")
 			d.Bindings.Requires = []capability.Requirement{{Mechanism: unavailable, Required: true}}
@@ -117,7 +118,7 @@ func TestCompositionZeroAndLeaveOneOutContributions(t *testing.T) {
 			hostDescriptor.HostsCommands = true
 			hostDescriptor.Bindings.Requires = []capability.Requirement{{Mechanism: "optional-observation"}}
 			host := c.Add(hostDescriptor, emptyDeps)
-			var want []command.Spec
+			var want []command.Contribution
 			for _, name := range []string{"first", "second"} {
 				if omit == name || omit == "both" {
 					continue
@@ -130,7 +131,7 @@ func TestCompositionZeroAndLeaveOneOutContributions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.Equal(host.Value().commands, want) || !slices.Equal(runtime.Commands, want) {
+			if !slices.EqualFunc(host.Value().commands, want, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) || !slices.EqualFunc(runtime.Commands, want, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) {
 				t.Fatalf("host=%v runtime=%v want=%v", host.Value().commands, runtime.Commands, want)
 			}
 			if len(runtime.Gaps) != 1 || runtime.Gaps[0].Module != "host" || runtime.Gaps[0].Result.State != capability.Unsupported {
@@ -223,5 +224,20 @@ func TestCompositionLifecycleReverseCleanup(t *testing.T) {
 				t.Fatalf("events=%v want=%v", events, want)
 			}
 		})
+	}
+}
+
+func TestCompositionRejectsUnimplementedCommandBeforeConstruction(t *testing.T) {
+	spec := frontend("missing")
+	spec.Run = nil
+	d := descriptor("tool", spec)
+	d.New = func(struct{}, module.Slots) (*testService, error) {
+		t.Fatal("constructed unimplemented command")
+		return nil, nil
+	}
+	var c Composition
+	c.Add(d, emptyDeps)
+	if _, err := c.Activate(t.Context(), new(binding.Registry)); err == nil || !strings.Contains(err.Error(), "no compiled implementation") {
+		t.Fatalf("activation: %v", err)
 	}
 }

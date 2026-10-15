@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/boundedcommand/run"
+
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 
 	"github.com/dlclark/regexp2/v2"
@@ -52,7 +55,7 @@ func buildToolRegistryForTest(
 	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
 		return nil, err
 	}
-	return buildToolRegistryAt(ctx, toolplugin.Builtins(),
+	return buildToolRegistryAt(ctx, testCommands(),
 		filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
 }
 
@@ -67,7 +70,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
 			return
 		}
 		fixture.registry, fixture.err = buildToolRegistryAt(
-			t.Context(), toolplugin.Builtins(),
+			t.Context(), testCommands(),
 			filepath.Join(fixture.directory, "runtime"),
 			filepath.Join(fixture.directory, "replay"),
 		)
@@ -97,7 +100,7 @@ func TestMain(m *testing.M) {
 		if filepath.Base(os.Args[0]) == "mread" && os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
 			_ = os.Unsetenv("CODEX_THREAD_ID")
 		}
-		if handled, code := RunToolPluginWorker(testHistory(),
+		if handled, code := RunToolPluginWorker(testHistory(), testCommands(),
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)
@@ -166,4 +169,9 @@ func TestMain(m *testing.M) {
 		code = 1
 	}
 	os.Exit(code)
+}
+
+func testCommands() []command.Contribution {
+	commands := toolplugin.Builtins()
+	return append(commands, run.Command)
 }

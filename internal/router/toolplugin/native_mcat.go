@@ -12,14 +12,18 @@ import (
 	"syscall"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/outputbudget"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 // Source: plugins/mcat.ts:166:310@[543de4f3] readLines
 // Scan the entire source even after admission stops. Neither an oversized row
 // nor omitted data can grow memory beyond the reader's recovery bounds.
-func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
-	o, rest, err := ParseReaderOptions(args, true, 6000, "")
+func nativeMCat(ctx context.Context, args []string) (command.Output, error) {
+	o, rest, err := commandargs.ParseReaderOptions(args, true, 6000, "")
 	if err != nil {
 		return nativeFailure("mcat", err, "invalid_arguments"), nil
 	}
@@ -31,14 +35,14 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 	}
 	start, end := 0, 0
 	if len(rest) == 2 {
-		start, end, err = ParseLineRange(rest[1])
+		start, end, err = commandargs.ParseLineRange(rest[1])
 		if err != nil {
 			return nativeFailure("mcat", err, "invalid_arguments"), nil
 		}
 		start = max(1, start)
 	}
 	path := rest[0]
-	fail := func(err error) (ExecutionOutput, error) {
+	fail := func(err error) (command.Output, error) {
 		class := nativeFileClass(err)
 		message := err.Error()
 		switch {
@@ -78,7 +82,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 	line, selected := 1, 0
 	incomplete, unavailable, oversized, open, pendingCR := false, false, false, false, false
 	reason := ""
-	budget := nativeBudget{}
+	budget := outputbudget.Budget{}
 	finish := func() {
 		if (start == 0 || line >= start && line <= end) && !oversized {
 			selected++
@@ -125,7 +129,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return ExecutionOutput{}, err
+			return command.Output{}, err
 		}
 		ch, size, e := r.ReadRune()
 		if e == io.EOF {
@@ -157,13 +161,13 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 		if (start != 0 && (line < start || line > end)) || oversized || unavailable && !o.Tail && incomplete {
 			continue
 		}
-		if row.Len()+size > MaxOutputTokens*128 {
+		if row.Len()+size > commandargs.MaxOutputTokens*128 {
 			oversized = true
 			unavailable = true
 			retained.Reset()
 			row.Reset()
 			incomplete = true
-			reason = fmt.Sprintf("row %d exceeds the %d-byte inspection bound; use mrun with a byte-oriented command such as head -c\n", line, MaxOutputTokens*128)
+			reason = fmt.Sprintf("row %d exceeds the %d-byte inspection bound; use mrun with a byte-oriented command such as head -c\n", line, commandargs.MaxOutputTokens*128)
 			if o.Tail {
 				tailRows = nil
 				tailHead = 0
@@ -183,13 +187,13 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 	if o.Tail {
 		current = strings.Join(tailRows[tailHead:], "")
 	}
-	bounded, err := budget.selectRows(current, o.Budget, o.Tail)
+	bounded, err := budget.SelectRows(current, o.Budget, o.Tail)
 	if err != nil {
-		return ExecutionOutput{}, err
+		return command.Output{}, err
 	}
 	incomplete = incomplete || len(bounded) < len(current)
 	current = bounded
-	result := ExecutionOutput{Stdout: current}
+	result := command.Output{Stdout: current}
 	if incomplete {
 		result.ExitCode = 1
 		result.FailureClass = "output_limit"
@@ -206,7 +210,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 			if o.Tail {
 				omitted = strings.TrimSuffix(all, current)
 			}
-			result.OmittedOutput = &OmittedOutput{Stdout: omitted, StdoutKind: "rows"}
+			result.OmittedOutput = &command.OmittedOutput{Stdout: omitted, StdoutKind: "rows"}
 		}
 	}
 	return result, nil

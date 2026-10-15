@@ -12,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
-
 	"github.com/yusing/mekugi/capturer"
 )
 
@@ -28,7 +26,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 	ready := make(chan Session, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--mode", "passthrough"}, nil, func(session Session) {
+		done <- RunSession(testHistory(), ctx, testCommands(), []string{"--mode", "passthrough"}, nil, func(session Session) {
 			ready <- session
 		}, nil)
 	}()
@@ -79,7 +77,7 @@ func TestRunSessionUsesBoundPortAndClosesListener(t *testing.T) {
 
 func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 	for _, args := range [][]string{{"--mode", "unknown"}, {"--stream-idle-timeout", "0"}, {"--listen", "127.0.0.1:0"}, {"--provider-base-url", "https://example.com"}} {
-		if err := RunSession(testHistory(), t.Context(), toolplugin.Builtins(), args, nil, func(Session) { t.Error("ready called despite startup failure") }, nil); err == nil {
+		if err := RunSession(testHistory(), t.Context(), testCommands(), args, nil, func(Session) { t.Error("ready called despite startup failure") }, nil); err == nil {
 			t.Fatalf("accepted %q", args)
 		}
 	}
@@ -88,7 +86,7 @@ func TestRunSessionDoesNotNotifyOnStartupFailure(t *testing.T) {
 func TestRunSessionServesMetricsWithoutLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--mode", "passthrough"}, NewCriticalErrors(), func(session Session) {
+	err := RunSession(testHistory(), ctx, testCommands(), []string{"--mode", "passthrough"}, NewCriticalErrors(), func(session Session) {
 		if session.FrontendDirectory != "" {
 			t.Error("passthrough installed frontends")
 		}
@@ -116,7 +114,7 @@ func TestRunSessionRejectsAXCaptureAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(capturer.AXReadOutputEnvironment, capture)
-	err := RunSession(testHistory(), t.Context(), toolplugin.Builtins(), []string{"--mode", "passthrough", "--capture-output", capture}, nil, func(Session) { t.Error("aliased exports reached readiness") }, nil)
+	err := RunSession(testHistory(), t.Context(), testCommands(), []string{"--mode", "passthrough", "--capture-output", capture}, nil, func(Session) { t.Error("aliased exports reached readiness") }, nil)
 	if err == nil {
 		t.Fatal("aliased outputs accepted")
 	}
@@ -135,7 +133,7 @@ func TestRunSessionRejectsUnusableReplayStorageBeforeReady(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state, "mekugi"), []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	err := RunSession(testHistory(), t.Context(), toolplugin.Builtins(), []string{"--mode", "mekugi"}, nil, func(Session) { t.Error("unusable replay storage reached readiness") }, nil)
+	err := RunSession(testHistory(), t.Context(), testCommands(), []string{"--mode", "mekugi"}, nil, func(Session) { t.Error("unusable replay storage reached readiness") }, nil)
 	if err == nil || !strings.Contains(err.Error(), "initialize replay storage") {
 		t.Fatalf("startup error = %v", err)
 	}
@@ -146,7 +144,7 @@ func TestRunSessionPassthroughIgnoresInvalidReplayStorage(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	notified := false
-	err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--mode", "passthrough"}, nil, func(Session) { notified = true; cancel() }, nil)
+	err := RunSession(testHistory(), ctx, testCommands(), []string{"--mode", "passthrough"}, nil, func(Session) { notified = true; cancel() }, nil)
 	if err != nil || !notified {
 		t.Fatalf("passthrough ready=%v error=%v", notified, err)
 	}
@@ -165,7 +163,7 @@ func TestRunSessionPropagatesVCSGuard(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			notified := false
-			err := RunSession(testHistory(), ctx, toolplugin.Builtins(), append([]string{"--mode", "passthrough"}, tc.flags...), nil, func(session Session) {
+			err := RunSession(testHistory(), ctx, testCommands(), append([]string{"--mode", "passthrough"}, tc.flags...), nil, func(session Session) {
 				notified = true
 				if session.VCSGuard != tc.want {
 					t.Errorf("session guard = %t, want %t", session.VCSGuard, tc.want)

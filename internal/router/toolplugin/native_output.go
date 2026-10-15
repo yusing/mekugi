@@ -8,117 +8,33 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/outputbudget"
 )
 
-type selectedNativeText struct {
-	Text   string `json:"text"`
-	Tokens int    `json:"tokens"`
+type ReadRequest struct {
+	Stdout     string
+	Stderr     string
+	StdoutKind string
+	StderrKind string
+	Position   [2]int
+	Stream     string
+	SourceRow  uint64
+	Label      string
 }
-
-// Source: plugins/mrun.ts:17:85@[543de4f3] selectMRunText/formatMRunOutput
-func (b *nativeBudget) selectText(value string, budget int, tail bool) (selectedNativeText, error) {
-	if budget <= 0 {
-		return selectedNativeText{}, nil
-	}
-	if _, err := b.count(""); err != nil {
-		return selectedNativeText{}, err
-	}
-	_, tokens, err := b.codec.Encode(value)
-	if err != nil {
-		return selectedNativeText{}, err
-	}
-	if len(tokens) <= budget {
-		return selectedNativeText{value, len(tokens)}, nil
-	}
-	for keep := budget; keep > 0; {
-		parts := tokens[:keep]
-		if tail {
-			parts = tokens[len(tokens)-keep:]
-		}
-		s := strings.Join(parts, "")
-		for len(s) > 0 && !utf8.ValidString(s) {
-			if tail {
-				s = s[1:]
-			} else {
-				s = s[:len(s)-1]
-			}
-		}
-		n, e := b.count(s)
-		if e != nil {
-			return selectedNativeText{}, e
-		}
-		if n <= budget {
-			return selectedNativeText{s, n}, nil
-		}
-		keep -= max(1, n-budget)
-	}
-	return selectedNativeText{}, nil
-}
-
-// FormatOutput formats bounded output in the frontend process.
-func FormatOutput(ctx context.Context, args []string) (ExecutionOutput, error) {
-	if err := ctx.Err(); err != nil {
-		return ExecutionOutput{}, err
-	}
-	if len(args) != 4 {
-		return ExecutionOutput{}, errors.New("invalid mrun output selection")
-	}
-	budget, err := ParseMaxTokens(args[0])
-	if err != nil {
-		return ExecutionOutput{}, errors.New("invalid mrun output selection")
-	}
-	counter := nativeBudget{}
-	mode, stdout, stderr := args[1], args[2], args[3]
-	if mode == "read" {
-		var request nativeReadRequest
-		if err := json.Unmarshal([]byte(stdout), &request); err != nil {
-			return ExecutionOutput{}, err
-		}
-		page, err := counter.readPage(request, budget)
-		return ExecutionOutput{Stdout: nativeJSON(page)}, err
-	}
-	if mode != "head" && mode != "tail" && mode != "rows" {
-		return ExecutionOutput{}, errors.New("invalid mrun output selection")
-	}
-	selectValue := func(value string, limit int) (selectedNativeText, error) {
-		s, e := counter.selectText(value, limit, mode == "tail")
-		if e == nil && mode == "rows" && len(s.Text) < len(value) {
-			s.Text = s.Text[:strings.LastIndexByte(s.Text, '\n')+1]
-			s.Tokens, e = counter.count(s.Text)
-		}
-		return s, e
-	}
-	errorBudget := budget
-	if stdout != "" {
-		errorBudget = budget / 2
-	}
-	errorText, e := selectValue(stderr, errorBudget)
-	if e != nil {
-		return ExecutionOutput{}, e
-	}
-	output, e := selectValue(stdout, budget-errorText.Tokens)
-	return ExecutionOutput{Stdout: output.Text, Stderr: errorText.Text}, e
-}
-
-type nativeReadRequest struct {
-	Stdout     string `json:"stdout"`
-	Stderr     string `json:"stderr"`
-	StdoutKind string `json:"stdoutKind"`
-	StderrKind string `json:"stderrKind"`
-	Position   [2]int `json:"position"`
-	Stream     string `json:"stream"`
-	SourceRow  int    `json:"sourceRow"`
-	Label      string `json:"label"`
-}
-type nativeReadPage struct {
-	Text         string `json:"text"`
-	Position     [2]int `json:"position"`
-	Complete     bool   `json:"complete"`
-	NeededTokens int    `json:"neededTokens,omitzero"`
+type ReadPage struct {
+	Text         string
+	Position     [2]int
+	Complete     bool
+	NeededTokens int
 }
 
 // Source: plugins/read_output.ts:44:134@[543de4f3] selectReadOutput
-func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPage, error) {
+func Page(ctx context.Context, req ReadRequest, budget int) (ReadPage, error) {
+	if err := ctx.Err(); err != nil {
+		return ReadPage{}, err
+	}
+	b := new(outputbudget.Budget)
 	values := [2]string{req.Stdout, req.Stderr}
 	kinds := [2]string{req.StdoutKind, req.StderrKind}
 	positions := req.Position
@@ -127,10 +43,10 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 	for i := range 2 {
 		if kinds[i] == "json" {
 			if err := json.Unmarshal([]byte(values[i]), &entries[i], jsontext.AllowInvalidUTF8(true)); err != nil {
-				return nativeReadPage{}, err
+				return ReadPage{}, err
 			}
 			if strings.TrimSpace(values[i]) == "null" {
-				return nativeReadPage{}, errors.New("structured read output must be a JSON array")
+				return ReadPage{}, errors.New("structured read output must be a JSON array")
 			}
 		}
 	}
@@ -143,12 +59,12 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 	}
 	for i := range 2 {
 		if positions[i] < 0 || positions[i] > size(i) {
-			return nativeReadPage{}, errors.New("invalid read position")
+			return ReadPage{}, errors.New("invalid read position")
 		}
 	}
 	sourceStart := req.SourceRow
 	if sourceStart > 0 {
-		sourceStart += strings.Count(req.Stdout[:req.Position[0]], "\n")
+		sourceStart += uint64(strings.Count(req.Stdout[:req.Position[0]], "\n"))
 	}
 	frame := func() string {
 		prefix := ""
@@ -156,7 +72,7 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 			prefix = "--- " + req.Label + " ---\n"
 		}
 		if pages[0] != "" && sourceStart > 0 {
-			prefix += fmt.Sprintf("[rows %d:%d]\n", sourceStart, sourceStart+strings.Count(pages[0], "\n")-1)
+			prefix += fmt.Sprintf("[rows %d:%d]\n", sourceStart, sourceStart+uint64(strings.Count(pages[0], "\n"))-1)
 		}
 		if pages[1] == "" {
 			if pages[0] != "" {
@@ -176,18 +92,18 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 		}
 		return prefix
 	}
-	needed := func() (nativeReadPage, error) {
-		n, e := b.count(frame())
-		return nativeReadPage{Position: req.Position, NeededTokens: n}, e
+	needed := func() (ReadPage, error) {
+		n, e := b.Count(frame())
+		return ReadPage{Position: req.Position, NeededTokens: n}, e
 	}
 	for i := range 2 {
 		if included(i) && kinds[i] == "json" && len(entries[i]) == 0 {
 			pages[i] = "[]"
 		}
 	}
-	fit, err := b.fits(frame(), budget)
+	fit, err := b.Fits(frame(), budget)
 	if err != nil {
-		return nativeReadPage{}, err
+		return ReadPage{}, err
 	}
 	if !fit {
 		return needed()
@@ -219,9 +135,9 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 			for low < high {
 				mid := (low + high + 1) / 2
 				pages[i] = arrayPage(i, offset, mid)
-				fit, e := b.fits(frame(), budget)
+				fit, e := b.Fits(frame(), budget)
 				if e != nil {
-					return nativeReadPage{}, e
+					return ReadPage{}, e
 				}
 				if fit {
 					low = mid
@@ -236,10 +152,10 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 			positions[i] += low
 		} else {
 			if offset < len(values[i]) && !utf8.RuneStart(values[i][offset]) {
-				return nativeReadPage{}, errors.New("read position splits UTF-8")
+				return ReadPage{}, errors.New("read position splits UTF-8")
 			}
 			if kinds[i] == "rows" && offset > 0 && values[i][offset-1] != '\n' {
-				return nativeReadPage{}, errors.New("read position splits a complete row")
+				return ReadPage{}, errors.New("read position splits a complete row")
 			}
 			end := min(len(values[i]), offset+budget*128+4)
 			for end < len(values[i]) && !utf8.RuneStart(values[i][end]) {
@@ -248,17 +164,17 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 			remaining := values[i][offset:end]
 			allowance := budget
 			for allowance > 0 {
-				selected, e := b.selectText(remaining, allowance, false)
+				selected, e := b.SelectText(remaining, allowance, false)
 				if e != nil {
-					return nativeReadPage{}, e
+					return ReadPage{}, e
 				}
 				pages[i] = selected.Text
 				if kinds[i] == "rows" && (len(pages[i]) < len(remaining) || end < len(values[i])) {
 					pages[i] = pages[i][:strings.LastIndexByte(pages[i], '\n')+1]
 				}
-				n, e := b.count(frame())
+				n, e := b.Count(frame())
 				if e != nil {
-					return nativeReadPage{}, e
+					return ReadPage{}, e
 				}
 				excess := n - budget
 				if excess <= 0 {
@@ -301,5 +217,5 @@ func (b *nativeBudget) readPage(req nativeReadRequest, budget int) (nativeReadPa
 			complete = false
 		}
 	}
-	return nativeReadPage{Text: frame(), Position: positions, Complete: complete}, nil
+	return ReadPage{Text: frame(), Position: positions, Complete: complete}, nil
 }

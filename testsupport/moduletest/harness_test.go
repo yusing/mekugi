@@ -53,17 +53,17 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 	var events []string
 	t.Run("module", func(t *testing.T) {
 		script := new(moduletest.Scripted)
-		spec := command.Spec{Name: "read", Description: "bounded read"}
+		spec := command.Contribution{Spec: command.Spec{Name: "read", Description: "bounded read"}}
 		descriptor := module.Descriptor[string, *service, binding.Bindings[*service]]{
-			ID: "resource", Lifetime: module.Invocation, Resources: []string{"temporary resource"}, Contributes: module.Slots{Commands: []command.Spec{spec}},
+			ID: "resource", Lifetime: module.Invocation, Resources: []string{"temporary resource"}, Contributes: module.Slots{Commands: []command.Contribution{spec}},
 			New: func(dir string, slots module.Slots) (*service, error) {
-				if dir != directory || !slices.Equal(slots.Commands, []command.Spec{spec}) {
+				if dir != directory || !slices.EqualFunc(slots.Commands, []command.Contribution{spec}, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) {
 					t.Fatalf("dependencies=%q slots=%v", dir, slots)
 				}
 				events = append(events, "construct")
 				return &service{filepath.Join(dir, "owned-resource")}, nil
 			},
-			Bindings: binding.Bindings[*service]{Requires: []capability.Requirement{{Mechanism: capability.ExecutableFrontend, Required: true}}, Register: func(r binding.Registrar, _ *service) error { return r.Frontend(spec) }},
+			Bindings: binding.Bindings[*service]{Requires: []capability.Requirement{{Mechanism: capability.ExecutableFrontend, Required: true}}, Register: func(r binding.Registrar, _ *service) error { return r.Frontend(spec.Spec) }},
 			Start: func(ctx context.Context, s *service) error {
 				if ctx.Err() != nil {
 					t.Fatal(ctx.Err())
@@ -79,8 +79,8 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 				return os.Remove(s.path)
 			},
 		}
-		got := moduletest.New(t, descriptor, directory, module.Slots{Commands: []command.Spec{spec}}, script)
-		if got.path != path || !slices.Equal(script.Commands(), []command.Spec{spec}) {
+		got := moduletest.New(t, descriptor, directory, module.Slots{Commands: []command.Contribution{spec}}, script)
+		if got.path != path || !slices.Equal(script.Commands(), []command.Spec{spec.Spec}) {
 			t.Fatalf("service=%+v commands=%v", got, script.Commands())
 		}
 		if _, err := os.Stat(path); err != nil {

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -171,11 +172,14 @@ func runShellWorkerTest(
 	command.Stdout, command.Stderr = &out, &diagnostic
 	runErr := command.Run()
 	if runErr != nil {
-		var exit *exec.ExitError
-		if !errors.As(runErr, &exit) {
+		exit, ok := errors.AsType[*exec.ExitError](runErr)
+		if !ok {
 			t.Fatal(runErr)
 		}
-		exitCode = mrunProcessExitCode(exit)
+		exitCode = exit.ExitCode()
+		if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			exitCode = 128 + int(status.Signal())
+		}
 	}
 	return out.String(), diagnostic.String(), exitCode
 }

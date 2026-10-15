@@ -8,11 +8,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandargs"
+
 	"github.com/yusing/mekugi/internal/execsegment"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -749,7 +751,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 					}
 					value = argv[i]
 				}
-				if _, valid := toolActivityPositiveDecimal(value, toolplugin.MaxOutputTokens); !valid {
+				if _, valid := toolActivityPositiveDecimal(value, commandargs.MaxOutputTokens); !valid {
 					return "", false
 				}
 				continue

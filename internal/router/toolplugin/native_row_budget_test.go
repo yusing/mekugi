@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/contracts/command"
 )
 
 // Keep the reference deliberately greedy: token counts are not additive across
@@ -40,7 +42,7 @@ func referenceNativeRowSelection(t *testing.T, rows []string, budget, limit int,
 	return shown, strings.TrimPrefix(all, shown)
 }
 
-func assertNativeRowBudget(t *testing.T, out ExecutionOutput, shown, omitted string, budget int) {
+func assertNativeRowBudget(t *testing.T, out command.Output, shown, omitted string, budget int) {
 	t.Helper()
 	if out.Stdout != shown {
 		t.Fatalf("shown rows differ: got %q, want %q", out.Stdout, shown)

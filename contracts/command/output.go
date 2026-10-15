@@ -1,4 +1,4 @@
-package toolplugin
+package command
 
 type (
 	OmittedOutput struct {
@@ -11,7 +11,7 @@ type (
 		Stderr     string `json:"stderr"`
 	}
 
-	ExecutionOutput struct {
+	Output struct {
 		OmittedOutput *OmittedOutput `json:"omittedOutput,omitempty"`
 		FailureClass  string         `json:"failureClass,omitempty"`
 		Stdout        string         `json:"stdout"`

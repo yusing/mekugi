@@ -1,4 +1,4 @@
-package toolplugin
+package commandargs
 
 import (
 	"errors"
@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Source: internal/router/toolplugin/frontend_options.go:11:128@[e702dffa] shared command options.
 const MaxOutputTokens = 15_500
 
 const MaxTokensArgumentError = "--max-tokens requires one integer from 1 to 15500 and cannot repeat"

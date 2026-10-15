@@ -8,15 +8,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	"github.com/yusing/mekugi/contracts/command"
 )
 
 const nativeRetainedBytes = 16 << 20
 
 // ExecuteBuiltin runs bundled readers in the authenticated frontend process.
-func ExecuteBuiltin(ctx context.Context, name string, args []string) (ExecutionOutput, error) {
+func ExecuteBuiltin(ctx context.Context, name string, args []string) (command.Output, error) {
 	if err := ctx.Err(); err != nil {
-		return ExecutionOutput{}, err
+		return command.Output{}, err
 	}
 	switch name {
 	case "mcat":
@@ -26,39 +26,10 @@ func ExecuteBuiltin(ctx context.Context, name string, args []string) (ExecutionO
 	case "msymbol":
 		return nativeSymbol(ctx, args)
 	default:
-		return ExecutionOutput{}, fmt.Errorf("native reader %q is unavailable", name)
+		return command.Output{}, fmt.Errorf("native reader %q is unavailable", name)
 	}
 }
 
-type nativeBudget struct{ codec *tokenizer.Codec }
-
-func (b *nativeBudget) count(s string) (int, error) {
-	if b.codec == nil {
-		var err error
-		b.codec, err = tokenizer.New()
-		if err != nil {
-			return 0, err
-		}
-	}
-	return b.codec.Count(s)
-}
-func (b *nativeBudget) fits(s string, limit int) (bool, error) {
-	if len(s) <= limit {
-		return true, nil
-	}
-	n, e := b.count(s)
-	return n <= limit, e
-}
-
-func (b *nativeBudget) selectRows(value string, limit int, tail bool) (string, error) {
-	if len(value) <= limit {
-		return value, nil
-	}
-	if _, err := b.count(""); err != nil {
-		return "", err
-	}
-	return b.codec.SelectRows(value, limit, tail)
-}
 func nativeJSON(v any) string {
 	b, err := json.Marshal(v, json.Deterministic(true), jsontext.PreserveRawStrings(true), jsontext.AllowInvalidUTF8(true))
 	if err != nil {
@@ -66,8 +37,8 @@ func nativeJSON(v any) string {
 	}
 	return string(b)
 }
-func nativeFailure(name string, err error, class string) ExecutionOutput {
-	return ExecutionOutput{Stderr: name + ": " + err.Error() + "\n", ExitCode: 1, FailureClass: class}
+func nativeFailure(name string, err error, class string) command.Output {
+	return command.Output{Stderr: name + ": " + err.Error() + "\n", ExitCode: 1, FailureClass: class}
 }
 func nativeFileClass(err error) string {
 	if errors.Is(err, os.ErrNotExist) {

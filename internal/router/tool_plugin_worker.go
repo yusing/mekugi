@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
@@ -20,13 +22,13 @@ import (
 
 // RunToolPluginWorker handles the private child-process mode used by a
 // stable contributed-tool frontend.
-func RunOwnedToolPluginWorker(service *history.Service, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	return RunToolPluginWorker(service, context.WithValue(ctx, frontendProcessOwnerKey{}, true), argv0, args, stdin, stdout, stderr)
+func RunOwnedToolPluginWorker(service *history.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	return RunToolPluginWorker(service, commands, context.WithValue(ctx, frontendProcessOwnerKey{}, true), argv0, args, stdin, stdout, stderr)
 }
 
 type frontendProcessOwnerKey struct{}
 
-func RunToolPluginWorker(service *history.Service,
+func RunToolPluginWorker(service *history.Service, commands []command.Contribution,
 	ctx context.Context,
 	argv0 string,
 	args []string,
@@ -105,10 +107,10 @@ func RunToolPluginWorker(service *history.Service,
 		return fail(errors.New("tool wrapper does not target the running mekugi executable"))
 	}
 
-	return runAuthenticatedToolWorker(service, ctx, directory, filepath.Base(wrapper), args, stdin, stdout, stderr)
+	return runAuthenticatedToolWorker(service, commands, ctx, directory, filepath.Base(wrapper), args, stdin, stdout, stderr)
 }
 
-func runAuthenticatedToolWorker(service *history.Service,
+func runAuthenticatedToolWorker(service *history.Service, commands []command.Contribution,
 	ctx context.Context,
 	directory, name string,
 	args []string,
@@ -177,7 +179,7 @@ func runAuthenticatedToolWorker(service *history.Service,
 		}
 		defer release()
 	}
-	execute := frontendExecutor(*contribution)
+	execute := frontendExecutor(*contribution, commands)
 	if execute == nil {
 		return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 	}
@@ -201,27 +203,30 @@ func runAuthenticatedToolWorker(service *history.Service,
 
 // frontendExecutor is the retained dispatch owner used both before catalog
 // publication and when an authenticated worker executes a selected command.
-func frontendExecutor(contribution toolContribution) func(context.Context, toolWorkerManifest, []string, *os.File) (toolplugin.ExecutionOutput, error) {
+func frontendExecutor(contribution toolContribution, commands []command.Contribution) func(context.Context, toolWorkerManifest, []string, *os.File) (command.Output, error) {
+	for _, compiled := range commands {
+		if compiled.Name == contribution.NativeExecutor && compiled.Run != nil {
+			return func(ctx context.Context, _ toolWorkerManifest, args []string, stdin *os.File) (command.Output, error) {
+				return compiled.Run(ctx, args, stdin)
+			}
+		}
+	}
 	switch contribution.NativeExecutor {
 	case "mcat":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeMCat(ctx, manifest, args)
 		}
 	case "msymbol", "inspect_file":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeFrontendReader(ctx, manifest, args, contribution)
 		}
 	case "mread":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeMRead(ctx, manifest, args), nil
 		}
 	case "mchanges":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeMChanges(ctx, manifest, args), nil
-		}
-	case "mrun":
-		return func(ctx context.Context, _ toolWorkerManifest, args []string, stdin *os.File) (toolplugin.ExecutionOutput, error) {
-			return executeMRun(ctx, args, stdin)
 		}
 	default:
 		return nil

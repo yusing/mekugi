@@ -11,12 +11,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func (s *mekugiReplayStore) putShellOutput(ctx context.Context, stdout, stderr string, exitCode int) (string, error) {
-	return s.putTypedOutput(ctx, toolplugin.OmittedOutput{Stdout: stdout, Stderr: stderr}, exitCode)
+	return s.putTypedOutput(ctx, command.OmittedOutput{Stdout: stdout, Stderr: stderr}, exitCode)
 }
 
 func TestShellOutputReadPagesAndRestart(t *testing.T) {
@@ -54,30 +56,8 @@ func TestShellOutputReadPagesAndRestart(t *testing.T) {
 			position := [2]int{}
 			var gotOut, gotErr strings.Builder
 			for pageIndex := range 100 {
-				request := struct {
-					Stdout     string `json:"stdout"`
-					Stderr     string `json:"stderr"`
-					StdoutKind string `json:"stdoutKind"`
-					StderrKind string `json:"stderrKind"`
-					Position   [2]int `json:"position"`
-					Stream     string `json:"stream"`
-				}{out, diagnostic, "", "", position, selection}
-
-				data, err := json.Marshal(request)
+				page, err := toolplugin.Page(ctx, toolplugin.ReadRequest{Stdout: out, Stderr: diagnostic, Position: position, Stream: selection}, pageBudget)
 				if err != nil {
-					t.Fatal(err)
-				}
-				formatted, err := toolplugin.FormatOutput(ctx,
-					[]string{strconv.Itoa(pageBudget), "read", string(data), ""})
-				if err != nil || formatted.ExitCode != 0 {
-					t.Fatalf("page selection: %#v, %v", formatted, err)
-				}
-				var page struct {
-					Text     string `json:"text"`
-					Position [2]int `json:"position"`
-					Complete bool   `json:"complete"`
-				}
-				if err := json.Unmarshal([]byte(formatted.Stdout), &page); err != nil {
 					t.Fatal(err)
 				}
 				if count, err := codec.Count(page.Text); err != nil || count > pageBudget {

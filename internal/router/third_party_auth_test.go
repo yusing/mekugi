@@ -12,8 +12,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 func thirdPartyUnauthenticatedHeaders() http.Header {
@@ -144,7 +142,7 @@ func TestThirdPartyStandaloneStartupAuthentication(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
 			var ready bool
-			err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"third-party"}, nil, func(session Session) {
+			err := RunSession(testHistory(), ctx, testCommands(), []string{"third-party"}, nil, func(session Session) {
 				ready = true
 				if !session.GrokEnabled || !session.ThirdPartyOnly {
 					t.Errorf("standalone provider flags: GrokEnabled=%t ThirdPartyOnly=%t", session.GrokEnabled, session.ThirdPartyOnly)

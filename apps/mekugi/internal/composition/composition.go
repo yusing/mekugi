@@ -34,7 +34,7 @@ type entry struct {
 	requires     []module.ID
 	lifetime     module.Lifetime
 	resources    []string
-	commands     []command.Spec
+	commands     []command.Contribution
 	records      []recordkind.Spec
 	capabilities []capability.Requirement
 	validFactory bool
@@ -45,7 +45,7 @@ type entry struct {
 type Composition struct {
 	// LegacyCommands is the existing application catalog until step 3 moves its
 	// implementations into descriptors. It is not represented as a fake module.
-	LegacyCommands    []command.Spec
+	LegacyCommands    []command.Contribution
 	LegacyRecordKinds []recordkind.Spec
 	entries           []entry
 	sealed            bool
@@ -104,12 +104,13 @@ func (c *Composition) Add[D, S any, B interface {
 
 type moduleRegistrar struct {
 	binder     binding.Binder
-	allowed    []command.Spec
+	allowed    []command.Contribution
 	registered map[string]bool
 }
 
 func (r *moduleRegistrar) Frontend(spec command.Spec) error {
-	if !slices.Contains(r.allowed, spec) {
+	index := slices.IndexFunc(r.allowed, func(declared command.Contribution) bool { return declared.Spec == spec })
+	if index < 0 {
 		return fmt.Errorf("undeclared frontend %q", spec.Name)
 	}
 	if r.registered[spec.Name] {
@@ -130,7 +131,7 @@ type Gap struct {
 
 type Runtime struct {
 	History  *history.Service
-	Commands []command.Spec
+	Commands []command.Contribution
 	Gaps     []Gap
 	started  []entry
 }
@@ -181,11 +182,16 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 				failures = append(failures, fmt.Errorf("%s requires %s before it", node.id, required))
 			}
 		}
-		if node.lifetime != module.Stateless && node.lifetime != module.Invocation {
+		if node.lifetime != module.Stateless && node.lifetime != module.Invocation && node.lifetime != module.HostOperation {
 			failures = append(failures, fmt.Errorf("%s: unsupported lifetime %q", node.id, node.lifetime))
 		}
-		if (node.start == nil) != (node.stop == nil) || len(node.resources) != 0 && node.start == nil || node.lifetime == module.Stateless && (node.start != nil || len(node.resources) != 0) {
+		if (node.start == nil) != (node.stop == nil) || len(node.resources) != 0 && node.start == nil || node.lifetime != module.Invocation && (node.start != nil || len(node.resources) != 0) {
 			failures = append(failures, fmt.Errorf("%s: lifecycle does not match declared resources", node.id))
+		}
+		for _, contribution := range node.commands {
+			if contribution.Run == nil {
+				failures = append(failures, fmt.Errorf("%s: frontend %q has no compiled implementation", node.id, contribution.Name))
+			}
 		}
 		for _, requirement := range node.capabilities {
 			result := binder.Capability(requirement.Mechanism)
@@ -216,7 +222,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, err
 	}
 	for _, spec := range c.LegacyCommands {
-		if err := binder.Frontend(spec); err != nil {
+		if err := binder.Frontend(spec.Spec); err != nil {
 			return nil, err
 		}
 	}

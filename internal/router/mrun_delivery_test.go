@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestShellRunnerMRunAcceptedMaximumDoesNotCreateContinuation(t *testing.T) {
@@ -116,25 +116,6 @@ func TestShellRunnerMRunDeliveryOverflowKeepsRowsAndRecoversOnlyCommandStderr(t 
 	}
 }
 
-func TestMRunRetainedKindUsesBytePagingForOversizedOrUnterminatedRows(t *testing.T) {
-	oversized, _ := mrunOversizedLFRow(t, "a")
-	for _, tc := range []struct {
-		name string
-		text string
-		want string
-	}{
-		{name: "ordinary rows", text: "first row\nsecond row\n", want: "rows"},
-		{name: "oversized LF row", text: oversized, want: ""},
-		{name: "unterminated bytes", text: "unterminated data", want: ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := mrunRetainedKind(tc.text); got != tc.want {
-				t.Fatalf("retained kind = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestShellRunnerMRunRecoversOversizedLFStderrRow(t *testing.T) {
 	t.Parallel()
 	registry := sharedProxyTestRegistry(t)
@@ -165,13 +146,13 @@ func mrunOversizedLFRow(t *testing.T, word string) (string, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for units := toolplugin.MaxOutputTokens; ; units += 128 {
+	for units := commandargs.MaxOutputTokens; ; units += 128 {
 		row := strings.Repeat(word+" ", units) + "\n"
 		count, err := codec.Count(row)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if count > toolplugin.MaxOutputTokens {
+		if count > commandargs.MaxOutputTokens {
 			return row, units
 		}
 	}

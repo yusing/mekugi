@@ -22,8 +22,8 @@ func TestNativeInspectPreservesLoneSurrogateNames(t *testing.T) {
 	if result.ExitCode != 0 || !strings.Contains(result.Stdout, `\ud800`) {
 		t.Fatalf("compact surrogate pointer: %+v", result)
 	}
-	page, err := FormatOutput(t.Context(), []string{"1000", "read", nativeJSON(nativeReadRequest{Stdout: `[{"name":"\ud800"}]`, StdoutKind: "json"}), ""})
-	if err != nil || !strings.Contains(page.Stdout, `\\ud800`) {
+	page, err := Page(t.Context(), ReadRequest{Stdout: `[{"name":"\ud800"}]`, StdoutKind: "json"}, 1000)
+	if err != nil || !strings.Contains(page.Text, `\ud800`) {
 		t.Fatalf("retained surrogate: %+v, %v", page, err)
 	}
 }

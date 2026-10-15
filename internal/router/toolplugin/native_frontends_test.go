@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
 func nativeFixture(t *testing.T, name, source string) string {
@@ -23,7 +25,7 @@ func nativeFixture(t *testing.T, name, source string) string {
 	return path
 }
 
-func nativeExecute(t *testing.T, name string, args ...string) ExecutionOutput {
+func nativeExecute(t *testing.T, name string, args ...string) command.Output {
 	t.Helper()
 	output, err := ExecuteBuiltin(t.Context(), name, args)
 	if err != nil {

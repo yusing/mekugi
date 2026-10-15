@@ -20,7 +20,7 @@ const (
 	toolPluginManifestFilename = "workers.json"
 )
 
-func buildToolRegistry(ctx context.Context, commands []command.Spec) (*toolRegistry, error) {
+func buildToolRegistry(ctx context.Context, commands []command.Contribution) (*toolRegistry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func buildToolRegistry(ctx context.Context, commands []command.Spec) (*toolRegis
 
 func buildToolRegistryAt(
 	ctx context.Context,
-	commands []command.Spec,
+	commands []command.Contribution,
 	runtimeDirectory, replayDirectory string,
 ) (*toolRegistry, error) {
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
@@ -83,7 +83,7 @@ func buildToolRegistryAt(
 	}
 	byName := make(map[string]toolContribution, len(contributions))
 	for _, contribution := range contributions {
-		if frontendExecutor(contribution) == nil {
+		if frontendExecutor(contribution, commands) == nil {
 			validationErrors = append(validationErrors, fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 		}
 		if _, exists := byName[contribution.Name]; exists {

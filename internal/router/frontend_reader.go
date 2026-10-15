@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/yusing/mekugi/contracts/command"
+
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
@@ -20,7 +22,7 @@ func executeFrontendReader(
 	manifest toolWorkerManifest,
 	args []string,
 	contribution toolContribution,
-) (execution toolplugin.ExecutionOutput, err error) {
+) (execution command.Output, err error) {
 	finish := beginFrontendRead(manifest, contribution.Name)
 	defer func() {
 		class := frontendExecutionFailure(execution, err)
@@ -35,7 +37,7 @@ func executeFrontendReader(
 	return toolplugin.ExecuteBuiltin(ctx, contribution.Name, args)
 }
 
-func frontendExecutionFailure(execution toolplugin.ExecutionOutput, err error) string {
+func frontendExecutionFailure(execution command.Output, err error) string {
 	if err != nil {
 		return "execution_error"
 	}
@@ -43,7 +45,7 @@ func frontendExecutionFailure(execution toolplugin.ExecutionOutput, err error) s
 }
 
 // beginFrontendRead owns AX setup and publication, not reader outcome policy.
-func beginFrontendRead(manifest toolWorkerManifest, name string) func(*toolplugin.ExecutionOutput, error, bool, string) {
+func beginFrontendRead(manifest toolWorkerManifest, name string) func(*command.Output, error, bool, string) {
 	log := manifest.AXReadOutput
 	if log == "" {
 		log = os.Getenv(capturer.AXReadOutputEnvironment)
@@ -58,7 +60,7 @@ func beginFrontendRead(manifest toolWorkerManifest, name string) func(*toolplugi
 	if observeErr != nil {
 		fmt.Fprintf(&notices, "%s: AX read evidence unavailable: %v\n", name, observeErr)
 	}
-	return func(execution *toolplugin.ExecutionOutput, err error, succeeded bool, class string) {
+	return func(execution *command.Output, err error, succeeded bool, class string) {
 		var exitCode *int
 		if err == nil {
 			exitCode = new(execution.ExitCode)

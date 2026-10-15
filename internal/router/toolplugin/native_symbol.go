@@ -15,6 +15,10 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/outputbudget"
+
 	"go/token"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
@@ -85,7 +89,7 @@ func positiveSymbolInteger(s, label string) (int, error) {
 
 // Source: plugins/msymbol.ts:132:176@[543de4f3] parseQueries
 func parseSymbolQueries(args []string) ([]*symbolQuery, string, bool, int, error) {
-	o, rest, err := ParseReaderOptions(args, false, 4000, "--workspace")
+	o, rest, err := commandargs.ParseReaderOptions(args, false, 4000, "--workspace")
 	if err != nil {
 		return nil, "", false, 0, err
 	}
@@ -320,7 +324,7 @@ func symbolURIPath(uri string) (string, error) {
 	}
 	return filepath.FromSlash(u.Path), nil
 }
-func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
+func nativeSymbol(ctx context.Context, args []string) (command.Output, error) {
 	queries, root, explicit, budget, err := parseSymbolQueries(args)
 	if err != nil {
 		return nativeFailure("msymbol", err, "invalid_arguments"), nil
@@ -367,7 +371,7 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 		cleanupFrontendOrphans()
 	}
 	if err := ctx.Err(); err != nil {
-		return ExecutionOutput{}, err
+		return command.Output{}, err
 	}
 	// Never emit a semantic result for an input that changed during resolution.
 	for _, q := range queries {
@@ -381,8 +385,8 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 		}
 	}
 	clear(cache)
-	result := ExecutionOutput{}
-	counter := nativeBudget{}
+	result := command.Output{}
+	counter := outputbudget.Budget{}
 	var shown, retained strings.Builder
 	incomplete, retentionFailed := false, false
 	appendRow := func(row string) error {
@@ -559,9 +563,9 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 		}
 		result.Stderr += "msymbol: skipped " + strings.Join(parts, ", ") + "\n"
 	}
-	result.Stdout, err = counter.selectRows(shown.String(), budget, false)
+	result.Stdout, err = counter.SelectRows(shown.String(), budget, false)
 	if err != nil {
-		return ExecutionOutput{}, err
+		return command.Output{}, err
 	}
 	incomplete = incomplete || len(result.Stdout) < shown.Len()
 	if incomplete {
@@ -569,7 +573,7 @@ func nativeSymbol(ctx context.Context, args []string) (ExecutionOutput, error) {
 		result.FailureClass = "output_limit"
 		result.Stderr += fmt.Sprintf("msymbol: output incomplete: %d-token limit reached\n", budget)
 		if !retentionFailed {
-			result.OmittedOutput = &OmittedOutput{Stdout: strings.TrimPrefix(retained.String(), result.Stdout), StdoutKind: "rows"}
+			result.OmittedOutput = &command.OmittedOutput{Stdout: strings.TrimPrefix(retained.String(), result.Stdout), StdoutKind: "rows"}
 		}
 	}
 	return result, nil
