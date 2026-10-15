@@ -17,7 +17,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"

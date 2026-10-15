@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // This checks the UserInput RPC boundary, not native sibling delivery.

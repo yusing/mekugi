@@ -16,7 +16,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/expand"
@@ -180,7 +181,7 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
 	restoreContextUsage(s.agent(path), info)
 	if agent := s.agent(path); !agent.settingsLive {
-		settings := readResumeSettings(info, time.Time{})
+		settings := rollout.ResumeSettings(info.ID, info.Path, time.Time{})
 		if model, ok := settings["model"].(string); ok {
 			agent.settings.Model = model
 			agent.settings.Effort, _ = settings["model_reasoning_effort"].(string)

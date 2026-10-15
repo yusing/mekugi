@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Source: codex-rs/tui/src/chatwidget/status_controls.rs, add_status_output;

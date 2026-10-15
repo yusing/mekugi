@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )

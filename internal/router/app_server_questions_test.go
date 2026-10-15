@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 func questionTestMessage(t *testing.T, u *appServerUI, id any, method string, params any) {

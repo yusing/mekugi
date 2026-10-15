@@ -23,6 +23,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/capturer"
 	"golang.org/x/term"
 )
@@ -144,7 +145,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 				if entry.IsDir() || !strings.HasSuffix(path, ".jsonl") {
 					return nil
 				}
-				if saved := readResumeSettings(appServerThreadInfo{ID: thread, Path: path}, time.Time{}); saved["model"] != nil {
+				if saved := rollout.ResumeSettings(thread, path, time.Time{}); saved["model"] != nil {
 					foundSaved = true
 					if saved["model"] != "gpt-6-sol" || saved["model_reasoning_effort"] != "high" || saved["service_tier"] != "priority" {
 						t.Fatalf("host persisted settings: %#v", saved)

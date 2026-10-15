@@ -17,8 +17,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"

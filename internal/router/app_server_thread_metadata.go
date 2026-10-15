@@ -4,7 +4,7 @@ import (
 	json "encoding/json/v2"
 	"slices"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Child event subscriptions do not imply a thread/started notification. Read

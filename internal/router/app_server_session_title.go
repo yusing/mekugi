@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 type sessionTitleRequest struct {

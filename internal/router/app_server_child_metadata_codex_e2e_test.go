@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // The installed app-server does not promise thread/started for a native child.

@@ -59,13 +59,9 @@ resume and replay hints. A successfully archived session prints `Session archive
 instead of continuation and replay hints. Noninteractive commands retain Codex's own exit output.
 An unexpected app-server exit retains its diagnostic alongside the child's exit
 status; the normal session summary must not make a disconnect look like a clean quit.
-Temporary event bursts or paused presentation do not drop RPC messages or
-terminate app-server. The pending-message queue is bounded and applies backpressure
-until the consumer catches up, preserving message order. A newline-delimited RPC
-frame can contain the full resumed history and has no fixed byte-size ceiling;
-memory use includes the complete frame and queued messages. Malformed or truncated
-JSON remains a transport failure. Explicit close and
-the graceful-shutdown deadline can release a reader waiting on that consumer.
+The [Codex backend](../../backends/codex/SPEC.md) owns ordered RPC delivery,
+frame bounds, and process shutdown. Paused presentation preserves that transport
+contract; a session disconnect remains visible to the user.
 
 The client replaces presentation, not projection policy. Codex remains the agent
 runtime and execution authority, and Mekugi's router stays in the model-request

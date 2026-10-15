@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Installed host acceptance and repeatable payload measurement. The only

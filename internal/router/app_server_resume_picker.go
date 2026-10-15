@@ -9,10 +9,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Source: codex-rs/tui/src/resume_picker.rs:92,989:1000,2033:2088,3469:3490

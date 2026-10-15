@@ -1,6 +1,6 @@
 package router
 
-import "github.com/yusing/mekugi/internal/appserver"
+import "github.com/yusing/mekugi/backends/codex/appserver"
 
 // appServerLifecycle owns live host operations, not rendered status or replayed
 // activity. RPC acknowledgement, turn identity and committed input are separate

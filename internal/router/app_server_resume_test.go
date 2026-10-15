@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 func TestAppServerResumeStartup(t *testing.T) {

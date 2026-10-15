@@ -1,4 +1,4 @@
-package router
+package rollout
 
 import (
 	json "encoding/json/v2"
@@ -9,9 +9,9 @@ import (
 // defaults. Settings events also preserve idle changes made after the last turn.
 // Source: codex-rs/protocol/src/protocol.rs@68e1a421
 // ThreadSettingsAppliedEvent, ThreadSettingsSnapshot and TurnContextItem.
-func readResumeSettings(info appServerThreadInfo, newerThan time.Time) map[string]any {
+func ResumeSettings(threadID, path string, newerThan time.Time) map[string]any {
 	settings := make(map[string]any)
-	for line := range reverseThreadRolloutRecords(info) {
+	for line := range reverseRecords(threadID, path) {
 		var record struct {
 			Timestamp time.Time `json:"timestamp"`
 			Type      string    `json:"type"`

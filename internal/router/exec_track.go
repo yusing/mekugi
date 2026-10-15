@@ -11,7 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 

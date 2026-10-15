@@ -11,7 +11,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
@@ -71,7 +72,7 @@ func (u *appServerUI) resumeSettingsResponse(m appserver.Message) error {
 	if saved == nil {
 		saved = make(map[string]any)
 	}
-	maps.Copy(saved, readResumeSettings(result.Thread, newerThan))
+	maps.Copy(saved, rollout.ResumeSettings(result.Thread.ID, result.Thread.Path, newerThan))
 	u.resumeEvidence.Model, _ = saved["model"].(string)
 	u.resumeEvidence.Effort, _ = saved["model_reasoning_effort"].(string)
 	u.resumeEvidence.Tier, _ = saved["service_tier"].(string)

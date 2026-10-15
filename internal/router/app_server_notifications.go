@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Source: codex-rs/tui/src/notifications/{mod,osc9}.rs@1cc7e236

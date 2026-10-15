@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 func restoreContentReply(t *testing.T, u *appServerUI, id int, result any) {

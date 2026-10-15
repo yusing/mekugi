@@ -3,7 +3,7 @@ package router
 import (
 	json "encoding/json/v2"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Skill counts need the whole current context, independent of the deliberately

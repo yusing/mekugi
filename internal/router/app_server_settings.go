@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 type appServerModel struct {

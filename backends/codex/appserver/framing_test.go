@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Larger than the former 16 MiB Scanner ceiling, including within one item.

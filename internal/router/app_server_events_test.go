@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 

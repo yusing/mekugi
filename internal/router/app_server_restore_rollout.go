@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -44,7 +45,7 @@ type restoredRolloutEvent struct {
 // thread's canonical path, which addressed messages must name exactly.
 func readRestoredRollout(info appServerThreadInfo, agent string) restoredRollout {
 	r := restoredRollout{itemAt: make(map[string]time.Time)}
-	f, stat, ok := openThreadRollout(info)
+	f, stat, ok := rollout.Open(info.ID, info.Path)
 	if !ok {
 		return r
 	}

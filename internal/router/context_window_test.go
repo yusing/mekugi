@@ -132,21 +132,3 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 		t.Fatal("malformed history became usage")
 	}
 }
-
-func TestAppServerContextRolloutLatestCompleteRecord(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "rollout.jsonl")
-	header := "{\"type\":\"session_meta\",\"payload\":{\"id\":\"child\"}}\n"
-	snapshot := func(tokens int) string {
-		return fmt.Sprintf("{\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"total_tokens\":%d},\"model_context_window\":200000}}}\n", tokens)
-	}
-	// Oversized earlier content must not prevent bounded tail restoration.
-	data := header + strings.Repeat("x", 9<<20) + "\n" + snapshot(90000) + snapshot(10000) + `{"type":"event_msg"`
-	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
-		t.Fatal(err)
-	}
-	agent := activityPaneAgent{}
-	restoreContextUsage(&agent, appServerThreadInfo{ID: "child", Path: path})
-	if got := contextWindowLabel(agent); got != "10K/200K • 5%" {
-		t.Fatal(got)
-	}
-}

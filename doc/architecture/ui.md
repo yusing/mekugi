@@ -28,7 +28,7 @@ observation capacity must remain visible and bounded without terminating unrelat
   focus, follow policy, and the enclosing session lifetime.
 - Router-native `/session` presentation consumes a detached capturer snapshot.
   It owns only view, scroll and retained-exchange selection, never a metric store.
-- `internal/appserver` owns newline-delimited stdio RPC and the launched Codex process:
+- [The Codex backend](../../backends/codex/SPEC.md) owns newline-delimited stdio RPC and the launched Codex process:
   framing, bounded diagnostics, initialization, and shutdown. It does not import the
   router or terminal UI and does not interpret model responses.
 
@@ -68,8 +68,8 @@ and thread; reading a different namespace does not redirect the live writer.
 
 Resume first obtains host identity/workspace through metadata-only `thread/read`,
 then reads those preferences and the host-selected absolute rollout validated
-against that thread's session metadata. Reads examine complete records in the last
-8 MiB, never router cwd or another thread's settings. Newer timestamped
+against that thread's session metadata. The backend's bounded rollout reader never
+substitutes router cwd or another thread's settings. Newer timestamped
 `thread_settings_applied` snapshots override preferences; newer `turn_context`
 records supply model/effort without erasing retained tier evidence. Reads precede
 `thread/resume`, which can persist invocation defaults. Explicit launch settings

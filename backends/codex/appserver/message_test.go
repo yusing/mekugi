@@ -5,7 +5,7 @@ import (
 	json "encoding/json/v2"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 func TestAppServerMessageKeepsEmptyObjectParams(t *testing.T) {

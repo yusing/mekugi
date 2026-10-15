@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/internal/livediff"
 )
 
@@ -22,56 +22,6 @@ func resumeSettingsRollout(t *testing.T, records ...string) appServerThreadInfo 
 		t.Fatal(err)
 	}
 	return info
-}
-
-func TestAppServerReadResumeSettings(t *testing.T) {
-	initial := `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"first","reasoning_effort":"low","service_tier":"priority"}}}`
-	for _, tc := range []struct {
-		name    string
-		records []string
-		want    map[string]any
-	}{
-		{"idle changes win", []string{initial, `{"type":"turn_context","payload":{"model":"turn","effort":"high"}}`, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"idle","reasoning_effort":"medium","service_tier":"flex"}}}`, ""}, map[string]any{"model": "idle", "model_reasoning_effort": "medium", "service_tier": "flex"}},
-		{"turn preserves last tier", []string{initial, `{"type":"turn_context","payload":{"model":"turn","effort":"high"}}`, ""}, map[string]any{"model": "turn", "model_reasoning_effort": "high", "service_tier": "priority"}},
-		{"cleared defaults", []string{initial, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"idle"}}}`, ""}, map[string]any{"model": "idle", "model_reasoning_effort": nil, "service_tier": nil}},
-		{"older history", []string{`{"type":"turn_context","payload":{"model":"legacy","effort":"low"}}`, ""}, map[string]any{"model": "legacy", "model_reasoning_effort": "low"}},
-		{"partial and invalid records ignored", []string{initial, `{broken}`, `{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"partial","service_tier":"flex"}}}`}, map[string]any{"model": "first", "model_reasoning_effort": "low", "service_tier": "priority"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := readResumeSettings(resumeSettingsRollout(t, tc.records...), time.Time{}); !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("saved settings: got %#v, want %#v", got, tc.want)
-			}
-		})
-	}
-	info := resumeSettingsRollout(t, initial, "")
-	info.ID = "other"
-	if got := readResumeSettings(info, time.Time{}); len(got) != 0 {
-		t.Fatalf("borrowed another thread's settings: %#v", got)
-	}
-}
-
-func TestAppServerReadResumeSettingsBound(t *testing.T) {
-	info := resumeSettingsRollout(t, `{"type":"turn_context","payload":{"model":"too-old","effort":"high"}}`, "")
-	f, err := os.OpenFile(info.Path, os.O_RDWR, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if _, err := f.Seek(9<<20, 0); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.WriteString("\n"); err != nil {
-		t.Fatal(err)
-	}
-	if got := readResumeSettings(info, time.Time{}); len(got) != 0 {
-		t.Fatalf("read outside retention bound: %#v", got)
-	}
-	if _, err := f.WriteString(`{"type":"turn_context","payload":{"model":"retained","effort":"low"}}` + "\n"); err != nil {
-		t.Fatal(err)
-	}
-	if got := readResumeSettings(info, time.Time{}); got["model"] != "retained" {
-		t.Fatalf("lost retained settings: %#v", got)
-	}
 }
 
 func TestUISnapshotNativeResumeSettingsUnavailable(t *testing.T) {

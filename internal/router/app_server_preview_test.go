@@ -20,7 +20,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"

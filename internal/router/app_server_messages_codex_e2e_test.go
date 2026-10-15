@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // A real Codex app-server exposes native child lifecycle, but not a public

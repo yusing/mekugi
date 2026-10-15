@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 func headlessTestMessage(t *testing.T, h *headlessAppServer, method, params string) error {

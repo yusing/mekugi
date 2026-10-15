@@ -10,7 +10,7 @@ import (
 
 	json "encoding/json/v2"
 
-	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 type appServerShellEdit struct {
