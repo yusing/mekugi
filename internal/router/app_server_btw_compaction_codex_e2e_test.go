@@ -46,7 +46,10 @@ func (p *btwCompactionProvider) forwardExecution(_, _ context.Context, _ []byte,
 		tokens, text = 150000, "First side answer complete."
 	}
 	id := fmt.Sprintf("btw-response-%d-%d", p.mainTurns, p.sideTurns)
-	item := compactFixtureMessage(id+"-message", text)
+	item := map[string]any{
+		"id": id + "-message", "type": "message", "role": "assistant", "status": "completed", "phase": "final_answer",
+		"content": []any{map[string]any{"type": "output_text", "text": text, "annotations": []any{}}},
+	}
 	wire := routerFaultSSE(
 		map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
 		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item},
