@@ -26,6 +26,9 @@ type Store struct {
 	files     map[string]int64
 }
 
+// Directory is the selected retained path shared by this publication handle.
+func (s *Store) Directory() string { return s.directory }
+
 // Transaction is valid only during its Store.Transaction callback. It is never
 // retained in records or held across delivery. Participants cannot open nested
 // transactions through this handle.

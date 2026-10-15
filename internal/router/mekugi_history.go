@@ -13,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/legacycall"
 )
 
 const (
@@ -41,7 +42,7 @@ type mekugiHistory struct {
 	ExecObservation  *execObservation         `json:",omitempty"`
 	ExecOutcome      *execOutcome             `json:",omitempty"`
 	HostResults      []nativeToolResult       `json:",omitempty"`
-	CommandSegments  *retainedCommandSegments `json:",omitempty"`
+	CommandSegments  *legacycall.Segments     `json:",omitempty"`
 	CarrierName      string
 	CarrierKind      codeModeCarrierKind
 	CarrierPayload   string

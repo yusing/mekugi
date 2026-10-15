@@ -7,6 +7,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 )
 
@@ -58,4 +59,12 @@ func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
 	if err != nil || !found || kind.ID != "call" || kind.Dependencies == nil {
 		t.Fatalf("legacy call contribution: kind=%+v found=%v err=%v", kind, found, err)
 	}
+	if runtime.Segments == nil {
+		t.Fatal("application omitted the command-segment owner")
+	}
+	kind, found, err = runtime.History.Kind(reports.Name("/workspace", reports.ID("turn", "item")))
+	if err != nil || !found || kind.ID != "commandsegments" {
+		t.Fatalf("command segment contribution: kind=%+v found=%v err=%v", kind, found, err)
+	}
+
 }

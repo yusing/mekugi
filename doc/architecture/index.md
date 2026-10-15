@@ -28,6 +28,8 @@ collaborators without restating implementation.
 
 Retained session publication and retention are owned by
 [session history](../../modules/sessionhistory/SPEC.md).
+[Command segments](../../modules/commandsegments/SPEC.md) owns completed report
+meaning, publication, compatibility, and adoption by a viewing thread.
 [Bounded commands](../../modules/boundedcommand/SPEC.md) own foreground output
 selection and return delivery omissions to the frontend host.
 

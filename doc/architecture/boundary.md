@@ -69,6 +69,12 @@ Reading one feature's projection does not bypass validation of the other retaine
 facts. The codec reads retained files only; publication and retention remain with
 session history, and current feature semantics remain with their owners.
 
+[Command segments](../../modules/commandsegments/SPEC.md) owns completed report
+publication and restoration. New reports use their own record kind; historical
+mixed envelopes stay in place. Both forms are validated together before a report
+is adopted or reused. Explicit inspection selects a genuine retained envelope
+without adopting it or creating a publication lock.
+
 The live-diff renderer consumes provisional inputs and completed review files
 without owning workspace effects or replay locks. Commentary and capture are
 auxiliary consumers of observed facts; they cannot replace a stock result or

@@ -7,9 +7,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 )
 
 // Keep this wire fixture independent of the current encoder: these are the
@@ -36,51 +36,6 @@ func writeCommandSegmentsCompatEnvelope(t *testing.T, store *mekugiReplayStore, 
 	}
 }
 
-func TestCommandSegmentsHistoricalCompatRoundTrip(t *testing.T) {
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	item, want := batchCommandSegmentsFixture("item")
-	id := commandSegmentsID("turn", item.ID)
-	want.Parts[0].Timing.Started = time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
-	want.Parts[0].Timing.Ended = want.Parts[0].Timing.Started.Add(time.Second)
-	want.Parts[0].Timing.ElapsedNS = int64(time.Second)
-	writeCommandSegmentsCompatEnvelope(t, store, workspace, id, commandSegmentsCompatEnvelope(workspace, id))
-	got, err := readCommandSegments(store, workspace, "turn", item)
-	if err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("historical sparse envelope: got %#v, error %v; want %#v", got, err, want)
-	}
-	// A current producer may retry an old identity despite omitted unrelated
-	// legacy zero fields. Semantic equality, not identical JSON, decides this.
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{id: {CommandSegments: want}}); err != nil {
-		t.Fatalf("same-identity retry: %v", err)
-	}
-	// Exercise the current writer too, rather than only its no-op retry path.
-	copyID := commandSegmentsID("copy-turn", item.ID)
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{copyID: {CommandSegments: got}}); err != nil {
-		t.Fatal(err)
-	}
-	roundTrip, err := readCommandSegments(store, workspace, "copy-turn", item)
-	if err != nil || !reflect.DeepEqual(roundTrip, want) {
-		t.Fatalf("round trip: got %#v, error %v; want %#v", roundTrip, err, want)
-	}
-	changedAggregate := item
-	changedAggregate.AggregatedOutput = new("one")
-	if got, err := readCommandSegments(store, workspace, "turn", changedAggregate); err != nil || got != nil {
-		t.Fatalf("accepted changed aggregate bytes: %#v, %v", got, err)
-	}
-	changed := *want
-	changed.Output[31] ^= 1
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{id: {CommandSegments: &changed}}); err == nil {
-		t.Fatal("accepted different aggregate hash under an immutable identity")
-	}
-	if got, err := readCommandSegments(store, workspace, "turn", item); err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("conflicting retry changed historical evidence: %#v, %v", got, err)
-	}
-}
-
 func TestCommandSegmentsHistoricalCompatMixedHistory(t *testing.T) {
 	workspace := t.TempDir()
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -88,12 +43,9 @@ func TestCommandSegmentsHistoricalCompatMixedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	item, _ := batchCommandSegmentsFixture("mixed")
-	id := commandSegmentsID("turn", item.ID)
+	id := reports.ID("turn", item.ID)
 	wire := strings.Replace(commandSegmentsCompatEnvelope(workspace, id), `"History":{`, `"History":{"Applied":true,"ToolName":"exec","Report":"retained report","UpstreamItem":{"provider_extension":{"opaque":[1,"two"]}},`, 1)
 	writeCommandSegmentsCompatEnvelope(t, store, workspace, id, wire)
-	if got, err := readCommandSegments(store, workspace, "turn", item); err != nil || got == nil {
-		t.Fatalf("mixed historical segment read: %#v, %v", got, err)
-	}
 	before, found, err := store.read(workspace, id, false)
 	if err != nil || !found {
 		t.Fatalf("mixed historical record read: found %v, %v", found, err)
@@ -103,39 +55,12 @@ func TestCommandSegmentsHistoricalCompatMixedHistory(t *testing.T) {
 	}
 	// Migrate a decoded mixed record through the writer without discarding its
 	// non-segment facts or the opaque provider extension.
-	copyID := commandSegmentsID("copy-turn", item.ID)
+	copyID := reports.ID("copy-turn", item.ID)
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{copyID: before.History}); err != nil {
 		t.Fatal(err)
 	}
 	after, found, err := store.read(workspace, copyID, false)
 	if err != nil || !found || !reflect.DeepEqual(after.History, before.History) {
 		t.Fatalf("mixed history round trip: found %v, error %v; got %#v", found, err, after.History)
-	}
-}
-
-func TestCommandSegmentsHistoricalCompatUnknownFields(t *testing.T) {
-	// The legacy envelope is strict, including unused fields: ignoring an
-	// unknown value must not hide either schema drift or malformed JSON.
-	for _, tc := range []struct{ name, old, replacement string }{
-		{"envelope", `"Version":1`, `"Future":{"valid":true},"Version":1`},
-		{"history", `"History":{`, `"History":{"Future":[1,2],`},
-		{"segment", `"Source":"false"`, `"Future":null,"Source":"false"`},
-		{"malformed-unknown", `"Version":1`, `"Future":[1,],"Version":1`},
-		{"malformed-legacy-field", `"History":{`, `"History":{"Applied":"true",`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			workspace := t.TempDir()
-			store, err := openMekugiReplayStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			item, _ := batchCommandSegmentsFixture("item")
-			id := commandSegmentsID("turn", item.ID)
-			wire := strings.Replace(commandSegmentsCompatEnvelope(workspace, id), tc.old, tc.replacement, 1)
-			writeCommandSegmentsCompatEnvelope(t, store, workspace, id, wire)
-			if got, err := readCommandSegments(store, workspace, "turn", item); err == nil || got != nil {
-				t.Fatalf("accepted incompatible historical envelope: %#v, %v", got, err)
-			}
-		})
 	}
 }

@@ -11,13 +11,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func awaitCommandSegments(t *testing.T, u *appServerUI) {
@@ -109,7 +107,7 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			}
 		}
 		catalog, err := reopened.publication.ReadCatalog(history.SessionName(key[0]))
-		if err != nil || !catalog.Files[legacycall.Name(workspace, commandSegmentsID(key[1], key[2]), false)] {
+		if err != nil || !catalog.Files[reports.Name(workspace, reports.ID(key[1], key[2]))] {
 			t.Fatalf("original thread did not retain its report: %+v, %v", catalog, err)
 		}
 		if _, err := reopened.publication.ReadCatalog(history.SessionName("other")); !os.IsNotExist(err) {
@@ -272,7 +270,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 				t.Fatalf("per-command pages lost: %+v", pages)
 			}
 			catalog, err := store.publication.ReadCatalog(history.SessionName(target))
-			if err != nil || !catalog.Files[legacycall.Name(workspace, commandSegmentsID(key[1], key[2]), false)] {
+			if err != nil || !catalog.Files[reports.Name(workspace, reports.ID(key[1], key[2]))] {
 				t.Fatalf("restored owner not retained: %+v, %v", catalog, err)
 			}
 		})
@@ -353,7 +351,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 				}
 			}
 			if mode == "corrupt" {
-				path := filepath.Join(store.directory, legacycall.Name(workspace, commandSegmentsID("t", item.ID), false))
+				path := filepath.Join(store.directory, reports.Name(workspace, reports.ID("t", item.ID)))
 				if err := os.WriteFile(path, []byte("broken"), 0o600); err != nil {
 					t.Fatal(err)
 				}

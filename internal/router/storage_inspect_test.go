@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -26,30 +25,11 @@ func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 	h.ResolvedBaseline.Files[0].Content = strings.Repeat("π private source\n", 256)
 	snapshotTestPut(t, store, t.Context(), "selected", h)
 	snapshotTestPut(t, store, t.Context(), "unrelated", mekugiHistory{Script: "unrelated private command"})
-	fingerprint := func() map[string]string {
-		entries, err := os.ReadDir(store.directory)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files := make(map[string]string)
-		for _, entry := range entries {
-			data, err := os.ReadFile(filepath.Join(store.directory, entry.Name()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			info, err := entry.Info()
-			if err != nil {
-				t.Fatal(err)
-			}
-			files[entry.Name()] = fmt.Sprintf("%s %s %s", info.Mode(), info.ModTime(), data)
-		}
-		return files
-	}
-	before := fingerprint()
+	before := storageInspectionFiles(t, store.directory)
 	base := []string{"--replay-dir", store.directory, "--workspace", "/w", "--call-id", "selected"}
 	run := func(args []string) storageInspection {
 		var out, stderr bytes.Buffer
-		if status := RunStorageInspection(testHistory(), t.Context(), args, &out, &stderr); status != 0 || stderr.Len() != 0 {
+		if status := RunStorageInspection(testHistory(), testReports(), t.Context(), args, &out, &stderr); status != 0 || stderr.Len() != 0 {
 			t.Fatalf("inspection: status=%d stderr=%s", status, &stderr)
 		}
 		var result storageInspection
@@ -88,7 +68,7 @@ func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 			t.Fatal("could not inspect compressed object")
 		}
 	}
-	if after := fingerprint(); !reflect.DeepEqual(before, after) {
+	if after := storageInspectionFiles(t, store.directory); !reflect.DeepEqual(before, after) {
 		t.Fatal("read-only inspection changed store contents, modes or timestamps")
 	}
 }
@@ -104,7 +84,7 @@ func TestStorageInspectionPreciseErrorsAndCancellation(t *testing.T) {
 		{[]string{"--replay-dir", dir, "--object", "../outside"}, "invalid snapshot reference"},
 	} {
 		var out, stderr bytes.Buffer
-		if status := RunStorageInspection(testHistory(), t.Context(), test.args, &out, &stderr); status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), test.want) {
+		if status := RunStorageInspection(testHistory(), testReports(), t.Context(), test.args, &out, &stderr); status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), test.want) {
 			t.Fatalf("error diagnosis: status=%d stdout=%s stderr=%s", status, &out, &stderr)
 		}
 	}
@@ -114,7 +94,7 @@ func TestStorageInspectionPreciseErrorsAndCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var out, stderr bytes.Buffer
-	if status := RunStorageInspection(testHistory(), ctx, []string{"--replay-dir", dir, "--workspace", "/w", "--call-id", "call"}, &out, &stderr); status != 1 || !strings.Contains(stderr.String(), "context canceled") || out.Len() != 0 {
+	if status := RunStorageInspection(testHistory(), testReports(), ctx, []string{"--replay-dir", dir, "--workspace", "/w", "--call-id", "call"}, &out, &stderr); status != 1 || !strings.Contains(stderr.String(), "context canceled") || out.Len() != 0 {
 		t.Fatalf("cancellation: status=%d stderr=%s", status, &stderr)
 	}
 }
@@ -141,7 +121,7 @@ func TestStorageInspectionMissingContentNamesExactObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, stderr bytes.Buffer
-	status := RunStorageInspection(testHistory(), t.Context(), []string{"--replay-dir", store.directory, "--workspace", "/w", "--call-id", "selected"}, &out, &stderr)
+	status := RunStorageInspection(testHistory(), testReports(), t.Context(), []string{"--replay-dir", store.directory, "--workspace", "/w", "--call-id", "selected"}, &out, &stderr)
 	if status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), "call selected") || !strings.Contains(stderr.String(), name) || !strings.Contains(stderr.String(), "unavailable") {
 		t.Fatalf("missing content diagnosis: status=%d stderr=%s", status, &stderr)
 	}

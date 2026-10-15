@@ -3,7 +3,6 @@ package router
 import (
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/libraries/legacycall"
 )
 
@@ -51,7 +50,7 @@ func legacyHistory(v legacycall.History) mekugiHistory {
 		ExecObservation:      legacyPointer(v.ExecObservation, legacyObservation),
 		ExecOutcome:          legacyPointer(v.ExecOutcome, func(v legacycall.Outcome) execOutcome { return execOutcome(v) }),
 		HostResults:          legacySlice(v.HostResults, func(v legacycall.HostResult) nativeToolResult { return nativeToolResult(v) }),
-		CommandSegments:      legacyPointer(v.CommandSegments, legacySegments),
+		CommandSegments:      v.CommandSegments,
 		CarrierName:          v.CarrierName,
 		CarrierKind:          codeModeCarrierKind(v.CarrierKind),
 		CarrierPayload:       v.CarrierPayload,
@@ -108,25 +107,6 @@ func legacyObservation(v legacycall.Observation) execObservation {
 		LiteralClass:   v.LiteralClass,
 		Inventory:      legacyPointer(v.Inventory, legacyInventory),
 		Tree:           v.Tree,
-	}
-}
-
-func legacySegment(v legacycall.Segment) retainedCommandSegment {
-	return retainedCommandSegment{
-		Timing:  execsegment.Timing(v.Timing),
-		Source:  v.Source,
-		Skipped: v.Skipped,
-		Exit:    v.Exit,
-		Output:  v.Output,
-	}
-}
-
-func legacySegments(v legacycall.Segments) retainedCommandSegments {
-	return retainedCommandSegments{
-		Command: v.Command,
-		Exit:    v.Exit,
-		Output:  v.Output,
-		Parts:   legacySlice(v.Parts, legacySegment),
 	}
 }
 

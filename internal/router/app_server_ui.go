@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/capturer"
@@ -26,6 +24,8 @@ import (
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	"golang.org/x/term"
 )
 
@@ -69,7 +69,8 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
-	history *history.Service
+	history  *history.Service
+	segments *reports.Service
 	appServerLifecycle
 	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
 	clock                     func() time.Time  // Optional presentation clock for offline replay.
@@ -98,7 +99,7 @@ type appServerUI struct {
 	commitReads               chan gitCommitKey        // Commit objects read off the UI goroutine.
 	commandSegmentWrites      chan commandSegmentWrite // Completed replay writes, consumed only by the UI.
 	commandSegmentPending     int
-	restoredSegments          map[string]*retainedCommandSegments // Turn-local, validated and adopted history.
+	restoredSegments          map[string]*reports.Report // Turn-local, validated and adopted history.
 	files                     []composerFile
 	selections                []composerSelection
 	skills                    []composerSkill
@@ -171,11 +172,11 @@ func StartAppServerUI(service *history.Service, ctx context.Context, cmd *exec.C
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors()
 	issues.history = service
-	return startAppServerUI(service, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
+	return startAppServerUI(service, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
 // Codex approval policy and the invocation-local VCS guard are independent.
-func startAppServerUI(service *history.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator, approvals bool) (func() error, error) {
+func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionTitleGenerator, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, vcsguard.HookEnvironment+"="); ok {
@@ -204,7 +205,7 @@ func startAppServerUI(service *history.Service, ctx context.Context, cmd *exec.C
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{history: service, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
 		u.titleGenerator = generator

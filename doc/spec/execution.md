@@ -323,7 +323,8 @@ not durable change receipts until the host result and capture are retained.
 A completed command shows its segments only when its report reached final closure
 with the host's own exit status. Otherwise, including a report that ends when the shell
 replaces itself or is killed, Activity falls back to the host's combined result.
-Completed, host-validated reports are retained in the managed replay store,
+Completed, host-validated reports are retained by
+[command segments](../../modules/commandsegments/SPEC.md) in the managed store,
 scoped to the workspace and exact host turn/item identity. Restored history,
 including inherited fork history and `codex resume`, uses them only when the
 command, aggregate output and terminal exit still match. Replay restores

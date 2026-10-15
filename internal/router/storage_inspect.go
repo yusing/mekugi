@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
-
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -33,7 +33,7 @@ type storageInspection struct {
 // RunStorageInspection reads only an explicitly selected retained call or
 // object. It does not open the writable store, acquire/create locks, scan other
 // sessions, alter permissions or execute retained inputs.
-func RunStorageInspection(service *history.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunStorageInspection(service *history.Service, segments *reports.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-storage", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	replayDir := flags.String("replay-dir", "", "replay directory (default platform state directory)")
@@ -78,6 +78,11 @@ func RunStorageInspection(service *history.Service, ctx context.Context, args []
 			return fail(err)
 		}
 	}
+	selectedDirectory, err := filepath.Abs(*replayDir)
+	if err != nil {
+		return fail(err)
+	}
+	*replayDir = selectedDirectory
 	store := &mekugiReplayStore{publication: service.Attach(*replayDir), directory: *replayDir}
 	result := storageInspection{Schema: "mekugi.storage.v1", Field: *field}
 	var data []byte
@@ -97,19 +102,36 @@ func RunStorageInspection(service *history.Service, ctx context.Context, args []
 		}
 	} else {
 		result.Target = legacycall.Name(*workspace, *callID, false)
-		r, found, err := store.read(*workspace, *callID, false)
+		var r replayRecord
+		var found bool
+		var err error
+		var dependencies []string
+		if reports.IsID(*callID) {
+			selected, exists, readErr := segments.Inspect(store.directory, *workspace, *callID)
+			found, err = exists, readErr
+			if exists {
+				result.Target, dependencies, data = selected.Name, selected.Dependencies, selected.Data
+				if old := selected.Legacy; old != nil {
+					r = replayRecord{Version: old.Version, Workspace: old.Workspace, CallID: old.CallID, Commentary: old.Commentary, CaptureOrder: old.CaptureOrder, History: legacyHistory(old.History)}
+				}
+			}
+		} else {
+			r, found, err = store.read(*workspace, *callID, false)
+			if err == nil && found {
+				dependencies, err = store.publication.Dependencies(result.Target)
+			}
+		}
 		if err != nil {
 			return fail(fmt.Errorf("call %s: %w", *callID, err))
 		}
 		if !found {
 			return fail(fmt.Errorf("call %s in workspace %s is unavailable", *callID, *workspace))
 		}
-		dependencies, err := store.publication.Dependencies(result.Target)
-		if err != nil {
-			return fail(err)
-		}
 		result.Dependencies = len(dependencies)
 		value := any(r)
+		if data != nil {
+			value = jsontext.Value(data)
+		}
 		switch *field {
 		case "baseline":
 			value = r.History.ResolvedBaseline

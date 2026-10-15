@@ -22,7 +22,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		var paths []string
 		var readLog string
 		// RunSession returns only after cancellation has joined its owned work.
-		err := RunSession(testHistory(), testRecovery(), ctx, testCommands(), options, nil, func(session Session) {
+		err := RunSession(testHistory(), testRecovery(), testReports(), ctx, testCommands(), options, nil, func(session Session) {
 			readLog = session.AXReadOutput
 			cancel()
 		}, func(artifacts []string) { paths = artifacts })

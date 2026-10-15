@@ -11,15 +11,15 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
-
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-func batchCommandSegmentsFixture(id string) (appServerItem, *retainedCommandSegments) {
+func batchCommandSegmentsFixture(id string) (appServerItem, *legacycall.Segments) {
 	item := appServerItem{ID: id, Type: "commandExecution", Status: "completed", Command: "bash -lc 'echo one; false'", AggregatedOutput: new("one\n"), ExitCode: new(1)}
-	record := &retainedCommandSegments{
+	record := &legacycall.Segments{
 		Command: item.Command, Exit: 1, Output: sha256.Sum256([]byte(*item.AggregatedOutput)),
-		Parts: []retainedCommandSegment{{Source: "echo one", Output: new("one")}, {Source: "false", Exit: 1, Output: new("")}},
+		Parts: []legacycall.Segment{{Source: "echo one", Output: new("one")}, {Source: "false", Exit: 1, Output: new("")}},
 	}
 	return item, record
 }
@@ -70,19 +70,19 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 		}
 		turn.Items = append(turn.Items, item)
 		if record != nil {
-			histories[commandSegmentsID(turn.ID, item.ID)] = mekugiHistory{CommandSegments: record}
+			histories[reports.ID(turn.ID, item.ID)] = mekugiHistory{CommandSegments: record}
 		}
 	}
 	corrupt, record := batchCommandSegmentsFixture("corrupt")
 	turn.Items = slices.Insert(turn.Items, 1, corrupt)
-	histories[commandSegmentsID(turn.ID, corrupt.ID)] = mekugiHistory{CommandSegments: record}
+	histories[reports.ID(turn.ID, corrupt.ID)] = mekugiHistory{CommandSegments: record}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(store.directory, legacycall.Name(workspace, commandSegmentsID(turn.ID, corrupt.ID), false)), []byte("broken"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.directory, legacycall.Name(workspace, reports.ID(turn.ID, corrupt.ID), false)), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u := &appServerUI{ctx: t.Context(), thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}}
+	u := &appServerUI{segments: testReports(), ctx: t.Context(), thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}}
 	got := u.prepareCommandSegments("fork", workspace, turn)
 	catalog, err := store.publication.ReadCatalog(history.SessionName("fork"))
 	if err != nil {
@@ -92,7 +92,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 		if (got[item.ID] != nil) != valid[item.ID] {
 			t.Errorf("%s: accepted = %v, want %v", item.ID, got[item.ID] != nil, valid[item.ID])
 		}
-		name := legacycall.Name(workspace, commandSegmentsID(turn.ID, item.ID), false)
+		name := legacycall.Name(workspace, reports.ID(turn.ID, item.ID), false)
 		if catalog.Files[name] != valid[item.ID] {
 			t.Errorf("%s: durable ownership = %v, want %v", item.ID, catalog.Files[name], valid[item.ID])
 		}
@@ -117,14 +117,14 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 	}
 	item, record := batchCommandSegmentsFixture("item")
 	turn := appServerHistoryTurn{ID: "turn", Items: []appServerItem{item}}
-	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{commandSegmentsID(turn.ID, item.ID): {CommandSegments: record}}); err != nil {
+	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{reports.ID(turn.ID, item.ID): {CommandSegments: record}}); err != nil {
 		t.Fatal(err)
 	}
 	// Reading is possible, but ownership cannot be persisted for this target.
 	if err := os.WriteFile(filepath.Join(store.directory, history.SessionName("fork")), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u := &appServerUI{ctx: t.Context(), proxy: &mekugiProxy{replayStore: store}}
+	u := &appServerUI{segments: testReports(), ctx: t.Context(), proxy: &mekugiProxy{replayStore: store}}
 	if got := u.prepareCommandSegments("fork", workspace, turn); got[item.ID] != nil {
 		t.Fatal("published a record without durable target ownership")
 	}
@@ -139,15 +139,24 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 				t.Fatal(err)
 			}
 			parent, release := retentionTestSession(t, store, "parent", 0)
-			item, record := batchCommandSegmentsFixture("item")
+			item, _ := batchCommandSegmentsFixture("item")
 			turn := appServerHistoryTurn{ID: "turn", Status: "completed", Items: []appServerItem{item}}
-			id := commandSegmentsID(turn.ID, item.ID)
-			if err := store.put(parent, workspace, map[string]mekugiHistory{id: {CommandSegments: record}}); err != nil {
+			u := newAppServerSessionTestUI(t, workspace)
+			u.ctx = parent
+			u.proxy = &mekugiProxy{replayStore: store}
+			first, second := u.session.outputs.New(), u.session.outputs.New()
+			first.Finish(new("one"), new(0))
+			second.Finish(new(""), new(1))
+			u.retainCommandSegments(activityPaneEntry{native: &liveActivityNativeItem{thread: "parent", turn: turn.ID, item: item.ID}}, item, execTrackView{complete: true, output: true, code: 1, segments: []commandSegment{{output: first}, {output: second, exit: 1}}})
+			awaitCommandSegments(t, u)
+			if notices := u.issues.Pending(); len(notices) != 0 {
+				t.Fatal(notices)
+			}
+			if _, err := os.Stat(filepath.Join(directory, reports.Name(workspace, reports.ID(turn.ID, item.ID)))); err != nil {
 				t.Fatal(err)
 			}
 			release()
-			u := newAppServerSessionTestUI(t, workspace)
-			u.proxy = &mekugiProxy{replayStore: store}
+			u.ctx = t.Context()
 			view := u.view
 			if consumer == "main" {
 				u.thread = "fork"
@@ -202,12 +211,12 @@ func BenchmarkCommandSegmentsBatchLargeHistory(b *testing.B) {
 			for i := range count {
 				item, record := batchCommandSegmentsFixture(fmt.Sprintf("item-%d", i))
 				turn.Items = append(turn.Items, item)
-				histories[commandSegmentsID(turn.ID, item.ID)] = mekugiHistory{CommandSegments: record}
+				histories[reports.ID(turn.ID, item.ID)] = mekugiHistory{CommandSegments: record}
 			}
 			if err := store.put(b.Context(), workspace, histories); err != nil {
 				b.Fatal(err)
 			}
-			u := &appServerUI{ctx: b.Context(), proxy: &mekugiProxy{replayStore: store}}
+			u := &appServerUI{segments: testReports(), ctx: b.Context(), proxy: &mekugiProxy{replayStore: store}}
 			b.ReportAllocs()
 			iteration := 0
 			for b.Loop() {

@@ -35,7 +35,8 @@ architecture files own component boundaries. Related facts are cited by stable I
 linked, not copied.
 
 Module-owned contracts live with their implementation:
-[session history](../../modules/sessionhistory/SPEC.md) and
+[session history](../../modules/sessionhistory/SPEC.md),
+[completed command-segment reports](../../modules/commandsegments/SPEC.md), and
 [bounded commands](../../modules/boundedcommand/SPEC.md).
 
 ## Inventory

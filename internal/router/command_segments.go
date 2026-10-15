@@ -6,38 +6,14 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 )
-
-// Completed segment observations share the managed replay store's atomic
-// publication, workspace scope and retention. They are not execution receipts.
-type retainedCommandSegments struct {
-	Command string
-	Exit    int
-	Output  [32]byte // Bind the report to the host aggregate, without a second copy.
-	Parts   []retainedCommandSegment
-}
-
-type retainedCommandSegment struct {
-	Timing  execsegment.Timing `json:",omitzero"`
-	Source  string
-	Skipped bool
-	Exit    int
-	Output  *string // nil means no complete per-segment output was retained.
-}
-
-// A fork inherits host turn/item identities. Matching that exact completed
-// item permits replay without borrowing a live parent's process or state.
-func commandSegmentsID(turn, item string) string {
-	return fmt.Sprintf("command-segments:%x", sha256.Sum256(fmt.Appendf(nil, "%q:%q", turn, item)))
-}
 
 const commandSegmentRetentionLimit = 32
 
@@ -47,7 +23,7 @@ type commandSegmentWrite struct {
 }
 
 func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appServerItem, view execTrackView) {
-	if u.proxy == nil || u.proxy.replayStore == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
+	if u.segments == nil || u.proxy == nil || u.proxy.replayStore == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
 	script, ok := appServerShellScript(item.Command)
@@ -59,9 +35,9 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 		u.commandSegmentRetentionFailed([3]string{entry.native.thread, entry.native.turn, entry.native.item}, fmt.Errorf("pending command segment reports reached the limit of %d", commandSegmentRetentionLimit))
 		return
 	}
-	record := &retainedCommandSegments{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
+	record := &reports.Report{Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
 	for i, segment := range view.segments {
-		part := retainedCommandSegment{Timing: segment.timing, Source: parts[i].Source, Skipped: segment.skipped, Exit: segment.exit}
+		part := reports.Part{Timing: reports.Timing(segment.timing), Source: parts[i].Source, Skipped: segment.skipped, Exit: segment.exit}
 		if view.output && segment.output != nil {
 			output := segment.output.View()
 			if output.Done && !output.Released && !output.Truncated && output.Dropped == 0 {
@@ -79,10 +55,10 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 	// store can be busy with capture or another session; that must neither
 	// freeze presentation nor discard a report after a one-second lock wait.
 	ctx, cancel := context.WithTimeout(u.ctx, 30*time.Second)
-	ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: entry.native.thread})
-	id := commandSegmentsID(entry.native.turn, entry.native.item)
+	id := reports.ID(entry.native.turn, entry.native.item)
 	key := [3]string{entry.native.thread, entry.native.turn, entry.native.item}
-	store, workspace := u.proxy.replayStore, u.session.cwd
+	store := u.proxy.replayStore
+	scope := reports.Scope{Store: store.publication, Workspace: u.session.cwd, Thread: entry.native.thread, Limits: store.retentionLimits(), Writes: store.writes}
 	if u.commandSegmentWrites == nil {
 		u.commandSegmentWrites = make(chan commandSegmentWrite, commandSegmentRetentionLimit)
 	}
@@ -90,7 +66,7 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 	u.commandSegmentPending++
 	go func() {
 		defer cancel()
-		writes <- commandSegmentWrite{key: key, err: store.put(ctx, workspace, map[string]mekugiHistory{id: {CommandSegments: record}})}
+		writes <- commandSegmentWrite{key: key, err: storagePublicationError(u.segments.Publish(ctx, scope, id, *record))}
 	}()
 }
 
@@ -132,7 +108,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil || u.proxy == nil || u.proxy.replayStore == nil {
 		return
 	}
-	var record *retainedCommandSegments
+	var record *reports.Report
 	if u.restoredSegments != nil {
 		record = u.restoredSegments[entry.native.item]
 	} else {
@@ -148,7 +124,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	}
 	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item, workspace))
 	for _, part := range record.Parts {
-		segment := commandSegment{timing: part.Timing, source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
+		segment := commandSegment{timing: execsegment.Timing(part.Timing), source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
 			segment.output = u.session.outputs.New()
 			segment.output.Finish(part.Output, &part.Exit)
@@ -167,81 +143,42 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	}
 }
 
-// Validate and adopt independent history records before exposing their segments.
-// Batching avoids rewriting a growing catalog and rescanning storage per item.
-func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appServerHistoryTurn) map[string]*retainedCommandSegments {
-	result := make(map[string]*retainedCommandSegments)
-	if u.proxy == nil || u.proxy.replayStore == nil {
+// Decode host facts before the report owner validates and adopts each batch.
+func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appServerHistoryTurn) map[string]*reports.Report {
+	result := make(map[string]*reports.Report)
+	if u.segments == nil || u.proxy == nil || u.proxy.replayStore == nil {
 		return result
 	}
-	const batchSize = 64
-	for start := 0; start < len(turn.Items); start += batchSize {
-		items := turn.Items[start:min(start+batchSize, len(turn.Items))]
+	store := u.proxy.replayStore
+	scope := reports.Scope{Store: store.publication, Workspace: workspace, Thread: thread, Limits: store.retentionLimits(), Writes: store.writes}
+	for items := range slices.Chunk(turn.Items, 64) {
+		var completed []reports.Completed
+		for _, item := range items {
+			if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil {
+				continue
+			}
+			script, ok := appServerShellScript(item.Command)
+			parts, split := shellinstrumentation.Split(script)
+			if !ok || !split {
+				continue
+			}
+			candidate := reports.Completed{ID: reports.ID(turn.ID, item.ID), Command: item.Command, Exit: *item.ExitCode, Output: sha256.Sum256([]byte(*item.AggregatedOutput))}
+			for _, part := range parts {
+				candidate.Sources = append(candidate.Sources, part.Source)
+			}
+			completed = append(completed, candidate)
+		}
+		if len(completed) == 0 {
+			continue
+		}
 		ctx, cancel := context.WithTimeout(u.ctx, time.Second)
-		ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: thread})
-		store := u.proxy.replayStore.scoped(ctx)
-		_ = store.locked(ctx, func(store *mekugiReplayStore) error {
-			accepted := make(map[string]*retainedCommandSegments)
-			var names []string
-			for _, item := range items {
-				candidate, err := readCommandSegments(store, workspace, turn.ID, item)
-				if err != nil || candidate == nil {
-					continue
-				}
-				accepted[item.ID] = candidate
-				names = append(names, legacycall.Name(workspace, commandSegmentsID(turn.ID, item.ID), false))
-			}
-			if len(names) == 0 {
-				return nil
-			}
-			if err := store.retainFiles(names...); err == nil {
-				for id, candidate := range accepted {
-					result[id] = candidate
-				}
-			} else {
-				// A large combined catalog admission must not suppress valid
-				// smaller neighbors that still fit, or records already owned.
-				for _, item := range items {
-					if candidate := accepted[item.ID]; candidate != nil {
-						if err := store.retainFiles(legacycall.Name(workspace, commandSegmentsID(turn.ID, item.ID), false)); err == nil {
-							result[item.ID] = candidate
-						}
-					}
-				}
-			}
-			return nil
-		})
+		accepted, _ := u.segments.Restore(ctx, scope, completed)
 		cancel()
+		for _, item := range items {
+			if record := accepted[reports.ID(turn.ID, item.ID)]; record != nil {
+				result[item.ID] = record
+			}
+		}
 	}
 	return result
-}
-
-// Called with the store locked. A malformed neighbor never prevents other reads.
-func readCommandSegments(store *mekugiReplayStore, workspace, turn string, item appServerItem) (*retainedCommandSegments, error) {
-	if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil {
-		return nil, nil
-	}
-	script, ok := appServerShellScript(item.Command)
-	parts, split := shellinstrumentation.Split(script)
-	if !ok || !split {
-		return nil, nil
-	}
-	r, found, err := store.read(workspace, commandSegmentsID(turn, item.ID), false)
-	if err != nil || !found {
-		return nil, err
-	}
-	candidate := r.History.CommandSegments
-	if candidate == nil || candidate.Command != item.Command || candidate.Exit != *item.ExitCode || candidate.Output != sha256.Sum256([]byte(*item.AggregatedOutput)) || len(candidate.Parts) != len(parts) {
-		return nil, nil
-	}
-	for i, part := range candidate.Parts {
-		if part.Source != parts[i].Source || part.Skipped && (part.Output != nil || part.Exit != 0 || part.Timing != (execsegment.Timing{})) {
-			return nil, nil
-		}
-		timing := part.Timing
-		if timing.ElapsedNS < 0 || timing.Started.IsZero() && (!timing.Ended.IsZero() || timing.ElapsedNS != 0) || timing.Ended.IsZero() && timing.ElapsedNS != 0 {
-			return nil, nil
-		}
-	}
-	return candidate, nil
 }

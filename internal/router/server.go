@@ -16,17 +16,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-
-	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
-
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
@@ -65,7 +63,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *reports.Service, ctx context.Context, commands []command.Contribution, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
@@ -337,7 +335,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.paths[0])
 			}
-			return startAppServerUI(service, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
+			return startAppServerUI(service, segments, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory

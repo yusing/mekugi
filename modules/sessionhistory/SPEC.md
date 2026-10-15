@@ -72,7 +72,9 @@ None. Codex execution remains outside this module.
 Session catalogs, durable namespace identity, and allocation high-water marks
 belong here. Other owners supply their record kinds, dependency inspection, and
 prepared semantic retirement updates. Existing retained paths and encodings are
-preserved during extraction.
+preserved during extraction. Extracted features may introduce their own record
+kinds for new facts while retaining their historical readers; session history
+does not migrate or reinterpret existing feature records.
 
 ## Failure
 

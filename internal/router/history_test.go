@@ -7,14 +7,13 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/contracts/command"
-
+	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func testHistory() *history.Service {
-	service, err := history.NewService(append(RetainedRecordKinds(), recovery.RecordKinds()...))
+	service, err := history.NewService(append(append(RetainedRecordKinds(), recovery.RecordKinds()...), reports.RecordKinds()...))
 	if err != nil {
 		panic(err)
 	}
@@ -72,4 +71,12 @@ func executeRecovery(ctx context.Context, manifest toolWorkerManifest, args []st
 		panic(err)
 	}
 	return output
+}
+
+func testReports() *reports.Service {
+	service, err := reports.New(testHistory())
+	if err != nil {
+		panic(err)
+	}
+	return service
 }

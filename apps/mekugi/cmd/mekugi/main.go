@@ -67,7 +67,7 @@ func run() (exitCode int) {
 		case "inspect-session":
 			return router.RunSessionInspection(frontends.History, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "inspect-storage":
-			return router.RunStorageInspection(frontends.History, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return router.RunStorageInspection(frontends.History, frontends.Segments, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		}
 	}
 	routerArgs, command, err := router.SplitCommand(os.Args[1:])

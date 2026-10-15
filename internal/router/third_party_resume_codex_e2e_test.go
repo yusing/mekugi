@@ -43,7 +43,7 @@ func startThirdPartyResumeTerminal(t *testing.T, newCommand func(context.Context
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(testHistory(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, false)
+	wait, err := startAppServerUI(testHistory(), testReports(), ctx, newCommand(ctx), inner, inner, nil, nil, thread, true, nil, nil, argv, "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
