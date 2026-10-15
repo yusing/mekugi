@@ -12,6 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
 )
 
 func thirdPartyUnauthenticatedHeaders() http.Header {
@@ -54,7 +57,7 @@ func TestThirdPartyGrokExecutionWithoutCodexAuthentication(t *testing.T) {
 			}))
 			defer server.Close()
 			provider := newProviderClient("http://unused.invalid", nil)
-			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, server), auth: newGrokAuth("", "grok-only")}
+			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "grok-only", withDialTimeout(nil))}
 			var request map[string]any
 			if err := json.Unmarshal(grokTestRequest(t, stream), &request); err != nil {
 				t.Fatal(err)
@@ -74,14 +77,14 @@ func TestThirdPartyGrokExecutionWithoutCodexAuthentication(t *testing.T) {
 }
 
 func TestThirdPartyOpenCodeExecutionWithoutCodexAuthentication(t *testing.T) {
-	config := OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-only"}, Zen: OpenCodeServiceConfig{APIKey: "zen-only"}}
-	for _, service := range config.services() {
-		t.Run(service.prefix, func(t *testing.T) {
+	config := opencode.Config{Go: opencode.ServiceConfig{APIKey: "go-only"}, Zen: opencode.ServiceConfig{APIKey: "zen-only"}}
+	for _, service := range config.Services() {
+		t.Run(service.Prefix, func(t *testing.T) {
 			var calls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
-				assertThirdPartyHeaderIsolation(t, r.Header, service.apiKey)
-				if r.Header.Get("x-opencode-session") != openCodeSessionID(service.prefix, "child-thread") {
+				assertThirdPartyHeaderIsolation(t, r.Header, service.APIKey)
+				if r.Header.Get("x-opencode-session") != openCodeSessionID(service.Prefix, "child-thread") {
 					t.Error("missing provider-scoped session identity")
 				}
 				var wire map[string]any
@@ -93,7 +96,7 @@ func TestThirdPartyOpenCodeExecutionWithoutCodexAuthentication(t *testing.T) {
 			}))
 			defer server.Close()
 			provider := newProviderClient("http://unused.invalid", nil)
-			provider.opencode = map[string]*grokClient{service.prefix: {httpClient: grokTestHTTPClient(t, server), openCode: &service}}
+			provider.opencode = map[string]*grokClient{service.Prefix: {httpClient: grokTestHTTPClient(t, server), openCode: &service}}
 			response, err := provider.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), thirdPartyUnauthenticatedHeaders(), "")
 			if err != nil {
 				t.Fatal(err)
@@ -113,7 +116,7 @@ func TestThirdPartyConfigurationDoesNotBypassOpenAIAuthentication(t *testing.T) 
 		return serverHTTPResponse("{}"), nil
 	})}
 	provider := newProviderClient("http://unused.invalid", client)
-	provider.grok = &grokClient{httpClient: client, auth: newGrokAuth("", "grok-only")}
+	provider.grok = &grokClient{httpClient: client, auth: grok.NewAuth("", "grok-only", withDialTimeout(nil))}
 	_, err := provider.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-5.6-sol","input":[]}`), http.Header{}, "")
 	if err == nil || !strings.Contains(err.Error(), "Authorization") {
 		t.Fatalf("expected OpenAI authentication rejection, got %v", err)

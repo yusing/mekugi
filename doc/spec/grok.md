@@ -34,20 +34,12 @@ descriptions. It does not add absent arguments, change defaults or validation co
 or relax role restrictions. The caller still explicitly selects fresh context and supplies
 a self-contained assignment; projection never changes submitted arguments.
 
-Grok uses streaming Chat Completions, either through the public xAI API with `XAI_API_KEY`, or through
-the Grok CLI chat proxy with the existing Grok OAuth credential store. An API key takes precedence.
-`grok-4.7-build-fast` is available only through the OAuth proxy, not the public API;
-an API-key request for it fails locally. The selected model is sent as the proxy model override.
-`--grok-auth-file` selects a different credential file; otherwise the router uses the current user's
-Grok OAuth store. This route supports the standard `https://auth.x.ai` Grok public client, not custom
-enterprise issuers. Grok owns interactive login; Mekugi refreshes expired/near-expiry OAuth tokens
-and retries one rejected access token. Refresh uses Grok's cross-process advisory lock, re-reads
-credentials under that lock, and atomically saves rotated credentials while preserving unrelated
-accounts and fields. No credentials, provider error bodies, or prompts enter sanitized capture or
-metrics; diagnostic error strings can contain them.
-Grok inference does not require Codex Authorization or account headers, including
-HTTP and WebSocket clients. Codex credentials and internal account/thread headers are never forwarded to Grok, and Grok credentials
-never reach OpenAI. Credential-bearing requests do not follow redirects.
+Grok uses the public xAI API with `XAI_API_KEY` or the Grok CLI OAuth proxy.
+`--grok-auth-file` selects the OAuth file; otherwise the current user's Grok store
+is selected. The [credential specification](../../providers/grok/SPEC.md) owns precedence,
+refresh, trusted discovery, and store publication. The application retries one
+rejected OAuth token. `grok-4.7-build-fast` requires OAuth and fails locally for
+API-key requests; proxy requests carry the selected model override.
 
 The adapter preserves supported text/image messages, plaintext agent messages, custom/function tool
 calls and their identities/results, parallel calls, structured output, reasoning effort and usage.

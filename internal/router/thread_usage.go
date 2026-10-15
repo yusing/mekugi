@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/capturer"
 )
 
@@ -48,7 +50,7 @@ type threadUsageObservation struct {
 	conflicted    bool
 	model         string
 	reasoning     string
-	openCodePrice *openCodePrice
+	openCodePrice *opencode.Price
 	serviceTier   string
 	thread        string
 }
@@ -120,10 +122,10 @@ func (u *threadUsage) addRound(o *threadUsageObservation, serviceTier string, co
 	u.updateLocked(thread, delta)
 }
 
-func usageTokenCost(model, serviceTier string, counts tokenCounts, price *openCodePrice) tokenCost {
+func usageTokenCost(model, serviceTier string, counts tokenCounts, price *opencode.Price) tokenCost {
 	if isOpenCodeModel(model) {
 		if price != nil {
-			return price.estimate(serviceTier, counts)
+			return estimateOpenCodeCost(*price, serviceTier, counts)
 		}
 		return tokenCost{}
 	}

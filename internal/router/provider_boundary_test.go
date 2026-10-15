@@ -5,18 +5,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestProviderBoundaryChatUsage(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	for _, provider := range []struct {
 		name    string
-		service *openCodeService
+		service *opencode.Service
 		model   string
 		output  int64
 	}{
-		{"OpenCode", &service, service.prefix + ":" + openCodeTestModel(service), 7},
+		{"OpenCode", &service, service.Prefix + ":" + openCodeTestModel(service), 7},
 		{"Grok", nil, grokModel, 10},
 	} {
 		for _, counts := range []struct {
@@ -77,7 +79,7 @@ func TestProviderBoundaryChatUsage(t *testing.T) {
 }
 
 func TestProviderBoundaryOpenCodeChatFailures(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	for _, test := range []struct {
 		name, stream, code, message string
 	}{
@@ -104,7 +106,7 @@ func TestProviderBoundaryOpenCodeChatFailures(t *testing.T) {
 }
 
 func TestProviderBoundaryMixedRefusalDiagnostics(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	for _, policy := range []codexresponses.Policy{grokTranslationPolicy(), openCodeTranslationPolicy(&service, openCodeTestModel(service), "chat")} {
 		t.Run(policy.Diagnostics.Name, func(t *testing.T) {
 			tr := testProviderRequest(t, policy, "", "chat", nil)

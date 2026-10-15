@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -71,13 +73,14 @@ func grokTranslationPolicy() codexresponses.Policy {
 	return p
 }
 
-func openCodeTranslationPolicy(service *openCodeService, model, format string) codexresponses.Policy {
+func openCodeTranslationPolicy(service *opencode.Service, model, format string) codexresponses.Policy {
 	p := providerCodecPolicy(providerCodecDiagnostics("OpenCode", "OpenCode", "opencode", "opencode_stream_invalid"))
 	p.CompletionIncludesReasoning = true
 	p.ReplaySummaries = true
 	p.ResolveEffort = func(effort string) (string, error) {
 		// A model switch can inherit an effort unsupported by this model.
-		if slices.Contains(service.efforts(model), effort) {
+		metadata, _ := service.Model(model)
+		if slices.Contains(metadata.Efforts, effort) {
 			return effort, nil
 		}
 		return "", nil
@@ -92,7 +95,7 @@ func openCodeTranslationPolicy(service *openCodeService, model, format string) c
 
 // translateProviderRequest selects identity and capabilities before entering the
 // shared validator. The service is already pinned by the transport boundary.
-func translateProviderRequest(body []byte, service *openCodeService) (_ *providerRequest, err error) {
+func translateProviderRequest(body []byte, service *opencode.Service) (_ *providerRequest, err error) {
 	var policy codexresponses.Policy
 	if service != nil {
 		// OpenCode exposes request compatibility errors even for malformed JSON.
@@ -118,8 +121,8 @@ func translateProviderRequest(body []byte, service *openCodeService) (_ *provide
 		policy = grokTranslationPolicy()
 	} else {
 		var ok bool
-		model, ok = strings.CutPrefix(request.model(), service.prefix+":")
-		_, supported = service.model(model)
+		model, ok = strings.CutPrefix(request.model(), service.Prefix+":")
+		_, supported = service.Model(model)
 		if !ok || !supported {
 			return nil, errors.New("unsupported OpenCode model")
 		}
@@ -127,7 +130,7 @@ func translateProviderRequest(body []byte, service *openCodeService) (_ *provide
 		if responses.StringField(request.fields, "previous_response_id") != "" {
 			return nil, errors.New("OpenCode requires explicit conversation history, not previous_response_id")
 		}
-		format = service.format(model)
+		format = service.Format(model)
 		switch format {
 		case "chat", "anthropic", "responses":
 		default:

@@ -1,4 +1,4 @@
-package router
+package opencode
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,34 +18,35 @@ import (
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
+// Source: internal/router/opencode_catalog.go:22:383@[18475aaf] catalog and prices.
 const openCodeCatalogTTL = time.Hour
 const openCodeCatalogLimit = 16 << 20
 
 // Immutable snapshots are shared by catalog rendering, routing and price lookup.
 // No credentials, account data or provider response content enter this cache.
 type openCodeSnapshot struct {
-	Version int                                    `json:"version"`
-	Updated time.Time                              `json:"updated"`
-	Models  map[string]map[string]openCodeMetadata `json:"models"`
+	Version int                            `json:"version"`
+	Updated time.Time                      `json:"updated"`
+	Models  map[string]map[string]Metadata `json:"models"`
 }
 
-type openCodeMetadata struct {
-	Description string        `json:"description"`
-	Format      string        `json:"format"`
-	Context     int           `json:"context"`
-	Modalities  []string      `json:"modalities"`
-	Efforts     []string      `json:"efforts,omitempty"`
-	Cost        openCodePrice `json:"cost"`
+type Metadata struct {
+	Description string   `json:"description"`
+	Format      string   `json:"format"`
+	Context     int      `json:"context"`
+	Modalities  []string `json:"modalities"`
+	Efforts     []string `json:"efforts,omitempty"`
+	Cost        Price    `json:"cost"`
 }
 
-type openCodePrice struct {
+type Price struct {
 	Input      *float64 `json:"input,omitempty"`
 	Output     *float64 `json:"output,omitempty"`
 	CacheRead  *float64 `json:"cache_read,omitempty"`
 	CacheWrite *float64 `json:"cache_write,omitempty"`
 	// Preserve tier data rather than silently treating it as a flat price.
 	Tiers           jsontext.Value `json:"tiers,omitempty"`
-	ContextOver200K *openCodePrice `json:"context_over_200k,omitempty"`
+	ContextOver200K *Price         `json:"context_over_200k,omitempty"`
 }
 
 type openCodeProvider struct {
@@ -69,27 +69,27 @@ type openCodeRawModel struct {
 	Modalities struct {
 		Input []string `json:"input"`
 	} `json:"modalities"`
-	Cost openCodePrice `json:"cost"`
+	Cost Price `json:"cost"`
 }
 
-//go:generate go run ./cmd/update-opencode-snapshot -output opencode_snapshot
+//go:generate go run ./cmd/update-opencode-snapshot -output snapshot
 
 // These are provider-owned source records, not a hand-maintained model table.
 // Refresh them with the go:generate command above.
 //
-//go:embed opencode_snapshot/*.json
+//go:embed snapshot/*.json
 var openCodeSnapshotFiles embed.FS
 
 var openCodeBootstrap = mustOpenCodeBootstrap()
 
 func mustOpenCodeBootstrap() *openCodeSnapshot {
-	metadata, err := openCodeSnapshotFiles.ReadFile("opencode_snapshot/metadata.json")
+	metadata, err := openCodeSnapshotFiles.ReadFile("snapshot/metadata.json")
 	if err != nil {
 		panic(err)
 	}
 	models := make(map[string][]byte, 2)
 	for _, prefix := range []string{"opencode-go", "opencode-zen"} {
-		models[prefix], err = openCodeSnapshotFiles.ReadFile("opencode_snapshot/" + prefix + "-models.json")
+		models[prefix], err = openCodeSnapshotFiles.ReadFile("snapshot/" + prefix + "-models.json")
 		if err != nil {
 			panic(err)
 		}
@@ -101,7 +101,7 @@ func mustOpenCodeBootstrap() *openCodeSnapshot {
 	return snapshot
 }
 
-type openCodeCatalog struct {
+type Catalog struct {
 	refreshGate chan struct{}
 	snapshot    atomic.Pointer[openCodeSnapshot]
 	nextAttempt time.Time
@@ -111,10 +111,18 @@ type openCodeCatalog struct {
 	modelURLs   map[string]string
 }
 
-func newOpenCodeCatalog() *openCodeCatalog {
-	c := &openCodeCatalog{
+// NewCatalog loads the selected cache, falling back to embedded metadata.
+// The copied client enforces bounded, credential-free, non-redirecting fetches.
+func NewCatalog(path string, client *http.Client) *Catalog {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	transport := *client
+	transport.Timeout = 8 * time.Second
+	transport.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	c := &Catalog{
 		refreshGate: make(chan struct{}, 1),
-		client:      &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		client:      &transport, path: path,
 		metadataURL: "https://models.opencode.ai/api.json",
 		modelURLs: map[string]string{
 			"opencode-go":  "https://opencode.ai/zen/go/v1/models",
@@ -122,8 +130,7 @@ func newOpenCodeCatalog() *openCodeCatalog {
 		},
 	}
 	c.snapshot.Store(openCodeBootstrap)
-	if directory, err := os.UserCacheDir(); err == nil {
-		c.path = filepath.Join(directory, "mekugi", "opencode-models-v2.json")
+	if path != "" {
 		if data, err := readOpenCodeCache(c.path); err == nil {
 			var snapshot openCodeSnapshot
 			if json.Unmarshal(data, &snapshot) == nil && validOpenCodeSnapshot(&snapshot) {
@@ -190,14 +197,14 @@ func validOpenCodeID(id string) bool {
 	return true
 }
 
-func (c *openCodeCatalog) current() *openCodeSnapshot {
+func (c *Catalog) current() *openCodeSnapshot {
 	return c.snapshot.Load()
 }
 
 // Fresh launches/requests do no network I/O. Expired metadata refreshes before
 // selection, with a bounded deadline and a short failure backoff. Inference is
 // never retried, and requests already in flight retain their pinned snapshot.
-func (c *openCodeCatalog) refresh(ctx context.Context, force bool) error {
+func (c *Catalog) Refresh(ctx context.Context, force bool) error {
 	select {
 	case c.refreshGate <- struct{}{}:
 		defer func() { <-c.refreshGate }()
@@ -241,7 +248,7 @@ func decodeOpenCodeSnapshot(metadata []byte, modelLists map[string][]byte, previ
 	if json.Unmarshal(metadata, &providers) != nil {
 		return nil, errors.New("invalid OpenCode metadata")
 	}
-	next := &openCodeSnapshot{Version: 2, Updated: updated, Models: make(map[string]map[string]openCodeMetadata)}
+	next := &openCodeSnapshot{Version: 2, Updated: updated, Models: make(map[string]map[string]Metadata)}
 	for _, prefix := range []string{"opencode-go", "opencode-zen"} {
 		providerID := prefix
 		if prefix == "opencode-zen" {
@@ -259,7 +266,7 @@ func decodeOpenCodeSnapshot(metadata []byte, modelLists map[string][]byte, previ
 		if json.Unmarshal(modelLists[prefix], &list) != nil || len(list.Data) == 0 {
 			return nil, errors.New("invalid OpenCode model list")
 		}
-		next.Models[prefix] = make(map[string]openCodeMetadata, len(list.Data))
+		next.Models[prefix] = make(map[string]Metadata, len(list.Data))
 		for _, item := range list.Data {
 			if !validOpenCodeID(item.ID) {
 				return nil, errors.New("invalid OpenCode model ID")
@@ -271,7 +278,7 @@ func decodeOpenCodeSnapshot(metadata []byte, modelLists map[string][]byte, previ
 				if previous != nil {
 					next.Models[prefix][item.ID] = previous.Models[prefix][item.ID]
 				} else {
-					next.Models[prefix][item.ID] = openCodeMetadata{}
+					next.Models[prefix][item.ID] = Metadata{}
 				}
 				continue
 			}
@@ -305,7 +312,7 @@ func decodeOpenCodeSnapshot(metadata []byte, modelLists map[string][]byte, previ
 					}
 				}
 			}
-			next.Models[prefix][item.ID] = openCodeMetadata{
+			next.Models[prefix][item.ID] = Metadata{
 				Description: raw.Description,
 				Format:      format, Context: raw.Limit.Context, Modalities: modalities, Cost: raw.Cost, Efforts: efforts,
 			}
@@ -317,7 +324,7 @@ func decodeOpenCodeSnapshot(metadata []byte, modelLists map[string][]byte, previ
 	return next, nil
 }
 
-func (c *openCodeCatalog) get(ctx context.Context, url string) ([]byte, error) {
+func (c *Catalog) get(ctx context.Context, url string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, errors.New("invalid OpenCode catalog URL")
@@ -335,7 +342,7 @@ func (c *openCodeCatalog) get(ctx context.Context, url string) ([]byte, error) {
 	return boundedOpenCodeRead(response.Body)
 }
 
-func (c *openCodeCatalog) save(snapshot *openCodeSnapshot) error {
+func (c *Catalog) save(snapshot *openCodeSnapshot) error {
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o700); err != nil {
 		return err
 	}
@@ -348,7 +355,7 @@ func (c *openCodeCatalog) save(snapshot *openCodeSnapshot) error {
 
 // Explicit context tiers supersede the legacy 200k field. Unknown tier types
 // cannot be priced safely. A missing rate is not a free rate.
-func (price openCodePrice) forInput(input uint64) (openCodePrice, bool) {
+func (price Price) ForInput(input uint64) (Price, bool) {
 	if len(price.Tiers) == 0 || string(price.Tiers) == "null" {
 		if input > 200000 && price.ContextOver200K != nil {
 			return *price.ContextOver200K, true
@@ -357,7 +364,7 @@ func (price openCodePrice) forInput(input uint64) (openCodePrice, bool) {
 	}
 	var tiers []jsontext.Value
 	if json.Unmarshal(price.Tiers, &tiers) != nil {
-		return openCodePrice{}, false
+		return Price{}, false
 	}
 	selected := uint64(0)
 	result := price
@@ -369,50 +376,15 @@ func (price openCodePrice) forInput(input uint64) (openCodePrice, bool) {
 			} `json:"tier"`
 		}
 		if json.Unmarshal(raw, &tier) != nil || tier.Tier.Type != "context" || tier.Tier.Size == 0 {
-			return openCodePrice{}, false
+			return Price{}, false
 		}
 		if input > tier.Tier.Size && tier.Tier.Size > selected {
-			var next openCodePrice
+			var next Price
 			if json.Unmarshal(raw, &next) != nil {
-				return openCodePrice{}, false
+				return Price{}, false
 			}
 			result, selected = next, tier.Tier.Size
 		}
 	}
 	return result, true
-}
-
-func (price openCodePrice) estimate(tier string, counts tokenCounts) tokenCost {
-	if (tier != "" && tier != "default") || !validCostCounts(counts) {
-		return tokenCost{}
-	}
-	var priceOK bool
-	price, priceOK = price.forInput(counts.InputTokens)
-	if !priceOK {
-		return tokenCost{}
-	}
-	valid := func(value *float64) bool {
-		return value != nil && *value >= 0 && !math.IsNaN(*value) && !math.IsInf(*value, 0)
-	}
-	if !valid(price.Input) || !valid(price.Output) {
-		return tokenCost{}
-	}
-	result := tokenCost{
-		uncachedInput: float64(counts.UncachedInputTokens-counts.CacheWriteTokens) * *price.Input / 1e6,
-		output:        float64(counts.OutputTokens) * *price.Output / 1e6,
-		known:         true,
-	}
-	if cached := counts.InputTokens - counts.UncachedInputTokens; cached != 0 {
-		if !valid(price.CacheRead) {
-			return tokenCost{}
-		}
-		result.cachedInput = float64(cached) * *price.CacheRead / 1e6
-	}
-	if counts.CacheWriteTokens != 0 {
-		if !valid(price.CacheWrite) {
-			return tokenCost{}
-		}
-		result.uncachedInput += float64(counts.CacheWriteTokens) * *price.CacheWrite / 1e6
-	}
-	return result
 }

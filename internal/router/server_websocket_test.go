@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/providers/grok"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -306,7 +308,7 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 	started := make(chan []byte, 1)
 	stopped := make(chan struct{})
 	provider := newProviderClient("http://unused.invalid", nil)
-	provider.grok = &grokClient{auth: newGrokAuth("", "test"), httpClient: &http.Client{
+	provider.grok = &grokClient{auth: grok.NewAuth("", "test", withDialTimeout(nil)), httpClient: &http.Client{
 		Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 			body, _ := io.ReadAll(request.Body)
 			started <- body

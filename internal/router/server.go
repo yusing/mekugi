@@ -16,6 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/sudoask"
@@ -54,7 +57,7 @@ type Session struct {
 	GrokEnabled            bool
 	GrokUnprefixed         bool
 	ThirdPartyOnly         bool
-	OpenCode               OpenCodeConfig
+	OpenCode               opencode.Config
 	AXReadOutput           string
 	SkillsManagerAvailable bool
 	// StartAppUI starts the UI and returns its joined lifetime.
@@ -152,8 +155,8 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 				path = filepath.Join(home, ".grok", "auth.json")
 			}
 		}
-		auth := newGrokAuth(path, apiKey)
-		if _, authErr := auth.credentials(ctx); authErr == nil {
+		auth := grok.NewAuth(path, apiKey, withDialTimeout(nil))
+		if _, authErr := auth.Credentials(ctx); authErr == nil {
 			client := withDialTimeout(nil)
 			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 			client.Transport = capture.Transport(client.Transport)
@@ -166,18 +169,22 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		return errors.New("no authenticated third-party providers; run grok login --oauth or set XAI_API_KEY, OPENCODE_GO_API_KEY, or OPENCODE_ZEN_API_KEY")
 	}
 	if openCode.Enabled() {
-		openCode.catalog = newOpenCodeCatalog()
-		if err := openCode.catalog.refresh(ctx, false); err != nil {
+		cachePath := ""
+		if directory, err := os.UserCacheDir(); err == nil {
+			cachePath = filepath.Join(directory, "mekugi", "opencode-models-v2.json")
+		}
+		openCode.Catalog = opencode.NewCatalog(cachePath, nil)
+		if err := openCode.Catalog.Refresh(ctx, false); err != nil {
 			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
 		}
 	}
 	provider.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
 	provider.opencode = make(map[string]*grokClient)
-	for _, service := range openCode.services() {
+	for _, service := range openCode.Services() {
 		client := withDialTimeout(nil)
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		client.Transport = capture.Transport(client.Transport)
-		provider.opencode[service.prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.streamIdleTimeout}
+		provider.opencode[service.Prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.streamIdleTimeout}
 	}
 	var frontendDirectory string
 	titleCtx, cancelTitles := context.WithCancel(ctx)

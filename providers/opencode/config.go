@@ -1,4 +1,4 @@
-package router
+package opencode
 
 import (
 	"errors"
@@ -6,23 +6,24 @@ import (
 	"strings"
 )
 
-// OpenCodeConfig enables each independently authenticated service when its key
+// Source: internal/router/opencode_config.go:9:46@[18475aaf] service configuration.
+// Config enables each independently authenticated service when its key
 // is nonempty. It is invocation-local; loading never writes user configuration.
-type OpenCodeConfig struct {
-	catalog *openCodeCatalog
-	Go      OpenCodeServiceConfig `toml:"opencode_go"`
-	Zen     OpenCodeServiceConfig `toml:"opencode_zen"`
+type Config struct {
+	Catalog *Catalog      `toml:"-"`
+	Go      ServiceConfig `toml:"opencode_go"`
+	Zen     ServiceConfig `toml:"opencode_zen"`
 }
 
-type OpenCodeServiceConfig struct {
+type ServiceConfig struct {
 	APIKey string `toml:"api_key"`
 }
 
-func (c OpenCodeConfig) Enabled() bool {
+func (c Config) Enabled() bool {
 	return c.Go.APIKey != "" || c.Zen.APIKey != ""
 }
 
-func openCodeEnvironment(config OpenCodeConfig) (OpenCodeConfig, error) {
+func Environment(config Config) (Config, error) {
 	if value, ok := os.LookupEnv("OPENCODE_API_KEY"); ok {
 		config.Go.APIKey = value
 		config.Zen.APIKey = value
@@ -39,7 +40,7 @@ func openCodeEnvironment(config OpenCodeConfig) (OpenCodeConfig, error) {
 		}
 		*entry.key = strings.TrimSpace(*entry.key)
 		if strings.ContainsAny(*entry.key, "\r\n") {
-			return OpenCodeConfig{}, errors.New("OpenCode API keys must not contain line breaks")
+			return Config{}, errors.New("OpenCode API keys must not contain line breaks")
 		}
 	}
 	return config, nil

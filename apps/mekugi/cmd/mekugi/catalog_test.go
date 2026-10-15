@@ -16,6 +16,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/router"
 )
@@ -202,7 +204,7 @@ func TestPrepareProviderCatalogAcceptsHostConfigSelectors(t *testing.T) {
 	cwd := t.TempDir()
 	for _, session := range []router.Session{
 		{GrokEnabled: true, GrokUnprefixed: true, ThirdPartyOnly: true},
-		{ThirdPartyOnly: true, OpenCode: router.OpenCodeConfig{Go: router.OpenCodeServiceConfig{APIKey: "test"}}},
+		{ThirdPartyOnly: true, OpenCode: opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}},
 	} {
 		directory, _, err := prepareProviderCatalog(t.Context(), executable,
 			[]string{"exec", "--ignore-user-config", "--profile", "work", "-C", cwd, "-c", "model=chosen"}, session)

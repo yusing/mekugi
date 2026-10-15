@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -65,10 +67,10 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
-			service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "provider-secret"}}).services()[0]
+			service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "provider-secret"}}).Services()[0]
 			calls := 0
 			provider := newProviderClient("http://unused.invalid", nil)
-			provider.opencode = map[string]*grokClient{service.prefix: {
+			provider.opencode = map[string]*grokClient{service.Prefix: {
 				openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 					calls++
 					return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
@@ -124,7 +126,7 @@ type providerErrorBody struct {
 func (b *providerErrorBody) Close() error { b.closed = true; return nil }
 
 func TestOpenCodeHTTPErrorBodyLimit(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	body := &providerErrorBody{Reader: strings.NewReader(strings.Repeat("x", maxUpstreamErrorDetailBytes+100))}
 	client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
@@ -151,7 +153,7 @@ func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
 }
 
 func TestOpenCodeHTTPErrorReadFailure(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	body := &providerErrorBody{Reader: iotest.ErrReader(errors.New("private transport detail"))}
 	client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
@@ -164,7 +166,7 @@ func TestOpenCodeHTTPErrorReadFailure(t *testing.T) {
 
 func TestOpenCodeHTTPErrorStalledBody(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+		service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 		reader, writer := io.Pipe()
 		defer writer.Close()
 		client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
@@ -180,7 +182,7 @@ func TestOpenCodeHTTPErrorStalledBody(t *testing.T) {
 
 func TestOpenCodeHTTPErrorReadCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+		service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 		reader, writer := io.Pipe()
 		defer writer.Close()
 		ctx, cancel := context.WithCancel(t.Context())

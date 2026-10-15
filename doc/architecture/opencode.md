@@ -2,10 +2,10 @@
 
 ## CTR-OPENCODE-001 — OpenCode bridge ownership
 
-The launcher owns OpenCode's invocation-local Codex model-catalog entries. The router owns
-OpenCode provider configuration, public catalog discovery, the durable model-metadata cache,
-immutable runtime snapshots, endpoint selection, translation policy, opaque reasoning
-replay, and request-scoped price selection. Shared protocol translation and stream
+The launcher owns OpenCode's invocation-local Codex model-catalog entries. The [OpenCode provider](../../providers/opencode/SPEC.md) owns service configuration,
+public catalog discovery, the durable metadata cache and immutable snapshots. The router
+pins request metadata and owns endpoint selection, translation policy, opaque reasoning
+replay, and accounting. Shared protocol translation and stream
 normalization belong to the [Codex Responses adapter](../../backends/codex/responses/SPEC.md) through the
 [shared provider boundary](third_party.md).
 

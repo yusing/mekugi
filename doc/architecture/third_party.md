@@ -3,7 +3,9 @@
 ## CTR-THIRD-PARTY-001 — Third-party native-agent routing
 
 The launcher owns the invocation-local model catalog snapshot. The router owns provider
-selection, plaintext collaboration projection, and authentication. The
+selection, plaintext collaboration projection, and inference transport. Concrete
+[Grok credentials](../../providers/grok/SPEC.md) and
+[OpenCode configuration/catalogs](../../providers/opencode/SPEC.md) are provider-owned. The
 [Codex Responses adapter](../../backends/codex/responses/SPEC.md) owns third-party
 protocol adaptation. Codex remains the only owner of agent creation, message delivery, tool
 execution, sandboxing, approvals, and lifecycle state.
@@ -22,7 +24,7 @@ encoding and stream normalization. One shared validator and Responses lifecycle
 emitter consumes their normalized output. Diagnostic codes and messages use the
 resolved identity directly, never another provider's errors rewritten afterward.
 The router supplies the resolved policy and reasoning callbacks, and retains provider
-selection, credentials, transport, and session-history reconciliation.
+selection, transport, and session-history reconciliation.
 
 Third-party credentials, refresh, redirects, and provider clients remain isolated from
 OpenAI authentication. [Protocol classification](../../libraries/modelprotocol/SPEC.md) is shared with capture, while transport

@@ -6,11 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/BurntSushi/toml"
 )
 
 type mekugiConfig struct {
-	Providers    OpenCodeConfig    `toml:"providers"`
+	Providers    opencode.Config   `toml:"providers"`
 	ServiceTiers map[string]string `toml:"service_tiers"`
 }
 
@@ -23,7 +25,7 @@ func loadMekugiConfig(withProviders bool) (mekugiConfig, error) {
 		if !withProviders {
 			return config, nil
 		}
-		config.Providers, err = openCodeEnvironment(OpenCodeConfig{})
+		config.Providers, err = opencode.Environment(opencode.Config{})
 		return config, err
 	}
 	body, err := os.ReadFile(filepath.Join(directory, "mekugi", "config.toml"))
@@ -53,9 +55,9 @@ func loadMekugiConfig(withProviders bool) (mekugiConfig, error) {
 		}
 	}
 	if !withProviders {
-		config.Providers = OpenCodeConfig{}
+		config.Providers = opencode.Config{}
 		return config, nil
 	}
-	config.Providers, err = openCodeEnvironment(config.Providers)
+	config.Providers, err = opencode.Environment(config.Providers)
 	return config, err
 }

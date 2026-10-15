@@ -3,6 +3,8 @@ package router
 import (
 	"testing"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -19,7 +21,7 @@ func testProviderRequest(t *testing.T, policy codexresponses.Policy, model, form
 	return &providerRequest{body: body, format: format, codec: codec}
 }
 
-func testOpenCodeTranslation(t *testing.T, service *openCodeService, model, format string, tools []any) *providerRequest {
+func testOpenCodeTranslation(t *testing.T, service *opencode.Service, model, format string, tools []any) *providerRequest {
 	return testProviderRequest(t, openCodeTranslationPolicy(service, model, format), model, format, tools)
 }
 

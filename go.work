@@ -23,6 +23,8 @@ use (
 	./modules/sessionhistory
 	./modules/sourceoutline
 	./modules/symbolquery
+	./providers/grok
+	./providers/opencode
 	./testsupport/moduletest
 	./testsupport/uisnapshot
 )

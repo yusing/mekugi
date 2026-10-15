@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/providers/grok"
+
 	vt "github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"golang.org/x/term"
@@ -128,7 +130,7 @@ func TestThirdPartyResumeModelNativeCodexE2E(t *testing.T) {
 			defer upstream.Close()
 			provider := newProviderClient("http://unused.invalid", nil)
 			provider.thirdPartyOnly = true
-			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: newGrokAuth("", "resume-fixture-only"), unprefixed: unprefixed}
+			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "resume-fixture-only", withDialTimeout(nil)), unprefixed: unprefixed}
 			handler := responsesHandler(t.Context(), time.Minute, provider, nil, nil)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Authorization") != "" || r.Header.Get(chatGPTAccountIDHeader) != "" {

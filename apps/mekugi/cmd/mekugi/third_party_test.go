@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/internal/router"
 )
@@ -82,11 +84,11 @@ func writeGrokConfig(t *testing.T, directory, config string) {
 
 func TestThirdPartyOpenCodeDefault(t *testing.T) {
 	for _, tc := range []struct {
-		providers router.OpenCodeConfig
+		providers opencode.Config
 		prefix    string
 	}{
-		{router.OpenCodeConfig{Go: router.OpenCodeServiceConfig{APIKey: "test"}, Zen: router.OpenCodeServiceConfig{APIKey: "test"}}, "opencode-go:"},
-		{router.OpenCodeConfig{Zen: router.OpenCodeServiceConfig{APIKey: "test"}}, "opencode-zen:"},
+		{opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}, Zen: opencode.ServiceConfig{APIKey: "test"}}, "opencode-go:"},
+		{opencode.Config{Zen: opencode.ServiceConfig{APIKey: "test"}}, "opencode-zen:"},
 	} {
 		args, err := thirdPartyDefaultArgs(nil, router.Session{ThirdPartyOnly: true, OpenCode: tc.providers})
 		var config struct{ Model string }

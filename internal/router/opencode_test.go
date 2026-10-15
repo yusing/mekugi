@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -21,17 +23,17 @@ import (
 	"github.com/coder/websocket"
 )
 
-func openCodeTestModel(service openCodeService) string {
+func openCodeTestModel(service opencode.Service) string {
 	const id = "glm-5.3-flash"
-	if _, ok := service.model(id); !ok {
+	if _, ok := service.Model(id); !ok {
 		panic("embedded OpenCode test model is unavailable")
 	}
 	return id
 }
-func openCodeTestRequest(t *testing.T, service openCodeService, stream bool) []byte {
+func openCodeTestRequest(t *testing.T, service opencode.Service, stream bool) []byte {
 	t.Helper()
 	return mustTestJSON(t, map[string]any{
-		"model": service.prefix + ":" + openCodeTestModel(service), "stream": stream,
+		"model": service.Prefix + ":" + openCodeTestModel(service), "stream": stream,
 		"input": []any{map[string]string{"role": "user", "content": "Hello"}},
 		"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 	})
@@ -106,7 +108,7 @@ func TestOpenCodeConfig(t *testing.T) {
 }
 
 func TestOpenCodeCatalog(t *testing.T) {
-	config := OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go"}, Zen: OpenCodeServiceConfig{APIKey: "zen"}}
+	config := opencode.Config{Go: opencode.ServiceConfig{APIKey: "go"}, Zen: opencode.ServiceConfig{APIKey: "zen"}}
 	body := []byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native"},"unknown_future":42}]}`)
 	catalog, err := ProviderModelCatalog(body, Session{OpenCode: config})
 	if err != nil {
@@ -115,7 +117,7 @@ func TestOpenCodeCatalog(t *testing.T) {
 	var result struct {
 		Models []map[string]jsontext.Value `json:"models"`
 	}
-	if err := json.Unmarshal(catalog, &result); err != nil || len(result.Models) != 1+len(config.services()[0].models())+len(config.services()[1].models()) {
+	if err := json.Unmarshal(catalog, &result); err != nil || len(result.Models) != 1+len(config.Services()[0].Models())+len(config.Services()[1].Models()) {
 		t.Fatalf("model registration: %v", err)
 	}
 	var levels []map[string]string
@@ -148,18 +150,18 @@ func TestOpenCodeCatalog(t *testing.T) {
 }
 
 func TestOpenCodeRoutesAndCredentials(t *testing.T) {
-	config := OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-only"}, Zen: OpenCodeServiceConfig{APIKey: "zen-only"}}
-	for _, service := range config.services() {
-		t.Run(service.prefix, func(t *testing.T) {
+	config := opencode.Config{Go: opencode.ServiceConfig{APIKey: "go-only"}, Zen: opencode.ServiceConfig{APIKey: "zen-only"}}
+	for _, service := range config.Services() {
+		t.Run(service.Prefix, func(t *testing.T) {
 			for _, stream := range []bool{false, true} {
 				seen := false
 				client := &grokClient{openCode: &service, httpClient: &http.Client{
 					Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 						seen = true
-						if request.URL.String() != service.endpoint || request.Header.Get("Authorization") != "Bearer "+service.apiKey {
+						if request.URL.String() != service.Endpoint || request.Header.Get("Authorization") != "Bearer "+service.APIKey {
 							t.Error("wrong endpoint or credential")
 						}
-						if request.Header.Get("x-opencode-session") != openCodeSessionID(service.prefix, "child-thread") {
+						if request.Header.Get("x-opencode-session") != openCodeSessionID(service.Prefix, "child-thread") {
 							t.Error("stable provider-scoped session identity missing")
 						}
 						for _, name := range []string{chatGPTAccountIDHeader, threadIDHeader, openAISubagentHeader, codexTurnMetadataHeader} {
@@ -179,7 +181,7 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 					}),
 				}}
 				provider := newProviderClient("http://unused.invalid", nil)
-				provider.opencode = map[string]*grokClient{service.prefix: client}
+				provider.opencode = map[string]*grokClient{service.Prefix: client}
 				response, err := provider.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, stream), grokTestHeaders(), "")
 				if err != nil {
 					t.Fatal(err)
@@ -201,9 +203,9 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 }
 
 func TestOpenCodeRequestDiagnosticIdentity(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	request := mustTestJSON(t, map[string]any{
-		"model":                service.prefix + ":" + openCodeTestModel(service),
+		"model":                service.Prefix + ":" + openCodeTestModel(service),
 		"previous_response_id": "old",
 		"input":                []any{},
 	})
@@ -215,7 +217,7 @@ func TestOpenCodeRequestDiagnosticIdentity(t *testing.T) {
 }
 
 func TestOpenCodeReasoningToolReplay(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	tr, err := translateProviderRequest(openCodeTestRequest(t, service, false), &service)
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +233,7 @@ func TestOpenCodeReasoningToolReplay(t *testing.T) {
 	input := result["output"].([]any)
 	input = append(input, map[string]string{"type": "custom_tool_call_output", "call_id": "call1", "output": "done"})
 	request := map[string]any{
-		"model": service.prefix + ":" + openCodeTestModel(service),
+		"model": service.Prefix + ":" + openCodeTestModel(service),
 		"input": input,
 		"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 	}
@@ -254,12 +256,12 @@ func TestOpenCodeReasoningToolReplay(t *testing.T) {
 }
 
 func TestOpenCodeRejectsUnsupportedHistoryAndModels(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	for _, input := range []string{
 		`[{"type":"reasoning","encrypted_content":"private"}]`,
 		`[{"type":"agent_message","content":[{"type":"encrypted_content","encrypted_content":"private"}]}]`,
 	} {
-		_, err := translateProviderRequest([]byte(`{"model":"`+service.prefix+`:`+openCodeTestModel(service)+`","input":`+input+`}`), &service)
+		_, err := translateProviderRequest([]byte(`{"model":"`+service.Prefix+`:`+openCodeTestModel(service)+`","input":`+input+`}`), &service)
 		diagnostic, ok := errors.AsType[*requestCompatibilityError](err)
 		if !ok || diagnostic.code != "opencode_encrypted_history" || strings.Contains(err.Error(), "private") {
 			t.Fatalf("wrong local compatibility error: %v", err)
@@ -275,11 +277,11 @@ func TestOpenCodeRejectsUnsupportedHistoryAndModels(t *testing.T) {
 func TestOpenCodeWebSocketPrewarmContinuationAndDisconnect(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	started := make(chan []byte, 1)
 	stopped := make(chan struct{})
 	provider := newProviderClient("http://unused.invalid", nil)
-	provider.opencode = map[string]*grokClient{service.prefix: {openCode: &service, httpClient: &http.Client{
+	provider.opencode = map[string]*grokClient{service.Prefix: {openCode: &service, httpClient: &http.Client{
 		Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 			body, _ := io.ReadAll(request.Body)
 			started <- body
@@ -297,7 +299,7 @@ func TestOpenCodeWebSocketPrewarmContinuationAndDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
-	model := service.prefix + ":" + openCodeTestModel(service)
+	model := service.Prefix + ":" + openCodeTestModel(service)
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": model, "generate": false, "input": "warm up"})
 	event := socketRead(t, ctx, conn)
 	var response map[string]jsontext.Value
@@ -329,11 +331,11 @@ func TestOpenCodeWebSocketPrewarmContinuationAndDisconnect(t *testing.T) {
 }
 
 func TestOpenCodeInheritedReasoningEffort(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	model := ""
-	for _, candidate := range service.models() {
+	for _, candidate := range service.Models() {
 		if len(candidate.Efforts) == 0 && candidate.Format == "chat" {
-			model = candidate.id
+			model = candidate.ID
 			break
 		}
 	}
@@ -345,7 +347,7 @@ func TestOpenCodeInheritedReasoningEffort(t *testing.T) {
 		if err := json.Unmarshal(openCodeTestRequest(t, service, false), &request); err != nil {
 			t.Fatal(err)
 		}
-		request["model"] = service.prefix + ":" + model
+		request["model"] = service.Prefix + ":" + model
 		request["reasoning"] = map[string]string{"effort": effort}
 		tr, err := translateProviderRequest(mustTestJSON(t, request), &service)
 		if err != nil {
@@ -358,12 +360,12 @@ func TestOpenCodeInheritedReasoningEffort(t *testing.T) {
 }
 
 func TestOpenCodeMixedReasoningMultiTurnReplay(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	var history []any
 	for _, answer := range []string{"first answer", "second answer"} {
 		history = append(history, map[string]string{"role": "user", "content": "Question"})
 		tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
-			"model": service.prefix + ":" + openCodeTestModel(service), "input": history,
+			"model": service.Prefix + ":" + openCodeTestModel(service), "input": history,
 		}), &service)
 		if err != nil {
 			t.Fatal(err)
@@ -380,7 +382,7 @@ func TestOpenCodeMixedReasoningMultiTurnReplay(t *testing.T) {
 	}
 	// JSON persistence and a fresh translation must associate reasoning with
 	// each original assistant, not just the latest tool-calling turn.
-	saved := mustTestJSON(t, map[string]any{"model": service.prefix + ":" + openCodeTestModel(service), "input": history})
+	saved := mustTestJSON(t, map[string]any{"model": service.Prefix + ":" + openCodeTestModel(service), "input": history})
 	tr, err := translateProviderRequest(saved, &service)
 	if err != nil {
 		t.Fatal(err)
@@ -398,13 +400,16 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	catalog := newOpenCodeCatalog()
-	snapshot := storeOpenCodeTestSnapshot(catalog, func(snapshot *openCodeSnapshot) {
-		snapshot.Updated = time.Now()
-	})
-	if err := catalog.save(snapshot); err != nil {
+	directory, _ := os.UserCacheDir()
+	path := filepath.Join(directory, "mekugi", "opencode-models-v2.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
+	models := map[string]opencode.Metadata{"test": {Format: "chat"}}
+	if err := os.WriteFile(path, mustTestJSON(t, map[string]any{"version": 2, "updated": time.Now(), "models": map[string]any{"opencode-go": models, "opencode-zen": models}}), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	t.Setenv("OPENCODE_API_KEY", "shared-test")
 	t.Setenv("OPENCODE_GO_API_KEY", "go-test")
 	t.Setenv("OPENCODE_ZEN_API_KEY", "zen-test")
@@ -430,8 +435,8 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 }
 
 func TestEveryEmbeddedGoModelHasAnEndpoint(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
-	body, err := openCodeSnapshotFiles.ReadFile("opencode_snapshot/opencode-go-models.json")
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
+	body, err := os.ReadFile("../../providers/opencode/snapshot/opencode-go-models.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +454,7 @@ func TestEveryEmbeddedGoModelHasAnEndpoint(t *testing.T) {
 				"model": "opencode-go:" + item.ID, "input": []any{map[string]string{"role": "user", "content": "task"}},
 				"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 			}), &service)
-			if service.format(item.ID) == "" {
+			if service.Format(item.ID) == "" {
 				if err == nil {
 					t.Fatal("model without provider format was advertised")
 				}

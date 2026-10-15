@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/providers/grok"
 )
 
 func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
@@ -75,7 +77,7 @@ func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
 				defer upstream.Close()
 				provider := newProviderClient("http://unused.invalid", nil)
 				provider.thirdPartyOnly = true
-				provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: newGrokAuth("", "grok-fixture-only"), unprefixed: unprefixed}
+				provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-fixture-only", withDialTimeout(nil)), unprefixed: unprefixed}
 				mux := http.NewServeMux()
 				endpoint := responsesWebSocketHandler(ctx, time.Minute, provider, nil, nil)
 				defer endpoint.Close()

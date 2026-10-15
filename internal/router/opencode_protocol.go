@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -22,19 +24,19 @@ type openCodeReasoning struct {
 
 const openCodeReasoningPrefix = "mekugi-opencode-v1:"
 
-func sealOpenCodeReasoning(service *openCodeService, model string, item any) string {
-	data := responses.MustMarshalJSON(openCodeReasoning{Provider: service.prefix, Model: model, Item: responses.MustMarshalJSON(item)})
+func sealOpenCodeReasoning(service *opencode.Service, model string, item any) string {
+	data := responses.MustMarshalJSON(openCodeReasoning{Provider: service.Prefix, Model: model, Item: responses.MustMarshalJSON(item)})
 	return openCodeReasoningPrefix + base64.RawStdEncoding.EncodeToString(data)
 }
 
-func restoreOpenCodeReasoning(service *openCodeService, model, value string) (map[string]any, error) {
+func restoreOpenCodeReasoning(service *opencode.Service, model, value string) (map[string]any, error) {
 	encoded, ok := strings.CutPrefix(value, openCodeReasoningPrefix)
 	if !ok {
 		return nil, incompatibleRequest("opencode_encrypted_history", "OpenCode cannot read foreign encrypted reasoning; start a fresh thread or use fork_turns=none.")
 	}
 	data, err := base64.RawStdEncoding.DecodeString(encoded)
 	var envelope openCodeReasoning
-	if err != nil || json.Unmarshal(data, &envelope) != nil || envelope.Provider != service.prefix || envelope.Model != model {
+	if err != nil || json.Unmarshal(data, &envelope) != nil || envelope.Provider != service.Prefix || envelope.Model != model {
 		return nil, incompatibleRequest("opencode_encrypted_history", "OpenCode reasoning belongs to another service or model; start a fresh thread.")
 	}
 	var item map[string]any
@@ -42,8 +44,8 @@ func restoreOpenCodeReasoning(service *openCodeService, model, value string) (ma
 		return nil, errors.New("invalid retained OpenCode reasoning")
 	}
 	kind, _ := item["type"].(string)
-	if service.format(model) == "anthropic" && (kind == "thinking" || kind == "redacted_thinking") ||
-		service.format(model) == "responses" && kind == "reasoning" {
+	if service.Format(model) == "anthropic" && (kind == "thinking" || kind == "redacted_thinking") ||
+		service.Format(model) == "responses" && kind == "reasoning" {
 		return item, nil
 	}
 	return nil, errors.New("invalid retained OpenCode reasoning type")

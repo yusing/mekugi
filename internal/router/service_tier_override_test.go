@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -384,8 +386,8 @@ func TestSubagentStartServiceTier(t *testing.T) {
 }
 
 func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
-	for _, service := range []openCodeService{{}, {prefix: "opencode-go"}, {prefix: "opencode-zen"}} {
-		if service.prefix == "" {
+	for _, service := range []opencode.Service{{}, {Prefix: "opencode-go"}, {Prefix: "opencode-zen"}} {
+		if service.Prefix == "" {
 			tr, err := translateProviderRequest([]byte(`{"model":"grok:grok-4.6","service_tier":"fast","input":[]}`), nil)
 			if err != nil {
 				t.Fatal(err)
@@ -396,14 +398,14 @@ func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
 			continue
 		}
 		formats := make(map[string]bool)
-		for _, model := range service.models() {
-			format := service.format(model.id)
+		for _, model := range service.Models() {
+			format := service.Format(model.ID)
 			if formats[format] {
 				continue
 			}
 			formats[format] = true
-			t.Run(service.prefix+"/"+format, func(t *testing.T) {
-				body := mustTestJSON(t, map[string]any{"model": service.prefix + ":" + model.id, "service_tier": "fast", "input": []any{}})
+			t.Run(service.Prefix+"/"+format, func(t *testing.T) {
+				body := mustTestJSON(t, map[string]any{"model": service.Prefix + ":" + model.ID, "service_tier": "fast", "input": []any{}})
 				tr, err := translateProviderRequest(body, &service)
 				if err != nil {
 					t.Fatal(err)

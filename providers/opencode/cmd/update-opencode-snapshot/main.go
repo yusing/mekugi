@@ -22,7 +22,7 @@ var modelURLs = map[string]string{
 }
 
 func main() {
-	output := flag.String("output", "opencode_snapshot", "snapshot output directory")
+	output := flag.String("output", "snapshot", "snapshot output directory")
 	flag.Parse()
 	if err := run(*output); err != nil {
 		fmt.Fprintln(os.Stderr, err)

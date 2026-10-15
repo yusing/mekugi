@@ -5,14 +5,16 @@ import (
 	"os"
 	"testing"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/internal/router"
 )
 
 func TestPrepareOpenCodeCatalog(t *testing.T) {
 	executable := catalogTestExecutable(t)
-	config := router.OpenCodeConfig{
-		Go:  router.OpenCodeServiceConfig{APIKey: "go-private"},
-		Zen: router.OpenCodeServiceConfig{APIKey: "zen-private"},
+	config := opencode.Config{
+		Go:  opencode.ServiceConfig{APIKey: "go-private"},
+		Zen: opencode.ServiceConfig{APIKey: "zen-private"},
 	}
 	directory, path, err := prepareProviderCatalog(t.Context(), executable, nil, router.Session{ThirdPartyOnly: true, OpenCode: config})
 	if err != nil {

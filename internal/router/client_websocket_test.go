@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/providers/grok"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
 )
@@ -754,7 +756,7 @@ func TestProviderWebSocketLeavesGrokOnHTTP(t *testing.T) {
 	client := newProviderClient("http://127.0.0.1:1", nil)
 	client.enableWebSockets(t.Context())
 	defer client.websockets.close()
-	client.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: newGrokAuth("", "grok-test")}
+	client.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-test", withDialTimeout(nil))}
 	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)

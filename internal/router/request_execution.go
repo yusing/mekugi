@@ -237,8 +237,8 @@ func (a *requestAttempt) prepareWire() error {
 	if client != nil {
 		for _, prefix := range []string{"opencode-go", "opencode-zen"} {
 			if client.opencode[prefix] != nil {
-				for _, model := range client.opencode[prefix].openCode.models() {
-					openCodeModels = append(openCodeModels, prefix+":"+model.id)
+				for _, model := range client.opencode[prefix].openCode.Models() {
+					openCodeModels = append(openCodeModels, prefix+":"+model.ID)
 				}
 			}
 		}

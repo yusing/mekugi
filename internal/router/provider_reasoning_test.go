@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -16,7 +18,7 @@ func TestProviderReasoningStreamsBeforeText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-key"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "go-key"}}).Services()[0]
 	anthropic := testOpenCodeTranslation(t, &service, "minimax-m3", "anthropic", []any{map[string]string{"type": "custom", "name": "exec"}})
 	responses := testOpenCodeTranslation(t, &service, "grok-4.6", "responses", []any{map[string]string{"type": "custom", "name": "exec"}})
 	for _, test := range []struct {
@@ -130,7 +132,7 @@ func TestProviderReasoningAfterTextIsDeferred(t *testing.T) {
 // Messages and Responses routes cannot replay summary-only reasoning, so a
 // visible block that closes before its retained item keeps no summary.
 func TestProviderReasoningWithoutRetainedItemIsNotReplayed(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-key"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "go-key"}}).Services()[0]
 	tr := testOpenCodeTranslation(t, &service, "grok-4.6", "responses", nil)
 	result, err := tr.codec.Read(io.NopCloser(strings.NewReader(openCodeEvents(
 		map[string]any{"type": "response.reasoning_text.delta", "output_index": 0, "delta": "unsigned"},
@@ -141,15 +143,15 @@ func TestProviderReasoningWithoutRetainedItemIsNotReplayed(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := append(result["output"].([]any), map[string]string{"role": "user", "content": "next"})
-	if _, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": service.prefix + ":grok-4.6", "input": history}), &service); err != nil {
+	if _, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": service.Prefix + ":grok-4.6", "input": history}), &service); err != nil {
 		t.Fatalf("history with an unsigned visible block does not replay: %v", err)
 	}
 }
 
 // Chat reasoning split around text replays whole on its assistant.
 func TestOpenCodeChatReasoningAroundTextReplays(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
-	model := service.prefix + ":" + openCodeTestModel(service)
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
+	model := service.Prefix + ":" + openCodeTestModel(service)
 	history := []any{map[string]string{"role": "user", "content": "Question"}}
 	tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
 	if err != nil {

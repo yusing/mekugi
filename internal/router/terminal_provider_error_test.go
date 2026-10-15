@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/providers/opencode"
 )
 
 // Cover streamed and non-streamed provider failures through request delivery.
@@ -91,16 +93,14 @@ func TestAdaptedProviderErrorDelivery(t *testing.T) {
 	for _, format := range []string{"chat", "responses", "anthropic"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(format+map[bool]string{false: "/json", true: "/stream"}[stream], func(t *testing.T) {
-				service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "provider-secret"}}).services()[0]
-				service.snapshot = &openCodeSnapshot{Models: map[string]map[string]openCodeMetadata{
-					"opencode-go": {"test": {Format: format}},
-				}}
+				service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "provider-secret"}}).Services()[0]
+				service.Catalog = openCodeTestService(t, map[string]opencode.Metadata{"test": {Format: format}}).Catalog
 				payload := `{"type":"error","error":{"type":"invalid_request_error","message":"actual rejection provider-secret caller-secret"}}`
 				if format == "responses" {
 					payload = `{"type":"response.failed","response":{"status":"failed","error":{"code":"invalid_request_error","message":"actual rejection provider-secret caller-secret"}}}`
 				}
 				provider := newProviderClient("http://unused.invalid", nil)
-				provider.opencode = map[string]*grokClient{service.prefix: {
+				provider.opencode = map[string]*grokClient{service.Prefix: {
 					openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}},
 							Body: io.NopCloser(strings.NewReader("data: " + payload + "\n\n"))}, nil

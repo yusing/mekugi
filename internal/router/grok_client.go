@@ -11,13 +11,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 type grokClient struct {
 	httpClient        *http.Client
-	openCode          *openCodeService
-	auth              *grokAuth
+	openCode          *opencode.Service
+	auth              *grok.Auth
 	unprefixed        bool
 	streamIdleTimeout time.Duration
 }
@@ -25,11 +28,11 @@ type grokClient struct {
 func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header) (*http.Response, error) {
 	service := g.openCode
 	if service != nil {
-		if service.catalog != nil {
+		if service.Catalog != nil {
 			// Refresh metadata only, never retry an inference request.
-			_ = service.catalog.refresh(startCtx, false)
+			_ = service.Catalog.Refresh(startCtx, false)
 		}
-		pinned := service.pin()
+		pinned := service.Pin()
 		service = &pinned
 	}
 	tr, err := translateProviderRequest(body, service)
@@ -37,33 +40,38 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		return nil, err
 	}
 	label := "Grok"
-	var credentials grokCredentials
+	var credentials struct {
+		endpoint string
+		headers  http.Header
+	}
 	if g.openCode != nil {
-		label = g.openCode.label
-		credentials = grokCredentials{endpoint: g.openCode.endpoint, headers: http.Header{
-			"Authorization": {"Bearer " + g.openCode.apiKey}, "User-Agent": {"mekugi"},
-		}}
-		if session := openCodeSessionID(g.openCode.prefix, headers.Get(threadIDHeader)); session != "" {
+		label = g.openCode.Label
+		credentials.endpoint = g.openCode.Endpoint
+		credentials.headers = http.Header{
+			"Authorization": {"Bearer " + g.openCode.APIKey}, "User-Agent": {"mekugi"},
+		}
+		if session := openCodeSessionID(g.openCode.Prefix, headers.Get(threadIDHeader)); session != "" {
 			credentials.headers.Set("x-opencode-session", session)
 		}
 		switch tr.format {
 		case "anthropic":
-			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/messages"
+			credentials.endpoint = strings.TrimSuffix(g.openCode.Endpoint, "/chat/completions") + "/messages"
 			credentials.headers.Del("Authorization")
-			credentials.headers.Set("x-api-key", g.openCode.apiKey)
+			credentials.headers.Set("x-api-key", g.openCode.APIKey)
 			credentials.headers.Set("anthropic-version", "2023-06-01")
 		case "responses":
-			credentials.endpoint = strings.TrimSuffix(g.openCode.endpoint, "/chat/completions") + "/responses"
+			credentials.endpoint = strings.TrimSuffix(g.openCode.Endpoint, "/chat/completions") + "/responses"
 		}
 	} else {
-		credentials, err = g.auth.credentials(startCtx)
+		selected, authErr := g.auth.Credentials(startCtx)
+		credentials.endpoint, credentials.headers, err = selected.Endpoint, selected.Headers, authErr
 		if err != nil {
 			return nil, err
 		}
-		if tr.body["model"] == "grok-4.7-build-fast" && g.auth.apiKey != "" {
+		if tr.body["model"] == "grok-4.7-build-fast" && g.auth.UsesAPIKey() {
 			return nil, incompatibleRequest("grok_fast_requires_build", "Grok 4.7 Build Fast requires Grok OAuth; it is not available on the public xAI API.")
 		}
-		if g.auth.apiKey == "" {
+		if !g.auth.UsesAPIKey() {
 			credentials.headers.Set("X-Grok-Model-Override", tr.body["model"].(string))
 		}
 	}
@@ -91,14 +99,15 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		cancel()
 		return nil, fmt.Errorf("%s request failed: %w", label, forwardCriticalDiagnostic(err))
 	}
-	if response.StatusCode == http.StatusUnauthorized && g.openCode == nil && g.auth.apiKey == "" {
+	if response.StatusCode == http.StatusUnauthorized && g.openCode == nil && !g.auth.UsesAPIKey() {
 		response.Body.Close()
-		if _, err := g.auth.refresh(startCtx, strings.TrimPrefix(credentials.headers.Get("Authorization"), "Bearer ")); err != nil {
+		if err := g.auth.Refresh(startCtx, strings.TrimPrefix(credentials.headers.Get("Authorization"), "Bearer ")); err != nil {
 			stopStart()
 			cancel()
 			return nil, err
 		}
-		credentials, err = g.auth.credentials(startCtx)
+		selected, authErr := g.auth.Credentials(startCtx)
+		credentials.endpoint, credentials.headers, err = selected.Endpoint, selected.Headers, authErr
 		if err != nil {
 			stopStart()
 			cancel()
@@ -149,10 +158,11 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	if g.streamIdleTimeout > 0 {
 		upstream = newStreamIdleReadCloser(ctx, upstream, g.streamIdleTimeout)
 	}
-	var price *openCodePrice
-	if service != nil && service.snapshot != nil {
+	var price *opencode.Price
+	if service != nil {
 		model, _ := tr.body["model"].(string)
-		price = new(service.snapshot.Models[service.prefix][model].Cost)
+		metadata, _ := service.Model(model)
+		price = new(metadata.Cost)
 	}
 	failureDetail := func(body []byte) string {
 		return newProviderHTTPError(label, 0, body, credentials.headers, headers).Error()
@@ -195,7 +205,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 type grokResponseBody struct {
 	io.Reader
 	close         func() error
-	openCodePrice *openCodePrice
+	openCodePrice *opencode.Price
 	terminalError func() error
 }
 

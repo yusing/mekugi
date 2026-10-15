@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/providers/grok"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -97,7 +99,7 @@ func TestGrokClientDeliversFailureBeforeReadError(t *testing.T) {
 		io.WriteString(w, "data: {\"error\":{\"message\":\"private-provider-content\"}}\n\n")
 	}))
 	defer server.Close()
-	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: newGrokAuth("", "xai-test")}
+	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", withDialTimeout(nil))}
 	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +144,7 @@ type grokFailureReader struct{ err error }
 func (r grokFailureReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestGrokClientFailedTerminalRetainsTimeoutAccounting(t *testing.T) {
-	client := &grokClient{auth: newGrokAuth("", "test"), httpClient: &http.Client{
+	client := &grokClient{auth: grok.NewAuth("", "test", withDialTimeout(nil)), httpClient: &http.Client{
 		Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK,
 				Header: http.Header{"Content-Type": []string{"text/event-stream"}},

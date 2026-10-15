@@ -90,15 +90,19 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 			models = append(models, entry)
 		}
 	}
-	for _, service := range session.OpenCode.services() {
-		for _, definition := range service.models() {
+	for _, service := range session.OpenCode.Services() {
+		for _, definition := range service.Models() {
 			entry := maps.Clone(model)
-			slug := service.prefix + ":" + definition.id
+			levels := []map[string]string{}
+			for _, effort := range definition.Efforts {
+				levels = append(levels, map[string]string{"effort": effort, "description": effort + " reasoning"})
+			}
+			slug := service.Prefix + ":" + definition.ID
 			for key, value := range map[string]any{
 				"slug": slug, "display_name": slug,
 				"description":    definition.Description,
 				"context_window": definition.Context, "max_context_window": definition.Context,
-				"default_reasoning_level": nil, "supported_reasoning_levels": definition.reasoningLevels(),
+				"default_reasoning_level": nil, "supported_reasoning_levels": levels,
 				"input_modalities": definition.Modalities,
 			} {
 				entry[key] = responses.MustMarshalJSON(value)

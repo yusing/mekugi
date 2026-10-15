@@ -1,4 +1,4 @@
-package router
+package grok
 
 import (
 	"context"
@@ -17,6 +17,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
+// Source: internal/router/grok_auth.go:20:251@[18475aaf] authentication.
 const (
 	grokIssuer        = "https://auth.x.ai"
 	grokOAuthClientID = "b1a00492-073a-47ea-816f-4c329264a828"
@@ -25,53 +26,53 @@ const (
 	grokAuthLimit     = 1 << 20
 )
 
-type grokAuth struct {
+type Auth struct {
 	path       string
 	apiKey     string
 	httpClient *http.Client
-	now        func() time.Time
 }
-type grokCredentials struct {
-	endpoint string
-	headers  http.Header
+type Credentials struct {
+	Endpoint string
+	Headers  http.Header
 }
 
-func newGrokAuth(path, apiKey string) *grokAuth {
-	client := withDialTimeout(nil)
+// NewAuth copies the invocation's transport and enforces credential redirect policy.
+func NewAuth(path, apiKey string, transport *http.Client) *Auth {
+	client := *transport
 	// Neither inference nor OIDC credentials may follow a redirect to a new host.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &grokAuth{path: path, apiKey: strings.TrimSpace(apiKey), httpClient: client, now: time.Now}
+	return &Auth{path: path, apiKey: strings.TrimSpace(apiKey), httpClient: &client}
 }
-func (a *grokAuth) credentials(ctx context.Context) (grokCredentials, error) {
+func (a *Auth) Credentials(ctx context.Context) (Credentials, error) {
 	if a.apiKey != "" {
-		return grokCredentials{endpoint: grokAPIEndpoint, headers: http.Header{"Authorization": []string{"Bearer " + a.apiKey}, "User-Agent": []string{"mekugi"}}}, nil
+		return Credentials{Endpoint: grokAPIEndpoint, Headers: http.Header{"Authorization": []string{"Bearer " + a.apiKey}, "User-Agent": []string{"mekugi"}}}, nil
 	}
 	_, entry, err := a.read()
 	if err != nil {
-		return grokCredentials{}, err
+		return Credentials{}, err
 	}
 	expiry, err := time.Parse(time.RFC3339Nano, responses.StringField(entry, "expires_at"))
 	if err != nil {
-		return grokCredentials{}, errors.New("grok OAuth expiry is invalid; run grok login")
+		return Credentials{}, errors.New("grok OAuth expiry is invalid; run grok login")
 	}
-	if !expiry.After(a.now().Add(time.Minute)) {
+	if !expiry.After(time.Now().Add(time.Minute)) {
 		entry, err = a.refresh(ctx, "")
 		if err != nil {
-			return grokCredentials{}, err
+			return Credentials{}, err
 		}
 	}
 	token := responses.StringField(entry, "key")
 	if token == "" {
-		return grokCredentials{}, errors.New("grok access token is missing; run grok login")
+		return Credentials{}, errors.New("grok access token is missing; run grok login")
 	}
-	return grokCredentials{endpoint: grokProxyEndpoint, headers: http.Header{
+	return Credentials{Endpoint: grokProxyEndpoint, Headers: http.Header{
 		"Authorization": []string{"Bearer " + token}, "X-Xai-Token-Auth": []string{"xai-grok-cli"},
 		"X-Grok-Client-Identifier": []string{"mekugi"},
 		// The proxy gates its CLI wire protocol independently of our user agent.
 		"X-Grok-Client-Version": []string{"1.0.13"}, "X-Grok-Client-Mode": []string{"headless"}, "User-Agent": []string{"mekugi"},
 	}}, nil
 }
-func (a *grokAuth) read() (map[string]json.RawMessage, map[string]json.RawMessage, error) {
+func (a *Auth) read() (map[string]json.RawMessage, map[string]json.RawMessage, error) {
 	info, err := os.Lstat(a.path)
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, nil, errors.New("grok credential store must be an existing regular file; run grok login or set XAI_API_KEY")
@@ -99,7 +100,7 @@ func (a *grokAuth) read() (map[string]json.RawMessage, map[string]json.RawMessag
 	return store, entry, nil
 }
 
-func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[string]json.RawMessage, error) {
+func (a *Auth) refresh(ctx context.Context, rejectedToken string) (map[string]json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	lockPath := filepath.Join(filepath.Dir(a.path), "auth.json.lock")
@@ -126,7 +127,7 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	defer stamp.Close()
 	writeStamp := func() {
 		_ = stamp.Truncate(0)
-		_, _ = stamp.WriteAt([]byte(fmt.Sprintf("%d:%d", os.Getpid(), a.now().Unix())), 0)
+		_, _ = stamp.WriteAt([]byte(fmt.Sprintf("%d:%d", os.Getpid(), time.Now().Unix())), 0)
 		_ = stamp.Sync()
 	}
 	writeStamp()
@@ -156,7 +157,7 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	if err != nil {
 		return nil, errors.New("invalid Grok OAuth expiry")
 	}
-	if expiry.After(a.now().Add(time.Minute)) && (rejectedToken == "" || responses.StringField(entry, "key") != rejectedToken) {
+	if expiry.After(time.Now().Add(time.Minute)) && (rejectedToken == "" || responses.StringField(entry, "key") != rejectedToken) {
 		return entry, nil
 	}
 	refresh := responses.StringField(entry, "refresh_token")
@@ -204,14 +205,14 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	if tokens.RefreshToken != "" {
 		entry["refresh_token"] = responses.MustMarshalJSON(tokens.RefreshToken)
 	}
-	entry["expires_at"] = responses.MustMarshalJSON(a.now().Add(time.Duration(tokens.ExpiresIn) * time.Second).UTC().Format(time.RFC3339Nano))
+	entry["expires_at"] = responses.MustMarshalJSON(time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second).UTC().Format(time.RFC3339Nano))
 	store[grokIssuer+"::"+grokOAuthClientID] = responses.MustMarshalJSON(entry)
 	if err := writeGrokCredentials(a.path, responses.MustMarshalJSON(store)); err != nil {
 		return nil, err
 	}
 	return entry, nil
 }
-func (a *grokAuth) authJSON(request *http.Request, target any) error {
+func (a *Auth) authJSON(request *http.Request, target any) error {
 	response, err := a.httpClient.Do(request)
 	if err != nil {
 		return errors.Join(request.Context().Err(), errors.New("grok OAuth request failed"))
@@ -248,4 +249,12 @@ func writeGrokCredentials(path string, data []byte) error {
 		return errors.New("cannot commit refreshed Grok credentials; run grok login")
 	}
 	return nil
+}
+
+func (a *Auth) UsesAPIKey() bool { return a.apiKey != "" }
+
+// Refresh retries rejected credentials without exposing private store records.
+func (a *Auth) Refresh(ctx context.Context, rejectedToken string) error {
+	_, err := a.refresh(ctx, rejectedToken)
+	return err
 }

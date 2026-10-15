@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/providers/opencode"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -61,7 +63,7 @@ func openCodeResponsesFixture() string {
 }
 
 func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "go-key"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "go-key"}}).Services()[0]
 	for _, test := range []struct {
 		model, path, fixture, retained string
 	}{
@@ -72,7 +74,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 			for iteration := range 20 {
 				stream := iteration != 0
 				request := map[string]any{
-					"model": service.prefix + ":" + test.model, "stream": stream,
+					"model": service.Prefix + ":" + test.model, "stream": stream,
 					"input": []any{map[string]any{"role": "user", "content": []any{
 						map[string]string{"type": "input_text", "text": "task"},
 						map[string]string{"type": "input_image", "image_url": "data:image/png;base64,AA=="},
@@ -148,7 +150,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 					!bytes.Contains(wire, []byte("call1")) {
 					t.Fatalf("opaque reasoning/tool replay lost: %s", wire)
 				}
-				request["model"] = service.prefix + ":glm-5.3"
+				request["model"] = service.Prefix + ":glm-5.3"
 				if _, err := translateProviderRequest(mustTestJSON(t, request), &service); err == nil {
 					t.Fatal("foreign-format encrypted history accepted by Chat route")
 				}
@@ -158,7 +160,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 }
 
 func TestOpenCodeEndpointStreamsRejectPartialTools(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	for _, test := range []struct{ model, fixture, terminal string }{
 		{"minimax-m2.7", openCodeAnthropicFixture(), `data: {"type":"message_stop"}`},
 		{"grok-4.6", openCodeResponsesFixture(), `data: {"response":`},
@@ -169,7 +171,7 @@ func TestOpenCodeEndpointStreamsRejectPartialTools(t *testing.T) {
 				t.Fatal("fixture terminal not found")
 			}
 			tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
-				"model": service.prefix + ":" + test.model, "input": []any{},
+				"model": service.Prefix + ":" + test.model, "input": []any{},
 				"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 			}), &service)
 			if err != nil {
@@ -195,7 +197,7 @@ func TestOpenCodeEndpointStreamsRejectPartialTools(t *testing.T) {
 }
 
 func TestOpenCodeResponsesRefusal(t *testing.T) {
-	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
+	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	for _, streamed := range []bool{false, true} {
 		item := map[string]any{"type": "message", "id": "msg_refusal", "role": "assistant", "content": []any{
 			map[string]string{"type": "refusal", "refusal": "Cannot fulfill that request."},
@@ -250,11 +252,7 @@ func TestOpenCodeSessionAffinity(t *testing.T) {
 }
 
 func TestOpenCodeMessagesCombinesReasoningAndStructuredOutput(t *testing.T) {
-	service := openCodeService{prefix: "opencode-go", snapshot: &openCodeSnapshot{
-		Models: map[string]map[string]openCodeMetadata{
-			"opencode-go": {"test": {Format: "anthropic", Efforts: []string{"high"}}},
-		},
-	}}
+	service := openCodeTestService(t, map[string]opencode.Metadata{"test": {Format: "anthropic", Efforts: []string{"high"}}})
 	tr, err := translateProviderRequest([]byte(`{
 		"model":"opencode-go:test","input":[],
 		"reasoning":{"effort":"high"},
@@ -289,7 +287,7 @@ func TestOpenCodeEndpointTextStreamsBeforeCompletion(t *testing.T) {
 			upstream, producer := io.Pipe()
 			defer upstream.Close()
 			defer producer.Close()
-			tr := testOpenCodeTranslation(t, &openCodeService{prefix: "opencode-go"}, "test", format, nil)
+			tr := testOpenCodeTranslation(t, &opencode.Service{Prefix: "opencode-go"}, "test", format, nil)
 			text := make(chan struct{}, 1)
 			result := make(chan error, 1)
 			go func() {
@@ -355,7 +353,7 @@ func TestOpenCodeEndpointWriteFailureStopsConsumption(t *testing.T) {
 			upstream, producer := io.Pipe()
 			defer upstream.Close()
 			defer producer.Close()
-			tr := testOpenCodeTranslation(t, &openCodeService{prefix: "opencode-go"}, "test", format, nil)
+			tr := testOpenCodeTranslation(t, &opencode.Service{Prefix: "opencode-go"}, "test", format, nil)
 			failure := errors.New("downstream closed")
 			writes := 0
 			_, err := tr.codec.Read(upstream, func(map[string]any) error {
