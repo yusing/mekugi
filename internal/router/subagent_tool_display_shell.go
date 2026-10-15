@@ -697,7 +697,7 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 			add(label, value)
 		}
 	case "mcat":
-		specs, _, err := read.Parse(argv[1:])
+		specs, _, err := (read.Service{}).Parse(argv[1:])
 		if err != nil {
 			return "", false
 		}

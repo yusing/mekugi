@@ -59,7 +59,7 @@ func TestRegisteredOutlineMatchesSnapshotWithoutRuntime(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package replaced\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := outline.InspectSource(t.Context(), path, []byte(source))
+	snapshot, err := (outline.Service{}).InspectSource(t.Context(), path, []byte(source))
 	if err != nil || snapshot != got.Stdout {
 		t.Fatalf("snapshot=%q err=%v, want %q", snapshot, err, got.Stdout)
 	}

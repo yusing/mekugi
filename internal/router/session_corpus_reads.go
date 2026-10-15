@@ -72,7 +72,7 @@ func corpusReadSelections(script string) []corpusReadSelection {
 		if len(args) < 2 || args[0] != "mcat" {
 			return false
 		}
-		specs, _, err := read.Parse(args[1:])
+		specs, _, err := (read.Service{}).Parse(args[1:])
 		if err != nil {
 			return false
 		}

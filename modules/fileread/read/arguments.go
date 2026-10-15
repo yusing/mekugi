@@ -22,7 +22,7 @@ type Selection struct {
 }
 
 // Parse validates argv and expands source selections without reading content.
-func Parse(args []string) ([]Selection, int, error) {
+func (Service) Parse(args []string) ([]Selection, int, error) {
 	selections, options, err := parse(args)
 	if err != nil {
 		return nil, 0, err

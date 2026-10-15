@@ -45,7 +45,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Reserved MCP endpoint lifetime and stdio bridge | `internal/router/mcp_server.go`, `internal/router/mcp_bridge.go`; no normal-startup consumer |
 | Agent roster presentation | `internal/router/native_roster.go`; native assignments in `internal/router/native_activity_assignments.go` |
 | Saved Diff caller filtering and capture attribution | `internal/router/live_diff_data.go`, `internal/router/mekugi_store.go`; composition in `internal/livediff/model.go` |
-| Inactive instruction-file loading | `internal/router/context_reset_guidance.go` and platform file-open helpers; no production caller |
+| Inactive instruction-file loading | `modules/contextreset`; supplied-history decoding in `codexbinding`, bounded source collection in `guidance`; no production caller |
 | Projected frontend guidance | Source: `guidance/frontend_guidance.md.tmpl`; generated output: `internal/router/frontend_guidance.md`; embedding: `internal/router/frontend_guidance.go`. Generation/check: `TestGeneratedFrontendGuidanceIsCurrent` in `internal/router/frontend_guidance_generation_test.go`. Executable tool sources own their descriptions. |
 | Inherited instruction conflict cleanup and prepared-request role projection | `internal/router/instruction_conflicts.go`, `internal/router/instruction_cache_test.go`, `internal/router/stock_guidance_workflow_test.go`; recorded stock fixtures in `internal/router/testdata/instruction-cleanup/`, contract in `doc/spec/guide.md` |
 | AX runtime evidence and offline measurements | `capturer/ax.go`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |

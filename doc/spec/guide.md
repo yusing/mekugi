@@ -96,4 +96,4 @@ Acceptance:
    after caller overrides and selected skill wrappers reach the provider as `<skill name="…"/>`.
    In passthrough mode or without `skills-mgr`, neither projection occurs.
 7. Compaction uses the host/provider path without a recovery-injection hook. The retained
-   inactive instruction-file loader has a separate [contract](context_reset.md).
+   inactive instruction-file loader has a separate [contract](../../modules/contextreset/SPEC.md).

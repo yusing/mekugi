@@ -1,9 +1,7 @@
 package router
 
 import (
-	"bytes"
 	"cmp"
-	"encoding/xml"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -12,31 +10,6 @@ import (
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
-
-// Managed skills have a name, but no Codex filesystem path. Their instructions
-// live in the same durable attachment envelope as file snapshots.
-type composerSkillReference struct {
-	XMLName xml.Name `xml:"skill"`
-	Name    string   `xml:"name,attr"`
-}
-
-func managedSkillReference(name string) string {
-	var escaped bytes.Buffer
-	_ = xml.EscapeText(&escaped, []byte(name))
-	return `<skill name="` + escaped.String() + `"/>`
-}
-
-func selectedSkillSource(text string) (name, path string) {
-	if name, path = selectedSkillInstructions(text); name != "" {
-		return name, path
-	}
-	text = strings.TrimSpace(text)
-	var reference composerSkillReference
-	if xml.Unmarshal([]byte(text), &reference) != nil || reference.Name == "" || text != managedSkillReference(reference.Name) {
-		return "", ""
-	}
-	return reference.Name, ""
-}
 
 func composerContentSkills(content []composerUserContent) []composerSkill {
 	var skills []composerSkill

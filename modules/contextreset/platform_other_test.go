@@ -1,6 +1,6 @@
 //go:build !unix
 
-package router
+package contextreset_test
 
 import (
 	jsonv1 "encoding/json"
@@ -24,7 +24,7 @@ func TestResetGuidanceUnavailablePlatform(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, err := json.Marshal([]map[string]any{
-		{"type": "function_call", "name": nativeExecCommandToolName, "call_id": "read", "arguments": string(arguments)},
+		{"type": "function_call", "name": "exec_command", "call_id": "read", "arguments": string(arguments)},
 		{"type": "function_call_output", "call_id": "read", "output": "read complete"},
 	})
 	if err != nil {
@@ -34,7 +34,7 @@ func TestResetGuidanceUnavailablePlatform(t *testing.T) {
 	if err := json.Unmarshal(data, &items); err != nil {
 		t.Fatal(err)
 	}
-	got := collectResetGuidance(t.Context(), items, "Read POLICY.md.", workspace, nil, nil)
+	got := collectResetGuidance(t, items, "Read POLICY.md.", workspace, nil, nil)
 	if got == nil || len(got.Commands) != 0 || got.Name != "" || got.Tool != "" {
 		t.Fatalf("unsupported snapshot admitted guidance: %+v", got)
 	}

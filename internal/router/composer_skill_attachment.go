@@ -41,23 +41,23 @@ func readManagedSkill(ctx context.Context, cwd string, environment []string, nam
 
 // Native selections keep their source path. Managed metadata placeholders
 // identify a manager-owned skill, not a file containing its instructions.
-func readSkillAttachment(ctx context.Context, cwd string, environment []string, skill composerSkill) ([]byte, bool, error) {
-	managed := skill.path == ""
-	if skill.path != "" {
-		if !filepath.IsAbs(skill.path) {
+func readSkillAttachment(ctx context.Context, cwd string, environment []string, name, path string) ([]byte, bool, error) {
+	managed := path == ""
+	if path != "" {
+		if !filepath.IsAbs(path) {
 			return nil, false, fmt.Errorf("skill metadata requires an absolute path")
 		}
-		_, markerErr := os.Stat(filepath.Join(filepath.Dir(skill.path), ".skills-mgr-placeholder"))
+		_, markerErr := os.Stat(filepath.Join(filepath.Dir(path), ".skills-mgr-placeholder"))
 		managed = markerErr == nil
 		if markerErr != nil && !os.IsNotExist(markerErr) {
 			return nil, false, markerErr
 		}
 	}
 	if managed {
-		data, err := readManagedSkill(ctx, cwd, environment, skill.name)
+		data, err := readManagedSkill(ctx, cwd, environment, name)
 		return data, true, err
 	}
-	data, err := readComposerFile(skill.path)
+	data, err := readComposerFile(path)
 	return data, false, err
 }
 func frameComposerSkillFromPath(name, path, content string) []string {
@@ -101,7 +101,7 @@ func (d *composerDraft) snapshotSkillAttachments(cwd string, environment []strin
 			header += fmt.Sprintf(" from %q", skill.path)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		data, _, err := readSkillAttachment(ctx, cwd, environment, skill)
+		data, _, err := readSkillAttachment(ctx, cwd, environment, skill.name, skill.path)
 		cancel()
 		next := frameComposerSkillFromPath(skill.name, skill.path, string(data))
 		var more bool

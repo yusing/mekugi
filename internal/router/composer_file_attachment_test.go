@@ -229,7 +229,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 				}
 				text := selected
 				if test.compact {
-					text = managedSkillReference(name)
+					text = attachments.ManagedSkillReference(name)
 				}
 				var content any = text
 				if multipart {

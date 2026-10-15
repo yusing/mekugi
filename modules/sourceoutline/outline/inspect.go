@@ -104,7 +104,7 @@ func inspectNativePath(ctx context.Context, path string) (inspectionData, error)
 
 // InspectSource uses the same structural renderer as inspect_file on a caller's
 // already-opened snapshot, without reopening a path or executing a frontend.
-func InspectSource(ctx context.Context, path string, bytes []byte) (string, error) {
+func (Service) InspectSource(ctx context.Context, path string, bytes []byte) (string, error) {
 	data := inspectionData{Path: filepath.ToSlash(path), Size: int64(len(bytes)), Complete: true}
 	format, ok := sourcekind.Classify(path)
 	if !ok || !format.Outline {

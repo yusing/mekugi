@@ -1,6 +1,6 @@
 //go:build unix
 
-package router
+package guidance
 
 import (
 	"os"
@@ -11,7 +11,7 @@ import (
 
 // Pin each directory without following links. This closes the replacement race
 // after EvalSymlinks, including links in an ancestor rather than the final file.
-func openResetGuidanceFile(path string) (*os.File, error) {
+func openSource(path string) (*os.File, error) {
 	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, err

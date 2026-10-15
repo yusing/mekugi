@@ -40,7 +40,7 @@ func TestReadBundleColonPathDisambiguation(t *testing.T) {
 		t.Fatal(err)
 	}
 	operand := source + ":2"
-	_, _, err := read.Parse([]string{operand})
+	_, _, err := (read.Service{}).Parse([]string{operand})
 	want := "ranges must be separate operands; retry: " + shellCommandString("mcat", []string{source, "2:2"})
 	if err == nil || err.Error() != want {
 		t.Fatalf("nonexistent PATH:N error = %v, want %q", err, want)
@@ -48,7 +48,7 @@ func TestReadBundleColonPathDisambiguation(t *testing.T) {
 	if err := os.WriteFile(operand, []byte("literal colon path\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	specs, _, err := read.Parse([]string{operand})
+	specs, _, err := (read.Service{}).Parse([]string{operand})
 	if err != nil || len(specs) != 1 || specs[0] != (read.Selection{Path: operand}) {
 		t.Fatalf("existing literal PATH:N was parsed as a range: specs=%+v err=%v", specs, err)
 	}

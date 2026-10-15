@@ -13,7 +13,7 @@ func TestFrontendInlineBudgets(t *testing.T) {
 	workspace := t.TempDir()
 	parsers := map[string]func([]string) (int, error){
 		"mcat": func(args []string) (int, error) {
-			_, budget, err := read.Parse(append(args, "file.go"))
+			_, budget, err := (read.Service{}).Parse(append(args, "file.go"))
 			return budget, err
 		},
 		"mchanges": func(args []string) (int, error) {
@@ -42,7 +42,7 @@ func TestFrontendInlineBudgets(t *testing.T) {
 }
 
 func TestFrontendDistinctOperandPolicies(t *testing.T) {
-	if _, _, err := read.Parse([]string{"source", "1:9007199254740992"}); err == nil {
+	if _, _, err := (read.Service{}).Parse([]string{"source", "1:9007199254740992"}); err == nil {
 		t.Fatal("mcat accepted a range above the safe-integer ceiling")
 	}
 

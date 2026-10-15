@@ -207,7 +207,7 @@ func projectFileAttachments(request *parsedResponsesRequest) bool {
 		}
 	}
 	isAttachedSkill := func(text string) bool {
-		name, path := selectedSkillSource(text)
+		name, path := attachments.SelectedSkillSource(text)
 		return name != "" && (attachedSkills[name+"\x00"] || path != "" && attachedSkills[name+"\x00"+path])
 	}
 	for _, item := range items {

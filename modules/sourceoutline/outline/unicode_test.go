@@ -37,7 +37,7 @@ func TestFrontmatterUnicodeColumns(t *testing.T) {
 			if entry.Name != "next" || entry.Line != 2 || entry.LineEnd != 2 {
 				t.Fatalf("later key span: %+v", entry)
 			}
-			snapshot, err := InspectSource(t.Context(), path, []byte(source))
+			snapshot, err := (Service{}).InspectSource(t.Context(), path, []byte(source))
 			if err != nil || !strings.Contains(snapshot, "2-2 frontmatter next\n") {
 				t.Fatalf("snapshot=%q err=%v", snapshot, err)
 			}

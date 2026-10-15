@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 func skillsManagerInPath(extraDirectory string) bool {
@@ -19,42 +21,15 @@ func skillsManagerInPath(extraDirectory string) bool {
 	return err == nil
 }
 
-func selectedSkillInstructions(text string) (name, path string) {
-	const (
-		open      = "<skill>\n<name>"
-		nameClose = "</name>\n"
-		pathOpen  = "<path>"
-		pathClose = "</path>\n"
-		close     = "\n</skill>"
-	)
-	trimmed := strings.TrimSpace(text)
-	if !strings.HasPrefix(trimmed, open) || !strings.HasSuffix(trimmed, close) {
-		return "", ""
-	}
-	nameEnd := strings.Index(trimmed[len(open):], nameClose)
-	if nameEnd < 0 {
-		return "", ""
-	}
-	pathStart := len(open) + nameEnd + len(nameClose)
-	if !strings.HasPrefix(trimmed[pathStart:], pathOpen) {
-		return "", ""
-	}
-	pathEnd := strings.Index(trimmed[pathStart+len(pathOpen):], pathClose)
-	if pathEnd < 0 {
-		return "", ""
-	}
-	return trimmed[len(open) : len(open)+nameEnd], trimmed[pathStart+len(pathOpen) : pathStart+len(pathOpen)+pathEnd]
-}
-
 // rewriteSelectedSkillInstructions replaces Codex's complete selected-skill
 // injection with the skill identity consumed by skills-mgr guidance.
 func rewriteSelectedSkillInstructions(text string) string {
-	name, _ := selectedSkillInstructions(text)
+	name, _ := attachments.SelectedSkillInstructions(text)
 	if name == "" {
 		return text
 	}
 	trimmed := strings.TrimSpace(text)
-	rewritten := managedSkillReference(name)
+	rewritten := attachments.ManagedSkillReference(name)
 	start := strings.Index(text, trimmed)
 	return text[:start] + rewritten + text[start+len(trimmed):]
 }
