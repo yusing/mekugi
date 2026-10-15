@@ -727,7 +727,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 			execution.OmittedOutput = &command.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
 			retained, err := retainExecutionOutput(ctx, manifest, execution)
 			if err != nil {
-				return fail(err)
+				return command.Output{Stdout: selected, Stderr: diagnostics + fmt.Sprintf("mchanges: recovery unavailable: %v\n", err), ExitCode: 1}
 			}
 			return retained
 		}
@@ -737,7 +737,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 	if len(selected) < len(text) {
 		next, err = store.putChangeRead(ctx, snapshot, text, len(selected))
 		if err != nil {
-			return fail(err)
+			return command.Output{Stdout: selected, Stderr: fmt.Sprintf("mchanges: recovery unavailable: %v\n", err), ExitCode: 1}
 		}
 	}
 	if next != "" {
