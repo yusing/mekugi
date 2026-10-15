@@ -10,9 +10,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
@@ -151,7 +151,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 		output.Finish(new(line), new(0))
 		elapsed := time.Duration(i+1) * time.Second
 		segments = append(segments, commandSegment{source: source, text: execSegmentText(source), output: output, tail: []string{line},
-			timing: execsegment.Timing{Started: started, Ended: started.Add(elapsed), ElapsedNS: int64(elapsed)}})
+			timing: segmenttransport.Timing{Started: started, Ended: started.Add(elapsed), ElapsedNS: int64(elapsed)}})
 	}
 	command := "cat > a.go; go vet ./...; cat > b.go"
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{

@@ -28,9 +28,9 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -124,7 +124,7 @@ func run(args []string) int {
 			return 1
 		}
 		prepared = args[3]
-		if work, ok := execsegment.ReportDirectory(args[2], strings.TrimPrefix(filepath.Base(prepared), "run-")); !ok || work != prepared {
+		if work, ok := segmenttransport.ReportDirectory(args[2], strings.TrimPrefix(filepath.Base(prepared), "run-")); !ok || work != prepared {
 			return 1
 		}
 		args = []string{args[1], args[2], script}
@@ -147,9 +147,9 @@ func run(args []string) int {
 	var work string
 	var err error
 	if prepared != "" {
-		conn, answer, work, err = execsegment.OpenPreparedReport(prepared, replyTimeout)
+		conn, answer, work, err = segmenttransport.OpenPreparedReport(prepared, replyTimeout)
 	} else {
-		conn, answer, work, err = execsegment.OpenReport(channel, directory, replyTimeout)
+		conn, answer, work, err = segmenttransport.OpenReport(channel, directory, replyTimeout)
 	}
 	if err != nil {
 		return 0
@@ -159,11 +159,11 @@ func run(args []string) int {
 	if err := conn.SetWriteDeadline(time.Now().Add(replyTimeout)); err != nil {
 		return 0
 	}
-	hello := execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: os.Getenv("CODEX_THREAD_ID"), Script: script, Segments: sources, Terminal: terminal}
+	hello := segmenttransport.Message{Type: segmenttransport.Hello, Version: segmenttransport.Protocol, Thread: os.Getenv("CODEX_THREAD_ID"), Script: script, Segments: sources, Terminal: terminal}
 	if err := writeMessage(conn, hello); err != nil {
 		return 0
 	}
-	var reply execsegment.Reply
+	var reply segmenttransport.Reply
 	if line, ok := readReply(int(answer.Fd()), replyTimeout); !ok || json.Unmarshal(line, &reply) != nil || !reply.OK {
 		return 0
 	}
@@ -196,7 +196,7 @@ func run(args []string) int {
 	r.run()
 	// FIFO EOF readiness can be missed on Darwin. This final record follows
 	// every output record, including output after the shell's EXIT boundary.
-	r.report.send(execsegment.Message{Type: execsegment.Closed})
+	r.report.send(segmenttransport.Message{Type: segmenttransport.Closed})
 	r.report.close(flushTimeout)
 	return 0
 }
@@ -283,9 +283,9 @@ func (r *relay) readControl() bool {
 			continue
 		}
 		switch fields[0] {
-		case execsegment.Created:
-			var message execsegment.Message
-			if json.Unmarshal([]byte(strings.TrimPrefix(line, "c ")), &message) == nil && message.Type == execsegment.Created {
+		case segmenttransport.Created:
+			var message segmenttransport.Message
+			if json.Unmarshal([]byte(strings.TrimPrefix(line, "c ")), &message) == nil && message.Type == segmenttransport.Created {
 				message.Index = r.current
 				r.report.send(message)
 			}
@@ -296,7 +296,7 @@ func (r *relay) readControl() bool {
 				if index, err := strconv.Atoi(fields[1]); err == nil {
 					r.current = index
 					r.started = time.Now()
-					r.report.send(execsegment.Message{Type: execsegment.Begin, Index: index, Timing: execsegment.Timing{Started: r.started}})
+					r.report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: index, Timing: segmenttransport.Timing{Started: r.started}})
 					// Separate control and output pipes can become readable in
 					// either order. Let the shell produce output only after its
 					// segment identity is installed, including the first segment.
@@ -322,7 +322,7 @@ func (r *relay) readControl() bool {
 				// exit/errexit can bypass the normal end hook. The EXIT
 				// boundary ends the currently observed command, not the batch.
 				r.endSegment(r.current, code, ended)
-				r.report.send(execsegment.Message{Type: execsegment.Done, Code: new(code)})
+				r.report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(code)})
 			}
 			// The shell waits for this before its next segment starts.
 			if _, err := unix.Write(r.ack, []byte("\n")); err != nil {
@@ -350,7 +350,7 @@ func reportCreatedPath(output string) {
 	if err != nil || !info.IsDir() && !info.Mode().IsRegular() {
 		return
 	}
-	message, err := json.Marshal(execsegment.Message{Type: execsegment.Created, Data: path, Tree: info.IsDir()})
+	message, err := json.Marshal(segmenttransport.Message{Type: segmenttransport.Created, Data: path, Tree: info.IsDir()})
 	if err == nil {
 		_, _ = unix.Write(3, append(append([]byte("c "), message...), '\n'))
 	}
@@ -360,7 +360,7 @@ func (r *relay) endSegment(index, code int, ended time.Time) {
 	if index != r.current || r.started.IsZero() {
 		return
 	}
-	r.report.send(execsegment.Message{Type: execsegment.End, Index: index, Code: new(code), Timing: execsegment.Timing{Started: r.started, Ended: ended, ElapsedNS: int64(ended.Sub(r.started))}})
+	r.report.send(segmenttransport.Message{Type: segmenttransport.End, Index: index, Code: new(code), Timing: segmenttransport.Timing{Started: r.started, Ended: ended, ElapsedNS: int64(ended.Sub(r.started))}})
 	r.started = time.Time{}
 }
 
@@ -432,7 +432,7 @@ func writeAll(fd int, data []byte) bool {
 // router falls back to the command's combined output.
 type reporter struct {
 	conn     *os.File
-	messages chan execsegment.Message
+	messages chan segmenttransport.Message
 	done     chan struct{}
 	budget   int
 	created  int // Remaining createdBudget.
@@ -441,7 +441,7 @@ type reporter struct {
 }
 
 func newReporter(conn *os.File) *reporter {
-	r := &reporter{conn: conn, messages: make(chan execsegment.Message, 1024), done: make(chan struct{}), budget: reportBudget, created: createdBudget}
+	r := &reporter{conn: conn, messages: make(chan segmenttransport.Message, 1024), done: make(chan struct{}), budget: reportBudget, created: createdBudget}
 	go func() {
 		defer close(r.done)
 		writer := bufio.NewWriter(conn)
@@ -465,11 +465,11 @@ func newReporter(conn *os.File) *reporter {
 	return r
 }
 
-func (r *reporter) send(message execsegment.Message) {
+func (r *reporter) send(message segmenttransport.Message) {
 	if r.failed {
 		return
 	}
-	if message.Type == execsegment.Created {
+	if message.Type == segmenttransport.Created {
 		if r.created -= len(message.Data); r.created < 0 {
 			return
 		}
@@ -487,10 +487,10 @@ func (r *reporter) output(index int, data []byte) {
 	}
 	if r.budget -= len(data); r.budget < 0 {
 		r.lossy = true
-		r.send(execsegment.Message{Type: execsegment.Lossy})
+		r.send(segmenttransport.Message{Type: segmenttransport.Lossy})
 		return
 	}
-	r.send(execsegment.Message{Type: execsegment.Output, Index: index, Data: strings.ToValidUTF8(string(data), "�")})
+	r.send(segmenttransport.Message{Type: segmenttransport.Output, Index: index, Data: strings.ToValidUTF8(string(data), "�")})
 }
 
 func (r *reporter) close(timeout time.Duration) {
@@ -536,7 +536,7 @@ func readReply(fd int, timeout time.Duration) ([]byte, bool) {
 	}
 }
 
-func writeMessage(w io.Writer, message execsegment.Message) error {
+func writeMessage(w io.Writer, message segmenttransport.Message) error {
 	line, err := json.Marshal(message)
 	if err != nil {
 		return err

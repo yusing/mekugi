@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
@@ -109,7 +111,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	defer signal.Stop(interrupts)
 	stopStartupInterrupts := watchStartupInterrupts(ctx, cancel, interrupts)
 	defer stopStartupInterrupts()
-	frontends, err := composition.Frontends(ctx)
+	frontends, err := composition.Frontends(ctx, appUI && options.FrontendsEnabled())
 	if err != nil {
 		return 1, err
 	}
@@ -187,7 +189,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		if appUI {
 			helper = execTrackHelper()
 		}
-		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper, guard)
+		var reportEndpoints segmenttransport.Endpoints
+		if frontends.Segments.Live != nil {
+			reportEndpoints = frontends.Segments.Live.Endpoints()
+		}
+		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper, guard, reportEndpoints)
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
@@ -336,7 +342,7 @@ const frontendBashEnvMarker = "# Mekugi frontend shell startup\n"
 // A guard puts the helper ahead of the version-control tools, and defines a
 // function for each absolute path to one, in Bash, so remote writes
 // wait for the user's approval.
-func frontendShellEnvironment(environment []string, directory, helper string, guard bool) ([]string, error) {
+func frontendShellEnvironment(environment []string, directory, helper string, guard bool, reports segmenttransport.Endpoints) ([]string, error) {
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
 	// noninteractive startup file runs afterward, including for `bash -lc`.
 	previous := ""
@@ -413,7 +419,9 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	})
 	if helper != "" {
 		environment = append(environment, sudoask.DirectoryEnvironment+"="+sudoask.Path(directory))
-		socket, trackDirectory := router.ExecTrackPaths(directory)
+	}
+	if helper != "" && reports.Requests != "" {
+		socket, trackDirectory := reports.Requests, reports.Directory
 		tracker := filepath.Join(filepath.Dir(directory), "exec-track.bash")
 		if err := os.WriteFile(tracker, []byte(shellinstrumentation.Tracker(helper, socket, trackDirectory)), 0o600); err != nil {
 			return nil, fmt.Errorf("prepare command tracking: %w", err)

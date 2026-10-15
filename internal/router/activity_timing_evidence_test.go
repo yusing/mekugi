@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execsegment"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 func BenchmarkActivityTimingParse(b *testing.B) {
@@ -114,7 +114,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	if short < int64(20*time.Millisecond) || long < int64(80*time.Millisecond) || long == short {
 		t.Fatalf("distinct actual durations: %s, %s", time.Duration(short), time.Duration(long))
 	}
-	if observed.segments[2].exit != 1 || !observed.segments[3].skipped || observed.segments[3].timing != (execsegment.Timing{}) {
+	if observed.segments[2].exit != 1 || !observed.segments[3].skipped || observed.segments[3].timing != (segmenttransport.Timing{}) {
 		t.Fatalf("failed/skipped boundaries: %+v", observed.segments)
 	}
 	item.Status, item.ExitCode, item.AggregatedOutput = "failed", new(1), new("")
@@ -141,7 +141,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 				t.Fatalf("segment %d timing changed on restart: %+v vs %+v", i, segments[i].timing, observed.segments[i].timing)
 			}
 		}
-		if segments[3].timing != (execsegment.Timing{}) {
+		if segments[3].timing != (segmenttransport.Timing{}) {
 			t.Fatalf("skipped acquired timing: %+v", segments[3].timing)
 		}
 		blocks := commandSegmentBlocks(entry.activityPaneEntry, false)
@@ -171,8 +171,8 @@ func TestActivityTimingDoesNotBorrowHostTotalWithoutMessageEvidence(t *testing.T
 func TestActivityTimingKeepsSeparateClassifiedReadCommands(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
-	first := execsegment.Timing{Started: start, Ended: start.Add(8 * time.Millisecond), ElapsedNS: int64(8 * time.Millisecond)}
-	second := execsegment.Timing{Started: start.Add(10 * time.Millisecond), Ended: start.Add(31 * time.Millisecond), ElapsedNS: int64(21 * time.Millisecond)}
+	first := segmenttransport.Timing{Started: start, Ended: start.Add(8 * time.Millisecond), ElapsedNS: int64(8 * time.Millisecond)}
+	second := segmenttransport.Timing{Started: start.Add(10 * time.Millisecond), Ended: start.Add(31 * time.Millisecond), ElapsedNS: int64(21 * time.Millisecond)}
 	entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: "cat first.txt; cat second.txt", segments: []commandSegment{
 		{source: "cat first.txt", text: "Read `first.txt`", timing: first},
 		{source: "cat second.txt", text: "Read `second.txt`", timing: second},
@@ -213,7 +213,7 @@ func TestActivityTimingExitAndErrexitBoundaries(t *testing.T) {
 				return
 			}
 			skipped := view.segments[tc.ending+1]
-			if !skipped.skipped || skipped.timing != (execsegment.Timing{}) {
+			if !skipped.skipped || skipped.timing != (segmenttransport.Timing{}) {
 				t.Fatalf("skipped command acquired timing: %+v", skipped)
 			}
 		})
@@ -224,9 +224,9 @@ func TestActivityTimingLiveEvidenceDoesNotInheritHostTotal(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
 	track := &execTrack{segments: []execTrackSegment{{source: "sleep .01"}, {source: "sleep .02"}}}
-	track.apply(execsegment.Message{Type: execsegment.Begin, Index: 0, Timing: execsegment.Timing{Started: start}})
-	track.apply(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0), Timing: execsegment.Timing{Started: start, Ended: start.Add(12 * time.Millisecond), ElapsedNS: int64(12 * time.Millisecond)}})
-	track.apply(execsegment.Message{Type: execsegment.Begin, Index: 1, Timing: execsegment.Timing{Started: start.Add(13 * time.Millisecond)}})
+	track.apply(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0, Timing: segmenttransport.Timing{Started: start}})
+	track.apply(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0), Timing: segmenttransport.Timing{Started: start, Ended: start.Add(12 * time.Millisecond), ElapsedNS: int64(12 * time.Millisecond)}})
+	track.apply(segmenttransport.Message{Type: segmenttransport.Begin, Index: 1, Timing: segmenttransport.Timing{Started: start.Add(13 * time.Millisecond)}})
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{{"thread", "turn", "live"}: track}}
 	view, _ := hub.view([3]string{"thread", "turn", "live"}, false, func(source string) string { return "Run `" + source + "`" }, nil)
 	entry := activityPaneEntry{Kind: "tool", Observed: start.Add(-5 * time.Second), native: &liveActivityNativeItem{command: "sleep .01; sleep .02", running: true, duration: 5 * time.Second, segments: view.segments}}

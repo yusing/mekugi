@@ -35,7 +35,7 @@ func composedReports(t *testing.T, extra ...recordkind.Spec) (*reports.Service, 
 		recordkind.Spec{ID: "snapshot", Match: legacycall.ValidSnapshotName})
 	owner := moduletest.New(t, sessionhistory.Module, sessionhistory.Deps{}, module.Slots{RecordKinds: kinds}, nil)
 	service := moduletest.New(t, commandsegments.Module, commandsegments.Deps{History: owner}, module.Slots{}, nil)
-	return service, owner
+	return service.Reports, owner
 }
 
 func selected(t *testing.T, owner *history.Service) reports.Scope {

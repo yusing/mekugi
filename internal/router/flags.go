@@ -30,6 +30,9 @@ type SessionConfig struct {
 	standalone        bool
 }
 
+// FrontendsEnabled reports whether this parsed invocation exposes native helpers.
+func (c SessionConfig) FrontendsEnabled() bool { return c.mode == "mekugi" }
+
 // ParseSessionConfig selects the launch scope without opening resources.
 func ParseSessionConfig(args []string) (SessionConfig, error) {
 	flags := newRouterFlags(io.Discard)

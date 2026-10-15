@@ -1,11 +1,8 @@
 package router
 
 import (
-	"bufio"
 	"context"
 	json "encoding/json/v2"
-	"errors"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,9 +15,8 @@ import (
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
-	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"golang.org/x/sys/unix"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -33,28 +29,23 @@ const execTrackClaimWait = 350 * time.Millisecond
 // falls back to the combined host output.
 const execTrackCompletionWait = 300 * time.Millisecond
 
-// ExecTrackPaths names the session-private request FIFO that receives segment
-// requests and the directory where the router creates per-command files.
-func ExecTrackPaths(frontendDirectory string) (channel, directory string) {
-	root := filepath.Dir(frontendDirectory)
-	return filepath.Join(root, "exec.requests"), filepath.Join(root, "exec")
-}
+// execInstrumentation contains only authenticated frontend guard paths.
+// Report transport location conveys no authority to recognize instrumentation.
+type execInstrumentation struct{ vcs, sudo string }
 
 // execTrackHub receives the segment reports of tracked command shells and
 // matches each to the live Codex command item that started it. It only
 // observes: execution, output, and exit status stay with Codex and its shell.
 type execTrackHub struct {
-	requests  *os.File
-	directory string
-	cancel    context.CancelFunc
-	mu        sync.Mutex
-	started   []execTrackCommand // Live, unmatched command items, oldest first.
-	changed   chan struct{}      // Closed and replaced at command/segment lifecycle boundaries.
-	tracks    map[[3]string]*execTrack
-	previews  map[*execPreviewTrack]struct{} // Registered only for a live preview's lifetime.
-	sequence  uint64                         // Host starts within this router lifetime.
-	closed    bool
-	wg        sync.WaitGroup
+	transport       *segmenttransport.Server
+	instrumentation execInstrumentation
+	mu              sync.Mutex
+	started         []execTrackCommand // Live, unmatched command items, oldest first.
+	changed         chan struct{}      // Closed and replaced at command/segment lifecycle boundaries.
+	tracks          map[[3]string]*execTrack
+	previews        map[*execPreviewTrack]struct{} // Registered only for a live preview's lifetime.
+	sequence        uint64                         // Host starts within this router lifetime.
+	closed          bool
 }
 
 type execTrackCommand struct {
@@ -69,7 +60,7 @@ type execTrack struct {
 	hostOnly bool   // Native command identity, before any segment report.
 	serial   uint64 // Host start, before the helper claims this item.
 	segments []execTrackSegment
-	created  []execsegment.Message
+	created  []segmenttransport.Message
 	terminal bool // Output stays on the terminal; only statuses are reported.
 	lossy    bool // Output reports stopped at the helper's bound.
 	ended    bool // Report processing stopped, including transport failure.
@@ -80,7 +71,7 @@ type execTrack struct {
 }
 
 type execTrackSegment struct {
-	timing  execsegment.Timing
+	timing  segmenttransport.Timing
 	source  string
 	edit    bool   // The shared classifier identifies an edit operation.
 	text    string // Display operations, derived once by the UI.
@@ -95,77 +86,20 @@ type execTrackSegment struct {
 	full    *activityui.Output // Retained by the UI, which alone reads and writes it.
 }
 
-func listenExecTrack(ctx context.Context, channel, directory string) (*execTrackHub, error) {
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, err
-	}
-	_ = os.Remove(channel)
-	if err := unix.Mkfifo(channel, 0o600); err != nil {
-		return nil, &os.PathError{Op: "mkfifo", Path: channel, Err: err}
-	}
-	// Hold a write end so idle reads do not end.
-	requests, err := os.OpenFile(channel, os.O_RDWR, 0)
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	h := &execTrackHub{requests: requests, directory: directory, cancel: cancel, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
-	h.wg.Go(func() {
-		reader := bufio.NewReader(requests)
-		for {
-			line, err := reader.ReadSlice('\n')
-			if errors.Is(err, bufio.ErrBufferFull) {
-				for errors.Is(err, bufio.ErrBufferFull) {
-					_, err = reader.ReadSlice('\n')
-				}
-				continue
-			}
-			if err != nil {
-				return
-			}
-			if work, ok := execsegment.ReportDirectory(h.directory, strings.TrimSuffix(string(line), "\n")); ok {
-				h.wg.Go(func() { h.acceptReport(ctx, work) })
-			}
+func attachExecTrack(server *segmenttransport.Server, instrumentation execInstrumentation) (*execTrackHub, error) {
+	h := &execTrackHub{instrumentation: instrumentation, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
+	err := server.Register(func(ctx context.Context, hello segmenttransport.Message) segmenttransport.Report {
+		key, track, ok := h.claim(ctx, hello)
+		if !ok {
+			return nil
 		}
+		return &execTrackStream{hub: h, key: key, track: track}
 	})
-	context.AfterFunc(ctx, h.close)
-	return h, nil
-}
-
-// acceptReport creates all command files outside Codex's sandbox. The helper
-// connects by opening these existing FIFOs, even with a read-only mount.
-func (h *execTrackHub) acceptReport(ctx context.Context, work string) {
-	if err := os.Mkdir(work, 0o700); err != nil {
-		return
-	}
-	defer os.RemoveAll(work)
-	for _, name := range []string{"report", "reply", "out", "err", "control", "ack"} {
-		if err := unix.Mkfifo(filepath.Join(work, name), 0o600); err != nil {
-			return
-		}
-	}
-	fd, err := unix.Open(filepath.Join(work, "report"), unix.O_RDONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return
+		return nil, err
 	}
-	report := os.NewFile(uintptr(fd), filepath.Join(work, "report"))
-	defer report.Close()
-	// The helper opens report for writing before reply for reading. Once
-	// reply has a reader, report cannot return a premature EOF.
-	deadline := time.Now().Add(time.Second)
-	for {
-		fd, err = unix.Open(filepath.Join(work, "reply"), unix.O_WRONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, unix.ENXIO) || time.Now().After(deadline) || ctx.Err() != nil {
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
-	reply := os.NewFile(uintptr(fd), filepath.Join(work, "reply"))
-	defer reply.Close()
-	h.serve(ctx, report, reply, work)
+	h.transport = server
+	return h, nil
 }
 
 func (h *execTrackHub) close() {
@@ -175,13 +109,7 @@ func (h *execTrackHub) close() {
 	h.mu.Lock()
 	h.closed = true
 	h.mu.Unlock()
-	if h.cancel != nil {
-		h.cancel()
-	}
-	if h.requests != nil {
-		h.requests.Close()
-	}
-	h.wg.Wait()
+	h.transport.Close()
 }
 
 // Match shell reports before queued presentation can exhaust the startup deadline.
@@ -264,7 +192,7 @@ func (h *execTrackHub) tracking(key [3]string) bool {
 // claim matches a report to a unique live command in its thread running the
 // same script. Ambiguous unmatched items run untracked: exchanging reports
 // would also exchange their segment lifecycle and preview identity.
-func (h *execTrackHub) claim(ctx context.Context, hello execsegment.Message) ([3]string, *execTrack, bool) {
+func (h *execTrackHub) claim(ctx context.Context, hello segmenttransport.Message) ([3]string, *execTrack, bool) {
 	timer := time.NewTimer(execTrackClaimWait)
 	defer timer.Stop()
 	for {
@@ -312,78 +240,28 @@ func (h *execTrackHub) claim(ctx context.Context, hello execsegment.Message) ([3
 	}
 }
 
-func (h *execTrackHub) serve(ctx context.Context, report, reply *os.File, work string) {
-	stop := context.AfterFunc(ctx, func() { report.Close(); reply.Close() })
-	defer stop()
-	reader := bufio.NewReaderSize(report, 64<<10)
-	if err := report.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
-		return
-	}
-	var hello execsegment.Message
-	if line, err := reader.ReadBytes('\n'); err != nil || json.Unmarshal(line, &hello) != nil {
-		return
-	}
-	if hello.Type != execsegment.Hello || hello.Version != execsegment.Protocol || len(hello.Segments) == 0 {
-		return
-	}
-	// The segments must be those of the script this router would split, or
-	// the display would attribute statuses to the wrong commands.
-	segments, ok := shellinstrumentation.Split(hello.Script)
-	if !ok || len(segments) != len(hello.Segments) {
-		_ = writeExecTrackReply(reply, false)
-		return
-	}
-	for i, segment := range segments {
-		if segment.Source != hello.Segments[i] {
-			_ = writeExecTrackReply(reply, false)
-			return
-		}
-	}
-	if len(segments) > 1 {
-		if err := os.WriteFile(filepath.Join(work, "script"), []byte(shellinstrumentation.Rewrite(hello.Script, segments)), 0o600); err != nil {
-			return
-		}
-	}
-	key, track, ok := h.claim(ctx, hello)
-	if err := writeExecTrackReply(reply, ok); err != nil || !ok {
-		if ok {
-			h.finish(key)
-		}
-		return
-	}
-	defer func() {
-		h.mu.Lock()
-		track.ended, track.dirty = true, true
-		h.signal()
-		h.mu.Unlock()
-	}()
-	if err := report.SetReadDeadline(time.Time{}); err != nil {
-		return
-	}
-	for {
-		line, err := reader.ReadBytes('\n')
-		if len(line) > 0 {
-			var message execsegment.Message
-			if json.Unmarshal(line, &message) != nil {
-				return
-			}
-			h.mu.Lock()
-			track.apply(message)
-			if message.Type != execsegment.Output {
-				h.signal()
-			}
-			h.mu.Unlock()
-			if message.Type == execsegment.Closed {
-				return
-			}
-		}
-		if err != nil {
-			return
-		}
-	}
+type execTrackStream struct {
+	hub   *execTrackHub
+	key   [3]string
+	track *execTrack
 }
 
-// signal wakes lifecycle consumers. The hub lock must be held.
+func (s *execTrackStream) Observe(message segmenttransport.Message) {
+	s.hub.mu.Lock()
+	defer s.hub.mu.Unlock()
+	s.track.apply(message)
+	if message.Type != segmenttransport.Output {
+		s.hub.signal()
+	}
+}
+func (s *execTrackStream) End() {
+	s.hub.mu.Lock()
+	defer s.hub.mu.Unlock()
+	s.track.ended, s.track.dirty = true, true
+	s.hub.signal()
+}
+func (s *execTrackStream) Abort() { s.hub.finish(s.key) }
+
 func (h *execTrackHub) signal() {
 	close(h.changed)
 	h.changed = make(chan struct{})
@@ -511,14 +389,16 @@ func (p *execPreviewTrack) retain(key [3]string, track *execTrack) {
 // Only the current session's exact guard instrumentation may differ from the
 // captured authored source. Host/report matching keeps the executing script.
 func (p *execPreviewTrack) authoredScript(script, item string) string {
-	session := filepath.Dir(p.hub.directory)
 	// Reapply only observed guards: sudo also runs with the VCS guard disabled.
 	var guard, sudo string
 	source := shellinstrumentation.DisplayScript(script, func(directory string) bool {
+		if directory == "" {
+			return false
+		}
 		switch directory {
-		case filepath.Join(session, shellinstrumentation.VCSDirectory):
+		case p.hub.instrumentation.vcs:
 			guard = directory
-		case filepath.Join(session, shellinstrumentation.SudoDirectory):
+		case p.hub.instrumentation.sudo:
 			sudo = directory
 		default:
 			return false
@@ -552,13 +432,13 @@ func (p *execPreviewTrack) close() {
 	}
 }
 
-func (p *execPreviewTrack) createdPaths() []execsegment.Message {
+func (p *execPreviewTrack) createdPaths() []segmenttransport.Message {
 	if p == nil {
 		return nil
 	}
 	p.hub.mu.Lock()
 	defer p.hub.mu.Unlock()
-	var paths []execsegment.Message
+	var paths []segmenttransport.Message
 	for _, match := range p.matches {
 		if !match.ambiguous && match.track != nil {
 			paths = append(paths, match.track.created...)
@@ -660,31 +540,19 @@ func (t *execTrack) lastStarted() int {
 	return -1
 }
 
-func writeExecTrackReply(conn *os.File, ok bool) error {
-	if err := conn.SetWriteDeadline(time.Now().Add(time.Second)); err != nil {
-		return err
-	}
-	line, err := json.Marshal(execsegment.Reply{OK: ok})
-	if err != nil {
-		return err
-	}
-	_, err = conn.Write(append(line, '\n'))
-	return err
-}
-
-func (t *execTrack) apply(message execsegment.Message) {
+func (t *execTrack) apply(message segmenttransport.Message) {
 	valid := message.Index >= 0 && message.Index < len(t.segments)
 	switch message.Type {
-	case execsegment.Created:
+	case segmenttransport.Created:
 		if valid && filepath.IsAbs(message.Data) {
 			t.created = append(t.created, message)
 		}
-	case execsegment.Begin:
+	case segmenttransport.Begin:
 		if valid {
 			t.segments[message.Index].began = true
-			t.segments[message.Index].timing = execsegment.Timing{Started: message.Timing.Started}
+			t.segments[message.Index].timing = segmenttransport.Timing{Started: message.Timing.Started}
 		}
-	case execsegment.Output:
+	case segmenttransport.Output:
 		if valid && !t.lossy {
 			segment := &t.segments[message.Index]
 			segment.output.Write(message.Data)
@@ -699,7 +567,7 @@ func (t *execTrack) apply(message execsegment.Message) {
 				t.lossy = true
 			}
 		}
-	case execsegment.End:
+	case segmenttransport.End:
 		if valid && message.Code != nil {
 			segment := &t.segments[message.Index]
 			segment.began, segment.ended, segment.code = true, true, *message.Code
@@ -707,13 +575,13 @@ func (t *execTrack) apply(message execsegment.Message) {
 				segment.timing = message.Timing
 			}
 		}
-	case execsegment.Done:
+	case segmenttransport.Done:
 		if message.Code != nil {
 			t.done, t.code = true, *message.Code
 		}
-	case execsegment.Closed:
+	case segmenttransport.Closed:
 		t.closed = true
-	case execsegment.Lossy:
+	case segmenttransport.Lossy:
 		t.lossy = true
 	default:
 		return
@@ -723,7 +591,7 @@ func (t *execTrack) apply(message execsegment.Message) {
 
 // commandSegment is one segment as the Activity shows it.
 type commandSegment struct {
-	timing  execsegment.Timing
+	timing  segmenttransport.Timing
 	text    string // Display operations for the segment's source.
 	running bool
 	skipped bool // The list short-circuited before it.

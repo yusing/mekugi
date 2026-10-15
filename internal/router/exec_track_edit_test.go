@@ -21,9 +21,9 @@ import (
 	"github.com/yusing/mekugi"
 
 	"github.com/yusing/mekugi/internal/appserver"
-	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
@@ -88,7 +88,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			}
 			if strings.Contains(edit, "git --version") {
 				var err error
-				script, err = shellinstrumentation.RewriteCommands(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), shellinstrumentation.VCSDirectory), "", "edit")
+				script, err = shellinstrumentation.RewriteCommands(script, "/private/mekugi-exec", shell.hub.instrumentation.vcs, "", "edit")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -283,9 +283,9 @@ func TestAppServerTrackedEditCommandOutcomeBeforeHostExit(t *testing.T) {
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
-	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0})
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
 	awaitMain(t, u, "via sed · requested")
-	report.send(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	awaitMain(t, u, "via sed · ran")
 	shown := awaitMain(t, u, "Running go test")
 	if strings.Contains(shown, "requested") || !strings.Contains(shown, "via sed · ran") || u.session.commands[[3]string{"main", "turn", "edit"}] == nil {
@@ -359,7 +359,7 @@ func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 			const guard = "/private/session/vcs-guard"
 			for _, scenario := range []string{"current", "item-bound", "wrong item", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
 				t.Run(scenario, func(t *testing.T) {
-					hub := &execTrackHub{directory: "/private/session/exec", changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
+					hub := &execTrackHub{instrumentation: execInstrumentation{vcs: "/private/session/vcs-guard", sudo: "/private/session/sudo-guard"}, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
 					script, directory := original, guard
 					sudoDirectory := "/private/session/sudo-guard"
 					if !command.vcs {
@@ -396,7 +396,7 @@ func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 					defer p.close()
 					key := [3]string{"main", "turn", "command"}
 					hub.start(key, "/bin/bash -lc "+quoteShellWord(wrapped))
-					if _, _, ok := hub.claim(t.Context(), execsegment.Message{Thread: "main", Script: wrapped}); !ok {
+					if _, _, ok := hub.claim(t.Context(), segmenttransport.Message{Thread: "main", Script: wrapped}); !ok {
 						t.Fatal("raw report ownership failed")
 					}
 					hub.completed(key)
@@ -420,7 +420,7 @@ func TestAppServerTrackedEditFailureAndSkip(t *testing.T) {
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
-	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(2)}, execsegment.Message{Type: execsegment.Done, Code: new(2)}, execsegment.Message{Type: execsegment.Closed})
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	report.conn.Close()
 	item["status"], item["exitCode"] = "failed", 2
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -434,12 +434,12 @@ func TestAppServerTrackedSkippedEditBeforeHostExit(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "false && sed -i 's/a/b/' skipped; go test ./..."
-	tracking := newExecPreviewTrack(hub, "main", "turn", []execCommandInput{{Command: script}})
+	tracking := newExecPreviewTrack(hub.execTrackHub, "main", "turn", []execCommandInput{{Command: script}})
 	defer tracking.close()
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
-	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(1)}, execsegment.Message{Type: execsegment.Begin, Index: 2})
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(1)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 2})
 	awaitMain(t, u, "via sed · skipped")
 	shown := awaitMain(t, u, "Running")
 	if !strings.Contains(shown, "Running go test") || strings.Contains(shown, "requested") || strings.Contains(shown, "skipped · skipped") {
@@ -490,7 +490,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	auto.enabled.Store(true)
 	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := auto.events.subscribe()
-	proxy := &mekugiProxy{execTrack: hub, execWindows: &execWindowRegistry{tracker: hub}, autoLiveDiff: auto}
+	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	transform.openExecWindow("cell", observation, nil)
 	defer proxy.execWindows.close("cell")
@@ -498,7 +498,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": firstItem})
 	firstReport := dialExecTrackReport(t, hub, first)
 	writeTestFile(t, path, "middle\n")
-	firstReport.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1}, execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
+	firstReport.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1}, segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	firstReport.conn.Close()
 	firstItem["status"], firstItem["exitCode"] = "completed", 0
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": firstItem})
@@ -514,7 +514,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": secondItem})
 	secondReport := dialExecTrackReport(t, hub, second)
 	writeTestFile(t, path, "after\n")
-	secondReport.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+	secondReport.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	for {
 		select {
 		case <-sub.previewReady:
@@ -562,7 +562,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			auto.enabled.Store(true)
 			auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := auto.events.subscribe()
-			proxy := &mekugiProxy{execTrack: hub, execWindows: &execWindowRegistry{tracker: hub}, autoLiveDiff: auto}
+			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("cell", observation, nil)
 			defer proxy.execWindows.close("cell")
@@ -650,7 +650,7 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	broker := newLiveDiffBroker(t.Context())
 	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := broker.subscribe()
-	registry := &execWindowRegistry{tracker: hub}
+	registry := &execWindowRegistry{tracker: hub.execTrackHub}
 	registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 	defer registry.close("edit")
 	registry.preview("edit", *observation, broker, workspace, "main", "/root", nil)
@@ -658,7 +658,7 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	writeTestFile(t, path, "package p; var A=1\n")
-	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	preview := waitLiveDiffWorkerPreview(t, broker, sub, func(p diffview.Preview) bool { return p.Complete })
 	if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "+package p; var A=1") || !registry.find("edit").closed.IsZero() {
 		t.Fatalf("stream completion changed content or host lifecycle: %+v", preview)
@@ -675,7 +675,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": oldItem})
 			reportOld := func() {
 				report := dialExecTrackReport(t, hub, script)
-				report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+				report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 				awaitMain(t, u, "Running go test ./...")
 			}
 			if !lateReport {
@@ -693,7 +693,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			auto.enabled.Store(true)
 			auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := auto.events.subscribe()
-			proxy := &mekugiProxy{execTrack: hub, execWindows: &execWindowRegistry{tracker: hub}, autoLiveDiff: auto}
+			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("new", observation, nil)
 			defer proxy.execWindows.close("new")
@@ -731,7 +731,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": newItem})
 			report := dialExecTrackReport(t, hub, script)
 			writeTestFile(t, path, "after\n")
-			report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+			report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 			waitPreview(true)
 		})
 	}
@@ -745,7 +745,7 @@ func TestExecTrackDeclinesAmbiguousHostIdentity(t *testing.T) {
 		hub.start([3]string{"main", "turn", id}, "/bin/bash -lc "+quoteShellWord(script))
 	}
 	for range 2 {
-		if _, _, ok := hub.claim(t.Context(), execsegment.Message{Thread: "main", Script: script}); ok {
+		if _, _, ok := hub.claim(t.Context(), segmenttransport.Message{Thread: "main", Script: script}); ok {
 			t.Fatal("ambiguous identical scripts borrowed another host invocation's identity")
 		}
 	}
@@ -763,7 +763,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	auto.enabled.Store(true)
 	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := auto.events.subscribe()
-	proxy := &mekugiProxy{execTrack: hub, execWindows: &execWindowRegistry{tracker: hub}, autoLiveDiff: auto}
+	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, autoLiveDiff: auto}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	script := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	for _, id := range []string{"one", "two"} {
@@ -782,7 +782,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	item := map[string]any{"id": "one", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
-	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1})
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
 	awaitMain(t, u, "Running go test ./...")
 	// The first call edited one file; an unrelated change makes the sibling
 	// watch visible too. Neither can acquire completion from this report.

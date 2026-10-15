@@ -16,11 +16,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/internal/sudoask"
+
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
-	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -63,7 +65,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *reports.Service, ctx context.Context, commands []command.Contribution, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, ctx context.Context, commands []command.Contribution, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
@@ -316,14 +318,22 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 				// Without the socket, command shells find no router and run
 				// their scripts untracked. Without the approval channel,
 				// guarded remote writes are denied, so guarded startup stops.
-				socket, directory := ExecTrackPaths(frontendDirectory)
-				hub, err := listenExecTrack(ctx, socket, directory)
-				if err == nil {
-					_, channel := vcsguard.Paths(frontendDirectory)
-					if mekugiCalls.guard, err = listenShellApprovals(ctx, channel, vcsguard.Timeout); err != nil {
-						hub.close()
+				err := segments.LiveError
+				var hub *execTrackHub
+				if segments.Live != nil {
+					guard, channel := vcsguard.Paths(frontendDirectory)
+					mekugiCalls.guard, err = listenShellApprovals(ctx, channel, vcsguard.Timeout)
+					if err == nil {
+						hub, err = attachExecTrack(segments.Live, execInstrumentation{vcs: guard, sudo: sudoask.Path(frontendDirectory)})
 					}
+					if err != nil {
+						segments.Live.Close()
+						mekugiCalls.guard.close()
+					}
+				} else if err == nil {
+					err = errors.New("command reporting is unavailable")
 				}
+
 				if err == nil {
 					mekugiCalls.execTrack = hub
 					mekugiCalls.execWindows.tracker = hub
@@ -335,7 +345,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.paths[0])
 			}
-			return startAppServerUI(service, segments, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
+			return startAppServerUI(service, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory

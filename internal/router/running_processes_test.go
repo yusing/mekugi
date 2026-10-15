@@ -8,8 +8,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -111,9 +111,9 @@ func TestRunningProcessesTrackedCompletion(t *testing.T) {
 	processNotify(t, u, "main", "cmd", "/usr/bin/bash -lc "+quoteShellWord(script), "inProgress")
 	report := dialExecTrackReport(t, hub, script)
 	report.send(
-		execsegment.Message{Type: execsegment.Begin, Index: 0},
-		execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)},
-		execsegment.Message{Type: execsegment.Begin, Index: 1},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1},
 	)
 	awaitMain(t, u, "Running sleep 1")
 	if u.runningProcessCount() != 1 {

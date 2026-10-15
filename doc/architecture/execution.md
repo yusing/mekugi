@@ -92,7 +92,10 @@ Segment tracking (`REQ-EXECUTION-002`) has these owners:
 - `libraries/shellinstrumentation` owns segment splitting, list rewriting,
   single-command observation source, Bash startup and POSIX instrumentation.
   The helper and report hub use the same splitter and agree on segment indices.
-- `internal/execsegment` owns the report protocol and FIFO connection helpers.
+- `modules/commandsegments` owns the report protocol, invocation-private FIFO
+  transport, stream validation, and cancellation/join of accepted reports.
+  Its resources are independent of the authenticated frontend directory. Guard
+  recognition uses the application's explicitly supplied authenticated paths.
 - `mekugi-exec` runs inside the Codex-started shell as its coprocess. It owns
   only the list's output relay and boundary reports. Single-command observation
   leaves the shell's output descriptors unchanged. The helper never starts,

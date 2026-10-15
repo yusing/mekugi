@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/BurntSushi/toml"
@@ -159,7 +161,7 @@ func TestFrontendPathSurvivesLoginBash(t *testing.T) {
 	if err := os.WriteFile(prior, []byte("export MEKUGI_PRIOR_BASH_ENV=preserved\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend, "", false)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend, "", false, segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +182,7 @@ func TestFrontendShellEnvironmentGuardsBash(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin"}, frontend, helper, true)
+	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin"}, frontend, helper, true, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +224,7 @@ func TestFrontendScriptSudo(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			environment, err := frontendShellEnvironment([]string{"PATH=" + real + ":" + custom + ":/usr/bin:/bin", "BASH_ENV=" + prior}, frontend, helper, guard)
+			environment, err := frontendShellEnvironment([]string{"PATH=" + real + ":" + custom + ":/usr/bin:/bin", "BASH_ENV=" + prior}, frontend, helper, guard, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -852,7 +854,7 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$3\" > \"$MEKUGI_TEST_TRACK_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, "CODEX_THREAD_ID=outer-thread", shellinstrumentation.Guard + "=1", shellinstrumentation.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false)
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, "CODEX_THREAD_ID=outer-thread", shellinstrumentation.Guard + "=1", shellinstrumentation.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -920,11 +922,11 @@ func TestFrontendNestedGuardOptOut(t *testing.T) {
 		}
 	}
 	env := []string{"PATH=" + real + ":/usr/bin:/bin", "BASH_ENV=" + userEnv}
-	env, err := frontendShellEnvironment(env, outer, helper, true)
+	env, err := frontendShellEnvironment(env, outer, helper, true, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	env, err = frontendShellEnvironment(env, inner, "", false)
+	env, err = frontendShellEnvironment(env, inner, "", false, segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}

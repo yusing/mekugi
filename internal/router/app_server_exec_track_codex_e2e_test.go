@@ -32,7 +32,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracker := filepath.Join(shell.root, "exec-track.sh")
-	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, shell.hub.requests.Name(), shell.hub.directory)), 0o600); err != nil {
+	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	hook, state, _, err := vcsguard.HookConfig(helper, "", "", tracker)

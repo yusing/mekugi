@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execsegment"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 const maxExecWindows = 1024
@@ -34,7 +34,7 @@ type execWindow struct {
 	tracking      *execPreviewTrack
 	// created keeps a completed window's mktemp reports for retried
 	// finalization after its tracking, with retained output, is released.
-	created []execsegment.Message
+	created []segmenttransport.Message
 	// claims are snapshot states that overlapping calls already recorded.
 	// This window's snapshot comparison starts from them.
 	claims workspaceSnapshotClaims
@@ -127,7 +127,7 @@ func (r *execWindowRegistry) markBackground(thread, turn string) {
 
 // execWindowView is what finalization learns about concurrent windows.
 type execWindowView struct {
-	created    []execsegment.Message
+	created    []segmenttransport.Message
 	overlaps   []string
 	excluded   []string
 	background []string

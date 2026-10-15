@@ -23,8 +23,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"golang.org/x/sys/unix"
 )
 
@@ -47,10 +47,11 @@ var execTrackHelper = sync.OnceValues(func() (string, error) {
 })
 
 type execTrackShell struct {
-	hub  *execTrackHub
-	env  []string
-	home string
-	root string // Holds the session's bin, request FIFO and per-command files.
+	hub       *execTrackHub
+	transport *segmenttransport.Server
+	env       []string
+	home      string
+	root      string // Holds the authenticated frontend fixtures, separate from report resources.
 }
 
 // A test can run inside a guarded Mekugi session. Do not inherit its shell
@@ -93,12 +94,10 @@ func newExecTrackShell(t *testing.T) *execTrackShell {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	socket, directory := ExecTrackPaths(filepath.Join(root, "bin"))
-	hub, err := listenExecTrack(t.Context(), socket, directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(hub.close)
+	fixture := newExecTrackFixture(t, t.Context(), execInstrumentation{vcs: filepath.Join(root, shellinstrumentation.VCSDirectory), sudo: filepath.Join(root, shellinstrumentation.SudoDirectory)})
+	hub := fixture.execTrackHub
+	endpoints := fixture.server.Endpoints()
+	socket, directory := endpoints.Requests, endpoints.Directory
 	tracker := filepath.Join(root, "exec-track.bash")
 	if err := os.WriteFile(tracker, []byte(shellinstrumentation.Tracker(helper, socket, directory)), 0o600); err != nil {
 		t.Fatal(err)
@@ -109,7 +108,7 @@ func newExecTrackShell(t *testing.T) *execTrackShell {
 	}
 	home := t.TempDir()
 	env := []string{"PATH=" + execTrackPath(), "HOME=" + home, "CODEX_THREAD_ID=thread", "BASH_ENV=" + startup}
-	return &execTrackShell{hub: hub, env: env, home: home, root: root}
+	return &execTrackShell{hub: hub, transport: fixture.server, env: env, home: home, root: root}
 }
 
 type execTrackRun struct {
@@ -263,7 +262,7 @@ func TestExecTrackMktempKeepsUtilityResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	channel, directory := ExecTrackPaths(filepath.Join(shell.root, "bin"))
+	channel, directory := shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory
 	shTracker := filepath.Join(shell.root, "exec-track.sh")
 	if err := os.WriteFile(shTracker, []byte(shellinstrumentation.ShTracker(helper, channel, directory)), 0o600); err != nil {
 		t.Fatal(err)
@@ -615,9 +614,9 @@ type execTrackReport struct {
 	conn *os.File
 }
 
-func dialExecTrackReport(t *testing.T, hub *execTrackHub, script string) *execTrackReport {
+func dialExecTrackReport(t *testing.T, hub *execTrackFixture, script string) *execTrackReport {
 	t.Helper()
-	conn, answer, _, err := execsegment.OpenReport(hub.requests.Name(), hub.directory, time.Second)
+	conn, answer, _, err := segmenttransport.OpenReport(hub.server.Endpoints().Requests, hub.server.Endpoints().Directory, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -631,7 +630,7 @@ func dialExecTrackReport(t *testing.T, hub *execTrackHub, script string) *execTr
 		sources = append(sources, segment.Source)
 	}
 	r := &execTrackReport{t: t, conn: conn}
-	r.send(execsegment.Message{Type: execsegment.Hello, Version: execsegment.Protocol, Thread: "main", Script: script, Segments: sources})
+	r.send(segmenttransport.Message{Type: segmenttransport.Hello, Version: segmenttransport.Protocol, Thread: "main", Script: script, Segments: sources})
 	deadline := time.Now().Add(time.Second)
 	for {
 		n, err := unix.Poll([]unix.PollFd{{Fd: int32(answer.Fd()), Events: unix.POLLIN}}, max(0, int(time.Until(deadline).Milliseconds())))
@@ -650,7 +649,7 @@ func dialExecTrackReport(t *testing.T, hub *execTrackHub, script string) *execTr
 	return r
 }
 
-func (r *execTrackReport) send(messages ...execsegment.Message) {
+func (r *execTrackReport) send(messages ...segmenttransport.Message) {
 	r.t.Helper()
 	for _, message := range messages {
 		line, err := json.Marshal(message)
@@ -699,22 +698,22 @@ func TestAppServerTrackedCommandShowsEachSegment(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	report.send(
-		execsegment.Message{Type: execsegment.Begin, Index: 0},
-		execsegment.Message{Type: execsegment.Output, Index: 0, Data: "/w\n"},
-		execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)},
-		execsegment.Message{Type: execsegment.Begin, Index: 1},
-		execsegment.Message{Type: execsegment.Output, Index: 1, Data: "a\n"},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
+		segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "/w\n"},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1},
+		segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "a\n"},
 	)
 	awaitMain(t, u, "┆ a")
 
 	report.send(
-		execsegment.Message{Type: execsegment.Output, Index: 1, Data: "b\n"},
-		execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)},
-		execsegment.Message{Type: execsegment.Begin, Index: 2},
-		execsegment.Message{Type: execsegment.Output, Index: 2, Data: "cat: b: No such file or directory\n"},
-		execsegment.Message{Type: execsegment.End, Index: 2, Code: new(1)},
-		execsegment.Message{Type: execsegment.Done, Code: new(1)},
-		execsegment.Message{Type: execsegment.Closed},
+		segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "b\n"},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 2},
+		segmenttransport.Message{Type: segmenttransport.Output, Index: 2, Data: "cat: b: No such file or directory\n"},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 2, Code: new(1)},
+		segmenttransport.Message{Type: segmenttransport.Done, Code: new(1)},
+		segmenttransport.Message{Type: segmenttransport.Closed},
 	)
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 1, "/w\na\nb\ncat: b: No such file or directory\n"
@@ -738,11 +737,11 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "bash -lc " + quoteShellWord(script), Cwd: cwd, Status: "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)
-	report.send(execsegment.Message{Type: execsegment.Begin, Index: 0})
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
 	if rows := awaitMain(t, u, "Read a.go"); strings.Contains(rows, cwd+"/a.go") {
 		t.Fatal("live read path stayed absolute")
 	}
-	report.send(execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)}, execsegment.Message{Type: execsegment.Begin, Index: 1}, execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
+	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1}, segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	report.conn.Close()
 	item.Status, item.ExitCode, item.AggregatedOutput = "completed", new(0), new("")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
@@ -785,10 +784,10 @@ func TestAppServerTrackedCommandShowsSkippedSegments(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	report := dialExecTrackReport(t, hub, script)
 	report.send(
-		execsegment.Message{Type: execsegment.Begin, Index: 0},
-		execsegment.Message{Type: execsegment.End, Index: 0, Code: new(1)},
-		execsegment.Message{Type: execsegment.Done, Code: new(1)},
-		execsegment.Message{Type: execsegment.Closed},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(1)},
+		segmenttransport.Message{Type: segmenttransport.Done, Code: new(1)},
+		segmenttransport.Message{Type: segmenttransport.Closed},
 	)
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "failed", 1, ""
@@ -809,15 +808,15 @@ func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 			report := dialExecTrackReport(t, hub, script)
 			// Only the first segment's bytes reached the router.
 			report.send(
-				execsegment.Message{Type: execsegment.Begin, Index: 0},
-				execsegment.Message{Type: execsegment.Output, Index: 0, Data: "a\n"},
-				execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)},
-				execsegment.Message{Type: execsegment.Begin, Index: 1},
+				segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
+				segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "a\n"},
+				segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
+				segmenttransport.Message{Type: segmenttransport.Begin, Index: 1},
 			)
 			if failure == "no exit" {
-				report.send(execsegment.Message{Type: execsegment.Closed})
+				report.send(segmenttransport.Message{Type: segmenttransport.Closed})
 			} else {
-				report.send(execsegment.Message{Type: execsegment.Done, Code: new(2)})
+				report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(2)})
 				if failure == "JSON error after exit" {
 					if _, err := report.conn.Write([]byte("{\n")); err != nil {
 						t.Fatal(err)
@@ -855,17 +854,32 @@ func TestAppServerEarlyEndedReportShowsHostOutputLive(t *testing.T) {
 	awaitMain(t, u, "┆ b")
 }
 
-func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackHub) {
+type execTrackFixture struct {
+	*execTrackHub
+	server *segmenttransport.Server
+}
+
+func newExecTrackFixture(t *testing.T, ctx context.Context, scope execInstrumentation) *execTrackFixture {
 	t.Helper()
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.conversation = true
-	root := t.TempDir()
-	hub, err := listenExecTrack(t.Context(), filepath.Join(root, "exec.sock"), filepath.Join(root, "exec"))
+	server, err := segmenttransport.Listen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(server.Close)
+	hub, err := attachExecTrack(server, scope)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(hub.close)
-	u.execTrack = hub
+	return &execTrackFixture{hub, server}
+}
+
+func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackFixture) {
+	t.Helper()
+	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.view.conversation = true
+	hub := newExecTrackFixture(t, t.Context(), execInstrumentation{})
+	u.execTrack = hub.execTrackHub
 	return u, hub
 }
 
@@ -930,9 +944,9 @@ func TestAppServerTrackedMChangesShowsRichRows(t *testing.T) {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 			report := dialExecTrackReport(t, hub, script)
 			index := 1
-			report.send(execsegment.Message{Type: execsegment.Begin, Index: 0}, execsegment.Message{Type: execsegment.Output, Index: 0, Data: "before\n"}, execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)})
+			report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "before\n"}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})
 			output := "amber1..amber5 +343 -658\namber6 +158 -81\namber7..amber9 +86 -30\n"
-			report.send(execsegment.Message{Type: execsegment.Begin, Index: index}, execsegment.Message{Type: execsegment.Output, Index: index, Data: output}, execsegment.Message{Type: execsegment.End, Index: index, Code: new(0)}, execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
+			report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: index}, segmenttransport.Message{Type: segmenttransport.Output, Index: index, Data: output}, segmenttransport.Message{Type: segmenttransport.End, Index: index, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
 			report.conn.Close()
 			item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
@@ -969,10 +983,8 @@ func TestExecTrackConcurrentReportsAreIsolated(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		shell.hub.close()
-		shell.hub.wg.Wait()
-		entries, err := os.ReadDir(shell.hub.directory)
-		if err != nil || len(entries) != 0 {
-			t.Errorf("private report files remain: %v, %v", entries, err)
+		if _, err := os.Stat(shell.transport.Endpoints().Directory); !os.IsNotExist(err) {
+			t.Errorf("private report files remain: %v", err)
 		}
 	})
 }
@@ -980,7 +992,7 @@ func TestExecTrackConcurrentReportsAreIsolated(t *testing.T) {
 func TestExecTrackUnavailableRouterRunsOriginalCommand(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
-	shell.hub.close() // The existing request FIFO now has no reader.
+	shell.hub.close() // The invocation-owned request FIFO is removed.
 	script := "echo ORIGINAL; echo STDERR >&2; false"
 	got := runExecTrackShell(t, shell.env, script)
 	if got.stdout != "ORIGINAL\n" || got.stderr != "STDERR\n" || got.code != 1 {
@@ -996,13 +1008,10 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 		t.Run(phase, func(t *testing.T) {
 			t.Parallel()
 			root := t.TempDir()
-			channel, directory := ExecTrackPaths(filepath.Join(root, "bin"))
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			hub, err := listenExecTrack(ctx, channel, directory)
-			if err != nil {
-				t.Fatal(err)
-			}
+			hub := newExecTrackFixture(t, ctx, execInstrumentation{})
+			channel, directory := hub.server.Endpoints().Requests, hub.server.Endpoints().Directory
 			helper, err := execTrackHelper()
 			if err != nil {
 				t.Fatal(err)
@@ -1066,7 +1075,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 				time.Sleep(time.Millisecond)
 			}
 			cancel()
-			hub.wg.Wait() // All router-created startup paths have been removed.
+			hub.server.Close() // All module-owned startup paths have been removed.
 			if err := os.WriteFile(gate, nil, 0o600); err != nil {
 				t.Fatal(err)
 			}

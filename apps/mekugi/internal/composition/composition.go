@@ -12,7 +12,7 @@ import (
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
-	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -147,7 +147,7 @@ type Gap struct {
 }
 
 type Runtime struct {
-	Segments *reports.Service
+	Segments *segments.Service
 	Recovery *recovery.Service
 	History  *history.Service
 	Commands []command.Contribution

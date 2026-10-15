@@ -31,7 +31,7 @@ func TestExecTrackDashMissingHelperRunsOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracker := filepath.Join(shell.root, "exec-track.sh")
-	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(entrypoint, shell.hub.requests.Name(), shell.hub.directory)), 0o600); err != nil {
+	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(entrypoint, shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	script := "printf 'ORIGINAL\\n'; printf 'STDERR\\n' >&2; false"
@@ -60,7 +60,7 @@ func TestExecTrackDashSegments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	channel, directory := ExecTrackPaths(filepath.Join(shell.root, "bin"))
+	channel, directory := shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory
 	tracker := filepath.Join(shell.root, "exec-track.sh")
 	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, channel, directory)), 0o600); err != nil {
 		t.Fatal(err)

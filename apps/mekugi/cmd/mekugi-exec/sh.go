@@ -11,7 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/execsegment"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 // Dash exposes neither its -c source nor a noninteractive startup hook. Read
@@ -47,8 +47,8 @@ func shOpen(channel, directory string) string {
 		return ""
 	}
 	id := hex.EncodeToString(random[:])
-	work, _ := execsegment.ReportDirectory(directory, id)
-	if err := execsegment.RequestReport(channel, id); err != nil {
+	work, _ := segmenttransport.ReportDirectory(directory, id)
+	if err := segmenttransport.RequestReport(channel, id); err != nil {
 		return ""
 	}
 	deadline := time.Now().Add(replyTimeout)

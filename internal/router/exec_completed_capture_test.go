@@ -26,7 +26,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			if scenario == "parallel writer" || scenario == "sequential hosts" {
 				commands = append(commands, execCommandInput{Command: "python3 a.py", Workdir: workspace})
 			}
-			tracking := newExecPreviewTrack(hub, "main", "turn", commands)
+			tracking := newExecPreviewTrack(hub.execTrackHub, "main", "turn", commands)
 			defer tracking.close()
 			for i, command := range commands {
 				call := "edit"

@@ -1,6 +1,8 @@
 package composition
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,63 @@ import (
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory"
 )
+
+func TestFrontendsRetainedSegmentsWithoutTransport(t *testing.T) {
+	for _, live := range []bool{false, true} {
+		name := "disabled"
+		if live {
+			name = "unavailable"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			temp := root
+			if live {
+				// A regular file makes transport acquisition fail even as root.
+				temp = filepath.Join(root, "not-a-directory")
+				if err := os.WriteFile(temp, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("TMPDIR", temp)
+			runtime, err := Frontends(t.Context(), live)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := runtime.Close(t.Context()); err != nil {
+					t.Error(err)
+				}
+			})
+			if runtime.Segments.Live != nil || (runtime.Segments.LiveError != nil) != live {
+				t.Fatalf("optional transport: live=%v err=%v", runtime.Segments.Live, runtime.Segments.LiveError)
+			}
+			entries, err := os.ReadDir(root)
+			wantEntries := 0
+			if live {
+				wantEntries = 1
+			}
+			if err != nil || len(entries) != wantEntries {
+				t.Fatalf("composition acquired temporary resources: entries=%v err=%v", entries, err)
+			}
+			workspace := t.TempDir()
+			directory := t.TempDir()
+			id := reports.ID("turn", "item")
+			name := reports.Name(workspace, id)
+			kind, found, err := runtime.History.Kind(name)
+			if err != nil || !found || kind.ID != "commandsegments" {
+				t.Fatalf("record contribution: kind=%+v found=%v err=%v", kind, found, err)
+			}
+			scope := reports.Scope{Store: runtime.History.Attach(directory), Workspace: workspace, Thread: "viewer"}
+			report := reports.Report{Command: "echo ok", Parts: []reports.Part{{Source: "echo ok"}}}
+			if err := runtime.Segments.Reports.Publish(t.Context(), scope, id, report); err != nil {
+				t.Fatal(err)
+			}
+			if _, found, err := runtime.Segments.Reports.Inspect(directory, workspace, id); err != nil || !found {
+				t.Fatalf("retained API without transport: found=%v err=%v", found, err)
+			}
+		})
+	}
+}
 
 func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 	legacy := recordkind.Spec{ID: "legacy", Match: func(name string) bool { return name == "legacy.json" }}
@@ -43,7 +102,7 @@ func TestCompositionCollectsRecordKindsBeforeHostConstruction(t *testing.T) {
 }
 
 func TestFrontendsExposesConstructedHistoryHost(t *testing.T) {
-	runtime, err := Frontends(t.Context())
+	runtime, err := Frontends(t.Context(), false)
 	if err != nil {
 		t.Fatal(err)
 	}

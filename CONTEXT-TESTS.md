@@ -47,7 +47,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
 | Router behavior | `./internal/router` |
 | Session publication, namespaces, leases, and retention | `./modules/sessionhistory/...`, plus affected router persistence/fork/recovery integration |
-| Completed command-segment reports | `./modules/commandsegments/...`, plus router `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |
+| Command-segment report transport and retained reports | `./modules/commandsegments/...`, plus router `ExecTrack`, `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |
 | Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus router `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
 | Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
 | Provider request encoding and stream normalization | `./internal/providercodec`, plus router Grok/OpenCode integration tests |

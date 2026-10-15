@@ -14,8 +14,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 // gitFixture is a repository whose commands ignore the user's git config.
@@ -285,13 +285,13 @@ func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 	report := dialExecTrackReport(t, hub, script)
 	// Tabs survive in the segment's own output, which the rows read.
 	report.send(
-		execsegment.Message{Type: execsegment.Begin, Index: 0},
-		execsegment.Message{Type: execsegment.End, Index: 0, Code: new(0)},
-		execsegment.Message{Type: execsegment.Begin, Index: 1},
-		execsegment.Message{Type: execsegment.Output, Index: 1, Data: output},
-		execsegment.Message{Type: execsegment.End, Index: 1, Code: new(0)},
-		execsegment.Message{Type: execsegment.Done, Code: new(0)},
-		execsegment.Message{Type: execsegment.Closed},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1},
+		segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: output},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)},
+		segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)},
+		segmenttransport.Message{Type: segmenttransport.Closed},
 	)
 	report.conn.Close()
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, output

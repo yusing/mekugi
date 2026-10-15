@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 const commandSegmentRetentionLimit = 32
@@ -124,7 +124,7 @@ func (u *appServerUI) restoreCommandSegments(entry *activityPaneEntry, item appS
 	}
 	cwd := cmp.Or(entry.native.commandCwd, appServerCommandDirectory(item, workspace))
 	for _, part := range record.Parts {
-		segment := commandSegment{timing: execsegment.Timing(part.Timing), source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
+		segment := commandSegment{timing: segmenttransport.Timing(part.Timing), source: part.Source, text: execSegmentTextInDirectory(part.Source, cwd), skipped: part.Skipped, exit: part.Exit}
 		if separate && !part.Skipped {
 			segment.output = u.session.outputs.New()
 			segment.output.Finish(part.Output, &part.Exit)

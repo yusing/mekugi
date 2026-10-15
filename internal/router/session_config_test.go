@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 )
 
 func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
@@ -22,7 +24,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		var paths []string
 		var readLog string
 		// RunSession returns only after cancellation has joined its owned work.
-		err := RunSession(testHistory(), testRecovery(), testReports(), ctx, testCommands(), options, nil, func(session Session) {
+		err := RunSession(testHistory(), testRecovery(), &segmentservice.Service{Reports: testReports()}, ctx, testCommands(), options, nil, func(session Session) {
 			readLog = session.AXReadOutput
 			cancel()
 		}, func(artifacts []string) { paths = artifacts })

@@ -11,9 +11,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -344,7 +344,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	if previous == nil {
 		t.Fatal("overflow setup did not allocate segment output")
 	}
-	hub.tracks[other].apply(execsegment.Message{Type: execsegment.Output, Index: 0, Data: strings.Repeat("x", activityui.OutputBytes+1)})
+	hub.tracks[other].apply(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: strings.Repeat("x", activityui.OutputBytes+1)})
 	overflow, _ := hub.view(other, false, func(string) string { return "Run `echo huge`" }, retention)
 	if overflow.output || !hub.tracks[other].lossy {
 		t.Fatal("over-bound fresh output did not select combined host fallback")
@@ -361,7 +361,7 @@ func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	var retention activityui.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
 	output := view.segments[0].output
-	track.apply(execsegment.Message{Type: execsegment.Lossy})
+	track.apply(segmenttransport.Message{Type: segmenttransport.Lossy})
 	view, _ = hub.view(key, false, execSegmentText, &retention)
 	if view.output || !output.View().Done || !output.View().Released {
 		t.Fatalf("lossy segment retained live output: %+v", output.View())

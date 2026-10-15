@@ -7,8 +7,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/livediff"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
 const displayGuardDirectory = "/tmp/mekugi-tools-222415842-41c84ab42cecccced7ab3f107aa419ed127f6777c2b00517efb95c6723c6f413/vcs-guard"
@@ -177,12 +177,12 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	for i, ms := range []int{8, 17, 6} {
 		duration := time.Duration(ms) * time.Millisecond
 		report.send(
-			execsegment.Message{Type: execsegment.Begin, Index: i, Timing: execsegment.Timing{Started: now}},
-			execsegment.Message{Type: execsegment.Output, Index: i, Data: outputs[i]},
-			execsegment.Message{Type: execsegment.End, Index: i, Code: new(0), Timing: execsegment.Timing{Started: now, Ended: now.Add(duration), ElapsedNS: int64(duration)}},
+			segmenttransport.Message{Type: segmenttransport.Begin, Index: i, Timing: segmenttransport.Timing{Started: now}},
+			segmenttransport.Message{Type: segmenttransport.Output, Index: i, Data: outputs[i]},
+			segmenttransport.Message{Type: segmenttransport.End, Index: i, Code: new(0), Timing: segmenttransport.Timing{Started: now, Ended: now.Add(duration), ElapsedNS: int64(duration)}},
 		)
 	}
-	report.send(execsegment.Message{Type: execsegment.Done, Code: new(0)}, execsegment.Message{Type: execsegment.Closed})
+	report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	report.conn.Close()
 	deadline := time.Now().Add(2 * time.Second)
 	for {

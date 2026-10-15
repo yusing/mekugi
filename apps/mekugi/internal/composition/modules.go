@@ -18,10 +18,10 @@ import (
 // Frontends is the application composition entry. Command implementations remain
 // in the migration source until their feature extraction; the same registrations
 // now reach the retained authenticated router through the Codex binding.
-func Frontends(ctx context.Context) (*Runtime, error) {
+func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c := Composition{LegacyCommands: toolplugin.Builtins(), LegacyRecordKinds: router.RetainedRecordKinds(), LegacyReferences: router.ChangeReferences()}
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
-	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value()} })
+	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
 	recovery := c.Add(outputrecovery.Module, func() outputrecovery.Deps { return outputrecovery.Deps{History: history.Value()} })
 	c.Add(boundedcommand.Module, func() boundedcommand.Deps { return boundedcommand.Deps{} })
 	c.Add(sourceoutline.Module, func() sourceoutline.Deps { return sourceoutline.Deps{} })

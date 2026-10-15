@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/execsegment"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -73,7 +73,7 @@ func TestUISnapshotNativeGroupedSkills(t *testing.T) {
 func TestUISnapshotNativeSingleCommandElapsed(t *testing.T) {
 	start := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{command: "time skills-mgr get user-experience", duration: 100 * time.Millisecond,
-		segments: []commandSegment{{source: "time skills-mgr get user-experience", text: "Run `time skills-mgr get user-experience`", timing: execsegment.Timing{Started: start, Ended: start.Add(20 * time.Millisecond), ElapsedNS: int64(20 * time.Millisecond)}}}}}
+		segments: []commandSegment{{source: "time skills-mgr get user-experience", text: "Run `time skills-mgr get user-experience`", timing: segmenttransport.Timing{Started: start, Ended: start.Add(20 * time.Millisecond), ElapsedNS: int64(20 * time.Millisecond)}}}}}
 	var p activityui.Painter
 	uisnapshot.Assert(t, "testdata/snapshots/native-single-command-elapsed.txt", strings.Join(p.Block(parseLiveActivity(entry)[0], 80), "\n")+"\n")
 }

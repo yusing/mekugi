@@ -1,4 +1,4 @@
-package execsegment
+package transport
 
 import (
 	"crypto/rand"
@@ -10,6 +10,8 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+// Source: internal/execsegment/channel.go:14:79@[34c92f4c] FIFO helper connection
 
 // ReportDirectory validates a request ID before resolving its private files.
 func ReportDirectory(directory, id string) (string, bool) {

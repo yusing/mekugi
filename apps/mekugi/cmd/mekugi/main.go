@@ -43,7 +43,7 @@ func run() (exitCode int) {
 		operation = os.Args[1]
 	}
 	if worker != nil || slices.Contains([]string{"inspect-sessions", "replay-session", "inspect-session", "inspect-storage"}, operation) {
-		frontends, err := composition.Frontends(ctx)
+		frontends, err := composition.Frontends(ctx, false)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi:", err)
 			return 1
@@ -67,7 +67,7 @@ func run() (exitCode int) {
 		case "inspect-session":
 			return router.RunSessionInspection(frontends.History, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		case "inspect-storage":
-			return router.RunStorageInspection(frontends.History, frontends.Segments, ctx, os.Args[2:], os.Stdout, os.Stderr)
+			return router.RunStorageInspection(frontends.History, frontends.Segments.Reports, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		}
 	}
 	routerArgs, command, err := router.SplitCommand(os.Args[1:])

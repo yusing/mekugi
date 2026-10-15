@@ -25,9 +25,9 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi"
@@ -147,7 +147,7 @@ type execObservation struct {
 // A successful mktemp report supplies the ordinary absent endpoint and empty
 // destination listing. Reconciliation reads only that path and its contents,
 // which are authored like any named operand.
-func (o *execObservation) addCreatedPaths(paths []execsegment.Message) {
+func (o *execObservation) addCreatedPaths(paths []segmenttransport.Message) {
 	// Observation copies may share backing arrays with a running preview.
 	o.Files, o.Listings = slices.Clip(o.Files), slices.Clip(o.Listings)
 	for _, path := range paths {

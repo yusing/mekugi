@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -192,5 +194,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 	if err != nil {
 		return err
 	}
-	return RunSession(service, recovered, testReports(), ctx, commands, options, issues, ready, artifacts)
+	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, ctx, commands, options, issues, ready, artifacts)
 }
