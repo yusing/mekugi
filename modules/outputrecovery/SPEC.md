@@ -100,7 +100,9 @@ keeps inaccessible retained evidence conservative. Cross-owner operations reuse
 the active publication transaction; resolvers never open nested transactions.
 
 The frontend reserves identities for reader delivery plans and publishes every
-prepared payload before exposing their continuation. Publication failure may
+prepared payload before exposing their continuation. A payload is either omitted
+output or an opaque evidence selection, never both. The selection resolver owns
+its validation and canonical encoding. Publication failure may
 leave conservatively retained records but cannot expose missing recovery.
 
 ## Failure

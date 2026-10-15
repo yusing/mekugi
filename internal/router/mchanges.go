@@ -14,8 +14,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
-
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
@@ -701,11 +699,8 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 		}
 		execution := command.Output{Stdout: selected, ExitCode: status}
 		if len(selected) < len(text) {
-			execution.OmittedOutput = &command.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
+			execution.Delivery = &changeMutationDelivery{report: text, selected: selected, status: status}
 			execution.ExitCode = 1
-			if execution, err = retainExecutionOutput(ctx, manifest, execution); err != nil {
-				return whole(err)
-			}
 		}
 		return execution
 	}
@@ -721,27 +716,15 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 	if err != nil {
 		return fail(err)
 	}
+	execution := command.Output{Stdout: selected, Stderr: diagnostics}
 	if diagnostics != "" {
-		execution := command.Output{Stdout: selected, Stderr: diagnostics, ExitCode: 1}
+		execution.ExitCode = 1
 		if len(selected) < len(text) {
 			execution.OmittedOutput = &command.OmittedOutput{Stdout: text[len(selected):], StdoutKind: "rows"}
-			retained, err := retainExecutionOutput(ctx, manifest, execution)
-			if err != nil {
-				return command.Output{Stdout: selected, Stderr: diagnostics + fmt.Sprintf("mchanges: recovery unavailable: %v\n", err), ExitCode: 1}
-			}
-			return retained
 		}
-		return execution
+	} else if len(selected) < len(text) {
+		execution.ExitCode = 1
+		execution.Delivery = &changeReadDelivery{snapshot: *snapshot, text: text, selected: selected}
 	}
-	next := ""
-	if len(selected) < len(text) {
-		next, err = store.putChangeRead(ctx, snapshot, text, len(selected))
-		if err != nil {
-			return command.Output{Stdout: selected, Stderr: fmt.Sprintf("mchanges: recovery unavailable: %v\n", err), ExitCode: 1}
-		}
-	}
-	if next != "" {
-		return command.Output{Stdout: selected, Stderr: recovery.NextCall(next), ExitCode: 1}
-	}
-	return command.Output{Stdout: selected}
+	return execution
 }

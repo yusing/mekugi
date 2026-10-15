@@ -204,9 +204,16 @@ func TestRegisteredRecoveryUsesContributedSelectionResolver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := session.PublishSelection(t.Context(), []byte(` {"selection":1} `))
+	handles, err := session.Reserve(t.Context(), 2)
 	if err != nil {
 		t.Fatal(err)
+	}
+	id, err := session.PublishSelectionAt(t.Context(), handles[1], []byte(` {"selection":1} `))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != handles[1] {
+		t.Fatalf("selection identity = %q, want reserved %q", id, handles[1])
 	}
 	executable := moduletest.BindCommand(outputrecovery.Module.Contributes.Commands[0], service)
 	got := execute(t, executable, selected, id)

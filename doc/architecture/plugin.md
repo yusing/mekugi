@@ -28,9 +28,12 @@ Frontend operands never select launcher commands; a filename such as `mcp-bridge
 remains an operand of the authenticated frontend.
 
 Commands return omitted payloads or a pure delivery plan over already captured
-output. For coordinated results, the host reserves reference identities before
+output or a frozen retained-evidence selection. For coordinated results, the host reserves reference identities before
 the command finalizes exact framing and admission. The plan receives identities,
-never a store or execution callback. Managed output is published before a recovery reference is returned. Storage
+never a store or execution callback. A command that has already changed the
+workspace may supply a pure recovery-failure result preserving its full report
+and original mutation status. Cancellation still suppresses delivery.
+Managed output is published before a recovery reference is returned. Storage
 failure cannot claim recovery is available. Replay consumes retained results
 without executing workers. Cleanup owns only invocation-created frontends,
 snapshot files, and leased worker resources. Command execution scope distinguishes

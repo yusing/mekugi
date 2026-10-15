@@ -121,16 +121,3 @@ func changeSelectionDependencies(selected scope.Retained, data []byte) ([]string
 	}
 	return names, nil
 }
-func (s *mekugiReplayStore) putChangeRead(ctx context.Context, snapshot *changeReadSnapshot, text string, offset int) (string, error) {
-	snapshot.Offset, snapshot.Digest, snapshot.Frozen = offset, fmt.Sprintf("%x", sha256.Sum256([]byte(text))), true
-	data, err := json.Marshal(snapshot, jsonv1.DefaultOptionsV1())
-	if err != nil {
-		return "", err
-	}
-	session, err := s.recoverySession(ctx)
-	if err != nil {
-		return "", err
-	}
-	id, err := session.PublishSelection(ctx, data)
-	return id, storagePublicationError(err)
-}

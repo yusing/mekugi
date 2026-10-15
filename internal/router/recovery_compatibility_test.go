@@ -39,7 +39,11 @@ func TestReadRecordCanonicalCompat(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := session.PublishSelection(t.Context(), envelope.Changes); err != nil {
+			handles, err := session.Reserve(t.Context(), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := session.PublishSelectionAt(t.Context(), handles[0], envelope.Changes); err != nil {
 				t.Fatal(err)
 			}
 			paths, err := filepath.Glob(filepath.Join(store.directory, "output-*.json"))

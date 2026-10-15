@@ -92,9 +92,9 @@ func (s *Session) PublishAt(ctx context.Context, id string, output command.Omitt
 	return s.put(ctx, record.Record{Version: 1, ID: id, Stdout: output.Stdout, Stderr: output.Stderr, ExitCode: exitCode, StdoutKind: output.StdoutKind, StderrKind: output.StderrKind, SourceRow: output.SourceRow})
 }
 
-// PublishSelection retains the evidence owner's canonical selection. The
-// registered resolver owns its private schema.
-func (s *Session) PublishSelection(ctx context.Context, data []byte) (string, error) {
+// PublishSelectionAt retains an evidence owner's canonical selection at an
+// already reserved identity. The registered resolver owns its private schema.
+func (s *Session) PublishSelectionAt(ctx context.Context, id string, data []byte) (string, error) {
 	if s.service.changes == nil {
 		return "", errors.New("change reference resolver is unavailable")
 	}
@@ -102,11 +102,7 @@ func (s *Session) PublishSelection(ctx context.Context, data []byte) (string, er
 	if err != nil {
 		return "", err
 	}
-	handles, err := s.Reserve(ctx, 1)
-	if err != nil {
-		return "", err
-	}
-	return s.put(ctx, record.Record{Version: 1, ID: handles[0], Changes: data})
+	return s.put(ctx, record.Record{Version: 1, ID: id, Changes: data})
 }
 
 func outputName(namespace, id string) string {

@@ -55,10 +55,18 @@ func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, exe
 			if output.ReferenceIndex < 0 || output.ReferenceIndex >= len(handles) {
 				return prepared.Unreferenced, errors.New("recovery reference outside reserved slots")
 			}
-			if _, err := store.PublishAt(ctx, handles[output.ReferenceIndex], output.OmittedOutput, output.ExitCode); err != nil {
+			id := handles[output.ReferenceIndex]
+			if len(output.ChangeSelection) != 0 {
+				if output.OmittedOutput != (command.OmittedOutput{}) || output.ExitCode != 0 {
+					return prepared.Unreferenced, errors.New("change selection cannot contain omitted output")
+				}
+				_, err = store.PublishSelectionAt(ctx, id, output.ChangeSelection)
+			} else {
+				_, err = store.PublishAt(ctx, id, output.OmittedOutput, output.ExitCode)
+			}
+			if err != nil {
 				return prepared.Unreferenced, storagePublicationError(err)
 			}
-
 		}
 		return prepared.Referenced, nil
 	}

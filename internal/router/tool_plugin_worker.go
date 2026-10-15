@@ -177,6 +177,7 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 		if err != nil {
 			return execution, err
 		}
+		plan := execution.Delivery
 		execution, err = retainExecutionOutput(ctx, manifest, execution)
 		if ctx.Err() != nil {
 			return command.Output{}, ctx.Err()
@@ -185,6 +186,9 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 			return command.Output{}, err
 		}
 		if err != nil {
+			if fallback, ok := plan.(command.RecoveryFailure); ok {
+				return fallback.RecoveryFailed(err), nil
+			}
 			if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
 				execution.Stderr += "\n"
 			}
