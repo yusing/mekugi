@@ -41,7 +41,7 @@ func TestWebSocketCaptureUsesActualMessageBytes(t *testing.T) {
 	}
 	firstMetric, _ := recorder.measure(first)
 	terminalMetric, _ := recorder.measure(terminal)
-	if attempt.Response.Tokens != firstMetric.Tokens+terminalMetric.Tokens || attempt.FinalOutput.Bytes == 0 {
+	if attempt.Response.Tokens != firstMetric.Tokens+terminalMetric.Tokens {
 		t.Fatal("JSON event token/output accounting differs")
 	}
 	if attempt.Usage == nil || attempt.Usage.CachedInputTokens != 2 || attempt.ProviderResponse.RequestID != "request-first" || attempt.ProviderResponse.ServiceTier != "flex" || attempt.ProviderResponse.CachedTokens == nil || *attempt.ProviderResponse.CachedTokens != 2 {

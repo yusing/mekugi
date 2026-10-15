@@ -2,31 +2,21 @@ package capturer
 
 import (
 	jsonv1 "encoding/json"
-	json "encoding/json/v2"
 	"strings"
 	"testing"
 )
 
-func TestChatCaptureTerminalOutputAndCompletion(t *testing.T) {
+func TestChatCaptureTerminalCompletion(t *testing.T) {
 	stream := "data: " + `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"exec","arguments":"{\"input\":"}}]}}]}` + "\n\n" +
 		"data: " + `{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"text(1)\"}"}}]},"finish_reason":"tool_calls"}]}` + "\n\ndata: [DONE]\n\n"
 	var record captureRecord
-	output := observeChatResponse([]byte(stream), "text/event-stream", &record)
+	observeChatResponse([]byte(stream), "text/event-stream", &record)
 	if record.ResponseStatus != "completed" {
-		t.Fatalf("record=%+v output=%s", record, output)
-	}
-	var messages []struct {
-		ToolCalls []chatCaptureCall `json:"tool_calls"`
-	}
-	if err := json.Unmarshal(output, &messages); err != nil || len(messages) != 1 || len(messages[0].ToolCalls) != 1 {
-		t.Fatalf("reconstructed tool output=%s error=%v", output, err)
-	}
-	call := messages[0].ToolCalls[0]
-	if call.ID != "c1" || call.Function.Name != "exec" || call.Function.Arguments != `{"input":"text(1)"}` {
-		t.Fatalf("reconstructed tool call=%+v", call)
+		t.Fatalf("record=%+v", record)
 	}
 	record = captureRecord{}
-	if output := observeChatResponse([]byte(strings.TrimSuffix(stream, "data: [DONE]\n\n")), "text/event-stream", &record); output != nil || record.ResponseStatus != "" {
+	observeChatResponse([]byte(strings.TrimSuffix(stream, "data: [DONE]\n\n")), "text/event-stream", &record)
+	if record.ResponseStatus != "" {
 		t.Fatal("truncated chat completion was counted as completed")
 	}
 	names := requestToolNames([]jsonv1.RawMessage{jsonv1.RawMessage(`{"type":"function","function":{"name":"exec"}}`)})
@@ -42,9 +32,9 @@ func TestChatCaptureSSELineEndingsAndBOM(t *testing.T) {
 		for _, bom := range []string{"", "\xef\xbb\xbf"} {
 			for _, contentType := range []string{"text/event-stream", ""} {
 				var record captureRecord
-				output := observeChatResponse([]byte(bom+strings.ReplaceAll(stream, "\n", ending)), contentType, &record)
-				if record.ResponseStatus != "completed" || record.CaptureError != "" || string(output) != `[{"content":"ok","role":"assistant"}]` {
-					t.Fatalf("ending=%q BOM=%q type=%q record=%+v output=%s", ending, bom, contentType, record, output)
+				observeChatResponse([]byte(bom+strings.ReplaceAll(stream, "\n", ending)), contentType, &record)
+				if record.ResponseStatus != "completed" || record.CaptureError != "" {
+					t.Fatalf("ending=%q BOM=%q type=%q record=%+v", ending, bom, contentType, record)
 				}
 			}
 		}
@@ -65,9 +55,29 @@ func TestChatCaptureFinishEvidence(t *testing.T) {
 				contentType = "text/event-stream"
 			}
 			var record captureRecord
-			output := observeChatResponse([]byte(payload), contentType, &record)
-			if record.ResponseStatus != test.status || (len(output) != 0) != (test.status != "") {
-				t.Fatalf("reason=%q stream=%v status=%q output=%s", test.reason, stream, record.ResponseStatus, output)
+			observeChatResponse([]byte(payload), contentType, &record)
+			if record.ResponseStatus != test.status {
+				t.Fatalf("reason=%q stream=%v status=%q", test.reason, stream, record.ResponseStatus)
+			}
+		}
+	}
+}
+
+func TestChatCaptureRejectsMalformedContentEvidence(t *testing.T) {
+	for _, field := range []string{`"content":42`, `"tool_calls":42`, `"tool_calls":[{"function":{"arguments":42}}]`} {
+		for _, member := range []string{"message", "delta"} {
+			for _, stream := range []bool{false, true} {
+				payload := `{"service_tier":"priority","choices":[{"` + member + `":{` + field + `},"finish_reason":"stop"}]}`
+				kind := "application/json"
+				if stream {
+					payload = "data: " + payload + "\n\ndata: [DONE]\n\n"
+					kind = "text/event-stream"
+				}
+				record := captureRecord{Boundary: "provider", ProviderResponse: &providerResponseEvidence{}}
+				observeChatResponse([]byte(payload), kind, &record)
+				if record.CaptureError == "" || record.ResponseStatus != "" || record.ProviderResponse.ServiceTier != "" {
+					t.Fatalf("malformed %s %s stream=%v: %+v evidence=%+v", member, field, stream, record, record.ProviderResponse)
+				}
 			}
 		}
 	}

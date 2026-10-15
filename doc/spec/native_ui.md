@@ -653,7 +653,7 @@ interrupting a turn; Escape first clears a text selection.
 
 Overview groups settled request counts and retries, provider usage with complete,
 partial, legacy and missing attempt coverage, measured cache rate and capture
-health. Transport groups wire and semantic output measurements, including all
+health. Transport groups wire measurements, including all
 four control-message directions.
 Exchanges shows one retained exchange with its provider attempts, explicit
 telemetry including the provider-returned service tier, duration, HTTP status and

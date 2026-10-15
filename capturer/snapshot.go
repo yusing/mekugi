@@ -68,11 +68,6 @@ func addWebSocketControl(metrics *transportMetrics, record captureRecord) bool {
 	return true
 }
 
-type semanticOutputMetrics struct {
-	ProviderAttemptOutputs payloadTotals `json:"provider_attempt_outputs"`
-	ClientOutputs          payloadTotals `json:"client_outputs"`
-}
-
 type captureHealth struct {
 	Records                uint64 `json:"records"`
 	CaptureErrors          uint64 `json:"capture_errors"`
@@ -99,8 +94,6 @@ type providerAttemptMetrics struct {
 	Fingerprint          *requestFingerprint       `json:"cache_fingerprint,omitempty"`
 	ProjectedFingerprint *requestFingerprint       `json:"projected_fingerprint,omitempty"`
 	Response             payloadMetrics            `json:"response"`
-	FinalOutput          payloadMetrics            `json:"final_output,omitzero"`
-	FinalText            payloadMetrics            `json:"final_text,omitzero"`
 }
 
 type exchangeMetrics struct {
@@ -122,8 +115,6 @@ type exchangeMetrics struct {
 	Usage               *usageMetrics            `json:"usage,omitempty"`
 	ClientRequest       payloadMetrics           `json:"client_request"`
 	ClientResponse      payloadMetrics           `json:"client_response"`
-	ClientFinalText     payloadMetrics           `json:"client_final_text,omitzero"`
-	ClientFinalOutput   payloadMetrics           `json:"client_final_output,omitzero"`
 }
 
 // MetricsSnapshot is a detached, capture-owned metrics view.
@@ -136,7 +127,6 @@ type MetricsSnapshot struct {
 	Usage               usageMetrics               `json:"usage"`
 	Cache               cacheMetrics               `json:"cache"`
 	Transport           transportMetrics           `json:"transport"`
-	Semantic            semanticOutputMetrics      `json:"semantic"`
 	Exchanges           []exchangeMetrics          `json:"exchanges"`
 	Capture             captureHealth              `json:"capture"`
 }
@@ -197,7 +187,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 		Sequence:          front.RequestSequence, ThreadID: front.ThreadID, PredecessorSequence: front.PredecessorSequence,
 		Status: front.ResponseStatus, ClientRequest: front.Request, ClientResponse: front.Response,
 		ClientFingerprint: front.Fingerprint,
-		ClientFinalOutput: front.FinalOutput, ClientFinalText: front.FinalText,
 	}
 	var exchangeUsage usageMetrics
 	r.metrics.Requests.Logical++
@@ -205,7 +194,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 	r.metrics.Requests.Retries += uint64(max(0, len(providers)-1))
 	addPayload(&r.metrics.Transport.ClientRequests, front.Request)
 	addPayload(&r.metrics.Transport.ClientResponses, front.Response)
-	addPayload(&r.metrics.Semantic.ClientOutputs, front.FinalOutput)
 	if front.ResponseStatus == "completed" {
 		r.metrics.Requests.Completed++
 	} else {
@@ -214,7 +202,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 	for _, provider := range providers {
 		addPayload(&r.metrics.Transport.ProviderAttemptRequests, provider.Request)
 		addPayload(&r.metrics.Transport.ProviderResponses, provider.Response)
-		addPayload(&r.metrics.Semantic.ProviderAttemptOutputs, provider.FinalOutput)
 		attempt := providerAttemptMetrics{
 			DurationMillis: provider.DurationMillis, StatusCode: provider.StatusCode, CaptureError: provider.CaptureError,
 			Transport:        provider.Transport,
@@ -222,7 +209,7 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 			Attempt:          provider.ProviderAttempt, Model: provider.RequestModel, Status: provider.ResponseStatus,
 			ResponseComplete: provider.ResponseComplete,
 			Fingerprint:      provider.Fingerprint, ProjectedFingerprint: provider.ProjectedFingerprint,
-			Request: provider.Request, Response: provider.Response, FinalOutput: provider.FinalOutput, FinalText: provider.FinalText,
+			Request: provider.Request, Response: provider.Response,
 		}
 		if provider.RequestModel != "" {
 			exchange.Model = provider.RequestModel
@@ -266,9 +253,6 @@ func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 	clone.Exchanges = make([]exchangeMetrics, len(source.Exchanges))
 	for index, exchange := range source.Exchanges {
 		clone.Exchanges[index] = exchange
-		if exchange.CompactionSummaryBytes != nil {
-			clone.Exchanges[index].CompactionSummaryBytes = new(*exchange.CompactionSummaryBytes)
-		}
 		if exchange.CompactionChanges != nil {
 			clone.Exchanges[index].CompactionChanges = new(*exchange.CompactionChanges)
 		}

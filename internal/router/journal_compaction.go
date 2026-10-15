@@ -395,7 +395,7 @@ func (a *requestAttempt) tryJournalCompaction() (bool, error) {
 	}
 	a.streamResponse = true
 	a.finalization.upstreamStatusCode = http.StatusOK
-	capturer.ObserveCompaction(a.startCtx, "router", len(summary.Text), summary.Changes, summary.Failures)
+	capturer.ObserveCompaction(a.startCtx, "router", summary.Changes, summary.Failures)
 	return true, nil
 }
 

@@ -103,11 +103,6 @@ func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
 			metrics := httptest.NewRecorder()
 			recorder.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/api/metrics", nil))
 			var snapshot struct {
-				Semantic struct {
-					Client struct {
-						Bytes int `json:"bytes"`
-					} `json:"client_outputs"`
-				} `json:"semantic"`
 				Usage struct {
 					Output int `json:"output_tokens"`
 				} `json:"usage"`
@@ -115,7 +110,7 @@ func TestCaptureModelOutputThroughRouterCommentary(t *testing.T) {
 			if err := json.Unmarshal(metrics.Body.Bytes(), &snapshot); err != nil {
 				t.Fatal(err)
 			}
-			if snapshot.Semantic.Client.Bytes < 100 || snapshot.Usage.Output != 5 {
+			if snapshot.Usage.Output != 5 {
 				t.Fatalf("router commentary affected model output: %s", metrics.Body.String())
 			}
 		})

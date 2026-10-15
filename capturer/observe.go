@@ -6,11 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"maps"
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/commentaryid"
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
@@ -36,63 +34,18 @@ func decodedCapturePayload(payload []byte, contentEncoding string) ([]byte, erro
 	}
 }
 
-func observeResponse(payload []byte, contentType string, record *captureRecord) []byte {
+func observeResponse(payload []byte, contentType string, record *captureRecord) {
 	if contentType == webSocketContentType || strings.Contains(strings.ToLower(contentType), "text/event-stream") || capturedPayloadLooksLikeSSE(payload) {
-		var finalOutput []byte
-		terminalOutputObserved := false
-		completedItems := make(map[int]json.RawMessage)
 		messages := sseData(payload)
 		if contentType == webSocketContentType {
 			messages = webSocketMessages(payload)
 		}
 		for data := range messages {
-			if index, item, ok := completedResponseOutputItem(data); ok && !generatedOutputItem(item, record) {
-				completedItems[index] = item
-			}
-			if output, terminal := observeResponseJSON(data, record); terminal {
-				finalOutput = output
-				terminalOutputObserved = true
-			}
+			observeResponseJSON(data, record)
 		}
-		if !terminalOutputObserved {
-			return nil
-		}
-		var terminalItems []json.RawMessage
-		if len(finalOutput) != 0 && (json.Unmarshal(finalOutput, &terminalItems) != nil || len(terminalItems) != 0) {
-			return finalOutput
-		}
-		if len(completedItems) == 0 {
-			return finalOutput
-		}
-		indices := slices.Sorted(maps.Keys(completedItems))
-		items := make([]json.RawMessage, 0, len(indices))
-		for _, index := range indices {
-			items = append(items, completedItems[index])
-		}
-		output, err := json.Marshal(items)
-		if err != nil {
-			if record.CaptureError == "" {
-				record.CaptureError = "encode completed response output"
-			}
-			return nil
-		}
-		return output
+		return
 	}
-	output, _ := observeResponseJSON(payload, record)
-	return output
-}
-
-func completedResponseOutputItem(payload []byte) (int, json.RawMessage, bool) {
-	var event struct {
-		Type        responseevents.Kind `json:"type"`
-		OutputIndex *int                `json:"output_index"`
-		Item        json.RawMessage     `json:"item"`
-	}
-	if json.Unmarshal(payload, &event) != nil || event.Type != responseevents.OutputItemDone ||
-		event.OutputIndex == nil || *event.OutputIndex < 0 || len(event.Item) == 0 {
-		return 0, nil, false
-	}
-	return *event.OutputIndex, event.Item, true
+	observeResponseJSON(payload, record)
 }
 
 func capturedPayloadLooksLikeSSE(payload []byte) bool {
@@ -110,9 +63,9 @@ func capturedPayloadLooksLikeSSE(payload []byte) bool {
 	return false
 }
 
-func observeResponseJSON(payload []byte, record *captureRecord) ([]byte, bool) {
+func observeResponseJSON(payload []byte, record *captureRecord) {
 	if len(bytes.TrimSpace(payload)) == 0 || bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) {
-		return nil, false
+		return
 	}
 	var event struct {
 		Type     responseevents.Kind        `json:"type"`
@@ -123,7 +76,7 @@ func observeResponseJSON(payload []byte, record *captureRecord) ([]byte, bool) {
 		if record.CaptureError == "" {
 			record.CaptureError = "invalid response JSON"
 		}
-		return nil, false
+		return
 	}
 	if event.Type == responseevents.Error || event.Type == responseevents.Metadata {
 		if record.Boundary == "provider" && record.ProviderResponse != nil {
@@ -142,12 +95,12 @@ func observeResponseJSON(payload []byte, record *captureRecord) ([]byte, bool) {
 		}
 		if event.Type == responseevents.Error {
 			record.ResponseStatus = responseevents.Error
-			return nil, true
+			return
 		}
-		return nil, false
+		return
 	}
 	if len(event.Response) != 0 {
-		_, output, valid := observeResponseEnvelope(event.Response, record)
+		_, valid := observeResponseEnvelope(event.Response, record)
 		switch {
 		case event.Type.Terminal():
 			if valid {
@@ -158,29 +111,26 @@ func observeResponseJSON(payload []byte, record *captureRecord) ([]byte, bool) {
 				record.ProviderResponse.CachedTokensState = "unavailable"
 				record.ProviderResponse.CachedTokens = nil
 			}
-			return output, true
+			return
 		default:
-			return nil, false
+			return
 		}
 	}
-	status, output, _ := observeResponseEnvelope(payload, record)
-	switch {
-	case responseevents.TerminalStatus(status):
+	status, _ := observeResponseEnvelope(payload, record)
+	if responseevents.TerminalStatus(status) {
 		record.observeProviderEvidence(payload)
-		return output, true
-	default:
-		return nil, false
 	}
 }
 
-func observeResponseEnvelope(payload []byte, record *captureRecord) (string, []byte, bool) {
+func observeResponseEnvelope(payload []byte, record *captureRecord) (string, bool) {
 	var response *struct {
-		Status string            `json:"status"`
+		Status string          `json:"status"`
+		Model  json.RawMessage `json:"model"`
+		// Validate the envelope shape before accepting terminal provider evidence.
 		Output []json.RawMessage `json:"output"`
-		Model  json.RawMessage   `json:"model"`
 	}
 	if json.Unmarshal(payload, &response) != nil || response == nil {
-		return "", nil, false
+		return "", false
 	}
 	if record.Boundary == "provider" && record.ProviderResponse != nil && len(response.Model) != 0 {
 		var model string
@@ -190,31 +140,7 @@ func observeResponseEnvelope(payload []byte, record *captureRecord) (string, []b
 	if response.Status != "" {
 		record.ResponseStatus = response.Status
 	}
-	if response.Output == nil {
-		return response.Status, nil, true
-	}
-	// Remove only router-origin messages, before deciding whether a terminal
-	// array can replace the indexed streamed items. Telemetry alone is not a
-	// complete model output. Transport measurement still sees every byte.
-	outputItems := slices.DeleteFunc(response.Output, func(item json.RawMessage) bool {
-		return generatedOutputItem(item, record)
-	})
-	output, err := json.Marshal(outputItems)
-	if err != nil {
-		return "", nil, false
-	}
-	return response.Status, output, true
-}
-
-func generatedOutputItem(payload []byte, record *captureRecord) bool {
-	if record.Boundary != "codex" || record.Mode != "mekugi" {
-		return false
-	}
-	var item struct {
-		Type string `json:"type"`
-		ID   string `json:"id"`
-	}
-	return json.Unmarshal(payload, &item) == nil && item.Type == "message" && commentaryid.Generated(item.ID)
+	return response.Status, true
 }
 
 func requestToolNames(tools []json.RawMessage) []string {

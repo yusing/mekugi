@@ -306,7 +306,7 @@ encrypted compaction items remain unchanged. The summary and its thread/workspac
 and response identity persist before exposure. No model request is made for the
 local reset, and no model usage is fabricated. Metrics distinguish router answers from
 provider answers and report zero provider attempts/tokens for router answers.
-Summary bytes and evidence counts are measurements, never savings estimates.
+Evidence counts are observations, never savings estimates.
 
 In `auto`, `/compact`, live progress, queued commands, cancellation and
 continuation text describe context reset. Generic completion and restored history

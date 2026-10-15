@@ -1,5 +1,7 @@
     ╭ Session · Exchanges ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
+    │                                                                                │
+    │  Provider attempt 2  ────────────────────────────────────────────────────────  │
     │  Transport         WebSocket                                                   │
     │  Status            completed                                                   │
     │  Duration          1800 ms                                                     │
@@ -7,8 +9,6 @@
     │  Complete          true                                                        │
     │  Request           0 bytes · 0 estimated tokens                                │
     │  Stream            0 bytes · 0 estimated tokens                                │
-    │  Model output      0 bytes · 0 estimated tokens                                │
-    │  Final text        0 bytes · 0 estimated tokens                                │
     │  Input             120                                                         │
     │  Cached input      0                                                           │
     │  Uncached input    120                                                         │
@@ -22,4 +22,4 @@
     │  Cached telemetry  present                                                     │
     │  Explicit cached   0                                                           │
     │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  39–59 / 59 ─────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  33–53 / 53 ─────────────╯

@@ -3,28 +3,24 @@ package capturer
 import (
 	"bytes"
 	"encoding/json"
-	"maps"
-	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/internal/chat"
 )
 
-type chatCaptureCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Function struct {
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-	} `json:"function"`
-}
-
-// observeChatResponse measures the actual Chat Completions provider boundary,
+// observeChatResponse observes the actual Chat Completions provider boundary,
 // not the router's synthesized Responses envelope. Usage still comes from the
 // shared terminal observation seam; there is no second usage parser here.
-func observeChatResponse(payload []byte, contentType string, record *captureRecord) []byte {
-	var content strings.Builder
-	calls := map[int]*chatCaptureCall{}
+func observeChatResponse(payload []byte, contentType string, record *captureRecord) {
+	// Decode content fields for shape validation, without assembling output.
+	type toolCall struct {
+		ID       string `json:"id"`
+		Type     string `json:"type"`
+		Function struct {
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"function"`
+	}
 	finished, done, malformed := false, false, false
 	serviceTier := ""
 	consume := func(data []byte) {
@@ -39,12 +35,12 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 					Content   string `json:"content"`
 					ToolCalls []struct {
 						Index int `json:"index"`
-						chatCaptureCall
+						toolCall
 					} `json:"tool_calls"`
 				} `json:"delta"`
 				Message struct {
-					Content   string            `json:"content"`
-					ToolCalls []chatCaptureCall `json:"tool_calls"`
+					Content   string     `json:"content"`
+					ToolCalls []toolCall `json:"tool_calls"`
 				} `json:"message"`
 				FinishReason chat.FinishReason `json:"finish_reason"`
 			} `json:"choices"`
@@ -58,23 +54,6 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 			serviceTier = providerServiceTier(chunk.ServiceTier)
 		}
 		for _, choice := range chunk.Choices {
-			content.WriteString(choice.Delta.Content)
-			content.WriteString(choice.Message.Content)
-			for _, part := range choice.Delta.ToolCalls {
-				call := calls[part.Index]
-				if call == nil {
-					call = &chatCaptureCall{Type: "function"}
-					calls[part.Index] = call
-				}
-				if part.ID != "" {
-					call.ID = part.ID
-				}
-				call.Function.Name += part.Function.Name
-				call.Function.Arguments += part.Function.Arguments
-			}
-			for i, part := range choice.Message.ToolCalls {
-				calls[i] = &part
-			}
 			if status := choice.FinishReason.ResponseStatus(); status != "" {
 				finished = true
 				record.ResponseStatus = status
@@ -92,20 +71,9 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 	}
 	if !finished || !done {
 		record.ResponseStatus = ""
-		return nil
+		return
 	}
 	if record.Boundary == "provider" && record.ProviderResponse != nil && !malformed {
 		record.ProviderResponse.ServiceTier = serviceTier
 	}
-	ordered := []chatCaptureCall{}
-	for _, index := range slices.Sorted(maps.Keys(calls)) {
-		call := calls[index]
-		ordered = append(ordered, *call)
-	}
-	message := map[string]any{"role": "assistant", "content": content.String()}
-	if len(ordered) > 0 {
-		message["tool_calls"] = ordered
-	}
-	output, _ := json.Marshal([]any{message})
-	return output
 }

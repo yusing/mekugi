@@ -1,25 +1,25 @@
     ╭ Session · Exchanges ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
-    │  Complete       true                                                           │
-    │  Capture error  missing_projected_request                                      │
-    │  Request        0 bytes · 0 estimated tokens                                   │
-    │  Stream         0 bytes · 0 estimated tokens                                   │
-    │  Model output   0 bytes · 0 estimated tokens                                   │
-    │  Final text     0 bytes · 0 estimated tokens                                   │
-    │  Usage          unavailable                                                    │
-    │  Service tier   unavailable                                                    │
-    │  Telemetry      unavailable                                                    │
+    │  Request         0 bytes · 0 estimated tokens                                  │
+    │  Stream          0 bytes · 0 estimated tokens                                  │
+    │  Usage           unavailable                                                   │
+    │  Service tier    unavailable                                                   │
+    │  Telemetry       unavailable                                                   │
     │                                                                                │
     │  Provider attempt 2  ────────────────────────────────────────────────────────  │
-    │  Transport      WebSocket                                                      │
-    │  Status         completed                                                      │
-    │  Duration       1800 ms                                                        │
-    │  HTTP status    101                                                            │
-    │  Complete       true                                                           │
-    │  Request        0 bytes · 0 estimated tokens                                   │
-    │  Stream         0 bytes · 0 estimated tokens                                   │
-    │  Model output   0 bytes · 0 estimated tokens                                   │
-    │  Final text     0 bytes · 0 estimated tokens                                   │
-    │  Input          120                                                            │
+    │  Transport       WebSocket                                                     │
+    │  Status          completed                                                     │
+    │  Duration        1800 ms                                                       │
+    │  HTTP status     101                                                           │
+    │  Complete        true                                                          │
+    │  Request         0 bytes · 0 estimated tokens                                  │
+    │  Stream          0 bytes · 0 estimated tokens                                  │
+    │  Input           120                                                           │
+    │  Cached input    0                                                             │
+    │  Uncached input  120                                                           │
+    │  Output          12                                                            │
+    │  Reasoning       0                                                             │
+    │  Usage evidence  complete                                                      │
+    │  Service tier    priority                                                      │
     │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 59 ─────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 53 ─────────────╯

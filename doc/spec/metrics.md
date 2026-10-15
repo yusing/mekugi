@@ -36,19 +36,15 @@ A durable record MUST contain only:
 - schema version, boundary, private capture identity, logical sequence, and provider attempt;
 - mode, provider request model, and correlation fields already supplied
   by Codex;
-- complete transport byte counts and framing-independent GPT-5 content estimates plus the terminal Responses `output` array measured once;
+- complete transport byte counts and framing-independent GPT-5 content estimates;
 - HTTP and Responses status, completeness, duration, a bounded capture-error category, and an optional `transport: "websocket"` marker;
 - optional `request_kind`, restricted to `turn`, `prewarm`, or `compaction`, supplied
   from validated router metadata and preserved in the corresponding exchange snapshot;
-- optional `compaction_answer` (`router` or `provider`), summary byte size and
+- optional `compaction_answer` (`router` or `provider`) and
   uncovered change/failure counts. Router answers have known counts and no provider
   attempt or provider usage record. Their exchange usage explicitly reports zero;
-  provider summaries have measured text bytes when complete and unknown evidence
-  counts. Missing answerer fields in older exports mean unknown, not provider;
+  provider answers have unknown evidence counts. Missing answerer fields in older exports mean unknown, not provider;
 - provider usage counters;
-- decoded assistant `final_text` sizes, separate from complete output arrays;
-  this includes Chat assistant string content as well as Responses text parts, so
-  provider and client text can be compared as separate observed sizes;
 - bounded private request/routing fingerprints as specified below;
 - bounded, allowlisted provider-response evidence as specified below;
 - request tool names.
@@ -147,16 +143,7 @@ The snapshot MUST expose:
 3. the overall provider cache rate from observed cached and total provider input;
    no cold/new, eligible-prefix or cache-miss estimates based on previous input length;
 4. client-request, provider-attempt-request, complete provider-response-stream, and complete
-   client-response-stream payload totals, plus terminal provider and client `output` arrays measured once;
-   router-authored journal output MUST be excluded from model-origin output accounting by its reserved
-   message identity, never by matching text or the commentary phase. This exclusion applies only
-   to router-authored client output, not provider output or passthrough responses. All bytes
-   remain in transport totals. Chat Completions streams reconstruct their terminal assistant-message
-   array. Streamed responses whose
-   terminal output is empty, omitted, null, or contains only router-authored output MUST reconstruct
-   model-origin output in `output_index` order from finalized `response.output_item.done` items,
-   excluding router-authored output there as well. A missing terminal event MUST NOT be treated as a
-   completed output;
+   client-response-stream payload totals;
 5. a bounded recent window of per-logical-request exchanges containing every provider attempt and
    its usage, while cumulative totals remain process-lifetime totals; and
 6. capture health for record failures, incomplete records, missing provider records,
@@ -210,10 +197,9 @@ Acceptance:
    without retaining private payload text.
 2. Streaming delivers the first flushed event before handler completion.
 3. JSON, multiline SSE, gzip, LF, CRLF, CR, and BOM inputs produce equivalent
-   sanitized observations without changing data-field contents. Reconstructed
-   terminal output preserves finalized item order and counts once. Generated router
-   commentary is excluded from model output while genuine model commentary is kept,
-   even with identical text.
+   sanitized observations without changing delivered data-field contents. Terminal
+   status, provider-response evidence and normalized usage do not require output
+   reconstruction or decoded assistant-text size measurements.
 4. Snapshot totals reconcile their exchanges and provider attempts; capture-health errors remain visible.
 5. Passthrough and Mekugi use the same capture owner and endpoint;
    none requires another listener.
@@ -221,8 +207,8 @@ Acceptance:
    the discarded detail.
 7. A response larger than the observation bound preserves delivery while failing capture health.
 
-Schema-7 records and metrics v7 identify this content-token and output-accounting contract. Older records cannot be
-reinterpreted as corrected measurements because they do not retain the raw output items.
+Schema-7 records and metrics v7 retain transport observations and provider usage.
+Capture does not reconstruct output arrays or measure compaction-summary sizes.
 
 JSON whitespace, key order, and equivalent string escaping MUST leave all content estimates unchanged while observed bytes may differ. Literal model-visible escape sequences MUST retain their token cost.
 
@@ -354,9 +340,9 @@ are terminal errors rather than missing output or successful responses.
 Request bytes MUST measure the exact sent JSON message, including transport
 metadata. Response bytes MUST measure the observed provider JSON payloads,
 without synthetic SSE framing, WebSocket frame headers, or control frames.
-Content token estimates sum each decoded message independently. Finalized-item
-reconstruction, terminal output, bounded 8 MiB parsing, usage, and private
-provider-response evidence follow the same rules as SSE. First-handshake
+Content token estimates sum each decoded message independently. Terminal status,
+bounded 8 MiB parsing, usage, and private provider-response evidence follow the
+same rules as SSE. First-handshake
 response evidence MUST NOT be reused as evidence for later exchanges.
 Terminal event types determine captured Responses status even when the embedded
 body omits status. Receiver-observed messages MUST be counted before delivery;

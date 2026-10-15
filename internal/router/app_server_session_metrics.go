@@ -201,9 +201,6 @@ func (u *appServerUI) renderSessionMetrics() {
 		} {
 			payload("Transport", row.label, row.bytes, row.tokens)
 		}
-		add("Semantic output", "", "Complete model-origin output arrays. Excludes router commentary and echoed response metadata.")
-		payload("Semantic output", "Provider", s.Semantic.ProviderAttemptOutputs.Bytes, s.Semantic.ProviderAttemptOutputs.Tokens)
-		payload("Semantic output", "Client", s.Semantic.ClientOutputs.Bytes, s.Semantic.ClientOutputs.Tokens)
 	case 2:
 		if len(s.Exchanges) == 0 {
 			add("Exchanges", "", "No completed exchanges yet. Active requests appear when they settle.")
@@ -229,8 +226,6 @@ func (u *appServerUI) renderSessionMetrics() {
 		add("Exchange", "Capture error", e.CaptureError)
 		payload("Exchange", "Client request", e.ClientRequest.Bytes, e.ClientRequest.Tokens)
 		payload("Exchange", "Client stream", e.ClientResponse.Bytes, e.ClientResponse.Tokens)
-		payload("Exchange", "Model output", e.ClientFinalOutput.Bytes, e.ClientFinalOutput.Tokens)
-		payload("Exchange", "Final text", e.ClientFinalText.Bytes, e.ClientFinalText.Tokens)
 		if e.Usage == nil {
 			add("Exchange", "Usage", "unavailable")
 		} else {
@@ -249,7 +244,6 @@ func (u *appServerUI) renderSessionMetrics() {
 		}
 		if e.RequestKind == "compaction" {
 			add("Compaction", "Answerer", e.CompactionAnswer)
-			optional("Compaction", "Summary bytes", e.CompactionSummaryBytes)
 			optional("Compaction", "Changes", e.CompactionChanges)
 			optional("Compaction", "Failures", e.CompactionFailures)
 			add("Compaction", "", "Router answers invoke no provider. Missing counts are unavailable, not zero; no savings are estimated.")
@@ -293,8 +287,6 @@ func (u *appServerUI) renderSessionMetrics() {
 			add(group, "Capture error", a.CaptureError)
 			payload(group, "Request", a.Request.Bytes, a.Request.Tokens)
 			payload(group, "Stream", a.Response.Bytes, a.Response.Tokens)
-			payload(group, "Model output", a.FinalOutput.Bytes, a.FinalOutput.Tokens)
-			payload(group, "Final text", a.FinalText.Bytes, a.FinalText.Tokens)
 			if a.Usage == nil {
 				add(group, "Usage", "unavailable")
 			} else {

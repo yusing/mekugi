@@ -175,7 +175,7 @@ func (a *requestAttempt) run() (*requestContinuation, error) {
 		return nil, err
 	}
 	if a.metadataValid && a.metadata.RequestKind == responses.Compaction {
-		capturer.ObserveCompaction(a.startCtx, "provider", 0, 0, 0)
+		capturer.ObserveCompaction(a.startCtx, "provider", 0, 0)
 	}
 	if err := a.forward(); err != nil {
 		return nil, err

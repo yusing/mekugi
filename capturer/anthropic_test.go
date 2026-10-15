@@ -1,18 +1,11 @@
 package capturer
 
 import (
-	json "encoding/json/v2"
 	"strings"
 	"testing"
-
-	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-func TestAnthropicCaptureActualToolAndTerminal(t *testing.T) {
-	codec, err := tokenizer.New()
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestAnthropicCaptureTerminalAndModel(t *testing.T) {
 	stream := strings.Join([]string{
 		`data: {"type":"message_start","message":{"model":"minimax-m3"}}`,
 		`data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"c1","name":"exec","input":{}}}`,
@@ -30,40 +23,66 @@ func TestAnthropicCaptureActualToolAndTerminal(t *testing.T) {
 		`data: {"type":"message_stop"}`,
 	}, "\n\n") + "\n\n"
 	record := captureRecord{ProviderResponse: &providerResponseEvidence{}}
-	output := observeAnthropicResponse([]byte(stream), &record)
-	if len(output) == 0 || record.ResponseStatus != "completed" ||
+	observeAnthropicResponse([]byte(stream), &record)
+	if record.ResponseStatus != "completed" ||
 		record.ProviderResponse.Model != "minimax-m3" {
-		t.Fatalf("Messages capture lost actual output: %+v", record)
-	}
-	var messages []struct {
-		Content []struct {
-			Type  string `json:"type"`
-			ID    string `json:"id"`
-			Name  string `json:"name"`
-			Input struct {
-				Input string `json:"input"`
-			} `json:"input"`
-		} `json:"content"`
-	}
-	if err := json.Unmarshal(output, &messages); err != nil || len(messages) != 1 || len(messages[0].Content) != 4 {
-		t.Fatalf("reconstructed Messages output=%s error=%v", output, err)
-	}
-	tool := messages[0].Content[0]
-	if tool.Type != "tool_use" || tool.ID != "c1" || tool.Name != "exec" || tool.Input.Input != "exact" {
-		t.Fatalf("reconstructed Messages tool=%+v", tool)
-	}
-	text, err := measureOutputText(output, codec)
-	if err != nil || text.Bytes != uint64(len("answer")) || text.Tokens == 0 {
-		t.Fatalf("Messages final text accounting: %+v, %v", text, err)
-	}
-	for _, retained := range []string{"private thinking", "opaque signature", "opaque redacted data"} {
-		if !strings.Contains(string(output), retained) {
-			t.Fatalf("model-origin aggregate output lost %q", retained)
-		}
+		t.Fatalf("Messages capture lost terminal or model evidence: %+v", record)
 	}
 	record = captureRecord{}
 	truncated := strings.TrimSuffix(stream, "data: {\"type\":\"message_stop\"}\n\n")
-	if output := observeAnthropicResponse([]byte(truncated), &record); len(output) != 0 || record.ResponseStatus != "" {
+	observeAnthropicResponse([]byte(truncated), &record)
+	if record.ResponseStatus != "" {
 		t.Fatal("truncated Messages capture completed")
+	}
+}
+
+func TestAnthropicCaptureBlockLifecycle(t *testing.T) {
+	for _, tc := range []struct {
+		name, events, status, captureError string
+	}{
+		{"open block", `{"type":"content_block_start","index":0,"content_block":{"type":"text"}}`, "", ""},
+		{"duplicate block", `{"type":"content_block_start","index":0,"content_block":{"type":"text"}}` + "\n\n" + `data: {"type":"content_block_start","index":0,"content_block":{"type":"text"}}`, "", "duplicate Messages content block"},
+		{"orphan delta", `{"type":"content_block_delta","index":0,"delta":{"text":"x"}}`, "", "Messages delta has no active content block"},
+		{"orphan stop", `{"type":"content_block_stop","index":0}`, "", "invalid Messages content completion"},
+		{"provider error", `{"type":"error"}`, "failed", ""},
+		{"malformed", `{`, "", "invalid Messages event JSON"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := "data: " + tc.events + "\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\ndata: {\"type\":\"message_stop\"}\n\n"
+			var record captureRecord
+			observeAnthropicResponse([]byte(stream), &record)
+			if record.ResponseStatus != tc.status || record.CaptureError != tc.captureError {
+				t.Fatalf("capture = %+v", record)
+			}
+		})
+	}
+}
+
+func TestAnthropicCaptureRejectsMissingContentBlock(t *testing.T) {
+	for _, block := range []string{"", `,"content_block":null`, `,"content_block":[]`, `,"content_block":42`} {
+		stream := "data: " + `{"type":"content_block_start","index":0` + block + "}\n\n" +
+			`data: {"type":"content_block_stop","index":0}` + "\n\n" +
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}` + "\n\n" +
+			`data: {"type":"message_stop"}` + "\n\n"
+		var record captureRecord
+		observeAnthropicResponse([]byte(stream), &record)
+		if record.CaptureError == "" || record.ResponseStatus != "" {
+			t.Fatalf("invalid block %s: %+v", block, record)
+		}
+	}
+}
+
+func TestAnthropicCaptureRejectsMalformedDelta(t *testing.T) {
+	for _, field := range []string{"text", "thinking", "signature", "partial_json"} {
+		stream := `data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n" +
+			`data: {"type":"content_block_delta","index":0,"delta":{"` + field + `":42}}` + "\n\n" +
+			`data: {"type":"content_block_stop","index":0}` + "\n\n" +
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}` + "\n\n" +
+			`data: {"type":"message_stop"}` + "\n\n"
+		var record captureRecord
+		observeAnthropicResponse([]byte(stream), &record)
+		if record.CaptureError != "invalid Messages event JSON" || record.ResponseStatus != "" {
+			t.Fatalf("invalid delta %s: %+v", field, record)
+		}
 	}
 }

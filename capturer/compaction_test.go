@@ -30,7 +30,7 @@ func TestCompactionMetricsExport(t *testing.T) {
 			ctx := context.WithValue(t.Context(), captureKey{}, state)
 			ObserveRequestKind(ctx, "compaction")
 			// Provider counts must remain unknown, even if a caller supplies numbers.
-			ObserveCompaction(ctx, answer, 123, 4, 0)
+			ObserveCompaction(ctx, answer, 4, 0)
 			request := []byte(`{"model":"model","input":"private-request-marker"}`)
 			ObserveProjectedRequest(ctx, request)
 			const summary = "private-summary-marker 界"
@@ -65,13 +65,6 @@ func TestCompactionMetricsExport(t *testing.T) {
 				if metrics.CompactionAnswer != answer {
 					t.Fatalf("answer = %q, want %q", metrics.CompactionAnswer, answer)
 				}
-				wantBytes := uint64(len(summary))
-				if answer == "router" {
-					wantBytes = 123
-				}
-				if metrics.CompactionSummaryBytes == nil || *metrics.CompactionSummaryBytes != wantBytes {
-					t.Fatalf("summary bytes = %v, want %d", metrics.CompactionSummaryBytes, wantBytes)
-				}
 				if answer == "router" {
 					if metrics.CompactionChanges == nil || *metrics.CompactionChanges != 4 || metrics.CompactionFailures == nil || *metrics.CompactionFailures != 0 {
 						t.Fatalf("router evidence = %+v", metrics)
@@ -86,9 +79,6 @@ func TestCompactionMetricsExport(t *testing.T) {
 			}
 			wantRecords := 1
 			if answer == "router" {
-				if exchange.ClientFinalText != (payloadMetrics{}) {
-					t.Fatalf("router summary was counted as model text: %+v", exchange.ClientFinalText)
-				}
 				if len(exchange.ProviderAttempts) != 0 || snapshot.Requests.ProviderAttempts != 0 || snapshot.Usage != (usageMetrics{}) {
 					t.Fatalf("fabricated provider evidence: %+v", snapshot)
 				}
@@ -139,15 +129,14 @@ func TestCompactionMetricsExport(t *testing.T) {
 
 func TestObserveCompactionIgnoresInvalidCalls(t *testing.T) {
 	for _, tc := range []struct {
-		name, kind, answer      string
-		size, changes, failures int
+		name, kind, answer string
+		changes, failures  int
 	}{
 		{name: "turn", kind: "turn", answer: "router"},
 		{name: "prewarm", kind: "prewarm", answer: "router"},
 		{name: "unknown kind", answer: "provider"},
 		{name: "unknown answer", kind: "compaction", answer: "private-answer-marker"},
 		{name: "empty answer", kind: "compaction"},
-		{name: "negative size", kind: "compaction", answer: "router", size: -1},
 		{name: "negative changes", kind: "compaction", answer: "router", changes: -1},
 		{name: "negative failures", kind: "compaction", answer: "router", failures: -1},
 	} {
@@ -155,23 +144,23 @@ func TestObserveCompactionIgnoresInvalidCalls(t *testing.T) {
 			state := &requestState{}
 			ctx := context.WithValue(t.Context(), captureKey{}, state)
 			ObserveRequestKind(ctx, tc.kind)
-			ObserveCompaction(ctx, tc.answer, tc.size, tc.changes, tc.failures)
+			ObserveCompaction(ctx, tc.answer, tc.changes, tc.failures)
 			if state.compaction != (CompactionMetrics{}) {
 				t.Fatalf("invalid call retained metrics: %+v", state.compaction)
 			}
 		})
 	}
-	ObserveCompaction(t.Context(), "router", 0, 0, 0) // Absent recorder is a no-op.
+	ObserveCompaction(t.Context(), "router", 0, 0) // Absent recorder is a no-op.
 	state := &requestState{}
 	ctx := context.WithValue(t.Context(), captureKey{}, state)
 	ObserveRequestKind(ctx, "compaction")
-	ObserveCompaction(ctx, "router", 0, 0, 0)
+	ObserveCompaction(ctx, "router", 0, 0)
 	before := state.compaction
-	ObserveCompaction(ctx, "invalid", 1, 1, 1)
+	ObserveCompaction(ctx, "invalid", 1, 1)
 	if state.compaction != before {
 		t.Fatal("invalid observation replaced valid metrics")
 	}
-	if before.CompactionSummaryBytes == nil || *before.CompactionSummaryBytes != 0 || before.CompactionChanges == nil || before.CompactionFailures == nil {
+	if before.CompactionChanges == nil || before.CompactionFailures == nil {
 		t.Fatalf("known zeros lost: %+v", before)
 	}
 }

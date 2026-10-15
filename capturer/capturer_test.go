@@ -13,11 +13,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
@@ -138,8 +136,6 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 	if snapshot.Requests.Logical != 1 || snapshot.Requests.ProviderAttempts != 2 || snapshot.Requests.Completed != 1 ||
 		snapshot.Usage.ProviderAttempts != 1 || snapshot.Usage.InputTokens != 20 || snapshot.Usage.CachedInputTokens != 8 ||
 		snapshot.Transport.ClientRequests.Bytes == 0 || snapshot.Transport.ProviderAttemptRequests.Bytes != first.Request.Bytes+second.Request.Bytes ||
-		snapshot.Semantic.ClientOutputs.Tokens != front.FinalOutput.Tokens ||
-		snapshot.Semantic.ProviderAttemptOutputs.Tokens != second.FinalOutput.Tokens ||
 		snapshot.Capture.Records != 3 || snapshot.Capture.CaptureErrors != 0 || snapshot.Capture.Incomplete != 0 ||
 		snapshot.Capture.MissingProvider != 0 || snapshot.Capture.AttemptGaps != 0 {
 		t.Fatalf("snapshot = %#v", snapshot)
@@ -345,92 +341,6 @@ func TestSnapshotAccountsCacheAndMissingEvidence(t *testing.T) {
 		snapshot.Cache.ProviderCacheRate == nil || *snapshot.Cache.ProviderCacheRate != float64(100)/220 ||
 		snapshot.Capture.MissingProvider != 1 {
 		t.Fatalf("snapshot = %#v", snapshot)
-	}
-}
-
-func TestSnapshotUsesTerminalOutputOnceInsteadOfWholeSSEStream(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := &requestState{
-		captureID: "stream",
-		sequence:  1,
-		providerUsage: map[uint64]ProviderUsage{1: {
-			InputTokens: 10, CachedTokens: 8, OutputTokens: 4,
-		}},
-	}
-	providerItem := `{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"edit"}`
-	clientItem := `{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"text(\"done\");"}`
-	providerOutput := `[` + providerItem + `]`
-	clientOutput := `[` + clientItem + `]`
-	providerDone := `{"type":"response.output_item.done","output_index":0,"item":` + providerItem + `}`
-	clientDone := `{"type":"response.output_item.done","output_index":0,"item":` + clientItem + `}`
-	providerTerminal := `{"type":"response.completed","response":{"status":"completed","tools":[{"type":"custom","name":"apply_patch","description":` + strconv.Quote(strings.Repeat("large provider tool definition ", 400)) + `}],"output":[],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":8},"output_tokens":4}}}`
-	clientTerminal := `{"type":"response.completed","response":{"status":"completed","tools":[{"type":"custom","name":"apply_patch"}],"output":[]}}`
-	providerStream := strings.Repeat("data: {\"type\":\"response.custom_tool_call_input.delta\",\"delta\":\""+strings.Repeat("x", 400)+"\"}\n\n", 200) +
-		"data: " + providerDone + "\n\ndata: " + providerTerminal + "\n\n"
-	clientStream := strings.Repeat("data: {\"type\":\"response.in_progress\"}\n\n", 200) +
-		"data: " + clientDone + "\n\ndata: " + clientTerminal + "\n\n"
-	requestBody := []byte(`{"model":"model"}`)
-	recorder.recordExchange(
-		state, "provider", 1, time.Now(), requestBody,
-		observedPayload{content: []byte(providerStream), bytes: uint64(len(providerStream))},
-		http.StatusOK, "text/event-stream", "", nil, providerResponseEvidence{},
-	)
-	recorder.recordExchange(
-		state, "codex", 0, time.Now(), requestBody,
-		observedPayload{content: []byte(clientStream), bytes: uint64(len(clientStream))},
-		http.StatusOK, "text/event-stream", "", nil, providerResponseEvidence{},
-	)
-
-	snapshot := recorder.snapshot()
-	exchange := snapshot.Exchanges[0]
-	provider := exchange.ProviderAttempts[0]
-	providerOutputMetrics, err := recorder.measure([]byte(providerOutput))
-	if err != nil {
-		t.Fatal(err)
-	}
-	clientOutputMetrics, err := recorder.measure([]byte(clientOutput))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if exchange.ClientFinalOutput != clientOutputMetrics || provider.FinalOutput != providerOutputMetrics {
-		t.Fatalf("terminal output metrics = %#v", snapshot)
-	}
-	if snapshot.Usage.OutputTokens != 4 || snapshot.Usage.ProviderAttempts != 1 {
-		t.Fatalf("provider usage = %#v", snapshot.Usage)
-	}
-}
-
-func TestObserveResponseMeasuresOnlyTerminalOutput(t *testing.T) {
-	firstItem := `{"type":"message","content":[{"type":"output_text","text":"assistant text"}]}`
-	secondItem := `{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"edit"}`
-	output := `[` + firstItem + `,` + secondItem + `]`
-	response := `{"status":"completed","tools":[{"description":` + strconv.Quote(strings.Repeat("unrelated tool metadata ", 200)) + `}],"output":` + output + `}`
-	tests := map[string]struct {
-		payload     string
-		contentType string
-	}{
-		"JSON": {payload: response, contentType: "application/json"},
-		"SSE": {
-			payload: "data: {\"type\":\"response.in_progress\"}\n\n" +
-				"data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":" + secondItem + "}\n\n" +
-				"data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":" + firstItem + "}\n\n" +
-				"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[]}}\n\n",
-			contentType: "text/event-stream",
-		},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			var record captureRecord
-			if got := observeResponse([]byte(test.payload), test.contentType, &record); string(got) != output {
-				t.Fatalf("terminal output = %s, want %s", got, output)
-			}
-			if record.ResponseStatus != "completed" {
-				t.Fatalf("response status = %q", record.ResponseStatus)
-			}
-		})
 	}
 }
 

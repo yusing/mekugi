@@ -15,6 +15,9 @@
 
 
 
+
+
+
     ╭ Session · Transport ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
     │  Transport  ─────────────────────────────────────────────────────────────────  │
@@ -29,13 +32,10 @@
     │  Provider control requests   33 bytes · 3 estimated tokens                     │
     │  Provider control responses  44 bytes · 4 estimated tokens                     │
     │                                                                                │
-    │  Semantic output  ───────────────────────────────────────────────────────────  │
-    │  Complete model-origin output arrays. Excludes router commentary and echoed    │
-    │  response metadata.                                                            │
-    │  Provider                    80 bytes · 8 estimated tokens                     │
-    │  Client                      85 bytes · 9 estimated tokens                     │
-    │                                                                                │
     ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ─────────────────────────────────╯
+
+
+
 
 
 

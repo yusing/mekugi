@@ -19,7 +19,7 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
   "schema":"mekugi.capture.metrics.v7","mode":"mekugi",
   "cache":{"provider_cache_rate":0.25},
   "exchanges":[{"sequence":1,"thread_id":"thread","usage":{"input_tokens":12},
-    "compaction_summary_bytes":30,"compaction_changes":2,"compaction_failures":1,
+    "compaction_changes":2,"compaction_failures":1,
     "journal":{"operations":{"log":2},"last_outcome_empty":false},
     "provider_attempts":[{"attempt":1,"usage":{"input_tokens":12},
       "provider_response":{"cached_tokens_state":"present","cached_tokens":0}}]}]}`), &recorder.metrics, json.RejectUnknownMembers(true))
@@ -58,7 +58,6 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 		{"provider-cache-rate", func(s *MetricsSnapshot) { *s.Cache.ProviderCacheRate = 99 }},
 		{"exchange-slice", func(s *MetricsSnapshot) { s.Exchanges[0].ThreadID = "mutated" }},
 		{"exchange-usage", func(s *MetricsSnapshot) { s.Exchanges[0].Usage.InputTokens = 99 }},
-		{"compaction-summary", func(s *MetricsSnapshot) { *s.Exchanges[0].CompactionSummaryBytes = 99 }},
 		{"compaction-changes", func(s *MetricsSnapshot) { *s.Exchanges[0].CompactionChanges = 99 }},
 		{"compaction-failures", func(s *MetricsSnapshot) { *s.Exchanges[0].CompactionFailures = 99 }},
 		{"journal-map", func(s *MetricsSnapshot) { s.Exchanges[0].Journal.Operations["log"] = 99 }},

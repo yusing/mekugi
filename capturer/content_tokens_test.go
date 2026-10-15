@@ -56,26 +56,6 @@ func TestContentTokensIgnoreSSEAndOutputItemJSONFraming(t *testing.T) {
 	}
 }
 
-func TestOutputTextCompressionExcludesToolTranslation(t *testing.T) {
-	codec, err := tokenizer.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	small := []byte(`[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"<same text>"}]},{"type":"custom_tool_call","input":"short"}]`)
-	large := []byte(`[{"type":"function_call","arguments":"a much longer translated command with many extra words"},{"role":"assistant","type":"message","content":[{"text":"\u003csame text\u003e","type":"output_text"}]}]`)
-	left, err := measureOutputText(small, codec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	right, err := measureOutputText(large, codec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if left != right || left.Tokens == 0 {
-		t.Fatalf("tool delivery affected assistant text measurement: %v != %v", left, right)
-	}
-}
-
 func TestContentTokensIgnoreSSEBOM(t *testing.T) {
 	codec, err := tokenizer.New()
 	if err != nil {

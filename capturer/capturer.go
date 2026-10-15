@@ -91,8 +91,6 @@ type captureRecord struct {
 	ResponseStatus       string                             `json:"response_status,omitempty"`
 	Usage                *ProviderUsage                     `json:"usage,omitempty"`
 	Response             payloadMetrics                     `json:"response"`
-	FinalOutput          payloadMetrics                     `json:"final_output,omitzero"`
-	FinalText            payloadMetrics                     `json:"final_text,omitzero"`
 	CaptureError         string                             `json:"capture_error,omitempty"`
 	DurationMillis       uint64                             `json:"duration_ms"`
 	CapturedAt           time.Time                          `json:"captured_at"`
@@ -484,25 +482,12 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 			if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices ||
 				strings.Contains(lowerContentType, "json") || strings.Contains(lowerContentType, "text/event-stream") ||
 				capturedPayloadLooksLikeSSE(observedContent) {
-				var finalOutput []byte
 				if evidence.wireFormat == "anthropic" {
-					finalOutput = observeAnthropicResponse(observedContent, &record)
+					observeAnthropicResponse(observedContent, &record)
 				} else if len(requestEnvelope.Messages) > 0 {
-					finalOutput = observeChatResponse(observedContent, contentType, &record)
+					observeChatResponse(observedContent, contentType, &record)
 				} else {
-					finalOutput = observeResponse(observedContent, contentType, &record)
-				}
-				if len(finalOutput) != 0 {
-					if finalMeasured, finalMeasureErr := r.measure(finalOutput); finalMeasureErr != nil {
-						record.CaptureError = "measure final output payload"
-					} else {
-						record.FinalOutput = finalMeasured
-						if textMetrics, textErr := measureOutputText(finalOutput, r.codec); textErr != nil {
-							record.CaptureError = "measure output text"
-						} else {
-							record.FinalText = textMetrics
-						}
-					}
+					observeResponse(observedContent, contentType, &record)
 				}
 			}
 		}
@@ -513,8 +498,6 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	}
 	if record.CompactionAnswer == "router" {
 		record.Usage = nil // The client envelope's zeros are not provider usage evidence.
-	} else if record.CompactionAnswer == "provider" && record.ResponseStatus == "completed" && record.CaptureError == "" {
-		record.CompactionSummaryBytes = new(record.FinalText.Bytes)
 	}
 	if (statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices) && contentType != webSocketContentType {
 		record.ResponseComplete = true

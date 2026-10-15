@@ -46,8 +46,8 @@ func TestWebSocketMetadataResponseEvidence(t *testing.T) {
 	for _, boundary := range []string{"provider", "codex"} {
 		record := captureRecord{Boundary: boundary, ProviderResponse: &providerResponseEvidence{}}
 		payload := []byte(`{"type":"codex.response.metadata","status":"completed","headers":{"x-request-id":"unsafe identifier","openai-model":"` + strings.Repeat("x", 257) + `"}}`)
-		_, terminal := observeResponseJSON(payload, &record)
-		if terminal || record.ResponseStatus != "" || record.ProviderResponse.RequestID != "" || record.ProviderResponse.HeaderModel != "" {
+		observeResponseJSON(payload, &record)
+		if record.ResponseStatus != "" || record.ProviderResponse.RequestID != "" || record.ProviderResponse.HeaderModel != "" {
 			t.Fatalf("unsafe/ancillary metadata became valid terminal evidence: %+v", record)
 		}
 	}

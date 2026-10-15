@@ -67,7 +67,6 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
     "provider_responses":{"bytes":900,"tokens":90},"client_responses":{"bytes":950,"tokens":95},
     "client_control_requests":{"bytes":11,"tokens":1},"client_control_responses":{"bytes":22,"tokens":2},
     "provider_control_requests":{"bytes":33,"tokens":3},"provider_control_responses":{"bytes":44,"tokens":4}},
-  "semantic":{"provider_attempt_outputs":{"bytes":80,"tokens":8},"client_outputs":{"bytes":85,"tokens":9}},
   "exchanges":[
     {"sequence":8,"thread_id":"main","model":"gpt-6-sol","status":"completed","duration_ms":1200,"status_code":200,"response_complete":true,
       "provider_attempts":[{"attempt":1,"transport":"http","status":"failed","provider_response":{"cached_tokens_state":"missing"}}]},
@@ -231,7 +230,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 		{name: "transport", tab: 1, width: 90, height: 55},
 		{name: "exchanges", tab: 2, width: 90, height: 60},
 		{name: "exchanges-scrolled", tab: 2, width: 90, height: 25, top: 27},
-		{name: "provider-tier", tab: 2, width: 90, height: 25, top: 48},
+		{name: "provider-tier", tab: 2, width: 90, height: 25, top: 42},
 		{name: "narrow", tab: 1, width: 30, height: 18},
 		{name: "empty", tab: 2, width: 80, height: 14, empty: true},
 		{name: "missing", width: 80, height: 14, missing: true},
