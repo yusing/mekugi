@@ -11,13 +11,13 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func putTestChange(t *testing.T, ctx context.Context, store *mekugiReplayStore, workspace, correlation string, files ...mekugi.ReviewFile) string {
+func putTestChange(t *testing.T, ctx context.Context, store *mekugiReplayStore, workspace, correlation string, files ...diffmodel.ReviewFile) string {
 	t.Helper()
 	id, err := store.reserveChange(ctx, workspace, "stock-thread", correlation)
 	if err != nil {
@@ -70,12 +70,12 @@ func TestMChangesRevertAndApplyReportHistoryStat(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "a.txt"), later)
 	writeTestFile(t, filepath.Join(workspace, "moved.txt"), "kept\n")
 	first := putTestChange(t, ctx, store, workspace, "first",
-		mekugi.RenderReviewFile("a.txt", "a.txt", original, edited),
-		mekugi.RenderReviewFile("", "new.txt", "", "created\n"))
+		diffmodel.RenderReviewFile("a.txt", "a.txt", original, edited),
+		diffmodel.RenderReviewFile("", "new.txt", "", "created\n"))
 	second := putTestChange(t, ctx, store, workspace, "second",
-		mekugi.RenderReviewFile("a.txt", "a.txt", edited, later),
-		mekugi.RenderReviewFile("gone.txt", "", "removed\n", ""),
-		mekugi.RenderReviewFile("old.txt", "moved.txt", "", ""))
+		diffmodel.RenderReviewFile("a.txt", "a.txt", edited, later),
+		diffmodel.RenderReviewFile("gone.txt", "", "removed\n", ""),
+		diffmodel.RenderReviewFile("old.txt", "moved.txt", "", ""))
 	writeTestFile(t, filepath.Join(workspace, "new.txt"), "created\n")
 
 	output, status := mutateTestChanges(t, ctx, store, workspace, "revert", second)
@@ -97,9 +97,9 @@ func TestMChangesRevertAndApplyReportHistoryStat(t *testing.T) {
 	}
 	// The router records each mutation from its captured scope.
 	putTestChange(t, ctx, store, workspace, "revert-second",
-		mekugi.RenderReviewFile("a.txt", "a.txt", later, edited),
-		mekugi.RenderReviewFile("", "gone.txt", "", "removed\n"),
-		mekugi.RenderReviewFile("moved.txt", "old.txt", "", ""))
+		diffmodel.RenderReviewFile("a.txt", "a.txt", later, edited),
+		diffmodel.RenderReviewFile("", "gone.txt", "", "removed\n"),
+		diffmodel.RenderReviewFile("moved.txt", "old.txt", "", ""))
 
 	output, status = mutateTestChanges(t, ctx, store, workspace, "revert", first+".."+second)
 	want = "undo: revert this command's change (newest in mchanges --list)\n" +
@@ -117,8 +117,8 @@ func TestMChangesRevertAndApplyReportHistoryStat(t *testing.T) {
 		t.Fatalf("created file remains: %v", err)
 	}
 	putTestChange(t, ctx, store, workspace, "revert-range",
-		mekugi.RenderReviewFile("a.txt", "a.txt", edited, original),
-		mekugi.RenderReviewFile("new.txt", "", "created\n", ""))
+		diffmodel.RenderReviewFile("a.txt", "a.txt", edited, original),
+		diffmodel.RenderReviewFile("new.txt", "", "created\n", ""))
 
 	output, status = mutateTestChanges(t, ctx, store, workspace, "apply", first, "--", "a.txt")
 	if status != 0 || output != "undo: mchanges revert "+first+" -- a.txt\n M a.txt +1 -1\n" {
@@ -127,7 +127,7 @@ func TestMChangesRevertAndApplyReportHistoryStat(t *testing.T) {
 	if got := readTestFile(t, filepath.Join(workspace, "a.txt")); got != edited {
 		t.Fatalf("a.txt = %q", got)
 	}
-	putTestChange(t, ctx, store, workspace, "apply-first", mekugi.RenderReviewFile("a.txt", "a.txt", original, edited))
+	putTestChange(t, ctx, store, workspace, "apply-first", diffmodel.RenderReviewFile("a.txt", "a.txt", original, edited))
 	output, status = mutateTestChanges(t, ctx, store, workspace, "apply", first, "--", "a.txt")
 	if status != 0 || output != "nothing changed\n M a.txt +1 -1 · 1 hunk already applied\n" {
 		t.Fatalf("repeated apply = %d %q", status, output)
@@ -149,8 +149,8 @@ func TestMChangesRevertLeavesConflictMarkers(t *testing.T) {
 	original := "one\ntwo\nthree\nfour\nfive\n"
 	edited := "one\ntwo\nagent\nfour\nfive\n"
 	id := putTestChange(t, ctx, store, workspace, "edit",
-		mekugi.RenderReviewFile("a.txt", "a.txt", original, edited),
-		mekugi.RenderReviewFile("", "b.txt", "", "created\n"))
+		diffmodel.RenderReviewFile("a.txt", "a.txt", original, edited),
+		diffmodel.RenderReviewFile("", "b.txt", "", "created\n"))
 	writeTestFile(t, filepath.Join(workspace, "a.txt"), "one\ntwo\nuser\nfour\nfive\n")
 	writeTestFile(t, filepath.Join(workspace, "b.txt"), "created\nextra\n")
 	output, status := mutateTestChanges(t, ctx, store, workspace, "revert", id)
@@ -294,7 +294,7 @@ func TestMChangesRevertReportsUnknownStat(t *testing.T) {
 	workspace := t.TempDir()
 	original := strings.Repeat("line\n", 5) + "two\n" + strings.Repeat("line\n", 10) + "eight\n" + strings.Repeat("line\n", 5)
 	edited := strings.Replace(strings.Replace(original, "two\n", "TWO\n", 1), "eight\n", "EIGHT\n", 1)
-	id := putTestChange(t, ctx, store, workspace, "edit", mekugi.RenderReviewFile("a.txt", "a.txt", original, edited))
+	id := putTestChange(t, ctx, store, workspace, "edit", diffmodel.RenderReviewFile("a.txt", "a.txt", original, edited))
 	// One hunk was reverted by hand; the history cannot account for it.
 	writeTestFile(t, filepath.Join(workspace, "a.txt"), strings.Replace(edited, "TWO\n", "two\n", 1))
 	output, status := mutateTestChanges(t, ctx, store, workspace, "revert", id)
@@ -306,7 +306,7 @@ func TestMChangesRevertReportsUnknownStat(t *testing.T) {
 	}
 
 	// An unreadable unrelated record degrades the stat without blocking.
-	other := putTestChange(t, ctx, store, workspace, "other", mekugi.RenderReviewFile("", "b.txt", "", "b\n"))
+	other := putTestChange(t, ctx, store, workspace, "other", diffmodel.RenderReviewFile("", "b.txt", "", "b\n"))
 	index, err := store.scoped(ctx).readChangeIndex(workspace)
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +342,7 @@ func TestMChangesRevertKeepsMoveSourceWhenDestinationFails(t *testing.T) {
 	if err := os.Mkdir(locked, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	id := putTestChange(t, ctx, store, workspace, "move", mekugi.RenderReviewFile("locked/old.txt", "moved.txt", "", ""))
+	id := putTestChange(t, ctx, store, workspace, "move", diffmodel.RenderReviewFile("locked/old.txt", "moved.txt", "", ""))
 	writeTestFile(t, filepath.Join(workspace, "moved.txt"), "kept\n")
 	if err := os.Chmod(locked, 0o555); err != nil {
 		t.Fatal(err)
@@ -382,8 +382,8 @@ func TestMChangesFrontendRevertsWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	history := mekugiHistory{ChangeID: id, CorrelationID: "frontend-edit", ReviewFiles: []mekugi.ReviewFile{
-		mekugi.RenderReviewFile("a.txt", "a.txt", "one\ntwo\n", "one\nTWO\n"),
+	history := mekugiHistory{ChangeID: id, CorrelationID: "frontend-edit", ReviewFiles: []diffmodel.ReviewFile{
+		diffmodel.RenderReviewFile("a.txt", "a.txt", "one\ntwo\n", "one\nTWO\n"),
 	}}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"frontend-edit": history}); err != nil {
 		t.Fatal(err)
@@ -428,16 +428,16 @@ func TestMChangesRevertSwapsDirectoryAndFile(t *testing.T) {
 	workspace := t.TempDir()
 	// rm -r x && echo new > x
 	toFile := putTestChange(t, ctx, store, workspace, "to-file",
-		mekugi.RenderReviewFile("x/a", "", "old\n", ""),
-		mekugi.RenderReviewFile("", "x", "", "new\n"))
+		diffmodel.RenderReviewFile("x/a", "", "old\n", ""),
+		diffmodel.RenderReviewFile("", "x", "", "new\n"))
 	writeTestFile(t, filepath.Join(workspace, "x"), "new\n")
 	output, status := mutateTestChanges(t, ctx, store, workspace, "revert", toFile)
 	if status != 0 || readTestFile(t, filepath.Join(workspace, "x", "a")) != "old\n" {
 		t.Fatalf("revert file swap = %d %q", status, output)
 	}
 	putTestChange(t, ctx, store, workspace, "revert-to-file",
-		mekugi.RenderReviewFile("x", "", "new\n", ""),
-		mekugi.RenderReviewFile("", "x/a", "", "old\n"))
+		diffmodel.RenderReviewFile("x", "", "new\n", ""),
+		diffmodel.RenderReviewFile("", "x/a", "", "old\n"))
 
 	// Reapplying replaces the now-empty directory with the file.
 	output, status = mutateTestChanges(t, ctx, store, workspace, "apply", toFile)
@@ -449,8 +449,8 @@ func TestMChangesRevertSwapsDirectoryAndFile(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "y", "a"), "old\n")
 	writeTestFile(t, filepath.Join(workspace, "y", "user"), "keep\n")
 	toDir := putTestChange(t, ctx, store, workspace, "y-to-file",
-		mekugi.RenderReviewFile("y/a", "", "old\n", ""),
-		mekugi.RenderReviewFile("", "y", "", "new\n"))
+		diffmodel.RenderReviewFile("y/a", "", "old\n", ""),
+		diffmodel.RenderReviewFile("", "y", "", "new\n"))
 	output, status = mutateTestChanges(t, ctx, store, workspace, "apply", toDir)
 	if status != 1 || !strings.Contains(output, "?? y stat unavailable · write failed: ") ||
 		readTestFile(t, filepath.Join(workspace, "y", "user")) != "keep\n" {
@@ -470,7 +470,7 @@ func TestMChangesSkipsRecordedSymlinks(t *testing.T) {
 	}
 	defer release()
 	workspace := t.TempDir()
-	link := mekugi.RenderReviewFile("", "link", "", "-> target\n")
+	link := diffmodel.RenderReviewFile("", "link", "", "-> target\n")
 	link.Link = true
 	flagged := putTestChange(t, ctx, store, workspace, "flagged", link)
 	// Records made before ReviewFile.Link carry only the exec review text.
@@ -479,7 +479,7 @@ func TestMChangesSkipsRecordedSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy := mekugiHistory{ChangeID: legacyID, CorrelationID: "legacy", ExecObservation: &execObservation{},
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "old-link", "", "-> target\n")}}
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "old-link", "", "-> target\n")}}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"legacy": legacy}); err != nil {
 		t.Fatal(err)
 	}
@@ -508,9 +508,9 @@ func TestMChangesHistoryFollowsMovesToDroppedDiffs(t *testing.T) {
 	workspace := t.TempDir()
 	original, edited, later := "one\ntwo\n", "one\nTWO\n", "one\nTWO\nthree\n"
 	// The edit under the old name is only relevant through the later move.
-	putTestChange(t, ctx, store, workspace, "edit", mekugi.RenderReviewFile("old.txt", "old.txt", original, edited))
-	putTestChange(t, ctx, store, workspace, "move", mekugi.RenderReviewFile("old.txt", "new.txt", edited, edited))
-	last := putTestChange(t, ctx, store, workspace, "append", mekugi.RenderReviewFile("new.txt", "new.txt", edited, later))
+	putTestChange(t, ctx, store, workspace, "edit", diffmodel.RenderReviewFile("old.txt", "old.txt", original, edited))
+	putTestChange(t, ctx, store, workspace, "move", diffmodel.RenderReviewFile("old.txt", "new.txt", edited, edited))
+	last := putTestChange(t, ctx, store, workspace, "append", diffmodel.RenderReviewFile("new.txt", "new.txt", edited, later))
 	writeTestFile(t, filepath.Join(workspace, "new.txt"), later)
 	output, status := mutateTestChanges(t, ctx, store, workspace, "revert", last)
 	want := "undo: mchanges apply " + last + "\n R old.txt -> new.txt +1 -1\n"

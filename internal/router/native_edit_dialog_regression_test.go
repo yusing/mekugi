@@ -6,9 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -38,13 +40,13 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		if tc.kind == "delete" {
 			afterPath = ""
 		}
-		chunk := livediff.Chunk{Key: "edit", CaptureOrder: 1, Review: mekugi.RenderReviewFile(beforePath, afterPath, tc.before, tc.after)}
+		chunk := livediff.Chunk{Key: "edit", CaptureOrder: 1, Review: diffmodel.RenderReviewFile(beforePath, afterPath, tc.before, tc.after)}
 		c := liveDiffChangesController(t, 120, 24, []livediff.Chunk{chunk})
 		u.shell.diff = c
 		c.data = newLiveDiffData()
 		c.data.order = []string{"edit"}
 		c.data.attempts["edit"] = liveDiffAttempt{thread: "main", correlation: "patch\x000", chunks: []livediff.Chunk{chunk}}
-		want = chunk.Review.UnifiedDiffForWorkspace(c.workspace)
+		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.workspace, chunk.Review.AfterPath))
 		u.view.entries = []liveActivityRecord{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch"}}}
 	} else {
 		change := appServerFileChange{Path: path, Diff: tc.host}
@@ -90,8 +92,8 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 					wantLine := colored[0]
 					if tc.kind == "update" {
 						before, after, err := renderer.ColorHunk(t.Context(), livediff.DarkTheme,
-							mekugi.ReviewFile{BeforePath: "answer.go", AfterPath: "answer.go"},
-							[]mekugi.ReviewRow{{Kind: '-', Text: tc.before}, {Kind: '+', Text: tc.after}})
+							diffmodel.ReviewFile{BeforePath: "answer.go", AfterPath: "answer.go"},
+							[]diffmodel.ReviewRow{{Kind: '-', Text: tc.before}, {Kind: '+', Text: tc.after}})
 						if err != nil {
 							t.Fatal(err)
 						}

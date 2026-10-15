@@ -12,8 +12,8 @@ import (
 
 	"github.com/yusing/mekugi/internal/execscope"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
@@ -166,7 +166,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 		for index := range 16 {
 			broker.publishPreview(diffview.Preview{
 				ID: filepath.Join("occupied", string(rune('a'+index))), Workspace: root, Thread: "thread", Status: "RUNNING · occupied",
-				Files: []mekugi.ReviewFile{mekugi.RenderReviewPreviewFile("", path, "", "occupied\n")},
+				Files: []diffmodel.ReviewFile{diffmodel.RenderReviewPreviewFile("", path, "", "occupied\n")},
 			}, false)
 		}
 		broker.mu.Lock()

@@ -19,8 +19,7 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -378,8 +377,8 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		added, removed int
 		incomplete     bool
 		reasons        []string
-		status         diffview.Status
-		composition    mekugi.ReviewComposition
+		status         diffmodel.Status
+		composition    diffmodel.ReviewComposition
 		uncomposable   bool
 		directory      bool
 	}
@@ -526,15 +525,15 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 					if summaryBytes > maxChangeReadBytes {
 						return "", errors.New("change summary exceeds 64 MiB; narrow the range or paths after --")
 					}
-					summary = append(summary, changeCapture{order: record.CaptureOrder, files: []mekugi.ReviewFile{file}})
+					summary = append(summary, changeCapture{order: record.CaptureOrder, files: []diffmodel.ReviewFile{file}})
 				} else if file.Directory {
 					path := cmp.Or(file.AfterPath, file.BeforePath)
-					fmt.Fprintf(&output, "%s %s/\n", diffview.StatusOf(file).ShortCode(), displayPath(pathdisplay.ForWorkspace(options.workspace, path)))
+					fmt.Fprintf(&output, "%s %s/\n", diffmodel.StatusOf(file).ShortCode(), displayPath(pathdisplay.ForWorkspace(options.workspace, path)))
 				} else {
 					if file.OriginNote != "" {
 						fmt.Fprintln(&output, file.OriginNote)
 					}
-					output.WriteString(file.UnifiedDiffForWorkspace(options.workspace))
+					output.WriteString(file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(options.workspace, file.BeforePath), pathdisplay.ForWorkspace(options.workspace, file.AfterPath)))
 				}
 			}
 			if output.Len() > maxChangeReadBytes {
@@ -555,7 +554,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		entry := stats[key(before)]
 		if entry == nil {
-			entry = &counts{status: diffview.Status{Before: file.BeforePath}}
+			entry = &counts{status: diffmodel.Status{Before: file.BeforePath}}
 			entries = append(entries, entry)
 		}
 		delete(stats, key(before))
@@ -593,7 +592,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 			continue // A creation followed by deletion leaves no file in the diff pane.
 		}
 		if !entry.uncomposable {
-			var regions []mekugi.ReviewFile
+			var regions []diffmodel.ReviewFile
 			entry.added, entry.removed = 0, 0
 			for _, region := range entry.composition.FilesWithHighlights() {
 				regions = append(regions, region.ReviewFile)
@@ -601,7 +600,7 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 				entry.added += added
 				entry.removed += removed
 			}
-			composed := diffview.StatusOf(regions...)
+			composed := diffmodel.StatusOf(regions...)
 			entry.status.Edited, entry.status.Conflict = composed.Edited, composed.Conflict
 		} else {
 			if !entry.incomplete && len(entry.reasons) == 0 {

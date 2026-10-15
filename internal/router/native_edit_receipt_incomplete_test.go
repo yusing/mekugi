@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
@@ -13,10 +13,10 @@ func TestEditReceiptGroupsCaptureGapsWithoutClaimingEdits(t *testing.T) {
 		t.Run(fmt.Sprint(known), func(t *testing.T) {
 			history := mekugiHistory{ChangeID: "amber1", ExecOutcome: &execOutcome{Labels: []string{"python3"}}}
 			if known {
-				history.ReviewFiles = append(history.ReviewFiles, mekugi.RenderReviewFile("edited.go", "edited.go", "old\n", "new\n"))
+				history.ReviewFiles = append(history.ReviewFiles, diffmodel.RenderReviewFile("edited.go", "edited.go", "old\n", "new\n"))
 			}
 			for i := range 100 {
-				file := mekugi.RenderIncompleteReviewFile(fmt.Sprintf("unknown-%d.go", i), fmt.Sprintf("unknown-%d.go", i), "capture limit")
+				file := diffmodel.RenderIncompleteReviewFile(fmt.Sprintf("unknown-%d.go", i), fmt.Sprintf("unknown-%d.go", i), "capture limit")
 				if i%2 == 0 {
 					file.Origin = "generator"
 				}
@@ -48,7 +48,7 @@ func TestEditReceiptCaptureReasonsAreBoundedAndRetained(t *testing.T) {
 	reasons := []string{"capture deadline", "capture deadline", "capture budget exhausted", "a read error\n\x1b[31m", strings.Repeat("b long error ", 100)}
 	for i, reason := range reasons {
 		path := fmt.Sprintf("candidate-%d.go", i)
-		history.ReviewFiles = append(history.ReviewFiles, mekugi.RenderIncompleteReviewFile(path, path, reason))
+		history.ReviewFiles = append(history.ReviewFiles, diffmodel.RenderIncompleteReviewFile(path, path, reason))
 	}
 	text := editReceiptText("", history)
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: text})

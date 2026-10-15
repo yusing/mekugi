@@ -11,10 +11,10 @@ import (
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // liveDiffChangesController renders captures in diff mode at a fixed size.
@@ -51,7 +51,7 @@ func liveDiffLinesFile(path string, lines int) string {
 func liveDiffCapture(key, path string, order uint64, before, after string, origin livediff.Origin) livediff.Chunk {
 	return livediff.Chunk{
 		Key: key, CaptureOrder: order, Origin: origin,
-		Review: mekugi.RenderReviewFile("/w/"+path, "/w/"+path, before, after),
+		Review: diffmodel.RenderReviewFile("/w/"+path, "/w/"+path, before, after),
 	}
 }
 
@@ -60,7 +60,7 @@ func TestLiveDiffOpenAfterScrollThroughLandsOnHeader(t *testing.T) {
 	var captures []livediff.Chunk
 	for i, path := range []string{"a.go", "b.go", "c.go"} {
 		captures = append(captures, liveDiffCapture(path, path, uint64(i+1), "", liveDiffLinesFile(path, 30), livediff.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root", Source: "apply_patch"}))
-		captures[i].Review = mekugi.RenderReviewFile("", "/w/"+path, "", liveDiffLinesFile(path, 30))
+		captures[i].Review = diffmodel.RenderReviewFile("", "/w/"+path, "", liveDiffLinesFile(path, 30))
 	}
 	c := liveDiffChangesController(t, 120, 20, captures)
 	start := func(file int) int { return c.rendering.Starts[file] }
@@ -216,7 +216,7 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	l.Expanded = map[string]bool{"apple1": true}
 	l.Rebuild(&c.view, c.workspace)
 	rows := l.Render(false, false, "", 40, 5, livediff.DarkTheme)
-	file := diffview.FileLabel(diffview.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", livediff.DarkTheme)
+	file := diffview.FileLabel(diffmodel.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", livediff.DarkTheme)
 	if !strings.Contains(rows[3], file) || !strings.Contains(ansi.Strip(rows[3]), "├ M broker.go +1 -1") {
 		t.Fatalf("file row = %q, want shared label %q", rows[3], file)
 	}
@@ -236,27 +236,27 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 
 // File status follows git's short status, from the net diff across captures.
 func TestLiveDiffFileStatus(t *testing.T) {
-	conflicted := mekugi.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")
+	conflicted := diffmodel.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")
 	for _, tc := range []struct {
 		name    string
-		regions []mekugi.ReviewFile
+		regions []diffmodel.ReviewFile
 		want    string
 	}{
-		{"added", []mekugi.ReviewFile{mekugi.RenderReviewFile("", "/w/a.go", "", "a\n")}, "A a.go"},
-		{"deleted", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/a.go", "", "a\n", "")}, "D a.go"},
-		{"modified", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "b\n")}, "M a.go"},
-		{"rename only", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/old.go", "/w/a.go", "", "")}, "R old.go → a.go"},
-		{"rename across folders", []mekugi.ReviewFile{mekugi.RenderReviewFile("/w/x/old.go", "/w/a.go", "", "")}, "R x/old.go → a.go"},
-		{"rename then edit", []mekugi.ReviewFile{
-			mekugi.RenderReviewFile("/w/old.go", "/w/a.go", "", ""),
-			mekugi.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "b\n"),
+		{"added", []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "/w/a.go", "", "a\n")}, "A a.go"},
+		{"deleted", []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/w/a.go", "", "a\n", "")}, "D a.go"},
+		{"modified", []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "b\n")}, "M a.go"},
+		{"rename only", []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/w/old.go", "/w/a.go", "", "")}, "R old.go → a.go"},
+		{"rename across folders", []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/w/x/old.go", "/w/a.go", "", "")}, "R x/old.go → a.go"},
+		{"rename then edit", []diffmodel.ReviewFile{
+			diffmodel.RenderReviewFile("/w/old.go", "/w/a.go", "", ""),
+			diffmodel.RenderReviewFile("/w/a.go", "/w/a.go", "a\n", "b\n"),
 		}, "RM old.go → a.go"},
-		{"rename with unknown content", []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("/w/old.go", "/w/a.go", "unreadable")}, "? old.go → a.go"},
-		{"binary move", []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 3, "abc", "abc")}, "R old.bin → a.go"},
-		{"binary rename with edit", []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 4, "abc", "abd")}, "RM old.bin → a.go"},
-		{"mchanges conflict", []mekugi.ReviewFile{conflicted}, "UU a.go"},
+		{"rename with unknown content", []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("/w/old.go", "/w/a.go", "unreadable")}, "? old.go → a.go"},
+		{"binary move", []diffmodel.ReviewFile{diffmodel.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 3, "abc", "abc")}, "R old.bin → a.go"},
+		{"binary rename with edit", []diffmodel.ReviewFile{diffmodel.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 4, "abc", "abd")}, "RM old.bin → a.go"},
+		{"mchanges conflict", []diffmodel.ReviewFile{conflicted}, "UU a.go"},
 	} {
-		if got := ansi.Strip(diffview.FileLabel(diffview.StatusOf(tc.regions...), "a.go", "/w", livediff.DarkTheme)); got != tc.want {
+		if got := ansi.Strip(diffview.FileLabel(diffmodel.StatusOf(tc.regions...), "a.go", "/w", livediff.DarkTheme)); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -404,9 +404,9 @@ func TestLiveDiffChangesFilterAndQueryDetails(t *testing.T) {
 func TestLiveDiffBaselineCountsChangesOnce(t *testing.T) {
 	main := livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
 	first := liveDiffCapture("k1", "a.go", 1, "one\n", "", main)
-	first.Review = mekugi.RenderReviewFile("/w/a.go", "", "one\n", "")
+	first.Review = diffmodel.RenderReviewFile("/w/a.go", "", "one\n", "")
 	second := liveDiffCapture("k2", "a.go", 1, "", "two\n", main)
-	second.Review = mekugi.RenderReviewFile("", "/w/a.go", "", "two\n")
+	second.Review = diffmodel.RenderReviewFile("", "/w/a.go", "", "two\n")
 	third := liveDiffCapture("k3", "a.go", 2, "two\n", "TWO\n", livediff.Origin{Change: "apple1", Caller: "/root/worker"})
 	var view livediff.View
 	view.Merge(livediff.GroupCaptures([]livediff.Chunk{first, second, third}))
@@ -455,7 +455,7 @@ func TestLiveDiffHunkJumpKeepsLeftPosition(t *testing.T) {
 	var captures []livediff.Chunk
 	for i, path := range []string{"a.go", "b.go"} {
 		captures = append(captures, liveDiffCapture(path, path, uint64(i+1), "", liveDiffLinesFile(path, 30), livediff.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root"}))
-		captures[i].Review = mekugi.RenderReviewFile("", "/w/"+path, "", liveDiffLinesFile(path, 30))
+		captures[i].Review = diffmodel.RenderReviewFile("", "/w/"+path, "", liveDiffLinesFile(path, 30))
 	}
 	c := liveDiffChangesController(t, 120, 20, captures)
 	c.view.Open(0)

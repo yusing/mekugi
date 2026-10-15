@@ -8,8 +8,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestLiveDiffTerminalFileNavigator(t *testing.T) {
@@ -20,10 +20,10 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 		t.Fatal(err)
 	}
 	connection, _, _ := liveDiffTestBroker(t, store, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
-	files := make([]mekugi.ReviewFile, 40)
+	files := make([]diffmodel.ReviewFile, 40)
 	for i := range files {
 		path := filepath.Join(workspace, fmt.Sprintf("internal/router/file%03d.go", i))
-		files[i] = mekugi.RenderReviewFile("", path, "", strings.Repeat(fmt.Sprintf("file_%03d_content\n", i), 30))
+		files[i] = diffmodel.RenderReviewFile("", path, "", strings.Repeat(fmt.Sprintf("file_%03d_content\n", i), 30))
 	}
 	id, err := store.reserveChange(t.Context(), workspace, "thread", "many")
 	if err != nil {
@@ -156,7 +156,7 @@ func TestLiveDiffHunkNavigationAndFileMemory(t *testing.T) {
 	c := newLiveDiffTerminalController(nil, "", nil)
 	defer c.close()
 	c.diffMode = true
-	c.files = []livediff.File{{Path: "a.go", Chunks: []livediff.Chunk{{Key: "a", Review: mekugi.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []livediff.Chunk{{Key: "b", Review: mekugi.RenderReviewFile("", "b.go", "", "second\n")}}}}
+	c.files = []livediff.File{{Path: "a.go", Chunks: []livediff.Chunk{{Key: "a", Review: diffmodel.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []livediff.Chunk{{Key: "b", Review: diffmodel.RenderReviewFile("", "b.go", "", "second\n")}}}}
 	c.view.Files = c.files
 	var err error
 	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80)

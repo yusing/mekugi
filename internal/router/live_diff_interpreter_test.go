@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestLiveDiffInterpreterWriteLiteralWrites(t *testing.T) {
@@ -189,7 +189,7 @@ func TestLiveDiffInterpreterWriteCommonAgentEditForms(t *testing.T) {
 			directory := t.TempDir()
 			path := filepath.Join(directory, "demo.go")
 			writeTestFile(t, path, before)
-			var files []mekugi.ReviewFile
+			var files []diffmodel.ReviewFile
 			var recognized bool
 			var err error
 			if tc.script == "" {
@@ -263,7 +263,7 @@ func TestLiveDiffPredictedPatchProjectsPredictedContent(t *testing.T) {
 				}
 				return text
 			}
-			if want := mekugi.RenderReviewPreviewFile(path, path, display(tc.before), display(tc.after)); files[0].Diff != want.Diff {
+			if want := diffmodel.RenderReviewPreviewFile(path, path, display(tc.before), display(tc.after)); files[0].Diff != want.Diff {
 				t.Fatalf("patch\n%s\nprojected\n%s\nwant\n%s", patch, files[0].Diff, want.Diff)
 			}
 		})

@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func navigationFile(path string) livediff.File {
@@ -15,7 +15,7 @@ func navigationFile(path string) livediff.File {
 		Path: path,
 		Chunks: []livediff.Chunk{{
 			Key:    path,
-			Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path},
+			Review: diffmodel.ReviewFile{BeforePath: path, AfterPath: path},
 		}},
 	}
 }
@@ -247,7 +247,7 @@ func TestLiveDiffNavigationColoredInlineStatusAndStats(t *testing.T) {
 	files[1].Chunks[0].Review.BeforePath = ""
 	files[1].Highlighted = true
 	files[2].Chunks[0].Review.AfterPath = ""
-	files[3].Chunks[0].Review = mekugi.RenderReviewFile("was.go", "renamed.go", "a\n", "b\n")
+	files[3].Chunks[0].Review = diffmodel.RenderReviewFile("was.go", "renamed.go", "a\n", "b\n")
 	var nav diffview.Navigation
 	nav.Flat = true
 	nav.Rebuild(files, "")

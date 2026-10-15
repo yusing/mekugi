@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	mekugi "github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -114,15 +114,15 @@ func TestMChangesOutputRowsReadStoreOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	managed := mekugi.RenderReviewFile("", "gen.txt", "", "x\n")
+	managed := diffmodel.RenderReviewFile("", "gen.txt", "", "x\n")
 	managed.Origin = "generator"
-	gap := mekugi.RenderIncompleteReviewFile("gen.go", "gen.go", "capture deadline")
+	gap := diffmodel.RenderIncompleteReviewFile("gen.go", "gen.go", "capture deadline")
 	gap.Origin = "go test"
 	var ids []string
-	for i, files := range [][]mekugi.ReviewFile{
-		{mekugi.RenderReviewFile("file", "file", "old\n", "new\n"), mekugi.RenderReviewFile("", "new file", "", "a\n")},
-		{mekugi.RenderReviewFile("gone", "", "a\nb\n", ""), mekugi.RenderIncompleteReviewFile("unknown", "unknown", "missing capture"), managed, gap},
-		{mekugi.RenderReviewFile("before.go", "after => b.go", "a\n", "a\n")},
+	for i, files := range [][]diffmodel.ReviewFile{
+		{diffmodel.RenderReviewFile("file", "file", "old\n", "new\n"), diffmodel.RenderReviewFile("", "new file", "", "a\n")},
+		{diffmodel.RenderReviewFile("gone", "", "a\nb\n", ""), diffmodel.RenderIncompleteReviewFile("unknown", "unknown", "missing capture"), managed, gap},
+		{diffmodel.RenderReviewFile("before.go", "after => b.go", "a\n", "a\n")},
 	} {
 		call := strconv.Itoa(i)
 		id, err := store.reserveChange(ctx, workspace, "author", call)

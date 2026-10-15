@@ -9,7 +9,7 @@ behavioral contract. UI presentation packages and router session integration are
 | --- | --- |
 | Workspace enumeration and import-boundary validation | `apps/mekugi/cmd/workspace`; membership in `go.work` |
 | Application composition and initial executable bindings | `apps/mekugi/internal/composition`, `contracts`, `backends/codex/binding`; scripted harness in `testsupport/moduletest` |
-| Review-diff rendering used by observed change evidence | Root-package `review*.go` |
+| Captured diff model, composition, merge and file status | `libraries/diffmodel`; terminal painting remains in `internal/livediff` |
 | Shared source capability and shell-header semantics | `libraries/sourceanalysis/sourcekind`, `libraries/commandanalysis/shellsyntax` |
 | Shared source parsing, literal decoding, and nonblocking source-file opens | `libraries/sourceanalysis/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
@@ -50,7 +50,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `apps/mekugi/cmd/mekugi/main.go` |
 | Offline UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage in `docs/contributing/development.md` |
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
-| Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
+| Observed review diffs, change IDs, and bounded reads | `libraries/diffmodel`, `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Retained publication, namespaces, allocation, leases, and retention | `modules/sessionhistory/history`; composed record kinds in `apps/mekugi/internal/composition`, feature codecs in `internal/router/retained_record_kinds.go` |
 | Historical call-envelope decoding and snapshot validation | `libraries/legacycall`; router conversion in `internal/router/legacy_call.go` |
 | Completed command-segment publication, compatibility, and adoption | `modules/commandsegments/reports`; host-fact and presentation integration in `internal/router/command_segments.go`; explicit readonly projection in `internal/router/storage_inspect.go` |

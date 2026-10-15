@@ -7,7 +7,7 @@ import (
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -45,7 +45,7 @@ func TestWordDiffReplacementBlocks(t *testing.T) {
 	} {
 		const theme = DarkTheme
 		t.Run(tc.name, func(t *testing.T) {
-			review := mekugi.RenderReviewFile("file.go", "file.go", tc.old, tc.next)
+			review := diffmodel.RenderReviewFile("file.go", "file.go", tc.old, tc.next)
 			hunks, err := review.Hunks()
 			if err != nil {
 				t.Fatal(err)
@@ -57,7 +57,7 @@ func TestWordDiffReplacementBlocks(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				rows := append([]mekugi.ReviewRow(nil), hunk.Rows...)
+				rows := append([]diffmodel.ReviewRow(nil), hunk.Rows...)
 				AlignHunkColors(rows, before, after)
 				for i, row := range rows {
 					if ansi.Strip(row.Text) != Safe(strings.TrimSuffix(hunk.Rows[i].Text, "\n"), false) {
@@ -93,7 +93,7 @@ func TestWordDiffReplacementBlocks(t *testing.T) {
 func TestWordDiffGraphemeGeometry(t *testing.T) {
 	for _, pair := range [][2]string{{"👍🏻", "👍🏽"}, {"👩‍💻", "👩‍🔬"}, {"🇹🇼", "🇹🇭"}} {
 		prefix := strings.Repeat("x", 72)
-		review := mekugi.RenderReviewFile("emoji.unknown", "emoji.unknown", prefix+pair[0]+"\n", prefix+pair[1]+"\n")
+		review := diffmodel.RenderReviewFile("emoji.unknown", "emoji.unknown", prefix+pair[0]+"\n", prefix+pair[1]+"\n")
 		files := []File{{Path: "emoji.unknown", Chunks: []Chunk{{Review: review}}}}
 		for _, width := range []int{78, 80} {
 			want, err := new(Renderer).Render(t.Context(), DarkTheme, files, "", width)
@@ -123,7 +123,7 @@ func TestWordDiffGraphemeGeometry(t *testing.T) {
 
 func TestUISnapshotWordDiffWrappedSourceStyles(t *testing.T) {
 	const old, next = "return old_identifier\n", "return very_long_new_identifier\n"
-	review := mekugi.RenderReviewFile("file.go", "file.go", old, next)
+	review := diffmodel.RenderReviewFile("file.go", "file.go", old, next)
 	for _, theme := range []Theme{TerminalTheme, DarkTheme, LightTheme} {
 		render, err := new(Renderer).Render(t.Context(), theme, []File{{Path: "file.go", Chunks: []Chunk{{Review: review}}}}, "", 16)
 		if err != nil {

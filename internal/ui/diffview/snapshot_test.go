@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -16,10 +16,10 @@ func assertRowsSnapshot(t *testing.T, name string, rows []string) {
 
 func snapshotFiles() []livediff.File {
 	const workspace = "/workspace/"
-	reviews := []mekugi.ReviewFile{
-		mekugi.RenderReviewFile("", workspace+"docs/guide.md", "", "# Guide\n"),
-		mekugi.RenderReviewFile(workspace+"src/old.go", workspace+"src/main.go", "package old\n", "package main\n"),
-		mekugi.RenderReviewFile(workspace+"src/obsolete.go", "", "package old\n", ""),
+	reviews := []diffmodel.ReviewFile{
+		diffmodel.RenderReviewFile("", workspace+"docs/guide.md", "", "# Guide\n"),
+		diffmodel.RenderReviewFile(workspace+"src/old.go", workspace+"src/main.go", "package old\n", "package main\n"),
+		diffmodel.RenderReviewFile(workspace+"src/obsolete.go", "", "package old\n", ""),
 		{BeforePath: workspace + "data/cache.bin", AfterPath: workspace + "data/cache.bin", Incomplete: "baseline unavailable"},
 	}
 	var files []livediff.File
@@ -84,7 +84,7 @@ func TestUISnapshotDiffChanges(t *testing.T) {
 
 func TestUISnapshotDiffPreview(t *testing.T) {
 	edit := Preview{ID: "edit", Workspace: "/workspace", Caller: "/root/worker", Status: PreviewEdit,
-		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/src/main.go", "/workspace/src/main.go", "package main\n\nconst label = \"old\"\n", "package main\n\nconst label = \"a long replacement that wraps inside a narrow preview\"\n")}}
+		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/src/main.go", "/workspace/src/main.go", "package main\n\nconst label = \"old\"\n", "package main\n\nconst label = \"a long replacement that wraps inside a narrow preview\"\n")}}
 	tail := Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Status: PreviewRunning,
 		Input: "+++ \"src/main.go\"\n@@ -1,3 +1,3 @@\n package main\n-const label = \"old\"\n+const label = \"a long replacement that wraps in the preview\"\n", DiffText: true, Truncated: true}
 	pending := Preview{ID: "pending", Workspace: "/workspace", Caller: "/root", Status: PreviewPending,
@@ -125,7 +125,7 @@ func TestUISnapshotDiffPreview(t *testing.T) {
 }
 
 func TestUISnapshotDependencyDirectoryNavigation(t *testing.T) {
-	file := livediff.File{Path: "/workspace/node_modules", Chunks: []livediff.Chunk{{Review: mekugi.ReviewFile{BeforePath: "/workspace/node_modules", AfterPath: "/workspace/node_modules", Directory: true, Incomplete: "directory contents intentionally not captured"}}}}
+	file := livediff.File{Path: "/workspace/node_modules", Chunks: []livediff.Chunk{{Review: diffmodel.ReviewFile{BeforePath: "/workspace/node_modules", AfterPath: "/workspace/node_modules", Directory: true, Incomplete: "directory contents intentionally not captured"}}}}
 	files := []livediff.File{file}
 	nav := Navigation{Flat: true, Focused: true}
 	nav.Rebuild(files, "/workspace")
@@ -135,7 +135,7 @@ func TestUISnapshotDependencyDirectoryNavigation(t *testing.T) {
 func TestUISnapshotWordDiff(t *testing.T) {
 	const before = "Keep each listed task small and bounded. Record results as they become known.\n"
 	const after = "Keep each listed task small and checkable. At 70% context use, split the current slice. Record results as they become known.\n"
-	review := mekugi.RenderReviewFile("guidance.txt", "guidance.txt", before, after)
+	review := diffmodel.RenderReviewFile("guidance.txt", "guidance.txt", before, after)
 	render, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme,
 		[]livediff.File{{Path: "guidance.txt", Chunks: []livediff.Chunk{{Review: review}}}}, "", 60)
 	if err != nil {

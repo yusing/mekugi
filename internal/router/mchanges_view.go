@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options changeReadOptions, index changeIndex) (string, error) {
@@ -143,8 +145,8 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 	}
 	var failures []error
 	matched := len(options.paths) == 0
-	chains := make(map[string]*mekugi.ReviewComposition)
-	var ordered []*mekugi.ReviewComposition
+	chains := make(map[string]*diffmodel.ReviewComposition)
+	var ordered []*diffmodel.ReviewComposition
 	for _, capture := range captures {
 		for _, file := range capture.files {
 			matched = matched || changePathMatches(options, file.BeforePath) || changePathMatches(options, file.AfterPath)
@@ -164,7 +166,7 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 			}
 			chain := chains[key]
 			if chain == nil {
-				chain = new(mekugi.ReviewComposition)
+				chain = new(diffmodel.ReviewComposition)
 				ordered = append(ordered, chain)
 			}
 			if err := chain.ApplyWithHighlight(file, false, false); err != nil {
@@ -184,7 +186,7 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 			if len(options.paths) > 0 && !changePathMatches(options, file.BeforePath) && !changePathMatches(options, file.AfterPath) {
 				continue
 			}
-			output.WriteString(file.UnifiedDiffForWorkspace(options.workspace))
+			output.WriteString(file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(options.workspace, file.BeforePath), pathdisplay.ForWorkspace(options.workspace, file.AfterPath)))
 			if output.Len() > maxChangeReadBytes {
 				return "", errors.New("change read exceeds 64 MiB; narrow the range or paths after --")
 			}

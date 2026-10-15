@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestLiveDiffNetCountsLargeSupersededRewrite(t *testing.T) {
@@ -41,7 +41,7 @@ func liveDiffNetCapture(order uint64, caller, beforePath, afterPath, before, aft
 	return livediff.Chunk{
 		Key: fmt.Sprintf("net-%d", order), CaptureOrder: order, Workspace: "/w",
 		Origin: livediff.Origin{Change: fmt.Sprintf("change-%d", order), Caller: caller},
-		Review: mekugi.RenderReviewFile(beforePath, afterPath, before, after),
+		Review: diffmodel.RenderReviewFile(beforePath, afterPath, before, after),
 	}
 }
 
@@ -113,7 +113,7 @@ func TestLiveDiffNetCountsRejectsUnknownProjectEvidence(t *testing.T) {
 			case "incomplete", "hidden incomplete":
 				first.Review.Incomplete = "before content unavailable"
 			case "inconsistent":
-				second.Review = mekugi.RenderReviewFile("/w/a", "/w/a", "unobserved\n", "final\n")
+				second.Review = diffmodel.RenderReviewFile("/w/a", "/w/a", "unobserved\n", "final\n")
 			}
 			view := livediff.View{}
 			view.Merge(livediff.GroupCaptures([]livediff.Chunk{first, second}))

@@ -13,7 +13,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // Real terminal acceptance: sequential publications cannot hide behind an
@@ -22,7 +22,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	workspace := t.TempDir()
 	directory := filepath.Join(t.TempDir(), "not-yet", "replay")
 	store := testReplayStore(mekugiReplayStore{directory: directory})
-	publish := func(call string, reviews []mekugi.ReviewFile, outcome *execOutcome) mekugiHistory {
+	publish := func(call string, reviews []diffmodel.ReviewFile, outcome *execOutcome) mekugiHistory {
 		t.Helper()
 		id, err := store.reserveChange(t.Context(), workspace, "thread", call)
 		if err != nil {
@@ -35,10 +35,10 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		return history
 	}
 	paths := make([]string, 5)
-	var initial []mekugi.ReviewFile
+	var initial []diffmodel.ReviewFile
 	for i := range paths {
 		paths[i] = filepath.Join(workspace, fmt.Sprintf("file%d.tmp", i+1))
-		initial = append(initial, mekugi.ReviewFile{AfterPath: paths[i],
+		initial = append(initial, diffmodel.ReviewFile{AfterPath: paths[i],
 			Diff: "--- /dev/null\n+++ " + strconv.Quote(paths[i]) +
 				"\n@@ -0,0 +1,20 @@\n" + strings.Repeat("+original\n", 20)})
 	}
@@ -118,7 +118,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		}
 		chunk := liveDiffHighlightChunk("", paths[edit.file],
 			fmt.Sprintf("@@ -%d +%d @@\n-%s\n+%s\n", edit.line, edit.line, before, marker))
-		publish(fmt.Sprintf("update%d", i), []mekugi.ReviewFile{chunk.Review}, nil)
+		publish(fmt.Sprintf("update%d", i), []diffmodel.ReviewFile{chunk.Review}, nil)
 		frame := waitFrame("+" + marker)
 
 		if strings.Contains(frame, "FOLLOW") || strings.Contains(frame, "Unable to combine") {
@@ -154,7 +154,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Fatalf("navigator and first diff heading are shifted: heading=%q", heading)
 	}
 	chunk := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-original\n+PREPARED19\n")
-	publish("failed-command-edit", []mekugi.ReviewFile{chunk.Review}, &execOutcome{Status: execStatusFailed, Exit: new(1)})
+	publish("failed-command-edit", []diffmodel.ReviewFile{chunk.Review}, &execOutcome{Status: execStatusFailed, Exit: new(1)})
 	waitFrame("DIFF · v stream")
 	if _, err := terminal.Write([]byte("/" + filepath.Base(paths[4]) + "\rG")); err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 		t.Fatalf("following rendered obsolete change state: %q", frame)
 	}
 	fix := liveDiffHighlightChunk("", paths[4], "@@ -19 +19 @@\n-PREPARED19\n+FINAL19\n")
-	publish("followup-edit", []mekugi.ReviewFile{fix.Review}, nil)
+	publish("followup-edit", []diffmodel.ReviewFile{fix.Review}, nil)
 	frame = waitFrame("+FINAL19")
 	plain := ansi.Strip(frame)
 	for _, stale := range []string{"+PREPARED19", "command failed", "exit 1", "changes observed", "Unable to combine"} {

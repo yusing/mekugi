@@ -16,7 +16,7 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -25,7 +25,7 @@ import (
 type changeCapture struct {
 	id       string
 	order    uint64
-	files    []mekugi.ReviewFile
+	files    []diffmodel.ReviewFile
 	coverage string
 	// links are captured symlink paths; their review text is a link target.
 	links map[string]bool
@@ -60,7 +60,7 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 	for _, path := range paths {
 		relevant[path] = true
 	}
-	keeps := func(file mekugi.ReviewFile) bool {
+	keeps := func(file diffmodel.ReviewFile) bool {
 		return paths == nil || relevant[file.BeforePath] || relevant[file.AfterPath]
 	}
 	bytes := 0
@@ -182,7 +182,7 @@ changes:
 					return nil, err
 				}
 			}
-			captures[i].files = slices.DeleteFunc(captures[i].files, func(file mekugi.ReviewFile) bool { return !keeps(file) })
+			captures[i].files = slices.DeleteFunc(captures[i].files, func(file diffmodel.ReviewFile) bool { return !keeps(file) })
 		}
 	}
 	slices.SortStableFunc(captures, func(a, b changeCapture) int { return cmp.Compare(a.order, b.order) })
@@ -281,7 +281,7 @@ type changeMutation struct {
 // mutationEffect is one merged review file's in-memory effect, with the content
 // it started from so history composition can check that it continues.
 type mutationEffect struct {
-	review mekugi.ReviewFile
+	review diffmodel.ReviewFile
 	before string
 	files  []*mutationFile
 }
@@ -338,7 +338,7 @@ func (m *changeMutation) file(path string) *mutationFile {
 // legacyLinkReview recognizes an exec review recorded before ReviewFile.Link:
 // a link side is a whole file of one "-> target" row. A text file of that
 // shape is skipped too, which errs toward leaving the workspace alone.
-func legacyLinkReview(review mekugi.ReviewFile) bool {
+func legacyLinkReview(review diffmodel.ReviewFile) bool {
 	hunks, err := review.Hunks()
 	if err != nil || len(hunks) != 1 {
 		return false
@@ -360,7 +360,7 @@ func legacyLinkReview(review mekugi.ReviewFile) bool {
 
 // merge replays one captured review file and records its in-memory effect.
 // Reverse swaps the captured sides: the recorded result becomes the source.
-func (m *changeMutation) merge(capture changeCapture, review mekugi.ReviewFile) {
+func (m *changeMutation) merge(capture changeCapture, review diffmodel.ReviewFile) {
 	src, dst := review.BeforePath, review.AfterPath
 	if m.view == "revert" {
 		src, dst = dst, src
@@ -458,7 +458,7 @@ func (m *changeMutation) merge(capture changeCapture, review mekugi.ReviewFile) 
 		after = ""
 	}
 	m.effects = append(m.effects, mutationEffect{
-		review: mekugi.RenderReviewFile(beforePath, afterPath, before, after),
+		review: diffmodel.RenderReviewFile(beforePath, afterPath, before, after),
 		before: before, files: []*mutationFile{current, primary},
 	})
 }
@@ -620,7 +620,7 @@ var errUnobservedEdit = errors.New("file changed outside mchanges history")
 // historyChain composes one file identity from recorded captures through the
 // mutation's own effects, following moves, deletion, and re-creation.
 type historyChain struct {
-	composition mekugi.ReviewComposition
+	composition diffmodel.ReviewComposition
 	err         error
 	path        string
 	own         int
@@ -630,7 +630,7 @@ type historyChain struct {
 // not to version control: clean means every recorded change to it is undone.
 func (m *changeMutation) report(options changeReadOptions, history []changeCapture, historyErr error) string {
 	chains := make(map[string]*historyChain)
-	extend := func(file mekugi.ReviewFile, own int, before *string) {
+	extend := func(file diffmodel.ReviewFile, own int, before *string) {
 		key := cmp.Or(file.BeforePath, file.AfterPath)
 		chain := chains[key]
 		if chain == nil {

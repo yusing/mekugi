@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestManagedExecMChangesSurface(t *testing.T) {
 	f := newMChangesSliceFixture(t, "managed-history")
-	managed := mekugi.RenderReviewFile("", "managed.txt", "", "generated body\n")
+	managed := diffmodel.RenderReviewFile("", "managed.txt", "", "generated body\n")
 	managed.Origin = "generator"
-	id := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "managed", []mekugi.ReviewFile{managed})
-	direct := mekugi.RenderReviewFile("", "direct.txt", "", "authored body\n")
-	mixed := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "mixed", []mekugi.ReviewFile{managed, direct})
+	id := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "managed", []diffmodel.ReviewFile{managed})
+	direct := diffmodel.RenderReviewFile("", "direct.txt", "", "authored body\n")
+	mixed := saveManagedExecChange(t, f.store, f.ctx, f.workspace, f.thread, "mixed", []diffmodel.ReviewFile{managed, direct})
 	list, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id, mixed}, view: "list"})
 	if err != nil || list != mixed+" +1 -0\n" {
 		t.Fatalf("authored list: %q, %v", list, err)
@@ -44,7 +44,7 @@ func saveManagedExecChange(
 	store *mekugiReplayStore,
 	ctx context.Context,
 	workspace, thread, correlation string,
-	files []mekugi.ReviewFile,
+	files []diffmodel.ReviewFile,
 ) string {
 	t.Helper()
 	id, err := store.reserveChange(ctx, workspace, thread, correlation)
@@ -64,10 +64,10 @@ func saveManagedExecChange(
 
 func TestManagedExecReceiptGroupsFiles(t *testing.T) {
 	workspace := t.TempDir()
-	files := make([]mekugi.ReviewFile, 5)
+	files := make([]diffmodel.ReviewFile, 5)
 	for i := range files {
 		path := fmt.Sprintf("generated-%02d.txt", i+1)
-		files[i] = mekugi.RenderReviewFile("", path, "", "content\n")
+		files[i] = diffmodel.RenderReviewFile("", path, "", "content\n")
 		files[i].Origin = "generator"
 	}
 	got := editReceiptText(workspace, mekugiHistory{ReviewFiles: files})
@@ -92,7 +92,7 @@ func TestExecCaptureNamesEverySharedOrigin(t *testing.T) {
 
 func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
 	workspace := t.TempDir()
-	file := mekugi.RenderReviewFile("a.go", "a.go", "package a\n\nfunc A() {}\n", "package a\n")
+	file := diffmodel.RenderReviewFile("a.go", "a.go", "package a\n\nfunc A() {}\n", "package a\n")
 	file.OriginNote = "goimports" + sharedOriginSuffix
 	for _, test := range []struct {
 		labels []string
@@ -102,7 +102,7 @@ func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
 		{labels: []string{"python3"}, note: true},
 		{note: true},
 	} {
-		got := editReceiptText(workspace, mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: test.labels}})
+		got := editReceiptText(workspace, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: test.labels}})
 		if strings.Contains(got, "(goimports also ran)") != test.note {
 			t.Errorf("labels %q receipt = %q, want note %v", test.labels, got, test.note)
 		}

@@ -12,10 +12,10 @@ import (
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func previewViewFixture(id string, rows int) diffview.Preview {
@@ -370,17 +370,17 @@ func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
 
 func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 	t.Parallel()
-	modified := mekugi.RenderReviewFile("/workspace/a.go", "/workspace/a.go", "one\ntwo\n", "one\nTWO\nthree\n")
-	added := mekugi.RenderReviewFile("", "/workspace/new.txt", "", "x\n")
+	modified := diffmodel.RenderReviewFile("/workspace/a.go", "/workspace/a.go", "one\ntwo\n", "one\nTWO\nthree\n")
+	added := diffmodel.RenderReviewFile("", "/workspace/new.txt", "", "x\n")
 	for _, tc := range []struct {
 		name    string
 		preview diffview.Preview
 		want    string
 	}{
-		{"modified", diffview.Preview{Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{modified}}, "◐ M a.go +2 -1"},
-		{"added", diffview.Preview{Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{added}}, "◐ A new.txt +1 -0"},
-		{"several files", diffview.Preview{Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{modified, added}}, "◐ A new.txt +1 -0 2/2 files"},
-		{"running", diffview.Preview{Status: diffview.PreviewRunning, Files: []mekugi.ReviewFile{modified}}, "◐ M a.go +2 -1 · observed so far"},
+		{"modified", diffview.Preview{Status: diffview.PreviewEdit, Files: []diffmodel.ReviewFile{modified}}, "◐ M a.go +2 -1"},
+		{"added", diffview.Preview{Status: diffview.PreviewEdit, Files: []diffmodel.ReviewFile{added}}, "◐ A new.txt +1 -0"},
+		{"several files", diffview.Preview{Status: diffview.PreviewEdit, Files: []diffmodel.ReviewFile{modified, added}}, "◐ A new.txt +1 -0 2/2 files"},
+		{"running", diffview.Preview{Status: diffview.PreviewRunning, Files: []diffmodel.ReviewFile{modified}}, "◐ M a.go +2 -1 · observed so far"},
 		{"pending", diffview.Preview{Status: diffview.PreviewPending, Input: "will restore (pending)\n/workspace/a.go"}, "◐ scoped effects"},
 		{"unavailable", diffview.Preview{Status: diffview.PreviewUnavailable + "patch cannot be projected", Input: "\n"}, "! patch cannot be projected"},
 		{"diff tail", diffview.Preview{Status: diffview.PreviewEdit, Input: "+x\n", DiffText: true, Truncated: true}, "◐ edit · tail"},
@@ -399,7 +399,7 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 		})
 	}
 	var pane diffview.PreviewPane
-	pane.Update(diffview.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{modified}})
+	pane.Update(diffview.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: diffview.PreviewEdit, Files: []diffmodel.ReviewFile{modified}})
 	pane.Update(diffview.Preview{ID: "one"})
 	lines, err := pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 120, 8)
 	if err != nil || !strings.Contains(lines[0], activityui.Dim+"○") ||
@@ -696,7 +696,7 @@ func TestLiveDiffPreviewFadesOnlyChangedText(t *testing.T) {
 	t.Parallel()
 	path := "/workspace/a.txt"
 	view := diffview.PreviewView{Current: diffview.Preview{ID: "fade", Workspace: "/workspace", Thread: "thread", Status: diffview.PreviewEdit,
-		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "keep\nold\n", "keep\nnew\n")}}}
+		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "keep\nold\n", "keep\nnew\n")}}}
 	motion := diffview.PreviewMotion{Enabled: true, Canvas: livediff.DarkTheme.Canvas(), Now: time.Now()}
 	fading, err := view.Render(t.Context(), "/workspace", livediff.DarkTheme, 60, 6, motion)
 	if err != nil {

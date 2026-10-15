@@ -19,15 +19,15 @@ import (
 
 	"github.com/pmezard/go-difflib/difflib"
 	sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"mvdan.cc/sh/v3/syntax"
 )
 
 // Literal predictions are display-only. Never evaluate an expression or use
 // these bytes as the observed outcome of a host command. A still-arriving
 // content literal can expose complete target units without executing its script.
-func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory string, partial bool) ([]mekugi.ReviewFile, bool, error) {
+func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory string, partial bool) ([]diffmodel.ReviewFile, bool, error) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Negated || len(call.Assigns) != 0 {
 		return nil, false, nil
@@ -60,7 +60,7 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	return files, len(files) != 0, err
 }
 
-func liveDiffInterpreterSource(ctx context.Context, input previewInterpreterInput, source, script string, python, partial bool) ([]mekugi.ReviewFile, bool, error) {
+func liveDiffInterpreterSource(ctx context.Context, input previewInterpreterInput, source, script string, python, partial bool) ([]diffmodel.ReviewFile, bool, error) {
 	if len(source) > execscope.SourceLimit {
 		return nil, false, nil
 	}

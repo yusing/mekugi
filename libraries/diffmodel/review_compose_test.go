@@ -1,4 +1,4 @@
-package mekugi
+package diffmodel
 
 import (
 	"fmt"

@@ -3,14 +3,14 @@ package livediff
 import (
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestAlignHunkColorsAdvancesEachSourceSide(t *testing.T) {
 	kinds := []byte{' ', '-', '+', '-', '+', ' ', '+', '-'}
-	rows := make([]mekugi.ReviewRow, len(kinds))
+	rows := make([]diffmodel.ReviewRow, len(kinds))
 	for i, kind := range kinds {
-		rows[i] = mekugi.ReviewRow{Kind: kind, Text: "uncolored"}
+		rows[i] = diffmodel.ReviewRow{Kind: kind, Text: "uncolored"}
 	}
 	before := []string{"old context", "removed one", "removed two", "old next context", "removed three"}
 	after := []string{"new context", "added one", "added two", "new next context", "added three"}

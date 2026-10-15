@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, session string) *mekugiResponseTransform {
@@ -355,7 +355,7 @@ func TestNativePatchReviewChecksActualDeletionAndMove(t *testing.T) {
 				t.Fatal(err)
 			}
 			reviews, complete := nativePatchReview(observation.Files)
-			if !complete || len(reviews) != 1 || reviews[0].Action() != mekugi.ReviewAdd {
+			if !complete || len(reviews) != 1 || reviews[0].Action() != diffmodel.ReviewAdd {
 				t.Fatalf("partial move was not reported as destination creation: %+v, complete=%t", reviews, complete)
 			}
 			if err := os.Remove(destination); err != nil {

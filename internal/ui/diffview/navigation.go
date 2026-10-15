@@ -9,8 +9,8 @@ import (
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -250,15 +250,15 @@ func (n *Navigation) Render(files []livediff.File, counts []livediff.Counts, sel
 			label = indent + theme.Accent() + arrow + "\x1b[39m " + livediff.Safe(entry.Label, false)
 			stats = fmt.Sprintf(" "+livediff.Subtle+"(%d)"+livediff.SubtleReset, entry.Count)
 		} else {
-			var regions []mekugi.ReviewFile
+			var regions []diffmodel.ReviewFile
 			for _, chunk := range files[entry.File].Chunks {
 				regions = append(regions, chunk.Review)
 			}
 			label = indent + livediff.Safe(entry.Label, false)
 			if len(regions) > 0 {
-				label = indent + FileLabel(StatusOf(regions...), entry.Label, n.workspace, theme)
+				label = indent + FileLabel(diffmodel.StatusOf(regions...), entry.Label, n.workspace, theme)
 			}
-			if entry.File < len(counts) && !StatusOf(regions...).Directory {
+			if entry.File < len(counts) && !diffmodel.StatusOf(regions...).Directory {
 				stats = CountStats(counts[entry.File], theme)
 			}
 			if entry.File < len(n.Dots) {
@@ -303,65 +303,7 @@ func liveDiffHoverRow(line string) string {
 	return "\x1b[4m" + strings.ReplaceAll(line, "\x1b[0m", "\x1b[0m\x1b[4m") + "\x1b[24m"
 }
 
-// Status is a file row's net change, coded like git's short status:
-// ? (incomplete evidence), A, D, M, R (rename only), RM (rename with edits), or UU (the net diff still
-// adds conflict markers that mchanges revert or apply left for resolution).
-type Status struct {
-	Before, After string
-	// Edited reports captured content changes, not missing evidence.
-	Edited, Conflict bool
-	Incomplete       bool
-	Directory        bool
-}
-
-// StatusOf classifies a file's diff regions, in capture order.
-func StatusOf(regions ...mekugi.ReviewFile) Status {
-	var status Status
-	if len(regions) > 0 {
-		status.Before = regions[0].BeforePath
-	}
-	for _, region := range regions {
-		status.Add(region)
-	}
-	return status
-}
-
-// add folds a later capture of the file into its status; before stays the
-// first capture's.
-func (s *Status) Add(region mekugi.ReviewFile) {
-	s.After = region.AfterPath
-	s.Directory = region.Directory
-	s.Incomplete = s.Incomplete || region.Incomplete != "" && !region.Directory
-	added, removed := region.LineCounts()
-	s.Edited = s.Edited || added > 0 || removed > 0 || region.Directory
-	if region.Binary {
-		if _, sides, found := strings.Cut(region.Diff, " differ ("); found {
-			before, after, _ := strings.Cut(strings.TrimSuffix(strings.TrimSpace(sides), ")"), " -> ")
-			s.Edited = s.Edited || before != after
-		}
-	}
-	s.Conflict = s.Conflict || strings.Contains(region.Diff, "\n+>>>>>>> mchanges ")
-}
-
-func (s Status) ShortCode() string {
-	switch {
-	case s.Incomplete:
-		return "?"
-	case s.Conflict:
-		return "UU"
-	case s.Before == "":
-		return "A"
-	case s.After == "":
-		return "D"
-	case s.Before != s.After && s.Edited:
-		return "RM"
-	case s.Before != s.After:
-		return "R"
-	}
-	return "M"
-}
-
-func (s Status) code(theme livediff.Theme) (string, string) {
+func statusCode(s diffmodel.Status, theme livediff.Theme) (string, string) {
 	code := s.ShortCode()
 	switch code {
 	case "UU", "D":
@@ -377,11 +319,11 @@ func (s Status) code(theme livediff.Theme) (string, string) {
 // FileLabel prefixes a file label with its colored status; a rename
 // also names its source. Every file row (tree, flat list, Changes tab,
 // streaming title) uses this format.
-func FileLabel(status Status, label, workspace string, theme livediff.Theme) string {
+func FileLabel(status diffmodel.Status, label, workspace string, theme livediff.Theme) string {
 	if status.Directory {
 		label = strings.TrimSuffix(label, "/") + "/"
 	}
-	code, color := status.code(theme)
+	code, color := statusCode(status, theme)
 	label = livediff.Safe(label, false)
 	if status.Before != "" && status.After != "" && status.Before != status.After {
 		// The source's base name when it stayed in the same folder.

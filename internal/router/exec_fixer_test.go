@@ -10,7 +10,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execscope"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func execFixerTestCapture(t *testing.T, root, workdir, command string) *execObservation {
@@ -33,7 +33,7 @@ func execFixerTestCapturedFiles(observation *execObservation) map[string]execFil
 	return files
 }
 
-func execFixerTestAssertExact(t *testing.T, root string, observation *execObservation, wantPaths []string) []mekugi.ReviewFile {
+func execFixerTestAssertExact(t *testing.T, root string, observation *execObservation, wantPaths []string) []diffmodel.ReviewFile {
 	t.Helper()
 	reviews, complete, coverage, unswept := reconcileExecObservation(*observation, execReconcileEnv{})
 	if !complete || coverage != execCoverageExact || unswept != "" {
@@ -171,7 +171,7 @@ func TestExecMixedPythonAndGoModKeepsDirectPathOrigin(t *testing.T) {
 	writeTestFile(t, modulePath, "module example.test/root\n\ngo 1.27\n// direct edit\n")
 	writeTestFile(t, sumPath, "example.test/dep v1.2.3 h1:after\n")
 	reviews := execFixerTestAssertExact(t, root, observation, []string{"go.mod", "go.sum"})
-	byPath := make(map[string]mekugi.ReviewFile, len(reviews))
+	byPath := make(map[string]diffmodel.ReviewFile, len(reviews))
 	for _, review := range reviews {
 		byPath[filepath.Base(cmpOrPath(review.AfterPath, review.BeforePath))] = review
 	}

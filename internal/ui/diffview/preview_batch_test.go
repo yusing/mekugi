@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func batchTestPreview(id, caller string, paths ...string) Preview {
 	preview := Preview{ID: id, Workspace: "/workspace", Caller: caller, Status: PreviewEdit}
 	for _, path := range paths {
 		path = "/workspace/" + path
-		preview.Files = append(preview.Files, mekugi.RenderReviewFile(path, path,
+		preview.Files = append(preview.Files, diffmodel.RenderReviewFile(path, path,
 			"package main\n\nconst value = 1\n", "package main\n\nconst value = 2\n"))
 	}
 	return preview
@@ -23,7 +23,7 @@ func batchTestPreview(id, caller string, paths ...string) Preview {
 func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
 	pane := PreviewPane{Retain: true}
 	preview := batchTestPreview("stream", "/root", "src/stream.go")
-	preview.Files = []mekugi.ReviewFile{mekugi.RenderReviewFile("", "/workspace/src/stream.go", "", strings.Repeat("source line\n", 40))}
+	preview.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "/workspace/src/stream.go", "", strings.Repeat("source line\n", 40))}
 	pane.Update(preview)
 	batchTestRender(t, &pane, 16)
 	view := pane.batches["/root"].files[previewFileKey{"stream", "/workspace/src/stream.go"}]
@@ -32,7 +32,7 @@ func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
 		t.Fatal("page-up did not pause the file's source viewport")
 	}
 	pausedAt := view.ScrollRow
-	preview.Files = []mekugi.ReviewFile{mekugi.RenderReviewFile("", "/workspace/src/stream.go", "", strings.Repeat("source line\n", 60))}
+	preview.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "/workspace/src/stream.go", "", strings.Repeat("source line\n", 60))}
 	pane.Update(preview)
 	batchTestRender(t, &pane, 16)
 	if !view.Paused || view.ScrollRow != pausedAt || view.Focus <= initialFocus {
@@ -301,8 +301,8 @@ func TestUISnapshotNativeBatchMixedToolCall(t *testing.T) {
 func TestUISnapshotNativeBatchOmitsDeletedFiles(t *testing.T) {
 	pane := PreviewPane{Retain: true}
 	preview := batchTestPreview("mixed", "/root", "src/kept.go")
-	preview.Files[0] = mekugi.RenderReviewFile("", "/workspace/src/kept.go", "", strings.Repeat("source line\n", 24))
-	preview.Files = append(preview.Files, mekugi.RenderReviewFile("/workspace/src/deleted.go", "", "package old\n", ""))
+	preview.Files[0] = diffmodel.RenderReviewFile("", "/workspace/src/kept.go", "", strings.Repeat("source line\n", 24))
+	preview.Files = append(preview.Files, diffmodel.RenderReviewFile("/workspace/src/deleted.go", "", "package old\n", ""))
 	pane.Update(preview)
 	assertRowsSnapshot(t, "native_batch_omits_deleted", batchTestRender(t, &pane, 31))
 	if !slices.Equal(pane.Callers(), []string{"/root"}) || len(pane.batches["/root"].files) != 1 {
@@ -316,14 +316,14 @@ func TestNativeBatchDeletedFileRemovesRetainedViewport(t *testing.T) {
 	batchTestRender(t, &pane, 31)
 	pane.NextBatch("/root") // Pin a.go before it disappears.
 	preview := batchTestPreview("call", "/root", "src/b.go")
-	preview.Files = append(preview.Files, mekugi.RenderReviewFile("/workspace/src/a.go", "", "package old\n", ""))
+	preview.Files = append(preview.Files, diffmodel.RenderReviewFile("/workspace/src/a.go", "", "package old\n", ""))
 	pane.Update(preview)
 	batchTestRender(t, &pane, 31)
 	b := pane.batches["/root"]
 	if len(b.order) != 1 || b.selected.path != "/workspace/src/b.go" || b.pinned {
 		t.Fatalf("deleted viewport retained: %+v", b)
 	}
-	preview.Files = []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/src/b.go", "", "package old\n", "")}
+	preview.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/src/b.go", "", "package old\n", "")}
 	pane.Update(preview)
 	if rows := batchTestRender(t, &pane, 31); len(rows) != 0 || len(pane.Callers()) != 0 {
 		t.Fatal("deletion-only call still opens dock")

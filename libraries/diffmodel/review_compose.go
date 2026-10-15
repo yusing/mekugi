@@ -1,4 +1,6 @@
-package mekugi
+package diffmodel
+
+// Source: review_compose.go:1:510@[cc24b102] captured diff model
 
 import (
 	"errors"

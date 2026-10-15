@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -34,11 +34,11 @@ func observeTestCommand(t *testing.T, workdir, command string) *execObservation 
 	return observation
 }
 
-func reviewSummary(workspace string, files []mekugi.ReviewFile) []string {
+func reviewSummary(workspace string, files []diffmodel.ReviewFile) []string {
 	var summary []string
 	for _, file := range files {
 		text := file.Action().Title() + " " + strings.TrimPrefix(cmpOrPath(file.AfterPath, file.BeforePath), workspace+"/")
-		if file.Action() == mekugi.ReviewMove {
+		if file.Action() == diffmodel.ReviewMove {
 			text = "Move " + strings.TrimPrefix(file.BeforePath, workspace+"/") + " -> " + strings.TrimPrefix(file.AfterPath, workspace+"/")
 		}
 		if file.CopyFrom != "" {
@@ -701,13 +701,13 @@ func TestExecReceiptAndSummaryText(t *testing.T) {
 	workspace := t.TempDir()
 	history := mekugiHistory{
 		ExecOutcome: &execOutcome{Status: execStatusCompleted, Labels: []string{"cp"}},
-		ReviewFiles: []mekugi.ReviewFile{
-			func() mekugi.ReviewFile {
-				file := mekugi.RenderReviewFile("", filepath.Join(workspace, "b.txt"), "", "a\n")
+		ReviewFiles: []diffmodel.ReviewFile{
+			func() diffmodel.ReviewFile {
+				file := diffmodel.RenderReviewFile("", filepath.Join(workspace, "b.txt"), "", "a\n")
 				file.CopyFrom = filepath.Join(workspace, "a.txt")
 				return file
 			}(),
-			mekugi.RenderBinaryReviewFile(filepath.Join(workspace, "blob"), filepath.Join(workspace, "blob"), 2, 2, "aa", "bb"),
+			diffmodel.RenderBinaryReviewFile(filepath.Join(workspace, "blob"), filepath.Join(workspace, "blob"), 2, 2, "aa", "bb"),
 		},
 	}
 	want := "Create `b.txt` (copy of `a.txt`) +1 -0 · cp\n```diff\n@@ -0,0 +1,1 @@\n+a\n```\n\nEdit `blob` binary · cp"

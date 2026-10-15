@@ -12,7 +12,7 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/goutils/synk"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -36,7 +36,7 @@ type Chunk struct {
 	Workspace     string // The capturing workspace; empty when unknown.
 	CaptureOrder  uint64
 	SnapshotOrder int
-	Review        mekugi.ReviewFile
+	Review        diffmodel.ReviewFile
 	Highlighted   bool
 	Origin
 }
@@ -180,7 +180,7 @@ func (v *View) RefreshVisible() {
 			continue
 		}
 		visible := File{id: file.id, Path: file.Path}
-		var composition mekugi.ReviewComposition
+		var composition diffmodel.ReviewComposition
 		var failure error
 		chunks := slices.Clone(file.Chunks)
 		slices.SortStableFunc(chunks, func(a, b Chunk) int {
@@ -206,7 +206,7 @@ func (v *View) RefreshVisible() {
 				for _, region := range composition.FilesWithHighlights() {
 					visible.Chunks = append(visible.Chunks, Chunk{Review: region.ReviewFile, Highlighted: region.Highlighted})
 				}
-				composition = mekugi.ReviewComposition{}
+				composition = diffmodel.ReviewComposition{}
 				if !baselineChunk {
 					if directoryChunk < 0 {
 						directoryChunk = len(visible.Chunks)
@@ -227,7 +227,7 @@ func (v *View) RefreshVisible() {
 						Review: region.ReviewFile, Highlighted: region.Highlighted,
 					})
 				}
-				composition = mekugi.ReviewComposition{}
+				composition = diffmodel.ReviewComposition{}
 				if !baselineChunk {
 					status := "incomplete history: " + chunk.Review.Incomplete
 					if chunk.Review.Origin != "" || chunk.Review.Directory {
@@ -399,7 +399,7 @@ func Safe(text string, colors bool) string {
 	return string(out)
 }
 
-func fileAction(file mekugi.ReviewFile, workspace string) string {
+func fileAction(file diffmodel.ReviewFile, workspace string) string {
 	switch {
 	case file.BeforePath == "" && file.AfterPath != "":
 		return "New file"

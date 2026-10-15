@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -43,15 +43,15 @@ func (r *Renderer) ColorDiffPath(ctx context.Context, theme Theme, path, source 
 
 // DiffRows parses display-only unified output, including clipped and partial
 // hunks. Metadata has no source-row kind; source rows omit their diff marker.
-func DiffRows(source string) []mekugi.ReviewRow {
+func DiffRows(source string) []diffmodel.ReviewRow {
 	rows, _ := diffRows(source, "", nil, nil)
 	return rows
 }
 
 // ColorDiffRows uses the same row geometry as DiffRows and the pane's source
 // lexer. Callers can wrap and fill rows at their own viewport width.
-func (r *Renderer) ColorDiffRows(ctx context.Context, theme Theme, path, source string) ([]mekugi.ReviewRow, error) {
-	return diffRows(source, path, nil, func(review mekugi.ReviewFile, rows []mekugi.ReviewRow) error {
+func (r *Renderer) ColorDiffRows(ctx context.Context, theme Theme, path, source string) ([]diffmodel.ReviewRow, error) {
+	return diffRows(source, path, nil, func(review diffmodel.ReviewFile, rows []diffmodel.ReviewRow) error {
 		before, after, err := r.ColorHunk(ctx, theme, review, rows)
 		if err != nil {
 			return err
@@ -64,7 +64,7 @@ func (r *Renderer) ColorDiffRows(ctx context.Context, theme Theme, path, source 
 type diffSection struct {
 	start  int
 	hunks  int
-	review mekugi.ReviewFile
+	review diffmodel.ReviewFile
 }
 
 // DiffOutput replaces file-header pairs with a separator and the shared file
@@ -72,9 +72,9 @@ type diffSection struct {
 // An open stream cannot establish the last file's complete changed-line counts.
 func (r *Renderer) DiffOutput(ctx context.Context, theme Theme, source string, complete bool) ([]string, error) {
 	var sections []diffSection
-	var color func(mekugi.ReviewFile, []mekugi.ReviewRow) error
+	var color func(diffmodel.ReviewFile, []diffmodel.ReviewRow) error
 	if !r.LayoutOnly {
-		color = func(review mekugi.ReviewFile, rows []mekugi.ReviewRow) error {
+		color = func(review diffmodel.ReviewFile, rows []diffmodel.ReviewRow) error {
 			before, after, err := r.ColorHunk(ctx, theme, review, rows)
 			if err == nil {
 				AlignHunkColors(rows, before, after)
@@ -132,9 +132,9 @@ func (r *Renderer) DiffOutput(ctx context.Context, theme Theme, source string, c
 	return lines, nil
 }
 
-func diffRows(source, path string, sections *[]diffSection, color func(mekugi.ReviewFile, []mekugi.ReviewRow) error) ([]mekugi.ReviewRow, error) {
+func diffRows(source, path string, sections *[]diffSection, color func(diffmodel.ReviewFile, []diffmodel.ReviewRow) error) ([]diffmodel.ReviewRow, error) {
 	lines := strings.Split(source, "\n")
-	result := make([]mekugi.ReviewRow, len(lines))
+	result := make([]diffmodel.ReviewRow, len(lines))
 	for i, line := range lines {
 		result[i].Text = line
 	}
@@ -145,7 +145,7 @@ func diffRows(source, path string, sections *[]diffSection, color func(mekugi.Re
 			part.review.Diff = strings.Join(lines[part.start:end], "\n")
 		}
 	}
-	review := mekugi.ReviewFile{BeforePath: path, AfterPath: path}
+	review := diffmodel.ReviewFile{BeforePath: path, AfterPath: path}
 	for i := 0; i < len(lines); {
 		line := lines[i]
 		if strings.HasPrefix(line, "diff --git ") {
@@ -175,7 +175,7 @@ func diffRows(source, path string, sections *[]diffSection, color func(mekugi.Re
 				(*sections)[section].review.Incomplete = "unrecognized output"
 			}
 			if len(line) > 0 && strings.ContainsRune(" +-", rune(line[0])) {
-				result[i] = mekugi.ReviewRow{Kind: line[0], Text: line[1:]}
+				result[i] = diffmodel.ReviewRow{Kind: line[0], Text: line[1:]}
 			}
 			i++
 			continue
@@ -189,7 +189,7 @@ func diffRows(source, path string, sections *[]diffSection, color func(mekugi.Re
 		}
 		oldLeft, newLeft := count(match[1]), count(match[2])
 		i++
-		var rows []mekugi.ReviewRow
+		var rows []diffmodel.ReviewRow
 		var indexes []int
 		for i < len(lines) && (oldLeft > 0 || newLeft > 0) {
 			text := lines[i]
@@ -211,7 +211,7 @@ func diffRows(source, path string, sections *[]diffSection, color func(mekugi.Re
 			if kind != '-' {
 				newLeft--
 			}
-			rows = append(rows, mekugi.ReviewRow{Kind: kind, Text: text[1:]})
+			rows = append(rows, diffmodel.ReviewRow{Kind: kind, Text: text[1:]})
 			indexes = append(indexes, i)
 			i++
 		}
@@ -239,7 +239,7 @@ func diffRows(source, path string, sections *[]diffSection, color func(mekugi.Re
 
 // AlignHunkColors replaces caller-owned row text with its before/after color,
 // preserving hunk geometry without allocating another row slice.
-func AlignHunkColors(rows []mekugi.ReviewRow, before, after []string) {
+func AlignHunkColors(rows []diffmodel.ReviewRow, before, after []string) {
 	oldIndex, newIndex := 0, 0
 	for i, row := range rows {
 		if row.Kind != '+' {

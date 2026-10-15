@@ -10,13 +10,13 @@ import (
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func liveDiffHighlightChunk(key, path, hunk string) livediff.Chunk {
 	diff := "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n" + hunk
-	return livediff.Chunk{Key: key, Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff}}
+	return livediff.Chunk{Key: key, Review: diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff}}
 }
 
 func TestLiveDiffHighlightBatchAndRepeatedSnapshot(t *testing.T) {
@@ -208,7 +208,7 @@ func TestLiveDiffHeaders(t *testing.T) {
 				after = "/dev/null"
 			}
 			diff := "--- " + before + "\n+++ " + after + "\n" + tc.hunk
-			chunk := livediff.Chunk{Review: mekugi.ReviewFile{
+			chunk := livediff.Chunk{Review: diffmodel.ReviewFile{
 				BeforePath: tc.before, AfterPath: tc.after, Diff: diff,
 			}}
 			file := livediff.File{Path: path, Chunks: []livediff.Chunk{chunk}}
@@ -281,7 +281,7 @@ func TestLiveDiffPreparedRenameKeepsDestination(t *testing.T) {
 		"\n@@ -1 +1 @@\n-before\n+after\n@@ -20 +20 @@\n-older\n+newer\n"
 	chunk := livediff.Chunk{
 		Key:    "rename",
-		Review: mekugi.ReviewFile{BeforePath: oldPath, AfterPath: newPath, Diff: diff},
+		Review: diffmodel.ReviewFile{BeforePath: oldPath, AfterPath: newPath, Diff: diff},
 	}
 	v := livediff.View{}
 	v.Merge([]livediff.File{{Path: oldPath, Chunks: []livediff.Chunk{chunk}}})
@@ -316,7 +316,7 @@ func TestLiveDiffNewFileRegionsStayCompact(t *testing.T) {
 	// Retained creation captures still render, although stock apply_patch also edits existing files.
 	path := filepath.Join(workspace, "review_highlight_test.txt")
 	initial := livediff.Chunk{
-		Key: "create", Review: mekugi.ReviewFile{
+		Key: "create", Review: diffmodel.ReviewFile{
 			AfterPath: path,
 			Diff: "--- /dev/null\n+++ " + strconv.Quote(path) +
 				"\n@@ -0,0 +1,311 @@\n+" + strings.Join(rows[:311], "\n+") + "\n",
@@ -492,7 +492,7 @@ func TestLiveDiffPathOnlyChangesStayCompact(t *testing.T) {
 		{"renamed", filepath.Join(workspace, "old.txt"), path, "old.txt → file.txt"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
+			review := diffmodel.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			chunk := livediff.Chunk{Key: "change", Review: review}
 			render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, workspace, 100)
@@ -519,7 +519,7 @@ func TestLiveDiffNarrowFileActions(t *testing.T) {
 		{"move", oldPath, path, "→"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			review := mekugi.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
+			review := diffmodel.ReviewFile{BeforePath: tc.before, AfterPath: tc.after,
 				Diff: tc.name + " " + strconv.Quote(tc.before) + " -> " + strconv.Quote(tc.after) + "\n"}
 			file := livediff.File{Path: path, Highlighted: true, Chunks: []livediff.Chunk{{Review: review}}}
 			for _, width := range []int{40, 90} {

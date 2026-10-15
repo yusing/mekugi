@@ -13,8 +13,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestLiveDiffRenderAllFiles(t *testing.T) {
@@ -25,7 +25,7 @@ func TestLiveDiffRenderAllFiles(t *testing.T) {
 		diff := "--- /dev/null\n+++ " + strconv.Quote(path) + "\n@@ -0,0 +1 @@\n+" + name + " content\n"
 		files = append(files, livediff.File{Path: path, Chunks: []livediff.Chunk{{
 
-			Review: mekugi.ReviewFile{AfterPath: path, Diff: diff},
+			Review: diffmodel.ReviewFile{AfterPath: path, Diff: diff},
 		}}})
 	}
 	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, files, workspace, 90)
@@ -80,7 +80,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 	type capturedEdit struct{ path, after string }
 	publish := func(call string, edits []capturedEdit) {
 		t.Helper()
-		files := make([]mekugi.ReviewFile, 0, len(edits))
+		files := make([]diffmodel.ReviewFile, 0, len(edits))
 		for _, edit := range edits {
 			path := filepath.Join(workspace, edit.path)
 			before, err := os.ReadFile(path)
@@ -91,7 +91,7 @@ func TestLiveDiffTerminalShowsMultiFileCapture(t *testing.T) {
 			if os.IsNotExist(err) {
 				beforePath = ""
 			}
-			files = append(files, mekugi.RenderReviewFile(beforePath, path, string(before), edit.after))
+			files = append(files, diffmodel.RenderReviewFile(beforePath, path, string(before), edit.after))
 		}
 		id, err := store.reserveChange(t.Context(), workspace, "thread", call)
 		if err != nil {

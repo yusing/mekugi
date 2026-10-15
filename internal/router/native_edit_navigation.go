@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // openActivityEdit resolves an exact host invocation, never a nearby edit or path.
@@ -42,7 +42,7 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 				if chunk.Review.Action().Title() == "Move" && path == pathdisplay.Move(workspace, chunk.Review.BeforePath, chunk.Review.AfterPath) {
 					path = display
 				}
-				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffForWorkspace(workspace), Lang: "diff", Fenced: true})
+				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(workspace, chunk.Review.AfterPath)), Lang: "diff", Fenced: true})
 			}
 			for _, block := range entry.blocks {
 				if block.DirectoryDeletion() && activityui.EditPath(block) == path {

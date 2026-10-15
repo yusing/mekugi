@@ -9,14 +9,14 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func testThemeChunk(key, path, diff string) Chunk {
 	return Chunk{
 		Key:    key,
-		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
+		Review: diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
 	}
 }
 

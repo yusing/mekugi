@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
@@ -213,7 +213,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 		{Name: "/root/b", Started: now.Add(-time.Minute)},
 	}})
 	chunk := func(caller, diff string, incomplete string) livediff.Chunk {
-		return livediff.Chunk{Origin: livediff.Origin{Caller: caller}, Review: mekugi.ReviewFile{Diff: diff, Incomplete: incomplete}}
+		return livediff.Chunk{Origin: livediff.Origin{Caller: caller}, Review: diffmodel.ReviewFile{Diff: diff, Incomplete: incomplete}}
 	}
 	v.lineCounts = liveDiffCallerCounts([]livediff.File{
 		{Chunks: []livediff.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
@@ -250,7 +250,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 func TestLiveDiffCallerCountsSkipFilesOutsideWorkspace(t *testing.T) {
 	chunk := func(caller, workspace, before, after string) livediff.Chunk {
 		return livediff.Chunk{Workspace: workspace, Origin: livediff.Origin{Caller: caller},
-			Review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: "@@ -1 +1 @@\n-x\n+y"}}
+			Review: diffmodel.ReviewFile{BeforePath: before, AfterPath: after, Diff: "@@ -1 +1 @@\n-x\n+y"}}
 	}
 	counts := liveDiffCallerCounts([]livediff.File{{Chunks: []livediff.Chunk{
 		chunk("/root", "/w", "/w/a.go", "/w/a.go"),

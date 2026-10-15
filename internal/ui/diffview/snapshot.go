@@ -1,7 +1,7 @@
 package diffview
 
 import (
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // Preview state is router-lifetime only and never enters the replay store.
@@ -13,7 +13,7 @@ type Preview struct {
 	Thread      string
 	HostItems   []string `json:",omitempty"` // Exact command items whose observed writer effects completed.
 	EditReceipt string   `json:",omitempty"` // Captured operation rows, independent of preview clipping.
-	Files       []mekugi.ReviewFile
+	Files       []diffmodel.ReviewFile
 	Input       string // Display-only text, never executed.
 	Truncated   bool
 	Evaluated   bool `json:",omitzero"`

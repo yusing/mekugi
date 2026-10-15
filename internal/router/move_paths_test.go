@@ -5,16 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	workspace := "/workspace"
-	file := mekugi.RenderReviewFile(workspace+"/internal/router/old.txt.new", workspace+"/internal/router/old.txt", "same\n", "same\n")
-	text := editReceiptText(workspace, mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}})
+	file := diffmodel.RenderReviewFile(workspace+"/internal/router/old.txt.new", workspace+"/internal/router/old.txt", "same\n", "same\n")
+	text := editReceiptText(workspace, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.painter.Theme = livediff.DarkTheme
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: text, native: &liveActivityNativeItem{thread: "main", item: "move"}}}})
@@ -58,8 +58,8 @@ func TestMChangesMoveWorkspacePaths(t *testing.T) {
 	f := newMChangesSliceFixture(t, "relative-moves")
 	id := f.reserve(t, f.thread, "move")
 	before, after := filepath.Join(f.workspace, "internal", "old.txt"), filepath.Join(f.workspace, "internal", "new.txt")
-	file := mekugi.RenderReviewFile(before, after, "same\n", "same\n")
-	f.publish(t, id, "move", "move", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}})
+	file := diffmodel.RenderReviewFile(before, after, "same\n", "same\n")
+	f.publish(t, id, "move", "move", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
 	for _, mode := range []string{"", "--history", "--net"} {
 		stdout, stderr, status := f.run(t, "mchanges "+id+" "+mode)
 		if status != 0 || stderr != "" || !strings.Contains(stdout, "move \"internal/old.txt\" -> \"internal/new.txt\"\n") || strings.Contains(stdout, f.workspace) {

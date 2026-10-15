@@ -1,11 +1,12 @@
-package mekugi
+package diffmodel
+
+// Source: review.go:1:256@[cc24b102] captured diff model
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/pmezard/go-difflib/difflib"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // ReviewFile is an immutable original-to-final review projection. Unlike the
@@ -84,12 +85,12 @@ func (file ReviewFile) UnifiedDiff() string {
 	return file.Diff
 }
 
-// UnifiedDiffForWorkspace shortens display headers without changing retained
-// paths or source rows. Composition and filesystem operations use the originals.
-func (file ReviewFile) UnifiedDiffForWorkspace(workspace string) string {
+// UnifiedDiffWithPaths substitutes display headers without changing retained
+// identities or source rows. The caller supplies its own path-display policy.
+func (file ReviewFile) UnifiedDiffWithPaths(beforePath, afterPath string) string {
 	before, after := file.BeforePath, file.AfterPath
-	file.BeforePath = pathdisplay.ForWorkspace(workspace, before)
-	file.AfterPath = pathdisplay.ForWorkspace(workspace, after)
+	file.BeforePath = beforePath
+	file.AfterPath = afterPath
 	operation := fmt.Sprintf("%s %q -> %q\n", file.Action(), before, after)
 	if rest, ok := strings.CutPrefix(file.Diff, operation); ok {
 		file.Diff = fmt.Sprintf("%s %q -> %q\n", file.Action(), file.BeforePath, file.AfterPath) + rest

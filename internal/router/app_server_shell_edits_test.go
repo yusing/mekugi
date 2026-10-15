@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/appserver"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func newShellEditTestUI(t *testing.T) *appServerUI {
@@ -64,7 +64,7 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 	runExecVCSTestGit(t, workspace, "init", "-q")
 	writeTestFile(t, filepath.Join(workspace, ".gitignore"), "ignored.txt\n")
 	writeTestFile(t, path, "after\n")
-	id := putTestChange(t, ctx, store, workspace, "original", mekugi.RenderReviewFile(path, path, "before\n", "after\n"))
+	id := putTestChange(t, ctx, store, workspace, "original", diffmodel.RenderReviewFile(path, path, "before\n", "after\n"))
 	for index, mutation := range []string{"revert", "apply"} {
 		item := fmt.Sprintf("shell-%d", index)
 		edit := startShellEditTestCommand(t, u, "mchanges "+mutation+" "+id, item)

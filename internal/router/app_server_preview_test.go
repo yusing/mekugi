@@ -16,14 +16,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/appserver"
 	responseevents "github.com/yusing/mekugi/internal/responses"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"golang.org/x/term"
 )
 
@@ -638,7 +640,7 @@ func (p *nativePreview) apply(edit nativePreviewEdit) {
 	if change, err := p.store.reserveChange(p.ui.ctx, p.workspace, edit.thread, edit.item+"\x000"); err == nil {
 		_ = p.store.put(p.ui.ctx, p.workspace, map[string]mekugiHistory{id: {
 			ToolName: applyPatchToolName, Caller: caller, ChangeID: change, CorrelationID: edit.item + "\x000", ExecutingThread: edit.thread,
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, absolute, string(before), after)},
+			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(beforePath, absolute, string(before), after)},
 		}})
 	}
 	item["status"] = "completed"
@@ -1396,7 +1398,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					continue
 				}
 				for _, chunk := range attempt.chunks {
-					if u.shell.output.pages[u.shell.output.page].Code == chunk.Review.UnifiedDiffForWorkspace(u.shell.diff.workspace) {
+					if u.shell.output.pages[u.shell.output.page].Code == chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(u.shell.diff.workspace, chunk.Review.AfterPath)) {
 						found = true
 					}
 				}

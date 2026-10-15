@@ -9,7 +9,7 @@ import (
 
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/rivo/uniseg"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // SequenceMatcher has quadratic worst-case cost. Word emphasis is optional;
@@ -18,7 +18,7 @@ const maxWordDiffTokens = 2048
 
 type wordSpan struct{ start, end int }
 
-func colorHunkWords(ctx context.Context, theme Theme, rows []mekugi.ReviewRow, before, after []string) ([]string, []string, error) {
+func colorHunkWords(ctx context.Context, theme Theme, rows []diffmodel.ReviewRow, before, after []string) ([]string, []string, error) {
 	// ColorSource returns cached slices. Decoration must not mutate that cache.
 	before, after = slices.Clone(before), slices.Clone(after)
 	oldIndex, newIndex := 0, 0

@@ -11,8 +11,8 @@ import (
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestLiveDiffNativeRows(t *testing.T) {
@@ -41,10 +41,10 @@ func TestLiveDiffNativeRows(t *testing.T) {
 func TestLiveDiffCompactCoordinates(t *testing.T) {
 	for _, deleted := range []bool{false, true} {
 		path := "file.txt"
-		review := mekugi.ReviewFile{AfterPath: path,
+		review := diffmodel.ReviewFile{AfterPath: path,
 			Diff: "--- /dev/null\n+++ file.txt\n@@ -0,0 +1,20 @@\n" + strings.Repeat("+content\n", 20)}
 		if deleted {
-			review = mekugi.ReviewFile{BeforePath: path,
+			review = diffmodel.ReviewFile{BeforePath: path,
 				Diff: "--- file.txt\n+++ /dev/null\n@@ -1,20 +0,0 @@\n" + strings.Repeat("-content\n", 20)}
 		}
 		chunk := livediff.Chunk{Review: review}
@@ -91,8 +91,8 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 }
 
 func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
-	review := mekugi.ReviewFile{BeforePath: "file.go", AfterPath: "file.go"}
-	before, after, err := new(livediff.Renderer).ColorHunk(t.Context(), livediff.TerminalTheme, review, []mekugi.ReviewRow{
+	review := diffmodel.ReviewFile{BeforePath: "file.go", AfterPath: "file.go"}
+	before, after, err := new(livediff.Renderer).ColorHunk(t.Context(), livediff.TerminalTheme, review, []diffmodel.ReviewRow{
 		{Kind: '-', Text: "/* removed comment\n"},
 		{Kind: '-', Text: "still removed */\n"},
 		{Kind: '+', Text: "return \"new\"\n"},
@@ -176,7 +176,7 @@ func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 		{Path: "reverted-first"},
 		{Path: "visible.txt", Chunks: []livediff.Chunk{chunk}},
 		{Path: "reverted-middle"},
-		{Path: "deleted.txt", Chunks: []livediff.Chunk{{Review: mekugi.ReviewFile{
+		{Path: "deleted.txt", Chunks: []livediff.Chunk{{Review: diffmodel.ReviewFile{
 			BeforePath: "deleted.txt", Diff: "--- deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-removed source\n",
 		}}}},
 		{Path: "reverted-last"},
@@ -208,7 +208,7 @@ func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 }
 
 func TestLiveDiffIncompleteHistory(t *testing.T) {
-	chunk := livediff.Chunk{Key: "unreadable", Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
+	chunk := livediff.Chunk{Key: "unreadable", Review: diffmodel.RenderIncompleteReviewFile("file", "file", "permission denied")}
 	view := livediff.View{}
 	view.Merge([]livediff.File{{Path: "file", Chunks: []livediff.Chunk{chunk}}})
 	view.RefreshVisible()
@@ -226,9 +226,9 @@ func TestLiveDiffIncompleteHistory(t *testing.T) {
 func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
 	{
 		incomplete := livediff.Chunk{Key: "unreadable", CaptureOrder: 1,
-			Review: mekugi.RenderIncompleteReviewFile("file", "file", "permission denied")}
+			Review: diffmodel.RenderIncompleteReviewFile("file", "file", "permission denied")}
 		complete := livediff.Chunk{Key: "readable", CaptureOrder: 2,
-			Review: mekugi.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
+			Review: diffmodel.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
 		view := livediff.View{}
 		view.Merge([]livediff.File{{Path: "file", Chunks: []livediff.Chunk{incomplete, complete}}})
 		view.RefreshVisible()

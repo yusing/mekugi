@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
@@ -110,12 +110,12 @@ func TestMChangesSummaryComposesManagedAndDirectEdits(t *testing.T) {
 		}
 		correlation := fmt.Sprint(i)
 		id := f.reserve(t, f.thread, correlation)
-		file := mekugi.RenderReviewFile(path, path, before, after)
+		file := diffmodel.RenderReviewFile(path, path, before, after)
 		if i == 0 {
-			file = mekugi.RenderReviewFile("", path, before, after)
+			file = diffmodel.RenderReviewFile("", path, before, after)
 		}
 		file.Origin = origin
-		f.publish(t, id, correlation, correlation, mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}})
+		f.publish(t, id, correlation, correlation, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
 	}
 	summary, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, mine: true, view: "summary"})
 	if err != nil || summary != "M\t2\t1\tfile.txt\n" {
@@ -127,7 +127,7 @@ func TestMChangesReadContextDistinguishesMissingEmptyAndPathScope(t *testing.T) 
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "read-context")
 	id := f.reserve(t, "worker", "worker-effect")
-	f.publish(t, id, "worker-effect", "worker-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")}})
+	f.publish(t, id, "worker-effect", "worker-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")}})
 	output, stderr, status := f.run(t, "mchanges "+id+" --net")
 	if status != 0 || stderr != "" || !strings.Contains(output, "+new") {
 		t.Fatalf("explicit worker capture unreadable: %q, %q, %d", output, stderr, status)
@@ -295,16 +295,16 @@ func TestMChangesFilteredZeroNetIsNotPathMismatch(t *testing.T) {
 		t.Run(fmt.Sprintf("creation=%v", creation), func(t *testing.T) {
 			f := newMChangesSliceFixture(t, "filtered-zero-net")
 			path := filepath.Join(f.workspace, "file.txt")
-			files := []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "old\n", "new\n"), mekugi.RenderReviewFile(path, path, "new\n", "old\n")}
+			files := []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "old\n", "new\n"), diffmodel.RenderReviewFile(path, path, "new\n", "old\n")}
 			if creation {
-				files = []mekugi.ReviewFile{mekugi.RenderReviewFile("", path, "", "new\n"), mekugi.RenderReviewFile(path, "", "new\n", "")}
+				files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", path, "", "new\n"), diffmodel.RenderReviewFile(path, "", "new\n", "")}
 			}
 			var ids []string
 			for i, file := range files {
 				call := fmt.Sprint(i)
 				id := f.reserve(t, f.thread, call)
 				ids = append(ids, id)
-				f.publish(t, id, call, call, mekugiHistory{ReviewFiles: []mekugi.ReviewFile{file}})
+				f.publish(t, id, call, call, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}})
 			}
 			output, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: ids, view: "net", paths: []string{"file.txt"}})
 			if err != nil || output != "no net changes in selected captured history\n" {

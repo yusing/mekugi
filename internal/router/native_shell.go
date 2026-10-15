@@ -12,9 +12,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Live edits temporarily replace their caller's transcript, never another pane.
@@ -58,7 +58,7 @@ func (u *terminalUI) preview(preview diffview.Preview) {
 				path = file.BeforePath
 			}
 			receipt.pages = append(receipt.pages, activityui.Block{Kind: "op", Verb: file.Action().Title(),
-				Path: pathdisplay.ForWorkspace(preview.Workspace, path), Code: file.UnifiedDiffForWorkspace(preview.Workspace), Lang: "diff", Fenced: true})
+				Path: pathdisplay.ForWorkspace(preview.Workspace, path), Code: file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath)), Lang: "diff", Fenced: true})
 		}
 		if len(receipt.pages) == 0 {
 			// Large live cards discard Files. Their receipt still carries bounded

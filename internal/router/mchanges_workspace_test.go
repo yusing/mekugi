@@ -9,7 +9,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestMChangesWorkspaceAllocationIgnoresForeignIndexPayload(t *testing.T) {
@@ -136,7 +136,7 @@ func TestMChangesWrongWorkspaceReadKeepsValidTargets(t *testing.T) {
 	other := t.TempDir()
 	valid := f.reserve(t, f.thread, "valid")
 	f.publish(t, valid, "valid", "valid-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
 	})
 	foreign, err := f.store.reserveChange(f.ctx, other, f.thread, "foreign")
 	if err != nil {
@@ -161,7 +161,7 @@ func TestMChangesWrongWorkspaceMutationIsAtomic(t *testing.T) {
 	other := t.TempDir()
 	valid := f.reserve(t, f.thread, "valid")
 	f.publish(t, valid, "valid", "valid-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
 	})
 	foreign, err := f.store.reserveChange(f.ctx, other, f.thread, "foreign")
 	if err != nil {
@@ -188,13 +188,13 @@ func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) 
 			f := newMChangesSliceFixture(t, "corrupt-attempt")
 			valid := f.reserve(t, f.thread, "valid")
 			f.publish(t, valid, "valid", "valid-call", mekugiHistory{
-				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("kept.txt", "kept.txt", "old\n", "new\n")},
+				ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("kept.txt", "kept.txt", "old\n", "new\n")},
 			})
 			broken := f.reserve(t, f.thread, "broken")
 			versions := []string{"old\n", "middle\n", "new\n"}
 			for attempt, call := range []string{"first", "later"} {
 				f.publish(t, broken, "broken", call, mekugiHistory{Attempt: attempt + 1,
-					ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("discarded.txt", "discarded.txt", versions[attempt], versions[attempt+1])},
+					ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("discarded.txt", "discarded.txt", versions[attempt], versions[attempt+1])},
 				})
 			}
 			options := changeReadOptions{workspace: f.workspace, ids: []string{broken, valid}, view: view}

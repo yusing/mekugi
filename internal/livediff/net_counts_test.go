@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func netCountsCapture(order uint64, caller, beforePath, afterPath, before, after string) Chunk {
 	return Chunk{
 		Key: fmt.Sprintf("capture-%d", order), CaptureOrder: order,
 		Origin: Origin{Change: fmt.Sprintf("change-%d", order), Caller: caller},
-		Review: mekugi.RenderReviewFile(beforePath, afterPath, before, after),
+		Review: diffmodel.RenderReviewFile(beforePath, afterPath, before, after),
 	}
 }
 
@@ -70,7 +70,7 @@ func TestFileNetCountsUnknownEvidence(t *testing.T) {
 			case "incomplete", "hidden incomplete":
 				first.Review.Incomplete = "before content unavailable"
 			case "inconsistent":
-				second.Review = mekugi.RenderReviewFile("a", "a", "unobserved\n", "final\n")
+				second.Review = diffmodel.RenderReviewFile("a", "a", "unobserved\n", "final\n")
 			}
 			view.Merge(GroupCaptures([]Chunk{first, second}))
 			if kind == "hidden incomplete" {

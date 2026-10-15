@@ -18,8 +18,8 @@ import (
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func snapshotTestHistory() mekugiHistory {
@@ -40,7 +40,7 @@ func snapshotTestHistory() mekugiHistory {
 			BeforePath: "/w/text", AfterPath: "/w/renamed", Before: "old\n", Exists: true,
 			TargetBefore: "target\n", TargetExists: true, TargetError: "target diagnostic",
 		}}}, {Input: "no files"}},
-		ReviewFiles: []mekugi.ReviewFile{{BeforePath: "/w/text", AfterPath: "/w/text", Diff: "-old\n+new\n"},
+		ReviewFiles: []diffmodel.ReviewFile{{BeforePath: "/w/text", AfterPath: "/w/text", Diff: "-old\n+new\n"},
 			{BeforePath: "/w/incomplete", Incomplete: "missing before"}},
 		HostResults: []nativeToolResult{{Tool: applyPatchToolName}},
 	}

@@ -14,10 +14,10 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -306,7 +306,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		if err := os.WriteFile(path, []byte("content\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		histories[name] = mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: name, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(path, path, "", "content\n")}}
+		histories[name] = mekugiHistory{ToolName: applyPatchToolName, ChangeID: id, CorrelationID: name, ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "", "content\n")}}
 	}
 	if err := store.put(t.Context(), workspace, histories); err != nil {
 		t.Fatal(err)
@@ -500,9 +500,9 @@ func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 	if len(pane.Views) != 0 {
 		t.Fatal("hunkless patch reserved live UI space")
 	}
-	valid := mekugi.RenderReviewFile("", filepath.Join(workspace, "valid.txt"), "", "content\n")
+	valid := diffmodel.RenderReviewFile("", filepath.Join(workspace, "valid.txt"), "", "content\n")
 	preview := diffview.Preview{ID: "mixed", Workspace: workspace, Thread: "thread", Status: diffview.PreviewRunning,
-		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", filepath.Join(workspace, "empty.txt"), "", ""), valid}}
+		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(workspace, "empty.txt"), "", ""), valid}}
 	broker.publishPreview(preview, false)
 	if shown := broker.previews[preview.ID]; len(shown.Files) != 1 || shown.Files[0] != valid || len(preview.Files) != 2 {
 		t.Fatalf("mixed admission lost a valid hunk or changed evidence: %+v", shown)
@@ -572,9 +572,9 @@ func TestLiveDiffTurnEventValidation(t *testing.T) {
 
 func TestLiveDiffBoundedPreviewWorkspacePaths(t *testing.T) {
 	for _, path := range []string{"/workspace/src/main.go", "/outside/main.go"} {
-		preview := boundLiveDiffPreview(diffview.Preview{Workspace: "/workspace", Files: []mekugi.ReviewFile{
-			mekugi.RenderReviewFile("", "/workspace/large.txt", "", strings.Repeat("padding\n", 10000)),
-			mekugi.RenderReviewFile(path, path, "const x = 1\n", "const x = 2\n"),
+		preview := boundLiveDiffPreview(diffview.Preview{Workspace: "/workspace", Files: []diffmodel.ReviewFile{
+			diffmodel.RenderReviewFile("", "/workspace/large.txt", "", strings.Repeat("padding\n", 10000)),
+			diffmodel.RenderReviewFile(path, path, "const x = 1\n", "const x = 2\n"),
 		}})
 		want := path
 		if path == "/workspace/src/main.go" {
@@ -587,11 +587,11 @@ func TestLiveDiffBoundedPreviewWorkspacePaths(t *testing.T) {
 }
 
 func TestLiveDiffBoundedPreviewOmitsDeletedFiles(t *testing.T) {
-	deleted := mekugi.RenderReviewFile("/workspace/deleted.go", "", strings.Repeat("old source\n", 10000), "")
+	deleted := diffmodel.RenderReviewFile("/workspace/deleted.go", "", strings.Repeat("old source\n", 10000), "")
 	for _, mixed := range []bool{false, true} {
-		preview := diffview.Preview{ID: "call", Workspace: "/workspace", Caller: "/root", Status: diffview.PreviewEdit, Files: []mekugi.ReviewFile{deleted}}
+		preview := diffview.Preview{ID: "call", Workspace: "/workspace", Caller: "/root", Status: diffview.PreviewEdit, Files: []diffmodel.ReviewFile{deleted}}
 		if mixed {
-			preview.Files = append(preview.Files, mekugi.RenderReviewFile("", "/workspace/kept.go", "", "package main\n"))
+			preview.Files = append(preview.Files, diffmodel.RenderReviewFile("", "/workspace/kept.go", "", "package main\n"))
 		}
 		bounded := boundLiveDiffPreview(preview)
 		if strings.Contains(bounded.Input, "deleted.go") || strings.Contains(bounded.Input, "old source") {

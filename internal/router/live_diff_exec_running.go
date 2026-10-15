@@ -17,8 +17,8 @@ import (
 
 	"github.com/yusing/mekugi/internal/execscope"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // The window registry owns display cancellation, not process continuation.
@@ -33,7 +33,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	// Only source-content projections admit paths, never generic watch effects.
 	excludedVCS := func(origin string) bool {
 		tool, _, _ := strings.Cut(origin, " ")
-		return commandanalysis.IsVCSTool(tool) && !authoredReview(mekugi.ReviewFile{Origin: origin})
+		return commandanalysis.IsVCSTool(tool) && !authoredReview(diffmodel.ReviewFile{Origin: origin})
 	}
 	if r == nil || broker == nil {
 		return
@@ -157,7 +157,7 @@ func execScopePreviewFooter(observation execObservation) string {
 // Reuse literal edit projection against the pre-call capture, never a fresh
 // read of a file the host may already have edited. Unprojectable effects keep
 // the normal host-result lifecycle; tests acquire no predicted write targets.
-func execPreviewProjected(ctx context.Context, observation execObservation) (map[string]mekugi.ReviewFile, bool) {
+func execPreviewProjected(ctx context.Context, observation execObservation) (map[string]diffmodel.ReviewFile, bool) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	sources := &liveDiffSources{capturedOnly: true, files: make(map[liveDiffSourceKey]liveDiffSource)}
@@ -168,7 +168,7 @@ func execPreviewProjected(ctx context.Context, observation execObservation) (map
 		}
 	}
 	worker := liveDiffPreviewWorker{ctx: context.WithValue(ctx, liveDiffSourcesContext{}, sources)}
-	expected := make(map[string]mekugi.ReviewFile)
+	expected := make(map[string]diffmodel.ReviewFile)
 	complete := true
 	for _, command := range observation.Commands {
 		if ctx.Err() != nil {
@@ -201,7 +201,7 @@ func execPreviewProjected(ctx context.Context, observation execObservation) (map
 	return expected, complete
 }
 
-func execPreviewExpected(ctx context.Context, observation execObservation) map[string]mekugi.ReviewFile {
+func execPreviewExpected(ctx context.Context, observation execObservation) map[string]diffmodel.ReviewFile {
 	expected, complete := execPreviewProjected(ctx, observation)
 	// Only retire the watcher when its entire admitted edit scope is known.
 	if !complete || len(expected) != len(observation.Files) {
@@ -282,7 +282,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	stamps := make(map[string]string)
-	changed := make(map[string]mekugi.ReviewFile)
+	changed := make(map[string]diffmodel.ReviewFile)
 	settledPaths := make(map[string]bool)
 	cursor := 0
 	for {
@@ -337,7 +337,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			if settled {
 				settledPaths[before.Path] = true
 			}
-			var file mekugi.ReviewFile
+			var file diffmodel.ReviewFile
 			if target, ok := expected[before.Path]; ok {
 				beforePath, afterPath := before.Path, before.Path
 				if !execFilePresent(before) {
@@ -353,7 +353,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 				if file.Diff != "" && !file.Binary && !file.Link {
 					// Predictions are compact; compare that projection without
 					// shrinking the observed evidence shown below or retained later.
-					comparison.Diff = mekugi.RenderReviewPreviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after)).Diff
+					comparison.Diff = diffmodel.RenderReviewPreviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after)).Diff
 				}
 				if comparison == target {
 					matched[before.Path] = true
@@ -375,7 +375,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 					delete(changed, before.Path)
 					continue
 				}
-				file = mekugi.RenderIncompleteReviewFile(before.Path, before.Path, strings.Trim(strings.Join([]string{before.Error, after.Error}, "; "), "; "))
+				file = diffmodel.RenderIncompleteReviewFile(before.Path, before.Path, strings.Trim(strings.Join([]string{before.Error, after.Error}, "; "), "; "))
 			} else if sameExecContent(before, after) {
 				_, existed := changed[before.Path]
 				updated = updated || existed

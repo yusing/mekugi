@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 )
 
@@ -44,7 +44,7 @@ func legacyHistory(v legacycall.History) mekugiHistory {
 		Caller:               v.Caller,
 		Source:               v.Source,
 		ChangeID:             v.ChangeID,
-		ReviewFiles:          legacySlice(v.ReviewFiles, func(v legacycall.ReviewFile) mekugi.ReviewFile { return mekugi.ReviewFile(v) }),
+		ReviewFiles:          legacySlice(v.ReviewFiles, func(v legacycall.ReviewFile) diffmodel.ReviewFile { return diffmodel.ReviewFile(v) }),
 		NativePatches:        legacySlice(v.NativePatches, legacyNativePatch),
 		ResolvedBaseline:     legacyPointer(v.ResolvedBaseline, legacyBaseline),
 		ExecObservation:      legacyPointer(v.ExecObservation, legacyObservation),

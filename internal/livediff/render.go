@@ -13,7 +13,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
@@ -251,7 +251,7 @@ func (r *Renderer) Render(ctx context.Context, theme Theme, files []File, worksp
 		// Keep one coordinate column aligned across the file. Deletions use
 		// old line numbers; additions and context use new line numbers.
 		digits := 0
-		fileHunks := make([][]mekugi.ReviewHunk, len(file.Chunks))
+		fileHunks := make([][]diffmodel.ReviewHunk, len(file.Chunks))
 		for j, chunk := range file.Chunks {
 			hunks, err := chunk.Review.Hunks()
 			if err != nil {
@@ -432,8 +432,8 @@ func WrapSource(text string, width int) []string {
 type syntaxHunk struct {
 	renderer                                            *Renderer
 	theme                                               Theme
-	review                                              mekugi.ReviewFile
-	rows                                                []mekugi.ReviewRow
+	review                                              diffmodel.ReviewFile
+	rows                                                []diffmodel.ReviewRow
 	rowStarts                                           []int
 	start, end, width, sourceWidth, digits, numberWidth int
 	highlighted, painted                                bool
@@ -532,7 +532,7 @@ func SourceLine(theme Theme, width int, numbers, fragment string, kind byte) str
 
 // Tokenise the two sides separately so deleted text cannot change the syntax
 // state of additions. Never read the workspace to fill uncaptured source gaps.
-func (r *Renderer) ColorHunk(ctx context.Context, theme Theme, review mekugi.ReviewFile, rows []mekugi.ReviewRow) ([]string, []string, error) {
+func (r *Renderer) ColorHunk(ctx context.Context, theme Theme, review diffmodel.ReviewFile, rows []diffmodel.ReviewRow) ([]string, []string, error) {
 	var before, after Output
 	for _, row := range rows {
 		if err := ctx.Err(); err != nil {

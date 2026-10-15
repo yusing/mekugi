@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -43,7 +43,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		history := mekugiHistory{
 			ToolName: nativeExecCommandToolName, Root: workspace, ExecutingThread: cmd.thread,
 			CorrelationID: cmd.carrier, ChangeID: id,
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(cmd.path, cmd.path, "old\n", "new\n")},
+			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(cmd.path, cmd.path, "old\n", "new\n")},
 			ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact,
 				CodeMode: cmd.codeMode, Labels: []string{cmd.program}},
 		}

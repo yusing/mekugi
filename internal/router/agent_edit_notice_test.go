@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func projectedEditOutput(t *testing.T, request *parsedResponsesRequest, callID string) []map[string]any {
@@ -209,10 +209,10 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 			t.Fatal(err)
 		}
 		ids = append(ids, id)
-		var files []mekugi.ReviewFile
+		var files []diffmodel.ReviewFile
 		for number := range 16 {
 			path := fmt.Sprintf("%d-%d-%s", index, number, strings.Repeat("x", 600))
-			files = append(files, mekugi.ReviewFile{AfterPath: path, Diff: "add \"\" -> \"" + path + "\"\n"})
+			files = append(files, diffmodel.ReviewFile{AfterPath: path, Diff: "add \"\" -> \"" + path + "\"\n"})
 		}
 		if err := proxy.replayStore.put(t.Context(), workspace, map[string]mekugiHistory{call: {
 			ChangeID: id, CorrelationID: call, ReviewFiles: files,

@@ -13,10 +13,10 @@ import (
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // The UI harness consumes complete terminal frames, not publication callbacks.
@@ -250,7 +250,7 @@ func TestLiveDiffTerminalComposedContextIsNotDuplicated(t *testing.T) {
 	diff := "@@ -1,5 +1,5 @@\n-old first\n+new first\n See the editing guide\n and prerequisites.\n-old second\n+new second\n tail\n"
 	path := filepath.Join(workspace, "readme.md")
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"nearby": {
-		ChangeID: id, CorrelationID: "nearby", ReviewFiles: []mekugi.ReviewFile{{BeforePath: path, AfterPath: path, Diff: diff}},
+		ChangeID: id, CorrelationID: "nearby", ReviewFiles: []diffmodel.ReviewFile{{BeforePath: path, AfterPath: path, Diff: diff}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestLiveDiffTerminalBoundedDiffPresentation(t *testing.T) {
 	path := filepath.Join(workspace, "src", "main.go")
 	before := "package main\nconst liveTail = 1\n"
 	after := strings.Replace(before, "liveTail = 1", "liveTail = 2", 1)
-	preview := boundLiveDiffPreview(diffview.Preview{ID: "tail", Workspace: workspace, Thread: "thread", Caller: "/root", Status: diffview.PreviewRunning, Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", filepath.Join(workspace, "large.txt"), "", strings.Repeat("padding\n", 10000)), mekugi.RenderReviewFile(path, path, before, after)}})
+	preview := boundLiveDiffPreview(diffview.Preview{ID: "tail", Workspace: workspace, Thread: "thread", Caller: "/root", Status: diffview.PreviewRunning, Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(workspace, "large.txt"), "", strings.Repeat("padding\n", 10000)), diffmodel.RenderReviewFile(path, path, before, after)}})
 	if !preview.DiffText || !preview.Truncated || len(preview.Files) != 0 {
 		t.Fatalf("not a bounded diff tail: %+v", preview)
 	}

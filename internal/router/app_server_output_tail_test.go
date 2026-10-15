@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	mekugi "github.com/yusing/mekugi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestAppServerOutputTailKeepsFinalLines(t *testing.T) {
@@ -72,9 +72,9 @@ func TestAppServerPendingPatchIsNotEdited(t *testing.T) {
 }
 
 func TestManagedFilesDoNotBecomeEditsInMain(t *testing.T) {
-	files := make([]mekugi.ReviewFile, 4)
+	files := make([]diffmodel.ReviewFile, 4)
 	for i := range files {
-		files[i] = mekugi.RenderReviewFile("", fmt.Sprintf("gen-%d.txt", i), "", "x\n")
+		files[i] = diffmodel.RenderReviewFile("", fmt.Sprintf("gen-%d.txt", i), "", "x\n")
 		files[i].Origin = "generator"
 	}
 	if event := capturedEditActivity(t.TempDir(), mekugiHistory{ReviewFiles: files, ExecOutcome: &execOutcome{Labels: []string{"git"}}}); event != nil {

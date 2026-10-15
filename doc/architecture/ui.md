@@ -12,6 +12,10 @@ lifecycle delivery responsive. Running work outside the UI loop is insufficient 
 shared queue or lock still blocks independent owners. Unresolved metadata and exhausted
 observation capacity must remain visible and bounded without terminating unrelated work.
 
+- `libraries/diffmodel` owns captured file differences, composition, merge results,
+  and file-status classification. It operates on supplied values without filesystem
+  reads or terminal types. Callers choose display paths; terminal views own colors,
+  labels, geometry, selection, and follow state.
 - `internal/ui/activity` owns display blocks, Markdown and
   syntax presentation, source-aware Markdown copy annotations and reconstruction,
   agent labels/colors, and reasoning/status animation.

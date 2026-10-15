@@ -11,8 +11,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 )
 
@@ -36,7 +36,7 @@ type mekugiHistory struct {
 	Caller           string `json:",omitempty"`
 	Source           string `json:",omitempty"`
 	ChangeID         string
-	ReviewFiles      []mekugi.ReviewFile
+	ReviewFiles      []diffmodel.ReviewFile
 	NativePatches    []nativePatchObservation `json:",omitempty"`
 	ResolvedBaseline *resolvedStockBaseline   `json:",omitempty"`
 	ExecObservation  *execObservation         `json:",omitempty"`

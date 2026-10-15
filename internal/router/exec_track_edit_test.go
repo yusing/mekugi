@@ -18,7 +18,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	"github.com/yusing/mekugi/internal/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -206,7 +206,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if len(completed.Files) != wantFiles || completed.Footer != "observed edit" {
 				t.Fatalf("completion lacks actual observed edit: %+v", completed)
 			}
-			if !slices.ContainsFunc(completed.Files, func(file mekugi.ReviewFile) bool { return strings.Contains(file.Diff, after) }) {
+			if !slices.ContainsFunc(completed.Files, func(file diffmodel.ReviewFile) bool { return strings.Contains(file.Diff, after) }) {
 				t.Fatalf("completion lost observed source content: %+v", completed.Files)
 			}
 			awaitMain(t, u, completedText)

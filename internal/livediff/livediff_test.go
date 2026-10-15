@@ -6,12 +6,12 @@ import (
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func testChunk(key, path, diff string) Chunk {
 	return Chunk{
-		Key: key, Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
+		Key: key, Review: diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Diff: diff},
 	}
 }
 

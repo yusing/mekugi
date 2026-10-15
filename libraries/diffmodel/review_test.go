@@ -1,4 +1,4 @@
-package mekugi
+package diffmodel
 
 import (
 	"fmt"
@@ -140,7 +140,7 @@ func TestDirectoryReviewCannotInventContent(t *testing.T) {
 	}
 }
 
-func TestReviewWorkspaceDisplay(t *testing.T) {
+func TestReviewDisplayPaths(t *testing.T) {
 	for _, tc := range []struct{ before, after, old, new string }{
 		{"/w/old name", "/w/new name", "same\n", "same\n"},
 		{"/w/old", "/w/new", "--- /w/source-row\n", "+++ /w/source-row\n"},
@@ -151,7 +151,7 @@ func TestReviewWorkspaceDisplay(t *testing.T) {
 		file := RenderReviewFile(tc.before, tc.after, tc.old, tc.new)
 		original := file
 		want := RenderReviewFile(strings.TrimPrefix(tc.before, "/w/"), strings.TrimPrefix(tc.after, "/w/"), tc.old, tc.new).UnifiedDiff()
-		if got := file.UnifiedDiffForWorkspace("/w"); got != want {
+		if got := file.UnifiedDiffWithPaths(strings.TrimPrefix(file.BeforePath, "/w/"), strings.TrimPrefix(file.AfterPath, "/w/")); got != want {
 			t.Errorf("display = %q, want %q", got, want)
 		}
 		if file != original {
@@ -160,11 +160,11 @@ func TestReviewWorkspaceDisplay(t *testing.T) {
 	}
 }
 
-func TestBinaryReviewWorkspaceDisplay(t *testing.T) {
+func TestBinaryReviewDisplayPaths(t *testing.T) {
 	file := RenderBinaryReviewFile("/w/old.bin", "/w/new.bin", 10, 12, "oldhash", "newhash")
 	original := file
 	want := RenderBinaryReviewFile("old.bin", "new.bin", 10, 12, "oldhash", "newhash").UnifiedDiff()
-	if got := file.UnifiedDiffForWorkspace("/w"); got != want {
+	if got := file.UnifiedDiffWithPaths(strings.TrimPrefix(file.BeforePath, "/w/"), strings.TrimPrefix(file.AfterPath, "/w/")); got != want {
 		t.Fatalf("binary display = %q, want %q", got, want)
 	}
 	if file != original {

@@ -13,7 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
@@ -43,7 +43,7 @@ func TestMChangesFrontendReadsAcrossAgentsAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := mekugiHistory{
-		ChangeID: id, CorrelationID: "edited", ReviewFiles: []mekugi.ReviewFile{
+		ChangeID: id, CorrelationID: "edited", ReviewFiles: []diffmodel.ReviewFile{
 			{AfterPath: "file.txt", Diff: "add \"\" -> \"file.txt\"\n--- /dev/null\n+++ \"file.txt\"\n@@ -0,0 +1,12 @@\n" + strings.Repeat("+line π changed\n", 12)},
 			{BeforePath: "old name.txt", AfterPath: "new name.txt", Diff: "move \"old name.txt\" -> \"new name.txt\"\n"},
 			{AfterPath: "--summary", Diff: "add \"\" -> \"--summary\"\n"},
@@ -269,10 +269,10 @@ func TestChangesSummaryAggregatesEvaluations(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	var ids []string
-	for i, files := range [][]mekugi.ReviewFile{
-		{mekugi.RenderReviewFile("file", "file", "old\n", "middle\n"), mekugi.RenderReviewFile("", "empty", "", "")},
-		{mekugi.RenderReviewFile("file", "file", "middle\n", "last\nextra\n"), mekugi.RenderIncompleteReviewFile("unknown", "unknown", "missing capture")},
-		{mekugi.RenderReviewFile("unknown", "unknown", "a\n", "b\n")},
+	for i, files := range [][]diffmodel.ReviewFile{
+		{diffmodel.RenderReviewFile("file", "file", "old\n", "middle\n"), diffmodel.RenderReviewFile("", "empty", "", "")},
+		{diffmodel.RenderReviewFile("file", "file", "middle\n", "last\nextra\n"), diffmodel.RenderIncompleteReviewFile("unknown", "unknown", "missing capture")},
+		{diffmodel.RenderReviewFile("unknown", "unknown", "a\n", "b\n")},
 	} {
 		call := strconv.Itoa(i)
 		id, err := store.reserveChange(t.Context(), workspace, "author", call)
@@ -318,8 +318,8 @@ func TestChangesSummaryRecoveryAndRetiredHistory(t *testing.T) {
 	}
 	for i, history := range []mekugiHistory{
 		{TranslationError: "rejected"},
-		{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}},
-		{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "b\n", "c\nd\n")}},
+		{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}},
+		{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "b\n", "c\nd\n")}},
 	} {
 		history.ChangeID, history.CorrelationID = id, "original"
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{strconv.Itoa(i): history}); err != nil {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 type mchangesSliceFixture struct {
@@ -143,7 +143,7 @@ func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 	f.publish(t, patchID, "patch-observed", "patch-call", mekugiHistory{
 		ToolName:    applyPatchToolName,
 		Script:      "update file.txt",
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
 	})
 	patchHistory, patchErr, patchStatus := f.run(t, "mchanges --history "+patchID)
 	if patchStatus != 0 || patchErr != "" || !strings.HasPrefix(patchHistory, patchID+" applied\n") ||
@@ -158,7 +158,7 @@ func TestMChangesHistoryReportsSavedEffectsWithoutCommandResult(t *testing.T) {
 		ExecOutcome: &execOutcome{
 			Status: "", Class: "exec", Coverage: execCoverageExact,
 		},
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "before\n", "after\n")},
 	})
 	execHistory, execErr, execStatus := f.run(t, "mchanges --history "+execID)
 	if execStatus != 0 || execErr != "" || !strings.HasPrefix(execHistory, execID+" applied") ||
@@ -209,7 +209,7 @@ func TestMChangesSlicesUsageArgumentsAndWorkspaceErrors(t *testing.T) {
 			before = "after-1\n"
 		}
 		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", before, after)},
+			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", before, after)},
 		})
 	}
 	if ids[0] != "amber1" || ids[1] != "amber2" {
@@ -270,7 +270,7 @@ func TestMChangesSlicesSummaryKeepsMixedStates(t *testing.T) {
 	f := newMChangesSliceFixture(t, "slice-mixed-summary")
 	completed := f.reserve(t, f.thread, "summary-completed")
 	f.publish(t, completed, "summary-completed", "summary-completed-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("kept.txt", "kept.txt", "old\n", "new\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("kept.txt", "kept.txt", "old\n", "new\n")},
 	})
 	pending := f.reserve(t, f.thread, "summary-pending")
 	retired := f.reserve(t, f.thread, "summary-retired")
@@ -367,7 +367,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 		correlation := fmt.Sprintf("mine-%d", row+1)
 		id := f.reserve(t, f.thread, correlation)
 		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("own.txt", "own.txt", fmt.Sprintf("state-%d\n", row), fmt.Sprintf("state-%d\n", row+1))},
+			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("own.txt", "own.txt", fmt.Sprintf("state-%d\n", row), fmt.Sprintf("state-%d\n", row+1))},
 		})
 	}
 	pending := f.reserve(t, f.thread, "own-pending")
@@ -375,7 +375,7 @@ func TestMChangesSlicesMineListForkAndResume(t *testing.T) {
 	f.retire(t, retired)
 	foreign := f.reserve(t, "slice-outsider", "outsider-edit")
 	f.publish(t, foreign, "outsider-edit", "outsider-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("outsider.txt", "outsider.txt", "old\n", "new\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("outsider.txt", "outsider.txt", "old\n", "new\n")},
 	})
 	if foreign != "apple1" || pending != "amber4" || retired != "amber5" {
 		t.Fatalf("fixture IDs: own pending %s, own retired %s, foreign %s", pending, retired, foreign)
@@ -452,10 +452,10 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	correlation := "net-repeated-edits"
 	id := f.reserve(t, f.thread, correlation)
 	path := filepath.Join(f.workspace, "target.txt")
-	first := mekugi.RenderReviewFile(path, path, "old value\n", "intermediate value\n")
-	second := mekugi.RenderReviewFile(path, path, "intermediate value\n", "final value\n")
-	f.publish(t, id, correlation, "net-first-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{first}})
-	f.publish(t, id, correlation, "net-second-call", mekugiHistory{Attempt: 2, ReviewFiles: []mekugi.ReviewFile{second}})
+	first := diffmodel.RenderReviewFile(path, path, "old value\n", "intermediate value\n")
+	second := diffmodel.RenderReviewFile(path, path, "intermediate value\n", "final value\n")
+	f.publish(t, id, correlation, "net-first-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{first}})
+	f.publish(t, id, correlation, "net-second-call", mekugiHistory{Attempt: 2, ReviewFiles: []diffmodel.ReviewFile{second}})
 	want := "--- \"target.txt\"\n+++ \"target.txt\"\n@@ -1,1 +1,1 @@\n-old value\n+final value\n"
 	stdout, stderr, status := f.run(t, "mchanges --net "+id)
 	if status != 0 || stderr != "" || stdout != want {
@@ -474,7 +474,7 @@ func TestMChangesSlicesNetComposesRepeatedEditsAndRejectsIncompleteEvidence(t *t
 	incompleteCorrelation := "net-incomplete"
 	incomplete := f.reserve(t, f.thread, incompleteCorrelation)
 	f.publish(t, incomplete, incompleteCorrelation, "net-incomplete-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("unknown.txt", "unknown.txt", "capture unavailable")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("unknown.txt", "unknown.txt", "capture unavailable")},
 	})
 	stdout, stderr, status = f.run(t, "mchanges --net "+incomplete)
 	if status == 0 || stdout != "" || !(strings.Contains(stderr, "incomplete") || strings.Contains(stderr, "pending")) {
@@ -522,7 +522,7 @@ func TestMChangesNetWithoutOwnStreamExcludesSiblingChanges(t *testing.T) {
 	correlation := "sibling-only-change"
 	sibling := f.reserve(t, "sibling-thread", correlation)
 	f.publish(t, sibling, correlation, "sibling-only-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("sibling.txt", "sibling.txt", "old\n", "new\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("sibling.txt", "sibling.txt", "old\n", "new\n")},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --mine --net")
 	if status != 0 || stderr != "" || !strings.Contains(stdout, "no captures selected") || !strings.Contains(stdout, "use explicit IDs") ||
@@ -550,7 +550,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 		Script:          "text(await tools.exec_command({cmd: 'touch exec.txt'}));\n",
 		ExecObservation: &execObservation{CodeMode: true},
 		ExecOutcome:     &execOutcome{Status: "", Coverage: execCoverageExact},
-		ReviewFiles:     []mekugi.ReviewFile{mekugi.RenderReviewFile("exec.txt", "exec.txt", "before\n", "after\n")},
+		ReviewFiles:     []diffmodel.ReviewFile{diffmodel.RenderReviewFile("exec.txt", "exec.txt", "before\n", "after\n")},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --net "+codeMode)
 	if status != 0 || stderr != "" || strings.Contains(stdout, "composing observed effects") || !strings.Contains(stdout, "-before\n+after\n") {
@@ -563,16 +563,16 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 		ToolName:    nativeExecCommandToolName,
 		Script:      "mv before.txt after.txt\n",
 		ExecOutcome: &execOutcome{Status: "", Coverage: execCoverageExact},
-		ReviewFiles: []mekugi.ReviewFile{
-			mekugi.RenderReviewFile("before.txt", "after.txt", "same content\n", "same content\n"),
+		ReviewFiles: []diffmodel.ReviewFile{
+			diffmodel.RenderReviewFile("before.txt", "after.txt", "same content\n", "same content\n"),
 		},
 	})
 	f.publish(t, move, moveCorrelation, "confirmed-edit-after-move", mekugiHistory{
 		ToolName: applyPatchToolName,
 		Script:   "update after.txt",
 		Attempt:  2,
-		ReviewFiles: []mekugi.ReviewFile{
-			mekugi.RenderReviewFile("after.txt", "after.txt", "same content\n", "confirmed edit\n"),
+		ReviewFiles: []diffmodel.ReviewFile{
+			diffmodel.RenderReviewFile("after.txt", "after.txt", "same content\n", "confirmed edit\n"),
 		},
 	})
 	stdout, stderr, status = f.run(t, "mchanges --net "+move)
@@ -586,7 +586,7 @@ func TestMChangesNetLabelsUnconfirmedAndRejectsPartialCaptures(t *testing.T) {
 		ToolName:    nativeExecCommandToolName,
 		Script:      "printf changed > partial.txt\n",
 		ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoveragePartial},
-		ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("partial.txt", "partial.txt", "before\n", "after\n")},
+		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("partial.txt", "partial.txt", "before\n", "after\n")},
 	})
 	assertRejected(partial, "partial captured effects")
 }
@@ -606,8 +606,8 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 	binaryCorrelation := "binary-only"
 	binary := f.reserve(t, f.thread, binaryCorrelation)
 	f.publish(t, binary, binaryCorrelation, "binary-only-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{
-			mekugi.RenderBinaryReviewFile("binary.dat", "binary.dat", 5, 7, "before-hash", "after-hash"),
+		ReviewFiles: []diffmodel.ReviewFile{
+			diffmodel.RenderBinaryReviewFile("binary.dat", "binary.dat", 5, 7, "before-hash", "after-hash"),
 		},
 	})
 	assertRejected(binary)
@@ -615,9 +615,9 @@ func TestMChangesNetKeepsTextWhenBinaryEvidenceFails(t *testing.T) {
 	mixedCorrelation := "mixed-binary-text"
 	mixed := f.reserve(t, f.thread, mixedCorrelation)
 	f.publish(t, mixed, mixedCorrelation, "mixed-binary-text-call", mekugiHistory{
-		ReviewFiles: []mekugi.ReviewFile{
-			mekugi.RenderBinaryReviewFile("mixed.dat", "mixed.dat", 2, 3, "old-hash", "new-hash"),
-			mekugi.RenderReviewFile("text.txt", "text.txt", "before\n", "after\n"),
+		ReviewFiles: []diffmodel.ReviewFile{
+			diffmodel.RenderBinaryReviewFile("mixed.dat", "mixed.dat", 2, 3, "old-hash", "new-hash"),
+			diffmodel.RenderReviewFile("text.txt", "text.txt", "before\n", "after\n"),
 		},
 	})
 	stdout, stderr, status := f.run(t, "mchanges --net "+mixed)
@@ -633,7 +633,7 @@ func TestMChangesMissingReadRecoversAvailableRange(t *testing.T) {
 		correlation := fmt.Sprintf("capture-%d", number)
 		id := f.reserve(t, f.thread, correlation)
 		f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
-			ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
+			ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")},
 		})
 	}
 	// Explicit reads can cross threads, but recovery must not advertise unrelated streams.
@@ -667,7 +667,7 @@ func TestMChangesMissingRangeDiagnostics(t *testing.T) {
 		} else {
 			name := fmt.Sprintf("file-%d.txt", number)
 			f.publish(t, id, correlation, correlation+"-call", mekugiHistory{
-				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(name, name, "old\n", "new\n")},
+				ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(name, name, "old\n", "new\n")},
 			})
 		}
 	}
@@ -701,9 +701,9 @@ func TestMChangesReadsKeepAvailableTargets(t *testing.T) {
 	t.Parallel()
 	f := newMChangesSliceFixture(t, "mixed-read-targets")
 	first := f.reserve(t, f.thread, "first")
-	f.publish(t, first, "first", "first-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("first.txt", "first.txt", "old\n", "first-new\n")}})
+	f.publish(t, first, "first", "first-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("first.txt", "first.txt", "old\n", "first-new\n")}})
 	second := f.reserve(t, f.thread, "second")
-	f.publish(t, second, "second", "second-call", mekugiHistory{ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("second.txt", "second.txt", "old\n", "second-new\n")}})
+	f.publish(t, second, "second", "second-call", mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("second.txt", "second.txt", "old\n", "second-new\n")}})
 	for _, view := range []string{"", "--summary", "--history", "--net", "--list"} {
 		for _, selection := range []string{first + " amber3 " + second, "amber1..amber3"} {
 			out, diagnostic, status := f.run(t, "mchanges "+view+" "+selection)
@@ -727,15 +727,15 @@ func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
 	// Shape of the retained amber1..6 incident: an overlapping observation
 	// starts at index+12 even though the preceding capture ends at index+14.
 	// Reordering or accepting the contradictory baseline would invent a net.
-	files := [][]mekugi.ReviewFile{
-		{mekugi.RenderReviewFile("first.txt", "first.txt", "old\n", "first\n")},
-		{mekugi.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+10\n", "index+14\n"),
-			mekugi.RenderReviewFile("README.md", "README.md", "old\n", "documented\n")},
-		{mekugi.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+12\n", "index+14\n"),
-			mekugi.RenderReviewFile("evidence.go", "evidence.go", "old\n", "captured\n")},
-		{mekugi.RenderReviewFile("fourth.txt", "fourth.txt", "old\n", "fourth\n")},
-		{mekugi.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message(now)\nnow := time.Now()\n", "driver.message()\nnow := time.Now()\n")},
-		{mekugi.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message()\nnow := time.Now()\n", "driver.message()\n")},
+	files := [][]diffmodel.ReviewFile{
+		{diffmodel.RenderReviewFile("first.txt", "first.txt", "old\n", "first\n")},
+		{diffmodel.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+10\n", "index+14\n"),
+			diffmodel.RenderReviewFile("README.md", "README.md", "old\n", "documented\n")},
+		{diffmodel.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+12\n", "index+14\n"),
+			diffmodel.RenderReviewFile("evidence.go", "evidence.go", "old\n", "captured\n")},
+		{diffmodel.RenderReviewFile("fourth.txt", "fourth.txt", "old\n", "fourth\n")},
+		{diffmodel.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message(now)\nnow := time.Now()\n", "driver.message()\nnow := time.Now()\n")},
+		{diffmodel.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message()\nnow := time.Now()\n", "driver.message()\n")},
 	}
 	var ids []string
 	for i, reviews := range files {

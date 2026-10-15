@@ -15,8 +15,8 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 const (
@@ -412,8 +412,8 @@ func stockPatchResultState(toolName string, raw json.RawMessage) (terminal, repo
 	}
 }
 
-func nativePatchReview(files []nativePatchFileSnapshot) ([]mekugi.ReviewFile, bool) {
-	reviews := make([]mekugi.ReviewFile, 0, len(files))
+func nativePatchReview(files []nativePatchFileSnapshot) ([]diffmodel.ReviewFile, bool) {
+	reviews := make([]diffmodel.ReviewFile, 0, len(files))
 	complete := true
 	appendDifference := func(pathBefore, pathAfter, before, after string, existedBefore, existsAfter bool) {
 		if existedBefore == existsAfter && before == after && (pathBefore == pathAfter || !existedBefore) {
@@ -425,7 +425,7 @@ func nativePatchReview(files []nativePatchFileSnapshot) ([]mekugi.ReviewFile, bo
 		if !existsAfter {
 			pathAfter = ""
 		}
-		reviews = append(reviews, mekugi.RenderReviewFile(pathBefore, pathAfter, before, after))
+		reviews = append(reviews, diffmodel.RenderReviewFile(pathBefore, pathAfter, before, after))
 	}
 	for _, file := range files {
 		readPath := file.AfterPath
@@ -451,7 +451,7 @@ func nativePatchReview(files []nativePatchFileSnapshot) ([]mekugi.ReviewFile, bo
 					reason += err.Error()
 				}
 			}
-			reviews = append(reviews, mekugi.RenderIncompleteReviewFile(file.BeforePath, file.AfterPath, reason))
+			reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(file.BeforePath, file.AfterPath, reason))
 			complete = false
 			continue
 		}

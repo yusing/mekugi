@@ -30,7 +30,7 @@ import (
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 const (
@@ -951,14 +951,14 @@ func execSnapshotHash(snapshot execFileSnapshot) (int64, string) {
 	return int64(len(text)), hex.EncodeToString(sum[:])
 }
 
-func renderExecReview(beforePath, afterPath string, before, after execFileSnapshot) mekugi.ReviewFile {
+func renderExecReview(beforePath, afterPath string, before, after execFileSnapshot) diffmodel.ReviewFile {
 	if before.Kind == execFileBinary || after.Kind == execFileBinary {
 		// A text or link side against binary content has no row diff either.
 		beforeSize, beforeHash := execSnapshotHash(before)
 		afterSize, afterHash := execSnapshotHash(after)
-		return mekugi.RenderBinaryReviewFile(beforePath, afterPath, beforeSize, afterSize, beforeHash, afterHash)
+		return diffmodel.RenderBinaryReviewFile(beforePath, afterPath, beforeSize, afterSize, beforeHash, afterHash)
 	}
-	review := mekugi.RenderReviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after))
+	review := diffmodel.RenderReviewFile(beforePath, afterPath, execReviewText(before), execReviewText(after))
 	review.Link = before.Kind == execFileSymlink || after.Kind == execFileSymlink
 	return review
 }
@@ -973,7 +973,7 @@ type execReconcileEnv struct {
 // reconcileExecObservation compares only the command's captured write scope.
 // Changes elsewhere cannot be attributed to this call.
 
-func reconcileExecObservation(observation execObservation, env execReconcileEnv) (reviews []mekugi.ReviewFile, complete bool, coverage, unswept string) {
+func reconcileExecObservation(observation execObservation, env execReconcileEnv) (reviews []diffmodel.ReviewFile, complete bool, coverage, unswept string) {
 	var changes []execSnapshotChange
 	complete = true
 	coverage = execCoverageExact
@@ -992,13 +992,13 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 				afterPath = ""
 			}
 			reason := strings.Trim(strings.Join([]string{before.Error, current.Error}, "; "), "; ")
-			reviews = append(reviews, mekugi.RenderIncompleteReviewFile(beforePath, afterPath, reason))
+			reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(beforePath, afterPath, reason))
 			complete = false
 			return
 		}
 		if before.Kind == execFileOther || current.Kind == execFileOther {
 			if before.Kind != current.Kind {
-				reviews = append(reviews, mekugi.RenderIncompleteReviewFile(before.Path, before.Path, "not a regular file"))
+				reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(before.Path, before.Path, "not a regular file"))
 				complete = false
 			}
 			return
@@ -1049,7 +1049,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 				return nil
 			}
 			if walked++; walked > maxExecListingEntries {
-				reviews = append(reviews, mekugi.RenderIncompleteReviewFile(listing.Root, listing.Root, "destination listing exceeds its bound"))
+				reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(listing.Root, listing.Root, "destination listing exceeds its bound"))
 				complete = false
 				return filepath.SkipAll
 			}
@@ -1063,7 +1063,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			}
 			if stamp, listed := listing.Entries[relative]; listed {
 				if info, err := entry.Info(); err != nil || execFileStamp(info) != stamp {
-					reviews = append(reviews, mekugi.RenderIncompleteReviewFile(path, path, "modified; before content unavailable"))
+					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, path, "modified; before content unavailable"))
 					complete = false
 				}
 				return nil
@@ -1082,9 +1082,9 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 					continue
 				}
 				if errors.Is(err, os.ErrNotExist) {
-					reviews = append(reviews, mekugi.RenderIncompleteReviewFile(path, "", "deleted; before content unavailable"))
+					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, "", "deleted; before content unavailable"))
 				} else {
-					reviews = append(reviews, mekugi.RenderIncompleteReviewFile(path, path, "destination unavailable: "+err.Error()))
+					reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(path, path, "destination unavailable: "+err.Error()))
 				}
 				complete = false
 			}
@@ -1176,7 +1176,7 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			// A remote mount or missing clock cannot prove an unchanged path.
 			// Keep the named gap instead of comparing timestamps from another host.
 			if observation.WindowStart.IsZero() || execRemoteFilesystem(filepath.Dir(omission.Path)) {
-				review := mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; filesystem clock incomparable")
+				review := diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; filesystem clock incomparable")
 				review.Origin = omission.Origin
 				reviews = append(reviews, review)
 				complete = false
@@ -1190,23 +1190,23 @@ func reconcileExecObservation(observation execObservation, env execReconcileEnv)
 			// These paths existed during provider enumeration. A missing
 			// after-state is therefore a possible deletion, not a no-op.
 			current := snapshotExecFile(omission.Path, &budget)
-			var review mekugi.ReviewFile
+			var review diffmodel.ReviewFile
 			switch {
 			case current.Error != "":
-				review = mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; "+current.Error)
+				review = diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable; "+current.Error)
 			case current.Kind == execFileAbsent:
-				review = mekugi.RenderIncompleteReviewFile(omission.Path, "", "deleted; before content unavailable")
+				review = diffmodel.RenderIncompleteReviewFile(omission.Path, "", "deleted; before content unavailable")
 			case current.Kind == execFileText || current.Kind == execFileSymlink:
-				review = mekugi.RenderUnbasedReviewFile(omission.Path, execReviewText(current), "managed baseline unavailable")
+				review = diffmodel.RenderUnbasedReviewFile(omission.Path, execReviewText(current), "managed baseline unavailable")
 			default:
-				review = mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable")
+				review = diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, "managed baseline unavailable")
 			}
 			review.Origin = omission.Origin
 			reviews = append(reviews, review)
 			deferredChanged = true
 			continue
 		}
-		reviews = append(reviews, mekugi.RenderIncompleteReviewFile(omission.Path, omission.Path, omission.Reason))
+		reviews = append(reviews, diffmodel.RenderIncompleteReviewFile(omission.Path, omission.Path, omission.Reason))
 		complete = false
 	}
 	reviews, complete = boundExecReviews(reviews, complete)
@@ -1275,7 +1275,7 @@ func (o execObservation) sourceLabel() string {
 
 // boundExecReviews keeps the encoded reviews within the derived record's
 // bound, replacing the largest diffs with incomplete entries.
-func boundExecReviews(reviews []mekugi.ReviewFile, complete bool) ([]mekugi.ReviewFile, bool) {
+func boundExecReviews(reviews []diffmodel.ReviewFile, complete bool) ([]diffmodel.ReviewFile, bool) {
 	sizes := make([]int, len(reviews))
 	total := 0
 	for index, review := range reviews {
@@ -1290,7 +1290,7 @@ func boundExecReviews(reviews []mekugi.ReviewFile, complete bool) ([]mekugi.Revi
 			}
 		}
 		review := reviews[largest]
-		reviews[largest] = mekugi.RenderIncompleteReviewFile(review.BeforePath, review.AfterPath, "review exceeds the record bound")
+		reviews[largest] = diffmodel.RenderIncompleteReviewFile(review.BeforePath, review.AfterPath, "review exceeds the record bound")
 		size := len(responses.MustMarshalJSON(reviews[largest]))
 		total -= sizes[largest] - size
 		sizes[largest] = size

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -17,7 +17,7 @@ import (
 type snapshotFiles struct {
 	Exec   []execFileSnapshot        `json:",omitempty"`
 	Native []nativePatchFileSnapshot `json:",omitempty"`
-	Review []mekugi.ReviewFile       `json:",omitempty"`
+	Review []diffmodel.ReviewFile    `json:",omitempty"`
 	Texts  map[int]string            `json:",omitempty"`
 }
 

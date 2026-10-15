@@ -10,7 +10,7 @@ import (
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestGitCleanProviderPreservesExclusions(t *testing.T) {
@@ -298,7 +298,7 @@ func assertExecVCSTestFileContent(t *testing.T, path, want string) {
 	}
 }
 
-func reconcileExecVCSTestExact(t *testing.T, observation *execObservation) []mekugi.ReviewFile {
+func reconcileExecVCSTestExact(t *testing.T, observation *execObservation) []diffmodel.ReviewFile {
 	t.Helper()
 	reviews, complete, coverage, reason := reconcileExecObservation(*observation, execReconcileEnv{})
 	if !complete || coverage != execCoverageExact {

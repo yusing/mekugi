@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -23,7 +23,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 			}
 			var ids []string
 			for i := range 10 {
-				file := mekugi.RenderIncompleteReviewFile("/w/plugins/node_modules", "/w/plugins/node_modules", "dependency directory metadata capture incomplete")
+				file := diffmodel.RenderIncompleteReviewFile("/w/plugins/node_modules", "/w/plugins/node_modules", "dependency directory metadata capture incomplete")
 				file.OriginNote = execInventoryNote
 				call := fmt.Sprintf("command-%d", i)
 				id, err := store.reserveChange(t.Context(), "/w", "stock-thread", call)
@@ -32,7 +32,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				}
 				ids = append(ids, id)
 				history := mekugiHistory{ChangeID: id, CorrelationID: call, Caller: "/root", ExecutingThread: "stock-thread", Source: "exec",
-					ExecOutcome: &execOutcome{Coverage: execCoveragePartial}, ReviewFiles: []mekugi.ReviewFile{file}}
+					ExecOutcome: &execOutcome{Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}}
 				if err := store.put(t.Context(), "/w", map[string]mekugiHistory{call: history}); err != nil {
 					t.Fatal(err)
 				}
@@ -54,10 +54,10 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 					t.Fatalf("%s lost coverage or exposed observation as edit: %q, %v", mode, out, err)
 				}
 			}
-			putTestChange(t, t.Context(), store, "/w", "ignored", mekugi.RenderReviewFile("/w/FIXME.md", "/w/FIXME.md", "before\n", "after\n"))
+			putTestChange(t, t.Context(), store, "/w", "ignored", diffmodel.RenderReviewFile("/w/FIXME.md", "/w/FIXME.md", "before\n", "after\n"))
 			if confirmed {
 				for i := range 10 {
-					putTestChange(t, t.Context(), store, "/w", fmt.Sprintf("install-%d", i), mekugi.ReviewFile{
+					putTestChange(t, t.Context(), store, "/w", fmt.Sprintf("install-%d", i), diffmodel.ReviewFile{
 						BeforePath: "/w/plugins/node_modules", AfterPath: "/w/plugins/node_modules", Directory: true,
 						Incomplete: "directory contents intentionally not captured", OriginNote: execInventoryNote,
 					})
@@ -91,10 +91,10 @@ func TestLiveDiffTerminalDependencyHistory(t *testing.T) {
 	}
 	path := filepath.Join(w, "node_modules")
 	for i := range 10 {
-		gap := mekugi.RenderIncompleteReviewFile(path, path, "dependency directory metadata capture incomplete")
+		gap := diffmodel.RenderIncompleteReviewFile(path, path, "dependency directory metadata capture incomplete")
 		gap.OriginNote = execInventoryNote
 		putTestChange(t, t.Context(), store, w, fmt.Sprintf("gap-%d", i), gap)
-		putTestChange(t, t.Context(), store, w, fmt.Sprintf("install-%d", i), mekugi.ReviewFile{
+		putTestChange(t, t.Context(), store, w, fmt.Sprintf("install-%d", i), diffmodel.ReviewFile{
 			BeforePath: path, AfterPath: path, Directory: true, Incomplete: "directory contents intentionally not captured",
 		})
 	}
@@ -122,7 +122,7 @@ func TestLiveDiffDirectoryLifecycleAndCallerFilter(t *testing.T) {
 		for i := range 2 {
 			captures = append(captures, livediff.Chunk{Key: fmt.Sprint(i), CaptureOrder: uint64(i + 1),
 				Origin: livediff.Origin{Caller: fmt.Sprintf("/root/agent%d", i)},
-				Review: mekugi.ReviewFile{BeforePath: paths[2*i], AfterPath: paths[2*i+1], Directory: true}})
+				Review: diffmodel.ReviewFile{BeforePath: paths[2*i], AfterPath: paths[2*i+1], Directory: true}})
 		}
 		view := livediff.View{}
 		view.Merge(livediff.GroupCaptures(captures))

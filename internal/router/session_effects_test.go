@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestSessionInspectionShellEffects(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				derived.ReviewFiles = []mekugi.ReviewFile{mekugi.RenderReviewFile("", filepath.Join(root, "file"), "", "changed")}
+				derived.ReviewFiles = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(root, "file"), "", "changed")}
 			}
 			if tc.mismatch {
 				derived.CorrelationID = "other\x00exec"

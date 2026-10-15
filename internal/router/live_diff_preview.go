@@ -13,10 +13,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+
 	"github.com/yusing/mekugi/internal/responses"
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -47,7 +49,7 @@ func boundLiveDiffPreview(preview diffview.Preview) diffview.Preview {
 			if file.BeforePath != "" && file.AfterPath == "" {
 				continue // Deleted files do not have live source cards.
 			}
-			diff := file.UnifiedDiffForWorkspace(preview.Workspace)
+			diff := file.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(preview.Workspace, file.BeforePath), pathdisplay.ForWorkspace(preview.Workspace, file.AfterPath))
 			if len(diff) > 16<<10 {
 				diff = diff[len(diff)-(16<<10):]
 			}
@@ -237,7 +239,7 @@ func (w *liveDiffPreviewWorker) run() {
 	final := false
 	revealed := -1
 	backlog := false
-	var lastFiles []mekugi.ReviewFile
+	var lastFiles []diffmodel.ReviewFile
 	var lastReveal, lastAdvance, finishedAt time.Time
 	for {
 		if final {
@@ -450,12 +452,12 @@ func liveDiffWorkdir(workspace, workdir string) string {
 
 // projectShell predicts literal shell and interpreter writes without running
 // the command. Recognized reports an edit even when its projection failed.
-func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bool) ([]mekugi.ReviewFile, bool, error) {
+func (w *liveDiffPreviewWorker) projectShell(program, directory string, final bool) ([]diffmodel.ReviewFile, bool, error) {
 	files, _, recognized, err := w.projectShellWithTool(program, directory, final)
 	return files, recognized, err
 }
 
-func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, final bool) ([]mekugi.ReviewFile, string, bool, error) {
+func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, final bool) ([]diffmodel.ReviewFile, string, bool, error) {
 	statements, directory, partialLine, parsed := liveDiffShellStatements(program, directory)
 	if !final && !partialLine {
 		// A normal command's final operand may still be arriving. An open
@@ -474,7 +476,7 @@ func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, 
 	}
 	ctx, cancel := context.WithTimeout(projectionContext, time.Second)
 	defer cancel()
-	var files []mekugi.ReviewFile
+	var files []diffmodel.ReviewFile
 	var tools []string
 	recognized := false
 	seenPaths := make(map[string]struct{})
@@ -526,7 +528,7 @@ func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, 
 		}
 		// Path-only operations constrain later predictions without arriving
 		// source content. No-op content writes likewise have no hunk to show.
-		projected = slices.DeleteFunc(projected, func(file mekugi.ReviewFile) bool { return file.Diff == "" })
+		projected = slices.DeleteFunc(projected, func(file diffmodel.ReviewFile) bool { return file.Diff == "" })
 		files = append(files, projected...)
 		if len(projected) > 0 {
 			if call, ok := stmt.Cmd.(*syntax.CallExpr); ok && len(call.Args) > 0 {
@@ -575,7 +577,7 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 	}
 	// Only source hunks can open live cards. Metadata and capture failures
 	// remain in the saved evidence, not a transcript-replacing empty preview.
-	preview.Files = slices.DeleteFunc(slices.Clone(preview.Files), func(file mekugi.ReviewFile) bool {
+	preview.Files = slices.DeleteFunc(slices.Clone(preview.Files), func(file diffmodel.ReviewFile) bool {
 		added, removed := file.LineCounts()
 		return file.Binary || file.Link || added < 0 || removed < 0 || added+removed == 0
 	})

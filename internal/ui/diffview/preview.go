@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 const (
@@ -93,7 +93,7 @@ type PreviewRow struct {
 
 func (p *PreviewPane) Update(preview Preview) {
 	if !p.Retain && len(preview.Files) > 0 {
-		files := make([]mekugi.ReviewFile, 0, len(preview.Files))
+		files := make([]diffmodel.ReviewFile, 0, len(preview.Files))
 		for _, file := range preview.Files {
 			if file.BeforePath == "" || file.AfterPath != "" {
 				files = append(files, file)
@@ -346,7 +346,7 @@ func (p *PreviewView) columns(width int) (digits, sourceWidth int) {
 	return digits, max(1, width-4-numberWidth)
 }
 
-func liveDiffPreviewRows(review mekugi.ReviewFile, workspace string) ([]PreviewRow, error) {
+func liveDiffPreviewRows(review diffmodel.ReviewFile, workspace string) ([]PreviewRow, error) {
 	if review.BeforePath != "" && review.AfterPath == "" {
 		path := pathdisplay.ForWorkspace(workspace, review.BeforePath)
 		return []PreviewRow{{Kind: ' ', Text: "# " + path + " deleted\n"}}, nil
@@ -564,11 +564,11 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 	// A little leading context improves multiline token state without lexing
 	// a growing whole file on every frame.
 	colorStart := max(0, start-32)
-	source := make([]mekugi.ReviewRow, 0, end-colorStart)
+	source := make([]diffmodel.ReviewRow, 0, end-colorStart)
 	for _, row := range p.Source[colorStart:end] {
-		source = append(source, mekugi.ReviewRow{Kind: row.Kind, Text: row.Text})
+		source = append(source, diffmodel.ReviewRow{Kind: row.Kind, Text: row.Text})
 	}
-	review := mekugi.ReviewFile{BeforePath: "stream.sh", AfterPath: "stream.sh"}
+	review := diffmodel.ReviewFile{BeforePath: "stream.sh", AfterPath: "stream.sh"}
 	if len(p.Current.Files) > 0 {
 		review = p.Current.Files[p.file]
 	}
@@ -668,7 +668,7 @@ func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) s
 			path = file.BeforePath
 		}
 		added, removed := file.LineCounts()
-		label = FileLabel(StatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
+		label = FileLabel(diffmodel.StatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
 			CountStats(livediff.Counts{Added: added, Removed: removed}, theme)
 		if len(p.Current.Files) > 1 {
 			label += fmt.Sprintf(" "+livediff.Subtle+"%d/%d files"+livediff.SubtleReset, p.file+1, len(p.Current.Files))

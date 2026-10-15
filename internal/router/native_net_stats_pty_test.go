@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // Exercise durable capture -> controller -> native roster -> real PTY frames,
@@ -27,7 +27,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 			t.Fatal(err)
 		}
 		history := mekugiHistory{ChangeID: id, CorrelationID: call, ExecutingThread: thread,
-			Caller: caller, ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile(beforePath, afterPath, before, after)}}
+			Caller: caller, ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(beforePath, afterPath, before, after)}}
 		if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: history}); err != nil {
 			t.Fatal(err)
 		}

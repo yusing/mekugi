@@ -10,8 +10,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {
@@ -97,9 +97,9 @@ func TestAuthoredChangesLegacyObservationNoiseExcluded(t *testing.T) {
 	f := newMChangesSliceFixture(t, "legacy-observer")
 	id := f.reserve(t, f.thread, "window")
 	path := filepath.Join(f.workspace, "random-generated-file")
-	file := mekugi.RenderReviewFile("", path, "", strings.Repeat("generated\n", 1000))
+	file := diffmodel.RenderReviewFile("", path, "", strings.Repeat("generated\n", 1000))
 	file.OriginNote = execInventoryNote
-	f.publish(t, id, "window", execDerivedCallID("outer", false), mekugiHistory{ToolName: nativeExecCommandToolName, ExecOutcome: &execOutcome{Class: "opaque", Coverage: execCoveragePartial}, ReviewFiles: []mekugi.ReviewFile{file}})
+	f.publish(t, id, "window", execDerivedCallID("outer", false), mekugiHistory{ToolName: nativeExecCommandToolName, ExecOutcome: &execOutcome{Class: "opaque", Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}})
 	for _, view := range []string{"list", "summary", "", "net"} {
 		text, err := f.store.readChanges(f.ctx, changeReadOptions{workspace: f.workspace, ids: []string{id}, view: view})
 		if err != nil || strings.Contains(text, "generated") || strings.Contains(text, "incomplete captured scope") || strings.Contains(text, "1000") {

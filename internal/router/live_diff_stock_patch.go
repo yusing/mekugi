@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // projectStockPatchPreview follows the former hpatch preview model: read the
@@ -51,7 +51,7 @@ type stockPreviewChunk struct {
 	endOfFile bool
 }
 
-func stockPatchReviewPreview(ctx context.Context, workspace, input string, final bool) ([]mekugi.ReviewFile, error) {
+func stockPatchReviewPreview(ctx context.Context, workspace, input string, final bool) ([]diffmodel.ReviewFile, error) {
 	lines := strings.Split(strings.TrimSuffix(input, "\n"), "\n")
 	if len(lines) == 0 || strings.TrimSuffix(lines[0], "\r") != "*** Begin Patch" {
 		return nil, errors.New("missing patch start")
@@ -177,7 +177,7 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string, final
 	// yet context: the next patch line may remove it, and trailing context
 	// would renumber under every added row.
 	partial := !slices.ContainsFunc(lines, func(line string) bool { return strings.TrimSuffix(line, "\r") == "*** End Patch" })
-	var reviews []mekugi.ReviewFile
+	var reviews []diffmodel.ReviewFile
 	for index, edit := range edits {
 		if partial && index == len(edits)-1 && edit.operation == 'a' && edit.after == "" {
 			// An add-file header is not yet displayable source. Preserve the
@@ -211,7 +211,7 @@ func stockPatchReviewPreview(ctx context.Context, workspace, input string, final
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			reviews = append(reviews, mekugi.RenderReviewPreviewFile(edit.beforePath, edit.afterPath, edit.before, edit.after))
+			reviews = append(reviews, diffmodel.RenderReviewPreviewFile(edit.beforePath, edit.afterPath, edit.before, edit.after))
 		}
 	}
 	return reviews, nil

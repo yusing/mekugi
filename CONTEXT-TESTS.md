@@ -42,7 +42,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 
 | Changed owner | Focused check |
 | --- | --- |
-| Root review rendering | `.` |
+| Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./internal/ui/...`, plus affected router integration tests |
 | Codex app-server RPC transport and process lifecycle | `./internal/appserver` and `./internal/router -run AppServer` |
 | Router behavior | `./internal/router` |

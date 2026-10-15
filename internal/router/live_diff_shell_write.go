@@ -13,13 +13,13 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"mvdan.cc/sh/v3/syntax"
 )
 
 // Project only literal heredoc writes; shell execution remains the sole owner
 // of actual file effects and durable change evidence.
-func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine, final bool) ([]mekugi.ReviewFile, bool, error) {
+func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine, final bool) ([]diffmodel.ReviewFile, bool, error) {
 	if files, recognized, err := liveDiffInterpreterWrite(ctx, stmt, directory, partialLine); recognized || err != nil {
 		return files, recognized, err
 	}
@@ -102,7 +102,7 @@ func liveDiffShellWriteStatement(ctx context.Context, stmt *syntax.Stmt, directo
 	if partialLine && !final && !liveDiffSourceReady(ctx, path, content) {
 		return nil, true, nil
 	}
-	return []mekugi.ReviewFile{mekugi.RenderReviewPreviewFile(beforePath, path, before, content)}, true, nil
+	return []diffmodel.ReviewFile{diffmodel.RenderReviewPreviewFile(beforePath, path, before, content)}, true, nil
 }
 
 const liveDiffPreviewFileLimit = 256 << 10
@@ -129,7 +129,7 @@ func liveDiffPreviewFile(path string) (string, bool, error) {
 
 // liveDiffShellFileOperation projects tee heredoc content and retains literal
 // cp, mv, and rm paths for dependency checks, without previewing their effects.
-func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine, final bool) ([]mekugi.ReviewFile, bool, error) {
+func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, directory string, partialLine, final bool) ([]diffmodel.ReviewFile, bool, error) {
 	call, ok := stmt.Cmd.(*syntax.CallExpr)
 	if !ok || stmt.Background || stmt.Coprocess || stmt.Disown || stmt.Negated ||
 		len(call.Assigns) != 0 || len(call.Args) < 2 {
@@ -199,9 +199,9 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 	}
 	switch name {
 	case "rm":
-		files := make([]mekugi.ReviewFile, 0, len(operands))
+		files := make([]diffmodel.ReviewFile, 0, len(operands))
 		for _, path := range operands {
-			files = append(files, mekugi.ReviewFile{BeforePath: path})
+			files = append(files, diffmodel.ReviewFile{BeforePath: path})
 		}
 		return files, true, nil
 	case "tee":
@@ -209,7 +209,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 		if !literal || len(content) > liveDiffPreviewFileLimit || !utf8.ValidString(content) {
 			return nil, true, errors.New("streaming file write requires bounded UTF-8 content")
 		}
-		files := make([]mekugi.ReviewFile, 0, len(operands))
+		files := make([]diffmodel.ReviewFile, 0, len(operands))
 		for _, path := range operands {
 			before, exists, err := liveDiffSourceRead(ctx, path, liveDiffPreviewFile)
 			if err != nil {
@@ -225,7 +225,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 			if partialLine && !final && (!liveDiffSourceTerminated(ctx, path, content) || !liveDiffSourceComplete(ctx, path, after)) {
 				return nil, true, nil
 			}
-			files = append(files, mekugi.RenderReviewPreviewFile(beforePath, path, before, after))
+			files = append(files, diffmodel.RenderReviewPreviewFile(beforePath, path, before, after))
 		}
 		return files, true, nil
 	}
@@ -236,7 +236,7 @@ func liveDiffShellFileOperation(ctx context.Context, stmt *syntax.Stmt, director
 	// File operations constrain dependent predictions, but carry no arriving
 	// source content. Keep their paths without reading or projecting bytes.
 	if name == "cp" {
-		return []mekugi.ReviewFile{{AfterPath: target}}, true, nil
+		return []diffmodel.ReviewFile{{AfterPath: target}}, true, nil
 	}
-	return []mekugi.ReviewFile{{BeforePath: source, AfterPath: target}}, true, nil
+	return []diffmodel.ReviewFile{{BeforePath: source, AfterPath: target}}, true, nil
 }

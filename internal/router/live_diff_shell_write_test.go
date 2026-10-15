@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
-func testLiveDiffShellWrite(ctx context.Context, input, directory string) ([]mekugi.ReviewFile, bool, error) {
+func testLiveDiffShellWrite(ctx context.Context, input, directory string) ([]diffmodel.ReviewFile, bool, error) {
 	statements, directory, partial, ok := liveDiffShellStatements(input, directory)
 	if !ok || len(statements) != 1 {
 		return nil, false, nil

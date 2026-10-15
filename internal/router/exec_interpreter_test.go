@@ -11,7 +11,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execscope"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestPythonInterpreterLiteralLoopPathJoin(t *testing.T) {
@@ -379,7 +379,7 @@ func assertExactInterpreterReviews(t *testing.T, workspace string, observation *
 	if !complete || coverage != execCoverageExact {
 		t.Fatalf("interpreter evidence complete=%v coverage=%q files=%+v; want exact", complete, coverage, reviews)
 	}
-	byPath := make(map[string]mekugi.ReviewFile, len(reviews))
+	byPath := make(map[string]diffmodel.ReviewFile, len(reviews))
 	for _, review := range reviews {
 		path := cmpOrPath(review.AfterPath, review.BeforePath)
 		relative, err := filepath.Rel(workspace, path)

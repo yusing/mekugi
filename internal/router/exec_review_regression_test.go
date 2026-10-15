@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
@@ -57,7 +57,7 @@ func TestExecBackupStarRetainsOperandDirectories(t *testing.T) {
 	if !complete || coverage != execCoverageExact {
 		t.Fatalf("backup coverage: %v %s", complete, coverage)
 	}
-	if !slices.ContainsFunc(reviews, func(file mekugi.ReviewFile) bool { return file.AfterPath == filepath.Join(root, "backup/src/a.txt") }) {
+	if !slices.ContainsFunc(reviews, func(file diffmodel.ReviewFile) bool { return file.AfterPath == filepath.Join(root, "backup/src/a.txt") }) {
 		t.Fatalf("backup absent: %+v", reviews)
 	}
 }

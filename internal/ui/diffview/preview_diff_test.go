@@ -3,8 +3,8 @@ package diffview
 import (
 	"testing"
 
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -67,7 +67,7 @@ func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
 func TestLivePreviewOmitsDeletedFiles(t *testing.T) {
 	pane := PreviewPane{}
 	preview := batchTestPreview("call", "/root", "src/kept.go")
-	preview.Files = append(preview.Files, mekugi.RenderReviewFile("/workspace/src/deleted.go", "", "old\n", ""))
+	preview.Files = append(preview.Files, diffmodel.RenderReviewFile("/workspace/src/deleted.go", "", "old\n", ""))
 	pane.Update(preview)
 	if len(pane.Views["call"].Current.Files) != 1 || len(preview.Files) != 2 {
 		t.Fatal("deleted file retained or original evidence changed")

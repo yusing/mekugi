@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 // Native batches retain calls, but give every file its own source viewport.
@@ -40,7 +40,7 @@ func (p *PreviewPane) batch(caller string) *previewBatch {
 		}
 		files := call.Current.Files
 		if len(files) == 0 {
-			files = []mekugi.ReviewFile{{}}
+			files = []diffmodel.ReviewFile{{}}
 		}
 		for _, file := range files {
 			key := previewFileKey{id, cmp.Or(file.AfterPath, file.BeforePath)}
@@ -60,7 +60,7 @@ func (p *PreviewPane) batch(caller string) *previewBatch {
 			}
 			current := call.Current
 			if key.path != "" {
-				current.Files = []mekugi.ReviewFile{file}
+				current.Files = []diffmodel.ReviewFile{file}
 			}
 			view.Current, view.Complete = current, call.Complete
 		}

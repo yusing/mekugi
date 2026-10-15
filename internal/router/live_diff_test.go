@@ -18,8 +18,8 @@ import (
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestLiveDiffRedirectedWithoutExternalRenderer(t *testing.T) {
@@ -53,7 +53,7 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	source := "const path = " + strconv.Quote(before)
 	diff := "--- " + strconv.Quote(before) + "\n+++ " + strconv.Quote(after) + "\n@@ -1 +1 @@\n-old\n+" + source + "\n"
 	chunk := livediff.Chunk{
-		Review: mekugi.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
+		Review: diffmodel.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
 	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: after, Chunks: []livediff.Chunk{chunk}}}, workspace, 240)
 	if err != nil {
@@ -133,7 +133,7 @@ func liveDiffTestChange(t *testing.T, store *mekugiReplayStore, workspace, call,
 	}
 	h := mekugiHistory{
 		ChangeID: id, CorrelationID: call,
-		ReviewFiles: []mekugi.ReviewFile{{
+		ReviewFiles: []diffmodel.ReviewFile{{
 			BeforePath: path, AfterPath: path,
 			Diff: "update\n--- \"" + path + "\"\n+++ \"" + path + "\"\n@@ -1,80 +1,80 @@\n" + strings.Repeat("-old\n+new\n", 80),
 		}},
@@ -216,7 +216,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "x.go")
 	file := livediff.File{Path: path, Chunks: []livediff.Chunk{{
-		Review: mekugi.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
+		Review: diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
 	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 80)
 	if err != nil {
@@ -417,7 +417,7 @@ func TestLiveDiffDoesNotInferPrivateScopeFromScriptText(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := mekugiHistory{ChangeID: id, CorrelationID: "private", Script: "in @shell/private\n",
-		ReviewFiles: []mekugi.ReviewFile{{AfterPath: "private-script", Diff: "private-content\n"}},
+		ReviewFiles: []diffmodel.ReviewFile{{AfterPath: "private-script", Diff: "private-content\n"}},
 	}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{"private": h}); err != nil {
 		t.Fatal(err)
@@ -531,7 +531,7 @@ func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, 
 			diff += "+" + after
 		}
 	}
-	h := mekugiHistory{ChangeID: id, CorrelationID: call, ReviewFiles: []mekugi.ReviewFile{{BeforePath: from, AfterPath: to, Diff: diff}}}
+	h := mekugiHistory{ChangeID: id, CorrelationID: call, ReviewFiles: []diffmodel.ReviewFile{{BeforePath: from, AfterPath: to, Diff: diff}}}
 	if err := store.put(t.Context(), workspace, map[string]mekugiHistory{call: h}); err != nil {
 		t.Fatal(err)
 	}

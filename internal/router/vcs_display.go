@@ -16,12 +16,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -782,7 +783,7 @@ func gitCommitRows(call vcsCall, cwd string, lines []string) ([]activityui.Chang
 func gitSummaryRow(line string) (activityui.ChangeRow, bool) {
 	if match := gitSummaryMode.FindStringSubmatch(line); match != nil {
 		path := vcsPath(match[2])
-		status := diffview.Status{After: path}
+		status := diffmodel.Status{After: path}
 		if match[1] == "delete" {
 			status.Before, status.After = path, ""
 		}
@@ -791,7 +792,7 @@ func gitSummaryRow(line string) (activityui.ChangeRow, bool) {
 	if match := gitSummaryMove.FindStringSubmatch(line); match != nil {
 		from, to := gitRenamePaths(match[2])
 		from, to = vcsPath(from), vcsPath(to)
-		status := diffview.Status{Before: from, After: to}
+		status := diffmodel.Status{Before: from, After: to}
 		row := activityui.ChangeRow{From: from, Label: to}
 		if match[1] == "copy" {
 			status.Before, row.From, row.Note = "", "", "copy of "+from
@@ -1099,7 +1100,7 @@ func patchRows(lines []string) []activityui.ChangeRow {
 	var rows []activityui.ChangeRow
 	index := make(map[string]int)
 	for _, file := range files {
-		status := diffview.Status{Before: file.from, After: file.to, Edited: file.added+file.removed > 0}
+		status := diffmodel.Status{Before: file.from, After: file.to, Edited: file.added+file.removed > 0}
 		row := activityui.ChangeRow{Label: file.to, Added: file.added, Removed: file.removed}
 		switch {
 		case file.copied:
@@ -1262,7 +1263,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 		case "numstat":
 			if match := gitNumstatRow.FindStringSubmatch(line); match != nil {
 				from, to := gitRenamePaths(match[3])
-				row := activityui.ChangeRow{Code: (diffview.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
+				row := activityui.ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
 				if from != to {
 					row.From = vcsPath(from)
 				}
@@ -1280,7 +1281,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 				continue
 			}
 			from, to := gitRenamePaths(match[1])
-			row := activityui.ChangeRow{Code: (diffview.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
+			row := activityui.ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
 			if from != to {
 				row.From = vcsPath(from)
 			}
@@ -1302,7 +1303,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 				continue
 			}
 			path := vcsPath(match[3])
-			status := diffview.Status{Before: path, After: path, Conflict: match[1] == "U", Incomplete: match[1] == "X"}
+			status := diffmodel.Status{Before: path, After: path, Conflict: match[1] == "U", Incomplete: match[1] == "X"}
 			switch match[1] {
 			case "A", "C":
 				status.Before = ""

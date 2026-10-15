@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestAppServerEditIntentTerminalFrames(t *testing.T) {
@@ -81,13 +81,13 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	}
 	history := mekugiHistory{ExecutingThread: "main", CorrelationID: "cmd\x00exec", ChangeID: "c1",
 		ExecOutcome: &execOutcome{Status: execStatusCompleted, Coverage: execCoverageExact, Labels: []string{"cat", "python3"}},
-		ReviewFiles: []mekugi.ReviewFile{
-			mekugi.RenderReviewFile("a.go", "a.go", "old\n", "new\n"),
-			mekugi.RenderReviewFile("b.go", "b.go", "old\n", "first\nsecond\n"),
+		ReviewFiles: []diffmodel.ReviewFile{
+			diffmodel.RenderReviewFile("a.go", "a.go", "old\n", "new\n"),
+			diffmodel.RenderReviewFile("b.go", "b.go", "old\n", "first\nsecond\n"),
 		}}
 	for i := range 8 {
 		path := fmt.Sprintf("PRIVATE_UNKNOWN_FILE_%02d.go", i)
-		history.ReviewFiles = append(history.ReviewFiles, mekugi.ReviewFile{BeforePath: path, AfterPath: path, Incomplete: "unavailable"})
+		history.ReviewFiles = append(history.ReviewFiles, diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Incomplete: "unavailable"})
 	}
 	receipt := capturedEditActivity(workspace, history)
 	if receipt == nil {

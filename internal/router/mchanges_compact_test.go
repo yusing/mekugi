@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
@@ -24,12 +24,12 @@ func TestMChangesCompactViewsKeepKnownStatsWithoutManagedNoise(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	direct := mekugi.RenderReviewFile(filepath.Join(workspace, "direct.go"), filepath.Join(workspace, "direct.go"), "old\n", "new\n")
-	managed := mekugi.RenderReviewFile("", filepath.Join(workspace, "formatted.go"), "", "package p\n")
+	direct := diffmodel.RenderReviewFile(filepath.Join(workspace, "direct.go"), filepath.Join(workspace, "direct.go"), "old\n", "new\n")
+	managed := diffmodel.RenderReviewFile("", filepath.Join(workspace, "formatted.go"), "", "package p\n")
 	managed.Origin = "gofmt"
-	unknown := mekugi.RenderIncompleteReviewFile(filepath.Join(workspace, "unread.go"), filepath.Join(workspace, "unread.go"), "capture deadline")
+	unknown := diffmodel.RenderIncompleteReviewFile(filepath.Join(workspace, "unread.go"), filepath.Join(workspace, "unread.go"), "capture deadline")
 	unknown.Origin = "go test"
-	history := mekugiHistory{ChangeID: id, CorrelationID: "mixed", ExecOutcome: &execOutcome{Class: "scoped", Coverage: execCoveragePartial}, ReviewFiles: []mekugi.ReviewFile{direct, managed, unknown}}
+	history := mekugiHistory{ChangeID: id, CorrelationID: "mixed", ExecOutcome: &execOutcome{Class: "scoped", Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{direct, managed, unknown}}
 	if err := store.put(ctx, workspace, map[string]mekugiHistory{"mixed": history}); err != nil {
 		t.Fatal(err)
 	}
@@ -73,9 +73,9 @@ func TestMChangesListCompressesAppliedChangesRegardlessOfCommandAttribution(t *t
 		if err != nil {
 			t.Fatal(err)
 		}
-		file := mekugi.RenderReviewFile(call, call, "old\n", "new\n")
+		file := diffmodel.RenderReviewFile(call, call, "old\n", "new\n")
 		outcome := &execOutcome{Status: execStatusCompleted, Class: "scoped", Coverage: execCoverageExact, Overlaps: overlaps}
-		if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {ChangeID: id, CorrelationID: call, ExecOutcome: outcome, ReviewFiles: []mekugi.ReviewFile{file}}}); err != nil {
+		if err := store.put(ctx, workspace, map[string]mekugiHistory{call: {ChangeID: id, CorrelationID: call, ExecOutcome: outcome, ReviewFiles: []diffmodel.ReviewFile{file}}}); err != nil {
 			t.Fatal(err)
 		}
 		return id
@@ -97,7 +97,7 @@ func TestMChangesListHidesLegacyNoOpsWithoutRetiringEvidence(t *testing.T) {
 		ids = append(ids, id)
 		history := mekugiHistory{}
 		if call != "noop" {
-			history.ReviewFiles = []mekugi.ReviewFile{mekugi.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")}
+			history.ReviewFiles = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file.txt", "file.txt", "old\n", "new\n")}
 		} else {
 			history.AlreadySatisfied = true
 		}
@@ -119,24 +119,24 @@ func TestMChangesSummaryFileStatusesMatchDiffPane(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		name  string
-		files []mekugi.ReviewFile
-		later []mekugi.ReviewFile
+		files []diffmodel.ReviewFile
+		later []diffmodel.ReviewFile
 		want  string
 	}{
-		{name: "added then edited", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "file", "", "a\n"), mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "A\t1\t0\tfile\n"},
-		{name: "created then deleted", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("", "file", "", "a\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "", "a\n", "")}, want: ""},
-		{name: "deleted", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "", "a\n", "")}, want: "D\t0\t1\tfile\n"},
-		{name: "unknown candidate", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("file", "file", "capture deadline")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
-		{name: "unknown then known edit", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("file", "file", "capture deadline")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
-		{name: "known edit then unknown", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, later: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("file", "file", "capture budget exhausted")}, want: "?\t-\t-\tfile\t\"capture budget exhausted\"\n"},
-		{name: "modified", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "M\t1\t1\tfile\n"},
-		{name: "renamed", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("old", "new", "a\n", "a\n")}, want: "R\t0\t0\told => new\n"},
-		{name: "renamed and modified", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("old", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
-		{name: "rename then edit in later change", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("old", "new", "a\n", "a\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("new", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
-		{name: "rename incomplete", files: []mekugi.ReviewFile{mekugi.RenderIncompleteReviewFile("old", "new", "capture unavailable")}, want: "?\t-\t-\told => new\t\"capture unavailable\"\n"},
-		{name: "binary rename", files: []mekugi.ReviewFile{mekugi.RenderBinaryReviewFile("old", "new", 3, 3, "abc", "abc")}, want: "R\t-\t-\told => new\n"},
-		{name: "conflict", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, want: "UU\t4\t0\tfile\n"},
-		{name: "resolved conflict in later change", files: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, later: []mekugi.ReviewFile{mekugi.RenderReviewFile("file", "file", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n", "c\n")}, want: "M\t1\t1\tfile\n"},
+		{name: "added then edited", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "file", "", "a\n"), diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "A\t1\t0\tfile\n"},
+		{name: "created then deleted", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "file", "", "a\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "", "a\n", "")}, want: ""},
+		{name: "deleted", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "", "a\n", "")}, want: "D\t0\t1\tfile\n"},
+		{name: "unknown candidate", files: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("file", "file", "capture deadline")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
+		{name: "unknown then known edit", files: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("file", "file", "capture deadline")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "?\t-\t-\tfile\t\"capture deadline\"\n"},
+		{name: "known edit then unknown", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("file", "file", "capture budget exhausted")}, want: "?\t-\t-\tfile\t\"capture budget exhausted\"\n"},
+		{name: "modified", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "b\n")}, want: "M\t1\t1\tfile\n"},
+		{name: "renamed", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("old", "new", "a\n", "a\n")}, want: "R\t0\t0\told => new\n"},
+		{name: "renamed and modified", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("old", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
+		{name: "rename then edit in later change", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("old", "new", "a\n", "a\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("new", "new", "a\n", "b\n")}, want: "RM\t1\t1\told => new\n"},
+		{name: "rename incomplete", files: []diffmodel.ReviewFile{diffmodel.RenderIncompleteReviewFile("old", "new", "capture unavailable")}, want: "?\t-\t-\told => new\t\"capture unavailable\"\n"},
+		{name: "binary rename", files: []diffmodel.ReviewFile{diffmodel.RenderBinaryReviewFile("old", "new", 3, 3, "abc", "abc")}, want: "R\t-\t-\told => new\n"},
+		{name: "conflict", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, want: "UU\t4\t0\tfile\n"},
+		{name: "resolved conflict in later change", files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "a\n", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n")}, later: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("file", "file", "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n", "c\n")}, want: "M\t1\t1\tfile\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store, err := openMekugiReplayStore(t.TempDir())

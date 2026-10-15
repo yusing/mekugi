@@ -8,9 +8,9 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
 func nativeBatchFixture(t *testing.T) *appServerUI {
@@ -39,7 +39,7 @@ func nativeBatchPreview(id, caller string, names ...string) diffview.Preview {
 		for i := 1; i <= 40; i++ {
 			fmt.Fprintf(&source, "%s_line_%02d\n", name, i)
 		}
-		p.Files = append(p.Files, mekugi.RenderReviewFile("", "/workspace/"+name+".txt", "", source.String()))
+		p.Files = append(p.Files, diffmodel.RenderReviewFile("", "/workspace/"+name+".txt", "", source.String()))
 	}
 	return p
 }
@@ -153,7 +153,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 		t.Fatal("completed quick edit popped a dock")
 	}
 	deleted := diffview.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: diffview.PreviewEdit,
-		Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
+		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
 	u.shell.preview(deleted)
 	revealNativeDock(u.shell)
 	if frame := paint(140, 48); strings.Contains(frame, "LIVE ·") || !strings.Contains(frame, "MAIN_TRANSCRIPT") {
@@ -182,7 +182,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	for i := 1; i <= 40; i++ {
 		fmt.Fprintf(&grown, "one_line_%02d\n", i)
 	}
-	p.Files[0] = mekugi.RenderReviewFile("", "/workspace/one.txt", "", grown.String()+"streaming_tip\n")
+	p.Files[0] = diffmodel.RenderReviewFile("", "/workspace/one.txt", "", grown.String()+"streaming_tip\n")
 	u.shell.preview(p)
 	revealNativeDock(u.shell)
 	if frame = paint(140, 48); strings.Contains(frame, "streaming_tip") {
@@ -238,7 +238,7 @@ func TestUISnapshotNativeBatchDeletionPresentation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			u := nativeBatchFixture(t)
 			preview := diffview.Preview{ID: "deleted", Caller: "/root", Workspace: "/workspace", Status: diffview.PreviewEdit,
-				Files: []mekugi.ReviewFile{mekugi.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
+				Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("/workspace/deleted.go", "", "package old\n", "")}}
 			if mixed {
 				preview.Files = append(preview.Files, nativeBatchPreview("kept", "/root", "kept").Files...)
 			}

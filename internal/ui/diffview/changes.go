@@ -6,10 +6,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // liveDiffChanges is the Changes tab: captured changes in capture order, one
@@ -46,7 +48,7 @@ type liveDiffChangeFile struct {
 	File           int
 	added, removed int
 	unknown        bool
-	status         Status
+	status         diffmodel.Status
 }
 
 type ChangeRow struct {
@@ -132,7 +134,7 @@ func (l *liveDiffChanges) Rebuild(view *livediff.View, workspace string) {
 		at := slices.IndexFunc(node.Files, func(file liveDiffChangeFile) bool { return file.File == capture.file })
 		if at < 0 {
 			at = len(node.Files)
-			node.Files = append(node.Files, liveDiffChangeFile{File: capture.file, status: Status{Before: chunk.Review.BeforePath}})
+			node.Files = append(node.Files, liveDiffChangeFile{File: capture.file, status: diffmodel.Status{Before: chunk.Review.BeforePath}})
 		}
 		file := &node.Files[at]
 		file.added, file.removed, file.unknown = file.added+added, file.removed+removed, file.unknown || incomplete
