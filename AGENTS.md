@@ -50,7 +50,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   stdout and target-qualified stderr, and fail nonzero if any target fails. Mutation dependencies
   remain mandatory for apply/revert. See [changes](doc/spec/changes.md).
 - **Presentation:** reuse stock/shared UI and path formatting. Derive list widths from visible rows;
-  unknown state gets no label. Format workspace paths with `internal/pathdisplay.ForWorkspace`,
+  unknown state gets no label. Format workspace paths with `libraries/pathdisplay.ForWorkspace`,
   preserving external and operational paths. If genuinely new UI lacks a stock counterpart,
   settle its shape with the user. See [UI](doc/spec/native_ui.md),
   [activity display](doc/spec/activity_display.md), and [UI ownership](doc/architecture/ui.md).
