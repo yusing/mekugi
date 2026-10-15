@@ -625,6 +625,25 @@ func workspaceSnapshotUserEnv() []string {
 	return append(env, "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 }
 
+// ignored uses the repository's index, not the private checkpoint's tracked
+// paths. Old checkpoints can contain files that are now untracked and ignored.
+func (r *workspaceSnapshotRepo) ignored(ctx context.Context, paths []string) ([]string, error) {
+	if r.plain || len(paths) == 0 {
+		return nil, nil
+	}
+	command := r.command(ctx, strings.NewReader(strings.Join(paths, "\x00")+"\x00"), "check-ignore", "--stdin", "-z")
+	command.Env = append(command.Env, "GIT_INDEX_FILE="+r.seed)
+	output, err := command.Output()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return nil, nil // No input path is ignored.
+	}
+	if err != nil {
+		return nil, fmt.Errorf("check snapshot ignores: %w", err)
+	}
+	return strings.Split(strings.TrimSuffix(string(output), "\x00"), "\x00"), nil
+}
+
 // since compares a writer call's checkpoint with the current workspace.
 // Claimed paths start from the state an overlapping call already recorded,
 // so one effect is attributed once. It returns the changes and every changed
@@ -676,6 +695,13 @@ func (s *workspaceSnapshots) since(ctx context.Context, workspace, tree string, 
 		for _, path := range unchanged {
 			changed[path] = pair{after: states[path]}
 		}
+	}
+	ignored, err := repo.ignored(ctx, slices.Sorted(maps.Keys(changed)))
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, path := range ignored {
+		delete(changed, path)
 	}
 	latest := make(map[string]workspaceSnapshotEntry, len(changed))
 	var oids []string

@@ -102,8 +102,11 @@ encodings, or content through filters do not apply.
   including `info/exclude` and the user's global excludes file, borrows its
   objects, and starts from a copy of its index. Ignored paths such as an ignored
   `node_modules/` are therefore never recorded unless an edit source names them;
-  unignored installation output is recorded like any other change. Only the
-  selected workspace below the repository's top level is compared. Other VCS
+  unignored installation output is recorded like any other change. An older
+  private checkpoint cannot turn a now-ignored, untracked path into a
+  recorded deletion. Files tracked by the repository remain eligible even when
+  an ignore pattern matches them.
+  Only the selected workspace below the repository's top level is compared. Other VCS
   metadata directories and the replay store are always excluded.
 - Without a Git repository there are no authoritative ignore rules. A workspace
   of more than 20000 files takes no snapshot. Later checkpoints admit new files

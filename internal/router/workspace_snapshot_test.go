@@ -138,6 +138,42 @@ func TestWorkspaceSnapshotRecordsUnnamedEditsWithinIgnoreRules(t *testing.T) {
 	}
 }
 
+func TestWorkspaceSnapshotRetainedIgnoredPathDoesNotBecomeDeletion(t *testing.T) {
+	isolateSnapshotGit(t)
+	proxy := newManagedMekugiProxy(t)
+	attachTestReplayStore(t, proxy)
+	workspace := gitTestWorkspace(t)
+	tracked := filepath.Join(workspace, "tracked.log")
+	writeTestFile(t, tracked, "before\n")
+	gitTestCommit(t, workspace)
+	artifact := filepath.Join(workspace, "build", "cache.bin")
+	writeTestFile(t, artifact, strings.Repeat("\x00", maxNativePatchFileBytes+1))
+
+	history, ctx := runSnapshotExec(t, proxy, workspace, "ignore-transition", "python3 edit.py", func() {
+		writeTestFile(t, filepath.Join(workspace, ".gitignore"), "/build/\n*.log\n")
+		writeTestFile(t, tracked, "after\n")
+		// A refreshed private index can lose an ignored path retained by an
+		// older checkpoint, although the file on disk was never deleted.
+		repo := proxy.replayStore.snapshots.repo(workspace)
+		if _, err := repo.run(t.Context(), nil, "update-index", "--force-remove", "--", "build/cache.bin"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if paths := strings.Join(reviewPaths(history), "\n"); strings.Contains(paths, "cache.bin") || !strings.Contains(paths, "tracked.log") || len(history.ReviewFiles) != 2 {
+		t.Fatalf("ignore transition review: %s", paths)
+	}
+	if _, err := proxy.replayStore.readChanges(ctx, changeReadOptions{workspace: workspace, ids: []string{history.ChangeID}, view: "net"}); err != nil {
+		t.Fatalf("ignored artifact made the net diff incomplete: %v", err)
+	}
+	// Source-named edits retain coverage even when their path is ignored.
+	named, _ := runSnapshotExec(t, proxy, workspace, "named-ignored", "printf 'written\\n' > build/note.txt", func() {
+		writeTestFile(t, filepath.Join(workspace, "build", "note.txt"), "written\n")
+	})
+	if len(named.ReviewFiles) != 1 || !strings.HasSuffix(named.ReviewFiles[0].AfterPath, "build/note.txt") {
+		t.Fatalf("named ignored edit: %v", reviewPaths(named))
+	}
+}
+
 func TestWorkspaceSnapshotPlainWorkspaceBoundsNewTrees(t *testing.T) {
 	isolateSnapshotGit(t)
 	proxy := newManagedMekugiProxy(t)
