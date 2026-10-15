@@ -20,7 +20,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )

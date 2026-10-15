@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
 

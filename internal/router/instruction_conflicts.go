@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Match Codex's uninstalled-plugin advertisement, not caller-authored plugin

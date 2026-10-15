@@ -22,7 +22,7 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"

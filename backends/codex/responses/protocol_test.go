@@ -1,4 +1,4 @@
-package providercodec
+package responses
 
 import (
 	"encoding/json"

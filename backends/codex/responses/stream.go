@@ -1,4 +1,4 @@
-package providercodec
+package responses
 
 // Source: internal/router/provider_stream.go:1:443@5a2082938e797e6e15c374eb6ae135a0753dea24
 
@@ -11,8 +11,8 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/chat"
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/chat"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 type providerChunk struct {

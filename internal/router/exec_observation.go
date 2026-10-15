@@ -25,7 +25,7 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 

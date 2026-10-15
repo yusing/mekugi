@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestNativeApprovalDenialSameTurnCodexE2E(t *testing.T) {

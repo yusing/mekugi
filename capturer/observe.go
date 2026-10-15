@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 var errDecodedPayloadTooLarge = errors.New("decoded response exceeds capture observation limit")

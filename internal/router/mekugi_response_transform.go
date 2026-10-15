@@ -13,7 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execscope"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) {

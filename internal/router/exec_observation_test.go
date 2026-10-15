@@ -12,8 +12,8 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"mvdan.cc/sh/v3/syntax"
 )
 

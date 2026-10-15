@@ -1,4 +1,5 @@
-package providercodec
+// Source: internal/providercodec/policy.go:1:36@[48bc03a0] protocol implementation.
+package responses
 
 // Policy supplies capabilities resolved by the authenticated provider boundary.
 // The codec does not select providers, inspect credentials, or retain sessions.

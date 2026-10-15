@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestNativeExecForwardingWhileCaptureWorkersUnavailable(t *testing.T) {

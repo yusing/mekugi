@@ -14,7 +14,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {

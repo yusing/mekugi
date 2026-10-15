@@ -8,7 +8,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/sourceoutline/outline"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
 

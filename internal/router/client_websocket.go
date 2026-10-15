@@ -20,7 +20,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 var errProviderWebSocketResponse = errors.New("provider websocket error")

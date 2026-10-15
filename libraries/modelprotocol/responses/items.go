@@ -1,3 +1,4 @@
+// Source: internal/responses/items.go:1:34@[48bc03a0] protocol implementation.
 package responses
 
 type ItemKind string

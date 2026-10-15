@@ -3,16 +3,16 @@ package router
 import (
 	"testing"
 
-	"github.com/yusing/mekugi/internal/providercodec"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-func testProviderRequest(t *testing.T, policy providercodec.Policy, model, format string, tools []any) *providerRequest {
+func testProviderRequest(t *testing.T, policy codexresponses.Policy, model, format string, tools []any) *providerRequest {
 	t.Helper()
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"input": []any{}, "tools": tools}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, codec, err := providercodec.Translate(request.fields, model, format, policy)
+	body, codec, err := codexresponses.Translate(request.fields, model, format, policy)
 	if err != nil {
 		t.Fatal(err)
 	}

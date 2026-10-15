@@ -16,9 +16,9 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 

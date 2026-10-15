@@ -1,3 +1,4 @@
+// Source: internal/responses/json.go:1:29@[48bc03a0] protocol implementation.
 package responses
 
 import (

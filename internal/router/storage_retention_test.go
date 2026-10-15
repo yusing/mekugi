@@ -18,7 +18,7 @@ import (
 	retainedhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/gofrs/flock"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func(error)) {

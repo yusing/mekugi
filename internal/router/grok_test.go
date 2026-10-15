@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func grokTestRequest(t *testing.T, stream bool) []byte {

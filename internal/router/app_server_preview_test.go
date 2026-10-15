@@ -21,11 +21,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/appserver"
-	responseevents "github.com/yusing/mekugi/internal/responses"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"golang.org/x/term"
 )
 

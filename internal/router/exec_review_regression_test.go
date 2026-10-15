@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/capturer"
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAttachedFiles bool) string {

@@ -15,10 +15,10 @@ import (
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"mvdan.cc/sh/v3/syntax"
 )
 

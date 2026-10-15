@@ -1,11 +1,11 @@
-package providercodec
+package responses
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Source: internal/router/provider_endpoint.go:1:144@5a2082938e797e6e15c374eb6ae135a0753dea24

@@ -3,7 +3,7 @@ package router
 import (
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // responseHooks observes the provider boundary before rewriting. It never emits

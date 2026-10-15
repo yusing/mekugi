@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func emissionTestEvent(t *testing.T, transform *mekugiResponseTransform, event map[string]any) {

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const (

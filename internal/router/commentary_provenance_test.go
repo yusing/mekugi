@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {

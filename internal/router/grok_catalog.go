@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const grokModel = "grok:grok-4.6"

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"

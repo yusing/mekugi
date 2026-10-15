@@ -9,8 +9,8 @@ import (
 
 	"github.com/yusing/mekugi/modules/fileread/read"
 
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"mvdan.cc/sh/v3/syntax"
 )
 

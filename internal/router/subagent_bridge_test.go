@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func bridgeTestRequest(t *testing.T, additional bool) parsedResponsesRequest {

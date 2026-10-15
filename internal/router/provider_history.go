@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // providerHistory is transport evidence, never replay or filesystem authority.

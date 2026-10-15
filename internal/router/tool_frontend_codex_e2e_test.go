@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const toolFrontendCodexWorkerEnvironment = "MEKUGI_TOOL_FRONTEND_CODEX_WORKER"

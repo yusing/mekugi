@@ -3,7 +3,7 @@ package router
 import (
 	"encoding/json"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // tokenCounts carries one provider-authoritative terminal usage observation to

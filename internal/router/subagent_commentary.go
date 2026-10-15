@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/commentaryid"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Source: openai/codex codex-rs/protocol/src/protocol.rs.

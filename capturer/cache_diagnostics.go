@@ -10,7 +10,7 @@ import (
 
 	"slices"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const maxFingerprintItems = 128

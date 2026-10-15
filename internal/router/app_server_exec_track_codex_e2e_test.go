@@ -15,8 +15,8 @@ import (
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Dash has no BASH_ENV or DEBUG trap. The installed host must apply the native

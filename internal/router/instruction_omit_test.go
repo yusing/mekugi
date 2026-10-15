@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestStripInstructionOmissions(t *testing.T) {

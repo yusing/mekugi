@@ -50,7 +50,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Command-segment report transport and retained reports | `./modules/commandsegments/...`, plus router `ExecTrack`, `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |
 | Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus router `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
 | Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
-| Provider request encoding and stream normalization | `./internal/providercodec`, plus router Grok/OpenCode integration tests |
+| Provider request encoding and stream normalization | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router Grok/OpenCode integration and capture tests |
 | Reserved MCP transport | `./internal/router -run '^TestMCP'` |
 | Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./internal/vcsguard ./internal/router -run 'TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestVCSGuardHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |

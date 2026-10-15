@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv2 "encoding/json/v2"
 	"strings"

@@ -4,7 +4,7 @@ import (
 	"bytes"
 
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
 

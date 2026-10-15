@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestLiveDiffEditingToolAttribution(t *testing.T) {

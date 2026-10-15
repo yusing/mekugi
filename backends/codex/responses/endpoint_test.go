@@ -1,9 +1,9 @@
-package providercodec
+package responses
 
 import (
 	"encoding/json/jsontext"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
 	"testing"

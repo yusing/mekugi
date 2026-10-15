@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func newLiveDiffTurnTest(t *testing.T, workspace, thread string) (*autoLiveDiff, *liveDiffSubscriber) {

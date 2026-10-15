@@ -19,7 +19,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 type serverForwardResult struct {

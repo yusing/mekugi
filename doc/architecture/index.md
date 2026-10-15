@@ -39,7 +39,7 @@ selection and return delivery omissions to the frontend host.
 
 - [`CTR-UI-001`](ui.md): presentation, app-server client, and router integration boundaries
 
-- [`CTR-THIRD-PARTY-001`](third_party.md): router-owned third-party provider bridge
+- [`CTR-THIRD-PARTY-001`](third_party.md): third-party provider bridge ownership
 - [`CTR-GROK-001`](grok.md): Grok bridge ownership
 - [`CTR-OPENCODE-001`](opencode.md): OpenCode bridge ownership
 - [`CTR-NOTICES-001`](notices.md): native diagnostic delivery and recovery

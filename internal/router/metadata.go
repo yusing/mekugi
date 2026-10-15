@@ -13,7 +13,7 @@ import (
 
 	"strings"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const codexTurnMetadataHeader = "x-codex-turn-metadata"

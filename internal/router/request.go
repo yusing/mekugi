@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Source: execution.go:14:205 parsedResponsesRequest and request parsing.

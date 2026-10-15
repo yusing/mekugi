@@ -5,7 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"

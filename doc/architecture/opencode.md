@@ -6,7 +6,7 @@ The launcher owns OpenCode's invocation-local Codex model-catalog entries. The r
 OpenCode provider configuration, public catalog discovery, the durable model-metadata cache,
 immutable runtime snapshots, endpoint selection, translation policy, opaque reasoning
 replay, and request-scoped price selection. Shared protocol translation and stream
-normalization belong to `internal/providercodec` through the
+normalization belong to the [Codex Responses adapter](../../backends/codex/responses/SPEC.md) through the
 [shared provider boundary](third_party.md).
 
 OpenCode Go and Zen credentials, session-affinity identities, caches, and request accounting remain

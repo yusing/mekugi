@@ -10,7 +10,7 @@ import (
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {

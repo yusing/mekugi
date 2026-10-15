@@ -11,7 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testing.T) {

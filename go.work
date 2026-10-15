@@ -9,6 +9,7 @@ use (
 	./libraries/commandargs
 	./libraries/diffmodel
 	./libraries/legacycall
+	./libraries/modelprotocol
 	./libraries/outputbudget
 	./libraries/pathdisplay
 	./libraries/persistence

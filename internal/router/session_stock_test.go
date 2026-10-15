@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func writeStockRollout(t *testing.T, path string, records ...map[string]any) {

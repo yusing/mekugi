@@ -10,8 +10,8 @@ import (
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, session string) *mekugiResponseTransform {

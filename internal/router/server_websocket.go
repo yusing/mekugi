@@ -19,7 +19,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // A downstream socket owns a dedicated provider socket. In particular it never

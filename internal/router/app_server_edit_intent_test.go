@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Shell edit intent is only a requested operation. It is not a captured edit

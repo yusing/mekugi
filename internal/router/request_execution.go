@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 type responseProvider interface {

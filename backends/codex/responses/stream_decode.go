@@ -1,4 +1,4 @@
-package providercodec
+package responses
 
 // Source: internal/router/provider_stream_decode.go:1:92@5a2082938e797e6e15c374eb6ae135a0753dea24
 
@@ -10,7 +10,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/chat"
+	"github.com/yusing/mekugi/libraries/modelprotocol/chat"
 )
 
 func readEndpointSSE(reader io.Reader, d Diagnostics, consume func([]byte) (bool, error)) error {

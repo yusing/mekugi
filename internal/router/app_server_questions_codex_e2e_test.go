@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
 	"fmt"

@@ -1,4 +1,4 @@
-package providercodec
+package responses
 
 import (
 	"bufio"
@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Source: internal/router/provider_chat.go:1:152@5a2082938e797e6e15c374eb6ae135a0753dea24

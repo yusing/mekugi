@@ -15,8 +15,8 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // The fake executable records an effect without invoking Git or a remote.

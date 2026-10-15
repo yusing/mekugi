@@ -1,3 +1,4 @@
+// Source: internal/chat/finish.go:1:36@[48bc03a0] protocol implementation.
 // Package chat classifies Chat Completions wire facts. It does not accumulate
 // chunks, validate executable calls, synthesize Responses events, or own capture.
 package chat

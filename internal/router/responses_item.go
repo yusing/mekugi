@@ -6,7 +6,7 @@ import (
 
 	"maps"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // responsesItem keeps the complete provider object while exposing the stable

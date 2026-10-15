@@ -30,7 +30,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
 | Invocation-local Mekugi TOML configuration and service-tier selection | `internal/router/config.go`, `internal/router/service_tier.go`; OpenCode credentials remain in `internal/router/opencode_config.go` |
 | Third-party native-agent projection, Grok authentication, and model metadata | `internal/router/subagent_bridge.go`, `internal/router/grok_*.go` |
-| Provider request encoding, stream normalization, and Responses lifecycle emission | `internal/providercodec`; resolved provider policy and transport remain in `internal/router/provider_boundary.go`, `internal/router/grok_client.go`, and `internal/router/opencode.go` |
+| Provider request encoding, stream normalization, and Responses lifecycle emission | `backends/codex/responses`; wire facts in `libraries/modelprotocol`; resolved provider policy and transport remain in `internal/router/provider_boundary.go`, `internal/router/grok_client.go`, and `internal/router/opencode.go` |
 | Automatic notices and root-visible child activity | `internal/router/critical_errors.go`, `internal/router/subagent_activity.go`; boundaries in `doc/architecture/notices.md` and `doc/architecture/activity.md` |
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Provider reasoning must reach Codex as it streams: an active summary item

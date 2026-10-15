@@ -12,8 +12,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/legacycall"
 
-	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {

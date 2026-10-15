@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/chat"
+	"github.com/yusing/mekugi/libraries/modelprotocol/chat"
 )
 
 // observeChatResponse observes the actual Chat Completions provider boundary,

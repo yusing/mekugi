@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 
 	"github.com/yusing/mekugi/libraries/persistence"

@@ -5,7 +5,7 @@ import (
 	jsonv1 "encoding/json"
 	json "encoding/json/v2"
 
-	responseevents "github.com/yusing/mekugi/internal/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 // Observe answer-only completion for live diff without withholding provider events.

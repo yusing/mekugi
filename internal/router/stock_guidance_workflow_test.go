@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
 	"strings"

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/providercodec"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestProviderBoundaryChatUsage(t *testing.T) {
@@ -105,7 +105,7 @@ func TestProviderBoundaryOpenCodeChatFailures(t *testing.T) {
 
 func TestProviderBoundaryMixedRefusalDiagnostics(t *testing.T) {
 	service := (OpenCodeConfig{Go: OpenCodeServiceConfig{APIKey: "test"}}).services()[0]
-	for _, policy := range []providercodec.Policy{grokTranslationPolicy(), openCodeTranslationPolicy(&service, openCodeTestModel(service), "chat")} {
+	for _, policy := range []codexresponses.Policy{grokTranslationPolicy(), openCodeTranslationPolicy(&service, openCodeTestModel(service), "chat")} {
 		t.Run(policy.Diagnostics.Name, func(t *testing.T) {
 			tr := testProviderRequest(t, policy, "", "chat", nil)
 			stream := grokTestSSE(map[string]any{"choices": []any{map[string]any{
