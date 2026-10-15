@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yusing/mekugi/internal/execsegment"
 )
 
 const maxExecWindows = 1024
@@ -29,6 +31,10 @@ type execWindow struct {
 	session       string
 	background    bool
 	previewCancel context.CancelFunc
+	tracking      *execPreviewTrack
+	// created keeps a completed window's mktemp reports for retried
+	// finalization after its tracking, with retained output, is released.
+	created []execsegment.Message
 	// claims are snapshot states that overlapping calls already recorded.
 	// This window's snapshot comparison starts from them.
 	claims workspaceSnapshotClaims
@@ -49,7 +55,9 @@ func (r *execWindowRegistry) find(ref string) *execWindow {
 	return nil
 }
 
-func (r *execWindowRegistry) open(window *execWindow) {
+// open admits a window once. Only an admitted window tracks its commands'
+// reports, so a repeated open cannot make the first window's matches ambiguous.
+func (r *execWindowRegistry) open(window *execWindow, commands ...execCommandInput) {
 	if r == nil {
 		return
 	}
@@ -58,6 +66,7 @@ func (r *execWindowRegistry) open(window *execWindow) {
 	if r.find(window.ref) != nil {
 		return
 	}
+	window.tracking = newExecPreviewTrack(r.tracker, window.thread, window.turn, commands)
 	window.opened = time.Now()
 	r.windows = append(r.windows, window)
 	r.prune()
@@ -76,6 +85,7 @@ func (r *execWindowRegistry) prune() {
 	})
 	if len(r.windows) > maxExecWindows {
 		for _, window := range r.windows[:len(r.windows)-maxExecWindows] {
+			window.tracking.close()
 			if window.previewCancel != nil {
 				window.previewCancel()
 			}
@@ -117,6 +127,7 @@ func (r *execWindowRegistry) markBackground(thread, turn string) {
 
 // execWindowView is what finalization learns about concurrent windows.
 type execWindowView struct {
+	created    []execsegment.Message
 	overlaps   []string
 	excluded   []string
 	background []string
@@ -161,7 +172,13 @@ func (r *execWindowRegistry) view(refs []string, complete bool) execWindowView {
 	var selves []*execWindow
 	for _, ref := range refs {
 		if window := r.find(ref); window != nil {
+			if window.tracking != nil {
+				window.created = window.tracking.createdPaths()
+			}
+			view.created = append(view.created, window.created...)
 			if complete && window.closed.IsZero() {
+				window.tracking.close()
+				window.tracking = nil
 				window.closed = now
 				if window.previewCancel != nil {
 					window.previewCancel()

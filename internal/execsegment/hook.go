@@ -82,6 +82,11 @@ unset -v __mekugi_y __mekugi_z
 case $__mekugi_m in
 observe|relay|status)
   unset -v __mekugi_o __mekugi_x __mekugi_m
+` + mktempHook(helper, `"$__mekugi_t/$__mekugi_c"`, `
+    # Subshells and pipelines close coprocess descriptors, and a duplicate
+    # does not reach children. $$ names the shell that keeps the pipe open.
+    __mekugi_t=/proc/$$/fd
+    [ -d "$__mekugi_t" ] || __mekugi_t=/dev/fd`, true) + `
   printf 'o\n' >&"$__mekugi_c"
   __mekugi_b() { local __mekugi_s=$? __mekugi_r; printf 'b %s\n' "$1" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
   __mekugi_e() { local __mekugi_s=$? __mekugi_r; printf 'e %s %s\n' "$1" "$__mekugi_s" >&"$__mekugi_c"; IFS= read -r __mekugi_r <&"$__mekugi_a"; return "$__mekugi_s"; }
@@ -102,6 +107,61 @@ observe|relay|status)
   unset -v __mekugi_o __mekugi_x __mekugi_c __mekugi_a __mekugi_m __mekugi_d __mekugi_p
   ;;
 esac
+`
+}
+
+// mktempHook reports the utility's result, not a predicted temporary name.
+// The sentinel keeps command substitution from removing output newlines.
+// Reporting never changes the utility's output, diagnostics, or status.
+//
+// Bash also accepts function names with slashes, so absolute invocations of
+// mktemp from PATH, /bin, or /usr/bin are reported as well. Wrapping command
+// moves the line number in its diagnostics into the wrapper, so it is wrapped
+// only when the script names both. Dash rejects such names and cannot see the
+// script, so it reports bare mktemp only.
+func mktempHook(helper, control, setup string, bash bool) string {
+	run, extra := "command", ""
+	if bash {
+		run = "builtin command"
+		extra = `
+    __mekugi_k=/bin:/usr/bin:$PATH:
+    while [ -n "$__mekugi_k" ]; do
+      __mekugi_j=${__mekugi_k%%:*}/mktemp __mekugi_k=${__mekugi_k#*:}
+      case $__mekugi_j in
+      /*[!A-Za-z0-9/._+-]*) ;;
+      /*) [ -x "$__mekugi_j" ] && eval "$__mekugi_j() { __mekugi_mktemp $__mekugi_j \"\$@\"; }" ;;
+      esac
+    done
+    unset -v __mekugi_j __mekugi_k
+    case $BASH_EXECUTION_STRING in
+    *command*mktemp*)
+      declare -F command >/dev/null || command() {
+        case $1 in -p|--) set -- "$2" "$@" ;; *) set -- "$1" "$@" ;; esac
+        case $1 in
+        mktemp|/*/mktemp) shift; __mekugi_mktemp "$@" ;;
+        *) shift; builtin command "$@" ;;
+        esac
+      }
+      ;;
+    esac`
+	}
+	return `  if [ "$(command -v mktemp)" != mktemp ]; then` + setup + `
+    __mekugi_mktemp() {
+      local __mekugi_result __mekugi_status
+      if __mekugi_result=$(` + run + ` "$@"; __mekugi_status=$?; printf .; exit "$__mekugi_status"); then
+        __mekugi_status=0
+      else
+        __mekugi_status=$?
+      fi
+      __mekugi_result=${__mekugi_result%.}
+      if [ "$__mekugi_status" -eq 0 ]; then
+        ` + shellsyntax.Quote(helper) + ` --created-path "$__mekugi_result" 2>/dev/null 3>` + control + ` || :
+      fi
+      printf '%s' "$__mekugi_result"
+      return "$__mekugi_status"
+    }
+    mktemp() { __mekugi_mktemp mktemp "$@"; }` + extra + `
+  fi
 `
 }
 
@@ -127,6 +187,7 @@ type Message struct {
 	Script   string   `json:"script,omitempty"`
 	Segments []string `json:"segments,omitempty"`
 	Terminal bool     `json:"tty,omitzero"`
+	Tree     bool     `json:"tree,omitzero"`
 	Index    int      `json:"i,omitzero"`
 	Data     string   `json:"d,omitempty"`
 	Code     *int     `json:"c,omitempty"`
@@ -134,11 +195,12 @@ type Message struct {
 
 // Message types.
 const (
-	Hello  = "hello"
-	Begin  = "b"
-	Output = "o"
-	End    = "e"
-	Done   = "d"
+	Hello   = "hello"
+	Begin   = "b"
+	Output  = "o"
+	Created = "c"
+	End     = "e"
+	Done    = "d"
 	// Closed follows all output and ends the report without waiting for FIFO EOF.
 	Closed = "closed"
 	// Lossy reports that the helper stopped reporting output to stay within

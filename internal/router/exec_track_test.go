@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"golang.org/x/sys/unix"
 )
@@ -158,6 +159,199 @@ func TestExecTrackKeepsSingleCommandShellObservations(t *testing.T) {
 		if got.stdout != tc.output || got.stderr != "" || got.code != 0 {
 			t.Fatalf("%s: %+v", tc.script, got)
 		}
+	}
+}
+
+func TestExecTrackCapturesMktempCreation(t *testing.T) {
+	for _, kind := range []string{"file", "directory"} {
+		t.Run(kind, func(t *testing.T) {
+			shell := newExecTrackShell(t)
+			parent, workspace := t.TempDir(), t.TempDir()
+			unrelated := filepath.Join(parent, "unrelated")
+			writeTestFile(t, unrelated, "before\n")
+			shell.env = append(shell.env, "TMPDIR="+parent)
+			flag, target := "", "$root"
+			if kind == "directory" {
+				flag, target = " -d", "$root/note"
+			}
+			proxy := newManagedMekugiProxy(t)
+			attachTestReplayStore(t, proxy)
+			proxy.execWindows.tracker = shell.hub
+			transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
+			transform.shellThreadID, transform.shellTurnID = "thread", "turn"
+			run := func(call, script string) (execTrackRun, mekugiHistory, *mekugiResponseTransform) {
+				t.Helper()
+				arguments := string(mustMarshalJSON(map[string]any{"cmd": script, "workdir": workspace, "shell": "bash"}))
+				retainCommandObservation(t, transform, call, arguments)
+				key := [3]string{"thread", "turn", call + "-host"}
+				shell.hub.start(key, "/bin/bash -c "+quoteShellWord(script))
+				got := runShell(t, shell.env, "bash", "--noprofile", "--norc", "-c", script)
+				if got.code != 0 || got.stderr != "" {
+					t.Fatalf("%s: %+v", call, got)
+				}
+				if view := shell.awaitView(t, key); !view.complete {
+					t.Fatalf("%s report: %+v", call, view)
+				}
+				// Changes outside the reported path are not this command's evidence.
+				writeTestFile(t, unrelated, call+"\n")
+				next := reconcileExecItems(t, proxy, workspace, []any{
+					map[string]any{"type": "function_call", "id": call + "-item", "call_id": call, "name": nativeExecCommandToolName, "arguments": arguments},
+					map[string]any{"type": "function_call_output", "call_id": call, "output": nativeExecOutput("Process exited with code 0") + got.stdout},
+				})
+				history, found, err := proxy.replayStore.lookup(t.Context(), workspace, call+":exec:1")
+				if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 {
+					t.Fatalf("%s evidence: %+v, %v, %v", call, history, found, err)
+				}
+				return got, history, next
+			}
+			created, creation, _ := run("create", `root=$(mktemp`+flag+`); printf 'entry\n' > "`+target+`"; printf '%s' "$root"`)
+			if filepath.Dir(created.stdout) != parent {
+				t.Fatalf("mktemp result: %+v", created)
+			}
+			if file := creation.ReviewFiles[0]; file.BeforePath != "" || !strings.HasPrefix(file.AfterPath, created.stdout) {
+				t.Fatalf("creation endpoint: %+v", file)
+			}
+			_, deletion, next := run("delete", "rm -r "+quoteShellWord(created.stdout))
+			if file := deletion.ReviewFiles[0]; file.AfterPath != "" || !strings.HasPrefix(file.BeforePath, created.stdout) {
+				t.Fatalf("deletion endpoint: %+v", file)
+			}
+			resumed, err := openMekugiReplayStore(proxy.replayStore.directory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(resumed.snapshots.close)
+			ids := []string{creation.ChangeID, deletion.ChangeID}
+			for i, id := range ids {
+				history, err := resumed.readChanges(next.ctx, changeReadOptions{workspace: workspace, ids: []string{id}, view: "net", maxTokens: 4000})
+				if err != nil || !strings.Contains(history, []string{"+entry", "-entry"}[i]) || strings.Contains(history, "unrelated") {
+					t.Fatalf("retained %s: %q, %v", id, history, err)
+				}
+			}
+			net, err := resumed.readChanges(next.ctx, changeReadOptions{workspace: workspace, ids: ids, view: "net", maxTokens: 4000})
+			if err != nil || strings.Contains(net, "entry") {
+				t.Fatalf("creation and deletion do not cancel: %q, %v", net, err)
+			}
+			data, err := resumed.liveDiffSnapshot(next.ctx, liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {creation.ExecutingThread: true, "stock-thread": true}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			view := livediff.View{}
+			view.Merge(data.files())
+			view.RefreshVisible()
+			if len(view.Files) == 0 {
+				t.Fatal("Saved Diff omits the retained captures")
+			}
+			for _, file := range view.Files {
+				if visible := view.Visible[file.Key()]; len(visible.Chunks) != 0 {
+					t.Fatalf("Saved Diff keeps cancelled %s: %+v", file.Path, visible.Chunks)
+				}
+			}
+		})
+	}
+}
+
+// The hook reports mktemp's actual result and must not otherwise change the
+// utility: one execution, the same output, diagnostics, and status.
+func TestExecTrackMktempKeepsUtilityResult(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	helper, err := execTrackHelper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	channel, directory := ExecTrackPaths(filepath.Join(shell.root, "bin"))
+	shTracker := filepath.Join(shell.root, "exec-track.sh")
+	if err := os.WriteFile(shTracker, []byte(execsegment.ShTracker(helper, channel, directory)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	utility, err := exec.LookPath("mktemp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"bash", "sh"} {
+		for _, tc := range []struct {
+			name, script string
+			code         int
+			dir          string // Subdirectory of the parent that mktemp writes into.
+			created      int    // Entries mktemp leaves there.
+			reported     bool
+			bash         bool // Reported only by Bash, which can wrap these names.
+		}{
+			{name: "file", script: `mktemp`, created: 1, reported: true},
+			{name: "directory", script: `mktemp -d`, created: 1, reported: true},
+			{name: "substitution", script: `p=$(mktemp -d) && printf '%s\n' "$p"`, created: 1, reported: true},
+			{name: "newline", script: `mktemp "$TMPDIR/a b
+c.XXXXXX"`, created: 1, reported: true},
+			{name: "subshell", script: `(mktemp)`, created: 1, reported: true},
+			{name: "pipeline", script: `mktemp | cat`, created: 1, reported: true},
+			{name: "errexit", script: `set -e; (mktemp); echo after`, created: 1, reported: true},
+			// An attached directory operand is not an option cluster.
+			{name: "attached-directory", script: `mktemp -p"$TMPDIR/user"`, dir: "user", created: 1, reported: true},
+			{name: "command", script: `command mktemp`, created: 1, bash: true},
+			{name: "command-p", script: `p=$(command -p mktemp -d) && command printf '%s\n' "$p"`, created: 1, bash: true},
+			{name: "absolute", script: quoteShellWord(utility) + ` -d`, created: 1, bash: true},
+			{name: "command-absolute", script: `(command ` + quoteShellWord(utility) + `)`, created: 1, bash: true},
+			{name: "dry-run", script: `mktemp -u`},
+			{name: "help", script: `mktemp --help >/dev/null && echo help`},
+			{name: "failure", script: `mktemp "$TMPDIR/missing/XXXXXX"`, code: 1},
+		} {
+			t.Run(name+"/"+tc.name, func(t *testing.T) {
+				root := t.TempDir()
+				env := append(slices.Clone(shell.env), "TMPDIR="+root)
+				parent := filepath.Join(root, tc.dir)
+				if err := os.MkdirAll(parent, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				command := tc.script
+				if name == "sh" {
+					command = execsegment.ShScript(shTracker, tc.script)
+				}
+				key := [3]string{"thread", "turn", name + "-" + tc.name}
+				shell.hub.start(key, name+" -c "+quoteShellWord(command))
+				got := runShell(t, env, name, "-c", command)
+				if view := shell.awaitView(t, key); !view.complete && tc.code == 0 {
+					t.Fatalf("report: %+v", view)
+				}
+				entries, err := os.ReadDir(parent)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.code != tc.code || len(entries) != tc.created || (tc.code != 0) != (got.stderr != "") {
+					t.Fatalf("command: %+v; entries: %v", got, entries)
+				}
+				if tc.code == 0 && !strings.HasSuffix(got.stdout, "\n") {
+					t.Fatalf("output lost its newline: %q", got.stdout)
+				}
+				shell.hub.mu.Lock()
+				created := slices.Clone(shell.hub.tracks[key].created)
+				shell.hub.mu.Unlock()
+				if !tc.reported && (!tc.bash || name != "bash") {
+					if len(created) != 0 {
+						t.Fatalf("reported %+v", created)
+					}
+					return
+				}
+				want := filepath.Join(parent, entries[0].Name())
+				if len(created) != 1 || created[0].Data != want || created[0].Tree != entries[0].IsDir() || !strings.Contains(got.stdout, want+"\n") {
+					t.Fatalf("reported %+v for %q; output %q", created, want, got.stdout)
+				}
+			})
+		}
+	}
+}
+
+func TestExecWindowRepeatedOpenKeepsOneReportOwner(t *testing.T) {
+	t.Parallel()
+	shell := newExecTrackShell(t)
+	registry := &execWindowRegistry{tracker: shell.hub}
+	command := execCommandInput{Command: "mktemp", Workdir: t.TempDir(), Shell: "bash"}
+	first := &execWindow{ref: "call", thread: "thread", turn: "turn"}
+	registry.open(first, command)
+	registry.open(&execWindow{ref: "call", thread: "thread", turn: "turn"}, command)
+	shell.hub.mu.Lock()
+	defer shell.hub.mu.Unlock()
+	if len(shell.hub.previews) != 1 || first.tracking == nil || first.tracking.matches["mktemp"].ambiguous {
+		t.Fatalf("previews = %d, first = %+v", len(shell.hub.previews), first.tracking)
 	}
 }
 

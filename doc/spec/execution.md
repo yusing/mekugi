@@ -284,6 +284,19 @@ Missing or incompatible hook resources leave commands running once
 with aggregate host output. This support is limited to Linux dash-backed sh;
 other sh implementations are not promised segment tracking.
 
+Accepted tracking in Bash and sh also defines a `mktemp` shell function, unless
+the shell already has one. It runs the utility once and keeps its output,
+diagnostics, and status, then reports the existing file or directory it named,
+including from command substitutions, subshells, and pipelines. Reporting can
+neither fail nor change the command. Bash also reports `mktemp` invoked by an
+absolute path in `PATH`, `/bin`, or `/usr/bin`, and, when the script text names
+both `command` and `mktemp`, through `command`. Only then does Bash wrap
+`command`, because the wrapper moves the line number in diagnostics from other
+commands run through it. Dash cannot name functions by path or see the script,
+so tracked sh reports bare `mktemp` only. `mktemp` run by another program is not
+reported. Reported paths have their own bound, separate from the command-output
+budget.
+
 A script stays untracked when:
 
 - it is a list that starts with a subshell or a timed command;

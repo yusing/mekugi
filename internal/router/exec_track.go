@@ -72,6 +72,7 @@ type execTrack struct {
 	hostOnly bool   // Native command identity, before any segment report.
 	serial   uint64 // Host start, before the helper claims this item.
 	segments []execTrackSegment
+	created  []execsegment.Message
 	terminal bool // Output stays on the terminal; only statuses are reported.
 	lossy    bool // Output reports stopped at the helper's bound.
 	ended    bool // Report processing stopped, including transport failure.
@@ -553,6 +554,21 @@ func (p *execPreviewTrack) close() {
 	}
 }
 
+func (p *execPreviewTrack) createdPaths() []execsegment.Message {
+	if p == nil {
+		return nil
+	}
+	p.hub.mu.Lock()
+	defer p.hub.mu.Unlock()
+	var paths []execsegment.Message
+	for _, match := range p.matches {
+		if !match.ambiguous && match.track != nil {
+			paths = append(paths, match.track.created...)
+		}
+	}
+	return paths
+}
+
 type execPreviewState struct {
 	tracked, settled bool
 	completed        int
@@ -661,6 +677,10 @@ func writeExecTrackReply(conn *os.File, ok bool) error {
 func (t *execTrack) apply(message execsegment.Message) {
 	valid := message.Index >= 0 && message.Index < len(t.segments)
 	switch message.Type {
+	case execsegment.Created:
+		if valid && filepath.IsAbs(message.Data) {
+			t.created = append(t.created, message)
+		}
 	case execsegment.Begin:
 		if valid {
 			t.segments[message.Index].began = true

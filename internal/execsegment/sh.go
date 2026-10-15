@@ -106,6 +106,7 @@ func ShTracker(helper, channel, directory string) string {
       esac
       case $__mekugi_m in
       observe|relay|status)
+` + mktempHook(helper, "&7", "", false) + `
         printf 'o\n' >&7
         __mekugi_b() { local __mekugi_s=$? __mekugi_r; printf 'b %s\n' "$1" >&7; IFS= read -r __mekugi_r <&8; return "$__mekugi_s"; }
         __mekugi_e() { local __mekugi_s=$? __mekugi_r; printf 'e %s %s\n' "$1" "$__mekugi_s" >&7; IFS= read -r __mekugi_r <&8; return "$__mekugi_s"; }

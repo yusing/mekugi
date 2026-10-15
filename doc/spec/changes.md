@@ -86,6 +86,13 @@ rules for them. An agent's explicit edit to an ignored `FIXME.md` is recorded, a
 is an explicitly authored fixture. An input script is not itself an edit target.
 Recursive file operations may name trees.
 
+Tracked Bash and `sh` commands also report paths that `mktemp` created, as
+described in [execution](execution.md). Capture compares only each reported path
+and its contents; it does not scan the temporary parent directory. Creation and
+later deletion use ordinary retained changes, so their net diff cancels. Dry-run,
+help, version, and failed invocations name nothing on disk and establish no
+creation.
+
 Effects the parsers cannot name are bounded by workspace snapshots, so agents
 need not route edits through `apply_patch` to have them recorded. Every command
 that is not a recognized read-only reader takes a checkpoint of the selected

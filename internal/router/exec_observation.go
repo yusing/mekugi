@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -138,6 +139,22 @@ type execObservation struct {
 	// Tree is the private workspace snapshot taken before a writer call. Its
 	// comparison covers effects outside the source-named scope.
 	Tree string `json:",omitempty"`
+}
+
+// A successful mktemp report supplies the ordinary absent endpoint and empty
+// destination listing. Reconciliation reads only that path and its contents,
+// which are authored like any named operand.
+func (o *execObservation) addCreatedPaths(paths []execsegment.Message) {
+	// Observation copies may share backing arrays with a running preview.
+	o.Files, o.Listings = slices.Clip(o.Files), slices.Clip(o.Listings)
+	for _, path := range paths {
+		if !slices.ContainsFunc(o.Files, func(file execFileSnapshot) bool { return file.Path == path.Data }) {
+			o.Files = append(o.Files, execFileSnapshot{Path: path.Data})
+		}
+		if path.Tree && !slices.ContainsFunc(o.Listings, func(listing execListing) bool { return listing.Root == path.Data }) {
+			o.Listings = append(o.Listings, execListing{Root: path.Data})
+		}
+	}
 }
 
 // execOutcome is the finalized status of an observed exec record.
@@ -1490,6 +1507,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		defer p.replayStore.snapshots.serialize(workspace)()
 	}
 	view := p.execWindows.close(refs...)
+	observation.addCreatedPaths(view.created)
 	background := slices.Compact(slices.Sorted(slices.Values(view.background)))
 	env := execReconcileEnv{excluded: view.excluded}
 	snapshotErr := ""

@@ -385,15 +385,17 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 	}
 	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
 	window.paths = t.execCaptureEnvironment(patches).excluded
+	var commands []execCommandInput
 	if observation != nil {
 		observation.Group = t.execGroup
 		window.roots = slices.Clone(observation.Roots)
 		window.paths = append(window.paths, observation.scopePaths()...)
+		commands = observation.Commands
 	}
 	if len(patches) != 0 {
 		window.roots = execAddRoot(window.roots, t.directory)
 	}
-	t.proxy.execWindows.open(window)
+	t.proxy.execWindows.open(window, commands...)
 	if observation != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
 		var snapshots *workspaceSnapshots
 		if t.proxy.replayStore != nil {

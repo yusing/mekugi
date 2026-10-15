@@ -73,7 +73,11 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	}
 	ctx, cancel := context.WithCancel(broker.ctx)
 	window.previewCancel = cancel
-	tracking := newExecPreviewTrack(r.tracker, window.thread, window.turn, observed.Commands)
+	tracking := window.tracking
+	if tracking == nil {
+		tracking = newExecPreviewTrack(r.tracker, window.thread, window.turn, observed.Commands)
+		window.tracking = tracking
+	}
 	if tracking != nil {
 		tracking.streamable = make(map[string]bool)
 		for _, command := range observation.Commands {
@@ -240,6 +244,7 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *liveDiffBroker,
 		} // Keep the boundary pending for retry.
 	}
 	scope := c.observation
+	scope.addCreatedPaths(view.created)
 	// This receipt is an observed endpoint, not a claim of complete intermediate
 	// write history. Returning to the baseline must withdraw the earlier endpoint.
 	scope.RepeatedPaths = false
@@ -263,7 +268,6 @@ func (c *execPreviewCapture) update(ctx context.Context, broker *liveDiffBroker,
 
 func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observation execObservation, preview diffview.Preview, tracking *execPreviewTrack, capture *execPreviewCapture) {
 	preview.Tool = execPreviewTool(observation)
-	defer tracking.close()
 	defer broker.discardRunningPreview(preview)
 	expected := execPreviewExpected(ctx, observation)
 	matched := make(map[string]bool)

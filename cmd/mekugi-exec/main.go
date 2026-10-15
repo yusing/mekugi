@@ -38,10 +38,17 @@ const (
 	// reportBudget bounds the output copied to the router. Past it, output
 	// still reaches Codex unchanged, but segment output is not reported.
 	reportBudget = 4 << 20
-	readSize     = 32 << 10
+	// createdBudget separately bounds reported mktemp paths, so command
+	// output cannot drop them.
+	createdBudget = 1 << 20
+	readSize      = 32 << 10
 )
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--created-path" {
+		reportCreatedPath(os.Args[2])
+		return
+	}
 	if filepath.Base(os.Args[0]) == sudoask.Askpass {
 		os.Exit(sudoPassword())
 	}
@@ -270,6 +277,12 @@ func (r *relay) readControl() bool {
 			continue
 		}
 		switch fields[0] {
+		case execsegment.Created:
+			var message execsegment.Message
+			if json.Unmarshal([]byte(strings.TrimPrefix(line, "c ")), &message) == nil && message.Type == execsegment.Created {
+				message.Index = r.current
+				r.report.send(message)
+			}
 		case "o":
 			r.opened = true
 		case "b":
@@ -310,6 +323,30 @@ func (r *relay) readControl() bool {
 				return false
 			}
 		}
+	}
+}
+
+// reportCreatedPath reports a successful mktemp result that names an existing
+// file or directory. Dry-run, help, and version output name nothing on disk.
+func reportCreatedPath(output string) {
+	path, ok := strings.CutSuffix(output, "\n")
+	if !ok || path == "" || len(path) > readSize {
+		return
+	}
+	if !filepath.IsAbs(path) {
+		directory, err := os.Getwd()
+		if err != nil {
+			return
+		}
+		path = filepath.Join(directory, path)
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() && !info.Mode().IsRegular() {
+		return
+	}
+	message, err := json.Marshal(execsegment.Message{Type: execsegment.Created, Data: path, Tree: info.IsDir()})
+	if err == nil {
+		_, _ = unix.Write(3, append(append([]byte("c "), message...), '\n'))
 	}
 }
 
@@ -392,12 +429,13 @@ type reporter struct {
 	messages chan execsegment.Message
 	done     chan struct{}
 	budget   int
+	created  int // Remaining createdBudget.
 	lossy    bool
 	failed   bool
 }
 
 func newReporter(conn *os.File) *reporter {
-	r := &reporter{conn: conn, messages: make(chan execsegment.Message, 1024), done: make(chan struct{}), budget: reportBudget}
+	r := &reporter{conn: conn, messages: make(chan execsegment.Message, 1024), done: make(chan struct{}), budget: reportBudget, created: createdBudget}
 	go func() {
 		defer close(r.done)
 		writer := bufio.NewWriter(conn)
@@ -424,6 +462,11 @@ func newReporter(conn *os.File) *reporter {
 func (r *reporter) send(message execsegment.Message) {
 	if r.failed {
 		return
+	}
+	if message.Type == execsegment.Created {
+		if r.created -= len(message.Data); r.created < 0 {
+			return
+		}
 	}
 	select {
 	case r.messages <- message:
