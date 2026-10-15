@@ -23,3 +23,24 @@ func TestNativeInspectPreservesLoneSurrogateNames(t *testing.T) {
 		t.Fatalf("compact surrogate pointer: %+v", result)
 	}
 }
+
+func TestFrontmatterUnicodeColumns(t *testing.T) {
+	for _, fields := range []string{`{"é": a,"next": b}`, `{'🧪': a,'next': b}`} {
+		t.Run(fields, func(t *testing.T) {
+			source := "---\n" + fields + "\n---\n# After\n"
+			path := nativeFixture(t, "unicode.md", source)
+			result := nativeInspectFixture(t, path)
+			if !result.Data.ParseComplete || len(result.Data.Outline) != 3 {
+				t.Fatalf("outline: %+v", result.Data)
+			}
+			entry := result.Data.Outline[1]
+			if entry.Name != "next" || entry.Line != 2 || entry.LineEnd != 2 {
+				t.Fatalf("later key span: %+v", entry)
+			}
+			snapshot, err := InspectSource(t.Context(), path, []byte(source))
+			if err != nil || !strings.Contains(snapshot, "2-2 frontmatter next\n") {
+				t.Fatalf("snapshot=%q err=%v", snapshot, err)
+			}
+		})
+	}
+}

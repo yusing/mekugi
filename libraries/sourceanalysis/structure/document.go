@@ -276,7 +276,12 @@ func (s *Source) markdown() {
 						continue
 					}
 					line := key.Line + 1
-					offset := s.Lines.starts[line-1] + key.Column - 1
+					offset := s.Lines.starts[line-1]
+					// YAML columns count Unicode characters; source spans use bytes.
+					for range key.Column - 1 {
+						_, width := utf8.DecodeRuneInString(s.Source[offset:])
+						offset += width
+					}
 					to := offset + len(key.Value)
 					if key.Style == yaml.DoubleQuotedStyle || key.Style == yaml.SingleQuotedStyle {
 						quote := s.Source[offset]
