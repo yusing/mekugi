@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -57,7 +59,7 @@ func (r *execWindowRegistry) find(ref string) *execWindow {
 
 // open admits a window once. Only an admitted window tracks its commands'
 // reports, so a repeated open cannot make the first window's matches ambiguous.
-func (r *execWindowRegistry) open(window *execWindow, commands ...execCommandInput) {
+func (r *execWindowRegistry) open(window *execWindow, commands ...commandanalysis.Command) {
 	if r == nil {
 		return
 	}

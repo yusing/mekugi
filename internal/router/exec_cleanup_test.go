@@ -10,6 +10,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/yusing/mekugi/internal/ui/diffview"
@@ -17,7 +19,7 @@ import (
 )
 
 func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
-	commands := []execCommandInput{{Command: "first"}, {Command: "command spare"}}
+	commands := []commandanalysis.Command{{Command: "first"}, {Command: "command spare"}}
 	labels := []string{"shared", "label spare"}
 	programs := []execscope.Program{{Label: "shared"}, {Label: "program spare"}}
 	roots := []string{"/workspace/project", "/root spare"}
@@ -31,19 +33,19 @@ func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
 		Programs: programs[:1], Excluded: excluded[:1], WindowStart: time.Unix(30, 0),
 	}
 	second := &execObservation{
-		Commands: []execCommandInput{{Command: "second"}}, Class: execscope.Opaque.String(), Reason: "stronger reason",
+		Commands: []commandanalysis.Command{{Command: "second"}}, Class: execscope.Opaque.String(), Reason: "stronger reason",
 		Labels: []string{"shared", "second"}, Programs: []execscope.Program{{Label: "shared"}, {Label: "second"}},
 		Roots: []string{"/workspace", "/outside"}, Files: []execFileSnapshot{{Path: "/workspace/second"}},
 		Omitted: []execOmission{{Path: "/workspace/omitted-2"}}, Listings: []execListing{{Root: "/workspace/listed-2"}},
 		Excluded: []string{"/workspace/excluded-2"}, WindowStart: time.Unix(20, 0), CodeMode: true,
 	}
 	third := &execObservation{
-		Commands: []execCommandInput{{Command: "third"}}, Labels: []string{"third"},
+		Commands: []commandanalysis.Command{{Command: "third"}}, Labels: []string{"third"},
 		Programs: []execscope.Program{{Label: "third"}}, Roots: []string{"/workspace/child", "/last"},
 		Files: []execFileSnapshot{{Path: "/workspace/third"}}, WindowStart: time.Unix(10, 0),
 	}
 	firstBefore := *first
-	firstBefore.Commands = append([]execCommandInput(nil), first.Commands...)
+	firstBefore.Commands = append([]commandanalysis.Command(nil), first.Commands...)
 	firstBefore.Labels = append([]string(nil), first.Labels...)
 	firstBefore.Programs = append([]execscope.Program(nil), first.Programs...)
 	firstBefore.Roots = append([]string(nil), first.Roots...)
@@ -66,7 +68,7 @@ func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
 		t.Fatalf("merge overwrote spare-capacity storage in first member: commands=%+v labels=%+v programs=%+v roots=%+v files=%+v omitted=%+v listings=%+v excluded=%+v",
 			commands, labels, programs, roots, files, omitted, listings, excluded)
 	}
-	if got, want := merged.Commands, []execCommandInput{{Command: "first"}, {Command: "second"}, {Command: "third"}}; !reflect.DeepEqual(got, want) {
+	if got, want := merged.Commands, []commandanalysis.Command{{Command: "first"}, {Command: "second"}, {Command: "third"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("commands = %+v, want %+v", got, want)
 	}
 	if got, want := merged.Labels, []string{"shared", "second", "third"}; !reflect.DeepEqual(got, want) {

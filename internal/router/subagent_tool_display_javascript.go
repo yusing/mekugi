@@ -54,9 +54,9 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 		batchProjection := false
 		if first.Kind() == "expression_statement" {
 			expression = first.NamedChild(0)
-			if args, ok := toolActivityCallArguments(expression, bytes, "text"); ok && len(args) == 1 {
+			if args, ok := sourceparse.JavaScriptCallArguments(expression, bytes, "text"); ok && len(args) == 1 {
 				expression = args[0]
-			} else if args, ok := toolActivityCallArguments(expression, bytes, "generatedImage"); ok && len(args) == 1 && !requireResultMetadata {
+			} else if args, ok := sourceparse.JavaScriptCallArguments(expression, bytes, "generatedImage"); ok && len(args) == 1 && !requireResultMetadata {
 				expression = args[0]
 			} else if requireResultMetadata {
 				return nil, false
@@ -93,7 +93,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 			i++
 		}
 		if expression != nil && expression.Kind() == "await_expression" && !requireResultMetadata {
-			if args, ok := toolActivityCallArguments(expression.NamedChild(0), bytes, "tools", applyPatchToolName); ok && len(args) == 1 && args[0].Kind() == "identifier" {
+			if args, ok := sourceparse.JavaScriptCallArguments(expression.NamedChild(0), bytes, "tools", applyPatchToolName); ok && len(args) == 1 && args[0].Kind() == "identifier" {
 				if patch, found := bindings[args[0].Utf8Text(bytes)]; found {
 					calls = append(calls, map[string]json.RawMessage{"name": responses.MustMarshalJSON(applyPatchToolName), "input": responses.MustMarshalJSON(patch)})
 					continue
@@ -142,7 +142,7 @@ func toolActivityPromiseBatch(expression *sitter.Node, source []byte) bool {
 	}
 	call := expression.NamedChild(0)
 	for _, method := range []string{"all", "allSettled"} {
-		if args, ok := toolActivityCallArguments(call, source, "Promise", method); ok &&
+		if args, ok := sourceparse.JavaScriptCallArguments(call, source, "Promise", method); ok &&
 			len(args) == 1 && args[0].Kind() == "array" {
 			return true
 		}
@@ -162,7 +162,7 @@ func toolActivityBatchForEachProjection(statement *sitter.Node, source []byte, b
 		return false
 	}
 	call := statement.NamedChild(0)
-	args, ok := toolActivityCallArguments(call, source, binding, "forEach")
+	args, ok := sourceparse.JavaScriptCallArguments(call, source, binding, "forEach")
 	if !ok || len(args) != 1 || args[0].Kind() != "arrow_function" {
 		return false
 	}
@@ -220,10 +220,10 @@ func toolActivityBatchIndexedPresentation(statement *sitter.Node, source []byte,
 	indexName := index.Utf8Text(source)
 	if indexName == binding || slices.Contains([]string{"text", "JSON", "tools", "Promise"}, indexName) ||
 		strings.ContainsRune(indexName, '\\') ||
-		!toolActivityMemberPath(condition.ChildByFieldName("left"), source, indexName) ||
-		!toolActivityMemberPath(condition.ChildByFieldName("right"), source, binding, "length") ||
+		!sourceparse.JavaScriptMemberPath(condition.ChildByFieldName("left"), source, indexName) ||
+		!sourceparse.JavaScriptMemberPath(condition.ChildByFieldName("right"), source, binding, "length") ||
 		condition.ChildByFieldName("operator").Kind() != "<" ||
-		!toolActivityMemberPath(increment.ChildByFieldName("argument"), source, indexName) ||
+		!sourceparse.JavaScriptMemberPath(increment.ChildByFieldName("argument"), source, indexName) ||
 		increment.ChildByFieldName("operator").Kind() != "++" {
 		return false
 	}
@@ -235,11 +235,11 @@ func toolActivityBatchIndexedPresentation(statement *sitter.Node, source []byte,
 // A forEach callback prints an object built only from its local result and
 // index references. This inspects output shape, not JS execution.
 func toolActivityBatchPrintedObject(body *sitter.Node, source []byte, allowed map[string]bool) bool {
-	textArgs, ok := toolActivityCallArguments(body, source, "text")
+	textArgs, ok := sourceparse.JavaScriptCallArguments(body, source, "text")
 	if !ok || len(textArgs) != 1 {
 		return false
 	}
-	jsonArgs, ok := toolActivityCallArguments(textArgs[0], source, "JSON", "stringify")
+	jsonArgs, ok := sourceparse.JavaScriptCallArguments(textArgs[0], source, "JSON", "stringify")
 	if !ok || len(jsonArgs) != 1 || jsonArgs[0].Kind() != "object" {
 		return false
 	}
@@ -285,7 +285,7 @@ func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResu
 	}
 	if !requireResultMetadata {
 		for _, method := range []string{"all", "allSettled"} {
-			if args, ok := toolActivityCallArguments(call, bytes, "Promise", method); ok && len(args) == 1 && args[0].Kind() == "array" {
+			if args, ok := sourceparse.JavaScriptCallArguments(call, bytes, "Promise", method); ok && len(args) == 1 && args[0].Kind() == "array" {
 				var calls []map[string]json.RawMessage
 				for i := range args[0].NamedChildCount() {
 					node := args[0].NamedChild(uint(i))
@@ -334,7 +334,7 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 			return nil, false
 		}
 	}
-	if !toolActivityMemberPath(callee, bytes, "tools", name) || call.ChildByFieldName("optional_chain") != nil {
+	if !sourceparse.JavaScriptMemberPath(callee, bytes, "tools", name) || call.ChildByFieldName("optional_chain") != nil {
 		return nil, false
 	}
 	var value any
@@ -360,30 +360,30 @@ func toolActivityResultProjection(statement *sitter.Node, source []byte, binding
 	if statement.Kind() != "expression_statement" || statement.NamedChildCount() != 1 {
 		return false
 	}
-	args, ok := toolActivityCallArguments(statement.NamedChild(0), source, "text")
+	args, ok := sourceparse.JavaScriptCallArguments(statement.NamedChild(0), source, "text")
 	if !ok && !requireResultMetadata {
-		args, ok = toolActivityCallArguments(statement.NamedChild(0), source, "generatedImage")
-		return ok && len(args) == 1 && toolActivityMemberPath(args[0], source, binding)
+		args, ok = sourceparse.JavaScriptCallArguments(statement.NamedChild(0), source, "generatedImage")
+		return ok && len(args) == 1 && sourceparse.JavaScriptMemberPath(args[0], source, binding)
 	}
 	if !ok || len(args) != 1 {
 		return false
 	}
 	value := args[0]
-	if toolActivityMemberPath(value, source, binding, "output") {
+	if sourceparse.JavaScriptMemberPath(value, source, binding, "output") {
 		return !requireResultMetadata
 	}
-	if toolActivityMemberPath(value, source, binding) {
+	if sourceparse.JavaScriptMemberPath(value, source, binding) {
 		return true
 	}
-	args, ok = toolActivityCallArguments(value, source, "JSON", "stringify")
+	args, ok = sourceparse.JavaScriptCallArguments(value, source, "JSON", "stringify")
 	if !ok || len(args) != 1 {
 		return false
 	}
-	if toolActivityMemberPath(args[0], source, binding) {
+	if sourceparse.JavaScriptMemberPath(args[0], source, binding) {
 		return true
 	}
-	args, ok = toolActivityCallArguments(args[0], source, "Object", "assign")
-	if !ok || len(args) != 3 || !toolActivityMemberPath(args[1], source, binding) {
+	args, ok = sourceparse.JavaScriptCallArguments(args[0], source, "Object", "assign")
+	if !ok || len(args) != 3 || !sourceparse.JavaScriptMemberPath(args[1], source, binding) {
 		return false
 	}
 	target, targetOK := sourceparse.JavaScriptValue(args[0], source)
@@ -392,42 +392,6 @@ func toolActivityResultProjection(statement *sitter.Node, source []byte, binding
 	metadataObject, metadataIsObject := metadata.(map[string]any)
 	return targetOK && metadataOK && targetIsObject && metadataIsObject &&
 		len(targetObject) == 0 && len(metadataObject) == 1 && metadataObject["retained"] == false
-}
-
-func toolActivityCallArguments(node *sitter.Node, source []byte, path ...string) ([]*sitter.Node, bool) {
-	if node == nil || node.Kind() != "call_expression" ||
-		node.ChildByFieldName("optional_chain") != nil ||
-		!toolActivityMemberPath(node.ChildByFieldName("function"), source, path...) {
-		return nil, false
-	}
-	args := node.ChildByFieldName("arguments")
-	if args == nil || args.Kind() != "arguments" {
-		return nil, false
-	}
-	var values []*sitter.Node
-	for i := range args.NamedChildCount() {
-		child := args.NamedChild(uint(i))
-		if child.Kind() != "comment" {
-			values = append(values, child)
-		}
-	}
-	return values, true
-}
-
-func toolActivityMemberPath(node *sitter.Node, source []byte, path ...string) bool {
-	if node == nil || len(path) == 0 {
-		return false
-	}
-	if len(path) == 1 {
-		return node.Kind() == "identifier" && node.Utf8Text(source) == path[0]
-	}
-	if node.Kind() != "member_expression" || node.ChildByFieldName("optional_chain") != nil {
-		return false
-	}
-	property := node.ChildByFieldName("property")
-	return property != nil && property.Kind() == "property_identifier" &&
-		property.Utf8Text(source) == path[len(path)-1] &&
-		toolActivityMemberPath(node.ChildByFieldName("object"), source, path[:len(path)-1]...)
 }
 
 func toolActivityPresentationStatement(node *sitter.Node, source []byte, allowed map[string]bool) bool {
@@ -461,7 +425,7 @@ func toolActivityPresentationStatement(node *sitter.Node, source []byte, allowed
 		allowed[key] = true
 		return true
 	case "expression_statement":
-		args, ok := toolActivityCallArguments(node.NamedChild(0), source, "text")
+		args, ok := sourceparse.JavaScriptCallArguments(node.NamedChild(0), source, "text")
 		return ok && len(args) == 1 && toolActivityPresentationValue(args[0], source, allowed)
 	case "if_statement":
 		if !toolActivityPresentationValue(node.ChildByFieldName("condition"), source, allowed) ||
@@ -512,7 +476,7 @@ func toolActivityPresentationValue(node *sitter.Node, source []byte, allowed map
 		return node.ChildByFieldName("optional_chain") == nil && index != nil && (index.Kind() == "identifier" || index.Kind() == "number") &&
 			toolActivityPresentationValue(index, source, allowed) && toolActivityPresentationValue(node.ChildByFieldName("object"), source, allowed)
 	case "call_expression":
-		args, ok := toolActivityCallArguments(node, source, "JSON", "stringify")
+		args, ok := sourceparse.JavaScriptCallArguments(node, source, "JSON", "stringify")
 		return ok && len(args) == 1 && toolActivityPresentationValue(args[0], source, allowed)
 	case "binary_expression":
 		operator := node.ChildByFieldName("operator")

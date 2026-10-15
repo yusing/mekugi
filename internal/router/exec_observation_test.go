@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
@@ -29,7 +31,7 @@ func writeTestFile(t *testing.T, path, content string) {
 
 func observeTestCommand(t *testing.T, workdir, command string) *execObservation {
 	t.Helper()
-	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: workdir, Shell: "bash"}}, false, false, execCaptureEnv{})
+	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workdir, Shell: "bash"}}, false, false, execCaptureEnv{})
 	if !observed {
 		t.Fatalf("%q was not observed", command)
 	}
@@ -250,12 +252,7 @@ func TestRequestSessionShell(t *testing.T) {
 			t.Errorf("%s: shell = %q, want %q", test.name, got, test.want)
 		}
 	}
-	if _, ok := execCommandArguments(`{"cmd":"rm a","environment_id":"remote"}`, "/work", "bash"); ok {
-		t.Error("a command for another environment was observed")
-	}
-	if command, ok := execCommandArguments(`{"cmd":"rm a"}`, "/work", "bash"); !ok || command.Shell != "bash" {
-		t.Errorf("session shell was not applied: %+v", command)
-	}
+
 }
 
 func TestExecObservationSymlinkReviewsLinkTarget(t *testing.T) {
@@ -288,58 +285,13 @@ func TestExecObservationBoundsFileBytes(t *testing.T) {
 func TestExecObservationSkipsNeutralCommands(t *testing.T) {
 	for _, command := range []string{"ls", "git status", `rg -n pattern internal/{router,ui}`, `find "$HOME/.codex/sessions" -type f -print`, `[ -d "$directory" ] && echo directory`, "skills-mgr info", "skills-mgr get golang-best-practices"} {
 		for _, codeMode := range []bool{false, true} {
-			if _, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, codeMode, execCaptureEnv{}); observed {
+			if _, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: t.TempDir(), Shell: "bash"}}, false, codeMode, execCaptureEnv{}); observed {
 				t.Errorf("%q was observed without a declared scope", command)
 			}
 		}
 	}
-	if _, observed := captureExecObservation([]execCommandInput{{Command: "rm a", Workdir: t.TempDir(), Shell: "bash"}}, true, true, execCaptureEnv{}); !observed {
+	if _, observed := captureExecObservation([]commandanalysis.Command{{Command: "rm a", Workdir: t.TempDir(), Shell: "bash"}}, true, true, execCaptureEnv{}); !observed {
 		t.Error("a dynamic exec cell was not observed")
-	}
-}
-
-func TestStockLiteralExecCommands(t *testing.T) {
-	directory := "/work"
-	commands, dynamic := stockLiteralExecCommands(`await tools.exec_command({cmd: "rm a", workdir: "sub"}); text(await tools.exec_command({cmd: 'cp b c'}));`, directory, "bash")
-	if dynamic || len(commands) != 2 || commands[0].Command != "rm a" || commands[0].Workdir != "/work/sub" || commands[1].Workdir != directory {
-		t.Fatalf("literal commands = %+v dynamic=%v", commands, dynamic)
-	}
-	for _, source := range []string{
-		`const cmd = "rm a"; await tools.exec_command({cmd});`,
-		`await tools.exec_command({cmd: name});`,
-		`const run = tools.exec_command; await run({cmd: "rm a"});`,
-		`const t = tools; await t.exec_command({cmd: "rm a"});`,
-		`await tools["exec_command"]({cmd: "rm a"});`,
-		`await tools.exec_command({cmd: "cat", tty: true}); await tools.write_stdin({session_id: 1, chars: "x"});`,
-		`await tools?.exec_command({cmd: "rm a"});`,
-		`await globalThis.tools.exec_command({cmd: "rm a"});`,
-		`await eval("tools").exec_command({cmd: "rm a"});`,
-		`await tools.exec_command({cmd: "rm a", environment_id: "remote"});`,
-	} {
-		if _, dynamic := stockLiteralExecCommands(source, directory, "bash"); !dynamic {
-			t.Errorf("%s was treated as literal", source)
-		}
-	}
-	for _, source := range []string{
-		`await tools.write_stdin({session_id: 1});`,
-		`await tools.write_stdin({session_id: 1, chars: ""});`,
-		`const session_id = 1; await tools.write_stdin({session_id, chars: ""});`,
-	} {
-		if commands, dynamic := stockLiteralExecCommands(source, directory, "bash"); dynamic || len(commands) != 0 {
-			t.Errorf("poll-only write_stdin call %s = %+v dynamic=%v; want no command and static", source, commands, dynamic)
-		}
-	}
-	for _, source := range []string{
-		`await tools.write_stdin({session_id: 1, chars: "x"});`,
-		`await tools.write_stdin({session_id: 1, chars: input});`,
-		`await tools.write_stdin({session_id: 1, ...options, chars: ""});`,
-		`await tools.write_stdin({session_id: 1, ["chars"]: ""});`,
-		`await tools.write_stdin({session_id: 1, chars: "", __proto__: {}});`,
-		`await tools.write_stdin({session_id: 1, chars: "", chars: ""});`,
-	} {
-		if _, dynamic := stockLiteralExecCommands(source, directory, "bash"); !dynamic {
-			t.Errorf("ambiguous write_stdin call %s was treated as a poll", source)
-		}
 	}
 }
 
@@ -349,7 +301,7 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 	writeTestFile(t, target, "before\n")
 	writeTestFile(t, filepath.Join(workspace, "edit.py"), "from pathlib import Path\nPath('target.txt').write_text('after\\n')\n")
 	source := `const r = await tools.exec_command({cmd: "python3 edit.py"}); await tools.write_stdin({session_id: r.session_id, chars: ""});`
-	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
 	if dynamic || len(commands) != 1 || commands[0].Command != "python3 edit.py" {
 		t.Fatalf("same-cell command and polling = %+v dynamic=%v", commands, dynamic)
 	}
@@ -405,11 +357,11 @@ func TestExecResultState(t *testing.T) {
 // New model calls use exec; retained host evidence keeps its original identity.
 func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, callID, arguments string) {
 	t.Helper()
-	command, ok := execCommandArguments(arguments, transform.directory, transform.sessionShell)
+	command, ok := commandanalysis.ExecCommandArguments(arguments, transform.directory, transform.sessionShell)
 	if !ok {
 		t.Fatal("invalid retained command fixture")
 	}
-	observation, observed := transform.snapshotExecObservation(captureExecObservation([]execCommandInput{command}, false, false, transform.execCaptureEnvironment(nil)))
+	observation, observed := transform.snapshotExecObservation(captureExecObservation([]commandanalysis.Command{command}, false, false, transform.execCaptureEnvironment(nil)))
 	if !observed {
 		return
 	}

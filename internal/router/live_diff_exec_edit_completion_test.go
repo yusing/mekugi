@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/charmbracelet/x/ansi"
@@ -25,7 +27,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "command-timing.txt.new"), "Review @src\n\nAttached src (3 lines)\n")
 	script := "mv command-timing.txt.new command-timing.txt; git status --short"
 	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:'read -r answer',workdir:%q});", script, workspace, workspace)
-	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
 	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
 	if !ok || observation == nil || len(observation.Files) == 0 {
 		t.Fatal("move lost its retained capture")
@@ -75,7 +77,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	// edit landed, then waits for us to inspect the UI before it can exit.
 	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\n" +
 		`python3 -c 'import sys; assert open("source.go").read() == "context\n"*20 + "after\n" + "context\n"*20; print("test running", flush=True); assert sys.stdin.readline().strip() == "continue"'`
-	observation, ok := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+	observation, ok := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
 	if !ok || observation == nil {
 		t.Fatal("missing edit observation")
 	}
@@ -144,7 +146,7 @@ func execEditThenTestObservation(t *testing.T, workspace string) (execObservatio
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "before\n")
 	command := "python3 - <<'PY'\np='source.go'\ns=open(p).read().replace('before', 'after')\nopen(p,'w').write(s)\nPY\nenv -u BASH_ENV go test ./..."
-	observation, ok := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, true, execCaptureEnv{directory: workspace})
+	observation, ok := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, true, execCaptureEnv{directory: workspace})
 	if !ok || observation == nil || len(observation.Files) != 1 {
 		t.Fatalf("edit and test target capture = %+v, observed=%v", observation, ok)
 	}
@@ -176,7 +178,7 @@ func TestExecEditCompletionUsesCapturedBaseline(t *testing.T) {
 			}
 		})
 	}
-	testOnly := execObservation{Commands: []execCommandInput{{Command: "env -u BASH_ENV go test ./...", Workdir: workspace, Shell: "bash"}}, Class: execscope.Opaque.String()}
+	testOnly := execObservation{Commands: []commandanalysis.Command{{Command: "env -u BASH_ENV go test ./...", Workdir: workspace, Shell: "bash"}}, Class: execscope.Opaque.String()}
 	if got := execPreviewExpected(t.Context(), testOnly); len(got) != 0 {
 		t.Fatalf("test-only command yielded predicted edit: %+v", got)
 	}

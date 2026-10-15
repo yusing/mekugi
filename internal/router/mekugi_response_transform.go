@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -316,7 +318,7 @@ func (t *mekugiResponseTransform) transformOutputItem(item *responsesItem) (bool
 		}
 		patches := nativePatchesInCall(name, originalInput, t.directory)
 		t.primePreviewSources(item.ID, patches)
-		execs, dynamic := stockLiteralExecCommands(originalInput, t.directory, t.sessionShell)
+		execs, dynamic := commandanalysis.LiteralExecCommands(originalInput, t.directory, t.sessionShell)
 		// Source-resolved edit operands acquire baselines; a cell that may write
 		// elsewhere, including a dynamic one, is bounded by a workspace snapshot.
 		observation, observed := t.snapshotExecObservation(captureExecObservation(execs, dynamic, true, t.execCaptureEnvironment(patches)))
@@ -390,7 +392,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 	}
 	window := &execWindow{ref: callID, thread: t.shellThreadID, turn: t.shellTurnID, group: t.execGroup}
 	window.paths = t.execCaptureEnvironment(patches).excluded
-	var commands []execCommandInput
+	var commands []commandanalysis.Command
 	if observation != nil {
 		observation.Group = t.execGroup
 		window.roots = slices.Clone(observation.Roots)
@@ -412,7 +414,7 @@ func (t *mekugiResponseTransform) openExecWindow(callID string, observation *exe
 
 // Display baselines are process-local. They preserve running LiveDiff without
 // turning formatter/managed effects into persisted authored changes.
-func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *execObservation, patches []nativePatchObservation, commands []execCommandInput, dynamic, codeMode bool) bool {
+func (t *mekugiResponseTransform) openStockExecWindow(callID string, authored *execObservation, patches []nativePatchObservation, commands []commandanalysis.Command, dynamic, codeMode bool) bool {
 	display := authored
 	if (authored == nil || authored.Class == execscope.Opaque.String()) && t.proxy != nil && t.proxy.autoLiveDiff != nil && t.proxy.autoLiveDiff.enabled.Load() {
 		env := t.execCaptureEnvironment(patches)

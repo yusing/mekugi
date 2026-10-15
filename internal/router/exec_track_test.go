@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -349,7 +351,7 @@ func TestExecWindowRepeatedOpenKeepsOneReportOwner(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
 	registry := &execWindowRegistry{tracker: shell.hub}
-	command := execCommandInput{Command: "mktemp", Workdir: t.TempDir(), Shell: "bash"}
+	command := commandanalysis.Command{Command: "mktemp", Workdir: t.TempDir(), Shell: "bash"}
 	first := &execWindow{ref: "call", thread: "thread", turn: "turn"}
 	registry.open(first, command)
 	registry.open(&execWindow{ref: "call", thread: "thread", turn: "turn"}, command)

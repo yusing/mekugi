@@ -61,8 +61,13 @@ Shell instrumentation lives in `libraries/shellinstrumentation`. The native hook
 launcher, helper, capture observer and display projection share its rewrite and
 recognition rules. It generates source and discovers executable paths for startup;
 execution, approval decisions and report transport remain with their callers.
-`libraries/commandanalysis` owns VCS executable recognition, while its `shellsyntax`
-package owns wrapper operands and non-evaluating command-word classification.
+The [command-analysis library](../../libraries/commandanalysis/SPEC.md) owns VCS
+executable facts, stock command argument resolution, and literal JavaScript
+command extraction. Its `shellsyntax` package owns wrapper operands and
+non-evaluating command-word classification. Shared AST call/member matching lives
+in `libraries/sourceanalysis/sourceparse`, used by observation and presentation.
+The dynamic-source flag remains separate from recognized literal commands so
+capture does not narrow its coverage to only the statically visible subset.
 
 The invocation's shell-approval server owns the VCS/sudo decision socket, pending
 requests, cancellation, and shutdown join independently of segment reporting.

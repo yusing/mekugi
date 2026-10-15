@@ -45,7 +45,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 	commands := observation.Commands
 	observation.Commands = nil
 	for _, command := range commands {
-		files, _ := execPreviewProjected(broker.ctx, execObservation{Files: observation.Files, Commands: []execCommandInput{command}})
+		files, _ := execPreviewProjected(broker.ctx, execObservation{Files: observation.Files, Commands: []commandanalysis.Command{command}})
 		if len(files) == 0 {
 			continue
 		}
@@ -96,7 +96,7 @@ func (r *execWindowRegistry) preview(ref string, observation execObservation, br
 				}
 				input := command
 				input.Command, input.Workdir = segment.Source, directory
-				files, _ := execPreviewProjected(ctx, execObservation{Files: observation.Files, Commands: []execCommandInput{input}})
+				files, _ := execPreviewProjected(ctx, execObservation{Files: observation.Files, Commands: []commandanalysis.Command{input}})
 				if len(files) > 0 {
 					tracking.streamable[tracking.authoredScript(segment.Source, "")] = true
 				}

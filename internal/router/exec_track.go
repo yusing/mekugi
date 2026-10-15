@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -329,7 +331,7 @@ type execPreviewMatch struct {
 	mayWrite      bool
 }
 
-func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []execCommandInput) *execPreviewTrack {
+func newExecPreviewTrack(hub *execTrackHub, thread, turn string, commands []commandanalysis.Command) *execPreviewTrack {
 	if hub == nil || thread == "" || turn == "" {
 		return nil
 	}

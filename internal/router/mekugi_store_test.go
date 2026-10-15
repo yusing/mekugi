@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -53,7 +55,7 @@ func TestMekugiReplayStoreIgnoresLivePreviewStampOnRetry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "source"), []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	observation, observed := captureExecObservation([]execCommandInput{{
+	observation, observed := captureExecObservation([]commandanalysis.Command{{
 		Command: "mv source target", Workdir: workspace, Shell: "bash",
 	}}, false, true, execCaptureEnv{directory: workspace})
 	if !observed || observation == nil || len(observation.Files) == 0 {

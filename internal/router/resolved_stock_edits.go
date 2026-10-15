@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 )
 
@@ -30,7 +32,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 		history.ExecObservation = &copy
 		remaining := slices.Clone(original.Commands)
 		for _, tool := range history.nativeCell.tools {
-			if tool.Tool != nativeExecCommandToolName || !execLocalEnvironment(tool.environmentID) {
+			if tool.Tool != nativeExecCommandToolName || !commandanalysis.LocalEnvironment(tool.environmentID) {
 				continue
 			}
 			command := tool.command
@@ -41,7 +43,7 @@ func resolveStockEdits(history *mekugiHistory, workspace string) {
 				command.Workdir = filepath.Join(workspace, command.Workdir)
 			}
 			command.Workdir = filepath.Clean(command.Workdir)
-			i := slices.IndexFunc(original.Commands, func(c execCommandInput) bool {
+			i := slices.IndexFunc(original.Commands, func(c commandanalysis.Command) bool {
 				return c.Command == command.Command && c.Workdir == command.Workdir && (command.Shell == "" || command.Shell == c.Shell)
 			})
 			if i < 0 {

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/charmbracelet/x/vt"
@@ -62,7 +64,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if strings.Contains(edit, "exec(") {
 				script = edit + "\npython3 -c 'import sys; print(\"test running\", flush=True); assert sys.stdin.readline().strip() == \"continue\"'"
 			}
-			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
+			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			var snapshots *workspaceSnapshots
 			if observation == nil || !ok && !opaque {
 				t.Fatal("missing observation")
@@ -328,7 +330,7 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 			if tc.pending {
 				hub.started = []execTrackCommand{{key: [3]string{"main", "turn", "two"}, script: script, serial: 1}}
 			}
-			tracking := newExecPreviewTrack(hub, tc.thread, tc.turn, []execCommandInput{{Command: script}})
+			tracking := newExecPreviewTrack(hub, tc.thread, tc.turn, []commandanalysis.Command{{Command: script}})
 			defer tracking.close()
 			if tracking != nil {
 				for key, track := range hub.tracks {
@@ -388,7 +390,7 @@ func TestExecPreviewTrackGuardIdentity(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					commands := []execCommandInput{{Command: script}}
+					commands := []commandanalysis.Command{{Command: script}}
 					if scenario == "captured guarded" {
 						commands[0].Command = wrapped
 					}
@@ -434,7 +436,7 @@ func TestAppServerTrackedSkippedEditBeforeHostExit(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "false && sed -i 's/a/b/' skipped; go test ./..."
-	tracking := newExecPreviewTrack(hub.execTrackHub, "main", "turn", []execCommandInput{{Command: script}})
+	tracking := newExecPreviewTrack(hub.execTrackHub, "main", "turn", []commandanalysis.Command{{Command: script}})
 	defer tracking.close()
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
@@ -480,7 +482,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	first := "cat > source.go <<'EOF'\nmiddle\nEOF\nprintf first"
 	second := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q}); await tools.exec_command({cmd:%q,workdir:%q});", first, workspace, second, workspace)
-	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
 	observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
 		t.Fatal("fixture must capture two sequential edits in one exec cell")
@@ -552,7 +554,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			// Two nested calls in one cell with no shell segment report.
 			// Native completion ends only the edit; the sibling test stays pending.
 			source := fmt.Sprintf("await tools.exec_command({cmd:%q,workdir:%q,shell:%q,login:false}); await tools.exec_command({cmd:'go test ./...',workdir:%q});", script, workspace, "/bin/"+shell, workspace)
-			commands, dynamic := stockLiteralExecCommands(source, workspace, shell)
+			commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, shell)
 			observation, ok := captureExecObservation(commands, dynamic, true, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil || len(commands) != 2 {
 				t.Fatal("missing grouped edit observation")
@@ -643,7 +645,7 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	path := filepath.Join(workspace, "source.go")
 	writeTestFile(t, path, "before\n")
 	script := "cat > source.go <<'EOF'\npackage p; var A=1\nEOF\ngofmt -w source.go; go test ./..."
-	observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{directory: workspace})
+	observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{directory: workspace})
 	if !ok || observation == nil {
 		t.Fatal("missing source capture")
 	}
@@ -684,7 +686,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			workspace := t.TempDir()
 			path := filepath.Join(workspace, "source.go")
 			writeTestFile(t, path, "before\n")
-			observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
+			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Shell: "bash", Workdir: workspace}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 			if !ok || observation == nil {
 				t.Fatal("missing capture")
 			}
@@ -772,7 +774,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeTestFile(t, filepath.Join(directory, "source.go"), "before\n")
-		observation, ok := captureExecObservation([]execCommandInput{{Command: script, Shell: "bash", Workdir: directory}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
+		observation, ok := captureExecObservation([]commandanalysis.Command{{Command: script, Shell: "bash", Workdir: directory}}, false, false, execCaptureEnv{previewOnly: true, directory: workspace})
 		if !ok || observation == nil {
 			t.Fatal("missing capture")
 		}

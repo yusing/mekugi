@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 )
@@ -89,7 +90,7 @@ func legacyNativePatch(v legacycall.NativePatch) nativePatchObservation {
 
 func legacyObservation(v legacycall.Observation) execObservation {
 	return execObservation{
-		Commands:       legacySlice(v.Commands, func(v legacycall.Command) execCommandInput { return execCommandInput(v) }),
+		Commands:       legacySlice(v.Commands, func(v legacycall.Command) commandanalysis.Command { return commandanalysis.Command(v) }),
 		CommandClasses: v.CommandClasses,
 		Class:          v.Class,
 		Labels:         v.Labels,

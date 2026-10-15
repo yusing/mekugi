@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
@@ -171,7 +173,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 				source = "for (let i = 0; i < 2; i++) await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + "); " +
 					"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + "});"
 			}
-			commands, dynamic := stockLiteralExecCommands(source, f.workspace, "bash")
+			commands, dynamic := commandanalysis.LiteralExecCommands(source, f.workspace, "bash")
 			observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: f.workspace})
 			history := mekugiHistory{ToolName: "exec", ExecutingThread: f.thread,
 				NativePatches: nativePatchesInCall("exec", source, f.workspace), ExecObservation: observation}
@@ -239,7 +241,7 @@ func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
 	reader := "cat file.txt"
 	source := "await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(writer)) + "}); " +
 		"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(reader)) + "});"
-	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
 	if dynamic || len(commands) != 2 {
 		t.Fatal("fixture must have only literal call sites")
 	}
@@ -270,7 +272,7 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 	writeTestFile(t, script, "from pathlib import Path\nPath('file.txt').write_text('temporary')\n")
 	command := python + " script.py"
 	source := "for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + "});"
-	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
+	commands, dynamic := commandanalysis.LiteralExecCommands(source, workspace, "bash")
 	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
 	if dynamic || len(observation.CommandClasses) != 1 || observation.CommandClasses[0] != execscope.Scoped.String() {
 		t.Fatal("fixture must pre-capture one scoped literal provider")

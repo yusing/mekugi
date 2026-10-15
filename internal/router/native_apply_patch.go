@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -214,7 +216,7 @@ func nativePatchesInCall(name, input, workspace string) []nativePatchObservation
 // used by a top-level expression. It never evaluates JavaScript or takes over
 // the host tool. Dynamic arguments have no trustworthy pre-edit baseline.
 func stockLiteralPatchInputs(source string) []string {
-	if len(source) > maxMekugiScriptBytes {
+	if len(source) > commandanalysis.MaxScriptBytes {
 		return nil
 	}
 	bytes := []byte(source)
@@ -270,7 +272,7 @@ func stockLiteralPatchInputs(source string) []string {
 					current.allowBinding = false
 				}
 			}
-			if args, ok := toolActivityCallArguments(node, bytes, "tools", applyPatchToolName); ok && len(args) == 1 {
+			if args, ok := sourceparse.JavaScriptCallArguments(node, bytes, "tools", applyPatchToolName); ok && len(args) == 1 {
 				if value, ok := sourceparse.JavaScriptValue(args[0], bytes); ok {
 					if patch, ok := value.(string); ok {
 						patches = append(patches, patch)
@@ -295,7 +297,7 @@ func stockLiteralPatchInputs(source string) []string {
 // Decode arriving patch text without requiring the closing quote, call, or
 // envelope. This is display-only and must never feed capture or execution.
 func stockPatchFragment(source string) string {
-	if len(source) > maxMekugiScriptBytes {
+	if len(source) > commandanalysis.MaxScriptBytes {
 		return ""
 	}
 	ranges, _, _ := codeModePreviewSyntax(source)

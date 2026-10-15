@@ -31,7 +31,6 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
-	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -52,13 +51,6 @@ const (
 	maxExecRecordBytes    = 24 << 20
 	maxExecListingEntries = execscope.ListingLimit
 )
-
-// execCommandInput is one stock command as the host will run it.
-type execCommandInput struct {
-	Command string
-	Workdir string
-	Shell   string `json:",omitempty"`
-}
 
 // sharedOriginSuffix follows the managed tools whose scope also held a direct
 // path. One snapshot pair spans the whole command, so the note says the tool
@@ -113,7 +105,7 @@ type execOmission struct {
 // execObservation is the durable pre-call capture of one observed call: a
 // native exec_command, or all literal commands of one exec cell.
 type execObservation struct {
-	Commands []execCommandInput
+	Commands []commandanalysis.Command
 	// CommandClasses retain pre-call classification for repeated literal
 	// occurrences, without reclassifying providers after execution.
 	CommandClasses []string `json:",omitempty"`
@@ -206,34 +198,6 @@ const (
 	execCoverageUnswept = "unswept"
 )
 
-// execCommandArguments decodes stock exec_command arguments and resolves the
-// working directory against the selected metadata directory. A command without
-// its own shell runs in the session shell. A command for another environment
-// runs on a filesystem the router cannot read, so it is not observed.
-func execCommandArguments(arguments, directory, sessionShell string) (execCommandInput, bool) {
-	var args struct {
-		Cmd           string          `json:"cmd"`
-		Workdir       string          `json:"workdir"`
-		Shell         string          `json:"shell"`
-		EnvironmentID json.RawMessage `json:"environment_id"`
-	}
-	if json.Unmarshal([]byte(arguments), &args) != nil || args.Cmd == "" || !execLocalEnvironment(args.EnvironmentID) {
-		return execCommandInput{}, false
-	}
-	workdir := args.Workdir
-	if !filepath.IsAbs(workdir) {
-		if !filepath.IsAbs(directory) {
-			return execCommandInput{}, false
-		}
-		workdir = filepath.Join(directory, workdir)
-	}
-	return execCommandInput{Command: args.Cmd, Workdir: filepath.Clean(workdir), Shell: cmp.Or(args.Shell, sessionShell)}, true
-}
-
-func execLocalEnvironment(environmentID []byte) bool {
-	return len(environmentID) == 0 || string(environmentID) == "null"
-}
-
 // requestSessionShell reads the session shell from the latest environment
 // context in a request. Several environments with different shells leave it
 // unknown.
@@ -303,7 +267,7 @@ type execCaptureEnv struct {
 // captureExecObservation classifies commands and captures their scope before
 // the host runs them. An unobserved call keeps its classification, unless it
 // is neutral, so a writer without a derived scope can still be snapshotted.
-func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
+func captureExecObservation(commands []commandanalysis.Command, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
 	if len(commands) == 0 && !dynamic {
 		return nil, false
 	}
@@ -340,11 +304,11 @@ func captureExecObservation(commands []execCommandInput, dynamic, codeMode bool,
 // outstanding auxiliary workers bounded across requests and threads.
 var execCaptureSlots = make(chan struct{}, 16)
 
-func incompleteExecCapture(commands []execCommandInput, codeMode bool, env execCaptureEnv) *execObservation {
+func incompleteExecCapture(commands []commandanalysis.Command, codeMode bool, env execCaptureEnv) *execObservation {
 	return &execObservation{Commands: commands, CodeMode: codeMode, Class: execscope.Opaque.String(), Reason: "capture deadline"}
 }
 
-func captureExecObservationWithin(commands []execCommandInput, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
+func captureExecObservationWithin(commands []commandanalysis.Command, dynamic, codeMode bool, env execCaptureEnv) (*execObservation, bool) {
 	started := time.Now()
 	if len(commands) == 0 && !dynamic {
 		return nil, false
@@ -1651,144 +1615,4 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, responses.StringField(first.history.UpstreamItem, "id"))
 	}
 	return nil
-}
-
-// stockLiteralExecCommands extracts literal tools.exec_command calls from a
-// exec cell. Any other reference to the command tools, including
-// write_stdin input that can drive a started process, makes the cell dynamic.
-func stockLiteralExecCommands(source, directory, sessionShell string) (commands []execCommandInput, dynamic bool) {
-	if len(source) > maxMekugiScriptBytes || !strings.Contains(source, "tools") {
-		return nil, false
-	}
-	bytes := []byte(source)
-	tree, err := sourceparse.Parse(bytes, sourceparse.JavaScript, nil)
-	if err != nil || tree == nil {
-		return nil, true
-	}
-	defer tree.Close()
-	root := tree.RootNode()
-	if root.HasError() {
-		return nil, strings.Contains(source, nativeExecCommandToolName) || strings.Contains(source, "write_stdin")
-	}
-	handled := make(map[uintptr]bool)
-	stack := []*sitter.Node{root}
-	for len(stack) != 0 {
-		node := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		if args, ok := toolActivityCallArguments(node, bytes, "tools", nativeExecCommandToolName); ok {
-			function := node.ChildByFieldName("function")
-			handled[function.Id()] = true
-			command, literal := execLiteralCommand(args, bytes, directory, sessionShell)
-			if !literal {
-				dynamic = true
-			} else {
-				commands = append(commands, command)
-			}
-			if len(commands) > 32 {
-				return nil, true
-			}
-		}
-		if args, ok := toolActivityCallArguments(node, bytes, "tools", "write_stdin"); ok && execPollOnly(args, bytes) {
-			handled[node.ChildByFieldName("function").Id()] = true
-		}
-		switch node.Kind() {
-		case "member_expression":
-			if !handled[node.Id()] && (toolActivityMemberPath(node, bytes, "tools", nativeExecCommandToolName) ||
-				toolActivityMemberPath(node, bytes, "tools", "write_stdin")) {
-				dynamic = true
-			}
-		case "subscript_expression":
-			if object := node.ChildByFieldName("object"); object != nil && object.Kind() == "identifier" && object.Utf8Text(bytes) == "tools" {
-				dynamic = true
-			}
-		case "optional_chain":
-			// tools?.exec_command is a call the literal matcher does not read.
-			if parent := node.Parent(); parent != nil && parent.Kind() == "member_expression" {
-				if object := parent.ChildByFieldName("object"); object != nil && object.Utf8Text(bytes) == "tools" {
-					dynamic = true
-				}
-			}
-		case "identifier", "shorthand_property_identifier", "shorthand_property_identifier_pattern":
-			// A bare tools value can be aliased or passed away, after which its
-			// command calls are not literal. Global objects and evaluated code
-			// reach tools without naming it.
-			switch node.Utf8Text(bytes) {
-			case "tools":
-				parent := node.Parent()
-				if parent == nil || parent.Kind() != "member_expression" || parent.ChildByFieldName("object").Id() != node.Id() {
-					dynamic = true
-				}
-			case "globalThis", "self", "window", "global", "eval", "Function":
-				dynamic = true
-			}
-		case "this":
-			dynamic = true
-		}
-		for index := int(node.NamedChildCount()) - 1; index >= 0; index-- {
-			stack = append(stack, node.NamedChild(uint(index)))
-		}
-	}
-	return commands, dynamic
-}
-
-// Poll metadata may depend on a prior result; only input bytes determine whether
-// this call can drive a writer. Spreads, prototypes and computed keys stay open.
-func execPollOnly(args []*sitter.Node, source []byte) bool {
-	if len(args) != 1 || args[0].Kind() != "object" {
-		return false
-	}
-	seen := make(map[string]bool)
-	for i := range args[0].NamedChildCount() {
-		pair := args[0].NamedChild(uint(i))
-		key := ""
-		if pair.Kind() == "shorthand_property_identifier" {
-			key = pair.Utf8Text(source)
-		} else if pair.Kind() == "pair" {
-			node := pair.ChildByFieldName("key")
-			switch node.Kind() {
-			case "property_identifier":
-				key = node.Utf8Text(source)
-			case "string":
-				key, _ = sourceparse.JavaScriptString(node.Utf8Text(source))
-			}
-		}
-		if key == "" || key == "__proto__" || strings.ContainsRune(key, '\\') || seen[key] {
-			return false
-		}
-		seen[key] = true
-		if key == "chars" {
-			value, ok := sourceparse.JavaScriptValue(pair.ChildByFieldName("value"), source)
-			if !ok || value != "" {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func execLiteralCommand(args []*sitter.Node, source []byte, directory, sessionShell string) (execCommandInput, bool) {
-	if len(args) != 1 {
-		return execCommandInput{}, false
-	}
-	value, ok := sourceparse.JavaScriptValue(args[0], source)
-	object, isObject := value.(map[string]any)
-	if !ok || !isObject {
-		return execCommandInput{}, false
-	}
-	arguments := make(map[string]string, 3)
-	if _, remote := object["environment_id"]; remote {
-		return execCommandInput{}, false
-	}
-	for _, key := range []string{"cmd", "workdir", "shell"} {
-		field, present := object[key]
-		if !present {
-			continue
-		}
-		text, isText := field.(string)
-		if !isText {
-			return execCommandInput{}, false
-		}
-		arguments[key] = text
-	}
-	return execCommandArguments(string(responses.MustMarshalJSON(arguments)), directory, sessionShell)
 }

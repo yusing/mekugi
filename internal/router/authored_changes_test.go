@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -21,7 +23,7 @@ func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {
 		t.Run(command, func(t *testing.T) {
 			workspace := t.TempDir()
 			// Such commands are bounded only by a workspace snapshot.
-			observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+			observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
 			if observed || observation != nil && len(observation.Files) != 0 {
 				t.Fatalf("unsupported output acquired review evidence: %+v", observation)
 			}
@@ -148,7 +150,7 @@ func TestAuthoredChangesPermissionRootsDoNotBecomeEditScope(t *testing.T) {
 	workspace := t.TempDir()
 	writeTestFile(t, filepath.Join(workspace, "output.js"), "generated\n")
 	command := `node --permission --allow-fs-write=. -e 'require("unknown-generator")()'`
-	if observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace}); observed || observation != nil && len(observation.Files) != 0 {
+	if observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace}); observed || observation != nil && len(observation.Files) != 0 {
 		t.Fatal("permissions acquired an authored tree scope")
 	}
 }

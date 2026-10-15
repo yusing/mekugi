@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -16,7 +18,7 @@ import (
 func execFixerTestCapture(t *testing.T, root, workdir, command string) *execObservation {
 	t.Helper()
 	observation, ok := captureExecObservation(
-		[]execCommandInput{{Command: command, Workdir: workdir, Shell: "bash"}},
+		[]commandanalysis.Command{{Command: command, Workdir: workdir, Shell: "bash"}},
 		false, false, execCaptureEnv{previewOnly: true, directory: root},
 	)
 	if !ok {

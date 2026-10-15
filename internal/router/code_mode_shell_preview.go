@@ -6,6 +6,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -23,7 +25,7 @@ type codeModeShellCall struct {
 // only. This scanner does not validate or execute JS; completed calls still
 // use the syntax-tree recognizer for operation evidence.
 func codeModeShellFragments(source string) []codeModeShellCall {
-	if len(source) > maxMekugiScriptBytes {
+	if len(source) > commandanalysis.MaxScriptBytes {
 		return nil
 	}
 	regexRanges, staticObjects, callees := codeModePreviewSyntax(source)
@@ -124,7 +126,7 @@ func codeModePreviewSyntax(source string) ([]codeModeSourceRange, map[int]codeMo
 			ranges = append(ranges, codeModeSourceRange{int(node.StartByte()), int(node.EndByte())})
 			return
 		}
-		if node.Kind() == "member_expression" && toolActivityMemberPath(node, bytes, "tools", nativeExecCommandToolName) {
+		if node.Kind() == "member_expression" && sourceparse.JavaScriptMemberPath(node, bytes, "tools", nativeExecCommandToolName) {
 			callees[int(node.StartByte())] = true
 		}
 		if node.Kind() == "object" {

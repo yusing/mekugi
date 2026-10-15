@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 )
 
@@ -23,7 +25,7 @@ func execProducerCommand(t *testing.T, name string) string {
 func execProducerCapture(t *testing.T, root, command string) *execObservation {
 	t.Helper()
 	observation, ok := captureExecObservation(
-		[]execCommandInput{{Command: command, Workdir: root, Shell: "bash"}},
+		[]commandanalysis.Command{{Command: command, Workdir: root, Shell: "bash"}},
 		false, false, execCaptureEnv{directory: root},
 	)
 	if !ok {
@@ -158,7 +160,7 @@ func TestExecRGPreProducerIsOpaqueWithoutExecutingHook(t *testing.T) {
 	if plan.Class != execscope.Opaque {
 		t.Fatalf("hostile producer class = %v (%s), want opaque", plan.Class, plan.Reason)
 	}
-	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})
+	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root})
 	if observed || observation != nil && len(observation.Files) != 0 {
 		t.Fatal("unsupported producer acquired change evidence")
 	}

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -94,7 +96,7 @@ func TestLiveDiffRunningEditingToolAttribution(t *testing.T) {
 			{"python3 - <<'PY'\nopen('target.txt','w').write('edited\\n')\nPY\n", "python3"},
 		} {
 			workspace := t.TempDir()
-			observation, ok := captureExecObservation([]execCommandInput{{Command: tc.command, Workdir: workspace, Shell: "bash"}}, false, codeMode, execCaptureEnv{directory: workspace})
+			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: tc.command, Workdir: workspace, Shell: "bash"}}, false, codeMode, execCaptureEnv{directory: workspace})
 			if !ok || observation == nil {
 				t.Fatal("missing command observation")
 			}

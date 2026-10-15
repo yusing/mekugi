@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -37,8 +39,8 @@ func (u *appServerUI) captureShellEdit(command string) *appServerShellEdit {
 	}
 	t := &mekugiResponseTransform{ctx: ctx, proxy: u.proxy, directory: u.session.cwd,
 		threadID: u.thread, shellThreadID: u.thread, shellTurnID: u.turn}
-	input := execCommandInput{Command: command, Workdir: u.session.cwd, Shell: u.shellEdits.shell}
-	observation, observed := t.snapshotExecObservation(captureExecObservation([]execCommandInput{input}, false, false, t.execCaptureEnvironment(nil)))
+	input := commandanalysis.Command{Command: command, Workdir: u.session.cwd, Shell: u.shellEdits.shell}
+	observation, observed := t.snapshotExecObservation(captureExecObservation([]commandanalysis.Command{input}, false, false, t.execCaptureEnvironment(nil)))
 	if !observed {
 		return nil
 	}

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -78,7 +79,7 @@ func (f *nativeTraceFixture) end(thread, cell string) {
 	f.event(thread, map[string]any{"type": "code_cell_ended", "runtime_cell_id": cell, "status": "completed"})
 }
 
-func observedCommands(commands ...execCommandInput) *mekugiHistory {
+func observedCommands(commands ...commandanalysis.Command) *mekugiHistory {
 	return &mekugiHistory{ExecObservation: &execObservation{Commands: commands, CodeMode: true}}
 }
 
@@ -99,7 +100,7 @@ func TestNativeTraceConfirmsEachToolWithoutPrintedOutput(t *testing.T) {
 	if !ok || patch.Status != "completed" || patch.CallID != "patch" {
 		t.Fatalf("patch receipt = %+v, %t", patch, ok)
 	}
-	results, ok := cell.commands(observedCommands(execCommandInput{Command: "printf changed > target"}), "/work")
+	results, ok := cell.commands(observedCommands(commandanalysis.Command{Command: "printf changed > target"}), "/work")
 	if !ok || len(results) != 1 || results[0].ExitCode == nil || *results[0].ExitCode != 0 {
 		t.Fatalf("command receipts = %+v, %t", results, ok)
 	}
@@ -135,7 +136,7 @@ func TestNativeTraceFailuresAndYieldAreNotSuccess(t *testing.T) {
 	if patch, ok := cell.patch("bad input", 0); !ok || patch.Status != "failed" {
 		t.Fatal("caught patch failure lost")
 	}
-	commands := observedCommands(execCommandInput{Command: "exit 7"}, execCommandInput{Command: "sleep 1"})
+	commands := observedCommands(commandanalysis.Command{Command: "exit 7"}, commandanalysis.Command{Command: "sleep 1"})
 	if _, ok := cell.commands(commands, "/work"); ok {
 		t.Fatal("pending process confirmed")
 	}
@@ -198,7 +199,7 @@ func TestNativeTraceRuntimeExitSurvivesYieldedDispatchResult(t *testing.T) {
 	f.result("t", "cmd", "completed", map[string]any{"session_id": 123})
 	f.end("t", "1")
 	trace := &nativeToolTrace{directory: f.root}
-	results, ok := trace.readCell("t", "outer", "source").commands(observedCommands(execCommandInput{Command: "exit 3"}), "/work")
+	results, ok := trace.readCell("t", "outer", "source").commands(observedCommands(commandanalysis.Command{Command: "exit 3"}), "/work")
 	if !ok || len(results) != 1 || results[0].Status != "failed" || *results[0].ExitCode != 3 {
 		t.Fatalf("lost process exit: %+v, %t", results, ok)
 	}
@@ -245,9 +246,9 @@ func TestNativeTraceCommandsMatchAuthoredShellCalls(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			history := &mekugiHistory{Script: source, CarrierPayload: `const command = "printf status";`,
-				ExecObservation: &execObservation{Commands: []execCommandInput{{Command: edit}}, CodeMode: true}}
+				ExecObservation: &execObservation{Commands: []commandanalysis.Command{{Command: edit}}, CodeMode: true}}
 			if tc.authored {
-				history.ExecObservation.Commands = append(history.ExecObservation.Commands, execCommandInput{Command: diagnostic})
+				history.ExecObservation.Commands = append(history.ExecObservation.Commands, commandanalysis.Command{Command: diagnostic})
 			}
 			f := newNativeTraceFixture(t)
 			f.start("t", "1", "cell", source)

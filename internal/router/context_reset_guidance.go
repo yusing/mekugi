@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/yusing/mekugi/modules/fileread/read"
@@ -252,13 +254,13 @@ func collectResetGuidance(ctx context.Context, items []map[string]jsonv1.RawMess
 		for _, skill := range retainedSkills[id] {
 			addSkill(skill, kind, name)
 		}
-		var commands []execCommandInput
+		var commands []commandanalysis.Command
 		switch {
 		case kind == "custom_tool_call" && name == "exec":
-			commands, _ = stockLiteralExecCommands(responses.StringField(item, "input"), workspace, "")
+			commands, _ = commandanalysis.LiteralExecCommands(responses.StringField(item, "input"), workspace, "")
 		case kind == "function_call" && name == nativeExecCommandToolName:
-			if command, ok := execCommandArguments(responses.StringField(item, "arguments"), workspace, ""); ok {
-				commands = []execCommandInput{command}
+			if command, ok := commandanalysis.ExecCommandArguments(responses.StringField(item, "arguments"), workspace, ""); ok {
+				commands = []commandanalysis.Command{command}
 			}
 		}
 		for _, command := range commands {
@@ -382,7 +384,7 @@ func collectResetGuidance(ctx context.Context, items []map[string]jsonv1.RawMess
 
 // Only literal simple top-level reads qualify. Ranges select a source, not
 // retained lines; whole-source snapshots need no range accumulation or merging.
-func resetGuidanceCommands(command execCommandInput, home string) [][]string {
+func resetGuidanceCommands(command commandanalysis.Command, home string) [][]string {
 	program, err := syntax.NewParser().Parse(strings.NewReader(command.Command), "")
 	if err != nil {
 		return nil
@@ -413,7 +415,7 @@ func resetGuidanceCommands(command execCommandInput, home string) [][]string {
 	return commands
 }
 
-func resetGuidanceReads(command execCommandInput, home string) []string {
+func resetGuidanceReads(command commandanalysis.Command, home string) []string {
 	var sources []string
 	for _, argv := range resetGuidanceCommands(command, home) {
 		var paths []string

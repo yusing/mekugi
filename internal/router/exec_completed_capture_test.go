@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -19,12 +21,12 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			workspace := u.session.cwd
 			path := filepath.Join(workspace, "a.go")
 			writeTestFile(t, path, "before\n")
-			commands := []execCommandInput{{Command: "python3 z.py; read -r answer", Workdir: workspace}}
+			commands := []commandanalysis.Command{{Command: "python3 z.py; read -r answer", Workdir: workspace}}
 			if scenario == "sequential hosts" {
 				commands[0].Command = "printf ready; printf again; python3 z.py; read -r answer"
 			}
 			if scenario == "parallel writer" || scenario == "sequential hosts" {
-				commands = append(commands, execCommandInput{Command: "python3 a.py", Workdir: workspace})
+				commands = append(commands, commandanalysis.Command{Command: "python3 a.py", Workdir: workspace})
 			}
 			tracking := newExecPreviewTrack(hub.execTrackHub, "main", "turn", commands)
 			defer tracking.close()

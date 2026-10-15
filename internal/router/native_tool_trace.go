@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 )
 
 // Native tracing is an observation channel, never a tool executor. Only the
@@ -57,7 +59,7 @@ type nativeToolResult struct {
 type nativeTraceTool struct {
 	nativeToolResult
 	input         string
-	command       execCommandInput
+	command       commandanalysis.Command
 	environmentID jsontext.Value
 	session       string
 	terminal      bool
@@ -292,7 +294,7 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 			if err := json.Unmarshal([]byte(invocation.Payload.Arguments), &args); err != nil {
 				return err
 			}
-			tool.command = execCommandInput{Command: args.Command, Workdir: args.Workdir, Shell: args.Shell}
+			tool.command = commandanalysis.Command{Command: args.Command, Workdir: args.Workdir, Shell: args.Shell}
 			tool.environmentID = args.EnvironmentID
 			// Optional display metadata must not invalidate execution evidence.
 			if len(args.TimeoutMS) > 0 {
@@ -551,7 +553,7 @@ func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]
 		return nil, false
 	}
 	commands := history.ExecObservation.Commands
-	normalize := func(command execCommandInput) execCommandInput {
+	normalize := func(command commandanalysis.Command) commandanalysis.Command {
 		if command.Workdir == "" {
 			command.Workdir = workspace
 		} else if !filepath.IsAbs(command.Workdir) {
@@ -560,7 +562,7 @@ func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]
 		command.Workdir = filepath.Clean(command.Workdir)
 		return command
 	}
-	want := make(map[execCommandInput]int)
+	want := make(map[commandanalysis.Command]int)
 	for _, command := range commands {
 		want[normalize(command)]++
 	}
@@ -569,7 +571,7 @@ func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]
 		if tool.Tool != "exec_command" {
 			continue
 		}
-		if !execLocalEnvironment(tool.environmentID) {
+		if !commandanalysis.LocalEnvironment(tool.environmentID) {
 			return nil, false
 		}
 		command := normalize(tool.command)

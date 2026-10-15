@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
@@ -58,9 +60,9 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 				t.Fatal("literal patch and neutral reader unnecessarily inventoried the workspace")
 			}
 			observation := before.ExecObservation
-			wantCommand := execCommandInput{Command: tc.command, Workdir: workspace, Shell: "bash"}
+			wantCommand := commandanalysis.Command{Command: tc.command, Workdir: workspace, Shell: "bash"}
 			if observation == nil || observation.Class != execscope.Neutral.String() ||
-				!slices.Equal(observation.Commands, []execCommandInput{wantCommand}) ||
+				!slices.Equal(observation.Commands, []commandanalysis.Command{wantCommand}) ||
 				!slices.Equal(observation.commandClasses(), []string{execscope.Neutral.String()}) {
 				t.Fatalf("pre-call neutral command/default shell not retained: %+v", observation)
 			}

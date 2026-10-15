@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
@@ -36,7 +38,7 @@ func TestExecProviderAliasesRecursionAndPreviewPermissions(t *testing.T) {
 			root := t.TempDir()
 			writeTestFile(t, filepath.Join(root, test.target), "before\n")
 			writeTestFile(t, filepath.Join(root, "edit.ts"), "unknown();\n")
-			observation, ok := captureExecObservation([]execCommandInput{{Command: test.command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root, previewOnly: strings.HasSuffix(test.name, "permission")})
+			observation, ok := captureExecObservation([]commandanalysis.Command{{Command: test.command, Workdir: root, Shell: "bash"}}, false, false, execCaptureEnv{directory: root, previewOnly: strings.HasSuffix(test.name, "permission")})
 			if !ok || observation.Class != execscope.Scoped.String() {
 				t.Fatalf("scope: %+v", observation)
 			}

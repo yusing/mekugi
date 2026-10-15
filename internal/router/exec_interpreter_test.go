@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -240,7 +242,7 @@ func TestRTKProxyPythonCaptureKeepsBaselineAndDirectOrigin(t *testing.T) {
 Path("target.txt").write_text("after\n")
 `)
 	command := "env -u BASH_ENV rtk --ultra-compact --skip-env proxy --skip-env --ultra-compact -- python3 edit.py"
-	observation, observed := captureExecObservation([]execCommandInput{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
+	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workspace, Shell: "bash"}}, false, false, execCaptureEnv{directory: workspace})
 	if !observed || observation == nil || observation.Class != execscope.Scoped.String() {
 		t.Fatalf("RTK proxy interpreter capture = %+v observed=%v", observation, observed)
 	}
@@ -314,7 +316,7 @@ func captureInterpreterTestObservation(t *testing.T, workspace, command string) 
 
 func captureInterpreterTestObservationAnyClass(t *testing.T, workspace, command string) *execObservation {
 	t.Helper()
-	observation, observed := captureExecObservation([]execCommandInput{{
+	observation, observed := captureExecObservation([]commandanalysis.Command{{
 		Command: command, Workdir: workspace, Shell: "bash",
 	}}, false, false, execCaptureEnv{directory: workspace})
 	if !observed || observation == nil {

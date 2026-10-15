@@ -50,7 +50,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Session publication, namespaces, leases, and retention | `./modules/sessionhistory/...`, plus affected router persistence/fork/recovery integration |
 | Command-segment report transport and retained reports | `./modules/commandsegments/...`, plus router `ExecTrack`, `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |
 | Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus router `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
-| Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
+| Shell/source execution-scope classification | `./libraries/commandanalysis/... ./libraries/sourceanalysis/sourceparse ./internal/execscope`, plus router observation, native trace, preview, and display tests |
 | Provider credentials and model metadata | `./providers/grok/... ./providers/opencode/...`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, and accounting consumers |
 | Provider request encoding and stream normalization | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router Grok/OpenCode integration and capture tests |
 | Reserved MCP transport | `./internal/router -run '^TestMCP'` |

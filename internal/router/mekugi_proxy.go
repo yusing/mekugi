@@ -16,11 +16,7 @@ import (
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-const (
-	applyPatchToolName = "apply_patch"
-
-	maxMekugiScriptBytes = 1 << 20
-)
+const applyPatchToolName = "apply_patch"
 
 type mekugiProxy struct {
 	registry         *toolRegistry

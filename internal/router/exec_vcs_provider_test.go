@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
@@ -267,7 +269,7 @@ func captureExecVCSTestCommand(t *testing.T, repo, command string) *execObservat
 
 func captureExecVCSTestCommandAt(t *testing.T, repo, workdir, command string) *execObservation {
 	t.Helper()
-	observation, observed := captureExecObservation([]execCommandInput{{
+	observation, observed := captureExecObservation([]commandanalysis.Command{{
 		Command: command, Workdir: workdir, Shell: "bash",
 	}}, false, false, execCaptureEnv{directory: repo})
 	if !observed || observation == nil {
@@ -313,7 +315,7 @@ func TestVCSFallbackScopesKeepManagedProvenance(t *testing.T) {
 	for _, command := range []string{"git rm tracked.txt", "git mv tracked.txt moved.txt", "svn delete tracked.txt", "svn move tracked.txt moved.txt"} {
 		t.Run(command, func(t *testing.T) {
 			repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before\n"})
-			observation, captured := captureExecObservation([]execCommandInput{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+			observation, captured := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
 			if !captured {
 				t.Fatal("fallback VCS scope missing")
 			}

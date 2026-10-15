@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/internal/execscope"
@@ -212,7 +214,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 		}
 		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{f.workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
-			ExecObservation: &execObservation{Commands: []execCommandInput{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
+			ExecObservation: &execObservation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
 	finalize := func(ref string, history mekugiHistory) mekugiHistory {
 		if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, output: responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
@@ -319,7 +321,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 		}
 		proxy.execWindows.open(&execWindow{ref: ref, roots: []string{workspace}})
 		return mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread,
-			ExecObservation: &execObservation{Commands: []execCommandInput{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{workspace}, Tree: tree}}
+			ExecObservation: &execObservation{Commands: []commandanalysis.Command{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{workspace}, Tree: tree}}
 	}
 	outer, nested := observe("outer", f.workspace), observe("nested", inner)
 	writeTestFile(t, filepath.Join(f.workspace, "README"), "two\n")
