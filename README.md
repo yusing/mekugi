@@ -165,7 +165,7 @@ workspace picker. Type to search, Tab for all workspaces, Enter to resume. Insid
 idle session, `/resume` opens the picker or `/resume THREAD_ID` switches directly. Saved
 model/effort/tier, layout, roster, child history, and retained Diff return; explicit
 `-m`/`-c` overrides named settings. Drafts, selections, filters, and scroll positions do
-not return. UI histories above 16 MiB cannot resume. Third-party `exec resume`/`exec
+not return. Third-party `exec resume`/`exec
 fork` uses the mode's default model unless given `-m`. See [resume
 details](doc/spec/native_ui.md).
 
