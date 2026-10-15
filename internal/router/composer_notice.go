@@ -30,14 +30,10 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 
 // stateLabel is the session state followed by any composer notice.
 func (u *appServerUI) stateLabel(now time.Time) string {
-	label := u.sessionLabel(now)
-	if u.agents != nil && u.agents.only {
-		if label == "" {
-			label = "Input: Main"
-		} else {
-			label = "Input: Main · " + label
-		}
+	if u.composerReadOnly() {
+		return "Read-only"
 	}
+	label := u.sessionLabel(now)
 	if u.approvals.open {
 		label = "approving · turn waiting"
 	} else if u.questions.active != nil {
@@ -79,6 +75,9 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 // Composer errors stay presentation-only. Model errors retain their transcript
 // entries; both surfaces use the same preview and full error dialog.
 func (u *appServerUI) composerErrorText() string {
+	if u.composerReadOnly() {
+		return ""
+	}
 	var parts []string
 	if u.alert && u.status != "" {
 		parts = append(parts, u.status)

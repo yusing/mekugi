@@ -311,6 +311,11 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		return true, fmt.Errorf("thread settings: %w", err)
 	}
 	if event.ThreadID != u.thread {
+		if u.session.paths != nil && event.ThreadID != "" {
+			agent := u.session.agent(u.session.path(event.ThreadID))
+			agent.settings = nativeResumeEvidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
+			agent.settingsLive = true
+		}
 		return true, nil
 	}
 	if event.Settings.Provider != "" {

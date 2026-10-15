@@ -208,6 +208,9 @@ func (u *terminalUI) key(key byte) error {
 		case 'o':
 			return u.main.loadOlderActivity()
 		case 'q':
+			if u.main != nil && u.main.composerReadOnly() {
+				u.selectNativePane(0)
+			}
 			if u.main != nil && !u.main.openApprovals() {
 				u.main.openQuestions()
 			}
@@ -341,6 +344,25 @@ func (u *terminalUI) send(s string) error {
 	if s != "\x1b" && u.selectionKey(s) {
 		return nil
 	}
+	if s == "\x1b" && u.main != nil && u.main.historyLoading != nil {
+		return u.main.cancelOlderActivity()
+	}
+	if u.main != nil && u.focus == 0 && u.main.composerReadOnly() {
+		transcript := u.main.transcriptView()
+		switch s {
+		case "\x05":
+			transcript.toggleExpansion()
+		case "\x1b[5~":
+			transcript.scrollKey('b')
+		case "\x1b[6~":
+			transcript.scrollKey(' ')
+		case "\x1b":
+			if !u.selectionKey(s) {
+				transcript.follow()
+			}
+		}
+		return nil
+	}
 	if u.main != nil && u.focus == 0 && u.main.statusPanel != nil {
 		if u.selection != nil && !u.selection.dragging {
 			u.selection = nil
@@ -378,10 +400,6 @@ func (u *terminalUI) send(s string) error {
 			u.selection = nil
 			return err
 		}
-	}
-
-	if s == "\x1b" && u.main != nil && u.main.historyLoading != nil {
-		return u.main.cancelOlderActivity()
 	}
 
 	if s == "\x1b" && u.main != nil && !u.main.keybindings {
@@ -491,7 +509,7 @@ func (u *terminalUI) mouse(s string) error {
 			}
 		}
 	}
-	if u.main != nil && u.main.statusPanel != nil && u.layout.codex.contains(x, y) {
+	if u.main != nil && !u.main.composerReadOnly() && u.main.statusPanel != nil && u.layout.codex.contains(x, y) {
 		if u.selectionMouse(button, x, y, release) {
 			return nil
 		}
@@ -507,7 +525,7 @@ func (u *terminalUI) mouse(s string) error {
 		}
 		return nil
 	}
-	if u.main != nil && u.main.resumePicker != nil && u.layout.codex.contains(x, y) {
+	if u.main != nil && !u.main.composerReadOnly() && u.main.resumePicker != nil && u.layout.codex.contains(x, y) {
 		if release {
 			return nil
 		}

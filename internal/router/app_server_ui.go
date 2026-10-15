@@ -913,6 +913,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 }
 
 func (u *appServerUI) key(key byte) (bool, error) {
+	if u.composerReadOnly() {
+		return false, nil
+	}
 	if u.paste {
 		u.pasteByte(key)
 		return false, nil
@@ -1253,16 +1256,17 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
 	transcript := u.transcriptView()
+	readOnly := u.composerReadOnly()
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
 	u.picker.rect = terminalRect{}
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	u.questions.rect = terminalRect{}
-	if u.statusPanel != nil {
+	if !readOnly && u.statusPanel != nil {
 		return u.statusPanelFrame(width, height), terminalRect{}
 	}
-	if u.resumePicker != nil {
+	if !readOnly && u.resumePicker != nil {
 		return u.resumePickerFrame(width, height), terminalRect{}
 	}
 	if u.pickerVisible() && u.picker.modal != "" {
@@ -1291,6 +1295,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			break
 		}
 	}
+	if readOnly {
+		draft = []string{""}
+		caret.Row, caret.Column = 0, 0
+	}
 	if dock == 0 && len(transcript.entries) == 0 && height >= 6 && height > min(6, len(draft))+borderRows && !u.pickerVisible() {
 		height--
 		defer func() {
@@ -1311,24 +1319,31 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 
 	room := max(0, height-len(draft)-borderRows)
 	var pending []string
-	approvalRows := u.approvalRows(width, max(1, min(height/2, room)))
+	var approvalRows, questionRows, btwRows []string
+	if !readOnly {
+		approvalRows = u.approvalRows(width, max(1, min(height/2, room)))
+	}
 	if len(approvalRows) > 0 {
 		dock = 0
 		room -= len(approvalRows)
 	}
-	questionRows := u.questionRows(width, max(1, min(height/2, room)))
+	if !readOnly {
+		questionRows = u.questionRows(width, max(1, min(height/2, room)))
+	}
 	if len(questionRows) > 0 {
 		dock = 0
 		room -= len(questionRows)
 	}
-	btwRows := u.btwRows(width, max(0, min(height/2, room)))
+	if !readOnly {
+		btwRows = u.btwRows(width, max(0, min(height/2, room)))
+	}
 	if len(btwRows) > 0 {
 		dock = 0
 		room -= len(btwRows)
 	}
 	if u.pickerVisible() {
 		dock = 0
-	} else {
+	} else if !readOnly {
 		// Waiting input yields to the transcript beyond half the room.
 		pending = u.pendingInputPreview(width)
 		pending = pending[:min(len(pending), room/2)]
@@ -1353,7 +1368,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		for row := range frame {
 			frame[row] = activityui.AttachCopy(frame[row], transcript.copyRows[row])
 		}
-		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
+		if !readOnly && u.keybindings && (u.shell == nil || u.shell.focus == 0) {
 			u.mainContentPainted = false
 			frame = renderNativeKeybindings(width, room)
 		}
@@ -1376,10 +1391,10 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	frame = append(frame, questionRows...)
 	frame = append(frame, approvalRows...)
 	frame = append(frame, make([]string, gap)...)
-	if u.questions.active != nil {
+	if !readOnly && u.questions.active != nil {
 		u.questions.painted = true
 	}
-	if u.approvals.open {
+	if !readOnly && u.approvals.open {
 		u.approvals.painted = true
 	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
@@ -1387,13 +1402,13 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.
 	// Colors: xai-grok-pager-render/src/theme/oscura.rs, same revision.
 	border := "\x1b[38;2;52;48;72m"
-	if u.currentQuestion() != nil || u.approvals.open {
+	if !readOnly && (u.currentQuestion() != nil || u.approvals.open) {
 		border = u.view.painter.Theme.Accent()
-	} else if u.shellMode() {
+	} else if !readOnly && u.shellMode() {
 		border = activityui.Red
 	}
 	const inputColor = "\x1b[39m"
-	focused := u.shell == nil || u.shell.focus == 0
+	focused := !readOnly && (u.shell == nil || u.shell.focus == 0)
 	if boxed {
 		frame = append(frame, u.composerNoticeBorder(width, len(frame), border))
 	}
@@ -1426,16 +1441,34 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		}
 	}
 	if boxed {
-		model := u.model
-		if model != "" && u.reasoningEffort != "" {
-			model += " (" + u.reasoningEffort + ")"
+		model, effort, tier := u.model, u.reasoningEffort, u.displayServiceTier()
+		agent := u.session.agent(u.transcriptCaller())
+		if readOnly {
+			model, effort, tier = "", "", ""
+			if agent != nil {
+				model, effort = agent.settings.Model, agent.settings.Effort
+				if agent.settings.TierKnown {
+					tier = cmp.Or(agent.settings.Tier, "default")
+				}
+				thread := ""
+				for id, path := range u.session.paths {
+					if path == agent.Name {
+						thread = id
+						break
+					}
+				}
+				tier = effectiveServiceTier(model, tier, u.serviceTiers, thread)
+			}
 		}
-		if tier := u.displayServiceTier(); tier != "" {
+		if model != "" && effort != "" {
+			model += " (" + effort + ")"
+		}
+		if tier != "" {
 			model += " · " + tier
 		}
 		model = strings.ReplaceAll(livediff.Safe(model, false), "\n", " ")
 		context := contextWindowLabel(activityPaneAgent{})
-		if agent := u.session.agent("/root"); agent != nil {
+		if agent != nil {
 			context = contextWindowLabel(*agent)
 			if throughput := outputThroughputLabel(agent.OutputThroughput); throughput != "" {
 				context += " • " + throughput

@@ -265,8 +265,11 @@ full width; selecting Diff (2) opens a right pane, and selecting it again closes
 the pane and restores full width. Selecting Main (1) returns to its transcript.
 Clicking a child in Agents switches only the displayed transcript, using the
 same full-message renderer; input, settings, questions and approvals remain
-owned by Main. The composer explicitly labels Main as the input destination
-while a child is displayed. A roster (3) below them fits its
+owned by Main. While a child is displayed, the composer is read-only: Main's
+draft is preserved but hidden, and typing, pasting, submission, settings shortcuts
+and keyboard interruption are disabled. Returning to Main restores editing.
+Transcript navigation and copying remain available; referencing selected text
+returns to Main before inserting the reference. A roster (3) below them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
 agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
 before the status bar when terminal height permits. Collapsed rows place activity directly after the name
@@ -980,7 +983,10 @@ Composer feedback stays user-only; model-visible error evidence
 keeps its red transcript display and details dialog.
 `/quit` exits only while idle;
 unknown commands are reported, never sent as prompts. The
-composer border carries turn state, the model, and Main's context usage; Main's title bar carries the
+composer border carries turn state in Main and a read-only label in child views.
+Its bottom caption follows the displayed thread's model, effort, service tier,
+context usage and output rate; unavailable child settings do not borrow Main's values.
+Main's title bar carries the
 session title, scroll position and unseen-message count. History
 beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.

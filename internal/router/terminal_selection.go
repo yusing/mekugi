@@ -310,6 +310,9 @@ func (u *terminalUI) selectionAction(action byte) {
 	switch action {
 	case 'r':
 		description, source := s.mentionDescription()
+		if u.main.composerReadOnly() {
+			u.selectNativePane(0)
+		}
 		u.main.insertSelection(description, s.text(), source)
 		u.main.refreshPicker()
 		u.main.run = runNone
@@ -472,7 +475,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			questions, snippets = nil, nil
 		}
 	}
-	if u.main.statusPanel != nil {
+	if !u.main.composerReadOnly() && u.main.statusPanel != nil {
 		rect, mention = u.main.statusPanel.rect, "status"
 		rect.x += pane.x
 		rect.y += pane.y

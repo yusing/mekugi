@@ -115,7 +115,9 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("default dock missing")
 			}
+			u.agents.only = false
 			appServerTestKeys(t, u, "/live\r")
+			u.agents.only = caller != "/root"
 			frame := paint()
 			if strings.Contains(frame, "VISIBLE_EDIT") || u.shell.layout.live.h != 0 || len(u.shell.liveDock.Order) != 1 {
 				t.Fatal("hidden dock lost state or reserved space")
@@ -125,7 +127,9 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			if r.h == 0 || !strings.Contains(lines[r.y-1], "┘") || strings.TrimSpace(lines[r.y+r.h]) != "" {
 				t.Fatalf("roster must immediately follow the pane border with padding only below:\n%s", frame)
 			}
+			u.agents.only = false
 			appServerTestKeys(t, u, "/live\r")
+			u.agents.only = caller != "/root"
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("current edit not restored")
 			}

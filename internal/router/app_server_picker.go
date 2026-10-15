@@ -532,5 +532,5 @@ func (u *appServerUI) pickerKey(key string) bool {
 }
 
 func (u *appServerUI) pickerVisible() bool {
-	return u.picker.open && (u.shell == nil || u.shell.focus == 0)
+	return !u.composerReadOnly() && u.picker.open && (u.shell == nil || u.shell.focus == 0)
 }

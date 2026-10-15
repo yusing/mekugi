@@ -29,6 +29,8 @@ type activityPaneEntry struct {
 }
 
 type activityPaneAgent struct {
+	settings     nativeResumeEvidence
+	settingsLive bool
 	WorkTimer    activeWorkTimer `json:",omitzero"`
 	Name         string
 	Role         string    `json:",omitzero"`

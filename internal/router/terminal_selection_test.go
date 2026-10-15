@@ -438,44 +438,32 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 }
 
 func TestTerminalUISelectionComposer(t *testing.T) {
-	for _, child := range []bool{false, true} {
-		t.Run(fmt.Sprintf("child=%t", child), func(t *testing.T) {
-			for _, size := range [][2]int{{120, 30}, {40, 12}, {10, 4}} {
-				u := newAppServerSessionTestUI(t, "/workspace")
-				u.ensureShell()
-				if child {
-					appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
-					for _, key := range []byte("\x023j") {
-						if err := u.shell.key(key); err != nil {
-							t.Fatal(err)
-						}
-					}
-				}
-				u.insertDraft("你好abc\nsecond")
-				screen := vt.NewEmulator(size[0], size[1])
-				defer screen.Close()
-				if err := u.paint(screen, size[0], size[1]); err != nil {
-					t.Fatal(err)
-				}
-				r := u.composerRect
-				r.x += u.shell.layout.codex.x
-				r.y += u.shell.layout.codex.y
-				selectionTestDrag(t, u.shell, r.x, r.y, r.x+3, r.y)
-				if got := u.shell.selection.text(); got != "你好" {
-					t.Fatalf("size %v: selected %q", size, got)
-				}
-				if err := u.shell.key(3); err != nil {
-					t.Fatal(err)
-				}
-				if u.draft != "你好abc\nsecond" || u.quitRequested {
-					t.Fatal("copy changed draft or quit")
-				}
-				want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("你好")) + "\x07"
-				if u.shell.clipboard != want {
-					t.Fatalf("clipboard %q", u.shell.clipboard)
-				}
-			}
-		})
+	for _, size := range [][2]int{{120, 30}, {40, 12}, {10, 4}} {
+		u := newAppServerSessionTestUI(t, "/workspace")
+		u.ensureShell()
+		u.insertDraft("你好abc\nsecond")
+		screen := vt.NewEmulator(size[0], size[1])
+		defer screen.Close()
+		if err := u.paint(screen, size[0], size[1]); err != nil {
+			t.Fatal(err)
+		}
+		r := u.composerRect
+		r.x += u.shell.layout.codex.x
+		r.y += u.shell.layout.codex.y
+		selectionTestDrag(t, u.shell, r.x, r.y, r.x+3, r.y)
+		if got := u.shell.selection.text(); got != "你好" {
+			t.Fatalf("size %v: selected %q", size, got)
+		}
+		if err := u.shell.key(3); err != nil {
+			t.Fatal(err)
+		}
+		if u.draft != "你好abc\nsecond" || u.quitRequested {
+			t.Fatal("copy changed draft or quit")
+		}
+		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("你好")) + "\x07"
+		if u.shell.clipboard != want {
+			t.Fatalf("clipboard %q", u.shell.clipboard)
+		}
 	}
 }
 

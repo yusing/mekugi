@@ -178,6 +178,17 @@ func (s *appServerSession) registerThread(info appServerThreadInfo) {
 	s.paths[info.ID] = path
 	s.agent(path).Role = cmp.Or(info.AgentRole, spawn.AgentRole, s.agent(path).Role)
 	restoreContextUsage(s.agent(path), info)
+	if agent := s.agent(path); !agent.settingsLive {
+		settings := readResumeSettings(info, time.Time{})
+		if model, ok := settings["model"].(string); ok {
+			agent.settings.Model = model
+			agent.settings.Effort, _ = settings["model_reasoning_effort"].(string)
+			if tier, known := settings["service_tier"]; known {
+				agent.settings.Tier, _ = tier.(string)
+				agent.settings.TierKnown = true
+			}
+		}
+	}
 }
 
 func (s *appServerSession) agent(path string) *activityPaneAgent {
@@ -676,6 +687,9 @@ func (s *appServerSession) collab(item appServerItem, id string, now time.Time) 
 		to := s.path(receiver)
 		switch item.Tool {
 		case "spawnAgent":
+			if agent := s.agent(to); agent.settings.Model == "" {
+				agent.settings.Model, agent.settings.Effort = item.Model, item.ReasoningEffort
+			}
 			start := &activityStart{model: item.Model}
 			if item.Model != "" {
 				start.effort = item.ReasoningEffort

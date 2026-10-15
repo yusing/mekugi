@@ -233,10 +233,14 @@ func nativeTitle(digit int, name, detail string, focused bool) string {
 }
 
 func (u *appServerUI) transcriptCaller() string {
-	if u.agents.only {
+	if u.composerReadOnly() {
 		return u.agents.selected
 	}
 	return "/root"
+}
+
+func (u *appServerUI) composerReadOnly() bool {
+	return u.agents != nil && u.agents.only
 }
 
 // transcriptView selects display state without changing the input or execution owner.

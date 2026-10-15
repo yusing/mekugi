@@ -127,6 +127,9 @@ func (u *appServerUI) autoOpenQuestions() {
 // composerVacant reports an empty, idle composer with no overlay, which a
 // pending dock may take over without capturing keys meant for a draft.
 func (u *appServerUI) composerVacant() bool {
+	if u.composerReadOnly() {
+		return false
+	}
 	if u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || len(u.selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.open {
 		return false
 	}
