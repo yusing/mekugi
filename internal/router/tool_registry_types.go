@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json"
 	"sync"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 type (
@@ -26,6 +28,7 @@ type (
 	}
 
 	toolWorkerManifest struct {
+		history         *history.Service
 		ReplayDirectory string             `json:"replay_directory,omitempty"`
 		AXReadOutput    string             `json:"ax_read_output,omitempty"`
 		Version         int                `json:"version"`

@@ -228,7 +228,7 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	index.Changes["amber1"] = trackedChange{Correlation: "one"}
-	if err := store.writeChangeIndex(index); err != nil {
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return store.writeChangeIndex(index) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := data.reconcile(t.Context(), store, scope); err == nil {

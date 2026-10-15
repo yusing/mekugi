@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/internal/responses"
 )
 
@@ -285,17 +286,8 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 
 // Read only envelope references for ownership/cleanup, never decompress all
 // baselines just to enumerate dependencies. Identity is checked before use.
-func (s *mekugiReplayStore) snapshotDependencies(name string) ([]string, error) {
-	if !strings.HasPrefix(name, "call-") {
-		return nil, nil
-	}
-	data, err := readManagedOutputFile(filepath.Join(s.directory, name))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil // Ownership can precede initial publication.
-	}
-	if err != nil {
-		return nil, err
-	}
+func replayRecordDependencies(record recordkind.Record) ([]string, error) {
+	name, data := record.Name, record.Data
 	// Do not decode History here. Its older wire types (for example fixed byte
 	// arrays in command-segment evidence) retain their version-1 JSON semantics.
 	var r struct {

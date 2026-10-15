@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +17,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -406,7 +407,7 @@ func TestGrokAPIKeyStartupWithoutHome(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	err := RunSession(ctx, toolplugin.Builtins(), []string{"grok"}, nil, func(Session) { cancel() }, nil)
+	err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"grok"}, nil, func(Session) { cancel() }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +439,7 @@ func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
 func TestGrokWhitespaceAPIKeyUsesOAuthHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	t.Setenv("XAI_API_KEY", " \t ")
-	err := RunSession(t.Context(), toolplugin.Builtins(), []string{"grok"}, nil, nil, nil)
+	err := RunSession(testHistory(), t.Context(), toolplugin.Builtins(), []string{"grok"}, nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "locate Grok credentials") {
 		t.Fatalf("expected default OAuth path lookup, got %v", err)
 	}

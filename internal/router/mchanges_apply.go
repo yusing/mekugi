@@ -204,7 +204,7 @@ func (s *mekugiReplayStore) selectedChangeCaptures(ctx context.Context, options 
 func (s *mekugiReplayStore) changeMutationPaths(ctx context.Context, options changeReadOptions) ([]string, error) {
 	s = s.scoped(ctx)
 	var paths []string
-	err := s.locked(ctx, func() error {
+	err := s.locked(ctx, func(s *mekugiReplayStore) error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
@@ -553,7 +553,7 @@ func (s *mekugiReplayStore) mutateChanges(ctx context.Context, options changeRea
 	s = s.scoped(ctx)
 	var selected, history []changeCapture
 	var historyErr error
-	err := s.locked(ctx, func() error {
+	err := s.locked(ctx, func(s *mekugiReplayStore) error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err

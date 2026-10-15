@@ -26,6 +26,9 @@ the [interface contracts](../spec/index.md); product intent and journeys remain 
 this governed architecture set. Architecture documents name responsibilities and
 collaborators without restating implementation.
 
+Retained session publication and retention are owned by
+[session history](../../modules/sessionhistory/SPEC.md).
+
 ## Inventory
 
 - [`CTR-WORKSPACE-001`](workspace.md): workspace membership, composition, and extraction boundaries

@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 type retainedHookObservation struct {
@@ -42,7 +44,7 @@ func (s *mekugiReplayStore) readHookObservations(workspace, thread string) (reta
 		return r, nil
 	}
 	path := filepath.Join(s.directory, hookObservationsName(workspace, thread))
-	data, err := readManagedOutputFile(path)
+	data, err := history.ReadRecord(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return r, nil
 	}
@@ -74,7 +76,7 @@ func (s *appServerSession) retainHook(thread string, observation retainedHookObs
 	if store == nil {
 		return errors.New("native session store is unavailable")
 	}
-	return store.locked(s.waitContext, func() error {
+	return store.locked(s.waitContext, func(store *mekugiReplayStore) error {
 		r, err := store.readHookObservations(s.cwd, thread)
 		if err != nil {
 			return err
@@ -117,7 +119,7 @@ func (u *appServerUI) restoredHookEvents(info appServerThreadInfo) []restoredRol
 		u.restoreContentNotice(fmt.Sprintf("%s: %d earlier hook observations were not retained", info.ID, r.Dropped))
 	}
 	if store != nil && len(r.Runs) > 0 {
-		if err := store.locked(u.session.waitContext, func() error {
+		if err := store.locked(u.session.waitContext, func(store *mekugiReplayStore) error {
 			return store.retainFiles(hookObservationsName(u.session.cwd, info.ID))
 		}); err != nil {
 			u.restoreContentNotice("Hook observations for " + info.ID + " could not be retained: " + err.Error())

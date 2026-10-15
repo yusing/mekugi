@@ -20,11 +20,12 @@ const (
 // does not change the filesystem effects that this receipt describes.
 func (s *mekugiReplayStore) publishEditReceipt(ctx context.Context, workspace, thread, callID string, activity *subagentActivity, displayID string) error {
 	s = s.scoped(ctx)
-	return s.locked(ctx, func() error {
-		if scope, found, err := s.readHandleScope(thread); err != nil {
+	return s.locked(ctx, func(s *mekugiReplayStore) error {
+		if scope, found, err := s.publication.ReadScope(thread); err != nil {
 			return err
 		} else if found {
-			s.session.Namespace = scope.Namespace
+			s.
+				session.Namespace = scope.Namespace
 		}
 		record, found, err := s.read(workspace, callID, false)
 		if err != nil {
@@ -244,7 +245,7 @@ func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, call
 		// Dynamic nested calls are unknown in the immutable pre-cell carrier.
 		// Find their durable derived attempts, not the disposable native trace.
 		scoped := s.scoped(ctx)
-		if err := scoped.locked(ctx, func() error {
+		if err := scoped.locked(ctx, func(scoped *mekugiReplayStore) error {
 			index, err := scoped.readChangeIndex(workspace)
 			if err != nil {
 				return err

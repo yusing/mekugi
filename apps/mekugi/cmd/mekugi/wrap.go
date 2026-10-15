@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -15,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
+
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/router"
@@ -24,7 +25,7 @@ import (
 	"golang.org/x/term"
 )
 
-func runWrap(routerArgs, args []string) int {
+func runWrap(frontends *composition.Runtime, routerArgs, args []string) int {
 	if len(args) > 0 && args[0] == "grok" {
 		routerArgs = append(slices.Clone(routerArgs), "grok")
 		args = args[1:]
@@ -44,14 +45,14 @@ func runWrap(routerArgs, args []string) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), signals...)
 	defer stop()
-	code, err := wrapCodex(ctx, routerArgs, args)
+	code, err := wrapCodex(frontends, ctx, routerArgs, args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mekugi:", err)
 	}
 	return code
 }
 
-func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
+func wrapCodex(frontends *composition.Runtime, ctx context.Context, routerArgs, args []string) (code int, runErr error) {
 	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
 	headless := len(args) > 0 && args[0] == "headless"
@@ -87,11 +88,6 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err != nil {
 		return 1, fmt.Errorf("locate codex: %w", err)
 	}
-	frontends, err := composition.Frontends(ctx)
-	if err != nil {
-		return 1, err
-	}
-	defer func() { runErr = errors.Join(runErr, frontends.Close(context.WithoutCancel(ctx))) }()
 	issues := router.NewCriticalErrors()
 	defer func() {
 		for _, message := range issues.Pending() {
@@ -119,7 +115,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(ctx, frontends.Commands, routerArgs, issues, func(session router.Session) {
+		routerDone <- router.RunSession(frontends.History, ctx, frontends.Commands, routerArgs, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()
@@ -227,7 +223,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			if session.StartAppUI != nil {
 				waitCodex, err = session.StartAppUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			} else {
-				waitCodex, err = router.StartAppServerUI(ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
+				waitCodex, err = router.StartAppServerUI(frontends.History, ctx, cmd, os.Stdin, os.Stdout, resumeThread, resumeArgv, approvals)
 			}
 		} else {
 			err = cmd.Start()

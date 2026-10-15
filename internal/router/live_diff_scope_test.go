@@ -48,7 +48,7 @@ func TestLiveDiffSessionScopeStreamsAndWorkspaces(t *testing.T) {
 	read := func() []livediff.File {
 		t.Helper()
 		// A fresh reader has no in-memory ancestry or routing cache.
-		reader := &mekugiReplayStore{directory: store.directory}
+		reader := testReplayStore(mekugiReplayStore{directory: store.directory})
 		files, err := reader.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: workspaces})
 		if err != nil {
 			t.Fatal(err)

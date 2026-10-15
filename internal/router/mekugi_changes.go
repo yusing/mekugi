@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/internal/responses"
 )
 
@@ -149,7 +151,7 @@ func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
 	if err := s.maintainStorage(changeIndexName(index.Workspace, index.Namespace), int64(len(data))); err != nil {
 		return err
 	}
-	return storageIOError(s.writeFile(changeIndexName(index.Workspace, index.Namespace), "changes-pending-", data))
+	return storageIOError(s.transaction.Write(changeIndexName(index.Workspace, index.Namespace), "changes-pending-", data))
 }
 
 // reserveChange runs before evaluation, including private direct application.
@@ -159,7 +161,7 @@ func (s *mekugiReplayStore) reserveChange(ctx context.Context, workspace, thread
 		return "", nil
 	}
 	s = s.scoped(ctx)
-	err = s.locked(ctx, func() error {
+	err = s.locked(ctx, func(s *mekugiReplayStore) error {
 		index, err := s.readChangeIndex(workspace)
 		if err != nil {
 			return err
@@ -277,7 +279,7 @@ func (s *mekugiReplayStore) repairVisibleChangeCalls(ctx context.Context, worksp
 	slices.SortFunc(confirmed, func(a, b string) int {
 		return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
 	})
-	return s.locked(ctx, func() error {
+	return s.locked(ctx, func(s *mekugiReplayStore) error {
 		index, err := s.readChangeIndex(workspace)
 		if err != nil {
 			return err
@@ -315,7 +317,8 @@ func (s *mekugiReplayStore) repairVisibleChangeCalls(ctx context.Context, worksp
 		if err := s.writeChangeIndex(index); err != nil {
 			return err
 		}
-		s.notifyLiveDiff(index, updates)
+		s.
+			notifyLiveDiff(index, updates)
 		return nil
 	})
 }
@@ -354,7 +357,7 @@ func (s *mekugiReplayStore) repairChangeCall(workspace, changeID, callID string,
 func changeHandle(stream string, number int) string {
 	var name strings.Builder
 	for _, letter := range stream {
-		name.WriteString(handleWords[letter-'a'])
+		name.WriteString(history.HandleWord(int(letter - 'a')))
 	}
 	name.WriteString(strconv.Itoa(number))
 	return name.String()
@@ -364,7 +367,8 @@ func parseChangeID(id string) (stream string, number int, err error) {
 	tail := id
 	for {
 		matched := false
-		for index, word := range handleWords[:26] {
+		for index := range 26 {
+			word := history.HandleWord(index)
 			if rest, found := strings.CutPrefix(tail, word); found {
 				stream += string(rune('a' + index))
 				tail, matched = rest, true

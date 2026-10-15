@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 
 	"github.com/dlclark/regexp2/v2"
 	"github.com/yusing/mekugi/capturer"
@@ -96,7 +97,7 @@ func TestMain(m *testing.M) {
 		if filepath.Base(os.Args[0]) == "mread" && os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
 			_ = os.Unsetenv("CODEX_THREAD_ID")
 		}
-		if handled, code := RunToolPluginWorker(
+		if handled, code := RunToolPluginWorker(testHistory(),
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)

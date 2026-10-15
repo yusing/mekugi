@@ -37,7 +37,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			reader := &mekugiReplayStore{directory: store.directory}
+			reader := testReplayStore(mekugiReplayStore{directory: store.directory})
 			scope := liveDiffScope{Workspaces: map[string]map[string]bool{"/w": {"stock-thread": true}}}
 			data, err := reader.liveDiffSnapshot(t.Context(), scope)
 			if err != nil || len(data.files()) != 0 {

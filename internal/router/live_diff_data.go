@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/internal/livediff"
 )
@@ -161,13 +162,13 @@ func (s *mekugiReplayStore) liveDiffIndexes(workspace string, threads map[string
 			return nil, err
 		}
 		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), changeIndexPrefix) && retainedDataName(entry.Name()) {
+			if hashedRecordName(entry.Name(), changeIndexPrefix) {
 				names[entry.Name()] = true
 			}
 		}
 	} else {
 		for thread := range threads {
-			scope, _, err := s.readHandleScope(thread)
+			scope, _, err := s.publication.ReadScope(thread)
 			if err != nil {
 				return nil, err
 			}
@@ -176,7 +177,7 @@ func (s *mekugiReplayStore) liveDiffIndexes(workspace string, threads map[string
 	}
 	var indexes []changeIndex
 	for _, name := range slices.Sorted(maps.Keys(names)) {
-		data, err := readManagedOutputFile(filepath.Join(s.directory, name))
+		data, err := history.ReadRecord(filepath.Join(s.directory, name))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}

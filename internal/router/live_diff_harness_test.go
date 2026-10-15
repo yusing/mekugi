@@ -60,7 +60,7 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 	if *sessionFile == "" {
 		return fail(errors.New("live-diff is a router-owned pane; start an interactive mekugi codex session"))
 	}
-	store := &mekugiReplayStore{directory: *replay}
+	store := testReplayStore(mekugiReplayStore{directory: *replay})
 	if !term.IsTerminal(int(stdin.Fd())) || !term.IsTerminal(int(stdout.Fd())) {
 		return fail(errors.New("live view needs a terminal"))
 	}

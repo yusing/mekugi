@@ -25,7 +25,7 @@ func TestSessionUIReplayRetainsQuestionAnswerWait(t *testing.T) {
 		}),
 		replayTestRecord("event_msg", replayTestEpoch+10000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
 	)
-	source, err := readSessionUIReplay(t.Context(), path, "", 1)
+	source, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestSessionUIReplayReasoningUsesRecordedItemStart(t *testing.T) {
 		}),
 		replayTestRecord("event_msg", replayTestEpoch+4000, map[string]any{"type": "task_complete", "turn_id": "turn"}),
 	)
-	source, err := readSessionUIReplay(t.Context(), path, "", 1)
+	source, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 			"sender_thread_id": "root", "agents_states": states,
 		}),
 	)
-	source, err := readSessionUIReplay(t.Context(), path, "", 1)
+	source, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestSessionUIReplayDirectForkSkipsCopiedAncestorEvents(t *testing.T) {
 		replayTestItem("fork", "fork-turn", replayTestEpoch+4500, replayTestEpoch+5500, map[string]any{"type": "AgentMessage", "id": "fork-answer", "content": []map[string]any{{"text": "fork answer"}}}),
 		replayTestRecord("event_msg", replayTestEpoch+6000, map[string]any{"type": "task_complete", "turn_id": "fork-turn"}),
 	)
-	source, err := readSessionUIReplay(t.Context(), path, "", 1)
+	source, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestSessionUIReplayItemlessForkTurnUsesSettingsBoundary(t *testing.T) {
 		replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_started", "turn_id": "local"}),
 		replayTestRecord("event_msg", replayTestEpoch+7000, map[string]any{"type": "turn_aborted", "turn_id": "local"}),
 	)
-	source, err := readSessionUIReplay(t.Context(), path, "", 1)
+	source, err := readSessionUIReplay(testHistory(), t.Context(), path, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}

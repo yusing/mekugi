@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
@@ -86,12 +88,12 @@ func readReplayLines(ctx context.Context, path string, visit func([]byte) error)
 	return s.Err()
 }
 
-func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64) (*sessionUIReplay, error) {
+func readSessionUIReplay(service *history.Service, ctx context.Context, path, debugDir string, seed uint64) (*sessionUIReplay, error) {
 	r := &sessionUIReplay{Threads: make(map[string]string), Unsupported: make(map[string]int)}
 	// Read only published records. Opening the writable store would create it
 	// and acquire process resources that offline presentation must not own.
 	directory, _ := defaultMekugiReplayDirectory()
-	store := &mekugiReplayStore{directory: directory}
+	store := &mekugiReplayStore{publication: service.Attach(directory), directory: directory}
 	rng := rand.New(rand.NewPCG(seed, seed^0xa0761d6478bd642f))
 	queue := []string{path}
 	loaded := make(map[string]bool)

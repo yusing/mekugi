@@ -12,16 +12,17 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func assertStorageAdmission(t *testing.T, store *mekugiReplayStore) {
 	t.Helper()
-	if err := store.locked(t.Context(), func() error {
-		got, err := store.admissionFileSizes()
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
+		got, err := store.transaction.FileSizes()
 		if err != nil {
 			return err
 		}
-		want, err := store.storageFileSizes()
+		want, err := store.testFileSizes()
 		if err != nil {
 			return err
 		}
@@ -44,7 +45,7 @@ func TestStorageAdmissionTracksScopedWritesAndFailedPublication(t *testing.T) {
 		name := replayRecordName("/w", "changing", commentary)
 		for _, size := range []int{100, 20} {
 			data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "changing", Commentary: commentary, History: mekugiHistory{Script: strings.Repeat("x", size)}})
-			if err := store.locked(ctx, func() error {
+			if err := store.locked(ctx, func(store *mekugiReplayStore) error {
 				return store.scoped(ctx).writeManagedFile(name, "call-pending-", data)
 			}); err != nil {
 				t.Fatal(err)
@@ -52,14 +53,11 @@ func TestStorageAdmissionTracksScopedWritesAndFailedPublication(t *testing.T) {
 			assertStorageAdmission(t, store)
 		}
 	}
-	err = store.locked(ctx, func() error {
+	err = store.locked(ctx, func(store *mekugiReplayStore) error {
 		return store.scoped(ctx).writeManagedFile(replayRecordName("/w", "record", false), "missing-directory/pending-", []byte("record"))
 	})
 	if err == nil {
 		t.Fatal("invalid publication succeeded")
-	}
-	if store.admission.files != nil {
-		t.Fatal("failed publication kept trusted admission accounting")
 	}
 	assertStorageAdmission(t, store)
 }
@@ -78,18 +76,18 @@ func TestStorageAdmissionRefreshesAfterPeerPublicationAndCleanup(t *testing.T) {
 	release()
 	retentionTestAge(t, peer, "old", 15*24*time.Hour)
 	assertStorageAdmission(t, store)
-	files, err := store.storageFileSizes()
+	files, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.maxBytes, _ = store.storageNeeds(files, "", 0)
+	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	name := replayRecordName("/w", "peer-growth", false)
 	data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "peer-growth", History: mekugiHistory{Script: strings.Repeat("x", 100)}})
-	if err := peer.locked(t.Context(), func() error { return peer.writeFile(name, "call-pending-", data) }); err != nil {
+	if err := peer.locked(t.Context(), func(peer *mekugiReplayStore) error { return peer.transaction.Write(name, "call-pending-", data) }); err != nil {
 		t.Fatal(err)
 	}
-	err = store.locked(t.Context(), func() error { return store.maintainStorage("", 0) })
-	var pressure *storagePressureError
+	err = store.locked(t.Context(), func(store *mekugiReplayStore) error { return store.maintainStorage("", 0) })
+	var pressure *history.PressureError
 	if !errors.As(err, &pressure) {
 		t.Fatalf("peer growth did not enforce quota: %v", err)
 	}
@@ -97,7 +95,7 @@ func TestStorageAdmissionRefreshesAfterPeerPublicationAndCleanup(t *testing.T) {
 	if err := peer.cleanupSessions(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.locked(t.Context(), func() error { return store.maintainStorage("", 0) }); err != nil {
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return store.maintainStorage("", 0) }); err != nil {
 		t.Fatalf("peer cleanup left stale quota accounting: %v", err)
 	}
 	assertStorageAdmission(t, store)
@@ -131,10 +129,10 @@ func BenchmarkStorageAdmissionPublication(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				data := responses.MustMarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "changing", History: mekugiHistory{Script: strconv.Itoa(iteration)}})
-				err := store.locked(ctx, func() error {
-					if cold {
-						store.admission.files = nil
-					}
+				if cold {
+					store.publication = testHistory().Attach(store.directory)
+				}
+				err := store.locked(ctx, func(store *mekugiReplayStore) error {
 					return store.scoped(ctx).writeManagedFile(record, "call-pending-", data)
 				})
 				if err != nil {
@@ -144,4 +142,31 @@ func BenchmarkStorageAdmissionPublication(b *testing.B) {
 			}
 		})
 	}
+}
+
+// Independent disk oracle for cache-accounting assertions.
+func (s *mekugiReplayStore) testFileSizes() (map[string]int64, error) {
+	entries, err := os.ReadDir(s.directory)
+	if err != nil {
+		return nil, err
+	}
+	files := make(map[string]int64)
+	for _, entry := range entries {
+		_, managed, err := testHistory().Kind(entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		if !managed && !history.CatalogName(entry.Name()) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, errors.New("non-regular managed record")
+		}
+		files[entry.Name()] = info.Size()
+	}
+	return files, nil
 }

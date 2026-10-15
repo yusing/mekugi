@@ -12,8 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // Failure records retain the actual error for post-session diagnosis.
@@ -36,6 +37,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	store := c.failureStore
 	enabled := c.persistFailures || store != nil
 	writes := c.writes
+	service := c.history
 	c.mu.Unlock()
 	if !enabled {
 		return
@@ -45,7 +47,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 	if store == nil {
 		directory, err := defaultMekugiReplayDirectory()
 		if err == nil {
-			store, err = openMekugiReplayStoreContext(ctx, directory)
+			store, err = openReplayStore(ctx, service, directory)
 		}
 		if err == nil {
 			store.writes = writes
@@ -87,7 +89,7 @@ func (s *mekugiReplayStore) appendFailure(ctx context.Context, record failureRec
 		return err
 	}
 	name := fmt.Sprintf("failure-%x.json", sha256.Sum256([]byte(rand.Text())))
-	return copy.locked(ctx, func() error { return copy.writeManagedFile(name, "failure-pending-", data) })
+	return copy.locked(ctx, func(copy *mekugiReplayStore) error { return copy.writeManagedFile(name, "failure-pending-", data) })
 }
 
 func inspectFailures(ctx context.Context, directory, reference string, output io.Writer) error {
@@ -103,10 +105,10 @@ func inspectFailures(ctx context.Context, directory, reference string, output io
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if !strings.HasPrefix(entry.Name(), "failure-") || !retainedDataName(entry.Name()) {
+		if !hashedRecordName(entry.Name(), "failure-") {
 			continue
 		}
-		data, err := readManagedOutputFile(filepath.Join(directory, entry.Name()))
+		data, err := history.ReadRecord(filepath.Join(directory, entry.Name()))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}

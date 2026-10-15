@@ -15,14 +15,13 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"time"
 
-	"github.com/gofrs/flock"
-	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-const maxReplayRecordBytes = 32 << 20
+const maxReplayRecordBytes = history.MaxRecordBytes
 
 // Durable records are immutable translation facts. Request-local confirmation and
 // ordering are intentionally absent. Session retention removes only inactive, unshared records.
@@ -35,7 +34,8 @@ type mekugiReplayStore struct {
 	liveDiff           func([]liveDiffChange)
 	maxCommentaryBytes int64
 	snapshots          *workspaceSnapshots
-	admission          *storageAdmission
+	publication        *history.Store
+	transaction        *history.Transaction
 }
 type replayRecord struct {
 	Version      int
@@ -106,23 +106,16 @@ func defaultMekugiReplayDirectory() (string, error) {
 	}
 	return filepath.Join(base, "replay"), nil
 }
-func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
-	return openMekugiReplayStoreContext(context.Background(), directory)
-}
-
-func openMekugiReplayStoreContext(ctx context.Context, directory string) (*mekugiReplayStore, error) {
-	directory, err := filepath.Abs(directory)
+func openReplayStore(ctx context.Context, service *history.Service, directory string) (*mekugiReplayStore, error) {
+	publication, err := service.Open(ctx, directory)
 	if err != nil {
 		return nil, err
 	}
-	if err := ensurePrivateStateDirectory(directory); err != nil {
+	directory, err = filepath.Abs(directory)
+	if err != nil {
 		return nil, err
 	}
-	s := &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory), admission: new(storageAdmission)}
-	if err := s.locked(ctx, func() error { return nil }); err != nil {
-		return nil, err
-	}
-	return s, nil
+	return &mekugiReplayStore{directory: directory, maxBytes: defaultReplayStorageBytes, maxCommentaryBytes: 16 << 20, snapshots: newWorkspaceSnapshots(directory), publication: publication}, nil
 }
 func replayRecordName(workspace, callID string, commentary bool) string {
 	prefix := "call-"
@@ -131,34 +124,16 @@ func replayRecordName(workspace, callID string, commentary bool) string {
 	}
 	return prefix + fmt.Sprintf("%x.json", sha256.Sum256(fmt.Appendf(nil, "%t\x00%s\x00%s", commentary, workspace, callID)))
 }
-func (s *mekugiReplayStore) locked(ctx context.Context, fn func() error) (err error) {
-	path := filepath.Join(s.directory, "store.lock")
-	info, e := os.Lstat(path)
-	if e == nil && !info.Mode().IsRegular() {
-		return errors.New("replay lock is not a regular file")
+func (s *mekugiReplayStore) locked(ctx context.Context, fn func(*mekugiReplayStore) error) error {
+	if s.transaction != nil {
+		return errors.New("nested replay publication transaction")
 	}
-	if e != nil && !errors.Is(e, os.ErrNotExist) {
-		return e
-	}
-	lock := flock.New(path, flock.SetPermissions(0600))
-	ok, err := lock.TryLockContext(ctx, 25*time.Millisecond)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return ctx.Err()
-	}
-	defer func() { err = errors.Join(err, lock.Unlock()) }()
-	if s.admission != nil {
-		// The file lock owns cross-process serialization. This mutex also
-		// establishes memory synchronization for the shared local snapshot.
-		s.admission.mu.Lock()
-		defer s.admission.mu.Unlock()
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return fn()
+	core := s.publication
+	return core.Transaction(ctx, s.writes, func(transaction *history.Transaction) error {
+		scoped := *s
+		scoped.transaction = transaction
+		return fn(&scoped)
+	})
 }
 func (s *mekugiReplayStore) read(workspace, callID string, commentary bool) (replayRecord, bool, error) {
 	name := filepath.Join(s.directory, replayRecordName(workspace, callID, commentary))
@@ -224,7 +199,7 @@ func (s *mekugiReplayStore) lookup(ctx context.Context, workspace, callID string
 	if s == nil {
 		return h, false, nil
 	}
-	err = s.locked(ctx, func() error {
+	err = s.locked(ctx, func(s *mekugiReplayStore) error {
 		r, ok, e := s.read(workspace, callID, false)
 		h = r.History
 		found = ok
@@ -236,7 +211,7 @@ func (s *mekugiReplayStore) hasCommentary(ctx context.Context, workspace, id str
 	if s == nil {
 		return false, nil
 	}
-	err = s.locked(ctx, func() error {
+	err = s.locked(ctx, func(s *mekugiReplayStore) error {
 		_, ok, e := s.read(workspace, id, true)
 		found = ok
 		return e
@@ -248,7 +223,7 @@ func (s *mekugiReplayStore) put(ctx context.Context, workspace string, histories
 		return nil
 	}
 	s = s.scoped(ctx)
-	return s.locked(ctx, func() error {
+	return s.locked(ctx, func(s *mekugiReplayStore) error {
 		for _, id := range slices.SortedFunc(maps.Keys(histories), func(a, b string) int {
 			return cmp.Or(cmp.Compare(histories[a].sequence, histories[b].sequence), strings.Compare(a, b))
 		}) {
@@ -335,7 +310,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	}
 	failed := r.History.ExecOutcome != nil && r.History.ExecOutcome.Status == execStatusFailed && r.History.ExecOutcome.SharedWith == ""
 	if !exists && !r.Commentary && (r.History.ChangeID != "" && len(r.History.ReviewFiles) > 0 || failed) {
-		r.CaptureOrder, err = s.nextCaptureOrder()
+		r.CaptureOrder, err = s.transaction.ReserveCaptureOrder()
 		if err != nil {
 			return err
 		}
@@ -353,87 +328,4 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 		prefix = "commentary-"
 	}
 	return s.writeManagedFile(name, prefix+"pending-", data)
-}
-
-// writeFile publishes a validated record under the caller's lock. Identical
-// records need no write or revision invalidation. The kernel owns disk flushing.
-func (s *mekugiReplayStore) writeFile(name, pattern string, data []byte) error {
-	path := filepath.Join(s.directory, name)
-	info, err := os.Lstat(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err == nil {
-		if !info.Mode().IsRegular() {
-			return errors.New("managed record is not a regular file")
-		}
-		if info.Size() == int64(len(data)) {
-			file, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			previous, readErr := io.ReadAll(io.LimitReader(file, int64(len(data))+1))
-			if err := errors.Join(readErr, file.Close()); err != nil {
-				return err
-			}
-			if bytes.Equal(previous, data) {
-				return nil
-			}
-		}
-	}
-	var files map[string]int64
-	if s.admission != nil {
-		revision, err := s.storageRevision()
-		if err != nil {
-			return err
-		}
-		if revision == s.admission.revision {
-			files = s.admission.files
-		}
-	}
-	if err := s.advanceStorageRevision(); err != nil {
-		return err
-	}
-	if err := persistence.AtomicFile(path, pattern, data, s.writes); err != nil {
-		return err
-	}
-	if files != nil {
-		if retainedDataName(name) || storageCatalogName(name) {
-			files[name] = int64(len(data))
-		}
-		s.admission.files = files
-	}
-	return nil
-}
-
-func ensurePrivateStateDirectory(directory string) error {
-	// Inspect existing ancestors before MkdirAll can create anything through a
-	// symlink. The second check below also validates the completed path.
-	for ancestor := directory; ; ancestor = filepath.Dir(ancestor) {
-		info, err := os.Lstat(ancestor)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return errors.New("state directory must not contain symlinks")
-		}
-		if filepath.Dir(ancestor) == ancestor {
-			break
-		}
-	}
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		return err
-	}
-	resolved, err := filepath.EvalSymlinks(directory)
-	if err != nil {
-		return err
-	}
-	if resolved != directory {
-		return errors.New("state directory must not contain symlinks")
-	}
-	if err := os.Chmod(directory, 0700); err != nil {
-		return err
-	}
-
-	return nil
 }

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // This is the durable form of the canonical counters, not a second usage
@@ -31,7 +33,7 @@ func threadUsageName(thread string) string {
 }
 
 func readThreadUsage(store *mekugiReplayStore, thread string) (*threadUsageTotal, error) {
-	data, err := readManagedOutputFile(filepath.Join(store.directory, threadUsageName(thread)))
+	data, err := history.ReadRecord(filepath.Join(store.directory, threadUsageName(thread)))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -286,9 +288,9 @@ func (u *threadUsage) persist(ctx context.Context, thread string, write *threadU
 	store := *u.store
 	store.session = storageSessionIdentity{Thread: thread, Namespace: thread}
 	var retained *threadUsageTotal
-	err := store.locked(ctx, func() error {
+	err := store.locked(ctx, func(store *mekugiReplayStore) error {
 		var err error
-		retained, err = readThreadUsage(&store, thread)
+		retained, err = readThreadUsage(store, thread)
 		if err != nil {
 			return err
 		}
@@ -298,7 +300,7 @@ func (u *threadUsage) persist(ctx context.Context, thread string, write *threadU
 			retained = &write.baseline
 		}
 		mergeThreadUsageTotal(retained, write.delta)
-		return writeThreadUsage(&store, thread, retained)
+		return writeThreadUsage(store, thread, retained)
 	})
 	return retained, err
 }

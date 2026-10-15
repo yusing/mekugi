@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/internal/responses"
 
 	jsonv1 "encoding/json"
@@ -46,8 +48,8 @@ func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *parse
 		return errors.New("compaction observation requires one valid workspace")
 	}
 	if workspace == "" {
-		err = p.replayStore.locked(ctx, func() error {
-			workspace, err = p.replayStore.retainedCallWorkspace(thread)
+		err = p.replayStore.locked(ctx, func(store *mekugiReplayStore) error {
+			workspace, err = store.retainedCallWorkspace(thread)
 			return err
 		})
 		if err != nil {
@@ -67,7 +69,7 @@ func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *parse
 // The selected thread's retained call catalog supplies observation scope only.
 // It cannot supply an execution directory or authorize an unrelated thread.
 func (s *mekugiReplayStore) retainedCallWorkspace(thread string) (string, error) {
-	session, err := s.readRetainedSession(storageSessionName(thread))
+	session, err := s.publication.ReadCatalog(history.SessionName(thread))
 	if err != nil {
 		return "", err
 	}
@@ -76,7 +78,7 @@ func (s *mekugiReplayStore) retainedCallWorkspace(thread string) (string, error)
 		if !strings.HasPrefix(name, "call-") {
 			continue
 		}
-		data, err := readManagedOutputFile(filepath.Join(s.directory, name))
+		data, err := history.ReadRecord(filepath.Join(s.directory, name))
 		if err != nil {
 			return "", err
 		}

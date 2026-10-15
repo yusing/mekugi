@@ -148,7 +148,7 @@ func TestLiveDiffStoreRestartAndMissingEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	liveDiffTestChange(t, store, workspace, "one", "x.go")
-	reopened := &mekugiReplayStore{directory: store.directory}
+	reopened := testReplayStore(mekugiReplayStore{directory: store.directory})
 	files, err := reopened.liveDiffSnapshotFiles(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil || len(files) != 1 || len(files[0].Chunks) != 1 || files[0].Chunks[0].Status != "" {
 		t.Fatalf("Files: %#v, %v", files, err)
@@ -188,7 +188,7 @@ func TestLiveDiffLegacyChangeFlagsDoNotAffectSavedEdits(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	reopened := &mekugiReplayStore{directory: store.directory}
+	reopened := testReplayStore(mekugiReplayStore{directory: store.directory})
 	record, found, err := reopened.read(workspace, "one", false)
 	if err != nil || !found || record.History.ExecObservation == nil || record.History.ExecObservation.Class != "scoped" || len(record.History.ExecObservation.Commands) != 1 {
 		t.Fatalf("legacy capture scope lost: %+v found=%v err=%v", record.History.ExecObservation, found, err)
@@ -437,7 +437,7 @@ func TestLiveDiffTerminalInterruptDuringOSC(t *testing.T) {
 func testLiveDiffTerminalCancel(t *testing.T, keys string) {
 	t.Helper()
 	workspace := t.TempDir()
-	store := &mekugiReplayStore{directory: t.TempDir()}
+	store := testReplayStore(mekugiReplayStore{directory: t.TempDir()})
 	t.Setenv("PATH", t.TempDir())
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()

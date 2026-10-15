@@ -66,7 +66,7 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 		stockRolloutItem(map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": "Success. Added observed.txt."}),
 	)
 	var out, diagnostic bytes.Buffer
-	status := RunSessionInspection(t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
+	status := RunSessionInspection(testHistory(), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
 	if status != 0 {
 		t.Fatalf("inspection failed: %s", diagnostic.String())
 	}
@@ -92,7 +92,7 @@ func TestCorpusStockMcatRereadCandidate(t *testing.T) {
 		stockRolloutItem(map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "second", "input": `await tools.exec_command({cmd: "mcat file.go 50:150"});`}),
 	)
 	var out, diagnostic bytes.Buffer
-	status := RunSessionCorpusInspection(t.Context(), []string{
+	status := RunSessionCorpusInspection(testHistory(), t.Context(), []string{
 		"--sessions-dir", root, "--replay-dir", filepath.Join(t.TempDir(), "replay"),
 		"--since", "2026-09-14T00:00:00Z", "--until", "2026-09-16T00:00:00Z",
 	}, &out, &diagnostic)

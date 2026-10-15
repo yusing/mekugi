@@ -11,13 +11,11 @@ import (
 	"testing"
 	"time"
 
+	retainedhistory "github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi/internal/responses"
 )
-
-func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
-	return s.storageSnapshotContext(context.Background())
-}
 
 func (s *mekugiReplayStore) runRetentionSweeps(ctx context.Context, notice func(error)) {
 	runStorageRetention(ctx, func() *mekugiReplayStore { return s }, notice)
@@ -38,8 +36,8 @@ func retentionTestSession(t *testing.T, store *mekugiReplayStore, thread string,
 
 func retentionTestAge(t *testing.T, store *mekugiReplayStore, thread string, age time.Duration) {
 	t.Helper()
-	if err := store.locked(t.Context(), func() error {
-		record, err := store.readRetainedSession(storageSessionName(thread))
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
+		record, err := store.publication.ReadCatalog(retainedhistory.SessionName(thread))
 		if err != nil {
 			return err
 		}
@@ -48,7 +46,7 @@ func retentionTestAge(t *testing.T, store *mekugiReplayStore, thread string, age
 		if err != nil {
 			return err
 		}
-		return store.writeFile(storageSessionName(thread), "session-pending-", data)
+		return store.transaction.Write(retainedhistory.SessionName(thread), "session-pending-", data)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,11 +130,11 @@ func TestStoragePressureRemovesOldestInactiveSessionAcrossWorkspaces(t *testing.
 	releaseNewer()
 	retentionTestAge(t, store, "newer", time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
-	files, err := store.storageFileSizes()
+	files, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.maxBytes, _ = store.storageNeeds(files, "", 0)
+	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	retentionTestPressureRetry(t, store, current, func() error {
 		return store.put(current, "/third", map[string]mekugiHistory{"new": {ToolName: "shell", Script: "true"}})
 	})
@@ -155,11 +153,11 @@ func TestStoragePressurePreservesRunningWorkAndReportsLimit(t *testing.T) {
 	retentionTestPut(t, store, active, "/w", "active")
 	retentionTestAge(t, store, "active", time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
-	files, err := store.storageFileSizes()
+	files, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.maxBytes, _ = store.storageNeeds(files, "", 0)
+	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	err = store.put(current, "/w", map[string]mekugiHistory{"new": {Script: "true"}})
 	if err == nil || !strings.Contains(err.Error(), "limit is") || !strings.Contains(err.Error(), "Running sessions") {
 		t.Fatalf("storage pressure error = %v", err)
@@ -198,7 +196,7 @@ func TestStorageRetentionForkOwnershipSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	retentionTestExists(t, restarted, "/w", "shared", true)
-	if _, err := os.Stat(filepath.Join(directory, storageSessionName("parent"))); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(directory, retainedhistory.SessionName("parent"))); !os.IsNotExist(err) {
 		t.Fatalf("expired parent catalog remains: %v", err)
 	}
 }
@@ -351,11 +349,11 @@ func TestStorageCatalogGrowthCountsAgainstQuota(t *testing.T) {
 	parent, _ := retentionTestSession(t, store, "parent", 0)
 	retentionTestPut(t, store, parent, "/w", "shared")
 	child, _ := retentionTestSession(t, store, "child", 0)
-	files, err := store.storageFileSizes()
+	files, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.maxBytes, _ = store.storageNeeds(files, "", 0)
+	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	history, _, err := store.lookup(child, "/w", "shared")
 	if err != nil {
 		t.Fatal(err)
@@ -364,7 +362,7 @@ func TestStorageCatalogGrowthCountsAgainstQuota(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "limit is") {
 		t.Fatalf("catalog quota was not enforced: %v", err)
 	}
-	catalog, err := store.readRetainedSession(storageSessionName("child"))
+	catalog, err := store.publication.ReadCatalog(retainedhistory.SessionName("child"))
 	if err != nil || len(catalog.Files) != 0 {
 		t.Fatalf("failed catalog growth was not rolled back: %+v %v", catalog, err)
 	}
@@ -459,7 +457,7 @@ func TestStorageAdmissionDoesNotPruneUnrelatedSessions(t *testing.T) {
 			if _, err := store.reserveChange(current, "/w", "current", "new"); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.locked(current, func() error {
+			if err := store.locked(current, func(store *mekugiReplayStore) error {
 				index, err := store.scoped(current).readChangeIndex("/w")
 				if err != nil {
 					return err
@@ -511,7 +509,7 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sizes, err := store.storageFileSizes()
+	sizes, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +613,7 @@ func TestStoragePreparationProtectsLeaseFromPreviousTerminal(t *testing.T) {
 	// The prior request's terminal closes at the former preparation/activation gap.
 	p.deactivateSession(key)
 	p.releaseIdleStorageSession(ctx, "thread")
-	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(storageSessionName("thread"), ".json")+".lock"))
+	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(retainedhistory.SessionName("thread"), ".json")+".lock"))
 	acquired, err := lease.TryLock()
 	if acquired {
 		_ = lease.Unlock()
@@ -657,7 +655,7 @@ func TestStorageStaleTerminalPreservesNewerHandoff(t *testing.T) {
 	newer := start()
 	newer.Close() // The host has a tool to dispatch; no terminal was delivered.
 	older.Close() // Its terminal must not retire the newer request's lease.
-	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(storageSessionName("thread"), ".json")+".lock"))
+	lease := flock.New(filepath.Join(store.directory, strings.TrimSuffix(retainedhistory.SessionName("thread"), ".json")+".lock"))
 	acquired, err := lease.TryLock()
 	if acquired {
 		_ = lease.Unlock()
@@ -703,12 +701,13 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	if _, err := store.readShellOutput(current, "r_AAAAAAAAAAAAAAAAAAAAAA"); err == nil {
 		t.Fatal("obsolete read reference became usable")
 	}
-	snapshot, err := store.storageSnapshot()
+	var files map[string]int64
+	err = store.locked(t.Context(), func(store *mekugiReplayStore) (err error) { files, err = store.transaction.FileSizes(); return err })
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{oldOutput, oldIndex} {
-		if snapshot.files[name] != 0 || snapshot.owners[name] != 0 {
+		if files[name] != 0 {
 			t.Fatalf("obsolete name entered retained accounting: %s", name)
 		}
 	}
@@ -723,15 +722,15 @@ func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	store := proxy.replayStore
-	name := storageSessionName("unrelated-thread")
-	invalid := retainedSession{
+	name := retainedhistory.SessionName("unrelated-thread")
+	invalid := retainedhistory.Catalog{
 		Version: 1, Thread: "unrelated-thread", LastUsed: time.Now().Add(-15 * 24 * time.Hour),
-		Files: map[string]bool{"obsolete.json": true},
+		Files: map[string]bool{"../outside.json": true},
 	}
 	if err := os.WriteFile(filepath.Join(store.directory, name), responses.MustMarshalJSON(invalid), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.readRetainedSession(name); err == nil {
+	if _, err := store.publication.ReadCatalog(name); err == nil {
 		t.Fatal("unrelated catalog was not invalid")
 	}
 	newTopLevelMekugiTestTransformWithProxy(t, proxy)
@@ -743,10 +742,10 @@ func TestBackgroundRetentionReportsUnrelatedCatalogFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	name := storageSessionName("unrelated-thread")
-	invalid := retainedSession{
+	name := retainedhistory.SessionName("unrelated-thread")
+	invalid := retainedhistory.Catalog{
 		Version: 1, Thread: "unrelated-thread", LastUsed: time.Now().Add(-15 * 24 * time.Hour),
-		Files: map[string]bool{"obsolete.json": true},
+		Files: map[string]bool{"../outside.json": true},
 	}
 	if err := os.WriteFile(filepath.Join(store.directory, name), responses.MustMarshalJSON(invalid), 0600); err != nil {
 		t.Fatal(err)
@@ -823,15 +822,15 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 		b.Fatal(err)
 	}
 	name := changeIndexName(index.Workspace, index.Namespace)
-	if err := store.locked(ctx, func() error { return store.scoped(ctx).retainFiles(name) }); err != nil {
+	if err := store.locked(ctx, func(store *mekugiReplayStore) error { return store.scoped(ctx).retainFiles(name) }); err != nil {
 		b.Fatal(err)
 	}
 	// Restore the same durable input outside the measurement: each iteration
 	// reserves one new ID against an equally sized, session-owned index.
 	for b.Loop() {
 		b.StopTimer()
-		if err := store.locked(ctx, func() error {
-			return store.writeFile(name, "changes-pending-", baseline)
+		if err := store.locked(ctx, func(store *mekugiReplayStore) error {
+			return store.transaction.Write(name, "changes-pending-", baseline)
 		}); err != nil {
 			b.Fatal(err)
 		}

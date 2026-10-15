@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/json/jsontext"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"io"
 	"maps"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/internal/responses"
@@ -45,7 +46,7 @@ func TestDebugSessionArtifacts(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var paths []string
-	err := RunSession(ctx, toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough"}, nil, func(session Session) {
+	err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough"}, nil, func(session Session) {
 		if session.AXReadOutput == "" {
 			t.Error("debug did not enable runtime AX reads")
 		}
@@ -86,7 +87,7 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var paths []string
-	if err := RunSession(ctx, toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough", "--capture-output", custom}, nil,
+	if err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough", "--capture-output", custom}, nil,
 		func(Session) { cancel() }, func(artifacts []string) { paths = artifacts }); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +113,7 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 		replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{
 			"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Replay complete."}},
 		}))
-	replay, err := readSessionUIReplay(t.Context(), rollout, debugDir, 1)
+	replay, err := readSessionUIReplay(testHistory(), t.Context(), rollout, debugDir, 1)
 	if err != nil || replay == nil || replay.Providers != 1 {
 		t.Fatalf("custom capture replay: %v, error=%v", replay, err)
 	}
@@ -122,7 +123,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	flags := newRouterFlags(io.Discard)
 	*flags.debug = true
-	d, err := openDebugOutput(flags)
+	d, err := openDebugOutput(testHistory(), flags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +167,7 @@ func TestDebugStartupFailureReportsArtifacts(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	missing := filepath.Join(t.TempDir(), "missing", "capture.jsonl")
 	var paths []string
-	err := RunSession(t.Context(), toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough", "--capture-output", missing}, nil, func(Session) {
+	err := RunSession(testHistory(), t.Context(), toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough", "--capture-output", missing}, nil, func(Session) {
 		t.Error("ready despite capture initialization failure")
 	}, func(artifacts []string) { paths = artifacts })
 	if err == nil || len(paths) != 6 {
@@ -179,7 +180,7 @@ func TestDebugCanceledStartupReportsArtifacts(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var paths []string
-	err := RunSession(ctx, toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough"}, nil, func(Session) {
+	err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--debug", "--mode", "passthrough"}, nil, func(Session) {
 		t.Error("canceled startup reached readiness")
 	}, func(artifacts []string) { paths = artifacts })
 	if err != nil || len(paths) != 6 {
@@ -191,7 +192,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	t.Parallel()
 	flags := newRouterFlags(io.Discard)
 	*flags.debug = true
-	d, err := openDebugOutput(flags)
+	d, err := openDebugOutput(testHistory(), flags)
 	if err != nil {
 		t.Fatal(err)
 	}

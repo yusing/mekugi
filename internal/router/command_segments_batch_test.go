@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func batchCommandSegmentsFixture(id string) (appServerItem, *retainedCommandSegments) {
@@ -80,7 +82,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 	}
 	u := &appServerUI{ctx: t.Context(), thread: "unrelated-current-thread", proxy: &mekugiProxy{replayStore: store}}
 	got := u.prepareCommandSegments("fork", workspace, turn)
-	catalog, err := store.readRetainedSession(storageSessionName("fork"))
+	catalog, err := store.publication.ReadCatalog(history.SessionName("fork"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +95,7 @@ func TestCommandSegmentsBatchMixedCandidates(t *testing.T) {
 			t.Errorf("%s: durable ownership = %v, want %v", item.ID, catalog.Files[name], valid[item.ID])
 		}
 	}
-	if _, err := store.readRetainedSession(storageSessionName(u.thread)); !os.IsNotExist(err) {
+	if _, err := store.publication.ReadCatalog(history.SessionName(u.thread)); !os.IsNotExist(err) {
 		t.Fatalf("adopted records under the current UI thread instead of the supplied stable thread: %v", err)
 	}
 	if got := u.prepareCommandSegments("other", filepath.Join(workspace, "other"), turn); len(got) != 0 {
@@ -117,7 +119,7 @@ func TestCommandSegmentsBatchRejectsUnretainedRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Reading is possible, but ownership cannot be persisted for this target.
-	if err := os.WriteFile(filepath.Join(store.directory, storageSessionName("fork")), []byte("broken"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.directory, history.SessionName("fork")), []byte("broken"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	u := &appServerUI{ctx: t.Context(), proxy: &mekugiProxy{replayStore: store}}
@@ -174,7 +176,7 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 			if err := store.cleanupSessions(current); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := os.Stat(filepath.Join(directory, storageSessionName("parent"))); !os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(directory, history.SessionName("parent"))); !os.IsNotExist(err) {
 				t.Fatalf("parent did not expire: %v", err)
 			}
 			u.proxy.replayStore = store

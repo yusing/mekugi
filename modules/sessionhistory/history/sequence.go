@@ -1,4 +1,4 @@
-package router
+package history
 
 import (
 	"encoding/binary"
@@ -9,11 +9,15 @@ import (
 	"path/filepath"
 )
 
-// nextCaptureOrder reserves a store-wide display sequence under the replay lock.
+// Source: internal/router/mekugi_capture_order.go@b8ca48c7 retained sequence allocation.
+// ReserveCaptureOrder reserves a store-wide display sequence under the replay lock.
 // It is persisted before the capture, so retries can leave gaps but cannot move
 // an existing capture. Receipts and viewer refreshes do not change this order.
-func (s *mekugiReplayStore) nextCaptureOrder() (uint64, error) {
-	previous, err := s.currentCaptureOrder()
+func (tx *Transaction) ReserveCaptureOrder() (uint64, error) {
+	if err := tx.check(); err != nil {
+		return 0, err
+	}
+	previous, err := tx.store.currentCaptureOrder()
 	if err != nil {
 		return 0, err
 	}
@@ -23,11 +27,11 @@ func (s *mekugiReplayStore) nextCaptureOrder() (uint64, error) {
 	next := previous + 1
 	var data [8]byte
 	binary.BigEndian.PutUint64(data[:], next)
-	return next, s.writeFile("capture-order", "capture-order-pending-", data[:])
+	return next, tx.Write("capture-order", "capture-order-pending-", data[:])
 }
 
 // currentCaptureOrder reads the durable evidence boundary under store.lock.
-func (s *mekugiReplayStore) currentCaptureOrder() (uint64, error) {
+func (s *Store) currentCaptureOrder() (uint64, error) {
 	const name = "capture-order"
 	path := filepath.Join(s.directory, name)
 	var previous uint64

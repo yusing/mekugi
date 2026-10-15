@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"github.com/yusing/mekugi/internal/router"
 )
 
@@ -17,7 +18,7 @@ func main() {
 }
 
 // Source: main.go:36:48 process signals and router exit behavior.
-func run() int {
+func run() (exitCode int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if len(os.Args) > 1 && os.Args[1] == "mcp-bridge" {
@@ -31,7 +32,21 @@ func run() int {
 		}
 		return 0
 	}
+	frontends, err := composition.Frontends(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mekugi:", err)
+		return 1
+	}
+	defer func() {
+		if err := frontends.Close(context.WithoutCancel(ctx)); err != nil {
+			fmt.Fprintln(os.Stderr, "mekugi:", err)
+			if exitCode == 0 {
+				exitCode = 1
+			}
+		}
+	}()
 	if handled, exitCode := router.RunOwnedToolPluginWorker(
+		frontends.History,
 		ctx,
 		os.Args[0],
 		os.Args[1:],
@@ -43,16 +58,16 @@ func run() int {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "inspect-sessions" {
-		return router.RunSessionCorpusInspection(ctx, os.Args[2:], os.Stdout, os.Stderr)
+		return router.RunSessionCorpusInspection(frontends.History, ctx, os.Args[2:], os.Stdout, os.Stderr)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "replay-session" {
-		return router.RunSessionUIReplay(ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
+		return router.RunSessionUIReplay(frontends.History, ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "inspect-session" {
-		return router.RunSessionInspection(ctx, os.Args[2:], os.Stdout, os.Stderr)
+		return router.RunSessionInspection(frontends.History, ctx, os.Args[2:], os.Stdout, os.Stderr)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "inspect-storage" {
-		return router.RunStorageInspection(ctx, os.Args[2:], os.Stdout, os.Stderr)
+		return router.RunStorageInspection(frontends.History, ctx, os.Args[2:], os.Stdout, os.Stderr)
 	}
 	routerArgs, command, err := router.SplitCommand(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
@@ -64,5 +79,5 @@ func run() int {
 		return 2
 	}
 	stop()
-	return runWrap(routerArgs, command)
+	return runWrap(frontends, routerArgs, command)
 }

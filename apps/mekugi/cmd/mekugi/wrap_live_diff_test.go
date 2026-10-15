@@ -34,7 +34,7 @@ func TestAutoWrapProcess(t *testing.T) {
 		if os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "off" {
 			routerArgs = []string{"--vcs-guard=false"}
 		}
-		code, err := wrapCodex(t.Context(), routerArgs, args)
+		code, err := wrapCodex(testComposition(t), t.Context(), routerArgs, args)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}

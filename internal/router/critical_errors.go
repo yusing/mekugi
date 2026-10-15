@@ -15,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/persistence"
 )
@@ -23,6 +25,7 @@ import (
 // but no request snapshots or operational event history. It outlives router shutdown so
 // the launcher can report notices that could not reach Codex.
 type CriticalErrors struct {
+	history         *history.Service
 	writes          *persistence.Counter
 	mu              sync.Mutex
 	entries         []*criticalNotice

@@ -15,7 +15,7 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 	}
 	known := subagentCommentaryMessageID("known")
 	unknown := subagentCommentaryMessageID("unknown")
-	if err := store.locked(t.Context(), func() error {
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
 		return store.write(replayRecord{Version: 1, Workspace: "workspace", CallID: known, Commentary: true})
 	}); err != nil {
 		t.Fatal(err)

@@ -13,9 +13,9 @@ import (
 	"unicode"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 const changesReadUsage = "mchanges --list [ID[..ID] ...] [--workspace DIR] [--max-tokens N] | mchanges [--mine | ID[..ID] ...] [--summary|--history|--net] [--workspace DIR] [--max-tokens N] [-- PATH ...] | mchanges revert|apply ID[..ID] ... [--workspace DIR] [--max-tokens N] [-- PATH ...]"
@@ -173,7 +173,7 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 	var output string
 	var snapshot *changeReadSnapshot
 	var targetErrors []error
-	err := s.locked(ctx, func() error {
+	err := s.locked(ctx, func(s *mekugiReplayStore) error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
@@ -668,7 +668,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 	if info, err := os.Lstat(filepath.Join(manifest.ReplayDirectory, "store.lock")); err != nil || !info.Mode().IsRegular() {
 		return fail(errors.New("change storage is missing or invalid"))
 	}
-	store := &mekugiReplayStore{directory: manifest.ReplayDirectory}
+	store := &mekugiReplayStore{publication: manifest.history.Attach(manifest.ReplayDirectory), directory: manifest.ReplayDirectory}
 	if options.view == "revert" || options.view == "apply" {
 		text, status, err := store.mutateChanges(ctx, options)
 		if err != nil {

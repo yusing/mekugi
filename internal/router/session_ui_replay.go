@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -304,7 +306,7 @@ func replaySpeedStep(speed float64, faster bool) float64 {
 
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
-func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
+func RunSessionUIReplay(service *history.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
 	f := flag.NewFlagSet("replay-session", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	session := f.String("session", "", "Codex session ID (required; searches CODEX_HOME or ~/.codex)")
@@ -346,7 +348,7 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if len(paths) != 1 {
 		return fail(fmt.Errorf("session %q has multiple rollouts in Codex sessions or archived_sessions", *session))
 	}
-	source, err := readSessionUIReplay(ctx, paths[0], *debug, *seed)
+	source, err := readSessionUIReplay(service, ctx, paths[0], *debug, *seed)
 	if err != nil {
 		return fail(err)
 	}

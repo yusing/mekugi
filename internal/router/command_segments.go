@@ -176,7 +176,7 @@ func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appS
 		ctx, cancel := context.WithTimeout(u.ctx, time.Second)
 		ctx = context.WithValue(ctx, storageSessionKey{}, storageSessionIdentity{Thread: thread})
 		store := u.proxy.replayStore.scoped(ctx)
-		_ = store.locked(ctx, func() error {
+		_ = store.locked(ctx, func(store *mekugiReplayStore) error {
 			accepted := make(map[string]*retainedCommandSegments)
 			var names []string
 			for _, item := range items {

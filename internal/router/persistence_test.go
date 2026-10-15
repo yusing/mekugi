@@ -9,6 +9,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
@@ -26,13 +28,18 @@ func TestPersistenceRecordNoOpAndChangedWrites(t *testing.T) {
 			name := "test-record"
 			write := func(data []byte) {
 				t.Helper()
-				if err := store.locked(t.Context(), func() error { return store.writeFile(name, "test-pending-", data) }); err != nil {
+				if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return store.transaction.Write(name, "test-pending-", data) }); err != nil {
 					t.Fatal(err)
 				}
 			}
 			revision := func() string {
 				t.Helper()
-				value, err := store.storageRevision()
+				var value string
+				err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
+					var err error
+					value, err = store.transaction.Revision()
+					return err
+				})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -118,7 +125,7 @@ func TestPersistenceUsageCoalescesBurstAndRetainsDeltas(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		catalog, err := os.ReadFile(filepath.Join(store.directory, storageSessionName("burst")))
+		catalog, err := os.ReadFile(filepath.Join(store.directory, history.SessionName("burst")))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -266,8 +273,8 @@ func TestPersistenceRetentionRefreshesUnchangedSweepMarker(t *testing.T) {
 	if err := store.cleanupSessions(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := store.planStoragePrune(t.Context())
-	if err != nil || plan != nil {
-		t.Fatalf("unchanged sweep marker did not suppress repeated scans: %v, %v", plan, err)
+	info, err := os.Stat(marker)
+	if err != nil || time.Since(info.ModTime()) >= time.Hour {
+		t.Fatalf("unchanged sweep marker was not refreshed: %v", err)
 	}
 }

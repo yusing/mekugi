@@ -2,12 +2,13 @@ package router
 
 import (
 	"context"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 func TestCodexLaunchIgnoresThirdPartyCredentials(t *testing.T) {
@@ -25,7 +26,7 @@ func TestCodexLaunchIgnoresThirdPartyCredentials(t *testing.T) {
 			ready := make(chan Session, 1)
 			done := make(chan error, 1)
 			go func() {
-				done <- RunSession(ctx, toolplugin.Builtins(), []string{"--mode", mode}, nil, func(session Session) { ready <- session }, nil)
+				done <- RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--mode", mode}, nil, func(session Session) { ready <- session }, nil)
 			}()
 			var session Session
 			select {

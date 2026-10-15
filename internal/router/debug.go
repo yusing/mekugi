@@ -12,14 +12,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 // Debug output is separate from sanitized capture. Failure events include the
 // complete error string, which can contain request content or credentials.
 type debugOutput struct {
+	history            *history.Service
 	instructionContent map[string]bool
 	writes             *persistence.Counter
 	release            func() error
@@ -35,7 +38,7 @@ type debugOutput struct {
 
 type debugContextKey struct{}
 
-func openDebugOutput(flags routerFlags) (*debugOutput, error) {
+func openDebugOutput(service *history.Service, flags routerFlags) (*debugOutput, error) {
 	if !*flags.debug {
 		return nil, nil
 	}
@@ -77,7 +80,7 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 			return nil, fmt.Errorf("link debug capture: %w", err)
 		}
 	}
-	d = &debugOutput{
+	d = &debugOutput{history: service,
 		writes: new(persistence.Counter), release: release,
 		paths: []string{filepath.Join(directory, "router.jsonl"), capture, metrics,
 			filepath.Join(directory, "instructions.jsonl"), readLog, filepath.Join(directory, "ax.json")},

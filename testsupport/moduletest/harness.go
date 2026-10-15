@@ -28,9 +28,12 @@ func (s *Scripted) Capability(mechanism capability.Mechanism) capability.Result 
 
 // New uses the caller's real dependencies, including temporary-storage owners.
 // Composition graph and startup rollback are tested by the application owner.
-func New[D, S any](t *testing.T, descriptor module.Descriptor[D, S, binding.Bindings[S]], deps D, slots module.Slots, script *Scripted) S {
+func New[D, S any, B interface {
+	module.NoBindings | binding.Bindings[S]
+}](t *testing.T, descriptor module.Descriptor[D, S, B], deps D, slots module.Slots, script *Scripted) S {
 	t.Helper()
-	for _, requirement := range descriptor.Bindings.Requires {
+	backend, _ := any(descriptor.Bindings).(binding.Bindings[S])
+	for _, requirement := range backend.Requires {
 		result := script.Capability(requirement.Mechanism)
 		if requirement.Required && result.State != capability.Available {
 			t.Fatalf("%s: %s unavailable: %s", descriptor.ID, requirement.Mechanism, result.Reason)
@@ -40,8 +43,8 @@ func New[D, S any](t *testing.T, descriptor module.Descriptor[D, S, binding.Bind
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Bindings.Register != nil {
-		if err := descriptor.Bindings.Register(script, service); err != nil {
+	if backend.Register != nil {
+		if err := backend.Register(script, service); err != nil {
 			t.Fatal(err)
 		}
 	}

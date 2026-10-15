@@ -61,7 +61,7 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		}
 	}
 	// A fresh replay store proves that the UI needs only durable evidence.
-	store = &mekugiReplayStore{directory: store.directory}
+	store = testReplayStore(mekugiReplayStore{directory: store.directory})
 	scope := liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}
 	snapshot, err := store.liveDiffSnapshot(t.Context(), scope)
 	if err != nil {
@@ -316,7 +316,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 		t.Fatalf("host results = %+v", record.HostResults)
 	}
 
-	store := &mekugiReplayStore{directory: proxy.replayStore.directory}
+	store := testReplayStore(mekugiReplayStore{directory: proxy.replayStore.directory})
 	snapshot, err := store.liveDiffSnapshot(t.Context(), liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"thread-1": true}}})
 	if err != nil {
 		t.Fatal(err)

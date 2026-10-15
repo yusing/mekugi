@@ -93,7 +93,7 @@ func (d *debugOutput) writeAXReport() error {
 			var stdout, stderr bytes.Buffer
 			// Reuse the one validated log snapshot rather than rescanning it
 			// for every thread (or accepting partial evidence on a later timeout).
-			code := RunSessionInspection(ctx, []string{"--session", paths[id][0], "--ax", "--limit", "1"}, &stdout, &stderr)
+			code := RunSessionInspection(d.history, ctx, []string{"--session", paths[id][0], "--ax", "--limit", "1"}, &stdout, &stderr)
 			var inspection sessionInspection
 			if code != 0 || json.Unmarshal(stdout.Bytes(), &inspection) != nil || inspection.AX == nil {
 				entry.State = "inspection_failed"

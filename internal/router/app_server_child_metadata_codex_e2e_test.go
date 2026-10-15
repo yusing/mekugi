@@ -46,7 +46,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := &appServerUI{client: client, view: newLiveActivityView(), agents: newLiveActivityView(), requests: make(map[string]string), ctx: ctx}
+	u := &appServerUI{history: testHistory(), client: client, view: newLiveActivityView(), agents: newLiveActivityView(), requests: make(map[string]string), ctx: ctx}
 	u.ensureShell()
 	defer u.shell.diff.close()
 	defer u.shell.diffScreen.Close()

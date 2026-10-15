@@ -109,7 +109,7 @@ func (f *mchangesSliceFixture) retire(t *testing.T, id string) {
 		t.Fatal(err)
 	}
 	store := f.store.scoped(f.ctx)
-	if err := store.locked(f.ctx, func() error {
+	if err := store.locked(f.ctx, func(store *mekugiReplayStore) error {
 		index, err := store.readChangeIndex(f.workspace)
 		if err != nil {
 			return err

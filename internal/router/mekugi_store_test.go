@@ -121,7 +121,7 @@ func TestMekugiReplayStoreAcceptsRetainedOffsetTimestamp(t *testing.T) {
 	}
 	started := time.Unix(1_700_000_000, 0).In(time.FixedZone("captured-offset", 8*60*60))
 	history := mekugiHistory{Script: "same", ExecObservation: &execObservation{WindowStart: started}}
-	if err := store.locked(t.Context(), func() error {
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
 		return store.write(replayRecord{Version: 1, Workspace: "/workspace", CallID: "call", History: history})
 	}); err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func TestMekugiReplayStoreQuotaAndCommentary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.locked(t.Context(), func() error {
+	if err := s.locked(t.Context(), func(s *mekugiReplayStore) error {
 		return s.write(replayRecord{Version: 1, Workspace: "/w", CallID: "id", Commentary: true})
 	}); err != nil {
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.maxBytes = int64(len(encoded))
-	if err := s.locked(t.Context(), func() error {
+	if err := s.locked(t.Context(), func(s *mekugiReplayStore) error {
 		return s.write(replayRecord{Version: 1, Workspace: "/w", CallID: "commentary", Commentary: true})
 	}); err != nil {
 		t.Fatal(err)
@@ -340,7 +340,7 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 		t.Fatalf("commentary displaced replay: %v", err)
 	}
 	s.maxCommentaryBytes = 1
-	if err := s.locked(t.Context(), func() error {
+	if err := s.locked(t.Context(), func(s *mekugiReplayStore) error {
 		return s.write(replayRecord{Version: 1, Workspace: "/w", CallID: "another", Commentary: true})
 	}); err == nil {
 		t.Fatal("accepted commentary capacity overflow")

@@ -226,8 +226,8 @@ func TestShellOutputStoreQuotaAndPermissions(t *testing.T) {
 	}
 	// A sparse fixture exercises the separate quota without large allocations.
 	// Like managed publishers, invalidate admission before changing store files.
-	if err := store.locked(t.Context(), func() error {
-		if err := store.advanceStorageRevision(); err != nil {
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
+		if err := store.transaction.AdvanceRevision(); err != nil {
 			return err
 		}
 		file, err := os.Create(filepath.Join(store.directory, scopedOutputName("", "maple")))

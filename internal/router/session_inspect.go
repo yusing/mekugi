@@ -16,6 +16,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -103,7 +105,7 @@ type sessionInspectionCall struct {
 
 // RunSessionInspection is an offline, read-only entry point. It deliberately does
 // not open the writable replay store or install a router/runtime.
-func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunSessionInspection(service *history.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-session", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	session := flags.String("session", "", "Codex rollout JSONL file")
@@ -194,7 +196,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	}
 	// read validates record size, identity and version. Atomic store replacement
 	// permits lock-free inspection without creating store.lock or changing modes.
-	store := &mekugiReplayStore{directory: *replayDir}
+	store := &mekugiReplayStore{publication: service.Attach(*replayDir), directory: *replayDir}
 	var observations sessionAXInput
 	calls, err := readSessionInspection(ctx, *session, &observations)
 	if err != nil {

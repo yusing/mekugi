@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *testing.T) {
@@ -83,137 +82,11 @@ func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *test
 		case <-time.After(5 * time.Second):
 			t.Fatal("worker did not retry its stale plan")
 		}
-		if _, err := os.Stat(filepath.Join(store.directory, storageSessionName("parent"))); !errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(filepath.Join(store.directory, history.SessionName("parent"))); !errors.Is(err, os.ErrNotExist) {
 			t.Fatal("expired parent ownership was not reclaimed")
 		}
 		retentionTestExists(t, store, "/w", "shared", true)
 	})
-}
-
-func TestBackgroundPruneCommitsBoundedBatchesAndPreservesSnapshotDependencies(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, release := retentionTestSession(t, store, "old", 0)
-	h := snapshotTestHistory()
-	for i := range 35 {
-		snapshotTestPut(t, store, ctx, fmt.Sprintf("call-%d", i), h)
-	}
-	release()
-	retentionTestAge(t, store, "old", 15*24*time.Hour)
-	plan, err := store.planStoragePrune(t.Context())
-	if err != nil || plan == nil {
-		t.Fatalf("planning: %v", err)
-	}
-	var candidate *storageCandidate
-	for i := range plan.snapshot.sessions {
-		if plan.snapshot.sessions[i].thread == "old" {
-			candidate = &plan.snapshot.sessions[i]
-		}
-	}
-	if candidate == nil {
-		t.Fatal("missing expired candidate")
-	}
-	before := len(candidate.files)
-	committed, _, err := store.commitStoragePrune(t.Context(), plan, candidate)
-	if err != nil || !committed || before-len(candidate.files) != storagePruneBatchFiles {
-		t.Fatalf("unbounded prune commit: committed=%v removed=%d err=%v", committed, before-len(candidate.files), err)
-	}
-	remaining := 0
-	for i := range 35 {
-		if _, found, err := store.lookup(t.Context(), "/w", fmt.Sprintf("call-%d", i)); err != nil {
-			t.Fatal(err)
-		} else if found {
-			remaining++
-		}
-	}
-	if remaining != 35-storagePruneBatchFiles || len(snapshotTestBlobs(t, store)) != 3 {
-		t.Fatal("batch destroyed dependencies still needed by surviving calls")
-	}
-	restarted, err := openMekugiReplayStore(store.directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := restarted.cleanupSessions(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if len(snapshotTestBlobs(t, store)) != 0 {
-		t.Fatal("last owner left snapshot objects behind")
-	}
-}
-
-func TestBackgroundPruneLargeSessionCatalogWriteAmplification(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	const count = 10_000
-	catalog := retainedSession{Version: 1, Thread: "large", LastUsed: time.Now().Add(-sessionRetention - time.Hour), Files: make(map[string]bool, count)}
-	for i := range count {
-		name := fmt.Sprintf("output-%064x.json", i)
-		catalog.Files[name] = true
-		if err := os.WriteFile(filepath.Join(store.directory, name), []byte("retained output fixture"), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	data, err := responses.MarshalJSON(catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	name := storageSessionName(catalog.Thread)
-	if err := store.locked(t.Context(), func() error { return store.writeFile(name, "session-pending-", data) }); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(store.directory, name)
-	original, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := store.planStoragePrune(t.Context())
-	if err != nil || plan == nil || len(plan.snapshot.sessions) != 1 {
-		t.Fatalf("large catalog planning: %v", err)
-	}
-	candidate := &plan.snapshot.sessions[0]
-	batches, written, freed := 0, int64(0), int64(0)
-	var longest time.Duration
-	for len(candidate.files) > 0 {
-		before, started := len(candidate.files), time.Now()
-		committed, bytes, err := store.commitStoragePrune(t.Context(), plan, candidate)
-		longest = max(longest, time.Since(started))
-		if err != nil || !committed || before-len(candidate.files) > storagePruneBatchFiles {
-			t.Fatalf("large catalog commit: committed=%v err=%v", committed, err)
-		}
-		batches++
-		freed += bytes
-		current, err := os.Stat(path)
-		if len(candidate.files) == 0 {
-			if !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("completed ownership was not removed: %v", err)
-			}
-			continue
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Atomic publication replaces the inode. Inspect the real persisted
-		// catalog rather than counting calls to a mocked writer.
-		if !os.SameFile(original, current) {
-			written += current.Size()
-			original = current
-		}
-	}
-	t.Logf("persisted prune workload: files=%d batches=%d catalog_bytes_rewritten=%d reclaimed=%d longest_batch=%s", count, batches, written, freed, longest)
-	if written != 0 || batches != count/storagePruneBatchFiles || freed != int64(len(data)+count*len("retained output fixture")) {
-		t.Fatal("catalog write amplification or incomplete reclamation")
-	}
-	// The entire measured commit bounds its publication-lock interval. This
-	// budget deliberately tolerates slow/race-enabled CI filesystems.
-	if longest > 500*time.Millisecond {
-		t.Fatalf("publication batch exceeded responsiveness budget: %s", longest)
-	}
 }
 
 func TestBackgroundPruneExpiresEmptyCatalogsWithoutRemovingActiveOwnership(t *testing.T) {
@@ -231,10 +104,10 @@ func TestBackgroundPruneExpiresEmptyCatalogsWithoutRemovingActiveOwnership(t *te
 	if err := store.cleanupSessions(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(store.directory, storageSessionName("empty-old"))); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(store.directory, history.SessionName("empty-old"))); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expired empty catalog survived: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(store.directory, storageSessionName("empty-active"))); err != nil {
+	if _, err := os.Stat(filepath.Join(store.directory, history.SessionName("empty-active"))); err != nil {
 		t.Fatalf("active empty ownership was removed: %v", err)
 	}
 }
@@ -250,11 +123,11 @@ func TestBackgroundPrunePressureIsQueuedWithoutForegroundDeletion(t *testing.T) 
 	releaseOld()
 	retentionTestAge(t, store, "old", time.Hour)
 	current, _ := retentionTestSession(t, store, "current", 0)
-	files, err := store.storageFileSizes()
+	files, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.maxBytes, _ = store.storageNeeds(files, "", 0)
+	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	write := func() error {
 		return store.put(current, "/w", map[string]mekugiHistory{"new": {ToolName: "shell", Script: "true"}})
 	}
@@ -291,7 +164,7 @@ func TestBackgroundPruneCancellationAndCrossProcessLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leased, release, err := store.tryPruneLease("retention-maintenance.lock")
+	leased, release, err := store.publication.TryPruneLease("retention-maintenance.lock")
 	if err != nil || !leased {
 		t.Fatal(err)
 	}
@@ -363,11 +236,11 @@ func TestBackgroundPruneDelayedAgeRetryPressureAndRecovery(t *testing.T) {
 					go func() { defer close(done); store.runRetentionSweeps(ctx, nil) }()
 					synctest.Wait()
 				} else {
-					files, err := store.storageFileSizes()
+					files, err := store.testFileSizes()
 					if err != nil {
 						t.Fatal(err)
 					}
-					store.maxBytes, _ = store.storageNeeds(files, "", 0)
+					store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 					written := make(chan error, 1)
 					go func() {
 						written <- store.putAfterMaintenance(current, "/w", map[string]mekugiHistory{

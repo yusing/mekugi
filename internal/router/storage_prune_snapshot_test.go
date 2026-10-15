@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -19,8 +21,8 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 	ctx, release := retentionTestSession(t, store, "old", 0)
 	retentionTestPut(t, store, ctx, "/w", "old-call")
 	release()
-	if err := store.locked(t.Context(), func() error {
-		catalog, err := store.readRetainedSession(storageSessionName("old"))
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
+		catalog, err := store.publication.ReadCatalog(history.SessionName("old"))
 		if err != nil {
 			return err
 		}
@@ -29,7 +31,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return store.writeFile(storageSessionName("old"), "session-pending-", data)
+		return store.transaction.Write(history.SessionName("old"), "session-pending-", data)
 	}); err != nil {
 		t.Fatal(err)
 	}

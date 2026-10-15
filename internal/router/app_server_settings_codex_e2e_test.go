@@ -146,7 +146,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := &appServerUI{client: client, requests: make(map[string]string), view: newLiveActivityView(), agents: newLiveActivityView()}
+	u := &appServerUI{history: testHistory(), client: client, requests: make(map[string]string), view: newLiveActivityView(), agents: newLiveActivityView()}
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}

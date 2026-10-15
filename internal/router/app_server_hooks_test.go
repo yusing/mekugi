@@ -188,7 +188,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 		t.Fatal("workspace scope leaked hook observations")
 	}
 	rollout := replayTestWrite(t, t.TempDir(), "rollout-main.jsonl", replayTestMeta("main"))
-	source, err := readSessionUIReplay(t.Context(), rollout, "", 1)
+	source, err := readSessionUIReplay(testHistory(), t.Context(), rollout, "", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	rollout = replayTestWrite(t, t.TempDir(), "rollout-main.jsonl", replayTestMeta("main"),
 		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "t"}),
 		replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "t"}))
-	source, err = readSessionUIReplay(t.Context(), rollout, "", 1)
+	source, err = readSessionUIReplay(testHistory(), t.Context(), rollout, "", 1)
 	if err != nil || len(source.HookUnavailable) != 1 || len(source.Events) != 2 {
 		t.Fatalf("invalid hook history blocked host replay or hid the gap: %v, %+v", err, source)
 	}

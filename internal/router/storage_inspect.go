@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"slices"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 type storageInspection struct {
@@ -29,7 +31,7 @@ type storageInspection struct {
 // RunStorageInspection reads only an explicitly selected retained call or
 // object. It does not open the writable store, acquire/create locks, scan other
 // sessions, alter permissions or execute retained inputs.
-func RunStorageInspection(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunStorageInspection(service *history.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-storage", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	replayDir := flags.String("replay-dir", "", "replay directory (default platform state directory)")
@@ -74,7 +76,7 @@ func RunStorageInspection(ctx context.Context, args []string, stdout, stderr io.
 			return fail(err)
 		}
 	}
-	store := &mekugiReplayStore{directory: *replayDir}
+	store := &mekugiReplayStore{publication: service.Attach(*replayDir), directory: *replayDir}
 	result := storageInspection{Schema: "mekugi.storage.v1", Field: *field}
 	var data []byte
 	if *object != "" {
@@ -100,7 +102,7 @@ func RunStorageInspection(ctx context.Context, args []string, stdout, stderr io.
 		if !found {
 			return fail(fmt.Errorf("call %s in workspace %s is unavailable", *callID, *workspace))
 		}
-		dependencies, err := store.snapshotDependencies(result.Target)
+		dependencies, err := store.publication.Dependencies(result.Target)
 		if err != nil {
 			return fail(err)
 		}

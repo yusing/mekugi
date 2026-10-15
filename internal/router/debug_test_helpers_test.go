@@ -11,7 +11,7 @@ func diagnosticDebugOutput(t *testing.T) *debugOutput {
 	t.Helper()
 	flags := newRouterFlags(io.Discard)
 	*flags.debug = true
-	d, err := openDebugOutput(flags)
+	d, err := openDebugOutput(testHistory(), flags)
 	if err != nil {
 		t.Fatal(err)
 	}

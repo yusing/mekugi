@@ -13,18 +13,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
 // RunToolPluginWorker handles the private child-process mode used by a
 // stable contributed-tool frontend.
-func RunOwnedToolPluginWorker(ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	return RunToolPluginWorker(context.WithValue(ctx, frontendProcessOwnerKey{}, true), argv0, args, stdin, stdout, stderr)
+func RunOwnedToolPluginWorker(service *history.Service, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	return RunToolPluginWorker(service, context.WithValue(ctx, frontendProcessOwnerKey{}, true), argv0, args, stdin, stdout, stderr)
 }
 
 type frontendProcessOwnerKey struct{}
 
-func RunToolPluginWorker(
+func RunToolPluginWorker(service *history.Service,
 	ctx context.Context,
 	argv0 string,
 	args []string,
@@ -103,10 +105,10 @@ func RunToolPluginWorker(
 		return fail(errors.New("tool wrapper does not target the running mekugi executable"))
 	}
 
-	return runAuthenticatedToolWorker(ctx, directory, filepath.Base(wrapper), args, stdin, stdout, stderr)
+	return runAuthenticatedToolWorker(service, ctx, directory, filepath.Base(wrapper), args, stdin, stdout, stderr)
 }
 
-func runAuthenticatedToolWorker(
+func runAuthenticatedToolWorker(service *history.Service,
 	ctx context.Context,
 	directory, name string,
 	args []string,
@@ -126,6 +128,7 @@ func runAuthenticatedToolWorker(
 	if err != nil {
 		return fail(err)
 	}
+	manifest.history = service
 	if manifest.Version != 2 {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}

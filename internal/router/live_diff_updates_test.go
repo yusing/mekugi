@@ -21,7 +21,7 @@ import (
 func TestLiveDiffTerminalRapidUpdates(t *testing.T) {
 	workspace := t.TempDir()
 	directory := filepath.Join(t.TempDir(), "not-yet", "replay")
-	store := &mekugiReplayStore{directory: directory}
+	store := testReplayStore(mekugiReplayStore{directory: directory})
 	publish := func(call string, reviews []mekugi.ReviewFile, outcome *execOutcome) mekugiHistory {
 		t.Helper()
 		id, err := store.reserveChange(t.Context(), workspace, "thread", call)

@@ -40,7 +40,7 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 	}
 	flags := newRouterFlags(io.Discard)
 	*flags.debug = true
-	debug, initErr := openDebugOutput(flags)
+	debug, initErr := openDebugOutput(testHistory(), flags)
 	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &original); err != nil {
 		t.Fatal(err)
 	}

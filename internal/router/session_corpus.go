@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -67,7 +69,7 @@ type sessionCorpus struct {
 
 // RunSessionCorpusInspection is read-only. Counts are per rollout: inherited
 // calls in forks are not summed into an invented global workload.
-func RunSessionCorpusInspection(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunSessionCorpusInspection(service *history.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-sessions", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	directory := flags.String("sessions-dir", "", "Codex rollout directory (default CODEX_HOME/sessions)")
@@ -139,7 +141,7 @@ func RunSessionCorpusInspection(ctx context.Context, args []string, stdout, stde
 	result := sessionCorpus{Schema: "mekugi.sessions.v1", Since: since, Until: until, Model: *model, ExcludeModel: *exclude, Class: *class,
 		Excluded: map[string]int{}, Sessions: []corpusSession{}, Unavailable: []corpusUnavailable{},
 		UsageScope: "provider capture records by captured_at in the selected window and model, for included thread IDs; not inferred from rollout bytes"}
-	store := &mekugiReplayStore{directory: *replay}
+	store := &mekugiReplayStore{publication: service.Attach(*replay), directory: *replay}
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return fail(err)

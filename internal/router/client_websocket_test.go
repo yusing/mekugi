@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"io"
 	"net"
 	"net/http"
@@ -16,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
@@ -571,7 +572,7 @@ func TestRunSessionUsesProviderWebSocketsByDefault(t *testing.T) {
 	ready := make(chan string, 1)
 	done := make(chan error, 1)
 	go func() {
-		done <- RunSession(ctx, toolplugin.Builtins(), []string{"--mode", "passthrough"}, nil, func(session Session) { ready <- session.BaseURL }, nil)
+		done <- RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"--mode", "passthrough"}, nil, func(session Session) { ready <- session.BaseURL }, nil)
 	}()
 	var baseURL string
 	select {

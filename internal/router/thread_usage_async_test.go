@@ -18,7 +18,7 @@ func holdUsageStoreLock(t *testing.T, store *mekugiReplayStore) func() {
 	t.Helper()
 	locked, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	go func() {
-		done <- store.locked(context.Background(), func() error {
+		done <- store.locked(context.Background(), func(store *mekugiReplayStore) error {
 			close(locked)
 			<-release
 			return nil

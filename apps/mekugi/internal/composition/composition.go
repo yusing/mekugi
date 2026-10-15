@@ -10,6 +10,8 @@ import (
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/contracts/recordkind"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // Handle resolves one explicitly declared dependency during ordered construction.
@@ -33,6 +35,7 @@ type entry struct {
 	lifetime     module.Lifetime
 	resources    []string
 	commands     []command.Spec
+	records      []recordkind.Spec
 	capabilities []capability.Requirement
 	validFactory bool
 	construct    func(module.Slots, binding.Binder) error
@@ -42,28 +45,36 @@ type entry struct {
 type Composition struct {
 	// LegacyCommands is the existing application catalog until step 3 moves its
 	// implementations into descriptors. It is not represented as a fake module.
-	LegacyCommands []command.Spec
-	entries        []entry
-	sealed         bool
+	LegacyCommands    []command.Spec
+	LegacyRecordKinds []recordkind.Spec
+	entries           []entry
+	sealed            bool
 }
 
 // Add declares a factory, without constructing or starting it. The typed
 // dependency closure resolves prior handles after all slots have been collected.
-func (c *Composition) Add[D, S any](descriptor module.Descriptor[D, S, binding.Bindings[S]], deps func() D) *Handle[S] {
+func (c *Composition) Add[D, S any, B interface {
+	module.NoBindings | binding.Bindings[S]
+}](descriptor module.Descriptor[D, S, B], deps func() D) *Handle[S] {
 	if c.sealed {
 		panic("composition is already activated")
 	}
+	backend, _ := any(descriptor.Bindings).(binding.Bindings[S])
 	handle := &Handle[S]{id: descriptor.ID}
 	node := entry{
 		id: descriptor.ID, requires: slices.Clone(descriptor.Requires),
 		lifetime: descriptor.Lifetime, resources: slices.Clone(descriptor.Resources),
 		commands:     slices.Clone(descriptor.Contributes.Commands),
-		capabilities: slices.Clone(descriptor.Bindings.Requires),
+		records:      slices.Clone(descriptor.Contributes.RecordKinds),
+		capabilities: slices.Clone(backend.Requires),
 		validFactory: descriptor.New != nil && deps != nil,
 	}
 	node.construct = func(slots module.Slots, binder binding.Binder) error {
 		if !descriptor.HostsCommands {
-			slots = module.Slots{}
+			slots.Commands = nil
+		}
+		if !descriptor.HostsRecords {
+			slots.RecordKinds = nil
 		}
 		service, err := descriptor.New(deps(), slots)
 		if err != nil {
@@ -71,8 +82,8 @@ func (c *Composition) Add[D, S any](descriptor module.Descriptor[D, S, binding.B
 		}
 		handle.value, handle.ready = service, true
 		registrar := &moduleRegistrar{binder: binder, allowed: node.commands, registered: make(map[string]bool)}
-		if descriptor.Bindings.Register != nil {
-			if err := descriptor.Bindings.Register(registrar, service); err != nil {
+		if backend.Register != nil {
+			if err := backend.Register(registrar, service); err != nil {
 				return err
 			}
 		}
@@ -118,6 +129,7 @@ type Gap struct {
 }
 
 type Runtime struct {
+	History  *history.Service
 	Commands []command.Spec
 	Gaps     []Gap
 	started  []entry
@@ -143,6 +155,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	}
 	c.sealed = true
 	runtime := &Runtime{Commands: slices.Clone(c.LegacyCommands)}
+	records := slices.Clone(c.LegacyRecordKinds)
 	positions := make(map[module.ID]int)
 	var failures []error
 	for i, node := range c.entries {
@@ -154,6 +167,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 		positions[node.id] = i
 		runtime.Commands = append(runtime.Commands, node.commands...)
+		records = append(records, node.records...)
 	}
 	for i, node := range c.entries {
 		if !node.validFactory {
@@ -207,7 +221,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands)}, binder); err != nil {
+		if err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records)}, binder); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}

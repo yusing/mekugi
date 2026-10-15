@@ -27,7 +27,7 @@ func TestWrapCodexSkipsThirdPartyCatalog(t *testing.T) {
 	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	code, err := wrapCodex(ctx, nil, []string{"exec", "--profile", "work", "--ignore-user-config", "prompt"})
+	code, err := wrapCodex(testComposition(t), ctx, nil, []string{"exec", "--profile", "work", "--ignore-user-config", "prompt"})
 	if code != 0 || err != nil {
 		t.Fatalf("Codex-only launch failed: code=%d error=%v", code, err)
 	}

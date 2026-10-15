@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/yusing/mekugi/contracts/command"
 	"io"
 	"log"
 	"net"
@@ -17,6 +16,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/responses"
@@ -62,7 +64,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(ctx context.Context, commands []command.Spec, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, ctx context.Context, commands []command.Spec, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	flags := newRouterFlags(io.Discard)
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -102,7 +104,7 @@ func RunSession(ctx context.Context, commands []command.Spec, args []string, iss
 	if err := validateAXOutputAliases(os.Getenv(capturer.AXReadOutputEnvironment), *flags.captureOutput); err != nil {
 		return err
 	}
-	debug, err := openDebugOutput(flags)
+	debug, err := openDebugOutput(service, flags)
 	if err != nil {
 		return err
 	}
@@ -199,6 +201,7 @@ func RunSession(ctx context.Context, commands []command.Spec, args []string, iss
 	provider.titleGenerator = newSessionTitleGenerator(titleCtx, provider)
 	if issues != nil {
 		issues.persistFailures = true
+		issues.history = service
 		issues.writes = writes
 	}
 	if *flags.mode == "mekugi" {
@@ -220,7 +223,7 @@ func RunSession(ctx context.Context, commands []command.Spec, args []string, iss
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
-		replayStore, err := openMekugiReplayStore(replayDirectory)
+		replayStore, err := openReplayStore(ctx, service, replayDirectory)
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
@@ -349,7 +352,7 @@ func RunSession(ctx context.Context, commands []command.Spec, args []string, iss
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.paths[0])
 			}
-			return startAppServerUI(ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
+			return startAppServerUI(service, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.directory

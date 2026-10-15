@@ -189,7 +189,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			*flags.debug = true
-			debug, err := openDebugOutput(flags)
+			debug, err := openDebugOutput(testHistory(), flags)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -259,7 +259,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			*flags.debug = true
-			debug, err := openDebugOutput(flags)
+			debug, err := openDebugOutput(testHistory(), flags)
 			if err != nil {
 				t.Fatal(err)
 			}

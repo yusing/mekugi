@@ -638,7 +638,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 		stockRolloutItem(call),
 	)
 	var stdout, stderr strings.Builder
-	if code := RunSessionInspection(t.Context(), []string{"--session", rollout, "--replay-dir", proxy.replayStore.directory}, &stdout, &stderr); code != 0 {
+	if code := RunSessionInspection(testHistory(), t.Context(), []string{"--session", rollout, "--replay-dir", proxy.replayStore.directory}, &stdout, &stderr); code != 0 {
 		t.Fatalf("inspection: %d %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), `"outcome":"unconfirmed"`) ||

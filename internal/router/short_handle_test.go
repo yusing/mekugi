@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
@@ -18,8 +20,8 @@ func TestShortHandlesRoundTripAndTokenCost(t *testing.T) {
 	maxTokens := 0
 	seen := make(map[string]bool)
 	for n := range uint64(4096) {
-		id := shortHandle(n)
-		got, ok := parseShortHandle(id)
+		id := history.ShortHandle(n)
+		got, ok := history.ParseHandle(id)
 		if !ok || got != n || seen[id] {
 			t.Fatalf("handle %d = %q, decoded %d (%v)", n, id, got, ok)
 		}
@@ -32,12 +34,12 @@ func TestShortHandlesRoundTripAndTokenCost(t *testing.T) {
 	}
 	t.Logf("first 4096 short handles use at most %d GPT-5 tokens", maxTokens)
 	for _, n := range []uint64{999999, ^uint64(0)} {
-		if got, ok := parseShortHandle(shortHandle(n)); !ok || got != n {
+		if got, ok := history.ParseHandle(history.ShortHandle(n)); !ok || got != n {
 			t.Fatalf("large handle did not round trip: %d", n)
 		}
 	}
 	for _, id := range []string{"", "../amber", "Amber", "amber0", "amber01", "amber-1", "amber99999999999999999999"} {
-		if _, ok := parseShortHandle(id); ok {
+		if _, ok := history.ParseHandle(id); ok {
 			t.Errorf("accepted %q", id)
 		}
 	}
@@ -76,10 +78,10 @@ func TestShortHandleAllocationConcurrentRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids, err := store.allocateHandles(t.Context(), 1)
-	if err != nil || len(ids) != 1 || ids[0] != shortHandle(64) {
+	if err != nil || len(ids) != 1 || ids[0] != history.ShortHandle(64) {
 		t.Fatalf("restart allocation: %v, %v", ids, err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, handleScopeName("")), []byte("corrupt"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, history.ScopeName("")), []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.allocateHandles(t.Context(), 1); err == nil {

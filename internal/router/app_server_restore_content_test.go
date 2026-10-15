@@ -213,7 +213,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 	if lastScope == nil || !lastScope.Workspaces[workspace]["main"] || !lastScope.Workspaces[workspace]["child"] || lastScope.Workspaces[workspace]["unrelated"] {
 		t.Fatalf("native broker missed restored scope: %+v", lastScope)
 	}
-	reader := &mekugiReplayStore{directory: store.directory}
+	reader := testReplayStore(mekugiReplayStore{directory: store.directory})
 	files, err := reader.liveDiffSnapshotFiles(t.Context(), auto.scope)
 	if err != nil {
 		t.Fatal(err)

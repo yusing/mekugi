@@ -149,7 +149,7 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, options.approvals)
+	wait, err := startAppServerUI(testHistory(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}

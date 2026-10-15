@@ -60,7 +60,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				args = append(args, "--capture-output", capture)
 				t.Setenv("MEKUGI_AX_OUTPUT", reads)
 			}
-			code, err := wrapCodex(t.Context(), args, nil)
+			code, err := wrapCodex(testComposition(t), t.Context(), args, nil)
 			if err != nil || (test.exit == "0" && code != 0) || (test.exit == "23" && code != 23) {
 				t.Fatalf("wrap exit: %d, %v", code, err)
 			}
@@ -87,7 +87,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				t.Fatalf("diagnostic handoff is not a session inspection command: %q", resolved)
 			}
 			var diagnosticErrors bytes.Buffer
-			if code := router.RunSessionInspection(t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
+			if code := router.RunSessionInspection(testComposition(t).History, t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
 				t.Fatalf("printed diagnostic command failed: %d: %s", code, &diagnosticErrors)
 			}
 			normalized := strings.ReplaceAll(after, shellsyntax.Quote(argv[2]), "'/tmp/mekugi-debug-session'")

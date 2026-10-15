@@ -6,12 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 // allocateChangeStream runs under store.lock. The namespace-wide high-water
 // mark outlives payload retention, so another workspace cannot reuse a base ID.
 func (s *mekugiReplayStore) allocateChangeStream() (string, error) {
-	scope, _, err := s.readHandleScope(s.handleNamespace())
+	scope, _, err := s.publication.ReadScope(s.handleNamespace())
 	if err != nil {
 		return "", err
 	}
@@ -29,7 +31,7 @@ func (s *mekugiReplayStore) allocateChangeStream() (string, error) {
 			if !strings.HasPrefix(entry.Name(), changeIndexPrefix) {
 				continue
 			}
-			data, err := readManagedOutputFile(filepath.Join(s.directory, entry.Name()))
+			data, err := history.ReadRecord(filepath.Join(s.directory, entry.Name()))
 			if err != nil {
 				return "", err
 			}
@@ -60,15 +62,8 @@ func (s *mekugiReplayStore) allocateChangeStream() (string, error) {
 			}
 		}
 	}
-	if scope.NextChangeStream == int(^uint(0)>>1) {
-		return "", errors.New("change stream counter exhausted")
-	}
-	name := changeStreamName(scope.NextChangeStream)
-	scope.NextChangeStream++
-	if err := s.writeHandleScope(scope); err != nil {
-		return "", err
-	}
-	return name, nil
+	number, err := s.transaction.ReserveStream(s.handleNamespace(), scope.NextChangeStream)
+	return changeStreamName(number), err
 }
 
 func changeStreamOrdinal(name string) (int, error) {

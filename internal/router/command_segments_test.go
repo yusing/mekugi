@@ -11,6 +11,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -104,11 +106,11 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 				t.Fatalf("retained output %d = %q, want %q", i, got, want)
 			}
 		}
-		catalog, err := reopened.readRetainedSession(storageSessionName(key[0]))
+		catalog, err := reopened.publication.ReadCatalog(history.SessionName(key[0]))
 		if err != nil || !catalog.Files[replayRecordName(workspace, commandSegmentsID(key[1], key[2]), false)] {
 			t.Fatalf("original thread did not retain its report: %+v, %v", catalog, err)
 		}
-		if _, err := reopened.readRetainedSession(storageSessionName("other")); !os.IsNotExist(err) {
+		if _, err := reopened.publication.ReadCatalog(history.SessionName("other")); !os.IsNotExist(err) {
 			t.Fatalf("pending write borrowed switched thread ownership: %v", err)
 		}
 	})
@@ -267,7 +269,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 			if len(pages) != 4 || pages[0].Output == pages[1].Output {
 				t.Fatalf("per-command pages lost: %+v", pages)
 			}
-			catalog, err := store.readRetainedSession(storageSessionName(target))
+			catalog, err := store.publication.ReadCatalog(history.SessionName(target))
 			if err != nil || !catalog.Files[replayRecordName(workspace, commandSegmentsID(key[1], key[2]), false)] {
 				t.Fatalf("restored owner not retained: %+v, %v", catalog, err)
 			}

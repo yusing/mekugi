@@ -33,7 +33,7 @@ func (u *appServerUI) openWaitStore(store *mekugiReplayStore) error {
 		if err != nil {
 			return err
 		}
-		store, err = openMekugiReplayStoreContext(ctx, directory)
+		store, err = openReplayStore(ctx, u.history, directory)
 		if err != nil {
 			return err
 		}
@@ -126,7 +126,7 @@ func (s *appServerSession) waitTargetsPath(key [3]string) string {
 }
 
 func (s *appServerSession) readWaitTargets(key [3]string) (targets []appServerWaitTarget, found bool, err error) {
-	err = s.waitStore.locked(s.waitContext, func() error {
+	err = s.waitStore.locked(s.waitContext, func(store *mekugiReplayStore) error {
 		path := s.waitTargetsPath(key)
 		info, err := os.Lstat(path)
 		if errors.Is(err, os.ErrNotExist) {
@@ -153,7 +153,7 @@ func (s *appServerSession) readWaitTargets(key [3]string) (targets []appServerWa
 		if err := json.Unmarshal(data, &targets, json.RejectUnknownMembers(true)); err != nil {
 			return err
 		}
-		if err := s.waitStore.retainFiles(filepath.Base(path)); err != nil {
+		if err := store.retainFiles(filepath.Base(path)); err != nil {
 			return err
 		}
 		found = true
@@ -176,7 +176,7 @@ func (s *appServerSession) writeWaitTargets(key [3]string, targets []appServerWa
 	if len(data) > maxNativeActivityMessageBytes {
 		return errors.New("wait targets exceed size limit")
 	}
-	return s.waitStore.locked(s.waitContext, func() error {
-		return s.waitStore.writeManagedFile(filepath.Base(s.waitTargetsPath(key)), "wait-pending-", data)
+	return s.waitStore.locked(s.waitContext, func(store *mekugiReplayStore) error {
+		return store.writeManagedFile(filepath.Base(s.waitTargetsPath(key)), "wait-pending-", data)
 	})
 }

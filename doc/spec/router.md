@@ -105,18 +105,12 @@ their original model-visible tools. This is correctness state, not an operationa
 It lives at `$XDG_STATE_HOME/mekugi/replay`, or `~/.local/state/mekugi/replay` when that variable is
 unset, and survives wrapper shutdown. A relative `XDG_STATE_HOME` is invalid. Passthrough mode
 opens this store only when retaining a failure; it does not retain tool replay state.
-Mekugi-mode initialization failure prevents Codex launch. The store admits at most
-4 GiB of managed data, including session ownership catalogs, read outputs, and change
-indexes, with 32 MiB per encoded record. Exact commentary provenance has an independent
-16 MiB budget; failure to retain it suppresses new commentary with a diagnostic instead of
-consuming the managed-data allowance.
-
-Automatic retention removes Mekugi-owned data after 14 days without activity and reclaims the
-least recently active inactive sessions when a byte budget would be exceeded. Requests check
-space before exposing retained facts; the router attempts an age sweep on startup and then
-hourly in the background, outside request preparation. Foreground publication never prunes:
-insufficient space queues a coalesced background pressure request without exposing unfinished
-evidence. Response translation keeps completed facts in memory and waits up to 30 seconds for
+Mekugi-mode initialization failure prevents Codex launch. Publication, budgets,
+namespace continuity, leases, and retention follow the
+[session-history specification](../../modules/sessionhistory/SPEC.md).
+The router attempts an age sweep on startup and hourly in the background, outside
+request preparation. Insufficient space queues a coalesced background pressure
+request without exposing unfinished evidence. Response translation keeps completed facts in memory and waits up to 30 seconds for
 background maintenance, then retries persistence only. It reports a capacity diagnostic if
 maintenance cannot free enough space, stops making progress, or does not complete within that
 wait. Cancellation interrupts the wait. Retrying persistence must not rerun the host operation
@@ -124,47 +118,19 @@ or upstream request. Background work notices pressure promptly without waiting f
 An age-sweep failure does not fail an
 unrelated request and is reported as a router-wide notice with the failed cleanup
 phase and underlying error.
-The policy never deletes Codex transcripts, workspace files, explicitly selected external
-capture/read outputs, or exported copies of debug bundles. Generated debug bundles under
-the state root have independent age retention, not the replay-data byte budget.
-It never infers expiry from request truncation or compaction.
-
-Managed publication uses private same-directory temporary files, close, then rename
-under the existing cross-process store lock. Dependencies and ownership are published
-before exposing references. Neither publications nor cleanup force file or directory
-flushes; the kernel owns flushing. This is atomic visibility and process-restart
-recovery, not a power-loss durability guarantee. Missing or invalid records after an
-unclean shutdown remain unavailable, never grounds for replaying effects. Existing
-replay paths and record schemas are unchanged; no data migration is required.
-Identical managed records are not rewritten. Roster usage retains bounded pending
-per-thread deltas and coalesces bursts before publication; shutdown drains the writer.
-
-Small per-thread namespace bindings and allocation high-water marks outlive reclaimed
-payloads, like storage lease metadata. They prevent resumed sessions from reusing
-expired handles. Subagents share their root's namespace; ordinary forks and side
-threads clone it once. These bindings survive a fresh router or standalone worker.
-
-Durable catalogs bind file dependencies to stable thread IDs across workspaces, routing remaps,
-forks, and restarts. Visible inherited calls, commentary provenance, and read-reference dependencies
-gain another owner. A shared record survives removal of another owner. Snapshot validation and
-ownership publication cannot race cleanup. Change streams provide
-ownership where available; recent records with no trustworthy owner remain protected, while
-unattributed records older than 14 days use last-write time for cleanup.
+Generated debug bundles have independent age retention below. Roster usage retains
+bounded pending per-thread deltas and coalesces bursts before publication;
+shutdown drains its writer.
 
 Cross-process leases protect active turns, host handoffs, and workers, including yielded calls.
 Completed turn delivery without a tool handoff and router shutdown release owned leases.
 Release is independent of answer text, child presentation, and optional UI tracking.
 Cleanup never stops a host
 process or changes its continuation lifetime.
-If no inactive data can be reclaimed, publication fails with required bytes, the limiting budget,
-and an actionable explanation rather than a generic initialization error. Catalog growth counts
-toward the budget too. Cleanup reports removals through user-only notices, or worker stderr;
-failed cleanup reports an error and does not claim complete reclamation.
-Prune planning and index decoding do not hold the publication lock. Removal commits use
-bounded file batches, revalidate concurrent ownership and active/read leases, and release
-the lock between batches. One worker per store performs maintenance; router shutdown cancels
-and joins its worker, including a lazily opened failure-only store. Startup and UI
-session handling do not wait for a full sweep.
+Cleanup reports removals through user-only notices, or worker stderr; failed
+cleanup reports an error and does not claim complete reclamation. Router shutdown
+cancels and joins maintenance, including a lazily opened failure-only store.
+Startup and UI session handling do not wait for a full sweep.
 
 Change-index retirement preserves stream high-water counters so old IDs are never reused.
 Partially retired change histories explicitly identify removed attempts. Missing recovery references

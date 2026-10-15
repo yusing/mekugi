@@ -9,6 +9,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func TestThreadUsageFailedPublicationCannotRestoreCompleteLifetime(t *testing.T) {
@@ -100,10 +102,10 @@ func TestThreadUsageStoreRejectsConflictingIdentityAndRetainsOwnership(t *testin
 	u.observation("source", "source", "gpt-6-sol", "").observe(tokenCounts{InputTokens: 10, UncachedInputTokens: 10})
 	flushUsageForTest(t, u)
 	name := threadUsageName("source")
-	if !retainedDataName(name) {
+	if _, found, err := testHistory().Kind(name); err != nil || !found {
 		t.Fatal("usage record excluded from managed storage")
 	}
-	retained, err := store.readRetainedSession(storageSessionName("source"))
+	retained, err := store.publication.ReadCatalog(history.SessionName("source"))
 	if err != nil || !retained.Files[name] {
 		t.Fatalf("usage record lacks thread ownership: %+v %v", retained, err)
 	}

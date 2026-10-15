@@ -37,6 +37,9 @@ Product intent and journeys belong to the separate repository product specificat
 architecture files own component boundaries. Related facts are cited by stable ID or
 linked, not copied.
 
+Module-owned contracts live with their implementation:
+[session history](../../modules/sessionhistory/SPEC.md).
+
 ## Inventory
 
 - [`REQ-CONTEXT-RESET-001`](context_reset.md): retained inactive instruction-file loading

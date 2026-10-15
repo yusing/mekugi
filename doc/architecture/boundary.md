@@ -50,28 +50,18 @@ existing paths below the state root; generated debug bundles use its debug subtr
 with process leases and age cleanup owned by storage maintenance. Diagnostic bytes
 do not consume the correctness-state quota.
 
-Session retention keeps shared durable dependencies and protects running work.
-New call envelopes retain file evidence inline and create no shared
-filesystem snapshots; workspace snapshots are not retention dependencies.
-Readers still validate historical version-2 snapshot references, hashes, and
-bounded expansion. Historical object dependencies remain
-protected across branches until their last owner expires. Cleanup removes an
-old envelope before its last-owned objects; no migration deletes retained evidence.
-Cleanup operates only on exact managed record names under the store lock; it
-never traverses user workspaces or Codex transcripts. The age and
-storage-pressure policy belongs to [REQ-ROUTER-001](../spec/router.md).
-Retirement neither transfers execution authority nor recycles change IDs.
-Background planners validate a store-wide publication revision before each
-bounded removal commit. The revision is coordination metadata, not authorization
-or replay state. Catalog and change-index reads occur outside the store lock;
-unchanged plans reuse their size/ownership view instead of rescanning after each
-session. Catalogs remain intact during partial retirement and are removed only
-after the final batch; a restarted planner safely revisits already-removed names
-without rewriting the remaining catalog for each batch. Concurrent publication
-invalidates the plan. The maintenance lease
-permits one worker per store, while active-turn and inherited-read leases remain
-independent protections. Pressure requests carry only a managed record name and
-byte growth, never a thread view or host continuation.
+[Session history](../../modules/sessionhistory/SPEC.md) owns publication, catalogs,
+namespace allocation, leases, and retention. Feature owners contribute record
+recognition, dependency enumeration, and semantic retirement without exposing
+private schemas to retention. A rejected preparation leaves the owner unchanged;
+partial publication advances only the successfully written owner records.
+
+New call envelopes retain file evidence inline and create no shared filesystem
+snapshots. Workspace comparison snapshots are outside record retention.
+Historical version-2 object dependencies remain readable and are retired only
+when their final owner expires, after referencing envelopes. Cross-owner fork
+initialization retains inherited records before publishing the new scope.
+Neither retirement nor a retained reference grants execution authority.
 
 The live-diff renderer consumes provisional inputs and completed review files
 without owning workspace effects or replay locks. Commentary and capture are

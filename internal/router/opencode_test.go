@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -412,13 +413,13 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 	if directory, _ := os.UserConfigDir(); directory != os.Getenv("XDG_CONFIG_HOME") {
 		t.Skip("platform does not use XDG_CONFIG_HOME")
 	}
-	if err := RunSession(t.Context(), toolplugin.Builtins(), []string{"--mode", "passthrough", "third-party"}, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "require --mode mekugi") {
+	if err := RunSession(testHistory(), t.Context(), toolplugin.Builtins(), []string{"--mode", "passthrough", "third-party"}, nil, nil, nil); err == nil || !strings.Contains(err.Error(), "require --mode mekugi") {
 		t.Fatalf("passthrough accepted OpenCode: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	ready := false
-	err := RunSession(ctx, toolplugin.Builtins(), []string{"third-party"}, nil, func(session Session) {
+	err := RunSession(testHistory(), ctx, toolplugin.Builtins(), []string{"third-party"}, nil, func(session Session) {
 		ready = true
 		if session.GrokEnabled || session.OpenCode.Go.APIKey != "go-test" || session.OpenCode.Zen.APIKey != "zen-test" {
 			t.Error("startup lost separate OpenCode settings")

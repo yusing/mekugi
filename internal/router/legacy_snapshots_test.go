@@ -154,7 +154,7 @@ func putLegacySnapshotFixture(store *mekugiReplayStore, ctx context.Context, cal
 	if err := store.put(ctx, "/w", map[string]mekugiHistory{call: history}); err != nil {
 		return err
 	}
-	return store.scoped(ctx).locked(ctx, func() error {
+	return store.scoped(ctx).locked(ctx, func(store *mekugiReplayStore) error {
 		record, found, err := store.read("/w", call, false)
 		if err != nil || !found {
 			return err
@@ -192,9 +192,9 @@ func (s *mekugiReplayStore) writeLegacySnapshotFiles(record managedFile, depende
 		return err
 	}
 	for _, file := range missing {
-		if err := s.writeFile(file.name, file.pattern, file.data); err != nil {
+		if err := s.transaction.Write(file.name, file.pattern, file.data); err != nil {
 			return storageIOError(err)
 		}
 	}
-	return storageIOError(s.writeFile(record.name, record.pattern, record.data))
+	return storageIOError(s.transaction.Write(record.name, record.pattern, record.data))
 }

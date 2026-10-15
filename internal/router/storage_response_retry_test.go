@@ -62,11 +62,11 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 					fill: func() {
 						// Fill the store after request preparation, while the upstream
 						// response is arriving, to exercise response translation itself.
-						files, err := store.storageFileSizes()
+						files, err := store.testFileSizes()
 						if err != nil {
 							t.Fatal(err)
 						}
-						store.maxBytes, _ = store.storageNeeds(files, "", 0)
+						store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 						startResponseRetentionWorker(t, store)
 					},
 				}
@@ -124,14 +124,14 @@ func TestReplayStorageDefaultIsFourGiB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := shellOutputStore(toolWorkerManifest{ReplayDirectory: store.directory})
+	worker, err := shellOutputStore(toolWorkerManifest{history: testHistory(), ReplayDirectory: store.directory})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, candidate := range []*mekugiReplayStore{store, worker, {}} {
+	for _, candidate := range []*mekugiReplayStore{store, worker, testReplayStore(mekugiReplayStore{})} {
 		// The reported failure needed only 170 bytes over the old 1 GiB cap.
 		// Admission checks sizes, so no large payload allocation is needed.
-		_, limit := candidate.storageNeeds(nil, "", (1<<30)+170)
+		_, limit := candidate.publication.Usage(candidate.retentionLimits(), nil, "", (1<<30)+170)
 		if limit != 4<<30 {
 			t.Fatalf("storage limit = %d, want 4 GiB", limit)
 		}
@@ -154,7 +154,7 @@ func TestReplayStorageDefaultIsFourGiB(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := store.locked(t.Context(), func() error { return store.maintainStorage("", 1) }); err != nil {
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error { return store.maintainStorage("", 1) }); err != nil {
 		t.Fatalf("admission still rejects storage above the old cap: %v", err)
 	}
 }
@@ -167,11 +167,11 @@ func TestResponsePersistencePressureStopsWithoutReclaimableData(t *testing.T) {
 	}
 	current, _ := retentionTestSession(t, store, "active", 0)
 	retentionTestPut(t, store, current, "/w", "existing")
-	files, err := store.storageFileSizes()
+	files, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.maxBytes, _ = store.storageNeeds(files, "", 0)
+	store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 	startResponseRetentionWorker(t, store)
 	ctx, cancel := context.WithTimeout(current, 3*time.Second)
 	defer cancel()
@@ -192,11 +192,11 @@ func TestResponsePersistenceMaintenanceWaitIsCancellable(t *testing.T) {
 		}
 		current, _ := retentionTestSession(t, store, "active", 0)
 		retentionTestPut(t, store, current, "/w", "existing")
-		files, err := store.storageFileSizes()
+		files, err := store.testFileSizes()
 		if err != nil {
 			t.Fatal(err)
 		}
-		store.maxBytes, _ = store.storageNeeds(files, "", 0)
+		store.maxBytes, _ = store.publication.Usage(store.retentionLimits(), files, "", 0)
 		ctx, cancel := context.WithTimeout(current, 100*time.Millisecond)
 		defer cancel()
 		err = store.putAfterMaintenance(ctx, "/w", map[string]mekugiHistory{"new": {ToolName: "shell", Script: "true"}})
@@ -229,11 +229,11 @@ func TestResponsePersistenceRetriesSuccessiveHistoryWrites(t *testing.T) {
 			retentionTestAge(t, store, thread, time.Hour)
 		}
 		current, _ := retentionTestSession(t, store, "active", 0)
-		files, err := store.storageFileSizes()
+		files, err := store.testFileSizes()
 		if err != nil {
 			t.Fatal(err)
 		}
-		used, _ := store.storageNeeds(files, "", 0)
+		used, _ := store.publication.Usage(store.retentionLimits(), files, "", 0)
 		store.maxBytes = used + 900
 		startResponseRetentionWorker(t, store)
 		ctx, cancel := context.WithTimeout(current, 5*time.Second)

@@ -120,7 +120,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 
 	// A new store reader and controller projection can restore the outcome
 	// without any live parent, command execution, or workspace source files.
-	u.shell.diff.store = &mekugiReplayStore{directory: store.directory}
+	u.shell.diff.store = testReplayStore(mekugiReplayStore{directory: store.directory})
 	u.shell.diff.resetScope()
 	refresh()
 	u.shell.diff.view.FilterCaller("/root/worker")

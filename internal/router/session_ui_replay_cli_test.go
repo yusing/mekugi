@@ -32,7 +32,7 @@ func TestSessionUIReplayCLI(t *testing.T) {
 	}
 	stdin, stdout, stderr := output("stdin"), output("stdout"), output("stderr")
 	args := []string{"--session", "root", "--headless"}
-	if code := RunSessionUIReplay(t.Context(), args, stdin, stdout, stderr); code != 0 {
+	if code := RunSessionUIReplay(testHistory(), t.Context(), args, stdin, stdout, stderr); code != 0 {
 		b, _ := os.ReadFile(stderr.Name())
 		t.Fatalf("exit=%d stderr=%s", code, b)
 	}
@@ -57,13 +57,13 @@ func TestSessionUIReplayCLI(t *testing.T) {
 		t.Fatal("headless stdout contains terminal control sequences")
 	}
 	for _, speed := range []string{"0", "-1", "NaN", "Inf", "101"} {
-		if code := RunSessionUIReplay(t.Context(), []string{"--session", "root", "--headless", "--speed", speed}, stdin, stdout, stderr); code != 2 {
+		if code := RunSessionUIReplay(testHistory(), t.Context(), []string{"--session", "root", "--headless", "--speed", speed}, stdin, stdout, stderr); code != 2 {
 			t.Errorf("invalid speed %s exit=%d", speed, code)
 		}
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if code := RunSessionUIReplay(ctx, []string{"--session", "root", "--headless"}, stdin, stdout, stderr); code != 1 {
+	if code := RunSessionUIReplay(testHistory(), ctx, []string{"--session", "root", "--headless"}, stdin, stdout, stderr); code != 1 {
 		t.Fatalf("canceled replay exit=%d", code)
 	}
 }
@@ -132,7 +132,7 @@ func TestSessionUIReplayCLISessionLookup(t *testing.T) {
 			if tc.session != "" {
 				args = append(args, "--session", tc.session)
 			}
-			code := RunSessionUIReplay(t.Context(), args, files[0], files[1], files[2])
+			code := RunSessionUIReplay(testHistory(), t.Context(), args, files[0], files[1], files[2])
 			stderr, err := os.ReadFile(files[2].Name())
 			if err != nil {
 				t.Fatal(err)

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/responses"
 )
@@ -90,7 +92,9 @@ func TestReplaySnapshotsRoundTripDedupAndLegacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.writeFile(replayRecordName("/w", "legacy", false), "legacy-pending-", data); err != nil {
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
+		return store.transaction.Write(replayRecordName("/w", "legacy", false), "legacy-pending-", data)
+	}); err != nil {
 		t.Fatal(err)
 	}
 	got, found, err := reopened.lookup(t.Context(), "/w", "legacy")
@@ -305,7 +309,7 @@ func TestReplaySnapshotsPressureProtectsUnpublishedDependencies(t *testing.T) {
 	h := snapshotTestHistory()
 	h.UpstreamItem = map[string]json.RawMessage{"status": json.RawMessage(`"in_progress"`)}
 	snapshotTestPut(t, store, t.Context(), "call", h)
-	files, err := store.storageFileSizes()
+	files, err := store.testFileSizes()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,8 +342,8 @@ func TestReplaySnapshotsLegacyCatalogProtectsDependencies(t *testing.T) {
 	snapshotTestPut(t, store, ctx, "call", snapshotTestHistory())
 	// Simulate a catalog containing only the envelope, then let cleanup expand
 	// dependencies without decompressing them or borrowing another session.
-	if err := store.locked(t.Context(), func() error {
-		catalog, err := store.readRetainedSession(storageSessionName("owner"))
+	if err := store.locked(t.Context(), func(store *mekugiReplayStore) error {
+		catalog, err := store.publication.ReadCatalog(history.SessionName("owner"))
 		if err != nil {
 			return err
 		}
@@ -348,7 +352,7 @@ func TestReplaySnapshotsLegacyCatalogProtectsDependencies(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		return store.writeFile(storageSessionName("owner"), "session-pending-", data)
+		return store.transaction.Write(history.SessionName("owner"), "session-pending-", data)
 	}); err != nil {
 		t.Fatal(err)
 	}

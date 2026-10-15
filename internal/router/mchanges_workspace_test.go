@@ -99,7 +99,7 @@ func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
 		}
 	}
 	store := f.store.scoped(f.ctx)
-	if err := store.locked(f.ctx, func() error {
+	if err := store.locked(f.ctx, func(store *mekugiReplayStore) error {
 		index, err := store.readChangeIndex(f.workspace)
 		if err != nil {
 			return err
@@ -110,12 +110,12 @@ func TestMChangesLegacyPositionalStreamsSeedNewWorkspaceID(t *testing.T) {
 		if err := store.writeChangeIndex(index); err != nil {
 			return err
 		}
-		scope, _, err := store.readHandleScope(store.handleNamespace())
+		scope, _, err := store.publication.ReadScope(store.handleNamespace())
 		if err != nil {
 			return err
 		}
 		scope.NextChangeStream = 0
-		return store.writeHandleScope(scope)
+		return store.transaction.WriteScope(scope)
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/persistence"
+
 	"github.com/gofrs/flock"
 )
 
@@ -27,7 +29,7 @@ func createDebugBundle() (string, func() error, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if err := ensurePrivateStateDirectory(root); err != nil {
+	if err := persistence.EnsurePrivateDirectory(root); err != nil {
 		return "", nil, err
 	}
 	directory, err := os.MkdirTemp(root, "mekugi-debug-")

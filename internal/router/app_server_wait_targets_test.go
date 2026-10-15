@@ -244,7 +244,7 @@ func TestAppServerWaitTargetsManagedRetention(t *testing.T) {
 	releaseSharedSource()
 	retentionTestAge(t, store, "shared-source", 30*24*time.Hour)
 	sharedCtx, releaseSharedOwner := retentionTestSession(t, store, "shared-owner", 0)
-	if err := store.locked(sharedCtx, func() error {
+	if err := store.locked(sharedCtx, func(store *mekugiReplayStore) error {
 		return store.scoped(sharedCtx).retainFiles(filepath.Base(sharedPath))
 	}); err != nil {
 		t.Fatal(err)
