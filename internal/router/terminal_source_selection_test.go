@@ -47,8 +47,8 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						u.agents = newLiveActivityView()
 						u.agents.feedLeft, u.agents.feedTop = 1, 1
 						u.agents.feedRight, u.agents.feedRows = 40, len(rows)
-						u.layout.agents = u.layout.codex
-						u.layout.codex = terminalRect{50, 0, 40, len(rows)}
+						u.main.agents = u.agents
+						u.agents.only, u.agents.selected = true, "/root/worker"
 					}
 					if x < 0 {
 						t.Fatal("no cell")
@@ -237,6 +237,9 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				}
 				view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
 				var wire bytes.Buffer
+				if view == u.agents {
+					u.agents.only, u.agents.selected = true, "Main"
+				}
 				if err := u.paint(&wire, width, 50); err != nil {
 					t.Fatal(err)
 				}
@@ -261,9 +264,6 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				}
 				selectionTestDrag(t, u.shell, ax, ay, bx, by)
 				expected := want
-				if activity {
-					expected = strings.TrimSuffix(want, "\n| 猫 |  |")
-				} // Activity exposes only its five-row excerpt.
 				if got := u.shell.selection.text(); got != expected {
 					t.Fatalf("activity=%v width=%d reverse=%v: %q want %q", activity, width, reverse, got, expected)
 				}
@@ -280,6 +280,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u.shell.diffOpen = false
 	u.agents.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer
+	u.agents.only, u.agents.selected = true, "Main"
 	if err := u.paint(&wire, 120, 40); err != nil {
 		t.Fatal(err)
 	}

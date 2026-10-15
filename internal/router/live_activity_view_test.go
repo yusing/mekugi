@@ -494,22 +494,7 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 	if lines := plainLines(view.render(40, 3, time.Now())); len(lines) != 3 || !strings.Contains(lines[1], "b") || !strings.Contains(lines[1], "c") {
 		t.Fatalf("three-row pane = %q", lines)
 	}
-	// A stray Esc then ']' does not swallow later keys.
-	escape, _ := view.handleKey("", 27)
-	escape, _ = view.handleKey(escape, ']')
-	if view.handleKey(escape, 'a'); !view.only || view.osc.Active {
-		t.Fatalf("a after Esc ] was swallowed: osc=%+v", view.osc)
-	}
-	// A real background reply still selects the theme.
-	view.painter.Theme = livediff.DarkTheme
-	reply := "\x1b]11;rgb:ffff/ffff/ffff\x1b\\"
-	escape = ""
-	for i := range len(reply) {
-		escape, _ = view.handleKey(escape, reply[i])
-	}
-	if view.painter.Theme != livediff.LightTheme || view.osc.Active {
-		t.Fatalf("theme reply: theme=%v osc=%+v", view.painter.Theme, view.osc)
-	}
+
 }
 
 func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {

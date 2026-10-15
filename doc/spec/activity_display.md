@@ -89,7 +89,7 @@ from it as `(N lines)`, and a click opens a dialog with one page per invocation 
 for previous/next result. A read still streaming or failed stays its own row until it settles. Different actions and
 other detail-bearing operations remain distinct. When one live invocation
 reports several operations at once, such as a shell call classified as Skill,
-Read and Search, they appear one at a time, 80 ms apart, in Main, Activity and the
+Read and Search, they appear one at a time, 80 ms apart, in Main, child transcripts and the
 roster summary; restored history shows at once. Child text is sanitized before layout, so it cannot emit terminal
 controls. Inline Markdown code uses content-detected syntax colors; unrecognized
 spans stay plain with the existing accent, which also colors plain tokens in detected
@@ -231,7 +231,7 @@ literal timeout bounds without splitting the script. A suffix that does not fit
 wraps beneath its operation row.
 
 The shared content dialog captures keys and pointer events above both panes.
-Clicking a recognized file link in Main, Activity, or Markdown dialog
+Clicking a recognized file link in a transcript or Markdown dialog
 content opens an existing regular local file in this dialog. Relative paths
 require the current session's workspace metadata; absolute paths and local
 `file:///` URLs are also supported. A `:line` or `:first-last` suffix appears
@@ -252,7 +252,7 @@ source bytes; dragging selects the visible path or content for selection copying
 accept UTF-8 text up to 8 MiB; oversized, binary/non-UTF-8, or unreadable files
 show red, copyable errors. Each opening reads current contents, without ongoing
 file monitoring. Missing local destinations are not clickable; their Markdown labels
-remain visible. HTTP(S) links still copy their destinations in Main and Activity;
+remain visible. HTTP(S) links still copy their destinations in transcripts;
 clicking them inside a dialog still does nothing.
 
 Errors show a bounded first-line preview rather than an unbounded inline diagnostic.
@@ -260,8 +260,8 @@ A details link and click target appear only when that preview omits retained con
 a complete single-line diagnostic may wrap without gaining a redundant link.
 Clicking an elided error opens its complete retained text,
 including multiline JavaScript execution failures restored from history. `Ctrl-B !` opens
-the newest error in the focused Main or Activity transcript; Left/Right navigates
-its other retained errors, respecting the Activity agent filter. Error details
+the newest error in the displayed transcript; Left/Right navigates
+its other retained errors. Error details
 render literally rather than as Markdown, and use the dialog's full-page copy
 and search controls. Terminal control sequences are sanitized for display and copy;
 the retained host error and stock tool result remain unchanged.
@@ -395,9 +395,9 @@ authored Markdown. Blank lines opening or closing a message, as some providers s
 add no rows. Main completion previews retain the response excerpt and show
 the linked assignment excerpt below its timestamp on separate, wrapped quote rows.
 Each excerpt shows up to two content rows with an ellipsis when truncated;
-Activity retains the complete response. When a retained child result contains
+the child transcript retains the complete response. When a retained child result contains
 provider answers, exact replacement provenance combines their cards into one
-complete enriched reply in Main and Activity. The assignment link and full reply
+complete enriched reply in Main and the child transcript. The assignment link and full reply
 remain available. Host messages stay unchanged; missing replacement evidence keeps
 the messages separate rather than guessing from matching text.
 
@@ -463,7 +463,7 @@ user-input waits, and MCP calls have explicit action labels. These describe
 observed requests, not unobserved native execution or completion. Wait previews
 include targets explicitly supplied in the call. Sibling and ancestor continuation guides
 form a tree; rows whose parent is off-screen show their relative path instead. The roster stays in a separate region spanning the full width below Main
-and the right column, with its own resizable divider. It shares local selection with the activity feed on the right;
+and the right column, with its own resizable divider. Its selection chooses the displayed transcript;
 no extra process, broker, or transport is needed. Each agent has one row: status, name,
 and activity, then its metrics inline in fixed-width columns: context usage (defined
 by the native layout contract), the timer, the agent's captured edit lines as
@@ -512,20 +512,18 @@ remain valid. While a response streams, output grows by an estimate of about fou
 bytes of visible delta per token, refreshed every second; the provider's reported
 usage replaces the estimate when the response ends. Hidden reasoning is not
 estimated, and input changes only when usage is reported. An `exec` batch shows its latest
-operation and the count of the others. When the separate roster is visible,
-the activity pane gives its whole body to the feed. The native layout contract owns narrow-terminal and compact-roster placement.
+operation and the count of the others. The selected thread transcript occupies the main body above Main's composer.
+The native layout contract owns narrow-terminal and compact-roster placement.
 Shared column widths derive from currently visible roster rows. Before hiding agents, cards compact to one row per agent, retaining
 selected-agent metrics when space permits. Hidden rows have directional counts and responding/error counts on the
 corresponding edge where space permits; the header always includes overall counts.
 Counts follow each agent's status symbol, so a responding agent is never also
 counted as an error.
 The viewport moves only when selection leaves it, not to recenter each selection.
-The separate roster header omits feed follow state; the feed header is `ACTIVITY`
-with its filter and follow state. Feed-only controls do not offer clicking agents.
 Narrative events use Main’s shared colored event headings, timestamps, and rails;
 available timestamps show only where they fit, and unknown timestamps stay absent.
-Narrative previews keep up to five body rows below their heading, including in single-agent
-mode; longer content ends with a hidden-row hint.
+Authored messages use the full-message transcript renderer. Collapsed reasoning
+retains its body in the shared dialog.
 Operation source and output each keep up to five rows without clipping their status. Hovering a clipped
 snippet underlines its hidden-line count. Clicking an operation opens the output
 dialog when it carries retained output or additional source; narrative text,
@@ -533,17 +531,16 @@ including thinking and delegation assignments, opens in the same dialog only
 when its presentation elides content or retains distinct additional detail.
 Fully displayed short reasoning and diagnostics have no
 redundant underline hint or full-view click target. Neither action changes
-transcript following. Roster rows are clickable: hovering highlights an agent; clicking it shows only that agent,
-and clicking it again restores the shared feed. In the roster, `↑`/`↓` or
-`k`/`j` move through all agents followed by each individual agent, stopping at
-either end. Main's activity belongs to Main, so Activity neither shows nor counts
-Main: roster navigation skips its row, and clicking it restores the shared feed.
-`a` toggles the filter in Activity and Agents; the hint describes the next action
-as `a all` when filtered and `a only` otherwise. `n`/`Tab` and `p` also select agents.
+transcript following. Roster rows are clickable: hovering highlights an agent; clicking a child switches
+only the displayed transcript to that child. Clicking Main returns to Main.
+The composer continues to target Main. In Agents, `↑`/`↓` or `k`/`j` move from
+Main through each child, stopping at either end; `n`/`Tab` and `p` also navigate.
+`a` returns to Main from a child or selects the current child from Main.
 The roster mouse wheel scrolls its viewport without changing selection, filtering,
 or feed follow state.
-Hover underlines only the name; selection shades the row. Feed scrolling follows the same
-line/page/home/end/follow contract as the [live diff](changes.md#live-terminal-view).
+Hover underlines only the name; selection shades the row. PageUp/PageDown and wheel
+scrolling pause transcript following; Esc resumes it. Frozen selections retain
+their document-navigation controls.
 Running command headers scroll with the transcript. Main's composer shows a
 breathing running-process count, and `/ps` opens their live output in the shared dialog as
 specified by the [UI contract](native_ui.md#running-processes).

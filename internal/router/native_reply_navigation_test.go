@@ -30,7 +30,6 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	for i := range 12 {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "child-turn", "item": map[string]any{"id": fmt.Sprint("cmd-", i), "type": "commandExecution", "command": "echo later", "status": "completed"}})
 	}
-	u.shell.side = false
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
 		t.Fatal(err)
 	}
@@ -67,8 +66,8 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		clicked = true
 		break
 	}
-	if !clicked || u.shell.output == nil || !u.shell.activityOpen || u.shell.side || u.shell.diffOpen {
-		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v side=%v activity=%v diff=%v", clicked, seq, u.view.feedQuestions, u.shell.side, u.shell.activityOpen, u.shell.diffOpen)
+	if !clicked || u.shell.output == nil || u.shell.diffOpen {
+		t.Fatalf("reply link did not open modal: clicked=%v seq=%d links=%v diff=%v", clicked, seq, u.view.feedQuestions, u.shell.diffOpen)
 	}
 	screen := vt.NewEmulator(120, 28)
 	defer screen.Close()
@@ -113,7 +112,7 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		t.Fatalf("dialog did not reach exact full reply:\n%s", screen.String())
 	}
 	u.shell.outputKey("\x1b")
-	if u.shell.output != nil || !u.shell.activityOpen || u.shell.side {
+	if u.shell.output != nil {
 		t.Fatal("closing reply changed panes")
 	}
 }

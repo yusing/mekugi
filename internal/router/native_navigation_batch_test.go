@@ -51,7 +51,7 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 			for _, target := range []struct {
 				prefix string
 				pane   int
-			}{{" 1 Main", 0}, {" 2 Diff", 1}, {" 3 Activity", 2}, {" 4 Agents", 3}} {
+			}{{" 1 Main", 0}, {" 2 Diff", 1}, {" 3 Agents", 3}} {
 				marker := target.prefix
 				// A narrow footer may show only the beginning of a selector.
 				start := strings.Index(footer, marker[:3])
@@ -62,12 +62,13 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 				right := min(width, left+ansi.StringWidth(marker))
 				for x := left; x < right; x++ {
 					u.shell.focus = (target.pane + 1) % 4
+					u.shell.diffOpen = false
 					u.shell.prefix = true
 					navigationBatchMouse(t, u.shell, 0, x, 23, false)
 					if u.shell.focus != target.pane || u.shell.prefix {
 						t.Fatalf("selector %q at cell %d: focus=%d prefix=%v, footer=%q", target.prefix, x, u.shell.focus, u.shell.prefix, footer)
 					}
-					if target.pane == 1 && !u.shell.diffOpen || target.pane == 2 && (u.shell.diffOpen || !u.shell.activityOpen) {
+					if target.pane == 1 && !u.shell.diffOpen || target.pane == 2 && u.shell.diffOpen {
 						t.Fatalf("selector %q did not open its pane", target.prefix)
 					}
 				}
@@ -111,11 +112,11 @@ func TestNativeNavigationBatchDiffBadgeCells(t *testing.T) {
 	if u.shell.focus != 1 {
 		t.Fatal("clicking the diff indicator did not open Diff")
 	}
-	agents := strings.Index(footer, "4 Agents¹")
+	agents := strings.Index(footer, "3 Agents¹")
 	if agents < 0 {
 		t.Fatalf("responding count is not attached to Agents: %q", footer)
 	}
-	count := ansi.StringWidth(footer[:agents] + "4 Agents")
+	count := ansi.StringWidth(footer[:agents] + "3 Agents")
 	navigationBatchMouse(t, u.shell, 0, count, 23, false)
 	if u.shell.focus != 3 {
 		t.Fatal("clicking the responding count did not focus Agents")
@@ -137,6 +138,7 @@ func TestNativeNavigationBatchModalPrecedence(t *testing.T) {
 
 func TestNativeNavigationBatchSelectorReleaseEndsDividerDrag(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
+	u.shell.diffOpen = true
 	navigationBatchPaint(t, u, 120, 24)
 	divider := u.shell.layout.vertical
 	if divider <= 0 {
@@ -159,7 +161,7 @@ func TestNativeNavigationBatchSelectorReleaseEndsDividerDrag(t *testing.T) {
 }
 
 func TestNativeNavigationBatchFilterBinding(t *testing.T) {
-	for _, pane := range []int{2, 3} {
+	for _, pane := range []int{3} {
 		t.Run(fmt.Sprint(pane), func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			u.shell.focus, u.shell.width, u.shell.height = pane, 140, 24
@@ -170,9 +172,9 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 				if u.agents.only != wantOnly {
 					t.Fatalf("a: only=%v, want %v", u.agents.only, wantOnly)
 				}
-				wantHint := "a only"
+				wantHint := "a child"
 				if wantOnly {
-					wantHint = "a all"
+					wantHint = "a Main"
 				}
 				status := ansi.Strip(u.shell.nativeStatus())
 				if !strings.Contains(status, wantHint) || strings.Contains(status, "o only") {

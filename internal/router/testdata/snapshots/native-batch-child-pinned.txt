@@ -1,0 +1,48 @@
+┌ 1 Thread · editor ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│LIVE · 3 files · 1–2/3 · ^B e next · pinned                                                                                               │
+│  editor · ◐ A child.txt +40 -0                                                                                                           │
+│  24│+child_line_24                                                                                                                       │
+│  25│+child_line_25                                                                                                                       │
+│  26│+child_line_26                                                                                                                       │
+│  27│+child_line_27                                                                                                                       │
+│  28│+child_line_28                                                                                                                       │
+│  29│+child_line_29                                                                                                                       │
+│  30│+child_line_30                                                                                                                       │
+│  31│+child_line_31                                                                                                                       │
+│  32│+child_line_32                                                                                                                       │
+│  33│+child_line_33                                                                                                                       │
+│  34│+child_line_34                                                                                                                       │
+│  35│+child_line_35                                                                                                                       │
+│  36│+child_line_36                                                                                                                       │
+│  37│+child_line_37                                                                                                                       │
+│  38│+child_line_38                                                                                                                       │
+│  39│+child_line_39                                                                                                                       │
+│▎ 40│+child_line_40                                                                                                                       │
+│  editor · ◐ A second.txt +40 -0                                                                                                          │
+│  24│+second_line_24                                                                                                                      │
+│  25│+second_line_25                                                                                                                      │
+│  26│+second_line_26                                                                                                                      │
+│  27│+second_line_27                                                                                                                      │
+│  28│+second_line_28                                                                                                                      │
+│  29│+second_line_29                                                                                                                      │
+│  30│+second_line_30                                                                                                                      │
+│  31│+second_line_31                                                                                                                      │
+│  32│+second_line_32                                                                                                                      │
+│  33│+second_line_33                                                                                                                      │
+│  34│+second_line_34                                                                                                                      │
+│  35│+second_line_35                                                                                                                      │
+│  36│+second_line_36                                                                                                                      │
+│  37│+second_line_37                                                                                                                      │
+│  38│+second_line_38                                                                                                                      │
+│  39│+second_line_39                                                                                                                      │
+│▎ 40│+second_line_40                                                                                                                      │
+│                                                                                                                                          │
+│╭─ Input: Main · Ready ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮│
+││ ❯                                                                                                                                      ││
+│╰─────────────────────────────────────────────────────────────────────────────────────────────────────────── snapshot-model (high) • 0% ─╯│
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+─ 3 Agents · 2 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ● editor  idle                                                                                                                          0%
+ ● reviewer  idle                                                                                                                        0%
+
+ 1 Main  2 Diff  3 Agents   ^B 1-3 views · ^E expand events

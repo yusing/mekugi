@@ -38,7 +38,7 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 					path = "file20.go"
 				}
 				u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "tool", Text: "Edit `" + path + "` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "earlier"}}, {Seq: 2, Agent: "Main", Kind: "tool", Text: "Edit `file20.go` +1 -1 · apply_patch", native: &liveActivityNativeItem{thread: "main", item: "call"}}}})
-				u.shell.side, u.shell.diffOpen, u.shell.focus = true, true, 1
+				u.shell.diffOpen, u.shell.focus = true, 1
 				c.filterCaller("/root")
 				c.navigation.Changes.Query = "amber1"
 				c.navigation.ChangesTab = true
@@ -78,7 +78,7 @@ func TestNativeCompletedBatchEditOpensBeforeSiblingCommandExits(t *testing.T) {
 				thread, view = "child", u.agents
 				u.session.registerThread(appServerThreadInfo{ID: thread, AgentNickname: "worker"})
 				u.session.metadata[thread] = ""
-				u.shell.selectNativePane(2)
+				u.agents.only, u.agents.selected = true, "/root/worker"
 			}
 			appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "batch", "status": "inProgress"}})
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "batch", "item": map[string]any{"id": "slow-sibling", "type": "commandExecution", "command": "sleep 30", "status": "inProgress"}})

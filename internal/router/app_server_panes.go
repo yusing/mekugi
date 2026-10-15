@@ -116,6 +116,9 @@ func (p *nativePanePersistence) open(u *terminalUI, workspace, thread string, re
 	p.resumeObserved = state.ResumeObserved
 	p.resumeEvidence = state.ResumeEvidence
 	u.focus, u.split, u.diffOpen = state.Focus, state.Split, state.DiffOpen
+	if u.focus == 2 || u.focus == 1 && !u.diffOpen {
+		u.focus = 0
+	}
 	u.main.interruptLocked = state.InterruptLocked
 	u.diff.navigation.Columns = state.NavigatorColumns
 	return nil

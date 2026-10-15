@@ -41,7 +41,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"/model /effort /tier", "Open picker or set VALUE"},
 			{"ctrl+c", "Clear / interrupt / quit"},
 			{"esc", "Interrupt, keep draft"},
-			{"ctrl+b 1–4", "Focus pane"},
+			{"ctrl+b 1–3", "Main / toggle Diff / Agents"},
 			{"ctrl+b e", "Next live item"},
 			{"ctrl+b q / !", "Questions / error details"},
 			{"ctrl+b ← / →", "Resize panes"},
@@ -50,6 +50,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"ctrl+e", "Default / events / all"},
 			{"pgup / pgdn", "Scroll"},
 			{"esc", "Back to bottom"},
+			{"ctrl+b o", "Older child history"},
 		}},
 	}
 	lines := []string{"", "  " + bold + "Keyboard shortcuts" + activityui.Reset, ""}

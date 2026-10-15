@@ -62,14 +62,13 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 		t.Fatal("incremental input update retained stale text")
 	}
 	// Resize and close the auxiliary panes; removed content must be cleared.
-	u.shell.side = false
 	screen.Resize(80, 20)
 	if err := u.paint(screen, 80, 20); err != nil {
 		t.Fatal(err)
 	}
 	fresh, _ := newAppServerTestUI()
 	fresh.ensureShell()
-	fresh.shell.side, fresh.draft = false, "new"
+	fresh.draft = "new"
 	want := vt.NewEmulator(80, 20)
 	defer want.Close()
 	if err := fresh.paint(want, 80, 20); err != nil {
@@ -91,7 +90,7 @@ func TestPaneScrollUnified(t *testing.T) {
 		v.offset = 50
 		v.feedRows = 10
 		v.feedLines = 100
-		v.handleKey("", key)
+		v.scrollKey(key)
 		if v.offset != next || v.following != (follow || next >= 90) {
 			t.Fatalf("agents %c: %d %v, expected %d %v", key, v.offset, v.following, next, follow)
 		}
@@ -103,91 +102,7 @@ func TestPaneScrollUnified(t *testing.T) {
 	if v.offset != 87 || v.following {
 		t.Fatalf("wheel did not pause/scroll: %+v", v)
 	}
-	for _, seq := range []string{"\x1b[H", "\x1b[1~", "\x1bOH"} {
-		var escape string
-		for _, b := range []byte(seq) {
-			escape, _ = v.handleKey(escape, b)
-		}
-		if v.offset != 0 {
-			t.Fatalf("Home %q: %d", seq, v.offset)
-		}
-	}
-	var escape string
-	for _, b := range []byte("\x1b[F") {
-		escape, _ = v.handleKey(escape, b)
-	}
-	if v.offset != 90 || !v.following {
-		t.Fatal("End must scroll to bottom and resume following")
-	}
 
-}
-
-func TestTerminalUIMainLivePreservesActivity(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	u.ensureShell()
-
-	defer u.shell.diffScreen.Close()
-	screen := vt.NewEmulator(120, 40)
-	defer screen.Close()
-	paint := func() string {
-		t.Helper()
-		if err := u.paint(screen, 120, 40); err != nil {
-			t.Fatal(err)
-		}
-		return screen.String()
-	}
-	workspace := t.TempDir()
-	u.shell.preview(projectStockPatchPreview(t.Context(), workspace, diffview.Preview{Workspace: workspace, ID: "main-edit", Caller: "/root", Tool: applyPatchToolName, Status: diffview.PreviewEdit, Input: "*** Begin Patch\n*** Add File: idle-live.txt\n+unique-live-line\n*** End Patch"}))
-	revealNativeDock(u.shell)
-	u.agents.agents = []activityPaneAgent{{Name: "/root", Responding: true}}
-	frame := paint()
-	if u.shell.layout.agents.h == 0 || !strings.Contains(frame, "3 Activity") || !strings.Contains(frame, "unique-live-line") {
-		t.Fatalf("Main live edit replaced Activity:\n%s", frame)
-	}
-	if err := u.shell.mouse("\x1b[<0;70;4M"); err != nil {
-		t.Fatal(err)
-	}
-	if u.shell.focus != 2 {
-		t.Fatal("Activity click did not focus the right pane")
-	}
-	frame = paint()
-	if !strings.Contains(frame, "3 Activity") || !strings.Contains(frame, "n/p agent") {
-		t.Fatalf("Main edit hid Activity controls:\n%s", frame)
-	}
-	u.agents.agents = append(u.agents.agents, activityPaneAgent{Name: "/root/worker", Final: true})
-	frame = paint()
-	activity := u.shell.layout.agents
-	innerHeight := u.shell.layout.codex.h
-	if activity.y != 1 || activity.h != innerHeight || !strings.Contains(frame, "LIVE") {
-		t.Fatalf("idle child layout: activity=%+v inner=%d\n%s", activity, innerHeight, frame)
-	}
-	for _, key := range []byte{2, '2'} {
-		if err := u.shell.key(key); err != nil {
-			t.Fatal(err)
-		}
-	}
-	frame = paint()
-	if u.shell.layout.diff != activity || !strings.Contains(frame, "unique-live-line") {
-		t.Fatalf("diff replaced live dock:\n%s", frame)
-	}
-	u.agents.agents[1].Responding = true
-	paint()
-	if u.shell.layout.diff != activity {
-		t.Fatal("child activity moved the shared Live dock")
-	}
-	u.agents.agents = u.agents.agents[:1]
-	frame = paint()
-	if u.shell.layout.diff.y != 1 || !strings.Contains(frame, "LIVE") {
-		t.Fatalf("no-child diff replaced live dock:\n%s", frame)
-	}
-	for _, key := range []byte{2, '3'} {
-		if err := u.shell.key(key); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if frame = paint(); u.shell.layout.agents.h == 0 || !strings.Contains(frame, "3 Activity") || !strings.Contains(frame, "unique-live-line") {
-		t.Fatalf("Live did not return:\n%s", frame)
-	}
 }
 
 func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
@@ -214,7 +129,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					assertCollapsed := func() {
 						t.Helper()
 						paint()
-						content := u.shell.layout.agents
+						content := u.shell.layout.codex
 						if saved {
 							content = u.shell.layout.diff
 						}
@@ -233,7 +148,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					now := time.Now()
 					u.shell.animating(now.Add(nativeDockMinimum - time.Millisecond))
 					paint()
-					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root" || !saved) {
+					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
 						t.Fatal("retained Live batch did not respect the owning pane")
 					}
 					u.shell.animating(now.Add(nativeDockMinimum))
@@ -242,7 +157,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					u.shell.preview(preview)
 					revealNativeDock(u.shell)
 					paint()
-					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root" || !saved) {
+					if len(u.shell.liveDock.Order) != 1 || strings.Contains(screen.String(), "LIVE ·") != (caller == "/root") {
 						t.Fatal("new batch did not respect the owning pane")
 					}
 				})
@@ -262,7 +177,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			if activity {
 				view, caller = u.agents, "/root/worker"
 				view.only, view.selected = true, caller
-				u.shell.focus = 2
+				u.shell.focus = 0
 			}
 			for i := range 80 {
 				text := "transcript row"

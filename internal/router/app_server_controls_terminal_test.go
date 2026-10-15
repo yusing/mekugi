@@ -56,18 +56,18 @@ func TestNativeControlsTerminalFrames(t *testing.T) {
 			return ""
 		}
 	}
-	if frame := paint(); !strings.Contains(frame, "3 Activity ─") {
-		t.Fatalf("initial frame lacks Activity:\n%s", frame)
+	if frame := paint(); !strings.Contains(frame, "1 Main") {
+		t.Fatalf("initial frame lacks Main:\n%s", frame)
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
 		"id": "spawn", "type": "subAgentActivity", "agentThreadId": "child", "agentPath": "/root/worker", "kind": "started"}})
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn"}})
-	if frame := paint(); !strings.Contains(frame, "3 Activity ─") {
-		t.Fatalf("spawn did not render Activity:\n%s", frame)
+	if frame := paint(); !strings.Contains(frame, "1 Main") {
+		t.Fatalf("spawn hid Main:\n%s", frame)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "child-turn", "status": "failed"}})
-	if frame := paint(); !strings.Contains(frame, "3 Activity ─") {
-		t.Fatalf("failed child hid Activity:\n%s", frame)
+	if frame := paint(); !strings.Contains(frame, "1 Main") {
+		t.Fatalf("failed child hid Main:\n%s", frame)
 	}
 	appServerTestKeys(t, u, "/lock\r")
 	if frame := paint(); !strings.Contains(frame, "Locked · /unlock") {

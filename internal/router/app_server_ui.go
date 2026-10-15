@@ -361,10 +361,10 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 								u.dirty = true
 							}
 						}
-						if u.sessionAnimating() || u.shell.activityOpen && u.agents.hasLiveStatus() {
+						if u.sessionAnimating() || u.agents.hasLiveStatus() {
 							u.dirty = true
 						}
-						if u.shell.activityOpen && time.Since(agePaint) >= time.Second {
+						if time.Since(agePaint) >= time.Second {
 							u.dirty = true
 							agePaint = u.now()
 						}
@@ -995,9 +995,9 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[201~": // A stray terminator is not composer input.
 
 			case "\x1b[5~":
-				u.view.scrollKey('b')
+				u.transcriptView().scrollKey('b')
 			case "\x1b[6~":
-				u.view.scrollKey(' ')
+				u.transcriptView().scrollKey(' ')
 			default:
 				// Only caret movement ends an edit run; forward deletes still group.
 				u.moveDraft(u.escape)
@@ -1007,8 +1007,8 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		return false, nil
 	}
 	switch key {
-	case 5: // Ctrl+E discloses the focused Main transcript, leaving the draft intact.
-		u.view.toggleExpansion()
+	case 5: // Ctrl+E discloses the displayed transcript, leaving the draft intact.
+		u.transcriptView().toggleExpansion()
 	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
 	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
@@ -1230,6 +1230,7 @@ func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activi
 // the session state; the bottom border the model. dock rows are left blank
 // between the two, in the returned rectangle, for the live edit dock.
 func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, dockRect terminalRect) {
+	transcript := u.transcriptView()
 	u.autoOpenApprovals()
 	u.autoOpenQuestions()
 	width, height = max(1, width), max(1, height)
@@ -1268,7 +1269,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			break
 		}
 	}
-	if dock == 0 && len(u.view.entries) == 0 && height >= 6 && height > min(6, len(draft))+borderRows && !u.pickerVisible() {
+	if dock == 0 && len(transcript.entries) == 0 && height >= 6 && height > min(6, len(draft))+borderRows && !u.pickerVisible() {
 		height--
 		defer func() {
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
@@ -1279,7 +1280,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			if u.btw != nil && u.btw.rect.h > 0 {
 				u.btw.rect.y++
 			}
-			u.view.feedTop++
+			transcript.feedTop++
 		}()
 	}
 	visible := min(6, height-borderRows)
@@ -1321,14 +1322,14 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	dock = min(dock, room)
 	room -= dock
 	u.mainContentPainted = room > 1
-	u.view.conversation, u.view.feedOnly, u.view.status = true, true, livediff.Safe(u.status, false)
+	transcript.conversation, transcript.feedOnly, transcript.status = true, true, livediff.Safe(u.status, false)
 	var frame []string
-	u.view.feedRows = 0
-	u.view.feedQuestions, u.view.feedSnippets = nil, nil
+	transcript.feedRows = 0
+	transcript.feedQuestions, transcript.feedSnippets = nil, nil
 	if room > 0 {
-		frame = u.view.render(width, room, u.now())
+		frame = transcript.render(width, room, u.now())
 		for row := range frame {
-			frame[row] = activityui.AttachCopy(frame[row], u.view.copyRows[row])
+			frame[row] = activityui.AttachCopy(frame[row], transcript.copyRows[row])
 		}
 		if u.keybindings && (u.shell == nil || u.shell.focus == 0) {
 			u.mainContentPainted = false
@@ -1523,7 +1524,7 @@ func (u *appServerUI) ensureShell() {
 		auto = u.proxy.autoLiveDiff
 	}
 	u.agents.bare = true
-	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, auto: auto, diffScreen: new(nativeDiffScreen)}
+	shell := &terminalUI{main: u, agents: u.agents, auto: auto, diffScreen: new(nativeDiffScreen)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
 	shell.diff.native, shell.diff.diffMode = true, true
 	shell.diff.stdout = shell.diffScreen

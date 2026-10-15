@@ -213,7 +213,7 @@ func (u *appServerUI) failChildHistory(message string) error {
 		u.restoreHistoryNotice("Could not restore "+u.session.path(h.info.ID)+" history: "+message, false)
 		u.restoring.pane[u.session.path(h.info.ID)] = h.placements
 	} else {
-		u.setNotice("Older Activity history: "+message+" · o retries", true)
+		u.setNotice("Older child history: "+message+" · Ctrl-B o retries", true)
 	}
 	return u.finishChildHistory()
 }
@@ -265,9 +265,9 @@ func (u *appServerUI) updateHistoryHint() {
 	if h := u.historyLoading; h != nil && !h.initial {
 		u.agents.historyHint = "Loading older · Esc cancels"
 	} else if h := u.historyTarget(); h != nil {
-		u.agents.historyHint = "Older history · o load"
+		u.agents.historyHint = "Older history · Ctrl-B o load"
 		if h.failure != "" {
-			u.agents.historyHint = "History unavailable · o retry"
+			u.agents.historyHint = "History unavailable · Ctrl-B o retry"
 		}
 	}
 }
@@ -303,7 +303,7 @@ func (u *appServerUI) cancelOlderActivity() error {
 	}
 	delete(u.requests, h.requestID) // Cancel observation, not any host execution.
 	h.requestID = ""
-	u.setNotice("Older Activity loading cancelled", false)
+	u.setNotice("Older child history loading cancelled", false)
 	return u.finishChildHistory()
 }
 

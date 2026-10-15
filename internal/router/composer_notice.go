@@ -31,6 +31,13 @@ func (u *appServerUI) expireNotice(now time.Time) bool {
 // stateLabel is the session state followed by any composer notice.
 func (u *appServerUI) stateLabel(now time.Time) string {
 	label := u.sessionLabel(now)
+	if u.agents != nil && u.agents.only {
+		if label == "" {
+			label = "Input: Main"
+		} else {
+			label = "Input: Main · " + label
+		}
+	}
 	if u.approvals.open {
 		label = "approving · turn waiting"
 	} else if u.questions.active != nil {

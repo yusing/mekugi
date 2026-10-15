@@ -26,7 +26,8 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			u.proxy = proxy
 			thread, view, focus := "main", u.view, 0
 			if child {
-				thread, view, focus = "child", u.agents, 2
+				thread, view, focus = "child", u.agents, 0
+				u.agents.only, u.agents.selected = true, "/root/worker"
 				activity.observe("child", "main", "/root/worker", true)
 				u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
 			}
@@ -53,6 +54,9 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			full := "exec script failed: " + detail
 			if len(view.entries) != 1 || view.entries[0].ErrorDetail != full || view.entries[0].Text != activityui.ErrorPreview(full) {
 				t.Fatal("full evidence or bounded preview lost, or repeated failure duplicated")
+			}
+			if child {
+				view.only, view.selected = true, "/root/worker"
 			}
 			feed := view.renderFeed(80, 40)
 			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool { return s != liveActivitySnippet{} })
@@ -137,7 +141,7 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 
 func TestErrorDetailsKeyboardPaginationAndFiltering(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.shell.focus = 2
+	u.agents.only, u.agents.selected = true, "/root/worker"
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "/root/a", Kind: "error", Text: "old error"},
 		{Seq: 2, Agent: "/root/b", Kind: "error", Text: "other agent"},
@@ -197,11 +201,14 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			view, agent := u.view, "Main"
 			if child {
 				view, agent = u.agents, "/root/worker"
-				u.shell.focus = 2
+				u.agents.only, u.agents.selected = true, "/root/worker"
 			}
 			full := "Failed: " + strings.Repeat("diagnostic ", 40) + "\nrejected: forced cleanup is not permitted"
 			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
 			u.draft = "preserve draft"
+			if child {
+				u.agents.only, u.agents.selected = true, agent
+			}
 			screen := vt.NewEmulator(120, 40)
 			defer screen.Close()
 			if err := u.paint(screen, 120, 40); err != nil {
@@ -213,7 +220,7 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			}
 			pane := u.shell.layout.codex
 			if child {
-				pane = u.shell.layout.agents
+				pane = u.shell.layout.codex
 			}
 			x, y := pane.x+view.feedLeft, pane.y+view.feedTop+row
 			offset, following := view.offset, view.following

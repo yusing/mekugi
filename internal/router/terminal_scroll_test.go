@@ -10,14 +10,12 @@ import (
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
+func TestScrollableDiffKeys(t *testing.T) {
 	tests := []struct {
-		name          string
-		keys          string
-		offset        int
-		follow        bool
-		starting      int
-		initialFollow bool
+		name     string
+		keys     string
+		offset   int
+		starting int
 	}{
 		{name: "line down", keys: "j", offset: 51, starting: 50},
 		{name: "line up", keys: "k", offset: 49, starting: 50},
@@ -31,7 +29,6 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 		{name: "g home", keys: "g", offset: 0, starting: 50},
 		{name: "end", keys: "\x1b[F", offset: 90, starting: 50},
 		{name: "G end", keys: "G", offset: 90, starting: 50},
-		{name: "Activity end resumes following", keys: "G", offset: 90, starting: 50, initialFollow: true},
 		{name: "removed saved resume shortcut", keys: "r", offset: 50, starting: 50},
 		{name: "clamp at top", keys: "k", offset: 0, starting: 0},
 		{name: "clamp at bottom", keys: "j", offset: 99, starting: 99},
@@ -52,32 +49,6 @@ func TestScrollablePaneKeysAgreeAtConsumers(t *testing.T) {
 				t.Fatalf("live diff following = %v, want %v", controller.view.Following, false)
 			}
 
-			activity := newLiveActivityView()
-			activity.feedLines, activity.feedRows = 100, 10
-			activity.offset = test.starting
-			activity.following = test.initialFollow
-			escape := ""
-			for _, key := range []byte(test.keys) {
-				escape, _ = activity.handleKey(escape, key)
-			}
-			// Activity stops at its last full viewport and has no r binding.
-			if test.keys == "r" {
-				if activity.offset != test.starting || activity.following != test.initialFollow {
-					t.Fatal("Activity retained r follow binding")
-				}
-				return
-			}
-			// Reaching the bottom resumes transcript following.
-			agentsOffset := min(test.offset, 90)
-			if test.follow {
-				agentsOffset = 90
-			}
-			if activity.offset != agentsOffset {
-				t.Fatalf("agents offset = %d, want %d", activity.offset, agentsOffset)
-			}
-			if wantFollow := test.follow || agentsOffset == 90; activity.following != wantFollow {
-				t.Fatalf("agents following = %v, want %v", activity.following, wantFollow)
-			}
 		})
 	}
 }

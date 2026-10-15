@@ -1,1 +1,1 @@
- 1 Main  [ 2 Diff ● │ 3 Activity ]  4 Agents   j/k agent · a only · esc back · ^B 1-4 panes
+ 1 Main  2 Diff ●  3 Agents   j/k agent · a child · esc back · ^B 1-3 views

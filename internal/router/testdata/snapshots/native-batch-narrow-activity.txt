@@ -1,6 +1,13 @@
-┌ 3 Activity ────────────────────────────────────────────────────────── FOLLOW ┐
+┌ 1 Thread · editor ───────────────────────────────────────────────────────────┐
 │LIVE · 1 file                                                                 │
 │  editor · ◐ A child.txt +40 -0                                               │
+│  26│+child_line_26                                                           │
+│  27│+child_line_27                                                           │
+│  28│+child_line_28                                                           │
+│  29│+child_line_29                                                           │
+│  30│+child_line_30                                                           │
+│  31│+child_line_31                                                           │
+│  32│+child_line_32                                                           │
 │  33│+child_line_33                                                           │
 │  34│+child_line_34                                                           │
 │  35│+child_line_35                                                           │
@@ -10,19 +17,12 @@
 │  39│+child_line_39                                                           │
 │▎ 40│+child_line_40                                                           │
 │                                                                              │
-│● reviewer                                                           12:00:00 │
-││ OTHER_ACTIVITY remains readable                                             │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
+│╭─ Input: Main · Ready ──────────────────────────────────────────────────────╮│
+││ ❯                                                                          ││
+│╰─────────────────────────────────────────────── snapshot-model (high) • 0% ─╯│
 └──────────────────────────────────────────────────────────────────────────────┘
-─ 4 Agents · 2 ─────────────────────────────────────────────────────────────────
+─ 3 Agents · 2 ─────────────────────────────────────────────────────────────────
  ● editor  idle                                                              0%
  ● reviewer  idle                                                            0%
 
- 1 Main  [ 2 Diff │ 3 Activity ]  4 Agents   j/k scroll · n/p agent · a only · ^
+ 1 Main  2 Diff  3 Agents   ^B e next live · ^B 1-3 views · ^E expand events

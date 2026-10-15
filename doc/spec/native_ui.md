@@ -19,8 +19,8 @@ Operation-row formatting and feed controls are specified by
 
 ### UI
 
-Diff and Activity share the auxiliary column. Pane preferences retain visibility
-and focus; transient selection and expansion remain local to the active frontend.
+Main starts at full width. Diff toggles the auxiliary column open and closed.
+Pane preferences retain visibility and focus; transient selection and expansion remain local to the active frontend.
 The bottom pane selectors are clickable and perform the same selection as
 `Ctrl-B` followed by the pane digit. Only visible selector cells are active;
 open dialogs and selection actions retain pointer precedence. The unread Diff
@@ -112,7 +112,7 @@ startup resume. The current session stays live until Codex returns the chosen
 thread; meanwhile input stacks locally and events for other threads are
 buffered. Success unsubscribes the previous thread, retires its and its
 descendants' late events, and then restores the chosen thread exactly as
-startup resume does: Main, roster, Activity, pane preferences, and a saved Diff
+startup resume does: Main, roster, child transcripts, pane preferences, and a saved Diff
 rescoped to that thread and its descendants. After the rescope, observed model
 requests join the Diff only when the thread or its parent is already in scope,
 so the previous session's running children stay out. While any resumed thread
@@ -147,7 +147,7 @@ the routing provider remains invocation-local. Missing retained settings leave
 Codex defaults in effect, with a notice when no saved model settings are available.
 When preferences and host history both exist, newer host settings take precedence.
 Missing tier evidence retains Codex's tier default. Preference-storage failures
-are visible in Activity without blocking the applied host setting. Restoration
+are visible in Main’s composer without blocking the applied host setting. Restoration
 must finish before accepting resumed input and cannot modify user configuration
 or replay a turn. Rejected default-reasoning restoration returns waiting input
 to the composer without submitting it; successful restoration or an explicit
@@ -155,7 +155,7 @@ reasoning selection releases the gate. The [UI boundary](../architecture/ui.md)
 owns settings evidence and the host RPC boundary. Main hydrates the full resume
 history in memory; its paginated hydration remains unfinished.
 
-Resume also restores the Agents roster and Activity from Codex's observational
+Resume also restores the Agents roster and child transcripts from Codex's observational
 history APIs, including archived descendants. Names/roles, retained assignments,
 messages, commands, edit descriptions and answers are presentation history;
 children are not resumed and historical unfinished turns never imply live work.
@@ -164,15 +164,15 @@ other attempts retain their recorded status without claiming delivery.
 Codex's history omits `exec` cell results and delivered inter-agent
 messages, so each thread's host-selected rollout supplies them when its session
 metadata names that thread: failed-cell rows and the tasks and messages the
-thread received, as live Activity observed them in its requests. Evidence
+thread received, as live activity observed them in its requests. Evidence
 follows the host item it was recorded after, or, for another thread's
 record, its completion time. Reading is bounded to each rollout's last 64 MiB;
 older evidence shows only what the host's history does. A later live request
 that carries restored messages again does not repeat them.
-Paginated child Activity opens on the newest turn's recent items. Older content
-is intentionally unloaded, not missing evidence: the Activity title offers an
-older-history action. With Activity focused, `o` loads one older page for the
-selected child, or the first eligible child in the shared view. Loading does
+Paginated child history opens on the newest turn's recent items. Older content
+is intentionally unloaded, not missing evidence: the selected transcript title
+shows its history state. `Ctrl-B o` loads one older page for the selected child,
+or the first eligible child while Main is displayed. Loading does
 not block Main's conversation. Esc cancels this observational read without
 interrupting the child; errors retain already loaded content and offer retry.
 Older pages appear before newer child entries and retain their original answer
@@ -191,7 +191,7 @@ It does not derive edit evidence from app-server history or include unrelated
 workspace threads. Subsequent requests retain that scope through the existing
 automatic-diff owner. Retention gaps remain gaps, not successful recapture.
 
-Activity hydration reports progress, buffers live notifications, and keeps typed
+Child-history hydration reports progress, buffers live notifications, and keeps typed
 input as an unsent draft until reconciliation; `/quit` or Ctrl-C on an empty draft can exit while loading.
 Discovery is bounded to 128 descendants and eight list pages, with an explicit
 partial-history notice at the limit. Legacy child histories still use full reads.
@@ -202,7 +202,7 @@ model requests or execution occur merely to restore pane content.
 Native pane preferences persist separately from replay/correctness records under
 `$XDG_STATE_HOME/mekugi/ui` (or `~/.local/state/mekugi/ui`), keyed by workspace
 and Codex thread identity. Successful resume restores the Main/right-column
-split, active Diff/Activity pane, keyboard focus, and diff navigator width.
+split, Diff visibility, keyboard focus, and diff navigator width.
 Geometry is clamped by the current terminal layout; new threads and other
 workspaces never borrow these preferences. Roster height remains automatically
 fitted. Scroll positions, filters, selections, drafts and transient live docks
@@ -243,7 +243,7 @@ JavaScript file writes show compact `Edit` intent rows marked `requested`, witho
 exposing the edit source or claiming saved changes. Heredoc batches classify each
 operation, keeping trailing tests and other unclassified operations as Run entries.
 Display intent inspection never reads target files or runs nested providers.
-Captured shell effects replace the matching command row in Main and Activity
+Captured shell effects replace the matching command row in Main and child transcripts
 using durable thread and host-call identities, including after resume. Both use
 the shared edit receipt formatter. Non-`apply_patch` receipts include a subdued
 `cat`, `python3`, or other captured source label, separated by a middle dot.
@@ -259,8 +259,13 @@ visible, without internal capture-bookkeeping placeholders. Incomplete capture p
 one coverage notice with a `mchanges` reference, not labeled as confirmed edits;
 the durable records retain each path and its reason.
 
-The shell frames Main on the left and one right pane: the saved diff (2)
-or Activity (3), each filling the pane. A roster (4) below them fits its
+The shell frames the selected transcript above Main's composer. Main starts at
+full width; selecting Diff (2) opens a right pane, and selecting it again closes
+the pane and restores full width. Selecting Main (1) returns to its transcript.
+Clicking a child in Agents switches only the displayed transcript, using the
+same full-message renderer; input, settings, questions and approvals remain
+owned by Main. The composer explicitly labels Main as the input destination
+while a child is displayed. A roster (3) below them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
 agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
 before the status bar when terminal height permits. Collapsed rows place activity directly after the name
@@ -270,7 +275,7 @@ glyphs, with a color-to-role legend only in the expanded Agents pane; role label
 are not repeated in each row. Roles come from host metadata. Missing roles have no label.
 Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
-contextual key hints. Ctrl-B + number focuses a pane.
+contextual key hints. Ctrl-B + number selects Main (1), toggles Diff (2), or focuses Agents (3).
 Uncolored labels in pane and composer borders use the terminal text foreground,
 not the border's decorative foreground. Faint styling and explicit label colors
 remain intact.
@@ -326,10 +331,8 @@ Streaming edits with arriving source content and producible source hunks tempora
 replace their owner's transcript. Copy, removal, formatter-only, and generic command
 effects do not open live views. Non-file targets and hunkless changes leave the
 transcript visible.
-Main uses its whole transcript area above the composer; it never hides Activity or a saved
-Diff. Activity substitutes a compact, single-file live view at the editing
-agent's latest entry, hiding that agent's other transcript rows while retaining
-other agents' activity. If only one pane fits, its own edits appear there;
+The selected thread uses its whole transcript area above the composer; it never hides a saved
+Diff. A child's live source appears only while its transcript is selected;
 child edits do not take over Main. Saved Diff is not overlaid.
 
 Main splits the available height among as many file views as fit with at least
@@ -337,11 +340,10 @@ Main splits the available height among as many file views as fit with at least
 terminal shows a file-count summary rather than an undersized diff. At capacity,
 a new file slides the visible window forward, keeping the newest file visible
 without shrinking existing splits. Overflow files remain in the batch. Ctrl-B e
-cycles and pins a file window for the focused caller (Main, or Activity's selected
-caller); subsequent arrivals do not steal that selection. Main's mouse wheel and
+cycles and pins a file window for the displayed thread (Main or the selected child); subsequent arrivals do not steal that selection. Main's mouse wheel and
 Ctrl-B PgUp/PgDn scroll live source independently of the transcript and saved
 Diff. Scrolling to the live tip resumes that file's source following.
-Ctrl-B r resumes Main's source following and newest-file window.
+Ctrl-B r resumes the displayed thread's source following and newest-file window.
 
 An edit batch is a caller-local burst. Each completed call retires after its own
 1.5-second settling interval; running siblings and newer edits do not retain its
@@ -363,7 +365,7 @@ source snapshots; app-server file-change notifications never reconstruct patches
 or re-read already edited files. A completed input stream remains explicitly
 labelled as a preview, never a green success check; host item status and captured
 effects establish the outcome. A new
-saved diff never replaces Activity; the Diff tab shows an unseen badge instead,
+saved diff never opens itself; the Diff tab shows an unseen badge instead,
 and the saved diff lists its files or changes above the content when the pane is
 narrow; `s` shows and focuses that list, enlarging it without covering the diff,
 and `s` again hides it. The navigator and diff content have separate keyboard
@@ -376,14 +378,14 @@ nothing, and `e` remains text while filtering. The terminal returns to the same
 pane selection after the editor exits; missing files and editor failures show a
 notice. Incoming saved
 edits refresh content without moving the chosen file or scroll position. Saved
-Diff has no follow mode; streaming-preview following is unchanged. A roster pick that changes Activity's agent filter shows
-Activity in place of the saved diff.
+Diff has no follow mode; streaming-preview following is unchanged. Roster
+selection changes the transcript without closing an open Diff.
 
 Clicking a compact Edit event opens the shared dialog at the clicked file’s
 captured diff, rather than the first file in a multi-file capture. This temporary file preview shows the exact
 retained capture, not the combined result of later edits, so shifted or superseded
 hunks remain inspectable. Only the pointed edit row's text underlines
-on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
+on hover in Main and child transcripts, not its gutter, alignment gaps, stat bar, or other
 rows in the same capture. Click-through content (Edit, message excerpts, question links,
 and agent links) opens the shared content dialog above the existing panes. Its
 close button or Escape without a selection dismisses it without changing pane filters, scroll
@@ -398,8 +400,8 @@ rather than matching nearby paths or edits. Roster picks remain explicit filters
 Successful single-line Ran output remains visible rather than collapsing to a
 line-count toggle.
 
-Main and Activity share the activity view's block parsing, operation grouping
-and viewport logic; each keeps its own entries and follow/unseen state. Typed
+Main and child transcripts share block parsing, operation grouping
+and viewport logic. Switching to a child preserves Main's entries and follow state. Typed
 app-server items update entries in place. Image-view items appear as `View`
 with their workspace-relative path, including restored history.
 Attached user images are inline model input, not image-view tool calls; they do
@@ -599,7 +601,7 @@ WebSocket support remains unchanged. No warmup response is fabricated or discard
 
 The question and visible answer are selectable through the shared Reference, Copy,
 and Clear actions, excluding the dock border, status and hints. Selected answer
-content uses the same source-aware Markdown copying as Main and Activity.
+content uses the same source-aware Markdown copying as Main and child transcripts.
 PgUp/PgDn scroll the side answer while the dock is open. During selection,
 the question stays pinned while the frozen answer scrolls.
 Esc first clears a selection. After dismissing active questions or command menus,
@@ -715,7 +717,7 @@ The enable/disable management view remains Codex-owned: managed catalog entries
 are selectable references, but are never sent to `skills/config/write` with an
 invented path. Their selection is configured through `skills-mgr`.
 
-Dragging across text in Main, the composer, Activity, a side-question dock, the
+Dragging across text in the displayed transcript, the composer, a side-question dock, the
 saved Diff, or a shared content dialog selects the visible text and offers
 Reference (r/R), Copy (Ctrl+C, also c/C), and Clear (Escape) in the status bar or
 dialog footer. Selection actions and the existing pane shortcut bar share bold key
@@ -737,7 +739,7 @@ copies just its content. Forward and reverse drags use the same source ranges; w
 are never split. Pinned replies use the same annotations as transcript content.
 A press in the Diff still reaches the pane, so clicks keep their meaning.
 Reference inserts a concise mention at the composer caret without submitting:
-`[Selected message]` from Main, `[Selected activity]` from Activity,
+`[Selected message]` from Main or a child transcript,
 `[Selected text]` from the composer, `[Selected side answer]` from the side-question
 dock, `[Selected status]` from the status panel, `[Selected dialog]` from a dialog,
 and `[Selected diff hunk @amber1:42-45]` from the Diff, naming the selected
@@ -760,7 +762,7 @@ tokens and quoted attachments as the main composer.
 Reference from a dialog closes it and focuses the composer. Copy and Clear keep
 the dialog open; `y` is also a dialog selection-copy shortcut.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
-Main, Activity, saved Diff, side-answer and dialog selections retain a frozen document,
+Main, child transcripts, saved Diff, side-answer and dialog selections retain a frozen document,
 including off-screen rows, until the selection is dismissed. Mouse-wheel scrolling
 during a held drag extends the range through that document; dragging above or
 below its scrollable viewport scrolls one row per motion event. Up/Down,
@@ -769,10 +771,10 @@ Scrolling after releasing the drag leaves the selected range unchanged. Newly
 exposed rows retain source-aware Markdown copying and their original click targets;
 saved Diff rows retain their gutters and change attribution. Static selections
 retain their existing dismissal behavior. Resizing or resuming editing dismisses
-the selection. Recognized Markdown file links in Main, Activity, and shared
+the selection. Recognized Markdown file links in Main, child transcripts, and shared
 dialogs open local source with the path, content, and read errors copyable, as
 specified by [activity display](activity_display.md). HTTP(S) links still copy
-their destinations in Main and Activity; clicking them inside a dialog still
+their destinations in Main and child transcripts; clicking them inside a dialog still
 does nothing. Missing local file destinations are not clickable.
 Clipboard availability is controlled by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
@@ -894,7 +896,7 @@ and waiting input for retry without starting compaction. Once compaction is
 starting or running, Ctrl+C cancels that compaction, restores waiting input, and
 cancels its automatic continuation, not a later Main turn. Outside compact cancellation, normal Main interruption
 is unchanged. Host compaction progress and failures remain visible.
-`/clear` clears Main and Activity presentation and starts a fresh Codex
+`/clear` clears Main and child transcript presentation and starts a fresh Codex
 session with the current workspace and model settings. It is unavailable while a
 task or submission is in progress. Existing saved threads and filesystem changes
 are not deleted; a failed fresh-session request keeps the old transcript usable.
@@ -974,7 +976,7 @@ session title, scroll position and unseen-message count. History
 beyond the retained window is not hydrated. Unexpected server requests stay
 visibly pending, never auto-approved.
 
-Activity shows only child agents; Main stays in the roster for status and usage.
+Agents includes Main and its children; selecting a row chooses the displayed transcript.
 Main's context usage and output rate appear only in the composer, not its roster row.
 Child-agent roster rows retain output rates under the [metrics contract](metrics.md).
 The composer and child-agent roster rows show `used/window • percent%` from the latest
@@ -998,7 +1000,7 @@ as one right-aligned caption, shortening or omitting the model first when narrow
 Main's title and child roster rows show unique loaded skill counts for each agent's current context, from successful reads or submitted skill attachments, not the catalog. Labels use `1 loaded skill` or `N loaded skills`.
 Failed or declined read segments load nothing; independently confirmed successful segments still count after aggregate failure. Feed trimming retains names; compaction clears them. Empty and unknown counts stay hidden.
 Hover underlines only the count label, clearing on pointer leave or focus loss. Clicking a count opens sorted skill names in the existing shared dialog without changing selection.
-Exit/resume restores confirmed loads, including inherited history, independently of Activity under the [bounded restoration contract](../architecture/activity.md).
+Exit/resume restores confirmed loads, including inherited history, independently of transcript selection under the [bounded restoration contract](../architecture/activity.md).
 
 Working roster rows show the latest operation or public summary, including its
 target, rather than a generic running/working label. Child names use their canonical
@@ -1011,9 +1013,8 @@ or answer, then the body at full width, separated by blank rows so narrow panes
 stay readable. Directed Main/agent messages appear at both ends. Native
 assignments, including follow-ups, keep their own identities; spawn and its first
 prompt form one event, and full-history requests do not replay them. In Main,
-child replies are short excerpts with a link that activates Activity, selects
-the owning agent, and scrolls to that exact reply. The full message stays in
-Activity. Assignment excerpts sit below their link on separate, wrapped quote
+child replies are short excerpts with a link that opens their full retained
+content in the shared dialog. Selecting a child in Agents displays its transcript. Assignment excerpts sit below their link on separate, wrapped quote
 rows. Excerpts skip paragraph gaps, and truncated excerpts end their last text
 row with an inline ellipsis, not a separate ellipsis row.
 Adjacent Main items of traffic with one agent form a thread under that agent's
@@ -1026,7 +1027,7 @@ heading naming it precedes the later ones. Later items replace the agent heading
 connector naming the event: replies, completions and failures show how long the
 agent took, while follow-ups keep their time. The thread's latest item keeps the
 longer excerpt; items the thread has moved past shrink to two rows. A reply's
-Activity link counts its omitted rows and closes the thread when nothing follows
+content link counts its omitted rows and closes the thread when nothing follows
 it. A shrunk assignment ends with a right-aligned count of its omitted rows;
 clicking it opens the full assignment in the shared dialog.
 An unanswered assignment stays in full while in view. Once a spawn, follow-up
@@ -1086,7 +1087,7 @@ completion restores ordinary turn status and adds a `Context compacted` event.
 Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
 does not change Main’s composer. Agent wait starts, completions, and failures appear
-only as the working caller's latest roster status, never in Main or Activity transcripts
+only as the working caller's latest roster status, never in Main or child transcripts
 or as composer overrides. Replayed events do not restart progress.
 Wait status shows named targets using the shared agent display format (`main`,
 or the spawn path below `/root/`) and static muted variants of their identity
@@ -1109,7 +1110,7 @@ running` only for agents whose reported state is running, without claiming
 that missing state means success or continued work.
 
 Native public reasoning summaries appear for Main and children, from summary
-deltas, item events, or history. Main and Activity use the same reasoning sections
+deltas, item events, or history. Main and child transcripts use the same reasoning sections
 for titled and untitled summaries. Body rows are uniformly faint and italic,
 including wrapped lines and text after inline formatting. Paragraphs and soft
 line breaks continue beneath each section's header; only explicit Markdown
@@ -1118,7 +1119,7 @@ transcript label without its body or duration: titled sections show their title,
 untitled summaries too long for the status column show `Thinking…` while streaming
 or `Thought` after completion, and short summaries that fit display directly.
 Consecutive labels are comma-separated. Roster reasoning uses the same muted
-neutral text color as waiting activity. Live waiting text in Main and Activity,
+neutral text color as waiting activity. Live waiting text in Main and child transcripts,
 roster waiting text, and active roster reasoning share the smooth breathing
 animation. Completed or restored text does not restart the animation.
 Reasoning does not replace `Working` in the composer status.
@@ -1131,9 +1132,7 @@ shared compact duration formatting from [Activity](activity_display.md): `82s` d
 Trailing zero units are omitted (`5m`, `1h`), while elapsed timers start at `0s`;
 response ages under two seconds remain `just now`.
 Successful completion shows the frozen elapsed turn time in hours, minutes, and
-seconds as needed, for example `Completed in 12s` or `Completed in 1m22s`. Activity retains the
-same bodies for children in both the combined transcript
-and selected-agent detail, including after completion or later activity. The current
+seconds as needed, for example `Completed in 12s` or `Completed in 1m22s`. Child transcripts retain their reasoning bodies, including after completion or later activity. The current
 summary updates the agent's roster status with the shared breathing animation
 that stops when superseded or finished. It uses the same neutral color ramp as
 waiting text, adapting to the terminal's reported (OSC 10/11) colors. Raw and encrypted
@@ -1167,7 +1166,7 @@ the observed request start, or the reasoning item's start when no request start
 was observed, falling back to the first visible summary when both are absent,
 through item completion; a turn
 that ends first completes its unfinished blocks.
-In Main and Activity, a click on a finished row opens its body in the shared
+In Main and child transcripts, a click on a finished row opens its body in the shared
 dialog. Restored long summaries start folded, while short ones remain directly
 visible. Each section's own body is retained for its dialog. Consecutive items keep their
 own rows. The latest completed item remains open until later activity.
@@ -1183,11 +1182,11 @@ the host supplies a public summary; raw and encrypted reasoning are not a
 substitute for summaries delivered late or only at completion.
 
 Completed reasoning and successful command output eligible to fold share one
-5-second quiet-period deadline across Main and Activity,
+5-second quiet-period deadline across Main and child transcripts,
 including late completions, so it collapses in a single screen update rather than
 one result at a time. An agent's latest command output remains open until later activity.
 
-`Ctrl-E` cycles the focused Main or Activity pane through default presentation,
+`Ctrl-E` cycles the displayed transcript through default presentation,
 expanded events, and expanded all. Expanded events shows full narrative,
 public reasoning, and hook runs while leaving operation source/output at its normal
 preview. Expanded all also opens retained operation source/output. Default restores
@@ -1198,12 +1197,12 @@ the next disclosure choice. Dialogs retain
 their existing controls. Toggling preserves following or the item at the top of
 scrollback. Layouts are cached; off-screen blocks defer syntax decoration.
 
-Main and Activity follow new transcript content until manual scrollback or an
+Main and child transcripts follow new transcript content until manual scrollback or an
 explicit jump to earlier content. Opening or closing Live/Diff, resizing, and
 opening a narrative snippet or output dialog do not disable following. Scrolling to the last full viewport
-(including End), or pressing Esc in a paused transcript, resumes following and
-clears its unseen count. Activity has no `r` follow binding. A paused transcript shows “↓ Back to bottom · esc”
-above Main's composer or at the bottom of Activity. Scrolling stops at the last
+or pressing Esc in a paused transcript resumes following and
+clears its unseen count. A paused transcript shows “↓ Back to bottom · esc”
+above Main's composer. Scrolling stops at the last
 full viewport, including after resizing or following a link, and the link target
 briefly highlights. Frames replace changed rows
 without blanking the terminal.
@@ -1356,7 +1355,7 @@ questions from history, subject to that supersession rule, without taking focus.
 Main groups adjacent question records without repeated Main headings. The dock
 uses padded question and option rows, an accented position header, right-aligned
 state when space permits, theme-aware selection, and subdued hints with accented
-keys. Main and Activity use the shared `Asked` operation with full question text and
+keys. Main and child transcripts use the shared `Asked` operation with full question text and
 observed answers. Pending records say `waiting` or `open`; observed outcomes are
 `answered`, `skipped`, `interrupted`, `superseded`, or `answered elsewhere`.
 Answers sit directly under their questions with a distinct reply marker and

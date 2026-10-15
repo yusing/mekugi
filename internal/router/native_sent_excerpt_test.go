@@ -16,7 +16,6 @@ import (
 func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.turn = "main-turn"
-	u.shell.side = false
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker"}})
 	collab := func(id, tool, prompt string) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": u.turn, "item": map[string]any{"id": id, "type": "collabAgentToolCall",
@@ -58,7 +57,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 	if seq == 0 || activity == 0 || !u.shell.openActivityReply(seq) {
 		t.Fatalf("follow-up has no Activity target: seq=%d activity=%d", seq, activity)
 	}
-	if u.shell.output == nil || !u.shell.activityOpen {
+	if u.shell.output == nil {
 		t.Fatal("link did not open the follow-up in a dialog")
 	}
 	if err := u.paint(&bytes.Buffer{}, 120, 28); err != nil {
@@ -68,7 +67,7 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		t.Fatalf("dialog lost the full follow-up:\n%s", full)
 	}
 	u.shell.outputKey("\x1b")
-	if u.shell.output != nil || !u.shell.activityOpen {
+	if u.shell.output != nil {
 		t.Fatal("dismissing dialog changed Activity navigation")
 	}
 }

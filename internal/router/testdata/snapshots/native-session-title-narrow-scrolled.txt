@@ -13,4 +13,4 @@
 ││ ❯                              ││
 │╰────────── snapshot-model • 0% ─╯│
 └──────────────────────────────────┘
- 1 Main  [ 2 Diff │ 3 Activity ]  4
+ 1 Main  2 Diff  3 Agents   ^B 1-3 v

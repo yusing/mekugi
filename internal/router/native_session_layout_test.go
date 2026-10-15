@@ -110,9 +110,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview))
 			revealNativeDock(u.shell)
 			if caller != "/root" {
-				if width < 100 {
-					u.shell.focus = 2
-				}
+				u.agents.only, u.agents.selected = true, caller
 			}
 			if !strings.Contains(paint(), "VISIBLE_EDIT") {
 				t.Fatal("default dock missing")

@@ -47,6 +47,9 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if surface == "Activity" {
+				u.agents.only, u.agents.selected = true, "Main"
+			}
 			paint()
 			x, y := -1, -1
 			for row, spans := range u.shell.paintedCopy {
@@ -211,24 +214,29 @@ func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 }
 
 func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
-	u, _ := newAppServerTestUI()
+	u := newAppServerSessionTestUI(t, "/workspace")
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.shell.diffOpen = false
-	u.agents.agents = []activityPaneAgent{{Name: "main", Final: true}}
+	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
 	for i := range 40 {
 		text := fmt.Sprintf("prompt %02d", i)
-		u.agents.applyAppServerItem(true, "", "main", "main", fmt.Sprint(i), fmt.Sprint(i), "item/completed", "", appServerItem{
-			Type: "agentMessage", Text: "```\n" + text + strings.Repeat("\nmore source", 20) + "\n```",
-		})
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "turn", "item": map[string]any{
+			"id": fmt.Sprintf("command-%d", i), "type": "commandExecution", "command": "echo " + text, "status": "completed", "exitCode": 0,
+			"aggregatedOutput": text + strings.Repeat("\nmore output", 20),
+		}})
+		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "turn", "item": map[string]any{
+			"id": fmt.Sprintf("answer-%d", i), "type": "agentMessage", "text": fmt.Sprintf("step %d", i),
+		}})
+	}
+	for _, key := range []byte("\x023j") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := u.paint(&strings.Builder{}, 120, 30); err != nil {
 		t.Fatal(err)
 	}
-	if err := u.paint(&strings.Builder{}, 120, 30); err != nil {
-		t.Fatal(err)
-	}
-	r := u.shell.layout.agents
+	r := u.shell.layout.codex
 	x, y := r.x+u.agents.feedLeft, r.y+u.agents.feedTop
 	selectionTestDrag(t, u.shell, x, y, x+1, y)
 	s := u.shell.selection

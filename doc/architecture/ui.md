@@ -38,7 +38,7 @@ A selection snapshots those annotations with its rows. A scrollable selection
 retains the full rendered document and keeps its own
 viewport, so later streaming cannot change selected or newly exposed source rows.
 The snapshot retains Markdown annotations, original click targets, pinned agent headings,
-and saved Diff gutters and change attribution. Main, Activity, saved Diff,
+and saved Diff gutters and change attribution. Main and child transcripts, saved Diff,
 side-answer docks and output dialogs share the selection mouse and scroll model;
 the caller retains composition and dismissal policy. Output dialogs defer live
 content refresh while their selection is active. Atomic submitted tokens consume the same bound composer

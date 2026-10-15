@@ -66,8 +66,8 @@ func (p *uiReplayPlayback) reset() {
 	}
 	u.ensureShell()
 	if previous != nil {
-		u.shell.focus, u.shell.side = previous.focus, previous.side
-		u.shell.diffOpen, u.shell.activityOpen = previous.diffOpen, previous.activityOpen
+		u.shell.focus = previous.focus
+		u.shell.diffOpen = previous.diffOpen
 	}
 	p.ui = u
 }
@@ -192,7 +192,7 @@ func (p *uiReplayPlayback) bar(width int) string {
 		speed += ".0"
 	}
 	label := fmt.Sprintf(" %s Replay · simulated · %sx · %s/%s", state, speed, replayTime(p.position), replayTime(p.until))
-	hint := "  ^B 1-4 · p pause · +/- speed · [/] seek · r restart · q quit"
+	hint := "  ^B 1-3 · p pause · +/- speed · [/] seek · r restart · q quit"
 	remaining := width - ansi.StringWidth(label) - ansi.StringWidth(hint) - 3
 	if remaining >= 6 {
 		filled := 0
@@ -234,8 +234,11 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	}
 	if p.prefix {
 		p.prefix = false
-		if key >= '1' && key <= '4' {
+		if key == '1' || key == '2' {
 			p.ui.shell.selectNativePane(int(key - '1'))
+		}
+		if key == '3' {
+			p.ui.shell.selectNativePane(3)
 		}
 		return false, nil
 	}
@@ -259,11 +262,11 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 		p.paused = false
 		return false, p.seek(p.from)
 	case 'k':
-		p.ui.view.scrollKey('b')
+		p.ui.transcriptView().scrollKey('b')
 	case 'j':
-		p.ui.view.scrollKey(' ')
+		p.ui.transcriptView().scrollKey(' ')
 	case terminalui.PaneWheelUp, terminalui.PaneWheelDown:
-		p.ui.view.scrollKey(key)
+		p.ui.transcriptView().scrollKey(key)
 	}
 	return false, nil
 }

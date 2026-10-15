@@ -9,10 +9,8 @@ func (u *terminalUI) openErrors() {
 	switch u.focus {
 	case 0:
 		if u.main != nil {
-			view = u.main.view
+			view = u.main.transcriptView()
 		}
-	case 2:
-		view = u.agents
 	}
 	if view == nil {
 		return

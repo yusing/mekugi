@@ -374,13 +374,13 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 	u := dialogForOutput(output)
 	u.main = &appServerUI{view: newLiveActivityView()}
 	drawOutputDialog(u)
-	u.focus, u.side, u.activityOpen = 0, false, false
+	u.focus = 0
 	for _, key := range []byte{2, '3'} {
 		if err := u.key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if u.focus != 0 || u.side || u.activityOpen || u.prefix {
+	if u.focus != 0 || u.prefix {
 		t.Fatal("modal Ctrl+B pane number changed background pane")
 	}
 	for _, seq := range []string{"\x02\x1b[5~", "\x02\x1b[6~"} {

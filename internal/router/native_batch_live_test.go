@@ -58,20 +58,37 @@ func TestUISnapshotNativeBatchPlacement(t *testing.T) {
 	}
 	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child"))
 	revealNativeDock(u.shell)
+	u.agents.only, u.agents.selected = true, "/root/editor"
 	paint("native-batch-child-replaces-transcript", 140, 48)
+	u.agents.only = false
 	u.shell.preview(nativeBatchPreview("main", "/root", "one", "two", "three"))
 	revealNativeDock(u.shell)
 	paint("native-batch-main-overflow", 140, 48)
-	u.shell.nextLive()
+	for _, key := range []byte("\x02e") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
 	paint("native-batch-main-pinned", 140, 48)
 	paint("native-batch-short-summary", 80, 18)
-	u.shell.focus = 2
+	u.agents.only, u.agents.selected = true, "/root/editor"
 	paint("native-batch-narrow-activity", 80, 28)
 	u.shell.preview(diffview.Preview{ID: "child", Workspace: "/workspace"})
 	revealNativeDock(u.shell)
 	u.shell.preview(diffview.Preview{ID: "main", Workspace: "/workspace"})
 	revealNativeDock(u.shell)
 	paint("native-batch-restored-transcripts", 140, 48)
+	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child", "second", "third"))
+	revealNativeDock(u.shell)
+	for _, key := range []byte("\x02e") {
+		if err := u.shell.key(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	paint("native-batch-child-pinned", 140, 48)
+	if !strings.Contains(screen.String(), "pinned") {
+		t.Fatal("next live did not cycle the displayed child's files")
+	}
 }
 
 func TestNativeBatchLivePTY(t *testing.T) {
@@ -149,7 +166,7 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	u.shell.preview(nativeBatchPreview("child", "/root/editor", "child"))
 	revealNativeDock(u.shell)
 	frame := paint(140, 48)
-	if !strings.Contains(frame, "one_line_40") || !strings.Contains(frame, "child_line_40") || !strings.Contains(frame, "OTHER_ACTIVITY") || strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "EDITOR_TRANSCRIPT") {
+	if !strings.Contains(frame, "one_line_40") || strings.Contains(frame, "child_line_40") || strings.Contains(frame, "OTHER_ACTIVITY") || strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "EDITOR_TRANSCRIPT") {
 		t.Fatalf("wrong caller replacement:\n%s", frame)
 	}
 	for _, key := range []byte("\x02\x1b[5~") {
@@ -198,8 +215,12 @@ func TestNativeBatchLivePTY(t *testing.T) {
 	revealNativeDock(u.shell)
 	u.shell.animating(time.Now().Add(nativeDockMinimum + time.Second))
 	frame = paint(140, 48)
-	if !strings.Contains(frame, "MAIN_TRANSCRIPT") || !strings.Contains(frame, "child_line_40") {
+	if !strings.Contains(frame, "MAIN_TRANSCRIPT") || strings.Contains(frame, "child_line_40") {
 		t.Fatal("batch close affected another caller or failed to restore transcript")
+	}
+	u.agents.only, u.agents.selected = true, "/root/editor"
+	if frame = paint(140, 48); !strings.Contains(frame, "child_line_40") {
+		t.Fatal("child preview was lost while viewing Main")
 	}
 	u.shell.preview(diffview.Preview{ID: "child", Workspace: "/workspace"})
 	revealNativeDock(u.shell)

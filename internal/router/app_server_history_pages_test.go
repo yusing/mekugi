@@ -128,7 +128,8 @@ func TestAppServerAnchoredHistoryErrorsAndCancellation(t *testing.T) {
 			case "cursor":
 				restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("first", "leak", 101000)}, "nextCursor": "older"})
 			case "cancel":
-				u.shell.focus = 2
+				u.shell.focus = 0
+				u.agents.only, u.agents.selected = true, "/root/worker"
 				u.agents.following = false
 				if err := u.shell.send("\x1b"); err != nil {
 					t.Fatal(err)
@@ -189,8 +190,12 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	if u.session.agent("/root/worker").Turns != 2 || u.session.agent("/root/worker").Final {
 		t.Fatal("duplicate turns or interrupted status lost")
 	}
-	u.shell.focus = 2
-	if err := u.shell.send("o"); err != nil {
+	u.shell.focus = 0
+	u.agents.only, u.agents.selected = true, "/root/worker"
+	if err := u.shell.key(2); err != nil {
+		t.Fatal(err)
+	}
+	if err := u.shell.key('o'); err != nil {
 		t.Fatal(err)
 	}
 	if len(restoreContentRequests(t, wire)) != 7 {
@@ -214,7 +219,8 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			historyTurnsReply(t, u)
 			restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "Latest retained answer", 109000)}, "nextCursor": "older"})
 
-			u.shell.focus = 2
+			u.shell.focus = 0
+			u.agents.only, u.agents.selected = true, "/root/worker"
 			if state != "partial" {
 				if err := u.loadOlderActivity(); err != nil {
 					t.Fatal(err)
@@ -395,7 +401,7 @@ func TestAppServerAnchoredHistoryInitialFailureRetryKeepsEvidence(t *testing.T) 
 		}
 		return n
 	}
-	if count() != 1 || u.restoring != nil || u.historyTarget() == nil || u.agents.historyHint != "History unavailable · o retry" {
+	if count() != 1 || u.restoring != nil || u.historyTarget() == nil || u.agents.historyHint != "History unavailable · Ctrl-B o retry" {
 		t.Fatal("failed initial read lost evidence or its retry state")
 	}
 	if err := u.loadOlderActivity(); err != nil {

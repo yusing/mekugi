@@ -364,7 +364,6 @@ func TestUISnapshotNativeSessionTitle(t *testing.T) {
 				appServerTestKeys(t, u, "/title My manual session name\r")
 			}
 			u.ensureShell()
-			u.shell.side, u.shell.activityOpen = false, false
 			if tc.scroll {
 				var entries []activityPaneEntry
 				for i := range 30 {

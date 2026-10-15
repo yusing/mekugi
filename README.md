@@ -34,7 +34,7 @@ sessions, and patch review. No fork, no config edits, no daemon.
 
 ### User-facing
 
-- **Native terminal UI.** [Main, Diff, Activity, and Agents](#ui)
+- **Native terminal UI.** [Main, Diff, and Agents](#ui)
   share one terminal without an external pane manager.
 - **Live subagent activity.** See model, effort, progress, and message excerpts
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
@@ -163,7 +163,7 @@ Models/prices refresh hourly; the picker updates next launch. See
 `resume THREAD_ID` or `resume --last` restores a session; bare `resume` opens the
 workspace picker. Type to search, Tab for all workspaces, Enter to resume. Inside an
 idle session, `/resume` opens the picker or `/resume THREAD_ID` switches directly. Saved
-model/effort/tier, layout, roster, Activity, and retained Diff return; explicit
+model/effort/tier, layout, roster, child history, and retained Diff return; explicit
 `-m`/`-c` overrides named settings. Drafts, selections, filters, and scroll positions do
 not return. UI histories above 16 MiB cannot resume. Third-party `exec resume`/`exec
 fork` uses the mode's default model unless given `-m`. See [resume
@@ -209,16 +209,16 @@ diagnostics go to stderr. Run/shutdown failure exits nonzero. `codex exec` is un
 
 ## UI
 
-Main holds the conversation/composer; Diff and Activity share the right
-column, with Agents below. Narrow terminals show one pane.
+Main starts at full width, with Agents below. Toggle Diff to split the view;
+close it to restore full width. Click a child to switch the displayed transcript.
+The composer always targets Main. Narrow terminals show one pane.
 
 | Action | Shortcut |
 | --- | --- |
-| Focus Main / Diff / Activity / Agents | `Ctrl-B`, then `1` / `2` / `3` / `4` |
+| Show Main / toggle Diff / focus Agents | `Ctrl-B`, then `1` / `2` / `3` |
 | Resize splits | Drag dividers, or `Ctrl-B`, then arrows; Up/Down in Agents adjusts its height |
 | Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
-| Browse Main history | `Ctrl-B`, then PageUp / PageDown |
-| Return to Main | Ctrl-C |
+| Browse displayed transcript | `Ctrl-B`, then PageUp / PageDown |
 
 The wheel scrolls under the pointer. Markdown supports colored code, responsive tables,
 and terminal Mermaid flowcharts; unsupported diagrams remain source. `/title TITLE`
@@ -237,7 +237,7 @@ contract](doc/spec/native_ui.md) for complete controls.
   trees honoring `.gitignore`, bounded to 256 entries/16 KiB with truncation notices.
 - Enabled `$skill-name` references attach instructions, using `skills-mgr` when available.
   Use it for managed skills, `/skills` for Codex toggles; click receipts for submitted contents.
-- Select Main/Activity/saved Diff text and press `r` to mention it.
+- Select transcript or saved Diff text and press `r` to mention it.
 - `/btw QUESTION` answers while Main works; repeat to follow up. Esc closes the panel,
   discarding the unresumable side conversation. If compaction is needed, reset Main and retry.
 - `/model`, `/effort` (or `/reasoning`), and `/tier` open pickers or accept values.
@@ -267,8 +267,9 @@ See [all diff controls](doc/spec/changes.md#live-terminal-view).
 
 ### Agents pane
 
-Click a child for Activity or reply links to address it. `a` filters, End resumes
-following, `o` loads older history. The roster shows active time, round trips,
+Click a child to read its full transcript; click Main to return. Input stays with
+Main. In Agents, arrows navigate threads and `a` returns to Main. In the transcript,
+Esc resumes following; `Ctrl-B o` loads older child history. The roster shows active time, round trips,
 throughput, usage, estimated API cost, and composed captured edits. Usage/rates survive
 resume while retained; `≥` marks lower bounds, `?` uncertain edits, unavailable metrics stay blank.
 Main's throughput appears beside composer context. Herdr is optional; redirected

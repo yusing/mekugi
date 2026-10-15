@@ -209,8 +209,7 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 	}{
 		{"Main", '1', false, true},
 		{"Diff", '2', true, true},
-		{"Activity", '3', false, true},
-		{"Agents", '4', false, true},
+		{"Agents", '3', false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := replayPlaybackTestNew(t)
@@ -227,8 +226,8 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 			assertPane := func() {
 				t.Helper()
 				shell := p.ui.shell
-				if shell.focus != int(tc.digit-'1') || !shell.side || shell.diffOpen != tc.diff || shell.activityOpen != tc.active {
-					t.Fatalf("pane=%s: focus=%d side=%v diff=%v activity=%v", tc.name, shell.focus, shell.side, shell.diffOpen, shell.activityOpen)
+				if shell.focus != map[byte]int{'1': 0, '2': 1, '3': 3}[tc.digit] || shell.diffOpen != tc.diff {
+					t.Fatalf("pane=%s: focus=%d diff=%v", tc.name, shell.focus, shell.diffOpen)
 				}
 			}
 			assertPane()
@@ -275,7 +274,7 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
 	p := replayPlaybackTestNew(t)
 	p.paused = true
-	for _, key := range []byte{2, '4'} {
+	for _, key := range []byte{2, '3'} {
 		if quit, err := p.key(key); err != nil || quit {
 			t.Fatalf("select Agents: quit=%v error=%v", quit, err)
 		}

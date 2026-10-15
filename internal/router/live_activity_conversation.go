@@ -24,13 +24,19 @@ func userBand(theme livediff.Theme) string {
 	return ""
 }
 
-// conversationTool reports Main's own operations, which render as one
-// indented group so adjacent reads merge exactly as they do in Activity.
-func conversationTool(entry activityPaneEntry) bool {
-	return entry.Agent == "Main" && slices.Contains([]string{"tool", "command", "hook", "attachments", "question"}, entry.Kind)
+func (v *liveActivityView) conversationSpeaker() string {
+	if v.conversation && v.childrenOnly && v.only {
+		return v.selected
+	}
+	return "Main"
 }
 
-// renderConversation lays Main out as a transcript rather than an activity
+// conversationTool groups the displayed speaker's operations so adjacent reads merge.
+func (v *liveActivityView) conversationTool(entry activityPaneEntry) bool {
+	return entry.Agent == v.conversationSpeaker() && slices.Contains([]string{"tool", "command", "hook", "attachments", "question"}, entry.Kind)
+}
+
+// renderConversation lays messages out as a transcript rather than an activity
 // feed: prompts on a tinted band, Main's own messages without
 // author headings, and agent traffic under one-line headings. Adjacent traffic
 // with one agent forms a thread. Main's reasoning between a thread's items
@@ -51,7 +57,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	// A question keeps its own rows without preventing operation groups on
 	// either side from folding out of view.
 	tools := func(entry activityPaneEntry) bool {
-		return conversationTool(entry) && entry.Kind != "question"
+		return v.conversationTool(entry) && entry.Kind != "question"
 	}
 	for i := 0; i < len(v.entries); {
 		if !v.visible(v.entries[i].activityPaneEntry) {
@@ -70,13 +76,13 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 				last = j
 			}
 		}
-		if v.entries[i].Agent == "Main" && v.entries[i].Kind == "reasoning" {
+		if v.entries[i].Agent == v.conversationSpeaker() && v.entries[i].Kind == "reasoning" {
 			for ; j < len(v.entries); j++ {
 				next := v.entries[j].activityPaneEntry
 				if !v.visible(next) {
 					continue
 				}
-				if next.Agent != "Main" || next.Kind != "reasoning" {
+				if next.Agent != v.conversationSpeaker() || next.Kind != "reasoning" {
 					break
 				}
 				last = j
@@ -94,7 +100,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			break
 		}
 		entry := v.entries[i].activityPaneEntry
-		items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == "Main" && entry.Kind == "reasoning", lead: -1})
+		items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == v.conversationSpeaker() && entry.Kind == "reasoning", lead: -1})
 		i = j
 	}
 	// Warm runs already know the row count. Reserve the parallel row slices
@@ -140,7 +146,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	items = append(ordered, held...)
 	traffic := func(it item) bool {
 		entry := v.entries[it.first].activityPaneEntry
-		return it.agent != "" || entry.Agent != "Main" && entry.Agent != "You"
+		return it.agent != "" || entry.Agent != v.conversationSpeaker() && entry.Agent != "You"
 	}
 	lead, headed := -1, false // Latest lead's position, and whether tools follow it.
 	for k := 0; k < len(items); k++ {
@@ -149,7 +155,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			lead = -1
 		case v.conversationLead(items[k].first):
 			lead, headed = k, false
-		case conversationTool(entry):
+		case v.conversationTool(entry):
 			if lead >= 0 && traffic(items[k-1]) {
 				if !headed && !slices.ContainsFunc(items[lead+1:k], func(it item) bool { return !traffic(it) }) {
 					moved := items[lead]
@@ -166,8 +172,8 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	// Tools that continue it after agent traffic name it instead.
 	for k := 1; k < len(items); k++ {
 		previous := items[k-1]
-		items[k].attached = items[k].lead < 0 && conversationTool(v.entries[items[k].first].activityPaneEntry) &&
-			previous.aside && v.entries[previous.first].Agent == "Main" && v.conversationLead(previous.first)
+		items[k].attached = items[k].lead < 0 && v.conversationTool(v.entries[items[k].first].activityPaneEntry) &&
+			previous.aside && v.entries[previous.first].Agent == v.conversationSpeaker() && v.conversationLead(previous.first)
 	}
 	start := 0 // Thread's first item.
 	for k, it := range items {
@@ -290,7 +296,7 @@ func (v *liveActivityView) sentMessage(index int) bool {
 func (v *liveActivityView) conversationLead(index int) bool {
 	entry, blocks := v.entries[index].activityPaneEntry, v.entries[index].blocks
 	switch {
-	case entry.Agent != "Main":
+	case entry.Agent != v.conversationSpeaker():
 		return false
 	case entry.Kind == "reasoning":
 		return len(blocks) > 0 && activityui.ReasoningSummaryBody(blocks[0].Body) != ""
@@ -333,7 +339,7 @@ const conversationSourceRows = 5
 // the item cannot join a thread.
 func (v *liveActivityView) threadAgent(index int) string {
 	entry := v.entries[index].activityPaneEntry
-	if entry.Agent == "You" || entry.Agent == "Main" && entry.Kind != "start" && entry.Kind != "assignment" || len(v.entries[index].blocks) == 0 {
+	if entry.Agent == "You" || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" || len(v.entries[index].blocks) == 0 {
 		return ""
 	}
 	return trafficAgent(entry, v.entries[index].blocks[0])
@@ -408,7 +414,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	entryRows := make(map[uint64]int)
 	p := &v.painter
 	switch {
-	case entry.Agent == "Main" && (entry.Kind == "reasoning" || entry.Kind == "progress"):
+	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "reasoning" || entry.Kind == "progress"):
 		var summaries []activityui.Block
 		for k := first; k <= last; k++ {
 			if v.visible(v.entries[k].activityPaneEntry) {
@@ -440,7 +446,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			entryRows[next.Seq] = len(out.lines)
 			v.userItemContinued(&out, next, width, k != first)
 		}
-	case conversationTool(entry):
+	case v.conversationTool(entry):
 		var group []activityui.Block
 		unconfirmed := false
 		restored := true
@@ -506,7 +512,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			out.add(0, row)
 			out.snippets[len(out.snippets)-1] = toggles[i]
 		}
-	case entry.Agent == "Main" && entry.Kind == "text":
+	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "text" || v.childrenOnly && entry.Kind == "final"):
 		out.add(0, mainHeading(p, entry, width))
 		gutter := mainGutter(p)
 		if entry.native != nil && entry.native.question != 0 && v.mainReplyQuotes(first, entry.native.question) {
@@ -540,7 +546,11 @@ func conversationHeading(glyph, name, detail string, entry activityPaneEntry, wi
 // mainHeading and mainGutter mark Main's own replies the way agent traffic
 // is marked, so every transcript item starts with who spoke and when.
 func mainHeading(p *activityui.Painter, entry activityPaneEntry, width int) string {
-	return conversationHeading(p.Theme.Accent()+"●"+activityui.Reset, "\x1b[1m"+p.Theme.Accent()+"main"+activityui.Reset, "", entry, width)
+	name := "\x1b[1m" + p.Theme.Accent() + "main" + activityui.Reset
+	if entry.Agent != "Main" {
+		name = p.Agent(entry.Agent)
+	}
+	return conversationHeading(p.Theme.Accent()+"●"+activityui.Reset, name, "", entry, width)
 }
 
 func mainGutter(p *activityui.Painter) string {
@@ -717,10 +727,10 @@ func (v *liveActivityView) mainReplyQuotes(index int, question uint64) bool {
 		if previous.Seq == question {
 			return true
 		}
-		if !v.visible(previous.activityPaneEntry) || previous.Agent == "Main" && previous.Kind != "text" && previous.Kind != "final" {
+		if !v.visible(previous.activityPaneEntry) || previous.Agent == v.conversationSpeaker() && previous.Kind != "text" && previous.Kind != "final" {
 			continue
 		}
-		return previous.Agent != "Main" || previous.Kind != "text" || previous.native == nil || previous.native.question != question
+		return previous.Agent != v.conversationSpeaker() || previous.Kind != "text" || previous.native == nil || previous.native.question != question
 	}
 	return true
 }

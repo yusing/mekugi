@@ -439,9 +439,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	mention := "message"
 	switch {
 	case u.layout.codex.contains(x, y):
-		view, pane = u.main.view, u.layout.codex
-	case u.layout.agents.contains(x, y):
-		view, pane, mention = u.agents, u.layout.agents, "activity"
+		view, pane = u.main.transcriptView(), u.layout.codex
 	case u.layout.diff.contains(x, y):
 		// The press still reaches the diff pane, so clicks keep their meaning.
 		if previous != nil && previous.diff != nil && previous.screenRows != 0 && previous.pane == u.layout.diff && previous.rect.contains(x, y) {
@@ -457,7 +455,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 	rect.w = min(rect.w, pane.x+pane.w-rect.x)
 	rect.h = min(rect.h, pane.y+pane.h-rect.y)
 	questions, snippets := view.feedQuestions, view.feedSnippets
-	if view == u.main.view && u.main.btw != nil {
+	if u.main.btw != nil {
 		btw := u.main.btw.rect
 		btw.x += pane.x
 		btw.y += pane.y
@@ -465,7 +463,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			rect, mention, questions, snippets = btw, "side answer", nil, nil
 		}
 	}
-	if view == u.main.view && !rect.contains(x, y) {
+	if !rect.contains(x, y) {
 		composer := u.main.composerRect
 		composer.x += pane.x
 		composer.y += pane.y
@@ -474,7 +472,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 			questions, snippets = nil, nil
 		}
 	}
-	if view == u.main.view && u.main.statusPanel != nil {
+	if u.main.statusPanel != nil {
 		rect, mention = u.main.statusPanel.rect, "status"
 		rect.x += pane.x
 		rect.y += pane.y
@@ -498,11 +496,7 @@ func (u *terminalUI) selectionMouse(button, x, y int, release bool) bool {
 		questions, snippets, mention = previous.questions, previous.snippets, previous.mention
 	}
 	rows, link := u.selectionScreen(source, x, y)
-	if view == u.main.view {
-		u.focus = 0
-	} else {
-		u.focus = 2
-	}
+	u.focus = 0
 	u.selection = &terminalSelection{rect: rect, rows: rows, copySource: copySource, startX: x, startY: y, endX: x, endY: y, dragging: true, link: link, view: view, pane: pane, questions: questions, snippets: snippets, mention: mention}
 	if previous != nil && previous.screenRows != 0 && previous.view == view && previous.rect == rect {
 		u.selection = previous.restart(x, y, link)
@@ -665,7 +659,7 @@ func (u *terminalUI) paintSelection(rows []string) {
 	if s == nil || u.output != nil {
 		return
 	}
-	if cmp.Or(s.screenRows, len(s.rows)) != len(rows) || u.paintedWidth != u.width || s.pane != u.layout.codex && s.pane != u.layout.agents && s.pane != u.layout.diff {
+	if cmp.Or(s.screenRows, len(s.rows)) != len(rows) || u.paintedWidth != u.width || s.pane != u.layout.codex && s.pane != u.layout.diff {
 		u.selection = nil
 		return
 	}

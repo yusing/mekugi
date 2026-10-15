@@ -25,7 +25,7 @@ const (
 	liveActivityPaceStep = 80 * time.Millisecond
 )
 
-// Main and Activity each own one of these views, sharing the renderer. Entries carry
+// Main and child transcripts share this renderer. Entries carry
 // sequence numbers, so a reconnect snapshot merges without duplicating retained rows.
 type liveActivityView struct {
 	clock          func() time.Time // Shared with the owning replay UI, nil for live time.
@@ -55,10 +55,10 @@ type liveActivityView struct {
 	roleColors     map[string]string
 	livePreviews   map[string][]string // Temporary caller-local transcript replacements.
 	feedOnly       bool
-	conversation   bool                        // Main uses the same feed/state with full, unclipped messages.
-	childrenOnly   bool                        // Native Main already owns root activity; keep it out of the auxiliary feed.
+	conversation   bool                        // Full, unclipped messages in the displayed transcript.
+	childrenOnly   bool                        // Main owns root activity; this view retains child entries.
 	bare           bool                        // The shell's pane title replaces the heading and footer rows.
-	focused        bool                        // Native Activity shows its key hints only while it has keyboard focus.
+	focused        bool                        // Show key hints only while the view has keyboard focus.
 	lineCounts     map[string]livediff.Counts  // Captured edit lines by caller key, for the native roster.
 	netCounts      *livediff.Counts            // Composed project outcome, independent of roster rows.
 	rosterPace     map[string]rosterMetricPace // Roster metrics easing toward their latest values, by agent.
@@ -66,7 +66,6 @@ type liveActivityView struct {
 	rosterEasing   bool                        // The last roster frame showed metrics still easing.
 	mainView       *liveActivityView           // Roster reads Main's state without duplicating its feed entries.
 	painter        activityui.Painter
-	osc            livediff.OSC
 	runs           map[liveActivityRunKey]liveActivityRun
 	syntaxWindow   *liveActivitySyntaxWindow    // Invocation-local rows being decorated within a run.
 	paced          map[uint64]liveActivityPace  // Live invocations still revealing their operations, by entry.
@@ -475,7 +474,7 @@ func (v *liveActivityView) visible(entry activityPaneEntry) bool {
 	}
 	if entry.Kind == "reasoning" {
 		if v.conversation {
-			return entry.Agent == "Main"
+			return entry.Agent == v.conversationSpeaker()
 		}
 		if !v.childrenOnly {
 			return false
@@ -565,21 +564,6 @@ func (v *liveActivityView) statusCounts(rows []liveActivityRosterRow) (respondin
 		}
 	}
 	return responding, errors
-}
-
-func (v *liveActivityView) selectAgent(step int) {
-	rows := v.feedAgents()
-	if len(rows) == 0 {
-		return
-	}
-	index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-	index = (max(0, index) + step + len(rows)) % len(rows)
-	v.selected = rows[index].agent.Name
-	v.rosterManual = false
-	v.hovered = ""
-	if v.only {
-		v.follow()
-	}
 }
 
 func (v *liveActivityView) handleMouse(action byte, row, column int) bool {
@@ -724,10 +708,10 @@ func (v *liveActivityView) pointAgent(action byte, row, column int) bool {
 			}
 			if action == '\r' {
 				if v.childrenOnly && hit.agent == "/root" {
-					// Main's activity lives in Main; picking it shows every child.
+					// Main's transcript has its own view and input owner.
 					v.only = false
 				} else {
-					v.only = !v.only || v.selected != hit.agent
+					v.only = v.childrenOnly || !v.only || v.selected != hit.agent
 					v.selected = hit.agent
 				}
 				v.rosterManual = false
@@ -1914,7 +1898,7 @@ func liveActivityMiddle(name string, width int) string {
 	return head + "…" + leaf
 }
 
-// showAgent keeps the original roster navigation: all agents precedes the list.
+// showAgent steps through child transcripts, with Main before the first child.
 func (v *liveActivityView) showAgent(step int) {
 	rows := v.feedAgents()
 	if len(rows) == 0 {

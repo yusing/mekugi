@@ -11,7 +11,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Shared source capability, Go identifiers, and shell-header semantics | `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
 | Shared source parsing, literal decoding, and nonblocking source-file opens | `internal/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
-| Native screen composition and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
+| Native screen composition, transcript switching, and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
 | Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go`; composer error display in `internal/router/composer_notice.go` |
 | Source-aware selection, scrolling, and logical copy | `internal/router/terminal_selection.go`, `internal/router/terminal_source_selection_test.go`, `internal/router/terminal_selection_scroll_test.go` |
 | Native approval dialog, Codex approval responses, and approval-mode thread policy | `internal/router/app_server_approvals.go`; question dock in `internal/router/app_server_questions.go` |

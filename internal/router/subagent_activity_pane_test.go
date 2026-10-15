@@ -52,9 +52,7 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 		lines[6] != "↓ 2 more" {
 		t.Fatalf("roster = %q", lines[1:7])
 	}
-	for range 6 {
-		view.selectAgent(1)
-	}
+	view.selected = "/root/e"
 	styled := view.render(60, 20, time.Now())
 	lines = plainLines(styled)
 	// Selection fills its row in place, without a marker column.
@@ -64,10 +62,6 @@ func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	}) ||
 		!slices.ContainsFunc(lines[1:7], func(line string) bool { return strings.HasPrefix(line, " · e") }) {
 		t.Fatalf("selection scroll: selected=%s roster=%q", view.selected, lines[1:7])
-	}
-	view.selectAgent(1)
-	if view.selected != "/root/a" {
-		t.Fatalf("selection did not wrap: %s", view.selected)
 	}
 	for _, line := range view.render(60, 20, time.Now()) {
 		if ansi.StringWidth(line) > 59 {
@@ -84,7 +78,8 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	if !strings.Contains(all, "… +") || !strings.Contains(all, "  line") {
 		t.Fatalf("clamped feed = %s", all)
 	}
-	view.handleKey("", 'a')
+	view.only = true
+	view.follow()
 	only := plainLines(view.render(80, 40, time.Now()))
 	joined := strings.Join(only, "\n")
 	if !strings.Contains(joined, "… +") || strings.Count(joined, "  line") >= 20 || strings.Contains(joined, "● b") {
@@ -94,7 +89,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 		t.Fatalf("only chrome = %q / %q", only[0], only[len(only)-1])
 	}
 	view.render(80, 5, time.Now()) // Make scrollback possible with five-row excerpts.
-	view.handleKey("", 'k')
+	view.scrollKey('k')
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 4, Agent: "/root/a", Text: "more", Observed: time.Now()},
 		{Seq: 5, Agent: "/root/b", Text: "hidden", Observed: time.Now()},
@@ -103,7 +98,7 @@ func TestLiveActivityViewClampOnlyModeAndPausedCount(t *testing.T) {
 	if header := plainLines(view.render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "PAUSED · 1 new") {
 		t.Fatalf("paused header = %q", header)
 	}
-	view.handleKey("", 'G')
+	view.scrollKey('G')
 	if header := plainLines(view.render(80, 5, time.Now()))[0]; !strings.HasSuffix(header, "FOLLOW") {
 		t.Fatalf("follow header = %q", header)
 	}

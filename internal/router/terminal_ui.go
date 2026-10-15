@@ -29,10 +29,9 @@ type terminalUI struct {
 	main                                           *appServerUI
 	auto                                           *autoLiveDiff
 	width, height, split, horizontal, rosterHeight int
-	focus, drag                                    int // 0 Main, 1 diff, 2 agents, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
-	side, activityOpen                             bool
+	focus, drag                                    int // 0 transcript/composer, 1 diff, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	diffOpen                                       bool
-	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
+	diffUnseen                                     bool // Saved changes arrived while Diff was closed.
 	liveDock                                       diffview.PreviewPane
 	livePending                                    map[string]nativePendingPreview
 	liveHidden                                     bool // Presentation only, local to this frontend session.
@@ -63,7 +62,7 @@ func (s *nativeDiffScreen) Close() error {
 type terminalRect struct{ x, y, w, h int }
 
 type terminalLayout struct {
-	codex, diff, agents, roster, live      terminalRect
+	codex, diff, roster, live              terminalRect
 	mainSkills                             terminalRect // Main's active-skill count in its title.
 	vertical, horizontal, rosterHorizontal int
 }
@@ -202,8 +201,12 @@ func (u *terminalUI) key(key byte) error {
 		switch key {
 		case 2:
 			return u.send(string([]byte{2}))
-		case '1', '2', '3', '4':
+		case '1', '2':
 			u.selectNativePane(int(key - '1'))
+		case '3':
+			u.selectNativePane(3)
+		case 'o':
+			return u.main.loadOlderActivity()
 		case 'q':
 			if u.main != nil && !u.main.openApprovals() {
 				u.main.openQuestions()
@@ -211,9 +214,9 @@ func (u *terminalUI) key(key byte) error {
 		case '!':
 			u.openErrors()
 		case 'e':
-			u.nextLive()
+			u.liveDock.NextBatch(u.main.transcriptCaller())
 		case 'r':
-			u.liveDock.ScrollBatch("/root", 'r')
+			u.liveDock.ScrollBatch(u.main.transcriptCaller(), 'r')
 		default:
 			u.resize(string(key))
 		}
@@ -232,17 +235,18 @@ func (u *terminalUI) key(key byte) error {
 func (u *terminalUI) resize(key string) {
 	if key == "\x1b[5~" || key == "\x1b[6~" {
 		if u.layout.live.h > 0 {
+			caller := u.main.transcriptCaller()
 			action := byte('b')
 			if key == "\x1b[6~" {
 				action = ' '
 			}
-			u.liveDock.ScrollBatch("/root", action)
+			u.liveDock.ScrollBatch(caller, action)
 			return
 		}
 		if key == "\x1b[5~" {
-			u.main.view.scrollKey('b')
+			u.main.transcriptView().scrollKey('b')
 		} else {
-			u.main.view.scrollKey(' ')
+			u.main.transcriptView().scrollKey(' ')
 		}
 		return
 	}
@@ -330,10 +334,6 @@ func (u *terminalUI) terminalColor(reply string) {
 }
 
 func (u *terminalUI) send(s string) error {
-	if s == "\x1b" && u.focus == 2 && u.main != nil && u.main.historyLoading != nil {
-		return u.main.cancelOlderActivity()
-	}
-
 	if u.output != nil {
 		u.outputKey(s)
 		return nil
@@ -380,12 +380,14 @@ func (u *terminalUI) send(s string) error {
 		}
 	}
 
+	if s == "\x1b" && u.main != nil && u.main.historyLoading != nil {
+		return u.main.cancelOlderActivity()
+	}
+
 	if s == "\x1b" && u.main != nil && !u.main.keybindings {
 		var transcript *liveActivityView
 		if u.focus == 0 {
-			transcript = u.main.view
-		} else if u.focus == 2 {
-			transcript = u.agents
+			transcript = u.main.transcriptView()
 		}
 		if transcript != nil && !transcript.following {
 			transcript.follow()
@@ -402,6 +404,10 @@ func (u *terminalUI) send(s string) error {
 		u.selection = nil
 	}
 
+	if s == "\x1b" && u.focus == 3 {
+		u.focus = 0
+		return nil
+	}
 	if s == "\x1b" && u.focus == 0 && u.main != nil && !u.main.paste {
 		if u.main.turn != "" || u.main.starting() || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
 			return u.main.keyboardEscape()
@@ -409,11 +415,6 @@ func (u *terminalUI) send(s string) error {
 		return nil
 	}
 
-	if u.focus == 2 && u.main != nil {
-		if s == "o" {
-			return u.main.loadOlderActivity()
-		}
-	}
 	if u.focus == 0 {
 		for _, key := range []byte(s) {
 			quit, err := u.main.key(key)
@@ -435,17 +436,14 @@ func (u *terminalUI) send(s string) error {
 				}
 			}
 			if u.diff.handleKey(key) {
+				u.diffOpen = false
 				u.focus = 0
 			}
 		} else {
+			only, selected := u.agents.only, u.agents.selected
 			var quit bool
-			if u.focus == 3 {
-				only, selected := u.agents.only, u.agents.selected
-				u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
-				u.showRosterPick(only, selected)
-			} else {
-				u.agentEscape, quit = u.agents.handleKey(u.agentEscape, key)
-			}
+			u.agentEscape, quit = u.agents.handleRosterKey(u.agentEscape, key)
+			u.showRosterPick(only, selected)
 			if quit {
 				u.focus = 0
 			}
@@ -605,9 +603,9 @@ func (u *terminalUI) mouse(s string) error {
 			case 0:
 				u.focus = 0
 			case 64:
-				u.liveDock.ScrollBatch("/root", terminalui.PaneWheelUp)
+				u.liveDock.ScrollBatch(u.main.transcriptCaller(), terminalui.PaneWheelUp)
 			case 65:
-				u.liveDock.ScrollBatch("/root", terminalui.PaneWheelDown)
+				u.liveDock.ScrollBatch(u.main.transcriptCaller(), terminalui.PaneWheelDown)
 			}
 		}
 		return nil
@@ -629,9 +627,6 @@ func (u *terminalUI) mouse(s string) error {
 	case u.layout.roster.contains(x, y):
 		pane = 3
 		r = u.layout.roster
-	case u.layout.agents.contains(x, y):
-		pane = 2
-		r = u.layout.agents
 	}
 	if pane < 0 {
 		return nil
@@ -641,8 +636,6 @@ func (u *terminalUI) mouse(s string) error {
 	}
 
 	if button&^28 == 0 && !release {
-		if pane != 0 {
-		}
 		u.focus = pane
 	}
 	translated := fmt.Sprintf("\x1b[<%d;%d;%dM", button, x-r.x+1, y-r.y+1)
@@ -659,8 +652,9 @@ func (u *terminalUI) mouse(s string) error {
 			case 65:
 				action = 'j'
 			}
-			u.main.view.handleMouse(action, y-r.y+1, x-r.x+1)
-			u.openRequested(u.main.view)
+			view := u.main.transcriptView()
+			view.handleMouse(action, y-r.y+1, x-r.x+1)
+			u.openRequested(view)
 		}
 		return nil
 	}

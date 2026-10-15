@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
@@ -52,7 +51,7 @@ func (u *appServerUI) skillsModalFrame(width, height int) []string {
 	u.mainContentPainted = false
 	u.composerRect = terminalRect{}
 	if height > ph {
-		copy(frame, u.view.render(width, height-ph, time.Now()))
+		copy(frame, u.transcriptView().render(width, height-ph, u.now()))
 	}
 	copy(frame[height-ph:], u.renderPicker(width, ph))
 	u.picker.rect = terminalRect{0, height - ph, width, ph}

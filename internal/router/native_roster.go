@@ -13,28 +13,6 @@ import (
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
-// nativeTitle names the Activity feed's filter and follow state for the
-// shell's pane title.
-func (v *liveActivityView) nativeTitle() (string, string) {
-	detail := ""
-	if v.only {
-		rows := v.feedAgents()
-		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		detail = v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
-	}
-	if v.historyHint != "" {
-		detail = strings.TrimSpace(activityui.Dim + v.historyHint + activityui.Undim + " " + detail)
-	}
-	state := v.status
-	if state == "" {
-		state = scrollLabel(v)
-		if v.following {
-			state = strings.TrimSpace(state + " " + activityui.Dim + "FOLLOW" + activityui.Undim)
-		}
-	}
-	return detail, state
-}
-
 // nativeRosterItem is one roster row: an agent, or the fold of finished ones.
 type nativeRosterItem struct {
 	row      liveActivityRosterRow
@@ -107,7 +85,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	if len(totals) > 0 {
 		right = activityui.Dim + strings.Join(totals, " · ") + activityui.Undim
 	}
-	lines := []string{nativeRule("─", "─", "─", nativeTitle(4, "Agents", detail, focused), right, width, nativeBorder(focused))}
+	lines := []string{nativeRule("─", "─", "─", nativeTitle(3, "Agents", detail, focused), right, width, nativeBorder(focused))}
 
 	limit = max(1, limit)
 	legend := ""
@@ -239,7 +217,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 		v.hits = append(v.hits, liveActivityHit{row: len(lines), first: 1, last: width, agent: item.row.agent.Name})
 	}
 	if hidden := len(items) - end; hidden > 0 {
-		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 4 shows all", hidden)+activityui.Undim, width, "…"))
+		lines = append(lines, ansi.Truncate(activityui.Dim+fmt.Sprintf("   +%d more · ^B 3 shows all", hidden)+activityui.Undim, width, "…"))
 	}
 	if legend != "" {
 		lines = append(lines, legend)

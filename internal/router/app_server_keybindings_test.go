@@ -47,7 +47,6 @@ func TestNativeUIKeybindings(t *testing.T) {
 func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	u.shell.side = false
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
 	if err := u.shell.key('?'); err != nil {

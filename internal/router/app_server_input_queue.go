@@ -234,7 +234,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		}
 		if len(questionReplies(s.text)) == 0 {
 			s.seq = u.view.lastSeq + 1
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: time.Now(),
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: u.now(),
 				native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", spans: s.composerDraft.displaySpans()}}}})
 		}
 	}

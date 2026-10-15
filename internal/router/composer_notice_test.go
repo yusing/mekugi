@@ -23,7 +23,6 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.shell.side = false
 			u.turn, u.status, u.draft = "active", "Working", "keep draft"
 			switch tc.kind {
 			case "command":

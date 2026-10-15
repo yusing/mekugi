@@ -165,14 +165,15 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		return frame
 	}
 	p.until("main streams its patch")
-	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "1 Main", "3 Activity", "4 Agents")
+	render("main replacement", "LIVE ·", "M internal/broker/broker.go", "1 Main", "3 Agents")
 	p.ui.shell.liveHidden = true // Subsequent assertions inspect transcripts, not their temporary replacements.
 	// Grok reasoning streams through the router's translation into Activity.
 	p.until("children start")
 	for range 12 {
 		p.advance()
 	}
-	render("grok thinking", "started · grok:grok-4.7-build-fast", "• Thinking…")
+	p.ui.agents.only, p.ui.agents.selected = true, "/root/explorer"
+	render("grok thinking", "• Thinking…")
 	p.until("explorer thought")
 	render("grok thought readable", "• Thought")
 	retained := false
@@ -188,8 +189,9 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("collapsed reasoning lost its complete dialog body")
 	}
 	p.until("three agents edit at once")
+	p.ui.agents.only = false
 	p.ui.shell.liveHidden = false
-	frame := render("caller-local live previews", "LIVE ·", "3 Activity", "2 Diff ●")
+	frame := render("caller-local live previews", "LIVE ·", "3 Agents", "2 Diff ●")
 	if strings.Contains(frame, "3 Activity ─") && strings.Contains(frame, "no captured edits yet") {
 		t.Fatal("the saved diff replaced Activity without being opened")
 	}
@@ -241,7 +243,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if p.ui.draft != "Keep my draft" {
 		t.Fatal("playback overwrote typed input")
 	}
-	render("finished session", "● main", "↩ re: your message", "↩ re: assignment", "✓ answer", "╭─ ✓ answer", "finished", "$")
+	render("finished session", "● main", "↩ re: your message", "↩ re: assignment", "finished", "$")
 	for _, key := range []byte{2, '2'} {
 		if err := p.ui.shell.key(key); err != nil {
 			t.Fatal(err)
@@ -273,12 +275,12 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 		t.Fatal("s did not hide the focused stacked list")
 	}
 	// Picking an agent in the roster shows its Activity instead of the diff.
-	for _, key := range []byte{2, '4'} {
+	for _, key := range []byte{2, '3'} {
 		if err := p.ui.shell.key(key); err != nil {
 			t.Fatal(err)
 		}
 	}
-	render("focused roster", "4 Agents")
+	render("focused roster", "3 Agents")
 	if !p.ui.shell.diffOpen {
 		t.Fatal("focusing the roster closed the saved diff")
 	}
@@ -293,8 +295,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	render("roster pick", "3 Activity", "tester")
-	if shell.diffOpen || !shell.agents.only || shell.agents.selected != "/root/tester" {
+	render("roster pick", "1 Thread", "tester")
+	if !shell.diffOpen || !shell.agents.only || shell.agents.selected != "/root/tester" {
 		t.Fatal("clicking a roster agent did not show its Activity")
 	}
 }
@@ -1346,7 +1348,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 				view, item = u.agents, "patch-tester"
 				view.selected, view.only = "/root/tester", true
 			}
-			u.shell.side, u.shell.activityOpen, u.shell.diffOpen = activity, activity, false
+			u.shell.diffOpen = activity
 			paint := func() {
 				t.Helper()
 				if err := u.paint(io.Discard, 160, 160); err != nil {
@@ -1369,7 +1371,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			}
 			rect := u.shell.layout.codex
 			if activity {
-				rect = u.shell.layout.agents
+				rect = u.shell.layout.codex
 			}
 			x, y := rect.x+view.feedLeft+1, rect.y+view.feedTop+row
 			if err := u.shell.mouse(fmt.Sprintf("\x1b[<35;%d;%dM", x, y)); err != nil {
@@ -1384,7 +1386,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || u.shell.diffOpen || u.shell.activityOpen != activity || u.shell.side != activity {
+			if u.shell.output == nil || u.shell.diffOpen != activity {
 				t.Fatal("preview edit did not open dialog over prior panes")
 			}
 			paint()
@@ -1409,7 +1411,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			if err := u.shell.flushEscape(); err != nil {
 				t.Fatal(err)
 			}
-			if u.shell.output != nil || u.shell.diffOpen || u.shell.activityOpen != activity || u.shell.side != activity {
+			if u.shell.output != nil || u.shell.diffOpen != activity {
 				t.Fatal("Escape did not dismiss dialog while preserving panes")
 			}
 

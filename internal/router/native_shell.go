@@ -165,23 +165,6 @@ func (u *terminalUI) animating(now time.Time) bool {
 	return changed || len(u.liveDock.Order) > 0 || len(u.livePending) > 0
 }
 
-// nextLive cycles files in the focused caller's retained batch.
-func (u *terminalUI) nextLive() {
-	caller := "/root"
-	if u.focus != 0 {
-		caller = u.agents.selected
-		if caller == "" || caller == "/root" {
-			for _, name := range u.liveDock.Callers() {
-				if name != "/root" {
-					caller = name
-					break
-				}
-			}
-		}
-	}
-	u.liveDock.NextBatch(caller)
-}
-
 func nativeBorder(focused bool) string {
 	if focused {
 		return "\x1b[38;2;130;170;255m"
@@ -249,19 +232,36 @@ func nativeTitle(digit int, name, detail string, focused bool) string {
 	return label
 }
 
+func (u *appServerUI) transcriptCaller() string {
+	if u.agents.only {
+		return u.agents.selected
+	}
+	return "/root"
+}
+
+// transcriptView selects display state without changing the input or execution owner.
+func (u *appServerUI) transcriptView() *liveActivityView {
+	if u.agents != nil && u.agents.only && u.agents.selected != "" {
+		u.agents.conversation = true
+		return u.agents
+	}
+	return u.view
+}
+
 // paintNative lays out the app-server shell: Main on the left, the saved
-// diff or Activity on the right, one shared live dock, the fitted roster
+// optional saved Diff on the right, a caller-local live dock, the fitted roster
 // below, and a status bar for the focused pane.
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	width, height := max(1, u.width), max(1, u.height)
 	now := u.main.now()
-	u.agents.feedOnly, u.agents.focused = true, u.focus == 2
+	u.agents.feedOnly, u.agents.focused = true, u.focus == 3
 	u.liveDock.Motion.Enabled = true
 	u.liveDock.Motion.Canvas = u.diff.theme.Canvas()
 	if u.diff.backgrounded {
 		u.liveDock.Motion.Canvas.Background = u.diff.background
 	}
-	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), "/root")
+	caller := u.main.transcriptCaller()
+	mainEdit := !u.liveHidden && slices.Contains(u.liveDock.Callers(), caller)
 	u.agents.livePreviews = nil
 	if u.diff != nil {
 		u.agents.lineCounts = u.diff.callerCounts
@@ -283,7 +283,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		l.roster = terminalRect{0, top, width, len(roster)}
 	}
 	var left, right terminalRect
-	wide := width >= 100 && top >= 12
+	wide := u.diffOpen && width >= 100 && top >= 12
 	switch {
 	case wide:
 		split := u.split
@@ -293,7 +293,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		split = min(max(40, split), width-40)
 		left, right = terminalRect{0, 0, split, top}, terminalRect{split, 0, width - split, top}
 		l.vertical = split
-	case u.focus == 0:
+	case !u.diffOpen || u.focus != 1:
 		left = terminalRect{0, 0, width, top}
 	default:
 		right = terminalRect{0, 0, width, top}
@@ -315,11 +315,13 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		if mainEdit && !u.main.keybindings && !u.main.picker.open {
 			dockRows = ih
 		}
+		rosterHits := u.agents.hits
 		body, dockRect := u.main.mainFrame(iw, ih, dockRows)
+		u.agents.hits = rosterHits
 		dockAt, dockRows := dockRect.y, dockRect.h
 		rules := map[int]string{}
 		if dockRows > 0 && dockAt+dockRows <= len(body) {
-			dock, err := u.liveDock.RenderBatch(ctx, "/root", u.main.session.cwd, u.diff.theme, iw, dockRows, 15)
+			dock, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.theme, iw, dockRows, 15)
 			if err != nil {
 				return err
 			}
@@ -345,79 +347,65 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			if set := u.main.view.activeSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
 				detail = strings.TrimSuffix(detail, set.label()) + activityui.Underline(set.label())
 			}
-			title := nativeTitle(1, "Main", detail, u.focus == 0)
+			name := "Main"
+			if u.agents.only {
+				name, detail = "Thread", u.agents.painter.Agent(u.agents.selected)
+			}
+			title := nativeTitle(1, name, detail, u.focus == 0)
 			// The skill count ends the title, after the frame corner and a space.
 			// A truncated title has no reliable target.
-			if set := u.main.view.activeSkills()["Main"]; set != nil && strings.HasSuffix(ansi.Strip(detail), set.label()) && ansi.StringWidth(title)+5 <= left.w {
+			if set := u.main.view.activeSkills()["Main"]; !u.agents.only && set != nil && strings.HasSuffix(ansi.Strip(detail), set.label()) && ansi.StringWidth(title)+5 <= left.w {
 				end := left.x + 2 + ansi.StringWidth(title)
 				l.mainSkills = terminalRect{end - ansi.StringWidth(set.label()), left.y, ansi.StringWidth(set.label()), 1}
 			}
-			draw(left, nativeBox(left.w, left.h, title, u.main.mainHeaderRight(left.w, u.focus == 0), u.focus == 0, body, rules))
+			headerRight := u.main.mainHeaderRight(left.w, u.focus == 0)
+			if u.agents.only {
+				u.main.updateHistoryHint()
+				headerRight = strings.TrimSpace(scrollLabel(u.agents) + " " + u.agents.historyHint)
+			}
+			draw(left, nativeBox(left.w, left.h, title, headerRight, u.focus == 0, body, rules))
 		}
 	}
-	if right.w >= 4 && right.h >= 3 && framed {
-		iw, ih := right.w-2, right.h-2
+	if right.w >= 4 && right.h >= 1 {
+		inset := 0
+		if framed {
+			inset = 1
+		}
+		iw, ih := right.w-2*inset, right.h-2*inset
 		content := ih
-		contentY := right.y + 1
-		focused := u.focus == 1 || u.focus == 2
+		contentY := right.y + inset
+		focused := u.focus == 1
 		var body []string
 		var title, label string
-		if u.diffOpen {
-			diffRows := content
-			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
-			if u.diffScreen.Emulator == nil {
-				u.diffScreen.Emulator = vt.NewEmulator(iw, max(1, diffRows))
-				u.diff.dirty = true
-			} else if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
-				u.diffScreen.Resize(iw, max(1, diffRows))
-				u.diff.dirty = true
-			}
-			u.layout = l // The diff controller sizes itself from the layout.
-			if u.diffFailure == "" {
-				if err := u.diff.renderFrame(ctx); err != nil {
-					u.diffFailure = err.Error()
-				}
-			}
-			if u.diffFailure != "" {
-				body = []string{"Diff unavailable", livediff.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
-			} else {
-				body = strings.Split(u.diffScreen.Render(), "\n")
-			}
-			summary, state := u.diff.nativeTitle()
-			title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
-			u.diffUnseen = false
-		} else if content > 0 {
-			l.agents = terminalRect{right.x + 1, contentY, iw, content}
-			// The feed-only renderer clears pane-local hits. Keep the separate
-			// roster's targets, which were laid out before the Activity pane.
-			rosterHits := u.agents.hits
-			if !u.liveHidden {
-				u.agents.livePreviews = make(map[string][]string)
-				for _, caller := range u.liveDock.Callers() {
-					if caller == "/root" || u.agents.only && caller != u.agents.selected {
-						continue
-					}
-					preview, err := u.liveDock.RenderBatch(ctx, caller, u.main.session.cwd, u.diff.theme, iw-1, min(10, max(2, content/2)), min(10, max(2, content/2))-1)
-					if err != nil {
-						return err
-					}
-					u.agents.livePreviews[caller] = preview
-				}
-			}
-			body = u.agents.render(iw, content, now)
-			for row := range body {
-				body[row] = activityui.AttachCopy(body[row], u.agents.copyRows[row])
-			}
-			u.agents.hits = rosterHits
-			if u.main != nil {
-				u.main.updateHistoryHint()
-			}
-			detail, state := u.agents.nativeTitle()
-			title, label = nativeTitle(3, "Activity", detail, u.focus == 2), state
+		diffRows := content
+		l.diff = terminalRect{right.x + inset, contentY, iw, diffRows}
+		if u.diffScreen.Emulator == nil {
+			u.diffScreen.Emulator = vt.NewEmulator(iw, max(1, diffRows))
+			u.diff.dirty = true
+		} else if u.diffScreen.Width() != iw || u.diffScreen.Height() != diffRows {
+			u.diffScreen.Resize(iw, max(1, diffRows))
+			u.diff.dirty = true
 		}
+		u.layout = l // The diff controller sizes itself from the layout.
+		if u.diffFailure == "" {
+			if err := u.diff.renderFrame(ctx); err != nil {
+				u.diffFailure = err.Error()
+			}
+		}
+		if u.diffFailure != "" {
+			body = []string{"Diff unavailable", livediff.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
+		} else {
+			body = strings.Split(u.diffScreen.Render(), "\n")
+		}
+		summary, state := u.diff.nativeTitle()
+		title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
+		u.diffUnseen = false
 		body = append(body[:min(len(body), content)], make([]string, max(0, content-len(body)))...)
-		rules := map[int]string{}
-		draw(right, nativeBox(right.w, right.h, title, label, focused, body, rules))
+		if framed {
+			draw(right, nativeBox(right.w, right.h, title, label, focused, body, nil))
+		} else {
+			draw(right, body)
+		}
 	}
 	if len(roster) > 0 {
 		draw(l.roster, roster)
@@ -463,8 +451,7 @@ func (u *terminalUI) rosterLimit(height int) int {
 	return nativeRosterRows
 }
 
-// nativeStatus shows the pane tabs, with Diff and Activity marked as the pair
-// sharing the right column, and only the focused pane's keys.
+// nativeStatus shows view selectors and only the focused view's keys.
 func (u *terminalUI) nativeStatus() string {
 	u.paneTabs = [4]terminalRect{}
 	if u.main != nil && u.main.replay != nil {
@@ -474,7 +461,7 @@ func (u *terminalUI) nativeStatus() string {
 	tab := func(digit int, name, badge string, shown bool) {
 		text := fmt.Sprintf(" %d %s", digit, name)
 		switch {
-		case u.focus == digit-1:
+		case (u.focus == digit-1 && digit != 3 || digit == 3 && u.focus == 3) && (digit != 1 || !u.agents.only):
 			text = "\x1b[7;1m" + text + badge + " \x1b[27;22m"
 		case shown:
 			text += badge + " "
@@ -482,7 +469,11 @@ func (u *terminalUI) nativeStatus() string {
 			text = activityui.Dim + text + activityui.Undim + badge + " "
 		}
 		left := ansi.StringWidth(tabs.String())
-		u.paneTabs[digit-1] = terminalRect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
+		pane := digit - 1
+		if digit == 3 {
+			pane = 3
+		}
+		u.paneTabs[pane] = terminalRect{left, u.height - 1, max(0, min(ansi.StringWidth(text), u.width-left)), 1}
 		tabs.WriteString(text)
 	}
 	diffBadge := ""
@@ -494,44 +485,35 @@ func (u *terminalUI) nativeStatus() string {
 	if responding > 0 {
 		agentsBadge = activityui.Amber + superscript(responding) + "\x1b[39m"
 	}
-	tab(1, "Main", "", true)
-	tabs.WriteString(" " + activityui.Dim + "[" + activityui.Undim)
+	tab(1, "Main", "", !u.agents.only)
 	tab(2, "Diff", diffBadge, u.diffOpen)
-	tabs.WriteString(activityui.Dim + "│" + activityui.Undim)
-	tab(3, "Activity", "", !u.diffOpen)
-	tabs.WriteString(activityui.Dim + "]" + activityui.Undim + " ")
-	tab(4, "Agents", agentsBadge, true)
+	tab(3, "Agents", agentsBadge, true)
 	if u.main != nil && u.main.interruptLocked {
 		tabs.WriteString("  " + activityui.Amber + "Locked · /unlock" + activityui.Reset)
 	}
-	filter := "only"
+	filter := "child"
 	if u.agents.only {
-		filter = "all"
+		filter = "Main"
 	}
 	var hints terminalHints
 	switch {
 	case u.prefix:
-		hints = terminalHints{{"ctrl+b 1-4", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		hints = terminalHints{{"ctrl+b 1-3", "select", 0}, {"2", "toggle diff", 0}, {"o", "older child history", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
 		return tabs.String() + "  " + hints.render()
 	case u.focus == 1:
 		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
 		if u.diff.back.kind != 0 {
 			hints = append(terminalHints{{"esc", "back", 0}}, hints...)
 		}
-	case u.focus == 2:
-		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"a", filter, 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
-	hints = append(hints, terminalHint{"^B 1-4", "panes", 0})
-	if u.focus == 0 || u.focus == 2 {
-		expansion := u.agents.expansion
-		if u.focus == 0 {
-			expansion = u.main.view.expansion
-		}
+	hints = append(hints, terminalHint{"^B 1-3", "views", 0})
+	if u.focus == 0 {
+		expansion := u.main.transcriptView().expansion
 		hints = append(hints, terminalHint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
 	}
 	return tabs.String() + "  " + hints.render()
@@ -539,19 +521,20 @@ func (u *terminalUI) nativeStatus() string {
 
 // selectNativePane gives status-bar clicks and Ctrl-B digits the same action.
 func (u *terminalUI) selectNativePane(pane int) {
-	u.focus = pane
-	if pane == 0 {
-		return
-	}
-	u.side = true
 	switch pane {
+	case 0:
+		u.agents.only = false
+		u.focus = 0
 	case 1:
-		u.diffOpen = true
-	case 2:
-		u.diffOpen, u.activityOpen = false, true
+		u.diffOpen = !u.diffOpen
+		u.focus = 0
+		if u.diffOpen {
+			u.focus = 1
+		}
 	case 3:
-		u.activityOpen = true
+		u.focus = 3
 	}
+	u.selection = nil
 }
 
 func superscript(n int) string {
@@ -563,11 +546,11 @@ func superscript(n int) string {
 	return b.String()
 }
 
-// showRosterPick keeps a roster pick visible: when it changes Activity's
-// filter, the native right pane leaves the saved diff for Activity.
+// showRosterPick switches presentation only; Main retains its composer and host identity.
 func (u *terminalUI) showRosterPick(only bool, selected string) {
 	if u.main != nil && (u.agents.only != only || u.agents.selected != selected) {
-		u.diffOpen = false
+		u.selection = nil
+		u.agents.runs = nil
 	}
 }
 
