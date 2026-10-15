@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/modules/fileread/read"
 )
 
 func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
@@ -52,7 +52,7 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 					args = append([]string{"--number"}, args...)
 					command = "mcat --number fixture.json " + span
 				}
-				result, err := toolplugin.ExecuteBuiltin(t.Context(), "mcat", args)
+				result, err := read.Execute(t.Context(), args, nil)
 				if err != nil || result.ExitCode != 0 || result.Stderr != "" {
 					t.Fatalf("mcat %v: %+v, %v", args, result, err)
 				}
@@ -103,7 +103,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	var input []any
 	read := func(span, id string) {
 		t.Helper()
-		result, err := toolplugin.ExecuteBuiltin(t.Context(), "mcat", []string{path, span})
+		result, err := read.Execute(t.Context(), []string{path, span}, nil)
 		if err != nil || result.ExitCode != 0 || result.Stderr != "" {
 			t.Fatalf("mcat %s: %+v, %v", span, result, err)
 		}

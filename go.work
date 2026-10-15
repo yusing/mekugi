@@ -11,6 +11,7 @@ use (
 	./libraries/pathdisplay
 	./libraries/persistence
 	./libraries/sourceanalysis
+	./modules/fileread
 	./modules/symbolquery
 	./modules/sourceoutline
 	./modules/boundedcommand

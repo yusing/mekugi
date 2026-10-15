@@ -57,7 +57,8 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Capture metrics and AX evidence | `./capturer` |
 | Semantic symbol queries | `./modules/symbolquery/...`, plus router symbol/activity/AX and recovery consumers |
 | Structural inspection | `./modules/sourceoutline/... ./libraries/sourceanalysis/...`, then authenticated router frontend/recovery tests |
-| Native reader frontends | `./internal/router/toolplugin`, then `./internal/router` |
+| Raw source reading | `./modules/fileread/...`, then router read/recovery/AX and activity consumers |
+| Retained paging | `./internal/router/toolplugin`, then router mread/storage integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
 | Bounded commands | `./modules/boundedcommand/...`, plus `./internal/router -run MRun` for authenticated delivery and process lifecycle |
 | Router process entry point | `./apps/mekugi/cmd/mekugi` |

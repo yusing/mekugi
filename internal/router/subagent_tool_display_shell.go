@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/fileread/read"
+
 	"github.com/yusing/mekugi/modules/symbolquery/query"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -694,17 +696,17 @@ func toolActivityReadCommand(script string, call *syntax.CallExpr, cwd string) (
 			add(label, value)
 		}
 	case "mcat":
-		specs, _, err := parseReadBundle(argv[1:])
+		specs, _, err := read.Parse(argv[1:])
 		if err != nil {
 			return "", false
 		}
 		for _, spec := range specs {
-			label, value := "Read", pathdisplay.ForWorkspace(cwd, spec.path)
-			if filepath.Base(spec.path) == "SKILL.md" && filepath.Dir(spec.path) != "." {
-				label, value = "Skill", filepath.Base(filepath.Dir(spec.path))
+			label, value := "Read", pathdisplay.ForWorkspace(cwd, spec.Path)
+			if filepath.Base(spec.Path) == "SKILL.md" && filepath.Dir(spec.Path) != "." {
+				label, value = "Skill", filepath.Base(filepath.Dir(spec.Path))
 			}
-			if spec.span != "" {
-				value += " " + spec.span
+			if spec.Range != "" {
+				value += " " + spec.Range
 			}
 			add(label, value)
 		}

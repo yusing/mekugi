@@ -118,7 +118,7 @@ success or cause the command to rerun.
 3. Unsupported files are checked as regular without content reads, UTF-8 validation,
    line counting, content detection, or command-level truncation.
 4. Frontend authentication, model visibility, replay, and passthrough isolation follow
-   [REQ-READ-001](../../doc/spec/read.md). Instruction and executable-frontend behavior remain owned by
+   [REQ-READ-001](../fileread/SPEC.md). Instruction and executable-frontend behavior remain owned by
    `REQ-GUIDE-001` and `REQ-PLUGIN-001`.
 
 5. Absolute, parent-relative, and symlink paths outside the current directory work

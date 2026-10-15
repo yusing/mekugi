@@ -332,12 +332,38 @@ func (s *mekugiReplayStore) readShellOutput(ctx context.Context, id string) (she
 }
 
 func retainExecutionOutput(ctx context.Context, manifest toolWorkerManifest, execution command.Output) (command.Output, error) {
-	if execution.OmittedOutput == nil {
+	if execution.OmittedOutput == nil && execution.Delivery == nil {
 		return execution, nil
 	}
 	store, err := shellOutputStore(manifest)
 	if err != nil {
 		return execution, err
+	}
+	if execution.Delivery != nil {
+		plan := execution.Delivery
+		execution.Delivery = nil
+		handles, err := store.allocateHandles(ctx, plan.ReferenceCount())
+		if err != nil {
+			return execution, err
+		}
+		prepared, err := plan.Prepare(handles)
+		if err != nil {
+			return execution, err
+		}
+		for _, output := range prepared.Recovery {
+			if output.ReferenceIndex < 0 || output.ReferenceIndex >= len(handles) {
+				return prepared.Unreferenced, errors.New("recovery reference outside reserved slots")
+			}
+			record := shellOutputRecord{
+				Version: 1, ID: handles[output.ReferenceIndex],
+				Stdout: output.Stdout, Stderr: output.Stderr, ExitCode: output.ExitCode,
+				StdoutKind: output.StdoutKind, StderrKind: output.StderrKind, SourceRow: output.SourceRow,
+			}
+			if _, err := store.putReadRecord(ctx, record); err != nil {
+				return prepared.Unreferenced, err
+			}
+		}
+		return prepared.Referenced, nil
 	}
 	id, err := store.putTypedOutput(ctx, *execution.OmittedOutput, execution.ExitCode)
 	if err != nil {

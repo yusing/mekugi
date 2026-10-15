@@ -21,7 +21,10 @@ the selected frontend. The catalog provides descriptions and native dispatch for
 user configuration or own a JavaScript/WASM plugin runtime. Reader parsing,
 output budgeting, and resolver orchestration remain with their native owners.
 
-Managed output is published before a recovery reference is returned. Storage
+Commands return omitted payloads or a pure delivery plan over already captured
+output. For coordinated results, the host reserves reference identities before
+the command finalizes exact framing and admission. The plan receives identities,
+never a store or execution callback. Managed output is published before a recovery reference is returned. Storage
 failure cannot claim recovery is available. Replay consumes retained results
 without executing workers. Cleanup owns only invocation-created frontends,
 snapshot files, and leased worker resources. Command execution scope distinguishes

@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/modules/fileread/read"
+
 	"github.com/yusing/mekugi/modules/sourceoutline/outline"
 
 	"github.com/yusing/mekugi/internal/responses"
@@ -425,9 +427,9 @@ func resetGuidanceReads(command execCommandInput, home string) []string {
 				}
 			}
 		case "mcat":
-			if specs, _, err := parseReadBundle(argv[1:]); err == nil {
+			if specs, _, err := read.Parse(argv[1:]); err == nil {
 				for _, spec := range specs {
-					paths = append(paths, spec.path)
+					paths = append(paths, spec.Path)
 				}
 			}
 		}

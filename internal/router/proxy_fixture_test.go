@@ -13,6 +13,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/symbolquery/query"
 
+	"github.com/yusing/mekugi/modules/fileread/read"
 	"github.com/yusing/mekugi/modules/sourceoutline/outline"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -177,5 +178,5 @@ func TestMain(m *testing.M) {
 
 func testCommands() []command.Contribution {
 	commands := toolplugin.Builtins()
-	return append(commands, run.Command, outline.Command, query.Command)
+	return append(commands, run.Command, outline.Command, read.Command, query.Command)
 }

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/fileread/read"
+
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
@@ -70,14 +72,14 @@ func corpusReadSelections(script string) []corpusReadSelection {
 		if len(args) < 2 || args[0] != "mcat" {
 			return false
 		}
-		specs, _, err := parseReadBundle(args[1:])
+		specs, _, err := read.Parse(args[1:])
 		if err != nil {
 			return false
 		}
 		for _, spec := range specs {
-			selection := corpusReadSelection{path: filepath.Clean(spec.path), first: 1, last: math.MaxUint64}
-			if spec.span != "" {
-				first, last, _ := strings.Cut(spec.span, ":")
+			selection := corpusReadSelection{path: filepath.Clean(spec.Path), first: 1, last: math.MaxUint64}
+			if spec.Range != "" {
+				first, last, _ := strings.Cut(spec.Range, ":")
 				var e1, e2 error
 				selection.first, e1 = strconv.ParseUint(first, 10, 64)
 				selection.last, e2 = strconv.ParseUint(last, 10, 64)

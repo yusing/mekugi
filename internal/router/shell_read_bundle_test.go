@@ -5,55 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
-
-func TestReadBundleValidation(t *testing.T) {
-	for _, args := range [][]string{nil, {"--max-tokens", "0", "a"}, {"a", "2:1"}, {"a", "01:2"}, {"a", "1:9007199254740992"}, {"a", ""}, {"a", "--max-tokens", "2000", "--max-tokens", "2000"}, {"-n", "1", "a", "b"}, {"-n", "0", "a"}, {"-n", "1", "-n", "2", "a"}, {"--tail", "a"}, {"--tail", "--tail", "-n", "1", "a"}, {"--tail", "a", "b"}, {"--max-tokens"}, {"-n"}, slices.Repeat([]string{"a"}, 17)} {
-		if _, _, err := parseReadBundle(args); err == nil {
-			t.Fatalf("accepted %q", args)
-		}
-	}
-	specs, budget, err := parseReadBundle([]string{"a b", "1:20", "--max-tokens", "2000", "other", "third", "200:300"})
-	if err != nil || budget != 2000 || len(specs) != 3 || specs[0].path != "a b" || specs[0].span != "1:20" || specs[1].span != "" || specs[2].span != "200:300" {
-		t.Fatalf("%+v %d %v", specs, budget, err)
-	}
-}
-
-func TestReadBundleDefaultMultiFileBudget(t *testing.T) {
-	specs, budget, err := parseReadBundle([]string{"first.go", "second.go"})
-	if err != nil || budget != 6000 || len(specs) != 2 {
-		t.Fatalf("parse default multi-file bundle: specs=%+v budget=%d err=%v", specs, budget, err)
-	}
-}
-
-func TestReadBundleLimitReportsFullReadCount(t *testing.T) {
-	for _, count := range []int{16, 17, 21, 33} {
-		args := append([]string{"--max-tokens=2000"}, slices.Repeat([]string{"source"}, count)...)
-		specs, budget, err := parseReadBundle(args)
-		if count == 16 {
-			if err != nil || len(specs) != count || budget != 2000 {
-				t.Fatalf("limit boundary: specs=%+v budget=%d err=%v", specs, budget, err)
-			}
-			continue
-		}
-		want := fmt.Sprintf("received %d reads after argument expansion, exceeding the 16-read limit; split into %d mcat calls of at most 16 reads each; repeat the path when splitting its ranges", count, (count+15)/16)
-		if err == nil || err.Error() != want {
-			t.Fatalf("%d paths: error=%v, want %q", count, err, want)
-		}
-	}
-	args := []string{"first", "1:1", "2:2"}
-	args = append(args, slices.Repeat([]string{"other"}, 19)...)
-	_, _, err := parseReadBundle(args)
-	if err == nil || !strings.HasPrefix(err.Error(), "received 21 reads after argument expansion,") {
-		t.Fatalf("mixed paths and ranges: error=%v", err)
-	}
-}
 
 func TestMCatExpandedGlobLimitAndBatchedRecovery(t *testing.T) {
 	t.Parallel()

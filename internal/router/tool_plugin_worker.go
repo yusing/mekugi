@@ -172,24 +172,44 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 		}
 		defer release()
 	}
-	execute := frontendExecutor(*contribution, commands)
+	execute, observeRead := frontendExecutor(*contribution, commands)
 	if execute == nil {
 		return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 	}
-	execution, err := execute(ctx, manifest, args, stdin)
-
+	run := func(ctx context.Context, args []string, stdin *os.File) (command.Output, error) {
+		execution, err := execute(ctx, manifest, args, stdin)
+		if err != nil {
+			return execution, err
+		}
+		execution, err = retainExecutionOutput(ctx, manifest, execution)
+		if ctx.Err() != nil {
+			return command.Output{}, ctx.Err()
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return command.Output{}, err
+		}
+		if err != nil {
+			if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
+				execution.Stderr += "\n"
+			}
+			execution.Stderr += fmt.Sprintf("%s: recovery unavailable: %v\n", name, err)
+			if execution.ExitCode == 0 {
+				execution.ExitCode = 1
+			}
+		}
+		return execution, nil
+	}
+	var execution command.Output
+	if observeRead {
+		execution, err = executeFrontendReader(ctx, manifest, args, name, stdin, run)
+	} else {
+		execution, err = run(ctx, args, stdin)
+	}
 	if err != nil {
 		return fail(fmt.Errorf("execute tool: %w", err))
 	}
-	execution, err = retainExecutionOutput(ctx, manifest, execution)
-	if err != nil {
-		if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
-			execution.Stderr += "\n"
-		}
-		execution.Stderr += fmt.Sprintf("%s: recovery unavailable: %v\n", name, err)
-		if execution.ExitCode == 0 {
-			execution.ExitCode = 1
-		}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
 	}
 	if _, err := io.WriteString(stdout, execution.Stdout); err != nil {
 		return fail(fmt.Errorf("write tool stdout: %w", err))
@@ -202,32 +222,25 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 
 // frontendExecutor is the retained dispatch owner used both before catalog
 // publication and when an authenticated worker executes a selected command.
-func frontendExecutor(contribution toolContribution, commands []command.Contribution) func(context.Context, toolWorkerManifest, []string, *os.File) (command.Output, error) {
+func frontendExecutor(contribution toolContribution, commands []command.Contribution) (func(context.Context, toolWorkerManifest, []string, *os.File) (command.Output, error), bool) {
 	for _, compiled := range commands {
 		if compiled.Name == contribution.NativeExecutor && compiled.Run != nil {
 			return func(ctx context.Context, manifest toolWorkerManifest, args []string, stdin *os.File) (command.Output, error) {
-				if compiled.ObserveRead {
-					return executeFrontendReader(ctx, manifest, args, compiled.Name, stdin, compiled.Run)
-				}
 				return compiled.Run(ctx, args, stdin)
-			}
+			}, compiled.ObserveRead
 		}
 	}
 	switch contribution.NativeExecutor {
-	case "mcat":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
-			return executeMCat(ctx, manifest, args)
-		}
 	case "mread":
 		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeMRead(ctx, manifest, args), nil
-		}
+		}, false
 	case "mchanges":
 		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
 			return executeMChanges(ctx, manifest, args), nil
-		}
+		}, false
 	default:
-		return nil
+		return nil, false
 	}
 }
 

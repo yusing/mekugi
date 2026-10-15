@@ -1,4 +1,4 @@
-package toolplugin
+package read
 
 import (
 	"testing"

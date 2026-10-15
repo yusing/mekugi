@@ -1,4 +1,4 @@
-package toolplugin
+package read
 
 import (
 	"bufio"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -19,31 +18,15 @@ import (
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
+const retainedBytes = 16 << 20
+
 // Source: plugins/mcat.ts:166:310@[543de4f3] readLines
 // Scan the entire source even after admission stops. Neither an oversized row
 // nor omitted data can grow memory beyond the reader's recovery bounds.
-func nativeMCat(ctx context.Context, args []string) (command.Output, error) {
-	o, rest, err := commandargs.ParseReaderOptions(args, true, 6000, "")
-	if err != nil {
-		return nativeFailure("mcat", err, "invalid_arguments"), nil
-	}
-	if index := slices.Index(rest, "--"); index >= 0 {
-		rest = slices.Delete(rest, index, index+1)
-	}
-	if len(rest) < 1 || len(rest) > 2 || rest[0] == "" {
-		return nativeFailure("mcat", errors.New("mcat expected PATH or PATH START:END"), "invalid_arguments"), nil
-	}
-	start, end := 0, 0
-	if len(rest) == 2 {
-		start, end, err = commandargs.ParseLineRange(rest[1])
-		if err != nil {
-			return nativeFailure("mcat", err, "invalid_arguments"), nil
-		}
-		start = max(1, start)
-	}
-	path := rest[0]
+func scan(ctx context.Context, selection Selection, o commandargs.ReaderOptions) (command.Output, error) {
+	start, end, path := selection.start, selection.end, selection.Path
 	fail := func(err error) (command.Output, error) {
-		class := nativeFileClass(err)
+		class := fileClass(err)
 		message := err.Error()
 		switch {
 		case errors.Is(err, syscall.ENOENT):
@@ -53,7 +36,7 @@ func nativeMCat(ctx context.Context, args []string) (command.Output, error) {
 		case errors.Is(err, os.ErrPermission):
 			message = "EACCES: permission denied"
 		}
-		return nativeFailure("mcat", fmt.Errorf("%s: %s", nativeJSON(path), message), class), nil
+		return failure(fmt.Errorf("%s: %s", quotePath(path), message), class), nil
 	}
 	// Check before opening to avoid waiting on a FIFO. Recheck the opened handle.
 	info, err := os.Stat(path)
@@ -91,7 +74,7 @@ func nativeMCat(ctx context.Context, args []string) (command.Output, error) {
 				s = fmt.Sprintf("%6d\t%s", line, s)
 			}
 			if !unavailable {
-				if retained.Len()+len(s) > nativeRetainedBytes {
+				if retained.Len()+len(s) > retainedBytes {
 					unavailable = true
 					retained.Reset()
 					reason = "result exceeds the 16 MiB recovery bound; narrow the source range\n"

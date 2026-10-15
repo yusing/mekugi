@@ -83,7 +83,7 @@ func buildToolRegistryAt(
 	}
 	byName := make(map[string]toolContribution, len(contributions))
 	for _, contribution := range contributions {
-		if frontendExecutor(contribution, commands) == nil {
+		if execute, _ := frontendExecutor(contribution, commands); execute == nil {
 			validationErrors = append(validationErrors, fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 		}
 		if _, exists := byName[contribution.Name]; exists {

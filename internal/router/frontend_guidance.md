@@ -29,20 +29,6 @@ Options apply only to commands whose Usage lists them.
 - Quote paths containing spaces. An incomplete result does not establish full coverage; follow its next_call rather than rerunning the producer. mrun discards output outside its selected window.
 </common-options>
 
-<tool name="mcat">
-Read one or more UTF-8 files or inclusive logical-line ranges as raw rows; --number prefixes source line numbers like nl -ba.
-Usage: mcat [-n N] [--max-tokens N] [--tail] [--number] PATH [START:END ...] [PATH [START:END ...] ...]
-
-START:END or START-END is a separate operand after its path, inclusive of both endpoints. Several ranges may follow one path; at most 16 reads are allowed. -n counts rows within a single range and retains the default token ceiling.
-Examples:
-  mcat src/main.go 100:150                # rows 100–150 (51 rows)
-  mcat -n 20 src/main.go                  # first 20 rows
-  mcat --number src/main.go 100:150       # source line prefixes
-  mcat src/main.go 10:40 src/config.go 1:30
-
-Limited output contains complete rows and exits nonzero; retained omissions provide per-file mread recovery.
-</tool>
-
 <tool name="mread">
 Continue omitted retained output without rerunning its producer. Only emitted references recover retained output; ordinary exec_command truncation has no mread recovery. Usage: `mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]`. REF is a returned handle, not a path or range. Multiple handles share one budget and return one combined next_call. Failed handles report errors on stderr without discarding other handles' stdout; any failure exits nonzero. --stdout or --stderr selects one stream; otherwise both are returned. Source-row pages state their row range.
 </tool>
@@ -59,6 +45,20 @@ Bound one foreground command's output, retaining its beginning or end. Use for n
 Inspect host-readable regular files and return compact structural rows: START-END KIND NAME. Imports collapse to one range; parse_error rows locate syntax errors. When only structure is needed, prefer an outline to a full-file read; read source only for information missing from the outline or current context.
 Usage: inspect_file [--json] [--max-tokens N] PATH [PATH ...]
 Multiple files have path headers and share one budget. Failed paths report errors on stderr (JSON envelopes with --json), preserve successful stdout, and exit nonzero. --json returns metadata and structured outline entries instead. Line ranges are one-based. Example: inspect_file src/main.go, then mcat src/main.go START:END for the relevant entry. Reuse known locations instead of outlining a file again.
+</tool>
+
+<tool name="mcat">
+Read one or more UTF-8 files or inclusive logical-line ranges as raw rows; --number prefixes source line numbers like nl -ba.
+Usage: mcat [-n N] [--max-tokens N] [--tail] [--number] PATH [START:END ...] [PATH [START:END ...] ...]
+
+START:END or START-END is a separate operand after its path, inclusive of both endpoints. Several ranges may follow one path; at most 16 reads are allowed. -n counts rows within a single range and retains the default token ceiling.
+Examples:
+  mcat src/main.go 100:150                # rows 100–150 (51 rows)
+  mcat -n 20 src/main.go                  # first 20 rows
+  mcat --number src/main.go 100:150       # source line prefixes
+  mcat src/main.go 10:40 src/config.go 1:30
+
+Limited output contains complete rows and exits nonzero; retained omissions provide per-file mread recovery.
 </tool>
 
 <tool name="msymbol">
