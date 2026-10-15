@@ -152,7 +152,7 @@ completion returns status 0; an incomplete page returns status 1 with the next
 call on stderr. The producer's status is preserved independently.
 
 The authenticated executor persists records through the managed replay-store
-locking and atomic write/fsync path before exposing references. There are no
+locking and atomic write/rename path before exposing references. There are no
 standalone output dumps. Omitted data is bounded to 16 MiB, encoded records to
 the replay record limit, and all read records to a separate 256 MiB quota.
 Storage failures are explicit. Cleanup follows the session-retention policy in
