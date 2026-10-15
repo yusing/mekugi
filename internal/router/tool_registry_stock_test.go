@@ -25,45 +25,53 @@ func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 		found := false
 		for _, contribution := range registry.ordered {
 			if contribution.Name == name {
-				found = contribution.PluginID == builtinToolsPluginID && contribution.NativeExecutor == name && !contribution.Builtin
+				found = contribution.NativeExecutor == name && !contribution.Builtin
 			}
 		}
 		if !found {
-			t.Fatalf("%s is not a bundled plugin tool with its native backend", name)
+			t.Fatalf("%s is not a compiled tool with its native backend", name)
 		}
 	}
 }
 
-func TestConfiguredPluginRunsThroughAuthenticatedFrontend(t *testing.T) {
-	registry := pluginProxyTestFixture.get(t, testToolPluginDeclaration)
-	frontend, ok := registry.frontends["plugin_tool"]
-	if !ok {
-		t.Fatal("configured plugin frontend is unavailable")
-	}
-	command := exec.CommandContext(t.Context(), frontend, "one", "two")
-	command.Env = append(os.Environ(), routerTestWorkerEnvironment+"=1")
-	var stdout, stderr bytes.Buffer
-	command.Stdout, command.Stderr = &stdout, &stderr
-	if err := command.Run(); err != nil || stdout.String() != "one|two" || stderr.Len() != 0 {
-		t.Fatalf("plugin frontend = stdout %q stderr %q err %v", stdout.String(), stderr.String(), err)
-	}
-}
-
-func TestConfiguredPluginCannotClaimBundledFrontendName(t *testing.T) {
-	data := t.TempDir()
-	pluginDirectory := filepath.Join(data, "plugins")
-	if err := os.MkdirAll(pluginDirectory, 0o700); err != nil {
+func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
+	if err != nil {
 		t.Fatal(err)
 	}
-	source := strings.Replace(testToolPluginDeclaration, "plugin_tool", "mrun", 1)
-	if err := os.WriteFile(filepath.Join(pluginDirectory, "collision.mjs"), []byte(source), 0o600); err != nil {
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := registry.installFrontends(); err != nil {
 		t.Fatal(err)
 	}
-	registry, err := buildToolRegistryForTest(t, t.Context(), data, false)
-	if registry != nil {
-		_ = registry.Close()
+	source := filepath.Join(t.TempDir(), "source.txt")
+	if err := os.WriteFile(source, []byte("native contents\n"), 0600); err != nil {
+		t.Fatal(err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "tool name \"mrun\" is owned by both") {
-		t.Fatalf("configured plugin claimed bundled mrun: %v", err)
+	run := func() (string, string, error) {
+		command := exec.CommandContext(t.Context(), registry.frontends["mcat"], source)
+		command.Env = append(os.Environ(), routerTestWorkerEnvironment+"=1", "CODEX_THREAD_ID=")
+		var stdout, stderr bytes.Buffer
+		command.Stdout, command.Stderr = &stdout, &stderr
+		err := command.Run()
+		return stdout.String(), stderr.String(), err
+	}
+	if stdout, stderr, err := run(); err != nil || stdout != "native contents\n" || stderr != "" {
+		t.Fatalf("native frontend: stdout %q stderr %q error %v", stdout, stderr, err)
+	}
+	manifest, err := readToolWorkerManifest(filepath.Join(registry.SnapshotDir, toolPluginManifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest.GuidanceSHA256 = "altered"
+	if err := writeToolWorkerManifest(registry.SnapshotDir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if stdout, stderr, err := run(); err == nil || stdout != "" || !strings.Contains(stderr, "registry identity mismatch") {
+		t.Fatalf("altered catalog: stdout %q stderr %q error %v", stdout, stderr, err)
 	}
 }

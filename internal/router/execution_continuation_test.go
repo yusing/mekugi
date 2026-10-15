@@ -92,7 +92,7 @@ func TestExecutionContinuationPreservesHistoricalSuggestions(t *testing.T) {
 					}
 				}
 				original := continuationTestOutput("a", yielded, "unrelated warning")
-				history := map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: builtinToolsPluginID}}
+				history := map[string]mekugiHistory{"a": {ToolName: "shell", PluginID: "builtin.frontends"}}
 				if kind != "cell" {
 					delete(history, "a")
 				}

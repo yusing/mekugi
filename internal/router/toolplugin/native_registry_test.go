@@ -9,15 +9,8 @@ import (
 
 func TestNativeRegistryRequiresNeitherNodeNorRegexValidator(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	snapshot, err := Load(t.Context(), t.TempDir(), filepath.Join(t.TempDir(), "snapshot"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.NodeExecutable != "" || len(snapshot.Plugins) != 1 || len(snapshot.Diagnostics) != 0 {
-		t.Fatalf("native snapshot: %+v", snapshot)
-	}
 	expected := map[string]bool{"mcat": true, "msymbol": true, "inspect_file": true, "mread": true, "mrun": true, "mchanges": true}
-	for _, tool := range snapshot.Plugins[0].Tools {
+	for _, tool := range Builtins() {
 		var spec struct {
 			Name        string `json:"name"`
 			Description string `json:"description"`
@@ -33,14 +26,6 @@ func TestNativeRegistryRequiresNeitherNodeNorRegexValidator(t *testing.T) {
 	}
 	if len(expected) > 0 {
 		t.Fatalf("missing builtins: %v", expected)
-	}
-	if err := filepath.WalkDir(snapshot.Root, func(path string, entry os.DirEntry, err error) error {
-		if err == nil && !entry.IsDir() {
-			t.Errorf("native snapshot unexpectedly contains runtime asset: %s", path)
-		}
-		return err
-	}); err != nil {
-		t.Fatal(err)
 	}
 	source := filepath.Join(t.TempDir(), "sample.go")
 	if err := os.WriteFile(source, []byte("package p\nfunc Native() {}\n"), 0600); err != nil {

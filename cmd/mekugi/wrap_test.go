@@ -672,6 +672,7 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 			t.Setenv("CODEX_HOME", t.TempDir())
 			t.Setenv("HOME", t.TempDir())
 			t.Setenv("XDG_CONFIG_HOME", configDirectory)
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
 			t.Setenv("MEKUGI_RUNTIME_DIR", runtimeDirectory)
 			t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
 			marker := filepath.Join(directory, "launched")
@@ -679,17 +680,11 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 			if failure == "codex" {
 				stub = "#!/nonexistent-mekugi-test-interpreter\n"
 			} else {
-				userConfig, err := os.UserConfigDir()
-				if err != nil {
+				statePath := filepath.Join(directory, "state-file")
+				if err := os.WriteFile(statePath, nil, 0o600); err != nil {
 					t.Fatal(err)
 				}
-				plugins := filepath.Join(userConfig, "mekugi", "plugins")
-				if err := os.MkdirAll(plugins, 0o700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(plugins, "broken.mjs"), []byte("this is not valid JavaScript"), 0o600); err != nil {
-					t.Fatal(err)
-				}
+				t.Setenv("XDG_STATE_HOME", statePath)
 			}
 			if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0o700); err != nil {
 				t.Fatal(err)
@@ -699,6 +694,9 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 			code, err := wrapCodex(ctx, nil, nil)
 			if code != 1 || err == nil {
 				t.Fatalf("wrap = %d, %v", code, err)
+			}
+			if failure == "router" && !strings.Contains(err.Error(), "initialize replay storage") {
+				t.Fatalf("unexpected router startup failure: %v", err)
 			}
 			if _, err := os.Stat(marker); !os.IsNotExist(err) {
 				t.Errorf("Codex launched despite startup failure: %v", err)

@@ -126,14 +126,13 @@ func runAuthenticatedToolWorker(
 	if err != nil {
 		return fail(err)
 	}
-	if manifest.Version != 1 || manifest.RuntimeRoot != "runtime" {
+	if manifest.Version != 2 {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}
 	if manifest.RegistryID != expectedRegistryID {
 		return fail(errors.New("tool worker registry identity mismatch"))
 	}
-	runtimeRoot := filepath.Join(directory, manifest.RuntimeRoot)
-	identity, err := toolRegistryIdentity(manifest, runtimeRoot)
+	identity, err := toolRegistryIdentity(manifest)
 	if err != nil {
 		return fail(err)
 	}
@@ -150,21 +149,16 @@ func runAuthenticatedToolWorker(
 			contribution = &manifest.Tools[index]
 		}
 	}
-	if contribution == nil || !contribution.Executable || contribution.PluginID == "" {
+	if contribution == nil || !contribution.Executable {
 		return fail(fmt.Errorf("tool %q is unavailable in worker manifest", name))
 	}
-	if !contribution.Builtin {
-		if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned && (contribution.NativeExecutor == "" || contribution.NativeExecutor == "msymbol") {
-			ctx, err = toolplugin.EnableFrontendOrphanCleanup(ctx)
-			if err != nil {
-				return fail(fmt.Errorf("prepare frontend process cleanup: %w", err))
-			}
-		}
-		if contribution.Module == "" {
-			return fail(fmt.Errorf("tool %q has no executable module", name))
-		}
-		if err := validateToolContribution(*contribution); err != nil {
-			return fail(err)
+	if err := validateToolContribution(*contribution); err != nil {
+		return fail(err)
+	}
+	if owned, _ := ctx.Value(frontendProcessOwnerKey{}).(bool); owned && contribution.NativeExecutor == "msymbol" {
+		ctx, err = toolplugin.EnableFrontendOrphanCleanup(ctx)
+		if err != nil {
+			return fail(fmt.Errorf("prepare frontend process cleanup: %w", err))
 		}
 	}
 	if manifest.ReplayDirectory != "" {
@@ -181,43 +175,27 @@ func runAuthenticatedToolWorker(
 		defer release()
 	}
 	var execution toolplugin.ExecutionOutput
-	if contribution.Builtin {
-		return fail(fmt.Errorf("built-in tool %q is unavailable", name))
-	} else if contribution.PluginID == builtinToolsPluginID && contribution.NativeExecutor != "" {
-		switch contribution.NativeExecutor {
-		case "mcat":
-			execution, err = executeMCat(ctx, manifest, args)
-		case "msymbol", "inspect_file":
-			execution, err = executeFrontendReader(ctx, manifest, args, *contribution)
-		case "mread":
-			execution = executeMRead(ctx, manifest, args)
-		case "mchanges":
-			execution = executeMChanges(ctx, manifest, args)
-		case "mrun":
-			execution, err = executeMRun(ctx, args, stdin)
-		default:
-			return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
-		}
-
-	} else {
-		execution, err = toolplugin.Execute(
-			ctx,
-			manifest.NodeExecutable,
-			runtimeRoot,
-			contribution.Module,
-			contribution.ModuleIndex,
-			args,
-			stdin,
-			"",
-			nil,
-		)
+	switch contribution.NativeExecutor {
+	case "mcat":
+		execution, err = executeMCat(ctx, manifest, args)
+	case "msymbol", "inspect_file":
+		execution, err = executeFrontendReader(ctx, manifest, args, *contribution)
+	case "mread":
+		execution = executeMRead(ctx, manifest, args)
+	case "mchanges":
+		execution = executeMChanges(ctx, manifest, args)
+	case "mrun":
+		execution, err = executeMRun(ctx, args, stdin)
+	default:
+		return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 	}
+
 	if err != nil {
 		return fail(fmt.Errorf("execute tool: %w", err))
 	}
 	execution, err = retainExecutionOutput(ctx, manifest, execution)
 	if err != nil {
-		return fail(fmt.Errorf("retain plugin output: %w", err))
+		return fail(fmt.Errorf("retain frontend output: %w", err))
 	}
 	if _, err := io.WriteString(stdout, execution.Stdout); err != nil {
 		return fail(fmt.Errorf("write tool stdout: %w", err))

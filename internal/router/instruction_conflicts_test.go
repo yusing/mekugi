@@ -227,13 +227,6 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	if err != nil || string(generated) != guide || strings.Contains(guide, "{{") || strings.Contains(guide, "<instruction id=") {
 		t.Fatalf("standalone generated frontend guidance differs from projection: %v", err)
 	}
-	configured := newToolPluginTestProxy(t).registry
-	generated, err = os.ReadFile(filepath.Join(configured.SnapshotDir, "frontend_guidance.md"))
-	pluginFrame := "<tool name=\"plugin_tool\">\nfixture plugin tool\n</tool>"
-	if err != nil || string(generated) != configured.frontendGuidance || !strings.Contains(string(generated), pluginFrame) ||
-		strings.Index(string(generated), pluginFrame) > strings.Index(string(generated), "</mekugi-frontends>") {
-		t.Fatalf("configured frontend missing from generated Markdown: %v", err)
-	}
 	byName := make(map[string]toolContribution, len(registry.ordered))
 	for _, contribution := range registry.ordered {
 		byName[contribution.Name] = contribution

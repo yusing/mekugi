@@ -8,14 +8,8 @@ type (
 		NativeExecutor string          `json:"nativeExecutor,omitempty"`
 	}
 
-	Plugin struct {
-		ID     string `json:"id"`
-		Module string `json:"module"`
-		Tools  []Tool `json:"tools"`
-	}
-
 	OmittedOutput struct {
-		// Host-owned mcat provenance, not part of the plugin wire protocol.
+		// Host-owned mcat provenance, separate from serialized output.
 		SourceRow  uint64 `json:"-"`
 		MaxTokens  int    `json:"-"`
 		StdoutKind string `json:"stdoutKind,omitempty"`
@@ -30,12 +24,5 @@ type (
 		Stdout        string         `json:"stdout"`
 		Stderr        string         `json:"stderr"`
 		ExitCode      int            `json:"exitCode"`
-	}
-
-	Snapshot struct {
-		Root           string
-		NodeExecutable string
-		Plugins        []Plugin
-		Diagnostics    []string
 	}
 )

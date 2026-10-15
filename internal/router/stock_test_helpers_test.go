@@ -15,17 +15,6 @@ import (
 const testCodeModeDescription = "Run JavaScript. All nested tools are available on the global `tools` object, including `tools.exec_command` and `tools.apply_patch`.\n\n### `exec_command`\nRun a command.\n\nexec tool declaration:\n```ts\ndeclare const tools: { exec_command(args: { cmd: string }): Promise<unknown>; };\n```\n\n### `apply_patch`\nApply a patch.\n\nexec tool declaration:\n```ts\ndeclare const tools: { apply_patch(input: string): Promise<unknown>; };\n```"
 const testBaseInstructions = "caller-owned base instructions\n"
 
-const testToolPluginDeclaration = `export default {
-  apiVersion: "mekugi-tool-plugin/v1",
-  id: "proxy.test",
-  tools: [{
-    specification: {type: "custom", name: "plugin_tool", description: "fixture plugin tool"},
-    parse(input) { return input; },
-    argv(parsed) { return [parsed]; },
-    execute(argv) { return {stdout: argv.join("|"), stderr: "", exitCode: 0}; }
-  }]
-};`
-
 func mustTestJSON(t *testing.T, value any) []byte {
 	t.Helper()
 	encoded, err := json.Marshal(value)
@@ -83,11 +72,6 @@ func attachTestReplayStore(t *testing.T, proxy *mekugiProxy) {
 	}
 	t.Cleanup(store.snapshots.close)
 	proxy.replayStore = store
-}
-
-func newToolPluginTestProxy(t *testing.T) *mekugiProxy {
-	t.Helper()
-	return newProxyWithSharedTestRegistry(t, pluginProxyTestFixture.get(t, testToolPluginDeclaration))
 }
 
 func newMekugiTestTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest, string) {

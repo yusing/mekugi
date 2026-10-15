@@ -37,24 +37,7 @@ func setCodexFrontendLoginEnvironment(t *testing.T, directory string) {
 	t.Setenv("BASH_ENV", startup)
 }
 
-const stdinToolPluginDeclaration = `import { readFileSync } from "node:fs";
-export default {
-  apiVersion: "mekugi-tool-plugin/v1",
-  id: "frontend.stdin",
-  tools: [{
-    specification: {type: "custom", name: "stdin_tool", description: "stdin fixture"},
-    parse(input) { return input; },
-    argv(input) { return [input]; },
-    execute(argv, context) {
-      const input = context.stdinFD === null ? "" : readFileSync(context.stdinFD, "utf8").trimEnd();
-      return {stdout: [process.cwd(), process.env.MEKUGI_PLUGIN_TEST, ...argv, input].join("|"), stderr: "", exitCode: 0};
-    }
-  }]
-};`
-
-// The registry pins this test executable. In the worker child, enter the same
-// authenticated dispatch path as the real mekugi process before testing parses
-// the configured tool's argv.
+// Pinned test workers use the same authenticated dispatch as the executable.
 func init() {
 	if len(os.Args) == 3 && os.Args[1] == "journal-mcp" {
 		if err := RunJournalMCPBridge(context.Background(), os.Args[2], os.Stdin, os.Stdout); err != nil {
@@ -63,7 +46,7 @@ func init() {
 		}
 		os.Exit(0)
 	}
-	if os.Getenv(toolFrontendCodexWorkerEnvironment) == "1" && filepath.Base(os.Args[0]) == "stdin_tool" {
+	if os.Getenv(toolFrontendCodexWorkerEnvironment) == "1" {
 		if handled, code := RunOwnedToolPluginWorker(
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
@@ -111,7 +94,7 @@ func (p *toolFrontendCodexProvider) forwardExecution(
 		program := p.program
 		if program == "" {
 			program = `const result = await tools.exec_command({"cmd":` +
-				string(mustMarshalJSON("printf 'stdin is not worker JSON\\n' | stdin_tool one 'two words'")) +
+				string(mustMarshalJSON("printf 'stdin is not worker JSON\\n' | mrun --max-tokens 1024 sh -c 'printf \"%s|%s|%s|%s|\" \"$PWD\" \"$MEKUGI_FRONTEND_TEST\" \"$1\" \"$2\"; cat' sh one 'two words'")) +
 				`,"workdir":` + string(mustMarshalJSON(p.workspace)) + `});
 text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 		}
@@ -187,19 +170,12 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 	return result, nil
 }
 
-func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
+func TestNativeToolFrontendCodexE2E(t *testing.T) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {
 		t.Fatal("installed Codex is required for the frontend acceptance gate")
 	}
 	dataDirectory := t.TempDir()
-	pluginDirectory := filepath.Join(dataDirectory, "plugins")
-	if err := os.Mkdir(pluginDirectory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(pluginDirectory, "stdin.mjs"), []byte(stdinToolPluginDeclaration), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
 	if err != nil {
 		t.Fatal(err)
@@ -212,9 +188,9 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 	if err := registry.installFrontends(); err != nil {
 		t.Fatal(err)
 	}
-	frontend, ok := registry.frontends["stdin_tool"]
+	frontend, ok := registry.frontends["mrun"]
 	if !ok {
-		t.Fatal("stdin fixture frontend is unavailable")
+		t.Fatal("native mrun frontend is unavailable")
 	}
 	workspace := t.TempDir()
 	workspace, err = filepath.EvalSymlinks(workspace)
@@ -228,7 +204,7 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	setCodexFrontendLoginEnvironment(t, filepath.Dir(frontend))
-	t.Setenv("MEKUGI_PLUGIN_TEST", "inherited")
+	t.Setenv("MEKUGI_FRONTEND_TEST", "inherited")
 	t.Setenv(toolFrontendCodexWorkerEnvironment, "1")
 	config := `model_providers.frontend_fixture={name="frontend_fixture",base_url=` +
 		strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`
@@ -238,7 +214,7 @@ func TestConfiguredToolFrontendNativeCodexE2E(t *testing.T) {
 		"-c", config, "-c", `model_provider="frontend_fixture"`, "-c", "features.plugins=false",
 		"--model", "gpt-6-astra", "--sandbox", "danger-full-access", "--ask-for-approval", "never",
 		"exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never",
-		"-C", workspace, "Exercise the configured executable frontend fixture.",
+		"-C", workspace, "Exercise the native executable frontend fixture.",
 	)
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr

@@ -53,7 +53,7 @@ linked, not copied.
 - [`REQ-READ-001`](read.md): authenticated raw-row reading and managed continuation
 - [`REQ-SYMBOL-001`](symbol.md): routed semantic symbol lookup with raw source rows
 - [`REQ-INSPECT-001`](inspect.md): executable structural file inspection with numeric spans
-- [`REQ-PLUGIN-001`](plugin.md): router-local authenticated executable tools
+- [`REQ-PLUGIN-001`](plugin.md): authenticated compiled executable tools
 - [`REQ-DIAGNOSE-001`](diagnose.md): opt-in agent issue reports
 - [`REQ-AX-001`](ax.md): runtime reads and evidence-backed AX reporting
 - [`REQ-SESSION-001`](session.md): offline logical session inspection

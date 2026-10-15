@@ -18,7 +18,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	proxy := newToolPluginTestProxy(t)
+	proxy := newManagedMekugiProxy(t)
 	const conflictingProgress = "As you work, you send messages to the `commentary` channel."
 	stock, _ := recordedInstructionCleanup(t)
 	base := []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]string{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock}}
@@ -112,7 +112,7 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 	stock, projected := recordedInstructionCleanup(t)
 	for _, topLevel := range []bool{false, true} {
 		t.Run(map[bool]string{false: "additional tools", true: "top-level tools"}[topLevel], func(t *testing.T) {
-			proxy := newToolPluginTestProxy(t)
+			proxy := newManagedMekugiProxy(t)
 			leading := []any{
 				map[string]any{"type": "message", "role": "developer", "content": "Follow the task.\n" + conflictingProgress + "\n" + stock + "\n" + instructionOmitStart + "omitted-rtk-policy" + instructionOmitEnd},
 				map[string]any{"type": "message", "role": "user", "content": "<environment_context>cwd</environment_context>"},
@@ -206,7 +206,7 @@ func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.
 }
 
 func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
-	proxy := newToolPluginTestProxy(t)
+	proxy := newManagedMekugiProxy(t)
 	stock, _ := recordedInstructionCleanup(t)
 	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{"model": "gpt-test", "generate": false, "instructions": stock, "tools": []any{map[string]string{"type": "web_search"}}, "input": []any{}}))
 	if err != nil {
@@ -223,7 +223,7 @@ func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
 }
 
 func TestPrewarmMalformedCatalogRejectsWithoutPanic(t *testing.T) {
-	proxy := newToolPluginTestProxy(t)
+	proxy := newManagedMekugiProxy(t)
 	for _, catalog := range []string{`[42]`, `"invalid"`, `[{"type":"function","name":"lookup"},42]`} {
 		request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","generate":false,"tools":` + catalog + `,"input":[]}`))
 		if err != nil {

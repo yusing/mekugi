@@ -10,7 +10,6 @@ behavioral contract. UI presentation packages and router session integration are
 | Review-diff rendering used by observed change evidence | Root-package `review*.go` |
 | Shared quoted operands, logical rows, source capability, Go lexical, and shell-header semantics | `internal/quotedoperand`, `internal/logicalrow`, `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
 | Shared source parsing, literal decoding, and nonblocking source-file opens | `internal/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
-| Versioned plugin shared-core adapter and private WASM bridge | `internal/router/toolplugin/core-v1.mjs`, `internal/router/toolplugin/core-v1.d.ts`, `internal/sharedwasm` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
 | Native screen composition and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
 | Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go`; composer error display in `internal/router/composer_notice.go` |
@@ -52,10 +51,10 @@ behavioral contract. UI presentation packages and router session integration are
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
 | Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Durable replay, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
-| Authenticated frontend registry, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
+| Authenticated compiled frontend catalog, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
 | Symbol command arguments and activity display | `internal/router/toolplugin/native_symbol.go` owns parsing; `internal/router/subagent_tool_display_shell.go` consumes it |
 | Shared frontend options, token ceilings, and inclusive range parsing | `internal/router/toolplugin/frontend_options.go`; consumers include native readers and `internal/router/shell_read_bundle.go`; command-specific acceptance and multi-target framing remain with their callers |
-| Built-in tool sources, output tokenization, and plugin runtime | `internal/router/toolplugin/native_*.go`; plugin loading and embedded assets in `internal/router/toolplugin/runtime.go` |
+| Built-in tool sources and output tokenization | `internal/router/toolplugin/native_*.go`; compiled catalog in `internal/router/toolplugin/native_builtins.go` |
 | Router process signals, wrapped Codex lifecycle, and top-level exit | `cmd/mekugi/main.go`, `cmd/mekugi/wrap.go` |
 | Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
 | Stable ownership contracts | `doc/architecture/index.md` and the listed contract file |

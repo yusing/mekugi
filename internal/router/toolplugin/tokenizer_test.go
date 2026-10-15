@@ -8,13 +8,13 @@ import (
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
-func TestGPT5TokenizerMatchesPluginFixtures(t *testing.T) {
+func TestGPT5TokenizerMatchesFixtures(t *testing.T) {
 	t.Parallel()
 	codec, err := tokenizer.New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile("tests/testdata/gpt5_tokens.json")
+	data, err := os.ReadFile("testdata/gpt5_tokens.json")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -69,11 +69,10 @@ background transition, or eviction. The live broker's lifetime cancels polling
 on shutdown. Polling reads only the retained scope and publishes provisional
 cards; the result reconciler remains the sole command-evidence owner.
 
-The plugin registry owns one immutable authenticated snapshot and the private
+The compiled frontend catalog owns one immutable authenticated snapshot and the private
 PATH directory. Its frontend workers implement bounded readers and output
 retention inside Codex-started processes; they do not own Codex command
-sessions or continuation handles. Each configured frontend runs its declared
-executor under the same worker authentication.
+sessions or continuation handles. Each frontend runs its native implementation under the same worker authentication.
 
 Segment tracking (`REQ-EXECUTION-002`) has four owners:
 

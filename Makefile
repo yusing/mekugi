@@ -6,14 +6,14 @@ GOMAXPROCS ?= 2
 GOMEMLIMIT ?= 1536MiB
 export GOMAXPROCS GOMEMLIMIT
 
-.PHONY: install uninstall mekugi-pprof preview-assets preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
+.PHONY: install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
 TEST_PACKAGES ?= ./...
 TEST_RUN ?= .
 TEST_FLAGS ?=
 # Process/PTY fixtures spend most of their time waiting, not using a CPU.
 TEST_PARALLEL ?= 32
-HOST_ACCEPTANCE_TESTS := TestConfiguredToolFrontendNativeCodexE2E \
+HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 	TestMRunNativeCodexYieldAndWriteStdinE2E \
 	TestMChangesNestedNativeCodexE2E \
 	TestJournalMCPNativeCodexReadE2E \
@@ -23,19 +23,16 @@ HOST_ACCEPTANCE_TESTS := TestConfiguredToolFrontendNativeCodexE2E \
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/livediff ./internal/router ./cmd/mekugi
 
-install: preview-assets
+install:
 	$(GO) install $(GO_BUILD_FLAGS) ./cmd/mekugi ./cmd/mekugi-exec
 
 uninstall:
 	$(GO) clean -i ./cmd/mekugi ./cmd/mekugi-exec
 
 # Diagnostic build, with symbols and the same optimized code as production.
-mekugi-pprof: preview-assets
+mekugi-pprof:
 	$(GO) build $(GO_BUILD_FLAGS) -tags pprof -o bin/mekugi-pprof ./cmd/mekugi
 	$(GO) build $(GO_BUILD_FLAGS) -o bin/mekugi-exec ./cmd/mekugi-exec
-
-preview-assets:
-	go generate ./internal/router/toolplugin
 
 # Interactive native Main fixtures. No Codex process or model requests.
 # Plays a fake session automatically; keys act as in the real UI (Ctrl-C clears,

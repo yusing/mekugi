@@ -15,25 +15,16 @@ import (
 // The checked-in Markdown is generated from the external layout and the
 // native built-in tool specifications.
 func TestGeneratedFrontendGuidanceIsCurrent(t *testing.T) {
-	snapshot, err := toolplugin.Load(t.Context(), filepath.Join(t.TempDir(), "plugins"), t.TempDir())
-	if err != nil || len(snapshot.Diagnostics) != 0 {
-		t.Fatalf("load built-in tool descriptions: %v, %v", err, snapshot.Diagnostics)
-	}
 	var entries []struct{ Name, Description string }
-	for _, plugin := range snapshot.Plugins {
-		if plugin.ID != builtinToolsPluginID {
-			continue
+	for _, tool := range toolplugin.Builtins() {
+		var specification struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
 		}
-		for _, tool := range plugin.Tools {
-			var specification struct {
-				Name        string `json:"name"`
-				Description string `json:"description"`
-			}
-			if err := json.Unmarshal(tool.Specification, &specification); err != nil {
-				t.Fatal(err)
-			}
-			entries = append(entries, struct{ Name, Description string }{specification.Name, specification.Description})
+		if err := json.Unmarshal(tool.Specification, &specification); err != nil {
+			t.Fatal(err)
 		}
+		entries = append(entries, struct{ Name, Description string }{specification.Name, specification.Description})
 	}
 	var rendered bytes.Buffer
 	tmpl, err := template.ParseFiles(filepath.Join("..", "..", "guidance", "frontend_guidance.md.tmpl"))

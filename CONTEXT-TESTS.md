@@ -19,16 +19,13 @@ make test TEST_PACKAGES='./internal/appserver ./internal/router' TEST_RUN=AppSer
 The default is `./...`. Unchanged successful tests can use Go's test cache; use
 `TEST_FLAGS='-count=1'` for a fresh run, `TEST_FLAGS='-count=3 -shuffle=on'` for
 repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
-does not regenerate assets or install binaries. Prepare missing assets once with
-`make preview-assets`, and regenerate when their sources change as described below.
-A focused pass does not cover unselected tests.
+does not regenerate assets or install binaries. A focused pass does not cover unselected tests.
 
 The release workflow runs the full fresh offline Go suite on Linux amd64;
-other platforms retain command and welcome/version checks. Tagged Codex and
-Bun plugin-host checks remain separate acceptance routes below. `make test-host` runs
+other platforms retain command and welcome/version checks. Tagged Codex checks remain separate acceptance routes below. `make test-host` runs
 the focused installed-Codex set described in `CONTEXT-AUTOMATED-TESTS.md`.
-The full suite includes configured-plugin fixtures, so it requires Node.js 24+
-and ripgrep even when the tested application uses only built-in frontends.
+Interpreter and query fixtures use Node.js and ripgrep. Native frontends and
+their catalog require no JavaScript runtime.
 
 `TEST_PARALLEL` defaults to 32 so independent process and PTY fixtures can overlap
 their waits; override it for a constrained machine. Tests that change process-wide
@@ -53,11 +50,9 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
-| Portable core or `mekugi:core/v1` adapter | `./internal/router/toolplugin`, then `./...` and `bun test ./internal/router/toolplugin/tests/core.test.ts` |
 | Native frontends and output formatting | `./internal/router/toolplugin`, then `./internal/router` |
-| Configured JavaScript plugin host | `./internal/router/toolplugin`, then `bun test ./internal/router/toolplugin/tests` |
 | Router process entry point | `./cmd/mekugi` |
-| Configured frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestConfiguredToolFrontendNativeCodexE2E$'` (installed Codex, local mock provider) |
+| Native frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
 | Native journal MCP read acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalMCPNativeCodexReadE2E$'` (installed Codex, local mock provider) |
@@ -91,12 +86,6 @@ the frontend measurements exclude registry creation and active-session leases:
 ```sh
 make test TEST_PACKAGES='./internal/router/toolplugin ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
-
-Generation uses Go to rebuild the embedded WASM core for configured JavaScript plugins
-through the directive in `internal/router/toolplugin/runtime.go`. Built-in frontends
-and output formatting are compiled Go and require no generated JavaScript assets or
-npm dependencies. Bun is needed only for the remaining plugin-host/shared-core tests.
-Use a fresh temporary Bun transpiler cache when test discovery appears stale.
 
 Journal/frontend prose has a separate generated consumer. Edit
 `guidance/frontend_guidance.md.tmpl` or the executable helper's description owner,

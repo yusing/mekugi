@@ -37,8 +37,6 @@ sessions, and patch review. No fork, no config edits, no daemon.
   [recovery behavior and limits](#troubleshooting-and-integrations).
 - **Session continuity.** Retained journal and change evidence survives resume,
   forks, side threads, and compaction, subject to [storage retention](#replay-storage).
-- **Custom tools.** Extend the agent's capabilities with your own
-  [JavaScript tool plugins](doc/spec/plugin.md).
 
 ### User-facing
 
@@ -83,7 +81,6 @@ comparisons, use [codex-setup-ab](https://github.com/yusing/codex-setup-ab).
 Requirements:
 
 - **Codex CLI** for tool execution in every [launch mode](#start-mekugi).
-- For configured JavaScript plugins only: **Node.js 24+** as `node`. Plugins declaring regex grammars also require **ripgrep** as `rg` on the router's `PATH`.
 - Built-in frontends need neither Node.js nor Bun; semantic lookup requires the language servers listed under [agent-facing tools](#agent-facing).
 - Any interpreter your agent picks, such as `python3`, on the executor's `PATH`.
 
@@ -118,8 +115,8 @@ go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/c
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`.
 
-From a checkout with **Make**, run `make install`. It regenerates the
-optional plugin shared core and installs `mekugi` and `mekugi-exec`. `make uninstall`
+From a checkout with **Make**, run `make install` to install `mekugi` and
+`mekugi-exec`. `make uninstall`
 removes only those binaries. Running sessions keep their worker executable, so
 start a new session to pick up an update.
 
@@ -365,7 +362,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
-| `--mode` | `mekugi` | `passthrough` forwards Codex without Mekugi tools/plugins |
+| `--mode` | `mekugi` | `passthrough` forwards Codex without Mekugi tools |
 | `--vcs-guard` | `true` | Ask before UI remote writes, even with `--yolo` |
 | `--post-compact-recovery` | `true` | Restore Main after provider compaction |
 | `--journal-compaction` | `auto` | Select reset policy below |
@@ -377,7 +374,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--debug` | Disabled | Record private [diagnostic evidence](docs/contributing/development.md#diagnostics) |
 
 `mekugi --mode passthrough --vcs-guard=false codex` retains Codex policy/metrics, but
-disables Mekugi tools/plugins/guard and implies `--journal-compaction=off`; explicit
+disables Mekugi tools/guard and implies `--journal-compaction=off`; explicit
 `auto`/`slice` is rejected. Use `--ansi-faint=off` if a multiplexer hides mosh.
 
 ### Context reset and recovery
@@ -402,7 +399,9 @@ with `--post-compact-recovery=false`; see [hook setup](doc/spec/guide.md#req-gui
   With `skills-mgr`, managed selections attach instructions and the stock catalog is
   disabled for the session. See [guidance](doc/spec/guide.md).
 - **Recovery:** see [resets](#context-reset-and-recovery) and [storage](#replay-storage).
-- **Plugins:** put `.js`/`.mjs` in user-config `mekugi/plugins`; see [plugins](doc/spec/plugin.md).
+- **Frontend commands:** [compiled helpers](doc/spec/plugin.md) run through stock
+  execution. JavaScript plugin loading has been removed; existing plugin files
+  are left untouched.
 - **Issue reports:** `MEKUGI_DIAGNOSE=1` enables `report_issue`, running configured
   `hooks.diagnose` commands. See [setup and effects](doc/spec/diagnose.md).
 - **Environment:** router/executor must share paths/runtime directory; `MEKUGI_RUNTIME_DIR`

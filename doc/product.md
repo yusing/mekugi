@@ -80,7 +80,6 @@ Mekugi includes:
 - observation of stock edits, change review, and provisional live previews;
 - stock JavaScript tool execution with batching and
   yielded-session continuation;
-- router-local executable plugin declarations;
 - durable replay, journals, session inspection, commentary, diagnostics, and
   provider-authoritative usage reporting;
 - authenticated third-party model routing; and

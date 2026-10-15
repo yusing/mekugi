@@ -2,6 +2,7 @@ package toolplugin
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -18,6 +19,20 @@ import (
 
 const nativeResolverTimeout = 30 * time.Second
 const nativeResolverDrain = time.Second
+
+// Source: internal/router/toolplugin/invoke.go:110:121@[c0258bba] boundedHostOutput
+type boundedResolverOutput struct {
+	bytes.Buffer
+	limit int64
+}
+
+func (b *boundedResolverOutput) Write(data []byte) (int, error) {
+	available := max(0, b.limit-int64(b.Len()))
+	if available > 0 {
+		_, _ = b.Buffer.Write(data[:min(int64(len(data)), available)])
+	}
+	return len(data), nil
+}
 
 func resolverTimeoutError() error {
 	return &symbolFailure{"resolver_timeout", "resolver exceeded the 30 s limit; retry with a narrower --workspace ROOT"}
@@ -302,7 +317,7 @@ func runNativeLSP(ctx context.Context, root, resolver string, queries []*symbolQ
 	}
 	defer outputR.Close()
 	defer outputW.Close()
-	stderr := &boundedHostOutput{limit: nativeRetainedBytes + 1}
+	stderr := &boundedResolverOutput{limit: nativeRetainedBytes + 1}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = inputR, outputW, stderr
 	if err := cmd.Start(); err != nil {
 		failAll(resolverStartError(name, err))

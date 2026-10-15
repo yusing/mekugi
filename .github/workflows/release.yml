@@ -37,8 +37,6 @@ jobs:
       - uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
-      - name: Generate embedded assets
-        run: make preview-assets
       - uses: actions/setup-node@v7.0.0
         if: matrix.platform == 'linux_amd64'
         with:

@@ -72,8 +72,8 @@ and does not offer typed denial reasons. Dock editing and
 draft preservation are specified under [native UI approvals](native_ui.md#approvals).
 
 The wrapped Codex `PATH` includes only this session's authenticated executable
-frontends. `mcat`, `mrun`, `mread`, `mchanges`, `msymbol`, `inspect_file`, and
-configured plugin tools are invoked through stock `exec_command`. The pinned
+frontends. `mcat`, `mrun`, `mread`, `mchanges`, `msymbol`, and `inspect_file`
+are invoked through stock `exec_command`. The pinned
 snapshot and worker authenticate each frontend; a frontend does not install a
 global command or create a second process-continuation authority.
 The wrapper restores that private PATH after Bash login startup without changing

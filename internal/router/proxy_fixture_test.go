@@ -22,7 +22,7 @@ type proxyRegistryFixture struct {
 	err       error
 }
 
-var proxyTestFixture, pluginProxyTestFixture proxyRegistryFixture
+var proxyTestFixture proxyRegistryFixture
 
 const routerTestWorkerEnvironment = "MEKUGI_ROUTER_TEST_WORKER"
 const routerTestWorkerUnscopedEnvironment = "MEKUGI_ROUTER_TEST_WORKER_UNSCOPED"
@@ -39,7 +39,7 @@ func uniqueTestThread(prefix string) string {
 // Ordinary proxy tests borrow the real, immutable built-in frontend catalog.
 func sharedProxyTestRegistry(t *testing.T) *toolRegistry {
 	t.Helper()
-	return proxyTestFixture.get(t, "")
+	return proxyTestFixture.get(t)
 }
 func buildToolRegistryForTest(
 	t *testing.T,
@@ -56,7 +56,7 @@ func buildToolRegistryForTest(
 		filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
 }
 
-func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource string) *toolRegistry {
+func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
 	t.Helper()
 	fixture.once.Do(func() {
 		fixture.directory, fixture.err = os.MkdirTemp("", "mekugi-proxy-tests-")
@@ -64,15 +64,6 @@ func (fixture *proxyRegistryFixture) get(t *testing.T, pluginSource string) *too
 			return
 		}
 		dataDirectory := filepath.Join(fixture.directory, "data")
-		if pluginSource != "" {
-			pluginDirectory := filepath.Join(dataDirectory, "plugins")
-			if fixture.err = os.MkdirAll(pluginDirectory, 0o700); fixture.err != nil {
-				return
-			}
-			if fixture.err = os.WriteFile(filepath.Join(pluginDirectory, "proxy.mjs"), []byte(pluginSource), 0o600); fixture.err != nil {
-				return
-			}
-		}
 		if _, fixture.err = openMekugiReplayStore(filepath.Join(fixture.directory, "replay")); fixture.err != nil {
 			return
 		}
@@ -162,7 +153,7 @@ func TestMain(m *testing.M) {
 	if stateDirectory != "" {
 		err = os.RemoveAll(stateDirectory)
 	}
-	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture, &pluginProxyTestFixture} {
+	for _, fixture := range []*proxyRegistryFixture{&proxyTestFixture} {
 		if fixture.registry != nil {
 			err = errors.Join(err, fixture.registry.Close())
 		}

@@ -54,7 +54,9 @@ func (b *nativeBudget) selectText(value string, budget int, tail bool) (selected
 	}
 	return selectedNativeText{}, nil
 }
-func formatNativeOutput(ctx context.Context, args []string) (ExecutionOutput, error) {
+
+// FormatOutput formats bounded output in the frontend process.
+func FormatOutput(ctx context.Context, args []string) (ExecutionOutput, error) {
 	if err := ctx.Err(); err != nil {
 		return ExecutionOutput{}, err
 	}

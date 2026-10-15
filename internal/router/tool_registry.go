@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,7 +17,6 @@ import (
 
 const (
 	toolPluginManifestFilename = "workers.json"
-	builtinToolsPluginID       = "builtin.frontends"
 )
 
 func buildToolRegistry(ctx context.Context, dataDirectory string, diagnose bool) (*toolRegistry, error) {
@@ -69,59 +66,23 @@ func buildToolRegistryAt(
 			return fail(err)
 		}
 	}
-	pluginSnapshot, err := toolplugin.Load(
-		ctx,
-		filepath.Join(dataDirectory, "plugins"),
-		filepath.Join(snapshotDirectory, "runtime"),
-	)
-	if err != nil {
-		return fail(err)
-	}
 	var contributions []toolContribution
 	if diagnose {
 		contributions = append(contributions, toolContribution{
-			PluginID: "builtin.mekugi", Name: reportIssueToolName, Builtin: true,
+			Name: reportIssueToolName, Builtin: true,
 		})
 	}
 	var validationErrors []error
-	for _, diagnostic := range pluginSnapshot.Diagnostics {
-		validationErrors = append(validationErrors, errors.New(diagnostic))
-	}
-	pluginIDs := make(map[string]string)
-	for _, plugin := range pluginSnapshot.Plugins {
-		if prior, exists := pluginIDs[plugin.ID]; exists {
-			validationErrors = append(validationErrors, fmt.Errorf(
-				"plugin identity %q is declared by both %s and %s",
-				plugin.ID,
-				prior,
-				plugin.Module,
-			))
-		} else {
-			pluginIDs[plugin.ID] = plugin.Module
+	for _, tool := range toolplugin.Builtins() {
+		specification, err := decodeResponsesToolDefinition(tool.Specification)
+		if err != nil {
+			validationErrors = append(validationErrors, fmt.Errorf("decode frontend specification: %w", err))
+			continue
 		}
-		for toolIndex, tool := range plugin.Tools {
-			specification, decodeErr := decodeResponsesToolDefinition(tool.Specification)
-			if decodeErr != nil {
-				validationErrors = append(validationErrors, fmt.Errorf(
-					"%s tool %d: decode normalized specification: %w",
-					plugin.Module,
-					toolIndex+1,
-					decodeErr,
-				))
-				continue
-			}
-			name := specification.Name
-			contribution := toolContribution{
-				PluginID:       plugin.ID,
-				Name:           name,
-				Specification:  slices.Clone(tool.Specification),
-				Module:         plugin.Module,
-				ModuleIndex:    toolIndex,
-				NativeExecutor: tool.NativeExecutor,
-				Executable:     true,
-			}
-			contributions = append(contributions, contribution)
-		}
+		contributions = append(contributions, toolContribution{
+			Name: specification.Name, Specification: slices.Clone(tool.Specification),
+			NativeExecutor: tool.NativeExecutor, Executable: true,
+		})
 	}
 	byName := make(map[string]toolContribution, len(contributions))
 	for _, contribution := range contributions {
@@ -130,13 +91,8 @@ func buildToolRegistryAt(
 				validationErrors = append(validationErrors, validationErr)
 			}
 		}
-		if prior, exists := byName[contribution.Name]; exists {
-			validationErrors = append(validationErrors, fmt.Errorf(
-				"tool name %q is owned by both %s and %s",
-				contribution.Name,
-				prior.PluginID,
-				contribution.PluginID,
-			))
+		if _, exists := byName[contribution.Name]; exists {
+			validationErrors = append(validationErrors, fmt.Errorf("duplicate frontend name %q", contribution.Name))
 			continue
 		}
 		byName[contribution.Name] = contribution
@@ -153,16 +109,14 @@ func buildToolRegistryAt(
 	manifest := toolWorkerManifest{
 		ReplayDirectory: replayDirectory,
 		HookDirectory:   dataDirectory,
-		Version:         1,
-		NodeExecutable:  pluginSnapshot.NodeExecutable,
-		RuntimeRoot:     "runtime",
+		Version:         2,
 		GuidanceSHA256:  hex.EncodeToString(guidanceHash[:]),
 		Tools:           slices.Clone(contributions),
 	}
 	if debug, _ := ctx.Value(debugContextKey{}).(*debugOutput); debug != nil {
 		manifest.AXReadOutput = debug.paths[4]
 	}
-	registryID, err := toolRegistryIdentity(manifest, pluginSnapshot.Root)
+	registryID, err := toolRegistryIdentity(manifest)
 	if err != nil {
 		return fail(err)
 	}
@@ -173,7 +127,6 @@ func buildToolRegistryAt(
 	}
 	snapshotDirectory = authenticatedDirectory
 	executable := filepath.Join(snapshotDirectory, toolWorkerExecutableFilename)
-	runtimeRoot := filepath.Join(snapshotDirectory, manifest.RuntimeRoot)
 	if err := os.WriteFile(filepath.Join(snapshotDirectory, "frontend_guidance.md"), []byte(frontendGuidance), 0o600); err != nil {
 		return fail(fmt.Errorf("write generated frontend guidance: %w", err))
 	}
@@ -196,8 +149,6 @@ func buildToolRegistryAt(
 	}
 	return &toolRegistry{
 		SnapshotDir:       snapshotDirectory,
-		RuntimeRoot:       runtimeRoot,
-		NodeExecutable:    pluginSnapshot.NodeExecutable,
 		frontendDirectory: filepath.Join(snapshotDirectory, "bin"),
 		runtimeDirectory:  runtimeDirectory,
 		ordered:           contributions,
@@ -211,93 +162,30 @@ func buildToolRegistryAt(
 
 func validateToolContribution(contribution toolContribution) error {
 	var specification struct {
-		Type        string `json:"type"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Format      *struct {
-			Type       string `json:"type"`
-			Syntax     string `json:"syntax"`
-			Definition string `json:"definition"`
-		} `json:"format"`
+		Type        string          `json:"type"`
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Format      json.RawMessage `json:"format"`
 	}
 	if err := json.Unmarshal(contribution.Specification, &specification); err != nil {
-		return fmt.Errorf("%s/%s: decode tool specification: %w", contribution.PluginID, contribution.Name, err)
+		return fmt.Errorf("%s: decode frontend specification: %w", contribution.Name, err)
 	}
-	if specification.Type != "custom" || specification.Name != contribution.Name || specification.Description == "" {
-		return fmt.Errorf("%s/%s: normalized custom-tool specification is inconsistent", contribution.PluginID, contribution.Name)
-	}
-	if specification.Format == nil {
-		return nil
-	}
-	if specification.Format.Type != "grammar" ||
-		(specification.Format.Syntax != "lark" && specification.Format.Syntax != "regex") ||
-		specification.Format.Definition == "" {
-		return fmt.Errorf("%s/%s: normalized grammar format is inconsistent", contribution.PluginID, contribution.Name)
+	if specification.Type != "custom" || specification.Name != contribution.Name ||
+		specification.Description == "" || len(specification.Format) != 0 ||
+		contribution.NativeExecutor != contribution.Name {
+		return fmt.Errorf("%s: compiled frontend specification is inconsistent", contribution.Name)
 	}
 	return nil
 }
 
-func toolRegistryIdentity(manifest toolWorkerManifest, runtimePath string) (identity string, err error) {
-	unsigned := manifest
-	unsigned.RegistryID = ""
-	encoded, err := json.Marshal(unsigned)
+func toolRegistryIdentity(manifest toolWorkerManifest) (string, error) {
+	manifest.RegistryID = ""
+	encoded, err := json.Marshal(manifest)
 	if err != nil {
-		return "", fmt.Errorf("encode tool registry identity: %w", err)
+		return "", fmt.Errorf("encode frontend catalog identity: %w", err)
 	}
-	runtimeRoot, err := os.OpenRoot(runtimePath)
-	if err != nil {
-		return "", fmt.Errorf("open tool registry snapshot: %w", err)
-	}
-	defer func() { err = errors.Join(err, runtimeRoot.Close()) }()
-
-	digest := sha256.New()
-	_, _ = digest.Write(encoded)
-	err = fs.WalkDir(runtimeRoot.FS(), ".", func(relative string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("tool registry snapshot entry %s is not a regular file", relative)
-		}
-		file, err := runtimeRoot.Open(relative)
-		if err != nil {
-			return err
-		}
-		before, statErr := file.Stat()
-		if statErr != nil || !before.Mode().IsRegular() || !os.SameFile(info, before) {
-			_ = file.Close()
-			if statErr != nil {
-				return statErr
-			}
-			return fmt.Errorf("tool registry snapshot entry %s changed during verification", relative)
-		}
-		fileDigest := sha256.New()
-		copied, copyErr := io.Copy(fileDigest, file)
-		after, afterErr := file.Stat()
-		closeErr := file.Close()
-		if copyErr != nil || afterErr != nil || closeErr != nil {
-			return errors.Join(copyErr, afterErr, closeErr)
-		}
-		if !os.SameFile(before, after) || before.Size() != after.Size() || before.ModTime() != after.ModTime() ||
-			copied != before.Size() {
-			return fmt.Errorf("tool registry snapshot entry %s changed during verification", relative)
-		}
-		_, _ = digest.Write([]byte(filepath.ToSlash(relative)))
-		_, _ = digest.Write([]byte{0})
-		_, _ = digest.Write(fileDigest.Sum(nil))
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("hash tool registry snapshot: %w", err)
-	}
-	return hex.EncodeToString(digest.Sum(nil)), nil
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func writeToolWorkerManifest(directory string, manifest toolWorkerManifest) error {

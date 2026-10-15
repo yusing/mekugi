@@ -79,6 +79,5 @@ Caller-owned base instructions pass through except for
 explicit omission blocks and pinned inherited conflicts. Additive journal
 guidance belongs to the journal tool projection. XML-framed session-helper guidance is
 embedded from a checked-in standalone Markdown file generated from tool-source descriptions and
-an out-of-router template. Configured plugin entries are derived from the authenticated frontend
-registry. Both projections remain call-local; only the frontend section is stored with the pinned
-registry snapshot.
+an out-of-router template. Both projections remain call-local; only the frontend
+section is stored with the pinned catalog snapshot.

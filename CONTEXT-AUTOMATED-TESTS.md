@@ -6,12 +6,12 @@ credentials or live model usage. These tests require the `journal_e2e` build tag
 
 ## Focused host acceptance
 
-Run `make test-host` for the shared installed-Codex acceptance set. It checks configured
+Run `make test-host` for the shared installed-Codex acceptance set. It checks native
 frontends, PTY yield/continuation, durable nested edit evidence, journal MCP reads,
 host-result completion, post-compaction recovery, and command sandbox reporting.
 The recipe verifies that every named test is present before running a fresh verbose
 suite. Missing Codex or tests fail the target. It neither generates assets nor installs
-binaries. Prepare missing embedded assets with `make preview-assets` first.
+binaries.
 
 Platform-specific skips remain visible in verbose output; sandbox reporting is Linux-only.
 A skip is unavailable coverage, not a pass for that boundary. This focused set does not
@@ -30,7 +30,7 @@ and stock HTTP/SSE fallback. It also checks prewarming and side-thread continuit
 over WebSockets. These local mocks prove installed-host behavior; live model
 acceptance is a separate check.
 
-The frontend fixture invokes an authenticated configured command through
+The frontend fixture invokes an authenticated native command through
 stock exec `tools.exec_command`, including cwd, environment, argv, stdin
 separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
 `write_stdin` continuation. The journal fixture checks native child

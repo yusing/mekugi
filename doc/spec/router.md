@@ -75,7 +75,7 @@ Other invocations do not run the catalog command or pin model metadata.
 
 Noninteractive and redirected Codex commands inherit cwd, stdin, stdout, stderr,
 and the environment, augmented only
-with `MEKUGI_BASE_URL` and the private configured-plugin frontend directory at
+with `MEKUGI_BASE_URL` and the private compiled-frontend directory at
 the front of PATH. Before child launch, terminal Ctrl-C cancels startup and prevents
 launch, including signals already consumed by the startup receiver. After handoff,
 terminal Ctrl-C remains Codex-owned without double forwarding. SIGTERM to the wrapper
@@ -435,7 +435,7 @@ excluded content, suppression, and auxiliary write failure preserve those bounda
 2. Codex can reach it immediately on launch; no config or persistent service is changed.
 3. Startup failure does not launch Codex; all exits release owned resources.
 4. Codex arguments, exit status, terminal input, stdout, and stderr remain intact.
-5. Simultaneous configured-plugin sessions have disjoint frontends and independent cleanup.
+5. Simultaneous frontend sessions have disjoint frontends and independent cleanup.
 6. Without `--debug`, no operational logs or session log files are created or mixed with Codex output. Private replay
    correctness records survive shutdown and are shared safely by simultaneous wrappers.
 7. Invalid native editing/execution catalogs and forced incompatible tool choices

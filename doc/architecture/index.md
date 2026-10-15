@@ -39,6 +39,6 @@ collaborators without restating implementation.
 - [`CTR-ACTIVITY-002`](activity.md): bounded native child history pages
 - [`CTR-USAGE-001`](usage.md): provider accounting ownership
 - [`CTR-BOUNDARY-001`](boundary.md): filesystem, history, and output authority
-- [`CTR-PLUGIN-001`](plugin.md): authenticated executable plugin registry
+- [`CTR-PLUGIN-001`](plugin.md): authenticated executable catalog
 - [`CTR-EXECUTION-001`](execution.md): host-owned editing and process lifecycle
 - [`CTR-METRICS-001`](metrics.md): capture-owned transport metrics

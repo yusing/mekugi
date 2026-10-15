@@ -272,7 +272,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 		_, _, _ = conn.Read(ctx)
 	}))
 	t.Cleanup(upstream.Close)
-	proxy := newToolPluginTestProxy(t)
+	proxy := newManagedMekugiProxy(t)
 	endpoint := responsesWebSocketHandler(ctx, 10*time.Second, newProviderClient(upstream.URL, upstream.Client()), nil, proxy)
 	t.Cleanup(endpoint.Close)
 	server := httptest.NewServer(d.handler(endpoint))

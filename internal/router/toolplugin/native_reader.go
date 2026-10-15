@@ -14,7 +14,6 @@ import (
 const nativeRetainedBytes = 16 << 20
 
 // ExecuteBuiltin runs bundled readers in the authenticated frontend process.
-// Configured plugins remain isolated JavaScript hosts, never native executors.
 func ExecuteBuiltin(ctx context.Context, name string, args []string) (ExecutionOutput, error) {
 	if err := ctx.Err(); err != nil {
 		return ExecutionOutput{}, err

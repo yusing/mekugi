@@ -22,15 +22,13 @@ collaboration-mode instructions.
 
 Each executable helper's tool source owns its description. A template outside router produces a
 checked-in standalone Markdown file with XML-framed built-in frontends and named guidance used by
-router tools. Router embeds the generated file without keeping instruction prose in Go. Configured
-plugin descriptions come from the authenticated registry and are appended to the frontend section
-as XML-framed entries. That session frontend section is also written into the pinned registry
-snapshot and appended to the authoritative `exec` description when it exposes
+router tools. Router embeds the generated file without keeping instruction prose in Go. The
+compiled frontend descriptions form the session frontend section in the pinned registry
+snapshot. This section is appended to the authoritative `exec` description when it exposes
 `tools.exec_command`. It does not publish a second catalog or
 change stock tool names, schemas, inputs, results, or execution authority. Refresh replaces the
 marked section in place; malformed or duplicate markers reject before forwarding. The session guide
-combines the embedded generated built-in section with current pinned plugin descriptions, not a
-model-specific prompt file or routing-session ID.
+uses the embedded generated frontend section, not a model-specific prompt file or routing-session ID.
 
 The projected helper guidance explains when the tools reduce work, not just their syntax:
 structural outlines for navigation, semantic references for caller-impacting edits, bounded
