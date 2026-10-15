@@ -48,7 +48,12 @@ func TestResolverCleanupRetiresInheritedPipeDescendants(t *testing.T) {
 					}
 					quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 					script := "#!/bin/sh\nexec " + quote(executable) + " -test.run='^TestResolverCleanupProcess$' -- resolver\n"
-					if err := os.WriteFile(filepath.Join(directory, resolver), []byte(script), 0700); err != nil {
+					// A sibling fork can retain a writable executable descriptor until
+					// exec, even with CLOEXEC, causing a transient ETXTBSY on launch.
+					syscall.ForkLock.RLock()
+					err = os.WriteFile(filepath.Join(directory, resolver), []byte(script), 0700)
+					syscall.ForkLock.RUnlock()
+					if err != nil {
 						t.Fatal(err)
 					}
 					pidPath := filepath.Join(directory, "descendant.pid")
