@@ -11,10 +11,6 @@ import (
 )
 
 func TestModelOutputExcludesGeneratedCommentary(t *testing.T) {
-	r, err := New(Config{Mode: "mekugi"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Identical text and phase are still model output when the ID is not in a
 	// router-owned namespace. All non-message items remain represented too.
 	model := `{"type":"message","id":"msg-provider","phase":"commentary","content":[{"type":"output_text","text":"Tokens: i=20, ci=12, o=5, r=3"}]}`
@@ -45,14 +41,14 @@ func TestModelOutputExcludesGeneratedCommentary(t *testing.T) {
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {
 			record := captureRecord{Boundary: "codex", Mode: "mekugi"}
-			got := observeResponse([]byte(test.payload), test.kind, &record, r.codec)
+			got := observeResponse([]byte(test.payload), test.kind, &record)
 			if string(got) != test.want || record.CaptureError != "" {
 				t.Fatalf("output=%s, error=%q; want %s", got, record.CaptureError, test.want)
 			}
 		})
 	}
 	for _, record := range []captureRecord{{Boundary: "provider", Mode: "mekugi"}, {Boundary: "codex", Mode: "passthrough"}} {
-		got := observeResponse([]byte(`{"status":"completed","output":`+all+`}`), "application/json", &record, r.codec)
+		got := observeResponse([]byte(`{"status":"completed","output":`+all+`}`), "application/json", &record)
 		if string(got) != all {
 			t.Fatalf("unmodified boundary output = %s", got)
 		}

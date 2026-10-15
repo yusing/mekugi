@@ -49,17 +49,6 @@ func TestContentTokensIgnoreSSEAndOutputItemJSONFraming(t *testing.T) {
 	}
 	a := `{"type":"function_call","call_id":"call","name":"lookup","arguments":"<x>"}`
 	b := ` { "arguments" : "\u003cx\u003e", "name":"lookup", "call_id":"call", "type":"function_call" } `
-	var records [2]captureRecord
-	for index, body := range []string{a, b} {
-		observeOutputItem([]byte(body), &records[index], codec)
-	}
-	if len(records[0].ToolCalls) != 1 || len(records[1].ToolCalls) != 1 {
-		t.Fatal("missing tool")
-	}
-	left, right := records[0].ToolCalls[0], records[1].ToolCalls[0]
-	if left.ItemTokens != right.ItemTokens || left.InputTokens != right.InputTokens || left.ItemBytes == right.ItemBytes {
-		t.Fatalf("tool counts %v vs %v", left, right)
-	}
 	plain, _ := contentTokens([]byte(a), codec)
 	stream, _ := contentTokens([]byte("event: anything\r\ndata: "+strings.Replace(b, ",", ",\r\ndata:", 1)+"\r\n\r\ndata: [DONE]\r\n\r\n"), codec)
 	if plain != stream {

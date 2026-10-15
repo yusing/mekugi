@@ -3,13 +3,13 @@
 ## CTR-METRICS-001 — Capture-owned metrics
 
 The in-process capturer is the sole owner of request correlation, transport measurement,
-provider usage and its evidence coverage, measured cache rate, representation differences, tool-shape accounting,
+provider usage and its evidence coverage, measured cache rate, representation differences,
 delivery accounting, capture health, durable sanitized records, and metrics snapshots.
 HTTP and WebSocket observers share request-scoped correlation without sending private
 headers or changing byte streams, retries, cancellation, or response ownership.
 
 Raw bodies exist only while a boundary is measured. Durable capture retains bounded sizes,
-token estimates, status, timing, provider usage, tool identities, and allowlisted outcomes,
+token estimates, status, timing, provider usage, request tool names, and allowlisted outcomes,
 but not credentials, prompts, instructions, arguments, command output, response text,
 patches, or reports. Missing, truncated, evicted, malformed, or old evidence is marked
 unavailable or incomplete, never inferred as zero or success. Provider usage remains

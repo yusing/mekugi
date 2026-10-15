@@ -6,7 +6,6 @@ import (
 )
 
 func TestProviderServiceTierRequiresTerminalEvidence(t *testing.T) {
-	r := diagnosticRecorder(t)
 	for _, tc := range []struct{ name, field, want string }{
 		{"priority", `,"service_tier":"priority"`, "priority"},
 		{"default", `,"service_tier":"default"`, "default"},
@@ -27,7 +26,7 @@ func TestProviderServiceTierRequiresTerminalEvidence(t *testing.T) {
 					payload = "data: " + `{"type":"response.created","response":{"service_tier":"auto"}}` + "\n\ndata: " + `{"type":"response.completed","response":` + payload + "}\n\n"
 				}
 				record := captureRecord{Boundary: "provider", ProviderResponse: &providerResponseEvidence{}}
-				observeResponse([]byte(payload), kind, &record, r.codec)
+				observeResponse([]byte(payload), kind, &record)
 				if record.ProviderResponse.ServiceTier != tc.want || record.CaptureError != "" {
 					t.Fatalf("stream=%v evidence=%+v error=%q", stream, record.ProviderResponse, record.CaptureError)
 				}
@@ -39,7 +38,7 @@ func TestProviderServiceTierRequiresTerminalEvidence(t *testing.T) {
 		`data: {"type":"response.completed","response":{"service_tier":"priority","output":{}}}` + "\n\n",
 	} {
 		record := captureRecord{Boundary: "provider", ProviderResponse: &providerResponseEvidence{}}
-		observeResponse([]byte(payload), "text/event-stream", &record, r.codec)
+		observeResponse([]byte(payload), "text/event-stream", &record)
 		if record.ProviderResponse.ServiceTier != "" {
 			t.Fatalf("unfinished/malformed response supplied tier: %+v", record.ProviderResponse)
 		}
@@ -47,7 +46,6 @@ func TestProviderServiceTierRequiresTerminalEvidence(t *testing.T) {
 }
 
 func TestChatServiceTierRequiresCompleteProviderResponse(t *testing.T) {
-	r := diagnosticRecorder(t)
 	for _, tc := range []struct{ name, payload, kind, boundary, want string }{
 		{"json", `{"service_tier":"default","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`, "application/json", "provider", "default"},
 		{"stream", "data: " + `{"service_tier":"priority","choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}` + "\n\ndata: " + `{"service_tier":"flex","choices":[]}` + "\n\ndata: [DONE]\n\n", "text/event-stream", "provider", "flex"},
@@ -59,7 +57,7 @@ func TestChatServiceTierRequiresCompleteProviderResponse(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			record := captureRecord{Boundary: tc.boundary, ProviderResponse: &providerResponseEvidence{}}
-			observeChatResponse([]byte(tc.payload), tc.kind, &record, r.codec)
+			observeChatResponse([]byte(tc.payload), tc.kind, &record)
 			if record.ProviderResponse.ServiceTier != tc.want {
 				t.Fatalf("tier = %q, want %q", record.ProviderResponse.ServiceTier, tc.want)
 			}
@@ -67,7 +65,7 @@ func TestChatServiceTierRequiresCompleteProviderResponse(t *testing.T) {
 	}
 	// Request-side capture gaps do not invalidate observed response metadata.
 	record := captureRecord{Boundary: "provider", CaptureError: "missing projected request observation", ProviderResponse: &providerResponseEvidence{}}
-	observeChatResponse([]byte(`{"service_tier":"default","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`), "application/json", &record, r.codec)
+	observeChatResponse([]byte(`{"service_tier":"default","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`), "application/json", &record)
 	if record.ProviderResponse.ServiceTier != "default" {
 		t.Fatal("unrelated capture health suppressed returned tier")
 	}

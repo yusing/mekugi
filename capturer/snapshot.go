@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"encoding/json"
 	"io"
-	"maps"
 	"net/http"
 	"slices"
 
@@ -74,14 +73,6 @@ type semanticOutputMetrics struct {
 	ClientOutputs          payloadTotals `json:"client_outputs"`
 }
 
-type toolAggregate struct {
-	Calls       uint64 `json:"calls"`
-	InputBytes  uint64 `json:"input_bytes"`
-	InputTokens uint64 `json:"input_tokens"`
-	ItemBytes   uint64 `json:"item_bytes"`
-	ItemTokens  uint64 `json:"item_tokens"`
-}
-
 type captureHealth struct {
 	Records                uint64 `json:"records"`
 	CaptureErrors          uint64 `json:"capture_errors"`
@@ -111,7 +102,6 @@ type providerAttemptMetrics struct {
 	Response             payloadMetrics            `json:"response"`
 	FinalOutput          payloadMetrics            `json:"final_output,omitzero"`
 	FinalText            payloadMetrics            `json:"final_text,omitzero"`
-	Tools                []toolCallMetrics         `json:"tools,omitempty"`
 }
 
 type exchangeMetrics struct {
@@ -135,7 +125,6 @@ type exchangeMetrics struct {
 	ClientResponse      payloadMetrics           `json:"client_response"`
 	ClientFinalText     payloadMetrics           `json:"client_final_text,omitzero"`
 	ClientFinalOutput   payloadMetrics           `json:"client_final_output,omitzero"`
-	DeliveredTools      []toolCallMetrics        `json:"delivered_tools,omitempty"`
 }
 
 // MetricsSnapshot is a detached, capture-owned metrics view.
@@ -149,8 +138,6 @@ type MetricsSnapshot struct {
 	Cache               cacheMetrics               `json:"cache"`
 	Transport           transportMetrics           `json:"transport"`
 	Semantic            semanticOutputMetrics      `json:"semantic"`
-	ProviderTools       map[string]toolAggregate   `json:"provider_tools"`
-	DeliveredTools      map[string]toolAggregate   `json:"delivered_tools"`
 	Exchanges           []exchangeMetrics          `json:"exchanges"`
 	Capture             captureHealth              `json:"capture"`
 }
@@ -184,10 +171,8 @@ func (r *Recorder) snapshot() MetricsSnapshot {
 
 func newMetricsSnapshot(mode string) MetricsSnapshot {
 	return MetricsSnapshot{
-		Schema:         "mekugi.capture.metrics.v7",
-		Mode:           mode,
-		ProviderTools:  map[string]toolAggregate{},
-		DeliveredTools: map[string]toolAggregate{},
+		Schema: "mekugi.capture.metrics.v7",
+		Mode:   mode,
 	}
 }
 
@@ -214,7 +199,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 		Status: front.ResponseStatus, ClientRequest: front.Request, ClientResponse: front.Response,
 		ClientFingerprint: front.Fingerprint,
 		ClientFinalOutput: front.FinalOutput, ClientFinalText: front.FinalText,
-		DeliveredTools: slices.Clone(front.ToolCalls),
 	}
 	var exchangeUsage usageMetrics
 	r.metrics.Requests.Logical++
@@ -223,7 +207,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 	addPayload(&r.metrics.Transport.ClientRequests, front.Request)
 	addPayload(&r.metrics.Transport.ClientResponses, front.Response)
 	addPayload(&r.metrics.Semantic.ClientOutputs, front.FinalOutput)
-	addTools(r.metrics.DeliveredTools, front.ToolCalls)
 	if front.ResponseStatus == "completed" {
 		r.metrics.Requests.Completed++
 	} else {
@@ -233,7 +216,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 		addPayload(&r.metrics.Transport.ProviderAttemptRequests, provider.Request)
 		addPayload(&r.metrics.Transport.ProviderResponses, provider.Response)
 		addPayload(&r.metrics.Semantic.ProviderAttemptOutputs, provider.FinalOutput)
-		addTools(r.metrics.ProviderTools, provider.ToolCalls)
 		attempt := providerAttemptMetrics{
 			DurationMillis: provider.DurationMillis, StatusCode: provider.StatusCode, CaptureError: provider.CaptureError,
 			Transport:        provider.Transport,
@@ -243,7 +225,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 			Fingerprint:      provider.Fingerprint, ProjectedFingerprint: provider.ProjectedFingerprint,
 			ProjectedRequest: provider.ProjectedRequest,
 			Request:          provider.Request, Response: provider.Response, FinalOutput: provider.FinalOutput, FinalText: provider.FinalText,
-			Tools: slices.Clone(provider.ToolCalls),
 		}
 		if provider.RequestModel != "" {
 			exchange.Model = provider.RequestModel
@@ -280,8 +261,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 
 func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 	clone := source
-	clone.ProviderTools = maps.Clone(source.ProviderTools)
-	clone.DeliveredTools = maps.Clone(source.DeliveredTools)
 	if source.Cache.ProviderCacheRate != nil {
 		rate := *source.Cache.ProviderCacheRate
 		clone.Cache.ProviderCacheRate = &rate
@@ -300,14 +279,12 @@ func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 		}
 		clone.Exchanges[index].Journal = exchange.Journal.Clone()
 		clone.Exchanges[index].ClientFingerprint = cloneFingerprint(exchange.ClientFingerprint)
-		clone.Exchanges[index].DeliveredTools = slices.Clone(exchange.DeliveredTools)
 		clone.Exchanges[index].ProviderAttempts = make([]providerAttemptMetrics, len(exchange.ProviderAttempts))
 		for attemptIndex, attempt := range exchange.ProviderAttempts {
 			clone.Exchanges[index].ProviderAttempts[attemptIndex] = attempt
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProviderResponse = cloneProviderEvidence(attempt.ProviderResponse)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].Fingerprint = cloneFingerprint(attempt.Fingerprint)
 			clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedFingerprint = cloneFingerprint(attempt.ProjectedFingerprint)
-			clone.Exchanges[index].ProviderAttempts[attemptIndex].Tools = slices.Clone(attempt.Tools)
 			if attempt.ProjectedRequest != nil {
 				clone.Exchanges[index].ProviderAttempts[attemptIndex].ProjectedRequest = new(*attempt.ProjectedRequest)
 			}
@@ -362,16 +339,4 @@ func addUsage(total *usageMetrics, usage usageMetrics) {
 func addPayload(total *payloadTotals, payload payloadMetrics) {
 	total.Bytes += payload.Bytes
 	total.Tokens += payload.Tokens
-}
-
-func addTools(totals map[string]toolAggregate, calls []toolCallMetrics) {
-	for _, call := range calls {
-		total := totals[call.Name]
-		total.Calls++
-		total.InputBytes += call.InputBytes
-		total.InputTokens += call.InputTokens
-		total.ItemBytes += call.ItemBytes
-		total.ItemTokens += call.ItemTokens
-		totals[call.Name] = total
-	}
 }

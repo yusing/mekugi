@@ -10,6 +10,11 @@
 
 
 
+
+
+
+
+
     ╭ Session · Transport ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
     │  Transport  ─────────────────────────────────────────────────────────────────  │
@@ -30,17 +35,12 @@
     │  Provider                    80 bytes · 8 estimated tokens                     │
     │  Client                      85 bytes · 9 estimated tokens                     │
     │                                                                                │
-    │  Provider tools  ────────────────────────────────────────────────────────────  │
-    │  exec_command                2 calls                                           │
-    │  Input                       12 bytes · 3 estimated tokens                     │
-    │  Items                       30 bytes · 7 estimated tokens                     │
-    │                                                                                │
-    │  Delivered tools  ───────────────────────────────────────────────────────────  │
-    │  exec_command                1 calls                                           │
-    │  Input                       18 bytes · 4 estimated tokens                     │
-    │  Items                       40 bytes · 9 estimated tokens                     │
-    │                                                                                │
     ╰─ ←→ views · ↑↓ scroll · r refresh · Esc close ─────────────────────────────────╯
+
+
+
+
+
 
 
 

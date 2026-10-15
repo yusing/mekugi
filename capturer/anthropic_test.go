@@ -1,6 +1,7 @@
 package capturer
 
 import (
+	json "encoding/json/v2"
 	"strings"
 	"testing"
 
@@ -29,10 +30,27 @@ func TestAnthropicCaptureActualToolAndTerminal(t *testing.T) {
 		`data: {"type":"message_stop"}`,
 	}, "\n\n") + "\n\n"
 	record := captureRecord{ProviderResponse: &providerResponseEvidence{}}
-	output := observeAnthropicResponse([]byte(stream), &record, codec)
-	if len(output) == 0 || record.ResponseStatus != "completed" || len(record.ToolCalls) != 1 ||
-		record.ToolCalls[0].CallID != "c1" || record.ToolCalls[0].Name != "exec" || record.ProviderResponse.Model != "minimax-m3" {
+	output := observeAnthropicResponse([]byte(stream), &record)
+	if len(output) == 0 || record.ResponseStatus != "completed" ||
+		record.ProviderResponse.Model != "minimax-m3" {
 		t.Fatalf("Messages capture lost actual output: %+v", record)
+	}
+	var messages []struct {
+		Content []struct {
+			Type  string `json:"type"`
+			ID    string `json:"id"`
+			Name  string `json:"name"`
+			Input struct {
+				Input string `json:"input"`
+			} `json:"input"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(output, &messages); err != nil || len(messages) != 1 || len(messages[0].Content) != 4 {
+		t.Fatalf("reconstructed Messages output=%s error=%v", output, err)
+	}
+	tool := messages[0].Content[0]
+	if tool.Type != "tool_use" || tool.ID != "c1" || tool.Name != "exec" || tool.Input.Input != "exact" {
+		t.Fatalf("reconstructed Messages tool=%+v", tool)
 	}
 	text, err := measureOutputText(output, codec)
 	if err != nil || text.Bytes != uint64(len("answer")) || text.Tokens == 0 {
@@ -45,7 +63,7 @@ func TestAnthropicCaptureActualToolAndTerminal(t *testing.T) {
 	}
 	record = captureRecord{}
 	truncated := strings.TrimSuffix(stream, "data: {\"type\":\"message_stop\"}\n\n")
-	if output := observeAnthropicResponse([]byte(truncated), &record, codec); len(output) != 0 || record.ResponseStatus != "" {
+	if output := observeAnthropicResponse([]byte(truncated), &record); len(output) != 0 || record.ResponseStatus != "" {
 		t.Fatal("truncated Messages capture completed")
 	}
 }

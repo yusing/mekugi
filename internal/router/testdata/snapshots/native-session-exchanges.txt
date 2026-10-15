@@ -57,4 +57,4 @@
     │  Response model  gpt-6-sol                                                     │
     │  Header model    unavailable                                                   │
     │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  1–56 / 67 ──────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  1–56 / 59 ──────────────╯

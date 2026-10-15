@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/chat"
-	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 type chatCaptureCall struct {
@@ -23,7 +22,7 @@ type chatCaptureCall struct {
 // observeChatResponse measures the actual Chat Completions provider boundary,
 // not the router's synthesized Responses envelope. Usage still comes from the
 // shared terminal observation seam; there is no second usage parser here.
-func observeChatResponse(payload []byte, contentType string, record *captureRecord, codec *tokenizer.Codec) []byte {
+func observeChatResponse(payload []byte, contentType string, record *captureRecord) []byte {
 	var content strings.Builder
 	calls := map[int]*chatCaptureCall{}
 	finished, done, malformed := false, false, false
@@ -102,13 +101,6 @@ func observeChatResponse(payload []byte, contentType string, record *captureReco
 	for _, index := range slices.Sorted(maps.Keys(calls)) {
 		call := calls[index]
 		ordered = append(ordered, *call)
-		encoded, _ := json.Marshal(call)
-		inputTokens, e1 := codec.Count(call.Function.Arguments)
-		itemTokens, e2 := contentTokens(encoded, codec)
-		if e1 != nil || e2 != nil || inputTokens < 0 || itemTokens < 0 || call.ID == "" || call.Function.Name == "" {
-			continue
-		}
-		record.ToolCalls = append(record.ToolCalls, toolCallMetrics{CallID: call.ID, Name: call.Function.Name, InputBytes: uint64(len(call.Function.Arguments)), InputTokens: uint64(inputTokens), ItemBytes: uint64(len(encoded)), ItemTokens: uint64(itemTokens)})
 	}
 	message := map[string]any{"role": "assistant", "content": content.String()}
 	if len(ordered) > 0 {

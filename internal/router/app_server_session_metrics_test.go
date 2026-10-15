@@ -68,8 +68,6 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
     "client_control_requests":{"bytes":11,"tokens":1},"client_control_responses":{"bytes":22,"tokens":2},
     "provider_control_requests":{"bytes":33,"tokens":3},"provider_control_responses":{"bytes":44,"tokens":4}},
   "semantic":{"provider_attempt_outputs":{"bytes":80,"tokens":8},"client_outputs":{"bytes":85,"tokens":9}},
-  "provider_tools":{"exec_command":{"calls":2,"input_bytes":12,"input_tokens":3,"item_bytes":30,"item_tokens":7}},
-  "delivered_tools":{"exec_command":{"calls":1,"input_bytes":18,"input_tokens":4,"item_bytes":40,"item_tokens":9}},
   "exchanges":[
     {"sequence":8,"thread_id":"main","model":"gpt-6-sol","status":"completed","duration_ms":1200,"status_code":200,"response_complete":true,
       "provider_attempts":[{"attempt":1,"transport":"http","status":"failed","provider_response":{"cached_tokens_state":"missing"}}]},
@@ -79,9 +77,7 @@ func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
         {"attempt":1,"transport":"http","status":"http_error","status_code":429,"duration_ms":200,"response_complete":true,"capture_error":"missing_projected_request"},
         {"attempt":2,"transport":"websocket","status":"completed","response_complete":true,"duration_ms":1800,"status_code":101,
          "usage":{"input_tokens":120,"cached_input_tokens":0,"uncached_input_tokens":120,"output_tokens":12,"complete_attempts":1},
-         "provider_response":{"model":"gpt-6-sol","service_tier":"priority","request_id":"req-2","cached_tokens_state":"present","cached_tokens":0},
-         "tools":[{"name":"exec_command","call_id":"call-1","input_bytes":12,"input_tokens":3,"item_bytes":30,"item_tokens":7}]}],
-      "delivered_tools":[{"name":"exec_command","call_id":"call-1","input_bytes":18,"input_tokens":4,"item_bytes":40,"item_tokens":9}]}]}`), &snapshot, json.RejectUnknownMembers(true))
+         "provider_response":{"model":"gpt-6-sol","service_tier":"priority","request_id":"req-2","cached_tokens_state":"present","cached_tokens":0}}]}]}`), &snapshot, json.RejectUnknownMembers(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,8 +128,6 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	} {
 		sessionMetricField(t, u, "Transport", tc.label, tc.want)
 	}
-	sessionMetricField(t, u, "Provider tools", "exec_command", "2 calls")
-	sessionMetricField(t, u, "Delivered tools", "exec_command", "1 calls")
 	u.statusPanelKey("\x1b[C")
 	sessionMetricField(t, u, "Exchange", "Sequence", "9")
 	sessionMetricField(t, u, "Provider attempt 1", "Usage", "unavailable")

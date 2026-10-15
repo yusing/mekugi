@@ -14,7 +14,6 @@ import (
 )
 
 func TestProviderEvidenceDistinguishesMissingNullAndZero(t *testing.T) {
-	r := diagnosticRecorder(t)
 	for _, test := range []struct {
 		name, usage, state string
 		count              uint64
@@ -39,7 +38,7 @@ func TestProviderEvidenceDistinguishesMissingNullAndZero(t *testing.T) {
 				}
 				evidence := providerHeaderEvidence(nil)
 				record := captureRecord{Boundary: "provider", ProviderResponse: &evidence}
-				observeResponse([]byte(body), contentType, &record, r.codec)
+				observeResponse([]byte(body), contentType, &record)
 				got := record.ProviderResponse
 				if got.Model != "provider-model" || got.CachedTokensState != test.state {
 					t.Fatalf("metadata %+v", got)
@@ -55,7 +54,7 @@ func TestProviderEvidenceDistinguishesMissingNullAndZero(t *testing.T) {
 		})
 	}
 	record := captureRecord{Boundary: "provider", ProviderResponse: &providerResponseEvidence{CachedTokensState: "unavailable"}}
-	observeResponse([]byte("data: {\"type\":\"response.created\",\"response\":{\"model\":\"earlier\"}}\n\n"), "text/event-stream", &record, r.codec)
+	observeResponse([]byte("data: {\"type\":\"response.created\",\"response\":{\"model\":\"earlier\"}}\n\n"), "text/event-stream", &record)
 	if record.ProviderResponse.CachedTokensState != "unavailable" {
 		t.Fatal("nonterminal stream became measured")
 	}
@@ -153,11 +152,10 @@ func TestProviderEvidenceRetainsAttemptHeadersWithoutSecrets(t *testing.T) {
 }
 
 func TestProviderEvidenceRejectsMalformedTerminalEnvelope(t *testing.T) {
-	r := diagnosticRecorder(t)
 	for _, payload := range []string{`null`, `[]`, `"string"`, `{"status":"completed","output":{},"usage":{"input_tokens_details":{"cached_tokens":0}}}`, `{"status":42,"usage":{"input_tokens_details":{"cached_tokens":128}}}`} {
 		record := captureRecord{Boundary: "provider", ProviderResponse: &providerResponseEvidence{CachedTokensState: "unavailable"}}
 		body := `data: {"type":"response.completed","response":` + payload + "}\n\n"
-		observeResponse([]byte(body), "text/event-stream", &record, r.codec)
+		observeResponse([]byte(body), "text/event-stream", &record)
 		if record.ProviderResponse.CachedTokensState != "unavailable" || record.ProviderResponse.CachedTokens != nil {
 			t.Fatal("malformed terminal was measured")
 		}

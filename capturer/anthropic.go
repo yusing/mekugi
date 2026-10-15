@@ -5,13 +5,11 @@ import (
 	json "encoding/json/v2"
 	"maps"
 	"slices"
-
-	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 // Observe actual Messages transport/output shapes. Token usage still comes
 // from the router's existing terminal-usage seam, not a second usage parser.
-func observeAnthropicResponse(payload []byte, record *captureRecord, codec *tokenizer.Codec) []byte {
+func observeAnthropicResponse(payload []byte, record *captureRecord) []byte {
 	blocks := map[int]map[string]jsontext.Value{}
 	arguments := map[int]string{}
 	closed := map[int]bool{}
@@ -110,17 +108,6 @@ func observeAnthropicResponse(payload []byte, record *captureRecord, codec *toke
 				record.CaptureError = "invalid Messages tool input"
 				return nil
 			}
-			item, err := json.Marshal(block)
-			inputTokens, inputErr := contentTokens(input, codec)
-			itemTokens, itemErr := contentTokens(item, codec)
-			if err != nil || inputErr != nil || itemErr != nil || inputTokens < 0 || itemTokens < 0 {
-				record.CaptureError = "measure Messages tool input"
-				return nil
-			}
-			record.ToolCalls = append(record.ToolCalls, toolCallMetrics{
-				CallID: id, Name: name, InputBytes: uint64(len(input)), InputTokens: uint64(inputTokens),
-				ItemBytes: uint64(len(item)), ItemTokens: uint64(itemTokens),
-			})
 			output = append(output, block)
 		}
 	}

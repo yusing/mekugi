@@ -8,10 +8,6 @@ const (
 	CustomToolCall = "custom_tool_call"
 )
 
-// ToolCall identifies the two callable item encodings, not whether their
-// arguments are complete, validated, available, or authorized for execution.
-func (k ItemKind) ToolCall() bool { return k == FunctionCall || k == CustomToolCall }
-
 // MessageFacts contains protocol identity only. Content eligibility, provenance,
 // budgets, and delivery remain consumer policy.
 type MessageFacts struct {

@@ -1,5 +1,13 @@
     ╭ Session · Exchanges ──────────────────────────────────────────────── Esc close ╮
     │                                                                                │
+    │  Transport         WebSocket                                                   │
+    │  Status            completed                                                   │
+    │  Duration          1800 ms                                                     │
+    │  HTTP status       101                                                         │
+    │  Complete          true                                                        │
+    │  Request           0 bytes · 0 estimated tokens                                │
+    │  Stream            0 bytes · 0 estimated tokens                                │
+    │  Model output      0 bytes · 0 estimated tokens                                │
     │  Final text        0 bytes · 0 estimated tokens                                │
     │  Input             120                                                         │
     │  Cached input      0                                                           │
@@ -13,13 +21,5 @@
     │  Request ID        req-2                                                       │
     │  Cached telemetry  present                                                     │
     │  Explicit cached   0                                                           │
-    │  Tool              exec_command · call-1                                       │
-    │  Tool input        12 bytes · 3 estimated tokens                               │
-    │  Tool item         30 bytes · 7 estimated tokens                               │
     │                                                                                │
-    │  Delivered tools  ───────────────────────────────────────────────────────────  │
-    │  Tool              exec_command · call-1                                       │
-    │  Input             18 bytes · 4 estimated tokens                               │
-    │  Item              40 bytes · 9 estimated tokens                               │
-    │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  47–67 / 67 ─────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  39–59 / 59 ─────────────╯

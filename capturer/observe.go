@@ -2,7 +2,6 @@ package capturer
 
 import (
 	"bytes"
-	"cmp"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/yusing/mekugi/internal/commentaryid"
 	responseevents "github.com/yusing/mekugi/internal/responses"
-	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 var errDecodedPayloadTooLarge = errors.New("decoded response exceeds capture observation limit")
@@ -38,7 +36,7 @@ func decodedCapturePayload(payload []byte, contentEncoding string) ([]byte, erro
 	}
 }
 
-func observeResponse(payload []byte, contentType string, record *captureRecord, codec *tokenizer.Codec) []byte {
+func observeResponse(payload []byte, contentType string, record *captureRecord) []byte {
 	if contentType == webSocketContentType || strings.Contains(strings.ToLower(contentType), "text/event-stream") || capturedPayloadLooksLikeSSE(payload) {
 		var finalOutput []byte
 		terminalOutputObserved := false
@@ -51,7 +49,7 @@ func observeResponse(payload []byte, contentType string, record *captureRecord, 
 			if index, item, ok := completedResponseOutputItem(data); ok && !generatedOutputItem(item, record) {
 				completedItems[index] = item
 			}
-			if output, terminal := observeResponseJSON(data, record, codec); terminal {
+			if output, terminal := observeResponseJSON(data, record); terminal {
 				finalOutput = output
 				terminalOutputObserved = true
 			}
@@ -80,7 +78,7 @@ func observeResponse(payload []byte, contentType string, record *captureRecord, 
 		}
 		return output
 	}
-	output, _ := observeResponseJSON(payload, record, codec)
+	output, _ := observeResponseJSON(payload, record)
 	return output
 }
 
@@ -112,13 +110,12 @@ func capturedPayloadLooksLikeSSE(payload []byte) bool {
 	return false
 }
 
-func observeResponseJSON(payload []byte, record *captureRecord, codec *tokenizer.Codec) ([]byte, bool) {
+func observeResponseJSON(payload []byte, record *captureRecord) ([]byte, bool) {
 	if len(bytes.TrimSpace(payload)) == 0 || bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) {
 		return nil, false
 	}
 	var event struct {
 		Type     responseevents.Kind        `json:"type"`
-		Item     json.RawMessage            `json:"item"`
 		Response json.RawMessage            `json:"response"`
 		Headers  map[string]json.RawMessage `json:"headers"`
 	}
@@ -149,11 +146,8 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec *tokenizer
 		}
 		return nil, false
 	}
-	if len(event.Item) != 0 {
-		observeOutputItem(event.Item, record, codec)
-	}
 	if len(event.Response) != 0 {
-		_, output, valid := observeResponseEnvelope(event.Response, record, codec)
+		_, output, valid := observeResponseEnvelope(event.Response, record)
 		switch {
 		case event.Type.Terminal():
 			if valid {
@@ -169,7 +163,7 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec *tokenizer
 			return nil, false
 		}
 	}
-	status, output, _ := observeResponseEnvelope(payload, record, codec)
+	status, output, _ := observeResponseEnvelope(payload, record)
 	switch {
 	case responseevents.TerminalStatus(status):
 		record.observeProviderEvidence(payload)
@@ -179,7 +173,7 @@ func observeResponseJSON(payload []byte, record *captureRecord, codec *tokenizer
 	}
 }
 
-func observeResponseEnvelope(payload []byte, record *captureRecord, codec *tokenizer.Codec) (string, []byte, bool) {
+func observeResponseEnvelope(payload []byte, record *captureRecord) (string, []byte, bool) {
 	var response *struct {
 		Status string            `json:"status"`
 		Output []json.RawMessage `json:"output"`
@@ -195,9 +189,6 @@ func observeResponseEnvelope(payload []byte, record *captureRecord, codec *token
 	}
 	if response.Status != "" {
 		record.ResponseStatus = response.Status
-	}
-	for _, item := range response.Output {
-		observeOutputItem(item, record, codec)
 	}
 	if response.Output == nil {
 		return response.Status, nil, true
@@ -224,41 +215,6 @@ func generatedOutputItem(payload []byte, record *captureRecord) bool {
 		ID   string `json:"id"`
 	}
 	return json.Unmarshal(payload, &item) == nil && item.Type == "message" && commentaryid.Generated(item.ID)
-}
-
-func observeOutputItem(payload []byte, record *captureRecord, codec *tokenizer.Codec) {
-	var item struct {
-		Type      string `json:"type"`
-		ID        string `json:"id"`
-		CallID    string `json:"call_id"`
-		Name      string `json:"name"`
-		Input     string `json:"input"`
-		Arguments string `json:"arguments"`
-	}
-	if json.Unmarshal(payload, &item) != nil || !responseevents.ItemKind(item.Type).ToolCall() {
-		return
-	}
-	callID := cmp.Or(item.CallID, item.ID)
-	input := cmp.Or(item.Input, item.Arguments)
-	inputTokens, inputErr := codec.Count(input)
-	itemTokens, itemErr := contentTokens(payload, codec)
-	if inputErr != nil || itemErr != nil || inputTokens < 0 || itemTokens < 0 || callID == "" || item.Name == "" {
-		return
-	}
-	metric := toolCallMetrics{
-		CallID: callID, Name: item.Name,
-		InputBytes: uint64(len(input)), InputTokens: uint64(inputTokens),
-		ItemBytes: uint64(len(payload)), ItemTokens: uint64(itemTokens),
-	}
-	for index := range record.ToolCalls {
-		if record.ToolCalls[index].CallID == callID {
-			if metric.InputBytes != 0 || record.ToolCalls[index].InputBytes == 0 {
-				record.ToolCalls[index] = metric
-			}
-			return
-		}
-	}
-	record.ToolCalls = append(record.ToolCalls, metric)
 }
 
 func requestToolNames(tools []json.RawMessage) []string {

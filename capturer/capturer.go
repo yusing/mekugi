@@ -62,15 +62,6 @@ type payloadMetrics struct {
 	Tokens uint64 `json:"tokens"`
 }
 
-type toolCallMetrics struct {
-	CallID      string `json:"call_id"`
-	Name        string `json:"name"`
-	InputBytes  uint64 `json:"input_bytes"`
-	InputTokens uint64 `json:"input_tokens"`
-	ItemBytes   uint64 `json:"item_bytes"`
-	ItemTokens  uint64 `json:"item_tokens"`
-}
-
 type captureRecord struct {
 	CompactionMetrics
 	Journal              *JournalMetrics                    `json:"journal,omitempty"`
@@ -100,7 +91,6 @@ type captureRecord struct {
 	ResponseComplete     bool                               `json:"response_complete"`
 	ResponseStatus       string                             `json:"response_status,omitempty"`
 	Usage                *ProviderUsage                     `json:"usage,omitempty"`
-	ToolCalls            []toolCallMetrics                  `json:"tool_calls,omitempty"`
 	Response             payloadMetrics                     `json:"response"`
 	FinalOutput          payloadMetrics                     `json:"final_output,omitzero"`
 	FinalText            payloadMetrics                     `json:"final_text,omitzero"`
@@ -507,11 +497,11 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 				capturedPayloadLooksLikeSSE(observedContent) {
 				var finalOutput []byte
 				if evidence.wireFormat == "anthropic" {
-					finalOutput = observeAnthropicResponse(observedContent, &record, r.codec)
+					finalOutput = observeAnthropicResponse(observedContent, &record)
 				} else if len(requestEnvelope.Messages) > 0 {
-					finalOutput = observeChatResponse(observedContent, contentType, &record, r.codec)
+					finalOutput = observeChatResponse(observedContent, contentType, &record)
 				} else {
-					finalOutput = observeResponse(observedContent, contentType, &record, r.codec)
+					finalOutput = observeResponse(observedContent, contentType, &record)
 				}
 				if len(finalOutput) != 0 {
 					if finalMeasured, finalMeasureErr := r.measure(finalOutput); finalMeasureErr != nil {

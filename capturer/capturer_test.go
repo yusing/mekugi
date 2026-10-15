@@ -18,8 +18,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
 func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
@@ -133,16 +131,13 @@ func TestRecorderObservesSingleListenerAndProviderRetries(t *testing.T) {
 		first.RequestSequence != 1 || second.RequestSequence != 1 || front.RequestSequence != 1 ||
 		first.ResponseStatus != "http_error" || !first.ResponseComplete || first.Usage != nil ||
 		second.RequestModel != "model" || second.Usage == nil || second.Usage.InputTokens != 20 ||
-		second.Request.Bytes == 0 || second.Response.Tokens == 0 || front.Request.Tokens == 0 || front.Response.Bytes == 0 ||
-		len(second.ToolCalls) != 1 || second.ToolCalls[0].Name != "apply_patch" ||
-		len(front.ToolCalls) != 1 || front.ToolCalls[0].Name != "apply_patch" || second.ToolCalls[0].CallID != front.ToolCalls[0].CallID {
+		second.Request.Bytes == 0 || second.Response.Tokens == 0 || front.Request.Tokens == 0 || front.Response.Bytes == 0 {
 		t.Fatalf("captured exchanges = %#v", records)
 	}
 	snapshot := recorder.snapshot()
 	if snapshot.Requests.Logical != 1 || snapshot.Requests.ProviderAttempts != 2 || snapshot.Requests.Completed != 1 ||
 		snapshot.Usage.ProviderAttempts != 1 || snapshot.Usage.InputTokens != 20 || snapshot.Usage.CachedInputTokens != 8 ||
 		snapshot.Transport.ClientRequests.Bytes == 0 || snapshot.Transport.ProviderAttemptRequests.Bytes != first.Request.Bytes+second.Request.Bytes ||
-		snapshot.ProviderTools["apply_patch"].Calls != 1 || snapshot.DeliveredTools["apply_patch"].Calls != 1 ||
 		snapshot.Semantic.ClientOutputs.Tokens != front.FinalOutput.Tokens ||
 		snapshot.Semantic.ProviderAttemptOutputs.Tokens != second.FinalOutput.Tokens ||
 		snapshot.Capture.Records != 3 || snapshot.Capture.CaptureErrors != 0 || snapshot.Capture.Incomplete != 0 ||
@@ -330,8 +325,8 @@ func TestSnapshotAccountsCacheAndMissingEvidence(t *testing.T) {
 	for _, record := range []captureRecord{
 		complete(captureRecord{Boundary: "provider", CaptureID: "first", RequestSequence: 1, ProviderAttempt: 1, ThreadID: "thread", Usage: usage(100, 20, 10)}),
 		complete(captureRecord{Boundary: "codex", CaptureID: "first", RequestSequence: 1, ThreadID: "thread"}),
-		complete(captureRecord{Boundary: "provider", CaptureID: "second", RequestSequence: 2, ProviderAttempt: 1, ThreadID: "thread", Usage: usage(120, 80, 12), ToolCalls: []toolCallMetrics{{CallID: "correction", Name: "apply_patch", InputTokens: 4}}}),
-		complete(captureRecord{Boundary: "codex", CaptureID: "second", RequestSequence: 2, ThreadID: "thread", ToolCalls: []toolCallMetrics{{CallID: "correction", Name: "apply_patch", InputTokens: 10}}}),
+		complete(captureRecord{Boundary: "provider", CaptureID: "second", RequestSequence: 2, ProviderAttempt: 1, ThreadID: "thread", Usage: usage(120, 80, 12)}),
+		complete(captureRecord{Boundary: "codex", CaptureID: "second", RequestSequence: 2, ThreadID: "thread"}),
 		complete(captureRecord{Boundary: "codex", CaptureID: "missing", RequestSequence: 3, ThreadID: "thread"}),
 	} {
 		state := states[record.CaptureID]
@@ -409,10 +404,6 @@ func TestSnapshotUsesTerminalOutputOnceInsteadOfWholeSSEStream(t *testing.T) {
 }
 
 func TestObserveResponseMeasuresOnlyTerminalOutput(t *testing.T) {
-	recorder, err := New(Config{Mode: "mekugi"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	firstItem := `{"type":"message","content":[{"type":"output_text","text":"assistant text"}]}`
 	secondItem := `{"type":"custom_tool_call","call_id":"call","name":"apply_patch","input":"edit"}`
 	output := `[` + firstItem + `,` + secondItem + `]`
@@ -433,7 +424,7 @@ func TestObserveResponseMeasuresOnlyTerminalOutput(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			var record captureRecord
-			if got := observeResponse([]byte(test.payload), test.contentType, &record, recorder.codec); string(got) != output {
+			if got := observeResponse([]byte(test.payload), test.contentType, &record); string(got) != output {
 				t.Fatalf("terminal output = %s, want %s", got, output)
 			}
 			if record.ResponseStatus != "completed" {
@@ -658,12 +649,8 @@ func TestObserveResponseJoinsMultilineSSEData(t *testing.T) {
 	payload := []byte("event: response.completed\n" +
 		"data: {\"type\":\"response.completed\",\n" +
 		"data: \"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":3}}}\n\n")
-	codec, err := tokenizer.New()
-	if err != nil {
-		t.Fatal(err)
-	}
 	var record captureRecord
-	observeResponse(payload, "application/octet-stream", &record, codec)
+	observeResponse(payload, "application/octet-stream", &record)
 	if record.CaptureError != "" || record.ResponseStatus != "completed" || record.Usage != nil {
 		t.Fatalf("multiline SSE record = %#v", record)
 	}

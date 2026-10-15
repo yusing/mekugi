@@ -22,4 +22,4 @@
     │  Final text     0 bytes · 0 estimated tokens                                   │
     │  Input          120                                                            │
     │                                                                                │
-    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 67 ─────────────╯
+    ╰─ ←→ views · [ older / ] newer · ↑↓ scroll · Esc close  28–48 / 59 ─────────────╯

@@ -204,21 +204,6 @@ func (u *appServerUI) renderSessionMetrics() {
 		add("Semantic output", "", "Complete model-origin output arrays. Excludes router commentary and echoed response metadata.")
 		payload("Semantic output", "Provider", s.Semantic.ProviderAttemptOutputs.Bytes, s.Semantic.ProviderAttemptOutputs.Tokens)
 		payload("Semantic output", "Client", s.Semantic.ClientOutputs.Bytes, s.Semantic.ClientOutputs.Tokens)
-		for _, boundary := range []string{"Provider tools", "Delivered tools"} {
-			tools := s.ProviderTools
-			if boundary == "Delivered tools" {
-				tools = s.DeliveredTools
-			}
-			if len(tools) == 0 {
-				add(boundary, "", "No observations")
-			}
-			for _, name := range slices.Sorted(maps.Keys(tools)) {
-				tool := tools[name]
-				add(boundary, name, fmt.Sprintf("%d calls", tool.Calls))
-				payload(boundary, "Input", tool.InputBytes, tool.InputTokens)
-				payload(boundary, "Items", tool.ItemBytes, tool.ItemTokens)
-			}
-		}
 	case 2:
 		if len(s.Exchanges) == 0 {
 			add("Exchanges", "", "No completed exchanges yet. Active requests appear when they settle.")
@@ -339,19 +324,6 @@ func (u *appServerUI) renderSessionMetrics() {
 				add(group, "Service tier", "unavailable")
 				add(group, "Telemetry", "unavailable")
 			}
-			for _, tool := range a.Tools {
-				add(group, "Tool", tool.Name+" · "+tool.CallID)
-				payload(group, "Tool input", tool.InputBytes, tool.InputTokens)
-				payload(group, "Tool item", tool.ItemBytes, tool.ItemTokens)
-			}
-		}
-		if len(e.DeliveredTools) == 0 {
-			add("Delivered tools", "", "No observations")
-		}
-		for _, tool := range e.DeliveredTools {
-			add("Delivered tools", "Tool", tool.Name+" · "+tool.CallID)
-			payload("Delivered tools", "Input", tool.InputBytes, tool.InputTokens)
-			payload("Delivered tools", "Item", tool.ItemBytes, tool.ItemTokens)
 		}
 	}
 	u.dirty = true

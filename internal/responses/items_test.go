@@ -23,9 +23,6 @@ func TestMessageFacts(t *testing.T) {
 			}
 		})
 	}
-	if !ItemKind(FunctionCall).ToolCall() || !ItemKind(CustomToolCall).ToolCall() || ItemKind("future_call").ToolCall() {
-		t.Fatal("call encodings changed")
-	}
 }
 
 func TestCorrelationAndCaptureAreNotTransportAcceptance(t *testing.T) {

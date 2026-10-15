@@ -57,7 +57,7 @@ func TestSSEObservationAndMeasurementUseIdenticalFraming(t *testing.T) {
 				observer = observeChatResponse
 			}
 			var baseline captureRecord
-			wantOutput := string(observer([]byte(test.stream), "text/event-stream", &baseline, codec))
+			wantOutput := string(observer([]byte(test.stream), "text/event-stream", &baseline))
 			wantTokens, err := contentTokens([]byte(test.stream), codec)
 			if err != nil || wantTokens == 0 || baseline.ResponseStatus != "completed" || wantOutput == "" {
 				t.Fatalf("invalid test baseline: tokens=%d status=%q output=%q err=%v", wantTokens, baseline.ResponseStatus, wantOutput, err)
@@ -67,7 +67,7 @@ func TestSSEObservationAndMeasurementUseIdenticalFraming(t *testing.T) {
 					payload := []byte(bom + strings.ReplaceAll(test.stream, "\n", ending))
 					for _, contentType := range []string{"text/event-stream", ""} {
 						var record captureRecord
-						output := observer(payload, contentType, &record, codec)
+						output := observer(payload, contentType, &record)
 						tokens, err := contentTokens(payload, codec)
 						if err != nil || tokens != wantTokens || string(output) != wantOutput || record.ResponseStatus != "completed" || record.CaptureError != "" {
 							t.Fatalf("ending=%q BOM=%q type=%q: tokens=%d want=%d status=%q error=%q output=%q err=%v", ending, bom, contentType, tokens, wantTokens, record.ResponseStatus, record.CaptureError, output, err)

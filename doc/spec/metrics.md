@@ -10,8 +10,8 @@ require a capturer service, listener, proxy, or network hop.
 
 The native `/session` dialog MUST consume the capturer snapshot and MUST NOT own
 counters, histories, classifications, or alternate calculations. It MUST present
-every aggregate group plus retained exchange, provider-attempt, provider-tool and
-delivered-tool detail. Provider-attempt detail MUST display the snapshot transport
+every aggregate group plus retained exchange and provider-attempt detail.
+Provider-attempt detail MUST display the snapshot transport
 marker as `WebSocket`, or `HTTP` when absent, without claiming that every HTTP
 attempt is an SSE fallback. Unknown transport markers remain visible. Empty and
 unavailable observations MUST have explicit presentation. The open dialog refreshes
@@ -52,8 +52,7 @@ A durable record MUST contain only:
   provider and client text can be compared as separate observed sizes;
 - bounded private request/routing fingerprints as specified below;
 - bounded, allowlisted provider-response evidence as specified below;
-- request tool names; and
-- tool name, call identity, and byte/token sizes.
+- request tool names.
 
 It MUST NOT contain authorization material, prompts, instructions, message content, tool arguments,
 command output, response text, script text, patches, reports, or diagnostics beyond the stable code.
@@ -155,15 +154,14 @@ The snapshot MUST expose:
    message identity, never by matching text or the commentary phase. This exclusion applies only
    to router-authored client output, not provider output or passthrough responses. All bytes
    remain in transport totals. Chat Completions streams reconstruct their terminal assistant-message
-   array and preserve actual function names and argument measurements. Streamed responses whose
+   array. Streamed responses whose
    terminal output is empty, omitted, null, or contains only router-authored output MUST reconstruct
    model-origin output in `output_index` order from finalized `response.output_item.done` items,
    excluding router-authored output there as well. A missing terminal event MUST NOT be treated as a
    completed output;
-5. provider-emitted and client-delivered tool aggregates;
-6. a bounded recent window of per-logical-request exchanges containing every provider attempt and
+5. a bounded recent window of per-logical-request exchanges containing every provider attempt and
    its usage, while cumulative totals remain process-lifetime totals; and
-7. capture health for record failures, incomplete records, missing provider records,
+6. capture health for record failures, incomplete records, missing provider records,
    provider-attempt gaps, durable-write errors, skipped requests, and dropped exchange detail.
 
 Client exchanges optionally include `journal`, a cumulative snapshot for their
@@ -210,7 +208,7 @@ with alternate formulas. Incomplete capture health is not a zero measurement.
 Acceptance:
 
 1. One logical request with provider retries produces consecutive attempts, one
-   client record, provider usage, and correlated provider and delivered tool calls
+   client record and provider usage
    without retaining private payload text.
 2. Streaming delivers the first flushed event before handler completion.
 3. JSON, multiline SSE, gzip, LF, CRLF, CR, and BOM inputs produce equivalent

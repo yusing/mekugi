@@ -18,16 +18,12 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 	err = json.Unmarshal([]byte(`{
   "schema":"mekugi.capture.metrics.v7","mode":"mekugi",
   "cache":{"provider_cache_rate":0.25},
-  "provider_tools":{"exec_command":{"calls":2}},
-  "delivered_tools":{"exec_command":{"calls":1}},
   "exchanges":[{"sequence":1,"thread_id":"thread","usage":{"input_tokens":12},
     "compaction_summary_bytes":30,"compaction_changes":2,"compaction_failures":1,
     "journal":{"operations":{"log":2},"last_outcome_empty":false},
-    "delivered_tools":[{"name":"exec_command","call_id":"call-1"}],
     "provider_attempts":[{"attempt":1,"usage":{"input_tokens":12},
       "projected_request":{"bytes":40,"tokens":4},
-      "provider_response":{"cached_tokens_state":"present","cached_tokens":0},
-      "tools":[{"name":"exec_command","call_id":"call-1"}]}]}]}`), &recorder.metrics, json.RejectUnknownMembers(true))
+      "provider_response":{"cached_tokens_state":"present","cached_tokens":0}}]}]}`), &recorder.metrics, json.RejectUnknownMembers(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,15 +56,12 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 		name   string
 		mutate func(*MetricsSnapshot)
 	}{
-		{"provider-tools-map", func(s *MetricsSnapshot) { delete(s.ProviderTools, "exec_command") }},
-		{"delivered-tools-map", func(s *MetricsSnapshot) { delete(s.DeliveredTools, "exec_command") }},
 		{"provider-cache-rate", func(s *MetricsSnapshot) { *s.Cache.ProviderCacheRate = 99 }},
 		{"exchange-slice", func(s *MetricsSnapshot) { s.Exchanges[0].ThreadID = "mutated" }},
 		{"exchange-usage", func(s *MetricsSnapshot) { s.Exchanges[0].Usage.InputTokens = 99 }},
 		{"compaction-summary", func(s *MetricsSnapshot) { *s.Exchanges[0].CompactionSummaryBytes = 99 }},
 		{"compaction-changes", func(s *MetricsSnapshot) { *s.Exchanges[0].CompactionChanges = 99 }},
 		{"compaction-failures", func(s *MetricsSnapshot) { *s.Exchanges[0].CompactionFailures = 99 }},
-		{"delivered-tools-slice", func(s *MetricsSnapshot) { s.Exchanges[0].DeliveredTools[0].Name = "mutated" }},
 		{"journal-map", func(s *MetricsSnapshot) { s.Exchanges[0].Journal.Operations["log"] = 99 }},
 		{"journal-optional", func(s *MetricsSnapshot) { *s.Exchanges[0].Journal.LastOutcomeEmpty = true }},
 		{"attempt-slice", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].Attempt = 99 }},
@@ -76,7 +69,6 @@ func TestSnapshotDetachedAndMatchesWriteMetrics(t *testing.T) {
 		{"projected-request", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].ProjectedRequest.Bytes = 99 }},
 		{"provider-evidence", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].ProviderResponse.Model = "mutated" }},
 		{"explicit-cached-telemetry", func(s *MetricsSnapshot) { *s.Exchanges[0].ProviderAttempts[0].ProviderResponse.CachedTokens = 99 }},
-		{"attempt-tools-slice", func(s *MetricsSnapshot) { s.Exchanges[0].ProviderAttempts[0].Tools[0].Name = "mutated" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := json.Unmarshal(baseline.Bytes(), &recorder.metrics); err != nil {
