@@ -183,7 +183,13 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 	}
 	execution, err = retainExecutionOutput(ctx, manifest, execution)
 	if err != nil {
-		return fail(fmt.Errorf("retain frontend output: %w", err))
+		if execution.Stderr != "" && !strings.HasSuffix(execution.Stderr, "\n") {
+			execution.Stderr += "\n"
+		}
+		execution.Stderr += fmt.Sprintf("%s: recovery unavailable: %v\n", name, err)
+		if execution.ExitCode == 0 {
+			execution.ExitCode = 1
+		}
 	}
 	if _, err := io.WriteString(stdout, execution.Stdout); err != nil {
 		return fail(fmt.Errorf("write tool stdout: %w", err))

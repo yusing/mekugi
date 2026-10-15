@@ -27,8 +27,10 @@ resources. No global commands or persistent Codex configuration are changed.
 Readers and output formatting run in the host-started frontend process. Semantic
 queries may start language-specific resolvers with invocation-owned cleanup.
 Recoverable omitted output is retained before its `mread` reference is exposed.
-Publication failure reports unavailable recovery without replacing the original
-command result with success. Completed evidence can be read after restart;
+Publication failure preserves admitted stdout and existing stderr, appends an
+explicit recovery-unavailable diagnostic, and emits no recovery reference. An
+existing nonzero status is preserved; a zero status becomes nonzero. Completed
+evidence can be read after restart;
 replay never starts old workers or restores live process handles.
 
 ### Removed plugin loading
