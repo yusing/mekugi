@@ -12,6 +12,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 const generatedTitleResponse = `{"id":"title","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Improve session naming"}]}]}`
@@ -239,7 +241,7 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	request.setInput(mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Private host instructions"},
 		map[string]any{"type": "input_text", "text": prompt},
-		map[string]any{"type": "input_text", "text": encodeFileAttachments(frames)},
+		map[string]any{"type": "input_text", "text": attachments.Encode(frames)},
 	}, "internal_chat_message_metadata_passthrough": map[string]any{
 		"content_item_kinds": []string{"agents_md.instructions", "user.text", "user.text"},
 	}}}))
@@ -264,7 +266,7 @@ func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
 	request.setInput(mustTestJSON(t, []any{
 		map[string]any{"role": "user", "content": []any{
 			map[string]any{"type": "input_text", "text": "Review @old.go"},
-			map[string]any{"type": "input_text", "text": encodeFileAttachments(frameComposerFile("/work/old.go", "Old file content"))},
+			map[string]any{"type": "input_text", "text": attachments.Encode(frameComposerFile("/work/old.go", "Old file content"))},
 		}},
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_image", "image_url": "image"}}},
 	}))

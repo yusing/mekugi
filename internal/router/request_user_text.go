@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -62,7 +64,7 @@ func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAtta
 				continue
 			}
 			if part.Type == "input_text" || part.Type == "text" {
-				if frames, attached := decodeFileAttachments(part.Text); attached {
+				if frames, attached := attachments.Decode(part.Text); attached {
 					if includeAttachedFiles {
 						for _, frame := range frames {
 							if strings.HasPrefix(frame, "Attached file ") {

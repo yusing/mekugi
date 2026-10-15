@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -115,7 +117,7 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 	if len(request.Params.Input) != 2 || request.Params.Input[1].Type != "text" {
 		t.Fatalf("skill contents were not sent in a text attachment: %+v", request.Params.Input)
 	}
-	frames, ok := decodeFileAttachments(request.Params.Input[1].Text)
+	frames, ok := attachments.Decode(request.Params.Input[1].Text)
 	if !ok || len(frames) != 1 || frames[0] != frameComposerSkillFromPath("quiet", path, instructions)[0] {
 		t.Fatalf("skill contents or source path missing: %+v", frames)
 	}

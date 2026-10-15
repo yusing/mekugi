@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -78,7 +80,7 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 	// exec prepends its metadata as a separate content block before
 	// text(report). Native exec_command instead returns one combined block.
 	if len(texts) == 2 && h.CarrierName != nativeExecCommandToolName {
-		state, _, body := codeModeExecutionHeader(texts[0])
+		state, _, body := binding.CodeModeExecutionHeader(texts[0])
 		return state == "Script completed" && body == "" && texts[1] == h.Report
 	}
 	if len(texts) != 1 {
@@ -89,10 +91,10 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 		return true
 	}
 	if h.CarrierName == nativeExecCommandToolName {
-		state, body := nativeExecutionHeader(text)
+		state, body := binding.NativeExecutionHeader(text)
 		return state == "Process exited with code 0" && body == h.Report
 	}
-	state, _, body := codeModeExecutionHeader(text)
+	state, _, body := binding.CodeModeExecutionHeader(text)
 	return state == "Script completed" && body == h.Report
 }
 

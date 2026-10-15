@@ -6,9 +6,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Derive receipts from the submitted envelope, never from current filesystem
@@ -44,14 +46,14 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 		if part.Type != "text" {
 			continue
 		}
-		frames, ok := decodeFileAttachments(part.Text)
+		frames, ok := attachments.Decode(part.Text)
 		if !ok {
 			continue
 		}
 		// Each envelope is a submitted snapshot; only its chunks belong together.
 		clear(indexes)
 		for _, frame := range frames {
-			if name, source, rest := skillAttachmentFrame(frame); name != "" {
+			if name, source, rest := attachments.ParseSkillFrame(frame); name != "" {
 				verb, label := "Attached skill", name
 				if strings.HasPrefix(rest, ": CONTENT NOT ATTACHED (") {
 					reason, err := strconv.QuotedPrefix(strings.TrimPrefix(rest, ": CONTENT NOT ATTACHED ("))

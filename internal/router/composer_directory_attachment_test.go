@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -221,7 +223,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 		t.Fatalf("expected prompt and snapshot: %+v", requests)
 	}
 	input := requests[0].Params.Input
-	frames, ok := decodeFileAttachments(input[1].Text)
+	frames, ok := attachments.Decode(input[1].Text)
 	if !ok || len(frames) != 1 || !strings.HasPrefix(frames[0], "Attached file ") || !strings.Contains(frames[0], "directory tree, max depth 2") || !strings.HasSuffix(frames[0], ":\n./\n- original.go\n") {
 		t.Fatalf("submitted directory snapshot = %q", frames)
 	}
@@ -269,10 +271,10 @@ func TestDirectoryAttachmentSharedEnvelopeBudget(t *testing.T) {
 		draft.files = append(draft.files, composerFile{path: dir})
 	}
 	draft.snapshotFileAttachments(root)
-	if len(draft.attachments) != 1 || len(draft.attachments[0]) > fileAttachmentBudget || draft.attachmentNotice == "" {
+	if len(draft.attachments) != 1 || len(draft.attachments[0]) > attachments.Budget || draft.attachmentNotice == "" {
 		t.Fatal("directory attachments bypassed shared envelope budget/notice")
 	}
-	frames, ok := decodeFileAttachments(draft.attachments[0])
+	frames, ok := attachments.Decode(draft.attachments[0])
 	if !ok || !strings.Contains(strings.Join(frames, "\n"), "CONTENT NOT ATTACHED") || !strings.Contains(frames[0], "directory tree, max depth 2") {
 		t.Fatalf("directory snapshot or omission notice missing: %q", frames)
 	}

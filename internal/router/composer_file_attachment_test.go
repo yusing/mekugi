@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -41,8 +43,8 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	if input[0].Text != draft.text {
 		t.Fatalf("changed inline placeholder: %q", input[0].Text)
 	}
-	frames, ok := decodeFileAttachments(input[1].Text)
-	if !ok || len(frames) != 1 || !strings.Contains(frames[0], attachmentReadGuidance) || !strings.HasSuffix(frames[0], "package example\n// original\n") {
+	frames, ok := attachments.Decode(input[1].Text)
+	if !ok || len(frames) != 1 || !strings.Contains(frames[0], attachments.ReadGuidance) || !strings.HasSuffix(frames[0], "package example\n// original\n") {
 		t.Fatalf("snapshot lost: %q", frames)
 	}
 	content, _ := json.Marshal(input)
@@ -93,7 +95,7 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 	request := modelTestRequest(t, "gpt-6-sol")
 	raw := responses.MustMarshalJSON([]any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Review @example"},
-		map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{"Attached file /work/example:\nexact content"})},
+		map[string]any{"type": "input_text", "text": attachments.Encode([]string{"Attached file /work/example:\nexact content"})},
 	}}})
 	request.setInput(raw)
 	attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}}, t.Context(), t.Context(), request, http.Header{}, "")
@@ -130,22 +132,22 @@ func TestComposerFileAttachmentNoticeBudget(t *testing.T) {
 		d.files = append(d.files, composerFile{path: strings.Repeat("missing", 25) + string(rune(0x4e00+i))})
 	}
 	d.snapshotFileAttachments(t.TempDir())
-	if len(d.attachments) != 1 || len(d.attachments[0]) > fileAttachmentBudget {
+	if len(d.attachments) != 1 || len(d.attachments[0]) > attachments.Budget {
 		t.Fatal("omission notices exceeded attachment budget")
 	}
-	frames, ok := decodeFileAttachments(d.attachments[0])
+	frames, ok := attachments.Decode(d.attachments[0])
 	if !ok || !strings.Contains(frames[len(frames)-1], "remaining contents NOT ATTACHED") {
 		t.Fatal("omitted references were not reported")
 	}
 }
 
 func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
-	for _, content := range []string{"", strings.Repeat("界", fileAttachmentChunk), strings.Repeat("row\r\n", 13000), strings.Repeat("\"\\\t", 10000)} {
+	for _, content := range []string{"", strings.Repeat("界", attachments.Chunk), strings.Repeat("row\r\n", 13000), strings.Repeat("\"\\\t", 10000)} {
 		frames := frameComposerFile("/work/example", content)
 		var recovered strings.Builder
 		for _, frame := range frames {
 			_, body, ok := strings.Cut(frame, ":\n")
-			if !ok || len(body) > fileAttachmentChunk {
+			if !ok || len(body) > attachments.Chunk {
 				t.Fatalf("invalid frame size: %d", len(body))
 			}
 			recovered.WriteString(body)
@@ -157,8 +159,8 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 	cwd := t.TempDir()
 	for name, data := range map[string][]byte{
 		"empty": {}, "binary": {0, 1}, "invalid": {0xff},
-		"large":   bytes.Repeat([]byte("x"), fileAttachmentBudget),
-		"escaped": bytes.Repeat([]byte("\x01"), fileAttachmentBudget/3),
+		"large":   bytes.Repeat([]byte("x"), attachments.Budget),
+		"escaped": bytes.Repeat([]byte("\x01"), attachments.Budget/3),
 	} {
 		if err := os.WriteFile(filepath.Join(cwd, name), data, 0600); err != nil {
 			t.Fatal(err)
@@ -169,10 +171,10 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 		d.files = append(d.files, composerFile{path: path})
 	}
 	d.snapshotFileAttachments(cwd)
-	if len(d.attachments) != 1 || len(d.attachments[0]) > fileAttachmentBudget || d.attachmentNotice == "" {
+	if len(d.attachments) != 1 || len(d.attachments[0]) > attachments.Budget || d.attachmentNotice == "" {
 		t.Fatal("attachment budget/notice missing")
 	}
-	frames, ok := decodeFileAttachments(d.attachments[0])
+	frames, ok := attachments.Decode(d.attachments[0])
 	if !ok || len(frames) != 6 {
 		t.Fatalf("deduplication or notices lost: %q", frames)
 	}
@@ -191,9 +193,9 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 
 func TestComposerFileAttachmentProjectionLeavesLookalikes(t *testing.T) {
 	for _, item := range []any{
-		map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{"Attached file data"})}}},
-		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "quoted " + encodeFileAttachments([]string{"Attached file data"})}}},
-		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": fileAttachmentPrefix + "invalid" + fileAttachmentSuffix}}},
+		map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{"Attached file data"})}}},
+		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "quoted " + attachments.Encode([]string{"Attached file data"})}}},
+		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": attachments.Prefix + "invalid" + attachments.Suffix}}},
 	} {
 		raw := responses.MustMarshalJSON([]any{item})
 		request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
@@ -235,7 +237,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 				}
 				request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{
 					map[string]any{"role": "user", "content": content},
-					map[string]any{"role": "user", "content": []map[string]string{{"type": "input_text", "text": encodeFileAttachments(frames)}}},
+					map[string]any{"role": "user", "content": []map[string]string{{"type": "input_text", "text": attachments.Encode(frames)}}},
 				})}}
 				projectFileAttachments(&request)
 				var messages []map[string]jsonv1.RawMessage
@@ -259,7 +261,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 
 func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
-	d := composerDraft{text: strings.Repeat("x", composerTextLimit), attachments: []string{encodeFileAttachments([]string{"Attached file data"})}}
+	d := composerDraft{text: strings.Repeat("x", composerTextLimit), attachments: []string{attachments.Encode([]string{"Attached file data"})}}
 	if err := u.send([]composerDraft{d}, false); err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 
 type Registrar interface {
 	Frontend(command.Spec) error
+	InputProjection(InputProjection) error
 }
 
 type Binder interface {
@@ -23,13 +24,18 @@ type Bindings[S any] struct {
 	Register func(Registrar, S) error
 }
 
-// Registry collects executable registrations for the existing authenticated
-// router host. Registration does not execute a command or publish a wrapper.
-type Registry struct{ commands []command.Spec }
+// Registry collects composition-ordered bindings without executing them.
+type Registry struct {
+	commands    []command.Spec
+	projections []InputProjection
+}
 
 func (r *Registry) Capability(mechanism capability.Mechanism) capability.Result {
 	if mechanism == capability.ExecutableFrontend {
 		return capability.Result{State: capability.Available, Reason: "compiled frontend registration"}
+	}
+	if mechanism == capability.InputProjection {
+		return capability.Result{State: capability.Available, Reason: "request-local input projection"}
 	}
 	return capability.Result{State: capability.Unsupported, Reason: "mechanism has no implemented binding"}
 }

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 func answerImageFixture(t *testing.T) string {
@@ -70,7 +72,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if input[1].Type != "localImage" || input[1].Path != first || input[2].Type != "localImage" || input[2].Path != second {
 		t.Fatalf("images became paths: %+v", input)
 	}
-	frames, ok := decodeFileAttachments(input[3].Text)
+	frames, ok := attachments.Decode(input[3].Text)
 	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote") || !strings.HasSuffix(frames[1], "\nsecond quote") {
 		t.Fatalf("answer selections lost: %q", frames)
 	}

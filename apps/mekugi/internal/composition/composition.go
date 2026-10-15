@@ -44,7 +44,7 @@ type entry struct {
 	references   []reference.Resolver
 	capabilities []capability.Requirement
 	validFactory bool
-	construct    func(module.Slots, binding.Binder) error
+	construct    func(module.Slots, binding.Binder) ([]binding.InputProjection, error)
 	start, stop  func(context.Context) error
 }
 
@@ -81,7 +81,7 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.commands = append(node.commands, contribution)
 	}
-	node.construct = func(slots module.Slots, binder binding.Binder) error {
+	node.construct = func(slots module.Slots, binder binding.Binder) ([]binding.InputProjection, error) {
 		if !descriptor.HostsCommands {
 			slots.Commands = nil
 		}
@@ -93,19 +93,19 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		service, err := descriptor.New(deps(), slots)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		handle.value, handle.ready = service, true
 		registrar := &moduleRegistrar{binder: binder, allowed: node.commands, registered: make(map[string]bool)}
 		if backend.Register != nil {
 			if err := backend.Register(registrar, service); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if len(registrar.registered) != len(node.commands) {
-			return errors.New("executable contributions and Codex registrations differ")
+			return nil, errors.New("executable contributions and Codex registrations differ")
 		}
-		return nil
+		return registrar.projections, nil
 	}
 	if descriptor.Start != nil {
 		node.start = func(ctx context.Context) error { return descriptor.Start(ctx, handle.Value()) }
@@ -118,9 +118,10 @@ func (c *Composition) Add[D, S any, B interface {
 }
 
 type moduleRegistrar struct {
-	binder     binding.Binder
-	allowed    []command.Contribution
-	registered map[string]bool
+	projections []binding.InputProjection
+	binder      binding.Binder
+	allowed     []command.Contribution
+	registered  map[string]bool
 }
 
 func (r *moduleRegistrar) Frontend(spec command.Spec) error {
@@ -138,6 +139,14 @@ func (r *moduleRegistrar) Frontend(spec command.Spec) error {
 	return nil
 }
 
+func (r *moduleRegistrar) InputProjection(projection binding.InputProjection) error {
+	if err := r.binder.InputProjection(projection); err != nil {
+		return err
+	}
+	r.projections = append(r.projections, projection)
+	return nil
+}
+
 type Gap struct {
 	Module    module.ID
 	Mechanism capability.Mechanism
@@ -145,13 +154,14 @@ type Gap struct {
 }
 
 type Runtime struct {
-	Changes  changes.Service
-	Segments *segments.Service
-	Recovery *recovery.Service
-	History  *history.Service
-	Commands []command.Contribution
-	Gaps     []Gap
-	started  []entry
+	InputProjections []binding.InputProjection
+	Changes          changes.Service
+	Segments         *segments.Service
+	Recovery         *recovery.Service
+	History          *history.Service
+	Commands         []command.Contribution
+	Gaps             []Gap
+	started          []entry
 }
 
 func (r *Runtime) Close(ctx context.Context) error {
@@ -242,9 +252,11 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references)}, binder); err != nil {
+		projections, err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references)}, binder)
+		if err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
+		runtime.InputProjections = append(runtime.InputProjections, projections...)
 	}
 	for _, node := range c.entries {
 		if err := ctx.Err(); err != nil {

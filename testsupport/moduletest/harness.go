@@ -21,8 +21,8 @@ func (s *Scripted) Capability(mechanism capability.Mechanism) capability.Result 
 	if result, ok := s.Capabilities[mechanism]; ok {
 		return result
 	}
-	if mechanism == capability.ExecutableFrontend {
-		return capability.Result{State: capability.Available, Reason: "scripted executable registration"}
+	if mechanism == capability.ExecutableFrontend || mechanism == capability.InputProjection {
+		return capability.Result{State: capability.Available, Reason: "scripted binding registration"}
 	}
 	return capability.Result{State: capability.Unknown, Reason: "not scripted"}
 }

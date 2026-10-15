@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/capturer"
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -23,7 +24,7 @@ const (
 
 type mekugiProxy struct {
 	registry         *toolRegistry
-	duplicateOutput  bool
+	inputProjections []binding.InputProjection
 	usage            *threadUsage
 	autoLiveDiff     *autoLiveDiff
 	activity         *subagentActivity
@@ -51,19 +52,20 @@ type mekugiProxy struct {
 	closed             bool
 }
 
-func newMekugiProxy(registry *toolRegistry) *mekugiProxy {
+func newMekugiProxy(registry *toolRegistry, projections []binding.InputProjection) *mekugiProxy {
 	if registry == nil {
 		return nil
 	}
 	activity := newSubagentActivity()
 	activity.usage = newThreadUsage()
 	proxy := &mekugiProxy{
-		registry:       registry,
-		usage:          activity.usage,
-		activity:       activity,
-		execWindows:    &execWindowRegistry{},
-		sessions:       make(map[string]*mekugiHistorySession),
-		activeSessions: make(map[string]int),
+		registry:         registry,
+		inputProjections: slices.Clone(projections),
+		usage:            activity.usage,
+		activity:         activity,
+		execWindows:      &execWindowRegistry{},
+		sessions:         make(map[string]*mekugiHistorySession),
+		activeSessions:   make(map[string]int),
 	}
 	activity.notice = func(category, message string) { proxy.notice("", "", category, message) }
 	return proxy
@@ -291,9 +293,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 		return nil, nil
 	}
-	var hostParts map[string][]int
-	if p.duplicateOutput && !prewarm {
-		hostParts = duplicateOutputHostParts(request.fields["input"])
+	var projections []binding.PreparedInputProjection
+	if !prewarm {
+		for _, registration := range p.inputProjections {
+			projections = append(projections, registration.Prepare(request.fields["input"]))
+		}
 	}
 	// Discover an execution owner before projecting tools: a native
 	// handshake may not yet carry the instruction or tool catalog of a turn.
@@ -431,10 +435,20 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		transform.Close()
 		return nil, err
 	}
-	if p.duplicateOutput {
+	for _, project := range projections {
 		before := request.fields["input"]
-		summary := projectDuplicateOutputs(request, hostParts)
-		capturer.ObserveOutputDeduplication(ctx, before, request.fields["input"], summary.occurrences)
+		result := project(before)
+		if !bytes.Equal(before, result.Input) {
+			request.setInput(result.Input)
+		}
+		summary := result.Receipt
+		if summary == nil {
+			continue
+		}
+		capturer.ObserveOutputDeduplication(ctx, before, result.Input, summary.OutputRepetitions)
+		if len(summary.RepeatedCalls) == 0 {
+			continue
+		}
 		var originalItems []map[string]jsonv1.RawMessage
 		_ = json.Unmarshal(request.originalFields["input"], &originalItems)
 		sources := make(map[string]string)
@@ -443,7 +457,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 				sources[responseevents.StringField(item, "call_id")] = responseevents.StringField(item, "input")
 			}
 		}
-		for call, label := range summary.calls {
+		for call, label := range summary.RepeatedCalls {
 			target := call
 			source := sources[call]
 			if history, ok := visible[call]; ok {

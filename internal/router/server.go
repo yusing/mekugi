@@ -23,6 +23,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/sudoask"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -70,7 +71,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, ctx context.Context, commands []command.Contribution, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
@@ -223,9 +224,11 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		}
 		replayStore.writes = writes
 		defer replayStore.snapshots.close()
-		mekugiCalls = newMekugiProxy(registry)
+		if !options.duplicateOutput {
+			projections = nil
+		}
+		mekugiCalls = newMekugiProxy(registry, projections)
 		provider.titleGenerator.usage = mekugiCalls.usage
-		mekugiCalls.duplicateOutput = options.duplicateOutput
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
 			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}

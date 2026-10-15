@@ -98,7 +98,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
 
 func newProxyWithSharedTestRegistry(t *testing.T, registry *toolRegistry) *mekugiProxy {
 	t.Helper()
-	proxy := newMekugiProxy(registry)
+	proxy := newMekugiProxy(registry, nil)
 	t.Cleanup(func() {
 		if err := proxy.Close(); err != nil {
 			t.Error(err)

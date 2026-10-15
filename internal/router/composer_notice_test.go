@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -32,7 +34,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				d := composerDraft{files: []composerFile{{path: "/missing/setup.sh"}}}
 				d.snapshotFileAttachments("/missing")
 				u.setNotice(d.attachmentNotice, true)
-				frames, ok := decodeFileAttachments(d.attachments[0])
+				frames, ok := attachments.Decode(d.attachments[0])
 				if !ok || strings.Contains(strings.Join(frames, "\n"), d.attachmentNotice) || !strings.Contains(strings.Join(frames, "\n"), "CONTENT NOT ATTACHED") {
 					t.Fatal("UI warning leaked into the model attachment result")
 				}

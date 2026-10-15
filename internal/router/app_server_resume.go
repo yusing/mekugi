@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/rollout"
@@ -302,7 +304,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			var spans []activityui.TextSpan
 			for _, part := range content {
 				if part.Type == "text" {
-					if frames, ok := decodeFileAttachments(part.Text); ok {
+					if frames, ok := attachments.Decode(part.Text); ok {
 						attached = append(attached, frames...)
 						continue
 					}

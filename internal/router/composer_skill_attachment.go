@@ -9,12 +9,14 @@ import (
 	"path/filepath"
 	"time"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 type managedSkillOutput struct{ bytes.Buffer }
 
 func (b *managedSkillOutput) Write(data []byte) (int, error) {
-	if b.Len()+len(data) > fileAttachmentBudget/2 {
+	if b.Len()+len(data) > attachments.Budget/2 {
 		return 0, fmt.Errorf("skill exceeds attachment limit")
 	}
 	return b.Buffer.Write(data)
@@ -64,7 +66,7 @@ func frameComposerSkillFromPath(name, path, content string) []string {
 		header += fmt.Sprintf(" from %q", path)
 	}
 	return frameAttachmentText(content, func(start, end, total int) string {
-		return fmt.Sprintf("%s (UTF-8 bytes %d:%d of %d; skill instructions; %s):\n", header, start, end, total, attachmentReadGuidance)
+		return fmt.Sprintf("%s (UTF-8 bytes %d:%d of %d; skill instructions; %s):\n", header, start, end, total, attachments.ReadGuidance)
 	})
 }
 func (u *appServerUI) snapshotDraftSkills(d *composerDraft) {
@@ -77,13 +79,13 @@ func (d *composerDraft) snapshotSkillAttachments(cwd string, environment []strin
 	var frames []string
 	seen := make(map[string]bool)
 	for _, attachment := range d.attachments {
-		retained, ok := decodeFileAttachments(attachment)
+		retained, ok := attachments.Decode(attachment)
 		if !ok {
 			continue
 		}
 		frames = append(frames, retained...)
 		for _, frame := range retained {
-			if name, path, _ := skillAttachmentFrame(frame); name != "" {
+			if name, path, _ := attachments.ParseSkillFrame(frame); name != "" {
 				seen[name+"\x00"+path] = true
 			}
 		}
@@ -109,6 +111,6 @@ func (d *composerDraft) snapshotSkillAttachments(cwd string, environment []strin
 		}
 	}
 	if len(frames) > 0 {
-		d.attachments = []string{encodeFileAttachments(frames)}
+		d.attachments = []string{attachments.Encode(frames)}
 	}
 }

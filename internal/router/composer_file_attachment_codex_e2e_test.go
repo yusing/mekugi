@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
@@ -217,7 +219,7 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 							if (!managed || hidden) && !strings.Contains(part.Text, " from "+strconv.Quote(source)) {
 								t.Fatal("metadata source path lost")
 							}
-							if !strings.Contains(part.Text, attachmentReadGuidance) {
+							if !strings.Contains(part.Text, attachments.ReadGuidance) {
 								t.Fatal("attachment reuse guidance missing at provider")
 							}
 							_, content, ok := strings.Cut(part.Text, ":\n")

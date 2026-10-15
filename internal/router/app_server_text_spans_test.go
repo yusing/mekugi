@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -37,7 +39,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	foundSkillContents := false
 	for _, part := range input {
 		if raw, ok := part["text"].(string); ok {
-			frames, ok := decodeFileAttachments(raw)
+			frames, ok := attachments.Decode(raw)
 			if ok && len(frames) == 1 && frames[0] == frameComposerSkillFromPath("review", skillPath, "Review instruction 世界.\n")[0] {
 				foundSkillContents = true
 			}

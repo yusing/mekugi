@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/capturer"
@@ -315,15 +317,15 @@ func inspectionEmptyPoll(call sessionInspectionCall, history mekugiHistory, foun
 	}
 	var session int64
 	if classified.native {
-		session = nativeExecutionSession(texts[0])
+		session = binding.NativeExecutionSession(texts[0])
 	} else if classified.codeMode {
-		state, _, body := codeModeExecutionHeader(texts[0])
+		state, _, body := binding.CodeModeExecutionHeader(texts[0])
 		if state == "" || state == "running" || state == "Script terminated" {
 			return false
 		}
 		texts[0] = body
 		for _, text := range texts {
-			if id := nativeJSONSession(text); id != 0 {
+			if id := binding.NativeJSONSession(text); id != 0 {
 				if session != 0 {
 					return false
 				}
@@ -363,8 +365,8 @@ func inspectionEmptyOutput(call executionCall, texts []string, notice executionC
 		return false
 	}
 	if call.native {
-		_, body := nativeExecutionHeader(texts[0])
-		return body == "" && nativeExecutionSession(texts[0]) == session
+		_, body := binding.NativeExecutionHeader(texts[0])
+		return body == "" && binding.NativeExecutionSession(texts[0]) == session
 	}
 	// Only transparent native output is evidence, not unrelated printed text.
 	found := false
@@ -379,7 +381,7 @@ func inspectionEmptyOutput(call executionCall, texts []string, notice executionC
 		var output struct {
 			Output *string `json:"output"`
 		}
-		if nativeJSONSession(text) != session || json.Unmarshal([]byte(text), &output) != nil ||
+		if binding.NativeJSONSession(text) != session || json.Unmarshal([]byte(text), &output) != nil ||
 			output.Output == nil || *output.Output != "" || found {
 			return false
 		}

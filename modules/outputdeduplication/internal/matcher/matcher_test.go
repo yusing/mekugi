@@ -1,4 +1,4 @@
-package outputdedupe
+package matcher
 
 import (
 	"fmt"

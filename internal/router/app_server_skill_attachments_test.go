@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -95,7 +97,7 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	if len(sent.Params.Input) != 2 || sent.Params.Input[1].Type != "text" {
 		t.Fatalf("pasted skill contents not attached: %+v", sent.Params.Input)
 	}
-	frames, ok := decodeFileAttachments(sent.Params.Input[1].Text)
+	frames, ok := attachments.Decode(sent.Params.Input[1].Text)
 	if !ok || len(frames) != 1 || frames[0] != frameComposerSkillFromPath("review", path, instructions)[0] {
 		t.Fatalf("pasted skill lost its source path or contents: %+v", frames)
 	}

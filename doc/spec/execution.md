@@ -144,57 +144,9 @@ Acceptance:
 
 ### Duplicate-output projection
 
-Duplicate-output projection is enabled by default in Mekugi mode. Disable it with
-the launch option `--deduplicate-output=false`. It changes only eligible text
-in the model-visible request input. Passthrough is unchanged. The original request
-input, host result, Codex rollout, retained replay and change evidence, and UI
-keep the full text. Transcript output rows add `N lines repeated` for partial
-replacement or `repeated` for full replacement. A multi-command cell puts its
-returned-output summary on the last command row; the suffix describes the cell
-result, not each command independently. Every evidence consumer, including command
-and patch observation, result confirmation, failure observation, retention, and continuation
-advice, reads the original output before this final projection.
-
-A unit is one host-produced text part of a `function_call_output` or
-`custom_tool_call_output`, or one submitted file or managed-skill frame body in a
-user message through a complete durable envelope in an `input_text` part.
-A string output is one part. Execution and attachment headers remain
-verbatim. Durable attachment envelopes use their submitted bodies; files and skills
-are never reopened to infer equality. Frame byte ranges describe the original
-snapshot, while reference rows address the earlier visible body. Ordinary user
-requests, base instructions, selection attachments, malformed envelopes, and media
-are excluded. String-content or non-`input_text` envelopes and bare frame text
-remain ordinary input. Native selected-skill XML retains its existing manager
-rewrite. Router-appended parts, including warnings, edit notices,
-and continuation advice, remain intact. Outputs without a call ID and native
-live-session JSON envelopes are excluded.
-
-Verbatim runs aligned to logical lines and covering at least 192 bytes may be
-replaced with a reference to earlier output still visible in the same request.
-Matching is content-based, without line-ending or line-number normalization.
-The bounded matching window covers the last 256 KiB of indexed verbatim text;
-below-threshold units are neither replaced nor indexed. The longest matching run
-wins, with ties resolved in favor of the most recent source.
-
-References have the form `[same as O3]` or `[same as O3 L40-112]`; a single row
-uses `L40`. Each eligible unit with remaining verbatim text gets a source anchor
-such as `[O3]`, on its own line after the preserved execution or attachment header.
-IDs are assigned in forward order in one request-local sequence across tool text
-parts and attachment frames. Fully replaced units get no anchor. Sources get their
-anchors immediately, even before a later repeat, so extending the input preserves
-earlier projected items.
-
-The row range is omitted for an entire earlier body. Rows start at 1 after the
-anchor and count the earlier body as delivered, with each generated reference
-counting as one row. References always target visible verbatim text, never anchors,
-generated references or replaced spans, so they need no second hop.
-Literal host text resembling a marker remains host text.
-
-Each projection is a fresh forward pass over the current original input, with
-no persistent matcher state. Compacted, forked, and resumed views can reference
-only their own current input. Fresh projections of the same original host input
-are byte-identical, and extending that input preserves earlier projected items.
-The [transport contract](transport.md) owns provider-history reconciliation.
+The [output-deduplication module](../../modules/outputdeduplication/SPEC.md) owns
+model-visible references, eligibility, and repetition receipts. Host effects and
+original evidence remain unchanged.
 
 ## REQ-EXECUTION-002 — Track each segment of a command list
 

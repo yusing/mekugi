@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv2 "encoding/json/v2"
@@ -198,109 +200,6 @@ func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistor
 	return ""
 }
 
-// Match only the host's leading metadata, never strings printed by the program
-// below Output:. Native session metadata inside exec needs a verified
-// router carrier or transparent native-result projection as well.
-func codeModeExecutionHeader(text string) (status, cell string, body string) {
-	first, rest, ok := strings.Cut(text, "\n")
-	if !ok {
-		return "", "", ""
-	}
-	switch {
-	case strings.HasPrefix(first, "Script running with cell ID "):
-		cell = strings.TrimPrefix(first, "Script running with cell ID ")
-		if cell == "" || strings.ContainsAny(cell, " \t\r\n") {
-			return "", "", ""
-		}
-		status = "running"
-	case first == "Script completed" || first == "Script failed" || first == "Script terminated":
-		status = first
-	default:
-		return "", "", ""
-	}
-	wall, rest, ok := strings.Cut(rest, "\n")
-	if !ok || !strings.HasPrefix(wall, "Wall time ") || !strings.HasSuffix(wall, " seconds") {
-		return "", "", ""
-	}
-	duration := strings.TrimSuffix(strings.TrimPrefix(wall, "Wall time "), " seconds")
-	if _, err := strconv.ParseFloat(duration, 64); err != nil {
-		return "", "", ""
-	}
-	body, ok = strings.CutPrefix(rest, "Output:\n")
-	if !ok {
-		return "", "", ""
-	}
-	return status, cell, body
-}
-
-func nativeExecutionHeader(text string) (state, body string) {
-	line, rest, ok := strings.Cut(text, "\n")
-	if strings.HasPrefix(line, "Chunk ID: ") {
-		line, rest, ok = strings.Cut(rest, "\n")
-	}
-	if !ok || !strings.HasPrefix(line, "Wall time: ") || !strings.HasSuffix(line, " seconds") {
-		return "", ""
-	}
-	duration := strings.TrimSuffix(strings.TrimPrefix(line, "Wall time: "), " seconds")
-	if _, err := strconv.ParseFloat(duration, 64); err != nil {
-		return "", ""
-	}
-	state, rest, ok = strings.Cut(rest, "\n")
-	if !ok {
-		return "", ""
-	}
-	line, rest, ok = strings.Cut(rest, "\n")
-	if after, ok0 := strings.CutPrefix(line, "Original token count: "); ok0 {
-		if _, err := strconv.ParseUint(after, 10, 64); err != nil {
-			return "", ""
-		}
-		line, rest, ok = strings.Cut(rest, "\n")
-	}
-	if !ok || (line != "Output:" && line != "Final output:") {
-		return "", ""
-	}
-	return state, rest
-}
-
-func nativeExecutionSession(text string) int64 {
-	state, _ := nativeExecutionHeader(text)
-	id, running := strings.CutPrefix(state, "Process running with session ID ")
-	if !running {
-		return 0
-	}
-	value, err := strconv.ParseInt(id, 10, 64)
-	if err != nil || value <= 0 {
-		return 0
-	}
-	return value
-}
-
-func nativeJSONSession(text string) int64 {
-	var result map[string]json.RawMessage
-	if json.Unmarshal([]byte(text), &result) != nil {
-		return 0
-	}
-	if batch, exists := result["results"]; exists {
-		var results []map[string]json.RawMessage
-		if json.Unmarshal(batch, &results) != nil || len(results) == 0 {
-			return 0
-		}
-		// Completed prefixes have no live session. Only the current final
-		// program can yield when a sequential carrier exits on a host error.
-		result = results[len(results)-1]
-	}
-	var output string
-	var id int64
-	if json.Unmarshal(result["output"], &output) != nil ||
-		json.Unmarshal(result["session_id"], &id) != nil || id <= 0 {
-		return 0
-	}
-	if exit, exists := result["exit_code"]; exists && string(exit) != "null" {
-		return 0
-	}
-	return id
-}
-
 func executionOutputTexts(raw json.RawMessage) []string {
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
@@ -413,7 +312,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 			}
 			var notice *executionContinuation
 			if call.codeMode {
-				status, cell, body := codeModeExecutionHeader(texts[0])
+				status, cell, body := binding.CodeModeExecutionHeader(texts[0])
 				if status == "running" && (call.cellID == "" || call.cellID == cell) {
 					cells[cell] = call
 					value := tools.forCell(cell)
@@ -426,7 +325,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 						texts[0] = body
 						var session int64
 						for _, payload := range texts {
-							if id := nativeJSONSession(payload); id != 0 {
+							if id := binding.NativeJSONSession(payload); id != 0 {
 								if session != 0 {
 									session = 0
 									break
@@ -441,7 +340,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 					}
 				}
 			} else if call.native {
-				if session := nativeExecutionSession(texts[0]); session != 0 {
+				if session := binding.NativeExecutionSession(texts[0]); session != 0 {
 					value := tools.forSession(session)
 					notice = &value
 				}

@@ -3,6 +3,12 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/module"
+	"github.com/yusing/mekugi/modules/outputdeduplication"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -14,6 +20,18 @@ import (
 	"strings"
 	"testing"
 )
+
+func testInputProjections() []binding.InputProjection {
+	registry := new(binding.Registry)
+	service, err := outputdeduplication.Module.New(outputdeduplication.Deps{}, module.Slots{})
+	if err != nil {
+		panic(err)
+	}
+	if err := outputdeduplication.Module.Bindings.Register(registry, service); err != nil {
+		panic(err)
+	}
+	return registry.InputProjections()
+}
 
 const duplicateTestHeader = "Script completed\nWall time 0.1 seconds\nOutput:\n"
 
@@ -62,7 +80,7 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			proxy.duplicateOutput = true
+			proxy.inputProjections = testInputProjections()
 			input := append(duplicateTestInput(tc.command, "a", tc.before), duplicateTestInput("new command", "b", tc.after)...)
 			request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 			items := duplicateTestItems(t, request)
@@ -98,7 +116,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		map[string]any{"type": "function_call_output", "call_id": "image", "output": []any{map[string]any{"type": "input_image", "image_url": "data:image/png;base64,example"}}},
 	)
 	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
-	counts := duplicateOutputHostParts(request.fields["input"])
+	project := testInputProjections()[0].Prepare(request.fields["input"])
 	items := duplicateTestItems(t, request)
 	// Use the production append owner after the original boundary was recorded.
 	for _, at := range []int{1, 2, 3} {
@@ -109,7 +127,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		items[at]["output"] = appended
 	}
 	request.setInput(responses.MustMarshalJSON(items))
-	projectDuplicateOutputs(request, counts)
+	request.setInput(project(request.fields["input"]).Input)
 	got := duplicateTestItems(t, request)
 	for _, at := range []int{1, 2, 3} {
 		texts := executionOutputTexts(got[at]["output"])
@@ -132,7 +150,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 
 func TestDuplicateOutputEvidenceConsumersReadOriginal(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
-	proxy.duplicateOutput = true
+	proxy.inputProjections = testInputProjections()
 	failure := "Script error:\n" + strings.Repeat("full failure detail\n", 20)
 	input := duplicateTestInput("previous", "source", failure)
 	input = append(input, continuationTestCall("exec", "failed", "broken()"), continuationTestOutput("failed", "Script failed\nWall time 0.1 seconds\nOutput:\n", failure))
@@ -162,7 +180,9 @@ func TestDuplicateOutputPreparedContinuationAndScope(t *testing.T) {
 	for _, scope := range []string{"ordinary", "compacted", "fork", "disabled"} {
 		t.Run(scope, func(t *testing.T) {
 			proxy := newManagedMekugiProxy(t)
-			proxy.duplicateOutput = scope != "disabled"
+			if scope != "disabled" {
+				proxy.inputProjections = testInputProjections()
+			}
 			input := duplicateTestInput("earlier", "a", body)
 			metadata := codexTurnMetadata{}
 			if scope == "compacted" {
@@ -197,7 +217,7 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	input := append(duplicateTestInput("cat file", "a", body), duplicateTestInput("cat file", "b", body)...)
 	project := func(input []any) *parsedResponsesRequest {
 		proxy := newManagedMekugiProxy(t)
-		proxy.duplicateOutput = true
+		proxy.inputProjections = testInputProjections()
 		return duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 	}
 	// The source must already have its anchor before the first repeat arrives.
@@ -234,12 +254,13 @@ func TestDuplicateOutputSourceIDs(t *testing.T) {
 	frame := frameComposerFile("/missing/source.go", a)[0]
 	header, _, _ := strings.Cut(frame, "\n")
 	input := []any{
-		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{frame})}}},
+		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{frame})}}},
 		continuationTestOutput("batch", duplicateTestHeader, b, c),
 		continuationTestOutput("repeat", a, b, c),
 	}
 	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
-	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
+	project := testInputProjections()[0].Prepare(request.fields["input"])
+	request.setInput(project(request.fields["input"]).Input)
 	items := duplicateTestItems(t, request)
 	var parts []struct {
 		Text string `json:"text"`
@@ -247,7 +268,7 @@ func TestDuplicateOutputSourceIDs(t *testing.T) {
 	if err := json.Unmarshal(items[0]["content"], &parts); err != nil {
 		t.Fatal(err)
 	}
-	frames, ok := decodeFileAttachments(parts[0].Text)
+	frames, ok := attachments.Decode(parts[0].Text)
 	if !ok || len(frames) != 1 || frames[0] != header+"\n[O1]\n"+a {
 		t.Fatalf("attachment source = %q", frames)
 	}
@@ -274,7 +295,8 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 	input = append(input, duplicateTestInput("literal again", "g", literal)...)
 	original := responses.MustMarshalJSON(input)
 	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": original}}
-	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
+	project := testInputProjections()[0].Prepare(request.fields["input"])
+	request.setInput(project(request.fields["input"]).Input)
 	first := bytes.Clone(request.fields["input"])
 	items := duplicateTestItems(t, request)
 	if responses.StringField(items[7], "output") != responses.StringField(items[9], "output") || strings.Contains(responses.StringField(items[9], "output"), "combined") {
@@ -284,7 +306,8 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 		t.Fatal("literal host marker text did not remain a verbatim source")
 	}
 	request.setInput(original)
-	projectDuplicateOutputs(request, duplicateOutputHostParts(original))
+	project = testInputProjections()[0].Prepare(original)
+	request.setInput(project(request.fields["input"]).Input)
 	if !bytes.Equal(first, request.fields["input"]) {
 		t.Fatal("same original input projected differently")
 	}
@@ -313,12 +336,14 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 				t.Fatal("producer frame was not eligible")
 			}
 			attach := func(text string) any {
-				return user(encodeFileAttachments([]string{text}))
+				return user(attachments.Encode([]string{text}))
 			}
 			input := []any{attach(frame), user(body), attach(frame)}
 			for _, enabled := range []bool{false, true} {
 				proxy := newManagedMekugiProxy(t)
-				proxy.duplicateOutput = enabled
+				if enabled {
+					proxy.inputProjections = testInputProjections()
+				}
 				wire := func(input []any) *parsedResponsesRequest {
 					request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 					if fresh := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{}); !bytes.Equal(request.fields["input"], fresh.fields["input"]) {
@@ -388,19 +413,20 @@ func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
 	}
 	frame := frameComposerFile("/missing/example", body)[0]
 	user := func(content any) any { return map[string]any{"role": "user", "content": content} }
-	parts := []any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{frame})}, map[string]any{"type": "input_image", "image_url": "image"}}
+	parts := []any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{frame})}, map[string]any{"type": "input_image", "image_url": "image"}}
 	classified := map[string]any{"role": "user", "content": parts, "internal_chat_message_metadata_passthrough": map[string]any{"content_item_kinds": []string{"agents_md.instructions", "user.image"}}}
 	input := []any{
 		classified,
 		map[string]any{"role": "developer", "content": parts},
-		user(fileAttachmentPrefix + "invalid JSON" + fileAttachmentSuffix),
+		user(attachments.Prefix + "invalid JSON" + attachments.Suffix),
 		user("Attached file /missing: CONTENT NOT ATTACHED\n" + body),
 		user(body),
-		user([]any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{frame})}}),
+		user([]any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{frame})}}),
 	}
 	input = append(input, duplicateTestInput("read file", "output", body)...)
 	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
-	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
+	project := testInputProjections()[0].Prepare(request.fields["input"])
+	request.setInput(project(request.fields["input"]).Input)
 	items := duplicateTestItems(t, request)
 	for at := range 5 {
 		if !sameJSONValue(responses.MustMarshalJSON(items[at]), responses.MustMarshalJSON(input[at])) {
@@ -409,7 +435,7 @@ func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
 	}
 	header, _, _ := strings.Cut(frame, "\n")
 	header += "\n"
-	source := user([]any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{header + "[O1]\n" + body})}})
+	source := user([]any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{header + "[O1]\n" + body})}})
 	if !sameJSONValue(responses.MustMarshalJSON(items[5]), responses.MustMarshalJSON(source)) {
 		t.Fatal("eligible attachment source lost its anchor or verbatim body")
 	}
@@ -424,7 +450,7 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 		body += fmt.Sprintf("distinct delivered frame row %02d\n", i)
 	}
 	frame := frameComposerFile("/missing/delivery", body)[0]
-	envelope := encodeFileAttachments([]string{frame})
+	envelope := attachments.Encode([]string{frame})
 	part := func(kind, text string) any { return map[string]any{"type": kind, "text": text} }
 	for _, content := range []any{
 		envelope,
@@ -435,7 +461,7 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 		input := []any{map[string]any{"role": "user", "content": content}}
 		input = append(input, duplicateTestInput("later body", "later", body)...)
 		proxy := newManagedMekugiProxy(t)
-		proxy.duplicateOutput = true
+		proxy.inputProjections = testInputProjections()
 		request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 		attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, mekugiCalls: proxy}, t.Context(), t.Context(), *request, http.Header{}, "")
 		if err := attempt.prepareWire(); err != nil {
@@ -474,12 +500,15 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	summary := projectDuplicateOutputs(&request, duplicateOutputHostParts(request.fields["input"]))
-	if summary.occurrences != 2 || summary.calls["b"] != "repeated" || summary.calls["c"] != "20 lines repeated" {
+	project := testInputProjections()[0].Prepare(request.fields["input"])
+	result := project(request.fields["input"])
+	request.setInput(result.Input)
+	summary := result.Receipt
+	if summary.OutputRepetitions != 2 || summary.RepeatedCalls["b"] != "repeated" || summary.RepeatedCalls["c"] != "20 lines repeated" {
 		t.Fatalf("summary = %+v", summary)
 	}
 	proxy := newManagedMekugiProxy(t)
-	proxy.duplicateOutput = true
+	proxy.inputProjections = testInputProjections()
 	trace := newNativeTraceFixture(t)
 	proxy.nativeTrace = &nativeToolTrace{directory: trace.root}
 	source := `text((await tools.exec_command({cmd:"b"})).output)`

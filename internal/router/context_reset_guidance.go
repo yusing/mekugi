@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"context"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/yusing/mekugi/modules/fileread/read"
 
 	"github.com/yusing/mekugi/modules/sourceoutline/outline"
@@ -133,9 +135,9 @@ func resetGuidanceUserSkills(items []map[string]jsonv1.RawMessage) []resetGuidan
 				add(name, path)
 				continue
 			}
-			if frames, ok := decodeFileAttachments(part.Text); ok {
+			if frames, ok := attachments.Decode(part.Text); ok {
 				for _, frame := range frames {
-					name, path, _ := skillAttachmentFrame(frame)
+					name, path, _ := attachments.ParseSkillFrame(frame)
 					add(name, path)
 				}
 				continue

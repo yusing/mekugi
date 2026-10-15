@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -60,8 +62,8 @@ func TestNativeExecutionMetadataBoundary(t *testing.T) {
 		{"Process running with session ID 42\nOutput:\n", 0},
 		{"Wall time: 0.1000 seconds\nProcess running with session ID -1\nOutput:\n", 0},
 	} {
-		if got := nativeExecutionSession(test.text); got != test.id {
-			t.Errorf("nativeExecutionSession(%q)=%d, want %d", test.text, got, test.id)
+		if got := binding.NativeExecutionSession(test.text); got != test.id {
+			t.Errorf("binding.NativeExecutionSession(%q)=%d, want %d", test.text, got, test.id)
 		}
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -52,7 +54,7 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 		t.Fatalf("attachment path not displayed workspace-relative: %s", plain)
 	}
 	attached, failed, response := strings.Index(plain, "Attached"), strings.Index(plain, "Attach failed"), strings.Index(plain, "Agent response")
-	if attached < 0 || failed < attached || response < failed || strings.Contains(plain, "private file contents") || strings.Contains(plain, fileAttachmentPrefix) {
+	if attached < 0 || failed < attached || response < failed || strings.Contains(plain, "private file contents") || strings.Contains(plain, attachments.Prefix) {
 		t.Fatalf("incorrect receipt rendering/order: %s", plain)
 	}
 	if err := os.Remove(path); err != nil {
@@ -82,7 +84,7 @@ func TestLiveActivityAttachmentDisplayPaths(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			frame := "Attached file " + strconv.Quote(tt.path) + " (UTF-8 bytes 0:1 of 1; file content, not a separate request):\nx"
-			content, err := json.Marshal([]map[string]string{{"type": "text", "text": encodeFileAttachments([]string{frame})}})
+			content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode([]string{frame})}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +108,7 @@ func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
 	const body = "# Commit\n\nA documented project convention (**contributing guide**, `commitlint` or similar config) takes precedence over the message format below.\n\n## Shape commits\n\n- Make each commit one coherent, independently valid change.\n\n```sh\ngit status --short\n```"
 	for _, child := range []bool{false, true} {
 		v := sharedEventsView(child)
-		content, err := json.Marshal([]map[string]string{{"type": "text", "text": encodeFileAttachments(frameComposerSkillFromPath("commit", "/workspace/SKILL.md", body))}})
+		content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frameComposerSkillFromPath("commit", "/workspace/SKILL.md", body))}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +137,7 @@ func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
 func TestLiveActivityAttachmentDialogs(t *testing.T) {
 	t.Parallel()
 	for _, child := range []bool{false, true} {
-		for _, body := range []string{"", "one", "one\n\nlast\n", "\x1b[2Jtab\tvalue\r\x07\n", strings.Repeat("界", fileAttachmentChunk)} {
+		for _, body := range []string{"", "one", "one\n\nlast\n", "\x1b[2Jtab\tvalue\r\x07\n", strings.Repeat("界", attachments.Chunk)} {
 			for _, skill := range []bool{false, true} {
 				v := sharedEventsView(child)
 				frames := frameComposerFile("/workspace/sample.go", body)
@@ -143,7 +145,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 					frames = frameComposerSkillFromPath("guide", "/workspace/SKILL.md", body)
 				}
 				frames = append(frames, "Attached file \"/workspace/missing\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
-				content, err := json.Marshal([]map[string]string{{"type": "text", "text": encodeFileAttachments(frames)}})
+				content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -215,7 +217,7 @@ func TestUISnapshotAttachmentDialogs(t *testing.T) {
 	frames := frameComposerFile("/workspace/sample.go", "package sample\n\nfunc Answer() int { return 42 }\n")
 	frames = append(frames, frameComposerSkillFromPath("guide", "/workspace/SKILL.md", "# Guide\n\nUse **submitted** instructions.\n")...)
 	frames = append(frames, "Attached file \"/workspace/missing.txt\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
-	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": encodeFileAttachments(frames)}})
+	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
 	v.applyAppServerItem(true, "/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
 	feed := v.renderFeed(80, 40)
 	uisnapshot.Assert(t, "testdata/snapshots/attachment-receipts.txt", strings.Join(feed.lines, "\n")+"\n")
@@ -266,7 +268,7 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 				if skill {
 					frames = frameComposerSkillFromPath("guide", "/workspace/SKILL.md", body)
 				}
-				drafts = append(drafts, composerDraft{text: "review", attachments: []string{encodeFileAttachments(frames)}})
+				drafts = append(drafts, composerDraft{text: "review", attachments: []string{attachments.Encode(frames)}})
 			}
 			joined := joinDrafts(drafts...)
 			content, err := json.Marshal(joined.input())

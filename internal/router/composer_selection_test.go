@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -57,7 +59,7 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 		t.Fatalf("prompt part = %+v", input[0])
 	}
 	envelope, _ := input[1]["text"].(string)
-	frames, ok := decodeFileAttachments(envelope)
+	frames, ok := attachments.Decode(envelope)
 	want := "Selected text for \"[Selected diff hunk @amber1:42-45]\" from \"a.go\" (UTF-8 bytes 0:9 of 9; quoted from the user's screen, not a separate request):\n+new\n-old"
 	if !ok || !slices.Equal(frames, []string{want}) {
 		t.Fatalf("frames = %q, %v", frames, ok)
@@ -78,15 +80,15 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 
 func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.insertSelection("message", strings.Repeat("a", fileAttachmentBudget/2+1), "")
+	u.insertSelection("message", strings.Repeat("a", attachments.Budget/2+1), "")
 	if len(u.selections) != 0 || u.draft != "" {
 		t.Fatalf("oversized selection inserted: %q", u.draft)
 	}
 	for range 3 {
-		u.insertSelection("message", strings.Repeat("b\n", fileAttachmentBudget/5), "")
+		u.insertSelection("message", strings.Repeat("b\n", attachments.Budget/5), "")
 	}
 	d := u.takeDraft()
-	frames, ok := decodeFileAttachments(d.attachments[0])
+	frames, ok := attachments.Decode(d.attachments[0])
 	if !ok || !strings.Contains(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded)") || d.attachmentNotice == "" {
 		t.Fatalf("omission missing: ok=%v notice=%q last=%q", ok, d.attachmentNotice, frames[len(frames)-1][:40])
 	}
@@ -199,7 +201,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		var text string
 		var frames []string
 		for _, part := range requests[0].Params.Input {
-			if attached, ok := decodeFileAttachments(part.Text); ok {
+			if attached, ok := attachments.Decode(part.Text); ok {
 				frames = append(frames, attached...)
 			} else if part.Type == "text" {
 				text += part.Text
@@ -233,26 +235,26 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 	})
 	t.Run("omissions never overflow the envelope", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		u.insertSelection("message", strings.Repeat("a", fileAttachmentBudget/2-1024), "")
-		u.insertSelection("message", strings.Repeat("b", fileAttachmentBudget/2-3072), "")
+		u.insertSelection("message", strings.Repeat("a", attachments.Budget/2-1024), "")
+		u.insertSelection("message", strings.Repeat("b", attachments.Budget/2-3072), "")
 		for range 40 {
 			u.insertSelection("message", "tiny but over budget", "")
 		}
 		d := u.takeDraft()
-		frames, ok := decodeFileAttachments(d.attachments[0])
-		if !ok || len(d.attachments[0]) > fileAttachmentBudget || !strings.Contains(frames[len(frames)-1], "remaining mentions: CONTENT NOT ATTACHED") {
+		frames, ok := attachments.Decode(d.attachments[0])
+		if !ok || len(d.attachments[0]) > attachments.Budget || !strings.Contains(frames[len(frames)-1], "remaining mentions: CONTENT NOT ATTACHED") {
 			t.Fatalf("envelope %d bytes decoded=%v", len(d.attachments[0]), ok)
 		}
 	})
 	t.Run("resume recalls quotes", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.insertDraft("why ")
-		u.insertSelection("diff hunk @amber1:3", strings.Repeat("x\n", fileAttachmentChunk), "a.go")
+		u.insertSelection("diff hunk @amber1:3", strings.Repeat("x\n", attachments.Chunk), "a.go")
 		u.insertSelection("message", "short", "")
 		d := u.takeDraft()
-		frames, _ := decodeFileAttachments(d.attachments[0])
+		frames, _ := attachments.Decode(d.attachments[0])
 		restored := restoredSelections(d.text, frames)
-		if len(restored) != 2 || restored[0].text != strings.Repeat("x\n", fileAttachmentChunk) || restored[0].source != "a.go" || d.text[restored[1].start:restored[1].end] != "[Selected message]" || restored[1].text != "short" {
+		if len(restored) != 2 || restored[0].text != strings.Repeat("x\n", attachments.Chunk) || restored[0].source != "a.go" || d.text[restored[1].start:restored[1].end] != "[Selected message]" || restored[1].text != "short" {
 			t.Fatalf("restored = %+v", restored)
 		}
 		if len(frames) < 3 {

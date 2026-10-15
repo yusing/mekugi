@@ -2,7 +2,10 @@ package capability
 
 type Mechanism string
 
-const ExecutableFrontend Mechanism = "executable-frontend"
+const (
+	ExecutableFrontend Mechanism = "executable-frontend"
+	InputProjection    Mechanism = "input-projection"
+)
 
 type State uint8
 

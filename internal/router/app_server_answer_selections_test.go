@@ -3,6 +3,8 @@ package router
 import (
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
@@ -49,7 +51,7 @@ func TestQuestionSelectedTextUsesComposerAttachments(t *testing.T) {
 				}
 			}
 			input := u.submission.input()
-			frames, ok := decodeFileAttachments(input[len(input)-1]["text"].(string))
+			frames, ok := attachments.Decode(input[len(input)-1]["text"].(string))
 			if !ok || len(frames) != 1 || !strings.HasSuffix(frames[0], "\nquoted") || !strings.Contains(frames[0], `"[Selected message]"`) {
 				t.Fatalf("selection lost in transport: %+v", input)
 			}

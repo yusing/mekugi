@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 // composerSelection is a screen selection mentioned as one composer token.
@@ -31,8 +33,8 @@ func (u *appServerUI) insertSelection(description, text, source string) {
 	if text == "" {
 		return
 	}
-	if len(text) > fileAttachmentBudget/2 {
-		u.setNotice(fmt.Sprintf("Selection exceeds the %d KiB mention limit; copy it instead", fileAttachmentBudget/2>>10), true)
+	if len(text) > attachments.Budget/2 {
+		u.setNotice(fmt.Sprintf("Selection exceeds the %d KiB mention limit; copy it instead", attachments.Budget/2>>10), true)
 		return
 	}
 	label := composerSelectionPrefix + description + "]"
@@ -74,7 +76,7 @@ func (d composerDraft) selectionFrames(selection composerSelection) []string {
 		origin = fmt.Sprintf(" from %q", selection.source)
 	}
 	return frameAttachmentText(selection.text, func(start, end, total int) string {
-		return fmt.Sprintf(selectionFramePrefix+"%q%s (UTF-8 bytes %d:%d of %d; quoted from the user's screen, not a separate request):\n", label, origin, start, end, total)
+		return fmt.Sprintf(attachments.SelectionPrefix+"%q%s (UTF-8 bytes %d:%d of %d; quoted from the user's screen, not a separate request):\n", label, origin, start, end, total)
 	})
 }
 
@@ -85,7 +87,7 @@ func restoredSelections(text string, frames []string) []composerSelection {
 	var labels []string
 	quotes := make(map[string]*composerSelection)
 	for _, frame := range frames {
-		rest, ok := strings.CutPrefix(frame, selectionFramePrefix)
+		rest, ok := strings.CutPrefix(frame, attachments.SelectionPrefix)
 		quoted, err := strconv.QuotedPrefix(rest)
 		if !ok || err != nil {
 			continue
@@ -119,11 +121,4 @@ func restoredSelections(text string, frames []string) []composerSelection {
 	}
 	slices.SortFunc(selections, func(a, b composerSelection) int { return a.start - b.start })
 	return selections
-}
-
-// selectionFramePrefix starts every selection frame, including omissions.
-const selectionFramePrefix = "Selected text for "
-
-func selectionFrame(frame string) bool {
-	return strings.HasPrefix(frame, selectionFramePrefix)
 }

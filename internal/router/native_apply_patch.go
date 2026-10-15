@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
@@ -399,7 +401,7 @@ func stockPatchResultState(toolName string, raw json.RawMessage) (terminal, repo
 		}
 		return true, strings.HasPrefix(strings.TrimSpace(text), "Success."), text, ""
 	}
-	state, cell, _ := codeModeExecutionHeader(text)
+	state, cell, _ := binding.CodeModeExecutionHeader(text)
 	switch state {
 	case "running":
 		return false, false, text, cell

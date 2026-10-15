@@ -19,6 +19,14 @@ semantics, sorted keys, unescaped HTML, and the absence of a trailing newline.
 Event and item facts retain the protocol's exact identities, including recognized
 Codex wire extensions.
 
+## Submitted attachment envelopes
+
+The shared attachment codec recognizes the bounded durable envelope for submitted
+file, skill, and selection snapshots. Encoding preserves the submitted frame text;
+decoding validates the envelope, size limits, and recognized frame families.
+Consumers share frame recognition and guidance spelling. The codec performs no
+filesystem reads, composer actions, or model-input projection policy.
+
 ## Ownership and acceptance
 
 The library has no provider selection, credentials, transport, process lifetime,

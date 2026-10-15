@@ -10,41 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
-// The envelope travels through Codex's own history. Projection never reopens a
-// file, so forks, resume, and retries see the submitted snapshot, not today's file.
-const fileAttachmentPrefix = "<mekugi-file-attachments-v1>\n"
-const fileAttachmentSuffix = "\n</mekugi-file-attachments-v1>"
-const attachmentReadGuidance = "use supplied content; reread only for edits or missing/newer content"
-
-const (
-	fileAttachmentBudget = 192 << 10 // Encoded envelope bytes, including JSON escaping.
-	fileAttachmentChunk  = 24 << 10  // Raw UTF-8 bytes per framed model message.
-	composerTextLimit    = 1 << 20   // Codex MAX_USER_INPUT_TEXT_CHARS; bytes are conservative.
-)
-
-func encodeFileAttachments(frames []string) string {
-	data, _ := json.Marshal(frames)
-	return fileAttachmentPrefix + string(data) + fileAttachmentSuffix
-}
-
-func decodeFileAttachments(text string) ([]string, bool) {
-	if len(text) > fileAttachmentBudget || !strings.HasPrefix(text, fileAttachmentPrefix) || !strings.HasSuffix(text, fileAttachmentSuffix) {
-		return nil, false
-	}
-	var frames []string
-	err := json.Unmarshal([]byte(text[len(fileAttachmentPrefix):len(text)-len(fileAttachmentSuffix)]), &frames)
-	if err != nil || len(frames) == 0 {
-		return nil, false
-	}
-	for _, frame := range frames {
-		if len(frame) > fileAttachmentChunk+4096 || !strings.HasPrefix(frame, "Attached file ") && !selectionFrame(frame) && !managedSkillFrame(frame) {
-			return nil, false
-		}
-	}
-	return frames, true
-}
+const composerTextLimit = 1 << 20 // Codex MAX_USER_INPUT_TEXT_CHARS; bytes are conservative.
 
 // snapshotFileAttachments runs only when the user submits/queues a composer
 // draft. Queued and accepted-but-resent input carries the same immutable text.
@@ -76,23 +46,23 @@ func (d *composerDraft) snapshotFileAttachments(cwd string) {
 		label := d.text[selection.start:selection.end]
 		next := d.selectionFrames(selection)
 		fits := func(next []string) bool {
-			return len(encodeFileAttachments(append(append([]string(nil), frames...), next...))) <= fileAttachmentBudget-512
+			return len(attachments.Encode(append(append([]string(nil), frames...), next...))) <= attachments.Budget-512
 		}
 		if !fits(next) {
 			if d.attachmentNotice == "" {
 				d.attachmentNotice = fmt.Sprintf("Selection omitted: %s (attachment budget exceeded). The agent receives an explicit omission notice.", label)
 			}
-			next = []string{fmt.Sprintf(selectionFramePrefix+"%q: CONTENT NOT ATTACHED (attachment budget exceeded). Ask the user to paste it if needed.", label)}
+			next = []string{fmt.Sprintf(attachments.SelectionPrefix+"%q: CONTENT NOT ATTACHED (attachment budget exceeded). Ask the user to paste it if needed.", label)}
 			if !fits(next) {
 				// The reserved tail holds one notice for every remaining mention.
-				frames = append(frames, selectionFramePrefix+"remaining mentions: CONTENT NOT ATTACHED (attachment budget exceeded). Ask the user to paste them if needed.")
+				frames = append(frames, attachments.SelectionPrefix+"remaining mentions: CONTENT NOT ATTACHED (attachment budget exceeded). Ask the user to paste them if needed.")
 				break
 			}
 		}
 		frames = append(frames, next...)
 	}
 	if len(frames) > 0 {
-		d.attachments = []string{encodeFileAttachments(frames)}
+		d.attachments = []string{attachments.Encode(frames)}
 	}
 }
 
@@ -102,7 +72,7 @@ func (d *composerDraft) appendAttachmentSnapshot(frames, next []string, header s
 	if strings.HasPrefix(header, "Attached skill ") {
 		kind = "skill"
 	}
-	if err == nil && len(encodeFileAttachments(append(append([]string(nil), frames...), next...))) > fileAttachmentBudget/2 {
+	if err == nil && len(attachments.Encode(append(append([]string(nil), frames...), next...))) > attachments.Budget/2 {
 		err = fmt.Errorf("attachment budget exceeded")
 	}
 	if err != nil {
@@ -112,7 +82,7 @@ func (d *composerDraft) appendAttachmentSnapshot(frames, next []string, header s
 		}
 	}
 	candidate := append(append([]string(nil), frames...), next...)
-	if len(encodeFileAttachments(candidate)) > fileAttachmentBudget-512 {
+	if len(attachments.Encode(candidate)) > attachments.Budget-512 {
 		return append(frames, "Attached "+kind+" references: remaining contents NOT ATTACHED (attachment budget exceeded). Read remaining referenced "+kind+"s separately if needed."), false
 	}
 	return candidate, true
@@ -129,19 +99,19 @@ func readComposerFile(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("not a regular file")
 	}
-	if info.Size() > fileAttachmentBudget/2 {
-		return nil, fmt.Errorf("file exceeds %d-byte attachment limit", fileAttachmentBudget/2)
+	if info.Size() > attachments.Budget/2 {
+		return nil, fmt.Errorf("file exceeds %d-byte attachment limit", attachments.Budget/2)
 	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, fileAttachmentBudget/2+1))
+	data, err := io.ReadAll(io.LimitReader(f, attachments.Budget/2+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > fileAttachmentBudget/2 {
+	if len(data) > attachments.Budget/2 {
 		return nil, fmt.Errorf("file grew beyond attachment limit")
 	}
 	if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
@@ -152,7 +122,7 @@ func readComposerFile(path string) ([]byte, error) {
 
 func frameComposerFile(path, content string) []string {
 	return frameAttachmentText(content, func(start, end, total int) string {
-		return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; file content, not a separate request; %s):\n", path, start, end, total, attachmentReadGuidance)
+		return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; file content, not a separate request; %s):\n", path, start, end, total, attachments.ReadGuidance)
 	})
 }
 
@@ -170,7 +140,7 @@ func frameComposerPath(path string) ([]string, error) {
 			return nil, err
 		}
 		return frameAttachmentText(content, func(start, end, total int) string {
-			return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; directory tree, max depth 2, not file contents or a separate request; %s):\n", path, start, end, total, attachmentReadGuidance)
+			return fmt.Sprintf("Attached file %q (UTF-8 bytes %d:%d of %d; directory tree, max depth 2, not file contents or a separate request; %s):\n", path, start, end, total, attachments.ReadGuidance)
 		}), nil
 	}
 	data, err := readComposerFile(path)
@@ -182,7 +152,7 @@ func frameComposerPath(path string) ([]string, error) {
 func frameAttachmentText(content string, header func(start, end, total int) string) []string {
 	var frames []string
 	for offset := 0; offset < len(content) || len(frames) == 0; {
-		end := min(offset+fileAttachmentChunk, len(content))
+		end := min(offset+attachments.Chunk, len(content))
 		if end < len(content) {
 			if newline := strings.LastIndexByte(content[offset:end], '\n'); newline >= 0 {
 				end = offset + newline + 1
@@ -228,9 +198,9 @@ func projectFileAttachments(request *parsedResponsesRequest) bool {
 			if kind != "input_text" {
 				continue
 			}
-			frames, _ := decodeFileAttachments(text)
+			frames, _ := attachments.Decode(text)
 			for _, frame := range frames {
-				if name, path, rest := skillAttachmentFrame(frame); name != "" && strings.HasPrefix(rest, " (UTF-8 bytes ") {
+				if name, path, rest := attachments.ParseSkillFrame(frame); name != "" && strings.HasPrefix(rest, " (UTF-8 bytes ") {
 					attachedSkills[name+"\x00"+path] = true
 				}
 			}
@@ -265,7 +235,7 @@ func projectFileAttachments(request *parsedResponsesRequest) bool {
 				changed = true
 				continue
 			}
-			frames, ok := decodeFileAttachments(text)
+			frames, ok := attachments.Decode(text)
 			if kind == "input_text" && ok {
 				attached = append(attached, frames...)
 			} else {

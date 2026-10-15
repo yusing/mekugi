@@ -1,6 +1,7 @@
-// Package outputdedupe finds repeated line runs in earlier visible text.
+// Package matcher finds repeated line runs in earlier visible text.
 // An Index belongs to one forward pass over a model request, not to a session.
-package outputdedupe
+// Source: internal/outputdedupe/matcher.go:1:339@b9a7b3fe.
+package matcher
 
 import (
 	"bytes"

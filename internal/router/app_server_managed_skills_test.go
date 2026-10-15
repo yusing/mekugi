@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
 const managedSkillInstructions = "Actual review instructions 世界\nDo not replace these with a name reference.\n"
@@ -52,8 +54,8 @@ func TestManagedSkillAttachmentContentsAndIdentity(t *testing.T) {
 	if len(input) != 2 || input[1]["type"] != "text" {
 		t.Fatalf("instructions missing or duplicated: %+v", input)
 	}
-	frames, ok := decodeFileAttachments(input[1]["text"].(string))
-	if !ok || len(frames) != 1 || !strings.Contains(frames[0], attachmentReadGuidance) || !strings.HasSuffix(frames[0], managedSkillInstructions) {
+	frames, ok := attachments.Decode(input[1]["text"].(string))
+	if !ok || len(frames) != 1 || !strings.Contains(frames[0], attachments.ReadGuidance) || !strings.HasSuffix(frames[0], managedSkillInstructions) {
 		t.Fatalf("instruction contents missing: %+v", frames)
 	}
 	content, err := json.Marshal(input)
@@ -87,7 +89,7 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 	if err := u.flushInput(); err != nil {
 		t.Fatal(err)
 	}
-	frames, _ := decodeFileAttachments(u.submission.attachments[0])
+	frames, _ := attachments.Decode(u.submission.attachments[0])
 	if len(frames) != 1 || !strings.HasSuffix(frames[0], managedSkillInstructions) {
 		t.Fatalf("queue reopened source: %+v", frames)
 	}
@@ -152,11 +154,11 @@ func TestManagedSkillMetadataPlaceholderResolvesInstructions(t *testing.T) {
 			}
 			draft := composerDraft{text: "$review", skills: []composerSkill{{start: 0, end: 7, name: "review", path: path}}}
 			draft.snapshotSkillAttachments(u.session.cwd, u.skillEnvironment)
-			frames, ok := decodeFileAttachments(draft.attachments[0])
+			frames, ok := attachments.Decode(draft.attachments[0])
 			if !ok || len(frames) != 1 {
 				t.Fatalf("snapshot missing: %+v", frames)
 			}
-			name, source, rest := skillAttachmentFrame(frames[0])
+			name, source, rest := attachments.ParseSkillFrame(frames[0])
 			if name != "review" || source != path || strings.Contains(frames[0], metadata) {
 				t.Fatalf("placeholder attached as instructions or source lost: %q", frames[0])
 			}

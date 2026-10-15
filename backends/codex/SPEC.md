@@ -6,7 +6,7 @@ Own Codex process transport and host-selected rollout evidence. Codex remains th
 execution, permission, agent, and session authority. The application chooses an
 invocation, interprets lifecycle facts, and owns session presentation and intent.
 The [Responses adapter](responses/SPEC.md) owns model-path adaptation; executable
-frontend registrations use the binding package.
+frontend and input-projection registrations use the binding package.
 
 ## Process transport and lifetime
 
@@ -26,6 +26,20 @@ Explicit close releases a reader waiting on a paused consumer. Graceful shutdown
 closes input and allows Codex three seconds to drain before forced termination;
 the caller receives shutdown and process errors. A process and live RPC handle
 are never restored from retained evidence.
+
+## Input projection
+
+Bindings register named two-phase projections in composition order. Preparation
+receives the original input before application additions; application receives the
+final model-input copy after evidence observation. Registrations contain no
+request-local state. Each preparation returns its own application function.
+Duplicate names and incomplete registrations fail activation.
+
+Projection results carry input bytes and repetition receipts for the application
+consumer, without exposing backend execution or private request objects. The
+binding API also owns recognition of Codex execution headers and live-session
+JSON, shared by projection and continuation observation. These recognizers inspect
+host metadata; they never interpret printed body text as a new host outcome.
 
 ## Retained rollout evidence
 

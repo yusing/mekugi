@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -172,7 +174,7 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 	imageCount := 0
 	for _, content := range contents {
 		if content.Type == "text" {
-			if _, attached := decodeFileAttachments(content.Text); attached {
+			if _, attached := attachments.Decode(content.Text); attached {
 				continue
 			}
 			for _, span := range composerElementSpans(content.Text, content.Elements) {

@@ -79,7 +79,7 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 			}
 			input := append(duplicateTestInput(firstCommand, "first", first), duplicateTestInput(secondCommand, "second", second)...)
 			proxy := newManagedMekugiProxy(t)
-			proxy.duplicateOutput = true
+			proxy.inputProjections = testInputProjections()
 			request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 			items := duplicateTestItems(t, request)
 			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+want {
@@ -111,7 +111,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 		input = append(input, duplicateTestInput("mcat fixture.go "+span, id, result.Stdout)...)
 	}
 	proxy := newManagedMekugiProxy(t)
-	proxy.duplicateOutput = true
+	proxy.inputProjections = testInputProjections()
 	read("1:10", "first")
 	read("7:16", "second")
 	first := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})

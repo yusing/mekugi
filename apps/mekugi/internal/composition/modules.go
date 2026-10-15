@@ -3,6 +3,8 @@ package composition
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/outputdeduplication"
+
 	"github.com/yusing/mekugi/modules/changehistory"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -28,6 +30,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c.Add(sourceoutline.Module, func() sourceoutline.Deps { return sourceoutline.Deps{} })
 	c.Add(fileread.Module, func() fileread.Deps { return fileread.Deps{} })
 	c.Add(symbolquery.Module, func() symbolquery.Deps { return symbolquery.Deps{} })
+	c.Add(outputdeduplication.Module, func() outputdeduplication.Deps { return outputdeduplication.Deps{} })
 	binder := new(binding.Registry)
 	runtime, err := c.Activate(ctx, binder)
 	if err != nil {

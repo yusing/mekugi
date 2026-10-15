@@ -1,6 +1,9 @@
-package router
+// Source: internal/router/output_dedupe.go:1:258@b9a7b3fe.
+package codexbinding
 
 import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -9,69 +12,30 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/outputdedupe"
+	"github.com/yusing/mekugi/modules/outputdeduplication/internal/projection"
 )
-
-type outputDeduplication struct {
-	occurrences uint64
-	calls       map[string]string
-}
 
 // This is the last request projection. All evidence consumers must have already
 // read the original host output. Its index belongs only to this input view.
-func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[string][]int) (summary outputDeduplication) {
+func apply(service projection.Service, input []byte, hostParts map[string][]int) (result binding.ProjectionResult) {
+	summary := &binding.ProjectionReceipt{}
+	result = binding.ProjectionResult{Input: input, Receipt: summary}
 	var items []jsonv1.RawMessage
-	if json.Unmarshal(request.fields["input"], &items) != nil {
+	if json.Unmarshal(input, &items) != nil {
 		return
 	}
-	summary.calls = make(map[string]string)
+	summary.RepeatedCalls = make(map[string]string)
 	var repeatedLines, bodyBytes, repeatedBytes int
-	index := outputdedupe.New()
-	defer index.Close()
-	sources := 0
+	pass := service.NewPass()
+	defer pass.Close()
 	changed := false
 	projectBody := func(header, body string) string {
-		bodyBytes += len(body)
-		if len(body) < outputdedupe.Threshold {
-			return header + body
-		}
-		projection := index.Project(body)
-		if len(projection.Spans) > 0 {
-			summary.occurrences++
-		}
-		verbatim := len(body)
-		for _, span := range projection.Spans {
-			verbatim -= span.End - span.Start
-			repeatedBytes += span.End - span.Start
-			repeatedLines += strings.Count(strings.TrimSuffix(body[span.Start:span.End], "\n"), "\n") + 1
-		}
-		var result strings.Builder
-		result.WriteString(header)
-		if verbatim > 0 {
-			sources++
-			index.Add(sources, projection)
-			// Anchor sources before any later repeat to keep growing prefixes stable.
-			fmt.Fprintf(&result, "[O%d]\n", sources)
-		}
-		start := 0
-		for _, span := range projection.Spans {
-			result.WriteString(body[start:span.Start])
-			fmt.Fprintf(&result, "[same as O%d", span.Source)
-			if !span.Whole {
-				if span.FirstLine == span.LastLine {
-					fmt.Fprintf(&result, " L%d", span.FirstLine)
-				} else {
-					fmt.Fprintf(&result, " L%d-%d", span.FirstLine, span.LastLine)
-				}
-			}
-			result.WriteByte(']')
-			if body[span.End-1] == '\n' {
-				result.WriteByte('\n')
-			}
-			start = span.End
-		}
-		result.WriteString(body[start:])
-		return result.String()
+		result := pass.Text(header, body)
+		summary.OutputRepetitions += result.Occurrences
+		repeatedLines += result.RepeatedLines
+		bodyBytes += result.BodyBytes
+		repeatedBytes += result.RepeatedBytes
+		return result.Text
 	}
 	projectFrame := func(text string) string {
 		header, body, ok := duplicateAttachmentBody(text)
@@ -81,7 +45,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		return projectBody(header, body)
 	}
 	projectAttachment := func(text string) string {
-		frames, ok := decodeFileAttachments(text)
+		frames, ok := attachments.Decode(text)
 		if !ok {
 			return text
 		}
@@ -91,7 +55,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 			changed = changed || frames[i] != frame
 		}
 		if changed {
-			return encodeFileAttachments(frames)
+			return attachments.Encode(frames)
 		}
 		return text
 	}
@@ -124,7 +88,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		}
 		projectText := func(text string) string {
 			header, body := duplicateOutputBody(text)
-			if nativeJSONSession(body) != 0 {
+			if binding.NativeJSONSession(body) != 0 {
 				return text
 			}
 			return projectBody(header, body)
@@ -139,13 +103,13 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 			if repeatedBytes == bodyBytes {
 				label = "repeated"
 			}
-			summary.calls[id] = label
+			summary.RepeatedCalls[id] = label
 		}
 	}
 	if changed {
-		request.setInput(responses.MustMarshalJSON(items))
+		result.Input = responses.MustMarshalJSON(items)
 	}
-	return summary
+	return result
 }
 
 // Project only complete attachment frames, never ordinary prompts or failure
@@ -153,8 +117,8 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 func duplicateAttachmentBody(text string) (header, body string, ok bool) {
 	first, body, found := strings.Cut(text, "\n")
 	if !found || !strings.Contains(first, " (UTF-8 bytes ") ||
-		!strings.HasSuffix(first, attachmentReadGuidance+"):") ||
-		!strings.HasPrefix(first, "Attached file ") && !managedSkillFrame(text) {
+		!strings.HasSuffix(first, attachments.ReadGuidance+"):") ||
+		!strings.HasPrefix(first, "Attached file ") && !attachments.SkillFrame(text) {
 		return "", "", false
 	}
 	return first + "\n", body, true
@@ -249,9 +213,9 @@ func duplicateOutputItem(item map[string]jsonv1.RawMessage) bool {
 
 func duplicateOutputBody(text string) (header, body string) {
 	body = text
-	if status, _, payload := codeModeExecutionHeader(text); status != "" {
+	if status, _, payload := binding.CodeModeExecutionHeader(text); status != "" {
 		body = payload
-	} else if state, payload := nativeExecutionHeader(text); state != "" {
+	} else if state, payload := binding.NativeExecutionHeader(text); state != "" {
 		body = payload
 	}
 	return text[:len(text)-len(body)], body

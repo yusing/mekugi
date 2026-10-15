@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv2 "encoding/json/v2"
@@ -82,7 +84,7 @@ func codeModeReturnedNothing(raw json.RawMessage) bool {
 	if strings.HasSuffix(header, "\nOutput:") {
 		header += "\n"
 	}
-	status, _, body := codeModeExecutionHeader(header)
+	status, _, body := binding.CodeModeExecutionHeader(header)
 	if parts[0].Type != "input_text" || status != "Script completed" && status != "Script failed" || strings.TrimSpace(body) != "" {
 		return false
 	}
@@ -106,7 +108,7 @@ func codeModeFailureText(texts []string) (string, bool) {
 	if len(texts) == 0 {
 		return "", false
 	}
-	if status, _, _ := codeModeExecutionHeader(texts[0]); status != "Script failed" {
+	if status, _, _ := binding.CodeModeExecutionHeader(texts[0]); status != "Script failed" {
 		return "", false
 	}
 	text := "exec script failed"

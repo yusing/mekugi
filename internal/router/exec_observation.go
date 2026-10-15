@@ -20,6 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -1291,8 +1293,8 @@ func execResultState(toolName string, raw json.RawMessage) (terminal bool, exit 
 		}
 		return terminal, nil, completed, text, pending
 	}
-	state, _ := nativeExecutionHeader(text)
-	if session := nativeExecutionSession(text); session != 0 {
+	state, _ := binding.NativeExecutionHeader(text)
+	if session := binding.NativeExecutionSession(text); session != 0 {
 		return false, nil, false, text, "session:" + strconv.FormatInt(session, 10)
 	}
 	if code, ok := strings.CutPrefix(state, "Process exited with code "); ok {

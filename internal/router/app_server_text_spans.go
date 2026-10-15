@@ -5,9 +5,10 @@ import (
 	"cmp"
 	"encoding/xml"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -37,41 +38,6 @@ func selectedSkillSource(text string) (name, path string) {
 	return reference.Name, ""
 }
 
-func managedSkillFrame(frame string) bool {
-	if frame == "Attached skill references: remaining contents NOT ATTACHED (attachment budget exceeded). Read remaining referenced skills separately if needed." {
-		return true
-	}
-	if name, _, _ := skillAttachmentFrame(frame); name != "" {
-		return true
-	}
-	return false
-}
-
-func skillAttachmentFrame(frame string) (name, path, rest string) {
-	rest, ok := strings.CutPrefix(frame, "Attached skill ")
-	if !ok {
-		return "", "", ""
-	}
-	quoted, err := strconv.QuotedPrefix(rest)
-	if err != nil {
-		return "", "", ""
-	}
-	name, _ = strconv.Unquote(quoted)
-	rest = rest[len(quoted):]
-	if source, ok := strings.CutPrefix(rest, " from "); ok {
-		quoted, err = strconv.QuotedPrefix(source)
-		if err != nil {
-			return "", "", ""
-		}
-		path, _ = strconv.Unquote(quoted)
-		rest = source[len(quoted):]
-	}
-	if !strings.HasPrefix(rest, " (UTF-8 bytes ") && !strings.HasPrefix(rest, ": CONTENT NOT ATTACHED (") {
-		return "", "", ""
-	}
-	return name, path, rest
-}
-
 func composerContentSkills(content []composerUserContent) []composerSkill {
 	var skills []composerSkill
 	for _, part := range content {
@@ -79,9 +45,9 @@ func composerContentSkills(content []composerUserContent) []composerSkill {
 			skills = append(skills, composerSkill{name: part.Name, path: part.Path})
 		}
 		if part.Type == "text" {
-			frames, _ := decodeFileAttachments(part.Text)
+			frames, _ := attachments.Decode(part.Text)
 			for _, frame := range frames {
-				if name, path, _ := skillAttachmentFrame(frame); name != "" {
+				if name, path, _ := attachments.ParseSkillFrame(frame); name != "" {
 					skills = append(skills, composerSkill{name: name, path: path})
 				}
 			}
