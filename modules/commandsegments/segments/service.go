@@ -30,8 +30,8 @@ func (s *Service) Start(ctx context.Context) error {
 		return nil
 	}
 	s.Live, s.LiveError = transport.Listen(ctx)
-	// Transport is auxiliary. Application policy decides whether its absence
-	// prevents guarded startup; retained reports remain available.
+	// Transport is auxiliary. The application reports its absence independently
+	// of approval startup; retained reports remain available.
 	return ctx.Err()
 }
 

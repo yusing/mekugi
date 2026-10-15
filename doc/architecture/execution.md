@@ -85,7 +85,9 @@ The invocation's shell-approval server owns the VCS/sudo decision socket, pendin
 requests, cancellation, and shutdown join independently of segment reporting.
 The UI consumes that server's requests; report arrival or transport closure does
 not grant approval or complete a pending decision. Application startup coordinates
-both services and keeps guarded startup fail-closed.
+both services independently and keeps guarded startup fail-closed for approval
+channel failure. Report acquisition or attachment failure leaves approval
+requests available and falls back to the host's combined command output.
 
 Segment tracking (`REQ-EXECUTION-002`) has these owners:
 

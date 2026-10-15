@@ -324,30 +324,27 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
-				// Without the socket, command shells find no router and run
-				// their scripts untracked. Without the approval channel,
-				// guarded remote writes are denied, so guarded startup stops.
-				err := segments.LiveError
-				var hub *execTrackHub
-				if segments.Live != nil {
-					guard, channel := vcsguard.Paths(frontendDirectory)
-					mekugiCalls.guard, err = listenShellApprovals(ctx, channel, vcsguard.Timeout)
-					if err == nil {
-						hub, err = attachExecTrack(segments.Live, execInstrumentation{vcs: guard, sudo: sudoask.Path(frontendDirectory)})
-					}
-					if err != nil {
-						segments.Live.Close()
-						mekugiCalls.guard.close()
-					}
-				} else if err == nil {
-					err = errors.New("command reporting is unavailable")
+				guard, channel := vcsguard.Paths(frontendDirectory)
+				var approvalErr error
+				mekugiCalls.guard, approvalErr = listenShellApprovals(ctx, channel, vcsguard.Timeout)
+				if approvalErr != nil && session.VCSGuard {
+					return nil, fmt.Errorf("listen for guarded VCS writes: %w", approvalErr)
 				}
-
-				if err == nil {
-					mekugiCalls.execTrack = hub
-					mekugiCalls.execWindows.tracker = hub
-				} else if session.VCSGuard {
-					return nil, fmt.Errorf("listen for guarded VCS writes: %w", err)
+				// Reporting is auxiliary; acquisition or attachment failure
+				// cannot close the independent command approval channel.
+				reportErr := segments.LiveError
+				if segments.Live != nil {
+					var hub *execTrackHub
+					hub, reportErr = attachExecTrack(segments.Live, execInstrumentation{vcs: guard, sudo: sudoask.Path(frontendDirectory)})
+					if reportErr == nil {
+						mekugiCalls.execTrack = hub
+						mekugiCalls.execWindows.tracker = hub
+					} else {
+						segments.Live.Close()
+					}
+				}
+				if reportErr != nil {
+					issues.addNotice("", "command_reporting_unavailable", "Command segment tracking is unavailable. Commands retain their original output and exit status: "+reportErr.Error())
 				}
 			}
 			debugDirectory := ""

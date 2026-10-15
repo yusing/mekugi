@@ -67,9 +67,10 @@ here. Disabling the record kind preserves its records under that owner's policy.
 ## Failure
 
 Unavailable report transport leaves commands running with their original output
-and status. Startup records optional transport acquisition failure; application
-startup rejects it when guarded execution requires the channel. The same policy
-applies if the subsequent approval listener fails. Cancellation remains
+and status. Startup records optional transport acquisition failure, which the
+application reports without disabling the independent approval channel. Report
+attachment failure has the same fallback. Failure of the approval channel itself
+remains subject to the application's guarded-startup policy. Cancellation remains
 cancellation. Malformed or unmatched reports are declined; loss of an accepted
 stream ends observation without claiming host completion.
 
