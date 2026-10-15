@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"

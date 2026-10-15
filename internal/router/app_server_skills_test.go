@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 // These fixtures originated from Codex TUI snapshots at 86be5320b068ef67b56348b02aa8c33706955da6:

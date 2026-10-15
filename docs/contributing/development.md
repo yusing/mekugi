@@ -8,9 +8,17 @@ See [Contributing](../../CONTRIBUTING.md) for the contributor entry point.
 From a checkout with [source prerequisites](../../README.md#build-from-source):
 
 ```sh
+make build
 make test
 make lint
 ```
+
+The build, test, lint, generation, and snapshot recipes enumerate the explicit
+`go.work` members; root `go test ./...` omits nested modules. `make build-binaries`
+writes both executables to `bin/` without installing them. Run member tests from
+that member with the workspace enabled. Local modules are released together and
+resolved by `go.work`, not unpublished version requirements or local replacements.
+See [workspace ownership](../../doc/architecture/workspace.md).
 
 Interpreter and query fixtures use Node.js/ripgrep; lint needs `golangci-lint`/`deadcode` and installs neither.
 Focus tests with `TEST_PACKAGES`/`TEST_RUN`/`TEST_FLAGS`; `-count=1` bypasses caching.

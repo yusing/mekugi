@@ -4,8 +4,9 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "53"
+  revision: "54"
   files:
+    - workspace.md
     - ui.md
     - third_party.md
     - grok.md
@@ -26,6 +27,8 @@ this governed architecture set. Architecture documents name responsibilities and
 collaborators without restating implementation.
 
 ## Inventory
+
+- [`CTR-WORKSPACE-001`](workspace.md): workspace membership, composition, and extraction boundaries
 
 - [`CTR-UI-001`](ui.md): presentation, app-server client, and router integration boundaries
 

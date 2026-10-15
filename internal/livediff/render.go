@@ -14,7 +14,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Syntax is independent of wrapping, coordinates, and recency marks. Keep

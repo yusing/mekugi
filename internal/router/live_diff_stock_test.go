@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {

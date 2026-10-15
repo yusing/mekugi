@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func newPagedHistoryUI(t *testing.T) (*appServerUI, *appServerTestInput) {

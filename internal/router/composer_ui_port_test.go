@@ -20,7 +20,7 @@ import (
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestSubmittedAttachmentHostSchema(t *testing.T) {

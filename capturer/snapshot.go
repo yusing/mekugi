@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 type usageMetrics struct {

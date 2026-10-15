@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	"mvdan.cc/sh/v3/syntax"
 )

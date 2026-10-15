@@ -15,7 +15,7 @@ import (
 	"sync"
 
 	"github.com/dlclark/regexp2/v2"
-	_ "github.com/yusing/mekugi/internal/tokenizer/regex"
+	_ "github.com/yusing/mekugi/libraries/outputbudget/tokenizer/regex"
 )
 
 // Source: github.com/pkoukk/tiktoken-go-loader/assets/o200k_base.tiktoken@v0.0.2

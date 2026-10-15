@@ -2,10 +2,16 @@
 
 ## CTR-PLUGIN-001 — One immutable executable catalog
 
-The router owns the compiled command catalog, duplicate-name validation, pinned
-worker executable, and invocation-private PATH exposure. Frontend workers verify
+Application composition selects the compiled command catalog and validates
+duplicate names. The Codex binding collects executable registrations; the router
+retains authenticated snapshots, pinned workers, and invocation-private PATH
+exposure during extraction. Frontend workers verify
 that identity before dispatch. Codex owns process execution and its permissions,
 cancellation, and continuation.
+
+Contributions use portable executable leaf names and resolve to a compiled
+implementation before snapshot publication. The dispatch owner supplies that
+availability check; the manifest remains authenticated and validated at use.
 
 The catalog provides descriptions and native dispatch for `mcat`, `inspect_file`,
 `msymbol`, `mread`, `mchanges`, and `mrun`. It does not execute declarations from

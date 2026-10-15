@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 // execGoFormatterWrites is shared by capture and display-only segment tracking.

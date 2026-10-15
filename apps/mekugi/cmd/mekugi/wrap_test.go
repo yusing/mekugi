@@ -19,7 +19,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/internal/execsegment"
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )

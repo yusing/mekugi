@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/responses"
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestShortHandlesRoundTripAndTokenCost(t *testing.T) {

@@ -1,13 +1,6 @@
 package toolplugin
 
-import "encoding/json"
-
 type (
-	Tool struct {
-		Specification  json.RawMessage `json:"specification"`
-		NativeExecutor string          `json:"nativeExecutor,omitempty"`
-	}
-
 	OmittedOutput struct {
 		// Host-owned mcat provenance, separate from serialized output.
 		SourceRow  uint64 `json:"-"`

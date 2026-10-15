@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/yusing/mekugi"
 )

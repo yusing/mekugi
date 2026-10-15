@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 const (

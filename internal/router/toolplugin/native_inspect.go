@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/sourcekind"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
 type inspectionData struct {

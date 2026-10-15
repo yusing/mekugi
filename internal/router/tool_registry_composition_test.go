@@ -1,0 +1,77 @@
+package router
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/internal/router/toolplugin"
+)
+
+func TestComposedFrontendCatalogReachesAuthenticatedRegistry(t *testing.T) {
+	all := toolplugin.Builtins()
+	for _, commands := range [][]command.Spec{nil, all[:1], all} {
+		t.Run(strconv.Itoa(len(commands)), func(t *testing.T) {
+			directory := t.TempDir()
+			registry, err := buildToolRegistryAt(t.Context(), commands, filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := registry.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			if len(registry.ordered) != len(commands) || len(registry.wrappers) != len(commands) {
+				t.Fatalf("selected %d commands, registered %d and pinned %d", len(commands), len(registry.ordered), len(registry.wrappers))
+			}
+			for _, spec := range all {
+				selected := slices.Contains(commands, spec)
+				if strings.Contains(registry.frontendGuidance, "<tool name=\""+spec.Name+"\">") != selected {
+					t.Fatalf("%s guidance does not match selection", spec.Name)
+				}
+			}
+			if len(commands) == 0 && registry.frontendGuidance != "" {
+				t.Fatal("empty catalog projects guidance")
+			}
+			if len(commands) == len(all) && registry.frontendGuidance != embeddedFrontendGuide() {
+				t.Fatal("retained catalog changed projected guidance")
+			}
+		})
+	}
+}
+
+func TestComposedCatalogRejectsInvalidExposure(t *testing.T) {
+	for _, name := range []string{"../escaped-frontend", "/absolute", `..\escaped`, ".", "..", "unimplemented"} {
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			runtime := filepath.Join(directory, "runtime")
+			registry, err := buildToolRegistryAt(t.Context(), []command.Spec{{Name: name, Description: "unavailable frontend"}}, runtime, filepath.Join(directory, "replay"))
+			if err == nil {
+				_ = registry.Close()
+				t.Fatal("published invalid frontend")
+			}
+			entries, readErr := os.ReadDir(runtime)
+			if readErr != nil && !os.IsNotExist(readErr) || len(entries) != 0 {
+				t.Fatalf("failed publication left owned artifacts: %v, %v", entries, readErr)
+			}
+		})
+	}
+}
+
+func TestWorkerSymlinkRejectsNonLeafNames(t *testing.T) {
+	for _, name := range []string{"../escape", "/absolute", `..\escape`, ".", "..", ""} {
+		directory := t.TempDir()
+		if link, err := ensureWorkerSymlinkInDirectory("worker", directory, name); err == nil || link != "" {
+			t.Fatalf("accepted %q: link=%q error=%v", name, link, err)
+		}
+		entries, err := os.ReadDir(directory)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("invalid name changed directory: %v, %v", entries, err)
+		}
+	}
+}

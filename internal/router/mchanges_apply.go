@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // changeCapture is one completed attempt's review files with absolute paths,

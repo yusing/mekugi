@@ -16,7 +16,7 @@ import (
 	"syscall"
 
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 // CriticalErrors retains bounded, actionable session notices with complete error text,

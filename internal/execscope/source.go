@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )

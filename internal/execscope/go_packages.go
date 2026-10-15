@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 // Explicit go fix package operands scope the Go sources the agent asks to edit.

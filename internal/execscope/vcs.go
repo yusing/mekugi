@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 func execGitQuery(input execProviderInput, args []string, stdin string) (string, error) {

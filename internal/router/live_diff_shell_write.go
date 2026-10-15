@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	"github.com/yusing/mekugi"
 	"mvdan.cc/sh/v3/syntax"

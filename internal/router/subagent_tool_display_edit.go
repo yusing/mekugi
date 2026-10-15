@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/syntax"
 )
 

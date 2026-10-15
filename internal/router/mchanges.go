@@ -13,7 +13,7 @@ import (
 	"unicode"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )

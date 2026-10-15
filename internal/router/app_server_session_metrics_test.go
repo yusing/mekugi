@@ -14,7 +14,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {

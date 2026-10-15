@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/pmezard/go-difflib/difflib"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // ReviewFile is an immutable original-to-final review projection. Unlike the

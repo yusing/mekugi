@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/execsegment"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
 )

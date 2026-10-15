@@ -20,8 +20,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 	"mvdan.cc/sh/v3/syntax"
 )
 

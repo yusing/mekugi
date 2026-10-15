@@ -12,7 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/internal/appserver"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 

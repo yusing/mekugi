@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,7 +17,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := buildToolRegistryAt(b.Context(), filepath.Join(directory, "runtime"), replay)
+	registry, err := buildToolRegistryAt(b.Context(), toolplugin.Builtins(), filepath.Join(directory, "runtime"), replay)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -28,7 +29,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	second, err := filepath.Abs("../sourcekind/sourcekind.go")
+	second, err := filepath.Abs("../../libraries/sourceanalysis/sourcekind/sourcekind.go")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -92,7 +93,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := buildToolRegistryAt(b.Context(), filepath.Join(directory, "runtime"), replay)
+	registry, err := buildToolRegistryAt(b.Context(), toolplugin.Builtins(), filepath.Join(directory, "runtime"), replay)
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -17,7 +17,7 @@ import (
 
 	"go/token"
 
-	"github.com/yusing/mekugi/internal/sourcekind"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
 type symbolPosition struct {

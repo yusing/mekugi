@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 // Replay uses retained semantic items, never shell execution or provider calls.

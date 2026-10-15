@@ -8,7 +8,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestPythonReadOnlyDoesNotPreviewInputEdits(t *testing.T) {

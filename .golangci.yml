@@ -18,4 +18,4 @@ linters:
         - '-ST*'
   exclusions:
     paths:
-      - internal/tokenizer/regex/regexp.gen.go
+      - libraries/outputbudget/tokenizer/regex/regexp.gen.go

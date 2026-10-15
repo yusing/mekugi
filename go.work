@@ -1,0 +1,15 @@
+go 1.27.0
+
+use (
+	.
+	./apps/mekugi
+	./backends/codex
+	./contracts
+	./libraries/commandanalysis
+	./libraries/outputbudget
+	./libraries/pathdisplay
+	./libraries/persistence
+	./libraries/sourceanalysis
+	./testsupport/moduletest
+	./testsupport/uisnapshot
+)

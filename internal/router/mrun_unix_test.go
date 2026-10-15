@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func TestMRunCodexGroupTermination(t *testing.T) {

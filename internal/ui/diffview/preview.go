@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )

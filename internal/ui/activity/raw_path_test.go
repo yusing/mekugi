@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotRawFilePaths(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func mreadQualitySession(t *testing.T, registry *toolRegistry, thread string) (*mekugiReplayStore, context.Context) {

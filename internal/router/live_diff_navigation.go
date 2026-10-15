@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 

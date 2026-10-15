@@ -49,7 +49,7 @@ func standaloneFrontendDescription(name string) string {
 var frontendFramingTag = regexp.MustCompile(`</?(?:tool|mekugi-frontends)[\t\r\n />]`)
 
 func frontendGuidanceFromRegistry(contributions []toolContribution) (string, error) {
-	var additions strings.Builder
+	var entries strings.Builder
 	for _, contribution := range contributions {
 		if !contribution.Executable || len(contribution.Specification) == 0 {
 			continue
@@ -71,19 +71,18 @@ func frontendGuidanceFromRegistry(contributions []toolContribution) (string, err
 			if pinned != specification.Description {
 				return "", fmt.Errorf("generated frontend guidance is stale for %s", contribution.Name)
 			}
-			continue
 		}
-		additions.WriteString("\n<tool name=\"")
-		additions.WriteString(contribution.Name)
-		additions.WriteString("\">\n")
-		additions.WriteString(specification.Description)
-		additions.WriteString("\n</tool>\n\n")
+		entries.WriteString("<tool name=\"")
+		entries.WriteString(contribution.Name)
+		entries.WriteString("\">\n")
+		entries.WriteString(specification.Description)
+		entries.WriteString("\n</tool>\n\n")
 	}
-	guide := embeddedFrontendGuide()
-	if additions.Len() == 0 {
-		return guide, nil
+	if entries.Len() == 0 {
+		return "", nil
 	}
-	return strings.Replace(guide, "\n</mekugi-frontends>", additions.String()+"</mekugi-frontends>", 1), nil
+	preamble, _, _ := strings.Cut(embeddedFrontendGuide(), "<tool name=\"")
+	return preamble + entries.String() + "</mekugi-frontends>\n" + frontendGuidanceEnd, nil
 }
 
 func refreshMarkedToolGuidance(description, start, end, guidance string) (string, error) {

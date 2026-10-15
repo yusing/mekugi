@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 const sectionedDiff = "amber1\n--- /dev/null\n+++ \"internal/a new.go\"\n@@ -0,0 +1,2 @@\n+package main\n+var answer = 42\n--- old.go\n+++ new.go\n@@ -1 +1 @@\n--- source\n+++ source\n--- deleted.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-return 1"

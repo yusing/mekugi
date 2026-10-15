@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 // Session preferences are separate from correctness/replay records. Applied

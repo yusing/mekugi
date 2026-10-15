@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"os"
 	"path/filepath"
 	"sync"
@@ -50,7 +51,7 @@ func buildToolRegistryForTest(
 	if _, err := openMekugiReplayStore(filepath.Join(directory, "replay")); err != nil {
 		return nil, err
 	}
-	return buildToolRegistryAt(ctx,
+	return buildToolRegistryAt(ctx, toolplugin.Builtins(),
 		filepath.Join(directory, "runtime"), filepath.Join(directory, "replay"))
 }
 
@@ -65,7 +66,7 @@ func (fixture *proxyRegistryFixture) get(t *testing.T) *toolRegistry {
 			return
 		}
 		fixture.registry, fixture.err = buildToolRegistryAt(
-			t.Context(),
+			t.Context(), toolplugin.Builtins(),
 			filepath.Join(fixture.directory, "runtime"),
 			filepath.Join(fixture.directory, "replay"),
 		)

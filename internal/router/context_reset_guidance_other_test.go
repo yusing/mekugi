@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func TestResetGuidanceUnavailablePlatform(t *testing.T) {

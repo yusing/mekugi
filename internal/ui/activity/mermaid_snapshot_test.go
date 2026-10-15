@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotMermaid(t *testing.T) {

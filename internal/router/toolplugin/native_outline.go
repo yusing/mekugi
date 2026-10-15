@@ -18,8 +18,8 @@ import (
 	python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	rust "github.com/tree-sitter/tree-sitter-rust/bindings/go"
 	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
-	"github.com/yusing/mekugi/internal/gooutline"
-	"github.com/yusing/mekugi/internal/sourcekind"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/gooutline"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 )
 
 type sourceLines struct {

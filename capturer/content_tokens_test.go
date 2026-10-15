@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestContentTokensIgnoreJSONFraming(t *testing.T) {

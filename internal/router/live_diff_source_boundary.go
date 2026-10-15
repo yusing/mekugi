@@ -10,11 +10,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/sourceparse"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
-	"github.com/yusing/mekugi/internal/sourcekind"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
 	"mvdan.cc/sh/v3/syntax"
 )
 

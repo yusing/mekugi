@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/appserver"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 const appServerRestoreThreadLimit = 128

@@ -4,14 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/internal/runtimepath"
 )
 
@@ -19,7 +20,7 @@ const (
 	toolPluginManifestFilename = "workers.json"
 )
 
-func buildToolRegistry(ctx context.Context) (*toolRegistry, error) {
+func buildToolRegistry(ctx context.Context, commands []command.Spec) (*toolRegistry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -31,11 +32,12 @@ func buildToolRegistry(ctx context.Context) (*toolRegistry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buildToolRegistryAt(ctx, runtimeDirectory, replayDirectory)
+	return buildToolRegistryAt(ctx, commands, runtimeDirectory, replayDirectory)
 }
 
 func buildToolRegistryAt(
 	ctx context.Context,
+	commands []command.Spec,
 	runtimeDirectory, replayDirectory string,
 ) (*toolRegistry, error) {
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
@@ -59,23 +61,30 @@ func buildToolRegistryAt(
 	}
 	var contributions []toolContribution
 	var validationErrors []error
-	for _, tool := range toolplugin.Builtins() {
-		specification, err := decodeResponsesToolDefinition(tool.Specification)
+	for _, spec := range commands {
+		if err := spec.Validate(); err != nil {
+			validationErrors = append(validationErrors, err)
+			continue
+		}
+		wire := struct {
+			Type        string `json:"type"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		}{"custom", spec.Name, spec.Description}
+		encoded, err := json.Marshal(&wire)
 		if err != nil {
-			validationErrors = append(validationErrors, fmt.Errorf("decode frontend specification: %w", err))
+			validationErrors = append(validationErrors, err)
 			continue
 		}
 		contributions = append(contributions, toolContribution{
-			Name: specification.Name, Specification: slices.Clone(tool.Specification),
-			NativeExecutor: tool.NativeExecutor, Executable: true,
+			Name: spec.Name, Specification: encoded,
+			NativeExecutor: spec.Name, Executable: true,
 		})
 	}
 	byName := make(map[string]toolContribution, len(contributions))
 	for _, contribution := range contributions {
-		if len(contribution.Specification) != 0 {
-			if validationErr := validateToolContribution(contribution); validationErr != nil {
-				validationErrors = append(validationErrors, validationErr)
-			}
+		if frontendExecutor(contribution) == nil {
+			validationErrors = append(validationErrors, fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 		}
 		if _, exists := byName[contribution.Name]; exists {
 			validationErrors = append(validationErrors, fmt.Errorf("duplicate frontend name %q", contribution.Name))
@@ -144,12 +153,12 @@ func buildToolRegistryAt(
 
 func validateToolContribution(contribution toolContribution) error {
 	var specification struct {
-		Type        string          `json:"type"`
-		Name        string          `json:"name"`
-		Description string          `json:"description"`
-		Format      json.RawMessage `json:"format"`
+		Type        string            `json:"type"`
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		Format      jsonv1.RawMessage `json:"format"`
 	}
-	if err := json.Unmarshal(contribution.Specification, &specification); err != nil {
+	if err := jsonv1.Unmarshal(contribution.Specification, &specification); err != nil {
 		return fmt.Errorf("%s: decode frontend specification: %w", contribution.Name, err)
 	}
 	if specification.Type != "custom" || specification.Name != contribution.Name ||
@@ -162,7 +171,7 @@ func validateToolContribution(contribution toolContribution) error {
 
 func toolRegistryIdentity(manifest toolWorkerManifest) (string, error) {
 	manifest.RegistryID = ""
-	encoded, err := json.Marshal(manifest)
+	encoded, err := jsonv1.Marshal(manifest)
 	if err != nil {
 		return "", fmt.Errorf("encode frontend catalog identity: %w", err)
 	}
@@ -171,7 +180,7 @@ func toolRegistryIdentity(manifest toolWorkerManifest) (string, error) {
 }
 
 func writeToolWorkerManifest(directory string, manifest toolWorkerManifest) error {
-	encoded, err := json.Marshal(manifest)
+	encoded, err := jsonv1.Marshal(manifest)
 	if err != nil {
 		return fmt.Errorf("encode tool worker manifest: %w", err)
 	}

@@ -17,3 +17,8 @@ github.com/yusing/mekugi/internal/router/toolplugin.InspectSource
 
 # Reserved MCP endpoint: doc/spec/mcp.md.
 github.com/yusing/mekugi/internal/router.startMCP
+
+# Descriptor foundation, exercised by acceptance until feature extraction.
+github.com/yusing/mekugi/apps/mekugi/internal/composition.Handle.Value
+github.com/yusing/mekugi/apps/mekugi/internal/composition.Composition.Add
+github.com/yusing/mekugi/apps/mekugi/internal/composition.moduleRegistrar.Frontend

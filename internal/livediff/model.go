@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/goutils/synk"
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Live views read immutable review projections, never workspace files or carriers.

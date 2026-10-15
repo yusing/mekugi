@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 const outputReadUsage = "mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]"

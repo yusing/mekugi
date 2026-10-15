@@ -174,21 +174,11 @@ func runAuthenticatedToolWorker(
 		}
 		defer release()
 	}
-	var execution toolplugin.ExecutionOutput
-	switch contribution.NativeExecutor {
-	case "mcat":
-		execution, err = executeMCat(ctx, manifest, args)
-	case "msymbol", "inspect_file":
-		execution, err = executeFrontendReader(ctx, manifest, args, *contribution)
-	case "mread":
-		execution = executeMRead(ctx, manifest, args)
-	case "mchanges":
-		execution = executeMChanges(ctx, manifest, args)
-	case "mrun":
-		execution, err = executeMRun(ctx, args, stdin)
-	default:
+	execute := frontendExecutor(*contribution)
+	if execute == nil {
 		return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 	}
+	execution, err := execute(ctx, manifest, args, stdin)
 
 	if err != nil {
 		return fail(fmt.Errorf("execute tool: %w", err))
@@ -204,6 +194,35 @@ func runAuthenticatedToolWorker(
 		return fail(fmt.Errorf("write tool stderr: %w", err))
 	}
 	return true, execution.ExitCode
+}
+
+// frontendExecutor is the retained dispatch owner used both before catalog
+// publication and when an authenticated worker executes a selected command.
+func frontendExecutor(contribution toolContribution) func(context.Context, toolWorkerManifest, []string, *os.File) (toolplugin.ExecutionOutput, error) {
+	switch contribution.NativeExecutor {
+	case "mcat":
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+			return executeMCat(ctx, manifest, args)
+		}
+	case "msymbol", "inspect_file":
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+			return executeFrontendReader(ctx, manifest, args, contribution)
+		}
+	case "mread":
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+			return executeMRead(ctx, manifest, args), nil
+		}
+	case "mchanges":
+		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (toolplugin.ExecutionOutput, error) {
+			return executeMChanges(ctx, manifest, args), nil
+		}
+	case "mrun":
+		return func(ctx context.Context, _ toolWorkerManifest, args []string, stdin *os.File) (toolplugin.ExecutionOutput, error) {
+			return executeMRun(ctx, args, stdin)
+		}
+	default:
+		return nil
+	}
 }
 
 func toolRegistryIDFromDirectory(directory string) (string, bool) {

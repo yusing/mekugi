@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )

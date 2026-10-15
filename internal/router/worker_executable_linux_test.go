@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"io"
 	"os"
 	"os/exec"
@@ -81,7 +82,7 @@ func TestPinnedToolWorkerProcess(t *testing.T) {
 	}
 	defer store.snapshots.close()
 	t.Setenv("MEKUGI_RUNTIME_DIR", t.TempDir())
-	registry, err := buildToolRegistry(t.Context())
+	registry, err := buildToolRegistry(t.Context(), toolplugin.Builtins())
 	if err != nil {
 		t.Fatal(err)
 	}

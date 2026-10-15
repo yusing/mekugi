@@ -93,7 +93,7 @@ workspace state are known. The router serves `GET /v1/models`; a model-refresh
 Launch the router and probe together from this repository:
 
 ```sh
-go run ./cmd/mekugi codex --model gpt-5.6-luna \
+go run ./apps/mekugi/cmd/mekugi codex --model gpt-5.6-luna \
   --sandbox workspace-write --ask-for-approval never \
   exec --ephemeral -C /absolute/path/to/disposable/fixture "PROMPT"
 ```

@@ -20,9 +20,9 @@ import (
 	"time"
 
 	responseevents "github.com/yusing/mekugi/internal/responses"
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 
-	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/libraries/persistence"
 )
 
 const schemaVersion = 7

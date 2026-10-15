@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/router"
-	"github.com/yusing/mekugi/internal/shellsyntax"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {

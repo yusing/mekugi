@@ -3,7 +3,7 @@ package router
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Source: codex-rs/shell-command/src/parse_command.rs:1787:1842,2349:2389

@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 // contentTokens counts decoded JSON keys and scalar values independently, not

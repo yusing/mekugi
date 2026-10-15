@@ -73,7 +73,7 @@ Never run bare `make`, `make install`, or another installation-path build; bare 
 Read `CONTEXT-TESTS.md` before tests/assets and `CONTEXT-AUTOMATED-TESTS.md` before live Codex checks.
 
 Terminal appearance changes use actual renderer snapshots in the owner's `testdata/snapshots/`
-through `testdata/uisnapshot`, with `TestUISnapshot` names. Review intentional changes and control
+through `testsupport/uisnapshot`, with `TestUISnapshot` names. Review intentional changes and control
 nondeterminism. CONTEXT-TESTS owns check/update commands.
 
 Treat 30 seconds for a fresh offline suite with warm build caches as an efficiency target,

@@ -3,7 +3,7 @@ package router
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func shellCommandString(executable string, arguments []string) string {

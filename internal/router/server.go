@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/yusing/mekugi/contracts/command"
 	"io"
 	"log"
 	"net"
@@ -18,8 +19,8 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/persistence"
 	"github.com/yusing/mekugi/internal/responses"
+	"github.com/yusing/mekugi/libraries/persistence"
 
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
 
@@ -61,7 +62,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(ctx context.Context, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(ctx context.Context, commands []command.Spec, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	flags := newRouterFlags(io.Discard)
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -201,7 +202,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		issues.writes = writes
 	}
 	if *flags.mode == "mekugi" {
-		registry, err := buildToolRegistry(ctx)
+		registry, err := buildToolRegistry(ctx, commands)
 		if err != nil {
 			return fmt.Errorf("initialize tool registry: %w", err)
 		}

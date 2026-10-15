@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestSSEDataPreservesFieldsAcrossFraming(t *testing.T) {

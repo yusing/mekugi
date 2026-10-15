@@ -12,7 +12,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {

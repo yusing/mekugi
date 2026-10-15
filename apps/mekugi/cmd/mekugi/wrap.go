@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,9 +18,9 @@ import (
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/execsegment"
 	"github.com/yusing/mekugi/internal/router"
-	"github.com/yusing/mekugi/internal/shellsyntax"
 	"github.com/yusing/mekugi/internal/sudoask"
 	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"golang.org/x/term"
 )
 
@@ -86,6 +87,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err != nil {
 		return 1, fmt.Errorf("locate codex: %w", err)
 	}
+	frontends, err := composition.Frontends(ctx)
+	if err != nil {
+		return 1, err
+	}
+	defer func() { runErr = errors.Join(runErr, frontends.Close(context.WithoutCancel(ctx))) }()
 	issues := router.NewCriticalErrors()
 	defer func() {
 		for _, message := range issues.Pending() {
@@ -113,7 +119,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(ctx, routerArgs, issues, func(session router.Session) {
+		routerDone <- router.RunSession(ctx, frontends.Commands, routerArgs, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()

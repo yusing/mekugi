@@ -38,7 +38,7 @@ var execTrackHelper = sync.OnceValues(func() (string, error) {
 	}
 	execTrackHelperDirectory = directory
 	helper := filepath.Join(directory, "mekugi-exec")
-	output, err := exec.Command("go", "build", "-o", helper, "github.com/yusing/mekugi/cmd/mekugi-exec").CombinedOutput()
+	output, err := exec.Command("go", "build", "-o", helper, "github.com/yusing/mekugi/apps/mekugi/cmd/mekugi-exec").CombinedOutput()
 	if err != nil {
 		return "", errors.Join(err, errors.New(string(output)))
 	}

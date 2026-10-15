@@ -16,8 +16,9 @@ make test TEST_PACKAGES=./internal/router TEST_RUN='^TestShellRunnerMRun'
 make test TEST_PACKAGES='./internal/appserver ./internal/router' TEST_RUN=AppServer
 ```
 
-The default is `./...`. The runner also includes the shared test-only snapshot
-harness in `testdata/uisnapshot`, which Go wildcard package discovery excludes.
+The default is `@workspace`, expanded from the explicit members in `go.work`.
+Focused selections also include the shared snapshot harness in
+`testsupport/uisnapshot`. Root `./...` alone excludes nested modules.
 Unchanged successful tests can use Go's test cache; use
 `TEST_FLAGS='-count=1'` for a fresh run, `TEST_FLAGS='-count=3 -shuffle=on'` for
 repeat/isolation checks, or `TEST_FLAGS=-race` when checking concurrency. The recipe
@@ -48,16 +49,16 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
 | Provider request encoding and stream normalization | `./internal/providercodec`, plus router Grok/OpenCode integration tests |
 | Reserved MCP transport | `./internal/router -run '^TestMCP'` |
-| Shell-hook helper, registration, and effective configuration | `./cmd/mekugi ./cmd/mekugi-exec ./internal/vcsguard ./internal/router -run 'TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestVCSGuardHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
+| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./internal/vcsguard ./internal/router -run 'TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestVCSGuardHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
-| Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
+| Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
 | Native frontends and output formatting | `./internal/router/toolplugin`, then `./internal/router` |
-| Router process entry point | `./cmd/mekugi` |
+| Router process entry point | `./apps/mekugi/cmd/mekugi` |
 | Native frontend host acceptance | `-tags codex_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags codex_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
-| Cross-package or broad contract | `./...` |
+| Cross-package or broad contract | `@workspace` |
 
 Native reader latency checks include a fresh authenticated worker, a 3,000-row
 read, the three-document architecture batch, and an eight-file Go inspection at
@@ -69,7 +70,7 @@ make test TEST_PACKAGES=./internal/router TEST_RUN='^$' TEST_FLAGS='-bench=Bench
 
 The inspection batch intentionally exercises incomplete-output recovery. These
 benchmarks clear the thread identity and exclude active-session lease/retention
-costs. `BenchmarkSelectRows` in `./internal/tokenizer` isolates row admission from
+costs. `BenchmarkSelectRows` in `./libraries/outputbudget/tokenizer` isolates row admission from
 process startup and source I/O.
 
 Go symbol checks require an existing `gopls` and install nothing. Opt in to real
@@ -117,14 +118,14 @@ skills and file pickers, Main's composer, resume
 sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
-Launcher debug handoffs live in `cmd/mekugi/testdata/snapshots/`.
+Launcher debug handoffs live in `apps/mekugi/cmd/mekugi/testdata/snapshots/`.
 Shared Diff syntax and row styles live in `internal/livediff/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories.
 
-`testdata/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
+`testsupport/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,
 wrapping, and borders remain exact. Tests fix time, theme, dimensions, and other
 nondeterministic inputs before invoking the actual renderer. Text snapshots do
-not establish color/style correctness. `testdata/uisnapshot.AssertTerminal`
+not establish color/style correctness. `testsupport/uisnapshot.AssertTerminal`
 paints actual renderer rows into the shared VT emulator at a fixed width, then
 stores its canonical ANSI output as quoted rows. These fixtures cover terminal
 cell colors, emphasis, links, padding, and style restoration without depending on

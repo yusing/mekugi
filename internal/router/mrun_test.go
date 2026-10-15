@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestMRunFrontendPreservesHostStdinContinuation(t *testing.T) {

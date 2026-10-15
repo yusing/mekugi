@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func TestGPT5TokenizerMatchesFixtures(t *testing.T) {

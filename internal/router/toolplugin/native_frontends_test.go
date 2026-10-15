@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/sourcekind"
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func nativeFixture(t *testing.T, name, source string) string {

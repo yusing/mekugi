@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/execscope"
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 func TestExecGitScopeRejectsRevisionOptionInjection(t *testing.T) {

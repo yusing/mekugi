@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 

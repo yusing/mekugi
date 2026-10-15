@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotMarkdownTableAlignment(t *testing.T) {

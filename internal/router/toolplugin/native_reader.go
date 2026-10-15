@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 const nativeRetainedBytes = 16 << 20

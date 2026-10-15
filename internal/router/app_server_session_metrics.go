@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // This panel owns only navigation. Accounting and retained detail belong to the

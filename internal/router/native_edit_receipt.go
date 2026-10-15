@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/pathdisplay"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Receipt diffs are display-only and stay well inside one publication.

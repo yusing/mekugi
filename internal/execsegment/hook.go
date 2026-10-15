@@ -3,7 +3,7 @@ package execsegment
 import (
 	"time"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 // Guard marks a shell that already decided whether to track its command, so

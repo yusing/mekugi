@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"

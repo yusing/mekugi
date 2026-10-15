@@ -94,16 +94,18 @@ run on stock Alpine Linux; use a source build for other environments.
 
 ### Build from source
 
-Source installs require **Go 1.27+**, CGO enabled, and a C toolchain:
+Source installs require **Go 1.27+**, CGO enabled, a C toolchain, and **Make**.
+Build the coordinated workspace from a checkout:
 
 ```sh
-go install github.com/yusing/mekugi/cmd/mekugi@latest github.com/yusing/mekugi/cmd/mekugi-exec@latest
+git clone https://github.com/yusing/mekugi.git
+cd mekugi
+make install
 ```
 
 Add `$GOBIN`, or `$(go env GOPATH)/bin` if that is unset, to your `PATH`.
 
-From a checkout with **Make**, run `make install` to install `mekugi` and
-`mekugi-exec`. `make uninstall`
+`make install` installs both `mekugi` and `mekugi-exec`. `make uninstall`
 removes only those binaries. Running sessions keep their worker executable, so
 start a new session to pick up an update.
 

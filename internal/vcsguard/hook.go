@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/execsegment"
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 const HookKey = "/<session-flags>/config.toml:pre_tool_use:0:0"

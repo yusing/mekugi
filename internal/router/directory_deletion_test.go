@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/responses"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotDirectoryDeletion(t *testing.T) {

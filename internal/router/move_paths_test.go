@@ -7,8 +7,8 @@ import (
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/pathdisplay"
-	"github.com/yusing/mekugi/testdata/uisnapshot"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotMoveActivityAndDialog(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
-	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/internal/responses"
 )
 

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/yusing/mekugi"
-	"github.com/yusing/mekugi/internal/tokenizer"
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	json "encoding/json/v2"
+	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -142,7 +143,7 @@ func TestThirdPartyStandaloneStartupAuthentication(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
 			var ready bool
-			err := RunSession(ctx, []string{"third-party"}, nil, func(session Session) {
+			err := RunSession(ctx, toolplugin.Builtins(), []string{"third-party"}, nil, func(session Session) {
 				ready = true
 				if !session.GrokEnabled || !session.ThirdPartyOnly {
 					t.Errorf("standalone provider flags: GrokEnabled=%t ThirdPartyOnly=%t", session.GrokEnabled, session.ThirdPartyOnly)

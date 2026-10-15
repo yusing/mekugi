@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/yusing/mekugi/contracts/command"
 )
 
 func ensureWorkerSymlinkInDirectory(executable, directory, name string) (string, error) {
+	if err := command.ValidateName(name); err != nil {
+		return "", err
+	}
 	link := filepath.Join(directory, name)
 	if _, err := os.Lstat(link); err == nil {
 		return verifyWorkerSymlink(link, executable, name)

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
 // RealEnvironment names the variable a path function sets for the guard: the
