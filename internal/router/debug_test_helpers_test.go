@@ -10,8 +10,8 @@ import (
 func diagnosticDebugOutput(t *testing.T) *debugOutput {
 	t.Helper()
 	flags := newRouterFlags(io.Discard)
-	*flags.debug = true
-	d, err := openDebugOutput(testHistory(), flags)
+	flags.debug = true
+	d, err := openDebugOutput(testHistory(), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}

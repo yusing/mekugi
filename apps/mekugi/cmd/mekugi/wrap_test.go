@@ -585,7 +585,7 @@ func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int, grok bool) 
 		routerArgs = []string{"grok"}
 		t.Setenv("MEKUGI_TEST_PINNED_CATALOG", "1")
 	}
-	code, err := wrapCodex(testComposition(t), ctx, routerArgs, []string{"exec", "prompt with spaces"})
+	code, err := wrapCodex(ctx, routerArgs, []string{"exec", "prompt with spaces"})
 	if err != nil || code != wantCode {
 		t.Fatalf("wrap = %d, %v; want %d", code, err, wantCode)
 	}
@@ -616,7 +616,7 @@ func testWrapCodexLifecycle(t *testing.T, exit string, wantCode int, grok bool) 
 
 func TestWrapCodexMissingExecutable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	code, err := wrapCodex(testComposition(t), t.Context(), nil, nil)
+	code, err := wrapCodex(t.Context(), nil, nil)
 	if code != 1 || err == nil || !strings.Contains(err.Error(), "locate codex") {
 		t.Fatalf("wrap = %d, %v", code, err)
 	}
@@ -659,8 +659,8 @@ func TestRunWrapRejectsUnauthenticatedStandalone(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{nil, {"exec", "--yolo", "hello"}} {
-		if code := runWrap(testComposition(t), nil, args); code != 1 {
-			t.Errorf("unauthenticated runWrap(testComposition(t), %q) = %d", args, code)
+		if code := runWrap(nil, args); code != 1 {
+			t.Errorf("unauthenticated runWrap(%q) = %d", args, code)
 		}
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -698,7 +698,7 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
-			code, err := wrapCodex(testComposition(t), ctx, nil, nil)
+			code, err := wrapCodex(ctx, nil, nil)
 			if code != 1 || err == nil {
 				t.Fatalf("wrap = %d, %v", code, err)
 			}
@@ -729,7 +729,7 @@ func TestWrapDebugPassesAXLogToCodex(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "codex"), []byte(stub), 0700); err != nil {
 		t.Fatal(err)
 	}
-	code, err := wrapCodex(testComposition(t), t.Context(), []string{"--debug", "--mode", "passthrough"}, nil)
+	code, err := wrapCodex(t.Context(), []string{"--debug", "--mode", "passthrough"}, nil)
 	if err != nil || code != 0 {
 		t.Fatalf("debug wrap = %d, %v", code, err)
 	}

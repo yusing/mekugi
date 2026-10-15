@@ -34,11 +34,11 @@ func TestSplitCommand(t *testing.T) {
 
 func TestDuplicateOutputFlagDefaultAndOptOut(t *testing.T) {
 	flags := newRouterFlags(io.Discard)
-	if !*flags.duplicateOutput {
+	if !flags.duplicateOutput {
 		t.Fatal("duplicate output projection must default on")
 	}
-	if err := flags.Parse([]string{"--deduplicate-output=false"}); err != nil || *flags.duplicateOutput {
-		t.Fatalf("opt-out = %v, %v", *flags.duplicateOutput, err)
+	if err := flags.Parse([]string{"--deduplicate-output=false"}); err != nil || flags.duplicateOutput {
+		t.Fatalf("opt-out = %v, %v", flags.duplicateOutput, err)
 	}
 }
 
@@ -111,8 +111,8 @@ func TestVCSGuardFlagAndStandaloneSplit(t *testing.T) {
 			if err := flags.Parse(prefix); err != nil {
 				t.Fatal(err)
 			}
-			if *flags.vcsGuard != tc.want {
-				t.Fatalf("guard = %t, want %t", *flags.vcsGuard, tc.want)
+			if flags.vcsGuard != tc.want {
+				t.Fatalf("guard = %t, want %t", flags.vcsGuard, tc.want)
 			}
 		})
 	}

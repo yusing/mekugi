@@ -21,40 +21,31 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-// RunOwnedToolPluginWorker handles the private child-process mode used by a
-// stable contributed-tool frontend.
-func RunOwnedToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	return runToolPluginWorker(service, recovered, commands, command.DedicatedHostProcess, ctx, argv0, args, stdin, stdout, stderr)
-}
+// WorkerInvocation identifies a pinned frontend executable, before its selected
+// command is authenticated against the composed catalog.
+type WorkerInvocation struct{ directory, name string }
 
-func runToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope,
-	ctx context.Context,
-	argv0 string,
-	args []string,
-	stdin *os.File,
-	stdout, stderr io.Writer,
-) (bool, int) {
+// RecognizeToolWorker distinguishes private frontend invocations from ordinary
+// launches. A nil invocation and nil error means the executable is not a worker.
+func RecognizeToolWorker(argv0 string) (*WorkerInvocation, error) {
 	invokedName := filepath.Base(argv0)
 	candidate := argv0
 	if invokedName == candidate {
 		var err error
 		candidate, err = exec.LookPath(candidate)
 		if err != nil {
-			return false, 0
+			return nil, nil
 		}
 	}
 	candidate, err := filepath.Abs(candidate)
 	if err != nil {
-		return false, 0
+		return nil, nil
 	}
 	info, err := os.Lstat(candidate)
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		return false, 0
+		return nil, nil
 	}
-	fail := func(err error) (bool, int) {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", invokedName, err)
-		return true, 1
-	}
+	fail := func(err error) (*WorkerInvocation, error) { return nil, fmt.Errorf("%s: %w", invokedName, err) }
 
 	executable, err := openRunningExecutable()
 	if err != nil {
@@ -71,10 +62,10 @@ func runToolPluginWorker(service *history.Service, recovered *recovery.Service, 
 	_, snapshotWrapper := toolRegistryIDFromDirectory(directory)
 	if !snapshotWrapper {
 		if filepath.Base(directory) != "bin" {
-			return false, 0
+			return nil, nil
 		}
 		if _, authenticated := toolRegistryIDFromDirectory(filepath.Dir(directory)); !authenticated {
-			return false, 0
+			return nil, nil
 		}
 		target, readErr := os.Readlink(candidate)
 		if readErr != nil {
@@ -106,7 +97,12 @@ func runToolPluginWorker(service *history.Service, recovered *recovery.Service, 
 		return fail(errors.New("tool wrapper does not target the running mekugi executable"))
 	}
 
-	return runAuthenticatedToolWorker(service, recovered, commands, processScope, ctx, directory, filepath.Base(wrapper), args, stdin, stdout, stderr)
+	return &WorkerInvocation{directory: directory, name: filepath.Base(wrapper)}, nil
+}
+
+// Run dispatches an authenticated frontend in its dedicated host process.
+func (invocation *WorkerInvocation) Run(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
+	return runAuthenticatedToolWorker(service, recovered, commands, command.DedicatedHostProcess, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
 }
 
 func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope,
@@ -115,10 +111,10 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 	args []string,
 	stdin *os.File,
 	stdout, stderr io.Writer,
-) (bool, int) {
-	fail := func(err error) (bool, int) {
+) int {
+	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", name, err)
-		return true, 1
+		return 1
 	}
 	expectedRegistryID, authenticated := toolRegistryIDFromDirectory(directory)
 	if !authenticated {
@@ -220,7 +216,7 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 	if _, err := io.WriteString(stderr, execution.Stderr); err != nil {
 		return fail(fmt.Errorf("write tool stderr: %w", err))
 	}
-	return true, execution.ExitCode
+	return execution.ExitCode
 }
 
 // frontendExecutor is the retained dispatch owner used both before catalog

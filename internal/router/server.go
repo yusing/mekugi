@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -66,47 +65,24 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
-	flags := newRouterFlags(io.Discard)
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
-		return fmt.Errorf("parse flags: %w", err)
+func RunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+	if options.mode == "" {
+		return errors.New("session configuration has not been parsed")
 	}
-	grokEnabled := flags.NArg() == 1 && flags.Arg(0) == "grok"
-	standalone := flags.NArg() == 1 && flags.Arg(0) == "third-party"
-	if flags.NArg() != 0 && !grokEnabled && !standalone {
-		return errors.New("positional arguments are not supported")
-	}
-	if *flags.mode != "mekugi" && *flags.mode != "passthrough" {
-		return errors.New("--mode must be mekugi or passthrough")
-	}
-	faint, err := terminalui.SupportsFaint(ctx, *flags.ansiFaint)
+	grokEnabled, standalone := options.grok, options.standalone
+	faint, err := terminalui.SupportsFaint(ctx, options.ansiFaint)
 	if err != nil {
 		return err
-	}
-	if (grokEnabled || standalone) && *flags.mode != "mekugi" {
-		return errors.New("third-party launches require --mode mekugi")
-	}
-	if !grokEnabled && !standalone && *flags.grokAuthFile != "" {
-		return errors.New("--grok-auth-file requires standalone mekugi or mekugi grok")
 	}
 	config, err := loadMekugiConfig(standalone)
 	if err != nil {
 		return err
 	}
 	openCode := config.Providers
-	if *flags.timeout <= 0 {
-		return errors.New("--timeout must be positive")
-	}
-	if *flags.streamIdleTimeout <= 0 {
-		return errors.New("--stream-idle-timeout must be positive")
-	}
-	if err := validateAXOutputAliases(os.Getenv(capturer.AXReadOutputEnvironment), *flags.captureOutput); err != nil {
+	if err := validateAXOutputAliases(os.Getenv(capturer.AXReadOutputEnvironment), options.captureOutput); err != nil {
 		return err
 	}
-	debug, err := openDebugOutput(service, flags)
+	debug, err := openDebugOutput(service, options.debug, options.captureOutput)
 	if err != nil {
 		return err
 	}
@@ -133,7 +109,11 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 	if debug != nil {
 		writes = debug.writes
 	}
-	capture, err := capturer.New(capturer.Config{Output: *flags.captureOutput, Mode: *flags.mode, Writes: writes})
+	capturePath := options.captureOutput
+	if debug != nil {
+		capturePath = debug.paths[1]
+	}
+	capture, err := capturer.New(capturer.Config{Output: capturePath, Mode: options.mode, Writes: writes})
 	if err != nil {
 		return fmt.Errorf("initialize capture: %w", err)
 	}
@@ -153,14 +133,14 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 	provider := newProviderClient(codexBaseURL, nil)
 	provider.thirdPartyOnly = grokEnabled || standalone
 	provider.httpClient.Transport = capture.Transport(provider.httpClient.Transport)
-	provider.streamIdleTimeout = *flags.streamIdleTimeout
+	provider.streamIdleTimeout = options.streamIdleTimeout
 	provider.enableWebSockets(ctx)
 	// Cover early setup returns before ctx is canceled; close is idempotent
 	// with enableWebSockets' normal context-shutdown callback.
 	defer provider.websockets.close()
 	if grokEnabled || standalone {
 		apiKey := strings.TrimSpace(os.Getenv("XAI_API_KEY"))
-		path := *flags.grokAuthFile
+		path := options.grokAuthFile
 		if path == "" && apiKey == "" {
 			home, err := os.UserHomeDir()
 			if err != nil && !standalone {
@@ -175,7 +155,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 			client := withDialTimeout(nil)
 			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 			client.Transport = capture.Transport(client.Transport)
-			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: *flags.streamIdleTimeout}
+			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: options.streamIdleTimeout}
 		} else if grokEnabled {
 			return authErr
 		}
@@ -195,7 +175,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 		client := withDialTimeout(nil)
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		client.Transport = capture.Transport(client.Transport)
-		provider.opencode[service.prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: *flags.streamIdleTimeout}
+		provider.opencode[service.prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.streamIdleTimeout}
 	}
 	var frontendDirectory string
 	titleCtx, cancelTitles := context.WithCancel(ctx)
@@ -206,7 +186,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 		issues.history = service
 		issues.writes = writes
 	}
-	if *flags.mode == "mekugi" {
+	if options.mode == "mekugi" {
 		registry, err := buildToolRegistry(ctx, commands)
 		if err != nil {
 			return fmt.Errorf("initialize tool registry: %w", err)
@@ -236,7 +216,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 		defer replayStore.snapshots.close()
 		mekugiCalls = newMekugiProxy(registry)
 		provider.titleGenerator.usage = mekugiCalls.usage
-		mekugiCalls.duplicateOutput = *flags.duplicateOutput
+		mekugiCalls.duplicateOutput = options.duplicateOutput
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
 			mekugiCalls.nativeTrace = &nativeToolTrace{directory: traceDirectory}
@@ -306,12 +286,12 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
-	registerCodexAuxiliaryRoutes(mux, ctx, *flags.timeout, provider)
+	registerCodexAuxiliaryRoutes(mux, ctx, options.timeout, provider)
 
-	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls)
+	webSocketEndpoint := responsesWebSocketHandler(ctx, options.timeout, provider, issues, mekugiCalls)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
-	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, *flags.timeout, provider, issues, mekugiCalls))
+	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, options.timeout, provider, issues, mekugiCalls))
 
 	server := &http.Server{
 		ErrorLog:          log.New(io.Discard, "", 0), // Disable net/http terminal diagnostics while Codex owns it.
@@ -327,7 +307,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, ctx conte
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: *flags.mode == "mekugi", VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.mode == "mekugi", VCSGuard: options.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls, issues)

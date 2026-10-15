@@ -27,7 +27,7 @@ import (
 	"golang.org/x/term"
 )
 
-func runWrap(frontends *composition.Runtime, routerArgs, args []string) int {
+func runWrap(routerArgs, args []string) int {
 	if len(args) > 0 && args[0] == "grok" {
 		routerArgs = append(slices.Clone(routerArgs), "grok")
 		args = args[1:]
@@ -47,14 +47,14 @@ func runWrap(frontends *composition.Runtime, routerArgs, args []string) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), signals...)
 	defer stop()
-	code, err := wrapCodex(frontends, ctx, routerArgs, args)
+	code, err := wrapCodex(ctx, routerArgs, args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mekugi:", err)
 	}
 	return code
 }
 
-func wrapCodex(frontends *composition.Runtime, ctx context.Context, routerArgs, args []string) (code int, runErr error) {
+func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr error) {
 	suppliedArgs := slices.Clone(args)
 	args = expandReasoningShortcuts(args)
 	headless := len(args) > 0 && args[0] == "headless"
@@ -62,6 +62,10 @@ func wrapCodex(frontends *composition.Runtime, ctx context.Context, routerArgs, 
 		args = args[1:]
 	}
 	if err := validateCodexArgs(args); err != nil {
+		return 2, err
+	}
+	options, err := router.ParseSessionConfig(routerArgs)
+	if err != nil {
 		return 2, err
 	}
 	appUI := !headless && interactiveCodexArgs(args) && term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
@@ -105,6 +109,18 @@ func wrapCodex(frontends *composition.Runtime, ctx context.Context, routerArgs, 
 	defer signal.Stop(interrupts)
 	stopStartupInterrupts := watchStartupInterrupts(ctx, cancel, interrupts)
 	defer stopStartupInterrupts()
+	frontends, err := composition.Frontends(ctx)
+	if err != nil {
+		return 1, err
+	}
+	defer func() {
+		if err := frontends.Close(context.WithoutCancel(ctx)); err != nil {
+			runErr = errors.Join(runErr, err)
+			if code == 0 {
+				code = 1
+			}
+		}
+	}()
 	ready := make(chan router.Session, 1)
 	routerDone := make(chan error, 1)
 	var debugPaths []string
@@ -117,7 +133,7 @@ func wrapCodex(frontends *composition.Runtime, ctx context.Context, routerArgs, 
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(frontends.History, frontends.Recovery, ctx, frontends.Commands, routerArgs, issues, func(session router.Session) {
+		routerDone <- router.RunSession(frontends.History, frontends.Recovery, ctx, frontends.Commands, options, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()

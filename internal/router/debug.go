@@ -38,8 +38,8 @@ type debugOutput struct {
 
 type debugContextKey struct{}
 
-func openDebugOutput(service *history.Service, flags routerFlags) (*debugOutput, error) {
-	if !*flags.debug {
+func openDebugOutput(service *history.Service, enabled bool, capturePath string) (*debugOutput, error) {
+	if !enabled {
 		return nil, nil
 	}
 	directory, release, err := createDebugBundle()
@@ -55,10 +55,10 @@ func openDebugOutput(service *history.Service, flags routerFlags) (*debugOutput,
 			}
 		}
 	}()
-	if *flags.captureOutput == "" {
-		*flags.captureOutput = filepath.Join(directory, "capture.jsonl")
+	if capturePath == "" {
+		capturePath = filepath.Join(directory, "capture.jsonl")
 	}
-	capture, err := filepath.Abs(*flags.captureOutput)
+	capture, err := filepath.Abs(capturePath)
 	if err != nil {
 		return nil, err
 	}

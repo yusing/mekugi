@@ -142,7 +142,7 @@ func TestThirdPartyStandaloneStartupAuthentication(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
 			var ready bool
-			err := RunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"third-party"}, nil, func(session Session) {
+			err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"third-party"}, nil, func(session Session) {
 				ready = true
 				if !session.GrokEnabled || !session.ThirdPartyOnly {
 					t.Errorf("standalone provider flags: GrokEnabled=%t ThirdPartyOnly=%t", session.GrokEnabled, session.ThirdPartyOnly)

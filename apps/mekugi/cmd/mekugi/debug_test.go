@@ -60,7 +60,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				args = append(args, "--capture-output", capture)
 				t.Setenv("MEKUGI_AX_OUTPUT", reads)
 			}
-			code, err := wrapCodex(testComposition(t), t.Context(), args, nil)
+			code, err := wrapCodex(t.Context(), args, nil)
 			if err != nil || (test.exit == "0" && code != 0) || (test.exit == "23" && code != 23) {
 				t.Fatalf("wrap exit: %d, %v", code, err)
 			}

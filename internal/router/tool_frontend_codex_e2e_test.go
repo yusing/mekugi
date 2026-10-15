@@ -44,7 +44,7 @@ func init() {
 		os.Exit(0)
 	}
 	if os.Getenv(toolFrontendCodexWorkerEnvironment) == "1" {
-		if handled, code := RunOwnedToolPluginWorker(testHistory(), testRecovery(), testCommands(),
+		if handled, code := runOwnedToolPluginWorker(testHistory(), testRecovery(), testCommands(),
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)

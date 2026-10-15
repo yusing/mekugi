@@ -18,8 +18,9 @@ implementation and whether the host observes read completion. Observation failur
 cannot prevent command execution. Stateful command implementations receive their
 constructed module service through typed composition, alongside an explicit
 authenticated per-call scope. Descriptors declare commands before construction;
-execution begins only after successful activation. The worker receives the composed catalog before authenticating
-the selected frontend. The catalog provides descriptions and native dispatch for `mcat`, `inspect_file`,
+execution begins only after successful activation. Executable identity recognition
+selects worker dispatch before composition. The worker then receives the composed
+catalog before authenticating the manifest and selected frontend. The catalog provides descriptions and native dispatch for `mcat`, `inspect_file`,
 `msymbol`, `mread`, `mchanges`, and `mrun`. It does not execute declarations from
 user configuration or own a JavaScript/WASM plugin runtime. Reader parsing,
 output budgeting, and resolver orchestration remain with their native owners.

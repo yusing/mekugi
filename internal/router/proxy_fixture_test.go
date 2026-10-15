@@ -191,3 +191,27 @@ func testCommands() []command.Contribution {
 func runToolPluginWorkerInHostProcess(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
 	return runToolPluginWorker(service, recovered, commands, command.HostProcessGroup, ctx, argv0, args, stdin, stdout, stderr)
 }
+
+func runToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	invocation, err := RecognizeToolWorker(argv0)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return true, 1
+	}
+	if invocation == nil {
+		return false, 0
+	}
+	return true, runAuthenticatedToolWorker(service, recovered, commands, processScope, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
+}
+
+func runOwnedToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	invocation, err := RecognizeToolWorker(argv0)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return true, 1
+	}
+	if invocation == nil {
+		return false, 0
+	}
+	return true, invocation.Run(service, recovered, commands, ctx, args, stdin, stdout, stderr)
+}

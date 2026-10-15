@@ -38,7 +38,7 @@ func TestAuthenticatedCompiledFrontendProcessScope(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			run := runToolPluginWorkerInHostProcess
 			if tc.owned {
-				run = RunOwnedToolPluginWorker
+				run = runOwnedToolPluginWorker
 			}
 			handled, status := run(testHistory(), testRecovery(), commands, t.Context(), registry.frontends["msymbol"], nil, nil, &stdout, &stderr)
 			if !handled || status != 0 || calls != 1 || scope != tc.want || stdout.String() != "scope observed\n" || stderr.Len() != 0 {

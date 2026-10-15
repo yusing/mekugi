@@ -1,6 +1,7 @@
 package router
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,19 +11,54 @@ import (
 
 type routerFlags struct {
 	*flag.FlagSet
-	timeout           *time.Duration
-	streamIdleTimeout *time.Duration
-	mode              *string
-	ansiFaint         *string
-	vcsGuard          *bool
-	duplicateOutput   *bool
-	grokAuthFile      *string
-	captureOutput     *string
-	debug             *bool
+	SessionConfig
 }
 
-func newRouterFlags(stderr io.Writer) routerFlags {
-	flags := flag.NewFlagSet("mekugi", flag.ContinueOnError)
+// SessionConfig is a parsed invocation configuration. It contains values only;
+// execution derives effective output paths without modifying the selected options.
+type SessionConfig struct {
+	timeout           time.Duration
+	streamIdleTimeout time.Duration
+	mode              string
+	ansiFaint         string
+	vcsGuard          bool
+	duplicateOutput   bool
+	grokAuthFile      string
+	captureOutput     string
+	debug             bool
+	grok              bool
+	standalone        bool
+}
+
+// ParseSessionConfig selects the launch scope without opening resources.
+func ParseSessionConfig(args []string) (SessionConfig, error) {
+	flags := newRouterFlags(io.Discard)
+	if err := flags.Parse(args); err != nil {
+		return SessionConfig{}, fmt.Errorf("parse flags: %w", err)
+	}
+	config := flags.SessionConfig
+	config.grok = flags.NArg() == 1 && flags.Arg(0) == "grok"
+	config.standalone = flags.NArg() == 1 && flags.Arg(0) == "third-party"
+
+	switch {
+	case flags.NArg() != 0 && !config.grok && !config.standalone:
+		return SessionConfig{}, errors.New("positional arguments are not supported")
+	case config.mode != "mekugi" && config.mode != "passthrough":
+		return SessionConfig{}, errors.New("--mode must be mekugi or passthrough")
+	case (config.grok || config.standalone) && config.mode != "mekugi":
+		return SessionConfig{}, errors.New("third-party launches require --mode mekugi")
+	case !config.grok && !config.standalone && config.grokAuthFile != "":
+		return SessionConfig{}, errors.New("--grok-auth-file requires standalone mekugi or mekugi grok")
+	case config.timeout <= 0:
+		return SessionConfig{}, errors.New("--timeout must be positive")
+	case config.streamIdleTimeout <= 0:
+		return SessionConfig{}, errors.New("--stream-idle-timeout must be positive")
+	}
+	return config, nil
+}
+
+func newRouterFlags(stderr io.Writer) *routerFlags {
+	flags := &routerFlags{FlagSet: flag.NewFlagSet("mekugi", flag.ContinueOnError)}
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi [flags] [Codex arguments...]")
@@ -33,18 +69,16 @@ func newRouterFlags(stderr io.Writer) routerFlags {
 		fmt.Fprintln(stderr, "       mekugi inspect-storage --workspace DIR --call-id ID [options]")
 		flags.PrintDefaults()
 	}
-	return routerFlags{
-		FlagSet:           flags,
-		ansiFaint:         flags.String("ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)"),
-		timeout:           flags.Duration("timeout", defaultRequestTimeout, "upstream response-start timeout"),
-		streamIdleTimeout: flags.Duration("stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes"),
-		mode:              flags.String("mode", defaultRewriteMode, "response mode: mekugi or passthrough"),
-		vcsGuard:          flags.Bool("vcs-guard", true, "ask before remote VCS writes in the UI, independently of Codex approval policy"),
-		duplicateOutput:   flags.Bool("deduplicate-output", true, "deduplicate output and attachments in model input"),
-		grokAuthFile:      flags.String("grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)"),
-		captureOutput:     flags.String("capture-output", "", "optional sanitized capture JSONL path"),
-		debug:             flags.Bool("debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit"),
-	}
+	flags.StringVar(&flags.ansiFaint, "ansi-faint", "auto", "dim text: auto (detect mosh), on (ANSI faint), or off (fixed colors)")
+	flags.DurationVar(&flags.timeout, "timeout", defaultRequestTimeout, "upstream response-start timeout")
+	flags.DurationVar(&flags.streamIdleTimeout, "stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes")
+	flags.StringVar(&flags.mode, "mode", defaultRewriteMode, "response mode: mekugi or passthrough")
+	flags.BoolVar(&flags.vcsGuard, "vcs-guard", true, "ask before remote VCS writes in the UI, independently of Codex approval policy")
+	flags.BoolVar(&flags.duplicateOutput, "deduplicate-output", true, "deduplicate output and attachments in model input")
+	flags.StringVar(&flags.grokAuthFile, "grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)")
+	flags.StringVar(&flags.captureOutput, "capture-output", "", "optional sanitized capture JSONL path")
+	flags.BoolVar(&flags.debug, "debug", false, "record diagnostics, capture, metrics, instructions, runtime reads, and AX report; print session diagnosis command on exit")
+	return flags
 }
 
 // SplitCommand parses router flags without consuming the following command or its arguments.

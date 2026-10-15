@@ -9,6 +9,11 @@ fixed-listener flag, custom-provider flag, or installed old-name alias.
 This mode supports Codex models only: third-party credentials do not register
 provider models, prepare a third-party catalog, or enable third-party requests.
 
+Launch options are parsed and their launch scope is validated before activating
+the invocation's modules. The resulting configuration is invocation-local and unchanged by debug
+initialization. Authenticated frontend workers and offline inspection compose
+their services independently of live-session startup.
+
 `mekugi [flags] [Codex arguments...]` launches standalone third-party mode using
 the same Codex execution engine, without Codex authentication or login. It offers
 only authenticated Grok and configured OpenCode Go/Zen routes, retaining their

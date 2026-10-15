@@ -65,7 +65,7 @@ func TestHeadlessWrapRedirectedEntryPoint(t *testing.T) {
 
 func TestHeadlessRejectsUnsupportedAuthorizationAndResume(t *testing.T) {
 	for _, args := range [][]string{{"headless"}, {"headless", "--yolo", "resume", "thread"}, {"headless", "--yolo", "prompt"}} {
-		code, err := wrapCodex(testComposition(t), t.Context(), nil, args)
+		code, err := wrapCodex(t.Context(), nil, args)
 		if code != 2 || err == nil {
 			t.Fatalf("%v: code=%d err=%v", args, code, err)
 		}
