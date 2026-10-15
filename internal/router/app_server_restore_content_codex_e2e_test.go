@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -31,7 +31,10 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy.replayStore = store
-	provider := &journalCodexProvider{store: store, turns: make(map[string]int)}
+	provider := &appServerDirectedMessageProvider{
+		turns: make(map[string]int), assignment: "Inspect the child message and report one finding.",
+		message: "Restored child finding.",
+	}
 	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
 	newCommand := func(ctx context.Context) *exec.Cmd {
@@ -48,7 +51,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	first := startAppResumeTerminalWithProxy(t, newCommand, "", proxy)
 	first.await("Ready")
 	first.send("Create a child and report its completed findings.\r")
-	first.await("Native root completion after child review.")
+	first.await("Parent received the child report.")
 	first.await("completed")
 	first.quit()
 
@@ -61,11 +64,10 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 			root = thread
 		}
 	}
-	childRequests := provider.childRequests
-	childResult := provider.childResultSeen
+	childResult := provider.rootDone && provider.messageSeen
 	provider.mu.Unlock()
-	if root == "" || len(before) != 2 || childRequests != 2 || !childResult {
-		t.Fatalf("native root and completed child missing: root=%q turns=%v childRequests=%d childResult=%v", root, before, childRequests, childResult)
+	if root == "" || len(before) != 2 || !childResult {
+		t.Fatalf("native root and completed child missing: root=%q turns=%v childResult=%v", root, before, childResult)
 	}
 
 	liveDiffScopeCapture(t, store, workspace, root, "saved-root-edit", filepath.Join(workspace, "restored.go"), "before", "after")
@@ -82,10 +84,10 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	second.send("\x024")  // Focus the restored Agents roster.
 	second.awaitMatch("restored child roster", func(screen string) bool {
 		rows := strings.Split(screen, "\n")
-		return strings.Contains(strings.Join(rows[len(rows)/2:], "\n"), "journal_child")
+		return strings.Contains(strings.Join(rows[len(rows)/2:], "\n"), "message_worker")
 	})
 	second.send("\x023") // Open restored Activity rather than a child process.
-	second.await("Native child second finding")
+	second.await("Restored child finding.")
 	second.send("\x022")
 	second.await("restored.go")
 	second.send("\x021")
@@ -100,9 +102,8 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	for thread, count := range provider.turns {
 		after[thread] = count
 	}
-	afterChildRequests := provider.childRequests
 	provider.mu.Unlock()
-	if !reflect.DeepEqual(after, before) || afterChildRequests != childRequests {
-		t.Fatalf("observational restore sent model requests or resumed child: before=%v after=%v child=%d->%d", before, after, childRequests, afterChildRequests)
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("observational restore sent model requests or resumed child: before=%v after=%v", before, after)
 	}
 }

@@ -90,7 +90,7 @@ func TestStreamDiagnosticsBoundsAndCompletion(t *testing.T) {
 func TestStreamDiagnosticsRequestLog(t *testing.T) {
 	for _, stream := range []string{"", "data: {\"type\":\"response.in_progress\"}\n\n"} {
 		t.Run(fmt.Sprintf("bytes_%d", len(stream)), func(t *testing.T) {
-			debug := featureDebugOutput(t)
+			debug := diagnosticDebugOutput(t)
 			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
 			request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: &http.Response{
@@ -187,7 +187,7 @@ func TestStreamDiagnosticsNativeDownstreamClose(t *testing.T) {
 func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	debug := featureDebugOutput(t)
+	debug := diagnosticDebugOutput(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {

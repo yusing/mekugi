@@ -76,7 +76,7 @@ func TestAppServerExitSummaryHighlight(t *testing.T) {
 }
 
 func TestUISnapshotAppServerExitSummaryOriginalArgv(t *testing.T) {
-	u := &appServerUI{thread: "saved", resumeArgv: []string{"/opt/my tools/mekugi", "--debug", "--journal-compaction=auto", "codex", "--yolo", "--enable", "instant_interrupt", "--high", "-c", "model='custom'"}, replayDebugDirectory: "/tmp/debug directory"}
+	u := &appServerUI{thread: "saved", resumeArgv: []string{"/opt/my tools/mekugi", "--debug", "codex", "--yolo", "--enable", "instant_interrupt", "--high", "-c", "model='custom'"}, replayDebugDirectory: "/tmp/debug directory"}
 	var out bytes.Buffer
 	if err := u.writeExitSummary(&out, false); err != nil {
 		t.Fatal(err)

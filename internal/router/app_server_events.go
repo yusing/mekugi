@@ -24,7 +24,7 @@ import (
 
 // appServerSession adapts app-server notifications for every thread of the
 // session into the roster and Activity entries. Captured edits and previews
-// retain the shared router owners, as do journals and cost.
+// retain the shared router owners, as does cost.
 type appServerSession struct {
 	seq       uint64
 	paths     map[string]string // Thread → canonical agent path.
@@ -231,11 +231,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 		return true, u.hookEvent(m.Method, p)
 	}
 	u.observeProgress(m.Method, p)
-	if u.proxy != nil && u.proxy.journals != nil && p.ThreadID != "" {
-		if err := u.proxy.observeJournalHostTurn(u.ctx, u.session.cwd, m.Method, p); err != nil {
-			u.setNotice("Journal lifecycle: "+err.Error(), true)
-		}
-	}
 	if m.Method == "item/started" {
 		u.observeShellItem(p.ThreadID, p.Item)
 	}
@@ -380,10 +375,10 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 				u.applyActivity(dropped, nil)
 			}
 		}
-		if text, wait, handled := u.progress(item, m.Method, p.ThreadID, p.TurnID); handled {
+		if text, wait, handled := appServerProgress(item, m.Method); handled {
 			if text != "" {
 				native.wait = wait
-				entries = append(entries, u.progressEntry(activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native}))
+				entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "progress", Text: text, Observed: now, native: native})
 			}
 			break
 		}
@@ -526,7 +521,6 @@ func (u *appServerUI) sessionEvent(m appserver.Message) (bool, error) {
 			return true, nil
 		}
 	}
-	u.updateAgentPane(m.Method, p)
 	u.applyActivity(u.queueSummaries(entries), slices.Clone(s.agents))
 	// Main's turn lifecycle also drives the composer state.
 	return !main || !strings.HasPrefix(m.Method, "turn/"), nil

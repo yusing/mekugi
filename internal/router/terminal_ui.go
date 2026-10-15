@@ -31,8 +31,6 @@ type terminalUI struct {
 	width, height, split, horizontal, rosterHeight int
 	focus, drag                                    int // 0 Main, 1 diff, 2 agents, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	side, activityOpen                             bool
-	journalOpen                                    bool
-	autoActivity                                   bool // Temporarily shows children over the preferred Journal.
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Activity held the right column.
 	liveDock                                       diffview.PreviewPane
@@ -43,7 +41,7 @@ type terminalUI struct {
 	sequence, agentEscape                          string
 	paste                                          bool
 	layout                                         terminalLayout
-	paneTabs                                       [5]terminalRect // Visible status-bar selectors, indexed by pane.
+	paneTabs                                       [4]terminalRect // Visible status-bar selectors, indexed by pane.
 	paintedRows                                    []string
 	paintedCopy                                    [][]activityui.CopySpan
 	paintedWidth                                   int
@@ -65,9 +63,9 @@ func (s *nativeDiffScreen) Close() error {
 type terminalRect struct{ x, y, w, h int }
 
 type terminalLayout struct {
-	codex, diff, agents, roster, live, journal terminalRect
-	mainSkills                                 terminalRect // Main's active-skill count in its title.
-	vertical, horizontal, rosterHorizontal     int
+	codex, diff, agents, roster, live      terminalRect
+	mainSkills                             terminalRect // Main's active-skill count in its title.
+	vertical, horizontal, rosterHorizontal int
 }
 
 func (r terminalRect) contains(x, y int) bool {
@@ -154,7 +152,6 @@ func (u *terminalUI) key(key byte) error {
 				u.main.notifications.focused = s == "\x1b[I"
 			}
 			if s == "\x1b[O" {
-				u.clearJournalHover() // No pointer report follows the pointer out of the window.
 				u.clearSkillsHover()
 			}
 			return nil
@@ -205,7 +202,7 @@ func (u *terminalUI) key(key byte) error {
 		switch key {
 		case 2:
 			return u.send(string([]byte{2}))
-		case '1', '2', '3', '4', '5':
+		case '1', '2', '3', '4':
 			u.selectNativePane(int(key - '1'))
 		case 'q':
 			if u.main != nil && !u.main.openApprovals() {
@@ -406,15 +403,12 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if s == "\x1b" && u.focus == 0 && u.main != nil && !u.main.paste {
-		if u.main.turn != "" || u.main.starting() || u.main.reset.active() || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
+		if u.main.turn != "" || u.main.starting() || u.main.submission.text != "" || len(u.main.unsent)+len(u.main.queued) > 0 {
 			return u.main.keyboardEscape()
 		}
 		return nil
 	}
 
-	if u.focus == 4 {
-		return u.journalKey(s)
-	}
 	if u.focus == 2 && u.main != nil {
 		if s == "o" {
 			return u.main.loadOlderActivity()
@@ -483,9 +477,6 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if u.agents != nil && (u.output != nil || !u.layout.roster.contains(x, y)) {
 		u.agents.skillsHover = ""
-	}
-	if !u.layout.journal.contains(x, y) || u.output != nil {
-		u.clearJournalHover()
 	}
 	if u.output != nil {
 		u.outputMouse(button, x, y, release)
@@ -632,9 +623,6 @@ func (u *terminalUI) mouse(s string) error {
 	case u.layout.codex.contains(x, y):
 		pane = 0
 		r = u.layout.codex
-	case u.layout.journal.contains(x, y):
-		pane = 4
-		r = u.layout.journal
 	case u.layout.diff.contains(x, y):
 		pane = 1
 		r = u.layout.diff
@@ -654,7 +642,6 @@ func (u *terminalUI) mouse(s string) error {
 
 	if button&^28 == 0 && !release {
 		if pane != 0 {
-			u.autoActivity = false
 		}
 		u.focus = pane
 	}
@@ -679,9 +666,6 @@ func (u *terminalUI) mouse(s string) error {
 	}
 	if release {
 		return nil
-	}
-	if pane == 4 {
-		return u.journalMouse(button, x-r.x, y-r.y)
 	}
 	if pane == 1 {
 		for _, key := range []byte(translated) {

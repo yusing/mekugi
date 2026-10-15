@@ -68,7 +68,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 			}
 			name := binding.Utf8Text(bytes)
 			// A local runtime binding changes every call in the program, including earlier calls.
-			if slices.Contains([]string{"tools", "text", "JSON", "Object", "Promise", "generatedImage", "journal"}, name) {
+			if slices.Contains([]string{"tools", "text", "JSON", "Object", "Promise", "generatedImage"}, name) {
 				return nil, false
 			}
 			value := declaration.ChildByFieldName("value")
@@ -125,7 +125,7 @@ func toolActivityProtectedBindingName(node *sitter.Node, source []byte) bool {
 		if strings.ContainsRune(node.Utf8Text(source), '\\') {
 			return true // An escape may spell a protected binding after JS decoding.
 		}
-		return slices.Contains([]string{"tools", "Promise", "journal"}, node.Utf8Text(source))
+		return slices.Contains([]string{"tools", "Promise"}, node.Utf8Text(source))
 	}
 	for i := range node.NamedChildCount() {
 		if toolActivityProtectedBindingName(node.NamedChild(uint(i)), source) {
@@ -217,7 +217,7 @@ func toolActivityBatchIndexedPresentation(statement *sitter.Node, source []byte,
 		return false
 	}
 	indexName := index.Utf8Text(source)
-	if indexName == binding || slices.Contains([]string{"text", "JSON", "tools", "Promise", "journal"}, indexName) ||
+	if indexName == binding || slices.Contains([]string{"text", "JSON", "tools", "Promise"}, indexName) ||
 		strings.ContainsRune(indexName, '\\') ||
 		!toolActivityMemberPath(condition.ChildByFieldName("left"), source, indexName) ||
 		!toolActivityMemberPath(condition.ChildByFieldName("right"), source, binding, "length") ||
@@ -299,7 +299,7 @@ func toolActivityAwaitedCalls(expression *sitter.Node, bytes []byte, requireResu
 		}
 	}
 	item, ok := toolActivityStaticToolCall(call, bytes)
-	if !ok || requireResultMetadata && jsonString(item, "name") == journalToolName {
+	if !ok {
 		return nil, false
 	}
 	return []map[string]json.RawMessage{item}, true
@@ -315,15 +315,13 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 	}
 	property := callee.ChildByFieldName("property")
 	name := ""
-	if toolActivityMemberPath(callee, bytes, journalToolName) {
-		name = journalToolName
-	} else if property != nil {
+	if property != nil {
 		name = property.Utf8Text(bytes)
 	} else {
 		return nil, false
 	}
 	switch name {
-	case "exec_command", "view_image", "write_stdin", "apply_patch", journalToolName:
+	case "exec_command", "view_image", "write_stdin", "apply_patch":
 	default:
 		_, _, mcp := toolActivityMCPName(name)
 		plugin := false
@@ -335,8 +333,7 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 			return nil, false
 		}
 	}
-	bareJournal := name == journalToolName && toolActivityMemberPath(callee, bytes, journalToolName)
-	if !bareJournal && !toolActivityMemberPath(callee, bytes, "tools", name) || call.ChildByFieldName("optional_chain") != nil {
+	if !toolActivityMemberPath(callee, bytes, "tools", name) || call.ChildByFieldName("optional_chain") != nil {
 		return nil, false
 	}
 	var value any

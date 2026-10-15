@@ -29,7 +29,7 @@ An unfinished call has no completed record. Storage failure must not expose
 dependent review evidence as durable.
 
 Completed host results first visible in a compaction request are reconciled before
-either journal synthesis or provider forwarding can discard that input. This
+provider forwarding can discard that input. This
 includes stock patches and exec-observed writes. Observation
 does not project replay carriers or edit notices into the forwarded compaction
 payload. Missing workspace metadata may use only the unique retained workspace
@@ -553,7 +553,7 @@ The line-number column of a card never narrows while its call streams.
 
 The saved diff view uses completed known-edit patch and command evidence. It includes
 changes from children that are visible to the parent. The viewer switches
-to it after the root's usage and journal flush, and back to stream for the
+to it after root completion, and back to stream for the
 next prompt. The user can switch or browse without changing execution or durable evidence. Each mode's
 footer reports what the other holds: live calls from the diff view, and
 captured files from the stream view. A child caller's card label uses the
@@ -582,18 +582,6 @@ matching relative paths, including descendants of collapsed folders; clearing
 it restores the tree's expansion and navigation position. Files use stable
 path ordering, with folders first in tree mode. Next/previous file navigation
 uses the matching set, revealing destinations inside collapsed folders.
-
-`c` cycles the saved Diff scope through current subslice (the default), current
-top-level slice, and all. The scope applies to Files in tree and flat views,
-Changes in branch view, file/change jumps, and the displayed diff. It combines
-with path, change, and caller filters. The current subslice is the deepest
-working owned task, otherwise its blocker or latest completed task; its
-descendants and bound child agents are included. Slice includes that task's
-top-level ancestor and descendants. Earlier captures compose as baseline.
-Task attribution is retained with each capture, so later task transitions and
-resume do not reassign earlier edits. Unattributed captures remain available
-in all. Without a current journal task, scopes show all retained captures.
-Scope selection is local to the viewer and resets to subslice on session switch.
 
 The navigator and diff have independent viewports and keyboard focus. Arrow keys
 act on the focused region. Keyboard focus is visible;

@@ -34,18 +34,15 @@ item-interrupted events. An `interrupted` incomplete terminal drains that
 response without declaring successful model completion. Codex supplies the next
 `response.create`; the router neither fabricates a successor nor cancels tools.
 
-Startup metadata with `request_kind="prewarm"` and explicit `generate=false`,
-without retained journal compaction references,
+Startup metadata with `request_kind="prewarm"` and explicit `generate=false`
 is a non-generating transport handshake and does not require workspaces or a
 supported tool catalog. When Codex supplies a supported execution catalog, prewarm
 uses the same instruction, tool, and collaboration projection as a generating turn,
 so the first turn can reuse that prefix. An execution-free or catalog-free handshake
-remains native. Ordinary startup prewarm does not initialize replay, journal, or
-agent lifecycle state. Prewarm with retained journal compaction references requires
-a workspace and restores the exact retained context through durable replay and
-inherited scope validation before provider forwarding. See
-[journal recovery](journal.md). Generating requests cannot use prewarm metadata to
-bypass ordinary turn validation.
+remains native. Startup prewarm does not initialize replay or agent lifecycle state.
+Unsupported router-local context references fail before provider forwarding;
+prewarm does not restore retired local context. Generating requests cannot use
+prewarm metadata to bypass ordinary turn validation.
 
 The provider upgrade's nonempty `x-codex-turn-state` header reaches Codex as a
 `response.metadata` event before the first response event, because the downstream
@@ -112,6 +109,10 @@ history needed for translation.
 Terminal output reconciles with completed streamed items by item ID, updating matching
 metadata and retaining delivered order. A partial or commentary-only terminal snapshot
 must not discard completed calls needed by a later full-history continuation.
+Provider answers stream immediately. A successful terminal snapshot completes an
+already-started final-answer item when its item-done event is missing, without
+repeating completed items or adding router-authored answers. Answer delivery and
+LiveDiff completion do not depend on provider usage metadata.
 
 `--timeout` covers each response's preparation, connection setup, write, and
 first non-control, non-ancillary event. Steering acknowledgements do not satisfy

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 )
 
 func notificationTestOutput(t *testing.T, u *appServerUI) *bytes.Buffer {
@@ -125,58 +124,6 @@ func TestAppServerNotificationCompletion(t *testing.T) {
 	}
 }
 
-func TestAppServerNotificationAutoContinue(t *testing.T) {
-	for _, lateReply := range []bool{false, true} {
-		t.Run(fmt.Sprintf("lateReply=%v", lateReply), func(t *testing.T) {
-			d, _ := autoResumeFixture(t)
-			u, _ := newAppServerTestUI()
-			u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
-			out := notificationTestOutput(t, u)
-			complete := func(turn string) {
-				t.Helper()
-				appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":%q}}}`, d.thread, turn))
-				appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":%q,"status":"completed"}}}`, d.thread, turn))
-			}
-			complete("answer")
-			if out.Len() != 0 || !d.active() {
-				t.Fatalf("premature completion: notification=%q active=%v", out.String(), d.active())
-			}
-			u.writeTerminalTitle(time.Unix(0, 0))
-			if u.notifications.lastTitle != "Mekugi ⠋" {
-				t.Fatal("slice continuation reported terminal idle")
-			}
-			out.Reset()
-			if err := d.start(); err != nil {
-				t.Fatal(err)
-			}
-			reply := fmt.Sprintf(`{"id":%s,"result":{"turn":{"id":"continued"}}}`, d.requestID)
-			if !lateReply {
-				appServerTestMessage(t, u, reply)
-			}
-			if err := d.proxy.journals.beginJournalTurn(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "continued"); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := d.proxy.journals.apply(t.Context(), d.proxy.replayStore, d.workspace, d.thread, "", []journalMutation{{Op: "set", P: "/1", State: new("done")}}); err != nil {
-				t.Fatal(err)
-			}
-			complete("continued")
-			if lateReply {
-				if out.Len() != 0 {
-					t.Fatal("completion notified before continuation decision settled")
-				}
-				appServerTestMessage(t, u, reply)
-			}
-			if want := "\x1b]9;Agent turn complete\a"; out.String() != want || d.active() {
-				t.Fatalf("real completion: notification=%q active=%v", out.String(), d.active())
-			}
-			u.writeTerminalTitle(time.Unix(0, 0))
-			if u.notifications.lastTitle != "Mekugi" {
-				t.Fatal("final completion retained terminal working state")
-			}
-		})
-	}
-}
-
 func TestAppServerNotificationQuestions(t *testing.T) {
 	for _, async := range []bool{false, true} {
 		t.Run(fmt.Sprintf("async=%v", async), func(t *testing.T) {
@@ -272,32 +219,5 @@ func TestAppServerNotificationOutputFailureNonfatal(t *testing.T) {
 	u.notify("agent-turn-complete", "again")
 	if u.turn != "" || !strings.HasPrefix(u.status, "Completed") || failing.calls != 1 || u.notice == "" {
 		t.Fatalf("output failure disrupted completion: turn=%q status=%q calls=%d notice=%q", u.turn, u.status, failing.calls, u.notice)
-	}
-}
-
-func TestAppServerNotificationCompactionAck(t *testing.T) {
-	d, _ := resetDriverFixture(t, "slice")
-	u, _ := newAppServerTestUI()
-	u.ctx, u.proxy, u.client, u.thread, u.reset = t.Context(), d.proxy, d.client, d.thread, d
-	out := notificationTestOutput(t, u)
-	if err := d.start(); err != nil {
-		t.Fatal(err)
-	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{}}`, d.requestID))
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"compact"}}}`, d.thread))
-	if err := d.change(func(_ *threadJournal, intent *journalResetIntent) error { intent.Phase = "consumed"; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"item/completed","params":{"threadId":%q,"turnId":"compact","item":{"type":"contextCompaction","id":"compact-item"}}}`, d.thread))
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/completed","params":{"threadId":%q,"turn":{"id":"compact","status":"completed"}}}`, d.thread))
-	u.writeTerminalTitle(time.Unix(0, 0))
-	if u.notifications.lastTitle != "Mekugi ⠋" {
-		t.Fatal("next slice awaiting acknowledgement reported terminal idle")
-	}
-	out.Reset()
-	appServerTestMessage(t, u, fmt.Sprintf(`{"method":"turn/started","params":{"threadId":%q,"turn":{"id":"continued"}}}`, d.thread))
-	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"turn":{"id":"continued"}}}`, d.requestID))
-	if out.Len() != 0 {
-		t.Fatalf("false completion while turn %q runs: %q", u.turn, out.String())
 	}
 }

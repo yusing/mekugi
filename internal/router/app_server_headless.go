@@ -66,8 +66,6 @@ type headlessAppServer struct {
 	prompt, request, requestID string
 	thread, turn               string
 	completed                  bool
-	reset                      *journalResetDriver
-	resetPhase                 string
 }
 
 func (h *headlessAppServer) emit(method string, params any) error {
@@ -113,18 +111,7 @@ func (h *headlessAppServer) run() (runErr error) {
 				return err
 			}
 		}
-		if h.reset != nil {
-			if h.reset.notice != "" && !h.reset.active() {
-				return errors.New(h.reset.notice)
-			}
-			if phase := h.reset.phase; phase != h.resetPhase {
-				h.resetPhase = phase
-				if err := h.emit("mekugi/journal/reset", map[string]any{"threadId": h.thread, "phase": phase}); err != nil {
-					return err
-				}
-			}
-		}
-		if h.completed && h.requestID == "" && !h.reset.active() {
+		if h.completed && h.requestID == "" {
 			return h.emit("mekugi/headless/completed", map[string]any{"threadId": h.thread})
 		}
 	}
@@ -144,9 +131,6 @@ func headlessHostError(client *appserver.Client, err error) error {
 
 func (h *headlessAppServer) message(m appserver.Message) error {
 	h.issues.observeTurnCompletion(m.Method, m.Params)
-	if handled, err := h.reset.message(m); handled || err != nil {
-		return err
-	}
 	if m.Method != "" && len(m.ID) != 0 {
 		return fmt.Errorf("headless cannot answer host request %s; continue interactively", m.Method)
 	}
@@ -182,7 +166,6 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 				return errors.New("headless thread/start returned no thread or workspace")
 			}
 			h.thread = result.Thread.ID
-			h.reset = &journalResetDriver{ctx: h.ctx, proxy: h.proxy, client: h.client, workspace: result.Thread.Cwd, thread: h.thread}
 			return h.send("turn/start", map[string]any{"threadId": h.thread, "input": appserver.Input(h.prompt)})
 		}
 		return nil
@@ -200,11 +183,6 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 	if p.ThreadID == h.thread && m.Method == "turn/completed" && p.Turn.ID != h.turn {
 		return nil
 	}
-	if err := h.proxy.observeJournalHostTurn(h.ctx, h.reset.workspace, m.Method, p); err != nil {
-		if noticeErr := h.emit("mekugi/journal/notice", map[string]any{"threadId": p.ThreadID, "message": err.Error()}); noticeErr != nil {
-			return noticeErr
-		}
-	}
 	if p.ThreadID != h.thread || (m.Method != "turn/started" && m.Method != "turn/completed") {
 		return nil
 	}
@@ -219,13 +197,8 @@ func (h *headlessAppServer) message(m appserver.Message) error {
 		return nil
 	}
 	if p.Turn.Status != "completed" {
-		if p.Turn.Status == "interrupted" {
-			if err := h.reset.stop(p.Turn.ID); err != nil {
-				return err
-			}
-		}
 		return fmt.Errorf("headless turn %s: %s", p.Turn.ID, p.Turn.Status)
 	}
 	h.completed = true
-	return h.reset.completed(p.Turn.ID)
+	return nil
 }

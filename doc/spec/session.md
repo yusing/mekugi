@@ -22,15 +22,13 @@ Capture-owned metrics include measured application-write accounting when availab
 artifact bytes describe current file sizes, not cumulative writes or physical disk I/O.
 Without a field selection, private text
 is omitted. These files and selected text are not sanitized.
-Feature branch outcomes remain separate from request outcomes; rejected or unavailable
-branches are diagnostic evidence, while accepted, prepared, and observed branches are
-not failures. Interrupted responses and failed, incomplete, cancelled, or error terminal
+Interrupted responses and failed, incomplete, cancelled, or error terminal
 states remain visible; healthy WebSocket control records are not failed response streams.
 Text uses the existing `--text-bytes` bound. `--offset` and `--limit` paginate
 evidence, with `total_evidence` and `next_offset`. The request index uses the same
 page bounds and exposes `total_requests`; summary counts cover the entire artifact.
 Capture overrides resolve through the bundle's capture link; the AX
-report selects an absolute overridden read journal. Missing override destinations
+report selects an absolute overridden read log. Missing override destinations
 remain unavailable rather than being replaced by another session's evidence.
 
 Inputs must be regular JSON/JSONL files no larger than 64 MiB each; JSONL rows
@@ -71,11 +69,8 @@ identities in first-observed order from `response_item` records, not by scanning
 stored calls. Repeated identical call identities coalesce; conflicting payloads or call workspaces fail.
 Replay lookup is workspace-and-call scoped. Matched observed calls must agree with retained identity; corrupt or
 incompatible records fail rather than guessing. Missing records expose native call identity and unavailable outcomes.
-Canonical router-local result IDs are decoded through the journal provenance owner only
-for named `functions.journal` or opt-in `functions.report_issue` outputs lacking a call ID.
-They participate under the original call ID without inventing execution or success. Matched
-replay must identify the corresponding local function call; malformed IDs and unrelated
-missing-call-ID outputs still reject.
+Tool calls and outputs require their host call IDs. An output with no call ID
+fails rather than deriving execution identity from a message ID.
 
 Each call exposes original tool identity, observed outcome, and text byte counts. `--field` selects `script`,
 `report`, `diagnostic`, `output`, or `all`; text is omitted by default.
@@ -128,32 +123,6 @@ Acceptance:
 
 `--ax`, `--read-log`, and `--defects` add whole-rollout AX reporting under
 [REQ-AX-001](ax.md); table selection and pagination do not narrow its evidence scope.
-
-### Offline journal inspection
-
-`mekugi inspect-session --session PATH --journal` reads the selected thread's retained
-journal without a router, journal mutation, lock creation, or host reconciliation.
-It resolves `session_meta.id`, not a fork's `session_id`, with the last
-`session_meta.cwd`; `--workspace` explicitly overrides that directory. Turn-level
-command directories do not select another journal. Missing thread identity fails;
-missing workspace reports `workspace_unavailable` without searching other workspaces.
-
-The result is `mekugi.session.journal.v1` JSON with `thread_id`, selected `workspace`,
-`availability`, and a flat `nodes` page in retained item order. Stable paths preserve
-parent relationships. Nodes include kind, state, author, bound agent, supersession,
-and creation/update stamps. Only this thread's own retained nodes are read; bound
-agents are references, not mounted trees. The snapshot is current retained state,
-not journal state reconstructed at the rollout's last timestamp. Corrupt or mismatched
-records fail. A missing record reports `missing`, with no node count; a readable empty
-journal reports `matched` with `total_nodes: 0`.
-
-`--offset` and `--limit` paginate nodes with `total_nodes` and optional `next_offset`.
-Private title, body, reason, and question text is omitted by default but retains
-byte counts. `--field title|body|reason|question|all` selects text under the existing
-UTF-8 `--text-bytes` bound. This mode cannot combine call selection, AX generation,
-debug bundles, or failure-reference lookup. The shared rollout validation and exit
-statuses apply. Reading neither acknowledges delivery nor restores live timers,
-processes, or permissions.
 
 ### Corpus friction inspection
 

@@ -16,17 +16,17 @@ import (
 	"time"
 )
 
-func TestAXReadJournalRestrictiveUmask(t *testing.T) {
+func TestAXReadLogRestrictiveUmask(t *testing.T) {
 	const marker = "MEKUGI_TEST_AX_UMASK_PATH"
 	if path := os.Getenv(marker); path != "" {
 		previous := syscall.Umask(0777)
 		defer syscall.Umask(previous)
-		if err := PrepareAXReadJournal(path); err != nil {
+		if err := PrepareAXReadLog(path); err != nil {
 			t.Fatal(err)
 		}
 		info, err := os.Stat(path)
 		if err != nil || info.Mode().Perm() != 0600 {
-			t.Fatalf("journal mode = %v, %v", info, err)
+			t.Fatalf("log mode = %v, %v", info, err)
 		}
 		observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
 		if err != nil {
@@ -39,18 +39,18 @@ func TestAXReadJournalRestrictiveUmask(t *testing.T) {
 	}
 	// Umask is process-wide, so exercise it outside the other package tests.
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestAXReadJournalRestrictiveUmask$")
+	command := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestAXReadLogRestrictiveUmask$")
 	command.Env = append(os.Environ(), marker+"="+path)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("restrictive umask: %v\n%s", err, output)
 	}
 	result, err := ReadAXReads(t.Context(), path, "thread")
 	if err != nil || result.Succeeded != 1 {
-		t.Fatalf("journal = %+v, %v", result, err)
+		t.Fatalf("log = %+v, %v", result, err)
 	}
 }
 
-func TestAXReadJournalExactSizeWithoutFinalNewline(t *testing.T) {
+func TestAXReadLogExactSizeWithoutFinalNewline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	file, err := os.Create(path)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestAXReadJournalExactSizeWithoutFinalNewline(t *testing.T) {
 	}
 	result, err := ReadAXReads(t.Context(), path, "thread")
 	if err != nil || result.Started != records || result.Incomplete != records {
-		t.Fatalf("boundary journal = %+v, %v", result, err)
+		t.Fatalf("boundary log = %+v, %v", result, err)
 	}
 	ctx := &axGrowingEvidenceContext{Context: t.Context(), grow: func() {
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
@@ -92,7 +92,7 @@ func TestAXReadJournalExactSizeWithoutFinalNewline(t *testing.T) {
 		}
 	}}
 	if _, err := ReadAXReads(ctx, path, "thread"); err == nil || !strings.Contains(err.Error(), "exceeds 64 MiB") {
-		t.Fatalf("growing journal accepted: %v", err)
+		t.Fatalf("growing log accepted: %v", err)
 	}
 }
 
@@ -110,7 +110,7 @@ func (ctx *axGrowingEvidenceContext) Err() error {
 	return ctx.Context.Err()
 }
 
-func TestAXRuntimeReadJournal(t *testing.T) {
+func TestAXRuntimeReadLog(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	for _, test := range []struct {
 		thread  string
@@ -139,7 +139,7 @@ func TestAXRuntimeReadJournal(t *testing.T) {
 	}
 	data, _ := os.ReadFile(path)
 	if strings.Contains(string(data), path) || strings.Contains(string(data), "arguments") {
-		t.Fatal("journal retained source details")
+		t.Fatal("log retained source details")
 	}
 }
 func TestAXReadAcceptsBackwardWallClock(t *testing.T) {
@@ -200,7 +200,7 @@ func TestAXReadRejectsUnsafeStorageAndMalformedEvents(t *testing.T) {
 	}
 	for _, invalid := range []string{"relative", root, path, link} {
 		if _, err := StartAXReadWithContext(invalid, "thread", "mcat", AXReadContext{}); err == nil {
-			t.Fatalf("invalid journal %q accepted", invalid)
+			t.Fatalf("invalid log %q accepted", invalid)
 		}
 	}
 	if data, _ := os.ReadFile(path); string(data) != "unchanged" {
@@ -347,16 +347,16 @@ func TestAXDefectsRequireKnownCallsAndRealEvidence(t *testing.T) {
 	}
 }
 
-func TestAXValidatesJournalWithoutThreadMetadata(t *testing.T) {
+func TestAXValidatesLogWithoutThreadMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	if _, err := ReadAXReads(t.Context(), path, ""); err == nil {
-		t.Fatal("missing supplied journal accepted")
+		t.Fatal("missing supplied log accepted")
 	}
 	if err := os.WriteFile(path, []byte("{}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ReadAXReads(t.Context(), path, ""); err == nil {
-		t.Fatal("malformed supplied journal accepted")
+		t.Fatal("malformed supplied log accepted")
 	}
 }
 
@@ -386,16 +386,16 @@ func TestAXConcurrentNearCapacity(t *testing.T) {
 	}
 }
 
-func TestAXReadJournalRejectsCorruptUTF8IDs(t *testing.T) {
+func TestAXReadLogRejectsCorruptUTF8IDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	start := "{\"schema\":\"mekugi.ax.read.v2\",\"id\":\"" + "\xff" + "\",\"thread_id\":\"thread\",\"tool\":\"mcat\",\"phase\":\"start\",\"at\":\"2026-09-11T00:00:00Z\"}"
 	finish := "{\"schema\":\"mekugi.ax.read.v2\",\"id\":\"" + "\xfe" + "\",\"thread_id\":\"thread\",\"tool\":\"mcat\",\"phase\":\"finish\",\"at\":\"2026-09-11T00:00:01Z\",\"duration_ns\":100,\"succeeded\":true}"
 	if err := os.WriteFile(path, []byte(start+"\n"+finish+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	journal, err := ReadAXReadJournal(t.Context(), path)
-	if err == nil || !strings.Contains(err.Error(), "UTF-8") || len(journal.Threads) != 0 {
-		t.Fatalf("corrupt IDs were admitted: %+v, %v", journal, err)
+	log, err := ReadAXReadLog(t.Context(), path)
+	if err == nil || !strings.Contains(err.Error(), "UTF-8") || len(log.Threads) != 0 {
+		t.Fatalf("corrupt IDs were admitted: %+v, %v", log, err)
 	}
 	reads, err := ReadAXReads(t.Context(), path, "thread")
 	if err == nil || reads.Succeeded != 0 || reads.State != "unavailable" {

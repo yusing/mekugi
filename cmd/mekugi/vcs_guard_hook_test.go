@@ -8,11 +8,8 @@ import (
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
-func TestVCSGuardHookArgsPreservesRecoveryTrustAndCaller(t *testing.T) {
-	caller, registered := postCompactHookArgs([]string{"exec", "--", "-c", "hooks.PreToolUse=[]"}, "/mekugi")
-	if !registered {
-		t.Fatal("recovery hook not registered")
-	}
+func TestVCSGuardHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
+	caller := []string{"exec", "-c", `hooks.state={other={trusted_hash="existing"}}`, "--", "-c", "hooks.PreToolUse=[]"}
 	original := slices.Clone(caller)
 	got, identity, err := vcsGuardHookArgs(caller, "/path with spaces/mekugi", "/private/guard", "", "")
 	if err != nil {
@@ -36,8 +33,8 @@ func TestVCSGuardHookArgsPreservesRecoveryTrustAndCaller(t *testing.T) {
 	if _, err := toml.Decode(got[index+3], &config); err != nil {
 		t.Fatal(err)
 	}
-	if len(config.Hooks.State) != 2 || config.Hooks.State[postCompactHookKey].TrustedHash == "" {
-		t.Fatalf("recovery trust lost: %+v", config.Hooks.State)
+	if len(config.Hooks.State) != 2 || config.Hooks.State["other"].TrustedHash != "existing" {
+		t.Fatalf("existing hook trust lost: %+v", config.Hooks.State)
 	}
 	guard := config.Hooks.State[vcsguard.HookKey]
 	// Reported as trusted by `codex app-server` hooks/list for this exact hook.

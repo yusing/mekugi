@@ -364,7 +364,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 	}
 }
 
-func TestComposerPickerDoesNotAcknowledgeCoveredJournal(t *testing.T) {
+func TestComposerPickerDoesNotMarkCoveredTranscriptPainted(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.session.cwd = "/work"
 	appServerTestKeys(t, u, "@f")
@@ -377,6 +377,6 @@ func TestComposerPickerDoesNotAcknowledgeCoveredJournal(t *testing.T) {
 	u.pickerKey("\x1b")
 	u.mainFrame(80, 24, 0)
 	if !u.mainContentPainted {
-		t.Fatal("dismissal did not restore journal presentation")
+		t.Fatal("dismissal did not restore transcript presentation")
 	}
 }

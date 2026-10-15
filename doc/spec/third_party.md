@@ -48,9 +48,10 @@ including multipart content. Caller wording, fenced examples, and user messages 
 The reserved OpenAI collaboration schema is not modified in place because the provider rejects that
 operation. User-visible agent lifecycle remains native.
 
-Plaintext projection makes new assignment payloads readable to the router, allowing journal answer
-association. It does not decrypt existing encrypted agent messages; a new plaintext follow-up is
-required to attach those tasks. Ordinary passthrough, prewarm, and auxiliary turns without a
+Plaintext projection makes new assignment payloads readable to the router for native
+assignment and message display. It does not decrypt existing encrypted agent messages;
+encrypted bodies remain unavailable to that display. Ordinary passthrough, prewarm, and
+auxiliary turns without a
 third-party provider remain unchanged.
 
 Provider credentials, refresh, redirects, and clients remain isolated from OpenAI authentication.

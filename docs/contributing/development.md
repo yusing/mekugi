@@ -43,7 +43,7 @@ The [release workflow](../../.github/workflows/release.yml) packages Linux/macOS
 sanitized.** Inactive bundles expire after 14 days; copy elsewhere to keep one. Exit
 prints a diagnosis command. Codex tracing uses uncapped private temporary storage;
 shutdown removes it, forced kills may leave it. See [debug
-evidence](../../doc/spec/router.md#feature-usage-debug-evidence).
+evidence](../../doc/spec/router.md#debug-evidence).
 
 ### Inspect a session
 
@@ -52,7 +52,6 @@ Inspection runs no recorded operations. Default reports omit private text; selec
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
-mekugi inspect-session --session /path/to/rollout.jsonl --journal --field all --limit 20
 mekugi inspect-session --debug-dir /path/to/debug --field diagnostic
 ```
 

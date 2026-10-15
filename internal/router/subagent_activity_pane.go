@@ -11,25 +11,21 @@ import (
 type activityPane struct{ root string }
 
 type activityPaneEntry struct {
-	journalEvent *journalEvent
-	Seq          uint64
-	Agent        string
-	Kind         string
-	Text         string
-	ErrorDetail  string `json:",omitempty"` // Full error evidence; Text is the bounded preview.
-	CallID       string `json:",omitempty"`
-	Observed     time.Time
+	Seq         uint64
+	Agent       string
+	Kind        string
+	Text        string
+	ErrorDetail string `json:",omitempty"` // Full error evidence; Text is the bounded preview.
+	CallID      string `json:",omitempty"`
+	Observed    time.Time
 
-	native       *liveActivityNativeItem // In-process app-server lifecycle input, not a provider observation.
-	journal      *journalItem            // Native presentation keeps IDs/questions separate from rendered text.
-	journalCard  *nativeJournalCard
-	journalItems []journalItem       // One terminal delivery uses Activity's existing grouped result renderer.
-	assignment   *activityAssignment // Validated native NEW_TASK, not an ordinary message.
-	message      *activityMessage    // A directed message, for a reply entry.
-	start        *activityStart      // A child's start, for a start entry.
-	activitySeq  uint64              // Main excerpt's exact entry in Activity, never a question target.
-	outputTail   []string            // Failed command's sanitized final output lines, on an exit entry.
-	outputOmit   int                 // Output lines before outputTail.
+	native      *liveActivityNativeItem // In-process app-server lifecycle input, not a provider observation.
+	assignment  *activityAssignment     // Validated native NEW_TASK, not an ordinary message.
+	message     *activityMessage        // A directed message, for a reply entry.
+	start       *activityStart          // A child's start, for a start entry.
+	activitySeq uint64                  // Main excerpt's exact entry in Activity, never a question target.
+	outputTail  []string                // Failed command's sanitized final output lines, on an exit entry.
+	outputOmit  int                     // Output lines before outputTail.
 }
 
 type activityPaneAgent struct {
@@ -224,24 +220,6 @@ func (a *subagentActivity) childThread(root, name string) string {
 		}
 	}
 	return ""
-}
-
-func (a *subagentActivity) syncPaneRoles(parent string, roles map[string]journalSpawnRole) {
-	if a == nil {
-		return
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, node := range a.threads {
-		if node.parent != parent || node.conflicted {
-			continue
-		}
-		// Missing or conflicting evidence leaves the role blank; the roster omits it.
-		node.role = ""
-		if evidence, ok := roles[node.name]; ok && !evidence.Conflicted {
-			node.role = evidence.Role
-		}
-	}
 }
 
 func nativeObservedActivity(kind string) bool {

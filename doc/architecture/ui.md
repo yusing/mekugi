@@ -12,10 +12,9 @@ lifecycle delivery responsive. Running work outside the UI loop is insufficient 
 shared queue or lock still blocks independent owners. Unresolved metadata and exhausted
 observation capacity must remain visible and bounded without terminating unrelated work.
 
-- `internal/ui/activity` owns display blocks, journal-result layout, Markdown and
+- `internal/ui/activity` owns display blocks, Markdown and
   syntax presentation, source-aware Markdown copy annotations and reconstruction,
-  agent labels/colors, and reasoning/status animation. Its journal
-  model is a presentation value, not the durable journal or a delivery receipt.
+  agent labels/colors, and reasoning/status animation.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including
   their viewport and reveal animation. It consumes shared `internal/livediff` models
   and router-produced preview snapshots. Rendering a preview cannot finalize evidence.
@@ -31,7 +30,7 @@ observation capacity must remain visible and bounded without terminating unrelat
 
 The router remains the integration owner for the native session, composer, transcript
 and roster state, and app-server event reconciliation. It adapts authenticated activity,
-scoped replay/change observations, accounting, and journal publications into display
+scoped replay/change observations and accounting into display
 values. Shared Markdown annotations travel with rendered fragments through wrapping,
 record layouts, gutters and viewport clipping. The router resolves them against the
 composed visible frame and removes their private transport before terminal delivery.
@@ -44,8 +43,7 @@ side-answer docks and output dialogs share the selection mouse and scroll model;
 the caller retains composition and dismissal policy. Output dialogs defer live
 content refresh while their selection is active. Atomic submitted tokens consume the same bound composer
 spans through Codex text elements, rather than recognizing lookalike prompt text.
-Journal acknowledgements remain with their owner and occur only after the
-terminal write succeeds. Preview workers and brokers remain with router observation,
+Preview workers and brokers remain with router observation,
 not the view package. The launcher still owns invocation configuration and cancellation
 before handoff; the native client never executes model-requested tools.
 

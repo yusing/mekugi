@@ -19,7 +19,7 @@ const (
 	toolPluginManifestFilename = "workers.json"
 )
 
-func buildToolRegistry(ctx context.Context, dataDirectory string, diagnose bool) (*toolRegistry, error) {
+func buildToolRegistry(ctx context.Context) (*toolRegistry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -31,13 +31,11 @@ func buildToolRegistry(ctx context.Context, dataDirectory string, diagnose bool)
 	if err != nil {
 		return nil, err
 	}
-	return buildToolRegistryAt(ctx, dataDirectory, diagnose, runtimeDirectory, replayDirectory)
+	return buildToolRegistryAt(ctx, runtimeDirectory, replayDirectory)
 }
 
 func buildToolRegistryAt(
 	ctx context.Context,
-	dataDirectory string,
-	diagnose bool,
 	runtimeDirectory, replayDirectory string,
 ) (*toolRegistry, error) {
 	if err := os.MkdirAll(runtimeDirectory, 0o700); err != nil {
@@ -59,19 +57,7 @@ func buildToolRegistryAt(
 	if err := pinRunningToolWorker(snapshotDirectory); err != nil {
 		return fail(err)
 	}
-	var reportHooks diagnoseHooks
-	if diagnose {
-		reportHooks, err = loadDiagnoseHooks(dataDirectory)
-		if err != nil {
-			return fail(err)
-		}
-	}
 	var contributions []toolContribution
-	if diagnose {
-		contributions = append(contributions, toolContribution{
-			Name: reportIssueToolName,
-		})
-	}
 	var validationErrors []error
 	for _, tool := range toolplugin.Builtins() {
 		specification, err := decodeResponsesToolDefinition(tool.Specification)
@@ -153,8 +139,6 @@ func buildToolRegistryAt(
 		frontendGuidance:  frontendGuidance,
 		wrappers:          wrappers,
 		frontends:         frontends,
-		diagnoseHooks:     reportHooks,
-		diagnoseEnabled:   diagnose,
 	}, nil
 }
 

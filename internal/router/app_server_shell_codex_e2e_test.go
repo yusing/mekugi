@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -86,7 +86,7 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 			t.Fatal("idle shell invoked the model")
 		}
 	}
-	runAppServerPreviewWith(t, p, proxy, appServerPreview{environment: []string{routerTestWorkerEnvironment + "=1", "BASH_ENV=" + startup}, noJournal: true, beforePrompt: before})
+	runAppServerPreviewWith(t, p, proxy, appServerPreview{environment: []string{routerTestWorkerEnvironment + "=1", "BASH_ENV=" + startup}, beforePrompt: before})
 	if !p.sawOutput.Load() {
 		t.Fatal("next user input did not carry native shell output")
 	}

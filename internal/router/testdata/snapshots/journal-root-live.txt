@@ -1,4 +1,0 @@
-Journal
-
-/root/reviewer
-• Consumer sees the live milestone before child completion.

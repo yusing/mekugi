@@ -6,8 +6,6 @@
 ┃ ▎ Show me how the new
 ┃ ▎ transcript search…
 ┃ 
-┃ ▎ After selective
-┃ ▎ journal/retained-output
-┃ ▎ reads, search the transcript
-┃ ▎ only for missing exact
-┃ ▎ historical details.
+┃ ▎ Read retained output before
+┃ ▎ searching the transcript for
+┃ ▎ exact historical details.

@@ -8,7 +8,7 @@ Mekugi dev • codex
 
 
 
-• Resetting context after interruption · ctrl+c cancels context reset
+• Compacting after interruption · ctrl+c cancels compaction
   ↳ /compact
 
 ╭─ ◐ Interrupting… 0s ─────────────────────────────────────────────────────────╮

@@ -60,7 +60,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 		t.Fatal(screen.String())
 	}
 	if u.mainContentPainted {
-		t.Fatal("hidden transcript must not acknowledge journal presentation")
+		t.Fatal("hidden transcript must not be marked painted")
 	}
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {40, 24}} {
 		frame, _ := u.mainFrame(size[0], size[1], 0)
@@ -87,7 +87,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 		t.Fatal("help not dismissed")
 	}
 	if !u.mainContentPainted {
-		t.Fatal("visible transcript must allow journal presentation receipts")
+		t.Fatal("visible transcript must be marked painted")
 	}
 	if err := u.shell.key('?'); err != nil {
 		t.Fatal(err)

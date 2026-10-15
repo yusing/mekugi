@@ -20,7 +20,7 @@ import (
 	"unicode/utf8"
 )
 
-// AXReadOutputEnvironment opts executor-side readers into a local journal.
+// AXReadOutputEnvironment opts executor-side readers into a local log.
 const AXReadOutputEnvironment = "MEKUGI_AX_OUTPUT"
 
 const maxAXEvidenceBytes = 64 << 20
@@ -46,7 +46,7 @@ type axReadEvent struct {
 }
 
 // AXReadObservation records one actual invocation, not a parsed source command.
-// It retains no command, file path, source text or output in its journal.
+// It retains no command, file path, source text or output in its log.
 type AXReadObservation struct {
 	file    *os.File
 	event   axReadEvent
@@ -65,9 +65,9 @@ func StartAXReadWithContext(path, threadID, tool string, identity AXReadContext)
 	}
 	if !filepath.IsAbs(path) || !validAXReader(tool) || len(threadID) > 128 ||
 		strings.ContainsAny(threadID, "\r\n\x00") || !validAXReadContext(identity) {
-		return nil, errors.New("invalid AX journal configuration")
+		return nil, errors.New("invalid AX log configuration")
 	}
-	file, err := openAXJournal(path)
+	file, err := openAXLog(path)
 	if err != nil {
 		return nil, err
 	}
@@ -89,18 +89,18 @@ func StartAXReadWithContext(path, threadID, tool string, identity AXReadContext)
 	return observation, nil
 }
 
-// PrepareAXReadJournal enables a debug bundle before the executor starts.
-func PrepareAXReadJournal(path string) error {
-	file, err := openAXJournal(path)
+// PrepareAXReadLog enables a debug bundle before the executor starts.
+func PrepareAXReadLog(path string) error {
+	file, err := openAXLog(path)
 	if err != nil {
 		return err
 	}
 	return file.Close()
 }
 
-func openAXJournal(path string) (*os.File, error) {
+func openAXLog(path string) (*os.File, error) {
 	if !filepath.IsAbs(path) {
-		return nil, errors.New("AX journal path must be absolute")
+		return nil, errors.New("AX log path must be absolute")
 	}
 	flags := os.O_WRONLY | os.O_APPEND | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
 	file, err := os.OpenFile(path, flags|os.O_CREATE|os.O_EXCL, 0600)
@@ -120,7 +120,7 @@ func openAXJournal(path string) (*os.File, error) {
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Size() >= maxAXEvidenceBytes {
 		file.Close()
-		return nil, errors.New("AX journal must be a private regular file below 64 MiB")
+		return nil, errors.New("AX log must be a private regular file below 64 MiB")
 	}
 	return file, nil
 }
@@ -149,7 +149,7 @@ func (observation *AXReadObservation) write() (writeErr error) {
 	}()
 	info, err := observation.file.Stat()
 	if err != nil || info.Size()+int64(len(data)) > maxAXEvidenceBytes {
-		return errors.New("AX journal exceeds 64 MiB")
+		return errors.New("AX log exceeds 64 MiB")
 	}
 	n, err := observation.file.Write(data)
 	if err == nil && n != len(data) {
@@ -159,7 +159,7 @@ func (observation *AXReadObservation) write() (writeErr error) {
 }
 
 // FinishResult closes the observation even if classification or writing fails.
-// Only an allowlisted class and a process exit status may enter the journal.
+// Only an allowlisted class and a process exit status may enter the log.
 func (observation *AXReadObservation) FinishResult(succeeded bool, failureClass string, exitCode *int) error {
 	if observation == nil {
 		return nil
@@ -204,7 +204,7 @@ func validAXReadContext(identity AXReadContext) bool {
 		(identity.ShellID == "" || ValidAXIdentity(identity.ShellID))
 }
 
-// AXReadFailure joins a bounded failure sample back to the journal and rollout.
+// AXReadFailure joins a bounded failure sample back to the log and rollout.
 type AXReadFailure struct {
 	AXReadContext
 	ID         string    `json:"id"`
@@ -215,7 +215,7 @@ type AXReadFailure struct {
 	ExitCode   *int      `json:"exit_code,omitempty"`
 }
 
-// AXReadMetrics counts only journal-observed invocations, not external reads.
+// AXReadMetrics counts only log-observed invocations, not external reads.
 type AXReadMetrics struct {
 	State               string            `json:"state"`
 	Started             uint64            `json:"started"`
@@ -239,20 +239,20 @@ func unavailableAXReads() AXReadMetrics {
 		Coverage: "instrumented private-reader invocations only; external reads and necessity are not measured"}
 }
 
-// AXReadJournal validates the complete journal before exposing any attribution.
+// AXReadLog validates the complete log before exposing any attribution.
 // An empty thread key represents explicitly unattributed runtime evidence.
-type AXReadJournal struct {
+type AXReadLog struct {
 	Threads map[string]AXReadMetrics
 }
 
-func (journal AXReadJournal) ForThread(threadID string) AXReadMetrics {
+func (log AXReadLog) ForThread(threadID string) AXReadMetrics {
 	result := unavailableAXReads()
 	if threadID != "" {
-		if observed, ok := journal.Threads[threadID]; ok {
+		if observed, ok := log.Threads[threadID]; ok {
 			result = observed
 		}
 	}
-	for id, reads := range journal.Threads {
+	for id, reads := range log.Threads {
 		if id == "" {
 			result.UnattributedStarted += reads.Started
 		} else if id != threadID {
@@ -264,16 +264,16 @@ func (journal AXReadJournal) ForThread(threadID string) AXReadMetrics {
 
 // ReadAXReads retains the one-thread API, but no longer silently hides exclusions.
 func ReadAXReads(ctx context.Context, path, threadID string) (AXReadMetrics, error) {
-	journal, err := ReadAXReadJournal(ctx, path)
+	log, err := ReadAXReadLog(ctx, path)
 	if err != nil {
 		return unavailableAXReads(), err
 	}
-	return journal.ForThread(threadID), nil
+	return log.ForThread(threadID), nil
 }
 
-func ReadAXReadJournal(ctx context.Context, path string) (AXReadJournal, error) {
-	result := AXReadJournal{Threads: map[string]AXReadMetrics{}}
-	invalid := func(err error) (AXReadJournal, error) { return AXReadJournal{}, err }
+func ReadAXReadLog(ctx context.Context, path string) (AXReadLog, error) {
+	result := AXReadLog{Threads: map[string]AXReadMetrics{}}
+	invalid := func(err error) (AXReadLog, error) { return AXReadLog{}, err }
 	if path == "" {
 		return result, nil
 	}
@@ -353,10 +353,10 @@ func ReadAXReadJournal(ctx context.Context, path string) (AXReadJournal, error) 
 		result.Threads[event.ThreadID] = reads
 	}
 	if err := scanner.Err(); err != nil {
-		return invalid(errors.New("AX read journal is unreadable or contains oversized events"))
+		return invalid(errors.New("AX read log is unreadable or contains oversized events"))
 	}
 	if reader.N == 0 {
-		return invalid(errors.New("AX read journal exceeds 64 MiB"))
+		return invalid(errors.New("AX read log exceeds 64 MiB"))
 	}
 	for id, reads := range result.Threads {
 		reads.Incomplete = reads.Started - reads.Completed

@@ -95,11 +95,6 @@ const (
 // openOutput opens the operation a snippet names in the dialog, reporting
 // whether it names one.
 func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnippet) bool {
-	for _, entry := range view.entries {
-		if entry.Seq == snippet.run && entry.journalCard != nil {
-			return u.openEntry(view, entry.Seq)
-		}
-	}
 	block, ok := view.snippetBlock(snippet)
 	if !ok || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
@@ -154,9 +149,6 @@ func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
 			continue
 		}
 		blocks := slices.Clone(view.entries[index].blocks)
-		if entry.journalCard != nil {
-			blocks = []activityui.Block{view.journalCardBlock(entry.activityPaneEntry)}
-		}
 		for i := range blocks {
 			blocks[i].Source = entry.Seq
 			if blocks[i].Verb == "" {
@@ -167,20 +159,6 @@ func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
 		return len(blocks) > 0
 	}
 	return false
-}
-
-func (u *terminalUI) openAgent(agent string) {
-	var pages []activityui.Block
-	for _, entry := range u.agents.entries {
-		if entry.Agent == agent {
-			blocks := parseLiveActivity(entry.activityPaneEntry)
-			for i := range blocks {
-				blocks[i].Source = entry.Seq
-			}
-			pages = append(pages, blocks...)
-		}
-	}
-	u.openBlocks(u.agents, pages)
 }
 
 // commandOutputPages uses only observed segment boundaries, never output text.
@@ -386,9 +364,7 @@ func (d *outputDialog) refreshPages() {
 						origin = timed[0]
 						origin.Running = entry.native.running
 					} else if origin.Kind != "op" && origin.Kind != "reads" {
-						if entry.journalCard != nil {
-							origin = d.view.journalCardBlock(entry.activityPaneEntry)
-						} else if origin.Kind != "summary" && len(d.view.entries[index].blocks) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.entries[index].blocks) {
+						if origin.Kind != "summary" && len(d.view.entries[index].blocks) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.entries[index].blocks) {
 							section := 0
 							if origin.Kind == "summary" {
 								section = origin.Section

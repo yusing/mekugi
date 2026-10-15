@@ -157,16 +157,6 @@ func decodeResponsesToolSection(raw json.RawMessage, present bool) *responsesToo
 	return section
 }
 
-// appendTop appends tools to the top-level tool catalog.
-func (c *responsesToolCatalog) appendTop(tools []*responsesToolDefinition) {
-	c.top.present = true
-	c.top.array = true
-	c.top.tools = append(c.top.tools, tools...)
-	for _, tool := range tools {
-		c.top.rawTools = append(c.top.rawTools, mustMarshalJSON(tool))
-	}
-}
-
 // encodeTop encodes the top-level tools back into the request fields.
 func (c *responsesToolCatalog) encodeTop(fields map[string]json.RawMessage) error {
 	encoded, err := marshalProtocolJSON(c.top.tools)

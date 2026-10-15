@@ -78,15 +78,14 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				return filepath.Clean(path)
 			}
 			file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
-			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key) + len(origin.Caller) + len(origin.Source) + len(record.TaskPath)
+			d.bytes += len(file.Diff) + len(file.BeforePath) + len(file.AfterPath) + len(key) + len(origin.Caller) + len(origin.Source)
 			if d.bytes > maxChangeReadBytes {
 				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
 			attempt.chunks = append(attempt.chunks, livediff.Chunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder,
-				TaskPath: record.TaskPath,
-				Review:   file, Origin: origin,
+				Review: file, Origin: origin,
 			})
 		}
 		d.attempts[key] = attempt

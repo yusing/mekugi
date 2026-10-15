@@ -153,8 +153,16 @@ func (s *mekugiReplayStore) readRetainedSession(name string) (retainedSession, e
 		return session, errors.New("invalid session retention record")
 	}
 	for file := range session.Files {
-		if !retainedDataName(file) {
+		if filepath.Base(file) != file || file == "." || file == ".." {
 			return session, errors.New("invalid session retention file identity")
+		}
+		if !retainedDataName(file) {
+			separator := strings.LastIndexByte(file, '-')
+			if separator <= 0 || !retainedDataName("call-"+file[separator+1:]) {
+				return session, errors.New("invalid session retention file identity")
+			}
+			// Retired record kinds remain on disk outside active retention.
+			delete(session.Files, file)
 		}
 	}
 	return session, nil
@@ -172,7 +180,7 @@ func retainedDataName(name string) bool {
 			return true
 		}
 	}
-	for _, prefix := range []string{"call-", "commentary-", "journal-", "compaction-", "failure-", "usage-", changeIndexPrefix, "cursor-", "output-", "wait-", "hooks-"} {
+	for _, prefix := range []string{"call-", "commentary-", "failure-", "usage-", changeIndexPrefix, "cursor-", "output-", "wait-", "hooks-"} {
 		if hash, ok := strings.CutPrefix(strings.TrimSuffix(name, ".json"), prefix); ok {
 			if len(hash) != 64 {
 				return false
@@ -190,7 +198,7 @@ func retainedDataName(name string) bool {
 
 func storageCatalogName(name string) bool {
 	tail, ok := strings.CutPrefix(name, "session-")
-	return ok && retainedDataName("journal-"+tail)
+	return ok && retainedDataName("call-"+tail)
 }
 
 // Called under store.lock. Ownership is recorded before publishing a capability.
@@ -392,40 +400,6 @@ func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]str
 	}
 }
 
-func (s *mekugiReplayStore) retainJournalDependencies(journal threadJournal) error {
-	if s == nil || s.session.Thread == "" {
-		return nil
-	}
-	names := []string{journalFilename(journal.Workspace, journal.Thread)}
-	for receipt := range journal.Receipts {
-		file := replayRecordName(journal.Workspace, strings.TrimSuffix(receipt, ":journal"), false)
-		if info, err := os.Lstat(filepath.Join(s.directory, file)); err == nil && info.Mode().IsRegular() {
-			names = append(names, file)
-		} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
-	index, err := s.readChangeIndex(journal.Workspace)
-	if err != nil {
-		return err
-	}
-	for position, stream := range index.Streams {
-		if stream.Thread != journal.Thread {
-			continue
-		}
-		names = append(names, changeIndexName(journal.Workspace, index.Namespace))
-		for id, change := range index.Changes {
-			owner, _, _ := parseChangeID(id)
-			if owner == index.streamName(position) {
-				for _, call := range change.Calls {
-					names = append(names, replayRecordName(journal.Workspace, call.ID, false))
-				}
-			}
-		}
-	}
-	return s.retainFiles(names...)
-}
-
 func (s *mekugiReplayStore) retainReadRecord(record shellOutputRecord) error {
 	names, err := s.readDependencyNames(record)
 	if err != nil {
@@ -569,34 +543,6 @@ func (s *mekugiReplayStore) storageSnapshotContext(ctx context.Context) (storage
 			}
 			snapshot.files[name] = info.Size()
 			times[name] = info.ModTime()
-		}
-	}
-	// Old journals have an exact thread identity even before the ownership
-	// catalog existed. Adopt them so a live old chat is never treated as garbage.
-	for name := range snapshot.files {
-		if err := ctx.Err(); err != nil {
-			return snapshot, err
-		}
-		if snapshot.owners[name] != 0 || !strings.HasPrefix(name, "journal-") {
-			continue
-		}
-		journal, exists, err := readJournalRecord(filepath.Join(s.directory, name))
-		if err != nil || !exists {
-			return snapshot, errors.Join(err, errors.New("cannot identify legacy journal for retention"))
-		}
-		files := map[string]bool{name: true}
-		for receipt := range journal.Receipts {
-			call := strings.TrimSuffix(receipt, ":journal")
-			file := replayRecordName(journal.Workspace, call, false)
-			if _, exists := snapshot.files[file]; exists && snapshot.owners[file] == 0 {
-				files[file] = true
-			}
-		}
-		snapshot.sessions = append(snapshot.sessions, storageCandidate{
-			thread: journal.Thread, used: times[name], files: files, legacy: true,
-		})
-		for file := range files {
-			snapshot.owners[file]++
 		}
 	}
 	// Older output and replay records have no trustworthy chat identity.

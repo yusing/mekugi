@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -71,7 +71,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 				w.WriteHeader(400)
 				return
 			}
-			if request.reasoningEffort() != "medium" || journalQuestionFromInput(request.fields["input"], "/root") != "Explain native session naming" {
+			if request.reasoningEffort() != "medium" || requestUserTextFromInput(request.fields["input"], "/root", true) != "Explain native session naming" {
 				t.Error("naming request lost medium effort or first prompt")
 			}
 			close(namingStarted)
@@ -94,7 +94,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	// Unblock a gated upstream before httptest.Server.Close on any failure.
 	defer release()
 	provider := newProviderClient(upstream.URL, upstream.Client())
-	generator := newSessionTitleGenerator(ctx, provider, newSessionTitleCacheAt(""))
+	generator := newSessionTitleGenerator(ctx, provider)
 	provider.titleGenerator = generator
 	handler := responsesHandler(ctx, time.Minute, provider, nil, nil)
 	threads := make(chan string, 8)
@@ -246,7 +246,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	await("host-confirmed Main title", headerHasTitle)
 	quit()
 	// A fresh generator and host process restore only durable title metadata.
-	fresh := newSessionTitleGenerator(ctx, provider, newSessionTitleCacheAt(""))
+	fresh := newSessionTitleGenerator(ctx, provider)
 	provider.titleGenerator = fresh
 	awaitResume, sendResume, quitResume := start(thread, fresh)
 	awaitResume("persisted title after fresh app-server resume", func(frame string) bool { return headerHasTitle(frame) && strings.Contains(frame, "Ready") })

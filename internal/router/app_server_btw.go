@@ -257,7 +257,7 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 			}
 			b.thread = result.Thread.ID
 			// Register before turn/start, so even pre-sampling compaction is
-			// rejected before the provider or journal summary can run.
+			// rejected before the provider request can run.
 			u.proxy.setBTWThread(b.thread, true)
 			if u.btwThreads == nil {
 				u.btwThreads = make(map[string]*appServerBTW)

@@ -213,7 +213,7 @@ func TestUISnapshotNativeAnchoredHistory(t *testing.T) {
 			u, _ := newPagedHistoryUI(t)
 			historyTurnsReply(t, u)
 			restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", "Latest retained answer", 109000)}, "nextCursor": "older"})
-			u.shell.journalOpen = false
+
 			u.shell.focus = 2
 			if state != "partial" {
 				if err := u.loadOlderActivity(); err != nil {
@@ -461,68 +461,5 @@ func TestAppServerAnchoredHistoryMetadataRetryPreservesCompletedLiveTiming(t *te
 	after := u.session.agent("/root/worker")
 	if after.Started != live.Started || after.LastResponse != live.LastResponse || after.Final != live.Final || after.Responding {
 		t.Fatalf("stale metadata overwrote completed live evidence: before=%+v after=%+v", live, after)
-	}
-}
-
-func TestAppServerAnchoredHistoryRebindsCumulativeAnswersChronologically(t *testing.T) {
-	u, _ := newPagedHistoryUI(t)
-	historyTurnsReply(t, u)
-	u.restoring.root.Turns = []appServerHistoryTurn{{ID: "root", Status: "completed", StartedAt: 80, CompletedAt: 120}}
-	h := u.historyLoading
-	h.info.Turns[0].Status = "completed"
-	questionA, questionB := "First assignment.", "Follow-up assignment."
-	assignment := func(id, text, turn, anchor string, at int64) *restoredPlacement {
-		return &restoredPlacement{turn: turn, anchor: anchor, at: time.Unix(at, 0), entry: activityPaneEntry{Agent: "/root/worker", Kind: "assignment", Text: text, assignment: &activityAssignment{id: id, from: "/root", to: "/root/worker", text: text}}}
-	}
-	h.placements = []*restoredPlacement{assignment("a", questionA, "old", "first", 92), assignment("b", questionB, "t", "middle", 106)}
-	answer := func(items ...journalItem) string {
-		var body strings.Builder
-		body.WriteString("Journal result `/root/worker`")
-		writeJournalItems(&body, items)
-		return body.String()
-	}
-	restoreContentReply(t, u, 4, map[string]any{"data": []any{historyItem("last", answer(journalItem{ID: "a", Question: questionA, Text: "Updated first answer."}, journalItem{ID: "b", Question: questionB, Text: "Follow-up answer."}), 109000)}, "nextCursor": "older"})
-	if err := u.loadOlderActivity(); err != nil {
-		t.Fatal(err)
-	}
-	restoreContentReply(t, u, 5, map[string]any{"data": []any{historyItem("middle", "follow-up work", 105000)}})
-	if err := u.loadOlderActivity(); err != nil {
-		t.Fatal(err)
-	}
-	oldAnswer := historyItem("old-answer", answer(journalItem{ID: "a", Question: questionA, Text: "Original first answer."}), 98000)
-	oldAnswer["turnId"] = "old"
-	oldWork := historyItem("first", "first work", 91000)
-	oldWork["turnId"] = "old"
-	restoreContentReply(t, u, 6, map[string]any{"data": []any{oldAnswer, oldWork}})
-	for _, v := range []*liveActivityView{u.agents, u.view} {
-		targets := make(map[string]uint64)
-		for _, e := range v.entries {
-			if e.assignment != nil {
-				targets[e.assignment.id] = e.Seq
-			}
-		}
-		counts := make(map[string]int)
-		for _, record := range v.entries {
-			blocks := record.blocks
-			for _, block := range blocks {
-				if block.Journal == nil {
-					continue
-				}
-				for _, group := range block.Journal.Groups {
-					for _, a := range group.Answers {
-						counts[a.ID]++
-						if group.Target == 0 || group.Target != targets[a.ID] {
-							t.Fatalf("answer did not acquire original assignment target: %+v targets=%+v", group, targets)
-						}
-						if a.ID == "a" && a.Text != "Updated first answer." {
-							t.Fatalf("older snapshot overwrote the newer answer: %+v", a)
-						}
-					}
-				}
-			}
-		}
-		if counts["a"] != 1 || counts["b"] != 1 {
-			t.Fatalf("cumulative snapshots repeated or lost answers: %+v", counts)
-		}
 	}
 }

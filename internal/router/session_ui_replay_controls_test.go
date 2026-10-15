@@ -203,15 +203,14 @@ func TestSessionUIReplayControlsAccountForElapsedTime(t *testing.T) {
 
 func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 	for _, tc := range []struct {
-		name                  string
-		digit                 byte
-		journal, diff, active bool
+		name         string
+		digit        byte
+		diff, active bool
 	}{
-		{"Main", '1', false, false, true},
-		{"Diff", '2', false, true, true},
-		{"Activity", '3', false, false, true},
-		{"Agents", '4', false, false, true},
-		{"Journal", '5', true, false, true},
+		{"Main", '1', false, true},
+		{"Diff", '2', true, true},
+		{"Activity", '3', false, true},
+		{"Agents", '4', false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := replayPlaybackTestNew(t)
@@ -228,8 +227,8 @@ func TestSessionUIReplayPaneControlsAndBackwardSeek(t *testing.T) {
 			assertPane := func() {
 				t.Helper()
 				shell := p.ui.shell
-				if shell.focus != int(tc.digit-'1') || !shell.side || shell.journalOpen != tc.journal || shell.diffOpen != tc.diff || shell.activityOpen != tc.active {
-					t.Fatalf("pane=%s: focus=%d side=%v journal=%v diff=%v activity=%v", tc.name, shell.focus, shell.side, shell.journalOpen, shell.diffOpen, shell.activityOpen)
+				if shell.focus != int(tc.digit-'1') || !shell.side || shell.diffOpen != tc.diff || shell.activityOpen != tc.active {
+					t.Fatalf("pane=%s: focus=%d side=%v diff=%v activity=%v", tc.name, shell.focus, shell.side, shell.diffOpen, shell.activityOpen)
 				}
 			}
 			assertPane()
@@ -276,16 +275,16 @@ func TestSessionUIReplayPanePrefixConsumesInvalidControls(t *testing.T) {
 func TestSessionUIReplayBarePaneDigitsAreInert(t *testing.T) {
 	p := replayPlaybackTestNew(t)
 	p.paused = true
-	for _, key := range []byte{2, '5'} {
+	for _, key := range []byte{2, '4'} {
 		if quit, err := p.key(key); err != nil || quit {
-			t.Fatalf("select Journal: quit=%v error=%v", quit, err)
+			t.Fatalf("select Agents: quit=%v error=%v", quit, err)
 		}
 	}
 	for digit := byte('1'); digit <= '5'; digit++ {
 		if quit, err := p.control(digit, time.Second); err != nil || quit {
 			t.Fatalf("bare digit %q: quit=%v error=%v", digit, quit, err)
 		}
-		if p.ui.shell.focus != 4 || !p.ui.shell.journalOpen || p.position != 0 || p.speed != 1 || !p.paused || p.prefix {
+		if p.ui.shell.focus != 3 || p.position != 0 || p.speed != 1 || !p.paused || p.prefix {
 			t.Fatalf("bare digit %q changed the selected pane or playback", digit)
 		}
 	}
@@ -327,19 +326,6 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 				replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
 				replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": transcript.String()}}}),
 				replayTestRecord("event_msg", replayTestEpoch+600000, map[string]any{"type": "task_complete", "turn_id": "turn"}))
-			replayDir, err := defaultMekugiReplayDirectory()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.MkdirAll(replayDir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			journal := threadJournal{Version: 2, TreeAuthored: true, Workspace: "/workspace/replay", Thread: "root", Author: "/root", IdentityKnown: true,
-				Receipts: map[string]journalReceipt{}, Events: []journalEvent{{Seq: 1, At: time.UnixMilli(replayTestEpoch).Format(time.RFC3339Nano), Op: "add", Path: "/1",
-					Fields: journalNode{Path: "/1", Kind: "task", Title: "Replay journal task", Body: "Retained journal detail", State: "pending"}}}}
-			if err := writeThreadJournal(&mekugiReplayStore{directory: replayDir}, journal); err != nil {
-				t.Fatal(err)
-			}
 			master, slave, err := pty.Open()
 			if err != nil {
 				t.Fatal(err)
@@ -462,32 +448,19 @@ func TestSessionUIReplayPTYWheelSpeedQuitAndRestore(t *testing.T) {
 			if !strings.Contains(screen.String(), "Replay terminal row 36.") {
 				t.Fatalf("PTY rendered controls but lost transcript:\n%s", screen.String())
 			}
-			write("\x025")
-			awaitFrame("focused Journal", func() bool {
-				journalTitle := screen.CellAt(62, 0)
-				return journalTitle != nil && journalTitle.Content == "5" && journalTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "Replay journal task")
-			})
-			write("d")
-			await("Retained journal detail")
-			write("\x1b")
-			awaitFrame("closed journal details", func() bool {
-				return !strings.Contains(screen.String(), "Retained journal detail") && strings.Contains(screen.String(), "Replay journal task")
-			})
-			// Exercise the terminal timeout, not direct key dispatch: the very
-			// next ordinary control must not be consumed as an escape suffix.
+			// Ordinary speed controls keep working after viewport navigation.
 			write("+")
 			await("0.25x")
 			write("-")
 			await("0.125x")
-			// Main keeps the selected auxiliary pane visible. Its focused
-			// title proves the switch back rather than merely seeing its text.
+			// The focused Main title confirms pane selection.
 			write("\x021+")
 			awaitFrame("focused Main at 0.25x", func() bool {
 				mainTitle := screen.CellAt(2, 0)
 				return mainTitle != nil && mainTitle.Content == "1" && mainTitle.Style.Attrs&uv.AttrBold != 0 && strings.Contains(screen.String(), "0.25x")
 			})
-			if !strings.Contains(screen.String(), "Replay journal task") || !strings.Contains(screen.String(), "Replay terminal row 36.") {
-				t.Fatalf("switching back to Main lost the visible Journal or transcript:\n%s", screen.String())
+			if !strings.Contains(screen.String(), "Replay terminal row 36.") {
+				t.Fatalf("switching back to Main lost the transcript:\n%s", screen.String())
 			}
 			write("\x02") // Cancellation must also override a pending pane prefix.
 			write(quitKey.key)

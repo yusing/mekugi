@@ -11,7 +11,7 @@ import (
 
 func BenchmarkActivityTimingParse(b *testing.B) {
 	for _, entry := range []activityPaneEntry{
-		{Kind: "journal_event", Text: "Completed the focused checks", native: &liveActivityNativeItem{}},
+		{Kind: "text", Text: "Completed the focused checks", native: &liveActivityNativeItem{}},
 		{Kind: "tool", Text: "Run `go test ./...`", native: &liveActivityNativeItem{command: "go test ./...", running: true}},
 		{Kind: "tool", Text: "Run `echo one`\n\nRun `echo two`", native: &liveActivityNativeItem{command: "echo one; echo two", running: true}},
 	} {

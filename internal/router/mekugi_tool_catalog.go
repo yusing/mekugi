@@ -20,7 +20,7 @@ type executionOwner struct {
 // adds session-helper guidance to the owning execution description. It never
 // removes, replaces, or rewrites apply_patch, exec_command, or the JavaScript
 // execution contract.
-func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog, frontendGuidance, journalGuidance string) (*executionOwner, error) {
+func prepareStockExecution(fields map[string]json.RawMessage, catalog *responsesToolCatalog, frontendGuidance string) (*executionOwner, error) {
 	if catalog.top.present && catalog.top.err != nil {
 		return nil, fmt.Errorf("decode responses tools: %w", catalog.top.err)
 	}
@@ -50,9 +50,6 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 		case "exec":
 			if tool.Type != "custom" {
 				return nil
-			}
-			if err := validateIndependentToolGuidance(tool.Description); err != nil {
-				return err
 			}
 			stockDescription, err := removeFrontendGuidance(tool.Description)
 			if err != nil {
@@ -93,10 +90,8 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 	}
 	if result != nil {
 		owner := result
-		description, err := injectCodeModeJournalGuidance(owner.section.tools[owner.toolIndex].Description, journalGuidance)
-		if err != nil {
-			return nil, err
-		}
+		description := owner.section.tools[owner.toolIndex].Description
+		var err error
 		if owner.command {
 			description, err = injectFrontendGuidance(description, frontendGuidance)
 			if err != nil {
@@ -130,18 +125,4 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 func codeModeOwnsStockExecution(description string) bool {
 	return strings.Contains(description, "tools.exec_command") || strings.Contains(description, "tools.apply_patch") ||
 		!isExecutionFreeCodeModeDescription(description)
-}
-
-func validateIndependentToolGuidance(description string) error {
-	journalStart, frontendStart := strings.Index(description, codeModeJournalStart), strings.Index(description, frontendGuidanceStart)
-	journalEnd, frontendEnd := strings.Index(description, codeModeJournalEnd), strings.Index(description, frontendGuidanceEnd)
-	if journalStart < 0 || frontendStart < 0 || journalEnd < 0 || frontendEnd < 0 {
-		return nil // Each section's own validator reports missing markers.
-	}
-	journalEnd += len(codeModeJournalEnd)
-	frontendEnd += len(frontendGuidanceEnd)
-	if journalStart < frontendEnd && frontendStart < journalEnd {
-		return errors.New("exec journal and frontend guidance markers overlap")
-	}
-	return nil
 }

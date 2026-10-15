@@ -47,8 +47,7 @@ The wrapper also enforces `include_collaboration_mode_instructions=false` in the
 final command's invocation-only config layer, after user overrides and before `--`.
 This disables Codex's collaboration-mode instruction injection without editing config files.
 Wrapped sessions disable Codex goals through invocation-only feature and config
-overrides. The host does not expose `/goal`, goal tools or goal instructions;
-journal slice continuation does not coordinate with goals.
+overrides. The host does not expose `/goal`, goal tools or goal instructions.
 
 OpenAI auxiliary requests for standalone search, native image generation/editing,
 and history-note operations use authenticated endpoint forwarding. The router
@@ -100,14 +99,14 @@ not a claim of successful persistence or a different request outcome. Startup an
 errors outside the active Codex UI. Critical request failures use the user-only
 commentary contract. The launcher prints undelivered notices and repetition
 summaries after Codex exits. In-memory metrics, explicit sanitized capture,
-debug metrics exports, and opt-in issue reports are not operational logging.
+and debug metrics exports are not operational logging.
 `mekugi` mode also retains private durable replay state so resumed and forked conversations restore
 their original model-visible tools. This is correctness state, not an operational session log.
 It lives at `$XDG_STATE_HOME/mekugi/replay`, or `~/.local/state/mekugi/replay` when that variable is
 unset, and survives wrapper shutdown. A relative `XDG_STATE_HOME` is invalid. Passthrough mode
 opens this store only when retaining a failure; it does not retain tool replay state.
 Mekugi-mode initialization failure prevents Codex launch. The store admits at most
-4 GiB of managed data, including session ownership catalogs, journals, read outputs, and change
+4 GiB of managed data, including session ownership catalogs, read outputs, and change
 indexes, with 32 MiB per encoded record. Exact commentary provenance has an independent
 16 MiB budget; failure to retain it suppresses new commentary with a diagnostic instead of
 consuming the managed-data allowance.
@@ -148,13 +147,13 @@ threads clone it once. These bindings survive a fresh router or standalone worke
 Durable catalogs bind file dependencies to stable thread IDs across workspaces, routing remaps,
 forks, and restarts. Visible inherited calls, commentary provenance, and read-reference dependencies
 gain another owner. A shared record survives removal of another owner. Snapshot validation and
-ownership publication cannot race cleanup. Journal receipts and change streams provide
+ownership publication cannot race cleanup. Change streams provide
 ownership where available; recent records with no trustworthy owner remain protected, while
 unattributed records older than 14 days use last-write time for cleanup.
 
 Cross-process leases protect active turns, host handoffs, and workers, including yielded calls.
-A successfully delivered journal terminal releases an idle turn's lease; router shutdown also
-releases its leases. Cleanup never stops a host process or changes its continuation lifetime.
+Completed turn delivery and router shutdown release owned leases. Cleanup never stops a host
+process or changes its continuation lifetime.
 If no inactive data can be reclaimed, publication fails with required bytes, the limiting budget,
 and an actionable explanation rather than a generic initialization error. Catalog growth counts
 toward the budget too. Cleanup reports removals through user-only notices, or worker stderr;
@@ -181,11 +180,13 @@ No scan of other sessions substitutes evidence for an unavailable selection.
 `--capture-output PATH` appends sanitized capture records. Main completion and
 wrapper exit do not create token-usage Markdown files or announce metrics paths.
 
+### Debug evidence
+
 `--debug` is a boolean flag requiring no argument. It creates a private, unique
 `mekugi-debug-*` directory under `$XDG_STATE_HOME/mekugi/debug` (default
 `~/.local/state/mekugi/debug`), with router diagnostics,
-sanitized capture, final metrics, an instruction dump, runtime read journal, and AX report.
-Debug implies AX instrumentation: the wrapper supplies the journal path to the executor
+sanitized capture, final metrics, an instruction dump, runtime read log, and AX report.
+Debug implies AX instrumentation: the wrapper supplies the read-log path to the executor
 and the authenticated worker manifest retains it across child environment changes.
 Explicit capture and `MEKUGI_AX_OUTPUT` destinations retain precedence.
 The background storage owner removes generated bundles after 14 days of inactivity,
@@ -230,8 +231,7 @@ Grok records precede Chat Completions conversion. No ordinary user messages,
 tool call bodies, or authentication headers are exported as separate diagnostic fields;
 error strings can contain any of them. Router diagnostics record lifecycle
 and parsed-request outcome/phase/status, plus a diagnostic code, reference, and complete error
-string for failures. They also record versioned, allowlisted feature observations as specified
-below, without retaining feature payloads. Known provider error codes are retained through a fixed allowlist; unknown codes,
+string for failures. Known provider error codes are retained through a fixed allowlist; unknown codes,
 messages, and error payloads are not exported to sanitized metrics or capture. Caller-facing
 failure notices include the actual provider error for terminal `error` and `response.failed`
 events and failed non-stream responses, including provider status when available. These
@@ -307,10 +307,10 @@ or mismatched evidence receives a fixed state code; available runtime read count
 visible even when rollout-dependent measurements are unavailable. The report contains metrics and
 coverage, not scripts or command output; missing defect assessments stay unassessed.
 It describes whole-rollout evidence available at shutdown, not just calls from this
-router lifetime. Journal-only threads (at most 256, sorted, with explicit truncation)
+router lifetime. Read-log-only threads (at most 256, sorted, with explicit truncation)
 and unattributed reads are reported separately, never silently filtered or guessed to
 be tests/descendants. Their rollout identities can be inspected without promoting them
-to known router threads. An invalid journal has an explicit state and no partial counts.
+to known router threads. An invalid read log has an explicit state and no partial counts.
 These files are separate from sanitized transport metrics.
 
 `request_complete` records monotonic elapsed milliseconds and, when present, the
@@ -319,9 +319,6 @@ instruction records use that capture ID as their `request_id`; without capture t
 a local random ID. `tool_observation` maps this request identity to safe logical `call_id`
 and tool name at local observation, not execution. AX and observed patch evidence
 join through call identity; no correlation header is added to either transport boundary.
-`journal_compaction_fallback` records the underlying local compaction error, including storage-lease failures, with
-request, session and thread IDs when journal compaction falls back to the provider.
-Intentional slice-mode bypasses do not emit this error event.
 Cancellation evidence is independent of replay diagnostic references. Allowlisted causes
 are `router_shutdown`, `response_start_timeout`, `upstream_idle_timeout`,
 `downstream_context_canceled`, `downstream_disconnected`, `downstream_deadline_exceeded`, `cancellation_unknown`,
@@ -378,56 +375,15 @@ and client behavior.
 ### Headless app-server frontend
 
 `mekugi codex headless --yolo` runs one stdin prompt in a new thread for automation
-and offline comparisons. It reuses invocation-local routing and the native client's
-immediate slice-reset policy; it does not own a second reset
-or continuation implementation. `off` keeps the continuing-context control arm,
-while `slice` compacts at planned boundaries. Successful completion requires a
-successful Main turn and settled slice continuation.
+and offline comparisons. It reuses invocation-local routing and exits after a
+successful Main turn.
+Codex owns compaction and continuation within that turn.
 
 The frontend emits JSONL session evidence on stdout and diagnostics on stderr.
 It rejects empty/oversized prompts, resume and unsupported CLI options before
 launching the host. It fails on interactive host requests, failed or interrupted
 Main turns, lost host connections, output failure or cancellation. Codex retains
 execution authority. This frontend is not available in passthrough mode.
-
-### Feature-usage debug evidence
-
-`router.jsonl` MUST support `event: "feature_usage"` with `schema_version: 1`, fixed
-`feature`, `source`, `stage`, and `outcome` categories, and a UTC timestamp. The
-`router_start` event MUST advertise `feature_usage_schema: 1` and
-`feature_usage_features: ["journal"]`. Missing coverage markers in older logs mean
-unobserved, not zero use. An interrupted log or a debug write failure cannot establish
-complete coverage.
-
-Feature records MAY include `request_id`, `thread_id`, `session_id`, `call_id`, and
-`message_id` for correlation. Each retained identity MUST be at most 256 ASCII letters,
-digits, `-`, `_`, `.`, `:`, or `/`, and MUST NOT contain `://`. Unsafe identities MUST
-be omitted without affecting execution. No feature text, argument, script, token, URL, header, arbitrary attribute,
-or error may enter these records. Category combinations MUST be allowlisted by the
-debug owner. Future features extend that allowlist and the advertised coverage, not
-the raw-data surface or capture metrics.
-
-Every request emits `feature_coverage` for journals with `state` unavailable,
-incomplete, or observed, plus fixed-category observation counts. Counts describe
-observed branches, not unique messages or independent uses. Missing coverage
-markers and interrupted logs cannot establish zero use.
-
-Retained dedicated journal calls record `tool / mutation / accepted` and
-`tool_field / mutation / accepted` at the atomic owner. Journal delivery records
-`report_now` and `terminal_flush` rendering events with `prepared` or `suppressed`
-outcomes. Prepared rendering does not prove display. The originating host result
-records `host_result / completion / local` when local completion is selected.
-MCP operation counts belong to the durable journal metrics owner.
-
-Request-bound observations use the same request ID as the existing debug request
-log. Consumers select one stage rather than sum stages as independent feature uses,
-and deduplicate reconsidered rendering by message ID. Subagent activity, critical
-notices, and provider commentary are separate from journal authoring.
-
-Evidence is opt-in through `--debug`, remains in the existing operational log, and
-shares its serialized writes and shutdown error reporting. It adds no capture
-callback, metric counter, listener, or execution dependency. Repeated observation,
-excluded content, suppression, and auxiliary write failure preserve those boundaries.
 
 ## Acceptance
 

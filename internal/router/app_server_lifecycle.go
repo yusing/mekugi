@@ -42,8 +42,8 @@ func (h *appServerLifecycle) compactResponse(failed bool) {
 	}
 }
 
-// acceptsInput is the host gate. Questions, history restoration and journal
-// reset retain their own owners and are checked by the UI before this gate.
+// acceptsInput is the host gate. Questions and history restoration
+// retain their own owners and are checked by the UI before this gate.
 func (h *appServerLifecycle) acceptsInput() bool {
 	return h.thread != "" && !h.replacement.pending() && !h.starting() &&
 		!h.appServerInputOperation.pending() && !h.steerInterruptAckPending && !h.compaction.pending() &&

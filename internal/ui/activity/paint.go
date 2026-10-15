@@ -190,9 +190,6 @@ func Wrap(text string, width int, hard bool) []string {
 	return lines
 }
 
-// Hang wraps label after lead, indenting continuation rows under the label.
-func Hang(lead, label string, width int) []string { return liveActivityHang(lead, label, width) }
-
 // hang places a styled label after a lead, wrapping continuations under the label.
 func liveActivityHang(lead, label string, width int) []string {
 	indent := ansi.StringWidth(lead)
@@ -376,7 +373,7 @@ func (p *Painter) inlineLink(label, target string) string {
 }
 
 // Recognize file-shaped operands without reading the filesystem during painting.
-// Journal ordinals and canonical agent names are identifiers, not file links.
+// Canonical agent names are identifiers, not file links.
 func rawFilePath(path string) bool {
 	if path == "" || strings.ContainsAny(path[:1], "#!@$?") || strings.ContainsAny(path, "\x00\r\n\x1b\"'(){}[]=*;") || strings.Contains(path, "://") {
 		return false
@@ -926,9 +923,6 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		return append([]string{Dim + "• " + header + Undim}, rows...)
 	case "final":
-		if block.Journal != nil {
-			return p.Journal(block.Journal, width, true)
-		}
 		return append([]string{Green + "✓ Final answer" + Reset}, liveActivityIndent(p.Markdown(block.Body, width-2), "  ")...)
 	case "reads":
 		color := VerbColor(block.Verb)
@@ -1605,33 +1599,7 @@ func (p *Painter) Event(block Block, width int) []string {
 			inner = width
 		}
 		title := done
-		var rows []string
-		if block.Journal == nil {
-			rows = p.Markdown(block.Body, inner)
-		} else {
-			var answers []Answer
-			for _, group := range block.Journal.Groups {
-				answers = append(answers, group.Answers...)
-			}
-			switch len(answers) {
-			case 0:
-				rows = []string{Dim + "No journal entries" + Undim}
-			case 1:
-				rows = p.Markdown(answers[0].Text, inner)
-			default:
-				title += Dim + fmt.Sprintf(" · %d", len(answers)) + Undim
-				for _, answer := range answers {
-					rows = append(rows, liveActivityHang(Dim+"•"+Undim+" ", strings.Join(p.Markdown(answer.Text, inner-2), "\n"), inner)...)
-				}
-			}
-			if totals := block.Journal.totals(); totals != "" {
-				// The title keeps the totals visible when the card is clipped.
-				title += Dim + " · " + Undim + totals
-			}
-			tail := *block.Journal
-			tail.Groups, tail.empty = nil, false
-			rows = append(rows, p.Journal(&tail, inner, false)...)
-		}
+		rows := p.Markdown(block.Body, inner)
 		if width < 12 {
 			return label(title, rows)
 		}
@@ -1675,110 +1643,6 @@ func (p *Painter) Flash(block Block, rows []string) []string {
 	return flashed
 }
 
-// journal lays out a final journal result: a heading with its answer and
-// change totals, each question with its answers, then recorded changes. The
-// agent heading already names the author. The shared feed keeps questions to
-// one row so clipping reaches the answers.
-func (p *Painter) Journal(journal *Journal, width int, heading bool) []string {
-	answers := 0
-	for _, group := range journal.Groups {
-		answers += len(group.Answers)
-	}
-	head := Green + "✓ Final answer" + Reset
-	var facts []string
-	if answers > 1 {
-		facts = append(facts, fmt.Sprintf("%d answers", answers))
-	}
-	if totals := journal.totals(); totals != "" {
-		facts = append(facts, totals)
-	}
-	if len(facts) > 0 {
-		head += Dim + " · " + strings.Join(facts, " · ") + Undim
-	}
-	var lines []string
-	if heading {
-		lines = append(lines, ansi.Truncate(head, width, "…"))
-	}
-	if journal.empty {
-		lines = append(lines, "  "+Dim+"No journal entries"+Undim)
-	}
-	hang := func(lead string, body []string) {
-		for i, line := range body {
-			if i == 0 {
-				lines = append(lines, "  "+lead+line)
-			} else {
-				lines = append(lines, "    "+line)
-			}
-		}
-		if len(body) == 0 {
-			lines = append(lines, "  "+strings.TrimRight(lead, " "))
-		}
-	}
-	for _, group := range journal.Groups {
-		if group.Question != "" {
-			// The assignment usually sits just above, so one dim line suffices.
-			flat := strings.Join(strings.Fields(group.Question), " ")
-			lines = append(lines, "  "+Dim+"↩ "+ansi.Truncate(ansi.Strip(p.Inline(flat)), width-4, "…")+Undim)
-		}
-		for _, answer := range group.Answers {
-			lead := "  "
-			if group.Question == "" || answers > 1 {
-				lead = Dim + "•" + Undim + " "
-			}
-			body := p.Markdown(answer.Text, width-4)
-			if answers > 1 {
-				hang(lead, []string{Dim + answer.ID + Undim})
-				lines = append(lines, liveActivityIndent(body, "    ")...)
-				continue
-			}
-			hang(lead, body)
-		}
-	}
-	if journal.clipped {
-		lines = append(lines, "  "+Dim+"… full answer in Codex completion"+Undim)
-	}
-	if len(journal.Stats) > 0 || journal.Changes != "" && len(journal.notes) > 0 {
-		lines = append(lines, "", Verb("Changes")+Dim+journal.Changes+Undim)
-		statusWidth, addedWidth, removedWidth := 0, 0, 0
-		for _, stat := range journal.Stats {
-			statusWidth = max(statusWidth, len(stat.Status))
-			addedWidth, removedWidth = max(addedWidth, len(stat.Added)), max(removedWidth, len(stat.Removed))
-		}
-		for _, stat := range journal.Stats {
-			counts := fmt.Sprintf("%-*s", statusWidth, stat.Status) + "  " + Green + fmt.Sprintf("%*s", addedWidth+1, "+"+stat.Added) + "\x1b[39m " + Red + fmt.Sprintf("%-*s", removedWidth+1, "-"+stat.Removed) + "\x1b[39m  "
-			lines = append(lines, ansi.Truncate(counts+Path(stat.Path), width, "…"))
-		}
-	}
-	// "No recorded changes." is the ordinary read-only outcome, not news.
-	for _, note := range journal.notes {
-		if note != "No recorded changes." && note != "No recorded file changes." {
-			lines = append(lines, Wrap(Dim+note+Undim, width, false)...)
-		}
-	}
-	return lines
-}
-
-// totals summarizes a journal's recorded file changes, or "" without any.
-func (journal *Journal) totals() string {
-	if len(journal.Stats) == 0 {
-		return ""
-	}
-	added, removed := 0, 0
-	for _, stat := range journal.Stats {
-		a, errA := strconv.Atoi(stat.Added)
-		r, errR := strconv.Atoi(stat.Removed)
-		if errA == nil && errR == nil {
-			added, removed = added+a, removed+r
-		}
-	}
-	files := "1 file"
-	if len(journal.Stats) > 1 {
-		files = fmt.Sprintf("%d files", len(journal.Stats))
-	}
-	return files + " " + Green + fmt.Sprintf("+%d", added) + "\x1b[39m " + Red + fmt.Sprintf("-%d", removed) + "\x1b[39m"
-}
-
-// Verb pads verbs to a common column so arguments line up.
 func Verb(verb string) string {
 	if verb == "" {
 		return ""
@@ -1880,15 +1744,6 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		return p.statusStyle(block.Live) + strings.Join(headers, ", ") + Reset
 	case "final":
 		text := firstLine(block.Body)
-		if block.Journal != nil {
-			text = "Final answer"
-			for _, group := range block.Journal.Groups {
-				if len(group.Answers) > 0 {
-					text = firstLine(group.Answers[0].Text)
-					break
-				}
-			}
-		}
 		// The roster's status glyph already marks a sent final answer.
 		return text
 	case "reads":

@@ -32,13 +32,12 @@ type appServerActivityRestore struct {
 	// Rollout evidence the host's history omits: item completion times by
 	// thread ID, Activity placements by agent path, and Main placements,
 	// which wait for every child so Main can follow them in time order.
-	itemAt       map[string]map[string]time.Time
-	journalTurns map[string]journalReplayTurn
-	pane         map[string][]*restoredPlacement
-	main         []*restoredPlacement
-	notices      []restoredHistoryNotice
-	rendered     bool
-	paging       bool // Bind cumulative answers only after a page has its chronological position.
+	itemAt   map[string]map[string]time.Time
+	pane     map[string][]*restoredPlacement
+	main     []*restoredPlacement
+	notices  []restoredHistoryNotice
+	rendered bool
+	paging   bool // Bind cumulative answers only after a page has its chronological position.
 }
 
 func (u *appServerUI) restorePaneContent(root appServerThreadInfo) error {
@@ -206,9 +205,6 @@ func (u *appServerUI) readRestoredRollouts() {
 		rollout := readRestoredRollout(info, agent)
 		rollout.events = append(rollout.events, u.restoredHookEvents(info)...)
 		r.itemAt[info.ID] = rollout.itemAt
-		if info.ID == r.root.ID {
-			r.journalTurns = rollout.turnAt
-		}
 		for _, event := range rollout.events {
 			if event.repeated {
 				activity.markRestored(info.ID, event.entry)
@@ -309,15 +305,9 @@ func historyTime(seconds int64) time.Time {
 
 func (u *appServerUI) applyRestoredActivity(entries []activityPaneEntry) {
 	for i := range entries {
-		u.annotateChildCompletion(&entries[i])
 		entries[i].Agent = paneActivityAgent(entries[i])
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: entries, Agents: slices.Clone(u.session.agents)})
-	for _, entry := range entries {
-		if entry.Kind == "final" && (u.restoring == nil || !u.restoring.paging) {
-			u.agents.linkChildAnswers(u.agents.entrySeq(entry))
-		}
-	}
 	u.applyCapturedEdits()
 }
 
@@ -443,12 +433,12 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 		native: &liveActivityNativeItem{thread: info.ID, turn: turn.ID, item: item.ID, phase: "item/completed", status: item.Status, searchResults: appServerSearchResults(item)}}
 	progressPhase := appServerHistoryProgressPhase(item, turn.Status)
 	item = u.waitItem(item, info.ID, turn.ID, item.ID, false)
-	if text, wait, handled := u.progress(item, progressPhase, info.ID, turn.ID); handled {
+	if text, wait, handled := appServerProgress(item, progressPhase); handled {
 		if text != "" {
 			entry.Kind, entry.Text = "progress", text
 			entry.native.wait = wait
 			entry.native.phase = progressPhase
-			*entries = append(*entries, u.progressEntry(entry))
+			*entries = append(*entries, entry)
 		}
 		return
 	}

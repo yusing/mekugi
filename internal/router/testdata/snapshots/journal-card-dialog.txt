@@ -1,9 +1,0 @@
-23:28 · 1 done · 1 open · 1 note
-
-This turn
-● /1 Tighten spacing
-◆ Removed the blank row.
-  Focused suite passed.
-
-Remaining
-○ /3 Follow-up

@@ -255,9 +255,6 @@ func nativeTitle(digit int, name, detail string, focused bool) string {
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	width, height := max(1, u.width), max(1, u.height)
 	now := u.main.now()
-	if u.focus == 1 || u.focus == 2 {
-		u.journalOpen = false
-	}
 	u.agents.feedOnly, u.agents.focused = true, u.focus == 2
 	u.liveDock.Motion.Enabled = true
 	u.liveDock.Motion.Canvas = u.diff.theme.Canvas()
@@ -358,21 +355,14 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			draw(left, nativeBox(left.w, left.h, title, u.main.mainHeaderRight(left.w, u.focus == 0), u.focus == 0, body, rules))
 		}
 	}
-	if !framed && right.w > 0 && right.h > 0 && u.journalOpen {
-		l.journal = right
-		draw(right, u.main.journalView.render(u.main.journalTreeSnapshot(), right.w, right.h, true, u.focus == 4, u.main.view.painter.Theme))
-	}
 	if right.w >= 4 && right.h >= 3 && framed {
 		iw, ih := right.w-2, right.h-2
 		content := ih
 		contentY := right.y + 1
-		focused := u.focus == 1 || u.focus == 2 || u.focus == 4
+		focused := u.focus == 1 || u.focus == 2
 		var body []string
 		var title, label string
 		if u.diffOpen {
-			if u.main != nil {
-				u.diff.updateTaskScope(u.main.journal.presented())
-			}
 			diffRows := content
 			l.diff = terminalRect{right.x + 1, contentY, iw, diffRows}
 			if u.diffScreen.Emulator == nil {
@@ -396,27 +386,6 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			summary, state := u.diff.nativeTitle()
 			title, label = nativeTitle(2, "Diff", "saved · "+summary, u.focus == 1), state
 			u.diffUnseen = false
-		} else if content > 0 && u.journalOpen {
-			l.journal = terminalRect{right.x + 1, contentY, iw, content}
-			journal := u.main.journalTreeSnapshot()
-			body = u.main.journalView.render(journal, iw, content, false, u.focus == 4, u.main.view.painter.Theme)
-			label = u.main.journalPaneHints()
-			// Counts drop their state names before the pane hints drop.
-			for _, compact := range []bool{false, true} {
-				var detail []string
-				if namespace, _ := u.main.journalNamespaces(); namespace != "" {
-					detail = append(detail, namespace)
-				}
-				if journal != nil {
-					if counts := journalTitleCounts(journal.Items, compact); counts != "" {
-						detail = append(detail, counts)
-					}
-				}
-				title = nativeTitle(5, "Journal", strings.Join(detail, activityui.Dim+" · "+activityui.Undim), u.focus == 4)
-				if ansi.StringWidth(title)+ansi.StringWidth(label)+5 <= right.w-2 {
-					break
-				}
-			}
 		} else if content > 0 {
 			l.agents = terminalRect{right.x + 1, contentY, iw, content}
 			// The feed-only renderer clears pane-local hits. Keep the separate
@@ -497,7 +466,7 @@ func (u *terminalUI) rosterLimit(height int) int {
 // nativeStatus shows the pane tabs, with Diff and Activity marked as the pair
 // sharing the right column, and only the focused pane's keys.
 func (u *terminalUI) nativeStatus() string {
-	u.paneTabs = [5]terminalRect{}
+	u.paneTabs = [4]terminalRect{}
 	if u.main != nil && u.main.replay != nil {
 		return u.main.replay.bar(u.width)
 	}
@@ -529,9 +498,7 @@ func (u *terminalUI) nativeStatus() string {
 	tabs.WriteString(" " + activityui.Dim + "[" + activityui.Undim)
 	tab(2, "Diff", diffBadge, u.diffOpen)
 	tabs.WriteString(activityui.Dim + "│" + activityui.Undim)
-	tab(3, "Activity", "", !u.diffOpen && !u.journalOpen)
-	tabs.WriteString(activityui.Dim + "│" + activityui.Undim)
-	tab(5, "Journal", "", u.journalOpen)
+	tab(3, "Activity", "", !u.diffOpen)
 	tabs.WriteString(activityui.Dim + "]" + activityui.Undim + " ")
 	tab(4, "Agents", agentsBadge, true)
 	if u.main != nil && u.main.interruptLocked {
@@ -544,7 +511,7 @@ func (u *terminalUI) nativeStatus() string {
 	var hints terminalHints
 	switch {
 	case u.prefix:
-		hints = terminalHints{{"ctrl+b 1-5", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
+		hints = terminalHints{{"ctrl+b 1-4", "focus", 0}, {"2/3", "diff or activity", 0}, {"e", "next live", 0}, {"←→", "resize", 0}, {"PgUp/PgDn", "history", 0}}
 		return tabs.String() + "  " + hints.render()
 	case u.focus == 1:
 		hints = terminalHints{{"s", "files", 0}, {"tab", "changes", 0}, {"[ ]", "hunks", 0}, {"a", "caller", 0}, {"?", "help", 0}}
@@ -553,22 +520,17 @@ func (u *terminalUI) nativeStatus() string {
 		}
 	case u.focus == 2:
 		hints = terminalHints{{"j/k", "scroll", 0}, {"n/p", "agent", 0}, {"a", filter, 0}}
-	case u.focus == 4:
-		// Expansion, details and namespace keys are in the pane title.
-		hints = terminalHints{{"j/k", "select", 0}, {"enter", "open", 0}, {"c", "copy path", 0}, {"esc", "Main", 0}}
 	case u.focus == 3:
 		hints = terminalHints{{"j/k", "agent", 0}, {"a", filter, 0}, {"esc", "back", 0}}
 	}
 	if u.liveDock.Live() > 1 {
 		hints = append(hints, terminalHint{"^B e", "next live", 0})
 	}
-	hints = append(hints, terminalHint{"^B 1-5", "panes", 0})
-	if u.focus == 0 || u.focus == 2 || u.focus == 4 {
+	hints = append(hints, terminalHint{"^B 1-4", "panes", 0})
+	if u.focus == 0 || u.focus == 2 {
 		expansion := u.agents.expansion
 		if u.focus == 0 {
 			expansion = u.main.view.expansion
-		} else if u.focus == 4 {
-			expansion = u.main.journalView.expansion
 		}
 		hints = append(hints, terminalHint{"^E", [3]string{"expand events", "expand all", "default"}[expansion], 0})
 	}
@@ -581,17 +543,14 @@ func (u *terminalUI) selectNativePane(pane int) {
 	if pane == 0 {
 		return
 	}
-	u.autoActivity = false
 	u.side = true
 	switch pane {
 	case 1:
-		u.journalOpen, u.diffOpen = false, true
+		u.diffOpen = true
 	case 2:
-		u.journalOpen, u.diffOpen, u.activityOpen = false, false, true
+		u.diffOpen, u.activityOpen = false, true
 	case 3:
 		u.activityOpen = true
-	case 4:
-		u.journalOpen, u.diffOpen = true, false
 	}
 }
 
@@ -608,7 +567,6 @@ func superscript(n int) string {
 // filter, the native right pane leaves the saved diff for Activity.
 func (u *terminalUI) showRosterPick(only bool, selected string) {
 	if u.main != nil && (u.agents.only != only || u.agents.selected != selected) {
-		u.autoActivity, u.journalOpen = false, false
 		u.diffOpen = false
 	}
 }

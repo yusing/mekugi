@@ -4,9 +4,10 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "67"
+  revision: "70"
   files:
-    - journal.md
+    - context_reset.md
+    - mcp.md
     - router.md
     - native_ui.md
     - transport.md
@@ -21,7 +22,6 @@ pjdoc:
     - symbol.md
     - inspect.md
     - plugin.md
-    - diagnose.md
     - ax.md
     - session.md
     - session_replay.md
@@ -39,7 +39,8 @@ linked, not copied.
 
 ## Inventory
 
-- [`REQ-JOURNAL-001`](journal.md): durable per-thread milestone journals
+- [`REQ-CONTEXT-RESET-001`](context_reset.md): retained inactive instruction-file loading
+- [`REQ-MCP-001`](mcp.md): invocation-local MCP dispatch
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
 - [`REQ-TRANSPORT-001`](transport.md): Codex-facing and provider Responses transports
@@ -54,7 +55,6 @@ linked, not copied.
 - [`REQ-SYMBOL-001`](symbol.md): routed semantic symbol lookup with raw source rows
 - [`REQ-INSPECT-001`](inspect.md): executable structural file inspection with numeric spans
 - [`REQ-PLUGIN-001`](plugin.md): authenticated compiled executable tools
-- [`REQ-DIAGNOSE-001`](diagnose.md): opt-in agent issue reports
 - [`REQ-AX-001`](ax.md): runtime reads and evidence-backed AX reporting
 - [`REQ-SESSION-001`](session.md): offline logical session inspection
 - [`REQ-SESSION-REPLAY-001`](session_replay.md): timed offline UI replay and profiling
@@ -65,4 +65,3 @@ linked, not copied.
 - [`REQ-EXECUTION-003`](execution.md): approval guard for remote VCS writes
 - [`REQ-EXECUTION-004`](execution.md): sudo command approval and secret password entry
 - [`REQ-GUIDE-001`](guide.md): caller-preserving additive tool guidance
-- [`REQ-GUIDE-002`](guide.md): native post-compaction recovery

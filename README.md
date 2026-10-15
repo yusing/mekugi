@@ -29,26 +29,13 @@ sessions, and patch review. No fork, no config edits, no daemon.
   shows occurrences and estimated saved tokens. Disable with
   `--deduplicate-output=false`;
   see the [projection contract](doc/spec/execution.md#duplicate-output-projection).
-- **Task journal.** Record plans, results, constraints, and blockers as durable
-  work state, rather than repeating status summaries in conversation.
-- **Journal context reset.** Manual and context-full resets use retained journal,
-  change and failure evidence by default, including subagents, without a provider
-  summary request. Opt out with `--journal-compaction=off`; see
-  [recovery behavior and limits](#troubleshooting-and-integrations).
-- **Session continuity.** Retained journal and change evidence survives resume,
-  forks, side threads, and compaction, subject to [storage retention](#replay-storage).
+- **Session continuity.** Retained change evidence and output remain available across
+  resume and forks, subject to [storage retention](#replay-storage).
 
 ### User-facing
 
-- **Auto resume accidental stop.** Continue unfinished journal work when the agent
-  stops, including after answering a follow-up. Explicit user stops, blockers, and
-  pending questions are respected. See the [Journal pane](#journal-pane).
-- **Native terminal UI.** [Main, Diff, Activity, Journal, and Agents](#ui)
+- **Native terminal UI.** [Main, Diff, Activity, and Agents](#ui)
   share one terminal without an external pane manager.
-- **Task journal.** Plans, results, and blockers stay visible without extra model
-  requests for status reports. Work established complete by the final tool result
-  needs no separate model-generated completion acknowledgment.
-  See the [Journal pane](#journal-pane).
 - **Live subagent activity.** See model, effort, progress, and message excerpts
   in Main or the [Agents pane](#agents-pane), alongside elapsed time and edit activity.
 - **Live diffs.** [Inspect streaming previews and saved edits](#live-diff-pane);
@@ -208,27 +195,26 @@ dialog keeps the answer out of model input and retained history. Sudo approval w
 independently of `--vcs-guard` and grants no sandbox permissions. See
 [sudo support and limits](doc/spec/execution.md#req-execution-004--unlock-sudo-through-the-native-dialog).
 
-### Headless slice plans
+### Headless execution
 
 ```sh
-mekugi --journal-compaction=slice headless --yolo < prompt.txt
+mekugi headless --yolo < prompt.txt
 ```
 
 Headless requires `--yolo` and one nonempty stdin prompt up to 16 MiB; model/`-c`
-options are accepted, resume/positional prompts are not. It continues journal
-work/slices without a countdown. Questions/approvals fail; Ctrl-C stops the run. Stdout
-JSONL contains private prompt/tool/answer evidence and reset/completion events;
+options are accepted, resume/positional prompts are not. It exits after the host turn
+completes. Questions/approvals fail; Ctrl-C stops the run. Stdout
+JSONL contains private host messages and a completion event;
 diagnostics go to stderr. Run/shutdown failure exits nonzero. `codex exec` is unchanged.
 
 ## UI
 
-Main holds the conversation/composer; Diff, Activity, and Journal share the right
-column, with Agents below. New sessions show Journal; child activity temporarily shows
-Activity unless you select another pane. Narrow terminals show one pane.
+Main holds the conversation/composer; Diff and Activity share the right
+column, with Agents below. Narrow terminals show one pane.
 
 | Action | Shortcut |
 | --- | --- |
-| Focus Main / Diff / Activity / Agents / Journal | `Ctrl-B`, then `1` / `2` / `3` / `4` / `5` |
+| Focus Main / Diff / Activity / Agents | `Ctrl-B`, then `1` / `2` / `3` / `4` |
 | Resize splits | Drag dividers, or `Ctrl-B`, then arrows; Up/Down in Agents adjusts its height |
 | Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
 | Browse Main history | `Ctrl-B`, then PageUp / PageDown |
@@ -278,15 +264,6 @@ new launches enable them again. `v` switches views, `s` opens the navigator, `/`
 `n`/`p` changes files, `[`/`]` jumps hunks. Tab opens Changes by caller. Click an Edit
 for its hunk; `Ctrl-B e` pins files, `Ctrl-B r` resumes following.
 See [all diff controls](doc/spec/changes.md#live-terminal-view).
-
-### Journal pane
-
-Journal shows work, results, constraints, and blockers, including delegated journals.
-`j`/`k` selects, Space expands, Enter opens details, `c` copies the address, Esc returns.
-Unfinished work continues immediately; blockers/questions pause it.
-Explicit stops stay paused across questions/forks/resume until reactivated.
-Ordinary continuation keeps context; slices follow [reset policy](#context-reset-and-recovery).
-See [Journal](doc/spec/journal.md).
 
 ### Agents pane
 
@@ -364,8 +341,6 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
 | `--mode` | `mekugi` | `passthrough` forwards Codex without Mekugi tools |
 | `--vcs-guard` | `true` | Ask before UI remote writes, even with `--yolo` |
-| `--post-compact-recovery` | `true` | Restore Main after provider compaction |
-| `--journal-compaction` | `auto` | Select reset policy below |
 | `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |
 | `--timeout` | `10m` | Wait for response start |
@@ -374,23 +349,13 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--debug` | Disabled | Record private [diagnostic evidence](docs/contributing/development.md#diagnostics) |
 
 `mekugi --mode passthrough --vcs-guard=false codex` retains Codex policy/metrics, but
-disables Mekugi tools/guard and implies `--journal-compaction=off`; explicit
-`auto`/`slice` is rejected. Use `--ansi-faint=off` if a multiplexer hides mosh.
+disables Mekugi tools/guard. Use `--ansi-faint=off` if a multiplexer hides mosh.
 
 ### Context reset and recovery
 
-| `--journal-compaction` | Manual/context-full requests | Slice boundaries |
-| --- | --- | --- |
-| `auto` (default) | Journal reset | Journal reset |
-| `slice` | Provider compaction | Journal reset |
-| `off` | Provider compaction | Continue in the same context |
-
-Journal resets recover retained work/constraints/change/failure evidence without
-provider summaries, including children; missing/ambiguous evidence stops reset.
-Click **Context reset from journal** for retained recovery text. Interrupted resets may
-need manual continuation. See [reset behavior](doc/spec/journal.md#router-answered-compaction).
-The separate post-compaction hook restores Main only. Review via `/hooks` or opt out
-with `--post-compact-recovery=false`; see [hook setup](doc/spec/guide.md#req-guide-002--native-post-compaction-recovery).
+Manual `/compact` and context-full compaction use Codex and the provider. Mekugi
+adds no recovery-injection hook. Captured changes and retained output remain
+readable while their [storage](#replay-storage) is retained.
 
 ### Troubleshooting and integrations
 
@@ -402,8 +367,6 @@ with `--post-compact-recovery=false`; see [hook setup](doc/spec/guide.md#req-gui
 - **Frontend commands:** [compiled helpers](doc/spec/plugin.md) run through stock
   execution. JavaScript plugin loading has been removed; existing plugin files
   are left untouched.
-- **Issue reports:** `MEKUGI_DIAGNOSE=1` enables `report_issue`, running configured
-  `hooks.diagnose` commands. See [setup and effects](doc/spec/diagnose.md).
 - **Environment:** router/executor must share paths/runtime directory; `MEKUGI_RUNTIME_DIR`
   overrides the temporary-directory default. Startup errors print before Codex;
   session failures show commentary/stderr. Finish sessions before replacing older

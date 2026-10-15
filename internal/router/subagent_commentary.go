@@ -138,23 +138,6 @@ func subagentResponse(item map[string]json.RawMessage) (text, sender string, fin
 	return payload, sender, strings.HasPrefix(header, "Message Type: FINAL_ANSWER\n"), true
 }
 
-func tokenUsageSubstantive(response []byte) bool {
-	var body struct {
-		Output []map[string]json.RawMessage `json:"output"`
-	}
-	if json.Unmarshal(response, &body) != nil {
-		return false
-	}
-	substantive := false
-	for _, item := range body.Output {
-		if blocksTokenUsage(item) {
-			return false
-		}
-		substantive = substantive || isSubstantiveAnswer(item)
-	}
-	return substantive
-}
-
 func isFinalAnswerMessage(item map[string]json.RawMessage) bool {
 	return responseMessageFacts(item).FinalAnswerCandidate()
 }

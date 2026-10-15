@@ -123,7 +123,7 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 		{
 			name: "released_output", width: 44, height: 14,
 			block: Block{Kind: "op", Verb: "Run", Code: "make test-ui-snapshots", Output: &Output{done: true, released: true},
-				Tail: []string{"ok  internal/ui/activity", "ok  internal/ui/journal"}, TailOmitted: 20},
+				Tail: []string{"ok  internal/ui/activity", "ok  internal/ui/terminal"}, TailOmitted: 20},
 		},
 		{
 			name: "read_range", width: 44, height: 11,

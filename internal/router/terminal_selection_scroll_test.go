@@ -17,7 +17,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-			u.shell.diffOpen, u.shell.journalOpen = false, false
+			u.shell.diffOpen = false
 			var lines []string
 			for i := range 60 {
 				lines = append(lines, fmt.Sprintf("row %02d", i))
@@ -214,7 +214,7 @@ func TestSelectionScrolledClickUsesDocumentTarget(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.shell.diffOpen, u.shell.journalOpen = false, false
+	u.shell.diffOpen = false
 	u.agents.agents = []activityPaneAgent{{Name: "main", Final: true}}
 	for i := range 40 {
 		text := fmt.Sprintf("prompt %02d", i)

@@ -16,7 +16,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := buildToolRegistryAt(b.Context(), filepath.Join(directory, "data"), false, filepath.Join(directory, "runtime"), replay)
+	registry, err := buildToolRegistryAt(b.Context(), filepath.Join(directory, "runtime"), replay)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	}
 	inspectBatch := []string{
 		abs("app_server_ui.go"), abs("live_activity_view.go"), abs("../ui/activity/paint.go"),
-		abs("vcs_display.go"), abs("server.go"), abs("native_journal.go"),
+		abs("vcs_display.go"), abs("server.go"), abs("native_shell.go"),
 		abs("storage_retention.go"), abs("mchanges_apply.go"),
 	}
 	docs := []string{abs("../../doc/architecture/ui.md"), abs("../../doc/architecture/activity.md"), abs("../../doc/architecture/boundary.md")}
@@ -92,7 +92,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 	if _, err := openMekugiReplayStore(replay); err != nil {
 		b.Fatal(err)
 	}
-	registry, err := buildToolRegistryAt(b.Context(), filepath.Join(directory, "data"), false, filepath.Join(directory, "runtime"), replay)
+	registry, err := buildToolRegistryAt(b.Context(), filepath.Join(directory, "runtime"), replay)
 	if err != nil {
 		b.Fatal(err)
 	}

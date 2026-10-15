@@ -24,7 +24,7 @@ session dialog and controlled-comparison exports.
 Debug artifacts are a separate router-owned, explicitly requested surface. They may combine
 sanitized capture exports with instruction snapshots, lifecycle outcomes, and feature events,
 but cannot affect runtime success. Failure to initialize a requested artifact fails startup;
-later observation failures remain auxiliary. AX journals and private replay corpora also
+later observation failures remain auxiliary. AX read logs and private replay corpora also
 remain outside sanitized transport capture.
 
 WebSocket capture observes actual sent and received messages at transport ownership

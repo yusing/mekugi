@@ -2,7 +2,6 @@ package router
 
 import (
 	"bytes"
-	"context"
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
@@ -10,7 +9,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 func routerFaultSSE(events ...any) string {
@@ -161,148 +159,6 @@ func TestRouterFaultNoticeDeduplicatesWithinTurnButSeparatesTurns(t *testing.T) 
 		issues.entries[0].count != 1 || issues.entries[1].count != 1 ||
 		issues.entries[0].id == issues.entries[1].id {
 		t.Fatalf("same fault on a new turn did not receive a distinct notice: %+v", issues.entries)
-	}
-}
-
-func TestJournalContinuationLimitAfterCreatedEmitsTerminalTransformFailure(t *testing.T) {
-	request := serverRequest(t, nil)
-	output := new(bytes.Buffer)
-	issues := NewCriticalErrors()
-	created := mustTestJSON(t, map[string]any{
-		"type": "response.created", "response": map[string]any{"id": "journal-limit-response", "status": "in_progress"},
-	})
-	if _, err := writeSSEEvent(output, responseSSELines(created, "\n"), "\n", nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	attempt := &requestAttempt{
-		executor:        requestExecutor{output: output, issues: issues},
-		startCtx:        t.Context(),
-		executionCtx:    context.WithValue(t.Context(), journalContinuationKey{}, journalContinuation{depth: maxJournalItems}),
-		journalOriginal: request.fields, journalStartWindow: time.Minute,
-		mekugiTransform: &mekugiResponseTransform{},
-		hooks:           &responseHooks{deliveredResponseID: "journal-limit-response"},
-		streamResponse:  true,
-		finalization: requestFinalization{
-			sessionID: "journal-limit-session", threadID: "journal-limit-thread", turnID: "journal-limit-turn",
-		},
-	}
-	_, continuationErr := attempt.continueJournal()
-	if continuationErr == nil {
-		t.Fatal("journal continuation unexpectedly exceeded its request limit")
-	} else if !strings.Contains(continuationErr.Error(), "continuation limit") {
-		t.Fatalf("continuation error = %v, want continuation limit", continuationErr)
-	} else if attempt.finalization.failurePhase != requestFailureTransform {
-		t.Fatalf("failure phase = %q, want transform", attempt.finalization.failurePhase)
-	}
-	if err := attempt.finish(continuationErr); err == nil || !strings.Contains(err.Error(), "continuation limit") {
-		t.Fatalf("finish error = %v, want original continuation failure", err)
-	}
-	events := routerFaultEvents(t, output.String())
-	if len(events) != 2 || routerFaultEventString(events[0], "type") != "response.created" || routerFaultEventString(events[1], "type") != "response.failed" {
-		t.Fatalf("continuation failure did not close the created response: %s", output.String())
-	}
-	var failed struct {
-		Response struct {
-			Error struct {
-				Code    string `json:"code"`
-				Message string `json:"message"`
-			} `json:"error"`
-		} `json:"response"`
-	}
-	encoded, err := json.Marshal(events[1])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(encoded, &failed); err != nil {
-		t.Fatal(err)
-	}
-	if failed.Response.Error.Code != "invalid_prompt" || !strings.Contains(failed.Response.Error.Message, "journal_continuation_limit") {
-		t.Fatalf("continuation terminal error = %+v", failed.Response.Error)
-	}
-}
-
-func TestJournalContinuationFaultBeforeSuccessorCreatedUsesInheritedResponseID(t *testing.T) {
-	workspace := t.TempDir()
-	proxy := newManagedMekugiProxy(t)
-	attachTestReplayStore(t, proxy)
-	request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
-	call := map[string]any{
-		"type": "function_call", "id": "journal-first-item", "call_id": "journal-first-call",
-		"namespace": "functions", "name": "journal", "arguments": `{"op":"add","text":"continuation milestone"}`, "status": "completed",
-	}
-	first := serverHTTPResponse(routerFaultSSE(
-		map[string]any{"type": "response.created", "response": map[string]any{"id": "first-attempt-response", "status": "in_progress", "output": []any{}}},
-		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
-			"type": "function_call", "id": call["id"], "call_id": call["call_id"], "namespace": "functions", "name": "journal", "arguments": call["arguments"], "status": "in_progress",
-		}},
-		map[string]any{"type": "response.output_item.done", "output_index": 0, "item": call},
-		map[string]any{"type": "response.completed", "response": map[string]any{"id": "first-attempt-response", "status": "completed", "output": []any{call}}},
-	))
-	first.Header.Set("Content-Type", "text/event-stream")
-	second := serverHTTPResponse(routerFaultSSE(
-		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
-			"type": "function_call", "id": "journal-second-item", "call_id": "journal-second-call",
-			"namespace": "functions", "name": "journal", "arguments": "{}", "status": "in_progress",
-		}},
-		// Completion omits call_id. This is intercepted by the journal
-		// transformer and fails before the successor emits response.created.
-		map[string]any{"type": "response.output_item.done", "output_index": 0, "item": map[string]any{
-			"type": "function_call", "id": "journal-second-item",
-			"namespace": "functions", "name": "journal", "arguments": "{}", "status": "completed",
-		}},
-	))
-	second.Header.Set("Content-Type", "text/event-stream")
-	provider := &serverFakeProvider{results: []serverForwardResult{{response: first}, {response: second}}}
-	issues := NewCriticalErrors()
-	metadata := codexTurnMetadata{
-		RequestKind: "turn", ThreadID: "journal-continuation-thread", TurnID: "journal-continuation-turn",
-		Directories: map[string]jsonv1.RawMessage{workspace: nil},
-	}
-	headers := serverMetadataHeaders(t, "turn", metadata.Directories)
-	headers.Set(threadIDHeader, metadata.ThreadID)
-	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
-	output := httptest.NewRecorder()
-	writer := &trackedResponseWriter{ResponseWriter: output}
-	executor := requestExecutor{provider: provider, output: writer, issues: issues, mekugiCalls: proxy}
-	err := executor.execute(t.Context(), t.Context(), request, headers, "journal-continuation-session")
-	if err == nil {
-		t.Fatal("malformed journal continuation unexpectedly completed")
-	}
-	if len(provider.forwarded) != 2 {
-		t.Fatalf("provider attempts = %d, want first response plus one failing continuation", len(provider.forwarded))
-	}
-	events := routerFaultEvents(t, output.Body.String())
-	var created, completed, failed int
-	for _, event := range events {
-		switch routerFaultEventString(event, "type") {
-		case "response.created":
-			created++
-		case "response.completed":
-			completed++
-		case "response.failed":
-			failed++
-			var terminal struct {
-				Response struct {
-					ID    string `json:"id"`
-					Error struct {
-						Code string `json:"code"`
-					} `json:"error"`
-				} `json:"response"`
-			}
-			encoded, err := json.Marshal(event)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := json.Unmarshal(encoded, &terminal); err != nil {
-				t.Fatal(err)
-			}
-			if terminal.Response.ID != "first-attempt-response" || terminal.Response.Error.Code != "invalid_prompt" {
-				t.Fatalf("inherited terminal failure = %+v", terminal.Response)
-			}
-		}
-	}
-	if created != 1 || completed != 0 || failed != 1 {
-		t.Fatalf("continuation terminal counts: created=%d completed=%d failed=%d; events=%s", created, completed, failed, output.Body.String())
 	}
 }
 

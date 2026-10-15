@@ -23,23 +23,20 @@ import (
 // Replay uses retained semantic items, never shell execution or provider calls.
 // Missing token/chunk arrival times are simulated between the recorded bounds.
 type sessionUIReplay struct {
-	Thread, Cwd        string
-	Start, End         time.Time
-	Events             []uiReplayEvent
-	Threads            map[string]string
-	Journals           map[string]map[string]threadJournal
-	Missing            []string
-	Unsupported        map[string]int
-	Items, Providers   int
-	JournalUnavailable []string
-	HookUnavailable    []string
+	Thread, Cwd      string
+	Start, End       time.Time
+	Events           []uiReplayEvent
+	Threads          map[string]string
+	Missing          []string
+	Unsupported      map[string]int
+	Items, Providers int
+	HookUnavailable  []string
 }
 
 type uiReplayEvent struct {
-	At      time.Time
-	Method  string
-	Params  appServerEvent
-	Journal *journalReplayPublication
+	At     time.Time
+	Method string
+	Params appServerEvent
 }
 
 type uiReplayRecord struct {
@@ -269,9 +266,6 @@ func readSessionUIReplay(ctx context.Context, path, debugDir string, seed uint64
 		if err := r.readProviders(ctx, filepath.Join(debugDir, "capture.jsonl"), loaded); err != nil {
 			return nil, err
 		}
-	}
-	if err := r.readJournals(store, loaded); err != nil {
-		return nil, err
 	}
 	slices.SortStableFunc(r.Events, func(a, b uiReplayEvent) int { return a.At.Compare(b.At) })
 	r.Start, r.End = r.Events[0].At, r.Events[len(r.Events)-1].At

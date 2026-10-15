@@ -47,19 +47,15 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Router behavior | `./internal/router` |
 | Shell/source execution-scope classification | `./internal/execscope`, plus affected router observation tests |
 | Provider request encoding and stream normalization | `./internal/providercodec`, plus router Grok/OpenCode integration tests |
-| Journal MCP registration, schema, and authenticated reads | `./internal/router ./cmd/mekugi -run '^TestJournalMCP'`; installed-host check below |
+| MCP transport, shell hook and registration | `./internal/router ./cmd/mekugi -run '^TestMCP'` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./internal/tokenizer`, `./capturer`, `./internal/router/toolplugin` |
 | Capture metrics and AX evidence | `./capturer` |
 | Native frontends and output formatting | `./internal/router/toolplugin`, then `./internal/router` |
 | Router process entry point | `./cmd/mekugi` |
-| Native frontend host acceptance | `-tags journal_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
-| Native mrun continuation acceptance | `-tags journal_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
-| Native journal child-result acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
-| Native journal MCP read acceptance | `-tags journal_e2e ./internal/router -run '^TestJournalMCPNativeCodexReadE2E$'` (installed Codex, local mock provider) |
-| Native journal host-result completion | `-tags journal_e2e ./internal/router -run '^TestJournalHostFinishNativeCodexSpawnE2E$'` (installed Codex, local mock provider) |
-| Native post-compaction recovery | `-tags journal_e2e ./internal/router -run '^TestPostCompactNativeCodexE2E$'` (installed Codex, local mock provider) |
+| Native frontend host acceptance | `-tags codex_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
+| Native mrun continuation acceptance | `-tags codex_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `./...` |
 
 Native reader latency checks include a fresh authenticated worker, a 3,000-row
@@ -89,13 +85,13 @@ the frontend measurements exclude registry creation and active-session leases:
 make test TEST_PACKAGES='./internal/router/toolplugin ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
-Journal/frontend prose has a separate generated consumer. Edit
+Frontend prose has a separate generated consumer. Edit
 `guidance/frontend_guidance.md.tmpl` or the executable helper's description owner,
 then regenerate and check the prepared-request projection:
 
 ```sh
 env MEKUGI_UPDATE_FRONTEND_GUIDANCE=1 make test TEST_PACKAGES=./internal/router TEST_RUN='^TestGeneratedFrontendGuidanceIsCurrent$'
-make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|JournalRulesHaveOneOwner|JournalGuidanceUsesRequestRole|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
+make test TEST_PACKAGES=./internal/router TEST_RUN='GeneratedFrontendGuidance|ProjectedStockGuidance|Instruction|ConflictRewrite|WebSocketPrewarmToolGuidance'
 ```
 
 ## Static checks
@@ -111,13 +107,12 @@ Enable the staged-tree snapshot commit gate as described in
 [Development](docs/contributing/development.md#build-and-test).
 
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
-or model requests. Select a case with `SNAPSHOT='^TestUISnapshotJournalReply$'`.
+or model requests. Select a case with `SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'`.
 Set `SNAPSHOT_PACKAGES=./internal/router` (or another owning package) to avoid
 compiling and testing unrelated UI packages; the check still includes the snapshot
 harness tests. The same package selection applies to `update-ui-snapshots`.
-The supplied journal preview lives in
-`internal/router/testdata/snapshots/journal-ui-preview.txt`. Router fixtures also cover
-journal panes, cards, details, skills and file pickers, Main's composer, resume
+Router fixtures cover
+skills and file pickers, Main's composer, resume
 sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
@@ -146,7 +141,7 @@ only for these text fixtures; `git diff --check` still checks ordinary sources.
 A missing or changed fixture fails the test and writes a sibling `.txt.new`
 candidate with a unified diff in the failure output. The reviewed fixture stays
 unchanged. Inspect the candidate, then either move that candidate over its fixture
-or run `make update-ui-snapshots SNAPSHOT='^TestUISnapshotJournalReply$'` to
+or run `make update-ui-snapshots SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'` to
 regenerate the selected baseline. Omitting `SNAPSHOT` updates all matching cases.
 Updates are opt-in via `MEKUGI_UPDATE_UI_SNAPSHOTS=1`; the check recipe clears it
 so inherited configuration cannot silently accept changes. A passing comparison
@@ -170,7 +165,7 @@ shrinking large fixtures.
 
 The following acceptance routes apply only when the requested change touches their contract:
 
-- **Continuity:** for changed durable review/output/journal state, test restart with only the
+- **Continuity:** for changed durable review/output state, test restart with only the
   requesting thread and affected branch/switch/resume paths. Live ancestry is not retained identity.
 - **Launcher handoff:** validate cancellation and rendering before and after
   Codex owns the terminal, including redirected output and delayed startup.

@@ -85,9 +85,9 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	v := u.view
 	question := "The original request"
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now()}}})
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: question, Observed: time.Now(), native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "prompt"}}}})
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("Working through the request.\n", 20)}}})
-	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "amber", Text: "The answer", Question: question}, terminal: true, batch: 1})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "The answer"})
 	if err := u.paint(&bytes.Buffer{}, 120, 24); err != nil {
 		t.Fatal(err)
 	}
@@ -120,13 +120,10 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	// Editing an answer after the same prompt is submitted again must retain
 	// its original target, not jump to the newer identical question.
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
-	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "amber", Text: "Edited answer", Question: question}, terminal: true, batch: 2})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Edited answer"})
 	for _, record := range v.entries {
-		blocks := record.blocks
-		for _, block := range blocks {
-			if block.Journal != nil && block.Journal.Groups[0].Target != 1 {
-				t.Fatal("answer edit changed its original question link")
-			}
+		if record.native != nil && record.native.item == "answer" && record.native.question != 1 {
+			t.Fatal("answer edit changed its original question link")
 		}
 	}
 }
@@ -303,26 +300,20 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	assignment := "Check the original question link."
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{journalTestAssignment("/root/reviewer", "NEW_TASK", assignment)}}))
+	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{nativeAssignmentTestMessage("/root/reviewer", "NEW_TASK", assignment)}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var child strings.Builder
-	child.WriteString("Journal result `/root/reviewer`")
-	writeJournalItems(&child, []journalItem{{ID: "amber", Question: assignment, Text: "The question link is correct."}})
 	u.applyActivity([]activityPaneEntry{
 		{Seq: 1, Agent: "/root/reviewer", Kind: "start", start: nativeSubagentStart(&request),
 			assignment: &activityAssignment{id: "task-1", from: "/root", to: "/root/reviewer", text: assignment}},
-		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: child.String()},
+		{Seq: 2, Agent: "/root/reviewer", Kind: "final", Text: "The question link is correct."},
 	}, nil)
 	u.view.conversation = true
 	main := ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
 	agents := ansi.Strip(strings.Join(u.agents.renderFeed(90, 40).lines, "\n"))
 	if !strings.Contains(main, assignment) || !strings.Contains(agents, assignment) || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("native NEW_TASK answer was not threaded under its assignment:\n%s\n%s", main, agents)
-	}
-	if groups := u.view.entries[1].blocks[0].Journal.Groups; len(groups) != 1 || groups[0].Target != u.view.entries[0].Seq {
-		t.Fatalf("native NEW_TASK assignment was not linked: %+v", groups)
 	}
 }
 
@@ -331,11 +322,11 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 	v.conversation, v.feedOnly = true, true
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 1, Agent: "You", Kind: "text", Text: strings.Repeat("Long original prompt\n", 30)},
-		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt"},
+		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "steer"}},
 	}})
-	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "amber", Question: "Steering prompt", Text: "Live answer"}})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", appServerItem{})
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
-	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "amber", Question: "Steering prompt", Text: "Final answer body"}, terminal: true, batch: 1})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Final answer body"})
 	v.render(80, 12, time.Now())
 	if v.questionRows[1] == v.questionRows[2] {
 		t.Fatal("consecutive user entries share a navigation target")
@@ -407,87 +398,11 @@ func TestLiveActivityMainShortTerminalKeepsNewestLine(t *testing.T) {
 	}
 }
 
-func TestAppServerReusesTerminalShellAndJournalRenderer(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	u.view.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "a", Text: "Milestone", Created: 1, Updated: 1}, terminal: true, batch: 3})
-	u.view.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "b", Text: "Answer", Question: "Question", Created: 2, Updated: 2}, terminal: true, batch: 3})
-	if len(u.view.entries) != 1 || len(u.view.entries[0].blocks) != 1 || u.view.entries[0].blocks[0].Kind != "final" || len(u.view.entries[0].blocks[0].Journal.Groups) != 2 {
-		t.Fatal("native batch did not use the existing grouped Activity journal result")
-	}
-	if err := u.paint(&bytes.Buffer{}, 120, 30); err != nil {
-		t.Fatal(err)
-	}
-	if u.shell.layout.codex.w != 58 || u.shell.layout.journal.h != u.shell.layout.codex.h || u.shell.layout.live.h != 0 || u.shell.layout.vertical != 60 {
-		t.Fatalf("UI changed the existing pane positions: %+v", u.shell.layout)
-	}
-	if err := u.paint(&bytes.Buffer{}, 100, 4); err != nil {
-		t.Fatal(err)
-	}
-	if u.mainContentPainted {
-		t.Fatal("empty Main body must not acknowledge journal delivery")
-	}
-}
-
-func TestLiveActivityMainJournalContentOnly(t *testing.T) {
-	v := newLiveActivityView()
-	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "amber", Text: "Milestone body", Created: 1}, terminal: true, batch: 1})
-	v.applyJournal("root", nativeJournalPublication{item: journalItem{ID: "apple", Text: "Answer body", Question: "Original question", Created: 2}, terminal: true, batch: 1})
-	v.only = true
-	v.selected = "Main"
-	agents := ansi.Strip(strings.Join(v.renderFeed(80, 20).lines, "\n"))
-	v.conversation = true
-	main := ansi.Strip(strings.Join(v.renderFeed(80, 20).lines, "\n"))
-	if agents != main {
-		t.Fatal("Main and Activity must share journal rendering without stale cache")
-	}
-	if !strings.Contains(main, "↩ re: original message (not loaded)") || !strings.Contains(main, "▎ Original question") {
-		t.Fatal("Main lost the actual question text")
-	}
-	for _, hidden := range []string{"amber", "apple"} {
-		if strings.Contains(main, hidden) {
-			t.Fatalf("journal metadata %q leaked into Main", hidden)
-		}
-	}
-	var agentBlocks []activityui.Block
-	for _, entry := range v.entries {
-		agentBlocks = append(agentBlocks, parseLiveActivity(entry.activityPaneEntry)...)
-	}
-	var fullRows []string
-	for _, block := range agentBlocks {
-		fullRows = append(fullRows, v.painter.Block(block, 80)...)
-	}
-	fullAgents := ansi.Strip(strings.Join(fullRows, "\n"))
-	for _, id := range []string{"amber", "apple"} {
-		if !strings.Contains(fullAgents, id) {
-			t.Fatalf("agent block lost metadata %q", id)
-		}
-	}
-	for _, body := range []string{"Milestone body", "Answer body"} {
-		if strings.Count(main, body) != 1 || !strings.Contains(fullAgents, body) {
-			t.Fatalf("journal content %q missing or duplicated", body)
-		}
-	}
-}
-
-func TestAppServerJournalRetractionKeepsSiblingLinks(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = true, true
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
-	for i, id := range []string{"a", "b"} {
-		v.applyJournal("t", nativeJournalPublication{item: journalItem{ID: id, Text: "answer " + id, Question: "Question?", Created: uint64(i + 1)}, terminal: true, batch: 1})
-	}
-	v.applyJournal("t", nativeJournalPublication{item: journalItem{ID: "b", Question: "Question?"}, terminal: true, retracted: true, batch: 1})
-	frame := ansi.Strip(strings.Join(v.render(60, 12, time.Now()), "\n"))
-	if !strings.Contains(frame, "↩ re: your message") || strings.Contains(frame, "not loaded") || strings.Contains(frame, "answer b") {
-		t.Fatalf("retraction lost the surviving answer's link:\n%s", frame)
-	}
-}
-
 func TestAppServerMainDoesNotPinItemFirstRow(t *testing.T) {
 	v := newLiveActivityView()
 	v.conversation, v.feedOnly = true, true
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Question?", Observed: time.Now()}}})
-	v.applyJournal("t", nativeJournalPublication{item: journalItem{ID: "a", Text: strings.Repeat("answer row\n\n", 20), Question: "Question?", Created: 1}, terminal: true, batch: 1})
+	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: strings.Repeat("answer row\n\n", 20)})
 	v.render(60, 60, time.Now())
 	v.offset, v.following = 6, false
 	lines := v.render(60, 8, time.Now())

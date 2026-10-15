@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +29,7 @@ func TestUISnapshotLiveActivitySharedEvents(t *testing.T) {
 					agent = "/root/reviewer"
 				}
 				entries := []activityPaneEntry{
-					{Kind: "text", Text: "Journal\n- ◐ /1 Inspect shared rendering · working\n\n  Reviewing the same event presentation."},
+					{Kind: "text", Text: "Reviewing the same event presentation."},
 					{Kind: "reasoning", Text: "Checking final changes"},
 					{Kind: "error", Text: "Provider request failed"},
 					{Kind: "error", Text: "Provider request failed", ErrorDetail: "Provider request failed\nThe server returned a distinct diagnostic."},
@@ -43,9 +42,6 @@ func TestUISnapshotLiveActivitySharedEvents(t *testing.T) {
 				}
 				feed := v.renderFeed(width, 100)
 				uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/shared-events-%d-child-%t.txt", width, child), strings.Join(feed.lines, "\n")+"\n")
-				if !child && !strings.Contains(strings.Join(feed.lines, "\n"), journalStateColor(v.painter.Theme, "working")+"◐") {
-					t.Fatal("journal task glyph lost its shared state color")
-				}
 			})
 		}
 	}
@@ -58,62 +54,6 @@ func TestUISnapshotSymbolQueryDisplay(t *testing.T) {
 		v.appendEntry(entry, parseLiveActivity(entry))
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/symbol-query-display.txt", strings.Join(v.renderFeed(80, 100).lines, "\n")+"\n")
-}
-
-func TestLiveActivityChildHostJournalPresentation(t *testing.T) {
-	v := sharedEventsView(true)
-	// Exercise the host message path, not applyJournal, which is Main-only.
-	text := "Journal\n- ● /1 Validate host delivery · done\n\n  Evidence retained."
-	v.applyAppServerItem(true, "", "main", "child", "turn", "message", "item/completed", "", appServerItem{Type: "agentMessage", Text: text})
-	feed := v.renderFeed(80, 40)
-	plain := ansi.Strip(strings.Join(feed.lines, "\n"))
-	for _, want := range []string{"●", "12:34:56", "│ Evidence retained."} {
-		if !strings.Contains(plain, want) {
-			t.Fatalf("host child journal missing %q: %s", want, plain)
-		}
-	}
-	for _, unwanted := range []string{"journal", "/1", "Validate host delivery", "• ●"} {
-		if strings.Contains(plain, unwanted) {
-			t.Fatalf("child journal retained redundant framing %q: %s", unwanted, plain)
-		}
-	}
-	if len(v.entries) != 1 || v.entries[0].Text != text || v.entries[0].native.thread != "child" {
-		t.Fatal("presentation changed retained host text or ownership")
-	}
-}
-
-func TestUISnapshotLiveActivityChildJournalGroup(t *testing.T) {
-	for _, width := range []int{36, 80} {
-		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			v := sharedEventsView(true)
-			at := v.now()
-			entries := []activityPaneEntry{
-				{Kind: "tool", Text: "Read `doc/spec/journal.md`"},
-				{Kind: "text", Text: "Journal\n- ◐ /1 Check recovery\n\n  Recovery keeps both task bodies.\n  - Authored list item\n\n      code stays indented"},
-				{Kind: "text", Text: "Journal\n- ● /2 Confirm fallback"},
-				{Kind: "tool", Text: "Search `recovery` in `internal/router`"},
-			}
-			for i, entry := range entries {
-				entry.Seq, entry.Agent, entry.Observed = uint64(i+1), "/root/reviewer", at.Add(time.Duration(i)*time.Second)
-				v.appendEntry(entry, parseLiveActivity(entry))
-			}
-			feed := v.renderFeed(width, 40)
-			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/child-journal-group-%d.txt", width), strings.Join(feed.lines, "\n")+"\n")
-			plain := ansi.Strip(strings.Join(feed.lines, "\n"))
-			if strings.Count(plain, "● reviewer") != 1 || strings.Contains(plain, "/1") || strings.Contains(plain, "/2") {
-				t.Fatalf("journal did not join the agent group: %s", plain)
-			}
-			row := slices.IndexFunc(feed.lines, func(row string) bool { return strings.Contains(row, "Recovery keeps") })
-			u := &terminalUI{}
-			if row < 0 || !u.openOutput(v, feed.snippets[row]) {
-				t.Fatal("journal body did not open its full source")
-			}
-			text := v.painter.DialogPage(u.output.pages[0], width).Text
-			if !strings.Contains(text, "/1 Check recovery") || !strings.Contains(text, "code stays indented") {
-				t.Fatalf("dialog lost the omitted summary or authored body: %q", text)
-			}
-		})
-	}
 }
 
 func TestLiveActivityDetailsOnlyForHiddenContent(t *testing.T) {

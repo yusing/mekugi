@@ -2,7 +2,6 @@
 package commentaryid
 
 const (
-	OperationPrefix  = "msg_mekugi_commentary_"
-	SubagentPrefix   = "msg_mekugi_subagent_commentary_"
-	CompactionPrefix = "msg_mekugi_compaction_"
+	OperationPrefix = "msg_mekugi_commentary_"
+	SubagentPrefix  = "msg_mekugi_subagent_commentary_"
 )

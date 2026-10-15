@@ -189,7 +189,7 @@ snapshot, while reference rows address the earlier visible body. Ordinary user
 requests, base instructions, selection attachments, malformed envelopes, and media
 are excluded. String-content or non-`input_text` envelopes and bare frame text
 remain ordinary input. Native selected-skill XML retains its existing manager
-rewrite. Router-appended parts, including journal IDs, warnings, edit notices,
+rewrite. Router-appended parts, including warnings, edit notices,
 and continuation advice, remain intact. Outputs without a call ID and native
 live-session JSON envelopes are excluded.
 

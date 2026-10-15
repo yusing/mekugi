@@ -9,9 +9,9 @@ func TestFunctionToolCallsPassThrough(t *testing.T) {
 	for _, tc := range []struct {
 		name, tools, input, namespace, arguments string
 	}{
-		{"non-strict", `[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`, `[]`, "", ` { "journal" : [{ "op": "log", "text": "Unrecognized stock field" }] } `},
+		{"non-strict", `[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`, `[]`, "", ` { "query" : "Unrecognized stock field" } `},
 		{"strict", `[{"type":"function","name":"lookup","strict":true,"parameters":{"type":"object"}}]`, `[]`, "", `null`},
-		{"owned", `[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"journal":{"type":"boolean"}}}}]`, `[]`, "", ` { "journal" : true } `},
+		{"owned", `[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"query":{"type":"boolean"}}}}]`, `[]`, "", ` { "query" : true } `},
 		{"provider", `[]`, `[{"type":"additional_tools","tools":[{"type":"namespace","name":"external","tools":[{"type":"function","name":"lookup","parameters":{"type":"array"}}]}]}]`, "external", `[1, 2]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

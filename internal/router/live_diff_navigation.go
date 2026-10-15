@@ -195,7 +195,6 @@ func (c *liveDiffTerminalController) refreshChanges() {
 		c.files[i] = c.view.Visible[file.Key()]
 	}
 	c.navigation.Rebuild(c.files, c.workspace)
-	c.navigation.Changes.Scope = c.navigation.Scope
 	c.navigation.Changes.Rebuild(&c.view, c.workspace)
 	c.navigation.Dots = c.callerDots()
 	c.navigation.Caller = c.view.Caller

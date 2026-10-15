@@ -4,10 +4,9 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "52"
+  revision: "53"
   files:
     - ui.md
-    - journal.md
     - third_party.md
     - grok.md
     - opencode.md
@@ -30,7 +29,6 @@ collaborators without restating implementation.
 
 - [`CTR-UI-001`](ui.md): presentation, app-server client, and router integration boundaries
 
-- [`CTR-JOURNAL-001`](journal.md): router-owned journal state and delivery
 - [`CTR-THIRD-PARTY-001`](third_party.md): router-owned third-party provider bridge
 - [`CTR-GROK-001`](grok.md): Grok bridge ownership
 - [`CTR-OPENCODE-001`](opencode.md): OpenCode bridge ownership

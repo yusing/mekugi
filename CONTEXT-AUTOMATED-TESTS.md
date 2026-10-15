@@ -2,13 +2,12 @@
 
 Tagged router fixtures use the installed Codex consumer with a deterministic
 local provider. They exercise stock execution and native collaboration without
-credentials or live model usage. These tests require the `journal_e2e` build tag.
+credentials or live model usage. These tests require the `codex_e2e` build tag.
 
 ## Focused host acceptance
 
 Run `make test-host` for the shared installed-Codex acceptance set. It checks native
-frontends, PTY yield/continuation, durable nested edit evidence, journal MCP reads,
-host-result completion, post-compaction recovery, and command sandbox reporting.
+frontends, PTY yield/continuation, durable nested edit evidence, and command sandbox reporting.
 The recipe verifies that every named test is present before running a fresh verbose
 suite. Missing Codex or tests fail the target. It neither generates assets nor installs
 binaries.
@@ -25,7 +24,7 @@ The fixtures are the `internal/router/*_codex_e2e_test.go` files. List them with
 
 The built-in OpenAI fixture uses the existing local base-URL override and fake
 credentials. It checks native web-tool exposure, internal turn metadata,
-reasoning-effort updates, and selected-workspace journal identity over WebSockets
+reasoning-effort updates, and selected-workspace routing over WebSockets
 and stock HTTP/SSE fallback. It also checks prewarming and side-thread continuity
 over WebSockets. These local mocks prove installed-host behavior; live model
 acceptance is a separate check.
@@ -33,56 +32,13 @@ acceptance is a separate check.
 The frontend fixture invokes an authenticated native command through
 stock exec `tools.exec_command`, including cwd, environment, argv, stdin
 separation, and exit status. The mrun fixture checks Codex-owned PTY yield and
-`write_stdin` continuation. The journal fixture checks native child
-assignment, live milestones, terminal child result, and parent delivery without
-an extra final-answer provider request.
-
-The host-finish journal fixture carries an MCP mutation batch and completion marker
-with useful stock execution inside exec for both root and native child. It verifies
-terminal journal delivery without forwarding the tool-result continuation to the
-provider, including journals retained without workspace metadata. The ordinary journal fixture
-retains provider-authored substantive-final coverage.
-
-The journal MCP read fixture checks standard nested tool discovery and execution
-through installed Codex. It verifies that host-supplied identity selects the
-durable journal and that structured results reach the exec-cell continuation.
+`write_stdin` continuation.
 
 The mchanges fixture executes nested stock patch and shell calls without printing
 their results, then checks durable native receipts, net review, explicit-ID reads
 from another thread, caught failures, and cross-request yielded-command completion.
 Its native traces are deleted before
 review reads, and the replay store is reopened to verify durable confirmation.
-
-The post-compaction fixture forces native automatic compaction and verifies that
-the immediate continuation contains the durable journal and change summary. It
-also checks coexistence of file-based and invocation-local native hooks. Only
-this isolated fixture bypasses hook trust; production registration requires the
-normal Codex hook review. The fixture does not exercise the interactive `/hooks`
-trust UI or manual `/compact` command.
-The journal-compaction fixture additionally verifies that a router-authored
-summary is accepted by installed Codex, never reaches the mock provider, restores
-task/change evidence, and suppresses only the matching recovery hook injection.
-The native journal-presentation fixture drives ordinary manual `/compact` in
-`auto` mode through real app-server notifications, checking journal-reset rendering
-and exact host-item provenance after reopening storage, without slice-driven dispatch.
-The native journal-rollout disclosure fixture also checks the installed host's
-paginated item-to-compaction-response association with built-in OpenAI V2 compaction.
-The slice-reset fixture drives manual app-server compaction followed by the next
-planned turn through the shared reset policy. It verifies the continuation path,
-recovered summary and consumed intent without a provider compaction request.
-It covers both built-in OpenAI Responses compaction V2 and legacy custom-provider
-text compaction. The built-in fixture uses isolated fake credentials and stock
-HTTP/SSE fallback against the local listener.
-It reopens durable storage and restarts Codex, then verifies exact V2 summary
-restoration through native thread resume and fork without reference leakage.
-The built-in fixture loads an instruction-named file through real stock execution
-in both exec-cell and function-call forms. It checks fresh reset-time guidance at
-the local provider on continuation, resume and fork, including function-call
-history whose tool is absent from the current declarations. These checks verify
-installed-host routing and local payloads, not live-provider acceptance of the
-synthetic history.
-The headless fixture exercises the production JSONL adapter with both `off` and
-`slice`, proving two turns, reset-only compaction and clean host shutdown.
 
 The reasoning fixture gates a local provider stream on rendered PTY frames. It
 checks waiting before public text, two incremental public-summary updates before
@@ -94,10 +50,10 @@ installed Codex execution and measured reports under read-only and workspace-wri
 sandboxes. Run the affected acceptance without changing the host policy:
 
 ```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags journal_e2e -count=1'
+make test TEST_PACKAGES=./internal/router TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags codex_e2e -count=1'
 ```
 
-A tagged compile-only check is `go test -tags journal_e2e ./internal/router -run '^$'`.
+A tagged compile-only check is `go test -tags codex_e2e ./internal/router -run '^$'`.
 
 These deterministic tests do not prove live-model behavior or decrypt prior
 encrypted assignments. If a task needs real provider behavior, report that

@@ -20,8 +20,6 @@ type (
 		frontendGuidance  string
 		wrappers          map[string]string
 		frontends         map[string]string
-		diagnoseHooks     diagnoseHooks
-		diagnoseEnabled   bool
 
 		closeOnce sync.Once
 		closeErr  error

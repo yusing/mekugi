@@ -20,12 +20,12 @@ func main() {
 func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if len(os.Args) > 1 && os.Args[1] == "journal-mcp" {
+	if len(os.Args) > 1 && os.Args[1] == "mcp-bridge" {
 		if len(os.Args) != 3 {
-			fmt.Fprintln(os.Stderr, "mekugi: journal-mcp requires one socket path")
+			fmt.Fprintln(os.Stderr, "mekugi: mcp-bridge requires one socket path")
 			return 2
 		}
-		if err := router.RunJournalMCPBridge(ctx, os.Args[2], os.Stdin, os.Stdout); err != nil {
+		if err := router.RunMCPBridge(ctx, os.Args[2], os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "mekugi:", err)
 			return 1
 		}
@@ -40,10 +40,6 @@ func run() int {
 		os.Stderr,
 	); handled {
 		return exitCode
-	}
-
-	if len(os.Args) > 1 && os.Args[1] == "post-compact" {
-		return router.RunPostCompactionSessionStartHook(ctx, os.Args[2:], os.Stdin, os.Stdout, os.Stderr)
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "inspect-sessions" {

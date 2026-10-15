@@ -80,10 +80,9 @@ type liveActivityView struct {
 	// opening names the snippet requested in the shared dialog.
 	snippet liveActivitySnippet // Hovered content target.
 	opening liveActivitySnippet
-	// passed holds journal groups, Main's sent messages and operation batches that have
+	// passed holds Main's sent messages and operation batches that have
 	// scrolled above the viewport. Messages then show as excerpts linking to
 	// Activity, and batches as one row opening their operations.
-	// Journal groups retain compact previews opening their full details.
 	passed map[uint64]bool
 
 	// Geometry of the last frame, used by scrolling keys and the pointer.
@@ -217,7 +216,7 @@ func (v *liveActivityView) apply(event activityPaneEvent) bool {
 			}
 			continue
 		}
-		if entry.Agent == "Main" && entry.Kind == "text" && entry.native != nil && entry.journal == nil {
+		if entry.Agent == "Main" && entry.Kind == "text" && entry.native != nil {
 			for _, question := range slices.Backward(v.entries) {
 				if (question.Agent == "You" || question.Kind == "question_reply") && question.native != nil && question.native.thread == entry.native.thread && question.native.turn == entry.native.turn {
 					entry.native.question = question.Seq
@@ -1525,8 +1524,7 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 			continue
 		}
 		agent := v.entries[i].Agent
-		journal := nativeJournalEntry(v.entries[i].activityPaneEntry)
-		shared := !journal && v.sharedEvent(i)
+		shared := v.sharedEvent(i)
 		if last, ok := lastPreview[agent]; ok {
 			if i == last {
 				appendPreview(agent)
@@ -1540,19 +1538,12 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 				continue
 			}
 			next := v.entries[j].activityPaneEntry
-			if next.Agent != agent || nativeJournalEntry(next) != journal || !journal && j != i && (shared || v.sharedEvent(j)) {
-				break
-			}
-			if journal && j != i && !(conversationJournalEvent(v.entries[i].activityPaneEntry) && conversationJournalEvent(next) || conversationMilestone(v.entries[i].activityPaneEntry) && conversationMilestone(next)) {
+			if next.Agent != agent || j != i && (shared || v.sharedEvent(j)) {
 				break
 			}
 			last = j
 		}
 		key := liveActivityRunKey{first: v.entries[i].Seq, last: v.entries[last].Seq, revision: v.runRevision(i, last+1), width: width, clip: clip, theme: v.painter.Theme, hover: -1, tail: v.tailRows(), expansion: v.expansion}
-		foldJournal := v.entries[i].Kind == "journal_event" || v.entries[i].Kind == "journal_card"
-		if foldJournal {
-			key.excerpt = v.excerpt(v.passed[key.last])
-		}
 		if flash != 0 && slices.ContainsFunc(v.entries[i:j], func(entry liveActivityRecord) bool { return entry.Seq == flash }) {
 			key.flash = flash
 		}
@@ -1568,9 +1559,6 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		}
 		first := i // The deferred painter must not borrow the advancing loop cursor.
 		render := func() liveActivityRun {
-			if journal {
-				return v.conversationItem(first, last, width, conversationThread{})
-			}
 			if shared {
 				return v.activityEventItem(first, width, clip, key.flash)
 			}
@@ -1620,9 +1608,6 @@ func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
 		}
 		feed.appendRows(run)
 		feed.spans = append(feed.spans, liveActivitySpan{key.first, head, len(feed.lines)})
-		if foldJournal && !key.excerpt {
-			feed.passing = append(feed.passing, liveActivityPassing{key.last, len(feed.lines)})
-		}
 		i = j
 	}
 	// A preview can arrive before the caller's first transcript entry.
@@ -1673,16 +1658,13 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		// Native Activity joins consecutive operations into one tree.
 		tree := v.childrenOnly && operation(block) && !continued(block)
 		toggle := v.clickTarget(&block, liveActivitySnippet{run: first, block: index}, width-2)
-		if block.Kind == "journal" && journalActivityBody(block.Body, true) != block.Body {
-			toggle = true // The omitted task row remains available in the dialog.
-		}
 		if operation(block) && v.expansion != 2 {
 			block.SourceRows = 5
 			if block.TailRows == 0 || block.TailRows > 5 {
 				block.TailRows = 5
 			}
 		}
-		message := slices.Contains([]string{"text", "message", "final", "summary", "start", "journal"}, block.Kind)
+		message := slices.Contains([]string{"text", "message", "final", "summary", "start"}, block.Kind)
 		// Reasoning heads the operations after it, so no gap parts them.
 		headed := previousSummary && operation(block)
 		gap := len(run.lines) > 1 && (message || previousMessage) && !headed
@@ -1696,8 +1678,6 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		} // Source and output have separate budgets.
 		part := v.paintBlock(start, limit, func() []string {
 			switch {
-			case block.Kind == "journal":
-				return v.painter.Flash(block, v.painter.Markdown(journalActivityBody(block.Body, v.expansion == 0), width-2))
 			case tree:
 				return v.painter.Event(block, width-4)
 			case v.childrenOnly:

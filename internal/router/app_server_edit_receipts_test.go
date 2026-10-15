@@ -260,10 +260,10 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 	}
 }
 
-// A cell that publishes a journal milestone, edits through an interpreter, and
+// A cell that edits through an interpreter and
 // reads in the same cell still yields host identities for its confirmed edit,
 // live and after history is restored into a new UI.
-func TestCodeModeMCPJournalCellEditReceipt(t *testing.T) {
+func TestCodeModeCellEditReceipt(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 	trace := newNativeTraceFixture(t)
@@ -276,8 +276,7 @@ func TestCodeModeMCPJournalCellEditReceipt(t *testing.T) {
 	}
 	const edit = "python3 - <<'PY'\nopen('file.txt','w').write('new\\n')\nPY\ncat file.txt"
 	const read = "git diff --stat"
-	source := `await tools.mcp__mekugi__journal_mutate({mutations:[{op:"log",text:"Editing"}]});` +
-		`text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(edit)) + `}));` +
+	source := `text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(edit)) + `}));` +
 		`text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(read)) + `}));`
 	call := map[string]any{"type": "custom_tool_call", "id": "cell-item", "call_id": "cell", "name": "exec", "input": source, "status": "completed"}
 	if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {

@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -189,8 +189,8 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "=" + hash},
 				codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 				approvals:   false,
-				noJournal:   true, mcp: true, // Journal delivery is not under test.
-				duringTurn: during,
+				mcp:         true,
+				duringTurn:  during,
 			})
 			provider.mu.Lock()
 			defer provider.mu.Unlock()

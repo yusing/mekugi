@@ -154,7 +154,7 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 
 func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
 	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
-		"model": "gpt-effective", "input": []any{journalTestAssignment("/root/explorer", "NEW_TASK", "Inspect parser.\n\n- Preserve behavior.")},
+		"model": "gpt-effective", "input": []any{nativeAssignmentTestMessage("/root/explorer", "NEW_TASK", "Inspect parser.\n\n- Preserve behavior.")},
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -512,59 +512,6 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 	}
 }
 
-func TestLiveActivityJournalFinalAnswerLayout(t *testing.T) {
-	question := "Does the preview color\ninterpreter bodies?"
-	var text strings.Builder
-	text.WriteString("Journal result `/root/reviewer`")
-	writeJournalItems(&text, []journalItem{
-		{ID: "verdict", Question: question, Text: "Yes.\n\n- `node -e` covered"},
-		{ID: "risk", Question: question, Text: "Nested templates stay plain."},
-		{ID: "misc", Text: "Nothing else."},
-	})
-	text.WriteString("\n\n**Changes:** amber3..amber4\n\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n" +
-		indentJournalText("M\t10\t2\tinternal/a.go\nA\t2\t2\tb.go", "    "))
-	blocks := parseLiveActivity(activityPaneEntry{Kind: "final", Text: text.String()})
-	journal := blocks[0].Journal
-	if len(blocks) != 1 || journal == nil || len(journal.Groups) != 2 || journal.Groups[0].Question != question ||
-		len(journal.Groups[0].Answers) != 2 || journal.Groups[0].Answers[0].Text != "Yes.\n\n- `node -e` covered" ||
-		journal.Groups[1].Question != "" || journal.Groups[1].Answers[0].ID != "misc" ||
-		journal.Changes != "amber3..amber4" || len(journal.Stats) != 2 || journal.Stats[0] != (activityui.Stat{Status: "M", Added: "10", Removed: "2", Path: "internal/a.go"}) {
-		t.Fatalf("journal = %+v", journal)
-	}
-	painter := activityui.Painter{Theme: livediff.DarkTheme}
-	full := ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n"))
-	for _, want := range []string{
-		"✓ Final answer · 3 answers · 2 files +12 -4",
-		"  ↩ Does the preview color interpreter bodies?",
-		"  • verdict\n    Yes.", "  • risk\n    Nested templates stay plain.", "  • misc\n    Nothing else.",
-		"Nothing else.\n\nChanges amber3..amber4\nM  +10 -2  internal/a.go\nA   +2 -2  b.go",
-	} {
-		if !strings.Contains(full, want) {
-			t.Fatalf("full layout missing %q:\n%s", want, full)
-		}
-	}
-	if strings.Contains(full, "Journal result") || strings.Contains(full, "**") || strings.Contains(full, "Answer") {
-		t.Fatalf("legacy journal grammar leaked into the pane:\n%s", full)
-	}
-	if summary := ansi.Strip(painter.Summary(blocks, 80)); summary != "Yes." {
-		t.Fatalf("roster summary = %q", summary)
-	}
-
-	// A read-only result omits its empty change report; plain answers stay Markdown.
-	var readOnly strings.Builder
-	readOnly.WriteString("Journal result `/root/reader`")
-	writeJournalItems(&readOnly, []journalItem{{ID: "only", Text: "Found it."}})
-	readOnly.WriteString("\n\n**Changes:**\nNo recorded changes.\n")
-	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: readOnly.String()})
-	if got := ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n")); got != "✓ Final answer\n  • Found it." {
-		t.Fatalf("read-only layout = %q", got)
-	}
-	blocks = parseLiveActivity(activityPaneEntry{Kind: "final", Text: "Plain **answer**."})
-	if blocks[0].Journal != nil || ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n")) != "✓ Final answer\n  Plain answer." {
-		t.Fatalf("plain final = %+v", blocks[0])
-	}
-}
-
 func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
 	const summary = unreturnedOutputNote
 	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
@@ -581,5 +528,13 @@ func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestLiveActivityFinalAnswerLayout(t *testing.T) {
+	blocks := parseLiveActivity(activityPaneEntry{Kind: "final", Text: "Plain **answer**."})
+	painter := activityui.Painter{Theme: livediff.DarkTheme}
+	if len(blocks) != 1 || ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n")) != "✓ Final answer\n  Plain answer." {
+		t.Fatalf("plain final = %+v", blocks)
 	}
 }

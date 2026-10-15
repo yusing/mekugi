@@ -9,22 +9,11 @@ changing routing assumptions.
 
 Codex CLI 0.161.0 passes with the existing base-URL override, retaining its
 built-in OpenAI provider while requests pass through Mekugi's existing projection
-and journal owners.
+owners.
 `TestAppServerBuiltInOpenAINativeCodexE2E` passes native web-tool exposure,
-turn metadata, effort changes, and selected-workspace journal identity over
+turn metadata, effort changes, and selected-workspace routing over
 WebSockets and stock HTTP/SSE fallback. Prewarming and side-thread continuity
 pass over WebSockets.
-The built-in and legacy slice-reset tests also pass, including exact V2 summary
-restoration after fresh resume and fork, zero-provider compaction, and headless
-continuation. These are installed-host local-mock checks.
-
-An isolated production launch with CLI 0.161.0 and `gpt-6-luna` also passes native
-search and page retrieval, local zero-provider V2 reset, pending-task continuation,
-stock patch execution, exact file checks, both durable task completions, and
-terminal headless delivery. All eight provider exchanges complete over WebSockets.
-The local compaction has `provider_expected=false` and no provider exchange.
-The disposable credential copy is removed after exit; user configuration is unchanged.
-
 ### Native nested-tool receipts (2026-09-25)
 
 Installed Codex CLI 0.156.1 was exercised with a deterministic local provider by
@@ -46,67 +35,6 @@ has no tool-only filter or disk cap. Mekugi's launch-scoped cleanup does not imp
 otherwise. A non-repository temporary directory again supplied no workspace
 metadata; initializing the fixture repository made its root available for
 relative capture. No router-cwd fallback was used.
-
-### Journal compaction (2026-09-29)
-
-Codex CLI 0.158.0 accepted a router-synthesized local compaction response in
-`TestJournalCompactionNativeCodexE2E`, using a deterministic local provider and an
-isolated Git workspace. No compaction request reached that provider. The immediate
-continuation contained journal task and retained change evidence; the matching
-`SessionStart` hook omitted duplicate recovery while an independent hook still ran.
-The legacy provider-summary hook fixture also passed. These are offline protocol
-checks, not evidence that a model resumes better or uses fewer task tokens.
-
-The non-repository fixture emitted no compaction workspace metadata. The router
-can recover only a unique prior selected workspace from durable requesting-thread
-records, never its process cwd. At that time, ambiguous retained workspaces kept
-provider fallback. Under the [current reset policy](spec/journal.md#router-answered-compaction),
-`auto` stops with an error and no provider request; `slice` retains fallback.
-
-`TestJournalSliceResetNativeCodexE2E` also passed with CLI 0.158.0. The shared
-app-server driver requested manual local compaction, accepted the router summary,
-then started the next planned turn. The continuation carried the pending path and
-recovered task states, and the durable reset intent was consumed. The mock provider
-saw two ordinary turns and no compaction request. The fixture seeds journal facts;
-it does not measure model adherence to slice planning or context-size improvement.
-
-`TestJournalHeadlessNativeCodexE2E` exercises the production headless adapter with
-the same installed host and mock provider. Both `off` and `slice` complete two
-planned turns and emit valid JSONL; only `slice` produces a compaction item. The
-host shuts down cleanly after the terminal event. This is not a paid comparison.
-
-### Native child journal visibility (2026-09-30)
-
-Codex CLI 0.159.2 (`rust-v0.159.2`, host commit
-`ff6aec96948b70d94983af2641a6b67c94faeff5`) does not merge child provider
-commentary into the root's `exec --json` messages. Child lifecycle events are
-not a text-publication channel in that consumer. The host's root-only
-`send_message_to_user_async` tool needs a root model call; it is not a router
-injection API.
-
-`TestJournalNativeCodexSpawnE2E` gates the child's final provider response on
-observing its live milestone in actual root JSONL output. With separate durable
-root live delivery, the gate passes while preserving the child result, one final
-root flush, and two child provider requests. Live notices do not enter provider
-message input. This deterministic local-provider check establishes consumer
-delivery, not live-model behavior. Root-only publication still needs a writable
-root response; it cannot display a new milestone during a host tool wait until
-that response channel opens again.
-
-### Host-result journal completion (2026-10-02)
-
-Codex CLI 0.160.0 accepted `TestJournalHostFinishNativeCodexSpawnE2E` with
-a deterministic local provider. Root and native child carried the finish marker
-inside useful stock JavaScript execution. Their matching successful results
-selected local terminal journal delivery without another provider request or
-a provider-generated acknowledgment. No standalone journal tool was advertised.
-The ordinary `TestJournalNativeCodexSpawnE2E` also passed, preserving substantive
-provider-authored finals and child-result delivery.
-
-These fixtures establish installed-host acceptance, not live-model marker usage
-or interactive terminal behavior. Offline checks separately cover failed and
-yielded work, native trace requirements, continuation matching, and retained
-receipt isolation across restart and fork.
 
 ### Anchored child Activity history (2026-09-30)
 

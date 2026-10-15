@@ -451,7 +451,7 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 			{"heading", "**Checking tests**\n\n"},
 			{"hash-heading", "# Checking tests\n<!-- -->"},
 			{"long", "**Checking tests**\n\nFirst checkpoint.\n\nSecond checkpoint.\n\nThird checkpoint.\n\nFourth checkpoint."},
-			{"sections", "**Finalizing execution journal**\n\nFirst retained paragraph.\n\n**Preparing final renderings**\n\nLast retained paragraph."},
+			{"sections", "**Finalizing execution checks**\n\nFirst retained paragraph.\n\n**Preparing final renderings**\n\nLast retained paragraph."},
 		} {
 			t.Run(thread+"_"+tc.name, func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())

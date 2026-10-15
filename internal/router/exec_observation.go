@@ -1613,7 +1613,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		}
 		ref, err := p.replayStore.putTypedOutput(ctx, output, exit)
 		if err != nil {
-			p.notice("", thread, "journal_failure_output", "Failed-command output could not be retained; journal recovery lists the command without output.")
+			p.notice("", thread, "failure_output_storage", "Failed-command output could not be retained. The command outcome remains available without its output.")
 		} else {
 			outcome.OutputRef = ref
 		}

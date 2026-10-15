@@ -28,7 +28,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   Observation/display must not replay effects, replace results, or change exact tool input/identity.
   Startup cancellation belongs to the wrapper only until Codex takes the terminal. Keep overrides
   invocation-local and user configuration untouched. See [execution](doc/spec/execution.md),
-  [plugins](doc/spec/plugin.md), and [launch](doc/spec/router.md).
+  [frontends](doc/spec/plugin.md), [MCP](doc/spec/mcp.md), and [launch](doc/spec/router.md).
 - **Change evidence:** `mchanges` owns retained edit evidence. Preserve ordinary editing/LiveDiff,
   including ignored known targets. Preview is provisional. Source recognition must not gate
   observed effects. Keep segment completion, observed file changes, and terminal host completion
@@ -56,8 +56,8 @@ acceptance cases, not a blanket request to implement every listed concern.
   [activity display](doc/spec/activity_display.md), and [UI ownership](doc/architecture/ui.md).
 - **Ownership:** reuse authenticated snapshots, portable core, managed stores, classifiers, and
   capturers rather than duplicate policy in adapters. Validate registry exposure at its owner.
-  Journal guidance belongs to its tool projection and frontend guidance to the authenticated
-  registry; preserve caller base policy except declared omissions/conflicts. See
+  Frontend guidance belongs to the authenticated registry; preserve caller base policy except
+  declared omissions/conflicts. See
   [plugin boundary](doc/architecture/plugin.md) and [guide](doc/spec/guide.md).
 - **Responsiveness:** slow storage or unresolved observations for one owner must not stall
   unrelated input, cancellation, or lifecycle delivery. See [UI ownership](doc/architecture/ui.md).

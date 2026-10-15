@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -70,7 +70,6 @@ func TestNativeApprovalDenialSameTurnCodexE2E(t *testing.T) {
 		environment: []string{"PATH=" + execTrackPath(), vcsguard.HookEnvironment + "="},
 		codexArgs:   []string{"-c", `sandbox_mode="read-only"`, "-c", `approval_policy="on-request"`, "-c", "hooks={}"},
 		approvals:   true,
-		noJournal:   true,
 		duringTurn: func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), _ *vt.Emulator) {
 			await("Run this command?")
 			if _, err := io.WriteString(outer, reason+"\r"); err != nil {

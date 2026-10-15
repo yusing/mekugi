@@ -162,7 +162,9 @@ func TestMekugiReplayStoreQuotaAndCommentary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.putCommentaryReplacing(t.Context(), "/w", []string{"id"}, nil); err != nil {
+	if err := s.locked(t.Context(), func() error {
+		return s.write(replayRecord{Version: 1, Workspace: "/w", CallID: "id", Commentary: true})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := s.hasCommentary(t.Context(), "/w", "id"); err != nil || !ok {
@@ -327,14 +329,18 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.maxBytes = int64(len(encoded))
-	if err := s.putCommentaryReplacing(t.Context(), "/w", []string{"commentary"}, nil); err != nil {
+	if err := s.locked(t.Context(), func() error {
+		return s.write(replayRecord{Version: 1, Workspace: "/w", CallID: "commentary", Commentary: true})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.put(t.Context(), "/w", map[string]mekugiHistory{"c": {Script: "x"}}); err != nil {
 		t.Fatalf("commentary displaced replay: %v", err)
 	}
 	s.maxCommentaryBytes = 1
-	if err := s.putCommentaryReplacing(t.Context(), "/w", []string{"another"}, nil); err == nil {
+	if err := s.locked(t.Context(), func() error {
+		return s.write(replayRecord{Version: 1, Workspace: "/w", CallID: "another", Commentary: true})
+	}); err == nil {
 		t.Fatal("accepted commentary capacity overflow")
 	}
 	if _, ok, err := s.lookup(t.Context(), "/w", "c"); err != nil || !ok {

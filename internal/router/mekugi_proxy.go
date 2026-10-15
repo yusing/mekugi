@@ -7,9 +7,6 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -24,110 +21,18 @@ const (
 	maxMekugiScriptBytes = 1 << 20
 )
 
-func nativeSpawnRoles(raw jsonv1.RawMessage, parentAuthor string, ignoredCallIDs ...map[string]bool) map[string]journalSpawnRole {
-	var input []responsesItem
-	if jsonv1.Unmarshal(raw, &input) != nil {
-		return nil
-	}
-	type spawnCall struct {
-		role       string
-		conflicted bool
-	}
-	calls := make(map[string]spawnCall)
-	ignored := map[string]bool(nil)
-	if len(ignoredCallIDs) != 0 {
-		ignored = ignoredCallIDs[0]
-	}
-	for _, item := range input {
-		if item.Type != "function_call" || item.Namespace != subagentBridgeNamespace && item.Namespace != "collaboration" || item.Name != "spawn_agent" || item.CallID == "" || ignored[item.CallID] || item.Arguments == nil {
-			continue
-		}
-		var arguments struct {
-			AgentType string `json:"agent_type"`
-		}
-		if jsonv1.Unmarshal([]byte(*item.Arguments), &arguments) != nil || strings.TrimSpace(arguments.AgentType) == "" {
-			continue
-		}
-		call, found := calls[item.CallID]
-		if found && call.role != arguments.AgentType {
-			call.conflicted = true
-		} else if !found {
-			call.role = arguments.AgentType
-		}
-		calls[item.CallID] = call
-	}
-	roles := make(map[string]journalSpawnRole)
-	for _, item := range input {
-		if item.Type != "function_call_output" || item.CallID == "" || item.Output == nil {
-			continue
-		}
-		call, ok := calls[item.CallID]
-		if !ok {
-			continue
-		}
-		output, ok := decodeJSONString(item.Output)
-		if !ok {
-			continue
-		}
-		var result struct {
-			TaskName string `json:"task_name"`
-		}
-		if jsonv1.Unmarshal([]byte(output), &result) != nil || !directChildAuthor(parentAuthor, result.TaskName) {
-			continue
-		}
-		evidence := journalSpawnRole{Role: call.role, Conflicted: call.conflicted}
-		if current, found := roles[result.TaskName]; found && (current.Conflicted || current.Role != evidence.Role) {
-			evidence = journalSpawnRole{Conflicted: true}
-		}
-		roles[result.TaskName] = evidence
-	}
-	return roles
-}
-
-func nativeSpawnCallIDs(raw jsonv1.RawMessage) map[string]bool {
-	var input []responsesItem
-	if jsonv1.Unmarshal(raw, &input) != nil {
-		return nil
-	}
-	callIDs := make(map[string]bool)
-	for _, item := range input {
-		if item.Type == "function_call" && (item.Namespace == subagentBridgeNamespace || item.Namespace == "collaboration") && item.Name == "spawn_agent" && item.CallID != "" {
-			callIDs[item.CallID] = true
-		}
-	}
-	return callIDs
-}
-
-func directChildAuthor(parent, child string) bool {
-	prefix := strings.TrimSuffix(parent, "/") + "/"
-	remainder, ok := strings.CutPrefix(child, prefix)
-	return ok && remainder != "" && !strings.Contains(remainder, "/")
-}
-
-func mekugiDataDirectory() (string, error) {
-	configDirectory, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("determine mekugi data directory: %w", err)
-	}
-	return filepath.Join(configDirectory, "mekugi"), nil
-}
-
 type mekugiProxy struct {
-	registry          *toolRegistry
-	titles            *sessionTitleCache
-	memoryCommentary  map[string]map[string]*commentaryReplacement
-	journals          *journalStore
-	journalCompaction string
-	duplicateOutput   bool
-	usage             *threadUsage
-	autoLiveDiff      *autoLiveDiff
-	activity          *subagentActivity
-	execTrack         *execTrackHub // Set for the UI when command shells are tracked.
-	skillsManager     bool
-	execWindows       *execWindowRegistry
-	nativeTrace       *nativeToolTrace
-	approvalMu        sync.Mutex
-	approvalFeedback  map[[2]string][]string // Live thread/turn feedback; no host steering.
+	registry         *toolRegistry
+	duplicateOutput  bool
+	usage            *threadUsage
+	autoLiveDiff     *autoLiveDiff
+	activity         *subagentActivity
+	execTrack        *execTrackHub // Set for the UI when command shells are tracked.
+	skillsManager    bool
+	execWindows      *execWindowRegistry
+	nativeTrace      *nativeToolTrace
+	approvalMu       sync.Mutex
+	approvalFeedback map[[2]string][]string // Live thread/turn feedback; no host steering.
 
 	mu                 sync.RWMutex
 	toolInputEmissions map[*mekugiResponseTransform]map[string]bool // Live generation only, never command execution or replay.
@@ -145,20 +50,14 @@ type mekugiProxy struct {
 	closed             bool
 }
 
-func newMekugiProxy(registry *toolRegistry, titleCaches ...*sessionTitleCache) *mekugiProxy {
+func newMekugiProxy(registry *toolRegistry) *mekugiProxy {
 	if registry == nil {
 		return nil
-	}
-	titles := newSessionTitleCache()
-	if len(titleCaches) != 0 && titleCaches[0] != nil {
-		titles = titleCaches[0]
 	}
 	activity := newSubagentActivity()
 	activity.usage = newThreadUsage()
 	proxy := &mekugiProxy{
 		registry:       registry,
-		titles:         titles,
-		journals:       newJournalStore(),
 		usage:          activity.usage,
 		activity:       activity,
 		execWindows:    &execWindowRegistry{},
@@ -211,48 +110,8 @@ type mekugiTranslationState struct {
 	historyCommitted bool
 }
 
-type mekugiJournalState struct {
-	journalNativeSink       *nativeJournalSink
-	journalNativeTerminal   *threadJournal
-	journalAnswerDelivery   *journalDelivery // Raw Main answer receipt, independent of its work report.
-	journalDeliveries       map[string]journalDelivery
-	journalAnswerStarted    bool
-	journalEarlyReports     []map[string]jsonv1.RawMessage // Prepared before the answer; acknowledged only at terminal.
-	liveDiffCompletionReady bool
-	journalQuietFile        os.FileInfo
-	journalRootQuietFile    os.FileInfo
-	journalLiveBytes        int
-	journalNewCount         int
-	journalResponseID       string
-	journalChildResult      string
-	journalResultWindow     *journalResultWindow
-	journalFlushedCount     int
-	journalDeliveryRelease  func()
-	journalQuestion         string // Request-local user text for the natural final answer.
-	journalAvailable        bool
-	journalActive           bool
-	journalPending          map[string]bool
-	journalCalls            map[string]map[string]jsonv1.RawMessage
-	journalResults          []map[string]jsonv1.RawMessage
-	journalClientOutput     []map[string]jsonv1.RawMessage
-	journalProviderOutput   []map[string]jsonv1.RawMessage
-	journalClientCalls      bool
-	journalDeferredFinish   map[string]bool
-	journalTerminal         bool
-	journalContinue         bool
-	journalFinishRequested  bool
-	journalNaturalAnswerIDs map[string]bool
-	journalNaturalFinalSeen bool
-}
-
-type mekugiDeliveryState struct {
-	usageTracker  *threadUsageObservation
-	finalAnswer   finalAnswerStream
-	usageObserved bool
-}
-
 type mekugiResponseTransform struct {
-	featureTrace     featureUsageTrace
+	toolTrace        toolObservationTrace
 	ctx              context.Context
 	proxy            *mekugiProxy
 	sessionID        string
@@ -274,10 +133,12 @@ type mekugiResponseTransform struct {
 
 	commentaryAuthor string
 
-	subagentTurn       bool
-	activityResponding bool // Counted in the agents-pane roster until Close.
-	mekugiJournalState
-	mekugiDeliveryState
+	subagentTurn            bool
+	activityResponding      bool // Counted in the agents-pane roster until Close.
+	liveDiffCompletionReady bool
+	usageTracker            *threadUsageObservation
+	finalAnswer             finalAnswerStream
+	usageObserved           bool
 
 	codeModeToolName string
 	// sessionShell runs stock commands that name no shell of their own.
@@ -296,7 +157,6 @@ func (t *mekugiResponseTransform) Close() {
 		t.activityResponding = false
 		t.proxy.activity.endResponse(t.threadID)
 	}
-	t.ReleaseDelivery()
 	if t.sessionActive {
 		t.proxy.deactivateSession(t.historySessionID)
 		if t.storageIdle {
@@ -395,11 +255,20 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 // Prewarm shares model projection but cannot initialize execution, replay, or
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
 func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
+	if err := validateProviderContext(request.fields["input"]); err != nil {
+		return nil, err
+	}
 	if metadataValid && metadata.RequestKind == responseevents.Compaction {
 		if err := validateMekugiCompactionRequest(request, metadata); err != nil {
 			return nil, err
 		}
-		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
+		if err := p.observeCompactionInput(ctx, request, sessionID, threadID, metadata); err != nil {
+			if _, incompatible := errors.AsType[*requestCompatibilityError](err); incompatible {
+				return nil, err
+			}
+			p.notice(sessionID, threadID, "compaction_observation", "Completed host results could not be retained during compaction. Provider compaction is unchanged; change evidence may be incomplete.")
+		}
+		return nil, nil
 	}
 	if p == nil {
 		return nil, errors.New("mekugi response proxy is unavailable")
@@ -416,34 +285,22 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 		}
-		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
+		return nil, nil
 	}
-	journalGuidance := codeModeJournalGuidance
 	var hostParts map[string][]int
 	if p.duplicateOutput && !prewarm {
 		hostParts = duplicateOutputHostParts(request.fields["input"])
-	}
-	if metadata.SubagentKind != "" {
-		journalGuidance = codeModeSubagentJournalGuidance
-	}
-	if !prewarm {
-		p.mu.RLock()
-		usage := p.contextUsage[threadID]
-		p.mu.RUnlock()
-		if usage.window > 0 && float64(usage.tokens)/float64(usage.window) >= 0.7 {
-			journalGuidance = strings.Replace(journalGuidance, "<journal>\n", "<journal>\n"+embeddedInstruction("journal_context_reminder")+"\n", 1)
-		}
 	}
 	// Discover an execution owner before projecting tools: a native
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
 		tools := request.responseTools()
-		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, journalGuidance)
+		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
 		if err != nil {
 			return nil, err
 		}
 		if execution == nil {
-			return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
+			return nil, nil
 		}
 	}
 	if err := rewriteRequestInstructionConflicts(request); err != nil {
@@ -463,40 +320,21 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	envelopes := prepareSubagentInputEnvelopes(request.fields, recipient)
 
 	tools := request.responseTools()
-	directory, directorySelected := usableRoutingDirectory(metadata.Directories)
-	if !directorySelected && len(metadata.Directories) != 0 {
-		_, local, err := journalCompactionInput(request)
-		if err != nil {
-			return nil, err
-		}
-		if local {
-			return nil, errors.New("journal compaction recovery workspace is unavailable")
-		}
-	}
+	directory, _ := usableRoutingDirectory(metadata.Directories)
 	originalTools, originalToolsPresent := request.fields["tools"]
 	originalTools = bytes.Clone(originalTools)
 	originalToolChoice, originalToolChoicePresent := request.fields["tool_choice"]
 	originalToolChoice = bytes.Clone(originalToolChoice)
-	if err := stripStockPlanTools(request.fields, tools); err != nil {
-		return nil, err
-	}
-	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, journalGuidance)
+	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance)
 	if err != nil {
 		return nil, err
 	}
-	// Collaboration-only turns still need journal projection;
-	// absence of execution tools is not an incompatible Codex catalog.
 	codeModeToolName := ""
 	if execution != nil {
 		codeModeToolName = execution.name
 	}
-	if p.registry.diagnoseEnabled {
-		if err := exposeReportIssueTool(request.fields, tools); err != nil {
-			return nil, err
-		}
-	}
 	if prewarm {
-		return nil, p.prepareJournalCompactionInput(ctx, request, sessionID, threadID, metadata)
+		return nil, nil
 	}
 	if strings.TrimSpace(threadID) == "" {
 		return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
@@ -517,14 +355,6 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	visible, err := p.reconcileVisibleInput(ctx, request, directory, historySessionID)
 	if err != nil {
-		p.deactivateSession(historySessionID)
-		return nil, err
-	}
-	if err := p.replayStore.restoreJournalCompactionInput(ctx, request, directory); err != nil {
-		p.deactivateSession(historySessionID)
-		return nil, err
-	}
-	if err := restoreJournalCalls(request, visible); err != nil {
 		p.deactivateSession(historySessionID)
 		return nil, err
 	}
@@ -589,63 +419,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		codeModeToolName:          codeModeToolName,
 		sessionShell:              requestSessionShell(request.fields["input"]),
 	}
-	author := metadata.AgentName
-	if metadata.SubagentKind == "" {
-		author = "/root"
-	}
-	fork := metadata.ForkedFromThreadID
-	if metadata.SubagentKind != "" {
-		fork = ""
-	}
-	if err := p.journals.initialize(ctx, p.replayStore, directory, threadID, author, fork); err != nil {
-		transform.Close()
-		return nil, fmt.Errorf("initialize journal: %w", err)
-	}
-	if err := p.journals.bindIdentity(ctx, p.replayStore, directory, threadID, metadata.ParentThreadID, author, activityThreadID != ""); err != nil {
-		transform.Close()
-		return nil, err
-	}
-	if err := p.journals.beginJournalTurn(ctx, p.replayStore, directory, threadID, metadata.TurnID); err != nil {
-		p.notice(sessionID, threadID, "journal_reset", "Slice continuation unavailable: turn boundary could not be retained.")
-	}
-	p.journalCounters(ctx, directory, threadID, "", nil)
-	if metadata.ParentThreadID != "" && activityThreadID != "" {
-		if err := p.journals.observeLifecycle(ctx, p.replayStore, directory, threadID, "working", ""); err != nil {
-			transform.Close()
-			return nil, err
-		}
-	}
-	spawnBaseline, err := p.journals.forkSpawnBaseline(ctx, p.replayStore, directory, threadID, fork != "", nativeSpawnCallIDs(request.fields["input"]))
-	if err != nil {
-		transform.Close()
-		return nil, err
-	}
-	if err := p.journals.bindSpawnRoles(ctx, p.replayStore, directory, threadID, nativeSpawnRoles(request.fields["input"], author, spawnBaseline)); err != nil {
-		transform.Close()
-		return nil, err
-	}
-	if activityThreadID != "" {
-		for _, owner := range []string{threadID, metadata.ParentThreadID} {
-			if owner == "" {
-				continue
-			}
-			// Read durable role evidence so resumed children do not depend on a live parent.
-			if err := p.journals.transaction(ctx, p.replayStore, directory, owner, func(j *threadJournal, exists bool) error {
-				if exists {
-					p.activity.syncPaneRoles(owner, j.SpawnRoles)
-				}
-				return errJournalUnchanged
-			}); err != nil {
-				log.Printf("read roster roles: %v", err)
-			}
-		}
-	}
 	transform.usageTracker.reasoning = request.reasoningEffort()
-	transform.journalAvailable = true
-	transform.journalQuestion = journalQuestionFromInput(request.fields["input"], metadata.commentaryAuthor())
-	transform.journalActive = true
-	transform.journalPending = make(map[string]bool)
-	transform.journalCalls = make(map[string]map[string]jsonv1.RawMessage)
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
 	// Continuation advice is appended to the output the model will see.
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)

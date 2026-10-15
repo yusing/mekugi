@@ -47,7 +47,8 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 		forwarded := []string{"exec", "-c", "model=\"example\"", "--", "a prompt with spaces"}
 		args := codexArgs("http://127.0.0.1:12345/v1", forwarded, true, true, openAIAuth)
 		index := slices.Index(forwarded, "--")
-		if !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[index+18:], forwarded[index:]) {
+		delimiter := slices.Index(args, "--")
+		if delimiter < index || (delimiter-index)%2 != 0 || !slices.Equal(args[:index], forwarded[:index]) || !slices.Equal(args[delimiter:], forwarded[index:]) {
 			t.Fatalf("forwarded arguments changed: %q", args)
 		}
 		var config struct {
@@ -70,18 +71,23 @@ func TestCodexArgsPreservesArguments(t *testing.T) {
 				Auth       bool   `toml:"requires_openai_auth"`
 			} `toml:"model_providers"`
 		}
-		if !slices.Equal(args[index+6:index+8], []string{"--disable", "goals"}) {
-			t.Fatalf("goal feature toggle not disabled: %q", args)
-		}
 		var settings []string
-		for i := index; i < index+18; i += 2 {
+		goalsDisabled := false
+		for i := index; i < delimiter; i += 2 {
 			if args[i] == "--disable" {
+				if args[i+1] != "goals" {
+					t.Fatalf("unexpected disabled feature: %q", args)
+				}
+				goalsDisabled = true
 				continue
 			}
 			if args[i] != "-c" {
 				t.Fatalf("not a config override: %q", args)
 			}
 			settings = append(settings, args[i+1])
+		}
+		if !goalsDisabled {
+			t.Fatalf("goal feature toggle not disabled: %q", args)
 		}
 		if _, err := toml.Decode(strings.Join(settings, "\n"), &config); err != nil {
 			t.Fatal(err)
@@ -709,7 +715,7 @@ func TestWrapCodexStartupFailures(t *testing.T) {
 	}
 }
 
-func TestWrapDebugPassesAXJournalToCodex(t *testing.T) {
+func TestWrapDebugPassesAXLogToCodex(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	directory, debugDirectory := t.TempDir(), t.TempDir()
 	t.Setenv("PATH", directory+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -728,21 +734,10 @@ func TestWrapDebugPassesAXJournalToCodex(t *testing.T) {
 	}
 	path, err := os.ReadFile(marker)
 	if err != nil || !filepath.IsAbs(string(path)) {
-		t.Fatalf("AX journal was not inherited: %q, %v", path, err)
+		t.Fatalf("AX log was not inherited: %q, %v", path, err)
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(string(path)), "ax.json")); err != nil {
 		t.Fatalf("automatic report missing: %v", err)
-	}
-}
-
-func TestCodexArgsJournalPlanOverridePreservesPassthrough(t *testing.T) {
-	for _, journal := range []bool{false, true} {
-		args := codexArgs("http://127.0.0.1:12345/v1", []string{"exec", "-c", "tools.update_plan.enabled=true", "--", "prompt"}, journal, false, true)
-		end := slices.Index(args, "--")
-		disabled := slices.Contains(args[:end], "tools.update_plan.enabled=false")
-		if disabled != journal {
-			t.Fatalf("plan override for journal=%v: %q", journal, args)
-		}
 	}
 }
 

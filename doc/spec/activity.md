@@ -5,8 +5,8 @@
 The [UI](native_ui.md) consumes app-server events for live activity and
 history. These shared classification rules describe operations, not generated
 conversation messages. [Activity presentation](activity_display.md) owns row
-layout; [session notices](notices.md) own actionable diagnostics. Journals own
-[authored progress](journal.md). No activity observer generates conversation commentary.
+layout; [session notices](notices.md) own actionable diagnostics.
+No activity observer generates conversation commentary.
 
 ### Native event authority
 

@@ -136,15 +136,11 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 	prepare(t.Context(), "one")
 	requireNoLiveDiffTurnEvent(t, sub)
 
-	continuation := context.WithValue(t.Context(), journalContinuationKey{}, journalContinuation{})
-	prepare(continuation, "two")
-	requireNoLiveDiffTurnEvent(t, sub)
-
 	prepare(t.Context(), "two")
 	requireLiveDiffTurnEvent(t, sub, "active")
 }
 
-func TestLiveDiffJournalTerminalCompletesAfterTransformedDelivery(t *testing.T) {
+func TestLiveDiffTerminalCompletesAfterTransformedDelivery(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, child := range []bool{false, true} {
 			name := map[bool]string{false: "json", true: "sse"}[stream] + map[bool]string{false: "/root", true: "/child"}[child]
@@ -152,15 +148,17 @@ func TestLiveDiffJournalTerminalCompletesAfterTransformedDelivery(t *testing.T) 
 				transform, proxy, _, workspace := newMekugiTestTransform(t)
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.threadID)
 				proxy.autoLiveDiff = auto
-				transform.shellTurnID = "journal-turn"
+				transform.shellTurnID = "host-turn"
 				transform.subagentTurn = child
 				auto.beginTurn(workspace, transform.threadID, codexTurnMetadata{
 					RequestKind: "turn", ThreadID: transform.threadID, TurnID: transform.shellTurnID,
 				})
 				requireLiveDiffTurnEvent(t, sub, "active")
-				requestJournalFinish(t, transform)
 
-				response := map[string]any{"id": "terminal", "status": "completed", "output": []any{}}
+				response := map[string]any{"id": "terminal", "status": "completed", "output": []any{map[string]any{
+					"type": "message", "id": "answer", "role": "assistant", "phase": "final_answer", "status": "completed",
+					"content": []any{map[string]any{"type": "output_text", "text": "Finished."}},
+				}}}
 				var delivered [][]byte
 				if stream {
 					var err error
@@ -200,14 +198,12 @@ func TestLiveDiffJournalTerminalCompletesAfterTransformedDelivery(t *testing.T) 
 
 func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 	for _, stream := range []bool{false, true} {
-		for _, scenario := range []string{"final", "tool-only", "failed"} {
+		for _, scenario := range []string{"final", "tool-only", "terminal-tool", "failed"} {
 			t.Run(map[bool]string{false: "json", true: "sse"}[stream]+"/"+scenario, func(t *testing.T) {
 				t.Setenv("TMPDIR", t.TempDir())
 				transform, proxy, _, workspace := newMekugiTestTransform(t)
 				turnID := "usage-off-" + map[bool]string{false: "json", true: "sse"}[stream] + "-" + scenario
 				transform.shellTurnID = turnID
-				transform.usageTracker = proxy.usage.observation(transform.shellThreadID, transform.shellThreadID, "gpt-6-sol", "")
-				transform.observeResponseUsage(tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5})
 				auto, sub := newLiveDiffTurnTest(t, workspace, transform.shellThreadID)
 				proxy.autoLiveDiff = auto
 				auto.beginTurn(workspace, transform.shellThreadID, codexTurnMetadata{
@@ -230,6 +226,8 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 					output = []any{ordinaryAnswer}
 				case "tool-only":
 					output = []any{toolCall}
+				case "terminal-tool":
+					output = []any{ordinaryAnswer, toolCall}
 				case "failed":
 					status, output = "failed", []any{ordinaryAnswer}
 				}
@@ -257,7 +255,13 @@ func TestLiveDiffCompletionOnlyForSuccessfulFinal(t *testing.T) {
 					} else {
 						events = append(events, finalAnswerTestEvents(t, "final_answer")...)
 					}
-					events = append(events, finalAnswerTestTerminal(t, status, false))
+					terminalEvent := finalAnswerTestTerminal(t, status, false)
+					if scenario == "terminal-tool" {
+						terminalEvent = mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{
+							"id": "terminal-tool", "status": "completed", "output": output,
+						}})
+					}
+					events = append(events, terminalEvent)
 					var terminal [][]byte
 					for i, event := range events {
 						visible, err := transform.TransformSSE(event)

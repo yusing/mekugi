@@ -413,7 +413,7 @@ func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
 	}
 }
 
-func TestServiceTierJournalContinuationAndRootNotice(t *testing.T) {
+func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	root, _ := prepareActivityTest(t, proxy, "root-session", "root", "", "/root", nil)
 	proxy.activity.attachNativePane("root")
@@ -428,19 +428,7 @@ func TestServiceTierJournalContinuationAndRootNotice(t *testing.T) {
 	request := serverRequest(t, func(fields map[string]any) {
 		fields["model"], fields["service_tier"] = "gpt-5.6-sol", "flex"
 	})
-	provider := &serverFakeProvider{}
-	for index, op := range []string{"list", "finish"} {
-		body := mustTestJSON(t, map[string]any{
-			"id": fmt.Sprintf("tier-response-%d", index), "status": "completed",
-			"output": []any{map[string]any{
-				"type": "function_call", "id": fmt.Sprintf("item-%d", index),
-				"call_id": fmt.Sprintf("call-%d", index), "name": "journal",
-				"arguments": fmt.Sprintf(`{"op":%q}`, op), "status": "completed",
-			}},
-			"usage": map[string]any{"input_tokens": 50_000},
-		})
-		provider.results = append(provider.results, serverForwardResult{response: serverHTTPResponse(string(body))})
-	}
+	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"id":"tier-response","status":"completed","output":[],"usage":{"input_tokens":50000}}`)}}}
 	executor := requestExecutor{
 		provider: provider, output: &bytes.Buffer{}, mekugiCalls: proxy,
 		serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-5.6-sol": "fast"}},
@@ -448,17 +436,15 @@ func TestServiceTierJournalContinuationAndRootNotice(t *testing.T) {
 	if err := executor.execute(t.Context(), t.Context(), request, headers, "child-session"); err != nil {
 		t.Fatal(err)
 	}
-	if len(provider.forwarded) != 2 {
+	if len(provider.forwarded) != 1 {
 		t.Fatalf("forwarded=%d", len(provider.forwarded))
 	}
-	for index, want := range []string{"priority", "priority"} {
-		forwarded, err := parseResponsesRequest(provider.forwarded[index])
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := jsonString(forwarded.fields, "service_tier"); got != want {
-			t.Fatalf("attempt %d tier=%s want=%s", index, got, want)
-		}
+	forwarded, err := parseResponsesRequest(provider.forwarded[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := jsonString(forwarded.fields, "service_tier"); got != "priority" {
+		t.Fatalf("provider tier=%s want=priority", got)
 	}
 	entries := proxy.activity.takeNativeActivity("root")
 	if len(entries) != 1 || entries[0].Kind != "start" || entries[0].start == nil || entries[0].start.tier != "fast" {

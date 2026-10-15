@@ -40,10 +40,6 @@ A durable record MUST contain only:
 - HTTP and Responses status, completeness, duration, a bounded capture-error category, and an optional `transport: "websocket"` marker;
 - optional `request_kind`, restricted to `turn`, `prewarm`, or `compaction`, supplied
   from validated router metadata and preserved in the corresponding exchange snapshot;
-- optional `compaction_answer` (`router` or `provider`) and
-  uncovered change/failure counts. Router answers have known counts and no provider
-  attempt or provider usage record. Their exchange usage explicitly reports zero;
-  provider answers have unknown evidence counts. Missing answerer fields in older exports mean unknown, not provider;
 - provider usage counters;
 - bounded private request/routing fingerprints as specified below;
 - bounded, allowlisted provider-response evidence as specified below;
@@ -56,7 +52,7 @@ a capture error rather than substituting the provider wire request for cache dia
 
 `GET /api/metrics` MUST return `mekugi.capture.metrics.v7`. Provider and transport
 calculations belong to the capturer, not the router, engine, plugin, comparison
-report or session dialog. Journal operation evidence comes from its durable owner.
+report or session dialog.
 
 With `--deduplicate-output`, `/session` shows output-deduplication occurrences
 and estimated saved tokens. An occurrence is one replaced output text part or
@@ -78,7 +74,7 @@ With `--debug`, the snapshot includes optional `storage_writes` with cumulative
 returned by instrumented writes, including partial writes and temporary files whose
 rename fails. It covers this router process's managed records (including usage,
 ownership and revision records), router/instruction logs, capture, metrics and AX
-report writes. It excludes other processes (including frontend/AX-journal workers
+report writes. It excludes other processes (including frontend/AX read-log workers
 and Git snapshots), filesystem metadata, uninstrumented caches and physical device
 I/O. No counter is exported when instrumentation is disabled; missing is not zero.
 Each snapshot excludes its own serialization and any later writes; the shutdown
@@ -87,7 +83,7 @@ resume or combined with another router's state.
 
 Exchange and provider-attempt details retain wall-clock duration in milliseconds,
 HTTP status, response completeness and bounded capture-error codes. Exchange duration
-includes local compaction. Transport byte counts are not provider usage or savings.
+includes request preparation and delivery. Transport byte counts are not provider usage or savings.
 
 Usage totals retain normalized provider observations, with attempt coverage partitioned
 into `complete_attempts` (`evidence_complete: true`), `incomplete_attempts` (false),
@@ -96,7 +92,7 @@ into `complete_attempts` (`evidence_complete: true`), `incomplete_attempts` (fal
 its three completeness categories plus missing attempts reconcile request attempt totals.
 Zero-token usage with complete evidence remains a complete observation, not missing.
 Exchange usage stays absent when no attempt supplies usage; a mixed exchange retains
-its missing-attempt count. Router-local compaction still has explicit zero usage.
+its missing-attempt count.
 Completeness describes token-category telemetry, independently of capture health.
 Coverage counters remain cumulative when exchange details are evicted and reset with
 the recorder, never reconstructed from a previous launch.
@@ -154,34 +150,6 @@ The snapshot MUST expose:
    its usage, while cumulative totals remain process-lifetime totals; and
 6. capture health for record failures, incomplete records, missing provider records,
    provider-attempt gaps, durable-write errors, skipped requests, and dropped exchange detail.
-
-Client exchanges optionally include `journal`, a cumulative snapshot for their
-`thread_id`: `started_at`, counter `sequence`, `operations` by accepted operation
-kind, `standalone_requests`, `final_answers`, total `final_answer_bytes`,
-`empty_outcomes`, and optional `last_outcome_empty`. Absent means unobserved, not
-zero. Zero counts and a known false Outcome flag remain explicit. Provider-attempt
-records do not duplicate the snapshot. No journal text, titles or questions appear.
-
-Tracking begins at `started_at`; migration does not reconstruct historical counts.
-Within that tracking period consumers select the latest counter sequence instead
-of summing snapshots across exchanges. A fork starts its own counts, not a copy
-of the source's performed operations. A new tracking period after retained-state
-cleanup cannot be mistaken for complete history.
-
-Operations count top-level accepted mutations, not the events or tasks expanded
-by a plan; receipt replay and rejected batches do not increment them. Public
-reads count successful executions; presentation and recovery reads do not count.
-Standalone requests are completed model responses containing journal calls but
-no other tool work, once per response, not once per call. This counter does not
-count standalone progress prose or establish compliance with journal guidance.
-Internal journal transport invocations within a useful exec are not additional
-provider requests. Evaluate prose bypass and final/journal overlap from retained
-session evidence, distinguishing legitimate answers from work recaps; provider
-usage, not transport counts or local description bytes, owns consumption claims.
-Final-answer bytes are
-decoded UTF-8 bytes before journal rendering, including `Done.` and answers too
-large to capture. Empty Outcome follows the journal rule. These are observed
-response measurements, not acknowledgements of downstream delivery or savings.
 
 Provider usage is authoritative for model consumption. Transport observations retain
 exact observed bytes, not local token estimates. Output-deduplication savings remain
@@ -354,10 +322,8 @@ downstream JSON observations and correlated provider attempts. Status 101
 describes the transport, not successful response completion. Internal SSE
 adaptation MUST NOT contribute synthetic framing bytes to either boundary.
 
-An explicit `generate:false` prewarm, router compaction answer, or verified
-journal host-finish may complete locally without a provider attempt. Capture derives
-the prewarm exception from the observed request; the router observes its local
-compaction and journal host-finish decisions before response delivery. Capture persists
+An explicit `generate:false` prewarm may complete locally without a provider
+attempt. Capture derives this exception from the observed request and persists
 `provider_expected:false` on the sanitized client record, so live and offline
 readers do not report a missing provider. An absent field still means a
 provider is expected. Any actual provider traffic remains measured in provider usage and

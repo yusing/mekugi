@@ -4,5 +4,4 @@
 ┃ ↩ re: your message 11:50:06
 ┃ ▎ Show me how the new transcript search instruction looks like
 ┃ 
-┃ ▎ After selective journal/retained-output reads, search the transcript only for missing exact
-┃ ▎ historical details.
+┃ ▎ Read retained output before searching the transcript for exact historical details.

@@ -235,7 +235,7 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	if u.turn != "active" || !u.session.agent("/root").Responding || len(u.view.entries) != 0 {
 		t.Fatalf("resume lost the active turn or rendered early: turn=%q entries=%+v", u.turn, u.view.entries)
 	}
-	// Journal delivery setup is not under test; attach only the collector.
+	// Attach only the activity collector.
 	activity := newSubagentActivity()
 	u.proxy = &mekugiProxy{activity: activity}
 	activity.attachNativePane("saved")

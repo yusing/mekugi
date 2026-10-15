@@ -28,15 +28,14 @@ type sessionTitleJob struct {
 type sessionTitleGenerator struct {
 	ctx      context.Context
 	provider responseProvider
-	cache    *sessionTitleCache
 	usage    *threadUsage
 	updates  chan sessionTitleUpdate
 	mu       sync.Mutex
 	jobs     map[string]*sessionTitleJob
 }
 
-func newSessionTitleGenerator(ctx context.Context, provider responseProvider, cache *sessionTitleCache) *sessionTitleGenerator {
-	return &sessionTitleGenerator{ctx: ctx, provider: provider, cache: cache, updates: make(chan sessionTitleUpdate, 16), jobs: make(map[string]*sessionTitleJob)}
+func newSessionTitleGenerator(ctx context.Context, provider responseProvider) *sessionTitleGenerator {
+	return &sessionTitleGenerator{ctx: ctx, provider: provider, updates: make(chan sessionTitleUpdate, 16), jobs: make(map[string]*sessionTitleJob)}
 }
 
 // Only empty host threads are eligible. Resume and fork metadata, rather than

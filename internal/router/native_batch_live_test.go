@@ -22,7 +22,7 @@ func nativeBatchFixture(t *testing.T) *appServerUI {
 	u.session.cwd = "/workspace"
 	u.ensureShell()
 	u.view.clock, u.agents.clock = u.clock, u.clock
-	u.shell.journalOpen = false
+
 	t.Cleanup(func() { _ = u.shell.diffScreen.Close() })
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "MAIN_TRANSCRIPT", Observed: u.clock()}}})
 	u.agents.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/editor"}, {Name: "/root/reviewer"}}, Entries: []activityPaneEntry{

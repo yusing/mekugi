@@ -110,7 +110,6 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u.shell.preview(projectStockPatchPreview(t.Context(), workspace, preview))
 			revealNativeDock(u.shell)
 			if caller != "/root" {
-				u.shell.journalOpen = false
 				if width < 100 {
 					u.shell.focus = 2
 				}
@@ -145,21 +144,12 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 	}
 }
 
-func TestNativeUIComposerGapBelowJournal(t *testing.T) {
-	for _, withJournal := range []bool{false, true} {
-		u, _ := newAppServerTestUI()
-		u.draft = "draft"
-		if withJournal {
-			tree := nativeJournalFixture()
-			u.journal = &nativeJournalSink{tree: &tree}
-		}
-		rows, _ := u.mainFrame(80, 24, 0)
-		border := u.composerRect.y - 1
-		if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
-			t.Fatalf("composer not separated: %q", rows)
-		}
-		if withJournal && !strings.Contains(ansi.Strip(rows[border-2]), "Continuation paused /3: Needs decision") {
-			t.Fatalf("journal not above gap: %q", rows)
-		}
+func TestNativeUIComposerGap(t *testing.T) {
+	u, _ := newAppServerTestUI()
+	u.draft = "draft"
+	rows, _ := u.mainFrame(80, 24, 0)
+	border := u.composerRect.y - 1
+	if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {
+		t.Fatalf("composer not separated: %q", rows)
 	}
 }

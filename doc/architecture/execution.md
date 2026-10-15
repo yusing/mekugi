@@ -4,7 +4,7 @@
 
 Codex owns stock `apply_patch`, `exec_command`, JavaScript tool execution, permissions,
 sandboxing, processes, and yielded-session continuation. Mekugi's request
-projection adds journal and session-helper guidance to the `exec` description. It
+projection adds session-helper guidance to the `exec` description. It
 does not replace the execution catalog or create a carrier for an unchanged
 stock call.
 

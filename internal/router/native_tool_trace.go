@@ -393,32 +393,6 @@ func (b *nativeTraceBundle) event(directory string, event nativeTraceEvent) erro
 	return nil
 }
 
-func (t *nativeToolTrace) readAgentResults() []nativeAgentResult {
-	if t == nil {
-		return nil
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	results := make(map[string]nativeAgentResult)
-	ambiguous := make(map[string]bool)
-	for _, bundle := range t.readBundles() {
-		for key, result := range bundle.agents {
-			if _, exists := results[key]; exists {
-				ambiguous[key] = true
-			}
-			results[key] = result
-		}
-	}
-	var found []nativeAgentResult
-	for key, result := range results {
-		if !ambiguous[key] && result.state != "" {
-			result.previous = append([]string(nil), result.previous...)
-			found = append(found, result)
-		}
-	}
-	return found
-}
-
 // readCell returns a copy; concurrent requests never share mutable outcomes.
 // Missing/corrupt/bounded-out evidence is unavailable, never a successful call.
 func (t *nativeToolTrace) readCell(thread, callID, source string) *nativeTraceCell {
@@ -571,9 +545,7 @@ func (c *nativeTraceCell) pending() bool {
 }
 
 // commands confirms each observed command by exactly one terminal host call.
-// Journal publications the router lowered into history's carrier are not
-// observed commands and do not affect the outcome; any unobserved occurrence
-// leaves the outcome unconfirmed.
+// Any unobserved occurrence leaves the outcome unconfirmed.
 func (c *nativeTraceCell) commands(history *mekugiHistory, workspace string) ([]nativeToolResult, bool) {
 	if c == nil || !c.ended || history.ExecObservation == nil {
 		return nil, false

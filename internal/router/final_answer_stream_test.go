@@ -75,7 +75,6 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					metadata.SubagentKind = threadSpawnSubagentKind
 				}
 				transform, _, _ := newSubagentCommentaryTestTransformWithMetadata(t, nil, metadata)
-				transform.journalActive = false
 				answer := finalAnswerTestEvents(t, phase)
 				terminal := finalAnswerTestTerminal(t, "completed", true)
 				var output bytes.Buffer
@@ -85,7 +84,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
 				events := finalAnswerTestPayloads(output.String())
-				// Without an active journal, the answer lifecycle is streamed
+				// The answer lifecycle is streamed
 				// unchanged; completion metrics remain outside the conversation.
 				wantEvents := len(answer) + 1
 				if len(events) != wantEvents {
@@ -138,7 +137,6 @@ func TestFinalAnswerStreamStreamsAnswersProgressAndTools(t *testing.T) {
 	t.Parallel()
 
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-	transform.journalActive = false
 	answer := finalAnswerTestEvents(t, "final_answer")
 	for _, event := range answer {
 		visible, err := transform.TransformSSE(event)
@@ -176,7 +174,6 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 	for _, stop := range []string{"missing_usage", "failed", "incomplete", "eof", "read_error", "error_event", "done_sentinel"} {
 		t.Run(stop, func(t *testing.T) {
 			transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-			transform.journalActive = false
 			answer := finalAnswerTestEvents(t, "final_answer")
 			input := slices.Clone(answer)
 			switch stop {
@@ -224,7 +221,6 @@ func (r finalAnswerErrorReader) Read([]byte) (int, error) { return 0, r.err }
 func TestFinalAnswerStreamLargeDeltaStreamsUnchanged(t *testing.T) {
 	t.Parallel()
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-	transform.journalActive = false
 	event := mustTestJSON(t, map[string]any{"type": "response.output_text.delta", "item_id": "answer", "delta": strings.Repeat("x", upstreamJSONBufferBytes+1)})
 	visible, err := transform.TransformSSE(event)
 	if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], event) || transform.finalAnswer.disabled {
@@ -232,7 +228,7 @@ func TestFinalAnswerStreamLargeDeltaStreamsUnchanged(t *testing.T) {
 	}
 }
 
-func TestNonJournalAnswerStreamsWithoutUsageCommentary(t *testing.T) {
+func TestAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 	t.Parallel()
 	for _, child := range []bool{false, true} {
 		t.Run(map[bool]string{false: "root", true: "child"}[child], func(t *testing.T) {
@@ -259,17 +255,11 @@ func TestNonJournalAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 			}
 			events := finalAnswerTestPayloads(output.String())
 			wantEvents := len(answer) + 1
-			if child {
-				wantEvents++
-			}
 			if len(events) != wantEvents || bytes.Contains(output.Bytes(), []byte("Router session usage")) {
 				t.Fatalf("completion output = %s", output.String())
 			}
 			if !bytes.Contains(output.Bytes(), []byte("No files were changed.")) || !bytes.Contains(output.Bytes(), []byte(`"id":"answer"`)) {
 				t.Fatal("completion lost the answer or violated Main/child delivery ownership")
-			}
-			if !child && bytes.Contains(output.Bytes(), []byte("Journal flush")) {
-				t.Fatal("answer-only Main completion emitted a journal report")
 			}
 			counts, available := proxy.usage.snapshot("thread-1")
 			if !available || counts.tokenCounts != (tokenCounts{InputTokens: 20, UncachedInputTokens: 8, OutputTokens: 5, ReasoningTokens: 3}) {

@@ -16,14 +16,6 @@ func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
 					headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 					if requestKind == "compaction" {
 						headers = serverCompactionMetadataHeaders(t)
-						var rawMetadata string
-						for name, values := range headers {
-							if name == codexTurnMetadataHeader {
-								rawMetadata = values[0]
-							}
-						}
-						clear(headers)
-						headers.Set(codexTurnMetadataHeader, rawMetadata)
 						var err error
 						request, err = parseResponsesRequest(mustTestJSON(t, map[string]any{
 							"model": "gpt-test", "input": []any{map[string]any{"role": "user", "content": "compact"}},

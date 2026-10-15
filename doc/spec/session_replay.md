@@ -8,7 +8,7 @@ It searches `sessions` and `archived_sessions` under `CODEX_HOME` (default
 Missing or ambiguous sessions fail rather than choosing a rollout arbitrarily.
 It reconstructs UI presentation from retained Codex rollout records.
 It creates no Codex process, provider transport,
-command executor, live observer, journal delivery, or replay-store writer.
+command executor, live observer, or replay-store writer.
 Playback keys control presentation only; recorded content cannot submit intent.
 
 The first session metadata record identifies the file. Copied ancestor metadata,
@@ -29,14 +29,7 @@ workspace and thread, because Codex does not persist these notifications.
 Replay shows their recorded output and outcomes without restarting hooks;
 an observation without completion has an unknown outcome and no running state.
 Question and answer presentation is limited to retained semantic items; input
-keystrokes, resize events, journal publications, and live diff previews are absent.
-Retained semantic journal messages remain visible. Authorized child journals use
-retained revisions and recorded host turns to reconstruct mounted and unmounted
-hierarchies. Latest stored child items or lifecycle cannot supply historical state;
-missing records or unproven ancestry are disclosed. Journal progress uses the
-recorded clock, including pause and backward seek. Recorded journal shell commands
-and output use the ordinary command path,
-including their original start and completion bounds.
+keystrokes, resize events, and live diff previews are absent.
 
 Events are stably merged by recorded time. Item start and completion remain fixed;
 agent text and command output are not exposed at item start. Synthetic UTF-8 streaming deltas
@@ -69,12 +62,11 @@ snapshots cover running, paused, completed, and narrow playback states.
 columns and 8–500 rows). It emits no terminal bytes and returns a JSON timing
 summary on stdout; loading/coverage/progress notices use stderr. Interactive
 mode requires terminal stdin/stdout and restores terminal state on exit.
-The p key pauses playback; Space also pauses outside Journal. `Ctrl-E` uses the
-focused pane's [disclosure controls](native_ui.md) as in live presentation.
-Focused Journal supports selection with j/k or navigation keys, Space disclosure, namespace
-switching, copied durable addresses, and d/Enter for read-only details. Its wheel
-scrolls without changing selection. Details support scrolling and close with
-Escape or q; Ctrl+C always quits replay. Outside details, Escape or q quits.
+The p key or Space pauses playback. `Ctrl-B` followed by 1–4 selects Main, Diff,
+Activity, or Agents; `Ctrl-E` uses the focused pane's
+[disclosure controls](native_ui.md) as in live presentation. Output dialogs use
+their ordinary navigation and close controls. Outside a dialog, Escape or q
+quits; Ctrl+C always quits replay.
 Other wheel reports scroll Main; unsupported mouse/navigation reports cannot
 become playback commands. These presentation controls never submit host intent. Mouse reporting
 is enabled only during interactive playback and disabled on exit.

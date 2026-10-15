@@ -48,47 +48,44 @@ func TestMainCompletionPreservesPriorTotalsWithoutCurrentUsage(t *testing.T) {
 }
 
 func TestMainCompletionDoesNotExportTokenMetrics(t *testing.T) {
-	for _, journal := range []bool{false, true} {
-		for _, stream := range []bool{false, true} {
-			name := map[bool]string{false: "plain", true: "journal"}[journal] + "/" + map[bool]string{false: "json", true: "sse"}[stream]
-			t.Run(name, func(t *testing.T) {
-				directory := t.TempDir()
-				t.Setenv("TMPDIR", directory)
-				proxy := newManagedMekugiProxy(t)
-				main, _ := prepareActivityTest(t, proxy, "session", "thread", "", "/root", nil)
-				main.journalActive = journal
-				main.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 40, OutputTokens: 10})
-				response := []byte(`{"id":"main-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Actual answer"}]}]}`)
-				var output []byte
-				if stream {
-					events, err := main.TransformSSE([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"answer","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Actual answer"}]}}`))
-					if err != nil {
-						t.Fatal(err)
-					}
-					output = bytes.Join(events, nil)
-					events, err = main.TransformSSE(append(append([]byte(`{"type":"response.completed","response":`), response...), '}'))
-					if err != nil {
-						t.Fatal(err)
-					}
-					output = append(output, bytes.Join(events, nil)...)
-				} else {
-					var err error
-					output, err = main.TransformJSON(response)
-					if err != nil {
-						t.Fatal(err)
-					}
+	for _, stream := range []bool{false, true} {
+		name := map[bool]string{false: "json", true: "sse"}[stream]
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			t.Setenv("TMPDIR", directory)
+			proxy := newManagedMekugiProxy(t)
+			main, _ := prepareActivityTest(t, proxy, "session", "thread", "", "/root", nil)
+			main.observeResponseUsage(tokenCounts{InputTokens: 100, UncachedInputTokens: 40, OutputTokens: 10})
+			response := []byte(`{"id":"main-response","status":"completed","output":[{"type":"message","id":"answer","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Actual answer"}]}]}`)
+			var output []byte
+			if stream {
+				events, err := main.TransformSSE([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"answer","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Actual answer"}]}}`))
+				if err != nil {
+					t.Fatal(err)
 				}
-				main.Close()
-				if !bytes.Contains(output, []byte("Actual answer")) || bytes.Contains(output, []byte("Router session usage")) {
-					t.Fatalf("completion changed the answer or emitted metrics: %s", output)
+				output = bytes.Join(events, nil)
+				events, err = main.TransformSSE(append(append([]byte(`{"type":"response.completed","response":`), response...), '}'))
+				if err != nil {
+					t.Fatal(err)
 				}
-				report, ok := proxy.usage.snapshot("thread")
-				if !ok || report.InputTokens != 100 || report.OutputTokens != 10 {
-					t.Fatalf("completion lost in-memory usage: %+v, ok=%v", report, ok)
+				output = append(output, bytes.Join(events, nil)...)
+			} else {
+				var err error
+				output, err = main.TransformJSON(response)
+				if err != nil {
+					t.Fatal(err)
 				}
-				assertNoLegacyTokenMetrics(t, directory)
-			})
-		}
+			}
+			main.Close()
+			if !bytes.Contains(output, []byte("Actual answer")) || bytes.Contains(output, []byte("Router session usage")) {
+				t.Fatalf("completion changed the answer or emitted metrics: %s", output)
+			}
+			report, ok := proxy.usage.snapshot("thread")
+			if !ok || report.InputTokens != 100 || report.OutputTokens != 10 {
+				t.Fatalf("completion lost in-memory usage: %+v, ok=%v", report, ok)
+			}
+			assertNoLegacyTokenMetrics(t, directory)
+		})
 	}
 }
 

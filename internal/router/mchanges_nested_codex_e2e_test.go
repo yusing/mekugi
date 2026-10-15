@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -184,8 +184,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal("installed Codex is required for the mchanges nested-tool acceptance gate")
 	}
-	dataDirectory := t.TempDir()
-	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
+	registry, err := buildToolRegistryForTest(t, t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

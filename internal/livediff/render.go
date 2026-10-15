@@ -78,9 +78,6 @@ func (r *Renderer) provenance(file File) string {
 			noun += "s"
 		}
 		attribution := "by other callers"
-		if file.taskScoped {
-			attribution = "outside scope"
-		}
 		parts = append(parts, fmt.Sprintf(Subtle+"%d %s %s as baseline"+SubtleReset, file.Baseline, noun, attribution))
 	}
 	return Subtle + "┄" + SubtleReset + " " + strings.Join(parts, "  ")

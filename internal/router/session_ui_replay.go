@@ -22,7 +22,6 @@ import (
 )
 
 type uiReplayPlayback struct {
-	journals              map[string]map[string]threadJournal
 	paintedAt             time.Time
 	source                *sessionUIReplay
 	ui                    *appServerUI
@@ -49,10 +48,8 @@ func newUIReplayPlayback(ctx context.Context, source *sessionUIReplay, speed flo
 
 func (p *uiReplayPlayback) reset() {
 	var previous *terminalUI
-	var journalView nativeJournalView
 	if p.ui != nil {
 		previous = p.ui.shell
-		journalView.unscoped, journalView.expanded = p.ui.journalView.unscoped, p.ui.journalView.expanded
 		p.close()
 	}
 	p.at, p.next = p.source.Start, 0
@@ -68,14 +65,11 @@ func (p *uiReplayPlayback) reset() {
 		}
 	}
 	u.ensureShell()
-	u.journalView = journalView
-	u.shell.journalOpen = false
 	if previous != nil {
 		u.shell.focus, u.shell.side = previous.focus, previous.side
-		u.shell.journalOpen, u.shell.diffOpen, u.shell.activityOpen = previous.journalOpen, previous.diffOpen, previous.activityOpen
+		u.shell.diffOpen, u.shell.activityOpen = previous.diffOpen, previous.activityOpen
 	}
 	p.ui = u
-	p.journals = make(map[string]map[string]threadJournal)
 }
 
 func (p *uiReplayPlayback) close() {
@@ -99,15 +93,12 @@ func (p *uiReplayPlayback) advance(position time.Duration) error {
 			p.ui.session.registerThread(appServerThreadInfo{ID: id, AgentNickname: strings.TrimPrefix(p.source.Threads[id], "/root/")})
 		}
 		p.at = e.At
-		p.observeReplayJournalTurn(e)
 		p.next++
 		switch e.Method {
 		case "replay/hook":
 			entry := p.ui.session.hookEntry(e.Params.ThreadID, *e.Params.HookObservation, false)
 			entry.Seq = p.ui.session.next()
 			p.ui.applyActivity([]activityPaneEntry{entry}, nil)
-		case "replay/journal":
-			p.applyReplayJournal(e)
 		case "replay/providerStarted":
 			p.ui.applyActivity(p.ui.session.beginThinking(e.Params.ThreadID, e.At), nil)
 		case "replay/providerCompleted":
@@ -201,7 +192,7 @@ func (p *uiReplayPlayback) bar(width int) string {
 		speed += ".0"
 	}
 	label := fmt.Sprintf(" %s Replay · simulated · %sx · %s/%s", state, speed, replayTime(p.position), replayTime(p.until))
-	hint := "  ^B 1-5 · p pause · +/- speed · [/] seek · r restart · q quit"
+	hint := "  ^B 1-4 · p pause · +/- speed · [/] seek · r restart · q quit"
 	remaining := width - ansi.StringWidth(label) - ansi.StringWidth(hint) - 3
 	if remaining >= 6 {
 		filled := 0
@@ -243,36 +234,13 @@ func (p *uiReplayPlayback) key(key byte) (bool, error) {
 	}
 	if p.prefix {
 		p.prefix = false
-		if key >= '1' && key <= '5' {
+		if key >= '1' && key <= '4' {
 			p.ui.shell.selectNativePane(int(key - '1'))
 		}
 		return false, nil
 	}
 	if key == 5 {
 		return false, shell.send("\x05")
-	}
-	if shell.focus == 4 && shell.journalOpen {
-		navigation := replayNavigation[key]
-		switch key {
-		case 'j', 'k', 'g', 'G', ' ', 'd', 'n', 'c':
-			navigation = string(key)
-		case 'h':
-			navigation = "\x1b[D"
-		case 'l':
-			navigation = "\x1b[C"
-		case '\r', '\n':
-			// Details are always presentation-only, including mounted roots.
-			navigation = "d"
-		case terminalui.PaneWheelUp:
-			p.ui.journalView.offset = max(0, p.ui.journalView.offset-3)
-			return false, nil
-		case terminalui.PaneWheelDown:
-			p.ui.journalView.offset += 3
-			return false, nil
-		}
-		if navigation != "" {
-			return false, shell.journalKey(navigation)
-		}
 	}
 	switch key {
 	case 2:
@@ -389,12 +357,9 @@ func RunSessionUIReplay(ctx context.Context, args []string, stdin, stdout, stder
 	if *from >= *until || *until > duration {
 		return fail(errors.New("require 0 <= from < until <= session duration"))
 	}
-	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream. Journal presentation uses retained revisions and host turn boundaries.\n", source.Thread, source.Items, len(source.Events), source.Providers, activityui.FormatDuration(duration), *speed, *seed)
+	fmt.Fprintf(stderr, "Replay: %s · %d items · %d events · %d provider calls · %s · %.1fx\nStreaming is simulated (seed %d); no recorded input, resize or live-diff stream.\n", source.Thread, source.Items, len(source.Events), source.Providers, activityui.FormatDuration(duration), *speed, *seed)
 	if len(source.Missing) > 0 || len(source.Unsupported) > 0 {
 		fmt.Fprintf(stderr, "Coverage: %d missing child rollouts; unsupported item kinds: %v\n", len(source.Missing), source.Unsupported)
-	}
-	for _, failure := range source.JournalUnavailable {
-		fmt.Fprintf(stderr, "Coverage: journal history unavailable (%s); recorded host activity is preserved.\n", failure)
 	}
 	for _, failure := range source.HookUnavailable {
 		fmt.Fprintf(stderr, "Coverage: hook history unavailable (%s).\n", failure)

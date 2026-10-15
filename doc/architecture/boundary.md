@@ -36,6 +36,11 @@ Neither is restored as a process or execution authority during replay.
 Fork and resume views use visible durable facts. Compaction removes invisible
 ancestry from one request view without deleting records needed by other
 branches. Expired output references and Codex process handles are not revived.
+Completed host results first visible during compaction still publish change
+evidence. Observation uses the selected workspace or the selected thread's
+retained call ownership and leaves the provider compaction payload unchanged.
+Observation failure reports missing evidence without blocking provider compaction.
+Unsupported local context references fail before provider forwarding.
 
 The shared persistence primitive closes a private same-directory temporary file
 before rename; successful application-write byte counts are invocation-owned.
@@ -76,8 +81,7 @@ provider response. The
 is a model-input-only exception: it runs after all evidence consumers and leaves
 the original request input, host result, rollout, replay evidence, and UI intact.
 Caller-owned base instructions pass through except for
-explicit omission blocks and pinned inherited conflicts. Additive journal
-guidance belongs to the journal tool projection. XML-framed session-helper guidance is
+explicit omission blocks and pinned inherited conflicts. XML-framed session-helper guidance is
 embedded from a checked-in standalone Markdown file generated from tool-source descriptions and
-an out-of-router template. Both projections remain call-local; only the frontend
-section is stored with the pinned catalog snapshot.
+an out-of-router template. Guidance remains call-local and is stored with the
+pinned catalog snapshot.

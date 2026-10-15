@@ -91,7 +91,7 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 	}
 	identityKeys := []string{"timestamp", "request_id", "capture_id", "thread_id", "session_id"}
 	metadataKeys := map[string][]string{
-		"router.jsonl":       append(append([]string{}, identityKeys...), "event", "outcome", "failed", "feature", "stage", "source", "call_id", "message_id", "phase", "upstream_status", "duration_ms", "diagnostic_code", "diagnostic_reference", "response_stream", "cancellation_cause"),
+		"router.jsonl":       append(append([]string{}, identityKeys...), "event", "outcome", "failed", "source", "call_id", "message_id", "phase", "upstream_status", "duration_ms", "diagnostic_code", "diagnostic_reference", "response_stream", "cancellation_cause"),
 		"capture.jsonl":      append(append([]string{}, identityKeys...), "captured_at", "boundary", "control_direction", "request_sequence", "provider_attempt", "request_model", "status_code", "response_complete", "response_status", "capture_error", "duration_ms", "provider_response", "usage", "tool_calls"),
 		"instructions.jsonl": append(append([]string{}, identityKeys...), "scope", "model", "cached_input_items", "projected_input_bytes", "wire_input_bytes", "cache_rebased", "wire_request_present"),
 	}
@@ -128,8 +128,6 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 				if outcome := debugInspectionString(row, "outcome"); outcome != "" {
 					artifact.Counts["outcome/"+outcome]++
 				}
-			} else if name == "router.jsonl" && kind == "feature_usage" {
-				artifact.Counts["feature/"+debugInspectionString(row, "feature")+"/"+debugInspectionString(row, "stage")+"/"+debugInspectionString(row, "outcome")]++
 			}
 			if requestID != "" && debugInspectionString(row, "request_id") != requestID && debugInspectionString(row, "capture_id") != requestID {
 				return
@@ -145,12 +143,6 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 				}
 				outcome := debugInspectionString(row, "outcome")
 				nonSuccess := kind == "request_complete" && outcome != "" && outcome != "completed"
-				if kind == "feature_usage" {
-					switch outcome {
-					case "rejected", "unavailable", "oversized", "capacity":
-						nonSuccess = true
-					}
-				}
 				if requestID == "" && len(row["error"]) == 0 && !nonSuccess && string(row["failed"]) != "true" {
 					return
 				}
@@ -196,7 +188,7 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 			if name == "metrics.json" {
 				result.Metrics = debugInspectionFields(row, []string{"schema", "mode", "requests", "usage", "cache", "transport", "capture", "storage_writes"})
 			} else {
-				result.AX = debugInspectionFields(row, []string{"schema", "scope", "journal_state", "dropped_threads", "threads", "journal_only_threads", "dropped_journal_threads", "unattributed_reads"})
+				result.AX = debugInspectionFields(row, []string{"schema", "scope", "log_state", "dropped_threads", "threads", "log_only_threads", "dropped_log_threads", "unattributed_reads"})
 				if selected := debugInspectionString(row, "read_log"); filepath.IsAbs(selected) {
 					readLog = selected
 				}
@@ -212,7 +204,7 @@ func inspectDebugSession(ctx context.Context, directory, requestID, field string
 	if info, err := os.Stat(readLog); err == nil && info.Mode().IsRegular() {
 		reads.Bytes = new(info.Size())
 	}
-	if _, err := capturer.ReadAXReadJournal(ctx, readLog); err != nil {
+	if _, err := capturer.ReadAXReadLog(ctx, readLog); err != nil {
 		reads.State = "invalid_or_unavailable"
 		reportError(readLog, err)
 	}

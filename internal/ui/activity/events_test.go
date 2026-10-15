@@ -19,7 +19,7 @@ func TestEventHeadingTimestampAvailability(t *testing.T) {
 		{12, stamp, false},
 		{40, time.Time{}, false},
 	} {
-		row := ansi.Strip(EventHeading("◆", "journal", "", tc.at, tc.width))
+		row := ansi.Strip(EventHeading("◆", "event", "", tc.at, tc.width))
 		if strings.Contains(row, "12:34:56") != tc.stamp || strings.Contains(row, "00:00:00") || ansi.StringWidth(row) > tc.width {
 			t.Fatalf("invalid timestamp or heading width: %q", row)
 		}

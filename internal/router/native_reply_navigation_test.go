@@ -118,20 +118,6 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 	}
 }
 
-func TestNativeUnretainedQuestionUsesActualText(t *testing.T) {
-	v := newLiveActivityView()
-	var out conversationLines
-	v.journalReplyContext(&out, activityui.AnswerGroup{Question: "Which exact assignment?", Target: 99}, 0, "", 100)
-	if len(out.lines) != 2 || !strings.Contains(ansi.Strip(out.lines[0]), "not loaded") || ansi.Strip(out.lines[1]) != "▎ Which exact assignment?" {
-		t.Fatalf("missing original lost its quoted excerpt: %q", out.lines)
-	}
-	for _, target := range out.questions {
-		if target != 0 {
-			t.Fatal("unretained question acquired a navigation target")
-		}
-	}
-}
-
 func TestNativeAssignmentExcerptWrapsAndRetainsTarget(t *testing.T) {
 	v := newLiveActivityView()
 	var out conversationLines
@@ -213,7 +199,7 @@ func TestNativeExcerptEllipsisSkipsParagraphGaps(t *testing.T) {
 
 func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 	for _, width := range []int{32, 90} {
-		for _, kind := range []string{"main raw", "main journal", "agent raw", "agent journal", "agent excerpt"} {
+		for _, kind := range []string{"main raw", "agent raw", "agent excerpt"} {
 			t.Run(fmt.Sprintf("%s/%d", kind, width), func(t *testing.T) {
 				v := newLiveActivityView()
 				v.conversation = true
@@ -224,10 +210,6 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 					question.Kind = "assignment"
 					question.assignment = &activityAssignment{to: "/root/worker", text: question.Text}
 					entry.Agent, entry.Kind, block.Kind = "/root/worker", "final", "final"
-				}
-				if strings.Contains(kind, "journal") || kind == "agent excerpt" {
-					entry.journal = &journalItem{}
-					block.Journal = &activityui.Journal{Groups: []activityui.AnswerGroup{{Question: question.Text, Target: 1, Answers: []activityui.Answer{{Text: entry.Text}}}}}
 				}
 				if kind == "agent excerpt" {
 					entry.activitySeq = 5

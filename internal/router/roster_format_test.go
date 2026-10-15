@@ -69,28 +69,6 @@ func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 	}
 }
 
-func TestRosterRoleUsesDurableSpawnEvidence(t *testing.T) {
-	p := newManagedMekugiProxy(t)
-	root, _ := prepareActivityTest(t, p, "root-session", "root", "", "/root", nil)
-	if err := p.journals.bindSpawnRoles(t.Context(), p.replayStore, root.directory, "root", map[string]journalSpawnRole{"/root/worker": {Role: "explorer"}}); err != nil {
-		t.Fatal(err)
-	}
-	child, _ := prepareActivityTest(t, p, "child-session", "child", "root", "/root/worker", nil)
-	node := p.activity.threads["child"]
-	if node.role != "explorer" {
-		t.Fatalf("node = %+v", node)
-	}
-	child.Close()
-	root.Close()
-	if err := p.journals.bindSpawnRoles(t.Context(), p.replayStore, root.directory, "root", map[string]journalSpawnRole{"/root/worker": {Role: "worker"}}); err != nil {
-		t.Fatal(err)
-	}
-	prepareActivityTest(t, p, "child-session-2", "child", "root", "/root/worker", nil)
-	if node.role != "" {
-		t.Fatalf("conflicted role = %q", node.role)
-	}
-}
-
 func TestUISnapshotRosterStripSelectionStyling(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b")
 	v.selected, v.hovered = "/root/a", "/root/b"

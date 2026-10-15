@@ -136,9 +136,6 @@ func (u *appServerUI) editQueued() {
 // flushInput sends stacked input once nothing blocks it: unsent steers into
 // the running turn, otherwise unsent steers, then queued input, as a new turn.
 func (u *appServerUI) flushInput() error {
-	if u.reset.active() {
-		return nil
-	}
 	u.unsent = pendingQuestionReplies(u.unsent)
 	u.queued = pendingQuestionReplies(u.queued)
 	if u.restoring != nil || !u.acceptsInput() {
@@ -155,7 +152,7 @@ func (u *appServerUI) flushInput() error {
 	}
 	if u.turn == "" && u.compaction.takeContinuation() {
 		if len(u.unsent)+len(u.queued) == 0 {
-			u.unsent = append(u.unsent, composerDraft{text: u.compactionText("Continue the task from where you left off before compaction.")})
+			u.unsent = append(u.unsent, composerDraft{text: "Continue the task from where you left off before compaction."})
 		}
 	}
 	var parts []composerDraft
@@ -206,7 +203,7 @@ func (u *appServerUI) flushInput() error {
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	if len(parts) == 1 && parts[0].text == "/compact" {
 		u.compaction.begin(parts[0].continueTask)
-		u.status = u.compactionProgressText() + "…"
+		u.status = "Compacting context" + "…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
 	}
 	for i := range parts {
@@ -473,7 +470,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	default:
 		header = "Waiting to send"
 	}
-	section(u.compactionText(header), append(steers, u.unsent...))
+	section(header, append(steers, u.unsent...))
 	section("Queued for the next turn · alt+↑ edits", u.queued)
 	return lines
 }

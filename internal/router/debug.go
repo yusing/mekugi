@@ -63,8 +63,8 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 	if readLog == "" {
 		readLog = filepath.Join(directory, "reads.jsonl")
 	}
-	if err := capturer.PrepareAXReadJournal(readLog); err != nil {
-		return nil, fmt.Errorf("initialize AX read journal: %w", err)
+	if err := capturer.PrepareAXReadLog(readLog); err != nil {
+		return nil, fmt.Errorf("initialize AX read log: %w", err)
 	}
 	if err := validateAXOutputAliases(readLog, capture, metrics); err != nil {
 		return nil, err
@@ -91,8 +91,7 @@ func openDebugOutput(flags routerFlags) (*debugOutput, error) {
 		return nil, fmt.Errorf("initialize debug artifacts in %s: %w", directory, errors.Join(err, d.close()))
 	}
 	d.event(map[string]any{
-		"event": "router_start", "feature_usage_schema": 1,
-		"feature_usage_features": []string{"journal"},
+		"event": "router_start",
 	})
 	if d.err != nil {
 		return nil, fmt.Errorf("initialize debug artifacts in %s: %w", directory, d.close())
@@ -107,11 +106,11 @@ func validateAXOutputAliases(readLog string, outputs ...string) error {
 	if readLog == "" {
 		return nil
 	}
-	journalPath, err := filepath.Abs(readLog)
+	logPath, err := filepath.Abs(readLog)
 	if err != nil {
 		return err
 	}
-	journalInfo, err := os.Stat(journalPath)
+	logInfo, err := os.Stat(logPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -124,8 +123,8 @@ func validateAXOutputAliases(readLog string, outputs ...string) error {
 			return err
 		}
 		info, err := os.Stat(outputPath)
-		if outputPath == journalPath || err == nil && journalInfo != nil && os.SameFile(journalInfo, info) {
-			return errors.New("AX journal and output files must use different files")
+		if outputPath == logPath || err == nil && logInfo != nil && os.SameFile(logInfo, info) {
+			return errors.New("AX log and output files must use different files")
 		}
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err

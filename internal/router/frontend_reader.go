@@ -44,12 +44,12 @@ func frontendExecutionFailure(execution toolplugin.ExecutionOutput, err error) s
 
 // beginFrontendRead owns AX setup and publication, not reader outcome policy.
 func beginFrontendRead(manifest toolWorkerManifest, name string) func(*toolplugin.ExecutionOutput, error, bool, string) {
-	journal := manifest.AXReadOutput
-	if journal == "" {
-		journal = os.Getenv(capturer.AXReadOutputEnvironment)
+	log := manifest.AXReadOutput
+	if log == "" {
+		log = os.Getenv(capturer.AXReadOutputEnvironment)
 	}
 	observation, observeErr := capturer.StartAXReadWithContext(
-		journal,
+		log,
 		os.Getenv(codexThreadIDEnvironment),
 		name,
 		capturer.AXReadContext{},

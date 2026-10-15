@@ -48,8 +48,6 @@ type mekugiHistory struct {
 	Report string
 	// Deferred diagnostics are projected onto the model-visible result, never
 	// evaluated in a program that owns the host's output-helper identifier.
-	JournalIDs           []string
-	JournalFinishTurnID  string `json:",omitempty"`
 	OutputWarning        string
 	TranslationError     string
 	CorrelationID        string
@@ -353,6 +351,9 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			continue
 		}
 		callID := jsonString(item, "call_id")
+		if callID == "" {
+			return nil, incompatibleRequest("unsupported_tool_history", "A retained tool item has no host call identity. Start a new session.")
+		}
 		if itemType == "function_call" {
 			var args struct {
 				CellID    string          `json:"cell_id"`
@@ -387,10 +388,6 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 				}
 			}
 		}
-		journalResult := callID == "" && journalResultCallID(item) != ""
-		if journalResult {
-			callID = journalResultCallID(item)
-		}
 		history, known := visible[callID]
 		if !known {
 			if p.replayStore != nil {
@@ -408,8 +405,8 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			history.sequence = uint64(len(visible) + 1)
 			history.confirmed = false
 		}
-		if journalResult && history.ToolName != journalHistoryTool && history.ToolName != reportIssueHistoryTool {
-			continue
+		if strings.HasPrefix(history.ToolName, "__mekugi_") {
+			return nil, incompatibleRequest("unsupported_tool_history", "This session contains a retired router-local tool call. Start a new session.")
 		}
 		carrierKind := history.effectiveCarrierKind()
 		if itemType == carrierOutputItemType(carrierKind) {
@@ -427,13 +424,6 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 				history.confirmed = true
 			}
 			visible[callID] = history
-			if len(history.JournalIDs) != 0 {
-				projected, _, err := appendToolOutputWarning(item["output"], "Journal item IDs: "+strings.Join(history.JournalIDs, ", "))
-				if err != nil {
-					return nil, err
-				}
-				item["output"] = projected
-			}
 			if history.OutputWarning != "" {
 				output, projected, err := appendToolOutputWarning(item["output"], history.OutputWarning)
 				if err != nil {
@@ -576,7 +566,7 @@ func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessa
 }
 
 func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHistory) {
-	t.featureTrace.toolCall(callID, history.ToolName)
+	t.toolTrace.toolCall(callID, history.ToolName)
 	t.localSequence++
 	history.sequence = t.localSequence
 	t.local[callID] = *history

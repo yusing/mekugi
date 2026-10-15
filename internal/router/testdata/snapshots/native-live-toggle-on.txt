@@ -1,5 +1,5 @@
-┌ 1 Main ────────────────────────────────────────┐┌ 5 Journal ─────────── space expand · d details ┐
-│LIVE · 1 file                                   ││ No journal entries.                            │
+┌ 1 Main ────────────────────────────────────────┐┌ 3 Activity ──────────────────────────── FOLLOW ┐
+│LIVE · 1 file                                   ││                                                │
 │  main · ◐ A live.txt +1 -0                     ││                                                │
 │▎ 1│+Live edit still in progress                ││                                                │
 │                                                ││                                                │
@@ -25,4 +25,4 @@
 ││ ❯                                            │││                                                │
 │╰───────────────── snapshot-model (high) • 0% ─╯││                                                │
 └────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
- 1 Main  [ 2 Diff │ 3 Activity │ 5 Journal ]  4 Agents   ^B 1-5 panes · ^E expand events
+ 1 Main  [ 2 Diff │ 3 Activity ]  4 Agents   ^B 1-4 panes · ^E expand events

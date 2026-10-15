@@ -62,10 +62,6 @@ func TestDebugSessionArtifacts(t *testing.T) {
 	if !bytes.Contains(log, []byte("router_start")) || !bytes.Contains(log, []byte("router_stop")) {
 		t.Fatal("missing lifecycle diagnostics")
 	}
-	if !bytes.Contains(log, []byte(`"feature_usage_schema":1`)) ||
-		!bytes.Contains(log, []byte(`"feature_usage_features":["journal"]`)) {
-		t.Fatal("missing feature-observation coverage marker")
-	}
 	metrics, _ := os.ReadFile(paths[2])
 	var exported struct {
 		StorageWrites *struct {

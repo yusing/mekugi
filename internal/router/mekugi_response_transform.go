@@ -17,23 +17,7 @@ import (
 )
 
 func (t *mekugiResponseTransform) TransformJSON(payload []byte) ([]byte, error) {
-	if t.journalActive {
-		if err := t.captureNaturalJournalAnswer(payload); err != nil {
-			return nil, translationDiagnostic(err, "mekugi_json", "Mekugi final answer capture failed")
-		}
-	}
 	transformed, err := t.transformResponse(payload, "")
-	if err == nil && t.journalActive {
-		if !t.journalNaturalFinalSeen {
-			err = t.captureNaturalJournalAnswer(payload)
-		}
-		if err == nil && (t.journalTerminalReady() || t.journalNaturalFinalSeen) {
-			t.journalContinue = false
-		}
-	}
-	if err == nil && t.journalActive {
-		transformed, err = t.decorateJournalJSON(transformed)
-	}
 	return transformed, translationDiagnostic(err, "mekugi_json", "Mekugi response translation failed while processing a JSON response")
 }
 
@@ -42,25 +26,7 @@ func (t *mekugiResponseTransform) Finish(bool) error {
 }
 
 func (t *mekugiResponseTransform) TransformSSE(payload []byte) ([][]byte, error) {
-	// Match the failed terminal projected to the host before journal interception
-	// can prepare a successful flush or continue a failed response.
-	var terminal struct {
-		Type     string `json:"type"`
-		Response struct {
-			Status string `json:"status"`
-		} `json:"response"`
-	}
-	if t.journalActive && json.Unmarshal(payload, &terminal) == nil && terminal.Type == responseevents.Completed && terminal.Response.Status == "failed" {
-		var err error
-		payload, err = replaceRawField(payload, "type", mustMarshalJSON(responseevents.Failed))
-		if err != nil {
-			return nil, err
-		}
-	}
-	visible, err := t.transformSSE(payload)
-	if err == nil && t.journalActive {
-		visible, err = t.decorateJournalSSE(payload, visible)
-	}
+	visible, err := t.transformActivitySSE(payload)
 	return visible, translationDiagnostic(err, "mekugi_sse", "Mekugi response translation failed while processing an upstream streaming event")
 }
 
@@ -73,19 +39,6 @@ func translationDiagnostic(err error, code, summary string) error {
 		summary = inner.summary
 	}
 	return &criticalDiagnosticError{err: err, code: code, summary: summary, distinct: true}
-}
-
-func (t *mekugiResponseTransform) transformSSE(payload []byte) ([][]byte, error) {
-	var prefix [][]byte
-	if t.journalActive {
-		events, handled, err := t.interceptJournalSSE(payload)
-		if handled || err != nil {
-			return events, err
-		}
-		prefix = events
-	}
-	visible, err := t.transformActivitySSE(payload)
-	return append(prefix, visible...), err
 }
 
 func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte, error) {
@@ -245,7 +198,16 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if err != nil {
 			return nil, err
 		}
-		return [][]byte{event}, nil
+		var completed [][]byte
+		if envelope.Type == responseevents.Completed {
+			completed, err = t.finalAnswer.complete(transformed)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			clear(t.finalAnswer.pending)
+		}
+		return append(completed, event), nil
 
 	default:
 		return [][]byte{payload}, nil
@@ -253,18 +215,6 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 }
 
 func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStatus string) ([]byte, error) {
-	if !t.subagentTurn && t.usageObserved && !t.journalTerminalReady() {
-		substantive := t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled
-		if terminalStatus == "" {
-			substantive = tokenUsageSubstantive(payload)
-		}
-		var identity struct {
-			Status string `json:"status"`
-		}
-		if substantive && json.Unmarshal(payload, &identity) == nil && cmp.Or(terminalStatus, identity.Status) == "completed" {
-			t.liveDiffCompletionReady = true
-		}
-	}
 	var object map[string]json.RawMessage
 	var err error
 	err = json.Unmarshal(payload, &object)
@@ -279,51 +229,15 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	// JSON responses have no event envelope and retain body-status semantics.
 	status := cmp.Or(terminalStatus, jsonString(object, "status"))
 	interrupted := status == "failed" || status == "incomplete"
-	var journalPrefix journalContinuation
-	if t.journalActive {
-		journalPrefix, _ = t.ctx.Value(journalContinuationKey{}).(journalContinuation)
-	}
-	if t.journalActive && terminalStatus != "" && (!interrupted || len(t.journalResults) != 0 || len(journalPrefix.clientOutput) != 0) {
-		var output []map[string]json.RawMessage
-		if err := decodeJournalOutput(object["output"], &output); err != nil {
-			return nil, errors.New("decode mekugi-enabled response output")
-		}
-		if len(output) == 0 {
-			// A provider may leave the terminal snapshot empty after streaming
-			// completed items. Rebuild it before adding journal results/notices:
-			// a journal-only snapshot would replace WebSocket history and orphan
-			// the next client tool result. Nonempty provider snapshots still own
-			// their exact output, and the ordinary projection below restores carriers.
-			object["output"] = mustMarshalJSON(t.journalProviderOutput)
-		}
-	}
 	if rawOutput, ok := object["output"]; ok {
 		var output []map[string]json.RawMessage
 		if err := json.Unmarshal(rawOutput, &output); err != nil {
 			return nil, errors.New("decode mekugi-enabled response output")
 		}
-		if t.journalActive && terminalStatus == "" {
-			t.journalProviderOutput = output
-			for _, item := range output {
-				if !isRouterLocalCall(item) && blocksTokenUsage(item) {
-					t.journalClientCalls = true
-				}
-			}
-		}
 		transformedOutput := make([]map[string]json.RawMessage, 0, len(output))
 		for _, fields := range output {
-			if t.journalActive && isRouterLocalCall(fields) {
-				// A completed stream event can omit status. Its already-executed
-				// result must survive a later interruption without running a new call.
-				if !interrupted || jsonString(fields, "status") == "completed" || t.journalCalls[jsonString(fields, "call_id")] != nil {
-					result, err := t.executeRouterLocalCall(fields)
-					if err != nil {
-						return nil, err
-					}
-					transformedOutput = append(transformedOutput, journalClientResult(result, jsonString(fields, "name")))
-				}
-				continue
-			}
+			t.finalAnswer.substantive = t.finalAnswer.substantive || isSubstantiveAnswer(fields)
+			t.finalAnswer.blocked = t.finalAnswer.blocked || blocksTokenUsage(fields)
 			item := newResponsesItem(fields)
 			// An interrupted response can contain partial calls. Only complete items
 			// or calls whose complete input was already delivered may be projected.
@@ -341,20 +255,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		if err != nil {
 			return nil, err
 		}
-		if t.journalActive {
-			t.journalClientOutput = transformedOutput
-		}
 		object["output"] = encoded
-	}
-	if t.journalActive {
-		t.journalContinue = status == "completed" && len(t.journalResults) != 0 && !t.journalClientCalls && !t.journalTerminalReady() && !t.journalNaturalFinalSeen
-		if len(journalPrefix.clientOutput) != 0 {
-			var output []map[string]json.RawMessage
-			if err := json.Unmarshal(object["output"], &output); err != nil {
-				return nil, err
-			}
-			object["output"] = mustMarshalJSON(append(slices.Clone(journalPrefix.clientOutput), output...))
-		}
 	}
 	t.restoreResponseContract(object)
 	// Every translated carrier in a JSON body is about to become visible,
@@ -363,6 +264,9 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		return nil, err
 	}
 	transformed, err := marshalProtocolJSON(object)
+	if err == nil && !t.subagentTurn && status == "completed" && t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled {
+		t.liveDiffCompletionReady = true
+	}
 	return transformed, err
 }
 

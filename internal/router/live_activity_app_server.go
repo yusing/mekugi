@@ -8,126 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
-
-func (v *liveActivityView) applyJournal(thread string, publication nativeJournalPublication) {
-	if publication.event != nil || publication.card != nil {
-		v.applyTreeJournal(thread, publication)
-		return
-	}
-	// Keep question links stable across live-to-terminal replacement and edits,
-	// including when an identical prompt is submitted again later.
-	targets := make(map[string]uint64)
-	for i, previous := range v.entries {
-		if previous.native == nil || previous.native.thread != thread {
-			continue
-		}
-		if previous.journal != nil && previous.native.question != 0 {
-			targets[previous.journal.ID] = previous.native.question
-		}
-		for _, block := range v.entries[i].blocks {
-			if block.Journal != nil {
-				for _, group := range block.Journal.Groups {
-					for _, answer := range group.Answers {
-						targets[answer.ID] = group.Target
-					}
-				}
-			}
-		}
-	}
-	item := publication.item
-	questionSource := item.Question
-	if replies := questionReplies(questionSource); len(replies) > 0 {
-		item.Question = questionReplyText(replies)
-	}
-	// A terminal flush acknowledges milestones without moving their existing
-	// live transcript position past the work they preceded.
-	if publication.terminal && !item.TerminalOnly && item.Question == "" {
-		for _, previous := range v.entries {
-			if previous.native != nil && previous.native.thread == thread && previous.native.turn == "journal" && previous.journal != nil && previous.journal.ID == item.ID {
-				publication.terminal = false
-				break
-			}
-		}
-	}
-	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "native_journal", Text: item.Text, Observed: v.now(), journal: &item,
-		native: &liveActivityNativeItem{thread: thread, turn: "journal", item: item.ID, phase: "journal"}}
-	if targets[item.ID] == 0 && item.Question != "" {
-		for _, question := range slices.Backward(v.entries) {
-			if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question.activityPaneEntry, questionSource) {
-				targets[item.ID] = question.Seq
-				break
-			}
-		}
-	}
-	entry.native.question = targets[item.ID]
-	if !publication.terminal {
-		entry.Kind = "text"
-	} else if !publication.retracted {
-		entry.native.turn, entry.native.item = "journal-terminal", fmt.Sprint(publication.batch)
-		entry.journalItems = []journalItem{item}
-	}
-	// Replace prior live/terminal occurrences of this exact journal ID. A
-	// terminal batch stays one ordinary Activity journal-result block. A
-	// retraction removes every occurrence and adds nothing in its place.
-	for i := len(v.entries) - 1; i >= 0; i-- {
-		previous := v.entries[i].activityPaneEntry
-		if previous.native == nil || previous.native.thread != thread || !publication.retracted && entry.native.sameItem(previous.native) {
-			continue
-		}
-		if previous.journal == nil {
-			continue
-		}
-		if len(previous.journalItems) > 0 {
-			previous.journalItems = slices.DeleteFunc(previous.journalItems, func(other journalItem) bool { return other.ID == item.ID })
-			if len(previous.journalItems) > 0 {
-				previous.journal = &previous.journalItems[0]
-				v.replaceEntry(i, previous, parseLiveActivity(previous))
-				continue
-			}
-		} else if previous.journal.ID != item.ID {
-			continue
-		}
-		v.removeEntries(i, i+1)
-	}
-	// A retraction re-parses surviving batch members, so it also relinks them.
-	if !publication.retracted {
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-	}
-	for i, current := range v.entries {
-		if current.native == nil || current.native.thread != thread ||
-			!slices.ContainsFunc(current.blocks, func(block activityui.Block) bool { return block.Journal != nil }) {
-			continue
-		}
-		v.mutateEntry(i, func(record *liveActivityRecord) {
-			for _, block := range record.blocks {
-				if block.Journal == nil {
-					continue
-				}
-				for j := range block.Journal.Groups {
-					group := &block.Journal.Groups[j]
-					for _, answer := range group.Answers {
-						if target := targets[answer.ID]; target != 0 {
-							group.Target = target
-							break
-						}
-					}
-					if group.Target != 0 || group.Question == "" {
-						continue
-					}
-					for _, question := range slices.Backward(v.entries[:i]) {
-						if (question.native == nil || question.native.thread == thread) && journalQuestionMatches(question.activityPaneEntry, group.Question) {
-							group.Target = question.Seq
-							break
-						}
-					}
-				}
-			}
-		})
-	}
-}
 
 func questionReplyText(replies []nativeQuestionReply) string {
 	answers := make([]string, 0, len(replies))
@@ -137,29 +19,15 @@ func questionReplyText(replies []nativeQuestionReply) string {
 	return strings.Join(answers, "\n")
 }
 
-func journalQuestionMatches(entry activityPaneEntry, source string) bool {
-	if replies := questionReplies(source); len(replies) > 0 {
-		return entry.Kind == "question_reply" && entry.native != nil && slices.Equal(replies, questionReplies(entry.native.replySource))
-	}
-	if entry.Kind == "question_reply" && entry.native != nil && entry.native.replySource == source {
-		return true
-	}
-	return (entry.Agent == "You" || entry.Kind == "question_reply") && entry.Text == source
-}
-
-// Native items extend the activity model rather than creating another transcript
-// cache. Their identities are deliberately not joined to provider call IDs.
 type liveActivityNativeItem struct {
 	commandStarted     time.Time // UI receipt of host start notification; not reconstructed on replay.
 	commandEnded       time.Time
 	duration           time.Duration
 	questions          []activityui.Question
-	replySource        string // Stock async envelope or sync turn prompt used to bind journal publications.
+	replySource        string // Stock async envelope or synchronous turn prompt.
 	thread, turn, item string
 	phase              string
 	wait               *activityui.Block // Structured wait progress is roster-only.
-	recovery           string            // Exact retained model-visible reset message, or an unavailable notice.
-	replacesItems      []string          // Exact provider items contained in this retained child result.
 	command, status    string
 	commandCwd         string // Metadata-owned directory for classified paths and receipt refreshes.
 	commandTimeout     string // Explicit timeout from available invocation input.
@@ -173,7 +41,7 @@ type liveActivityNativeItem struct {
 	commit             gitCommitKey           // The commit object whose files complete changes.
 	collapsed          bool                   // Settled output or a restored block.
 	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
-	question           uint64                 // Original user entry, retained even for a live journal publication.
+	question           uint64                 // Original user entry.
 	thought            time.Duration          // Reasoning time from its start to completion.
 	replaces           string                 // Pending thinking block this reasoning item takes over.
 	attachments        []activityui.Block     // Submitted file snapshot outcomes, recovered from host history.
@@ -198,13 +66,9 @@ func (n *liveActivityNativeItem) unconfirmed() bool {
 	return n != nil && !n.running && n.status != "" && n.status != "completed"
 }
 
-func (n *liveActivityNativeItem) replacesItem(other *liveActivityNativeItem) bool {
-	return n != nil && len(n.replacesItems) != 0 && other != nil && n.thread == other.thread && n.turn == other.turn && slices.Contains(n.replacesItems, other.item)
-}
-
 func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
 	for _, current := range v.entries {
-		if entry.native != nil && (entry.native.sameItem(current.native) || current.native.replacesItem(entry.native)) || entry.native == nil && current.Seq == entry.Seq {
+		if entry.native != nil && entry.native.sameItem(current.native) || entry.native == nil && current.Seq == entry.Seq {
 			return current.Seq
 		}
 	}
@@ -219,7 +83,7 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 		return
 	}
 	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
-		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, duration: appServerDuration(item), replacesItems: item.replacesItems}}
+		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, duration: appServerDuration(item)}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
 	}
@@ -244,11 +108,6 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 		case "userMessage":
 			var ok bool
 			if entry.Text, entry.native.spans, ok = appServerUserText(item.Content); !ok {
-				return
-			}
-			if strings.HasPrefix(item.ClientID, journalContinuationPrefix) {
-				entry.Agent, entry.Kind, entry.Text = "Main", "text", "↻ Auto-continue · "+entry.Text
-				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 				return
 			}
 			if replies := questionReplies(entry.Text); len(replies) > 0 {
@@ -351,35 +210,6 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 	if entry.native == nil {
 		return false
 	}
-	// A retained child result replaces only the exact answers it contains.
-	// Keep the original record's stable link and position. In reverse arrival
-	// order, a late provider notification or history page cannot add it again.
-	replacement := -1
-	for i, previous := range v.entries {
-		if previous.native.replacesItem(entry.native) {
-			return true
-		}
-		if entry.native.replacesItem(previous.native) {
-			if replacement < 0 {
-				replacement = i
-			}
-		}
-	}
-	if replacement >= 0 {
-		previous := v.entries[replacement]
-		entry.Seq, entry.Observed = previous.Seq, previous.Observed
-		entry.native.question = previous.native.question
-		for i := len(v.entries) - 1; i >= 0; i-- {
-			if i != replacement && (entry.native.replacesItem(v.entries[i].native) || entry.native.sameItem(v.entries[i].native)) {
-				v.removeEntries(i, i+1)
-				if i < replacement {
-					replacement--
-				}
-			}
-		}
-		v.replaceEntry(replacement, entry, parseLiveActivity(entry))
-		return true
-	}
 	for i, previous := range v.entries {
 		if previous.native != nil && previous.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.native.thread && entry.Text == previous.Text {
 			// Reconcile the local echo with Codex's authoritative user item.
@@ -415,27 +245,6 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 		if entry.native.phase == "item/agentMessage/delta" {
 			entry.Text = previous.Text + entry.Text
 		}
-		if len(entry.journalItems) > 0 {
-			items := slices.Clone(previous.journalItems)
-			for _, item := range entry.journalItems {
-				index := slices.IndexFunc(items, func(other journalItem) bool { return other.ID == item.ID })
-				if index < 0 {
-					items = append(items, item)
-				} else {
-					items[index] = item
-				}
-			}
-			slices.SortFunc(items, func(a, b journalItem) int {
-				if a.Created < b.Created {
-					return -1
-				}
-				if a.Created > b.Created {
-					return 1
-				}
-				return 0
-			})
-			entry.journalItems = items
-		}
 		entry.Seq, entry.Observed = previous.Seq, previous.Observed
 		entry.native.question = previous.native.question
 		blocks := parseLiveActivity(entry)
@@ -460,92 +269,4 @@ func (v *liveActivityView) removePendingInput(seq uint64) {
 			return
 		}
 	}
-}
-
-// Child completions contain cumulative journal snapshots. Bind each answer ID
-// once, preserving older answers' assignment targets through later follow-ups.
-func (v *liveActivityView) linkChildAnswers(seq uint64) {
-	index := slices.IndexFunc(v.entries, func(entry liveActivityRecord) bool { return entry.Seq == seq })
-	if index < 0 {
-		return
-	}
-	owner := v.entries[index].Agent
-	known := make(map[string]uint64)
-	previousAnswers := make(map[string]struct {
-		answer *activityui.Answer
-		index  int
-	})
-	for i, entry := range v.entries[:index] {
-		if entry.Agent != owner {
-			continue
-		}
-		for _, block := range v.entries[i].blocks {
-			if block.Journal != nil {
-				for _, group := range block.Journal.Groups {
-					for j, answer := range group.Answers {
-						if answer.ID == "" {
-							continue // Tree results are deltas without item identity.
-						}
-						known[answer.ID] = group.Target
-						previousAnswers[answer.ID] = struct {
-							answer *activityui.Answer
-							index  int
-						}{&group.Answers[j], i}
-					}
-				}
-			}
-		}
-	}
-	// Match the journal renderer's presentation copy, never modify source text.
-	normalize := func(text string) string {
-		return strings.Trim(livediff.Safe(indentJournalText(text, ""), false), "\n")
-	}
-	v.mutateEntry(index, func(record *liveActivityRecord) {
-		for _, block := range record.blocks {
-			if block.Journal == nil {
-				continue
-			}
-			var groups []activityui.AnswerGroup
-			for _, group := range block.Journal.Groups {
-				var current uint64
-				if group.Question == "" && slices.ContainsFunc(group.Answers, func(answer activityui.Answer) bool { return answer.ID == "" }) {
-					// A tree result answers the latest task sent to its agent.
-					for _, entry := range slices.Backward(v.entries[:index]) {
-						if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.to == owner {
-							current = entry.Seq
-							break
-						}
-					}
-				} else if group.Question != "" {
-					for _, entry := range slices.Backward(v.entries[:index]) {
-						if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil && entry.assignment.id != "" && entry.assignment.to == owner && normalize(entry.assignment.text) == group.Question {
-							current = entry.Seq
-							break
-						}
-					}
-				}
-				first := len(groups)
-				for _, answer := range group.Answers {
-					target, seen := known[answer.ID]
-					if answer.ID == "" {
-						target, seen = current, true
-					} else if previous, ok := previousAnswers[answer.ID]; ok {
-						v.mutateEntry(previous.index, func(*liveActivityRecord) { previous.answer.Text = answer.Text })
-						continue // A cumulative snapshot updates, rather than repeats, an earlier answer.
-					}
-					if !seen {
-						target = current
-						known[answer.ID] = target
-					}
-					if len(groups) == first || groups[len(groups)-1].Target != target {
-						groups = append(groups, activityui.AnswerGroup{Question: group.Question, Target: target})
-					}
-					last := &groups[len(groups)-1]
-					last.Answers = append(last.Answers, answer)
-				}
-			}
-			block.Journal.Groups = groups
-		}
-	})
-	v.runs = nil
 }

@@ -51,7 +51,7 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 			for _, target := range []struct {
 				prefix string
 				pane   int
-			}{{" 1 Main", 0}, {" 2 Diff", 1}, {" 3 Activity", 2}, {" 4 Agents", 3}, {" 5 Journal", 4}} {
+			}{{" 1 Main", 0}, {" 2 Diff", 1}, {" 3 Activity", 2}, {" 4 Agents", 3}} {
 				marker := target.prefix
 				// A narrow footer may show only the beginning of a selector.
 				start := strings.Index(footer, marker[:3])
@@ -61,13 +61,13 @@ func TestNativeNavigationBatchStatusClicks(t *testing.T) {
 				left := ansi.StringWidth(footer[:start])
 				right := min(width, left+ansi.StringWidth(marker))
 				for x := left; x < right; x++ {
-					u.shell.focus = (target.pane + 1) % 5
+					u.shell.focus = (target.pane + 1) % 4
 					u.shell.prefix = true
 					navigationBatchMouse(t, u.shell, 0, x, 23, false)
 					if u.shell.focus != target.pane || u.shell.prefix {
 						t.Fatalf("selector %q at cell %d: focus=%d prefix=%v, footer=%q", target.prefix, x, u.shell.focus, u.shell.prefix, footer)
 					}
-					if target.pane == 1 && (!u.shell.diffOpen || u.shell.journalOpen) || target.pane == 2 && (u.shell.diffOpen || u.shell.journalOpen || !u.shell.activityOpen) || target.pane == 4 && (!u.shell.journalOpen || u.shell.diffOpen) {
+					if target.pane == 1 && !u.shell.diffOpen || target.pane == 2 && (u.shell.diffOpen || !u.shell.activityOpen) {
 						t.Fatalf("selector %q did not open its pane", target.prefix)
 					}
 				}

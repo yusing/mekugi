@@ -736,7 +736,7 @@ func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
 		{mekugi.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+10\n", "index+14\n"),
 			mekugi.RenderReviewFile("README.md", "README.md", "old\n", "documented\n")},
 		{mekugi.RenderReviewFile("wrap_test.go", "wrap_test.go", "index+12\n", "index+14\n"),
-			mekugi.RenderReviewFile("journal.go", "journal.go", "old\n", "reset\n")},
+			mekugi.RenderReviewFile("evidence.go", "evidence.go", "old\n", "captured\n")},
 		{mekugi.RenderReviewFile("fourth.txt", "fourth.txt", "old\n", "fourth\n")},
 		{mekugi.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message(now)\nnow := time.Now()\n", "driver.message()\nnow := time.Now()\n")},
 		{mekugi.RenderReviewFile("reset_test.go", "reset_test.go", "driver.message()\nnow := time.Now()\n", "driver.message()\n")},
@@ -754,7 +754,7 @@ func TestMChangesOverlappingCapturesKeepIndependentEvidence(t *testing.T) {
 			!strings.Contains(diagnostic, "captured source does not match") || !strings.Contains(diagnostic, "without --net") {
 			t.Fatalf("overlap diagnostic: %q %q %d", out, diagnostic, status)
 		}
-		for _, expected := range []string{"+first", "+documented", "+reset", "+fourth", "-index+10\n+index+14", "-driver.message(now)", "-now := time.Now()", "+driver.message()"} {
+		for _, expected := range []string{"+first", "+documented", "+fourth", "-index+10\n+index+14", "-driver.message(now)", "-now := time.Now()", "+driver.message()"} {
 			if !strings.Contains(out, expected) {
 				t.Errorf("lost independent evidence %q: %q", expected, out)
 			}

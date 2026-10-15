@@ -274,7 +274,7 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	}
 }
 
-func TestCompletionConflictsLeaveJournalAsSoleOwner(t *testing.T) {
+func TestCompletionConflictCleanupPreservesCallerQualifications(t *testing.T) {
 	for _, conflict := range []string{
 		"Do NOT send user facing questions in intermediate commentary messages. Do NOT put a final response in the commentary channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
 		"Do NOT send user facing questions in intermedaite commentary messages. Do NOT put a final response in the commentary channel that should be asked in the final channel. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",

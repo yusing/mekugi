@@ -106,7 +106,9 @@ func serverCompactionMetadataHeaders(t *testing.T) http.Header {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return http.Header{codexTurnMetadataHeader: []string{string(encoded)}}
+	headers := make(http.Header)
+	headers.Set(codexTurnMetadataHeader, string(encoded))
+	return headers
 }
 
 func TestExecuteRequestFailsClosedBeforeUpstreamWhenRewriteIsIneligible(t *testing.T) {

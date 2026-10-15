@@ -54,8 +54,8 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	}
 	providerParts := []map[string]any{{"type": "input_text", "text": input[0].Text}, {"type": "input_image", "image_url": "data:image/png;base64,test"}, {"type": "input_text", "text": input[1].Text}}
 	raw := mustMarshalJSON([]any{map[string]any{"type": "message", "role": "user", "content": providerParts}})
-	if question := journalQuestionFromInput(raw, "/root"); question != draft.text {
-		t.Fatalf("attachment became journal question: %q", question)
+	if question := requestUserTextFromInput(raw, "/root", false); question != draft.text {
+		t.Fatalf("attachment became naming text: %q", question)
 	}
 	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
 	projectFileAttachments(&request)

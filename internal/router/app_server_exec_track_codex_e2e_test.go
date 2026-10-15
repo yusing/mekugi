@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -143,7 +143,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
 		environment: []string{"PATH=" + execTrackPath(), execsegment.ShTrackerEnvironment + "=" + tracker},
 		codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
-		noJournal:   true, mcp: true, duringTurn: during, afterPrompt: after,
+		mcp:         true, duringTurn: during, afterPrompt: after,
 	})
 	if !report.done || report.code != 1 || len(report.segments) != 5 {
 		t.Fatalf("dash report = %+v", report)
@@ -205,7 +205,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 		}
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
-		environment: environment, afterPrompt: after, noJournal: true, mcp: true,
+		environment: environment, afterPrompt: after, mcp: true,
 		codexArgs: []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
 	})
 }
@@ -253,7 +253,6 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 				environment: environment,
 				codexArgs:   []string{"-c", `sandbox_mode="` + sandbox + `"`, "-c", `approval_policy="on-request"`},
 				approvals:   true,
-				noJournal:   true,
 				afterPrompt: after,
 			})
 			provider.mu.Lock()

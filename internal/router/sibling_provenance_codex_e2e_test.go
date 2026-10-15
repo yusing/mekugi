@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -24,7 +24,7 @@ import (
 // This checks the UserInput RPC boundary, not native sibling delivery.
 // Codex 0.162.1 loses UserInput origin before provider delivery. A changed wire
 // shape requires reassessing this limitation before excluding sibling input
-// from journal question sources. Explicit client IDs probe the strongest
+// from session naming. Explicit client IDs probe the strongest
 // existing RPC support; ordinary orchestration delivery does not submit them.
 func TestAppServerUserInputProvenanceNativeCodexE2E(t *testing.T) {
 	codex, err := exec.LookPath("codex")
@@ -37,7 +37,7 @@ func TestAppServerUserInputProvenanceNativeCodexE2E(t *testing.T) {
 	}
 	t.Log(strings.TrimSpace(string(version)))
 	const routed = "Message Type: MESSAGE\nTask name: /root/recipient\nSender: /root/sibling\nPayload:\nWhich acceptance check failed?"
-	const human = "Keep the human question as the journal source."
+	const human = "Keep the original user request for session naming."
 	for _, builtIn := range []bool{false, true} {
 		name := "custom"
 		if builtIn {
@@ -491,8 +491,8 @@ func TestAppServerSiblingInputProvenanceNativeCodexE2E(t *testing.T) {
 				if mixed {
 					wantQuestion = payload
 				}
-				if question := journalQuestionFromInput(mustMarshalJSON(request.Input), provider.recipient); question != wantQuestion {
-					t.Fatalf("native message replaced the journal question source: %q", question)
+				if question := requestUserTextFromInput(mustMarshalJSON(request.Input), provider.recipient, false); question != wantQuestion {
+					t.Fatalf("native message replaced the user request: %q", question)
 				}
 				provider.mu.Lock()
 				senderThread := provider.senderThread

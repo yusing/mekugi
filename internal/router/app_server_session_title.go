@@ -121,9 +121,6 @@ func (u *appServerUI) confirmSessionTitle(thread, name string) {
 	}
 	if u.titleGenerator != nil {
 		u.titleGenerator.named(thread, &name)
-		u.titleGenerator.cache.set(thread, name)
-	} else if u.proxy != nil {
-		u.proxy.titles.set(thread, name)
 	}
 	if thread == u.thread {
 		u.title, u.dirty = name, true

@@ -329,7 +329,7 @@ func TestAppServerCompactCancelRestoresWaitingInputDespiteSuccessfulCompletion(t
 
 func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.proxy = &mekugiProxy{journalCompaction: "auto"}
+	u.proxy = &mekugiProxy{}
 	u.session.start(u.thread, "")
 	u.agents = newLiveActivityView()
 	u.view.painter.Theme = livediff.DarkTheme
@@ -341,7 +341,7 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	appServerTestTurn(t, u, "compact-turn")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "compact-turn", "item": appServerItem{ID: "compaction", Type: "contextCompaction"}})
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
-	appServerOneRequest(t, w, "turn/start", u.compactionText(compactContinuationText))
+	appServerOneRequest(t, w, "turn/start", compactContinuationText)
 	for i := range u.view.entries {
 		u.view.entries[i].Observed = u.now()
 	}
@@ -479,7 +479,7 @@ func TestAppServerCompactSteerCancelDuringInterrupt(t *testing.T) {
 
 func TestUISnapshotNativeCompactSteerInterrupt(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.proxy = &mekugiProxy{journalCompaction: "auto"}
+	u.proxy = &mekugiProxy{}
 	u.view.painter.Theme = livediff.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.view.clock = u.clock

@@ -96,11 +96,9 @@ type providerAttemptMetrics struct {
 }
 
 type exchangeMetrics struct {
-	StatusCode       int    `json:"status_code"`
-	ResponseComplete bool   `json:"response_complete"`
-	CaptureError     string `json:"capture_error,omitempty"`
-	CompactionMetrics
-	Journal             *JournalMetrics          `json:"journal,omitempty"`
+	StatusCode          int                      `json:"status_code"`
+	ResponseComplete    bool                     `json:"response_complete"`
+	CaptureError        string                   `json:"capture_error,omitempty"`
 	DurationMillis      uint64                   `json:"duration_ms"`
 	PredecessorSequence uint64                   `json:"predecessor_sequence,omitempty"`
 	RequestKind         string                   `json:"request_kind,omitempty"`
@@ -179,11 +177,9 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 
 	exchange := exchangeMetrics{
 		StatusCode: front.StatusCode, ResponseComplete: front.ResponseComplete, CaptureError: front.CaptureError,
-		Journal:           front.Journal.Clone(),
-		CompactionMetrics: front.CompactionMetrics,
-		DurationMillis:    front.DurationMillis,
-		RequestKind:       front.RequestKind,
-		Sequence:          front.RequestSequence, ThreadID: front.ThreadID, PredecessorSequence: front.PredecessorSequence,
+		DurationMillis: front.DurationMillis,
+		RequestKind:    front.RequestKind,
+		Sequence:       front.RequestSequence, ThreadID: front.ThreadID, PredecessorSequence: front.PredecessorSequence,
 		Status: front.ResponseStatus, ClientRequest: front.Request, ClientResponse: front.Response,
 		ClientFingerprint: front.Fingerprint,
 	}
@@ -227,9 +223,6 @@ func (r *Recorder) addExchange(front captureRecord, providers []captureRecord) {
 	if exchangeUsage.ProviderAttempts != 0 {
 		exchange.Usage = &exchangeUsage
 	}
-	if front.CompactionAnswer == "router" && len(providers) == 0 {
-		exchange.Usage = &usageMetrics{} // Observed no provider invocation, not inferred missing usage.
-	}
 	if r.metrics.Usage.InputTokens != 0 {
 		rate := float64(r.metrics.Usage.CachedInputTokens) / float64(r.metrics.Usage.InputTokens)
 		r.metrics.Cache.ProviderCacheRate = &rate
@@ -252,13 +245,6 @@ func cloneMetricsSnapshot(source MetricsSnapshot) MetricsSnapshot {
 	clone.Exchanges = make([]exchangeMetrics, len(source.Exchanges))
 	for index, exchange := range source.Exchanges {
 		clone.Exchanges[index] = exchange
-		if exchange.CompactionChanges != nil {
-			clone.Exchanges[index].CompactionChanges = new(*exchange.CompactionChanges)
-		}
-		if exchange.CompactionFailures != nil {
-			clone.Exchanges[index].CompactionFailures = new(*exchange.CompactionFailures)
-		}
-		clone.Exchanges[index].Journal = exchange.Journal.Clone()
 		clone.Exchanges[index].ClientFingerprint = cloneFingerprint(exchange.ClientFingerprint)
 		clone.Exchanges[index].ProviderAttempts = make([]providerAttemptMetrics, len(exchange.ProviderAttempts))
 		for attemptIndex, attempt := range exchange.ProviderAttempts {

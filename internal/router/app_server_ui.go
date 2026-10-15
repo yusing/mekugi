@@ -28,7 +28,6 @@ import (
 )
 
 type appServerItem struct {
-	replacesItems    []string                  // Retained presentation provenance, not a host field.
 	DurationMS       *int64                    `json:"durationMs"`
 	Delivery         string                    `json:"delivery"`
 	Questions        []nativeQuestion          `json:"questions"`
@@ -78,7 +77,6 @@ type appServerUI struct {
 	titleGenerator            *sessionTitleGenerator
 	titleUpdates              <-chan sessionTitleUpdate
 	titleRequests             map[string]sessionTitleRequest
-	reset                     *journalResetDriver
 	btw                       *appServerBTW
 	btwRequests               map[string]btwRequest
 	btwThreads                map[string]*appServerBTW
@@ -110,16 +108,11 @@ type appServerUI struct {
 	pendingEditReceipts       []*capturedActivityEdit // Observed edits can precede their host Activity item.
 	issues                    *CriticalErrors
 	noticeEntries             map[string]bool
-	journalView               nativeJournalView
-	journal                   *nativeJournalSink
-	unscopedJournal           *nativeJournalSink
-	journalReceipts           map[*nativeJournalSink]bool // Includes workers from replaced sessions.
 	shell                     *terminalUI
 	session                   appServerSession
 	ctx                       context.Context
 	quitRequested             bool
 	interruptLocked           bool
-	activeChildren            map[string]bool // Live host lifecycles only, never replayed processes.
 	mainContentPainted        bool
 	status                    string
 	exitUsage                 appServerTokenUsage
@@ -241,7 +234,6 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 		defer u.shell.diff.close()
 		defer u.shell.diffScreen.Close()
 		if proxy != nil {
-			defer func() { proxy.journals.detachNative(u.journal); proxy.journals.detachNative(u.unscopedJournal) }()
 			defer proxy.activity.releasePane()
 		}
 		defer c.Input.Close()
@@ -344,7 +336,6 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 						}
 						u.refreshSessionMetrics(false)
 						u.startSkillHistory()
-						u.ensureJournalReset()
 						u.applyObservedActivity()
 						if err := u.fillResumePicker(); err != nil {
 							return err
@@ -381,21 +372,6 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 							return err
 						}
 						notices := u.applyCriticalNotices()
-						journalPending := make(map[*nativeJournalSink][]nativeJournalPublication)
-						if err := u.finishJournalAcknowledgements(false); err != nil {
-							return err
-						}
-						for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
-							if sink == nil {
-								continue
-							}
-							items := sink.snapshot()
-							journalPending[sink] = items
-							for _, publication := range items {
-								u.applyJournalPublication(sink, publication)
-							}
-							u.dirty = u.dirty || len(items) > 0
-						}
 						if u.shell.animating(u.now()) || u.agents.rosterEasing {
 							u.dirty = true
 						}
@@ -411,21 +387,6 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 								return err
 							}
 							notices.finish(true)
-							for sink, items := range journalPending {
-								if !u.mainContentPainted {
-									if !u.journalPanePresents(sink) {
-										continue
-									}
-									items = slices.DeleteFunc(slices.Clone(items), func(p nativeJournalPublication) bool { return p.card != nil || p.event == nil })
-								}
-								sink.startAcknowledgement(ctx, proxy, items)
-								if len(items) > 0 {
-									if u.journalReceipts == nil {
-										u.journalReceipts = make(map[*nativeJournalSink]bool)
-									}
-									u.journalReceipts[sink] = true
-								}
-							}
 							u.dirty = false
 						}
 					}
@@ -454,7 +415,6 @@ func startAppServerUI(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File
 			}
 		}
 		u.finishCommandSegments()
-		err = errors.Join(err, u.finishJournalAcknowledgements(true))
 		u.hideQuestions()
 		u.hideApprovals()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
@@ -509,24 +469,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		return nil
 	}
 	defer u.refreshPicker()
-	u.ensureJournalReset()
-	if u.reset != nil {
-		pendingCompletion := u.reset.pendingCompleted
-		handled, resetErr := u.reset.message(m)
-		if resetErr != nil {
-			u.setNotice("Journal slice: "+resetErr.Error(), true)
-		}
-		u.showResetNotice()
-		if handled {
-			if !u.reset.active() {
-				u.interruption.cancelDeferred()
-			}
-			if pendingCompletion != "" && pendingCompletion == u.reset.continuationTurn && !u.reset.active() && u.questionCount() == 0 {
-				u.notify("agent-turn-complete", "Agent turn complete")
-			}
-			return u.flushInput()
-		}
-	}
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
 	if handled, err := u.btwMessage(m); handled {
 		return err
@@ -552,7 +494,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
 	u.applyObservedActivity()
-	u.applyPendingJournal()
 	if held, err := u.holdOlderHistoryEvent(m); held || err != nil {
 		return err
 	}
@@ -635,7 +576,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if m.Error != nil {
 				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
 				u.unsent, u.queued = nil, nil
-				u.setNotice(u.compactionText("Compaction failed: ")+m.Error.Message, true)
+				u.setNotice("Compaction failed: "+m.Error.Message, true)
 				u.status = "Ready"
 			}
 			return nil
@@ -805,18 +746,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 				u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 			}
 			if u.proxy != nil {
-				if result.Thread.Cwd == "" {
-					return fmt.Errorf("%s returned no workspace for native journal delivery", method)
-				}
-				u.journal = u.proxy.journals.attachNative(result.Thread.Cwd, u.thread)
-				// Real app-server requests can omit workspace metadata. Keep that
-				// journal namespace distinct; never infer filesystem authority from cwd.
-				u.unscopedJournal = u.proxy.journals.attachNative("", u.thread)
-				for _, sink := range []*nativeJournalSink{u.journal, u.unscopedJournal} {
-					if err := u.proxy.journals.restoreNative(u.ctx, u.proxy.replayStore, sink); err != nil {
-						u.setNotice("Journal restore: "+err.Error(), true)
-					}
-				}
 				u.proxy.activity.attachNativePane(u.thread)
 			}
 			// Resumed history is applied once the roster is read, so Main can
@@ -929,11 +858,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 		}
 		if p.ThreadID == u.thread && p.Turn.ID == u.turn {
-			if p.Turn.Status == "interrupted" {
-				if err := u.reset.stop(p.Turn.ID); err != nil {
-					u.setNotice("Journal stop: "+err.Error(), true)
-				}
-			}
 			u.completed(p.Turn.Status == "completed")
 			u.endSyncQuestions(p.Turn.ID)
 			u.status, u.alert = strings.ToUpper(p.Turn.Status[:min(1, len(p.Turn.Status))])+p.Turn.Status[min(1, len(p.Turn.Status)):], p.Turn.Status == "failed"
@@ -945,14 +869,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			}
 			u.settleInput(p.Turn.ID, p.Turn.Status == "interrupted")
 			if p.Turn.Status == "completed" && u.questionCount() == 0 {
-				if u.reset != nil && len(u.unsent) == 0 && len(u.queued) == 0 {
-					if err := u.reset.completed(p.Turn.ID); err != nil {
-						u.setNotice("Slice continuation: "+err.Error(), true)
-					}
-				}
-				if !u.reset.active() {
-					u.notify("agent-turn-complete", "Agent turn complete")
-				}
+				u.notify("agent-turn-complete", "Agent turn complete")
 			}
 			for _, c := range u.questions.calls {
 				if !c.resolved {
@@ -972,9 +889,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			u.commitSteer(p.Item)
 			u.commitQuestionReplies(p.Item, p.TurnID)
 		}
-		if p.ThreadID == u.thread && (u.journal != nil && u.journal.hides(p.ItemID) || u.unscopedJournal != nil && u.unscopedJournal.hides(p.ItemID)) {
-			return nil
-		}
 		if u.observeQuestionItem(p.ThreadID, p.TurnID, p.Item, false) {
 			return nil
 		}
@@ -982,9 +896,6 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if c.thread == p.ThreadID && c.item == p.ItemID && len(c.request) == 0 && m.Method == "item/agentMessage/delta" {
 				return nil
 			}
-		}
-		if p.Item.Type == "agentMessage" && m.Method == "item/completed" {
-			p.Item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, p.ThreadID, p.TurnID, p.ItemID)
 		}
 		u.view.applyAppServerItem(true, u.session.cwd, u.thread, p.ThreadID, p.TurnID, p.ItemID, m.Method, p.Delta, p.Item)
 	}
@@ -1133,7 +1044,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.draft != "" {
 			u.deleteDraftRange(0, len(u.draft))
 			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
-			if u.turn != "" || u.starting() || u.reset.active() || u.submission.text != "" {
+			if u.turn != "" || u.starting() || u.submission.text != "" {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
 			}
 			if u.interruptLocked {
@@ -1144,7 +1055,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.turn != "" || u.starting() || u.reset.active() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
+		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1266,7 +1177,7 @@ func (u *appServerUI) historyPending() bool {
 // Ordinary root activity stays in Main, but a directed message belongs at
 // both ends, and a child's start and answer show where Main follows them.
 func mainActivityEntry(entry activityPaneEntry) (activityPaneEntry, bool) {
-	main := entry.Agent == "/root" && (entry.Kind == "output_dedupe" || entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress" || entry.Kind == "journal_event")
+	main := entry.Agent == "/root" && (entry.Kind == "output_dedupe" || entry.Kind == "tool" || entry.Kind == "hook" || entry.Kind == "exit" || entry.Kind == "error" || entry.Kind == "reasoning" || entry.Kind == "progress")
 	if (entry.Kind == "assignment" || entry.Kind == "start") && entry.assignment != nil {
 		main = true
 		entry.Agent = entry.assignment.from
@@ -1291,42 +1202,18 @@ func mainActivityLinked(entry activityPaneEntry) bool {
 }
 
 func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
-	u.annotateChildCompletion(&entry)
 	entry.Seq = u.view.lastSeq + 1
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
-	if entry.Kind == "final" && (u.restoring == nil || !u.restoring.paging) {
-		u.view.linkChildAnswers(u.view.entrySeq(entry))
-	}
-}
-
-func (u *appServerUI) annotateChildCompletion(entry *activityPaneEntry) {
-	if entry.Kind != "final" || entry.native == nil || entry.Agent == "/root" || entry.Agent == "Main" || len(entry.native.replacesItems) != 0 {
-		return
-	}
-	items := u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, entry.native.thread, entry.native.turn, entry.native.item)
-	if len(items) != 0 {
-		native := *entry.native
-		native.replacesItems = items
-		entry.native = &native
-	}
 }
 
 // applyActivity projects the collector once into the two audiences. Ordinary
 // root activity stays in Main, but a directed message belongs at both ends.
 func (u *appServerUI) applyActivity(entries []activityPaneEntry, agents []activityPaneAgent) {
-	for i := range entries {
-		u.annotateChildCompletion(&entries[i])
-	}
 	paneEntries := slices.Clone(entries)
 	for i := range paneEntries {
 		paneEntries[i].Agent = paneActivityAgent(paneEntries[i])
 	}
 	u.agents.apply(activityPaneEvent{Kind: "entries", Entries: paneEntries, Agents: agents})
-	for _, entry := range paneEntries {
-		if entry.Kind == "final" {
-			u.agents.linkChildAnswers(u.agents.entrySeq(entry))
-		}
-	}
 	for i, entry := range entries {
 		if entry, main := mainActivityEntry(entry); main {
 			if mainActivityLinked(entry) {
@@ -1400,15 +1287,6 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	draft = draft[firstRow:min(len(draft), firstRow+visible)]
 
 	room := max(0, height-len(draft)-borderRows)
-	strip := u.journalPlanStrip(width)
-	if reset := u.journalResetStrip(width); reset != "" {
-		strip = reset
-	}
-	if strip != "" && room > 0 {
-		room--
-	} else {
-		strip = ""
-	}
 	var pending []string
 	approvalRows := u.approvalRows(width, max(1, min(height/2, room)))
 	if len(approvalRows) > 0 {
@@ -1434,7 +1312,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		room -= len(pending)
 	}
 	// Reserve a blank row immediately above the composer, including below
-	// any journal strip, pending input, or live dock.
+	// pending input or a live dock.
 	gap := 0
 	if !u.pickerVisible() && room > 2 {
 		gap = 1
@@ -1457,8 +1335,6 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			frame = renderNativeKeybindings(width, room)
 		}
 		if u.pickerVisible() {
-			// The publication may occupy precisely the rows hidden by the picker.
-			// Defer journal presentation receipts until the overlay closes.
 			u.mainContentPainted = false
 			popupHeight := min(room, u.pickerHeight(width))
 			popup := u.renderPicker(width, popupHeight)
@@ -1476,9 +1352,6 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	u.questions.rect = terminalRect{0, len(frame), width, len(questionRows)}
 	frame = append(frame, questionRows...)
 	frame = append(frame, approvalRows...)
-	if strip != "" {
-		frame = append(frame, strip)
-	}
 	frame = append(frame, make([]string, gap)...)
 	if u.questions.active != nil {
 		u.questions.painted = true
@@ -1596,10 +1469,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			if u.shellCommand.standalone() {
 				status = "Running shell"
 			} else if u.compacting != nil {
-				status = u.compactionProgressText()
-				if u.journalResetTurn(u.thread, u.compacting[0]) {
-					status = "Resetting context from journal"
-				}
+				status = "Compacting context"
 			} else if u.polling != nil {
 				status = "Still running"
 			}
@@ -1636,7 +1506,6 @@ func scrollLabel(v *liveActivityView) string {
 func (u *appServerUI) ensureShell() {
 	u.view.conversation = true
 	u.view.painter.FileLink = u.markdownFileExists
-	u.journalView.fileLink = u.markdownFileExists
 	if u.shell != nil {
 		return
 	}
@@ -1654,7 +1523,7 @@ func (u *appServerUI) ensureShell() {
 		auto = u.proxy.autoLiveDiff
 	}
 	u.agents.bare = true
-	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, journalOpen: true, auto: auto, diffScreen: new(nativeDiffScreen)}
+	shell := &terminalUI{main: u, agents: u.agents, side: true, activityOpen: true, auto: auto, diffScreen: new(nativeDiffScreen)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
 	shell.diff.native, shell.diff.diffMode = true, true
 	shell.diff.stdout = shell.diffScreen
@@ -1724,15 +1593,7 @@ func (u *appServerUI) interruptTurn() error {
 	}
 	u.compaction.cancelContinuation()
 	if u.turn == "" {
-		if u.reset.active() && u.reset.intent != nil {
-			d := u.reset
-			if err := d.proxy.journals.stopJournalTurn(d.ctx, d.proxy.replayStore, d.workspace, d.thread, d.intent.Turn); err != nil {
-				u.setNotice("Journal stop: "+err.Error(), true)
-			} else {
-				d.intent = nil // The RPC remains host-owned until its start or rejection.
-			}
-		}
-		if u.starting() || u.submission.text != "" || u.reset.active() {
+		if u.starting() || u.submission.text != "" {
 			u.interruption.deferUntilStart()
 			u.status = "Interrupting…"
 			return nil
@@ -1743,9 +1604,6 @@ func (u *appServerUI) interruptTurn() error {
 	}
 	if !u.interruption.begin(u.turn) {
 		return nil
-	}
-	if err := u.reset.stop(u.turn); err != nil {
-		u.setNotice("Journal stop: "+err.Error(), true)
 	}
 	u.endSyncQuestions(u.turn)
 	u.status = "Interrupting…"

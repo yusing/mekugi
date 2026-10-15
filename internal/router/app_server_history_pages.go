@@ -406,8 +406,6 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 	if first != 0 {
 		h.firstSeq = first
 	}
-	u.agents.relinkHistoryAnswers(name)
-	u.view.relinkHistoryAnswers(name)
 }
 
 func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
@@ -424,22 +422,6 @@ func (u *appServerUI) hydrateChildHistoryMetadata(h *appServerChildHistory) {
 	u.restoreUsage(h.info)
 	u.observeCost(h.info.ID, agent)
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
-}
-
-// Cumulative final snapshots are presentation copies. Rebuild the affected
-// child's answers from retained source text only after chronological insertion,
-// so later snapshots update earlier answers and late assignments acquire links.
-func (v *liveActivityView) relinkHistoryAnswers(owner string) {
-	for i, entry := range v.entries {
-		if entry.Agent == owner && entry.Kind == "final" {
-			v.replaceEntry(i, entry.activityPaneEntry, parseLiveActivity(entry.activityPaneEntry))
-		}
-	}
-	for _, entry := range v.entries {
-		if entry.Agent == owner && entry.Kind == "final" {
-			v.linkChildAnswers(entry.Seq)
-		}
-	}
 }
 
 // Move the newly rendered page before the child's previously loaded entries.

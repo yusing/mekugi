@@ -41,12 +41,6 @@ func TestNativeUIPreview(t *testing.T) {
 	defer tty.Close()
 	p := newNativePreview(t)
 	defer p.close()
-	if os.Getenv("MEKUGI_JOURNAL_PREVIEW") == "1" {
-		seedNativeJournalPreview(p)
-	}
-	if os.Getenv("MEKUGI_JOURNAL_RESET_PREVIEW") == "1" {
-		seedNativeJournalResetPreview(p)
-	}
 	p.delay = "0.6"
 	err = terminalui.WithRawPane(t.Context(), tty, tty, "\x1b[?1049h\x1b[?25l\x1b[?1003;1006;2004h\x1b]10;?\x1b\\\x1b]11;?\x1b\\", "\x1b[?2026l\x1b[?1003;1006;2004l\x1b[0m\x1b[?25h\x1b[?1049l", func(keys <-chan byte) error {
 		tick := time.NewTicker(33 * time.Millisecond)
@@ -80,9 +74,6 @@ func TestNativeUIPreview(t *testing.T) {
 				}
 			case <-tick.C:
 				now := time.Now()
-				if p.ui.reset != nil {
-					p.ui.ensureJournalReset()
-				}
 				if err := p.ui.drainKeys(keys); err != nil || p.ui.quitRequested {
 					return err
 				}
@@ -153,7 +144,6 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p := newNativePreview(t)
 	defer p.close()
 	// These renderer assertions exercise Activity, not automatic pane choice.
-	p.ui.shell.journalOpen = false
 	p.ui.draft = "Keep my draft"
 	render := func(name string, want ...string) string {
 		t.Helper()
@@ -789,16 +779,6 @@ func (p *nativePreview) receive(to, from, id, kind, body string) {
 }
 
 func (p *nativePreview) say(thread, id, phase, text string) {
-	// Child completions use the tree journal's result grammar, not
-	// hand-painted answer cards: this turn's answer, then the change report.
-	// Codex names the author, so the result does not.
-	if thread != "main" && phase == "final_answer" {
-		report := "**Changes:**\nNo recorded changes.\n"
-		if thread == "t-reviewer" {
-			report = "**Changes:** amber1\n\nAggregated numstat (this agent's recorded evaluations, not a net diff):\n\n    A\t12\t0\tdoc.go\n"
-		}
-		text += "\n\n" + report
-	}
 	item := map[string]any{"id": id, "type": "agentMessage", "text": text}
 	if phase != "" {
 		item["phase"] = phase
@@ -1027,7 +1007,7 @@ printf 'PASS\nok  \texample.com/broker/internal/broker\t1.2s\n'`)
 		p.say("t-tester", "answer-tester", "final_answer", "Both race tests pass with -race:\n\n- `TestConcurrentPublish`\n- `TestUnsubscribeRace`")
 		p.finish("t-tester")
 	})
-	p.add("journal", func() {
+	p.add("final answer", func() {
 		p.say("main", "main-answer", "final_answer", "The broker is safe for concurrent publishers.\n\n1. `Publish` copies subscribers under the lock and sends outside it.\n2. Race tests cover publish and unsubscribe.\n3. The pane no longer blocks on its first frame.")
 	})
 	p.add("done", func() {
@@ -1314,7 +1294,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 }
 
 // The fake session exercises production event projection, turn association,
-// tree journal result grammar, and the real mouse path, not a separate mock UI.
+// native final answers and the real mouse path.
 func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	p := newNativePreview(t)
 	defer p.close()

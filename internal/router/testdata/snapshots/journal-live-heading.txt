@@ -1,3 +1,0 @@
-Journal
-• ◐ /1 Recover journal task IDs
-• Compact recovery excludes mounted agent results.

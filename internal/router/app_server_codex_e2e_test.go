@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -48,10 +48,6 @@ func TestAppServerPreviewCodeMode(t *testing.T) {
 
 func runAppServerPreview(t *testing.T, provider responseProvider) {
 	runAppServerPreviewWithProxy(t, provider, nil)
-}
-
-func TestAppServerPreviewNativeJournal(t *testing.T) {
-	runAppServerPreviewWithProxy(t, &appPreviewProvider{}, newManagedMekugiProxy(t))
 }
 
 func runAppServerPreviewWithProxy(t *testing.T, provider responseProvider, proxy *mekugiProxy) {
@@ -114,7 +110,6 @@ type appServerPreview struct {
 	environment               []string // Appended to Codex's isolated environment.
 	codexArgs                 []string // Appended to the app-server invocation.
 	approvals                 bool     // Run in approval mode rather than --yolo's policy.
-	noJournal                 bool     // Skip the native journal milestone and its receipt checks.
 	mcp                       bool     // Register the existing bridge for native hooks.
 	beforePrompt, afterPrompt appServerPreviewHook
 	duringTurn                appServerPreviewHook // Runs after the prompt is sent, before the turn must finish.
@@ -140,7 +135,7 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	defer cancel()
 	args := []string{"app-server", "-c", `model_providers.preview={name="preview",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false"}
 	if options.mcp {
-		socket, stop, err := startJournalMCP(ctx, newJournalMCPServer(proxy))
+		socket, stop, err := startMCP(ctx, newMCPServer())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +144,7 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 				t.Error(err)
 			}
 		}()
-		args = append(args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["journal-mcp",`+strconv.Quote(socket)+`]}`)
+		args = append(args, "-c", `mcp_servers.mekugi={command=`+strconv.Quote(os.Args[0])+`,args=["mcp-bridge",`+strconv.Quote(socket)+`]}`)
 	}
 	cmd := exec.CommandContext(ctx, codex, append(args, options.codexArgs...)...)
 	cmd.Env = append(routerFaultCodexEnvironment(t), environment...)
@@ -224,26 +219,6 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	if beforePrompt != nil {
 		beforePrompt(t, outer, await, awaitFrame, screen)
 	}
-	var native *nativeJournalSink
-	if proxy != nil && !options.noJournal {
-		proxy.journals.nativeMu.Lock()
-		for _, sink := range proxy.journals.native {
-			if sink.workspace == "" {
-				native = sink
-			}
-		}
-		proxy.journals.nativeMu.Unlock()
-		if native == nil {
-			t.Fatal("native sink not attached before first prompt")
-		}
-		if err := proxy.journals.initialize(ctx, proxy.replayStore, native.workspace, native.thread, "/root", ""); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := proxy.journals.apply(ctx, proxy.replayStore, native.workspace, native.thread, "live", []journalMutation{{Op: "add", Text: new("Native milestone"), ReportNow: true}}); err != nil {
-			t.Fatal(err)
-		}
-		await("Native milestone")
-	}
 	io.WriteString(outer, "A deterministic preview prompt\r")
 	if options.duringTurn != nil {
 		options.duringTurn(t, outer, await, awaitFrame, screen)
@@ -252,10 +227,6 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	await("completed")
 	if afterPrompt != nil {
 		afterPrompt(t, outer, await, awaitFrame, screen)
-	}
-	if strings.Contains(screen.String(), "Journal flush") || strings.Contains(screen.String(), "Question:") {
-
-		t.Fatalf("legacy flush carrier leaked into Main:\n%s", screen.String())
 	}
 	if !strings.Contains(screen.String(), "A deterministic preview prompt") {
 		t.Fatal("user message missing from shared view")
@@ -276,16 +247,5 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	}
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("terminal mode not restored")
-	}
-	if native != nil {
-		items, err := proxy.journals.list(ctx, proxy.replayStore, native.workspace, native.thread)
-		if err != nil || len(items) != 2 {
-			t.Fatalf("native journal items: %+v %v", items, err)
-		}
-		for _, item := range items {
-			if !item.Reported || !item.Flushed {
-				t.Fatalf("rendered revision missing receipt: %+v", item)
-			}
-		}
 	}
 }

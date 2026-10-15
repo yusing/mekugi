@@ -147,24 +147,15 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 	}
 
-	if session.PostCompactRecovery || session.JournalMCPSocket != "" {
+	if session.MCPSocket != "" {
 		worker, err := os.Executable()
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
 		}
-		if session.PostCompactRecovery {
-			var registered bool
-			args, registered = postCompactHookArgs(args, worker)
-			if !registered {
-				fmt.Fprintln(os.Stderr, "mekugi: explicit CLI hooks configuration retained; add the post-compact SessionStart hook to that configuration to enable recovery")
-			}
-		}
-		if session.JournalMCPSocket != "" {
-			args = journalMCPArgs(args, worker, session)
-		}
+		args = mcpArgs(args, worker, session)
 	}
-	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.JournalEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
+	cmd := exec.CommandContext(ctx, executable, codexArgs(session.BaseURL, args, session.CodeModeEnabled, session.SkillsManagerAvailable, !session.ThirdPartyOnly)...)
 	cmd.Env = append(slices.DeleteFunc(os.Environ(), func(entry string) bool {
 		return strings.HasPrefix(entry, vcsguard.HookEnvironment+"=")
 	}), "MEKUGI_BASE_URL="+session.BaseURL)
@@ -451,8 +442,8 @@ func watchStartupInterrupts(ctx context.Context, cancel context.CancelFunc, inte
 	})
 }
 
-func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, openAIAuth bool) []string {
-	if journal {
+func codexArgs(baseURL string, args []string, codeMode, skillsManagerAvailable, openAIAuth bool) []string {
+	if codeMode {
 		args = slices.Clone(args)
 		// Codex applies feature toggles after -c overrides. Normalize conflicting
 		// toggles too, without interpreting prompt operands after --.
@@ -473,9 +464,9 @@ func codexArgs(baseURL string, args []string, journal, skillsManagerAvailable, o
 	if index < 0 {
 		index = len(args)
 	}
-	if journal {
-		args = slices.Insert(slices.Clone(args), index, "-c", "tools.update_plan.enabled=false", "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
-		index += 6
+	if codeMode {
+		args = slices.Insert(slices.Clone(args), index, "-c", "features.code_mode=true", "-c", "features.code_mode_only=true")
+		index += 4
 	}
 	overrides := []string{
 		"--disable", "goals",

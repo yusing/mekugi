@@ -3,7 +3,6 @@ package router
 import (
 	"cmp"
 	"fmt"
-	"maps"
 	"slices"
 	"time"
 
@@ -241,27 +240,6 @@ func (u *appServerUI) renderSessionMetrics() {
 			add("Cache diagnostics", "Turn state", cmp.Or(d.TurnStateForwarding, "unavailable"))
 		} else {
 			add("Cache diagnostics", "", "Prefix comparisons unavailable on first or partial observations.")
-		}
-		if e.RequestKind == "compaction" {
-			add("Compaction", "Answerer", e.CompactionAnswer)
-			optional("Compaction", "Changes", e.CompactionChanges)
-			optional("Compaction", "Failures", e.CompactionFailures)
-			add("Compaction", "", "Router answers invoke no provider. Missing counts are unavailable, not zero; no savings are estimated.")
-		}
-		if j := e.Journal; j != nil {
-			add("Journal", "", "Cumulative thread snapshot, never sum across exchanges.")
-			add("Journal", "Started", j.StartedAt)
-			add("Journal", "Sequence", j.Sequence)
-			add("Journal", "Standalone", j.StandaloneRequests)
-			add("Journal", "Final answers", j.FinalAnswers)
-			add("Journal", "Answer bytes", j.FinalAnswerBytes)
-			add("Journal", "Empty outcomes", j.EmptyOutcomes)
-			if j.LastOutcomeEmpty != nil {
-				add("Journal", "Last empty", *j.LastOutcomeEmpty)
-			}
-			for _, op := range slices.Sorted(maps.Keys(j.Operations)) {
-				add("Journal", op, j.Operations[op])
-			}
 		}
 		if len(e.ProviderAttempts) == 0 {
 			add("Provider attempts", "", "No provider attempt observed")

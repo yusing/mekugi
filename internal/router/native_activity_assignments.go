@@ -51,7 +51,7 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 	}
 	var assignments []*activityAssignment
 	for _, item := range items {
-		text, ok := journalAssignmentText(item, recipient)
+		text, ok := nativeAssignmentText(item, recipient)
 		if !ok || strings.TrimSpace(text) == "" {
 			continue // Opaque tasks never become an inferred plaintext assignment.
 		}

@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +16,7 @@ func expansionFixture(main bool) *liveActivityView {
 	v := newLiveActivityView()
 	v.conversation, v.childrenOnly = main, !main
 	v.painter.Theme = livediff.DarkTheme
-	now := journalNoiseTime()
+	now := time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)
 	v.clock = func() time.Time { return now }
 	agent := "/root/worker"
 	if main {
@@ -27,10 +26,7 @@ func expansionFixture(main bool) *liveActivityView {
 	v.appendEntry(activityPaneEntry{Seq: 1, Agent: agent, Kind: "text", Text: narrative, Observed: now}, []activityui.Block{{Kind: "text", Body: narrative}})
 	v.appendEntry(activityPaneEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Collapsed: true, Live: true}})
 	v.appendEntry(activityPaneEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}, Collapsed: true}})
-	event := journalEvent{Op: "set", Path: "/1", Fields: journalNode{Path: "/1", Kind: "task", Title: "Check expansion", State: "done", Body: strings.Repeat("Journal body detail. ", 12) + "JOURNAL-END"}}
-	v.appendEntry(activityPaneEntry{Seq: 4, Agent: agent, Kind: "journal_event", Text: "Check expansion", Observed: now, journalEvent: &event}, nil)
-	v.appendEntry(activityPaneEntry{Seq: 5, Agent: agent, Kind: "journal_card", Observed: now, journalCard: journalNoiseCard()}, nil)
-	v.lastSeq = 5
+	v.lastSeq = 3
 	return v
 }
 
@@ -46,90 +42,41 @@ func TestUISnapshotLiveActivityExpansion(t *testing.T) {
 	}
 }
 
-func TestUISnapshotLiveActivityExpansionChildCompletion(t *testing.T) {
-	for _, reportOnly := range []bool{false, true} {
-		t.Run(fmt.Sprintf("report-only=%t", reportOnly), func(t *testing.T) {
-			v := sharedEventsView(false)
-			var source strings.Builder
-			source.WriteString("Journal result `/root/worker`")
-			if !reportOnly {
-				writeJournalItems(&source, []journalItem{
-					{ID: "first", Text: "First retained answer."},
-					{ID: "last", Text: "Last retained answer."},
-				})
-			}
-			source.WriteString("\n\n**Changes:** amber3..amber4\n\nRecorded evaluations (not a net diff):\n\n" +
-				indentJournalText("M\t10\t2\tinternal/a.go", "    "))
-			entry := activityPaneEntry{Seq: 1, Agent: "/root/worker", Kind: "final", Text: source.String(), Observed: v.now(), activitySeq: 7}
-			v.appendEntry(entry, parseLiveActivity(entry))
-			for _, mode := range []string{"default", "expanded", "expanded"} {
-				feed := v.renderFeed(80, 30)
-				v.viewport(feed, 30)
-				uisnapshot.AssertTerminal(t, fmt.Sprintf("testdata/snapshots/expansion-child-report-only-%t-%s.txt", reportOnly, mode),
-					append(feed.lines, "plain after completion"), 80)
-				v.toggleExpansion()
-			}
-		})
-	}
-}
-
-func TestUISnapshotNativeUIExpansionFocus(t *testing.T) {
+func TestNativeUIExpansionFocus(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	u.draft = "Keep this draft"
-	u.shell.focus = 4
-	for range 2 {
-		if err := u.shell.key(5); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if u.journalView.expansion != 2 {
-		t.Fatal("empty Journal pane ignored the expansion choice")
-	}
-	if err := u.shell.key(5); err != nil {
-		t.Fatal(err)
-	}
-	j := nativeJournalHierarchyFixture(t)
-	u.journal = &nativeJournalSink{tree: &j}
-	for _, focus := range []int{0, 2, 4} {
+	for _, focus := range []int{0, 2} {
 		u.shell.focus = focus
+		view := u.view
+		if focus != 0 {
+			view = u.agents
+		}
+		before := view.expansion
 		if err := u.shell.key(5); err != nil {
 			t.Fatal(err)
 		}
-		if u.draft != "Keep this draft" || u.shell.focus != focus {
-			t.Fatal("Ctrl+E changed the draft or focus")
+		if u.draft != "Keep this draft" || u.shell.focus != focus || view.expansion != (before+1)%3 {
+			t.Fatal("Ctrl+E changed the draft, focus or wrong pane")
 		}
-		if !strings.HasSuffix(ansi.Strip(u.shell.nativeStatus()), "^B 1-5 panes · ^E expand all") {
-			t.Fatal("Ctrl+E hint did not follow panes or name the next mode")
-		}
-	}
-	if u.view.expansion != 1 || u.shell.agents.expansion != 1 || u.journalView.expansion != 1 {
-		t.Fatal("Ctrl+E did not reach each focused pane")
-	}
-	for _, state := range []string{"events", "default"} {
-		rows := u.journalView.render(&j, 80, 5, false, false, livediff.DarkTheme)
-		uisnapshot.Assert(t, "testdata/snapshots/expansion-journal-"+state+".txt", strings.Join(rows, "\n"))
-		if state == "events" && len(u.journalView.rows) <= 5 {
-			t.Fatal("automatic fitting undid expand all")
-		}
-		if err := u.shell.key(5); err != nil {
-			t.Fatal(err)
-		}
-		if state == "events" {
-			if err := u.shell.key(5); err != nil {
-				t.Fatal(err)
-			}
+		if !strings.Contains(ansi.Strip(u.shell.nativeStatus()), "^B 1-4 panes") {
+			t.Fatal("pane hint is incorrect")
 		}
 	}
 	playback := uiReplayPlayback{ui: u}
-	for _, focus := range []int{0, 2, 4} {
+	for _, focus := range []int{0, 2} {
 		u.shell.focus = focus
+		view := u.view
+		if focus != 0 {
+			view = u.agents
+		}
+		before := view.expansion
 		if _, err := playback.key(5); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if u.view.expansion != 2 || u.shell.agents.expansion != 2 || u.journalView.expansion != 2 {
-		t.Fatal("replay ignored the focused pane shortcut")
+		if view.expansion != (before+1)%3 {
+			t.Fatal("replay ignored the focused pane shortcut")
+		}
 	}
 }
 
@@ -251,10 +198,10 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 func TestLiveActivityExpansionReusesUserPrompt(t *testing.T) {
 	v := newLiveActivityView()
 	v.conversation = true
-	v.clock = journalNoiseTime
+	v.clock = func() time.Time { return time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local) }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
-		{Seq: 1, Agent: "You", Kind: "text", Text: "Keep this prompt and its wrapped source.\n\n```go\npackage example\n```", Observed: journalNoiseTime()},
-		{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("An expandable event.\n", 8), Observed: journalNoiseTime()},
+		{Seq: 1, Agent: "You", Kind: "text", Text: "Keep this prompt and its wrapped source.\n\n```go\npackage example\n```", Observed: time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)},
+		{Seq: 2, Agent: "Main", Kind: "text", Text: strings.Repeat("An expandable event.\n", 8), Observed: time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)},
 	}})
 	v.passed = map[uint64]bool{1: true}
 	v.viewport(v.renderFeed(70, 30), 30)
@@ -271,34 +218,6 @@ func TestLiveActivityExpansionReusesUserPrompt(t *testing.T) {
 				t.Fatal("expansion retained a duplicate user-prompt layout")
 			}
 		}
-	}
-}
-
-func TestNativeJournalExpansionPreservesSelectionAfterRemoval(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	u.ensureShell()
-	u.shell.focus = 4
-	j := nativeJournalHierarchyFixture(t)
-	u.journal = &nativeJournalSink{tree: &j}
-	if err := u.shell.key(5); err != nil {
-		t.Fatal(err)
-	}
-	view := &u.journalView
-	if len(view.rows) != 0 {
-		t.Fatal("Ctrl+E rebuilt the old Journal layout before its render")
-	}
-	view.render(&j, 80, 40, true, false, livediff.DarkTheme)
-	view.selected = slices.IndexFunc(view.rows, func(row journalPaneRow) bool { return row.node.Path == "/3/1" })
-	if view.selected < 0 {
-		t.Fatal("fixture lacks the selected descendant")
-	}
-	j.Items = slices.DeleteFunc(j.Items, func(item journalItem) bool { return item.Path == "/3/1" })
-	if err := u.shell.key(5); err != nil {
-		t.Fatal(err)
-	}
-	view.render(&j, 80, 40, true, false, livediff.DarkTheme)
-	if view.rows[view.selected].node.Path != "/3" {
-		t.Fatal("toggle lost the removed selection's nearest visible ancestor")
 	}
 }
 

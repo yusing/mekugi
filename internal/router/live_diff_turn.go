@@ -1,5 +1,7 @@
 package router
 
+import json "encoding/json/v2"
+
 // Live view transitions belong to the root host turn, not a provider response,
 // tool call, or child. The tuple also prevents late delivery from an older turn
 // from switching a newer prompt back to diff.
@@ -37,10 +39,19 @@ func (a *autoLiveDiff) finishTurn(workspace, thread, turnID string) {
 	a.events.publishTurn(false)
 }
 
-// Delivered calls this after a successful terminal envelope has been written
-// and flushed by the downstream transport.
-func (t *mekugiResponseTransform) finishLiveDiffTurn() {
-	if !t.subagentTurn {
-		t.proxy.autoLiveDiff.finishTurn(t.directory, t.threadID, t.shellTurnID)
+// Delivered ends the root live-diff turn only after answer completion reaches
+// the host. Transformation alone cannot release the turn's storage lease.
+func (t *mekugiResponseTransform) Delivered(payload []byte) {
+	if !t.liveDiffCompletionReady {
+		return
 	}
+	var envelope struct {
+		Type   string `json:"type"`
+		Status string `json:"status"`
+	}
+	if json.Unmarshal(payload, &envelope) != nil || envelope.Type != "response.completed" && envelope.Status != "completed" {
+		return
+	}
+	t.storageIdle = true
+	t.proxy.autoLiveDiff.finishTurn(t.directory, t.threadID, t.shellTurnID)
 }

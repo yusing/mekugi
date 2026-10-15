@@ -2,11 +2,11 @@ package router
 
 import (
 	"bytes"
+	jsonv1 "encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,61 +16,57 @@ import (
 	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
-func TestAppServerBTWCompactionRejectsBeforeSynthesisOrProvider(t *testing.T) {
-	for _, mode := range []string{"off", "auto", "slice"} {
-		t.Run(mode, func(t *testing.T) {
-			transform, proxy, _, workspace := newDurableTreeTransform(t)
-			thread := transform.shellThreadID
-			proxy.journalCompaction = mode
-			if _, err := proxy.journals.apply(transform.ctx, proxy.replayStore, workspace, thread, "", []journalMutation{{Op: "add", Kind: "task", Title: new("Retained task"), State: new("working")}}); err != nil {
-				t.Fatal(err)
-			}
-			proxy.setBTWThread(thread, true)
-			request, headers := journalCompactionRequest(t, workspace, thread)
-			provider := &serverFakeProvider{}
-			var output bytes.Buffer
-			err := executeRequest(t.Context(), t.Context(), request, headers, "side", provider, &output, nil, proxy)
-			compatibility, ok := errors.AsType[*requestCompatibilityError](err)
-			if !ok || compatibility.code != "btw_compaction_required" || compatibility.message != btwCompactionRequired {
-				t.Fatalf("rejection = %v", err)
-			}
-			if len(provider.forwarded) != 0 || output.Len() != 0 {
-				t.Fatalf("side request escaped: upstream=%d output=%q", len(provider.forwarded), output.String())
-			}
-			if _, err := os.Stat(filepath.Join(proxy.replayStore.directory, journalCompactionName(workspace, thread))); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("side synthesis persisted: %v", err)
-			}
-			wire := mustTestJSON(t, request.fields)
-			httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(wire))
-			httpRequest.Header = headers
-			recorder := httptest.NewRecorder()
-			responsesHandler(t.Context(), time.Second, provider, nil, proxy)(recorder, httpRequest)
-			if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), btwCompactionRequired) {
-				t.Fatalf("HTTP rejection: %d %s", recorder.Code, recorder.Body.String())
-			}
-			// A separate Main thread follows normal policy even while a side is registered.
-			if mode == "auto" {
-				if err := proxy.journals.initialize(t.Context(), proxy.replayStore, workspace, "main", "/root", ""); err != nil {
-					t.Fatal(err)
-				}
-				if err := proxy.journals.bindIdentity(t.Context(), proxy.replayStore, workspace, "main", "", "/root", true); err != nil {
-					t.Fatal(err)
-				}
-			}
-			mainRequest, mainHeaders := journalCompactionRequest(t, workspace, "main")
-			mainWire, err := journalCompactionSSE("main-compact", "gpt-test", "Main summary")
-			if err != nil {
-				t.Fatal(err)
-			}
-			provider.results = []serverForwardResult{{response: serverHTTPResponse(string(mainWire))}}
-			provider.results[0].response.Header.Set("Content-Type", "text/event-stream")
-			if err := executeRequest(t.Context(), t.Context(), mainRequest, mainHeaders, "main", provider, io.Discard, nil, proxy); err != nil {
-				t.Fatal(err)
-			}
-			if want := map[string]int{"off": 1, "slice": 1, "auto": 0}[mode]; len(provider.forwarded) != want {
-				t.Fatalf("Main compaction requests=%d want=%d", len(provider.forwarded), want)
-			}
-		})
+func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
+	proxy := newManagedMekugiProxy(t)
+	workspace := t.TempDir()
+	thread := "side"
+	proxy.setBTWThread(thread, true)
+	requestFor := func(thread string) (parsedResponsesRequest, http.Header) {
+		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+			"model": "gpt-test", "stream": true,
+			"tool_choice": "auto", "parallel_tool_calls": false,
+			"input": []any{map[string]any{"role": "user", "content": "Summarize."}},
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		metadata, ok := decodeCodexTurnMetadata(serverCompactionMetadataHeaders(t))
+		if !ok {
+			t.Fatal("invalid fixture metadata")
+		}
+		metadata.ThreadID = thread
+		metadata.Directories = map[string]jsonv1.RawMessage{workspace: nil}
+		headers := make(http.Header)
+		headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+		headers.Set(threadIDHeader, thread)
+		return request, headers
+	}
+	request, headers := requestFor(thread)
+	provider := &serverFakeProvider{}
+	var output bytes.Buffer
+	err := executeRequest(t.Context(), t.Context(), request, headers, "side", provider, &output, nil, proxy)
+	compatibility, ok := errors.AsType[*requestCompatibilityError](err)
+	if !ok || compatibility.code != "btw_compaction_required" || compatibility.message != btwCompactionRequired {
+		t.Fatalf("rejection = %v", err)
+	}
+	if len(provider.forwarded) != 0 || output.Len() != 0 {
+		t.Fatalf("side request escaped: upstream=%d output=%q", len(provider.forwarded), output.String())
+	}
+	httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
+	httpRequest.Header = headers
+	recorder := httptest.NewRecorder()
+	responsesHandler(t.Context(), time.Second, provider, nil, proxy)(recorder, httpRequest)
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), btwCompactionRequired) {
+		t.Fatalf("HTTP rejection: %d %s", recorder.Code, recorder.Body.String())
+	}
+	// Main compaction still goes to the provider while a side thread is registered.
+	mainRequest, mainHeaders := requestFor("main")
+	provider.results = []serverForwardResult{{response: serverHTTPResponse(`{"id":"main-compact","status":"completed","output":[]}`)}}
+	if err := executeRequest(t.Context(), t.Context(), mainRequest, mainHeaders, "main", provider, io.Discard, nil, proxy); err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.forwarded) != 1 {
+		t.Fatalf("Main compaction requests=%d want=1", len(provider.forwarded))
 	}
 }
 

@@ -91,8 +91,8 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 		_ = encoder.Encode(start)
 		_ = encoder.Encode(finish)
 		_ = file.Close()
-		journal, err := ReadAXReadJournal(t.Context(), path)
-		if err == nil || len(journal.Threads) != 0 {
+		log, err := ReadAXReadLog(t.Context(), path)
+		if err == nil || len(log.Threads) != 0 {
 			t.Fatalf("accepted inconsistent evidence: %+v %v", finish, err)
 		}
 	}

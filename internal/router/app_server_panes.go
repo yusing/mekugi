@@ -20,7 +20,6 @@ type nativePaneState struct {
 	Focus            int                   `json:"focus"`
 	Split            int                   `json:"split"`
 	DiffOpen         bool                  `json:"diffOpen"`
-	JournalOpen      bool                  `json:"journalOpen,omitzero"`
 	InterruptLocked  bool                  `json:"interruptLocked,omitzero"`
 	NavigatorColumns int                   `json:"navigatorColumns"`
 	Settings         nativeAppliedSettings `json:"settings,omitzero"`
@@ -69,7 +68,7 @@ func (s nativeAppliedSettings) config() map[string]any {
 }
 
 func (u *terminalUI) paneState() nativePaneState {
-	state := nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, JournalOpen: !u.diffOpen && (u.journalOpen || u.autoActivity), NavigatorColumns: u.diff.navigation.Columns}
+	state := nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, NavigatorColumns: u.diff.navigation.Columns}
 	if u.main != nil {
 		state.InterruptLocked = u.main.interruptLocked
 	}
@@ -116,7 +115,7 @@ func (p *nativePanePersistence) open(u *terminalUI, workspace, thread string, re
 	p.settings = state.Settings
 	p.resumeObserved = state.ResumeObserved
 	p.resumeEvidence = state.ResumeEvidence
-	u.focus, u.split, u.diffOpen, u.journalOpen = state.Focus, state.Split, state.DiffOpen, state.JournalOpen
+	u.focus, u.split, u.diffOpen = state.Focus, state.Split, state.DiffOpen
 	u.main.interruptLocked = state.InterruptLocked
 	u.diff.navigation.Columns = state.NavigatorColumns
 	return nil
@@ -159,7 +158,7 @@ func (p *nativePanePersistence) read(workspace, thread string) (nativePaneState,
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nativePaneState{}, err
 	}
-	if state.Version != 1 || state.Focus < 0 || state.Focus > 4 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && (state.DiffOpen || state.JournalOpen) || state.DiffOpen && state.JournalOpen || state.Focus == 4 && !state.JournalOpen {
+	if state.Version != 1 || state.Focus < 0 || state.Focus > 3 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && state.DiffOpen {
 		return nativePaneState{}, errors.New("invalid or unsupported pane state")
 	}
 	if state.Settings != (nativeAppliedSettings{}) && (state.Settings.Model == "" || state.Settings.Observed.IsZero()) {

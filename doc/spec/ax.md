@@ -4,7 +4,7 @@
 
 Authenticated `mcat`, `msymbol`, and `inspect_file` frontends observe their
 actual stock-executor invocations. An absolute `MEKUGI_AX_OUTPUT` opts into a
-local `mekugi.ax.read.v2` JSONL journal. `--debug` creates that journal unless
+local `mekugi.ax.read.v2` JSONL read log. `--debug` creates that log unless
 an explicit path is supplied, pins it in the authenticated worker manifest,
 and includes an automatic AX report. No static source scan or router request
 count substitutes for executed-read evidence.
@@ -17,7 +17,7 @@ Loops count each actual invocation; skipped branches and literal examples
 count none. Other programs' internal reads are outside coverage. Observation
 failure cannot repeat, stop, or change the command result.
 
-The journal is private (`0600`), regular, append-only, and bounded to 64 MiB.
+The log is private (`0600`), regular, append-only, and bounded to 64 MiB.
 A cross-process lock bounds concurrent appends. Symlinks and nonregular paths
 reject; no parent directory is created. Events retain no paths, scripts,
 arguments, credentials, source text, or command output. A missing finish is
@@ -35,7 +35,7 @@ independent of call pagination. `--read-log PATH` and `--defects PATH` imply
 - **Read observations:** starts and finishes paired by invocation identity,
   per-reader success/failure and duration, allowlisted failure classes,
   incomplete pairs, and explicit other-thread or anonymous exclusions. The
-  entire journal is validated before attribution.
+  entire log is validated before attribution.
 - **Completion observations:** paired rollout start/complete events and their
   recorded intervals. Missing or cross-family events are not guessed.
 - **Command observations:** recorded command start/completion identities,
@@ -46,17 +46,17 @@ independent of call pagination. `--read-log PATH` and `--defects PATH` imply
   The report records artifact path and SHA-256, not its contents. A verdict
   is supplied judgment, not proven causality.
 
-Assessment input is bounded to 1 MiB; a journal event is at most 4096 bytes,
+Assessment input is bounded to 1 MiB; a read-log event is at most 4096 bytes,
 and the report admits at most 100000 invocation identities. Invalid supplied
 sources fail before producing a partial result. Inspection writes no session,
-journal, evidence artifact, or replay record. AX evidence remains separate from
+read log, evidence artifact, or replay record. AX evidence remains separate from
 sanitized transport metrics.
 
 Acceptance:
 
 1. Executed reads, loops, skipped branches, failures, and missing evidence
    retain distinct counts without changing command stdout, stderr, or exit.
-2. Concurrent writers, malformed journals, incomplete events, and unrelated
+2. Concurrent writers, malformed logs, incomplete events, and unrelated
    threads cannot create false success or attribution.
 3. Stock patch re-emission and failure counts use observed input and durable
    result, not a translated carrier or inferred application.

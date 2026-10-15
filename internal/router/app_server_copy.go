@@ -21,13 +21,7 @@ func (u *appServerUI) showCopyPicker() {
 		if n == nil || n.thread != u.thread || entry.Agent != "Main" {
 			continue
 		}
-		if entry.Kind == "native_journal" && len(entry.journalItems) > 0 {
-			var parts []string
-			for _, item := range entry.journalItems {
-				parts = append(parts, item.Text)
-			}
-			response = strings.Join(parts, "\n\n")
-		} else if entry.Kind == "text" && (n.phase == "item/completed" || entry.journal != nil) {
+		if entry.Kind == "text" && n.phase == "item/completed" {
 			response = entry.Text
 		}
 		if strings.TrimSpace(response) != "" {

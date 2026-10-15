@@ -19,21 +19,12 @@ Operation-row formatting and feed controls are specified by
 
 ### UI
 
-Journal shares the auxiliary column with Diff and Activity (`Ctrl-B 5`). No bare
-key opens it, so composer text that starts with any letter is typed. Its plan strip, tree navigation, transition rows and expandable
-terminal card follow [journal presentation](journal.md#native-journal-presentation).
-Pane preferences retain its visibility and focus; transient selection and expansion
-remain local to the active frontend.
+Diff and Activity share the auxiliary column. Pane preferences retain visibility
+and focus; transient selection and expansion remain local to the active frontend.
 The bottom pane selectors are clickable and perform the same selection as
 `Ctrl-B` followed by the pane digit. Only visible selector cells are active;
 open dialogs and selection actions retain pointer precedence. The unread Diff
 indicator is separated from its label and retains the selected tab highlight.
-New sessions default to Journal. Live child spawns and follow-up turns temporarily
-show Activity without moving Main's keyboard focus. Journal returns after the last
-outstanding child completes, fails, or is interrupted, unless the user explicitly
-selected an auxiliary pane or the roster. Existing manual Diff/Activity choices are
-not replaced on a spawn. Temporary Activity visibility is not persisted as a pane
-preference; replay cannot revive pending child lifecycles.
 
 `mekugi codex` uses the native client of `codex app-server` for interactive
 terminal launches. Without `--yolo`, Codex's configured approval and sandbox
@@ -47,7 +38,7 @@ sandbox policy. There is no legacy UI selection or fallback. It maps explicit
 `--yolo`, model, config, and feature-toggle (`--enable` / `--disable`)
 arguments plus `resume`, `resume THREAD_ID` or `resume --last`, and rejects other interactive arguments rather
 than ignoring them.
-Router readiness, provider catalogs, invocation overrides, native recovery hooks
+Router readiness, provider catalogs, invocation overrides, native guard hooks
 and frontend environment keep their owners; redirected and noninteractive
 commands keep their original path. The client speaks newline-delimited stdio RPC.
 
@@ -86,7 +77,6 @@ to the JavaScript execution host, and submits intent rather than executing tools
 | Thread, turn and item lifecycle and history | Codex app-server; never reconstructed from rendered text. |
 | Routing, projection, frontend PATH | The router and launcher, with invocation configuration carried into app-server. |
 | Changes and recovery references | The capturer and replay store; native displays reuse their scoped receipts and previews. |
-| Journals and delivery receipts | The [journal owner](journal.md); native events carry its records without new receipts or model-context insertion. |
 | Tokens, prices, missing usage | Router accounting; app-server usage is never added to cost totals. |
 | Tool classification | App-server's typed command actions and Mekugi classifiers; renderers never parse shell text. |
 | Skills and guidance | The [guidance contract](guide.md) and router projection. |
@@ -143,8 +133,8 @@ status line, leaves an error row with the recorded failure. Buffered notificatio
 item identity. Historical tools are display-only: they do not recreate live
 edit previews, processes or delivery receipts. Subsequent input
 starts a turn on the same thread; an active snapshot retains its steer/interrupt
-target. Resume keeps the returned workspace, with journal sinks scoped to that
-thread. Startup and in-session resume restore the last saved model, reasoning
+target. Resume keeps the returned workspace. Startup and in-session resume restore
+the last saved model, reasoning
 effort and service tier, including changes before the first turn and idle changes
 after the last turn. Successfully applied settings survive a fresh router/process
 through workspace/thread-scoped preferences; an explicit default/null selection
@@ -269,18 +259,16 @@ visible, without internal capture-bookkeeping placeholders. Incomplete capture p
 one coverage notice with a `mchanges` reference, not labeled as confirmed edits;
 the durable records retain each path and its reason.
 
-The shell frames Main on the left and one right pane: the saved diff (2),
-Activity (3), or Journal (5), each filling the pane. A roster (4) below them fits its
+The shell frames Main on the left and one right pane: the saved diff (2)
+or Activity (3), each filling the pane. A roster (4) below them fits its
 content, four rows unfocused and up to 40% of the screen when focused; finished
 agents fold into one row. The roster immediately follows the pane borders, with one blank row below it
 before the status bar when terminal height permits. Collapsed rows place activity directly after the name
 without reserving name-column padding. Each row shows state, timer, tokens, cost
 and turns, dropping from the right when narrow. Observed roles color the status
 glyphs, with a color-to-role legend only in the expanded Agents pane; role labels
-are not repeated in each row. When host metadata omits a role, authenticated
-spawn evidence supplies it, including after resume and for nested descendants.
-Missing or conflicting spawn evidence supplies no role label; explicit host
-metadata remains authoritative. Agent names retain their identity colors. Every pane has a title bar with
+are not repeated in each row. Roles come from host metadata. Missing roles have no label.
+Agent names retain their identity colors. Every pane has a title bar with
 its tab number, focus and scroll state, and the status bar shows the tabs with
 contextual key hints. Ctrl-B + number focuses a pane.
 Uncolored labels in pane and composer borders use the terminal text foreground,
@@ -314,7 +302,7 @@ credentials, or another unsuccessful naming response also silently skips naming.
 Naming uses the first user request text and its submitted file or directory
 snapshots within the naming input bound, not skill instructions, tools, or later
 history. Snapshots supply content, not just inline filenames, without reopening
-files. Attachment contents remain excluded from journal question text.
+files.
 Prewarm, compaction, unsuccessful responses, children, and side questions do not
 start naming. Naming uses separate request identity and does not block or change
 the original response. Its tokens are included in router usage totals.
@@ -326,7 +314,7 @@ composer feedback without affecting conversation work. Existing nonempty threads
 a title are not automatically renamed on resume.
 
 A blank row immediately above the composer separates it from the latest message
-or auxiliary content, including the journal plan strip, when height permits.
+or auxiliary content when height permits.
 
 `/live` toggles the Live pane on or off; `/live on` and `/live off`
 apply directly. This presentation-only preference lasts for the current frontend
@@ -342,7 +330,7 @@ Main uses its whole transcript area above the composer; it never hides Activity 
 Diff. Activity substitutes a compact, single-file live view at the editing
 agent's latest entry, hiding that agent's other transcript rows while retaining
 other agents' activity. If only one pane fits, its own edits appear there;
-child edits do not take over Main. Saved Diff and Journal are not overlaid.
+child edits do not take over Main. Saved Diff is not overlaid.
 
 Main splits the available height among as many file views as fit with at least
 15 rows per file, including its heading, plus one shared Live heading. A short
@@ -396,8 +384,8 @@ captured diff, rather than the first file in a multi-file capture. This temporar
 retained capture, not the combined result of later edits, so shifted or superseded
 hunks remain inspectable. Only the pointed edit row's text underlines
 on hover in Main and Activity, not its gutter, alignment gaps, stat bar, or other
-rows in the same capture. Click-through content (Edit, message excerpts, question links, and journal
-agent links) opens the shared content dialog above the existing panes. Its
+rows in the same capture. Click-through content (Edit, message excerpts, question links,
+and agent links) opens the shared content dialog above the existing panes. Its
 close button or Escape without a selection dismisses it without changing pane filters, scroll
 positions, or keyboard focus. New activity and captures remain available.
 Output-dialog text selection uses the shared drag and selection-scroll behavior.
@@ -423,7 +411,7 @@ Missing, truncated, failed, or ambiguous local output has no inferred count.
 Main renders user messages on a tinted
 band, assistant text under one `main` heading, tool runs drawn as a tree, agent
 start/message/finish events labelled `sender → recipient`, final answers as
-cards, and journal blocks. Its composer supports a new thread, submission, steering, queueing and
+cards. Its composer supports a new thread, submission, steering, queueing and
 interruption. Typing `?` in the empty, focused composer opens keyboard shortcuts.
 The view docks directly above the composer, temporarily hiding Main's live-edit
 dock. It uses bold group headings and blue key labels, with Compose, Session,
@@ -497,8 +485,8 @@ File and directory snapshots travel in Codex-owned input history, not a router-l
 Queued and restored input, fork/resume, and provider switches retain
 the submitted content without reopening files. The native transcript and recalled
 prompt hide transport framing. A recalled draft with live file bindings takes a
-fresh snapshot when submitted again. Attachment contents are not journal question
-text and never become developer or system instructions.
+fresh snapshot when submitted again. Attachment contents never become developer or
+system instructions.
 
 Each draft has a 192 KiB encoded attachment budget, with half reserved for omission
 notices; file reads are bounded to 96 KiB and framed content chunks to 24 KiB.
@@ -556,7 +544,7 @@ completion. Pasted text does not activate the catalog. The catalog uses the shar
 visible-row column sizing; it never submits a command to the model.
 
 `/copy` opens a local picker for the latest completed response in the active
-thread, including restored history and journal answers. Whole response preserves
+thread, including restored history. Whole response preserves
 the Markdown; fenced code blocks and blockquotes are individually selectable.
 Bounded previews never truncate clipboard content. Streaming fragments and other
 threads do not replace the last completed response. Enter copies; Escape cancels;
@@ -578,7 +566,7 @@ up in the same side conversation and replaces the dock's displayed exchange.
 While the side answer is running, another `/btw` remains an unsent draft with a
 notice. Bare `/btw` explains the required question rather than submitting input.
 When Codex requires compaction for a side turn, the request is rejected before
-either a provider summary or journal summary runs. Its pending question and
+a provider summary runs. Its pending question and
 attachments return ahead of any newer composer draft. Main remains untouched.
 The user can run `/compact` on Main, close the side panel, and retry on a new snapshot;
 the rejected side conversation cannot accept a follow-up. Admission uses Codex's
@@ -657,7 +645,7 @@ health. Transport groups wire measurements, including all
 four control-message directions.
 Exchanges shows one retained exchange with its provider attempts, explicit
 telemetry including the provider-returned service tier, duration, HTTP status and
-capture-error codes, cache-prefix diagnostics, and compaction/journal observations.
+capture-error codes, cache-prefix diagnostics, and the validated request kind.
 `[` and `]` navigate older/newer
 retained exchanges; newest follows new observations, while an older selection stays on its sequence until retention
 reclaims it. Each view distinguishes absent usage from explicit zero evidence
@@ -806,8 +794,7 @@ the transcript or submit a prompt.
 `/tier default` clears the requested service tier. Codex validates explicit values.
 `/tier` initially selects the effective current tier. Confirmed explicit choices,
 including `default`, override configured per-model defaults for that thread and
-routed model during this invocation, including after context resets and journal
-continuations, without changing persistent user configuration.
+routed model during this invocation, including after compaction, without changing persistent user configuration.
 The native app-server invocation enables Codex's `step_model_switching` and
 `reasoning_effort_override` features without writing user configuration.
 The client submits `thread/settings/update` and waits for the scoped
@@ -887,11 +874,8 @@ or disabled and never implements instant steering by aborting a turn or replayin
 Explicit composer Escape delivery is separate: it interrupts through Codex and
 resubmits uncommitted steers as a new turn, without replaying tools.
 
-`/compact` asks Codex to replace the current conversation context. In journal
-`auto` mode, the default, its description, live progress, queued-command,
-cancellation and continuation text say context reset, with no provider fallback.
-Unavailable recovery stops with a visible error. Other modes describe ordinary
-compaction outside planned slice resets. Enter interrupts
+`/compact` asks Codex and the provider to compact the current conversation context.
+Enter interrupts
 the active turn through the host, then waits for both interruption acknowledgement
 and turn completion before starting compaction. This explicit command does not
 depend on `instant_interrupt`, which controls conversation steering rather than
@@ -910,7 +894,7 @@ and waiting input for retry without starting compaction. Once compaction is
 starting or running, Ctrl+C cancels that compaction, restores waiting input, and
 cancels its automatic continuation, not a later Main turn. Outside compact cancellation, normal Main interruption
 is unchanged. Host compaction progress and failures remain visible.
-`/clear` clears Main, Activity, and journal presentation and starts a fresh Codex
+`/clear` clears Main and Activity presentation and starts a fresh Codex
 session with the current workspace and model settings. It is unavailable while a
 task or submission is in progress. Existing saved threads and filesystem changes
 are not deleted; a failed fresh-session request keeps the old transcript usable.
@@ -1012,7 +996,7 @@ Narrow child-agent roster rows retain context before other metrics;
 the composer's bottom border shows `model (effort) • used/window • percent%`
 as one right-aligned caption, shortening or omitting the model first when narrow.
 Main's title and child roster rows show unique loaded skill counts for each agent's current context, from successful reads or submitted skill attachments, not the catalog. Labels use `1 loaded skill` or `N loaded skills`.
-Failed or declined read segments load nothing; independently confirmed successful segments still count after aggregate failure. Feed trimming retains names; compaction and journal reset clear them. Empty and unknown counts stay hidden.
+Failed or declined read segments load nothing; independently confirmed successful segments still count after aggregate failure. Feed trimming retains names; compaction clears them. Empty and unknown counts stay hidden.
 Hover underlines only the count label, clearing on pointer leave or focus loss. Clicking a count opens sorted skill names in the existing shared dialog without changing selection.
 Exit/resume restores confirmed loads, including inherited history, independently of Activity under the [bounded restoration contract](../architecture/activity.md).
 
@@ -1069,16 +1053,14 @@ so an answer that starts with a blockquote remains distinct. Only the first repl
 to an input quotes it; a later reply to the
 same input quotes it again only when another message sits between them. Main's own
 tools, reasoning and progress do not separate replies. Main's replies remain in
-the scrollable transcript without a pinned copy. The journal's current task strip
-above the composer is independent of reply timing.
+the scrollable transcript without a pinned copy.
 Replies following a committed question answer quote `re: your answer` and link
 to its Asked record, not the earlier task prompt. The answer envelope never
 creates a duplicate user-message band, including after resume.
 The `re:` label includes the target text; if only the question
 text is retained, it remains text rather than a fabricated navigation target.
 Hovering a navigable link underlines it; clicking it scrolls to and briefly
-shades the target. Cumulative child journals display each answer ID once,
-preserving its original assignment across follow-ups. A successfully completed
+shades the target. A successfully completed
 child turn without a final answer promotes only that same turn's last message.
 Codex V2 activity notifications carry no directed-message or assignment body.
 The UI supplements them with the router's authenticated recipient-input
@@ -1098,24 +1080,10 @@ agent identity colors. This applies to metadata, secondary labels, separators,
 and diff coordinates; non-dimmed semantic colors, syntax highlighting and
 animated status ramps stay unchanged.
 
-Journal plans use the [journal continuation policy](journal.md#journal-continuation).
-The pinned strip shows context reset or continuation progress without a countdown.
-Completed context-reset events remain visible even with the Journal pane open or
-when continuation is rejected or interrupted. Router-authored
-continuations appear as auto-continue rows, not user bubbles. Pending user input
-cancels an undispatched continuation rather than competing with it.
-
 Host progress has one presentation mapping for live events and restored history.
-Compaction start replaces Main’s `Working` label with mode-aware progress;
-completion restores ordinary turn status and adds a generic `Context reset` event
-in `auto`, or `Context compacted` for ordinary provider compaction in `off` and
-`slice`. Auto also uses the generic label for older provider or ambiguous history;
-it does not imply journal provenance, recovery disclosure or zero provider tokens.
-When exact retained journal answer evidence identifies the
-completed item, a single clickable `Context reset from journal` row belongs to
-the journal instead, with no duplicate progress commentary. Slice resets use their
-durable journal note. Neither adds a reply-context
-(`re:`) line. Turn completion, failure, or interruption
+Compaction start replaces Main's `Working` label with `Compacting context`;
+completion restores ordinary turn status and adds a `Context compacted` event.
+Turn completion, failure, or interruption
 clears an unfinished compaction without claiming it succeeded. Child compaction
 does not change Main’s composer. Agent wait starts, completions, and failures appear
 only as the working caller's latest roster status, never in Main or Activity transcripts
@@ -1220,11 +1188,9 @@ including late completions, so it collapses in a single screen update rather tha
 one result at a time. An agent's latest command output remains open until later activity.
 
 `Ctrl-E` cycles the focused Main or Activity pane through default presentation,
-expanded events, and expanded all. Expanded events shows full narrative, journal
-details, public reasoning, and hook runs while leaving operation source/output at its normal
-preview. Both expanded modes show all retained child-journal answers and nonempty
-change reports, including report-only completions. Expanded all also opens retained
-operation source/output. Default restores
+expanded events, and expanded all. Expanded events shows full narrative,
+public reasoning, and hook runs while leaving operation source/output at its normal
+preview. Expanded all also opens retained operation source/output. Default restores
 automatic folding, including keeping new event groups open until they leave the
 viewport. User prompts remain unchanged. The choice also applies to arriving content
 and stays local to the pane. The status hint follows the pane shortcut and names
@@ -1240,10 +1206,7 @@ clears its unseen count. Activity has no `r` follow binding. A paused transcript
 above Main's composer or at the bottom of Activity. Scrolling stops at the last
 full viewport, including after resizing or following a link, and the link target
 briefly highlights. Frames replace changed rows
-without blanking the terminal. Journal records arrive typed from the journal
-owner and follow the [native journal presentation](journal.md#native-journal-presentation)
-contract. A request without workspace metadata keeps its unscoped journal
-namespace; the app-server cwd never grants it filesystem authority.
+without blanking the terminal.
 
 `make preview-native-ui` replays a scripted session of fake app-server
 notifications through this frontend: delegation, concurrent child edits in both
@@ -1261,9 +1224,8 @@ The native client publishes Codex-compatible terminal lifecycle titles so pane
 managers can recognize working and action-required states without parsing the
 transcript. The Main turn supplies the work spinner; pending questions (including
 hidden or resumed async questions), pending approvals and unsupported server
-requests take priority with `Action Required`. Automatic journal continuation keeps
-the spinner through context reset and next-turn acknowledgement.
-Settled Main turns without automatic continuation remove the spinner; child completion
+requests take priority with `Action Required`.
+Settled Main turns remove the spinner; child completion
 does not mark Main done. Herdr owns the distinction between unseen completion
 and seen idle, including its blue and green indicators. Titles are cleared when
 the native client exits or yields the terminal to an external editor.
@@ -1274,8 +1236,6 @@ reads Codex's effective `tui.notifications`, `tui.notification_method`, and
 without editing configuration. Events are `agent-turn-complete`,
 `approval-requested`, `plan-mode-prompt` (synchronous input), and `async-question`.
 Only successful live Main completion notifies; pending questions take priority.
-Stops that the journal will automatically continue do not notify. The final
-completion still notifies when no automatic continuation remains.
 History restoration and duplicate question events do not notify again.
 
 Notifications default to enabled and unfocused-only; `always` also allows them
@@ -1293,7 +1253,7 @@ Root-thread questions use a shared dock above the composer, hiding the live-edit
 dock. `request_user_input` arrives as `item/tool/requestUserInput`; unexpected
 server requests retain the visibly blocked fallback. Async questions arrive as
 `agentMessage` items with `delivery: "async"` and `questions`, not as server
-requests. They never become final-answer cards, journal finals, or final-answer
+requests. They never become final-answer cards or final-answer
 bookkeeping and do not complete a turn.
 
 The dock shows question position, header, pending state (`waiting` for sync,

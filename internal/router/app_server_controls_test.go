@@ -76,55 +76,12 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	}
 }
 
-func TestNativeControlsJournalActivityLifecycle(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	if !u.shell.journalOpen {
-		t.Fatal("new session does not default to Journal")
-	}
-	spawn := func(thread, path string) {
-		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread, "agentNickname": path}})
-	}
-	finish := func(thread string) {
-		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
-	}
-	spawn("a", "a")
-	if u.shell.journalOpen || !u.shell.autoActivity || u.shell.focus != 0 || !u.shell.paneState().JournalOpen {
-		t.Fatal("spawn did not temporarily show Activity while retaining Journal preference")
-	}
-	spawn("b", "b")
-	finish("a")
-	if u.shell.journalOpen {
-		t.Fatal("one completion hid outstanding child")
-	}
-	finish("b")
-	if !u.shell.journalOpen || u.shell.autoActivity {
-		t.Fatal("last completion did not return to Journal")
-	}
-	// A later follow-up reopens Activity without another spawn.
-	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "a", "turn": map[string]any{"id": "again"}})
-	if u.shell.journalOpen {
-		t.Fatal("follow-up did not show Activity")
-	}
-	for _, key := range []byte("\x022") {
-		if err := u.shell.key(key); err != nil {
-			t.Fatal(err)
-		}
-	}
-	finish("a")
-	if !u.shell.diffOpen || u.shell.journalOpen {
-		t.Fatal("completion overwrote user's Diff selection")
-	}
-	spawn("c", "c")
-	if !u.shell.diffOpen || u.shell.autoActivity {
-		t.Fatal("spawn overwrote user's Diff selection")
-	}
-}
-
 func TestNativeControlsPanePersistence(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
 	u.interruptLocked = true
-	u.shell.journalOpen, u.shell.autoActivity = false, true
+	u.shell.diffOpen = true
+	u.shell.focus = 1
 	p := new(nativePanePersistence)
 	if err := p.open(u.shell, "/workspace", "main", false); err != nil {
 		t.Fatal(err)
@@ -137,81 +94,14 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	if err := p.open(resumed.shell, "/workspace", "main", true); err != nil {
 		t.Fatal(err)
 	}
-	if !resumed.interruptLocked || !resumed.shell.journalOpen || resumed.shell.autoActivity || len(resumed.activeChildren) != 0 {
+	if !resumed.interruptLocked || !resumed.shell.diffOpen || resumed.shell.focus != 1 {
 		t.Fatal("resume lost preferences or revived live child state")
 	}
 	var frame bytes.Buffer
 	if err := resumed.paint(&frame, 120, 35); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(ansi.Strip(frame.String()), "Journal") || !strings.Contains(ansi.Strip(frame.String()), "Locked") {
+	if !strings.Contains(ansi.Strip(frame.String()), "Diff") || !strings.Contains(ansi.Strip(frame.String()), "Locked") {
 		t.Fatal("resumed preferences are not rendered")
-	}
-}
-
-func TestNativeControlsManualJournalSurvivesOverlappingChildren(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	spawn := func(thread string) {
-		appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": thread}})
-	}
-	finish := func(thread string) {
-		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
-	}
-	spawn("a")
-	for _, key := range []byte("\x025") {
-		if err := u.shell.key(key); err != nil {
-			t.Fatal(err)
-		}
-	}
-	spawn("b")
-	if !u.shell.journalOpen || u.shell.autoActivity || u.shell.focus != 4 {
-		t.Fatal("overlapping child replaced manual Journal selection or focus")
-	}
-	finish("a")
-	finish("b")
-	if !u.shell.journalOpen || u.shell.focus != 4 {
-		t.Fatal("completion replaced manual Journal selection")
-	}
-	spawn("c")
-	if u.shell.journalOpen || !u.shell.autoActivity {
-		t.Fatal("a new child lifecycle did not reveal Activity")
-	}
-}
-
-func TestNativeControlsActivityEventsAndManualSelection(t *testing.T) {
-	for _, manual := range []bool{false, true} {
-		u := newAppServerSessionTestUI(t, t.TempDir())
-		notify := func(kind string) {
-			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{
-				"id": "agent-" + kind, "type": "subAgentActivity", "agentThreadId": "child", "agentPath": "/root/worker", "kind": kind}})
-		}
-		u.shell.focus = 4
-		notify("started")
-		if !u.shell.autoActivity || u.shell.journalOpen || u.shell.focus != 0 {
-			t.Fatal("authentic started item did not show Activity and release hidden Journal focus")
-		}
-		if manual {
-			for _, key := range []byte{2, '3'} {
-				if err := u.shell.key(key); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-		notify("completed")
-		if u.shell.journalOpen == manual || u.shell.autoActivity || len(u.activeChildren) != 0 {
-			t.Fatal("completed item did not respect explicit Activity preference")
-		}
-	}
-}
-
-func TestNativeControlsClearRestoresPreferredJournal(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.shell.journalOpen, u.shell.autoActivity = false, true
-	u.activeChildren = map[string]bool{"child": true}
-	if err := u.clearSessionPresentation(); err != nil {
-		t.Fatal(err)
-	}
-	if !u.shell.journalOpen || u.shell.autoActivity || len(u.activeChildren) != 0 {
-		t.Fatal("clearing a session persisted transient child Activity")
 	}
 }

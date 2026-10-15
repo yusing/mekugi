@@ -3,11 +3,9 @@ package router
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"slices"
 	"time"
@@ -20,8 +18,7 @@ type responseProvider interface {
 	forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error)
 }
 
-// requestExecutor owns the stable services used by every attempt in a request,
-// including router-generated journal continuations.
+// requestExecutor owns the services used to execute a request.
 type requestExecutor struct {
 	titleGenerator *sessionTitleGenerator
 	serviceTiers   *serviceTierSettings
@@ -29,12 +26,6 @@ type requestExecutor struct {
 	output         io.Writer
 	issues         *CriticalErrors
 	mekugiCalls    *mekugiProxy
-}
-
-type requestContinuation struct {
-	startCtx     context.Context
-	executionCtx context.Context
-	request      parsedResponsesRequest
 }
 
 type requestAttempt struct {
@@ -45,15 +36,12 @@ type requestAttempt struct {
 	headers      http.Header
 	sessionID    string
 
-	journalOriginal    map[string]json.RawMessage
-	journalStartWindow time.Duration
-	hooks              *responseHooks
-	finalization       requestFinalization
-	debug              *debugOutput
-	debugID            string
-	started            time.Time
-	trace              featureUsageTrace
-	commentaryObserved bool
+	hooks        *responseHooks
+	finalization requestFinalization
+	debug        *debugOutput
+	debugID      string
+	started      time.Time
+	trace        toolObservationTrace
 
 	metadata      codexTurnMetadata
 	metadataValid bool
@@ -66,13 +54,10 @@ type requestAttempt struct {
 	usageTracker    *threadUsageObservation
 	providerStarted time.Time
 
-	response           *http.Response
-	streamResponse     bool
-	responseTransform  responseTransformer
-	finishUsage        bool
-	releaseDelivery    bool
-	continuationCancel context.CancelFunc
-	compactionRelease  func()
+	response          *http.Response
+	streamResponse    bool
+	responseTransform responseTransformer
+	finishUsage       bool
 }
 
 func (e requestExecutor) execute(
@@ -85,34 +70,9 @@ func (e requestExecutor) execute(
 	if e.issues == nil {
 		e.issues = NewCriticalErrors()
 	}
-	var attempts []*requestAttempt
-	defer func() {
-		for _, attempt := range slices.Backward(attempts) {
-			requestErr = attempt.finish(requestErr)
-		}
-	}()
-
-	for {
-		attempt := newRequestAttempt(e, startCtx, executionCtx, request, headers, sessionID)
-		if len(attempts) != 0 {
-			// A journal continuation shares the downstream exchange. It may
-			// fail before its own provider response has delivered a creation.
-			previous := attempts[len(attempts)-1]
-			attempt.hooks.deliveredResponseID = previous.hooks.deliveredResponseID
-			attempt.hooks.deliveredTerminal = previous.hooks.deliveredTerminal
-		}
-		attempts = append(attempts, attempt)
-		continuation, err := attempt.run()
-		if err != nil {
-			return err
-		}
-		if continuation == nil {
-			return nil
-		}
-		startCtx = continuation.startCtx
-		executionCtx = continuation.executionCtx
-		request = continuation.request
-	}
+	attempt := newRequestAttempt(e, startCtx, executionCtx, request, headers, sessionID)
+	defer func() { requestErr = attempt.finish(requestErr) }()
+	return attempt.run()
 }
 
 func newRequestAttempt(
@@ -128,13 +88,11 @@ func newRequestAttempt(
 	if exchange, ok := executor.provider.(*webSocketExchange); ok {
 		exchange.streamDiagnostics = hooks.streamDiagnostics
 	}
-	trace := featureUsageTrace{
+	trace := toolObservationTrace{
 		debug: debug, requestID: debugID,
 		threadID: codexThreadID(headers), sessionID: sessionID,
 	}
-	if debug != nil {
-		trace.summary = &featureUsageSummary{counts: make(map[string]uint64)}
-	}
+
 	finalization := requestFinalization{failurePhase: requestFailurePrepare, streamDiagnostics: hooks.streamDiagnostics}
 	if sessionID != "" {
 		finalization.sessionID = sessionID
@@ -142,46 +100,23 @@ func newRequestAttempt(
 	return &requestAttempt{
 		executor: executor, startCtx: startCtx, executionCtx: executionCtx,
 		request: request, headers: headers, sessionID: sessionID,
-		journalOriginal:    maps.Clone(request.fields),
-		journalStartWindow: journalRequestWindow(startCtx),
-		hooks:              hooks, finalization: finalization,
+		hooks: hooks, finalization: finalization,
 		debug: debug, debugID: debugID, started: time.Now(), trace: trace,
 	}
 }
 
-func (a *requestAttempt) run() (*requestContinuation, error) {
+func (a *requestAttempt) run() error {
 	if err := a.prepare(); err != nil {
-		return nil, err
-	}
-	if answered, err := a.tryJournalCompaction(); err != nil {
-		return nil, err
-	} else if answered {
-		if err := a.prepareResponse(); err != nil {
-			return nil, err
-		}
-		return a.deliver()
-	}
-	if finished, err := a.tryJournalHostFinish(); err != nil {
-		return nil, err
-	} else if finished {
-		if err := a.prepareResponse(); err != nil {
-			return nil, err
-		}
-		// This terminal has no provider usage, including no missing-usage gap.
-		a.hooks.onUsage = nil
-		return a.deliver()
+		return err
 	}
 	if err := a.prepareWire(); err != nil {
-		return nil, err
-	}
-	if a.metadataValid && a.metadata.RequestKind == responses.Compaction {
-		capturer.ObserveCompaction(a.startCtx, "provider", 0, 0)
+		return err
 	}
 	if err := a.forward(); err != nil {
-		return nil, err
+		return err
 	}
 	if err := a.prepareResponse(); err != nil {
-		return nil, err
+		return err
 	}
 	return a.deliver()
 }
@@ -272,15 +207,13 @@ func (a *requestAttempt) prepare() error {
 	if a.mekugiTransform != nil && a.metadataValid {
 		auto := a.executor.mekugiCalls.autoLiveDiff
 		auto.observe(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
-		_, continuingJournal := a.startCtx.Value(journalContinuationKey{}).(journalContinuation)
 		exchange, webSocket := a.executor.provider.(*webSocketExchange)
-		if !continuingJournal && (!webSocket || !exchange.automatic) {
+		if !webSocket || !exchange.automatic {
 			auto.beginTurn(a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
 		}
 	}
 	if a.mekugiTransform != nil {
-		a.mekugiTransform.featureTrace = a.trace
-		a.commentaryObserved = true
+		a.mekugiTransform.toolTrace = a.trace
 	}
 	return nil
 }
@@ -439,7 +372,6 @@ func (a *requestAttempt) forward() error {
 		a.response.Body.Close()
 		return fmt.Errorf("execute request: inspect upstream response: %w", err)
 	}
-	a.releaseDelivery = true
 	return nil
 }
 
@@ -489,7 +421,7 @@ func (a *requestAttempt) prepareResponse() error {
 	return nil
 }
 
-func (a *requestAttempt) deliver() (*requestContinuation, error) {
+func (a *requestAttempt) deliver() error {
 	var stagedBody []byte
 	if !a.streamResponse {
 		var staged bytes.Buffer
@@ -503,19 +435,16 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 		)
 		if err != nil {
 			a.finalization.classifyCopyError(err)
-			return nil, fmt.Errorf("execute request: %w", err)
+			return fmt.Errorf("execute request: %w", err)
 		}
 		stagedBody = staged.Bytes()
 	}
-	if !a.streamResponse && a.mekugiTransform != nil && a.mekugiTransform.journalContinue {
-		a.observeTitleSuccess()
-		return a.continueJournal()
-	}
+
 	if !a.streamResponse &&
 		a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices &&
 		!acceptsResponseEnd(a.finalization.upstreamTerminalState) {
 		a.finalization.failurePhase = requestFailureTerminalValidation
-		return nil, fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
+		return fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
 	}
 	if writer, ok := a.executor.output.(http.ResponseWriter); ok {
 		for name, values := range a.response.Header {
@@ -530,17 +459,16 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 			a.finalization.failurePhase = requestFailureWriteResponse
 			if err := http.NewResponseController(writer).Flush(); err != nil {
 				a.response.Body.Close()
-				return nil, fmt.Errorf("execute request: flush response headers: %w", err)
+				return fmt.Errorf("execute request: flush response headers: %w", err)
 			}
 		}
 	}
 	if stagedBody != nil {
 		a.finalization.failurePhase = requestFailureWriteResponse
 		if _, err := a.executor.output.Write(stagedBody); err != nil {
-			return nil, fmt.Errorf("execute request: copy upstream response: %w", err)
+			return fmt.Errorf("execute request: copy upstream response: %w", err)
 		}
 		confirmResponseDelivery(a.responseTransform, stagedBody)
-		releaseResponseDelivery(a.responseTransform)
 	} else {
 		var err error
 		a.finalization.failurePhase = requestFailureInspectResponse
@@ -553,18 +481,16 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 		)
 		if err != nil {
 			a.finalization.classifyCopyError(err)
-			return nil, fmt.Errorf("execute request: %w", err)
+			return fmt.Errorf("execute request: %w", err)
 		}
 	}
 	a.observeTitleSuccess()
-	if a.streamResponse && a.mekugiTransform != nil && a.mekugiTransform.journalContinue {
-		return a.continueJournal()
-	}
+
 	if a.streamResponse &&
 		a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices &&
 		!acceptsResponseEnd(a.finalization.upstreamTerminalState) {
 		a.finalization.failurePhase = requestFailureTerminalValidation
-		return nil, fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
+		return fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
 	}
 	a.finalization.failurePhase = ""
 	switch {
@@ -582,7 +508,7 @@ func (a *requestAttempt) deliver() (*requestContinuation, error) {
 		a.finalization.observation.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 	}
-	return nil, nil
+	return nil
 }
 
 func (a *requestAttempt) observeTitleSuccess() {
@@ -593,42 +519,7 @@ func (a *requestAttempt) observeTitleSuccess() {
 	}
 }
 
-func (a *requestAttempt) continueJournal() (*requestContinuation, error) {
-	next, err := nextJournalRequest(a.journalOriginal, a.mekugiTransform)
-	if err != nil {
-		a.finalization.failurePhase = requestFailureTransform
-		return nil, fmt.Errorf("%w: %w", errResponseTransform, criticalDiagnostic(err,
-			"journal_continuation_request", "Mekugi could not prepare the journal continuation", true))
-	}
-	nextCtx, err := continueJournalContext(a.executionCtx, a.mekugiTransform)
-	if err != nil {
-		a.finalization.failurePhase = requestFailureTransform
-		return nil, fmt.Errorf("%w: %w", errResponseTransform, criticalDiagnostic(err,
-			"journal_continuation_limit", "the journal continuation limit was reached", true))
-	}
-	a.mekugiTransform.Close()
-	resetJournalExchange(a.executor.provider)
-	start, cancel := context.WithTimeout(nextCtx, a.journalStartWindow)
-	a.continuationCancel = cancel
-	a.finalization.observation.outcome = requestOutcomeCompleted
-	a.finalization.failurePhase = ""
-	// Close this completed attempt before its successor can publish cumulative
-	// usage or journal output. finish repeats these idempotent operations after
-	// the continuation chain returns, matching ordinary attempt cleanup.
-	a.usageTracker.finish()
-	return &requestContinuation{startCtx: start, executionCtx: nextCtx, request: next}, nil
-}
-
 func (a *requestAttempt) finish(requestErr error) error {
-	if a.compactionRelease != nil {
-		a.compactionRelease()
-	}
-	if a.continuationCancel != nil {
-		a.continuationCancel()
-	}
-	if a.releaseDelivery && a.mekugiTransform != nil {
-		a.mekugiTransform.ReleaseDelivery()
-	}
 	if a.finishUsage {
 		a.usageTracker.finish()
 	}
@@ -680,12 +571,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 	if errors.Is(requestErr, errUpstreamStreamIdleTimeout) {
 		fields["idle_timeout_observed"] = true
 	}
-	a.trace.finish(
-		a.commentaryObserved,
-		requestErr == nil &&
-			a.finalization.upstreamStatusCode >= http.StatusOK &&
-			a.finalization.upstreamStatusCode < http.StatusMultipleChoices,
-	)
+
 	if a.hooks.streamDiagnostics != nil && a.hooks.streamDiagnostics.CopyStop != "" {
 		fields["response_stream"] = a.hooks.streamDiagnostics.snapshot()
 	}

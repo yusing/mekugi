@@ -17,9 +17,6 @@ TEST_PARALLEL ?= 32
 HOST_ACCEPTANCE_TESTS := TestNativeToolFrontendCodexE2E \
 	TestMRunNativeCodexYieldAndWriteStdinE2E \
 	TestMChangesNestedNativeCodexE2E \
-	TestJournalMCPNativeCodexReadE2E \
-	TestJournalHostFinishNativeCodexSpawnE2E \
-	TestPostCompactNativeCodexE2E \
 	TestAppServerExecTrackNativeCodexSandbox
 SNAPSHOT ?= ^TestUISnapshot
 SNAPSHOT_PACKAGES ?= ./internal/ui/... ./internal/livediff ./internal/router ./cmd/mekugi
@@ -50,17 +47,18 @@ test-host:
 	@codex --version
 	@set -eu; \
 	pattern="^($$(printf '%s' '$(strip $(HOST_ACCEPTANCE_TESTS))' | tr ' ' '|'))$$"; \
-	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) -tags=journal_e2e ./internal/router -list "$$pattern")"; then \
+	if ! available="$$(env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(GO) test $(GO_BUILD_FLAGS) -tags=codex_e2e ./internal/router -list "$$pattern")"; then \
 		printf '%s\n' "$$available"; exit 1; \
 	fi; \
 	for name in $(HOST_ACCEPTANCE_TESTS); do \
 		printf '%s\n' "$$available" | grep -Fxq "$$name" || { printf 'Missing host acceptance test: %s\n' "$$name" >&2; exit 1; }; \
 	done; \
-	$(MAKE) --no-print-directory test TEST_PACKAGES=./internal/router TEST_RUN="$$pattern" TEST_FLAGS='-tags=journal_e2e -count=1 -v'
+	$(MAKE) --no-print-directory test TEST_PACKAGES=./internal/router TEST_RUN="$$pattern" TEST_FLAGS='-tags=codex_e2e -count=1 -v'
 
 lint:
 	env -u BASH_ENV golangci-lint run ./... $(TEST_SUPPORT_PACKAGES)
-	@set -e; findings="$$(env -u BASH_ENV deadcode ./...)"; \
+	@set -e; findings="$$(env -u BASH_ENV deadcode -f='{{range .Funcs}}{{printf "%s.%s\n" $$.Path .Name}}{{end}}' ./...)"; \
+	findings="$$(printf '%s\n' "$$findings" | awk 'NR == FNR { allowed[$$0] = 1; next } NF && !($$0 in allowed)' .deadcode-allowlist -)"; \
 	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
 	@set -e; findings="$$(env -u BASH_ENV deadcode -test ./... $(TEST_SUPPORT_PACKAGES))"; \
 	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi

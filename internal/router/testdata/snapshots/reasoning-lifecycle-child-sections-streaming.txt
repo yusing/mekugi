@@ -1,5 +1,5 @@
 ● worker                                                                08:00:00
-│ • Finalizing execution journal
+│ • Finalizing execution checks
 │ 
 │ • Preparing final renderings
 │   Last retained paragraph.

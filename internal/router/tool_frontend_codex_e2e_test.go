@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,10 +17,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/charmbracelet/x/vt"
-	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/appserver"
 )
 
 const toolFrontendCodexWorkerEnvironment = "MEKUGI_TOOL_FRONTEND_CODEX_WORKER"
@@ -39,8 +34,8 @@ func setCodexFrontendLoginEnvironment(t *testing.T, directory string) {
 
 // Pinned test workers use the same authenticated dispatch as the executable.
 func init() {
-	if len(os.Args) == 3 && os.Args[1] == "journal-mcp" {
-		if err := RunJournalMCPBridge(context.Background(), os.Args[2], os.Stdin, os.Stdout); err != nil {
+	if len(os.Args) == 3 && os.Args[1] == "mcp-bridge" {
+		if err := RunMCPBridge(context.Background(), os.Args[2], os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -175,8 +170,7 @@ func TestNativeToolFrontendCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal("installed Codex is required for the frontend acceptance gate")
 	}
-	dataDirectory := t.TempDir()
-	registry, err := buildToolRegistryForTest(t, t.Context(), dataDirectory, false)
+	registry, err := buildToolRegistryForTest(t, t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +228,7 @@ func TestMRunNativeCodexYieldAndWriteStdinE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal("installed Codex is required for the mrun continuation acceptance gate")
 	}
-	registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
+	registry, err := buildToolRegistryForTest(t, t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,198 +289,5 @@ text(JSON.stringify({started, completed}));`
 		!strings.Contains(stdout.String(), "mrun continuation accepted") {
 		t.Fatalf("mrun continuation acceptance: turns=%d result=%t\nstdout: %s\nstderr: %s",
 			provider.turns, provider.resultSeen, stdout.String(), stderr.String())
-	}
-}
-
-func TestJournalMCPNativeCodexReadE2E(t *testing.T) {
-	testJournalMCPNativeCodex(t, "exec", false)
-}
-
-func TestJournalMCPNativeCodexMutateAutoReviewE2E(t *testing.T) {
-	for _, mode := range []string{"app-server", "interactive"} {
-		t.Run(mode, func(t *testing.T) { testJournalMCPNativeCodex(t, mode, true) })
-	}
-}
-
-func testJournalMCPNativeCodex(t *testing.T, mode string, mutate bool) {
-	t.Helper()
-	codex, err := exec.LookPath("codex")
-	if err != nil {
-		t.Fatal("installed Codex is required for journal MCP acceptance")
-	}
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	workspace := t.TempDir()
-	proxy := &mekugiProxy{journals: newJournalStore()}
-	replay, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	proxy.replayStore = replay
-	socket, stop, err := startJournalMCP(t.Context(), newJournalMCPServer(proxy))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := stop(); err != nil {
-			t.Error(err)
-		}
-	}()
-	provider := &toolFrontendCodexProvider{
-		workspace: workspace,
-		program: `const tool = ALL_TOOLS.find(t => t.name === "mcp__mekugi__journal_read");
-if (!tool) throw new Error("journal MCP tool missing");
-const result = await tools[tool.name]({view: "own", depth: 0});
-if (result.isError) throw new Error(JSON.stringify(result));
-text(result.structuredContent.nodes[0].title);`,
-		expected:  []string{"authenticated journal MCP read"},
-		finalText: "journal MCP host accepted",
-	}
-	if mutate {
-		provider.program = `for (const title of ["first finished batch", "second finished batch"]) {
-const result = await tools.mcp__mekugi__journal_mutate({mutations:[{op:"log",text:title},{op:"finish"}]});
-if (result.isError) throw new Error(JSON.stringify(result));
-text(title);
-}`
-		provider.expected = []string{"first finished batch", "second finished batch"}
-	}
-	provider.observeRequest = func(_ []byte, headers http.Header) error {
-		metadata, _ := decodeCodexTurnMetadata(headers)
-		thread := codexThreadID(headers)
-		if metadata.ThreadID != thread || thread == "" {
-			return fmt.Errorf("host journal identity missing")
-		}
-		ctx, release, err := replay.beginSession(t.Context(), thread, "seed")
-		if err != nil {
-			return err
-		}
-		defer release()
-		if err := proxy.journals.initialize(ctx, replay, workspace, thread, "/root", ""); err != nil {
-			return err
-		}
-		if err := proxy.journals.bindIdentity(ctx, replay, workspace, thread, "", "/root", true); err != nil {
-			return err
-		}
-		_, err = proxy.journals.apply(ctx, replay, workspace, thread, "seed", []journalMutation{{Op: "add", Title: new("authenticated journal MCP read")}})
-		return err
-	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
-	defer server.Close()
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
-	args := []string{
-		"-c", `model_providers.frontend_fixture={name="frontend_fixture",base_url=` + strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`,
-		"-c", `model_provider="frontend_fixture"`, "-c", "features.plugins=false",
-		"-c", `mcp_servers.mekugi={command=` + strconv.Quote(os.Args[0]) + `,args=["journal-mcp",` + strconv.Quote(socket) + `]}`,
-		"-c", `model="gpt-6-astra"`,
-	}
-	approvalPolicy := "never"
-	if mutate {
-		approvalPolicy = "on-request"
-		args = append(args, "-c", `approvals_reviewer="auto_review"`)
-	}
-	if mode != "app-server" {
-		args = append(args, "--sandbox", "danger-full-access", "--ask-for-approval", approvalPolicy)
-	}
-	switch mode {
-	case "exec":
-		args = append(args, "exec", "--ignore-user-config", "--skip-git-repo-check", "--json", "--color", "never", "-C", workspace, "Exercise the journal MCP fixture.")
-	case "app-server":
-		args = append(args, "app-server")
-	case "interactive":
-		args = append(args, "-c", "projects."+strconv.Quote(workspace)+`.trust_level="trusted"`, "--no-alt-screen", "-C", workspace, "Exercise the journal MCP fixture.")
-	}
-	command := exec.CommandContext(ctx, codex, args...)
-	command.Dir = workspace
-	var stdout, stderr bytes.Buffer
-	command.Stdout, command.Stderr = &stdout, &stderr
-	switch mode {
-	case "exec":
-		if err := command.Run(); err != nil {
-			t.Fatalf("Codex journal MCP: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
-		}
-	case "app-server":
-		runJournalMCPAppServer(t, ctx, command)
-	case "interactive":
-		command.Stdout, command.Stderr = nil, nil
-		terminal, err := pty.StartWithSize(command, &pty.Winsize{Cols: 120, Rows: 40})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer terminal.Close()
-		defer func() { cancel(); _ = command.Wait() }()
-		screen := vt.NewEmulator(120, 40)
-		defer screen.Close()
-		go func() { _, _ = io.Copy(terminal, screen) }()
-		frames := readPTYChunks(ctx, terminal, 65536, 32)
-		for !strings.Contains(screen.String(), provider.finalText) {
-			select {
-			case frame, ok := <-frames:
-				if !ok {
-					t.Fatalf("Codex terminal closed:\n%s", screen.String())
-				}
-				screen.Write(frame)
-			case <-ctx.Done():
-				t.Fatalf("Codex journal MCP terminal timed out:\n%s", screen.String())
-			}
-		}
-	}
-	provider.mu.Lock()
-	defer provider.mu.Unlock()
-	if provider.turns != 2 || !provider.resultSeen {
-		t.Fatalf("MCP acceptance: turns=%d result=%t\nstdout: %s\nstderr: %s", provider.turns, provider.resultSeen, stdout.String(), stderr.String())
-	}
-}
-
-func runJournalMCPAppServer(t *testing.T, ctx context.Context, command *exec.Cmd) {
-	t.Helper()
-	client, err := appserver.Start(command)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { client.Close(); <-client.Done }()
-	initialize, err := client.Initialize()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var start string
-	for {
-		select {
-		case message, ok := <-client.Messages:
-			if !ok {
-				t.Fatal("app-server closed before journal mutation completed")
-			}
-			if message.Error != nil {
-				t.Fatalf("app-server RPC: %s", message.Error.Message)
-			}
-			if message.Method != "" && len(message.ID) != 0 {
-				t.Fatalf("journal mutation requested client approval: %s", message.Method)
-			}
-			switch {
-			case string(message.ID) == initialize:
-				_, err = client.Send("initialized", map[string]any{}, false)
-				if err == nil {
-					start, err = client.Send("thread/start", map[string]any{"approvalPolicy": "on-request", "sandbox": "danger-full-access", "cwd": command.Dir}, true)
-				}
-			case start != "" && string(message.ID) == start:
-				var result struct {
-					Thread struct{ ID string } `json:"thread"`
-				}
-				if err = json.Unmarshal(message.Result, &result); err == nil {
-					_, err = client.Send("turn/start", map[string]any{"threadId": result.Thread.ID, "input": appserver.Input("Exercise the journal MCP fixture.")}, true)
-				}
-			case message.Method == "turn/completed":
-				var result struct{ Turn struct{ Status string } }
-				if err := json.Unmarshal(message.Params, &result); err != nil || result.Turn.Status != "completed" {
-					t.Fatalf("journal turn failed: %s, %v", message.Params, err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		}
 	}
 }

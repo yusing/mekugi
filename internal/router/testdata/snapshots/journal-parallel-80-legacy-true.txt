@@ -1,1 +1,0 @@
-◆ Validation passed with the same rich journal rendering in both panes.

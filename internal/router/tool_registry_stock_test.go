@@ -36,7 +36,7 @@ func TestToolRegistryExposesOnlyExecutableFrontends(t *testing.T) {
 
 func TestNativeFrontendAuthenticatesCatalogWithoutExternalRuntime(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	registry, err := buildToolRegistryForTest(t, t.Context(), t.TempDir(), false)
+	registry, err := buildToolRegistryForTest(t, t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

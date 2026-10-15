@@ -62,8 +62,6 @@ type payloadMetrics struct {
 }
 
 type captureRecord struct {
-	CompactionMetrics
-	Journal              *JournalMetrics                    `json:"journal,omitempty"`
 	Transport            string                             `json:"transport,omitempty"`
 	ControlDirection     ResponsesWebSocketControlDirection `json:"control_direction,omitempty"`
 	ProviderResponse     *providerResponseEvidence          `json:"provider_response,omitempty"`
@@ -110,10 +108,7 @@ type Recorder struct {
 }
 
 type requestState struct {
-	journal              *JournalMetrics
-	compaction           CompactionMetrics
 	requestKind          string
-	noProvider           bool
 	predecessorSequence  uint64
 	recorder             *Recorder
 	projectedObserved    bool
@@ -135,18 +130,6 @@ type requestState struct {
 type requestRouting struct {
 	sessionKey string
 	turnState  string
-}
-
-// ObserveNoProvider records a router decision to complete locally without inference.
-// Requests outside a Recorder handler are ignored.
-func ObserveNoProvider(ctx context.Context) {
-	state, ok := ctx.Value(captureKey{}).(*requestState)
-	if !ok {
-		return
-	}
-	state.mu.Lock()
-	state.noProvider = true
-	state.mu.Unlock()
 }
 
 // ObserveRequestKind records only the router's validated, content-free request kind.
@@ -400,13 +383,6 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	}
 	state.mu.Lock()
 	record.RequestKind = state.requestKind
-	record.CompactionMetrics = state.compaction
-	if boundary == "codex" {
-		record.Journal = state.journal.Clone()
-		if state.noProvider || record.CompactionAnswer == "router" {
-			record.ProviderExpected = new(false)
-		}
-	}
 	state.mu.Unlock()
 	if contentType == webSocketContentType {
 		record.Transport = "websocket"
@@ -485,9 +461,6 @@ func (r *Recorder) recordExchange(state *requestState, boundary string, attempt 
 	switch record.ResponseStatus {
 	case "completed", "failed", "incomplete", "cancelled", "error":
 		record.ResponseComplete = true
-	}
-	if record.CompactionAnswer == "router" {
-		record.Usage = nil // The client envelope's zeros are not provider usage evidence.
 	}
 	if (statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices) && contentType != webSocketContentType {
 		record.ResponseComplete = true

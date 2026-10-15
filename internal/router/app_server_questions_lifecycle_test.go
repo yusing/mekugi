@@ -308,48 +308,6 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 	}
 }
 
-func TestQuestionReplyJournalUsesAnswerAnchor(t *testing.T) {
-	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.conversation = true
-	questionTestAsync(t, u, "ask", "Which audience?")
-	envelope := lifecycleReply(t, "ask", 0, "Which audience?", "Customers")
-	lifecycleUserMessage(t, u, "turn", "reply", envelope)
-	publication := nativeJournalPublication{item: journalItem{ID: "answer", Text: "I will notify them.", Question: envelope}, terminal: true, batch: 1}
-	u.view.applyJournal("main", publication)
-	assert := func() {
-		t.Helper()
-		frame := mainFeed(u, 100)
-		if strings.Contains(frame, questionReplyStart) || !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "not loaded") {
-			t.Fatalf("journal answer context incorrect:\n%s", frame)
-		}
-	}
-	assert()
-	// An identical answer in another call must not move a published link.
-	var original uint64
-	for _, entry := range u.view.entries {
-		if entry.Kind == "question_reply" {
-			original = entry.Seq
-		}
-	}
-	questionTestAsync(t, u, "later", "Which audience?")
-	lifecycleUserMessage(t, u, "turn", "later-reply", lifecycleReply(t, "later", 0, "Which audience?", "Customers"))
-	publication.item.Text = "I will notify the selected audience."
-	u.view.applyJournal("main", publication)
-	assert()
-	for _, record := range u.view.entries {
-		blocks := record.blocks
-		for _, block := range blocks {
-			if block.Journal != nil {
-				for _, group := range block.Journal.Groups {
-					if group.Target != original {
-						t.Fatalf("journal target moved: %d != %d", group.Target, original)
-					}
-				}
-			}
-		}
-	}
-}
-
 func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.conversation = true
@@ -373,7 +331,7 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	}
 }
 
-func TestSyncQuestionReplyBecomesMainAndJournalAnchor(t *testing.T) {
+func TestSyncQuestionReplyBecomesMainAnchor(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.conversation = true
 	u.turn = "turn"
@@ -386,10 +344,5 @@ func TestSyncQuestionReplyBecomesMainAndJournalAnchor(t *testing.T) {
 	frame := mainFeed(u, 100)
 	if !strings.Contains(frame, "re: your answer") || strings.Contains(frame, "re: your message") {
 		t.Fatalf("sync answer not used for reply:\n%s", frame)
-	}
-	u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "answer", Text: "Scope applied.", Question: "Original task"}, terminal: true, batch: 1})
-	frame = mainFeed(u, 100)
-	if strings.Count(frame, "re: your answer") != 2 || strings.Contains(frame, "re: your message") {
-		t.Fatalf("sync answer not used for journal reply:\n%s", frame)
 	}
 }

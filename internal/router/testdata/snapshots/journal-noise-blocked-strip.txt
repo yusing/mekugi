@@ -1,1 +1,0 @@
-Continuation paused /1: Required build prerequisites missing: autoconf automake pkg-confi…  0/1 done

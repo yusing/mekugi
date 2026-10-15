@@ -240,39 +240,6 @@ func TestSessionInspectionDebugIndependentArtifacts(t *testing.T) {
 	}
 }
 
-func TestSessionInspectionDebugFeatureOutcomesAreNotRequestOutcomes(t *testing.T) {
-	dir := debugInspectionFixture(t)
-	writeDebugInspectionFixture(t, filepath.Join(dir, "router.jsonl"), `{"event":"request_complete","request_id":"healthy","outcome":"completed"}
-{"event":"feature_usage","schema_version":1,"feature":"journal","source":"tool","stage":"mutation","outcome":"accepted"}
-{"event":"feature_usage","schema_version":1,"feature":"journal","source":"code_mode","stage":"mutation","outcome":"prepared"}
-{"event":"feature_usage","schema_version":1,"feature":"commentary","source":"provider_message","stage":"authored","outcome":"observed"}
-{"event":"feature_usage","schema_version":1,"feature":"journal","source":"code_mode","stage":"mutation","outcome":"rejected"}
-{"event":"feature_usage","schema_version":1,"feature":"journal","source":"code_mode","stage":"lowering","outcome":"unavailable"}
-{"event":"feature_usage","schema_version":1,"feature":"commentary","source":"shell","stage":"publication","outcome":"oversized"}
-{"event":"feature_usage","schema_version":1,"feature":"commentary","source":"code_mode","stage":"publication","outcome":"capacity"}
-`)
-	writeDebugInspectionFixture(t, filepath.Join(dir, "capture.jsonl"), "")
-	result, code, _, stderr := runDebugInspection(t, dir)
-	if code != 0 || stderr != "" || result.TotalRequests != 1 || result.TotalEvidence != 4 || len(result.Evidence) != 4 {
-		t.Fatalf("feature evidence classification: code=%d stderr=%s result=%+v", code, stderr, result)
-	}
-	for i, outcome := range []string{"rejected", "unavailable", "oversized", "capacity"} {
-		evidence := result.Evidence[i]
-		if evidence.Source != "router.jsonl" || evidence.Line != i+5 || string(evidence.Metadata["outcome"]) != `"`+outcome+`"` {
-			t.Fatalf("feature failure lost: %+v", evidence)
-		}
-	}
-	counts := result.Artifacts[0].Counts
-	if counts["outcome/completed"] != 1 {
-		t.Fatalf("request count missing: %+v", counts)
-	}
-	for _, outcome := range []string{"accepted", "prepared", "observed", "rejected", "unavailable", "oversized", "capacity"} {
-		if counts["outcome/"+outcome] != 0 {
-			t.Fatalf("feature %s attributed to request outcomes: %+v", outcome, counts)
-		}
-	}
-}
-
 func TestSessionInspectionDebugCaptureStreamAndControlOutcomes(t *testing.T) {
 	for _, boundary := range []string{"provider", "codex"} {
 		for _, status := range []string{"", "cancelled", "error", "incomplete", "failed", "completed"} {

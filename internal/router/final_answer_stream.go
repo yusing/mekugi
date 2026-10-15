@@ -2,20 +2,18 @@ package router
 
 import (
 	"bytes"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 
 	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
-// Observe completion evidence without withholding provider answer events.
-// Message lifecycle IDs keep terminal journal decoration from replaying or
-// replacing an answer whose lifecycle has already reached the host.
+// Observe answer-only completion for live diff without withholding provider events.
 type finalAnswerStream struct {
-	itemIDs     map[string]bool
-	doneIDs     map[string]bool
 	substantive bool
 	blocked     bool
 	disabled    bool
+	pending     map[string]int
 }
 
 func (s *finalAnswerStream) observe(payload []byte) {
@@ -27,8 +25,9 @@ func (s *finalAnswerStream) observe(payload []byte) {
 		return
 	}
 	var event struct {
-		Type responseevents.Kind        `json:"type"`
-		Item map[string]json.RawMessage `json:"item"`
+		Type        responseevents.Kind          `json:"type"`
+		OutputIndex int                          `json:"output_index"`
+		Item        map[string]jsonv1.RawMessage `json:"item"`
 	}
 	if json.Unmarshal(payload, &event) != nil {
 		return
@@ -41,19 +40,47 @@ func (s *finalAnswerStream) observe(payload []byte) {
 		return
 	}
 	if event.Type == responseevents.OutputItemDone {
+		delete(s.pending, jsonString(event.Item, "id"))
 		s.substantive = s.substantive || isSubstantiveAnswer(event.Item)
 		s.blocked = s.blocked || blocksTokenUsage(event.Item)
-	}
-	if jsonString(event.Item, "type") == "message" {
-		if id := jsonString(event.Item, "id"); id != "" {
-			if s.doneIDs == nil {
-				s.itemIDs = make(map[string]bool)
-				s.doneIDs = make(map[string]bool)
-			}
-			s.itemIDs[id] = true
-			if event.Type == responseevents.OutputItemDone {
-				s.doneIDs[id] = true
-			}
+	} else if id := jsonString(event.Item, "id"); id != "" && isFinalAnswerMessage(event.Item) {
+		if s.pending == nil {
+			s.pending = make(map[string]int)
 		}
+		s.pending[id] = event.OutputIndex
 	}
+}
+
+// A terminal snapshot may finish an answer whose deltas already reached Codex.
+// Preserve the provider item and original stream index; never invent an answer.
+func (s *finalAnswerStream) complete(response []byte) ([][]byte, error) {
+	defer clear(s.pending)
+	if s.disabled || len(s.pending) == 0 {
+		return nil, nil
+	}
+	var body struct {
+		Status string                         `json:"status"`
+		Output []map[string]jsonv1.RawMessage `json:"output"`
+	}
+	if err := json.Unmarshal(response, &body); err != nil {
+		return nil, err
+	}
+	if body.Status != "" && body.Status != "completed" {
+		return nil, nil
+	}
+	var events [][]byte
+	for _, item := range body.Output {
+		id := jsonString(item, "id")
+		index, pending := s.pending[id]
+		if !pending || !isSubstantiveAnswer(item) {
+			continue
+		}
+		event, err := marshalProtocolJSON(map[string]any{"type": responseevents.OutputItemDone, "output_index": index, "item": item})
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+		delete(s.pending, id)
+	}
+	return events, nil
 }

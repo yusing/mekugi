@@ -9,13 +9,13 @@ func TestProviderHistoryReconciliation(t *testing.T) {
 	original := []json.RawMessage{
 		json.RawMessage(`{"role":"developer","content":"rules"}`),
 		json.RawMessage(`{"role":"user","content":"work"}`),
-		json.RawMessage(`{"type":"function_call","call_id":"journal-call","name":"journal","arguments":"{}"}`),
+		json.RawMessage(`{"type":"function_call","call_id":"lookup-call","name":"lookup","arguments":"{}"}`),
 	}
 	state, err := (providerHistory{confirmed: true}).append(original)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := json.RawMessage(`{"type":"function_call_output","call_id":"journal-call","output":"done"}`)
+	result := json.RawMessage(`{"type":"function_call_output","call_id":"lookup-call","output":"done"}`)
 	for _, tc := range []struct {
 		name       string
 		input      []json.RawMessage
@@ -86,7 +86,7 @@ func TestProviderHistoryRequiresRawTerminal(t *testing.T) {
 			if err := exchange.beginProviderHistory(map[string]json.RawMessage{"input": json.RawMessage(`[{"role":"user","content":"work"}]`)}); err != nil {
 				t.Fatal(err)
 			}
-			item := json.RawMessage(`{"type":"function_call","id":"item","call_id":"call","name":"journal","arguments":"{}"}`)
+			item := json.RawMessage(`{"type":"function_call","id":"item","call_id":"call","name":"lookup","arguments":"{}"}`)
 			if err := exchange.observeProviderHistory(mustMarshalJSON(map[string]any{"type": "response.output_item.done", "item": item})); err != nil {
 				t.Fatal(err)
 			}

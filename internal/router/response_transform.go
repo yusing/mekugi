@@ -41,6 +41,18 @@ func (chain responseTransformerChain) Finish(streamEvent bool) error {
 	return errors.Join(chain.first.Finish(streamEvent), chain.second.Finish(streamEvent))
 }
 
+// Delivery observers run only after the transport writes and flushes an event.
+func confirmResponseDelivery(transformer responseTransformer, payload []byte) {
+	if observer, ok := transformer.(interface{ Delivered([]byte) }); ok {
+		observer.Delivered(payload)
+	}
+}
+
+func (chain responseTransformerChain) Delivered(payload []byte) {
+	confirmResponseDelivery(chain.first, payload)
+	confirmResponseDelivery(chain.second, payload)
+}
+
 func composeResponseTransformers(first, second responseTransformer) responseTransformer {
 	switch {
 	case first == nil:

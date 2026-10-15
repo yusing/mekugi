@@ -73,39 +73,6 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 	return compound
 }
 
-// journalActivityBody removes the generated list wrapper from journal updates.
-// A child's task body replaces its summary row; a body-free update keeps its
-// title and state. The original block remains the detail and copy source.
-func journalActivityBody(body string, child bool) string {
-	var items []string
-	for _, item := range strings.Split(strings.TrimPrefix(body, "- "), "\n- ") {
-		title, detail, _ := strings.Cut(item, "\n")
-		rows := strings.Split(detail, "\n")
-		for i := range rows {
-			rows[i] = strings.TrimPrefix(rows[i], "  ")
-		}
-		detail = strings.Trim(strings.Join(rows, "\n"), "\n")
-		parts := strings.SplitN(title, " ", 3)
-		if child && len(parts) == 3 && strings.HasPrefix(parts[1], "/") {
-			for _, glyph := range journalGlyphs {
-				if parts[0] == glyph {
-					if strings.TrimSpace(detail) != "" {
-						title = ""
-					} else {
-						title = parts[0] + " " + parts[2]
-					}
-					break
-				}
-			}
-		}
-		if title != "" && detail != "" {
-			title += "\n"
-		}
-		items = append(items, title+detail)
-	}
-	return strings.Join(items, "\n\n")
-}
-
 func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	defer func() {
 		// An unsupported batch has one host clock, not a clock per classified
@@ -152,14 +119,6 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 		return []activityui.Block{{Kind: "op", Verb: "Run", Hook: n.hook, Label: text, Running: n.running,
 			Output: n.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}}
-	case "journal_card":
-		return []activityui.Block{{Kind: "summary", Label: "Journal", Body: text, Collapsed: true}}
-	case "journal_event":
-		return []activityui.Block{{Kind: "progress", Body: text}}
-	case "text":
-		if body, ok := strings.CutPrefix(strings.TrimSpace(source), "Journal\n"); ok {
-			return []activityui.Block{{Kind: "journal", Body: strings.TrimSpace(body)}}
-		}
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.message != nil {
@@ -201,32 +160,12 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			block.Collapsed = block.Collapsible() && (entry.native == nil || !entry.native.live || entry.native.collapsed || entry.native.phase != "item/completed")
 		}
 		return blocks
-	case "native_journal":
-		if entry.journal != nil {
-			journal := &activityui.Journal{}
-			items := entry.journalItems
-			if len(items) == 0 {
-				items = []journalItem{*entry.journal}
-			}
-			questions := make(map[string]int)
-			for _, item := range items {
-				index, found := questions[item.Question]
-				if item.Question == "" || !found {
-					index = len(journal.Groups)
-					journal.Groups = append(journal.Groups, activityui.AnswerGroup{Question: livediff.Safe(item.Question, false)})
-					questions[item.Question] = index
-				}
-				journal.Groups[index].Answers = append(journal.Groups[index].Answers, activityui.Answer{ID: item.ID, Text: livediff.Safe(item.Text, false)})
-			}
-			return []activityui.Block{{Kind: "final", Body: text, Journal: journal}}
-		}
 	case "command":
 		if entry.native != nil {
 			return []activityui.Block{{Kind: "op", Verb: "Run", Label: livediff.Safe(entry.native.status, false), Code: livediff.Safe(entry.native.command, false), Lang: "bash", Fenced: true}}
 		}
 	case "final":
-		journal, _ := activityui.ParseJournal(text)
-		return []activityui.Block{{Kind: "final", Body: source, Journal: journal, Owner: entry.Agent}}
+		return []activityui.Block{{Kind: "final", Body: source, Owner: entry.Agent}}
 	case "start":
 		if entry.start != nil {
 			block := activityui.Block{Kind: "start", Label: livediff.Safe(entry.start.label(), false)}

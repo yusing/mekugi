@@ -40,49 +40,49 @@ func (d *debugOutput) observeAXThread(id string) {
 	d.axThreads[id] = true
 }
 
-// Called under the debug output lock after request shutdown. Journal-only
+// Called under the debug output lock after request shutdown. Log-only
 // identities remain separate from known router threads; they are not presumed
 // to be children or tests. Every supplied event is validated, including exclusions.
 func (d *debugOutput) writeAXReport() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	journal, journalErr := capturer.ReadAXReadJournal(ctx, d.paths[4])
+	log, logErr := capturer.ReadAXReadLog(ctx, d.paths[4])
 	threads := slices.Sorted(maps.Keys(d.axThreads))
-	var journalOnly []string
-	for id := range journal.Threads {
+	var logOnly []string
+	for id := range log.Threads {
 		if id != "" && !d.axThreads[id] {
-			journalOnly = append(journalOnly, id)
+			logOnly = append(logOnly, id)
 		}
 	}
-	slices.Sort(journalOnly)
-	dropped := len(journalOnly) > 256
-	journalOnly = journalOnly[:min(len(journalOnly), 256)]
-	paths, discoveryErr := discoverDebugRollouts(ctx, append(slices.Clone(threads), journalOnly...))
+	slices.Sort(logOnly)
+	dropped := len(logOnly) > 256
+	logOnly = logOnly[:min(len(logOnly), 256)]
+	paths, discoveryErr := discoverDebugRollouts(ctx, append(slices.Clone(threads), logOnly...))
 	report := struct {
-		Schema                string                  `json:"schema"`
-		Scope                 string                  `json:"scope"`
-		ReadLog               string                  `json:"read_log"`
-		JournalState          string                  `json:"journal_state"`
-		DroppedThreads        bool                    `json:"dropped_threads"`
-		Threads               []debugAXThread         `json:"threads"`
-		JournalOnlyThreads    []debugAXThread         `json:"journal_only_threads"`
-		DroppedJournalThreads bool                    `json:"dropped_journal_threads"`
-		UnattributedReads     *capturer.AXReadMetrics `json:"unattributed_reads,omitempty"`
+		Schema            string                  `json:"schema"`
+		Scope             string                  `json:"scope"`
+		ReadLog           string                  `json:"read_log"`
+		LogState          string                  `json:"log_state"`
+		DroppedThreads    bool                    `json:"dropped_threads"`
+		Threads           []debugAXThread         `json:"threads"`
+		LogOnlyThreads    []debugAXThread         `json:"log_only_threads"`
+		DroppedLogThreads bool                    `json:"dropped_log_threads"`
+		UnattributedReads *capturer.AXReadMetrics `json:"unattributed_reads,omitempty"`
 	}{
-		Schema: "mekugi.ax.debug.v1", Scope: "known router threads and separately labeled journal-only evidence; whole-rollout evidence at shutdown",
-		ReadLog: d.paths[4], JournalState: "observed", DroppedThreads: d.axDroppedThreads,
-		Threads: []debugAXThread{}, JournalOnlyThreads: []debugAXThread{}, DroppedJournalThreads: dropped,
+		Schema: "mekugi.ax.debug.v2", Scope: "known router threads and separately labeled log-only evidence; whole-rollout evidence at shutdown",
+		ReadLog: d.paths[4], LogState: "observed", DroppedThreads: d.axDroppedThreads,
+		Threads: []debugAXThread{}, LogOnlyThreads: []debugAXThread{}, DroppedLogThreads: dropped,
 	}
-	if journalErr != nil {
-		report.JournalState = "invalid_or_unavailable"
+	if logErr != nil {
+		report.LogState = "invalid_or_unavailable"
 	}
-	if reads, ok := journal.Threads[""]; ok {
+	if reads, ok := log.Threads[""]; ok {
 		report.UnattributedReads = &reads
 	}
 	inspect := func(id string) debugAXThread {
 		entry := debugAXThread{ThreadID: id, State: "rollout_unavailable"}
-		reads := journal.ForThread(id)
-		if journalErr != nil {
+		reads := log.ForThread(id)
+		if logErr != nil {
 			reads.State = "invalid_or_unavailable"
 		}
 		if discoveryErr != nil {
@@ -91,7 +91,7 @@ func (d *debugOutput) writeAXReport() error {
 			entry.State = "rollout_ambiguous"
 		} else if len(paths[id]) == 1 {
 			var stdout, stderr bytes.Buffer
-			// Reuse the one validated journal snapshot rather than rescanning it
+			// Reuse the one validated log snapshot rather than rescanning it
 			// for every thread (or accepting partial evidence on a later timeout).
 			code := RunSessionInspection(ctx, []string{"--session", paths[id][0], "--ax", "--limit", "1"}, &stdout, &stderr)
 			var inspection sessionInspection
@@ -112,8 +112,8 @@ func (d *debugOutput) writeAXReport() error {
 	for _, id := range threads {
 		report.Threads = append(report.Threads, inspect(id))
 	}
-	for _, id := range journalOnly {
-		report.JournalOnlyThreads = append(report.JournalOnlyThreads, inspect(id))
+	for _, id := range logOnly {
+		report.LogOnlyThreads = append(report.LogOnlyThreads, inspect(id))
 	}
 	file, err := os.OpenFile(d.paths[5], os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {

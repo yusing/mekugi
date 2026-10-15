@@ -81,14 +81,13 @@ type sessionAXReport struct {
 }
 
 type sessionInspectionItem struct {
-	LocalResult bool            `json:"-"`
-	Type        string          `json:"type"`
-	CallID      string          `json:"call_id"`
-	Name        string          `json:"name"`
-	Namespace   string          `json:"namespace"`
-	Input       string          `json:"input"`
-	Arguments   string          `json:"arguments"`
-	Output      json.RawMessage `json:"output"`
+	Type      string          `json:"type"`
+	CallID    string          `json:"call_id"`
+	Name      string          `json:"name"`
+	Namespace string          `json:"namespace"`
+	Input     string          `json:"input"`
+	Arguments string          `json:"arguments"`
+	Output    json.RawMessage `json:"output"`
 }
 
 type sessionInspectionCall struct {
@@ -111,21 +110,20 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	requestID := flags.String("request-id", "", "select one request in a debug bundle")
 	workspace := flags.String("workspace", "", "override workspace inferred from rollout metadata")
 	replayDir := flags.String("replay-dir", "", "replay directory (default platform state directory)")
-	journal := flags.Bool("journal", false, "inspect the selected thread's retained journal instead of calls")
 	ax := flags.Bool("ax", false, "include whole-rollout AX measurements, independent of call pagination")
 	failures := flags.Bool("failures", false, "list sanitized failures, optionally selecting one reference")
-	readLog := flags.String("read-log", "", "runtime AX read journal; implies --ax")
+	readLog := flags.String("read-log", "", "runtime AX read log; implies --ax")
 	defects := flags.String("defects", "", "JSON defect assessments with evidence paths; implies --ax")
 	callID := flags.String("call-id", "", "select one call identity")
-	offset := flags.Int("offset", 0, "skip this many matching calls or journal nodes")
-	limit := flags.Int("limit", 50, "maximum calls or journal nodes returned (1-500)")
-	field := flags.String("field", "", "include text: script, report, diagnostic, output, or all; journal: title, body, reason, question, or all")
+	offset := flags.Int("offset", 0, "skip this many matching calls")
+	limit := flags.Int("limit", 50, "maximum calls returned (1-500)")
+	field := flags.String("field", "", "include text: script, report, diagnostic, output, or all")
 	textBytes := flags.Int("text-bytes", 4096, "maximum UTF-8 bytes per included field (1-65536)")
 	flags.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --session PATH [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session --debug-dir DIR [--request-id ID] [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session [--replay-dir PATH] --failures [REF]")
-		fmt.Fprintln(stderr, "Read local calls or retained journal nodes without running operations. Text is omitted unless --field is selected.")
+		fmt.Fprintln(stderr, "Read local calls without running operations. Text is omitted unless --field is selected.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -139,11 +137,8 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 1
 	}
 	fields := []string{"script", "report", "diagnostic", "output"}
-	if *journal {
-		fields = []string{"title", "body", "reason", "question"}
-	}
 	if *debugDir != "" {
-		if flags.NArg() != 0 || *session != "" || *journal || *failures || *ax || *readLog != "" || *defects != "" ||
+		if flags.NArg() != 0 || *session != "" || *failures || *ax || *readLog != "" || *defects != "" ||
 			*callID != "" || *workspace != "" || *replayDir != "" || *offset < 0 || *limit < 1 || *limit > 500 ||
 			*textBytes < 1 || *textBytes > 65536 || (*field != "" && *field != "all" && *field != "diagnostic") {
 			flags.Usage()
@@ -156,7 +151,7 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 2
 	}
 	if *failures {
-		if flags.NArg() > 1 || *session != "" || *journal || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
+		if flags.NArg() > 1 || *session != "" || *ax || *readLog != "" || *defects != "" || *field != "" || *callID != "" || *workspace != "" ||
 			*offset != 0 || *limit != 50 || *textBytes != 4096 {
 			flags.Usage()
 			return 2
@@ -174,7 +169,6 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 		return 0
 	}
 	if *session == "" || flags.NArg() != 0 || *offset < 0 ||
-		(*journal && (*ax || *readLog != "" || *defects != "" || *callID != "")) ||
 		*limit < 1 || *limit > 500 || *textBytes < 1 || *textBytes > 65536 ||
 		(*field != "" && *field != "all" && !slices.Contains(fields, *field)) {
 		flags.Usage()
@@ -204,12 +198,6 @@ func RunSessionInspection(ctx context.Context, args []string, stdout, stderr io.
 	calls, err := readSessionInspection(ctx, *session, &observations)
 	if err != nil {
 		return fail(err)
-	}
-	if *journal {
-		if err := inspectSessionJournal(ctx, store, observations, override, *field, *offset, *limit, *textBytes, stdout); err != nil {
-			return fail(err)
-		}
-		return 0
 	}
 	allCalls := calls
 	if *callID != "" {
@@ -467,13 +455,6 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 		if !isCall && !isOutput {
 			continue
 		}
-		if item.CallID == "" && isOutput && (item.Name == journalToolName || item.Name == reportIssueToolName) && item.Namespace == "functions" {
-			var raw map[string]json.RawMessage
-			if json.Unmarshal(envelope.Payload, &raw) == nil {
-				item.CallID = journalResultCallID(raw)
-				item.LocalResult = item.CallID != ""
-			}
-		}
 		if item.CallID == "" {
 			return nil, fmt.Errorf("session line %d: tool item has no call_id", line)
 		}
@@ -526,13 +507,6 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 			values["output"] = text
 		} else {
 			values["output"] = string(output)
-		}
-	}
-	if found {
-		for _, output := range call.outputs {
-			if output.LocalResult && (record.History.ToolName != routerLocalHistoryTool(record.History.UpstreamItem) || !isRouterLocalCall(record.History.UpstreamItem)) {
-				return result, fmt.Errorf("call %q: journal result does not match replay identity", call.item.CallID)
-			}
 		}
 	}
 	if found {

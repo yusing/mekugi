@@ -97,12 +97,12 @@ code. Fenced code retains language-specific highlighting. Decoration must not
 change code text, wrapping, or source-aware copying. Recognized local-file Markdown links show their label as a terminal
 hyperlink rather than exposing the raw destination syntax. Wrapped links retain their
 destination and underline only on their text, never on row padding or gutters.
-Raw file-shaped paths in authored text, including journal items and inline code,
+Raw file-shaped paths in authored text, including inline code,
 use the same clickable styling only when the local target exists as a regular file,
 resolved from session workspace metadata for relative paths. Missing paths and
 slash-separated prose remain unlinked, without changing the source or copied text.
 Paths with spaces can use an inline code span or an explicit Markdown link.
-Journal ordinals and agent names remain identifiers; fenced code stays literal.
+Agent names remain identifiers; fenced code stays literal.
 A completed child
 compaction appears as an event in the feed and as the agent's latest roster
 activity; an attempted or failed compaction does not claim completion.
@@ -231,7 +231,7 @@ literal timeout bounds without splitting the script. A suffix that does not fit
 wraps beneath its operation row.
 
 The shared content dialog captures keys and pointer events above both panes.
-Clicking a recognized file link in Main, Activity, Journal, or Markdown dialog
+Clicking a recognized file link in Main, Activity, or Markdown dialog
 content opens an existing regular local file in this dialog. Relative paths
 require the current session's workspace metadata; absolute paths and local
 `file:///` URLs are also supported. A `:line` or `:first-last` suffix appears
@@ -383,12 +383,6 @@ heading, the rows' changed lines, and the source.
 Unknown and zero exits add no failure label, and an unknown exit no output. Python, JavaScript (Node and Bun), and Perl interpreter previews use
 their own syntax colors. `Search` patterns are styled as literal patterns,
 not shell commands, while every target path uses the Search violet with path emphasis.
-A final answer in journal-result form is laid out natively: a heading with its
-answer count and recorded change totals, each question with its answers, then
-this agent's recorded changes by path. The agent heading already names the
-author, and an ordinary read-only result omits its empty change report. The
-shared view keeps each question to one row so clipping reaches the answers;
-the roster summary shows the first answer line without a leading list bullet.
 Roster operation summaries retain syntax highlighting. Messages show `✉  to <recipient>` for outgoing and `✉  from <sender>` for incoming delivery,
 with two spaces after the envelope because many fonts draw it wider than its cell,
 relative to the entry's agent. Peers use `main` or the child display name; the owning
@@ -396,7 +390,7 @@ agent is not repeated. The message body gutter retains the sender's color. Start
 blocks indent the assignment beneath `Started` without a `Spawn assignment:` label.
 Assignment timestamps retain Codex’s original message creation time across follow-ups
 and replay; collecting historical input does not reset those times. Queue retention
-uses arrival time independently of the timestamp shown to the user. Other final answers remain
+uses arrival time independently of the timestamp shown to the user. Final answers remain
 authored Markdown. Blank lines opening or closing a message, as some providers stream,
 add no rows. Main completion previews retain the response excerpt and show
 the linked assignment excerpt below its timestamp on separate, wrapped quote rows.
@@ -530,21 +524,14 @@ The separate roster header omits feed follow state; the feed header is `ACTIVITY
 with its filter and follow state. Feed-only controls do not offer clicking agents.
 Narrative events use Main’s shared colored event headings, timestamps, and rails;
 available timestamps show only where they fit, and unknown timestamps stay absent.
-Child journal updates join adjacent operations and reasoning under the normal
-colored agent heading, without a separate journal heading or nested journal rail.
-Their previews remove the generated outer list indentation once. A task body
-replaces its state/path/title summary; without a body, the preview retains the state
-and title but omits the path. Authored lists and code retain their formatting.
-The original message remains the detail and copy source, including omitted task
-summaries. Consecutive operations and reasoning still group by agent. Narrative
-previews keep up to five body rows below their heading, including in single-agent
+Narrative previews keep up to five body rows below their heading, including in single-agent
 mode; longer content ends with a hidden-row hint.
 Operation source and output each keep up to five rows without clipping their status. Hovering a clipped
 snippet underlines its hidden-line count. Clicking an operation opens the output
 dialog when it carries retained output or additional source; narrative text,
 including thinking and delegation assignments, opens in the same dialog only
 when its presentation elides content or retains distinct additional detail.
-Fully displayed short reasoning, diagnostics, and journal milestones have no
+Fully displayed short reasoning and diagnostics have no
 redundant underline hint or full-view click target. Neither action changes
 transcript following. Roster rows are clickable: hovering highlights an agent; clicking it shows only that agent,
 and clicking it again restores the shared feed. In the roster, `↑`/`↓` or

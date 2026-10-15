@@ -28,11 +28,11 @@
   /model /effort /tier  Open picker or s
   ctrl+c                Clear / interrup
   esc                   Interrupt, keep 
-  ctrl+b 1–5            Focus pane
-  J (empty draft)       Open journal
+  ctrl+b 1–4            Focus pane
   ctrl+b e              Next live item
   ctrl+b q / !          Questions / erro
   ctrl+b ← / →          Resize panes
+
   Transcript
   ctrl+e       Default / events / all
   pgup / pgdn  Scroll

@@ -3,8 +3,9 @@ package router
 import (
 	"bytes"
 	"encoding/json"
-	"reflect"
 	"testing"
+
+	responseevents "github.com/yusing/mekugi/internal/responses"
 )
 
 func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
@@ -14,7 +15,9 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 	}
 	known := subagentCommentaryMessageID("known")
 	unknown := subagentCommentaryMessageID("unknown")
-	if err := store.putCommentaryReplacing(t.Context(), "workspace", []string{known}, nil); err != nil {
+	if err := store.locked(t.Context(), func() error {
+		return store.write(replayRecord{Version: 1, Workspace: "workspace", CallID: known, Commentary: true})
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -36,54 +39,47 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 	}
 }
 
-func TestCommentaryReplacementProvenanceIsScopedAndRetained(t *testing.T) {
-	for _, durable := range []bool{false, true} {
-		t.Run(map[bool]string{false: "memory", true: "durable"}[durable], func(t *testing.T) {
-			proxy := newManagedMekugiProxy(t)
-			if durable {
-				attachTestReplayStore(t, proxy)
-			}
-			child, _ := prepareActivityTest(t, proxy, "child", "child", "root", "/root/child", nil)
-			defer child.Close()
-			id := commentaryMessageID("summary")
-			message := assistantCommentaryMessage(id, "Complete enriched result")
-			replacement := &commentaryReplacement{Thread: "child", Turn: "turn", Items: []string{"original"}}
-			if len(child.retainCommentaryReplacing(replacement, message)) != 1 {
-				t.Fatal("cannot retain enriched result")
-			}
-			// A duplicate generic retention must not erase the relationship.
-			if len(child.retainCommentary(message)) != 1 {
-				t.Fatal("cannot retain duplicate message")
-			}
-			if durable {
-				var err error
-				proxy.replayStore, err = openMekugiReplayStore(proxy.replayStore.directory)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			items := proxy.commentaryReplacementItems(t.Context(), child.directory, "child", "turn", id)
-			if !reflect.DeepEqual(items, []string{"original"}) {
-				t.Fatalf("replacement relationship lost: %v", items)
-			}
-			items[0] = "tampered"
-			if got := proxy.commentaryReplacementItems(t.Context(), child.directory, "child", "turn", id); !reflect.DeepEqual(got, []string{"original"}) {
-				t.Fatalf("reader mutated retained provenance: %v", got)
-			}
-			for _, scope := range []struct{ workspace, thread, turn, item string }{
-				{"other workspace", "child", "turn", id},
-				{child.directory, "sibling", "turn", id},
-				{child.directory, "child", "later-turn", id},
-				{child.directory, "child", "turn", commentaryMessageID("unretained")},
-			} {
-				if got := proxy.commentaryReplacementItems(t.Context(), scope.workspace, scope.thread, scope.turn, scope.item); len(got) != 0 {
-					t.Fatalf("replacement crossed identity boundary: %+v: %v", scope, got)
-				}
-			}
-			wrong := &commentaryReplacement{Thread: "sibling", Turn: "turn", Items: []string{"original"}}
-			if len(child.retainCommentaryReplacing(wrong, message)) != 0 {
-				t.Fatal("accepted conflicting replacement provenance")
-			}
-		})
+// assistantCommentaryMessage creates an assistant commentary message with the given ID and text.
+func assistantCommentaryMessage(id, text string) map[string]json.RawMessage {
+	type outputText struct {
+		Annotations []any  `json:"annotations"`
+		Text        string `json:"text"`
+		Type        string `json:"type"`
 	}
+	type outputMessage struct {
+		Type    string       `json:"type"`
+		ID      string       `json:"id,omitempty"`
+		Role    string       `json:"role"`
+		Status  string       `json:"status"`
+		Phase   string       `json:"phase"`
+		Content []outputText `json:"content"`
+	}
+	encoded := mustMarshalJSON(outputMessage{
+		Role:   "assistant",
+		Type:   "message",
+		ID:     id,
+		Status: "completed",
+		Phase:  "commentary",
+		Content: []outputText{{
+			Type:        "output_text",
+			Text:        text,
+			Annotations: []any{},
+		}},
+	})
+	var message map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &message); err != nil {
+		panic(err)
+	}
+	return message
+}
+
+// assistantCommentaryDoneEvent creates a response.output_item.done event for a commentary message.
+func assistantCommentaryDoneEvent(message map[string]json.RawMessage) []byte {
+	return mustMarshalJSON(struct {
+		Type string                     `json:"type"`
+		Item map[string]json.RawMessage `json:"item"`
+	}{
+		Type: responseevents.OutputItemDone,
+		Item: message,
+	})
 }

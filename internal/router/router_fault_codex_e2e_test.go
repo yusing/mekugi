@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -100,14 +100,13 @@ func routerFaultCodexTransformResponse() *http.Response {
 	return routerFaultCodexStreamResponse(routerFaultSSE(
 		map[string]any{"type": "response.created", "response": map[string]any{"id": "native-fault-response", "status": "in_progress", "output": []any{}}},
 		map[string]any{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
-			"type": "function_call", "id": "native-fault-item", "call_id": "native-fault-call",
-			"name": "journal", "namespace": "functions", "arguments": "{}", "status": "in_progress",
+			"type": "custom_tool_call", "id": "native-fault-item", "call_id": "native-fault-call",
+			"name": "exec", "input": "", "status": "in_progress",
 		}},
 		map[string]any{"type": "response.output_item.done", "output_index": 0, "item": map[string]any{
-			// The intercepted local call is malformed: it lost its call_id before
-			// completion. The router, not Codex's tool dispatcher, owns this fault.
-			"type": "function_call", "id": "native-fault-item",
-			"name": "journal", "namespace": "functions", "arguments": "{}", "status": "completed",
+			// A completed stock call cannot change its advertised identity.
+			"type": "custom_tool_call", "id": "native-fault-item", "call_id": "native-fault-call",
+			"name": "changed_exec", "input": "", "status": "completed",
 		}},
 	))
 }

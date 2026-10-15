@@ -667,7 +667,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		captured = nil
 	}
 	if e.streamDiagnostics != nil {
-		if id := responseHeaders.Get("X-Request-Id"); safeFeatureIdentity(id) {
+		if id := responseHeaders.Get("X-Request-Id"); safeDiagnosticIdentity(id) {
 			e.streamDiagnostics.ProviderRequestID = id
 		}
 	}

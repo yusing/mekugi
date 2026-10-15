@@ -16,13 +16,13 @@ func TestAppServerResumeArgv(t *testing.T) {
 		if _, _, _, err := appServerArgs(expandReasoningShortcuts(args)); err != nil {
 			t.Fatal(err)
 		}
-		routerArgs := []string{"--debug", "--journal-compaction=auto"}
+		routerArgs := []string{"--debug"}
 		got := appServerResumeArgv("/opt/my tools/mekugi", routerArgs, args)
-		want := []string{"/opt/my tools/mekugi", "--debug", "--journal-compaction=auto", "codex", "--yolo", "--enable", "instant_interrupt", "--high"}
+		want := []string{"/opt/my tools/mekugi", "--debug", "codex", "--yolo", "--enable", "instant_interrupt", "--high"}
 		if !slices.Equal(got, want) {
 			t.Fatalf("resume argv for %q = %q, want %q", args, got, want)
 		}
-		if _, thread, _, err := appServerArgs(expandReasoningShortcuts(append(got[4:], "resume", "actual-thread"))); err != nil || thread != "actual-thread" {
+		if _, thread, _, err := appServerArgs(expandReasoningShortcuts(append(got[3:], "resume", "actual-thread"))); err != nil || thread != "actual-thread" {
 			t.Fatalf("continuation is not accepted: %q, %v", thread, err)
 		}
 	}

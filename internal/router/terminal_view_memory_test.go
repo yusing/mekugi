@@ -24,7 +24,7 @@ func TestTerminalViewMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.modelsLoading = true
-	u.shell.diffOpen, u.shell.journalOpen = true, false
+	u.shell.diffOpen = true
 	u.shell.diff.view.Merge(livediff.GroupCaptures([]livediff.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", livediff.Origin{})}))
 	u.shell.diff.view.RefreshVisible()
 	var first string

@@ -425,7 +425,7 @@ func TestSubagentBridgePreservesEncryptedHistory(t *testing.T) {
 		"arguments": `{"message":"opaque"}`, "call_id": "old", "encrypted_function_args": []string{"message"}}
 	plain := map[string]any{"type": "function_call", "namespace": "collaboration", "name": "spawn_agent",
 		"arguments": `{"message":"plaintext"}`, "call_id": "new", "encrypted_function_args": []string{}}
-	message := journalTestAssignment("/root/child", "NEW_TASK", "")
+	message := nativeAssignmentTestMessage("/root/child", "NEW_TASK", "")
 	message["content"] = append(message["content"].([]any), map[string]any{"type": "encrypted_content", "encrypted_content": "opaque"})
 	request.fields["input"] = mustTestJSON(t, []any{encrypted, message, plain})
 	if _, err := prepareSubagentBridge(&request, false, false); err != nil {

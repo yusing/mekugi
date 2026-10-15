@@ -108,16 +108,6 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	}
 }
 
-func TestAppServerCopyJournal(t *testing.T) {
-	u, _ := newAppServerTestUI()
-	u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "a", Text: "First"}, terminal: true, batch: 1})
-	u.view.applyJournal("main", nativeJournalPublication{item: journalItem{ID: "b", Text: "Second"}, terminal: true, batch: 1})
-	u.showCopyPicker()
-	if u.picker.choices[0].copyText != "First\n\nSecond" {
-		t.Fatalf("journal copy=%q", u.picker.choices[0].copyText)
-	}
-}
-
 func TestTerminalClipboardSharedSelection(t *testing.T) {
 	for _, key := range []byte{'c', 3} {
 		u, wire := newAppServerTestUI()

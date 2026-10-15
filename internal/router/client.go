@@ -456,7 +456,7 @@ const (
 func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
 	if streamResponse && hooks != nil && hooks.streamDiagnostics != nil {
 		hooks.streamDiagnostics.responseStarted(response)
-		if id := response.Header.Get("X-Request-Id"); safeFeatureIdentity(id) {
+		if id := response.Header.Get("X-Request-Id"); safeDiagnosticIdentity(id) {
 			hooks.streamDiagnostics.ProviderRequestID = id
 		}
 	}
@@ -597,7 +597,6 @@ func consumeOptionalUTF8BOM(reader *bufio.Reader) error {
 }
 
 func writeSSEEvent(writer io.Writer, lines []string, separator string, transformer responseTransformer, hooks *responseHooks) (responseTerminalState, error) {
-	defer releaseResponseDelivery(transformer)
 	if len(lines) == 0 {
 		if separator != "" {
 			if _, err := io.WriteString(writer, separator); err != nil {

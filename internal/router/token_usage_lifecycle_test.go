@@ -371,8 +371,8 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 			t.Errorf("provider delta must contain only the explicit next question: previous=%v steering=%v next=%v input=%s",
 				priorQuestion, steering, nextQuestion, next["input"])
 		}
-		if bytes.Contains(next["input"], []byte("No files were changed.")) || bytes.Contains(next["input"], []byte("Journal flush")) {
-			t.Errorf("natural final answer or generated flush leaked into provider input: %s", next["input"])
+		if bytes.Contains(next["input"], []byte("No files were changed.")) {
+			t.Errorf("natural final answer leaked into provider input: %s", next["input"])
 		}
 		for _, e := range finalAnswerTestEvents(t, "final_answer") {
 			if err = upstream.Write(ctx, websocket.MessageText, e); err != nil {
@@ -420,9 +420,6 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		if jsonString(event, "type") == "response.output_item.done" {
 			var item map[string]json.RawMessage
 			if err := json.Unmarshal(event["item"], &item); err == nil {
-				if strings.Contains(commentaryMessageText(item), "Journal flush") {
-					t.Fatal("answer-only automatic successor emitted a journal report")
-				}
 				if jsonString(item, "phase") == "final_answer" {
 					finalAnswerID = jsonString(item, "id")
 				}

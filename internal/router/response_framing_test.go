@@ -15,7 +15,6 @@ func TestAnswerSSEFraming(t *testing.T) {
 		for _, stop := range []string{"completed", "failed", "eof", "read_error", "transform_error"} {
 			t.Run(stop+"/"+map[string]string{"\n": "lf", "\r\n": "crlf"}[ending], func(t *testing.T) {
 				transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-				transform.journalActive = false
 				answer := finalAnswerTestEvents(t, "final_answer")
 				var wire strings.Builder
 				for i, payload := range answer {
@@ -163,30 +162,6 @@ func TestEncodeSSEMultilinePayloadPreservesFields(t *testing.T) {
 			}
 			if ending == "" && strings.HasSuffix(encoded, "\n") {
 				t.Fatal("unterminated frame acquired a final newline")
-			}
-		})
-	}
-}
-
-func TestAnswerSSEFramingWithEarlyJournalReport(t *testing.T) {
-	for _, ending := range []string{"\n", "\r\n"} {
-		t.Run(map[string]string{"\n": "lf", "\r\n": "crlf"}[ending], func(t *testing.T) {
-			transform, proxy, _, workspace := newDurableTreeTransform(t)
-			if _, err := proxy.journals.apply(t.Context(), proxy.replayStore, workspace, transform.shellThreadID, "seed", []journalMutation{{Op: "add", Kind: "note", Title: new("Verified milestone")}}); err != nil {
-				t.Fatal(err)
-			}
-			event := finalAnswerTestEvents(t, "final_answer")[0]
-			frame := "event: response.output_item.added" + ending + "id: answer-start" + ending + "retry: 2000" + ending + ": provider annotation" + ending + "data: " + string(event) + ending + ending
-			var output bytes.Buffer
-			if _, err := copySSETransformed(&output, strings.NewReader(frame), transform, nil); err != nil {
-				t.Fatal(err)
-			}
-			if !strings.HasSuffix(output.String(), frame) || output.String() == frame {
-				t.Fatalf("early report lost provider framing: %q", output.String())
-			}
-			journal := separateReportRead(t, proxy, workspace, transform.shellThreadID)
-			if journal.FlushSeq != 0 {
-				t.Fatal("EOF acknowledged an early report")
 			}
 		})
 	}

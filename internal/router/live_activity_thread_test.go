@@ -94,30 +94,6 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	}
 }
 
-func TestConversationThreadQuotesEarlierAssignment(t *testing.T) {
-	v := newLiveActivityView()
-	v.conversation, v.feedOnly = true, true
-	task := func(seq uint64, text string) activityPaneEntry {
-		return activityPaneEntry{Seq: seq, Agent: "Main", Kind: "assignment", Observed: time.Now(), assignment: &activityAssignment{to: "/root/reviewer", text: text}}
-	}
-	answer := &activityui.Journal{Groups: []activityui.AnswerGroup{{Question: "First task.", Target: 1, Answers: []activityui.Answer{{Text: "First answer."}}}}}
-	v.entries = []liveActivityRecord{
-		{activityPaneEntry: task(1, "First task."), blocks: []activityui.Block{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "First task."}}},
-		{activityPaneEntry: task(2, "Second task."), blocks: []activityui.Block{{Kind: "message", From: "/root", To: "/root/reviewer", Body: "Second task."}}},
-		{Seq: 3, Agent: "/root/reviewer", Kind: "final", Observed: time.Now(), activitySeq: 7, journal: &journalItem{}, blocks: []activityui.Block{{Kind: "final", Journal: answer}}},
-	}
-	feed := v.renderFeed(60, 40)
-	text := strings.Join(threadPlain(feed), "\n")
-	if !strings.Contains(text, "├─→ follow-up") || !strings.Contains(text, "├─✓ finished") || !strings.Contains(text, "↩ re: assignment") {
-		t.Fatalf("an answer to the earlier task must keep its quote:\n%s", text)
-	}
-	v.entries[2].blocks[0].Journal.Groups[0].Target = 2
-	v.runs = nil
-	if text := strings.Join(threadPlain(v.renderFeed(60, 40)), "\n"); strings.Contains(text, "↩ re:") {
-		t.Fatalf("an answer to the nearest task repeated it:\n%s", text)
-	}
-}
-
 func TestConversationAsidesFollowThread(t *testing.T) {
 	for _, kind := range []string{"reasoning", "Waiting for agent", "Finished waiting", "Wait failed"} {
 		t.Run(kind, func(t *testing.T) {
@@ -174,7 +150,7 @@ func TestConversationMainToolsFollowTheirLead(t *testing.T) {
 	reasoning := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "reasoning", Text: "**Preparing regression seed**", Observed: at}
 	read := activityPaneEntry{Seq: 2, Agent: "Main", Kind: "tool", Text: "Read `mchanges.go 470:491`", Observed: at}
 	done := activityPaneEntry{Seq: 3, Agent: "/root/lookup", Kind: "final", Text: "Evidence points to a namespace-context loss.", Observed: at.Add(time.Minute), activitySeq: 9}
-	edit := activityPaneEntry{Seq: 4, Agent: "Main", Kind: "tool", Text: "Edit `journal_child_changes_test.go` +65 -0", Observed: at.Add(2 * time.Minute)}
+	edit := activityPaneEntry{Seq: 4, Agent: "Main", Kind: "tool", Text: "Edit `change_capture_test.go` +65 -0", Observed: at.Add(2 * time.Minute)}
 	render := func(entries ...activityPaneEntry) []string {
 		v := newLiveActivityView()
 		v.conversation, v.feedOnly = true, true

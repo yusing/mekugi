@@ -41,8 +41,7 @@ var errUpstreamResponseWithoutTerminal = errors.New("upstream Responses response
 // Session is available only after initialization and listener binding succeed.
 type Session struct {
 	BaseURL                string
-	JournalEnabled         bool
-	PostCompactRecovery    bool
+	CodeModeEnabled        bool
 	VCSGuard               bool
 	GrokEnabled            bool
 	GrokUnprefixed         bool
@@ -56,7 +55,7 @@ type Session struct {
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
 	NativeTraceDirectory string
-	JournalMCPSocket     string
+	MCPSocket            string
 }
 
 // RunSession owns the private router for one wrapped Codex process.
@@ -77,37 +76,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	if *flags.mode != "mekugi" && *flags.mode != "passthrough" {
 		return errors.New("--mode must be mekugi or passthrough")
 	}
-	if value := *flags.journalCompaction; value != "auto" && value != "slice" && value != "off" {
-		return errors.New("--journal-compaction must be auto, slice, or off")
-	}
-	if *flags.mode == "passthrough" {
-		journalCompactionSet := false
-		flags.Visit(func(item *flag.Flag) {
-			if item.Name == "journal-compaction" {
-				journalCompactionSet = true
-			}
-		})
-		if journalCompactionSet && *flags.journalCompaction != "off" {
-			return errors.New("--journal-compaction requires --mode mekugi")
-		}
-		*flags.journalCompaction = "off"
-	}
 	faint, err := terminalui.SupportsFaint(ctx, *flags.ansiFaint)
 	if err != nil {
 		return err
-	}
-	postCompactSet := false
-	flags.Visit(func(item *flag.Flag) {
-		switch item.Name {
-		case "post-compact-recovery":
-			postCompactSet = true
-		}
-	})
-	if *flags.mode == "passthrough" {
-		if postCompactSet && *flags.postCompactRecovery {
-			return errors.New("--post-compact-recovery requires --mode mekugi")
-		}
-		*flags.postCompactRecovery = false
 	}
 	if (grokEnabled || standalone) && *flags.mode != "mekugi" {
 		return errors.New("third-party launches require --mode mekugi")
@@ -221,24 +192,15 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		provider.opencode[service.prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: *flags.streamIdleTimeout}
 	}
 	var frontendDirectory string
-	var dataDirectory string
-	if *flags.mode == "mekugi" {
-		var err error
-		dataDirectory, err = mekugiDataDirectory()
-		if err != nil {
-			return fmt.Errorf("initialize mekugi response proxy: %w", err)
-		}
-	}
-	titles := newSessionTitleCache()
 	titleCtx, cancelTitles := context.WithCancel(ctx)
 	defer cancelTitles()
-	provider.titleGenerator = newSessionTitleGenerator(titleCtx, provider, titles)
+	provider.titleGenerator = newSessionTitleGenerator(titleCtx, provider)
 	if issues != nil {
 		issues.persistFailures = true
 		issues.writes = writes
 	}
 	if *flags.mode == "mekugi" {
-		registry, err := buildToolRegistry(ctx, dataDirectory, os.Getenv("MEKUGI_DIAGNOSE") == "1")
+		registry, err := buildToolRegistry(ctx)
 		if err != nil {
 			return fmt.Errorf("initialize tool registry: %w", err)
 		}
@@ -262,9 +224,8 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		}
 		replayStore.writes = writes
 		defer replayStore.snapshots.close()
-		mekugiCalls = newMekugiProxy(registry, titles)
+		mekugiCalls = newMekugiProxy(registry)
 		provider.titleGenerator.usage = mekugiCalls.usage
-		mekugiCalls.journalCompaction = *flags.journalCompaction
 		mekugiCalls.duplicateOutput = *flags.duplicateOutput
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
@@ -333,17 +294,18 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 	}
 	defer func() { runErr = errors.Join(runErr, stopProfiling()) }()
 	mux := http.NewServeMux()
-	var journalMCPSocket string
+	var mcpSocket string
 	mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	registerCodexAuxiliaryRoutes(mux, ctx, *flags.timeout, provider)
 	if mekugiCalls != nil {
-		var stopJournalMCP func() error
-		journalMCPSocket, stopJournalMCP, err = startJournalMCP(ctx, newJournalMCPServer(mekugiCalls))
+		var stopMCP func() error
+		mcpServer := newMCPServer()
+		mcpSocket, stopMCP, err = startMCP(ctx, mcpServer)
 		if err != nil {
-			return fmt.Errorf("initialize journal MCP: %w", err)
+			return fmt.Errorf("initialize MCP: %w", err)
 		}
-		defer func() { runErr = errors.Join(runErr, stopJournalMCP()) }()
+		defer func() { runErr = errors.Join(runErr, stopMCP()) }()
 	}
 	webSocketEndpoint := responsesWebSocketHandler(ctx, *flags.timeout, provider, issues, mekugiCalls)
 	defer webSocketEndpoint.Close()
@@ -364,9 +326,9 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, JournalEnabled: *flags.mode == "mekugi", PostCompactRecovery: *flags.postCompactRecovery, VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: *flags.mode == "mekugi", VCSGuard: *flags.vcsGuard, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
-			session.JournalMCPSocket = journalMCPSocket
+			session.MCPSocket = mcpSocket
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls, issues)
 			}

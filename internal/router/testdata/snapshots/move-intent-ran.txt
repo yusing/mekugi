@@ -1,3 +1,2 @@
-├ Move internal/router/testdata/snapshots/{journal-noise-blocked-strip.txt.new=>journal-noise-
-│      blocked-strip.txt} via mv · ran
-└ Ran  gofmt -w internal/router/native_journal.go
+├ Move testdata/{output.txt.new=>output.txt} via mv · ran
+└ Ran  gofmt -w internal/router/native_shell.go

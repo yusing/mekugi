@@ -111,10 +111,6 @@ func TestAuthoredChangesLegacyObservationNoiseExcluded(t *testing.T) {
 	if err != nil || notice != "" {
 		t.Fatalf("observation-only notice: %q, %v", notice, err)
 	}
-	child := f.store.childJournalChanges(f.ctx, f.workspace, f.thread)
-	if !strings.Contains(child, "No recorded changes") || strings.Contains(child, id) {
-		t.Fatalf("observation-only handoff: %q", child)
-	}
 }
 
 func TestAuthoredChangesInlineEvidenceSurvivesRestart(t *testing.T) {

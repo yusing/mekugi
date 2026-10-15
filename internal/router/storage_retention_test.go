@@ -341,38 +341,6 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 	retentionTestExists(t, store, "/w", "edit-call", true)
 }
 
-func TestStorageAdoptsLegacyJournalReceiptEvenAfterJournalClaim(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Pre-catalog writes have no context-bound thread ownership.
-	journals := newJournalStore()
-	if err := journals.initialize(t.Context(), store, "/w", "old", "/root", ""); err != nil {
-		t.Fatal(err)
-	}
-	retentionTestPut(t, store, t.Context(), "/w", "compacted-call")
-	if _, err := journals.apply(t.Context(), store, "/w", "old", "compacted-call", []journalMutation{{Op: "add", Text: new("old milestone")}}); err != nil {
-		t.Fatal(err)
-	}
-	oldTime := time.Now().Add(-30 * 24 * time.Hour)
-	for _, name := range []string{journalFilename("/w", "old"), replayRecordName("/w", "compacted-call", false)} {
-		if err := os.Chtimes(filepath.Join(store.directory, name), oldTime, oldTime); err != nil {
-			t.Fatal(err)
-		}
-	}
-	resumed, _ := retentionTestSession(t, store, "old", 0)
-	if err := journals.initialize(resumed, store, "/w", "old", "/root", ""); err != nil {
-		t.Fatal(err)
-	}
-	current, _ := retentionTestSession(t, store, "current", 0)
-	if err := store.cleanupSessions(current); err != nil {
-		t.Fatal(err)
-	}
-	retentionTestExists(t, store, "/w", "compacted-call", true)
-}
-
 func TestStorageCatalogGrowthCountsAgainstQuota(t *testing.T) {
 	t.Parallel()
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -575,34 +543,6 @@ func TestStorageIndexPressurePersistsRetiredAttempts(t *testing.T) {
 	}
 	retentionTestExists(t, store, "/w", "old-call", false)
 	retentionTestExists(t, store, "/w", "current-call", true)
-}
-
-func TestStorageLegacyJournalPressurePreservesReceipts(t *testing.T) {
-	t.Parallel()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	journals := newJournalStore()
-	if err := journals.initialize(t.Context(), store, "/w", "old", "/root", ""); err != nil {
-		t.Fatal(err)
-	}
-	retentionTestPut(t, store, t.Context(), "/w", "compacted-call")
-	if _, err := journals.apply(t.Context(), store, "/w", "old", "compacted-call", []journalMutation{{Op: "add", Text: new("old milestone")}}); err != nil {
-		t.Fatal(err)
-	}
-	oldTime := time.Now().Add(-30 * 24 * time.Hour)
-	for _, name := range []string{journalFilename("/w", "old"), replayRecordName("/w", "compacted-call", false)} {
-		if err := os.Chtimes(filepath.Join(store.directory, name), oldTime, oldTime); err != nil {
-			t.Fatal(err)
-		}
-	}
-	resumed, _ := retentionTestSession(t, store, "old", 0)
-	store.maxBytes = 1
-	if err := journals.initialize(resumed, store, "/w", "old", "/root", ""); err == nil || !strings.Contains(err.Error(), "limit is 1 bytes") {
-		t.Fatalf("expected capacity error, got %v", err)
-	}
-	retentionTestExists(t, store, "/w", "compacted-call", true)
 }
 
 func TestStorageDuplicateCursorAdoptsDependencies(t *testing.T) {

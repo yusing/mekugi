@@ -16,7 +16,7 @@ const (
 	activityEventTTL           = time.Hour
 )
 
-// Bound native message display independently of authored journal publications.
+// Bound native message display independently of provider output.
 // Clipping is explicit in Activity.
 const maxNativeActivityMessageBytes = 64 << 10
 

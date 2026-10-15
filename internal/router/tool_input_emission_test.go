@@ -115,22 +115,3 @@ func TestNormalPromptBypassesDeferredQuestionAnswer(t *testing.T) {
 		t.Fatal("normal prompt consumed the deferred answer")
 	}
 }
-func TestRouterLocalToolInputEmission(t *testing.T) {
-	proxy := newManagedMekugiProxy(t)
-	transform := &mekugiResponseTransform{proxy: proxy, threadID: "main", directory: "/workspace", journalActive: true, journalPending: make(map[string]bool)}
-	defer transform.Close()
-	_, err := transform.transformSSE(mustMarshalJSON(map[string]any{"type": "response.output_item.added", "item": map[string]any{"id": "emitting", "type": "function_call", "name": "report_issue"}}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !proxy.emittingToolInput("/workspace", "main") {
-		t.Fatal("report_issue argument generation is invisible to answer deferral")
-	}
-	_, err = transform.transformSSE(mustMarshalJSON(map[string]any{"type": "response.function_call_arguments.done", "item_id": "emitting", "arguments": "{}"}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if proxy.emittingToolInput("/workspace", "main") {
-		t.Fatal("router-local input completion still blocks answers")
-	}
-}

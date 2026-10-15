@@ -368,7 +368,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 			view = u.agents
 			u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 			u.shell.diffOpen = false
-			u.shell.journalOpen = false
+
 		}
 		view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "hello [report](https://example.com/report)"})
 		screen := vt.NewEmulator(120, 30)

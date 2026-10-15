@@ -1,4 +1,4 @@
-//go:build journal_e2e
+//go:build codex_e2e
 
 package router
 
@@ -129,8 +129,7 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	}
 	defer capture.Close()
 	proxy := newManagedMekugiProxy(t)
-	// Match production's durable journal/replay owner rather than a memory-only
-	// fixture whose early export-only reads can leave a phantom empty journal.
+	// Use the same durable replay store as production.
 	attachTestReplayStore(t, proxy)
 	providerClient := newProviderClient(upstream.URL, upstream.Client())
 	providerClient.enableWebSockets(t.Context())
@@ -230,13 +229,6 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	directory, selected := usableRoutingDirectory(metadata.Directories)
 	if !valid || !selected || directory != workspace {
 		t.Fatalf("selected workspace metadata missing: valid=%t selected=%t directory=%q want=%q", valid, selected, directory, workspace)
-	}
-	thread := metadata.ThreadID
-	if thread == "" {
-		thread = headers.Get(threadIDHeader)
-	}
-	if _, err := proxy.journals.list(terminal.ctx, proxy.replayStore, workspace, thread); err != nil {
-		t.Fatalf("journal not stored in the selected workspace: %v", err)
 	}
 	metadataFound := false
 	for _, item := range firstRequest.Input {

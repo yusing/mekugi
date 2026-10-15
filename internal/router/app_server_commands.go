@@ -89,7 +89,7 @@ func (u *appServerUI) submitCompact(queue bool) error {
 
 // sessionBusy reports work that leaving the current thread would strand.
 func (u *appServerUI) sessionBusy() bool {
-	return u.busy() || u.reset.active()
+	return u.busy()
 }
 
 // A queued compact is a local action, not Main's running turn. Return waiting
@@ -107,15 +107,15 @@ func (u *appServerUI) cancelQueuedCompact() bool {
 	u.unsent, u.queued = nil, nil
 	if u.compaction.interrupting {
 		u.compaction.interrupting = false
-		u.setNotice(u.compactionText("Compaction cancelled · input restored · interruption already requested"), false)
+		u.setNotice("Compaction cancelled · input restored · interruption already requested", false)
 	} else {
-		u.setNotice(u.compactionText("Queued compaction cancelled · input restored · Main continues"), false)
+		u.setNotice("Queued compaction cancelled · input restored · Main continues", false)
 	}
 	return true
 }
 
 // Detach presentation only after the new host thread exists. Saved threads,
-// journal evidence, and running children remain owned by Codex.
+// change evidence, and running children remain owned by Codex.
 func (u *appServerUI) clearSessionPresentation() error {
 	if err := u.closeBTW(); err != nil {
 		return err
@@ -131,12 +131,6 @@ func (u *appServerUI) clearSessionPresentation() error {
 	for thread := range u.session.paths {
 		u.retiredThreads[thread] = u.thread
 	}
-	if u.proxy != nil {
-		u.proxy.journals.detachNative(u.journal)
-		u.proxy.journals.detachNative(u.unscopedJournal)
-	}
-	u.journal, u.unscopedJournal, u.reset = nil, nil, nil
-	u.journalView = nativeJournalView{}
 	u.hideQuestions()
 	u.questions = nativeQuestionDock{calls: slices.DeleteFunc(slices.Clone(u.questions.calls), func(c *nativeQuestionCall) bool { return c.sudo == nil || c.resolved })}
 	if u.notifications != nil {
@@ -165,10 +159,6 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.agents.childrenOnly, u.agents.bare = true, true
 	}
 	if u.shell != nil {
-		if u.shell.autoActivity {
-			u.shell.journalOpen = true
-		}
-		u.activeChildren, u.shell.autoActivity = nil, false
 		u.shell.selection, u.shell.output = nil, nil
 		u.shell.focus, u.shell.drag = 0, 0
 	}
@@ -222,9 +212,6 @@ func (u *appServerUI) filterCommands(query string) {
 	}
 	p.choices, p.loading, p.problem = nil, false, ""
 	for _, command := range nativeCommands {
-		if command.name == "/compact" && u.proxy != nil && u.proxy.journalCompaction == "auto" {
-			command.description = "Reset context from journal; Tab queues while busy"
-		}
 		if _, ok := pickerMatchScore(command.name[1:], query); ok {
 			p.choices = append(p.choices, command)
 		}

@@ -215,13 +215,12 @@ type appServerHistoryTurn struct {
 
 // History is presentation evidence, not a stream of live lifecycle events.
 // In particular, old edits and collaboration calls must not revive previews,
-// processes, child agents, or journal delivery receipts. restoreMainHistory
+// processes or child agents. restoreMainHistory
 // also places restored evidence the host's history omits among Main's items: at its rollout anchor, or by time for evidence from
 // another thread. itemAt holds the root's retained item completion times.
 func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placements []*restoredPlacement, itemAt map[string]time.Time) {
 	previousSegments := u.restoredSegments
 	defer func() { u.restoredSegments = previousSegments }()
-	placements = append(placements, u.restoredJournalPlacements(turns, itemAt)...)
 	byTurn := make(map[int][]*restoredPlacement)
 	for _, p := range placements {
 		index := restoredTurnFor(turns, itemAt, p.at)
@@ -326,11 +325,11 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	}
 	if _, _, progress := appServerProgress(item, method); progress {
 		method = appServerHistoryProgressPhase(item, turn.Status)
-		if text, wait, _ := u.progress(item, method, u.thread, turn.ID); text != "" {
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{u.progressEntry(activityPaneEntry{
+		if text, wait, _ := appServerProgress(item, method); text != "" {
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 				Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
 				native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
-			})}})
+			}}})
 		}
 		return
 	}
@@ -359,9 +358,6 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 		}
 	default:
-		if item.Type == "agentMessage" {
-			item.replacesItems = u.proxy.commentaryReplacementItems(u.ctx, u.session.cwd, u.thread, turn.ID, item.ID)
-		}
 		u.view.applyAppServerItem(false, u.session.cwd, u.thread, u.thread, turn.ID, item.ID, method, "", item)
 	}
 }

@@ -61,9 +61,8 @@ can batch independent calls. Session IDs returned by Codex continue through
 
 ### Follow long-running work
 
-Agents keep durable, addressable milestones. Users see live updates, child
-activity, final grouped results, and provider-authoritative usage without
-adding that display text to later model context.
+Users see host progress, child activity, command outcomes, and
+provider-authoritative usage without adding that display text to later model context.
 
 ### Evaluate optimizations with real evidence
 
@@ -80,7 +79,7 @@ Mekugi includes:
 - observation of stock edits, change review, and provisional live previews;
 - stock JavaScript tool execution with batching and
   yielded-session continuation;
-- durable replay, journals, session inspection, commentary, diagnostics, and
+- durable replay, session inspection, commentary, diagnostics, and
   provider-authoritative usage reporting;
 - authenticated third-party model routing; and
 - content-safe captured metrics for evaluating real traffic.

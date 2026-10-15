@@ -60,8 +60,7 @@ func frontendGuidanceFromRegistry(contributions []toolContribution) (string, err
 		if err := json.Unmarshal(contribution.Specification, &specification); err != nil || specification.Description == "" {
 			return "", fmt.Errorf("missing session frontend description for %s", contribution.Name)
 		}
-		if strings.Contains(specification.Description, frontendGuidanceStart) || strings.Contains(specification.Description, frontendGuidanceEnd) ||
-			strings.Contains(specification.Description, codeModeJournalStart) || strings.Contains(specification.Description, codeModeJournalEnd) {
+		if strings.Contains(specification.Description, frontendGuidanceStart) || strings.Contains(specification.Description, frontendGuidanceEnd) {
 			return "", fmt.Errorf("session frontend %s description contains guidance marker", contribution.Name)
 		}
 		if frontendFramingTag.MatchString(specification.Description) {

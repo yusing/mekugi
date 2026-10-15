@@ -25,7 +25,7 @@ The roster consumes canonical [per-thread usage](usage.md), not a second account
 store. Its final edit total consumes the shared saved-review composition, not a sum
 of caller activity counters. Caller counters remain a per-agent cumulative
 presentation; they are not an outcome-accounting store. Presentation cannot
-acknowledge journals, finalize edits, reconstruct missing provider usage, or revive
+finalize edits, reconstruct missing provider usage, or revive
 replayed processes.
 
 Each native feed retains one presentation record per source entry, containing
@@ -36,12 +36,6 @@ stable entry IDs move with their source;
 consumers do not maintain index-aligned entry and block collections. Main's
 threaded layout invalidates cross-entry dependent runs on record updates, while
 ordinary Activity updates keep unrelated completed runs warm.
-The commentary replay record owns the exact provider item IDs contained in an
-enriched child result, scoped to workspace, thread, and turn. Native feed records
-consume that provenance to replace the source cards in place, preserving stable
-links and timestamps. Reversed live arrival and older history pages cannot restore
-the replaced cards. Missing provenance preserves host content; text and ID prefixes
-do not establish replacement. This presentation does not change host transcripts.
 
 ## CTR-ACTIVITY-002 — Native child history pages
 

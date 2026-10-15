@@ -137,7 +137,7 @@ func (d *streamDiagnostics) observe(payload []byte) {
 		}
 		return
 	}
-	if (event.Type == responses.Created || event.Type == responses.InProgress || event.Type.Terminal()) && safeFeatureIdentity(event.Response.ID) {
+	if (event.Type == responses.Created || event.Type == responses.InProgress || event.Type.Terminal()) && safeDiagnosticIdentity(event.Response.ID) {
 		d.ProviderResponseID = event.Response.ID
 	}
 	switch event.Type {
@@ -189,7 +189,7 @@ func (d *streamDiagnostics) observe(payload []byte) {
 			for key, raw := range metadata.Headers {
 				if http.CanonicalHeaderKey(key) == "X-Request-Id" {
 					var id string
-					if json.Unmarshal(raw, &id) == nil && safeFeatureIdentity(id) {
+					if json.Unmarshal(raw, &id) == nil && safeDiagnosticIdentity(id) {
 						d.ProviderRequestID = id
 					}
 				}
@@ -201,7 +201,7 @@ func (d *streamDiagnostics) observe(payload []byte) {
 		if event.Item.Type != "custom_tool_call" && event.Item.Type != "function_call" {
 			return
 		}
-		if !safeFeatureIdentity(event.Item.ID) {
+		if !safeDiagnosticIdentity(event.Item.ID) {
 			d.Truncated = true
 			return
 		}
@@ -216,7 +216,7 @@ func (d *streamDiagnostics) observe(payload []byte) {
 			d.pending = make(map[string]*streamCallDiagnostic)
 		}
 		call := &streamCallDiagnostic{ItemID: event.Item.ID}
-		if safeFeatureIdentity(event.Item.CallID) {
+		if safeDiagnosticIdentity(event.Item.CallID) {
 			call.CallID = event.Item.CallID
 		}
 		d.pending[event.Item.ID] = call

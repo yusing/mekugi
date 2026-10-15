@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -196,11 +195,8 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 						if output.Response.Status != status {
 							t.Fatalf("terminal status %q", output.Response.Status)
 						}
-						if child && status == "completed" && doneCount != 1 {
-							t.Fatalf("child result events %d", doneCount)
-						}
-						if status == "completed" && !bytes.Contains(mustMarshalJSON(output.Response.Output), []byte(`"id":"answer"`)) {
-							t.Fatal("terminal history lost streamed answer")
+						if doneCount != 0 || len(output.Response.Output) != 0 {
+							t.Fatalf("terminal added output after the provider answer: %d done events, %s", doneCount, output.Response.Output)
 						}
 						if err := <-providerDone; err != nil {
 							t.Fatal(err)
@@ -219,51 +215,73 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 func TestFinalAnswerStreamTerminalFinishesPartialLifecycle(t *testing.T) {
 	t.Parallel()
 	for _, child := range []bool{false, true} {
-		t.Run(map[bool]string{false: "main", true: "child"}[child], func(t *testing.T) {
-			transform, _, _, _ := newMekugiTestTransform(t)
-			transform.subagentTurn = child
-			answer := finalAnswerTestEvents(t, "final_answer")
-			for _, event := range answer[:3] {
-				visible, err := transform.TransformSSE(event)
-				if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], event) {
-					t.Fatalf("partial answer did not stream: %s, %v", visible, err)
+		for _, scenario := range []string{"completed", "failed", "incomplete", "already-done"} {
+			t.Run(map[bool]string{false: "main", true: "child"}[child]+"/"+scenario, func(t *testing.T) {
+				transform, _, _, _ := newMekugiTestTransform(t)
+				transform.subagentTurn = child
+				answer := finalAnswerTestEvents(t, "final_answer")
+				prefix := answer[:3]
+				status := scenario
+				if scenario == "already-done" {
+					prefix, status = answer, "completed"
 				}
-				transform.ReleaseDelivery()
-			}
-			var done struct {
-				Item jsonv1.RawMessage `json:"item"`
-			}
-			if err := json.Unmarshal(answer[len(answer)-1], &done); err != nil {
-				t.Fatal(err)
-			}
-			terminal := mustTestJSON(t, map[string]any{"type": "response.completed", "response": map[string]any{"id": "partial", "status": "completed", "output": []jsonv1.RawMessage{done.Item}}})
-			visible, err := transform.TransformSSE(terminal)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer transform.ReleaseDelivery()
-			doneCount := 0
-			for _, payload := range visible {
-				var event struct {
-					Type     string                       `json:"type"`
-					Item     map[string]jsonv1.RawMessage `json:"item"`
-					Response struct {
-						Output []map[string]jsonv1.RawMessage `json:"output"`
-					} `json:"response"`
+				for _, event := range prefix {
+					event, err := replaceRawField(event, "output_index", mustTestJSON(t, 7))
+					if err != nil {
+						t.Fatal(err)
+					}
+					visible, err := transform.TransformSSE(event)
+					if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], event) {
+						t.Fatalf("answer did not stream: %s, %v", visible, err)
+					}
 				}
-				if err := json.Unmarshal(payload, &event); err != nil {
+				var done struct {
+					Item jsonv1.RawMessage `json:"item"`
+				}
+				if err := json.Unmarshal(answer[len(answer)-1], &done); err != nil {
 					t.Fatal(err)
 				}
-				if event.Type == "response.output_item.done" && jsonString(event.Item, "id") == "answer" {
-					doneCount++
+				terminal := mustTestJSON(t, map[string]any{"type": "response." + status, "response": map[string]any{"id": "partial", "status": status, "output": []jsonv1.RawMessage{done.Item}}})
+				visible, err := transform.TransformSSE(terminal)
+				if err != nil {
+					t.Fatal(err)
 				}
-				if event.Type == "response.completed" && !slices.ContainsFunc(event.Response.Output, func(item map[string]jsonv1.RawMessage) bool { return jsonString(item, "id") == "answer" }) {
-					t.Fatal("terminal lost partially streamed answer")
+				wantDone := 0
+				if scenario == "completed" {
+					wantDone = 1
 				}
-			}
-			if doneCount != 1 {
-				t.Fatalf("item-done events %d", doneCount)
-			}
-		})
+				if len(visible) != wantDone+1 {
+					t.Fatalf("terminal output = %s", visible)
+				}
+				if wantDone == 1 {
+					var event struct {
+						Type        string            `json:"type"`
+						OutputIndex int               `json:"output_index"`
+						Item        jsonv1.RawMessage `json:"item"`
+					}
+					if err := json.Unmarshal(visible[0], &event); err != nil {
+						t.Fatal(err)
+					}
+					if event.Type != "response.output_item.done" || event.OutputIndex != 7 || !bytes.Equal(event.Item, done.Item) {
+						t.Fatalf("answer identity or content changed: %s", visible[0])
+					}
+				}
+				var terminalEvent struct {
+					Type     string `json:"type"`
+					Response struct {
+						Output []jsonv1.RawMessage `json:"output"`
+					} `json:"response"`
+				}
+				if err := json.Unmarshal(visible[len(visible)-1], &terminalEvent); err != nil {
+					t.Fatal(err)
+				}
+				if terminalEvent.Type != "response."+status || len(terminalEvent.Response.Output) != 1 || !bytes.Equal(terminalEvent.Response.Output[0], done.Item) {
+					t.Fatalf("terminal changed: %s", visible)
+				}
+				if repeated, err := transform.TransformSSE(terminal); err != nil || len(repeated) != 1 {
+					t.Fatalf("repeated terminal duplicated completion: %s, %v", repeated, err)
+				}
+			})
+		}
 	}
 }
