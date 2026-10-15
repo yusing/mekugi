@@ -136,6 +136,8 @@ type mekugiResponseTransform struct {
 	subagentTurn            bool
 	activityResponding      bool // Counted in the agents-pane roster until Close.
 	liveDiffCompletionReady bool
+	storageCompletionReady  bool
+	storageToolHandoff      bool
 	usageTracker            *threadUsageObservation
 	finalAnswer             finalAnswerStream
 	usageObserved           bool

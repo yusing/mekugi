@@ -152,7 +152,9 @@ ownership where available; recent records with no trustworthy owner remain prote
 unattributed records older than 14 days use last-write time for cleanup.
 
 Cross-process leases protect active turns, host handoffs, and workers, including yielded calls.
-Completed turn delivery and router shutdown release owned leases. Cleanup never stops a host
+Completed turn delivery without a tool handoff and router shutdown release owned leases.
+Release is independent of answer text, child presentation, and optional UI tracking.
+Cleanup never stops a host
 process or changes its continuation lifetime.
 If no inactive data can be reclaimed, publication fails with required bytes, the limiting budget,
 and an actionable explanation rather than a generic initialization error. Catalog growth counts

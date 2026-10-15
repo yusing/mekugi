@@ -39,10 +39,10 @@ func (a *autoLiveDiff) finishTurn(workspace, thread, turnID string) {
 	a.events.publishTurn(false)
 }
 
-// Delivered ends the root live-diff turn only after answer completion reaches
-// the host. Transformation alone cannot release the turn's storage lease.
+// Delivered confirms storage completion independently of final-answer painting.
+// Transformation alone cannot release the turn's storage lease.
 func (t *mekugiResponseTransform) Delivered(payload []byte) {
-	if !t.liveDiffCompletionReady {
+	if !t.storageCompletionReady && !t.liveDiffCompletionReady {
 		return
 	}
 	var envelope struct {
@@ -52,6 +52,10 @@ func (t *mekugiResponseTransform) Delivered(payload []byte) {
 	if json.Unmarshal(payload, &envelope) != nil || envelope.Type != "response.completed" && envelope.Status != "completed" {
 		return
 	}
-	t.storageIdle = true
-	t.proxy.autoLiveDiff.finishTurn(t.directory, t.threadID, t.shellTurnID)
+	if t.storageCompletionReady {
+		t.storageIdle = true
+	}
+	if t.liveDiffCompletionReady {
+		t.proxy.autoLiveDiff.finishTurn(t.directory, t.threadID, t.shellTurnID)
+	}
 }

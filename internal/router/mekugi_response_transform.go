@@ -133,6 +133,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !ok {
 			return [][]byte{payload}, nil //nolint:nilerr // Malformed unrelated output remains the upstream's responsibility.
 		}
+		t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(item.fields)
 		t.setToolInputEmission(item.ID, false)
 		if _, delivered := t.local[item.CallID]; item.Status == "incomplete" && !delivered {
 			t.endPreview(item.ID)
@@ -236,6 +237,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		}
 		transformedOutput := make([]map[string]json.RawMessage, 0, len(output))
 		for _, fields := range output {
+			t.storageToolHandoff = t.storageToolHandoff || blocksTokenUsage(fields)
 			t.finalAnswer.substantive = t.finalAnswer.substantive || isSubstantiveAnswer(fields)
 			t.finalAnswer.blocked = t.finalAnswer.blocked || blocksTokenUsage(fields)
 			item := newResponsesItem(fields)
@@ -264,6 +266,9 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 		return nil, err
 	}
 	transformed, err := responseevents.MarshalJSON(object)
+	if err == nil {
+		t.storageCompletionReady = status == "completed" && !t.storageToolHandoff
+	}
 	if err == nil && !t.subagentTurn && status == "completed" && t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled {
 		t.liveDiffCompletionReady = true
 	}
