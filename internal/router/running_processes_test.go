@@ -41,7 +41,7 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 	// Commands that start while the dialog is open join it in start order,
 	// shown as transcript rows show them, without Mekugi instrumentation.
-	guarded, err := vcsguard.Rewrite("git fetch && go test", displayGuardHelper, displayGuardDirectory)
+	guarded, err := vcsguard.RewriteCommands("git fetch && go test", displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

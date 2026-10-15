@@ -32,7 +32,7 @@ func TestRewriteHookNativeUpdatedInput(t *testing.T) {
 	if err := json.Unmarshal(output, &response); err != nil {
 		t.Fatal(err)
 	}
-	expected, err := RewriteForItem(command, "/private/helper", "/private/guard", "cmd")
+	expected, err := RewriteCommands(command, "/private/helper", "/private/guard", "", "cmd")
 	if err != nil {
 		t.Fatal(err)
 	}

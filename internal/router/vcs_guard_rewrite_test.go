@@ -39,7 +39,7 @@ func TestVCSGuardHostItemIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := "git push; env -i " + git + " push; env -i sh -c " + quoteShellWord(git+" push") + "; sh " + quoteShellWord(file)
-	changed, err := vcsguard.RewriteForItem(script, helper, guard, "host-item")
+	changed, err := vcsguard.RewriteCommands(script, helper, guard, "", "host-item")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,11 +102,11 @@ func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
 			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
 			rewrite := func(script string) string {
 				t.Helper()
-				changed, err := vcsguard.Rewrite(script, helper, guard)
+				changed, err := vcsguard.RewriteCommands(script, helper, guard, "", "")
 				if err != nil {
 					t.Fatal(err)
 				}
-				if again, err := vcsguard.Rewrite(changed, helper, guard); err != nil || again != changed {
+				if again, err := vcsguard.RewriteCommands(changed, helper, guard, "", ""); err != nil || again != changed {
 					t.Fatalf("second rewrite = %q, %v; want %q", again, err, changed)
 				}
 				return changed
@@ -186,7 +186,7 @@ func TestVCSGuardNestedShellMissingPayload(t *testing.T) {
 	guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
 	for _, script := range []string{"bash -c", "bash -c --", "bash -o"} {
 		original := runShell(t, shell.env, "bash", "-c", script)
-		changed, err := vcsguard.Rewrite(script, helper, guard)
+		changed, err := vcsguard.RewriteCommands(script, helper, guard, "", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -217,7 +217,7 @@ func TestVCSGuardInstrumentedExecArgv0(t *testing.T) {
 	// A native executable is necessary: a shebang interpreter replaces argv0.
 	// Git's classifier sees only a global -c option, so no approval is involved.
 	script := "exec -a custom-name " + quoteShellWord(target) + " -c 'printf \"%s\\n\" \"$0\"'"
-	changed, err := vcsguard.Rewrite(script, helper, guard)
+	changed, err := vcsguard.RewriteCommands(script, helper, guard, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

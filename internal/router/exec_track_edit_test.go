@@ -81,7 +81,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			}
 			if strings.Contains(edit, "git --version") {
 				var err error
-				script, err = vcsguard.RewriteForItem(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), vcsguard.Directory), "edit")
+				script, err = vcsguard.RewriteCommands(script, "/private/mekugi-exec", filepath.Join(filepath.Dir(shell.hub.directory), vcsguard.Directory), "", "edit")
 				if err != nil {
 					t.Fatal(err)
 				}

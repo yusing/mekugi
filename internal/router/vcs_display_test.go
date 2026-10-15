@@ -79,7 +79,7 @@ func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
 	script := "git diff --check && git add a.go b.go gone.txt && timeout 90s git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
 	var err error
-	script, err = vcsguard.Rewrite(script, displayGuardHelper, displayGuardDirectory)
+	script, err = vcsguard.RewriteCommands(script, displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestVCSTrackedCommitShowsItsRows(t *testing.T) {
 	g, output := vcsCommitFixture(t, "feat: tracked")
 	u, hub := newTrackedAppServerUI(t)
 	u.session.cwd = g.dir
-	script, err := vcsguard.Rewrite("git add a.go b.go && timeout 90s git commit -F - <<'EOF'\nfeat: tracked\n\nbody\nEOF", displayGuardHelper, displayGuardDirectory)
+	script, err := vcsguard.RewriteCommands("git add a.go b.go && timeout 90s git commit -F - <<'EOF'\nfeat: tracked\n\nbody\nEOF", displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

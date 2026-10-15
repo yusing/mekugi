@@ -142,7 +142,7 @@ func TestGuardCommandDisplayCustomRuntimeDirectory(t *testing.T) {
 
 func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	source := "timeout 90s git commit -F - <<'EOF'\ndocs(ui): describe content-detected inline highlighting\nEOF"
-	guarded, err := vcsguard.Rewrite(source, displayGuardHelper, displayGuardDirectory)
+	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	u.clock = func() time.Time { return now }
 	source := "git log -1 --format='%H%n%s'; git status --porcelain; git cat-file commit HEAD | awk '/^gpgsig / {print \"signature_present\"; exit}'"
-	guarded, err := vcsguard.Rewrite(source, displayGuardHelper, displayGuardDirectory)
+	guarded, err := vcsguard.RewriteCommands(source, displayGuardHelper, displayGuardDirectory, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

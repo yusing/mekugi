@@ -12,19 +12,10 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// Rewrite instruments executable words, not statements. The selected native
+// RewriteCommands instruments executable words, not statements. The selected native
 // shell still expands arguments and owns control flow, redirections and status.
 // Parsing never executes expansions or reads scripts from the filesystem.
-func Rewrite(script, helper, directory string) (string, error) {
-	return RewriteForItem(script, helper, directory, "")
-}
-
-// RewriteForItem retains the host item ID in command-local guard input.
-func RewriteForItem(script, helper, directory, item string) (string, error) {
-	return RewriteCommands(script, helper, directory, "", item)
-}
-
-// RewriteCommands also covers sudo independently of remote-write guarding.
+// It retains the host item ID and covers sudo independently of remote-write guarding.
 func RewriteCommands(script, helper, directory, sudoDirectory, item string) (string, error) {
 	tree, err := parseScript(script)
 	if err != nil {
