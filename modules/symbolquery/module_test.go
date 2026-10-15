@@ -16,12 +16,12 @@ import (
 func registeredCommand(t *testing.T) command.Contribution {
 	t.Helper()
 	script := new(moduletest.Scripted)
-	moduletest.New(t, symbolquery.Module, symbolquery.Deps{}, module.Slots{}, script)
+	service := moduletest.New(t, symbolquery.Module, symbolquery.Deps{}, module.Slots{}, script)
 	commands, registered := symbolquery.Module.Contributes.Commands, script.Commands()
 	if symbolquery.Module.Lifetime != module.HostOperation || len(commands) != 1 || len(registered) != 1 {
 		t.Fatalf("lifetime=%v commands=%v registered=%v", symbolquery.Module.Lifetime, commands, registered)
 	}
-	got := commands[0]
+	got := moduletest.BindCommand(commands[0], service)
 	if got.Name != "msymbol" || got.Run == nil || !got.ObserveRead || registered[0] != got.Spec {
 		t.Fatalf("registered command=%+v", got)
 	}
@@ -46,7 +46,7 @@ func TestRegisteredSymbolRejectsInvalidInputsWithoutResolver(t *testing.T) {
 		{"source", "msymbol: path has an unsupported msymbol source format\n", "invalid_source", []string{"--workspace", workspace, "def", "notes.md", "Item"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := contribution.Run(t.Context(), tc.args, nil)
+			got, err := contribution.Run(t.Context(), command.Request{Args: tc.args, Stdin: nil})
 			if err != nil || got.Stdout != "" || got.Stderr != tc.stderr || got.ExitCode != 1 || got.FailureClass != tc.class || got.OmittedOutput != nil {
 				t.Fatalf("output=%+v err=%v", got, err)
 			}
@@ -59,7 +59,7 @@ func TestRegisteredSymbolHonorsCancellation(t *testing.T) {
 	contribution := registeredCommand(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	got, err := contribution.Run(ctx, []string{"def", "missing.go", "Item"}, nil)
+	got, err := contribution.Run(ctx, command.Request{Args: []string{"def", "missing.go", "Item"}, Stdin: nil})
 	if !errors.Is(err, context.Canceled) || got != (command.Output{}) {
 		t.Fatalf("canceled output=%+v err=%v", got, err)
 	}

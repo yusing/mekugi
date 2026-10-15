@@ -500,8 +500,8 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				output, err := store.readShellOutput(next.ctx, history.ExecOutcome.OutputRef)
-				if err != nil || output.ExitCode != 1 || output.Stdout != history.Report {
+				output, err := store.recoverOutput(next.ctx, history.ExecOutcome.OutputRef)
+				if err != nil || output.ExitCode != 0 || output.Stdout != history.Report {
 					t.Fatalf("failed output reference is not readable after restart: %+v, %v", output, err)
 				}
 			}

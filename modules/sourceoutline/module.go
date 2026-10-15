@@ -9,6 +9,6 @@ import (
 
 var Module = module.Descriptor[Deps, outline.Service, codexbinding.Bindings]{
 	ID: "sourceoutline", Summary: "Inspect structural declarations and source spans", Lifetime: module.Stateless,
-	Contributes: module.Slots{Commands: []command.Contribution{outline.Command}},
+	Contributes: module.Contributions[outline.Service]{Commands: []command.Definition[outline.Service]{outline.Command}},
 	New:         newService, Bindings: codexbinding.Codex,
 }

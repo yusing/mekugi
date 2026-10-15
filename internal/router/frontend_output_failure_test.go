@@ -27,13 +27,13 @@ func TestFrontendRecoveryFailurePreservesAdmittedOutput(t *testing.T) {
 			const diagnostic = "original diagnostic"
 			for i := range commands {
 				if commands[i].Name == "mrun" {
-					commands[i].Run = func(context.Context, []string, *os.File) (command.Output, error) {
+					commands[i].Run = func(context.Context, command.Request) (command.Output, error) {
 						return command.Output{Stdout: admitted, Stderr: diagnostic, ExitCode: originalStatus, OmittedOutput: &command.OmittedOutput{Stdout: omitted, StdoutKind: "rows"}}, nil
 					}
 				}
 			}
 			var stdout, stderr bytes.Buffer
-			handled, status := RunToolPluginWorker(testHistory(), commands, t.Context(), registry.frontends["mrun"], nil, nil, &stdout, &stderr)
+			handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, t.Context(), registry.frontends["mrun"], nil, nil, &stdout, &stderr)
 			wantStatus := originalStatus
 			if wantStatus == 0 {
 				wantStatus = 1
@@ -63,7 +63,7 @@ func TestFrontendBundleRecoveryFailurePreservesBodiesAndReadEvidence(t *testing.
 	t.Setenv(codexThreadIDEnvironment, thread)
 	t.Setenv(capturer.AXReadOutputEnvironment, log)
 	var stdout, stderr bytes.Buffer
-	handled, status := RunToolPluginWorker(testHistory(), testCommands(), t.Context(), registry.frontends["mcat"],
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), t.Context(), registry.frontends["mcat"],
 		[]string{"--max-tokens", "2000", path, filepath.Join(directory, "missing")}, nil, &stdout, &stderr)
 	if !handled || status != 1 || !strings.Contains(stdout.String(), body) || !strings.Contains(stdout.String(), "status=failed") {
 		t.Fatalf("handled=%t status=%d stdout=%q stderr=%q", handled, status, stdout.String(), stderr.String())
@@ -91,8 +91,8 @@ func TestFrontendBundleCanceledBeforePublication(t *testing.T) {
 	for i := range commands {
 		if commands[i].Name == "mcat" {
 			run := commands[i].Run
-			commands[i].Run = func(ctx context.Context, args []string, stdin *os.File) (command.Output, error) {
-				out, err := run(ctx, args, stdin)
+			commands[i].Run = func(ctx context.Context, request command.Request) (command.Output, error) {
+				out, err := run(ctx, request)
 				if err != nil || out.Delivery == nil {
 					t.Fatalf("no pending bundle: %+v %v", out, err)
 				}
@@ -102,7 +102,7 @@ func TestFrontendBundleCanceledBeforePublication(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	handled, status := RunToolPluginWorker(testHistory(), commands, ctx, registry.frontends["mcat"], []string{"--max-tokens", "1000", path, path}, nil, &stdout, &stderr)
+	handled, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), commands, ctx, registry.frontends["mcat"], []string{"--max-tokens", "1000", path, path}, nil, &stdout, &stderr)
 	if !handled || status != 1 || !strings.Contains(stderr.String(), "context canceled") {
 		t.Fatalf("handled=%t status=%d stderr=%q", handled, status, stderr.String())
 	}
@@ -120,7 +120,7 @@ func TestFrontendCompleteBundlesNeedNoRecoveryStore(t *testing.T) {
 		}
 	}
 	for _, args := range [][]string{{full, full}, {empty, empty}, {missing, missing}} {
-		output, err := read.Execute(t.Context(), args, nil)
+		output, err := (read.Service{}).Execute(t.Context(), command.Request{Args: args, Stdin: nil})
 		if err != nil || output.Delivery != nil || output.OmittedOutput != nil {
 			t.Fatalf("output=%+v err=%v", output, err)
 		}

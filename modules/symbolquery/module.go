@@ -9,6 +9,6 @@ import (
 
 var Module = module.Descriptor[Deps, query.Service, codexbinding.Bindings]{
 	ID: "symbolquery", Summary: "Resolve semantic definitions and references", Lifetime: module.HostOperation,
-	Contributes: module.Slots{Commands: []command.Contribution{query.Command}},
+	Contributes: module.Contributions[query.Service]{Commands: []command.Definition[query.Service]{query.Command}},
 	New:         newService, Bindings: codexbinding.Codex,
 }

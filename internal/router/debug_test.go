@@ -44,7 +44,7 @@ func TestDebugSessionArtifacts(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var paths []string
-	err := RunSession(testHistory(), ctx, testCommands(), []string{"--debug", "--mode", "passthrough"}, nil, func(session Session) {
+	err := RunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--debug", "--mode", "passthrough"}, nil, func(session Session) {
 		if session.AXReadOutput == "" {
 			t.Error("debug did not enable runtime AX reads")
 		}
@@ -85,7 +85,7 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var paths []string
-	if err := RunSession(testHistory(), ctx, testCommands(), []string{"--debug", "--mode", "passthrough", "--capture-output", custom}, nil,
+	if err := RunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--debug", "--mode", "passthrough", "--capture-output", custom}, nil,
 		func(Session) { cancel() }, func(artifacts []string) { paths = artifacts }); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestDebugStartupFailureReportsArtifacts(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	missing := filepath.Join(t.TempDir(), "missing", "capture.jsonl")
 	var paths []string
-	err := RunSession(testHistory(), t.Context(), testCommands(), []string{"--debug", "--mode", "passthrough", "--capture-output", missing}, nil, func(Session) {
+	err := RunSession(testHistory(), testRecovery(), t.Context(), testCommands(), []string{"--debug", "--mode", "passthrough", "--capture-output", missing}, nil, func(Session) {
 		t.Error("ready despite capture initialization failure")
 	}, func(artifacts []string) { paths = artifacts })
 	if err == nil || len(paths) != 6 {
@@ -178,7 +178,7 @@ func TestDebugCanceledStartupReportsArtifacts(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var paths []string
-	err := RunSession(testHistory(), ctx, testCommands(), []string{"--debug", "--mode", "passthrough"}, nil, func(Session) {
+	err := RunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--debug", "--mode", "passthrough"}, nil, func(Session) {
 		t.Error("canceled startup reached readiness")
 	}, func(artifacts []string) { paths = artifacts })
 	if err != nil || len(paths) != 6 {

@@ -1,4 +1,4 @@
-package router
+package recovery
 
 import (
 	"context"
@@ -9,8 +9,9 @@ import (
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
+	"github.com/yusing/mekugi/modules/outputrecovery/internal/paging"
+	"github.com/yusing/mekugi/modules/outputrecovery/internal/record"
 )
 
 const outputReadUsage = "mread REF [REF ...] [--stdout|--stderr] [--max-tokens N]"
@@ -29,7 +30,7 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 		flag := arguments[0]
 		arguments = arguments[1:]
 		if !strings.HasPrefix(flag, "--") {
-			if !validShellOutputID(flag) {
+			if !record.ValidID(flag) {
 				return options, errors.New("REF must be a returned handle such as amber; paths and ranges belong to mcat")
 			}
 			options.ids = append(options.ids, flag)
@@ -69,19 +70,19 @@ func parseOutputRead(arguments []string) (outputReadOptions, error) {
 	return options, nil
 }
 
-func executeMRead(
-	ctx context.Context,
-	manifest toolWorkerManifest,
-	arguments []string,
-) command.Output {
+func (service *Service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
+	return service.execute(ctx, request), nil
+}
+
+func (service *Service) execute(ctx context.Context, request command.Request) command.Output {
 	fail := func(err error) command.Output {
 		return command.Output{Stderr: fmt.Sprintf("mread: %v\n", err), ExitCode: 1}
 	}
-	options, err := parseOutputRead(arguments)
+	options, err := parseOutputRead(request.Args)
 	if err != nil {
 		return fail(err)
 	}
-	store, err := shellOutputStore(manifest)
+	store, err := service.Attach(request.Scope, DefaultLimits(), nil)
 	if err != nil {
 		return fail(err)
 	}
@@ -95,18 +96,18 @@ func executeMRead(
 	var diagnostics strings.Builder
 	for _, id := range options.ids {
 		err := func() error {
-			cursor, err := store.readShellOutput(ctx, id)
+			cursor, err := store.read(ctx, id)
 			if err != nil {
 				return err
 			}
 			source := cursor
 			stream := options.stream
 			if cursor.Source != "" {
-				source, err = store.readShellOutput(ctx, cursor.Source)
+				source, err = store.read(ctx, cursor.Source)
 				if err != nil {
 					return err
 				}
-				if source.Source != "" || readRecordBinding(source) != cursor.Binding {
+				if source.Source != "" || record.Binding(source) != cursor.Binding {
 					return errors.New("read snapshot changed or is invalid")
 				}
 				if stream != "" && stream != cursor.Stream {
@@ -124,16 +125,16 @@ func executeMRead(
 				nextHandles = append(nextHandles, id)
 				return nil
 			}
-			output, err := store.readSourceStreams(ctx, source)
+			output, err := store.streams(ctx, source)
 			if err != nil {
 				return err
 			}
-			request := toolplugin.ReadRequest{Stdout: output.Stdout, Stderr: output.Stderr, StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
+			request := paging.ReadRequest{Stdout: output.Stdout, Stderr: output.Stderr, StdoutKind: output.StdoutKind, StderrKind: output.StderrKind,
 				Position: cursor.Position, Stream: stream, SourceRow: source.SourceRow}
 			if len(options.ids) > 1 {
 				request.Label = id
 			}
-			page, err := toolplugin.Page(ctx, request, remaining)
+			page, err := paging.Page(ctx, request, remaining)
 			if err != nil {
 				return err
 			}
@@ -162,7 +163,7 @@ func executeMRead(
 			next := ""
 			if !page.Complete {
 				// Persist before exposing this page or suggesting the next operation.
-				next, err = store.putReadCursor(ctx, source, page.Position, stream)
+				next, err = store.putCursor(ctx, source, page.Position, stream)
 				if err != nil {
 					return err
 				}
@@ -193,7 +194,7 @@ func executeMRead(
 		if options.maxTokens != 8000 {
 			budget = options.maxTokens
 		}
-		return command.Output{Stdout: result.String(), Stderr: diagnostics.String() + readNextCall(strings.Join(nextHandles, " "), budget), ExitCode: 1}
+		return command.Output{Stdout: result.String(), Stderr: diagnostics.String() + NextCall(strings.Join(nextHandles, " "), budget), ExitCode: 1}
 	}
 	status := 0
 	if diagnostics.Len() > 0 {

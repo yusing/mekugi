@@ -200,7 +200,8 @@ func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.store.putChangeRead(f.ctx, snapshot, text, 0); err != nil {
+			reference, err := f.store.putChangeRead(f.ctx, snapshot, text, 0)
+			if err != nil {
 				t.Fatal(err)
 			}
 			if err := os.WriteFile(filepath.Join(f.store.directory, replayRecordName(f.workspace, "later", false)), []byte("{"), 0600); err != nil {
@@ -218,7 +219,7 @@ func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) 
 			if !strings.Contains(output, marker) {
 				t.Fatalf("valid sibling missing: %q", output)
 			}
-			if _, err := f.store.readSourceStreams(f.ctx, shellOutputRecord{Changes: snapshot}); err == nil {
+			if _, err := f.store.recoverOutput(f.ctx, reference); err == nil {
 				t.Fatal("frozen recovery skipped corrupt evidence")
 			}
 		})

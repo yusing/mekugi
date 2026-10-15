@@ -124,7 +124,7 @@ func TestReplayStorageDefaultIsFourGiB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := shellOutputStore(toolWorkerManifest{history: testHistory(), ReplayDirectory: store.directory})
+	worker, err := workerReplayStore(toolWorkerManifest{history: testHistory(), recovery: testRecovery(), ReplayDirectory: store.directory})
 	if err != nil {
 		t.Fatal(err)
 	}

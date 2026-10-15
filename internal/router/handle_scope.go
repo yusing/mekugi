@@ -2,10 +2,8 @@ package router
 
 import (
 	"context"
-	"crypto/sha256"
 	json "encoding/json/v2"
 	"errors"
-	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -147,17 +145,4 @@ func (s *mekugiReplayStore) cloneHandleData(source, dest, fork string, visibleFi
 		}
 	}
 	return nil
-}
-
-func scopedOutputName(namespace, id string) string {
-	return fmt.Sprintf("output-%x.json", sha256.Sum256([]byte(namespace+"\x00"+id)))
-}
-
-func scopedCursorName(namespace, digest string) string {
-	return fmt.Sprintf("cursor-%x.json", sha256.Sum256([]byte(namespace+"\x00"+digest)))
-}
-
-func (s *mekugiReplayStore) outputName(id string) (string, error) {
-	owner, err := s.publication.HandleOwner(s.handleNamespace(), id)
-	return scopedOutputName(owner, id), err
 }

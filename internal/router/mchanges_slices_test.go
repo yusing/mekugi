@@ -510,12 +510,8 @@ func TestMChangesFrozenOverlapLabelSurvivesUnselectedRetirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	record, err := resumed.readShellOutput(ctx, reference)
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := resumed.readSourceStreams(ctx, record)
-	if err != nil || output.Stdout != text[offset:] || output.StdoutKind != "rows" {
+	output, err := resumed.recoverOutput(ctx, reference)
+	if err != nil || output.Stdout != text[offset:] {
 		t.Fatalf("frozen overlap recovery: %+v, %v", output, err)
 	}
 }

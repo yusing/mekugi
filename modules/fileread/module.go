@@ -9,6 +9,6 @@ import (
 
 var Module = module.Descriptor[Deps, read.Service, codexbinding.Bindings]{
 	ID: "fileread", Summary: "Read bounded logical source rows", Lifetime: module.Stateless,
-	Contributes: module.Slots{Commands: []command.Contribution{read.Command}},
+	Contributes: module.Contributions[read.Service]{Commands: []command.Definition[read.Service]{read.Command}},
 	New:         newService, Bindings: codexbinding.Codex,
 }

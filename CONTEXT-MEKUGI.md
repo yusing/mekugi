@@ -52,13 +52,13 @@ behavioral contract. UI presentation packages and router session integration are
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
 | Observed review diffs, change IDs, and bounded reads | `review.go`, `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`, `internal/router/mekugi_changes.go`, `internal/router/mchanges.go` |
 | Retained publication, namespaces, allocation, leases, and retention | `modules/sessionhistory/history`; composed record kinds in `apps/mekugi/internal/composition`, feature codecs in `internal/router/retained_record_kinds.go` |
-| Durable replay meaning, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `internal/router/shell_output_read.go` |
+| Durable replay meaning, request-visible history, and retained output | `internal/router/mekugi_store.go`, `internal/router/mekugi_history.go`, `modules/outputrecovery` |
 | Authenticated compiled frontend catalog, worker, and PATH | `internal/router/tool_registry.go`, `internal/router/tool_plugin_worker.go`, `internal/router/tool_wrapper.go`, `internal/runtimepath` |
 | Symbol command arguments and activity display | `modules/symbolquery/query` owns parsing; `internal/router/subagent_tool_display_shell.go` consumes it |
 | Shared frontend options, token ceilings, and inclusive range parsing | `libraries/commandargs`; consumers include native readers and `modules/fileread/read`; command-specific acceptance and multi-target framing remain with their callers |
 | Bounded foreground command execution | `modules/boundedcommand`; authenticated dispatch in `internal/router/tool_plugin_worker.go` |
 | Structural inspection | `modules/sourceoutline`; shared declarations and source coordinates in `libraries/sourceanalysis/structure` |
-| Raw source reading and shared output admission | `modules/fileread`; `libraries/outputbudget`; retained paging remains in `internal/router/toolplugin/native_output.go` |
+| Raw source reading and shared output admission | `modules/fileread`; `libraries/outputbudget`; retained publication and paging belong to `modules/outputrecovery` |
 | Router process signals, wrapped Codex lifecycle, and top-level exit | `apps/mekugi/cmd/mekugi/main.go`, `apps/mekugi/cmd/mekugi/wrap.go` |
 | Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
 | Stable ownership contracts | `doc/architecture/index.md` and the listed contract file |

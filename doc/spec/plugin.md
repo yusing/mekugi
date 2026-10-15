@@ -24,6 +24,12 @@ resources. No global commands or persistent Codex configuration are changed.
 
 ### Output and recovery
 
+All frontends accepting `--max-tokens N` also accept `--max-tokens=N` before
+their operand terminator or command boundary. Missing, invalid, out-of-range,
+and repeated token budgets use the same diagnostic:
+`--max-tokens requires one integer from 1 to 15500 and cannot repeat`.
+Continuation commands use `next_call: COMMAND`, never an equals-sign attribute.
+
 Readers and output formatting run in the host-started frontend process. Semantic
 queries may start language-specific resolvers with invocation-owned cleanup.
 Recoverable omitted output is retained before its `mread` reference is exposed.

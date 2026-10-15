@@ -3,7 +3,6 @@ package router
 import (
 	"bytes"
 	"context"
-	"os"
 	"slices"
 	"testing"
 
@@ -29,19 +28,19 @@ func TestAuthenticatedCompiledFrontendProcessScope(t *testing.T) {
 				if commands[i].Name == "msymbol" {
 					// Exercise authenticated compiled dispatch without enabling real
 					// process-wide resolver cleanup in the test runner.
-					commands[i].Run = func(ctx context.Context, _ []string, _ *os.File) (command.Output, error) {
+					commands[i].Run = func(_ context.Context, request command.Request) (command.Output, error) {
 						calls++
-						scope = command.ProcessScopeFrom(ctx)
+						scope = request.ProcessScope
 						return command.Output{Stdout: "scope observed\n"}, nil
 					}
 				}
 			}
 			var stdout, stderr bytes.Buffer
-			run := RunToolPluginWorker
+			run := runToolPluginWorkerInHostProcess
 			if tc.owned {
 				run = RunOwnedToolPluginWorker
 			}
-			handled, status := run(testHistory(), commands, t.Context(), registry.frontends["msymbol"], nil, nil, &stdout, &stderr)
+			handled, status := run(testHistory(), testRecovery(), commands, t.Context(), registry.frontends["msymbol"], nil, nil, &stdout, &stderr)
 			if !handled || status != 0 || calls != 1 || scope != tc.want || stdout.String() != "scope observed\n" || stderr.Len() != 0 {
 				t.Fatalf("handled=%t status=%d calls=%d scope=%v want=%v stdout=%q stderr=%q", handled, status, calls, scope, tc.want, stdout.String(), stderr.String())
 			}

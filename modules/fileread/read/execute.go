@@ -3,14 +3,14 @@ package read
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/yusing/mekugi/contracts/command"
 )
 
 // Execute reads source rows; the host publishes any returned recovery payloads.
-func Execute(ctx context.Context, args []string, _ *os.File) (command.Output, error) {
+func (Service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
+	args := request.Args
 	if err := ctx.Err(); err != nil {
 		return command.Output{}, err
 	}

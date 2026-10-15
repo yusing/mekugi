@@ -208,22 +208,15 @@ func TestStorageRetentionPreservesReadSourceAndExpiresSessionOutputs(t *testing.
 		t.Fatal(err)
 	}
 	parent, releaseParent := retentionTestSession(t, store, "parent", 0)
-	id, err := store.putShellOutput(parent, "a\nb\n", "", 0)
+	id, err := store.putShellOutput(parent, strings.Repeat("a\nb\n", 20), "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := store.readShellOutput(parent, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor, err := store.putReadCursor(parent, source, [2]int{2, 0}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	cursor := recoveryCursor(t, store, parent, id)
 	releaseParent()
 	child, releaseChild := retentionTestSession(t, store, "child", 0)
 	child = bindTestHandleScope(t, store, child, "", "parent")
-	if _, err := store.readShellOutput(child, cursor); err != nil {
+	if _, err := store.recoverOutput(child, cursor); err != nil {
 		t.Fatal(err)
 	}
 	releaseChild()
@@ -232,7 +225,7 @@ func TestStorageRetentionPreservesReadSourceAndExpiresSessionOutputs(t *testing.
 	if err := store.cleanupSessions(current); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.readShellOutput(child, id); err != nil {
+	if _, err := store.recoverOutput(child, id); err != nil {
 		t.Fatalf("shared source lost: %v", err)
 	}
 }
@@ -324,7 +317,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 	child, _ := retentionTestSession(t, store, "child", 0)
 	child = bindTestHandleScope(t, store, child, "", "parent")
 	// This is the inherited mread path, without a preceding mchanges in child.
-	record, err := store.readShellOutput(child, reference)
+	_, err = store.recoverOutput(child, reference)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +326,7 @@ func TestStorageChangeReadDependenciesSurviveOriginalSessionExpiry(t *testing.T)
 	if err := store.cleanupSessions(current); err != nil {
 		t.Fatal(err)
 	}
-	replayed, err := store.readSourceStreams(child, record)
+	replayed, err := store.recoverOutput(child, reference)
 	if err != nil || replayed.Stdout != text[1:] {
 		t.Fatalf("inherited change read: %q, %v", replayed.Stdout, err)
 	}
@@ -551,26 +544,15 @@ func TestStorageDuplicateCursorAdoptsDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent, releaseParent := retentionTestSession(t, store, "parent", 0)
-	id, err := store.putShellOutput(parent, "a\nb\n", "", 0)
+	id, err := store.putShellOutput(parent, strings.Repeat("a\nb\n", 20), "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := store.readShellOutput(parent, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor, err := store.putReadCursor(parent, source, [2]int{2, 0}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	cursor := recoveryCursor(t, store, parent, id)
 	child, _ := retentionTestSession(t, store, "child", 0)
 	child = bindTestHandleScope(t, store, child, "", "parent")
-	source, err = store.readShellOutput(child, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	duplicate, err := store.putReadCursor(child, source, [2]int{2, 0}, "")
-	if err != nil || duplicate != cursor {
+	duplicate := recoveryCursor(t, store, child, id)
+	if duplicate != cursor {
 		t.Fatalf("duplicate cursor: %s %v", duplicate, err)
 	}
 	releaseParent()
@@ -578,7 +560,7 @@ func TestStorageDuplicateCursorAdoptsDependencies(t *testing.T) {
 	if err := store.cleanupSessions(child); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.readShellOutput(child, cursor); err != nil {
+	if _, err := store.recoverOutput(child, cursor); err != nil {
 		t.Fatalf("published cursor lost: %v", err)
 	}
 }
@@ -676,7 +658,7 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	oldOutput := "output-r_AAAAAAAAAAAAAAAAAAAAAA.json"
 	oldIndex := strings.Replace(changeIndexName(workspace, ""), changeIndexPrefix, "changes-", 1)
 	for name, data := range map[string][]byte{
-		oldOutput: responses.MustMarshalJSON(shellOutputRecord{Version: 1, ID: "r_AAAAAAAAAAAAAAAAAAAAAA", Stdout: "old output"}),
+		oldOutput: []byte(`{"version":1,"id":"r_AAAAAAAAAAAAAAAAAAAAAA","stdout":"old output","stderr":"","exit_code":0,"position":[0,0]}`),
 		oldIndex: responses.MustMarshalJSON(changeIndex{
 			Version: 1, Workspace: workspace,
 			Streams: []changeStream{{Thread: "old", Next: 1}},
@@ -698,7 +680,7 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	if _, err := store.putShellOutput(current, "new output", "", 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.readShellOutput(current, "r_AAAAAAAAAAAAAAAAAAAAAA"); err == nil {
+	if _, err := store.recoverOutput(current, "r_AAAAAAAAAAAAAAAAAAAAAA"); err == nil {
 		t.Fatal("obsolete read reference became usable")
 	}
 	var files map[string]int64

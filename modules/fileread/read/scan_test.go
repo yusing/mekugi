@@ -23,7 +23,7 @@ func nativeFixture(t *testing.T, name, source string) string {
 
 func nativeExecute(t *testing.T, name string, args ...string) command.Output {
 	t.Helper()
-	output, err := Execute(t.Context(), args, nil)
+	output, err := (Service{}).Execute(t.Context(), command.Request{Args: args, Stdin: nil})
 	if err != nil {
 		t.Fatalf("%s %q: %v", name, args, err)
 	}

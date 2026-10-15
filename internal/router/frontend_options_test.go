@@ -16,10 +16,6 @@ func TestFrontendInlineBudgets(t *testing.T) {
 			_, budget, err := read.Parse(append(args, "file.go"))
 			return budget, err
 		},
-		"mread": func(args []string) (int, error) {
-			options, err := parseOutputRead(append(args, "amber"))
-			return options.maxTokens, err
-		},
 		"mchanges": func(args []string) (int, error) {
 			options, err := parseChangeRead(append(args, "amber1"), workspace)
 			return options.maxTokens, err

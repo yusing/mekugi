@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -258,11 +257,8 @@ func trimMRunBoundary(value string, tail bool) string {
 
 // Execute runs one foreground command under the calling host process.
 // Source: internal/router/mrun.go:256:386@[e702dffa] executeMRun/mrunRetainedKind.
-func Execute(
-	ctx context.Context,
-	arguments []string,
-	stdin *os.File,
-) (command.Output, error) {
+func (Service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
+	arguments, stdin := request.Args, request.Stdin
 	options, argv, err := parseMRunArguments(arguments)
 	if err != nil {
 		return command.Output{Stderr: fmt.Sprintf("mrun: %v\n", err), ExitCode: 2}, nil

@@ -180,7 +180,8 @@ func compactNativeOutline(data inspectionData) []string {
 }
 
 // Source: plugins/inspect_file.ts:139:356@[543de4f3] success/createInspectFileTool
-func Execute(ctx context.Context, args []string, _ *os.File) (command.Output, error) {
+func (Service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
+	args := request.Args
 	if err := ctx.Err(); err != nil {
 		return command.Output{}, err
 	}

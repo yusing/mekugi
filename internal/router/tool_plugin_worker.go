@@ -13,18 +13,21 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/contracts/scope"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
-// RunToolPluginWorker handles the private child-process mode used by a
+// RunOwnedToolPluginWorker handles the private child-process mode used by a
 // stable contributed-tool frontend.
-func RunOwnedToolPluginWorker(service *history.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
-	return RunToolPluginWorker(service, commands, command.WithProcessScope(ctx, command.DedicatedHostProcess), argv0, args, stdin, stdout, stderr)
+func RunOwnedToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	return runToolPluginWorker(service, recovered, commands, command.DedicatedHostProcess, ctx, argv0, args, stdin, stdout, stderr)
 }
 
-func RunToolPluginWorker(service *history.Service, commands []command.Contribution,
+func runToolPluginWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope,
 	ctx context.Context,
 	argv0 string,
 	args []string,
@@ -103,10 +106,10 @@ func RunToolPluginWorker(service *history.Service, commands []command.Contributi
 		return fail(errors.New("tool wrapper does not target the running mekugi executable"))
 	}
 
-	return runAuthenticatedToolWorker(service, commands, ctx, directory, filepath.Base(wrapper), args, stdin, stdout, stderr)
+	return runAuthenticatedToolWorker(service, recovered, commands, processScope, ctx, directory, filepath.Base(wrapper), args, stdin, stdout, stderr)
 }
 
-func runAuthenticatedToolWorker(service *history.Service, commands []command.Contribution,
+func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope,
 	ctx context.Context,
 	directory, name string,
 	args []string,
@@ -125,7 +128,7 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 	if err != nil {
 		return fail(err)
 	}
-	manifest.history = service
+	manifest.history, manifest.recovery = service, recovered
 	if manifest.Version != 2 {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}
@@ -155,12 +158,9 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 	if err := validateToolContribution(*contribution); err != nil {
 		return fail(err)
 	}
-	if command.ProcessScopeFrom(ctx) != command.DedicatedHostProcess {
-		ctx = command.WithProcessScope(ctx, command.HostProcessGroup)
-	}
 
 	if manifest.ReplayDirectory != "" {
-		store, err := shellOutputStore(manifest)
+		store, err := workerReplayStore(manifest)
 		if err != nil {
 			return fail(err)
 		}
@@ -176,8 +176,8 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 	if execute == nil {
 		return fail(fmt.Errorf("native executor %q is unavailable", contribution.NativeExecutor))
 	}
-	run := func(ctx context.Context, args []string, stdin *os.File) (command.Output, error) {
-		execution, err := execute(ctx, manifest, args, stdin)
+	run := func(ctx context.Context, request command.Request) (command.Output, error) {
+		execution, err := execute(ctx, manifest, request)
 		if err != nil {
 			return execution, err
 		}
@@ -199,11 +199,14 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 		}
 		return execution, nil
 	}
+	retainedIdentity, _ := ctx.Value(storageSessionKey{}).(storageSessionIdentity)
+	request := command.Request{Args: args, Stdin: stdin, ProcessScope: processScope,
+		Scope: scope.Retained{Directory: manifest.ReplayDirectory, Namespace: retainedIdentity.Namespace, Thread: retainedIdentity.Thread}}
 	var execution command.Output
 	if observeRead {
-		execution, err = executeFrontendReader(ctx, manifest, args, name, stdin, run)
+		execution, err = executeFrontendReader(ctx, manifest, name, request, run)
 	} else {
-		execution, err = run(ctx, args, stdin)
+		execution, err = run(ctx, request)
 	}
 	if err != nil {
 		return fail(fmt.Errorf("execute tool: %w", err))
@@ -222,22 +225,18 @@ func runAuthenticatedToolWorker(service *history.Service, commands []command.Con
 
 // frontendExecutor is the retained dispatch owner used both before catalog
 // publication and when an authenticated worker executes a selected command.
-func frontendExecutor(contribution toolContribution, commands []command.Contribution) (func(context.Context, toolWorkerManifest, []string, *os.File) (command.Output, error), bool) {
+func frontendExecutor(contribution toolContribution, commands []command.Contribution) (func(context.Context, toolWorkerManifest, command.Request) (command.Output, error), bool) {
 	for _, compiled := range commands {
 		if compiled.Name == contribution.NativeExecutor && compiled.Run != nil {
-			return func(ctx context.Context, manifest toolWorkerManifest, args []string, stdin *os.File) (command.Output, error) {
-				return compiled.Run(ctx, args, stdin)
+			return func(ctx context.Context, manifest toolWorkerManifest, request command.Request) (command.Output, error) {
+				return compiled.Run(ctx, request)
 			}, compiled.ObserveRead
 		}
 	}
 	switch contribution.NativeExecutor {
-	case "mread":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
-			return executeMRead(ctx, manifest, args), nil
-		}, false
 	case "mchanges":
-		return func(ctx context.Context, manifest toolWorkerManifest, args []string, _ *os.File) (command.Output, error) {
-			return executeMChanges(ctx, manifest, args), nil
+		return func(ctx context.Context, manifest toolWorkerManifest, request command.Request) (command.Output, error) {
+			return executeMChanges(ctx, manifest, request.Args), nil
 		}, false
 	default:
 		return nil, false

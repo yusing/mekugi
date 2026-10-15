@@ -182,26 +182,11 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 			}
 		}
 		for _, match := range retainedReadReference.FindAllStringSubmatch(string(raw), -1) {
-			id := match[1]
-			if !validShellOutputID(id) {
-				continue
-			}
-			name, err := s.outputName(id)
-			if err != nil {
-				continue // A textual reference alone cannot import another session.
-			}
-			data, err := history.ReadRecord(filepath.Join(s.directory, name))
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
+			session, err := s.recoverySession(ctx)
 			if err != nil {
 				return err
 			}
-			var record shellOutputRecord
-			if json.Unmarshal(data, &record) != nil || record.ID != id || validateReadRecord(record) != nil {
-				return errors.New("invalid inherited read recovery record")
-			}
-			dependencies, err := s.readDependencyNames(record)
+			dependencies, err := session.Dependencies(match[1])
 			if err != nil {
 				return err
 			}
@@ -232,65 +217,6 @@ func (s *mekugiReplayStore) changeDependencyNames(workspace string, ids []string
 		}
 	}
 	return names, nil
-}
-
-func (s *mekugiReplayStore) readDependencyNames(record shellOutputRecord) ([]string, error) {
-	var names []string
-	seen := make(map[string]bool)
-	for {
-		if seen[record.ID] {
-			return nil, errors.New("cyclic read recovery reference")
-		}
-		seen[record.ID] = true
-		owner, err := s.publication.HandleOwner(s.handleNamespace(), record.ID)
-		if err != nil {
-			return nil, err
-		}
-		if record.CursorDigest != "" {
-			names = append(names, scopedCursorName(owner, record.CursorDigest))
-		}
-		names = append(names, scopedOutputName(owner, record.ID))
-		if selection := record.Changes; selection != nil {
-			if selection.Frozen {
-				for _, id := range selection.IDs {
-					for _, call := range selection.Selected[id].Calls {
-						names = append(names, replayRecordName(selection.Workspace, call.ID, false))
-					}
-				}
-			} else {
-				dependencies, err := s.changeDependencyNames(selection.Workspace, selection.IDs)
-				if err != nil {
-					return nil, err
-				}
-				names = append(names, dependencies...)
-			}
-		}
-
-		if record.Source == "" {
-			return names, nil
-		}
-		id := record.Source
-		name, err := s.outputName(id)
-		if err != nil {
-			return nil, err
-		}
-		data, err := history.ReadRecord(filepath.Join(s.directory, name))
-		if err != nil {
-			return nil, fmt.Errorf("read recovery source is unavailable: %w", err)
-		}
-		record = shellOutputRecord{}
-		if json.Unmarshal(data, &record) != nil || record.ID != id || validateReadRecord(record) != nil {
-			return nil, errors.New("invalid read recovery source")
-		}
-	}
-}
-
-func (s *mekugiReplayStore) retainReadRecord(record shellOutputRecord) error {
-	names, err := s.readDependencyNames(record)
-	if err != nil {
-		return err
-	}
-	return s.retainFiles(names...)
 }
 
 func storageCapacityError(resource string, required, limit int64, action string) error {

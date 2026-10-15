@@ -61,7 +61,7 @@ their logical row position. Results contain no raw excerpts, bodies, fields, com
 JSON scalar values, or source text.
 
 The complete successful stdout, including its final LF, is at most 65,536 UTF-8 bytes and
-uses the shared [reader token ceiling](../../doc/spec/read.md). Options may precede or follow the path.
+uses the shared [reader token ceiling](../../doc/spec/plugin.md#output-and-recovery). Options may precede or follow the path.
 When necessary, compact output emits a complete row prefix, exits nonzero, and
 retains the rest for `mread`. Single-file JSON returns
 `truncation: {"reason":"output_bytes"|"output_tokens","after_entries":N}`.

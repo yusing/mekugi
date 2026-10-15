@@ -131,8 +131,9 @@ func TestResolverCleanupProcess(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	processScope := command.StandaloneProcess
 	if os.Getenv("FIXTURE_OWNER") == "frontend" {
-		ctx = command.WithProcessScope(ctx, command.DedicatedHostProcess)
+		processScope = command.DedicatedHostProcess
 	}
 	outcome, kind := os.Getenv("FIXTURE_OUTCOME"), os.Getenv("FIXTURE_KIND")
 	if outcome == "deadline" {
@@ -160,7 +161,7 @@ func TestResolverCleanupProcess(t *testing.T) {
 		name, row, line = "input.ts", "1", "const Target = 1;"
 	}
 	started := time.Now()
-	result, err := Execute(ctx, []string{"refs", name, row, "Target"}, nil)
+	result, err := (Service{}).Execute(ctx, command.Request{Args: []string{"refs", name, row, "Target"}, ProcessScope: processScope})
 	if elapsed := time.Since(started); elapsed >= 5*time.Second {
 		t.Fatalf("cleanup exceeded bound: %s", elapsed)
 	}

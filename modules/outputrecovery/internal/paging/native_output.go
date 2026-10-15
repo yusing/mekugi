@@ -1,4 +1,4 @@
-package toolplugin
+package paging
 
 import (
 	"context"

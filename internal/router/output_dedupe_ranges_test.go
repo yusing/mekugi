@@ -3,6 +3,7 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/internal/responses"
 
 	jsonv1 "encoding/json"
@@ -47,16 +48,16 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 			write(rows)
 			read := func(span string) (string, string) {
 				t.Helper()
-				args, command := []string{path, span}, "mcat fixture.json "+span
+				args, commandText := []string{path, span}, "mcat fixture.json "+span
 				if tc.number {
 					args = append([]string{"--number"}, args...)
-					command = "mcat --number fixture.json " + span
+					commandText = "mcat --number fixture.json " + span
 				}
-				result, err := read.Execute(t.Context(), args, nil)
+				result, err := (read.Service{}).Execute(t.Context(), command.Request{Args: args, Stdin: nil})
 				if err != nil || result.ExitCode != 0 || result.Stderr != "" {
 					t.Fatalf("mcat %v: %+v, %v", args, result, err)
 				}
-				return command, result.Stdout
+				return commandText, result.Stdout
 			}
 			firstCommand, first := read(tc.first)
 			if tc.edit {
@@ -103,7 +104,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	var input []any
 	read := func(span, id string) {
 		t.Helper()
-		result, err := read.Execute(t.Context(), []string{path, span}, nil)
+		result, err := (read.Service{}).Execute(t.Context(), command.Request{Args: []string{path, span}, Stdin: nil})
 		if err != nil || result.ExitCode != 0 || result.Stderr != "" {
 			t.Fatalf("mcat %s: %+v, %v", span, result, err)
 		}

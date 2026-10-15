@@ -20,7 +20,7 @@ func nativeFixture(t *testing.T, name, source string) string {
 
 func executeQuery(t *testing.T, args ...string) command.Output {
 	t.Helper()
-	output, err := Execute(t.Context(), args, nil)
+	output, err := (Service{}).Execute(t.Context(), command.Request{Args: args, Stdin: nil})
 	if err != nil {
 		t.Fatalf("msymbol %q: %v", args, err)
 	}

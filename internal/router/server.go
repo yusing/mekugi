@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -64,7 +66,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, ctx context.Context, commands []command.Contribution, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	flags := newRouterFlags(io.Discard)
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -224,6 +226,9 @@ func RunSession(service *history.Service, ctx context.Context, commands []comman
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
 		replayStore, err := openReplayStore(ctx, service, replayDirectory)
+		if replayStore != nil {
+			replayStore.recovery = recovered
+		}
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}

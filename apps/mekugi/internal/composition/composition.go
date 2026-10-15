@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/yusing/mekugi/contracts/reference"
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
@@ -36,6 +39,7 @@ type entry struct {
 	resources    []string
 	commands     []command.Contribution
 	records      []recordkind.Spec
+	references   []reference.Resolver
 	capabilities []capability.Requirement
 	validFactory bool
 	construct    func(module.Slots, binding.Binder) error
@@ -47,6 +51,7 @@ type Composition struct {
 	// implementations into descriptors. It is not represented as a fake module.
 	LegacyCommands    []command.Contribution
 	LegacyRecordKinds []recordkind.Spec
+	LegacyReferences  []reference.Resolver
 	entries           []entry
 	sealed            bool
 }
@@ -64,10 +69,19 @@ func (c *Composition) Add[D, S any, B interface {
 	node := entry{
 		id: descriptor.ID, requires: slices.Clone(descriptor.Requires),
 		lifetime: descriptor.Lifetime, resources: slices.Clone(descriptor.Resources),
-		commands:     slices.Clone(descriptor.Contributes.Commands),
 		records:      slices.Clone(descriptor.Contributes.RecordKinds),
+		references:   slices.Clone(descriptor.Contributes.References),
 		capabilities: slices.Clone(backend.Requires),
 		validFactory: descriptor.New != nil && deps != nil,
+	}
+	for _, definition := range descriptor.Contributes.Commands {
+		contribution := command.Contribution{Spec: definition.Spec, ObserveRead: definition.ObserveRead}
+		if definition.Run != nil {
+			contribution.Run = func(ctx context.Context, request command.Request) (command.Output, error) {
+				return definition.Run(handle.Value(), ctx, request)
+			}
+		}
+		node.commands = append(node.commands, contribution)
 	}
 	node.construct = func(slots module.Slots, binder binding.Binder) error {
 		if !descriptor.HostsCommands {
@@ -75,6 +89,9 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		if !descriptor.HostsRecords {
 			slots.RecordKinds = nil
+		}
+		if !descriptor.HostsReferences {
+			slots.References = nil
 		}
 		service, err := descriptor.New(deps(), slots)
 		if err != nil {
@@ -130,6 +147,7 @@ type Gap struct {
 }
 
 type Runtime struct {
+	Recovery *recovery.Service
 	History  *history.Service
 	Commands []command.Contribution
 	Gaps     []Gap
@@ -157,6 +175,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	c.sealed = true
 	runtime := &Runtime{Commands: slices.Clone(c.LegacyCommands)}
 	records := slices.Clone(c.LegacyRecordKinds)
+	references := slices.Clone(c.LegacyReferences)
 	positions := make(map[module.ID]int)
 	var failures []error
 	for i, node := range c.entries {
@@ -169,6 +188,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		positions[node.id] = i
 		runtime.Commands = append(runtime.Commands, node.commands...)
 		records = append(records, node.records...)
+		references = append(references, node.references...)
 	}
 	for i, node := range c.entries {
 		if !node.validFactory {
@@ -227,7 +247,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records)}, binder); err != nil {
+		if err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references)}, binder); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}

@@ -3,7 +3,6 @@ package composition
 import (
 	"context"
 	"errors"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -21,8 +20,18 @@ type testService struct {
 type testDescriptor = module.Descriptor[struct{}, *testService, binding.Bindings[*testService]]
 
 func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
+	definitions := make([]command.Definition[*testService], len(specs))
+	for i, spec := range specs {
+		definitions[i] = command.Definition[*testService]{Spec: spec.Spec, ObserveRead: spec.ObserveRead}
+		if spec.Run != nil {
+			definitions[i].Run = func(_ *testService, ctx context.Context, request command.Request) (command.Output, error) {
+				return spec.Run(ctx, request)
+			}
+		}
+	}
+
 	return testDescriptor{
-		ID: id, Lifetime: module.Stateless, Contributes: module.Slots{Commands: specs},
+		ID: id, Lifetime: module.Stateless, Contributes: module.Contributions[*testService]{Commands: definitions},
 		New: func(_ struct{}, slots module.Slots) (*testService, error) {
 			return &testService{string(id), slots.Commands}, nil
 		},
@@ -38,7 +47,7 @@ func descriptor(id module.ID, specs ...command.Contribution) testDescriptor {
 }
 func emptyDeps() struct{} { return struct{}{} }
 func frontend(name string) command.Contribution {
-	return command.Contribution{Spec: command.Spec{Name: name, Description: "test frontend"}, Run: func(context.Context, []string, *os.File) (command.Output, error) { return command.Output{}, nil }}
+	return command.Contribution{Spec: command.Spec{Name: name, Description: "test frontend"}, Run: func(context.Context, command.Request) (command.Output, error) { return command.Output{}, nil }}
 }
 
 func TestCompositionTypedDependenciesAndCollectedSlots(t *testing.T) {

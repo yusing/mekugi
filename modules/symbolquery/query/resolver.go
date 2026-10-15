@@ -51,20 +51,20 @@ func resolverStartError(name string, err error) error {
 	}
 	return fmt.Errorf("cannot start %s: %w", name, err)
 }
-func resolverCommand(ctx context.Context, root, name string, args ...string) *exec.Cmd {
+func resolverCommand(ctx context.Context, processScope command.ProcessScope, root, name string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = root
 	cmd.WaitDelay = resolverDrain
-	if command.ProcessScopeFrom(ctx) == command.StandaloneProcess {
+	if processScope == command.StandaloneProcess {
 		configureProcessGroup(cmd)
 	}
 	return cmd
 }
-func retireResolver(cmd *exec.Cmd, ctx context.Context) {
+func retireResolver(cmd *exec.Cmd, processScope command.ProcessScope) {
 	if cmd.Process == nil {
 		return
 	}
-	if command.ProcessScopeFrom(ctx) == command.StandaloneProcess {
+	if processScope == command.StandaloneProcess {
 		_ = cmd.Cancel()
 	} else {
 		_ = cmd.Process.Kill()
@@ -291,7 +291,7 @@ func parseLocations(raw jsontext.Value, mode string) ([]symbolLocation, error) {
 }
 
 // Source: plugins/lsp.ts:119:279@[543de4f3] runLSPQueries
-func runLSP(ctx context.Context, root, resolver string, queries []*symbolQuery) {
+func runLSP(ctx context.Context, processScope command.ProcessScope, root, resolver string, queries []*symbolQuery) {
 	deadline, cancel := context.WithTimeout(ctx, resolverTimeout)
 	defer cancel()
 	name, args := "tsc", []string{"--lsp", "--stdio"}
@@ -306,7 +306,7 @@ func runLSP(ctx context.Context, root, resolver string, queries []*symbolQuery) 
 			q.err = err
 		}
 	}
-	cmd := resolverCommand(deadline, root, name, args...)
+	cmd := resolverCommand(deadline, processScope, root, name, args...)
 	inputR, inputW, err := os.Pipe()
 	if err != nil {
 		failAll(err)
@@ -367,10 +367,10 @@ func runLSP(ctx context.Context, root, resolver string, queries []*symbolQuery) 
 		select {
 		case <-done:
 		case <-shutdown.Done():
-			retireResolver(cmd, ctx)
+			retireResolver(cmd, processScope)
 			<-done
 		}
-		retireResolver(cmd, ctx)
+		retireResolver(cmd, processScope)
 		if stderr.Len() > retainedBytes {
 			for _, q := range queries {
 				if q.err == nil {

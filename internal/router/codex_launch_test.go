@@ -24,7 +24,7 @@ func TestCodexLaunchIgnoresThirdPartyCredentials(t *testing.T) {
 			ready := make(chan Session, 1)
 			done := make(chan error, 1)
 			go func() {
-				done <- RunSession(testHistory(), ctx, testCommands(), []string{"--mode", mode}, nil, func(session Session) { ready <- session }, nil)
+				done <- RunSession(testHistory(), testRecovery(), ctx, testCommands(), []string{"--mode", mode}, nil, func(session Session) { ready <- session }, nil)
 			}()
 			var session Session
 			select {

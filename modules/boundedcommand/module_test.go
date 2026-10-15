@@ -21,13 +21,13 @@ import (
 func registeredCommand(t *testing.T) command.Contribution {
 	t.Helper()
 	script := new(moduletest.Scripted)
-	moduletest.New(t, boundedcommand.Module, boundedcommand.Deps{}, module.Slots{}, script)
+	service := moduletest.New(t, boundedcommand.Module, boundedcommand.Deps{}, module.Slots{}, script)
 	commands := boundedcommand.Module.Contributes.Commands
 	registered := script.Commands()
 	if boundedcommand.Module.Lifetime != module.HostOperation || len(commands) != 1 {
 		t.Fatalf("lifetime=%v commands=%v", boundedcommand.Module.Lifetime, commands)
 	}
-	got := commands[0]
+	got := moduletest.BindCommand(commands[0], service)
 	if got.Name != "mrun" || got.Run == nil || len(registered) != 1 || registered[0] != got.Spec {
 		t.Fatalf("registered command=%+v", got)
 	}
@@ -48,7 +48,7 @@ func fixtureArgv(t *testing.T, mode string, arguments ...string) []string {
 
 func TestRegisteredCommandPreservesArgvStdinAndStatus(t *testing.T) {
 	t.Parallel()
-	command := registeredCommand(t)
+	contribution := registeredCommand(t)
 	argv := fixtureArgv(t, "echo", "", "two words", "$literal;*", "--tail", "日本語")
 	input := "stdin\x00with\r\nbytes\n"
 	stdin, err := os.CreateTemp(t.TempDir(), "stdin")
@@ -62,7 +62,7 @@ func TestRegisteredCommandPreservesArgvStdinAndStatus(t *testing.T) {
 	if _, err := stdin.Seek(0, io.SeekStart); err != nil {
 		t.Fatal(err)
 	}
-	got, err := command.Run(t.Context(), append([]string{"-n", "10", "--"}, argv...), stdin)
+	got, err := contribution.Run(t.Context(), command.Request{Args: append([]string{"-n", "10", "--"}, argv...), Stdin: stdin})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestRegisteredCommandPreservesArgvStdinAndStatus(t *testing.T) {
 
 func TestRegisteredCommandSelectsAndDiscardsRows(t *testing.T) {
 	t.Parallel()
-	command := registeredCommand(t)
+	contribution := registeredCommand(t)
 	for _, tail := range []bool{false, true} {
 		t.Run(fmt.Sprintf("tail=%t", tail), func(t *testing.T) {
 			arguments := []string{"-n", "2"}
@@ -84,7 +84,7 @@ func TestRegisteredCommandSelectsAndDiscardsRows(t *testing.T) {
 			}
 			arguments = append(arguments, "--")
 			arguments = append(arguments, fixtureArgv(t, "rows", "5")...)
-			got, err := command.Run(t.Context(), arguments, nil)
+			got, err := contribution.Run(t.Context(), command.Request{Args: arguments, Stdin: nil})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -97,9 +97,9 @@ func TestRegisteredCommandSelectsAndDiscardsRows(t *testing.T) {
 
 func TestRegisteredCommandRetainsOnlySelectedDeliveryOverflow(t *testing.T) {
 	t.Parallel()
-	command := registeredCommand(t)
+	contribution := registeredCommand(t)
 	arguments := append([]string{"-n", "8000", "--tail", "--"}, fixtureArgv(t, "rows", "10000")...)
-	got, err := command.Run(t.Context(), arguments, nil)
+	got, err := contribution.Run(t.Context(), command.Request{Args: arguments, Stdin: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestRegisteredCommandRetainsOnlySelectedDeliveryOverflow(t *testing.T) {
 
 func TestRegisteredCommandCancelsRunningChild(t *testing.T) {
 	t.Parallel()
-	command := registeredCommand(t)
+	contribution := registeredCommand(t)
 	ready := filepath.Join(t.TempDir(), "ready")
 	stdin, writer, err := os.Pipe()
 	if err != nil {
@@ -133,7 +133,7 @@ func TestRegisteredCommandCancelsRunningChild(t *testing.T) {
 	done := make(chan error, 1)
 	arguments := append([]string{"-n", "1", "--"}, fixtureArgv(t, "wait", ready)...)
 	go func() {
-		_, err := command.Run(ctx, arguments, stdin)
+		_, err := contribution.Run(ctx, command.Request{Args: arguments, Stdin: stdin})
 		done <- err
 	}()
 	deadline := time.NewTimer(5 * time.Second)

@@ -53,11 +53,11 @@ func TestMReadMultipleHandlesShareBudgetAndReturnOneCombinedContinuation(t *test
 	store, ctx := mreadQualitySession(t, registry, thread)
 	first := strings.Repeat("alpha ", 70) + "\n" + strings.Repeat("oversized ", 100) + "\n"
 	second := strings.Repeat("beta row\n", 100)
-	firstID, err := store.putTypedOutput(ctx, command.OmittedOutput{Stdout: first, StdoutKind: "rows"}, 0)
+	firstID, err := store.publishOutput(ctx, command.OmittedOutput{Stdout: first, StdoutKind: "rows"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondID, err := store.putTypedOutput(ctx, command.OmittedOutput{Stdout: second, StdoutKind: "rows"}, 0)
+	secondID, err := store.publishOutput(ctx, command.OmittedOutput{Stdout: second, StdoutKind: "rows"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestMReadSourcePagesReportTheirAbsoluteRows(t *testing.T) {
 	for row := 42; row < 342; row++ {
 		fmt.Fprintf(&source, "row-%03d alpha beta gamma\n", row)
 	}
-	id, err := store.putTypedOutput(ctx, command.OmittedOutput{
+	id, err := store.publishOutput(ctx, command.OmittedOutput{
 		Stdout: source.String(), StdoutKind: "rows", SourceRow: 42,
 	}, 0)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestMReadPreservesCommandStderrThatResemblesALimitNotice(t *testing.T) {
 	thread := uniqueTestThread("mread-quality")
 	store, ctx := mreadQualitySession(t, registry, thread)
 	const diagnostic = "mcat: output incomplete: compiler emitted this diagnostic verbatim\n"
-	id, err := store.putTypedOutput(ctx, command.OmittedOutput{
+	id, err := store.publishOutput(ctx, command.OmittedOutput{
 		Stdout: "saved row\n", StdoutKind: "rows", Stderr: diagnostic,
 	}, 0)
 	if err != nil {
@@ -145,7 +145,7 @@ func TestMReadTinyBudgetAndMalformedOperandsHaveExactMessages(t *testing.T) {
 	thread := uniqueTestThread("mread-quality")
 	store, ctx := mreadQualitySession(t, registry, thread)
 	const row = "one complete row\n"
-	id, err := store.putTypedOutput(ctx, command.OmittedOutput{Stdout: row, StdoutKind: "rows"}, 0)
+	id, err := store.publishOutput(ctx, command.OmittedOutput{Stdout: row, StdoutKind: "rows"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,13 +187,13 @@ func TestMReadFreshStoreForkAndSideContinuityStayInTheirHandleScopes(t *testing.
 		return prefix + "-first\n" + strings.Repeat(medium+" ", mediumWords) + "\n" +
 			strings.Repeat("oversized ", 200) + "\n" + strings.Repeat("later\n", 100)
 	}
-	firstID, err := store.putTypedOutput(rootCtx, command.OmittedOutput{
+	firstID, err := store.publishOutput(rootCtx, command.OmittedOutput{
 		Stdout: makeRows("root-a", 70), StdoutKind: "rows",
 	}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondID, err := store.putTypedOutput(rootCtx, command.OmittedOutput{
+	secondID, err := store.publishOutput(rootCtx, command.OmittedOutput{
 		Stdout: makeRows("root-b", 20), StdoutKind: "rows",
 	}, 0)
 	if err != nil {
@@ -236,7 +236,7 @@ func TestMReadFreshStoreForkAndSideContinuityStayInTheirHandleScopes(t *testing.
 	fork := uniqueTestThread("mread-fork")
 	forkCtx := mreadQualityBranch(t, freshStore, fork, "", root)
 	assertPairRead(fork, firstCursor, secondCursor)
-	forkID, err := freshStore.putTypedOutput(forkCtx, command.OmittedOutput{
+	forkID, err := freshStore.publishOutput(forkCtx, command.OmittedOutput{
 		Stdout: "fork-owned row\n", StdoutKind: "rows",
 	}, 0)
 	if err != nil {

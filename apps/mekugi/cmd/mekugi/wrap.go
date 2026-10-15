@@ -115,7 +115,7 @@ func wrapCodex(frontends *composition.Runtime, ctx context.Context, routerArgs, 
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(frontends.History, ctx, frontends.Commands, routerArgs, issues, func(session router.Session) {
+		routerDone <- router.RunSession(frontends.History, frontends.Recovery, ctx, frontends.Commands, routerArgs, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()

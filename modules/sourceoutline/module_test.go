@@ -17,12 +17,12 @@ import (
 func registeredCommand(t *testing.T) command.Contribution {
 	t.Helper()
 	script := new(moduletest.Scripted)
-	moduletest.New(t, sourceoutline.Module, sourceoutline.Deps{}, module.Slots{}, script)
+	service := moduletest.New(t, sourceoutline.Module, sourceoutline.Deps{}, module.Slots{}, script)
 	commands, registered := sourceoutline.Module.Contributes.Commands, script.Commands()
 	if sourceoutline.Module.Lifetime != module.Stateless || len(commands) != 1 || len(registered) != 1 {
 		t.Fatalf("lifetime=%v commands=%v registered=%v", sourceoutline.Module.Lifetime, commands, registered)
 	}
-	got := commands[0]
+	got := moduletest.BindCommand(commands[0], service)
 	if got.Name != "inspect_file" || got.Run == nil || !got.ObserveRead || registered[0] != got.Spec {
 		t.Fatalf("registered command=%+v", got)
 	}
@@ -44,10 +44,10 @@ func sourceFixture(t *testing.T, name, source string) string {
 func TestRegisteredOutlineMatchesSnapshotWithoutRuntime(t *testing.T) {
 	// Extraction uses the portable parser even when no external runtime is on PATH.
 	t.Setenv("PATH", "")
-	command := registeredCommand(t)
+	contribution := registeredCommand(t)
 	source := "package p\n\nimport \"fmt\"\nimport \"strings\"\n\nfunc First() {}\nfunc Second() {}\n"
 	path := sourceFixture(t, "sample.go", source)
-	got, err := command.Run(t.Context(), []string{path}, nil)
+	got, err := contribution.Run(t.Context(), command.Request{Args: []string{path}, Stdin: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestRegisteredOutlineHonorsCancellation(t *testing.T) {
 	contribution := registeredCommand(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	got, err := contribution.Run(ctx, []string{filepath.Join(t.TempDir(), "missing.go")}, nil)
+	got, err := contribution.Run(ctx, command.Request{Args: []string{filepath.Join(t.TempDir(), "missing.go")}, Stdin: nil})
 	if !errors.Is(err, context.Canceled) || got != (command.Output{}) {
 		t.Fatalf("canceled output=%+v err=%v", got, err)
 	}

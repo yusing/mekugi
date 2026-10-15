@@ -9,6 +9,6 @@ import (
 
 var Module = module.Descriptor[Deps, run.Service, codexbinding.Bindings]{
 	ID: "boundedcommand", Summary: "Bound one foreground command's output", Lifetime: module.HostOperation,
-	Contributes: module.Slots{Commands: []command.Contribution{run.Command}},
+	Contributes: module.Contributions[run.Service]{Commands: []command.Definition[run.Service]{run.Command}},
 	New:         newService, Bindings: codexbinding.Codex,
 }

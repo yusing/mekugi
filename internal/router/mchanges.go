@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
@@ -168,14 +170,24 @@ func (s *mekugiReplayStore) readChanges(ctx context.Context, options changeReadO
 type partialChangeReadError struct{ error }
 
 func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeReadOptions) (string, *changeReadSnapshot, error) {
-	s = s.scoped(ctx)
+	var text string
+	var snapshot *changeReadSnapshot
+	err := s.scoped(ctx).locked(ctx, func(store *mekugiReplayStore) error {
+		var err error
+		text, snapshot, err = store.readChangeViewLocked(ctx, options, store.retainFiles)
+		return err
+	})
+	return text, snapshot, err
+}
+
+func (s *mekugiReplayStore) readChangeViewLocked(ctx context.Context, options changeReadOptions, retain func(...string) error) (string, *changeReadSnapshot, error) {
 	if options.view == "list" && len(options.ids) == 0 {
 		options.mine = true
 	}
 	var output string
 	var snapshot *changeReadSnapshot
 	var targetErrors []error
-	err := s.locked(ctx, func(s *mekugiReplayStore) error {
+	err := func() error {
 		index, err := s.readChangeIndex(options.workspace)
 		if err != nil {
 			return err
@@ -251,7 +263,7 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 				names = append(names, replayRecordName(options.workspace, call.ID, false))
 			}
 		}
-		if retainErr := s.retainFiles(names...); retainErr != nil {
+		if retainErr := retain(names...); retainErr != nil {
 			return retainErr
 		}
 		if len(snapshot.IDs) == 0 && len(targetErrors) > 0 && err == nil {
@@ -262,7 +274,7 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 			return nil
 		}
 		return err
-	})
+	}()
 	if err == nil && len(targetErrors) > 0 {
 		err = &partialChangeReadError{errors.Join(targetErrors...)}
 	}
@@ -670,7 +682,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 	if info, err := os.Lstat(filepath.Join(manifest.ReplayDirectory, "store.lock")); err != nil || !info.Mode().IsRegular() {
 		return fail(errors.New("change storage is missing or invalid"))
 	}
-	store := &mekugiReplayStore{publication: manifest.history.Attach(manifest.ReplayDirectory), directory: manifest.ReplayDirectory}
+	store := &mekugiReplayStore{publication: manifest.history.Attach(manifest.ReplayDirectory), recovery: manifest.recovery, directory: manifest.ReplayDirectory}
 	if options.view == "revert" || options.view == "apply" {
 		text, status, err := store.mutateChanges(ctx, options)
 		if err != nil {
@@ -728,7 +740,7 @@ func executeMChanges(ctx context.Context, manifest toolWorkerManifest, arguments
 		}
 	}
 	if next != "" {
-		return command.Output{Stdout: selected, Stderr: readNextCall(next), ExitCode: 1}
+		return command.Output{Stdout: selected, Stderr: recovery.NextCall(next), ExitCode: 1}
 	}
 	return command.Output{Stdout: selected}
 }

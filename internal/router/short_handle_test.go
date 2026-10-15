@@ -57,7 +57,13 @@ func TestShortHandleAllocationConcurrentRestart(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			ids, err := store.allocateHandles(t.Context(), 8)
+			ids, err := func() ([]string, error) {
+				session, err := store.recoverySession(t.Context())
+				if err != nil {
+					return nil, err
+				}
+				return session.Reserve(t.Context(), 8)
+			}()
 			if err != nil {
 				t.Error(err)
 				return
@@ -77,51 +83,28 @@ func TestShortHandleAllocationConcurrentRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids, err := store.allocateHandles(t.Context(), 1)
+	session, err := store.recoverySession(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := session.Reserve(t.Context(), 1)
 	if err != nil || len(ids) != 1 || ids[0] != history.ShortHandle(64) {
 		t.Fatalf("restart allocation: %v, %v", ids, err)
 	}
 	if err := os.WriteFile(filepath.Join(directory, history.ScopeName("")), []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.allocateHandles(t.Context(), 1); err == nil {
+	if _, err := session.Reserve(t.Context(), 1); err == nil {
 		t.Fatal("corrupt counter silently reset")
 	}
 }
 
 func TestShortHandlesRejectLegacyReferences(t *testing.T) {
-	if validShellOutputID("r_AAAAAAAAAAAAAAAAAAAAAA") {
+	if _, ok := history.ParseHandle("r_AAAAAAAAAAAAAAAAAAAAAA"); ok {
 		t.Fatal("accepted legacy read reference")
 	}
 	if _, err := expandChangeRefs([]string{"hp_a1"}); err == nil {
 		t.Fatal("accepted legacy change reference")
-	}
-}
-
-func TestShortReadCursorSurvivesRestart(t *testing.T) {
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := store.putShellOutput(t.Context(), "output", "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, err := store.readShellOutput(t.Context(), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor, err := store.putReadCursor(t.Context(), source, [2]int{1, 0}, "stdout")
-	if err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := openMekugiReplayStore(store.directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	again, err := reopened.putReadCursor(t.Context(), source, [2]int{1, 0}, "stdout")
-	if err != nil || cursor != again {
-		t.Fatalf("cursor changed after restart: %q != %q, %v", cursor, again, err)
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/yusing/mekugi/contracts/command"
 )
 
 // Uses the real repository and installed resolver, with a fresh process per
@@ -39,7 +41,7 @@ func BenchmarkNativeSymbol(b *testing.B) {
 					}
 					continue
 				case "lsp":
-					runLSP(b.Context(), root, "gopls", []*symbolQuery{q})
+					runLSP(b.Context(), command.StandaloneProcess, root, "gopls", []*symbolQuery{q})
 				}
 				if q.err != nil || len(q.locations) == 0 {
 					b.Fatalf("resolver: %v %s locations=%d", q.err, q.stderr, len(q.locations))

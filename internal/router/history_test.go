@@ -2,12 +2,19 @@ package router
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/yusing/mekugi/contracts/command"
+
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
 func testHistory() *history.Service {
-	service, err := history.NewService(RetainedRecordKinds())
+	service, err := history.NewService(append(RetainedRecordKinds(), recovery.RecordKinds()...))
 	if err != nil {
 		panic(err)
 	}
@@ -15,10 +22,54 @@ func testHistory() *history.Service {
 }
 
 func openMekugiReplayStore(directory string) (*mekugiReplayStore, error) {
-	return openReplayStore(context.Background(), testHistory(), directory)
+	store, err := openReplayStore(context.Background(), testHistory(), directory)
+	if store != nil {
+		store.recovery = testRecovery()
+	}
+	return store, err
 }
 
 func testReplayStore(store mekugiReplayStore) *mekugiReplayStore {
 	store.publication = testHistory().Attach(store.directory)
+	store.recovery = testRecovery()
 	return &store
+}
+
+func testRecovery() *recovery.Service {
+	service, err := recovery.New(testHistory(), ChangeReferences())
+	if err != nil {
+		panic(err)
+	}
+	return service
+}
+
+func (s *mekugiReplayStore) publishOutput(ctx context.Context, output command.OmittedOutput, exit int) (string, error) {
+	session, err := s.recoverySession(ctx)
+	if err != nil {
+		return "", err
+	}
+	return session.Publish(ctx, output, exit)
+}
+func (s *mekugiReplayStore) recoverOutput(ctx context.Context, id string) (command.Output, error) {
+	output, err := s.recovery.Execute(ctx, command.Request{Args: []string{id, "--max-tokens", "15500"}, Scope: retainedScope(ctx, s.directory)})
+	if err == nil && output.ExitCode != 0 {
+		err = fmt.Errorf("recovery failed: %s", output.Stderr)
+	}
+	return output, err
+}
+func recoveryCursor(t *testing.T, store *mekugiReplayStore, ctx context.Context, id string) string {
+	t.Helper()
+	output, err := store.recovery.Execute(ctx, command.Request{Args: []string{id, "--max-tokens", "4"}, Scope: retainedScope(ctx, store.directory)})
+	_, next, ok := strings.Cut(output.Stderr, "next_call: mread ")
+	if err != nil || output.ExitCode != 1 || !ok {
+		t.Fatalf("cursor publication: %+v %v", output, err)
+	}
+	return strings.Fields(next)[0]
+}
+func executeRecovery(ctx context.Context, manifest toolWorkerManifest, args []string) command.Output {
+	output, err := testRecovery().Execute(ctx, command.Request{Args: args, Scope: retainedScope(ctx, manifest.ReplayDirectory)})
+	if err != nil {
+		panic(err)
+	}
+	return output
 }

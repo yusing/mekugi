@@ -55,7 +55,7 @@ func TestHarnessOwnsTemporaryResourceLifecycle(t *testing.T) {
 		script := new(moduletest.Scripted)
 		spec := command.Contribution{Spec: command.Spec{Name: "read", Description: "bounded read"}}
 		descriptor := module.Descriptor[string, *service, binding.Bindings[*service]]{
-			ID: "resource", Lifetime: module.Invocation, Resources: []string{"temporary resource"}, Contributes: module.Slots{Commands: []command.Contribution{spec}},
+			ID: "resource", Lifetime: module.Invocation, Resources: []string{"temporary resource"}, Contributes: module.Contributions[*service]{Commands: []command.Definition[*service]{{Spec: spec.Spec}}},
 			New: func(dir string, slots module.Slots) (*service, error) {
 				if dir != directory || !slices.EqualFunc(slots.Commands, []command.Contribution{spec}, func(a, b command.Contribution) bool { return a.Spec == b.Spec }) {
 					t.Fatalf("dependencies=%q slots=%v", dir, slots)

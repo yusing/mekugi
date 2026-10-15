@@ -5,17 +5,18 @@ use (
 	./apps/mekugi
 	./backends/codex
 	./contracts
-	./libraries/commandargs
 	./libraries/commandanalysis
+	./libraries/commandargs
 	./libraries/outputbudget
 	./libraries/pathdisplay
 	./libraries/persistence
 	./libraries/sourceanalysis
-	./modules/fileread
-	./modules/symbolquery
-	./modules/sourceoutline
 	./modules/boundedcommand
+	./modules/fileread
+	./modules/outputrecovery
 	./modules/sessionhistory
+	./modules/sourceoutline
+	./modules/symbolquery
 	./testsupport/moduletest
 	./testsupport/uisnapshot
 )

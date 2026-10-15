@@ -21,7 +21,7 @@ import (
 func TestMRunCodexGroupTermination(t *testing.T) {
 	if os.Getenv("MEKUGI_MRUN_GROUP_HELPER") == "1" {
 		frontend := os.Getenv("MEKUGI_MRUN_GROUP_FRONTEND")
-		_, status := RunOwnedToolPluginWorker(testHistory(), testCommands(), t.Context(), frontend,
+		_, status := RunOwnedToolPluginWorker(testHistory(), testRecovery(), testCommands(), t.Context(), frontend,
 			[]string{"-n", "1", "--", "sh", "-c", "echo $$ > child.pid; exec sleep 60"},
 			nil, io.Discard, os.Stderr)
 		os.Exit(status)
@@ -69,7 +69,7 @@ func TestMRunCodexGroupTermination(t *testing.T) {
 func TestMRunFormattingPreservesBackgroundCommand(t *testing.T) {
 	if os.Getenv("MEKUGI_MRUN_FORMAT_HELPER") == "1" {
 		frontend := os.Getenv("MEKUGI_MRUN_FORMAT_FRONTEND")
-		if handled, status := RunOwnedToolPluginWorker(testHistory(), testCommands(), t.Context(), frontend,
+		if handled, status := RunOwnedToolPluginWorker(testHistory(), testRecovery(), testCommands(), t.Context(), frontend,
 			[]string{"--max-tokens", "1", "--", "sh", "-c", "sleep 30 </dev/null >/dev/null 2>&1 & echo $! > child.pid; printf abc"},
 			nil, io.Discard, os.Stderr); !handled || status != 0 {
 			t.Fatalf("mrun frontend handled=%v status=%d", handled, status)
@@ -120,7 +120,7 @@ func testMRunCancellation(t *testing.T, arguments []string) {
 	defer cancel()
 	finished := make(chan int, 1)
 	go func() {
-		_, status := RunToolPluginWorker(testHistory(), testCommands(), ctx, registry.frontends["mrun"],
+		_, status := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(), ctx, registry.frontends["mrun"],
 			arguments,
 			nil, io.Discard, io.Discard)
 		finished <- status

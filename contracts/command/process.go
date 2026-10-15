@@ -1,7 +1,5 @@
 package command
 
-import "context"
-
 // ProcessScope states the caller's ownership of subprocess groups and descendants.
 type ProcessScope uint8
 
@@ -14,14 +12,3 @@ const (
 	// Only a dedicated authenticated frontend worker may receive this scope.
 	DedicatedHostProcess
 )
-
-type processScopeKey struct{}
-
-func WithProcessScope(ctx context.Context, scope ProcessScope) context.Context {
-	return context.WithValue(ctx, processScopeKey{}, scope)
-}
-
-func ProcessScopeFrom(ctx context.Context) ProcessScope {
-	scope, _ := ctx.Value(processScopeKey{}).(ProcessScope)
-	return scope
-}

@@ -46,7 +46,7 @@ func run() (exitCode int) {
 		}
 	}()
 	if handled, exitCode := router.RunOwnedToolPluginWorker(
-		frontends.History, frontends.Commands,
+		frontends.History, frontends.Recovery, frontends.Commands,
 		ctx,
 		os.Args[0],
 		os.Args[1:],

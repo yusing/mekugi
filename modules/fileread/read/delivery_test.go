@@ -18,7 +18,7 @@ func TestBundleDeliveryUsesActualReferencesAndCapturedRows(t *testing.T) {
 	}
 	paths := []string{nativeFixture(t, "first.txt", source.String()), nativeFixture(t, "second.txt", source.String())}
 	args := []string{"--number", "--max-tokens", "800", paths[0], "5:100", paths[1], "3:22"}
-	out, err := Execute(t.Context(), args, nil)
+	out, err := (Service{}).Execute(t.Context(), command.Request{Args: args, Stdin: nil})
 	if err != nil || out.Delivery == nil {
 		t.Fatalf("bundle=%+v err=%v", out, err)
 	}

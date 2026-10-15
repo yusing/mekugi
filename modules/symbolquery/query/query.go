@@ -324,11 +324,12 @@ func symbolURIPath(uri string) (string, error) {
 }
 
 // Execute runs one command-local set of semantic queries.
-func Execute(ctx context.Context, args []string, _ *os.File) (command.Output, error) {
+func (Service) Execute(ctx context.Context, request command.Request) (command.Output, error) {
+	args := request.Args
 	if err := ctx.Err(); err != nil {
 		return command.Output{}, err
 	}
-	dedicated := command.ProcessScopeFrom(ctx) == command.DedicatedHostProcess
+	dedicated := request.ProcessScope == command.DedicatedHostProcess
 	if dedicated {
 		if err := enableFrontendSubreaper(); err != nil {
 			return command.Output{}, fmt.Errorf("prepare frontend process cleanup: %w", err)
@@ -373,7 +374,7 @@ func Execute(ctx context.Context, args []string, _ *os.File) (command.Output, er
 	var wg sync.WaitGroup
 	for resolver, group := range groups {
 		wg.Go(func() {
-			runLSP(ctx, root, resolver, group)
+			runLSP(ctx, request.ProcessScope, root, resolver, group)
 		})
 	}
 	wg.Wait()

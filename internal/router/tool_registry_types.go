@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
 
@@ -28,6 +30,7 @@ type (
 	}
 
 	toolWorkerManifest struct {
+		recovery        *recovery.Service
 		history         *history.Service
 		ReplayDirectory string             `json:"replay_directory,omitempty"`
 		AXReadOutput    string             `json:"ax_read_output,omitempty"`

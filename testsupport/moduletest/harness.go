@@ -8,6 +8,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
+	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 )
 
@@ -61,4 +62,13 @@ func New[D, S any, B interface {
 		}
 	}
 	return service
+}
+
+// BindCommand exposes a descriptor command against its constructed test service.
+func BindCommand[S any](definition command.Definition[S], service S) command.Contribution {
+	return command.Contribution{Spec: definition.Spec, ObserveRead: definition.ObserveRead,
+		Run: func(ctx context.Context, request command.Request) (command.Output, error) {
+			return definition.Run(service, ctx, request)
+		},
+	}
 }

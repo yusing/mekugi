@@ -19,10 +19,9 @@ const codexThreadIDEnvironment = "CODEX_THREAD_ID"
 func executeFrontendReader(
 	ctx context.Context,
 	manifest toolWorkerManifest,
-	args []string,
 	name string,
-	stdin *os.File,
-	run func(context.Context, []string, *os.File) (command.Output, error),
+	request command.Request,
+	run func(context.Context, command.Request) (command.Output, error),
 ) (execution command.Output, err error) {
 	finish := beginFrontendRead(manifest, name)
 	defer func() {
@@ -35,7 +34,7 @@ func executeFrontendReader(
 		finish(&execution, err, err == nil && execution.ExitCode == 0 && ctx.Err() == nil, class)
 	}()
 
-	return run(ctx, args, stdin)
+	return run(ctx, request)
 }
 
 func frontendExecutionFailure(execution command.Output, err error) string {

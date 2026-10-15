@@ -37,15 +37,12 @@ func RetainedRecordKinds() []recordkind.Spec {
 			return changeRetirementPlanner(index), nil
 		}},
 	}
-	for _, prefix := range []string{"commentary-", "failure-", "usage-", "cursor-", "output-", "wait-", "hooks-"} {
+	for _, prefix := range []string{"commentary-", "failure-", "usage-", "wait-", "hooks-"} {
 		kind := recordkind.Spec{ID: strings.TrimSuffix(prefix, "-"), Match: func(name string) bool {
-			return hashedRecordName(name, prefix) || prefix == "output-" && validShellOutputID(strings.TrimSuffix(strings.TrimPrefix(name, "output-"), ".json")) && strings.HasPrefix(name, "output-") && strings.HasSuffix(name, ".json")
+			return hashedRecordName(name, prefix)
 		}}
 		if kind.ID == "commentary" {
 			kind.SeparateBudget, kind.Limit = true, 16<<20
-		}
-		if kind.ID == "output" {
-			kind.Limit = maxShellOutputStoreBytes
 		}
 		kinds = append(kinds, kind)
 	}

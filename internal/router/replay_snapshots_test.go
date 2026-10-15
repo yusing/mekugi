@@ -279,7 +279,7 @@ func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
 	release()
 	child, _ := retentionTestSession(t, store, "reader", 0)
 	child = bindTestHandleScope(t, store, child, "", "parent")
-	if _, err := store.readShellOutput(child, reference); err != nil {
+	if _, err := store.recoverOutput(child, reference); err != nil {
 		t.Fatal(err)
 	}
 	retentionTestAge(t, store, "parent", 15*24*time.Hour)
@@ -290,11 +290,7 @@ func TestReplaySnapshotsRetainedChangeOutputAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := reopened.readShellOutput(child, reference)
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := reopened.readSourceStreams(child, record)
+	output, err := reopened.recoverOutput(child, reference)
 	if err != nil || output.Stdout != text[1:] {
 		t.Fatalf("retained change output differs after expiry/restart: %q err=%v", output.Stdout, err)
 	}

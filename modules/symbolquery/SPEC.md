@@ -21,8 +21,8 @@ msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N]
 ```
 
 The [authenticated frontend contract](../../doc/spec/plugin.md) owns execution,
-caller authority, pinned identity, and stream delivery. Output uses the shared
-[reader token ceiling and continuation](../../doc/spec/read.md). Reader options and
+caller authority, pinned identity, and stream delivery. Output uses the
+[shared reader token options](../../doc/spec/plugin.md#output-and-recovery). Reader options and
 `--workspace ROOT` may surround the query operands.
 
 The canonical workspace defaults to the host process working directory. An optional
@@ -99,7 +99,7 @@ Empty `refs` is successful. A `def` without an editable workspace location is
 nonzero.
 
 Token-limited results retain all formatted rows up to 16 MiB and return only
-omitted rows for [managed continuation](../../doc/spec/read.md#managed-read-continuation).
+omitted rows for [managed continuation](../outputrecovery/SPEC.md#managed-read-continuation).
 The host owns publication, replay, and continuation delivery. Display
 truncation remains nonzero, and skipped locations still prevent claiming a
 complete definition or reference set. Location skip counts cover the complete

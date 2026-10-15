@@ -16,6 +16,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+
 	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -26,6 +28,7 @@ const maxReplayRecordBytes = history.MaxRecordBytes
 // Durable records are immutable translation facts. Request-local confirmation and
 // ordering are intentionally absent. Session retention removes only inactive, unshared records.
 type mekugiReplayStore struct {
+	recovery           *recovery.Service
 	writes             *persistence.Counter
 	directory          string
 	maxBytes           int64

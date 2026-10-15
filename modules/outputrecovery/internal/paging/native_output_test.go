@@ -1,4 +1,4 @@
-package toolplugin
+package paging
 
 import (
 	"encoding/json/jsontext"
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 )
 
 func nativeReadFixture(t *testing.T, request ReadRequest, budget int) ReadPage {
@@ -17,7 +19,7 @@ func nativeReadFixture(t *testing.T, request ReadRequest, budget int) ReadPage {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count := nativeTokens(t, page.Text); count > budget {
+	if count := countTokens(t, page.Text); count > budget {
 		t.Fatalf("page has %d tokens, limit %d", count, budget)
 	}
 	return page
@@ -65,13 +67,13 @@ func TestNativeOutputReadPagination(t *testing.T) {
 	oversized := "1:abcd " + strings.Repeat("word ", 200) + "\n"
 	request := ReadRequest{Stdout: oversized, StdoutKind: "rows", Stream: "stdout"}
 	page := nativeReadFixture(t, request, 80)
-	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != nativeTokens(t, oversized) {
+	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, oversized) {
 		t.Fatalf("oversized row must not advance: %+v", page)
 	}
 	request.Label, request.SourceRow = "file.go", 7
 	page = nativeReadFixture(t, request, 80)
 	framed := "--- file.go ---\n[rows 7:7]\n" + oversized
-	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != nativeTokens(t, framed) {
+	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, framed) {
 		t.Fatalf("oversized framed row must count admission framing: %+v", page)
 	}
 	if page := nativeReadFixture(t, ReadRequest{Stdout: "x", Stream: "stdout"}, 1); page.Text != "x" || !page.Complete {
@@ -124,7 +126,7 @@ func TestNativeOutputReadExactJSON(t *testing.T) {
 	}
 	request = ReadRequest{Stdout: source, StdoutKind: "json", Stream: "stdout"}
 	page = nativeReadFixture(t, request, 1)
-	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != nativeTokens(t, "[9007199254740993]") {
+	if page.Text != "" || page.Position != [2]int{} || page.Complete || page.NeededTokens != countTokens(t, "[9007199254740993]") {
 		t.Fatalf("oversized JSON entry: %+v", page)
 	}
 }
@@ -207,4 +209,17 @@ func TestNativeOutputRejectsInvalidReadPositions(t *testing.T) {
 			t.Fatalf("accepted invalid position: %+v", request)
 		}
 	}
+}
+
+func countTokens(t *testing.T, text string) int {
+	t.Helper()
+	codec, err := tokenizer.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, err := codec.Count(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return count
 }

@@ -313,7 +313,7 @@ Captured edits are not a live Git diff. Named ignored files are included; unknow
 commands capture observed effects, possibly from other writers. Previews are
 provisional; missing evidence is labeled. Dependency-directory contents are not retained
 and cannot be reverted/reapplied. Revert merges later edits, may create conflicts, and
-is captured too. See [changes](doc/spec/changes.md) and [reads](doc/spec/read.md).
+is captured too. See [changes](doc/spec/changes.md) and [retained reads](modules/outputrecovery/SPEC.md).
 
 ## Configuration
 

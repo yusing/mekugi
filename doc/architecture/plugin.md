@@ -15,7 +15,10 @@ availability check; the manifest remains authenticated and validated at use.
 
 Each extracted command contribution pairs its description with its compiled
 implementation and whether the host observes read completion. Observation failure
-cannot prevent command execution. The worker receives the composed catalog before authenticating
+cannot prevent command execution. Stateful command implementations receive their
+constructed module service through typed composition, alongside an explicit
+authenticated per-call scope. Descriptors declare commands before construction;
+execution begins only after successful activation. The worker receives the composed catalog before authenticating
 the selected frontend. The catalog provides descriptions and native dispatch for `mcat`, `inspect_file`,
 `msymbol`, `mread`, `mchanges`, and `mrun`. It does not execute declarations from
 user configuration or own a JavaScript/WASM plugin runtime. Reader parsing,

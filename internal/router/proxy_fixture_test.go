@@ -4,12 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+
+	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
+
+	"github.com/yusing/mekugi/testsupport/moduletest"
 
 	"github.com/yusing/mekugi/modules/symbolquery/query"
 
@@ -105,7 +112,7 @@ func TestMain(m *testing.M) {
 		if filepath.Base(os.Args[0]) == "mread" && os.Getenv(routerTestWorkerUnscopedEnvironment) == "1" {
 			_ = os.Unsetenv("CODEX_THREAD_ID")
 		}
-		if handled, code := RunToolPluginWorker(testHistory(), testCommands(),
+		if handled, code := runToolPluginWorkerInHostProcess(testHistory(), testRecovery(), testCommands(),
 			context.Background(), os.Args[0], os.Args[1:], os.Stdin, os.Stdout, os.Stderr,
 		); handled {
 			os.Exit(code)
@@ -178,5 +185,9 @@ func TestMain(m *testing.M) {
 
 func testCommands() []command.Contribution {
 	commands := toolplugin.Builtins()
-	return append(commands, run.Command, outline.Command, read.Command, query.Command)
+	return append(commands, moduletest.BindCommand(recovery.Command, testRecovery()), moduletest.BindCommand(run.Command, run.Service{}), moduletest.BindCommand(outline.Command, outline.Service{}), moduletest.BindCommand(read.Command, read.Service{}), moduletest.BindCommand(query.Command, query.Service{}))
+}
+
+func runToolPluginWorkerInHostProcess(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, argv0 string, args []string, stdin *os.File, stdout, stderr io.Writer) (bool, int) {
+	return runToolPluginWorker(service, recovered, commands, command.HostProcessGroup, ctx, argv0, args, stdin, stdout, stderr)
 }
