@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
@@ -78,7 +79,7 @@ func TestMCatBundleRedistributesUnusedShareAndKeepsOneContinuation(t *testing.T)
 	}
 	reserve := 16
 	for _, path := range []string{"small", "large"} {
-		pathTokens, err := codec.Count(string(mustMarshalJSON(path)))
+		pathTokens, err := codec.Count(string(responses.MustMarshalJSON(path)))
 		if err != nil {
 			t.Fatal(err)
 		}

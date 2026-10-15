@@ -27,7 +27,7 @@ func TestAutoLiveDiffEnableAndScopeEligibility(t *testing.T) {
 		{name: "empty thread", enabled: true, workspace: t.TempDir(), metadata: codexTurnMetadata{RequestKind: "turn"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
+			a, stop := newAutoLiveDiff(t.Context())
 			defer stop()
 			if test.enabled {
 				a.enable()
@@ -58,7 +58,7 @@ func TestAutoLiveDiffEnableAndScopeEligibility(t *testing.T) {
 func TestAutoLiveDiffRequestsOnlyAnEligibleScopedShell(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
 	t.Setenv("PATH", t.TempDir())
-	a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
+	a, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	a.enable()
 	rootWorkspace, childWorkspace := t.TempDir(), t.TempDir()
@@ -111,7 +111,7 @@ func TestAutoLiveDiffRequestsOnlyAnEligibleScopedShell(t *testing.T) {
 func TestAutoLiveDiffChildShellWaitsForRootWorkspace(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
 	t.Setenv("PATH", t.TempDir())
-	a, stop := newAutoLiveDiff(t.Context(), t.TempDir())
+	a, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	a.enable()
 	childWorkspace, rootWorkspace := t.TempDir(), t.TempDir()

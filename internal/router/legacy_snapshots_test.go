@@ -7,6 +7,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"slices"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Encoder retained solely to construct historical fixtures for read compatibility.
@@ -30,16 +32,15 @@ func (b *snapshotBatch) putFiles(files snapshotFiles, refs *replaySnapshots) (st
 }
 
 // A record's snapshot blobs are encoded together and published by the record
-// write: one ownership update and admission, then every missing blob, then one
-// directory sync before the envelope that references them.
+// write: one ownership update and admission, then every missing blob before
+// the envelope that references them.
 type snapshotBatch struct {
 	store   *mekugiReplayStore
 	missing []managedFile
 	seen    map[string]bool
 }
 
-// Called under store.lock. Existing blobs are validated, including on retries
-// after a failed sync; the record write syncs the directory before relying on them.
+// Called under store.lock. Existing blobs are validated before reuse.
 func (b *snapshotBatch) put(value any) (string, error) {
 	data, err := json.Marshal(value, json.Deterministic(true), json.FormatNilSliceAsNull(true))
 	if err != nil {
@@ -162,10 +163,38 @@ func putLegacySnapshotFixture(store *mekugiReplayStore, ctx context.Context, cal
 		if err != nil {
 			return err
 		}
-		data, err := marshalProtocolJSON(record)
+		data, err := responses.MarshalJSON(record)
 		if err != nil {
 			return err
 		}
-		return store.writeManagedFiles(managedFile{name: replayRecordName("/w", call, false), pattern: "call-pending-", data: data}, record.Snapshots.names(), blobs)
+		return store.writeLegacySnapshotFiles(managedFile{name: replayRecordName("/w", call, false), pattern: "call-pending-", data: data}, record.Snapshots.names(), blobs)
 	})
+}
+
+type managedFile struct {
+	name    string
+	pattern string
+	data    []byte
+}
+
+// Called under store.lock. The record and every dependency it references are
+// retained in one catalog update and admitted together before any write. The
+// missing dependencies are published before the record referencing them.
+func (s *mekugiReplayStore) writeLegacySnapshotFiles(record managedFile, dependencies []string, missing []managedFile) error {
+	if err := s.retainFiles(append([]string{record.name}, dependencies...)...); err != nil {
+		return storageIOError(err)
+	}
+	size := int64(len(record.data))
+	for _, file := range missing {
+		size += int64(len(file.data))
+	}
+	if err := s.maintainStorage(record.name, size); err != nil {
+		return err
+	}
+	for _, file := range missing {
+		if err := s.writeFile(file.name, file.pattern, file.data); err != nil {
+			return storageIOError(err)
+		}
+	}
+	return storageIOError(s.writeFile(record.name, record.pattern, record.data))
 }

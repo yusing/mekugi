@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
@@ -129,7 +130,7 @@ func TestShortReadReferencesInInheritedJSON(t *testing.T) {
 		"echo before\r\nmread\tmaple",
 		"read: incomplete; next_call: mread maple",
 	} {
-		raw := string(mustMarshalJSON(source))
+		raw := string(responses.MustMarshalJSON(source))
 		matches := retainedReadReference.FindAllStringSubmatch(raw, -1)
 		if len(matches) != 1 || matches[0][1] != "maple" {
 			t.Fatalf("lost inherited read in %q: %v", raw, matches)

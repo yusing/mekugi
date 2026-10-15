@@ -1,7 +1,10 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"strings"
 	"time"
@@ -55,8 +58,8 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 		if !ok || strings.TrimSpace(text) == "" {
 			continue // Opaque tasks never become an inferred plaintext assignment.
 		}
-		from := jsonString(item, "author")
-		id := subagentCommentaryMessageID("assignment\x00" + jsonString(item, "id") + "\x00" + from + "\x00" + recipient + "\x00" + text)
+		from := responses.StringField(item, "author")
+		id := subagentCommentaryMessageID("assignment\x00" + responses.StringField(item, "id") + "\x00" + from + "\x00" + recipient + "\x00" + text)
 		var metadata struct {
 			Created jsonv1.Number `json:"create_time"`
 		}

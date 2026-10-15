@@ -120,9 +120,9 @@ func (u *terminalUI) preview(preview diffview.Preview) {
 	dock.Update(preview)
 }
 
-// applyNativeDiff sends saved changes to the diff pane and live edit cards to
+// applyDiff sends saved changes to the diff pane and live edit cards to
 // the shared dock. All edits use the router preview and capture owners.
-func (u *terminalUI) applyNativeDiff(ctx context.Context, event liveDiffEvent) {
+func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
 	switch event.Kind {
 	case "preview":
 		preview := event.Preview

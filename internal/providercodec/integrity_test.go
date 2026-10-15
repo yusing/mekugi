@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestGrokEmptyContentWire(t *testing.T) {
@@ -25,7 +27,7 @@ func TestGrokEmptyContentWire(t *testing.T) {
 			Content json.RawMessage `json:"content"`
 		} `json:"messages"`
 	}
-	if err := json.Unmarshal(mustMarshalJSON(tr.body), &wire); err != nil {
+	if err := json.Unmarshal(responses.MustMarshalJSON(tr.body), &wire); err != nil {
 		t.Fatal(err)
 	}
 	if len(wire.Messages) != 2 {

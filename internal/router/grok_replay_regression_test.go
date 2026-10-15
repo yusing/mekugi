@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestSubagentBridgePreservesReplayFieldEncoding(t *testing.T) {
@@ -24,7 +26,7 @@ func TestSubagentBridgePreservesReplayFieldEncoding(t *testing.T) {
 				} else {
 					event["response"] = map[string]any{"output": []json.RawMessage{json.RawMessage(item)}}
 				}
-				visible, err := bridge.TransformSSE(mustMarshalJSON(event))
+				visible, err := bridge.TransformSSE(responses.MustMarshalJSON(event))
 				if err != nil {
 					t.Fatal(err)
 				}

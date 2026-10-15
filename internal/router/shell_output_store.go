@@ -14,6 +14,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 )
 
@@ -180,7 +181,7 @@ func (s *mekugiReplayStore) putReadCursor(ctx context.Context, source shellOutpu
 		}
 		record.ID = handles[0]
 		name := scopedCursorName(s.handleNamespace(), record.CursorDigest)
-		return s.writeManagedFile(name, "cursor-pending-", mustMarshalJSON(record.ID))
+		return s.writeManagedFile(name, "cursor-pending-", responses.MustMarshalJSON(record.ID))
 	})
 	if err != nil {
 		return "", err

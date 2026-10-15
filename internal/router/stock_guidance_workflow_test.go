@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
 	"strings"
 	"testing"
@@ -11,18 +13,18 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 	guide := registry.frontendGuidance
 	checkStableRefresh := func(t *testing.T, fields map[string]jsonv1.RawMessage) {
 		t.Helper()
-		before := mustMarshalJSON(fields)
+		before := responses.MustMarshalJSON(fields)
 		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
 			t.Fatal(err)
 		}
-		if !sameJSONValue(before, mustMarshalJSON(fields)) {
+		if !sameJSONValue(before, responses.MustMarshalJSON(fields)) {
 			t.Fatal("refreshing stock guidance changed an already-projected request")
 		}
 	}
 
 	t.Run("exec exec_command", func(t *testing.T) {
 		const stock = testCodeModeDescription
-		fields := map[string]jsonv1.RawMessage{"input": mustMarshalJSON([]any{testCodeModeAdditionalTools(stock)})}
+		fields := map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools(stock)})}
 		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide); err != nil {
 			t.Fatal(err)
 		}

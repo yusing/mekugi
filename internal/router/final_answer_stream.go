@@ -40,10 +40,10 @@ func (s *finalAnswerStream) observe(payload []byte) {
 		return
 	}
 	if event.Type == responseevents.OutputItemDone {
-		delete(s.pending, jsonString(event.Item, "id"))
+		delete(s.pending, responseevents.StringField(event.Item, "id"))
 		s.substantive = s.substantive || isSubstantiveAnswer(event.Item)
 		s.blocked = s.blocked || blocksTokenUsage(event.Item)
-	} else if id := jsonString(event.Item, "id"); id != "" && isFinalAnswerMessage(event.Item) {
+	} else if id := responseevents.StringField(event.Item, "id"); id != "" && isFinalAnswerMessage(event.Item) {
 		if s.pending == nil {
 			s.pending = make(map[string]int)
 		}
@@ -70,12 +70,12 @@ func (s *finalAnswerStream) complete(response []byte) ([][]byte, error) {
 	}
 	var events [][]byte
 	for _, item := range body.Output {
-		id := jsonString(item, "id")
+		id := responseevents.StringField(item, "id")
 		index, pending := s.pending[id]
 		if !pending || !isSubstantiveAnswer(item) {
 			continue
 		}
-		event, err := marshalProtocolJSON(map[string]any{"type": responseevents.OutputItemDone, "output_index": index, "item": item})
+		event, err := responseevents.MarshalJSON(map[string]any{"type": responseevents.OutputItemDone, "output_index": index, "item": item})
 		if err != nil {
 			return nil, err
 		}

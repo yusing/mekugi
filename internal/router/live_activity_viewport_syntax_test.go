@@ -46,7 +46,7 @@ func assertViewportSyntaxEager(t *testing.T, lazy, eager *liveActivityView, widt
 	t.Helper()
 	eager.runs = nil
 	got := lazy.renderFeed(width, rows)
-	want := eager.layoutFeed(width, rows)
+	want := eager.layoutFeed(width)
 	if !reflect.DeepEqual(threadPlain(got), threadPlain(want)) ||
 		!reflect.DeepEqual(got.heads, want.heads) ||
 		!reflect.DeepEqual(got.snippets, want.snippets) ||
@@ -325,7 +325,7 @@ func TestLiveActivityViewportSyntaxScrollEveryRow(t *testing.T) {
 				return v
 			}
 			lazy, eager := build(), build()
-			full := eager.layoutFeed(70, 3)
+			full := eager.layoutFeed(70)
 			if main {
 				continued := false
 				for key := range eager.runs {

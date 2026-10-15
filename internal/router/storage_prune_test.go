@@ -11,6 +11,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestBackgroundPruneDoesNotBlockSessionStartAndRejectsStaleOwnership(t *testing.T) {
@@ -157,7 +159,7 @@ func TestBackgroundPruneLargeSessionCatalogWriteAmplification(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	data, err := marshalProtocolJSON(catalog)
+	data, err := responses.MarshalJSON(catalog)
 	if err != nil {
 		t.Fatal(err)
 	}

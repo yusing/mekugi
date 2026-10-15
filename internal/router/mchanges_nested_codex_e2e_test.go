@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -124,7 +127,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 			p.sawPending = true
 			p.processWait = true
 			p.waitCall = "nested-process-wait"
-			return mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "write_stdin", "status": "completed", "arguments": string(mustMarshalJSON(map[string]any{"session_id": session, "chars": "", "yield_time_ms": 10000}))}), nil
+			return mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "write_stdin", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"session_id": session, "chars": "", "yield_time_ms": 10000}))}), nil
 		}
 		if cell != "" {
 			if p.expectPending {
@@ -140,7 +143,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 				p.sawPending = true
 			}
 			p.waitCall = fmt.Sprintf("nested-wait-%d", p.turns)
-			return mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(mustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil
+			return mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil
 		}
 		p.resultSeen = terminal
 		break
@@ -171,7 +174,7 @@ func mchangesNestedCodexResponse(turn int, item map[string]any) *http.Response {
 		{"type": "response.completed", "response": response},
 	} {
 		wire.WriteString("data: ")
-		wire.Write(mustMarshalJSON(event))
+		wire.Write(responses.MustMarshalJSON(event))
 		wire.WriteString("\n\n")
 	}
 	result := serverHTTPResponse(wire.String())
@@ -218,9 +221,9 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 
 	patch := "*** Begin Patch\n*** Add File: nested-patch.txt\n+patch-result\n*** End Patch\n"
 	shellCommand := "echo command-result > nested-command.txt"
-	successProgram := "const rows = " + string(mustMarshalJSON(strings.Split(patch, "\n"))) + "; await tools.apply_patch(rows.join('\\n'));\n" +
-		"const command = {cmd:" + string(mustMarshalJSON(shellCommand)) +
-		",workdir:" + string(mustMarshalJSON(workspace)) + "}; await tools.exec_command(command);"
+	successProgram := "const rows = " + string(responses.MustMarshalJSON(strings.Split(patch, "\n"))) + "; await tools.apply_patch(rows.join('\\n'));\n" +
+		"const command = {cmd:" + string(responses.MustMarshalJSON(shellCommand)) +
+		",workdir:" + string(responses.MustMarshalJSON(workspace)) + "}; await tools.exec_command(command);"
 	successProvider := &mchangesNestedCodexProvider{
 		program: successProgram, callID: "nested-success-call", finalMessage: "nested edits completed",
 	}
@@ -317,9 +320,9 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 	failurePatch := "*** Begin Patch\n*** Update File: nested-patch.txt\n@@\n-absent-before-line\n+replacement\n*** End Patch\n"
 	failureCommand := "echo partial-result > nested-partial.txt; exit 7"
-	failureProgram := "try { await tools.apply_patch(" + string(mustMarshalJSON(failurePatch)) + "); } catch (_) {}\n" +
-		"try { await tools.exec_command({cmd:" + string(mustMarshalJSON(failureCommand)) +
-		",workdir:" + string(mustMarshalJSON(failureWorkspace)) + "}); } catch (_) {}"
+	failureProgram := "try { await tools.apply_patch(" + string(responses.MustMarshalJSON(failurePatch)) + "); } catch (_) {}\n" +
+		"try { await tools.exec_command({cmd:" + string(responses.MustMarshalJSON(failureCommand)) +
+		",workdir:" + string(responses.MustMarshalJSON(failureWorkspace)) + "}); } catch (_) {}"
 	failureProvider := &mchangesNestedCodexProvider{
 		program: failureProgram, callID: "nested-failure-call", finalMessage: "outer cell completed after caught failures",
 	}
@@ -383,7 +386,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 
 	yieldWorkspace := t.TempDir()
-	yieldProgram := "// @exec: {\"yield_time_ms\": 1}\nconst result = await tools.exec_command({cmd: \"sleep 2; echo yielded-result > yielded.txt\", workdir: " + string(mustMarshalJSON(yieldWorkspace)) + ", yield_time_ms: 1000});\nif (result.session_id) { await tools.write_stdin({session_id: result.session_id, chars: \"\", yield_time_ms: 10000}); }"
+	yieldProgram := "// @exec: {\"yield_time_ms\": 1}\nconst result = await tools.exec_command({cmd: \"sleep 2; echo yielded-result > yielded.txt\", workdir: " + string(responses.MustMarshalJSON(yieldWorkspace)) + ", yield_time_ms: 1000});\nif (result.session_id) { await tools.write_stdin({session_id: result.session_id, chars: \"\", yield_time_ms: 10000}); }"
 	yieldProvider := &mchangesNestedCodexProvider{program: yieldProgram, callID: "nested-yield-call", finalMessage: "yielded edit completed", expectPending: true, store: store, workspace: yieldWorkspace}
 	yieldThread := runMChangesNestedCodexCell(t, codex, registry, store, yieldWorkspace, yieldProvider)
 	if !yieldProvider.sawPending {
@@ -398,7 +401,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 		t.Fatalf("yielded confirmation missing: %+v", yieldHistory)
 	}
 	processWorkspace := t.TempDir()
-	processProgram := "await tools.exec_command({cmd: \"sleep 2; echo process-result > process.txt\", workdir: " + string(mustMarshalJSON(processWorkspace)) + ", yield_time_ms: 1000});"
+	processProgram := "await tools.exec_command({cmd: \"sleep 2; echo process-result > process.txt\", workdir: " + string(responses.MustMarshalJSON(processWorkspace)) + ", yield_time_ms: 1000});"
 	processProvider := &mchangesNestedCodexProvider{program: processProgram, callID: "nested-process-call", finalMessage: "nested process completed", expectProcess: true, store: store, workspace: processWorkspace}
 	processThread := runMChangesNestedCodexCell(t, codex, registry, store, processWorkspace, processProvider)
 	processIDs := mchangesThreadIDs(t, store, processWorkspace, processThread)
@@ -417,8 +420,8 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	writeTestFile(t, filepath.Join(loopWorkspace, "loop-patch.txt"), "before\n")
 	loopPatch := "*** Begin Patch\n*** Update File: loop-patch.txt\n@@\n-before\n+after\n*** End Patch\n"
 	loopCommand := "printf x >> loop-command.txt"
-	loopProgram := "for (let i = 0; i < 2; i++) { try { await tools.apply_patch(" + string(mustMarshalJSON(loopPatch)) + "); } catch {} } " +
-		"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(loopCommand)) + "});"
+	loopProgram := "for (let i = 0; i < 2; i++) { try { await tools.apply_patch(" + string(responses.MustMarshalJSON(loopPatch)) + "); } catch {} } " +
+		"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(loopCommand)) + "});"
 	loopProvider := &mchangesNestedCodexProvider{program: loopProgram, callID: "nested-literal-loop", finalMessage: "literal loops completed"}
 	loopThread := runMChangesNestedCodexCell(t, codex, registry, store, loopWorkspace, loopProvider)
 	loopContext, releaseLoop, err := store.beginSession(t.Context(), loopThread, "mchanges-literal-loops")

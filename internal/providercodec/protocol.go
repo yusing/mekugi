@@ -1,7 +1,5 @@
 package providercodec
 
-// Source: internal/router/provider_protocol.go:1:324@5a2082938e797e6e15c374eb6ae135a0753dea24
-
 import (
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,7 +7,11 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
+
+// Source: internal/router/provider_protocol.go:1:324@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 // Endpoint adapters encode validated request data and normalize their own stream
 // framing. They do not select a provider or emit the Responses lifecycle.
@@ -63,12 +65,12 @@ func providerFunctionParameters(namespace, name string, parameters json.RawMessa
 	}
 	var properties map[string]map[string]json.RawMessage
 	if json.Unmarshal(schema["properties"], &properties) != nil ||
-		jsonString(properties["cell_id"], "type") != "string" {
+		responses.StringField(properties["cell_id"], "type") != "string" {
 		return parameters
 	}
 	changed := false
 	for _, field := range []string{"yield_time_ms", "max_tokens"} {
-		if jsonString(properties[field], "type") == "number" {
+		if responses.StringField(properties[field], "type") == "number" {
 			properties[field]["type"] = json.RawMessage(`"integer"`)
 			changed = true
 		}
@@ -76,8 +78,8 @@ func providerFunctionParameters(namespace, name string, parameters json.RawMessa
 	if !changed {
 		return parameters
 	}
-	schema["properties"] = mustMarshalJSON(properties)
-	return mustMarshalJSON(schema)
+	schema["properties"] = responses.MustMarshalJSON(properties)
+	return responses.MustMarshalJSON(schema)
 }
 
 // Translate validates shared tool identity and history, then builds
@@ -99,7 +101,7 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 		return nil, nil, fmt.Errorf("unsupported provider API format %q", format)
 	}
 	d := policy.Diagnostics
-	if value := jsonString(fields, "previous_response_id"); value != "" {
+	if value := responses.StringField(fields, "previous_response_id"); value != "" {
 		return nil, nil, fmt.Errorf("%s requires explicit conversation history, not previous_response_id", d.Subject)
 	}
 	tr := &Stream{policy: policy, endpoint: endpoint, tools: make(map[string]providerTool), model: model}
@@ -112,7 +114,7 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 			return fmt.Errorf("decode %s tools: %w", d.Name, err)
 		}
 		for _, def := range defs {
-			kind, name := jsonString(def, "type"), jsonString(def, "name")
+			kind, name := responses.StringField(def, "type"), responses.StringField(def, "name")
 			if kind == "namespace" {
 				if namespace != "" {
 					return fmt.Errorf("nested tool namespaces are not supported by %s", d.Name)
@@ -132,7 +134,7 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 					return fmt.Errorf("duplicate %s tool identity", d.Name)
 				}
 				tr.tools[wireName] = providerTool{name: name, namespace: namespace, kind: kind}
-				fn := map[string]any{"name": wireName, "description": jsonString(def, "description")}
+				fn := map[string]any{"name": wireName, "description": responses.StringField(def, "description")}
 				if kind == "function" {
 					parameters := def["parameters"]
 					if len(parameters) == 0 {
@@ -174,14 +176,14 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 		return nil, nil, fmt.Errorf("%s requires an array of conversation items", d.Subject)
 	}
 	for _, item := range input {
-		if jsonString(item, "type") == "additional_tools" {
+		if responses.StringField(item, "type") == "additional_tools" {
 			if err := addTools(item["tools"], ""); err != nil {
 				return nil, nil, err
 			}
 		}
 	}
 	messages := []providerMessage{}
-	instructions := jsonString(fields, "instructions")
+	instructions := responses.StringField(fields, "instructions")
 	if noHostedSearch {
 		instructions += policy.NoHostedSearchInstruction
 	}
@@ -189,12 +191,12 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 		messages = append(messages, providerMessage{role: "system", content: instructions})
 	}
 	for _, item := range input {
-		kind := jsonString(item, "type")
+		kind := responses.StringField(item, "type")
 		switch kind {
 		case "additional_tools":
 			continue
 		case "message", "":
-			role := jsonString(item, "role")
+			role := responses.StringField(item, "role")
 			if role == "developer" {
 				role = "system"
 			}
@@ -222,19 +224,19 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 			}
 			messages = append(messages, providerMessage{role: "user", content: content})
 		case "function_call", "custom_tool_call":
-			name := providerToolName(jsonString(item, "namespace"), jsonString(item, "name"))
-			arguments := jsonString(item, "arguments")
+			name := providerToolName(responses.StringField(item, "namespace"), responses.StringField(item, "name"))
+			arguments := responses.StringField(item, "arguments")
 			if kind == "custom_tool_call" {
 				var input *string
 				if json.Unmarshal(item["input"], &input) != nil || input == nil {
 					return nil, nil, fmt.Errorf("%s custom tool history input is not a string", d.Subject)
 				}
-				arguments = string(mustMarshalJSON(map[string]string{"input": *input}))
+				arguments = string(responses.MustMarshalJSON(map[string]string{"input": *input}))
 			}
 			if !json.Valid([]byte(arguments)) {
 				return nil, nil, fmt.Errorf("invalid JSON in %s tool-call history", d.Name)
 			}
-			call := providerCall{id: jsonString(item, "call_id"), name: name, arguments: arguments}
+			call := providerCall{id: responses.StringField(item, "call_id"), name: name, arguments: arguments}
 			if len(messages) == 0 || messages[len(messages)-1].role != "assistant" {
 				messages = append(messages, providerMessage{role: "assistant"})
 			}
@@ -245,10 +247,10 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 			if err != nil {
 				return nil, nil, err
 			}
-			messages = append(messages, providerMessage{role: "tool", callID: jsonString(item, "call_id"), content: content})
+			messages = append(messages, providerMessage{role: "tool", callID: responses.StringField(item, "call_id"), content: content})
 		case "reasoning":
-			if policy.RestoreReasoning != nil && jsonString(item, "encrypted_content") != "" {
-				restored, err := policy.RestoreReasoning(jsonString(item, "encrypted_content"))
+			if policy.RestoreReasoning != nil && responses.StringField(item, "encrypted_content") != "" {
+				restored, err := policy.RestoreReasoning(responses.StringField(item, "encrypted_content"))
 				if err != nil {
 					return nil, nil, err
 				}
@@ -259,7 +261,7 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 				last.retained = append(last.retained, restored)
 				continue
 			}
-			if encrypted := jsonString(item, "encrypted_content"); encrypted != "" {
+			if encrypted := responses.StringField(item, "encrypted_content"); encrypted != "" {
 				return nil, nil, d.Incompatible(d.Prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted OpenAI reasoning; start a fresh %s thread or spawn with fork_turns=none.", d.Name, d.Name))
 			}
 			if policy.ReplaySummaries {
@@ -318,26 +320,26 @@ func providerContent(raw json.RawMessage, d Diagnostics) (any, error) {
 	}
 	var content []any
 	for _, part := range parts {
-		switch jsonString(part, "type") {
+		switch responses.StringField(part, "type") {
 		case "input_text", "output_text", "text":
-			value := jsonString(part, "text")
+			value := responses.StringField(part, "text")
 			content = append(content, map[string]string{"type": "text", "text": value})
 		case "input_image":
-			imageURL := jsonString(part, "image_url")
+			imageURL := responses.StringField(part, "image_url")
 			if imageURL == "" {
 				return nil, fmt.Errorf("%s requires an image URL or data URL, not a provider file ID", d.Subject)
 			}
 			image := map[string]string{"url": imageURL}
-			if detail := jsonString(part, "detail"); detail != "" {
+			if detail := responses.StringField(part, "detail"); detail != "" {
 				image["detail"] = detail
 			}
 			content = append(content, map[string]any{"type": "image_url", "image_url": image})
 		case "refusal":
-			content = append(content, map[string]any{"type": "refusal", "refusal": jsonString(part, "refusal")})
+			content = append(content, map[string]any{"type": "refusal", "refusal": responses.StringField(part, "refusal")})
 		case "encrypted_content":
 			return nil, d.Incompatible(d.Prefix+"_encrypted_history", fmt.Sprintf("%s cannot read encrypted agent messages; start a fresh thread with the %s collaboration bridge enabled.", d.Name, d.Name))
 		default:
-			return nil, fmt.Errorf("unsupported %s content type %q", d.Name, jsonString(part, "type"))
+			return nil, fmt.Errorf("unsupported %s content type %q", d.Name, responses.StringField(part, "type"))
 		}
 	}
 	return content, nil

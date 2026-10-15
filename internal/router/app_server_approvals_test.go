@@ -3,6 +3,9 @@ package router
 import (
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -15,6 +18,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/internal/livediff"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/testdata/uisnapshot"
@@ -454,7 +458,7 @@ func TestNativeApprovalFeedbackWebSocketContinuation(t *testing.T) {
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "approval-session")
 	headers.Set(threadIDHeader, "thread-1")
-	headers.Set(codexTurnMetadataHeader, string(mustMarshalJSON(codexTurnMetadata{
+	headers.Set(codexTurnMetadataHeader, string(responses.MustMarshalJSON(codexTurnMetadata{
 		RequestKind: "turn", TurnID: "turn", Directories: map[string]jsontext.Value{t.TempDir(): nil},
 	})))
 	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -479,14 +483,14 @@ func TestNativeApprovalFeedbackWebSocketContinuation(t *testing.T) {
 			}
 			denials, reasons := 0, 0
 			for _, item := range input {
-				if jsonString(item, "call_id") == "denied" && jsonString(item, "output") == "exec command rejected by user" {
+				if responses.StringField(item, "call_id") == "denied" && responses.StringField(item, "output") == "exec command rejected by user" {
 					denials++
 				}
-				if jsonString(item, "role") == "user" && strings.Contains(string(item["content"]), feedback) {
+				if responses.StringField(item, "role") == "user" && strings.Contains(string(item["content"]), feedback) {
 					reasons++
 				}
 			}
-			if denials != 1 || reasons != 1 || jsonString(request, "previous_response_id") != "" {
+			if denials != 1 || reasons != 1 || responses.StringField(request, "previous_response_id") != "" {
 				t.Errorf("%s: denial=%d feedback=%d parent=%s", id, denials, reasons, request["previous_response_id"])
 			}
 			if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", id)); err != nil {
@@ -500,8 +504,8 @@ func TestNativeApprovalFeedbackWebSocketContinuation(t *testing.T) {
 		socketWrite(t, ctx, conn, map[string]any{
 			"type": "response.create", "model": "gpt-test", "tools": testExecResponsesTools(), "input": input, "previous_response_id": parent,
 		})
-		if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
-			t.Fatalf("continuation failed: %s", mustMarshalJSON(got))
+		if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
+			t.Fatalf("continuation failed: %s", responses.MustMarshalJSON(got))
 		}
 		input = []any{map[string]string{"role": "user", "content": "continue"}}
 	}

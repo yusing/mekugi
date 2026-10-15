@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // The index contains identities and application receipts, not another copy of
@@ -140,7 +142,7 @@ func (s *mekugiReplayStore) writeChangeIndex(index changeIndex) (err error) {
 	if _, err := s.reconcileRetiredChanges(&index); err != nil {
 		return err
 	}
-	data, err := marshalProtocolJSON(index)
+	data, err := responses.MarshalJSON(index)
 	if err != nil {
 		return err
 	}

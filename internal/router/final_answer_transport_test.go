@@ -4,7 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"io"
 	"net/http"
@@ -70,7 +74,7 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 									return http.NewResponseController(w).Flush()
 								}
 							}
-							if err := send(mustMarshalJSON(socketEvent("response.created", "response"))); err != nil {
+							if err := send(responses.MustMarshalJSON(socketEvent("response.created", "response"))); err != nil {
 								providerDone <- err
 								return
 							}
@@ -123,7 +127,7 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 							if err := json.Unmarshal(request.originalBody, &create); err != nil {
 								t.Fatal(err)
 							}
-							create["type"] = mustMarshalJSON("response.create")
+							create["type"] = responses.MustMarshalJSON("response.create")
 							socketWrite(t, ctx, conn, create)
 							next = func() ([]byte, error) { _, payload, err := conn.Read(ctx); return payload, err }
 						} else {

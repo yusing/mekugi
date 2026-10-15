@@ -1423,7 +1423,7 @@ func (feed *liveActivityFeed) appendRows(run liveActivityRun) {
 // view each block is clipped to five rows; full content opens in a dialog.
 func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	v.painter.LayoutOnly = true
-	feed := v.layoutFeed(width, rows)
+	feed := v.layoutFeed(width)
 	v.painter.LayoutOnly = false
 	if anchor := v.expansionAnchor; anchor != nil {
 		for _, span := range feed.spans {
@@ -1464,7 +1464,7 @@ func (v *liveActivityView) renderFeed(width, rows int) liveActivityFeed {
 	return feed
 }
 
-func (v *liveActivityView) layoutFeed(width, rows int) liveActivityFeed {
+func (v *liveActivityView) layoutFeed(width int) liveActivityFeed {
 	if v.conversation {
 		return v.renderConversation(width)
 	}

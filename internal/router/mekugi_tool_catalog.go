@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 type executionOwner struct {
@@ -106,7 +108,7 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *responses
 		owner.section.tools[owner.toolIndex].setDescription(description)
 		if owner.group == nil {
 			if owner.namespace != nil {
-				encoded, err := marshalProtocolJSON(owner.section.tools)
+				encoded, err := responses.MarshalJSON(owner.section.tools)
 				if err != nil {
 					return nil, err
 				}

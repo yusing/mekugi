@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
 	"fmt"
 	"os"
@@ -32,8 +34,8 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 
 	firstPatch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+middle\n*** End Patch\n"
 	secondPatch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-middle\n+final\n*** End Patch\n"
-	firstSource := "await tools.apply_patch(" + string(mustMarshalJSON(firstPatch)) + "); await tools.exec_command({cmd: 'printf command > command.txt'});"
-	secondSource := "await tools.apply_patch(" + string(mustMarshalJSON(secondPatch)) + ");"
+	firstSource := "await tools.apply_patch(" + string(responses.MustMarshalJSON(firstPatch)) + "); await tools.exec_command({cmd: 'printf command > command.txt'});"
+	secondSource := "await tools.apply_patch(" + string(responses.MustMarshalJSON(secondPatch)) + ");"
 	codeCall := func(id, source string) map[string]any {
 		return map[string]any{
 			"type": "custom_tool_call", "id": id + "-item", "call_id": id,

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func finalAnswerTestEvents(t *testing.T, phase string) [][]byte {
@@ -114,7 +116,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 						completed = true
 						break
 					}
-					if event.Type == "response.output_item.done" && jsonString(event.Item, "role") == "assistant" {
+					if event.Type == "response.output_item.done" && responses.StringField(event.Item, "role") == "assistant" {
 						var content []struct {
 							Text string `json:"text"`
 						}

@@ -54,7 +54,7 @@ func assistantCommentaryMessage(id, text string) map[string]json.RawMessage {
 		Phase   string       `json:"phase"`
 		Content []outputText `json:"content"`
 	}
-	encoded := mustMarshalJSON(outputMessage{
+	encoded := responseevents.MustMarshalJSON(outputMessage{
 		Role:   "assistant",
 		Type:   "message",
 		ID:     id,
@@ -75,7 +75,7 @@ func assistantCommentaryMessage(id, text string) map[string]json.RawMessage {
 
 // assistantCommentaryDoneEvent creates a response.output_item.done event for a commentary message.
 func assistantCommentaryDoneEvent(message map[string]json.RawMessage) []byte {
-	return mustMarshalJSON(struct {
+	return responseevents.MustMarshalJSON(struct {
 		Type string                     `json:"type"`
 		Item map[string]json.RawMessage `json:"item"`
 	}{

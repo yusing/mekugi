@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestTokenUsageManualSwitch(t *testing.T) {
@@ -127,7 +128,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 				socketWrite(t, ctx, conn, request.fields)
 				for {
 					event := socketRead(t, ctx, conn)
-					kind := jsonString(event, "type")
+					kind := responses.StringField(event, "type")
 					if kind == "error" || kind == "response.completed" {
 						if (kind == "error") != (attempt == 0) {
 							t.Fatalf("unexpected terminal type=%s attempt=%d", kind, attempt)
@@ -289,8 +290,8 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 			t.Error(err)
 			return
 		}
-		if jsonString(create, "model") != leader {
-			t.Errorf("provider model=%s", jsonString(create, "model"))
+		if responses.StringField(create, "model") != leader {
+			t.Errorf("provider model=%s", responses.StringField(create, "model"))
 		}
 		if err = providerSocketWrite(ctx, upstream, socketEvent("response.created", "parent")); err != nil {
 			t.Error(err)
@@ -341,11 +342,11 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		if configured == "gpt-5.6-terra" {
 			wantModel = "gpt-6-sol"
 		}
-		if jsonString(next, "model") != wantModel || jsonString(next, "service_tier") != wantTier {
-			t.Errorf("next model=%s tier=%s", jsonString(next, "model"), jsonString(next, "service_tier"))
+		if responses.StringField(next, "model") != wantModel || responses.StringField(next, "service_tier") != wantTier {
+			t.Errorf("next model=%s tier=%s", responses.StringField(next, "model"), responses.StringField(next, "service_tier"))
 		}
-		if jsonString(next, "previous_response_id") != "successor" {
-			t.Errorf("ordinary final lost confirmed provider cache parent: %q", jsonString(next, "previous_response_id"))
+		if responses.StringField(next, "previous_response_id") != "successor" {
+			t.Errorf("ordinary final lost confirmed provider cache parent: %q", responses.StringField(next, "previous_response_id"))
 		}
 		var deltaInput []map[string]json.RawMessage
 		if err := json.Unmarshal(next["input"], &deltaInput); err != nil {
@@ -353,10 +354,10 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		}
 		priorQuestion, steering, nextQuestion := false, false, false
 		for _, item := range deltaInput {
-			if jsonString(item, "id") == finalAnswerID {
+			if responses.StringField(item, "id") == finalAnswerID {
 				t.Errorf("already cached ordinary final %q replayed in provider input delta", finalAnswerID)
 			}
-			if jsonString(item, "role") == "user" {
+			if responses.StringField(item, "role") == "user" {
 				var content string
 				if json.Unmarshal(item["content"], &content) == nil {
 					priorQuestion = priorQuestion || content == "task"
@@ -407,25 +408,25 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		f["type"] = "response.create"
 	})
 	socketWrite(t, ctx, conn, request.fields)
-	if event := socketRead(t, ctx, conn); jsonString(event, "type") != "response.created" {
-		t.Fatalf("first=%s", mustMarshalJSON(event))
+	if event := socketRead(t, ctx, conn); responses.StringField(event, "type") != "response.created" {
+		t.Fatalf("first=%s", responses.MustMarshalJSON(event))
 	}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.steer", "previous_response_id": "parent", "input": "change direction"})
 	finalAnswerID := ""
 	for {
 		event := socketRead(t, ctx, conn)
-		if jsonString(event, "type") == "error" {
-			t.Fatalf("successor error=%s", mustMarshalJSON(event))
+		if responses.StringField(event, "type") == "error" {
+			t.Fatalf("successor error=%s", responses.MustMarshalJSON(event))
 		}
-		if jsonString(event, "type") == "response.output_item.done" {
+		if responses.StringField(event, "type") == "response.output_item.done" {
 			var item map[string]json.RawMessage
 			if err := json.Unmarshal(event["item"], &item); err == nil {
-				if jsonString(item, "phase") == "final_answer" {
-					finalAnswerID = jsonString(item, "id")
+				if responses.StringField(item, "phase") == "final_answer" {
+					finalAnswerID = responses.StringField(item, "id")
 				}
 			}
 		}
-		if jsonString(event, "type") == "response.completed" {
+		if responses.StringField(event, "type") == "response.completed" {
 			break
 		}
 	}
@@ -436,17 +437,17 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		t.Fatalf("successor repriced unsent model: report=%+v total=%v want=%v", got, total, 2*initialCost)
 	}
 	if configured != "gpt-5.6-terra" {
-		request.fields["model"] = mustMarshalJSON("gpt-6-astra")
+		request.fields["model"] = responses.MustMarshalJSON("gpt-6-astra")
 	}
-	request.fields["previous_response_id"] = mustMarshalJSON("successor")
-	request.fields["input"] = mustMarshalJSON([]any{map[string]any{"role": "user", "content": "next task"}})
+	request.fields["previous_response_id"] = responses.MustMarshalJSON("successor")
+	request.fields["input"] = responses.MustMarshalJSON([]any{map[string]any{"role": "user", "content": "next task"}})
 	socketWrite(t, ctx, conn, request.fields)
 	for {
 		event := socketRead(t, ctx, conn)
-		if jsonString(event, "type") == "error" {
-			t.Fatalf("explicit successor error=%s", mustMarshalJSON(event))
+		if responses.StringField(event, "type") == "error" {
+			t.Fatalf("explicit successor error=%s", responses.MustMarshalJSON(event))
 		}
-		if jsonString(event, "type") == "response.completed" {
+		if responses.StringField(event, "type") == "response.completed" {
 			break
 		}
 	}

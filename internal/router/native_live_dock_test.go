@@ -21,7 +21,7 @@ func TestNativeUIRunningChildRemovalReleasesDock(t *testing.T) {
 	deliver := func() {
 		for _, event := range broker.takePreviews(sub) {
 			if event.Kind == "preview" {
-				u.shell.applyNativeDiff(t.Context(), event)
+				u.shell.applyDiff(t.Context(), event)
 				revealNativeDock(u.shell)
 			}
 		}

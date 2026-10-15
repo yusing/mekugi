@@ -2,6 +2,9 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"net/http"
 	"testing"
@@ -33,10 +36,10 @@ func TestResponsesWebSocketBridgesUpgradeTurnStateOnce(t *testing.T) {
 					}
 					if i == 0 {
 						if string(request["generate"]) != "false" {
-							t.Errorf("prewarm generated: %s", mustMarshalJSON(request))
+							t.Errorf("prewarm generated: %s", responses.MustMarshalJSON(request))
 						}
 					} else {
-						if got := jsonString(request, "previous_response_id"); got != ids[i-1] {
+						if got := responses.StringField(request, "previous_response_id"); got != ids[i-1] {
 							t.Errorf("request %d parent = %q, want %q", i, got, ids[i-1])
 						}
 						var metadata map[string]string
@@ -83,8 +86,8 @@ func TestResponsesWebSocketBridgesUpgradeTurnStateOnce(t *testing.T) {
 				socketWrite(t, ctx, conn, request)
 				event := socketRead(t, ctx, conn)
 				if i == 0 && handshakeToken != "" {
-					if got := jsonString(event, "type"); got != "response.metadata" {
-						t.Fatalf("first event = %q, want response.metadata: %s", got, mustMarshalJSON(event))
+					if got := responses.StringField(event, "type"); got != "response.metadata" {
+						t.Fatalf("first event = %q, want response.metadata: %s", got, responses.MustMarshalJSON(event))
 					}
 					var headers map[string]string
 					if err := json.Unmarshal(event["headers"], &headers); err != nil {
@@ -95,8 +98,8 @@ func TestResponsesWebSocketBridgesUpgradeTurnStateOnce(t *testing.T) {
 					}
 					event = socketRead(t, ctx, conn)
 				}
-				if got := jsonString(event, "type"); got != "response.completed" {
-					t.Fatalf("request %d event = %q, want completed: %s", i, got, mustMarshalJSON(event))
+				if got := responses.StringField(event, "type"); got != "response.completed" {
+					t.Fatalf("request %d event = %q, want completed: %s", i, got, responses.MustMarshalJSON(event))
 				}
 			}
 		})

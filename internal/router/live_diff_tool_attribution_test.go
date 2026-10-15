@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/execscope"
-
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -19,12 +19,12 @@ func TestLiveDiffEditingToolAttribution(t *testing.T) {
 	python := "python3 - <<'PY'\nopen('target.txt', 'w').write('edited\\n')\nPY\n"
 	for _, tc := range []struct{ name, kind, input, tool string }{
 		{"native patch", applyPatchToolName, patch, "apply_patch"},
-		{"nested patch", "exec", "text(await tools.apply_patch(" + string(mustMarshalJSON(patch)) + "));", "apply_patch"},
-		{"bound nested patch", "exec", "const patch = " + string(mustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));", "apply_patch"},
-		{"native cat", nativeExecCommandToolName, string(mustMarshalJSON(map[string]string{"cmd": cat})), "cat"},
-		{"nested cat", "exec", "text(await tools.exec_command(" + string(mustMarshalJSON(map[string]string{"cmd": cat})) + "));", "cat"},
-		{"native python", nativeExecCommandToolName, string(mustMarshalJSON(map[string]string{"cmd": python})), "python3"},
-		{"nested python", "exec", "text(await tools.exec_command(" + string(mustMarshalJSON(map[string]string{"cmd": python})) + "));", "python3"},
+		{"nested patch", "exec", "text(await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + "));", "apply_patch"},
+		{"bound nested patch", "exec", "const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));", "apply_patch"},
+		{"native cat", nativeExecCommandToolName, string(responses.MustMarshalJSON(map[string]string{"cmd": cat})), "cat"},
+		{"nested cat", "exec", "text(await tools.exec_command(" + string(responses.MustMarshalJSON(map[string]string{"cmd": cat})) + "));", "cat"},
+		{"native python", nativeExecCommandToolName, string(responses.MustMarshalJSON(map[string]string{"cmd": python})), "python3"},
+		{"nested python", "exec", "text(await tools.exec_command(" + string(responses.MustMarshalJSON(map[string]string{"cmd": python})) + "));", "python3"},
 		{"unknown nested command", "exec", "text(await tools.exec_command({cmd:computed}));", ""},
 		{"read only", nativeExecCommandToolName, `{"cmd":"cat target.txt"}`, ""},
 	} {
@@ -52,7 +52,7 @@ func TestLiveDiffNestedToolAttributionSurvivesStreamingCompletion(t *testing.T) 
 	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
 	t.Cleanup(worker.stop)
 	command := "cat >target.txt <<'END'\nfirst\nsecond\nEND\n"
-	input := "text(await tools.exec_command(" + string(mustMarshalJSON(map[string]string{"cmd": command})) + "));"
+	input := "text(await tools.exec_command(" + string(responses.MustMarshalJSON(map[string]string{"cmd": command})) + "));"
 	point := strings.Index(input, "second")
 	worker.appendDelta(input[:point])
 	live := waitLiveDiffWorkerPreview(t, broker, sub, func(p diffview.Preview) bool { return len(p.Files) == 1 })

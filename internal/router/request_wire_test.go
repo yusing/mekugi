@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestRequestWireBodyPreservesUnchangedBytes(t *testing.T) {
@@ -59,7 +61,7 @@ func TestRequestWireBodyReplacesOnlyProjectedFields(t *testing.T) {
 }
 
 func TestProtocolJSONDoesNotEscapeHTML(t *testing.T) {
-	got, err := marshalProtocolJSON(map[string]any{"text": "<tag>&", "nested": map[string]string{"text": "<&>"}})
+	got, err := responses.MarshalJSON(map[string]any{"text": "<tag>&", "nested": map[string]string{"text": "<&>"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,5 @@
 package router
 
-// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
-
 import (
 	"bytes"
 	"context"
@@ -21,6 +19,10 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/internal/responses"
+
+	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
+
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
@@ -239,7 +241,7 @@ func RunSession(ctx context.Context, args []string, issues *CriticalErrors, read
 			issues.addThreadNotice(session, thread, "storage_cleanup_"+phase, message)
 		}
 		var stopLiveDiff func()
-		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx, replayDirectory)
+		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx)
 		mekugiCalls.autoLiveDiff.notice = func(category, message string) { issues.addNotice("", category, message) }
 		replayStore.liveDiff = mekugiCalls.autoLiveDiff.events.publish
 		defer stopLiveDiff()
@@ -594,7 +596,7 @@ func writeRequestError(writer *trackedResponseWriter, requestErr error) {
 		if rejection, ok := errors.AsType[*providerHTTPError](requestErr); ok {
 			writer.Header().Set("Content-Type", "application/json")
 			writer.WriteHeader(rejection.status)
-			_, _ = writer.Write(mustMarshalJSON(map[string]any{"error": map[string]string{
+			_, _ = writer.Write(responses.MustMarshalJSON(map[string]any{"error": map[string]string{
 				"type": "provider_error", "message": rejection.Error(),
 			}}))
 			return
@@ -638,7 +640,7 @@ func (f *requestFinalization) finish(
 	requestErr error,
 	output io.Writer,
 	issues *CriticalErrors,
-) error {
+) {
 	responseStarted := requestResponseStarted(output)
 	if f.observation.outcome == requestOutcomeUnknown {
 		switch {
@@ -662,8 +664,6 @@ func (f *requestFinalization) finish(
 	}
 	issues.record(f, requestErr)
 	issues.persistFailure(f)
-
-	return nil
 }
 
 func requestResponseStarted(output io.Writer) bool {

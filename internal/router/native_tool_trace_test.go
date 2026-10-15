@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -251,7 +253,7 @@ func TestNativeTraceCommandsMatchAuthoredShellCalls(t *testing.T) {
 			f.start("t", "1", "cell", source)
 			for i, command := range append(tc.extra, edit) {
 				id := fmt.Sprint(i)
-				f.tool("t", "1", id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": command})))
+				f.tool("t", "1", id, "exec_command", string(responses.MustMarshalJSON(map[string]any{"cmd": command})))
 				f.result("t", id, "completed", map[string]any{"exit_code": 0})
 			}
 			f.end("t", "1")

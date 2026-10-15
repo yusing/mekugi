@@ -495,9 +495,7 @@ func copyJSONTransformed(writer io.Writer, reader io.Reader, transformer respons
 	if hooks != nil {
 		hooks.receivedAt = time.Now()
 	}
-	if err := hooks.observe(body, false); err != nil {
-		return responseTerminalUnknown, fmt.Errorf("%w: %w", errResponseTransform, err)
-	}
+	hooks.observe(body, false)
 	visible := body
 	if transformer != nil {
 		visible, err = transformer.TransformJSON(body)
@@ -542,7 +540,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 					return terminalState, writeErr
 				}
 				event = event[:0]
-				if isResponseTerminal(eventTerminalState) {
+				if eventTerminalState.Terminal() {
 					return terminalState, nil
 				}
 			} else {
@@ -565,7 +563,7 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 				if writeErr != nil {
 					return terminalState, writeErr
 				}
-				if isResponseTerminal(eventTerminalState) {
+				if eventTerminalState.Terminal() {
 					return terminalState, nil
 				}
 				if transformer != nil {
@@ -578,10 +576,6 @@ func copySSETransformed(writer io.Writer, reader io.Reader, transformer response
 			return terminalState, err
 		}
 	}
-}
-
-func isResponseTerminal(state responseTerminalState) bool {
-	return state.Terminal()
 }
 
 func consumeOptionalUTF8BOM(reader *bufio.Reader) error {
@@ -613,9 +607,7 @@ func writeSSEEvent(writer io.Writer, lines []string, separator string, transform
 	payload := ssePayload(lines)
 	terminalState := observeResponseTerminal(payload, true)
 
-	if err := hooks.observe(payload, true); err != nil {
-		return terminalState, fmt.Errorf("%w: %w", errResponseTransform, err)
-	}
+	hooks.observe(payload, true)
 	visible := [][]byte{payload}
 	if transformer != nil && len(payload) > 0 {
 		var err error
@@ -677,7 +669,7 @@ func writeSSEEvent(writer io.Writer, lines []string, separator string, transform
 			if json.Unmarshal(payload, &event) == nil && event.Type == "response.created" {
 				hooks.deliveredResponseID = event.Response.ID
 			}
-			if isResponseTerminal(observeResponseTerminal(payload, true)) {
+			if observeResponseTerminal(payload, true).Terminal() {
 				hooks.deliveredTerminal = true
 			}
 		}

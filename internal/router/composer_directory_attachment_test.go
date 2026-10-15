@@ -2,7 +2,11 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -221,7 +225,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 	if !ok || len(frames) != 1 || !strings.HasPrefix(frames[0], "Attached file ") || !strings.Contains(frames[0], "directory tree, max depth 2") || !strings.HasSuffix(frames[0], ":\n./\n- original.go\n") {
 		t.Fatalf("submitted directory snapshot = %q", frames)
 	}
-	raw := mustMarshalJSON([]any{map[string]any{"role": "user", "content": []any{
+	raw := responses.MustMarshalJSON([]any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": input[0].Text},
 		map[string]any{"type": "input_text", "text": input[1].Text},
 	}}})

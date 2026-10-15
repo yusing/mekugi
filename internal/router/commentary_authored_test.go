@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestFunctionToolCallsPassThrough(t *testing.T) {
@@ -22,8 +24,8 @@ func TestFunctionToolCallsPassThrough(t *testing.T) {
 				t.Fatal(err)
 			}
 			input = append(input, testCodeModeAdditionalTools(testCodeModeDescription))
-			request.fields["input"] = mustMarshalJSON(input)
-			prepared, err := parseResponsesRequest(mustMarshalJSON(request.fields))
+			request.fields["input"] = responses.MustMarshalJSON(input)
+			prepared, err := parseResponsesRequest(responses.MustMarshalJSON(request.fields))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,7 +61,7 @@ func TestFunctionToolCallsPassThrough(t *testing.T) {
 			if err := json.Unmarshal(got, &response); err != nil {
 				t.Fatal(err)
 			}
-			if len(response.Output) != 1 || jsonString(response.Output[0], "arguments") != tc.arguments {
+			if len(response.Output) != 1 || responses.StringField(response.Output[0], "arguments") != tc.arguments {
 				t.Fatalf("JSON passthrough changed: %s", got)
 			}
 			if len(transform.local) != 0 {

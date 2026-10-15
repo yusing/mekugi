@@ -31,7 +31,7 @@ func TestAppServerShellNativeCodex(t *testing.T) {
 	f := newMChangesSliceFixture(t, "shell-native")
 	proxy := newProxyWithSharedTestRegistry(t, f.registry)
 	proxy.replayStore = f.store
-	auto, stop := newAutoLiveDiff(t.Context(), f.store.directory)
+	auto, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	proxy.autoLiveDiff, f.store.liveDiff = auto, auto.events.publish
 	target := filepath.Join(t.TempDir(), "shell-edit.txt")

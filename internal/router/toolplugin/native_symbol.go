@@ -15,7 +15,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/golex"
+	"go/token"
+
 	"github.com/yusing/mekugi/internal/sourcekind"
 )
 
@@ -280,7 +281,7 @@ func selectNativeSymbol(q *symbolQuery) error {
 	if _, ok := s.lines.row(q.line); !ok {
 		return fmt.Errorf("line %d is past EOF", q.line)
 	}
-	if s.format.Language == "go" && !golex.IsIdentifier(q.name) {
+	if s.format.Language == "go" && !token.IsIdentifier(q.name) {
 		return errors.New("SYMBOL must be a non-keyword Go identifier")
 	}
 	var offsets []int

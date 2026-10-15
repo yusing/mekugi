@@ -263,32 +263,9 @@ func TestNativeOutputHeadTailUnicodeAndSharedBudget(t *testing.T) {
 	}
 }
 
-func TestNativeOutputShellDoubleJSONAndRows(t *testing.T) {
+func TestNativeOutputRows(t *testing.T) {
 	source := strings.Repeat("\"path\\\\name\":1:abcd \"\t🙂 café 中文\"\r\n", 500)
 	for _, budget := range []int{1, 20, 123, 256, 1600, 8976} {
-		output := nativeFormatFixture(t, strconv.Itoa(budget), "shell", source, "")
-		var selected selectedNativeText
-		if err := json.Unmarshal([]byte(output.Stdout), &selected); err != nil {
-			t.Fatal(err)
-		}
-		if !strings.HasPrefix(source, selected.Text) || selected.Text != "" && !strings.HasSuffix(selected.Text, "\n") {
-			t.Fatalf("shell splits row: %+v", selected)
-		}
-		framed := 0
-		if selected.Text != "" {
-			once, err := json.Marshal(selected.Text)
-			if err != nil {
-				t.Fatal(err)
-			}
-			twice, err := json.Marshal(string(once))
-			if err != nil {
-				t.Fatal(err)
-			}
-			framed = nativeTokens(t, string(twice))
-		}
-		if selected.Tokens != framed || framed > budget {
-			t.Fatalf("nested JSON budget %d: %+v, actual %d", budget, selected, framed)
-		}
 		rows := nativeFormatFixture(t, strconv.Itoa(budget), "rows", source, "")
 		if !strings.HasPrefix(source, rows.Stdout) || rows.Stdout != "" && !strings.HasSuffix(rows.Stdout, "\n") || nativeTokens(t, rows.Stdout) > budget {
 			t.Fatalf("row cut: %+v", rows)

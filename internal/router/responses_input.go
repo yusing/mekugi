@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // responsesInput keeps provider-owned JSON raw while exposing its two standard
@@ -46,10 +48,10 @@ func decodeResponsesInput(raw json.RawMessage) (responsesInput, error) {
 // encode marshals the responsesInput back to JSON.
 func (input responsesInput) encode() (json.RawMessage, error) {
 	if input.text != nil {
-		return marshalProtocolJSON(*input.text)
+		return responses.MarshalJSON(*input.text)
 	}
 	if input.array {
-		return marshalProtocolJSON(input.items)
+		return responses.MarshalJSON(input.items)
 	}
 	return bytes.Clone(input.raw), nil
 }
@@ -76,7 +78,7 @@ func rewriteRequestMessages(request *parsedResponsesRequest, topic string, trans
 		}
 		if updated {
 			item.setContent(content)
-			input.items[index] = mustMarshalJSON(item)
+			input.items[index] = responses.MustMarshalJSON(item)
 			changed = true
 		}
 	}
@@ -98,7 +100,7 @@ func transformResponsesTextContent(
 	isTextPart func(string) bool,
 ) (json.RawMessage, bool, error) {
 	if text, ok := decodeJSONString(raw); ok {
-		return mustMarshalJSON(transform(text)), true, nil
+		return responses.MustMarshalJSON(transform(text)), true, nil
 	}
 	parts, ok := decodeResponsesTextParts(raw)
 	if !ok {
@@ -110,7 +112,7 @@ func transformResponsesTextContent(
 		if part.text == nil || !isTextPart(part.typeName) {
 			continue
 		}
-		updated, err := replaceRawField(part.raw, "text", mustMarshalJSON(transform(*part.text)))
+		updated, err := replaceRawField(part.raw, "text", responses.MustMarshalJSON(transform(*part.text)))
 		if err != nil {
 			return nil, false, err
 		}
@@ -146,7 +148,7 @@ func encodeResponsesTextParts(parts []responsesTextPart) (json.RawMessage, error
 	for index := range parts {
 		values[index] = parts[index].raw
 	}
-	return marshalProtocolJSON(values)
+	return responses.MarshalJSON(values)
 }
 
 func isResponsesInputTextPart(typeName string) bool {

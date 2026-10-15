@@ -37,9 +37,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 			CopyStop: "translation_error",
 		},
 	}
-	if err := failure.finish(t.Context(), wrapped, &bytes.Buffer{}, issues); err != nil {
-		t.Fatalf("finish failed: %v", err)
-	}
+	failure.finish(t.Context(), wrapped, &bytes.Buffer{}, issues)
 	if failure.diagnosticReference == "" {
 		t.Fatal("failed request did not produce a diagnostic reference")
 	}

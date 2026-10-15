@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/execscope"
-
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
@@ -32,7 +32,7 @@ func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
 	}
 	proxy := &mekugiProxy{replayStore: f.store}
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: "generator-agent", ExecObservation: observation}
-	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "generate", history: history, output: mustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
+	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "generate", history: history, output: responses.MustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
 		t.Fatal(err)
 	}
 	record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("generate", false))
@@ -82,7 +82,7 @@ func TestPythonTemporaryWriteAndRestoreRetainsIncompleteHistory(t *testing.T) {
 	}
 	proxy := &mekugiProxy{replayStore: f.store}
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
-	output := mustMarshalJSON("Wall time: 0.01 seconds\nProcess exited with code 0\nFinal output:\n")
+	output := responses.MustMarshalJSON("Wall time: 0.01 seconds\nProcess exited with code 0\nFinal output:\n")
 	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "temporary", history: history, output: output}}); err != nil {
 		t.Fatal(err)
 	}
@@ -163,11 +163,11 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 			f := newMChangesSliceFixture(t, "repeated-stock")
 			patch := "*** Begin Patch\n*** Add File: repeated-patch.txt\n+after\n*** End Patch\n"
 			command := "printf after > repeated-command.txt"
-			source := "await tools.apply_patch(" + string(mustMarshalJSON(patch)) + "); const patch = buildPatch(); await tools.apply_patch(patch); " +
-				"await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "}); const args = getCommand(); await tools.exec_command(args);"
+			source := "await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + "); const patch = buildPatch(); await tools.apply_patch(patch); " +
+				"await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + "}); const args = getCommand(); await tools.exec_command(args);"
 			if literalLoop {
-				source = "for (let i = 0; i < 2; i++) await tools.apply_patch(" + string(mustMarshalJSON(patch)) + "); " +
-					"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "});"
+				source = "for (let i = 0; i < 2; i++) await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + "); " +
+					"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + "});"
 			}
 			commands, dynamic := stockLiteralExecCommands(source, f.workspace, "bash")
 			observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: f.workspace})
@@ -187,9 +187,9 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 			trace.result(f.thread, "patch-first", "completed", map[string]any{})
 			trace.tool(f.thread, "runtime", "patch-second", applyPatchToolName, patch)
 			trace.result(f.thread, "patch-second", "failed", nil)
-			trace.tool(f.thread, "runtime", "command-first", nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
+			trace.tool(f.thread, "runtime", "command-first", nativeExecCommandToolName, string(responses.MustMarshalJSON(map[string]any{"cmd": command})))
 			trace.result(f.thread, "command-first", "completed", map[string]any{"exit_code": 0})
-			trace.tool(f.thread, "runtime", "command-second", nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
+			trace.tool(f.thread, "runtime", "command-second", nativeExecCommandToolName, string(responses.MustMarshalJSON(map[string]any{"cmd": command})))
 			trace.result(f.thread, "command-second", "completed", map[string]any{"exit_code": 7})
 			trace.end(f.thread, "runtime")
 			history.nativeCell = (&nativeToolTrace{directory: trace.root}).readCell(f.thread, "repeated-cell", source)
@@ -200,7 +200,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 				t.Fatalf("resolved duplicate attempt lost: patches=%d commands=%d", len(history.NativePatches), len(history.ExecObservation.Commands))
 			}
 			proxy := &mekugiProxy{replayStore: f.store}
-			output := mustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")
+			output := responses.MustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")
 			if err := proxy.finalizeNativePatches(f.ctx, f.workspace, f.thread, "repeated-cell", history, output); err != nil {
 				t.Fatal(err)
 			}
@@ -235,8 +235,8 @@ func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "file.txt"), "unchanged")
 	writer := "printf unchanged > file.txt"
 	reader := "cat file.txt"
-	source := "await tools.exec_command({cmd: " + string(mustMarshalJSON(writer)) + "}); " +
-		"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(reader)) + "});"
+	source := "await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(writer)) + "}); " +
+		"for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(reader)) + "});"
 	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
 	if dynamic || len(commands) != 2 {
 		t.Fatal("fixture must have only literal call sites")
@@ -246,7 +246,7 @@ func TestResolvedLiteralReadLoopsDoNotInventWriters(t *testing.T) {
 	trace.start("author", "runtime", "read-loop", source)
 	for index, command := range []string{writer, reader, reader} {
 		id := fmt.Sprint(index)
-		trace.tool("author", "runtime", id, nativeExecCommandToolName, string(mustMarshalJSON(map[string]any{"cmd": command})))
+		trace.tool("author", "runtime", id, nativeExecCommandToolName, string(responses.MustMarshalJSON(map[string]any{"cmd": command})))
 		trace.result("author", id, "completed", map[string]any{"exit_code": 0})
 	}
 	trace.end("author", "runtime")
@@ -267,7 +267,7 @@ func TestResolvedLiteralProviderLoopsReusePreCallClassification(t *testing.T) {
 	script := filepath.Join(workspace, "script.py")
 	writeTestFile(t, script, "from pathlib import Path\nPath('file.txt').write_text('temporary')\n")
 	command := python + " script.py"
-	source := "for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(mustMarshalJSON(command)) + "});"
+	source := "for (let i = 0; i < 2; i++) await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(command)) + "});"
 	commands, dynamic := stockLiteralExecCommands(source, workspace, "bash")
 	observation, _ := captureExecObservation(commands, dynamic, true, execCaptureEnv{directory: workspace})
 	if dynamic || len(observation.CommandClasses) != 1 || observation.CommandClasses[0] != execscope.Scoped.String() {

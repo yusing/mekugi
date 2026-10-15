@@ -3,7 +3,11 @@ package router
 import (
 	"bufio"
 	"bytes"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"io"
 	"slices"
@@ -132,12 +136,12 @@ func readRestoredRollout(info appServerThreadInfo, agent string) restoredRollout
 				continue
 			}
 			p := message.Payload
-			sender := jsonString(p, "author")
+			sender := responses.StringField(p, "author")
 			if text, ok := nativeAssignmentText(p, agent); ok {
 				if strings.TrimSpace(text) == "" {
 					continue // Opaque tasks never become an inferred plaintext assignment.
 				}
-				assignment := &activityAssignment{id: subagentCommentaryMessageID("assignment\x00" + jsonString(p, "id") + "\x00" + sender + "\x00" + agent + "\x00" + text),
+				assignment := &activityAssignment{id: subagentCommentaryMessageID("assignment\x00" + responses.StringField(p, "id") + "\x00" + sender + "\x00" + agent + "\x00" + text),
 					from: sender, to: agent, text: text, created: record.Timestamp}
 				event.entry = activityPaneEntry{Agent: agent, Kind: "assignment", Text: text, assignment: assignment}
 				event.repeated = true

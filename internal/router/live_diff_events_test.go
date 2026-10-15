@@ -14,6 +14,7 @@ import (
 
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
@@ -522,9 +523,9 @@ func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {
 	broker.mu.Lock()
 	preview := broker.previews["large-script"]
 	broker.mu.Unlock()
-	if !preview.Truncated || len(mustMarshalJSON(preview)) > 48<<10 ||
+	if !preview.Truncated || len(responses.MustMarshalJSON(preview)) > 48<<10 ||
 		!strings.HasSuffix(preview.Input, "TAIL") || strings.Contains(preview.Status, "UNAVAILABLE") {
-		t.Fatalf("script tail was not retained within the display bound: bytes=%d", len(mustMarshalJSON(preview)))
+		t.Fatalf("script tail was not retained within the display bound: bytes=%d", len(responses.MustMarshalJSON(preview)))
 	}
 }
 

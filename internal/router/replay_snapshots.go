@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Version 2 moves only filesystem evidence out of the call envelope. Inputs,
@@ -272,7 +273,7 @@ func (s *mekugiReplayStore) restoreSnapshots(r *replayRecord) error {
 	}
 	expanded := *r
 	expanded.Version, expanded.Snapshots = 1, nil
-	data, err := marshalProtocolJSON(expanded)
+	data, err := responses.MarshalJSON(expanded)
 	if err != nil {
 		return err
 	}

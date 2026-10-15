@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const sessionRetention = 14 * 24 * time.Hour
@@ -236,7 +237,7 @@ func (s *mekugiReplayStore) retainFiles(names ...string) error {
 		return nil
 	}
 	session.LastUsed = time.Now().UTC()
-	data, err := marshalProtocolJSON(session)
+	data, err := responses.MarshalJSON(session)
 	if err != nil {
 		return err
 	}
@@ -274,8 +275,8 @@ func (s *mekugiReplayStore) retainInput(ctx context.Context, workspace string, r
 		var items []map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &items)
 		for _, item := range items {
-			if jsonString(item, "type") == "message" {
-				name := replayRecordName(workspace, jsonString(item, "id"), true)
+			if responses.StringField(item, "type") == "message" {
+				name := replayRecordName(workspace, responses.StringField(item, "id"), true)
 				if info, err := os.Lstat(filepath.Join(s.directory, name)); err == nil && info.Mode().IsRegular() {
 					names = append(names, name)
 				}
@@ -797,45 +798,15 @@ func (s *mekugiReplayStore) maintainStorage(replacement string, size int64) erro
 	}
 }
 
-type managedFile struct {
-	name    string
-	pattern string
-	data    []byte
-}
-
+// Called under store.lock. Retain and admit the record before publication.
 func (s *mekugiReplayStore) writeManagedFile(name, pattern string, data []byte) error {
-	return s.writeManagedFiles(managedFile{name: name, pattern: pattern, data: data}, nil, nil)
-}
-
-// Called under store.lock. The record and every dependency it references are
-// retained in one catalog update and admitted together before any write. The
-// missing dependencies are published before the record referencing them.
-func (s *mekugiReplayStore) writeManagedFiles(record managedFile, dependencies []string, missing []managedFile) error {
-	if err := s.retainFiles(append([]string{record.name}, dependencies...)...); err != nil {
+	if err := s.retainFiles(name); err != nil {
 		return storageIOError(err)
 	}
-	size := int64(len(record.data))
-	for _, file := range missing {
-		size += int64(len(file.data))
-	}
-	if err := s.maintainStorage(record.name, size); err != nil {
+	if err := s.maintainStorage(name, int64(len(data))); err != nil {
 		return err
 	}
-	if len(dependencies) > 0 {
-		if err := s.writeDependencies(missing); err != nil {
-			return storageIOError(err)
-		}
-	}
-	return storageIOError(s.writeFile(record.name, record.pattern, record.data))
-}
-
-func (s *mekugiReplayStore) writeDependencies(files []managedFile) error {
-	for _, file := range files {
-		if err := s.writeFile(file.name, file.pattern, file.data); err != nil {
-			return err
-		}
-	}
-	return nil
+	return storageIOError(s.writeFile(name, pattern, data))
 }
 
 // Readers acquire this lease before store.lock; cleanup only tries it without

@@ -1,7 +1,6 @@
 package router
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -715,10 +714,6 @@ func (u *terminalUI) mouse(s string) error {
 		u.openRequested(u.agents)
 	}
 	return nil
-}
-
-func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
-	u.applyNativeDiff(ctx, event)
 }
 
 func (u *terminalUI) clearSkillsHover() {

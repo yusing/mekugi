@@ -7,6 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -143,7 +146,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 			if item.Type == "custom_tool_call_output" && item.CallID == "answer-tool" {
 				_, _, _, cell := stockPatchResultState("exec", []byte(item.Output))
 				if cell != "" {
-					return mchangesNestedCodexResponse(turn, map[string]any{"type": "function_call", "id": "answer-wait-item", "call_id": "answer-wait", "name": "wait", "status": "completed", "arguments": string(mustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil
+					return mchangesNestedCodexResponse(turn, map[string]any{"type": "function_call", "id": "answer-wait-item", "call_id": "answer-wait", "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil
 				}
 			}
 		}
@@ -212,7 +215,7 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 				provider.input = "*** Begin Patch\n*** Add File: " + patchPath + "\n+input-survived\n*** End Patch"
 			} else {
 				shell := "echo run >> " + strconv.Quote(countPath) + "; touch " + strconv.Quote(startedPath) + "; while test ! -f " + strconv.Quote(gatePath) + "; do sleep 0.1; done; echo input-survived"
-				provider.input = "// @exec: {\"yield_time_ms\": 60000}\nconst result = await tools.exec_command({cmd: " + string(mustMarshalJSON(shell)) + ", workdir: " + string(mustMarshalJSON(workspace)) + ", yield_time_ms: 30000}); text(result.output);"
+				provider.input = "// @exec: {\"yield_time_ms\": 60000}\nconst result = await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(shell)) + ", workdir: " + string(responses.MustMarshalJSON(workspace)) + ", yield_time_ms: 30000}); text(result.output);"
 			}
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)

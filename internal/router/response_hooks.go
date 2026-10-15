@@ -18,9 +18,9 @@ type responseHooks struct {
 	deliveredTerminal   bool
 }
 
-func (h *responseHooks) observe(payload []byte, stream bool) error {
+func (h *responseHooks) observe(payload []byte, stream bool) {
 	if h == nil || stream && len(payload) == 0 {
-		return nil
+		return
 	}
 	if stream {
 		h.streamDiagnostics.observe(payload)
@@ -34,5 +34,4 @@ func (h *responseHooks) observe(payload []byte, stream bool) error {
 			h.onUsage(usage)
 		}
 	}
-	return nil
 }

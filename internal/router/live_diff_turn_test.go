@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func newLiveDiffTurnTest(t *testing.T, workspace, thread string) (*autoLiveDiff, *liveDiffSubscriber) {
@@ -114,7 +116,7 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 			Directories: map[string]json.RawMessage{workspace: nil},
 		}
 		headers := make(http.Header)
-		headers.Set(codexTurnMetadataHeader, string(mustMarshalJSON(metadata)))
+		headers.Set(codexTurnMetadataHeader, string(responses.MustMarshalJSON(metadata)))
 		headers.Set(threadIDHeader, thread)
 		return headers
 	}

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestTokenCostServiceTiers(t *testing.T) {
@@ -144,7 +146,7 @@ func TestTokenUsageServiceTierAcrossTransports(t *testing.T) {
 						requested = "priority"
 					}
 					var forwarded map[string]json.RawMessage
-					if json.Unmarshal(provider.forwarded[0], &forwarded) != nil || jsonString(forwarded, "service_tier") != requested {
+					if json.Unmarshal(provider.forwarded[0], &forwarded) != nil || responses.StringField(forwarded, "service_tier") != requested {
 						t.Fatal("accounting changed requested tier")
 					}
 				})

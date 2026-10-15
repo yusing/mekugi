@@ -3,6 +3,9 @@ package router
 import (
 	"context"
 	"crypto/rand"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
 	"encoding/json/v2"
 	"errors"
@@ -15,7 +18,6 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
-
 	"github.com/yusing/mekugi/internal/persistence"
 )
 
@@ -215,7 +217,7 @@ func (s *mekugiReplayStore) commitStoragePrune(ctx context.Context, plan *storag
 		}
 		index := original
 		if retireStoredChanges(&index, deleted, candidate.thread) {
-			data, err := marshalProtocolJSON(index)
+			data, err := responses.MarshalJSON(index)
 			if err != nil {
 				return false, 0, err
 			}

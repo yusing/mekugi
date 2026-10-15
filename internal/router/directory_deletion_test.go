@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/testdata/uisnapshot"
 )
 
@@ -32,7 +33,7 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 				}
 			}
 			transform := prepareNativeStockTransform(t, proxy, workspace, "main")
-			arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm -rf removed removed2", "workdir": workspace}))
+			arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm -rf removed removed2", "workdir": workspace}))
 			retainCommandObservation(t, transform, "delete-call", arguments)
 			if err := os.RemoveAll(filepath.Join(workspace, "removed")); err != nil {
 				t.Fatal(err)

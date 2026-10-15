@@ -1,9 +1,12 @@
 package providercodec
 
-// Source: internal/router/provider_responses.go:1:289@5a2082938e797e6e15c374eb6ae135a0753dea24
-
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
+	// Source: internal/router/provider_responses.go:1:289@5a2082938e797e6e15c374eb6ae135a0753dea24
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -41,7 +44,7 @@ func (responsesEndpoint) encode(model string, history []providerMessage, tools [
 	if o.maxOutput != nil {
 		body["max_output_tokens"] = o.maxOutput
 	}
-	switch jsonString(o.textFormat, "type") {
+	switch responses.StringField(o.textFormat, "type") {
 	case "json_object":
 		body["text"] = map[string]any{"format": map[string]string{"type": "json_object"}}
 	case "json_schema":
@@ -146,7 +149,7 @@ func normalizeResponsesStream(reader io.Reader, d Diagnostics, send func(provide
 					}
 				}
 			}
-			if err := send(providerChunk{RetainedReasoning: mustMarshalJSON(item)}); err != nil {
+			if err := send(providerChunk{RetainedReasoning: responses.MustMarshalJSON(item)}); err != nil {
 				return err
 			}
 		case "function_call":

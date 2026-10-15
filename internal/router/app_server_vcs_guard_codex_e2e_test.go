@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -136,9 +137,9 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				t.Fatal(err)
 			}
 			command := "PATH=" + quoteShellWord(shell.real) + ":\"$PATH\"; export PATH; " + strings.ReplaceAll(tc.command, "ABS_GIT", quoteShellWord(absoluteGit))
-			arguments := `{cmd:` + string(mustMarshalJSON(command)) + `, login:false`
+			arguments := `{cmd:` + string(responses.MustMarshalJSON(command)) + `, login:false`
 
-			arguments += `, shell:` + string(mustMarshalJSON(shellPath))
+			arguments += `, shell:` + string(responses.MustMarshalJSON(shellPath))
 			provider := &toolFrontendCodexProvider{
 				program:   `if (ALL_TOOLS.some(t => t.name.includes("guard_rewrite"))) throw new Error("internal hook exposed"); const result = await tools.exec_command(` + arguments + `}); text(result.output);`,
 				expected:  tc.want,

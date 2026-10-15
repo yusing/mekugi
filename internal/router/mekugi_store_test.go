@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestMekugiReplayStoreRestartAndConflict(t *testing.T) {
@@ -259,7 +261,7 @@ func TestMekugiReplayStorePreservesProtocolEncoding(t *testing.T) {
 	h := mekugiHistory{UpstreamItem: map[string]json.RawMessage{
 		"input": json.RawMessage(`"<>& \u003c \\n \\u003e"`),
 	}}
-	before, err := marshalProtocolJSON(h.UpstreamItem)
+	before, err := responses.MarshalJSON(h.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +276,7 @@ func TestMekugiReplayStorePreservesProtocolEncoding(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("lookup: %v %v", ok, err)
 	}
-	after, err := marshalProtocolJSON(got.UpstreamItem)
+	after, err := responses.MarshalJSON(got.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +326,7 @@ func TestMekugiReplayStoreCommentaryCannotConsumeCallQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := replayRecord{Version: 1, Workspace: "/w", CallID: "c", History: durableHistory(mekugiHistory{Script: "x"})}
-	encoded, err := marshalProtocolJSON(call)
+	encoded, err := responses.MarshalJSON(call)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,11 +395,11 @@ func TestMekugiReplayStoreStructuredFieldWhitespaceRetry(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("lookup: %v %v", ok, err)
 	}
-	before, err := marshalProtocolJSON(h.UpstreamItem)
+	before, err := responses.MarshalJSON(h.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := marshalProtocolJSON(got.UpstreamItem)
+	after, err := responses.MarshalJSON(got.UpstreamItem)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,8 +413,8 @@ func TestMekugiReplayStoreStructuredFieldWhitespaceRetry(t *testing.T) {
 }
 
 func TestReplayItemConflictReportsSafeCause(t *testing.T) {
-	old := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": mustMarshalJSON("private old script")}}
-	next := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": mustMarshalJSON("private new script")}}
+	old := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": responses.MustMarshalJSON("private old script")}}
+	next := mekugiHistory{UpstreamItem: map[string]json.RawMessage{"input": responses.MustMarshalJSON("private new script")}}
 	_, err := mergeReplayHistory(old, next)
 	if err == nil {
 		t.Fatal("accepted changed tool input")

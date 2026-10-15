@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -579,11 +580,11 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			CarrierPayload:   observation.Input,
 			ReplayCarrier:    true,
 			UpstreamItem: map[string]json.RawMessage{
-				"type":    mustMarshalJSON("custom_tool_call"),
-				"name":    mustMarshalJSON(applyPatchToolName),
-				"call_id": mustMarshalJSON(derivedCallID),
-				"input":   mustMarshalJSON(observation.Input),
-				"status":  mustMarshalJSON("completed"),
+				"type":    responses.MustMarshalJSON("custom_tool_call"),
+				"name":    responses.MustMarshalJSON(applyPatchToolName),
+				"call_id": responses.MustMarshalJSON(derivedCallID),
+				"input":   responses.MustMarshalJSON(observation.Input),
+				"status":  responses.MustMarshalJSON("completed"),
 			},
 		}
 		if len(history.NativePatches) > 1 {
@@ -608,7 +609,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			return err
 		}
 		if len(reviews) != 0 {
-			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, jsonString(history.UpstreamItem, "id"))
+			_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, responses.StringField(history.UpstreamItem, "id"))
 		}
 	}
 	return nil

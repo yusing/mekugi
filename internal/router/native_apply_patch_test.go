@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, session string) *mekugiResponseTransform {
@@ -40,7 +41,7 @@ func retainPatchObservation(t *testing.T, transform *mekugiResponseTransform, pa
 	t.Helper()
 	patches := nativePatchesInCall(applyPatchToolName, patch, transform.directory)
 	transform.openExecWindow("patch-call", nil, patches)
-	item := map[string]json.RawMessage{"type": mustMarshalJSON("custom_tool_call"), "call_id": mustMarshalJSON("patch-call"), "name": mustMarshalJSON(applyPatchToolName), "input": mustMarshalJSON(patch)}
+	item := map[string]json.RawMessage{"type": responses.MustMarshalJSON("custom_tool_call"), "call_id": responses.MustMarshalJSON("patch-call"), "name": responses.MustMarshalJSON(applyPatchToolName), "input": responses.MustMarshalJSON(patch)}
 	transform.recordLocal("patch-call", &mekugiHistory{ToolName: applyPatchToolName, Script: patch, CarrierKind: codeModeCarrierCustom, CarrierName: applyPatchToolName, CarrierPayload: patch, ReplayCarrier: true, UpstreamItem: item, NativePatches: patches, ExecutingThread: transform.shellThreadID, Caller: transform.operationCaller()})
 	if err := transform.commitLocalCall("patch-call"); err != nil {
 		t.Fatal(err)
@@ -124,28 +125,28 @@ func TestNativePatchPathsIgnoresHunkContentThatLooksLikeAnOperation(t *testing.T
 
 func TestCodeModeLiteralPatchObservationInOrdinaryJavaScript(t *testing.T) {
 	patch := "*** Begin Patch\n*** Add File: nested.txt\n+content\n*** End Patch\n"
-	source := "const result = await Promise.allSettled([tools.exec_command({cmd: 'printf ready'}), tools.apply_patch(" + string(mustMarshalJSON(patch)) + ")]); text(result);"
+	source := "const result = await Promise.allSettled([tools.exec_command({cmd: 'printf ready'}), tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + ")]); text(result);"
 	observed := nativePatchesInCall("exec", source, t.TempDir())
 	if len(observed) != 1 || observed[0].Input != patch || len(observed[0].Files) != 1 {
 		t.Fatalf("ordinary exec patch observation = %+v", observed)
 	}
-	if got := stockLiteralPatchInputs("const patch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);"); len(got) != 1 || got[0] != patch {
+	if got := stockLiteralPatchInputs("const patch = " + string(responses.MustMarshalJSON(patch)) + "; await tools.apply_patch(patch);"); len(got) != 1 || got[0] != patch {
 		t.Fatalf("immutable literal binding was not recognized: %+v", got)
 	}
 	for _, static := range []string{
-		"const\npatch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);",
-		"const patch = " + string(mustMarshalJSON(patch)) + ", other = 1; await tools.apply_patch(patch);",
-		"const patch = " + string(mustMarshalJSON(patch)) + "; const result = await tools.apply_patch(patch); text(result);",
+		"const\npatch = " + string(responses.MustMarshalJSON(patch)) + "; await tools.apply_patch(patch);",
+		"const patch = " + string(responses.MustMarshalJSON(patch)) + ", other = 1; await tools.apply_patch(patch);",
+		"const patch = " + string(responses.MustMarshalJSON(patch)) + "; const result = await tools.apply_patch(patch); text(result);",
 	} {
 		if got := stockLiteralPatchInputs(static); len(got) != 1 || got[0] != patch {
 			t.Fatalf("immutable literal binding variant was not recognized: %+v", got)
 		}
 	}
 	for _, dynamic := range []string{
-		"let patch = " + string(mustMarshalJSON(patch)) + "; await tools.apply_patch(patch);",
+		"let patch = " + string(responses.MustMarshalJSON(patch)) + "; await tools.apply_patch(patch);",
 		"const patch = getPatch(); await tools.apply_patch(patch);",
-		"const patch = " + string(mustMarshalJSON(patch)) + "; function run(patch) { return tools.apply_patch(patch); }",
-		"const patch = " + string(mustMarshalJSON(patch)) + "; (() => tools.apply_patch(patch))();",
+		"const patch = " + string(responses.MustMarshalJSON(patch)) + "; function run(patch) { return tools.apply_patch(patch); }",
+		"const patch = " + string(responses.MustMarshalJSON(patch)) + "; (() => tools.apply_patch(patch))();",
 	} {
 		if got := stockLiteralPatchInputs(dynamic); len(got) != 0 {
 			t.Fatalf("dynamic argument was treated as literal: %+v", got)
@@ -174,7 +175,7 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
 			call := map[string]any{
 				"type": "custom_tool_call", "id": "code-item", "call_id": "code-call",
-				"name": "exec", "input": "const patch = " + string(mustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));", "status": "completed",
+				"name": "exec", "input": "const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));", "status": "completed",
 			}
 			if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{
 				"id": "response", "status": "completed", "output": []any{call},
@@ -265,7 +266,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 			}
 			var source strings.Builder
 			for _, body := range []string{test.first, test.second} {
-				fmt.Fprintf(&source, "text(await tools.apply_patch(%s));\n", mustMarshalJSON("*** Begin Patch\n"+body+"\n*** End Patch\n"))
+				fmt.Fprintf(&source, "text(await tools.apply_patch(%s));\n", responses.MustMarshalJSON("*** Begin Patch\n"+body+"\n*** End Patch\n"))
 			}
 			history := mekugiHistory{ToolName: "exec", NativePatches: nativePatchesInCall("exec", source.String(), workspace)}
 			if len(history.NativePatches) != 2 {
@@ -278,7 +279,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 					input: observation.Input, terminal: true,
 				})
 			}
-			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, mustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n")); err != nil {
+			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, responses.MustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n")); err != nil {
 				t.Fatal(err)
 			}
 			if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, nativePatchDerivedCallID("cell", 0)); err != nil || found {
@@ -294,7 +295,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			for range 2 { // Reconciliation replay must not allocate duplicate evidence.
-				if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, mustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")); err != nil {
+				if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, responses.MustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")); err != nil {
 					t.Fatal(err)
 				}
 			}

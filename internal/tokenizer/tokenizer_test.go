@@ -101,7 +101,7 @@ func TestVocabularyAndConcurrentCodecs(t *testing.T) {
 						return
 					}
 					text, err := codec.Decode(ids)
-					if err != nil || text != "Hello, 世界🙂" || codec.GetName() != "o200k_base" {
+					if err != nil || text != "Hello, 世界🙂" {
 						t.Errorf("round trip %q: %v", text, err)
 					}
 				}

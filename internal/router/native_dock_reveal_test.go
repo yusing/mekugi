@@ -70,7 +70,7 @@ func TestNativeDockPendingLifecycle(t *testing.T) {
 			case "turn ended":
 				u.endTurnPreviews("main", "turn")
 			case "reconnect":
-				u.shell.applyNativeDiff(t.Context(), liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test"})
+				u.shell.applyDiff(t.Context(), liveDiffEvent{Kind: "coverage", Status: "RECONNECTING: test"})
 			}
 			revealNativeDock(u.shell)
 			if u.shell.liveDock.Views[p.ID] != nil || len(u.shell.livePending) != 0 {

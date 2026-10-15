@@ -4,7 +4,11 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -167,7 +171,7 @@ func (p *appServerDirectedMessageProvider) forwardExecution(_, _ context.Context
 		if json.Unmarshal(body, &request) == nil {
 			var shape []string
 			for _, item := range request.Input {
-				if jsonString(item, "type") == "function_call_output" {
+				if responses.StringField(item, "type") == "function_call_output" {
 					shape = append(shape, "result:"+string(item["output"]))
 				}
 			}
@@ -180,7 +184,7 @@ func (p *appServerDirectedMessageProvider) forwardExecution(_, _ context.Context
 	call := func(name string, args any) map[string]any {
 		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn),
 			"call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": subagentBridgeNamespace,
-			"arguments": string(mustMarshalJSON(args)), "status": "completed"}
+			"arguments": string(responses.MustMarshalJSON(args)), "status": "completed"}
 	}
 	answer := func(text string) map[string]any {
 		return map[string]any{"type": "message", "id": fmt.Sprintf("answer_%s_%d", thread, turn), "role": "assistant",

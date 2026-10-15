@@ -2,6 +2,9 @@ package providercodec
 
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"testing"
 )
@@ -34,7 +37,7 @@ func TestOpenCodeEndpointSettingsAndParallelHistory(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wire := mustMarshalJSON(tr.body)
+			wire := responses.MustMarshalJSON(tr.body)
 			var body map[string]jsontext.Value
 			if err := json.Unmarshal(wire, &body); err != nil {
 				t.Fatal(err)
@@ -65,8 +68,8 @@ func TestOpenCodeEndpointSettingsAndParallelHistory(t *testing.T) {
 				expectedChoice = map[string]string{"type": "function", "name": alias}
 				var input []map[string]jsontext.Value
 				if json.Unmarshal(body["input"], &input) != nil || len(input) != 5 ||
-					string(input[1]["arguments"]) != string(mustMarshalJSON(arguments)) ||
-					string(input[1]["name"]) != string(mustMarshalJSON(alias)) ||
+					string(input[1]["arguments"]) != string(responses.MustMarshalJSON(arguments)) ||
+					string(input[1]["name"]) != string(responses.MustMarshalJSON(alias)) ||
 					string(input[3]["type"]) != `"function_call_output"` {
 					t.Fatalf("Responses history changed: %s", wire)
 				}
@@ -90,7 +93,7 @@ func TestOpenCodeEndpointSettingsAndParallelHistory(t *testing.T) {
 					t.Fatalf("Messages settings lost: %s", wire)
 				}
 			}
-			if !jsonEquivalent(body["tool_choice"], mustMarshalJSON(expectedChoice)) {
+			if !jsonEquivalent(body["tool_choice"], responses.MustMarshalJSON(expectedChoice)) {
 				t.Fatalf("tool choice changed: %s", wire)
 			}
 		})

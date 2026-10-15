@@ -3,7 +3,11 @@ package router
 import (
 	"context"
 	"crypto/rand"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 
 	"github.com/yusing/mekugi/internal/appserver"
@@ -79,7 +83,7 @@ func (u *appServerUI) observeShellEdit(thread, method string, item appServerItem
 		if u.shellEdits.running == nil {
 			u.shellEdits.running = make(map[[2]string]*appServerShellEdit)
 		}
-		edit.history.UpstreamItem = map[string]jsonv1.RawMessage{"id": mustMarshalJSON(item.ID)}
+		edit.history.UpstreamItem = map[string]jsonv1.RawMessage{"id": responses.MustMarshalJSON(item.ID)}
 		u.shellEdits.running[key] = edit
 		return
 	}
@@ -97,7 +101,7 @@ func (u *appServerUI) observeShellEdit(thread, method string, item appServerItem
 	}
 	host := &nativeToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
 	if err := u.proxy.finalizeExecObservations(context.WithoutCancel(edit.ctx), edit.workspace,
-		[]execCompletion{{callID: edit.call, history: edit.history, output: mustMarshalJSON(output), host: host}}); err != nil {
+		[]execCompletion{{callID: edit.call, history: edit.history, output: responses.MustMarshalJSON(output), host: host}}); err != nil {
 		u.discardShellEdit(edit)
 		u.setNotice("Shell change capture failed: "+err.Error(), true)
 	}

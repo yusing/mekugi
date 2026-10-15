@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestGrokStreamFailureTerminal(t *testing.T) {
@@ -64,7 +66,7 @@ func TestGrokStreamFailureTerminal(t *testing.T) {
 			if !strings.Contains(pending, want) || strings.Contains(pending, "not safe for display") {
 				t.Fatalf("invalid notice: %s", pending)
 			}
-			if test.name != "provider error" && bytes.Contains(mustMarshalJSON(events), []byte("private-provider-content")) {
+			if test.name != "provider error" && bytes.Contains(responses.MustMarshalJSON(events), []byte("private-provider-content")) {
 				t.Fatal("provider content leaked into failure events")
 			}
 		})

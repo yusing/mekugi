@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestStripInstructionOmissions(t *testing.T) {
@@ -57,8 +59,8 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 					expected = []any{map[string]string{"type": "input_text", "text": want}, image, map[string]string{"type": "text", "text": want}}
 				}
 				request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-					"instructions": mustMarshalJSON("base" + block),
-					"input": mustMarshalJSON([]any{
+					"instructions": responses.MustMarshalJSON("base" + block),
+					"input": responses.MustMarshalJSON([]any{
 						map[string]any{"role": role, "content": content},
 						map[string]string{"role": "user", "content": "Please explain " + block},
 						map[string]string{"type": "function_call_output", "call_id": "call", "output": block},
@@ -67,10 +69,10 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 				if err := stripRequestInstructionOmissions(&request); err != nil {
 					t.Fatal(err)
 				}
-				if got := jsonString(request.fields, "instructions"); got != "base" {
+				if got := responses.StringField(request.fields, "instructions"); got != "base" {
 					t.Fatalf("instructions = %q", got)
 				}
-				wantInput := mustMarshalJSON([]any{
+				wantInput := responses.MustMarshalJSON([]any{
 					map[string]any{"role": role, "content": expected},
 					map[string]string{"role": "user", "content": "Please explain " + block},
 					map[string]string{"type": "function_call_output", "call_id": "call", "output": block},
@@ -90,12 +92,12 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 func TestStripDirectorylessAgentInstructions(t *testing.T) {
 	text := "# AGENTS.md instructions\n<INSTRUCTIONS>keep" + instructionOmitStart + "use rtk" + instructionOmitEnd + "</INSTRUCTIONS>"
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-		"input": mustMarshalJSON([]any{map[string]string{"role": "user", "content": text}}),
+		"input": responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": text}}),
 	}}
 	if err := stripRequestInstructionOmissions(&request); err != nil {
 		t.Fatal(err)
 	}
-	want := mustMarshalJSON([]any{map[string]string{"role": "user", "content": "# AGENTS.md instructions\n<INSTRUCTIONS>keep</INSTRUCTIONS>"}})
+	want := responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": "# AGENTS.md instructions\n<INSTRUCTIONS>keep</INSTRUCTIONS>"}})
 	if !sameJSONValue(request.fields["input"], want) {
 		t.Fatalf("input = %s, want %s", request.fields["input"], want)
 	}

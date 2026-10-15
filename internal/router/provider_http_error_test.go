@@ -3,6 +3,9 @@ package router
 import (
 	"bytes"
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -99,7 +102,7 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			socketWrite(t, ctx, conn, command)
 			event := socketRead(t, ctx, conn)
 			if string(event["status"]) != fmt.Sprint(status) || !strings.Contains(string(event["error"]), "Useful provider detail provider-secret") {
-				t.Fatalf("WebSocket error lost: %s", mustMarshalJSON(event))
+				t.Fatalf("WebSocket error lost: %s", responses.MustMarshalJSON(event))
 			}
 			conn.CloseNow()
 			endpoint.Close()

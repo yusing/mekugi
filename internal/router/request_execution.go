@@ -156,7 +156,7 @@ func (a *requestAttempt) prepare() error {
 			if parent == nil || parent.providerModel == "" {
 				return errors.New("automatic WebSocket successor has no retained provider model")
 			}
-			a.request.fields["model"] = mustMarshalJSON(parent.providerModel)
+			a.request.fields["model"] = responses.MustMarshalJSON(parent.providerModel)
 			if len(parent.providerReasoning) == 0 {
 				delete(a.request.fields, "reasoning")
 			} else {
@@ -167,15 +167,15 @@ func (a *requestAttempt) prepare() error {
 	// Terra remains a selectable legacy Codex model, but all provider requests
 	// use Sol. Do this after automatic-continuation selection.
 	if a.request.model() == "gpt-5.6-terra" {
-		a.request.fields["model"] = mustMarshalJSON("gpt-6-sol")
+		a.request.fields["model"] = responses.MustMarshalJSON("gpt-6-sol")
 	}
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.history != nil {
 		exchange.history.providerModel = a.request.model()
 		exchange.history.providerReasoning = a.request.fields["reasoning"]
 	}
-	requestedTier := jsonString(a.request.fields, "service_tier")
+	requestedTier := responses.StringField(a.request.fields, "service_tier")
 	if tier := effectiveServiceTier(a.request.model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
-		a.request.fields["service_tier"] = mustMarshalJSON(tier)
+		a.request.fields["service_tier"] = responses.MustMarshalJSON(tier)
 	}
 
 	if a.executor.mekugiCalls != nil {
@@ -442,7 +442,7 @@ func (a *requestAttempt) deliver() error {
 
 	if !a.streamResponse &&
 		a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices &&
-		!acceptsResponseEnd(a.finalization.upstreamTerminalState) {
+		!a.finalization.upstreamTerminalState.Terminal() {
 		a.finalization.failurePhase = requestFailureTerminalValidation
 		return fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
 	}
@@ -488,7 +488,7 @@ func (a *requestAttempt) deliver() error {
 
 	if a.streamResponse &&
 		a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices &&
-		!acceptsResponseEnd(a.finalization.upstreamTerminalState) {
+		!a.finalization.upstreamTerminalState.Terminal() {
 		a.finalization.failurePhase = requestFailureTerminalValidation
 		return fmt.Errorf("execute request: %w", errUpstreamResponseWithoutTerminal)
 	}
@@ -527,15 +527,12 @@ func (a *requestAttempt) finish(requestErr error) error {
 		a.mekugiTransform.Close()
 	}
 
-	requestErr = errors.Join(
-		requestErr,
-		a.finalization.finish(a.executionCtx, requestErr, a.executor.output, a.executor.issues),
-	)
+	a.finalization.finish(a.executionCtx, requestErr, a.executor.output, a.executor.issues)
 	_, compatibilityFault := errors.AsType[*requestCompatibilityError](requestErr)
 	if (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) &&
 		a.hooks.deliveredResponseID != "" && !a.hooks.deliveredTerminal &&
 		a.finalization.observation.outcome == requestOutcomeFailed {
-		payload := mustMarshalJSON(map[string]any{
+		payload := responses.MustMarshalJSON(map[string]any{
 			"type": "response.failed",
 			"response": map[string]any{
 				"id": a.hooks.deliveredResponseID, "status": "failed", "output": []any{},
@@ -582,8 +579,4 @@ func (a *requestAttempt) finish(requestErr error) error {
 	}
 	a.debug.event(fields)
 	return requestErr
-}
-
-func acceptsResponseEnd(state responseTerminalState) bool {
-	return state.Terminal()
 }

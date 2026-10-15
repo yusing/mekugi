@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
@@ -43,7 +44,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	gate := filepath.Join(shell.root, "continue")
 	command := "echo DASH_ONE; { sleep 1; while [ ! -f " + quoteShellWord(gate) + " ]; do sleep 0.05; done; }; echo DASH_TWO >&2; false && echo DASH_NEVER"
 	provider := &toolFrontendCodexProvider{
-		program:  `const result = await tools.exec_command({cmd:` + string(mustMarshalJSON(command)) + `,shell:"/bin/sh",login:false}); text(result.output);`,
+		program:  `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `,shell:"/bin/sh",login:false}); text(result.output);`,
 		expected: []string{"DASH_ONE", "DASH_TWO"}, finalText: "Recovered after a retry.",
 	}
 	var report *execTrack
@@ -230,7 +231,7 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 			}
 			command := "{ echo > /dev/tcp/127.0.0.1/9; } 2>&1 | grep -o 'Operation not permitted'; echo SEG_ONE; echo SEG_TWO >&2; false && echo SEG_NEVER"
 			provider := &toolFrontendCodexProvider{
-				program:   `const result = await tools.exec_command({cmd:` + string(mustMarshalJSON(command)) + `}); text(result.output);`,
+				program:   `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `}); text(result.output);`,
 				expected:  []string{"Operation not permitted", "SEG_ONE", "SEG_TWO"},
 				finalText: "Recovered after a retry.",
 			}

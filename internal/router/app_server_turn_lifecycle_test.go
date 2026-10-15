@@ -56,7 +56,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
-	auto, stop := newAutoLiveDiff(t.Context(), "")
+	auto, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	u.proxy = &mekugiProxy{autoLiveDiff: auto, execWindows: &execWindowRegistry{}}
 	workspace := u.session.cwd
@@ -92,7 +92,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 		auto.events.publishPreview(main, false)
 		for _, event := range auto.events.takePreviews(sub) {
 			if event.Kind == "preview" {
-				u.shell.applyNativeDiff(t.Context(), event)
+				u.shell.applyDiff(t.Context(), event)
 			}
 		}
 		if u.shell.liveDock.Views[main.ID] != nil || u.shell.liveDock.Views[queued.ID] != nil {

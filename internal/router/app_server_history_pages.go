@@ -433,7 +433,7 @@ func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPan
 	if !v.following && v.width > 0 && v.feedRows > 0 {
 		layoutOnly := v.painter.LayoutOnly
 		v.painter.LayoutOnly = true
-		v.layoutFeed(v.width, v.feedRows)
+		v.layoutFeed(v.width)
 		v.painter.LayoutOnly = layoutOnly
 		for seq, row := range v.questionRows {
 			if seq <= before && row <= v.offset && row > anchorRow {
@@ -472,7 +472,7 @@ func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPan
 	if anchor != 0 {
 		layoutOnly := v.painter.LayoutOnly
 		v.painter.LayoutOnly = true
-		v.layoutFeed(v.width, v.feedRows)
+		v.layoutFeed(v.width)
 		v.painter.LayoutOnly = layoutOnly
 		if row, ok := v.questionRows[anchor]; ok {
 			v.offset += row - anchorRow

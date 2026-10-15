@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"unicode/utf8"
+
+	"github.com/yusing/mekugi/internal/sourceparse"
 )
 
 // Source: plugins/mcat.ts:166:310@[543de4f3] readLines
@@ -57,7 +59,7 @@ func nativeMCat(ctx context.Context, args []string) (ExecutionOutput, error) {
 	if !info.Mode().IsRegular() {
 		return fail(errors.New("not a regular file"))
 	}
-	f, err := openNativeSource(path)
+	f, err := sourceparse.Open(path)
 	if err != nil {
 		return fail(err)
 	}

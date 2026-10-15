@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestGrokWaitWireAlias(t *testing.T) {
@@ -54,7 +56,7 @@ func TestGrokWaitWireAlias(t *testing.T) {
 						ToolCallID string `json:"tool_call_id"`
 					} `json:"messages"`
 				}
-				if err := json.Unmarshal(mustMarshalJSON(tr.body), &wire); err != nil {
+				if err := json.Unmarshal(responses.MustMarshalJSON(tr.body), &wire); err != nil {
 					t.Fatal(err)
 				}
 				if wire.Tools[0].Function.Name != alias || wire.Tools[1].Function.Name == alias ||
@@ -117,7 +119,7 @@ func TestGrokWaitIntegerParameters(t *testing.T) {
 			}
 			raw := tr.body["tools"].([]any)[0].(map[string]any)["function"].(map[string]any)["parameters"]
 			var projected map[string]json.RawMessage
-			if err := json.Unmarshal(mustMarshalJSON(raw), &projected); err != nil {
+			if err := json.Unmarshal(responses.MustMarshalJSON(raw), &projected); err != nil {
 				t.Fatal(err)
 			}
 			var fields map[string]map[string]json.RawMessage
@@ -129,15 +131,15 @@ func TestGrokWaitIntegerParameters(t *testing.T) {
 				want = "integer"
 			}
 			for _, name := range []string{"yield_time_ms", "max_tokens"} {
-				if jsonString(fields[name], "type") != want {
+				if responses.StringField(fields[name], "type") != want {
 					t.Fatalf("%s schema not %s: %s", name, want, projected["properties"])
 				}
 			}
-			if jsonString(fields["unrelated"], "type") != "number" ||
-				jsonString(fields["yield_time_ms"], "description") != "Wait time" ||
+			if responses.StringField(fields["unrelated"], "type") != "number" ||
+				responses.StringField(fields["yield_time_ms"], "description") != "Wait time" ||
 				string(fields["yield_time_ms"]["default"]) != "10000" ||
 				string(projected["required"]) != `["cell_id"]` || string(projected["additionalProperties"]) != "false" {
-				t.Fatalf("unrelated schema changed: %s", mustMarshalJSON(projected))
+				t.Fatalf("unrelated schema changed: %s", responses.MustMarshalJSON(projected))
 			}
 			if !strings.Contains(string(parameters), `"yield_time_ms":{"type":"number"`) {
 				t.Fatal("original schema was mutated")

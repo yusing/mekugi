@@ -77,36 +77,6 @@ func FormatOutput(ctx context.Context, args []string) (ExecutionOutput, error) {
 		page, err := counter.readPage(request, budget)
 		return ExecutionOutput{Stdout: nativeJSON(page)}, err
 	}
-	if mode == "shell" {
-		selected, e := counter.selectText(stdout, budget, false)
-		if e != nil {
-			return ExecutionOutput{}, e
-		}
-		framed := func(s string) (int, error) {
-			if s == "" {
-				return 0, nil
-			}
-			return counter.count(nativeJSON(nativeJSON(s)))
-		}
-		for {
-			n, e := framed(selected.Text)
-			if e != nil {
-				return ExecutionOutput{}, e
-			}
-			if n <= budget {
-				break
-			}
-			selected, e = counter.selectText(selected.Text, max(0, selected.Tokens*budget/n-1), false)
-			if e != nil {
-				return ExecutionOutput{}, e
-			}
-		}
-		if len(selected.Text) < len(stdout) {
-			selected.Text = selected.Text[:strings.LastIndexByte(selected.Text, '\n')+1]
-		}
-		selected.Tokens, err = framed(selected.Text)
-		return ExecutionOutput{Stdout: nativeJSON(selected)}, err
-	}
 	if mode != "head" && mode != "tail" && mode != "rows" {
 		return ExecutionOutput{}, errors.New("invalid mrun output selection")
 	}

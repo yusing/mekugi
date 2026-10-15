@@ -2,8 +2,12 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
+
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -107,7 +111,7 @@ func TestAgentEditNoticeShellProjection(t *testing.T) {
 				t.Fatal(err)
 			}
 			transform := prepareNativeStockTransform(t, proxy, workspace, "notice-shell")
-			arguments := string(mustMarshalJSON(map[string]any{"cmd": "printf 'new\\n' > file.txt"}))
+			arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "printf 'new\\n' > file.txt"}))
 			retainCommandObservation(t, transform, "shell-call", arguments)
 			if effect {
 				if err := os.WriteFile(target, []byte("new\n"), 0o600); err != nil {
@@ -166,7 +170,7 @@ func TestAgentEditNoticeShellContinuation(t *testing.T) {
 		t.Fatal(err)
 	}
 	transform := prepareNativeStockTransform(t, proxy, workspace, "notice-continuation")
-	arguments := string(mustMarshalJSON(map[string]any{"cmd": "printf 'new\\n' > file.txt"}))
+	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "printf 'new\\n' > file.txt"}))
 	retainCommandObservation(t, transform, "shell-call", arguments)
 	running := nativeExecOutput("Process running with session ID 9")
 	items := []any{

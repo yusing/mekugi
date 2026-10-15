@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const maxSessionInspectionBytes = 64 << 20
@@ -520,12 +521,12 @@ func inspectSessionCall(call sessionInspectionCall, record replayRecord, found b
 			kind := history.effectiveCarrierKind()
 			carrierMatches := call.item.Type == carrierItemType(kind) &&
 				call.item.Name == history.CarrierName &&
-				call.item.Namespace == jsonString(history.UpstreamItem, "namespace") &&
+				call.item.Namespace == responses.StringField(history.UpstreamItem, "namespace") &&
 				sessionInspectionPayload(call.item) == history.carrierInput()
-			originalMatches := call.item.Type == jsonString(history.UpstreamItem, "type") &&
-				call.item.Name == jsonString(history.UpstreamItem, "name") &&
-				call.item.Namespace == jsonString(history.UpstreamItem, "namespace") &&
-				sessionInspectionPayload(call.item) == jsonString(history.UpstreamItem, carrierPayloadFieldForItem(call.item.Type))
+			originalMatches := call.item.Type == responses.StringField(history.UpstreamItem, "type") &&
+				call.item.Name == responses.StringField(history.UpstreamItem, "name") &&
+				call.item.Namespace == responses.StringField(history.UpstreamItem, "namespace") &&
+				sessionInspectionPayload(call.item) == responses.StringField(history.UpstreamItem, carrierPayloadFieldForItem(call.item.Type))
 			if !carrierMatches && !originalMatches {
 				return result, fmt.Errorf("call %q: replay payload does not match session", call.item.CallID)
 			}

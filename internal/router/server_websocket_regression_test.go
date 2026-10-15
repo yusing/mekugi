@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestResponsesWebSocketQueuesCreateWithoutProviderSocket(t *testing.T) {
@@ -71,12 +72,12 @@ func TestResponsesWebSocketTerminalOutputBudget(t *testing.T) {
 			initial := upstreamJSONBufferBytes - tc.remaining
 			s := &responsesWebSocket{downstream: conn, retainedBytes: initial, histories: make(map[string]*webSocketHistory)}
 			output := &webSocketOutput{exchange: &webSocketExchange{session: s, ctx: t.Context(), history: history}}
-			err := output.message(mustMarshalJSON(map[string]any{"type": "response.completed", "response": map[string]any{"id": "done", "output": tc.output}}))
+			err := output.message(responses.MustMarshalJSON(map[string]any{"type": "response.completed", "response": map[string]any{"id": "done", "output": tc.output}}))
 			if (err != nil) != tc.wantError {
 				t.Fatalf("terminal error = %v", err)
 			}
-			if !bytes.Equal(mustMarshalJSON(history.output), mustMarshalJSON(tc.want)) {
-				t.Fatalf("retained output = %s", mustMarshalJSON(history.output))
+			if !bytes.Equal(responses.MustMarshalJSON(history.output), responses.MustMarshalJSON(tc.want)) {
+				t.Fatalf("retained output = %s", responses.MustMarshalJSON(history.output))
 			}
 			wantBytes := initial
 			if !tc.wantError {

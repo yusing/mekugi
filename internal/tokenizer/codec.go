@@ -19,10 +19,6 @@ type Codec struct {
 	splitRegexp       *regexp2.Regexp
 }
 
-func (c *Codec) GetName() string {
-	return "o200k_base"
-}
-
 // Count returns the number of tokens in the input string.
 func (c *Codec) Count(input string) (int, error) {
 	var count int

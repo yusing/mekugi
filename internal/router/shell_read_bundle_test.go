@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
 
@@ -85,7 +86,7 @@ func TestMCatMissingPathDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, missing := range []string{"missing", "missing file", filepath.Join(directory, "missing file"), "missing\u2028file"} {
-		want := "mcat: " + string(mustMarshalJSON(missing)) + ": ENOENT: no such file or directory\n"
+		want := "mcat: " + string(responses.MustMarshalJSON(missing)) + ": ENOENT: no such file or directory\n"
 		// JSON.stringify keeps U+2028 literal; Go's protocol encoder escapes it.
 		want = strings.ReplaceAll(want, `\u2028`, "\u2028")
 		for _, args := range [][]string{{missing}, {missing, "good"}} {

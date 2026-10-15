@@ -132,12 +132,11 @@ func skillLoads(record liveActivityRecord) []string {
 	return names
 }
 
-func (u *terminalUI) openSkills(view *liveActivityView, agent string) bool {
+func (u *terminalUI) openSkills(view *liveActivityView, agent string) {
 	names := slices.Clone(view.activeSkills()[agent])
 	if len(names) == 0 {
-		return false
+		return
 	}
 	slices.Sort(names)
 	u.openBlocks(view, []activityui.Block{{Kind: "op", Verb: "Skill", Label: names.label(), Body: "- " + strings.Join(names, "\n- ")}})
-	return true
 }

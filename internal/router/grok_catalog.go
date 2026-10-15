@@ -6,6 +6,8 @@ import (
 	"maps"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const grokModel = "grok:grok-4.6"
@@ -31,13 +33,13 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 	}
 	var template map[string]json.RawMessage
 	for _, model := range models {
-		if jsonString(model, "slug") == "gpt-6-sol" && jsonString(model, "multi_agent_version") == "v2" {
+		if responses.StringField(model, "slug") == "gpt-6-sol" && responses.StringField(model, "multi_agent_version") == "v2" {
 			template = model
 		}
 	}
 	if template == nil {
 		for _, model := range models {
-			if !isChatCompletionsModel(jsonString(model, "slug")) && jsonString(model, "multi_agent_version") == "v2" {
+			if !isChatCompletionsModel(responses.StringField(model, "slug")) && responses.StringField(model, "multi_agent_version") == "v2" {
 				template = model
 				break
 			}
@@ -45,7 +47,7 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 	}
 	if template == nil {
 		for _, model := range models {
-			if jsonString(model, "multi_agent_version") == "v2" {
+			if responses.StringField(model, "multi_agent_version") == "v2" {
 				template = model
 				break
 			}
@@ -64,7 +66,7 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 		"input_modalities": []string{"text", "image"}, "supports_image_detail_original": false,
 		"additional_speed_tiers": []any{}, "service_tiers": []any{}, "upgrade": nil, "availability_nux": nil,
 	} {
-		model[key] = mustMarshalJSON(value)
+		model[key] = responses.MustMarshalJSON(value)
 	}
 	// Do not inherit account-gated OpenAI scheduling or model-upgrade defaults.
 	delete(model, "multi_agent_reasoning_effort")
@@ -72,7 +74,7 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 		models = nil
 	} else {
 		models = slices.DeleteFunc(models, func(model map[string]json.RawMessage) bool {
-			return isChatCompletionsModel(jsonString(model, "slug"))
+			return isChatCompletionsModel(responses.StringField(model, "slug"))
 		})
 	}
 	if session.GrokEnabled {
@@ -82,9 +84,9 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 			if session.GrokUnprefixed {
 				slug = id
 			}
-			entry["slug"] = mustMarshalJSON(slug)
-			entry["display_name"] = mustMarshalJSON(slug)
-			entry["priority"] = mustMarshalJSON(100 + i)
+			entry["slug"] = responses.MustMarshalJSON(slug)
+			entry["display_name"] = responses.MustMarshalJSON(slug)
+			entry["priority"] = responses.MustMarshalJSON(100 + i)
 			models = append(models, entry)
 		}
 	}
@@ -99,7 +101,7 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 				"default_reasoning_level": nil, "supported_reasoning_levels": definition.reasoningLevels(),
 				"input_modalities": definition.Modalities,
 			} {
-				entry[key] = mustMarshalJSON(value)
+				entry[key] = responses.MustMarshalJSON(value)
 			}
 			if definition.Context == 0 {
 				entry["context_window"] = json.RawMessage("null")
@@ -108,6 +110,6 @@ func ProviderModelCatalog(body []byte, session Session) ([]byte, error) {
 			models = append(models, entry)
 		}
 	}
-	catalog["models"] = mustMarshalJSON(models)
+	catalog["models"] = responses.MustMarshalJSON(models)
 	return json.Marshal(catalog)
 }

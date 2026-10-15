@@ -3,7 +3,11 @@ package router
 import (
 	"cmp"
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -15,11 +19,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
-
 	"github.com/yusing/mekugi/internal/router/toolplugin"
+	"github.com/yusing/mekugi/internal/shellsyntax"
 	"github.com/yusing/mekugi/internal/tokenizer"
-
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -71,16 +73,16 @@ func resetGuidanceEarlyReads(items []map[string]jsonv1.RawMessage, recoveryTexts
 	early := make(map[string]bool)
 	round, inResponse := 0, false
 	for i, item := range items {
-		id := jsonString(item, "call_id")
+		id := responses.StringField(item, "call_id")
 		if strings.HasPrefix(id, resetGuidanceCallID) {
 			early[id] = true
 			continue
 		}
-		kind, role := jsonString(item, "type"), jsonString(item, "role")
+		kind, role := responses.StringField(item, "type"), responses.StringField(item, "role")
 		if role == "assistant" && slices.Contains(recoveryTexts, strings.TrimSuffix(messageContentText(item["content"]), "\n")) {
 			continue
 		}
-		if role == "assistant" && i+1 < len(items) && strings.HasPrefix(jsonString(items[i+1], "call_id"), resetGuidanceCallID) {
+		if role == "assistant" && i+1 < len(items) && strings.HasPrefix(responses.StringField(items[i+1], "call_id"), resetGuidanceCallID) {
 			continue
 		}
 		model := role == "assistant" || kind == "reasoning" || kind == "function_call" || kind == "custom_tool_call"
@@ -108,7 +110,7 @@ func resetGuidanceUserSkills(items []map[string]jsonv1.RawMessage) []resetGuidan
 		}
 	}
 	for _, item := range items {
-		if jsonString(item, "role") != "user" {
+		if responses.StringField(item, "role") != "user" {
 			continue
 		}
 		text := messageContentText(item["content"])
@@ -143,10 +145,10 @@ func resetGuidanceUserSkills(items []map[string]jsonv1.RawMessage) []resetGuidan
 func resetGuidanceInstructions(items []map[string]jsonv1.RawMessage, base, workspace string) []resetGuidanceInstruction {
 	instructions := []resetGuidanceInstruction{{base, true}}
 	for _, item := range items {
-		if kind := jsonString(item, "type"); kind != "message" && kind != "" {
+		if kind := responses.StringField(item, "type"); kind != "message" && kind != "" {
 			continue
 		}
-		role, text := jsonString(item, "role"), messageContentText(item["content"])
+		role, text := responses.StringField(item, "role"), messageContentText(item["content"])
 		switch {
 		case role == "developer" || role == "system":
 			instructions = append(instructions, resetGuidanceInstruction{text, true})
@@ -219,8 +221,8 @@ func collectResetGuidance(ctx context.Context, items []map[string]jsonv1.RawMess
 	}
 	completed := make(map[string]bool)
 	for _, item := range items {
-		if kind := jsonString(item, "type"); kind == "function_call_output" || kind == "custom_tool_call_output" {
-			completed[jsonString(item, "call_id")] = true
+		if kind := responses.StringField(item, "type"); kind == "function_call_output" || kind == "custom_tool_call_output" {
+			completed[responses.StringField(item, "call_id")] = true
 		}
 	}
 	sources := make(map[string]resetGuidanceSource)
@@ -237,8 +239,8 @@ func collectResetGuidance(ctx context.Context, items []map[string]jsonv1.RawMess
 	}
 	early := resetGuidanceEarlyReads(items, recoveryTexts)
 	for _, item := range items {
-		kind, name := jsonString(item, "type"), jsonString(item, "name")
-		id := jsonString(item, "call_id")
+		kind, name := responses.StringField(item, "type"), responses.StringField(item, "name")
+		id := responses.StringField(item, "call_id")
 		if !completed[id] || !early[id] {
 			continue
 		}
@@ -248,9 +250,9 @@ func collectResetGuidance(ctx context.Context, items []map[string]jsonv1.RawMess
 		var commands []execCommandInput
 		switch {
 		case kind == "custom_tool_call" && name == "exec":
-			commands, _ = stockLiteralExecCommands(jsonString(item, "input"), workspace, "")
+			commands, _ = stockLiteralExecCommands(responses.StringField(item, "input"), workspace, "")
 		case kind == "function_call" && name == nativeExecCommandToolName:
-			if command, ok := execCommandArguments(jsonString(item, "arguments"), workspace, ""); ok {
+			if command, ok := execCommandArguments(responses.StringField(item, "arguments"), workspace, ""); ok {
 				commands = []execCommandInput{command}
 			}
 		}
@@ -269,7 +271,7 @@ func collectResetGuidance(ctx context.Context, items []map[string]jsonv1.RawMess
 				if !ok {
 					continue
 				}
-				if !strings.HasPrefix(jsonString(item, "call_id"), resetGuidanceCallID) && !slices.Contains(lastOrder, path) {
+				if !strings.HasPrefix(responses.StringField(item, "call_id"), resetGuidanceCallID) && !slices.Contains(lastOrder, path) {
 					lastOrder = append(lastOrder, path)
 				}
 				sources[path] = resetGuidanceSource{path: path, tool: kind, name: name, tier: tier, declaration: declaration}

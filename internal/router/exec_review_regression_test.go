@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/execscope"
-
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestExecReconcileDoesNotClaimUnvisitedListedEntriesDeleted(t *testing.T) {
@@ -186,7 +186,7 @@ func TestNativeExecResultFinalizesAfterReplayProxyReconstruction(t *testing.T) {
 	writeTestFile(t, target, "gone\n")
 	transform := prepareNativeStockTransform(t, firstProxy, workspace, "exec-before-terminal")
 	command := "printf 'run\\n' >> host-run-count && rm a.txt"
-	arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace, "yield_time_ms": 1000}))
+	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace, "yield_time_ms": 1000}))
 	retainCommandObservation(t, transform, "exec-call", arguments)
 	if history, found, err := store.lookup(t.Context(), workspace, "exec-call"); err != nil || !found || history.ExecObservation == nil {
 		t.Fatalf("native call was not durably captured before terminal result: history=%+v found=%v err=%v", history, found, err)

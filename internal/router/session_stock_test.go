@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func writeStockRollout(t *testing.T, path string, records ...map[string]any) {
@@ -41,9 +42,9 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 	parent := mekugiHistory{
 		ToolName: applyPatchToolName, Script: patch, CarrierName: applyPatchToolName,
 		CarrierKind: codeModeCarrierCustom, CarrierPayload: patch, UpstreamItem: map[string]json.RawMessage{
-			"type": mustMarshalJSON("custom_tool_call"), "id": mustMarshalJSON("patch-item"),
-			"call_id": mustMarshalJSON("patch-call"), "name": mustMarshalJSON(applyPatchToolName),
-			"input": mustMarshalJSON(patch), "status": mustMarshalJSON("completed"),
+			"type": responses.MustMarshalJSON("custom_tool_call"), "id": responses.MustMarshalJSON("patch-item"),
+			"call_id": responses.MustMarshalJSON("patch-call"), "name": responses.MustMarshalJSON(applyPatchToolName),
+			"input": responses.MustMarshalJSON(patch), "status": responses.MustMarshalJSON("completed"),
 		},
 		NativePatches: []nativePatchObservation{{Input: patch, Files: []nativePatchFileSnapshot{{AfterPath: filepath.Join(root, "observed.txt")}}}},
 	}

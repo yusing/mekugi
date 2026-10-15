@@ -2,8 +2,12 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
+
 	json "encoding/json/v2"
 	"errors"
 	"net/http/httptest"
@@ -15,7 +19,7 @@ func routerFaultSSE(events ...any) string {
 	var stream strings.Builder
 	for _, event := range events {
 		stream.WriteString("data: ")
-		stream.Write(mustMarshalJSON(event))
+		stream.Write(responses.MustMarshalJSON(event))
 		stream.WriteString("\n\n")
 	}
 	return stream.String()

@@ -2,6 +2,9 @@ package router
 
 import (
 	"encoding/json"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv2 "encoding/json/v2"
 	"strconv"
 	"strings"
@@ -149,7 +152,7 @@ func (t executionContinuationTools) forSession(id int64) executionContinuation {
 		if t.nestedSessionWaitMS > 0 {
 			args["yield_time_ms"] = t.nestedSessionWaitMS
 		}
-		source := "text(await tools.write_stdin(" + string(mustMarshalJSON(args)) + "));"
+		source := "text(await tools.write_stdin(" + string(responses.MustMarshalJSON(args)) + "));"
 		result.NextCall = &executionNextCall{Tool: t.exec, Input: source}
 	} else {
 		result.Reason = "The host session continuation tool is not exposed in this request. Do not restart the running call."
@@ -166,24 +169,24 @@ type executionCall struct {
 }
 
 func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistory, known bool, execName string) string {
-	if namespace := jsonString(item, "namespace"); namespace != "" && namespace != "functions" {
+	if namespace := responses.StringField(item, "namespace"); namespace != "" && namespace != "functions" {
 		return ""
 	}
-	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
+	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
 	if name == strings.TrimPrefix(execName, "functions.") {
-		source := jsonString(item, "input")
+		source := responses.StringField(item, "input")
 		nested, ok := toolActivityUnwrapExec(source, false)
 		if !ok {
 			return ""
 		}
 		item = nested
-		name = jsonString(item, "name")
+		name = responses.StringField(item, "name")
 	}
 	var args struct {
 		CellID    string `json:"cell_id"`
 		SessionID int64  `json:"session_id"`
 	}
-	if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) != nil {
+	if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) != nil {
 		return ""
 	}
 	if name == "wait" && args.CellID != "" {
@@ -320,10 +323,10 @@ func executionOutputTexts(raw json.RawMessage) []string {
 }
 
 func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, known bool, execName string) executionCall {
-	if namespace := jsonString(item, "namespace"); namespace != "" && namespace != "functions" {
+	if namespace := responses.StringField(item, "namespace"); namespace != "" && namespace != "functions" {
 		return executionCall{}
 	}
-	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
+	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
 	call := executionCall{resumeHandle: executionResumeHandle(item, history, known, execName)}
 	if after, ok := strings.CutPrefix(call.resumeHandle, "cell:"); ok {
 		call.cellID = after
@@ -334,7 +337,7 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 		call.nativePayload = history.ToolName == nativeExecCommandToolName
 		if call.codeMode && history.ToolName == "exec" {
 			if nested, ok := toolActivityUnwrapExec(history.Script, true); ok {
-				name := jsonString(nested, "name")
+				name := responses.StringField(nested, "name")
 				call.nativePayload = name == nativeExecCommandToolName || name == "write_stdin"
 			}
 		}
@@ -347,14 +350,14 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 		call.native = true
 	case strings.TrimPrefix(execName, "functions."):
 		call.codeMode = true
-		if nested, ok := toolActivityUnwrapExec(jsonString(item, "input"), true); ok {
-			call.nativePayload = jsonString(nested, "name") == "exec_command" || jsonString(nested, "name") == "write_stdin"
+		if nested, ok := toolActivityUnwrapExec(responses.StringField(item, "input"), true); ok {
+			call.nativePayload = responses.StringField(nested, "name") == "exec_command" || responses.StringField(nested, "name") == "write_stdin"
 		}
 	case "wait":
 		var args struct {
 			CellID string `json:"cell_id"`
 		}
-		if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil {
+		if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil {
 			call.cellID = args.CellID
 			call.codeMode = args.CellID != ""
 		}
@@ -376,11 +379,11 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 	pending := make(map[string]int)
 	changed := false
 	for index, item := range items {
-		callID := jsonString(item, "call_id")
+		callID := responses.StringField(item, "call_id")
 		if callID == "" {
 			continue
 		}
-		switch jsonString(item, "type") {
+		switch responses.StringField(item, "type") {
 		case "custom_tool_call", "function_call":
 			history, known := visible[callID]
 			call := executionCallFor(item, history, known, execName)
@@ -459,8 +462,8 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 		item := items[index]
 		latest, outstanding := pending[executionHandleKey(notice)]
 		outstanding = outstanding && latest == index
-		text := string(mustMarshalJSON(map[string]any{"continuation": notice}))
-		annotation := mustMarshalJSON(map[string]string{"type": "input_text", "text": text})
+		text := string(responses.MustMarshalJSON(map[string]any{"continuation": notice}))
+		annotation := responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": text})
 		// Re-prepared requests can contain annotations from an older catalog.
 		// Replace only obsolete advice, preserving host output and already-sent
 		// annotations whose tool contract has not changed.
@@ -475,7 +478,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 				kept = append(kept, part)
 			}
 			if len(kept) != len(parts) {
-				item["output"] = mustMarshalJSON(kept)
+				item["output"] = responses.MustMarshalJSON(kept)
 			}
 		}
 		if outstanding || notice.NextCall != nil {
@@ -487,7 +490,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 		}
 	}
 	if changed {
-		request.setInput(mustMarshalJSON(items))
+		request.setInput(responses.MustMarshalJSON(items))
 	}
 }
 
@@ -496,7 +499,7 @@ func executionAnnotationMatches(part json.RawMessage, notice executionContinuati
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
-	if json.Unmarshal(part, &content) != nil || content.Type != "input_text" || !sameJSONValue(part, mustMarshalJSON(content)) {
+	if json.Unmarshal(part, &content) != nil || content.Type != "input_text" || !sameJSONValue(part, responses.MustMarshalJSON(content)) {
 		return false
 	}
 	var envelope struct {
@@ -505,8 +508,8 @@ func executionAnnotationMatches(part json.RawMessage, notice executionContinuati
 	if json.Unmarshal([]byte(content.Text), &envelope) != nil || envelope.Continuation == nil {
 		return false
 	}
-	return sameJSONValue([]byte(content.Text), mustMarshalJSON(envelope)) &&
-		sameJSONValue(mustMarshalJSON(envelope.Continuation.Handle), mustMarshalJSON(notice.Handle))
+	return sameJSONValue([]byte(content.Text), responses.MustMarshalJSON(envelope)) &&
+		sameJSONValue(responses.MustMarshalJSON(envelope.Continuation.Handle), responses.MustMarshalJSON(notice.Handle))
 }
 
 func executionHandleKey(notice executionContinuation) string {

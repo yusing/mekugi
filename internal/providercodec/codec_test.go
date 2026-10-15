@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const grokModel = "grok:grok-4.6"
@@ -40,7 +42,7 @@ func testPolicy() Policy {
 
 func mustTestJSON(t *testing.T, value any) []byte {
 	t.Helper()
-	return mustMarshalJSON(value)
+	return responses.MustMarshalJSON(value)
 }
 
 func testParse(body []byte) (map[string]json.RawMessage, error) {
@@ -75,7 +77,7 @@ func grokTestRequest(t *testing.T, stream bool) []byte {
 func grokTestSSE(chunks ...any) string {
 	var out strings.Builder
 	for _, chunk := range chunks {
-		fmt.Fprintf(&out, "data: %s\n\n", mustMarshalJSON(chunk))
+		fmt.Fprintf(&out, "data: %s\n\n", responses.MustMarshalJSON(chunk))
 	}
 	out.WriteString("data: [DONE]\n\n")
 	return out.String()

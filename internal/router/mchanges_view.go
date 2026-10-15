@@ -40,6 +40,7 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 		}
 		output.WriteByte('\n')
 	}
+changes:
 	for _, id := range options.ids {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -54,12 +55,12 @@ func (s *mekugiReplayStore) renderChangeList(ctx context.Context, options change
 		default:
 			hasFiles := false
 			for _, call := range change.Calls {
-				record, found, err := s.read(options.workspace, call.ID, false)
+				record, err := s.readChangeRecord(options.workspace, id, change.Correlation, call.ID)
 				if err != nil {
+					if options.unavailable.skip(id, err) {
+						continue changes
+					}
 					return "", err
-				}
-				if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
-					return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 				}
 				history := authoredChangeHistory(record.History)
 				hasFiles = hasFiles || len(history.ReviewFiles) != 0
@@ -136,7 +137,7 @@ func (s *mekugiReplayStore) renderNetChanges(ctx context.Context, options change
 		}
 		paths = append(paths, filepath.Clean(path))
 	}
-	captures, err := s.loadChangeCaptures(ctx, options.workspace, index, options.ids, paths)
+	captures, err := s.loadChangeCaptures(ctx, options.workspace, index, options.ids, paths, options.unavailable)
 	if err != nil {
 		return "", err
 	}

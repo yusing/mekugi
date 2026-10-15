@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func bridgeTestRequest(t *testing.T, additional bool) parsedResponsesRequest {
@@ -32,7 +34,7 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data := mustMarshalJSON(request.fields)
+		data := responses.MustMarshalJSON(request.fields)
 		for _, model := range grokModels {
 			if !bytes.Contains(data, []byte("grok:"+model)) {
 				t.Fatalf("model missing from projected override guidance: %s", model)
@@ -45,7 +47,7 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		if bytes.Contains(data, []byte(`"encrypted":true`)) || !bytes.Contains(data, []byte(`"namespace":"mekugi_collaboration"`)) {
 			t.Fatalf("projection=%s", data)
 		}
-		if jsonString(request.fields, "instructions") != "keep" || !bytes.Contains(data, mustMarshalJSON(embeddedInstruction("collaboration_namespace"))) {
+		if responses.StringField(request.fields, "instructions") != "keep" || !bytes.Contains(data, responses.MustMarshalJSON(embeddedInstruction("collaboration_namespace"))) {
 			t.Fatal("bridge guidance changed base instructions or is missing from the projected namespace")
 		}
 		item := map[string]any{"type": "function_call", "namespace": subagentBridgeNamespace, "name": "spawn_agent", "call_id": "c1", "arguments": `{"message":"plain"}`}
@@ -93,21 +95,21 @@ func TestSubagentBridgeLeavesRecordedDispatchInstructionUnchanged(t *testing.T) 
 		if _, err := prepareSubagentBridge(&request, false, false); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(jsonString(request.fields, "instructions"), prior) {
+		if !strings.HasPrefix(responses.StringField(request.fields, "instructions"), prior) {
 			t.Fatal("top-level recorded dispatch instruction was rewritten")
 		}
 		var got []map[string]json.RawMessage
 		if err := json.Unmarshal(request.fields["input"], &got); err != nil {
 			t.Fatal(err)
 		}
-		if jsonString(got[offset], "content") != prior {
+		if responses.StringField(got[offset], "content") != prior {
 			t.Fatal("developer scalar dispatch instruction was rewritten")
 		}
 		var parts []map[string]json.RawMessage
 		if err := json.Unmarshal(got[offset+1]["content"], &parts); err != nil {
 			t.Fatal(err)
 		}
-		if jsonString(parts[0], "text") != "Keep caller policy.\r\n"+prior+"\r\n" || jsonString(got[offset+2], "content") != prior {
+		if responses.StringField(parts[0], "text") != "Keep caller policy.\r\n"+prior+"\r\n" || responses.StringField(got[offset+2], "content") != prior {
 			t.Fatal("recorded dispatch instruction content was rewritten")
 		}
 	}
@@ -126,15 +128,15 @@ func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 	if err := json.Unmarshal(result, &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if len(parsed.Models) != 5 || parsed.Extra != "keep" || jsonString(parsed.Models[0], "slug") != "gpt-5.6-sol" || jsonString(parsed.Models[2], "slug") != grokModel || string(parsed.Models[1]["unknown_future_field"]) != "42" {
+	if len(parsed.Models) != 5 || parsed.Extra != "keep" || responses.StringField(parsed.Models[0], "slug") != "gpt-5.6-sol" || responses.StringField(parsed.Models[2], "slug") != grokModel || string(parsed.Models[1]["unknown_future_field"]) != "42" {
 		t.Fatalf("catalog=%s", result)
 	}
 	for index, id := range grokModels {
-		if got := jsonString(parsed.Models[index+1], "slug"); got != "grok:"+id {
+		if got := responses.StringField(parsed.Models[index+1], "slug"); got != "grok:"+id {
 			t.Fatalf("catalog model %d = %q", index+1, got)
 		}
 	}
-	if jsonString(parsed.Models[2], "visibility") != "list" || string(parsed.Models[2]["supported_in_api"]) != "true" {
+	if responses.StringField(parsed.Models[2], "visibility") != "list" || string(parsed.Models[2]["supported_in_api"]) != "true" {
 		t.Fatal("Grok is not available in the main-agent model picker")
 	}
 	if string(parsed.Models[2]["use_responses_lite"]) != "false" {
@@ -149,7 +151,7 @@ func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 func TestSubagentBridgePreservesScalarOpenAIInput(t *testing.T) {
 	for _, withTools := range []bool{false, true} {
 		request := bridgeTestRequest(t, false)
-		request.fields["input"] = mustMarshalJSON("hello")
+		request.fields["input"] = responses.MustMarshalJSON("hello")
 		if !withTools {
 			delete(request.fields, "tools")
 		}
@@ -182,7 +184,7 @@ func TestGrokCatalogRequiresAnActualV2Template(t *testing.T) {
 			Models []map[string]json.RawMessage `json:"models"`
 		}
 		json.Unmarshal(result, &catalog)
-		if jsonString(catalog.Models[len(catalog.Models)-1], "marker") != "correct" {
+		if responses.StringField(catalog.Models[len(catalog.Models)-1], "marker") != "correct" {
 			t.Fatal("selected non-v2 template")
 		}
 	}
@@ -221,7 +223,7 @@ func TestGrokCatalogRebuildsCachedMetadata(t *testing.T) {
 		t.Fatalf("rebuilt catalog: %v", err)
 	}
 	grok := catalog.Models[2]
-	if jsonString(grok, "slug") != grokModel || jsonString(grok, "apply_patch_tool_type") != "freeform" || jsonString(grok, "shell_type") != "unified_exec" {
+	if responses.StringField(grok, "slug") != grokModel || responses.StringField(grok, "apply_patch_tool_type") != "freeform" || responses.StringField(grok, "shell_type") != "unified_exec" {
 		t.Fatalf("cached Grok tool metadata was not rebuilt: %s", result)
 	}
 }
@@ -244,11 +246,11 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 			fn := map[string]any{"type": "function", "name": "spawn_agent", "description": "Native lifecycle rules", "strict": true, "parameters": schema}
 			ns := map[string]any{"type": "namespace", "name": "collaboration", "tools": []any{fn}}
 			request := bridgeTestRequest(t, false)
-			request.fields["tools"] = mustMarshalJSON([]any{ns})
-			request.fields["input"] = mustMarshalJSON([]any{})
+			request.fields["tools"] = responses.MustMarshalJSON([]any{ns})
+			request.fields["input"] = responses.MustMarshalJSON([]any{})
 			if additional {
-				request.fields["tools"] = mustMarshalJSON([]any{})
-				request.fields["input"] = mustMarshalJSON([]any{map[string]any{"type": "additional_tools", "tools": []any{ns}}})
+				request.fields["tools"] = responses.MustMarshalJSON([]any{})
+				request.fields["input"] = responses.MustMarshalJSON([]any{map[string]any{"type": "additional_tools", "tools": []any{ns}}})
 			}
 			bridge, err := prepareSubagentBridge(&request, true, false)
 			if err != nil {
@@ -296,22 +298,22 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				property["description"] = native
 			}
 			properties["message"].(map[string]any)["encrypted"] = true
-			if !bytes.Equal(mustMarshalJSON(got.Parameters), mustMarshalJSON(schema)) {
-				t.Fatalf("native schema changed: %s", mustMarshalJSON(got.Parameters))
+			if !bytes.Equal(responses.MustMarshalJSON(got.Parameters), responses.MustMarshalJSON(schema)) {
+				t.Fatalf("native schema changed: %s", responses.MustMarshalJSON(got.Parameters))
 			}
 			arguments := `{"agent_type":"review","model":"grok:grok-4.6","fork_turns":"none","reasoning_effort":"high","message":"complete assignment","permission":"native"}`
-			item := mustMarshalJSON(map[string]any{"type": "function_call", "namespace": subagentBridgeNamespace, "name": "spawn_agent", "arguments": arguments, "call_id": "spawn"})
+			item := responses.MustMarshalJSON(map[string]any{"type": "function_call", "namespace": subagentBridgeNamespace, "name": "spawn_agent", "arguments": arguments, "call_id": "spawn"})
 			check := func(raw json.RawMessage) {
 				t.Helper()
 				var restored map[string]json.RawMessage
 				if err := json.Unmarshal(raw, &restored); err != nil {
 					t.Fatal(err)
 				}
-				if jsonString(restored, "arguments") != arguments || jsonString(restored, "namespace") != "collaboration" {
+				if responses.StringField(restored, "arguments") != arguments || responses.StringField(restored, "namespace") != "collaboration" {
 					t.Fatalf("restoration changed arguments or namespace: %s", raw)
 				}
 			}
-			result, err := bridge.TransformJSON(mustMarshalJSON(map[string]any{"output": []json.RawMessage{item}}))
+			result, err := bridge.TransformJSON(responses.MustMarshalJSON(map[string]any{"output": []json.RawMessage{item}}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -322,7 +324,7 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 				t.Fatal(err)
 			}
 			check(response.Output[0])
-			events, err := bridge.TransformSSE(mustMarshalJSON(map[string]any{"type": "response.output_item.done", "item": item}))
+			events, err := bridge.TransformSSE(responses.MustMarshalJSON(map[string]any{"type": "response.output_item.done", "item": item}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -353,12 +355,12 @@ func TestSubagentBridgeWithoutGrok(t *testing.T) {
 		if err != nil || bridge == nil {
 			t.Fatalf("prepare ordinary bridge: %v", err)
 		}
-		wire := mustMarshalJSON(request.fields)
+		wire := responses.MustMarshalJSON(request.fields)
 		if !bytes.Contains(wire, []byte(subagentBridgeNamespace)) || bytes.Contains(wire, []byte("grok:")) ||
 			bytes.Contains(wire, []byte(`"encrypted":true`)) {
 			t.Fatalf("ordinary projection exposes wrong contract: %s", wire)
 		}
-		if !bytes.Contains(wire, mustMarshalJSON(embeddedInstruction("collaboration_namespace"))) || jsonString(request.fields, "instructions") != "keep" {
+		if !bytes.Contains(wire, responses.MustMarshalJSON(embeddedInstruction("collaboration_namespace"))) || responses.StringField(request.fields, "instructions") != "keep" {
 			t.Fatal("missing plaintext guidance")
 		}
 	}
@@ -435,14 +437,14 @@ func TestSubagentBridgePreservesEncryptedHistory(t *testing.T) {
 	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
 		t.Fatal(err)
 	}
-	if !sameJSONValue(mustMarshalJSON(input[0]), mustMarshalJSON(encrypted)) ||
-		!sameJSONValue(mustMarshalJSON(input[1]), mustMarshalJSON(message)) {
+	if !sameJSONValue(responses.MustMarshalJSON(input[0]), responses.MustMarshalJSON(encrypted)) ||
+		!sameJSONValue(responses.MustMarshalJSON(input[1]), responses.MustMarshalJSON(message)) {
 		t.Fatal("old encrypted call or assignment changed")
 	}
-	if jsonString(input[2], "namespace") != subagentBridgeNamespace ||
-		jsonString(input[2], "call_id") != "new" ||
-		jsonString(input[2], "arguments") != plain["arguments"] ||
+	if responses.StringField(input[2], "namespace") != subagentBridgeNamespace ||
+		responses.StringField(input[2], "call_id") != "new" ||
+		responses.StringField(input[2], "arguments") != plain["arguments"] ||
 		len(input[2]["encrypted_function_args"]) != 0 {
-		t.Fatalf("plaintext replay not projected exactly: %s", mustMarshalJSON(input[2]))
+		t.Fatalf("plaintext replay not projected exactly: %s", responses.MustMarshalJSON(input[2]))
 	}
 }

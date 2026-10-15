@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const subagentBridgeNamespace = "mekugi_collaboration"
@@ -34,23 +36,23 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 			return nil, fmt.Errorf("decode collaboration tools: %w", err)
 		}
 		for _, tool := range tools {
-			if jsonString(tool, "type") != "namespace" {
+			if responses.StringField(tool, "type") != "namespace" {
 				continue
 			}
-			switch jsonString(tool, "name") {
+			switch responses.StringField(tool, "name") {
 			case subagentBridgeNamespace:
 				return nil, errors.New("tool namespace mekugi_collaboration is reserved by the collaboration bridge")
 			case "collaboration":
-				namespaceDescription := strings.TrimSpace(jsonString(tool, "description") + "\n" + embeddedInstruction("collaboration_namespace"))
-				tool["description"] = mustMarshalJSON(namespaceDescription)
+				namespaceDescription := strings.TrimSpace(responses.StringField(tool, "description") + "\n" + embeddedInstruction("collaboration_namespace"))
+				tool["description"] = responses.MustMarshalJSON(namespaceDescription)
 				var functions []map[string]json.RawMessage
 				if err := json.Unmarshal(tool["tools"], &functions); err != nil {
 					return nil, err
 				}
 				for _, fn := range functions {
-					bridge.names[jsonString(fn, "name")] = true
-					if openCodeNote != "" && jsonString(fn, "name") == "spawn_agent" {
-						fn["description"] = mustMarshalJSON(jsonString(fn, "description") + openCodeNote)
+					bridge.names[responses.StringField(fn, "name")] = true
+					if openCodeNote != "" && responses.StringField(fn, "name") == "spawn_agent" {
+						fn["description"] = responses.MustMarshalJSON(responses.StringField(fn, "description") + openCodeNote)
 					}
 					// Remove only the provider's message encryption annotation, not arbitrary
 					// schema keywords or strictness owned by the collaboration runtime.
@@ -69,9 +71,9 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 								return nil, err
 							}
 							delete(message, "encrypted")
-							properties["message"] = mustMarshalJSON(message)
+							properties["message"] = responses.MustMarshalJSON(message)
 						}
-						if grokEnabled && jsonString(fn, "name") == "spawn_agent" {
+						if grokEnabled && responses.StringField(fn, "name") == "spawn_agent" {
 							for name, note := range map[string]string{
 								"model":            grokModelNote,
 								"fork_turns":       embeddedInstruction("grok_fork_turns"),
@@ -88,19 +90,19 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 								if property == nil {
 									continue
 								}
-								property["description"] = mustMarshalJSON(strings.TrimSpace(jsonString(property, "description") + "\n" + note))
-								properties[name] = mustMarshalJSON(property)
+								property["description"] = responses.MustMarshalJSON(strings.TrimSpace(responses.StringField(property, "description") + "\n" + note))
+								properties[name] = responses.MustMarshalJSON(property)
 							}
 						}
-						schema["properties"] = mustMarshalJSON(properties)
-						fn["parameters"] = mustMarshalJSON(schema)
+						schema["properties"] = responses.MustMarshalJSON(properties)
+						fn["parameters"] = responses.MustMarshalJSON(schema)
 					}
-					if description := jsonString(fn, "description"); description != "" {
-						fn["description"] = mustMarshalJSON(strings.ReplaceAll(description, "collaboration.", subagentBridgeNamespace+"."))
+					if description := responses.StringField(fn, "description"); description != "" {
+						fn["description"] = responses.MustMarshalJSON(strings.ReplaceAll(description, "collaboration.", subagentBridgeNamespace+"."))
 					}
 				}
-				tool["name"] = mustMarshalJSON(subagentBridgeNamespace)
-				tool["tools"] = mustMarshalJSON(functions)
+				tool["name"] = responses.MustMarshalJSON(subagentBridgeNamespace)
+				tool["tools"] = responses.MustMarshalJSON(functions)
 			default:
 				if nested, ok := tool["tools"]; ok {
 					projected, err := projectTools(nested)
@@ -127,7 +129,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 			return nil, fmt.Errorf("decode collaboration history: %w", err)
 		}
 		for _, item := range input {
-			switch jsonString(item, "type") {
+			switch responses.StringField(item, "type") {
 			case "additional_tools":
 				projected, err := projectTools(item["tools"])
 				if err != nil {
@@ -135,7 +137,7 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 				}
 				item["tools"] = projected
 			case "function_call":
-				if jsonString(item, "namespace") == "collaboration" {
+				if responses.StringField(item, "namespace") == "collaboration" {
 					if raw, present := item["encrypted_function_args"]; present {
 						var encrypted []string
 						if err := json.Unmarshal(raw, &encrypted); err != nil {
@@ -147,25 +149,25 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 							continue
 						}
 					}
-					item["namespace"] = mustMarshalJSON(subagentBridgeNamespace)
+					item["namespace"] = responses.MustMarshalJSON(subagentBridgeNamespace)
 					delete(item, "encrypted_function_args")
 				}
 			}
 		}
-		request.fields["input"] = mustMarshalJSON(input)
+		request.fields["input"] = responses.MustMarshalJSON(input)
 	}
 	request.toolCatalog = nil
 	if len(bridge.names) == 0 {
 		return nil, nil
 	}
 	if input != nil {
-		request.setInput(mustMarshalJSON(input))
+		request.setInput(responses.MustMarshalJSON(input))
 	}
 	if raw, ok := request.fields["tool_choice"]; ok {
 		var choice map[string]json.RawMessage
-		if json.Unmarshal(raw, &choice) == nil && jsonString(choice, "namespace") == "collaboration" {
-			choice["namespace"] = mustMarshalJSON(subagentBridgeNamespace)
-			request.fields["tool_choice"] = mustMarshalJSON(choice)
+		if json.Unmarshal(raw, &choice) == nil && responses.StringField(choice, "namespace") == "collaboration" {
+			choice["namespace"] = responses.MustMarshalJSON(subagentBridgeNamespace)
+			request.fields["tool_choice"] = responses.MustMarshalJSON(choice)
 		}
 	}
 	return bridge, nil
@@ -176,19 +178,19 @@ func (b *subagentBridge) restoreItem(raw json.RawMessage) (json.RawMessage, erro
 	if err := json.Unmarshal(raw, &item); err != nil {
 		return nil, err
 	}
-	if jsonString(item, "type") != "function_call" || jsonString(item, "namespace") != subagentBridgeNamespace {
+	if responses.StringField(item, "type") != "function_call" || responses.StringField(item, "namespace") != subagentBridgeNamespace {
 		return raw, nil
 	}
-	name := jsonString(item, "name")
+	name := responses.StringField(item, "name")
 	if !b.names[name] {
 		return nil, errors.New("provider returned an unavailable collaboration bridge tool")
 	}
-	item["namespace"] = mustMarshalJSON("collaboration")
+	item["namespace"] = responses.MustMarshalJSON("collaboration")
 	switch name {
 	case "spawn_agent", "send_message", "followup_task":
 		item["encrypted_function_args"] = json.RawMessage(`[]`)
 	}
-	return marshalProtocolJSON(item)
+	return responses.MarshalJSON(item)
 }
 
 func (b *subagentBridge) TransformJSON(payload []byte) ([]byte, error) {
@@ -208,9 +210,9 @@ func (b *subagentBridge) TransformJSON(payload []byte) ([]byte, error) {
 			}
 			output[i] = restored
 		}
-		response["output"] = mustMarshalJSON(output)
+		response["output"] = responses.MustMarshalJSON(output)
 	}
-	return marshalProtocolJSON(response)
+	return responses.MarshalJSON(response)
 }
 func (b *subagentBridge) TransformSSE(payload []byte) ([][]byte, error) {
 	var event map[string]json.RawMessage
@@ -231,6 +233,6 @@ func (b *subagentBridge) TransformSSE(payload []byte) ([][]byte, error) {
 		}
 		event["response"] = restored
 	}
-	return [][]byte{mustMarshalJSON(event)}, nil
+	return [][]byte{responses.MustMarshalJSON(event)}, nil
 }
 func (*subagentBridge) Finish(bool) error { return nil }

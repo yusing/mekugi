@@ -17,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const toolFrontendCodexWorkerEnvironment = "MEKUGI_TOOL_FRONTEND_CODEX_WORKER"
@@ -89,8 +91,8 @@ func (p *toolFrontendCodexProvider) forwardExecution(
 		program := p.program
 		if program == "" {
 			program = `const result = await tools.exec_command({"cmd":` +
-				string(mustMarshalJSON("printf 'stdin is not worker JSON\\n' | mrun --max-tokens 1024 sh -c 'printf \"%s|%s|%s|%s|\" \"$PWD\" \"$MEKUGI_FRONTEND_TEST\" \"$1\" \"$2\"; cat' sh one 'two words'")) +
-				`,"workdir":` + string(mustMarshalJSON(p.workspace)) + `});
+				string(responses.MustMarshalJSON("printf 'stdin is not worker JSON\\n' | mrun --max-tokens 1024 sh -c 'printf \"%s|%s|%s|%s|\" \"$PWD\" \"$MEKUGI_FRONTEND_TEST\" \"$1\" \"$2\"; cat' sh one 'two words'")) +
+				`,"workdir":` + string(responses.MustMarshalJSON(p.workspace)) + `});
 text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 		}
 		item = map[string]any{
@@ -106,7 +108,7 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 		}
 		want := p.workspace + "|inherited|one|two words|stdin is not worker JSON"
 		for _, input := range request.Input {
-			if jsonString(input, "type") != "custom_tool_call_output" || jsonString(input, "call_id") != "frontend-call" {
+			if responses.StringField(input, "type") != "custom_tool_call_output" || responses.StringField(input, "call_id") != "frontend-call" {
 				continue
 			}
 			output := string(input["output"])
@@ -151,13 +153,13 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 	} {
 		if event["type"] == "response.output_item.done" && item["type"] == "function_call" {
 			wire.WriteString("data: ")
-			wire.Write(mustMarshalJSON(map[string]any{
+			wire.Write(responses.MustMarshalJSON(map[string]any{
 				"type": "response.function_call_arguments.done", "item_id": item["id"], "arguments": item["arguments"],
 			}))
 			wire.WriteString("\n\n")
 		}
 		wire.WriteString("data: ")
-		wire.Write(mustMarshalJSON(event))
+		wire.Write(responses.MustMarshalJSON(event))
 		wire.WriteString("\n\n")
 	}
 	result := serverHTTPResponse(wire.String())
@@ -250,8 +252,8 @@ func TestMRunNativeCodexYieldAndWriteStdinE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	commandText := `mrun --max-tokens 100 -- sh -c 'printf ready > ready; IFS= read -r value; printf "continued:%s\n" "$value"'`
-	program := `const started = await tools.exec_command({"cmd":` + string(mustMarshalJSON(commandText)) +
-		`,"workdir":` + string(mustMarshalJSON(workspace)) + `,"tty":true,"yield_time_ms":250});
+	program := `const started = await tools.exec_command({"cmd":` + string(responses.MustMarshalJSON(commandText)) +
+		`,"workdir":` + string(responses.MustMarshalJSON(workspace)) + `,"tty":true,"yield_time_ms":250});
 if (typeof started.session_id !== "number") throw new Error("mrun did not yield a host session");
 const completed = await tools.write_stdin({"session_id":started.session_id,"chars":"codex-input\n","yield_time_ms":30000,"max_output_tokens":1000});
 text(JSON.stringify({started, completed}));`

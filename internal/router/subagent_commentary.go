@@ -1,8 +1,5 @@
 package router
 
-// Source: openai/codex codex-rs/protocol/src/protocol.rs.
-// Inter-agent message shapes visible at the Responses boundary.
-
 import (
 	"crypto/sha256"
 	"encoding/json"
@@ -10,7 +7,11 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/commentaryid"
+	"github.com/yusing/mekugi/internal/responses"
 )
+
+// Source: openai/codex codex-rs/protocol/src/protocol.rs.
+// Inter-agent message shapes visible at the Responses boundary.
 
 const subagentCommentaryMessagePrefix = commentaryid.SubagentPrefix
 
@@ -30,7 +31,7 @@ func nativeSubagentStart(request *parsedResponsesRequest) *activityStart {
 	if raw, ok := request.fields["reasoning"]; ok && json.Unmarshal(raw, &reasoning) != nil {
 		return nil
 	}
-	return subagentStart(model, reasoning.Effort, jsonString(request.fields, "service_tier"))
+	return subagentStart(model, reasoning.Effort, responses.StringField(request.fields, "service_tier"))
 }
 
 // subagentStart validates the model settings a child actually ran with; a
@@ -67,7 +68,7 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 		// A later user message or assistant output makes preceding envelopes
 		// historical, even if they were never displayed. This boundary
 		// also works on full-history requests after resume or cache rebasing.
-		kind, role := jsonString(item, "type"), jsonString(item, "role")
+		kind, role := responses.StringField(item, "type"), responses.StringField(item, "role")
 		if (kind == "message" || kind == "") && (role == "user" || role == "assistant") ||
 			kind == "reasoning" || strings.HasSuffix(kind, "_call") {
 			currentInput = i + 1
@@ -84,18 +85,18 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 
 	for _, item := range items[currentInput:] {
 		text, sender, final, ok := subagentResponse(item)
-		if !ok || jsonString(item, "recipient") != recipient {
+		if !ok || responses.StringField(item, "recipient") != recipient {
 			continue
 		}
 		if final {
 			envelopes.finals = append(envelopes.finals, subagentFinal{
 				sender: sender,
-				source: subagentCommentaryMessageID("final\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text),
+				source: subagentCommentaryMessageID("final\x00" + responses.StringField(item, "id") + "\x00" + sender + "\x00" + text),
 				text:   text,
 			})
 			continue
 		}
-		id := subagentCommentaryMessageID("response\x00" + jsonString(item, "id") + "\x00" + sender + "\x00" + text)
+		id := subagentCommentaryMessageID("response\x00" + responses.StringField(item, "id") + "\x00" + sender + "\x00" + text)
 		if len(envelopes.replies) < maxActivityEventsPerThread {
 			envelopes.replies = append(envelopes.replies, subagentReply{source: id, message: activityMessage{from: sender, to: recipient, text: text}})
 		}
@@ -104,10 +105,10 @@ func prepareSubagentInputEnvelopes(fields map[string]json.RawMessage, recipient 
 }
 
 func subagentResponse(item map[string]json.RawMessage) (text, sender string, final, ok bool) {
-	if jsonString(item, "type") != "agent_message" {
+	if responses.StringField(item, "type") != "agent_message" {
 		return "", "", false, false
 	}
-	sender = jsonString(item, "author")
+	sender = responses.StringField(item, "author")
 	if sender != "/root" && !strings.HasPrefix(sender, "/root/") || strings.ContainsAny(sender, "\r\n\x00") {
 		return "", "", false, false
 	}
@@ -117,20 +118,20 @@ func subagentResponse(item map[string]json.RawMessage) (text, sender string, fin
 	}
 	// Native Codex pairs the plaintext routing header with opaque ciphertext.
 	// Report receipt only; neither part is a plaintext reply payload.
-	if len(content) == 2 && jsonString(content[0], "type") == "input_text" &&
-		jsonString(content[1], "type") == "encrypted_content" {
+	if len(content) == 2 && responses.StringField(content[0], "type") == "input_text" &&
+		responses.StringField(content[1], "type") == "encrypted_content" {
 		return "", sender, false, true
 	}
 	if len(content) != 1 {
 		return "", "", false, false
 	}
-	if jsonString(content[0], "type") == "encrypted_content" {
+	if responses.StringField(content[0], "type") == "encrypted_content" {
 		return "", sender, false, true
 	}
-	if jsonString(content[0], "type") != "input_text" {
+	if responses.StringField(content[0], "type") != "input_text" {
 		return "", "", false, false
 	}
-	body := jsonString(content[0], "text")
+	body := responses.StringField(content[0], "text")
 	header, payload, found := strings.Cut(body, "\nPayload:\n")
 	if !found || (!strings.HasPrefix(header, "Message Type: MESSAGE\n") && !strings.HasPrefix(header, "Message Type: FINAL_ANSWER\n")) {
 		return "", "", false, false
@@ -149,7 +150,7 @@ func isSubstantiveAnswer(item map[string]json.RawMessage) bool {
 	if !isFinalAnswerMessage(item) {
 		return false
 	}
-	if status := jsonString(item, "status"); status != "" && status != "completed" {
+	if status := responses.StringField(item, "status"); status != "" && status != "completed" {
 		return false
 	}
 	if raw, present := item["phase"]; present {
@@ -178,21 +179,21 @@ func isSubstantiveAnswer(item map[string]json.RawMessage) bool {
 
 // Client dispatches and unfinished hosted calls are not final-answer turns.
 func blocksTokenUsage(item map[string]json.RawMessage) bool {
-	switch jsonString(item, "type") {
+	switch responses.StringField(item, "type") {
 	case "function_call", "custom_tool_call", "computer_call", "local_shell_call", "apply_patch_call", "mcp_approval_request":
 		return true
 	case "tool_search_call":
-		if jsonString(item, "execution") != "server" {
+		if responses.StringField(item, "execution") != "server" {
 			return true
 		}
 	case "shell_call":
 		var environment map[string]json.RawMessage
-		if json.Unmarshal(item["environment"], &environment) != nil || jsonString(environment, "type") != "container_reference" {
+		if json.Unmarshal(item["environment"], &environment) != nil || responses.StringField(environment, "type") != "container_reference" {
 			return true
 		}
 	}
-	if strings.HasSuffix(jsonString(item, "type"), "_call") {
-		status := jsonString(item, "status")
+	if strings.HasSuffix(responses.StringField(item, "type"), "_call") {
+		status := responses.StringField(item, "status")
 		return status != "completed" && status != "failed"
 	}
 	return false

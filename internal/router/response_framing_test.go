@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestAnswerSSEFraming(t *testing.T) {
@@ -111,7 +113,7 @@ func TestAnswerSSEFraming(t *testing.T) {
 								t.Fatalf("answer frame %d changed: %s", index, payload)
 							}
 						} else if event.Type != "response.completed" || len(event.Response.Output) != 1 ||
-							jsonString(event.Response.Output[0], "id") != "answer" {
+							responses.StringField(event.Response.Output[0], "id") != "answer" {
 							t.Fatalf("terminal snapshot lost the provider answer: %s", payload)
 						}
 					}

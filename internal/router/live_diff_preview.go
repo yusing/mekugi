@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"mvdan.cc/sh/v3/syntax"
@@ -36,7 +37,7 @@ type liveDiffPreviewWorker struct {
 // Large previews retain a bounded suffix of the actual unified diff.
 func boundLiveDiffPreview(preview diffview.Preview) diffview.Preview {
 	const limit = 48 << 10
-	if len(mustMarshalJSON(preview)) <= limit {
+	if len(responses.MustMarshalJSON(preview)) <= limit {
 		return preview
 	}
 	if len(preview.Files) != 0 {
@@ -60,7 +61,7 @@ func boundLiveDiffPreview(preview diffview.Preview) diffview.Preview {
 		}
 		preview.DiffText, preview.Truncated = true, true
 	}
-	for preview.Input != "" && len(mustMarshalJSON(preview)) > limit {
+	for preview.Input != "" && len(responses.MustMarshalJSON(preview)) > limit {
 		cut := max(1, len(preview.Input)/2)
 		for cut < len(preview.Input) && !utf8.RuneStart(preview.Input[cut]) {
 			cut++
@@ -378,15 +379,15 @@ func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (di
 	case "exec":
 		if calls, ok := toolActivityUnwrapExecCalls(input, false); ok {
 			for _, call := range slices.Backward(calls) {
-				switch jsonString(call, "name") {
+				switch responses.StringField(call, "name") {
 				case applyPatchToolName:
-					return w.projectStockPreview(jsonString(call, "input"), workspace, final)
+					return w.projectStockPreview(responses.StringField(call, "input"), workspace, final)
 				case nativeExecCommandToolName:
 					var arguments map[string]json.RawMessage
-					if json.Unmarshal([]byte(jsonString(call, "arguments")), &arguments) != nil {
+					if json.Unmarshal([]byte(responses.StringField(call, "arguments")), &arguments) != nil {
 						return diffview.Preview{}, false
 					}
-					return shell(codeModeShellCall{cmd: jsonString(arguments, "cmd"), workdir: jsonString(arguments, "workdir")})
+					return shell(codeModeShellCall{cmd: responses.StringField(arguments, "cmd"), workdir: responses.StringField(arguments, "workdir")})
 				}
 			}
 			return diffview.Preview{}, false
@@ -420,7 +421,7 @@ func (w *liveDiffPreviewWorker) project(input, workspace string, final bool) (di
 func liveDiffExecArguments(input string) (codeModeShellCall, bool) {
 	var arguments map[string]json.RawMessage
 	if json.Unmarshal([]byte(input), &arguments) == nil {
-		call := codeModeShellCall{cmd: jsonString(arguments, "cmd"), workdir: jsonString(arguments, "workdir")}
+		call := codeModeShellCall{cmd: responses.StringField(arguments, "cmd"), workdir: responses.StringField(arguments, "workdir")}
 		if raw, exists := arguments["workdir"]; exists && json.Unmarshal(raw, new(string)) != nil {
 			call.dynamicWorkdir = true
 		}

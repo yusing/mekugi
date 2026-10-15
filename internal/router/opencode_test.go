@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"errors"
 	"io"
@@ -128,7 +131,7 @@ func TestOpenCodeCatalog(t *testing.T) {
 		foundReasoning = foundReasoning || len(levels) != 0
 		if string(model["shell_type"]) != `"unified_exec"` || string(model["unknown_future"]) != "42" ||
 			string(model["use_responses_lite"]) != "false" || string(model["default_reasoning_level"]) != `null` {
-			t.Fatalf("inherited incorrect host/provider metadata: %s", mustMarshalJSON(model))
+			t.Fatalf("inherited incorrect host/provider metadata: %s", responses.MustMarshalJSON(model))
 		}
 	}
 	if !foundDescription || !foundReasoning {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestProviderErrorEventIsFailedNotMissingTerminal(t *testing.T) {
@@ -138,16 +139,16 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 	command := map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{}}
 	socketWrite(t, ctx, conn, command)
 	event := socketRead(t, ctx, conn)
-	if jsonString(event, "type") != "error" || string(event["status"]) != "429" {
-		t.Fatalf("provider error changed: %s", mustMarshalJSON(event))
+	if responses.StringField(event, "type") != "error" || string(event["status"]) != "429" {
+		t.Fatalf("provider error changed: %s", responses.MustMarshalJSON(event))
 	}
 	socketWrite(t, ctx, conn, command)
 	// A missing-terminal error would produce a second synthetic error instead.
 	event = socketRead(t, ctx, conn)
-	if jsonString(event, "type") == "error" {
-		t.Fatalf("router emitted a duplicate error: %s", mustMarshalJSON(event))
+	if responses.StringField(event, "type") == "error" {
+		t.Fatalf("router emitted a duplicate error: %s", responses.MustMarshalJSON(event))
 	}
-	for jsonString(event, "type") != "response.completed" {
+	for responses.StringField(event, "type") != "response.completed" {
 		event = socketRead(t, ctx, conn)
 	}
 	conn.CloseNow()
@@ -181,8 +182,8 @@ func TestResponsesWebSocketGrokEncryptedHistoryStatus(t *testing.T) {
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": grokModel,
 		"input": []any{map[string]string{"type": "reasoning", "encrypted_content": "private"}}})
 	event := socketRead(t, ctx, conn)
-	if jsonString(event, "type") != "error" || string(event["status"]) != "400" ||
+	if responses.StringField(event, "type") != "error" || string(event["status"]) != "400" ||
 		!strings.Contains(string(event["error"]), "grok_encrypted_history") {
-		t.Fatalf("incorrect compatibility error: %s", mustMarshalJSON(event))
+		t.Fatalf("incorrect compatibility error: %s", responses.MustMarshalJSON(event))
 	}
 }

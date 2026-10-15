@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Match Codex's uninstalled-plugin advertisement, not caller-authored plugin
@@ -116,7 +118,7 @@ func rewriteRequestInstructionConflicts(request *parsedResponsesRequest) error {
 	}
 	if original, ok := decodeJSONString(request.fields["instructions"]); ok {
 		if updated := rewriteText(original); updated != original {
-			request.fields["instructions"] = mustMarshalJSON(updated)
+			request.fields["instructions"] = responses.MustMarshalJSON(updated)
 		}
 	}
 	return rewriteRequestMessages(request, "instruction conflicts", func(item responsesItem) ([]byte, bool, error) {

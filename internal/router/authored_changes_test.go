@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestAuthoredChangesUnknownCommandsStayQuiet(t *testing.T) {
@@ -47,7 +48,7 @@ func TestAuthoredChangesKnownEditsIgnoreIncidentalEffectsAndGitIgnore(t *testing
 			writeTestFile(t, filepath.Join(f.workspace, "arbitrary-output", "output.txt"), "incidental\n")
 			proxy := &mekugiProxy{replayStore: f.store}
 			history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
-			if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "edit", history: history, output: mustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
+			if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "edit", history: history, output: responses.MustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
 				t.Fatal(err)
 			}
 			reopened, err := openMekugiReplayStore(f.store.directory)
@@ -163,7 +164,7 @@ func TestAuthoredChangesNamedFormatterKeepsFinalSourceEdits(t *testing.T) {
 	}
 	proxy := &mekugiProxy{replayStore: f.store}
 	history := mekugiHistory{ToolName: nativeExecCommandToolName, ExecutingThread: f.thread, ExecObservation: observation}
-	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, output: mustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
+	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, output: responses.MustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
 		t.Fatal(err)
 	}
 	record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("format", false))

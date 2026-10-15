@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 type grokClient struct {
@@ -161,7 +163,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 			upstream.Close()
 			return nil, err
 		}
-		data := mustMarshalJSON(result)
+		data := responses.MustMarshalJSON(result)
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: &grokResponseBody{Reader: bytes.NewReader(data), close: upstream.Close, openCodePrice: price}}, nil
 	}
 	reader, writer := io.Pipe()
@@ -171,7 +173,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	go func() {
 		defer close(finished)
 		_, err := tr.codec.Read(upstream, func(event map[string]any) error {
-			_, err := fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", event["type"], mustMarshalJSON(event))
+			_, err := fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", event["type"], responses.MustMarshalJSON(event))
 			return err
 		}, failureDetail)
 		streamErr = err

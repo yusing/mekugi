@@ -178,3 +178,49 @@ func TestMChangesWrongWorkspaceMutationIsAtomic(t *testing.T) {
 		}
 	}
 }
+
+func TestMChangesCorruptLaterAttemptKeepsSiblingAndRecoveryStrict(t *testing.T) {
+	for _, view := range []string{"", "summary", "history", "list", "net"} {
+		t.Run(view, func(t *testing.T) {
+			t.Parallel()
+			f := newMChangesSliceFixture(t, "corrupt-attempt")
+			valid := f.reserve(t, f.thread, "valid")
+			f.publish(t, valid, "valid", "valid-call", mekugiHistory{
+				ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("kept.txt", "kept.txt", "old\n", "new\n")},
+			})
+			broken := f.reserve(t, f.thread, "broken")
+			versions := []string{"old\n", "middle\n", "new\n"}
+			for attempt, call := range []string{"first", "later"} {
+				f.publish(t, broken, "broken", call, mekugiHistory{Attempt: attempt + 1,
+					ReviewFiles: []mekugi.ReviewFile{mekugi.RenderReviewFile("discarded.txt", "discarded.txt", versions[attempt], versions[attempt+1])},
+				})
+			}
+			options := changeReadOptions{workspace: f.workspace, ids: []string{broken, valid}, view: view}
+			text, snapshot, err := f.store.readChangeView(f.ctx, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.store.putChangeRead(f.ctx, snapshot, text, 0); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(f.store.directory, replayRecordName(f.workspace, "later", false)), []byte("{"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			output, selected, err := f.store.readChangeView(f.ctx, options)
+			if err == nil || !strings.Contains(err.Error(), broken) || len(selected.IDs) != 1 || selected.IDs[0] != valid ||
+				strings.Contains(output, "discarded.txt") || strings.Contains(output, broken) {
+				t.Fatalf("partial read: output=%q selection=%+v error=%v", output, selected, err)
+			}
+			marker := "kept.txt"
+			if view == "list" {
+				marker = valid
+			}
+			if !strings.Contains(output, marker) {
+				t.Fatalf("valid sibling missing: %q", output)
+			}
+			if _, err := f.store.readSourceStreams(f.ctx, shellOutputRecord{Changes: snapshot}); err == nil {
+				t.Fatal("frozen recovery skipped corrupt evidence")
+			}
+		})
+	}
+}

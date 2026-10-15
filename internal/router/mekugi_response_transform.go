@@ -86,24 +86,24 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 
 	case envelope.Type == responseevents.CustomInputDelta:
 		if fields := t.nativeExecCalls[envelope.ItemID]; fields != nil {
-			t.previewStockDelta(envelope.ItemID, jsonString(fields, "name"), envelope.Delta)
+			t.previewStockDelta(envelope.ItemID, responseevents.StringField(fields, "name"), envelope.Delta)
 		}
 		return [][]byte{payload}, nil
 
 	case envelope.Type == responseevents.CustomInputDone:
 		t.setToolInputEmission(envelope.ItemID, false)
 		if addedFields, stockCall := t.nativeExecCalls[envelope.ItemID]; stockCall {
-			if jsonString(addedFields, "type") == "custom_tool_call" {
-				addedCallID := jsonString(addedFields, "call_id")
+			if responseevents.StringField(addedFields, "type") == "custom_tool_call" {
+				addedCallID := responseevents.StringField(addedFields, "call_id")
 				if addedCallID != "" && envelope.CallID != "" && addedCallID != envelope.CallID {
 					return nil, staticCriticalDiagnostic("changed_code_mode_call", "the upstream changed a exec call identity")
 				}
 				callID := cmp.Or(addedCallID, envelope.CallID)
 				t.finishPreview(envelope.ItemID, envelope.Input)
 				defer delete(t.previews, envelope.ItemID)
-				addedFields["call_id"] = mustMarshalJSON(callID)
+				addedFields["call_id"] = responseevents.MustMarshalJSON(callID)
 				original := maps.Clone(addedFields)
-				original["input"] = mustMarshalJSON(envelope.Input)
+				original["input"] = responseevents.MustMarshalJSON(envelope.Input)
 				item := newResponsesItem(original)
 				changed, err := t.transformOutputItem(&item)
 				if err != nil {
@@ -143,8 +143,8 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		itemID := item.ID
 		callID := item.CallID
 		if addedFields, stockCall := t.nativeExecCalls[itemID]; stockCall {
-			expectedCallID := jsonString(addedFields, "call_id")
-			expectedType, expectedName := jsonString(addedFields, "type"), jsonString(addedFields, "name")
+			expectedCallID := responseevents.StringField(addedFields, "call_id")
+			expectedType, expectedName := responseevents.StringField(addedFields, "type"), responseevents.StringField(addedFields, "name")
 			if item.Type != expectedType || item.Name != expectedName || expectedCallID != "" && expectedCallID != callID {
 				t.endPreview(item.ID)
 				return nil, staticCriticalDiagnostic("inconsistent_stock_call", "the upstream completed an inconsistent stock tool call")
@@ -169,7 +169,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 		if !changed {
 			return [][]byte{payload}, nil
 		}
-		transformed, err := marshalProtocolJSON(item)
+		transformed, err := responseevents.MarshalJSON(item)
 		if err != nil {
 			return nil, criticalDiagnostic(err, "output_item_encode", "Mekugi could not encode a completed output item", true)
 		}
@@ -193,7 +193,7 @@ func (t *mekugiResponseTransform) transformActivitySSE(payload []byte) ([][]byte
 			Status string `json:"status"`
 		}
 		if envelope.Type == responseevents.Completed && json.Unmarshal(transformed, &terminal) == nil && terminal.Status == "failed" {
-			event, err = replaceRawField(event, "type", mustMarshalJSON(responseevents.Failed))
+			event, err = replaceRawField(event, "type", responseevents.MustMarshalJSON(responseevents.Failed))
 		}
 		if err != nil {
 			return nil, err
@@ -227,7 +227,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	}
 	// SSE terminal events own completion even when the embedded status is absent.
 	// JSON responses have no event envelope and retain body-status semantics.
-	status := cmp.Or(terminalStatus, jsonString(object, "status"))
+	status := cmp.Or(terminalStatus, responseevents.StringField(object, "status"))
 	interrupted := status == "failed" || status == "incomplete"
 	if rawOutput, ok := object["output"]; ok {
 		var output []map[string]json.RawMessage
@@ -251,7 +251,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 			}
 			transformedOutput = append(transformedOutput, item.fields)
 		}
-		encoded, err := marshalProtocolJSON(transformedOutput)
+		encoded, err := responseevents.MarshalJSON(transformedOutput)
 		if err != nil {
 			return nil, err
 		}
@@ -263,7 +263,7 @@ func (t *mekugiResponseTransform) transformResponse(payload []byte, terminalStat
 	if err := t.commitHistory(); err != nil {
 		return nil, err
 	}
-	transformed, err := marshalProtocolJSON(object)
+	transformed, err := responseevents.MarshalJSON(object)
 	if err == nil && !t.subagentTurn && status == "completed" && t.finalAnswer.substantive && !t.finalAnswer.blocked && !t.finalAnswer.disabled {
 		t.liveDiffCompletionReady = true
 	}
@@ -432,5 +432,5 @@ func replaceRawField(payload []byte, name string, value json.RawMessage) ([]byte
 		return nil, errors.New("decode stream event")
 	}
 	object[name] = value
-	return marshalProtocolJSON(object)
+	return responseevents.MarshalJSON(object)
 }

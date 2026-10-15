@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
@@ -31,7 +33,7 @@ func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
 						t.Fatal(err)
 					}
 					metadata[field] = json.RawMessage(`42`)
-					headers.Set(codexTurnMetadataHeader, string(mustMarshalJSON(metadata)))
+					headers.Set(codexTurnMetadataHeader, string(responses.MustMarshalJSON(metadata)))
 					body := mustTestJSON(t, map[string]any{
 						"id": "roundtrip", "status": "completed", "output": []any{},
 						"usage": map[string]any{"input_tokens": 12, "input_tokens_details": map[string]any{"cached_tokens": 5}, "output_tokens": 7, "output_tokens_details": map[string]any{"reasoning_tokens": 3}},

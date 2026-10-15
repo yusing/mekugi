@@ -192,9 +192,7 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 					issues := NewCriticalErrors()
 					f := &requestFinalization{}
 					f.classifyCopyError(err)
-					if finishErr := f.finish(responseCtx, err, &trackedResponseWriter{committed: true}, issues); finishErr != nil {
-						t.Fatal(finishErr)
-					}
+					f.finish(responseCtx, err, &trackedResponseWriter{committed: true}, issues)
 					if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
 						t.Fatalf("host interruption reported as failure: outcome=%v notices=%v", f.observation.outcome, issues.Pending())
 					}

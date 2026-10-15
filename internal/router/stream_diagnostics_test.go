@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestStreamDiagnosticsReadTermination(t *testing.T) {
@@ -40,7 +41,7 @@ func TestStreamDiagnosticsReadTermination(t *testing.T) {
 			if d.ReadTermination != tc.want || d.WebSocketCloseCode != tc.closeCode {
 				t.Fatalf("classification: %+v", d)
 			}
-			if strings.Contains(string(mustMarshalJSON(d.snapshot())), "secret") {
+			if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "secret") {
 				t.Fatal("error contents leaked")
 			}
 		})
@@ -78,7 +79,7 @@ func TestStreamDiagnosticsBoundsAndCompletion(t *testing.T) {
 	if d.TerminalEvent != "response.completed" || d.CopyStop != "terminal_event" || d.ProviderRequestID != "req_456" {
 		t.Fatalf("terminal metadata: %+v", d)
 	}
-	if strings.Contains(string(mustMarshalJSON(d.snapshot())), "secret") {
+	if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "secret") {
 		t.Fatal("content leaked")
 	}
 	var disabled *streamDiagnostics
@@ -109,7 +110,7 @@ func TestStreamDiagnosticsRequestLog(t *testing.T) {
 				if err := json.Unmarshal(line, &event); err != nil {
 					t.Fatal(err)
 				}
-				if jsonString(event, "event") != "request_complete" {
+				if responses.StringField(event, "event") != "request_complete" {
 					continue
 				}
 				found = true
@@ -164,7 +165,7 @@ func TestStreamDiagnosticsWebSocketClose(t *testing.T) {
 	if err == nil || d.WebSocketCloseCode != 1001 || d.ProviderRequestID != "req_ws" || d.pending["item_ws"] == nil || d.pending["item_ws"].InputBytes != 13 {
 		t.Fatalf("missing websocket evidence: %+v, %v", d, err)
 	}
-	if strings.Contains(string(mustMarshalJSON(d.snapshot())), "private") {
+	if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "private") {
 		t.Fatal("payload leaked")
 	}
 }
@@ -219,8 +220,8 @@ func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 	defer conn.CloseNow()
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "task"})
 	for _, want := range []string{"codex.response.metadata", "response.created", "response.completed"} {
-		if got := socketRead(t, ctx, conn); jsonString(got, "type") != want {
-			t.Fatalf("got %s, want %s", mustMarshalJSON(got), want)
+		if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != want {
+			t.Fatalf("got %s, want %s", responses.MustMarshalJSON(got), want)
 		}
 	}
 	conn.CloseNow()
@@ -231,7 +232,7 @@ func TestStreamDiagnosticsNativeMetadata(t *testing.T) {
 	}
 	for line := range bytes.SplitSeq(bytes.TrimSpace(data), []byte{'\n'}) {
 		var event map[string]json.RawMessage
-		if json.Unmarshal(line, &event) != nil || jsonString(event, "event") != "request_complete" {
+		if json.Unmarshal(line, &event) != nil || responses.StringField(event, "event") != "request_complete" {
 			continue
 		}
 		var diagnostic streamDiagnostics
@@ -304,7 +305,7 @@ func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
 				d.LastByteAt.IsZero() || d.ReadEndedAt.Before(d.LastByteAt) {
 				t.Fatalf("missing end evidence: %+v", d)
 			}
-			if strings.Contains(string(mustMarshalJSON(d.snapshot())), "private") {
+			if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "private") {
 				t.Fatal("diagnostic leaked response text or arbitrary headers")
 			}
 		})

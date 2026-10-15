@@ -1,12 +1,14 @@
 package providercodec
 
-// Source: internal/router/provider_endpoint.go:1:144@5a2082938e797e6e15c374eb6ae135a0753dea24
-
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
+
+// Source: internal/router/provider_endpoint.go:1:144@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 type providerOptions struct {
 	choice     string
@@ -28,7 +30,7 @@ func validateProviderOptions(fields map[string]json.RawMessage, tools map[string
 			if err := json.Unmarshal(raw, &obj); err != nil {
 				return o, fmt.Errorf("unsupported %s tool choice", d.Name)
 			}
-			o.namedTool = providerToolName(jsonString(obj, "namespace"), jsonString(obj, "name"))
+			o.namedTool = providerToolName(responses.StringField(obj, "namespace"), responses.StringField(obj, "name"))
 			if _, ok := tools[o.namedTool]; !ok {
 				return o, fmt.Errorf("%s tool choice references an unavailable tool", d.Subject)
 			}
@@ -62,7 +64,7 @@ func validateProviderOptions(fields map[string]json.RawMessage, tools map[string
 			if err := json.Unmarshal(raw, &o.textFormat); err != nil {
 				return o, err
 			}
-			switch jsonString(o.textFormat, "type") {
+			switch responses.StringField(o.textFormat, "type") {
 			case "", "text", "json_object", "json_schema":
 			default:
 				return o, fmt.Errorf("unsupported %s structured output format", d.Name)

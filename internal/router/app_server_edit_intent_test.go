@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
@@ -119,13 +120,13 @@ func TestShellMoveIntentOperands(t *testing.T) {
 
 func TestCodeModeEditIntentBatchPreview(t *testing.T) {
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','PRIVATE_BATCH_SOURCE');open(p,'w').write(s)\np='b.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\nenv -u BASH_ENV rtk go test ./internal/router -run 'TestEditIntent'"
-	source := "const r = await tools.exec_command({cmd:" + string(mustMarshalJSON(command)) + "}); text(r);"
+	source := "const r = await tools.exec_command({cmd:" + string(responses.MustMarshalJSON(command)) + "}); text(r);"
 	calls, ok := toolActivityUnwrapExecCalls(source, true)
 	if !ok || len(calls) != 1 {
 		t.Fatalf("exec call was not recognized: %+v", calls)
 	}
 	var arguments map[string]string
-	if err := json.Unmarshal([]byte(jsonString(calls[0], "arguments")), &arguments); err != nil || arguments["cmd"] != command {
+	if err := json.Unmarshal([]byte(responses.StringField(calls[0], "arguments")), &arguments); err != nil || arguments["cmd"] != command {
 		t.Fatalf("exec call changed command: %+v, %v", arguments, err)
 	}
 	got := toolActivityShell(command)

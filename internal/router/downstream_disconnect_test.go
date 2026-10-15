@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestDownstreamEOFDuringResponseSniffing(t *testing.T) {
@@ -57,9 +58,7 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 				f := &requestFinalization{}
 				f.classifyCopyError(err)
 				issues := NewCriticalErrors()
-				if err := f.finish(t.Context(), err, &webSocketOutput{committed: started}, issues); err != nil {
-					t.Fatal(err)
-				}
+				f.finish(t.Context(), err, &webSocketOutput{committed: started}, issues)
 				want := requestOutcomeFailed
 				if test.disconnected {
 					want = requestOutcomeCanceledBeforeResponse
@@ -153,9 +152,7 @@ func TestHTTPDownstreamDisconnectFinalization(t *testing.T) {
 						f := &requestFinalization{}
 						f.classifyCopyError(requestErr)
 						issues := NewCriticalErrors()
-						if err := f.finish(t.Context(), requestErr, output, issues); err != nil {
-							t.Fatal(err)
-						}
+						f.finish(t.Context(), requestErr, output, issues)
 						if t.Context().Err() != nil {
 							t.Fatal("finalization relied on a canceled context")
 						}
@@ -237,7 +234,7 @@ func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
 	}
 	f := &requestFinalization{}
 	issues := NewCriticalErrors()
-	_ = f.finish(ctx, errors.Join(errResponseWrite, err), output, issues)
+	f.finish(ctx, errors.Join(errResponseWrite, err), output, issues)
 	if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
 		t.Fatalf("disconnect produced outcome %v, notices %v", f.observation.outcome, issues.Pending())
 	}
@@ -253,7 +250,7 @@ func TestDownstreamWriteDiagnostics(t *testing.T) {
 	if d.ReadOrigin != "upstream" || d.ReadTermination != "upstream_eof" {
 		t.Fatal("write diagnostics overwrote read evidence")
 	}
-	if strings.Contains(string(mustMarshalJSON(d.snapshot())), "private") {
+	if strings.Contains(string(responses.MustMarshalJSON(d.snapshot())), "private") {
 		t.Fatal("diagnostics leaked close reason")
 	}
 }
@@ -267,7 +264,7 @@ func TestDownstreamDisconnectDuringAnswerStreaming(t *testing.T) {
 	f := &requestFinalization{}
 	f.classifyCopyError(err)
 	issues := NewCriticalErrors()
-	_ = f.finish(t.Context(), err, &webSocketOutput{}, issues)
+	f.finish(t.Context(), err, &webSocketOutput{}, issues)
 	if f.observation.outcome != requestOutcomeCanceledBeforeResponse || len(issues.Pending()) != 0 {
 		t.Fatalf("stream disconnect: %v, outcome %v, notices %v", err, f.observation.outcome, issues.Pending())
 	}

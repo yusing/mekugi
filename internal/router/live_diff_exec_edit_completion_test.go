@@ -30,7 +30,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	if !ok || observation == nil || len(observation.Files) == 0 {
 		t.Fatal("move lost its retained capture")
 	}
-	auto, stop := newAutoLiveDiff(t.Context(), "")
+	auto, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	auto.enabled.Store(true)
 	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})

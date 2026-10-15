@@ -4,6 +4,9 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -114,7 +117,7 @@ func TestAppServerUserInputProvenanceNativeCodexE2E(t *testing.T) {
 									return m
 								}
 							case <-ctx.Done():
-								t.Fatalf("host timeout: %v; notifications=%s", ctx.Err(), mustMarshalJSON(notifications))
+								t.Fatalf("host timeout: %v; notifications=%s", ctx.Err(), responses.MustMarshalJSON(notifications))
 							}
 						}
 					}
@@ -241,7 +244,7 @@ func TestAppServerUserInputProvenanceNativeCodexE2E(t *testing.T) {
 					hostItems = hostItems[len(hostItems)-len(wantedTexts):]
 					for i, texts := range wantedTexts {
 						item, host := userItems[i], hostItems[i]
-						t.Logf("exact provider user item: %s", mustMarshalJSON(item))
+						t.Logf("exact provider user item: %s", responses.MustMarshalJSON(item))
 						providerID, _ := item["id"].(string)
 						hostID, _ := host["id"].(string)
 						if providerID == "" || hostID == "" || providerID == hostID || providerID == "msg_"+hostID {
@@ -267,7 +270,7 @@ func TestAppServerUserInputProvenanceNativeCodexE2E(t *testing.T) {
 							delete(item, "internal_chat_message_metadata_passthrough")
 						}
 						if !reflect.DeepEqual(item, map[string]any{"type": "message", "role": "user", "content": content}) {
-							t.Fatalf("provider origin shape changed: %s", mustMarshalJSON(item))
+							t.Fatalf("provider origin shape changed: %s", responses.MustMarshalJSON(item))
 						}
 						wantClientID := clientID
 						if trial == "mixed steers" {
@@ -277,7 +280,7 @@ func TestAppServerUserInputProvenanceNativeCodexE2E(t *testing.T) {
 							wantClientID = "mixed-id"
 						}
 						if !reflect.DeepEqual(host, map[string]any{"type": "userMessage", "id": hostID, "clientId": wantClientID, "content": hostContent}) {
-							t.Fatalf("host origin/fragment shape changed: %s", mustMarshalJSON(host))
+							t.Fatalf("host origin/fragment shape changed: %s", responses.MustMarshalJSON(host))
 						}
 						if trial == "routed UserInput" {
 							siblingItem = item
@@ -389,7 +392,7 @@ func TestAppServerSiblingInputProvenanceNativeCodexE2E(t *testing.T) {
 								return m
 							}
 						case <-ctx.Done():
-							t.Fatalf("native host timeout: %v; notifications=%s", ctx.Err(), mustMarshalJSON(notifications))
+							t.Fatalf("native host timeout: %v; notifications=%s", ctx.Err(), responses.MustMarshalJSON(notifications))
 						}
 					}
 				}
@@ -442,7 +445,7 @@ func TestAppServerSiblingInputProvenanceNativeCodexE2E(t *testing.T) {
 						}
 						observe(m)
 					case <-ctx.Done():
-						t.Fatalf("native sibling timeout: %v; notifications=%s", ctx.Err(), mustMarshalJSON(notifications))
+						t.Fatalf("native sibling timeout: %v; notifications=%s", ctx.Err(), responses.MustMarshalJSON(notifications))
 					}
 				}
 				if captured == nil {
@@ -469,12 +472,12 @@ func TestAppServerSiblingInputProvenanceNativeCodexE2E(t *testing.T) {
 						latestUser = item
 					}
 				}
-				t.Logf("exact native provider agent items: %s", mustMarshalJSON(agentItems))
+				t.Logf("exact native provider agent items: %s", responses.MustMarshalJSON(agentItems))
 				if mixed {
-					t.Logf("exact native provider human quotation: %s", mustMarshalJSON(latestUser))
+					t.Logf("exact native provider human quotation: %s", responses.MustMarshalJSON(latestUser))
 				}
 				if len(agentItems) != 1 || agentItems[0]["author"] != "/root/sender" || agentItems[0]["recipient"] != provider.recipient {
-					t.Fatalf("native sibling origin was not retained: %s", mustMarshalJSON(agentItems))
+					t.Fatalf("native sibling origin was not retained: %s", responses.MustMarshalJSON(agentItems))
 				}
 				content, ok := agentItems[0]["content"].([]any)
 				if !ok || len(content) != 2 {
@@ -491,7 +494,7 @@ func TestAppServerSiblingInputProvenanceNativeCodexE2E(t *testing.T) {
 				if mixed {
 					wantQuestion = payload
 				}
-				if question := requestUserTextFromInput(mustMarshalJSON(request.Input), provider.recipient, false); question != wantQuestion {
+				if question := requestUserTextFromInput(responses.MustMarshalJSON(request.Input), provider.recipient, false); question != wantQuestion {
 					t.Fatalf("native message replaced the user request: %q", question)
 				}
 				provider.mu.Lock()
@@ -567,7 +570,7 @@ func (p *nativeSiblingProvenanceProvider) forwardExecution(ctx context.Context, 
 	p.mu.Unlock()
 	call := func(name string, args any) *http.Response {
 		id := fmt.Sprintf("native_%s_%d", metadata.AgentName, count)
-		return mchangesNestedCodexResponse(count, map[string]any{"type": "function_call", "id": id, "call_id": id, "namespace": "collaboration", "name": name, "arguments": string(mustMarshalJSON(args)), "status": "completed"})
+		return mchangesNestedCodexResponse(count, map[string]any{"type": "function_call", "id": id, "call_id": id, "namespace": "collaboration", "name": name, "arguments": string(responses.MustMarshalJSON(args)), "status": "completed"})
 	}
 	switch metadata.AgentName {
 	case "/root":

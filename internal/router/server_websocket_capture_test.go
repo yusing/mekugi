@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testing.T) {
@@ -108,9 +109,9 @@ func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testin
 	if snapshot.Requests.Logical != 2 || snapshot.Requests.Attempts != 2 {
 		t.Fatalf("logical exchanges = %+v", snapshot.Requests)
 	}
-	if snapshot.Transport["client_requests"].Bytes != len(mustMarshalJSON(create)) ||
-		snapshot.Transport["client_control_requests"].Bytes != len(mustMarshalJSON(steer)) ||
-		snapshot.Transport["provider_control_requests"].Bytes != len(mustMarshalJSON(steer)) ||
+	if snapshot.Transport["client_requests"].Bytes != len(responses.MustMarshalJSON(create)) ||
+		snapshot.Transport["client_control_requests"].Bytes != len(responses.MustMarshalJSON(steer)) ||
+		snapshot.Transport["provider_control_requests"].Bytes != len(responses.MustMarshalJSON(steer)) ||
 		snapshot.Transport["provider_control_responses"].Bytes == 0 ||
 		snapshot.Transport["client_control_responses"].Bytes == 0 {
 		t.Fatalf("transport attribution = %+v", snapshot.Transport)
@@ -143,12 +144,12 @@ func TestResponsesWebSocketPreservesUpgradeRejectionStatus(t *testing.T) {
 	}), nil, codexAuthHeaders())
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "task"})
 	event := socketRead(t, ctx, conn)
-	if string(event["status"]) != "401" || jsonString(event, "type") != "error" {
-		t.Fatalf("upgrade status lost: %s", mustMarshalJSON(event))
+	if string(event["status"]) != "401" || responses.StringField(event, "type") != "error" {
+		t.Fatalf("upgrade status lost: %s", responses.MustMarshalJSON(event))
 	}
 	var detail map[string]json.RawMessage
 	_ = json.Unmarshal(event["error"], &detail)
-	if jsonString(detail, "code") != "invalid_api_key" {
+	if responses.StringField(detail, "code") != "invalid_api_key" {
 		t.Fatalf("provider error lost: %s", event["error"])
 	}
 }

@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -84,7 +87,7 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := jsonString(forwarded.fields, "service_tier"); got != tc.want {
+			if got := responses.StringField(forwarded.fields, "service_tier"); got != tc.want {
 				t.Fatalf("provider tier=%s, display=%s", got, tc.want)
 			}
 		})
@@ -241,7 +244,7 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := jsonString(forwarded.fields, "service_tier"); got != want {
+			if got := responses.StringField(forwarded.fields, "service_tier"); got != want {
 				t.Fatalf("provider tier=%s want=%s", got, want)
 			}
 		})
@@ -306,10 +309,10 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer conn.CloseNow()
-				request.fields["type"] = mustMarshalJSON("response.create")
+				request.fields["type"] = responses.MustMarshalJSON("response.create")
 				socketWrite(t, ctx, conn, request.fields)
 				event := socketRead(t, ctx, conn)
-				if jsonString(event, "type") != "response.completed" {
+				if responses.StringField(event, "type") != "response.completed" {
 					t.Fatalf("event=%s", event)
 				}
 			} else {
@@ -352,7 +355,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if model == "gpt-5.6-terra" {
 				wantTier, wantModel = "priority", "gpt-6-sol"
 			}
-			if got := jsonString(forwarded.fields, "service_tier"); got != wantTier {
+			if got := responses.StringField(forwarded.fields, "service_tier"); got != wantTier {
 				t.Fatalf("tier=%s want=%s", got, wantTier)
 			}
 			start := nativeSubagentStart(&forwarded)
@@ -443,7 +446,7 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := jsonString(forwarded.fields, "service_tier"); got != "priority" {
+	if got := responses.StringField(forwarded.fields, "service_tier"); got != "priority" {
 		t.Fatalf("provider tier=%s want=priority", got)
 	}
 	entries := proxy.activity.takeNativeActivity("root")
@@ -475,7 +478,7 @@ func TestServiceTierRequestAliases(t *testing.T) {
 			if tier == "fast" {
 				want = "priority"
 			}
-			if got := jsonString(forwarded.fields, "service_tier"); got != want {
+			if got := responses.StringField(forwarded.fields, "service_tier"); got != want {
 				t.Fatalf("wire tier=%q want=%q", got, want)
 			}
 		})

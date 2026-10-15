@@ -39,13 +39,13 @@ func decodeResponsesItem(raw json.RawMessage) (responsesItem, bool) {
 func newResponsesItem(fields map[string]json.RawMessage) responsesItem {
 	item := responsesItem{
 		fields:    fields,
-		Type:      jsonString(fields, "type"),
-		Role:      jsonString(fields, "role"),
-		ID:        jsonString(fields, "id"),
-		CallID:    jsonString(fields, "call_id"),
-		Name:      jsonString(fields, "name"),
-		Namespace: jsonString(fields, "namespace"),
-		Status:    jsonString(fields, "status"),
+		Type:      responseevents.StringField(fields, "type"),
+		Role:      responseevents.StringField(fields, "role"),
+		ID:        responseevents.StringField(fields, "id"),
+		CallID:    responseevents.StringField(fields, "call_id"),
+		Name:      responseevents.StringField(fields, "name"),
+		Namespace: responseevents.StringField(fields, "namespace"),
+		Status:    responseevents.StringField(fields, "status"),
 		Content:   fields["content"],
 		Output:    fields["output"],
 	}
@@ -62,7 +62,7 @@ func (item responsesItem) MarshalJSON() ([]byte, error) {
 	if item.fields == nil {
 		return []byte("null"), nil
 	}
-	return marshalProtocolJSON(item.fields)
+	return responseevents.MarshalJSON(item.fields)
 }
 
 func (item *responsesItem) UnmarshalJSON(raw []byte) error {
@@ -83,7 +83,7 @@ func (item *responsesItem) setContent(content json.RawMessage) {
 // setInput updates the item's input field.
 func (item *responsesItem) setInput(input string) {
 	item.Input = new(input)
-	item.fields["input"] = mustMarshalJSON(input)
+	item.fields["input"] = responseevents.MustMarshalJSON(input)
 }
 
 // cloneFields returns a shallow clone of the item's JSON field map.
@@ -106,8 +106,8 @@ func decodeJSONString(raw json.RawMessage) (string, bool) {
 
 func responseMessageFacts(fields map[string]json.RawMessage) responseevents.MessageFacts {
 	return responseevents.MessageFacts{
-		Kind:  responseevents.ItemKind(jsonString(fields, "type")),
-		Role:  jsonString(fields, "role"),
-		Phase: jsonString(fields, "phase"),
+		Kind:  responseevents.ItemKind(responseevents.StringField(fields, "type")),
+		Role:  responseevents.StringField(fields, "role"),
+		Phase: responseevents.StringField(fields, "phase"),
 	}
 }

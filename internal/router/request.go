@@ -1,7 +1,5 @@
 package router
 
-// Source: execution.go:14:205 parsedResponsesRequest and request parsing.
-
 import (
 	"bytes"
 	"encoding/json"
@@ -11,7 +9,11 @@ import (
 	"maps"
 	"regexp"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
+
+// Source: execution.go:14:205 parsedResponsesRequest and request parsing.
 
 type parsedResponsesRequest struct {
 	originalBody   []byte
@@ -133,7 +135,7 @@ func (r *parsedResponsesRequest) setInput(input json.RawMessage) {
 	groupIndex := 0
 	for itemIndex, rawItem := range items {
 		var item map[string]json.RawMessage
-		if json.Unmarshal(rawItem, &item) != nil || jsonString(item, "type") != "additional_tools" {
+		if json.Unmarshal(rawItem, &item) != nil || responses.StringField(item, "type") != "additional_tools" {
 			continue
 		}
 		if groupIndex >= len(r.toolCatalog.additional) {
@@ -159,11 +161,11 @@ func (r parsedResponsesRequest) incrementalBody(body []byte) ([]byte, error) {
 	if json.Unmarshal(body, &fields) != nil || json.Unmarshal(fields["input"], &input) != nil || r.cachedInput > len(input) {
 		return nil, errors.New("invalid WebSocket cached input boundary")
 	}
-	fields["input"] = mustMarshalJSON(input[r.cachedInput:])
+	fields["input"] = responses.MustMarshalJSON(input[r.cachedInput:])
 	if r.rebaseInput {
 		delete(fields, "previous_response_id")
 	}
-	return marshalProtocolJSON(fields)
+	return responses.MarshalJSON(fields)
 }
 
 // model returns the model name from the request.

@@ -28,7 +28,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	second, err := filepath.Abs("../golex/golex.go")
+	second, err := filepath.Abs("../sourcekind/sourcekind.go")
 	if err != nil {
 		b.Fatal(err)
 	}

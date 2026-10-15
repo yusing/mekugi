@@ -2,7 +2,11 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"fmt"
 	"os"
@@ -77,10 +81,10 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 			proxy.duplicateOutput = true
 			request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 			items := duplicateTestItems(t, request)
-			if got := jsonString(items[3], "output"); got != duplicateTestHeader+want {
+			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+want {
 				t.Fatalf("projected reader output = %q, want %q", got, duplicateTestHeader+want)
 			}
-			if jsonString(items[1], "output") != duplicateTestHeader+"[O1]\n"+first || !sameJSONValue(request.originalFields["input"], mustMarshalJSON(input)) {
+			if responses.StringField(items[1], "output") != duplicateTestHeader+"[O1]\n"+first || !sameJSONValue(request.originalFields["input"], responses.MustMarshalJSON(input)) {
 				t.Fatal("original reader evidence changed")
 			}
 		})
@@ -111,7 +115,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	read("7:16", "second")
 	first := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 	firstItems := duplicateTestItems(t, first)
-	if got, want := jsonString(firstItems[3], "output"), duplicateTestHeader+"[O2]\n[same as O1 L7-10]\n"+strings.Join(rows[10:], ""); got != want {
+	if got, want := responses.StringField(firstItems[3], "output"), duplicateTestHeader+"[O2]\n[same as O1 L7-10]\n"+strings.Join(rows[10:], ""); got != want {
 		t.Fatalf("second read = %q, want %q", got, want)
 	}
 	prefix := bytes.Clone(first.fields["input"])
@@ -129,19 +133,19 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	// Rows 11-14 are verbatim at L2-5 of the second projected body, after
 	// its overlap became one marker. The third read must address those rows.
 	want := duplicateTestHeader + "[same as O1 L5-10]\n[same as O2 L2-5]\n"
-	if got := jsonString(items[5], "output"); got != want {
+	if got := responses.StringField(items[5], "output"); got != want {
 		t.Fatalf("third read = %q, want direct verbatim references %q", got, want)
 	}
 	var projected []jsonv1.RawMessage
 	if err := json.Unmarshal(grown.fields["input"], &projected); err != nil {
 		t.Fatal(err)
 	}
-	if !sameJSONValue(mustMarshalJSON(projected[:len(original)]), prefix) {
+	if !sameJSONValue(responses.MustMarshalJSON(projected[:len(original)]), prefix) {
 		t.Fatal("third read changed the already projected provider prefix")
 	}
 	exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
-	grown.fields["previous_response_id"] = mustMarshalJSON("parent")
-	if err := exchange.reconcileProviderHistory(grown, mustMarshalJSON(grown.fields)); err != nil {
+	grown.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.fields)); err != nil {
 		t.Fatal(err)
 	}
 	if grown.cachedInput != len(original) || grown.rebaseInput {

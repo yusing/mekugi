@@ -14,6 +14,7 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Debug output is separate from sanitized capture. Failure events include the
@@ -185,10 +186,10 @@ func (d *debugOutput) instructions(body, wire []byte, headers http.Header, sessi
 		if json.Unmarshal(raw, &item) != nil {
 			continue
 		}
-		if jsonString(item, "role") == "developer" {
+		if responses.StringField(item, "role") == "developer" {
 			developers = append(developers, raw)
 		}
-		if jsonString(item, "type") == "additional_tools" {
+		if responses.StringField(item, "type") == "additional_tools" {
 			additional = append(additional, raw)
 		}
 	}
@@ -203,10 +204,10 @@ func (d *debugOutput) instructions(body, wire []byte, headers http.Header, sessi
 		if json.Unmarshal(raw, &item) != nil {
 			continue
 		}
-		if jsonString(item, "role") == "developer" {
+		if responses.StringField(item, "role") == "developer" {
 			wireDevelopers = append(wireDevelopers, raw)
 		}
-		if jsonString(item, "type") == "additional_tools" {
+		if responses.StringField(item, "type") == "additional_tools" {
 			wireAdditional = append(wireAdditional, raw)
 		}
 	}
@@ -219,7 +220,7 @@ func (d *debugOutput) instructions(body, wire []byte, headers http.Header, sessi
 		"projected_input_bytes": len(fields["input"]), "wire_input_bytes": len(wireFields["input"]),
 		"wire_developer_messages": wireDevelopers, "wire_additional_tools": wireAdditional,
 		"wire_previous_response_id": wireFields["previous_response_id"],
-		"cache_rebased":             len(wire) != 0 && jsonString(fields, "previous_response_id") != "" && jsonString(wireFields, "previous_response_id") == "",
+		"cache_rebased":             len(wire) != 0 && responses.StringField(fields, "previous_response_id") != "" && responses.StringField(wireFields, "previous_response_id") == "",
 		"model":                     fields["model"], "previous_response_id": fields["previous_response_id"],
 		"instructions": fields["instructions"], "developer_messages": developers,
 		"tools": fields["tools"], "additional_tools": additional,

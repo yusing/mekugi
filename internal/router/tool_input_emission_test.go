@@ -2,11 +2,13 @@ package router
 
 import (
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func emissionTestEvent(t *testing.T, transform *mekugiResponseTransform, event map[string]any) {
 	t.Helper()
-	if _, err := transform.transformActivitySSE(mustMarshalJSON(event)); err != nil {
+	if _, err := transform.transformActivitySSE(responses.MustMarshalJSON(event)); err != nil {
 		t.Fatal(err)
 	}
 }

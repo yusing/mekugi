@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/shellsyntax"
-
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -34,8 +34,8 @@ func corpusReadSelectionsForCall(call sessionInspectionCall) []corpusReadSelecti
 	}
 	var selections []corpusReadSelection
 	for _, nested := range calls {
-		if jsonString(nested, "name") == "exec_command" {
-			selections = append(selections, readCommand(jsonString(nested, "arguments"))...)
+		if responses.StringField(nested, "name") == "exec_command" {
+			selections = append(selections, readCommand(responses.StringField(nested, "arguments"))...)
 		}
 	}
 	return selections

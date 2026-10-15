@@ -478,7 +478,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	if !ok || observation == nil || len(commands) != 2 || len(execPreviewExpected(t.Context(), *observation)) != 0 {
 		t.Fatal("fixture must capture two sequential edits in one exec cell")
 	}
-	auto, stop := newAutoLiveDiff(t.Context(), "")
+	auto, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	auto.enabled.Store(true)
 	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
@@ -550,7 +550,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			if !ok || observation == nil || len(commands) != 2 {
 				t.Fatal("missing grouped edit observation")
 			}
-			auto, stop := newAutoLiveDiff(t.Context(), "")
+			auto, stop := newAutoLiveDiff(t.Context())
 			defer stop()
 			auto.enabled.Store(true)
 			auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
@@ -681,7 +681,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			if !ok || observation == nil {
 				t.Fatal("missing capture")
 			}
-			auto, stop := newAutoLiveDiff(t.Context(), "")
+			auto, stop := newAutoLiveDiff(t.Context())
 			defer stop()
 			auto.enabled.Store(true)
 			auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
@@ -751,7 +751,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	workspace := t.TempDir()
-	auto, stop := newAutoLiveDiff(t.Context(), "")
+	auto, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	auto.enabled.Store(true)
 	auto.events.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})

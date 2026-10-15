@@ -37,7 +37,7 @@ type changeCapture struct {
 // Non-nil paths keep only review files connected to them through moves; other
 // diffs are dropped while reading, so only what is kept is held and bounded.
 // It runs under store.lock and never reads the workspace.
-func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace string, index changeIndex, ids, paths []string) ([]changeCapture, error) {
+func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace string, index changeIndex, ids, paths []string, unavailable changeReadFailures) ([]changeCapture, error) {
 	if ids == nil {
 		ids = slices.Sorted(func(yield func(string) bool) {
 			for id := range index.Changes {
@@ -71,12 +71,9 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 		return nil
 	}
 	read := func(id string, call string) (replayRecord, error) {
-		record, found, err := s.read(workspace, call, false)
+		record, err := s.readChangeRecord(workspace, id, index.Changes[id].Correlation, call)
 		if err != nil {
 			return replayRecord{}, err
-		}
-		if !found || record.History.ChangeID != id || record.History.CorrelationID != index.Changes[id].Correlation {
-			return replayRecord{}, fmt.Errorf("change %s has a missing or inconsistent attempt", id)
 		}
 		record.History = authoredChangeHistory(record.History)
 		return record, nil
@@ -85,6 +82,7 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 	var calls []string
 	// dropped marks files whose diff was not retained, by capture and file.
 	dropped := make(map[[2]int]bool)
+changes:
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -93,10 +91,28 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 		if !exists {
 			return nil, fmt.Errorf("change %s is missing in workspace %q; check --workspace; session data may have expired after 14 days of inactivity or been removed under storage pressure", id, workspace)
 		}
+		start, startBytes := len(captures), bytes
+		var limitErr error
 		for _, call := range change.Calls {
 			record, err := read(id, call.ID)
 			if err != nil {
+				if unavailable.skip(id, err) {
+					captures = slices.Delete(captures, start, len(captures))
+					calls = slices.Delete(calls, start, len(calls))
+					for key := range dropped {
+						if key[0] >= start {
+							delete(dropped, key)
+						}
+					}
+					bytes = startBytes
+					continue changes
+				}
 				return nil, err
+			}
+			// Finish validating this target after hitting the projection bound,
+			// without retaining more diffs. A corrupt later attempt discards it.
+			if limitErr != nil {
+				continue
 			}
 			capture := changeCapture{id: id, order: record.CaptureOrder, links: make(map[string]bool)}
 			if record.History.ExecOutcome != nil {
@@ -113,8 +129,8 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 			for _, file := range record.History.ReviewFiles {
 				file.BeforePath, file.AfterPath = canonical(file.BeforePath), canonical(file.AfterPath)
 				if keeps(file) {
-					if err := retain(file.Diff); err != nil {
-						return nil, err
+					if limitErr = retain(file.Diff); limitErr != nil {
+						break
 					}
 				} else {
 					file.Diff = ""
@@ -122,8 +138,14 @@ func (s *mekugiReplayStore) loadChangeCaptures(ctx context.Context, workspace st
 				}
 				capture.files = append(capture.files, file)
 			}
+			if limitErr != nil {
+				continue
+			}
 			captures = append(captures, capture)
 			calls = append(calls, call.ID)
+		}
+		if limitErr != nil {
+			return nil, limitErr
 		}
 	}
 	if paths != nil {
@@ -174,7 +196,7 @@ func (s *mekugiReplayStore) selectedChangeCaptures(ctx context.Context, options 
 			return nil, fmt.Errorf("change %s is pending (no completed result)", id)
 		}
 	}
-	return s.loadChangeCaptures(ctx, options.workspace, index, options.ids, nil)
+	return s.loadChangeCaptures(ctx, options.workspace, index, options.ids, nil, nil)
 }
 
 // changeMutationPaths names every path mchanges revert or apply may write, so
@@ -554,7 +576,7 @@ func (s *mekugiReplayStore) mutateChanges(ctx context.Context, options changeRea
 		}
 		// History only explains the report; an unreadable record degrades the
 		// stat rather than blocking the requested mutation.
-		history, historyErr = s.loadChangeCaptures(ctx, options.workspace, index, nil, slices.DeleteFunc(paths, func(path string) bool { return path == "" }))
+		history, historyErr = s.loadChangeCaptures(ctx, options.workspace, index, nil, slices.DeleteFunc(paths, func(path string) bool { return path == "" }), nil)
 		return ctx.Err()
 	})
 	if err != nil {

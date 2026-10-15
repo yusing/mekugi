@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/execscope"
-
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/responses"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -213,7 +213,7 @@ func TestExecObservationBoundsEncodedCapture(t *testing.T) {
 	writeTestFile(t, filepath.Join(workspace, "page.html"), strings.Repeat("\x01", 2<<20))
 	writeTestFile(t, filepath.Join(workspace, "small"), "kept\n")
 	observation := observeTestCommand(t, workspace, "touch page.html small")
-	if size := len(mustMarshalJSON(observation)); size > maxExecObservationBytes {
+	if size := len(responses.MustMarshalJSON(observation)); size > maxExecObservationBytes {
 		t.Fatalf("encoded capture is %d bytes", size)
 	}
 	for _, file := range observation.Files {
@@ -376,7 +376,7 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 
 func TestExecResultState(t *testing.T) {
 	exited := func(code string) json.RawMessage {
-		return mustMarshalJSON("Chunk ID: 1\nWall time: 0.1 seconds\nProcess exited with code " + code + "\nOutput:\n")
+		return responses.MustMarshalJSON("Chunk ID: 1\nWall time: 0.1 seconds\nProcess exited with code " + code + "\nOutput:\n")
 	}
 	if terminal, exit, completed, _, _ := execResultState(nativeExecCommandToolName, exited("0")); !terminal || !completed || exit == nil || *exit != 0 {
 		t.Fatal("exit 0 was not a completed result")
@@ -384,17 +384,17 @@ func TestExecResultState(t *testing.T) {
 	if terminal, exit, completed, _, _ := execResultState(nativeExecCommandToolName, exited("2")); !terminal || completed || *exit != 2 {
 		t.Fatal("exit 2 was not a failed result")
 	}
-	running := mustMarshalJSON("Wall time: 1.0 seconds\nProcess running with session ID 7\nOutput:\n")
+	running := responses.MustMarshalJSON("Wall time: 1.0 seconds\nProcess running with session ID 7\nOutput:\n")
 	if terminal, _, _, _, pending := execResultState(nativeExecCommandToolName, running); terminal || pending != "session:7" {
 		t.Fatalf("running session pending = %q", pending)
 	}
-	if terminal, _, completed, _, _ := execResultState(nativeExecCommandToolName, mustMarshalJSON("aborted by user")); !terminal || completed {
+	if terminal, _, completed, _, _ := execResultState(nativeExecCommandToolName, responses.MustMarshalJSON("aborted by user")); !terminal || completed {
 		t.Fatal("an unparsable result was not a terminal failure")
 	}
-	if terminal, _, _, _, _ := execResultState("write_stdin", mustMarshalJSON("write_stdin failed: stdin is closed for this session")); terminal {
+	if terminal, _, _, _, _ := execResultState("write_stdin", responses.MustMarshalJSON("write_stdin failed: stdin is closed for this session")); terminal {
 		t.Fatal("a failed write ended a running session")
 	}
-	if terminal, _, completed, _, _ := execResultState("write_stdin", mustMarshalJSON("Unknown process id 7")); !terminal || completed {
+	if terminal, _, completed, _, _ := execResultState("write_stdin", responses.MustMarshalJSON("Unknown process id 7")); !terminal || completed {
 		t.Fatal("a vanished session was not a terminal failure")
 	}
 }
@@ -412,7 +412,7 @@ func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, 
 		return
 	}
 	transform.openExecWindow(callID, observation, nil)
-	item := map[string]json.RawMessage{"type": mustMarshalJSON("function_call"), "call_id": mustMarshalJSON(callID), "name": mustMarshalJSON(nativeExecCommandToolName), "arguments": mustMarshalJSON(arguments)}
+	item := map[string]json.RawMessage{"type": responses.MustMarshalJSON("function_call"), "call_id": responses.MustMarshalJSON(callID), "name": responses.MustMarshalJSON(nativeExecCommandToolName), "arguments": responses.MustMarshalJSON(arguments)}
 	transform.recordLocal(callID, &mekugiHistory{ToolName: nativeExecCommandToolName, Script: arguments, CarrierKind: codeModeCarrierFunction, CarrierName: nativeExecCommandToolName, CarrierPayload: arguments, ReplayCarrier: true, UpstreamItem: item, ExecObservation: observation, ExecutingThread: transform.shellThreadID, Caller: transform.operationCaller()})
 	if err := transform.commitLocalCall(callID); err != nil {
 		t.Fatal(err)
@@ -461,7 +461,7 @@ func TestNativeExecCommandRecordsDeclaredEffects(t *testing.T) {
 			target := filepath.Join(workspace, "a.txt")
 			writeTestFile(t, target, "gone\n")
 			transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
-			arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm a.txt", "workdir": workspace, "yield_time_ms": 1000}))
+			arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm a.txt", "workdir": workspace, "yield_time_ms": 1000}))
 			retainCommandObservation(t, transform, "exec-call", arguments)
 			if history := transform.local["exec-call"]; history.ExecObservation == nil || history.CarrierPayload != arguments {
 				t.Fatalf("stock exec_command was not retained before exposure: %+v", history)
@@ -530,7 +530,7 @@ func TestNativeExecCommandWithoutEffectAllocatesNoChange(t *testing.T) {
 	attachTestReplayStore(t, proxy)
 	workspace := t.TempDir()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
-	arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm -f missing.txt"}))
+	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm -f missing.txt"}))
 	retainCommandObservation(t, transform, "exec-call", arguments)
 	reconcileExecItems(t, proxy, workspace, []any{
 		map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
@@ -563,7 +563,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 					transform.sessionShell = "bash"
 					call := map[string]any{
 						"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": "exec",
-						"input": "text(await tools.exec_command(" + string(mustMarshalJSON(map[string]string{"cmd": command})) + "));", "status": "completed",
+						"input": "text(await tools.exec_command(" + string(responses.MustMarshalJSON(map[string]string{"cmd": command})) + "));", "status": "completed",
 					}
 					if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
 						t.Fatal(err)
@@ -583,7 +583,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 				} else {
 					workspace := t.TempDir()
 					transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
-					arguments := string(mustMarshalJSON(map[string]string{"cmd": command}))
+					arguments := string(responses.MustMarshalJSON(map[string]string{"cmd": command}))
 					retainCommandObservation(t, transform, "exec-call", arguments)
 					reconcileExecItems(t, proxy, workspace, []any{
 						map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments},
@@ -677,7 +677,7 @@ func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
 		{"mv a.txt b.txt\ncat > sibling.txt <<'EOF'\nnew content\nEOF\n", []string{"Create sibling.txt"}},
 		{"cat > sibling.txt <<'EOF'\nnew content\nEOF\nmv a.txt b.txt\n", []string{"Create sibling.txt"}},
 	} {
-		preview, _ := worker.project(string(mustMarshalJSON(map[string]string{"cmd": test.command})), workspace, false)
+		preview, _ := worker.project(string(responses.MustMarshalJSON(map[string]string{"cmd": test.command})), workspace, false)
 		if got := reviewSummary(workspace, preview.Files); !slices.Equal(got, test.want) {
 			t.Fatalf("%q stream = %q, want %q", test.command, got, test.want)
 		}

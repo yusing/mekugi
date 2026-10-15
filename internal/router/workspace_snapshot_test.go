@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/shellsyntax"
 )
 
@@ -57,7 +58,7 @@ func TestWorkspaceSnapshotRepositoryIgnoresUserGitConfig(t *testing.T) {
 func runSnapshotExec(t *testing.T, proxy *mekugiProxy, workspace, callID, command string, effect func()) (mekugiHistory, context.Context) {
 	t.Helper()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "snapshot-"+callID)
-	arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
+	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
 	retainCommandObservation(t, transform, callID, arguments)
 	effect()
 	next := reconcileExecItems(t, proxy, workspace, []any{
@@ -132,7 +133,7 @@ func TestWorkspaceSnapshotRecordsUnnamedEditsWithinIgnoreRules(t *testing.T) {
 
 	// A later read-only command takes no checkpoint and records nothing.
 	transform := prepareNativeStockTransform(t, proxy, workspace, "snapshot-read")
-	retainCommandObservation(t, transform, "read", string(mustMarshalJSON(map[string]any{"cmd": "rg renamed", "workdir": workspace})))
+	retainCommandObservation(t, transform, "read", string(responses.MustMarshalJSON(map[string]any{"cmd": "rg renamed", "workdir": workspace})))
 	if _, found := transform.local["read"]; found {
 		t.Fatal("a neutral reader was observed")
 	}
@@ -212,7 +213,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 			ExecObservation: &execObservation{Commands: []execCommandInput{{Command: ref}}, Class: execscope.Opaque.String(), Roots: []string{f.workspace}, Tree: tree}}
 	}
 	finalize := func(ref string, history mekugiHistory) mekugiHistory {
-		if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, output: mustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
+		if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, output: responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
 			t.Fatal(err)
 		}
 		record, _, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID(ref, false))
@@ -324,7 +325,7 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 		ref, workspace string
 		history        mekugiHistory
 	}{{"outer", f.workspace, outer}, {"nested", inner, nested}} {
-		if err := proxy.finalizeExecObservations(f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, output: mustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
+		if err := proxy.finalizeExecObservations(f.ctx, call.workspace, []execCompletion{{callID: call.ref, history: call.history, output: responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
 			t.Fatal(err)
 		}
 	}

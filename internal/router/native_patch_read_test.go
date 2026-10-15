@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
@@ -30,8 +31,8 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			writeTestFile(t, target, "before\n")
 
 			patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-before\n+after\n*** End Patch\n"
-			source := "await tools.apply_patch(" + string(mustMarshalJSON(patch)) + "); " +
-				fmt.Sprintf("for (let i = 0; i < %d; i++) await tools.exec_command({cmd: %s});", tc.repeats, mustMarshalJSON(tc.command))
+			source := "await tools.apply_patch(" + string(responses.MustMarshalJSON(patch)) + "); " +
+				fmt.Sprintf("for (let i = 0; i < %d; i++) await tools.exec_command({cmd: %s});", tc.repeats, responses.MustMarshalJSON(tc.command))
 			call := map[string]any{
 				"type": "custom_tool_call", "id": "reader-cell-item", "call_id": "reader-cell",
 				"name": "exec", "input": source, "status": "completed",
@@ -68,7 +69,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			for i := range tc.repeats {
 				id := fmt.Sprintf("reader-%d", i)
 				// Host arguments omit shell, so matching must recover its pre-call identity.
-				trace.tool("thread-1", "runtime-1", id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": tc.command})))
+				trace.tool("thread-1", "runtime-1", id, "exec_command", string(responses.MustMarshalJSON(map[string]any{"cmd": tc.command})))
 				trace.result("thread-1", id, "completed", map[string]any{"exit_code": tc.exit})
 			}
 			trace.end("thread-1", "runtime-1")

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/router/toolplugin"
 	"github.com/yusing/mekugi/internal/tokenizer"
 )
@@ -197,7 +198,7 @@ func executeMCatBundle(
 	}
 	reserve := 16
 	for _, spec := range specs {
-		pathTokens, err := codec.Count(string(mustMarshalJSON(spec.path)))
+		pathTokens, err := codec.Count(string(responses.MustMarshalJSON(spec.path)))
 		if err != nil {
 			return toolplugin.ExecutionOutput{}, err
 		}
@@ -364,7 +365,7 @@ type readBundleEntry struct {
 func renderReadBundle(entries []readBundleEntry) string {
 	var manifest, bodies strings.Builder
 	for i, entry := range entries {
-		path, shown := mustMarshalJSON(entry.path), bundleRowSpan(entry.start, entry.shown)
+		path, shown := responses.MustMarshalJSON(entry.path), bundleRowSpan(entry.start, entry.shown)
 		continued := entry.record.Stdout != "" || entry.record.Stderr != ""
 		if entry.state != "complete" || entry.shown == "" || entry.omitted != "none" || continued {
 			fmt.Fprintf(&manifest, "%d path=%s shown=%s omitted=%s status=%s", i+1, path, shown, entry.omitted, entry.state)
@@ -386,7 +387,7 @@ func prefixReadBundleDiagnostic(path string, stderr string) string {
 	if stderr == "" {
 		return ""
 	}
-	prefix := "mcat: " + string(mustMarshalJSON(path)) + ": "
+	prefix := "mcat: " + string(responses.MustMarshalJSON(path)) + ": "
 	var out strings.Builder
 	for line := range strings.Lines(stderr) {
 		if strings.HasPrefix(line, "mcat: \"") {

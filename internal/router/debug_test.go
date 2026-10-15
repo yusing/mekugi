@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func readDebugInstructionRows(ctx context.Context, path string) ([][]byte, error) {
@@ -146,7 +147,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	if bytes.Contains(dump, []byte("excluded")) {
 		t.Fatal("dump retained data outside instruction scope")
 	}
-	if got.Scope != "projected_responses_request" || !sameJSONValue(mustMarshalJSON(got.WireDevelopers), mustMarshalJSON(got.Developers)) {
+	if got.Scope != "projected_responses_request" || !sameJSONValue(responses.MustMarshalJSON(got.WireDevelopers), responses.MustMarshalJSON(got.Developers)) {
 		t.Fatal("dump does not distinguish projection from wire instructions")
 	}
 	// Post-startup write failure is retained for shutdown, not returned into
@@ -218,11 +219,11 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 				for _, raw := range input {
 					var item map[string]json.RawMessage
 					_ = json.Unmarshal(raw, &item)
-					if jsonString(item, "role") == "developer" {
+					if responses.StringField(item, "role") == "developer" {
 						firstDevelopers = append(firstDevelopers, raw)
 					}
 				}
-			} else if len(input) != 1 || jsonString(request, "previous_response_id") != "first" {
+			} else if len(input) != 1 || responses.StringField(request, "previous_response_id") != "first" {
 				t.Error("continuation did not use upstream cached input")
 			}
 			lines, err := readDebugInstructionRows(ctx, d.paths[3])
@@ -244,7 +245,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if !sameJSONValue(record.Instructions, request["instructions"]) || len(record.Developers) == 0 || !sameJSONValue(mustMarshalJSON(record.Developers), mustMarshalJSON(firstDevelopers)) {
+			if !sameJSONValue(record.Instructions, request["instructions"]) || len(record.Developers) == 0 || !sameJSONValue(responses.MustMarshalJSON(record.Developers), responses.MustMarshalJSON(firstDevelopers)) {
 				t.Errorf("dump lost exact final or inherited instructions: top-level equal=%v, dump developer count=%d, wire count=%d", sameJSONValue(record.Instructions, request["instructions"]), len(record.Developers), len(firstDevelopers))
 			}
 			if record.WireBytes != len(request["input"]) || record.ProjectedBytes < record.WireBytes || (id == "second" && record.ProjectedBytes == record.WireBytes) {
@@ -292,10 +293,10 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 		socketWrite(t, ctx, conn, request)
 		for {
 			event := socketRead(t, ctx, conn)
-			if jsonString(event, "type") == "error" {
-				t.Fatalf("request failed: %s", mustMarshalJSON(event))
+			if responses.StringField(event, "type") == "error" {
+				t.Fatalf("request failed: %s", responses.MustMarshalJSON(event))
 			}
-			if jsonString(event, "type") == "response.completed" {
+			if responses.StringField(event, "type") == "response.completed" {
 				break
 			}
 		}

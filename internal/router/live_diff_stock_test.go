@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/internal/responses"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -327,7 +329,7 @@ func TestCodeModePatchFinalPreviewUsesPreExecutionSource(t *testing.T) {
 		scope: liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {transform.threadID: true}}}}
 	proxy.autoLiveDiff.enabled.Store(true)
 	patch := "*** Begin Patch\n*** Update File: sample.go\n@@\n-old()\n+new()\n*** End Patch\n"
-	script := "const patch = " + string(mustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));"
+	script := "const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));"
 	for _, event := range []map[string]any{
 		{"type": "response.output_item.added", "output_index": 0, "item": map[string]any{
 			"type": "custom_tool_call", "id": "code-item", "call_id": "code-call", "name": transform.codeModeToolName,

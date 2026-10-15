@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestExecExplicitSiblingsShareDurableRecord(t *testing.T) {
@@ -13,7 +15,7 @@ func TestExecExplicitSiblingsShareDurableRecord(t *testing.T) {
 	transform := prepareNativeStockTransform(t, proxy, workspace, "siblings")
 	var items []any
 	for _, ref := range []string{"first", "second"} {
-		arguments := string(mustMarshalJSON(map[string]any{"cmd": "printf " + ref + " > generated", "workdir": workspace}))
+		arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "printf " + ref + " > generated", "workdir": workspace}))
 		retainCommandObservation(t, transform, ref, arguments)
 		items = append(items, map[string]any{"type": "function_call", "call_id": ref, "name": nativeExecCommandToolName, "arguments": arguments},
 			map[string]any{"type": "function_call_output", "call_id": ref, "output": nativeExecOutput("Process exited with code 0")})
@@ -46,8 +48,8 @@ func TestExecYieldedSiblingFinishesAfterOtherMemberWasSaved(t *testing.T) {
 	attachTestReplayStore(t, proxy)
 	workspace := t.TempDir()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "yielded-siblings")
-	firstArguments := string(mustMarshalJSON(map[string]any{"cmd": "printf first > first.txt", "workdir": workspace}))
-	secondArguments := string(mustMarshalJSON(map[string]any{"cmd": "printf second > second.txt", "workdir": workspace, "yield_time_ms": 1000}))
+	firstArguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "printf first > first.txt", "workdir": workspace}))
+	secondArguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "printf second > second.txt", "workdir": workspace, "yield_time_ms": 1000}))
 	retainCommandObservation(t, transform, "first", firstArguments)
 	retainCommandObservation(t, transform, "second", secondArguments)
 	firstCall := map[string]any{"type": "function_call", "call_id": "first", "name": nativeExecCommandToolName, "arguments": firstArguments}

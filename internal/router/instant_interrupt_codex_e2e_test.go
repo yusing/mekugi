@@ -7,6 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -112,7 +115,7 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 			response.Body = reader
 			go func() {
 				defer writer.Close()
-				_, _ = io.WriteString(writer, "data: "+string(mustMarshalJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": "instant-held", "status": "in_progress", "output": []any{}}}))+"\n\n")
+				_, _ = io.WriteString(writer, "data: "+string(responses.MustMarshalJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": "instant-held", "status": "in_progress", "output": []any{}}}))+"\n\n")
 				select {
 				case <-p.gate:
 					_, _ = io.WriteString(writer, routerFaultSSE(map[string]any{"type": "response.completed", "response": map[string]any{"id": "instant-held", "status": "completed", "output": []any{}}}))
@@ -138,7 +141,7 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 		if p.cell == "" {
 			return nil, fmt.Errorf("steering did not yield the original exec cell: %.2000s", body)
 		}
-		return mchangesNestedCodexResponse(2, map[string]any{"type": "function_call", "id": "instant-wait-item", "call_id": "instant-wait", "name": "wait", "status": "completed", "arguments": string(mustMarshalJSON(map[string]any{"cell_id": p.cell, "yield_time_ms": 10000}))}), nil
+		return mchangesNestedCodexResponse(2, map[string]any{"type": "function_call", "id": "instant-wait-item", "call_id": "instant-wait", "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": p.cell, "yield_time_ms": 10000}))}), nil
 	case 3:
 		for _, item := range request.Input {
 			if item.Type == "function_call_output" && item.CallID == "instant-wait" {
@@ -191,7 +194,7 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			countPath := filepath.Join(workspace, "count")
 			provider := &instantInterruptCodexProvider{t: t, mode: mode, gate: make(chan struct{}), requests: make(chan []byte, 4)}
 			shell := "echo run >> " + strconv.Quote(countPath) + "; touch " + strconv.Quote(startedPath) + "; while test ! -f " + strconv.Quote(gatePath) + "; do sleep 0.1; done; echo cell-survived"
-			provider.program = "// @exec: {\"yield_time_ms\": 60000}\nconst result = await tools.exec_command({cmd: " + string(mustMarshalJSON(shell)) + ", workdir: " + string(mustMarshalJSON(workspace)) + ", yield_time_ms: 30000}); text(result.output);"
+			provider.program = "// @exec: {\"yield_time_ms\": 60000}\nconst result = await tools.exec_command({cmd: " + string(responses.MustMarshalJSON(shell)) + ", workdir: " + string(responses.MustMarshalJSON(workspace)) + ", yield_time_ms: 30000}); text(result.output);"
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
 			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))

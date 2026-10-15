@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -17,7 +20,7 @@ import (
 func openCodeEvents(events ...any) string {
 	var result strings.Builder
 	for _, event := range events {
-		fmt.Fprintf(&result, "data: %s\n\n", mustMarshalJSON(event))
+		fmt.Fprintf(&result, "data: %s\n\n", responses.MustMarshalJSON(event))
 	}
 	return result.String()
 }
@@ -140,7 +143,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire := mustMarshalJSON(tr.body)
+				wire := responses.MustMarshalJSON(tr.body)
 				if !bytes.Contains(wire, []byte(test.retained)) || bytes.Contains(wire, []byte(openCodeReasoningPrefix)) ||
 					!bytes.Contains(wire, []byte("call1")) {
 					t.Fatalf("opaque reasoning/tool replay lost: %s", wire)
@@ -230,7 +233,7 @@ func TestOpenCodeResponsesRefusal(t *testing.T) {
 			t.Fatal("missing native refusal lifecycle")
 		}
 		replay, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": "opencode-go:grok-4.6", "input": output}), &service)
-		if err != nil || !bytes.Contains(mustMarshalJSON(replay.body), []byte(`"type":"refusal"`)) {
+		if err != nil || !bytes.Contains(responses.MustMarshalJSON(replay.body), []byte(`"type":"refusal"`)) {
 			t.Fatalf("refusal replay lost: %v", err)
 		}
 	}
@@ -260,7 +263,7 @@ func TestOpenCodeMessagesCombinesReasoningAndStructuredOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := mustMarshalJSON(tr.body)
+	body := responses.MustMarshalJSON(tr.body)
 	var request struct {
 		Config struct {
 			Effort string `json:"effort"`

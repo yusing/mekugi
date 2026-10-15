@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestRewriteSelectedSkillInstructions(t *testing.T) {
@@ -31,7 +33,7 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 	selected := "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nbody\n</skill>"
 	want := `<skill name="demo"/>`
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-		"input": mustMarshalJSON([]any{
+		"input": responses.MustMarshalJSON([]any{
 			map[string]any{"role": "user", "content": []any{map[string]string{"type": "input_text", "text": selected}, map[string]string{"type": "input_image", "image_url": selected}}},
 			map[string]string{"role": "developer", "content": selected},
 			map[string]string{"role": "user", "content": "quote " + selected},
@@ -40,7 +42,7 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 	if err := rewriteRequestSelectedSkillInstructions(&request, true); err != nil {
 		t.Fatal(err)
 	}
-	wantInput := mustMarshalJSON([]any{
+	wantInput := responses.MustMarshalJSON([]any{
 		map[string]any{"role": "user", "content": []any{map[string]string{"type": "input_text", "text": want}, map[string]string{"type": "input_image", "image_url": selected}}},
 		map[string]string{"role": "developer", "content": selected},
 		map[string]string{"role": "user", "content": "quote " + selected},
@@ -55,7 +57,7 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 }
 
 func TestRewriteRequestSelectedSkillInstructionsDisabled(t *testing.T) {
-	input := mustMarshalJSON([]any{map[string]string{
+	input := responses.MustMarshalJSON([]any{map[string]string{
 		"role": "user", "content": "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nbody\n</skill>",
 	}})
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": input}}

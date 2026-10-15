@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/responses"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -147,12 +149,12 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 		trace.start("main", cell.call+"-runtime", cell.call, cell.source)
 		for _, command := range commands {
 			if strings.Contains(cell.source, `"`+command.cmd+`"`) {
-				trace.tool("main", cell.call+"-runtime", command.id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": command.cmd})))
+				trace.tool("main", cell.call+"-runtime", command.id, "exec_command", string(responses.MustMarshalJSON(map[string]any{"cmd": command.cmd})))
 				trace.result("main", command.id, "completed", map[string]any{"exit_code": 0})
 			}
 		}
 		trace.end("main", cell.call+"-runtime")
-		input = append(input, string(mustMarshalJSON(map[string]any{"type": "custom_tool_call", "call_id": cell.call, "name": "exec", "input": cell.source})))
+		input = append(input, string(responses.MustMarshalJSON(map[string]any{"type": "custom_tool_call", "call_id": cell.call, "name": "exec", "input": cell.source})))
 	}
 	for _, cell := range cells {
 		input = append(input, `{"type":"custom_tool_call_output","call_id":"`+cell.call+`","output":`+cell.output+`}`)
@@ -181,16 +183,16 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 func TestCodeModeReturnedNothing(t *testing.T) {
 	header := "Script completed\nWall time 0.1 seconds\nOutput:\n"
 	for raw, want := range map[string]bool{
-		string(mustMarshalJSON(header)):                                                                                                             true,
-		string(mustMarshalJSON(strings.TrimSuffix(header, "\n"))):                                                                                   true,
-		string(mustMarshalJSON(header + "  \n")):                                                                                                    true,
-		string(mustMarshalJSON(header + "printed")):                                                                                                 false,
-		`[{"type":"input_text","text":` + string(mustMarshalJSON(header)) + `},{"type":"input_text","text":""}]`:                                    true,
-		`[{"type":"input_text","text":` + string(mustMarshalJSON(header)) + `},{"type":"input_text","text":"x"}]`:                                   false,
-		`[{"type":"input_text","text":` + string(mustMarshalJSON(header)) + `},{"type":"input_image","image_url":""}]`:                              false,
+		string(responses.MustMarshalJSON(header)):                                                                                                   true,
+		string(responses.MustMarshalJSON(strings.TrimSuffix(header, "\n"))):                                                                         true,
+		string(responses.MustMarshalJSON(header + "  \n")):                                                                                          true,
+		string(responses.MustMarshalJSON(header + "printed")):                                                                                       false,
+		`[{"type":"input_text","text":` + string(responses.MustMarshalJSON(header)) + `},{"type":"input_text","text":""}]`:                          true,
+		`[{"type":"input_text","text":` + string(responses.MustMarshalJSON(header)) + `},{"type":"input_text","text":"x"}]`:                         false,
+		`[{"type":"input_text","text":` + string(responses.MustMarshalJSON(header)) + `},{"type":"input_image","image_url":""}]`:                    false,
 		`[{"type":"input_text","text":"Script failed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nTypeError"}]`:  true,
 		`[{"type":"input_text","text":"Script completed\nWall time 0.0 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nprinted"}]`: false,
-		string(mustMarshalJSON("Script running with cell ID 7\nWall time 10.0 seconds\nOutput:\n")):                                                 false,
+		string(responses.MustMarshalJSON("Script running with cell ID 7\nWall time 10.0 seconds\nOutput:\n")):                                       false,
 	} {
 		if got := codeModeReturnedNothing(json.RawMessage(raw)); got != want {
 			t.Errorf("codeModeReturnedNothing(%s) = %v, want %v", raw, got, want)

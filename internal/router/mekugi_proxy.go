@@ -220,13 +220,13 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 		if err := jsonv1.Unmarshal(rawItem, &item); err != nil || item == nil {
 			return errors.New("mekugi compaction request contains a malformed input item")
 		}
-		if jsonString(item, "type") == "compaction_trigger" {
+		if responseevents.StringField(item, "type") == "compaction_trigger" {
 			triggers++
 			if !v2 || index != len(items)-1 {
 				return errors.New("mekugi compaction trigger must end a V2 request")
 			}
 		}
-		if jsonString(item, "type") != "additional_tools" {
+		if responseevents.StringField(item, "type") != "additional_tools" {
 			continue
 		}
 		var additionalTools []jsonv1.RawMessage
@@ -435,8 +435,8 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		_ = json.Unmarshal(request.originalFields["input"], &originalItems)
 		sources := make(map[string]string)
 		for _, item := range originalItems {
-			if jsonString(item, "type") == "custom_tool_call" {
-				sources[jsonString(item, "call_id")] = jsonString(item, "input")
+			if responseevents.StringField(item, "type") == "custom_tool_call" {
+				sources[responseevents.StringField(item, "call_id")] = responseevents.StringField(item, "input")
 			}
 		}
 		for call, label := range summary.calls {
@@ -496,21 +496,7 @@ func (p *mekugiProxy) projectApprovalFeedback(request *parsedResponsesRequest, t
 	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
 		return fmt.Errorf("read input for denial feedback: %w", err)
 	}
-	input = append(input, mustMarshalJSON(map[string]any{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": strings.Join(feedback, "\n\n")}}}))
-	request.setInput(mustMarshalJSON(input))
+	input = append(input, responseevents.MustMarshalJSON(map[string]any{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": strings.Join(feedback, "\n\n")}}}))
+	request.setInput(responseevents.MustMarshalJSON(input))
 	return nil
-}
-
-func mustMarshalJSON(value any) jsonv1.RawMessage {
-	encoded, err := marshalProtocolJSON(value)
-	if err != nil {
-		panic(err)
-	}
-	return encoded
-}
-
-func jsonString(object map[string]jsonv1.RawMessage, name string) string {
-	var value string
-	_ = jsonv1.Unmarshal(object[name], &value)
-	return value
 }

@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -70,7 +72,7 @@ func stripUserInstructionOmissions(text string) string {
 func stripRequestInstructionOmissions(request *parsedResponsesRequest) error {
 	if text, ok := decodeJSONString(request.fields["instructions"]); ok {
 		if stripped := stripInstructionOmissions(text); stripped != text {
-			request.fields["instructions"] = mustMarshalJSON(stripped)
+			request.fields["instructions"] = responses.MustMarshalJSON(stripped)
 		}
 	}
 	return rewriteRequestMessages(request, "instruction omissions", func(item responsesItem) ([]byte, bool, error) {

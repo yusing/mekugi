@@ -22,6 +22,7 @@ import (
 
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/internal/execsegment"
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -476,7 +477,7 @@ func (o execObservation) scopePaths() []string {
 // boundExecObservation keeps the encoded capture within its record share by
 // reducing the largest text snapshots to stamps.
 func boundExecObservation(observation *execObservation) {
-	total := len(mustMarshalJSON(observation))
+	total := len(responses.MustMarshalJSON(observation))
 	for total > maxExecObservationBytes {
 		largest := -1
 		for index, file := range observation.Files {
@@ -488,12 +489,12 @@ func boundExecObservation(observation *execObservation) {
 			return
 		}
 		file := &observation.Files[largest]
-		before := len(mustMarshalJSON(file))
+		before := len(responses.MustMarshalJSON(file))
 		file.Content, file.Error = "", "capture exceeds the record bound"
 		if info, err := os.Lstat(file.Path); err == nil {
 			file.Stamp = execFileStamp(info)
 		}
-		total -= before - len(mustMarshalJSON(file))
+		total -= before - len(responses.MustMarshalJSON(file))
 	}
 }
 
@@ -1276,7 +1277,7 @@ func boundExecReviews(reviews []mekugi.ReviewFile, complete bool) ([]mekugi.Revi
 	sizes := make([]int, len(reviews))
 	total := 0
 	for index, review := range reviews {
-		sizes[index] = len(mustMarshalJSON(review))
+		sizes[index] = len(responses.MustMarshalJSON(review))
 		total += sizes[index]
 	}
 	for total > maxExecRecordBytes {
@@ -1288,7 +1289,7 @@ func boundExecReviews(reviews []mekugi.ReviewFile, complete bool) ([]mekugi.Revi
 		}
 		review := reviews[largest]
 		reviews[largest] = mekugi.RenderIncompleteReviewFile(review.BeforePath, review.AfterPath, "review exceeds the record bound")
-		size := len(mustMarshalJSON(reviews[largest]))
+		size := len(responses.MustMarshalJSON(reviews[largest]))
 		total -= sizes[largest] - size
 		sizes[largest] = size
 		complete = false
@@ -1454,11 +1455,11 @@ func execTruncateReport(text string, limit int) string {
 
 func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.RawMessage {
 	return map[string]json.RawMessage{
-		"type":      mustMarshalJSON("function_call"),
-		"name":      mustMarshalJSON(nativeExecCommandToolName),
-		"call_id":   mustMarshalJSON(derivedCallID),
-		"arguments": mustMarshalJSON(arguments),
-		"status":    mustMarshalJSON("completed"),
+		"type":      responses.MustMarshalJSON("function_call"),
+		"name":      responses.MustMarshalJSON(nativeExecCommandToolName),
+		"call_id":   responses.MustMarshalJSON(derivedCallID),
+		"arguments": responses.MustMarshalJSON(arguments),
+		"status":    responses.MustMarshalJSON("completed"),
 	}
 }
 
@@ -1588,7 +1589,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	}
 	arguments := first.history.CarrierPayload
 	if len(members) != 1 || observation.CodeMode || arguments == "" {
-		arguments = string(mustMarshalJSON(map[string]string{"cmd": script}))
+		arguments = string(responses.MustMarshalJSON(map[string]string{"cmd": script}))
 	}
 	record := mekugiHistory{
 		ToolName:        nativeExecCommandToolName,
@@ -1641,7 +1642,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		memberObservation := *member.history.ExecObservation
 		memberCallID := execDerivedCallID(member.callID, memberObservation.CodeMode)
 		memberScript := execObservationScript(memberObservation)
-		memberArguments := string(mustMarshalJSON(map[string]string{"cmd": memberScript}))
+		memberArguments := string(responses.MustMarshalJSON(map[string]string{"cmd": memberScript}))
 		records[memberCallID] = mekugiHistory{
 			ToolName: nativeExecCommandToolName, Script: memberScript, Root: workspace,
 			ExecutingThread: cmp.Or(member.history.ExecutingThread, thread), Caller: member.history.Caller,
@@ -1658,7 +1659,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		return err
 	}
 	if record.ChangeID != "" {
-		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, jsonString(first.history.UpstreamItem, "id"))
+		_ = p.replayStore.publishEditReceipt(context.WithoutCancel(ctx), workspace, thread, derivedCallID, p.activity, responses.StringField(first.history.UpstreamItem, "id"))
 	}
 	return nil
 }
@@ -1800,5 +1801,5 @@ func execLiteralCommand(args []*sitter.Node, source []byte, directory, sessionSh
 		}
 		arguments[key] = text
 	}
-	return execCommandArguments(string(mustMarshalJSON(arguments)), directory, sessionShell)
+	return execCommandArguments(string(responses.MustMarshalJSON(arguments)), directory, sessionShell)
 }

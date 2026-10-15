@@ -1,6 +1,8 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
 	"maps"
 	"os"
@@ -9,11 +11,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/shellsyntax"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/shellsyntax"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -276,8 +278,8 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	}
 	const edit = "python3 - <<'PY'\nopen('file.txt','w').write('new\\n')\nPY\ncat file.txt"
 	const read = "git diff --stat"
-	source := `text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(edit)) + `}));` +
-		`text(await tools.exec_command({cmd: ` + string(mustMarshalJSON(read)) + `}));`
+	source := `text(await tools.exec_command({cmd: ` + string(responses.MustMarshalJSON(edit)) + `}));` +
+		`text(await tools.exec_command({cmd: ` + string(responses.MustMarshalJSON(read)) + `}));`
 	call := map[string]any{"type": "custom_tool_call", "id": "cell-item", "call_id": "cell", "name": "exec", "input": source, "status": "completed"}
 	if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
 		t.Fatal(err)
@@ -287,7 +289,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	}
 	trace.start("thread-1", "runtime", "cell", source)
 	for _, tool := range []struct{ id, cmd string }{{"edit-exec", edit}, {"read-exec", read}} {
-		trace.tool("thread-1", "runtime", tool.id, "exec_command", string(mustMarshalJSON(map[string]any{"cmd": tool.cmd})))
+		trace.tool("thread-1", "runtime", tool.id, "exec_command", string(responses.MustMarshalJSON(map[string]any{"cmd": tool.cmd})))
 		trace.result("thread-1", tool.id, "completed", map[string]any{"exit_code": 0})
 	}
 	trace.end("thread-1", "runtime")

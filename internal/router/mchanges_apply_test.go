@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/execscope"
-
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/internal/responses"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -192,7 +192,7 @@ func TestMChangesRevertIsRecordedAndRevertable(t *testing.T) {
 	run := func(callID, command string, effect func(ctx context.Context)) mekugiHistory {
 		t.Helper()
 		transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session-"+callID)
-		arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
+		arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
 		retainCommandObservation(t, transform, callID, arguments)
 		observation := transform.local[callID].ExecObservation
 		if observation == nil || observation.Class != "declared" {

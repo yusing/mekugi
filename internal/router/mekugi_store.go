@@ -19,6 +19,7 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/yusing/mekugi/internal/persistence"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const maxReplayRecordBytes = 32 << 20
@@ -339,7 +340,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 			return err
 		}
 	}
-	data, err := marshalProtocolJSON(r)
+	data, err := responses.MarshalJSON(r)
 	if err != nil {
 		return err
 	}
@@ -351,7 +352,7 @@ func (s *mekugiReplayStore) write(r replayRecord) (err error) {
 	if r.Commentary {
 		prefix = "commentary-"
 	}
-	return s.writeManagedFiles(managedFile{name: name, pattern: prefix + "pending-", data: data}, nil, nil)
+	return s.writeManagedFile(name, prefix+"pending-", data)
 }
 
 // writeFile publishes a validated record under the caller's lock. Identical

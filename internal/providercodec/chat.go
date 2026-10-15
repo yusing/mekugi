@@ -1,7 +1,5 @@
 package providercodec
 
-// Source: internal/router/provider_chat.go:1:152@5a2082938e797e6e15c374eb6ae135a0753dea24
-
 import (
 	"bufio"
 	"encoding/json"
@@ -9,7 +7,11 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
+
+// Source: internal/router/provider_chat.go:1:152@5a2082938e797e6e15c374eb6ae135a0753dea24
 
 type chatEndpoint struct{}
 
@@ -39,7 +41,7 @@ func (chatEndpoint) encode(model string, history []providerMessage, tools []map[
 	if o.maxOutput != nil {
 		return nil, fmt.Errorf("%s Chat Completions cannot enforce max_output_tokens including reasoning; omit this unsupported setting", d.Subject)
 	}
-	switch jsonString(o.textFormat, "type") {
+	switch responses.StringField(o.textFormat, "type") {
 	case "json_object":
 		body["response_format"] = map[string]string{"type": "json_object"}
 	case "json_schema":

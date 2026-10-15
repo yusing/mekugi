@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
@@ -19,7 +21,7 @@ func TestNativeExecSedInPlaceCapturesEdit(t *testing.T) {
 	target := filepath.Join(workspace, relativePath)
 	writeTestFile(t, target, before)
 	transform := prepareNativeStockTransform(t, proxy, workspace, "sed-session")
-	arguments := string(mustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
+	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": command, "workdir": workspace}))
 	retainCommandObservation(t, transform, "sed-call", arguments)
 	if history := transform.local["sed-call"]; history.ExecObservation == nil || history.CarrierPayload != arguments {
 		t.Fatalf("sed input was not retained before execution: %+v", history)

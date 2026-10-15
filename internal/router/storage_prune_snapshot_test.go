@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
@@ -24,7 +25,7 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 			return err
 		}
 		catalog.LastUsed = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
-		data, err := marshalProtocolJSON(catalog)
+		data, err := responses.MarshalJSON(catalog)
 		if err != nil {
 			return err
 		}

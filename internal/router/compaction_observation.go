@@ -2,7 +2,11 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"errors"
 	"maps"
@@ -18,8 +22,8 @@ func validateProviderContext(input jsonv1.RawMessage) error {
 		return nil
 	}
 	for _, item := range items {
-		kind := jsonString(item, "type")
-		if (kind == "compaction" || kind == "compaction_summary") && strings.HasPrefix(jsonString(item, "encrypted_content"), "mekugi:") {
+		kind := responses.StringField(item, "type")
+		if (kind == "compaction" || kind == "compaction_summary") && strings.HasPrefix(responses.StringField(item, "encrypted_content"), "mekugi:") {
 			return incompatibleRequest("unsupported_context_reference", "This session contains an unsupported local context reference. Start a new session.")
 		}
 	}

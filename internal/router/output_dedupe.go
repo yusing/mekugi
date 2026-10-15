@@ -1,7 +1,10 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"fmt"
 	"strings"
@@ -97,15 +100,15 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		if json.Unmarshal(raw, &item) != nil {
 			continue
 		}
-		id := jsonString(item, "call_id")
-		if jsonString(item, "role") == "user" {
+		id := responses.StringField(item, "call_id")
+		if responses.StringField(item, "role") == "user" {
 			var metadata struct {
 				Kinds []string `json:"content_item_kinds"`
 			}
 			_ = json.Unmarshal(item["internal_chat_message_metadata_passthrough"], &metadata)
 			if content, ok := projectDuplicateTextParts(item["content"], -1, true, metadata.Kinds, projectAttachment); ok {
 				item["content"] = content
-				items[at] = mustMarshalJSON(item)
+				items[at] = responses.MustMarshalJSON(item)
 				changed = true
 			}
 			continue
@@ -128,7 +131,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		}
 		if output, ok := projectDuplicateTextParts(item["output"], count, false, nil, projectText); ok {
 			item["output"] = output
-			items[at] = mustMarshalJSON(item)
+			items[at] = responses.MustMarshalJSON(item)
 			changed = true
 		}
 		if repeatedLines > 0 {
@@ -140,7 +143,7 @@ func projectDuplicateOutputs(request *parsedResponsesRequest, hostParts map[stri
 		}
 	}
 	if changed {
-		request.setInput(mustMarshalJSON(items))
+		request.setInput(responses.MustMarshalJSON(items))
 	}
 	return summary
 }
@@ -169,7 +172,7 @@ func projectDuplicateTextParts(raw jsonv1.RawMessage, count int, user bool, kind
 			return raw, false
 		}
 		if projected := project(text); projected != text {
-			return mustMarshalJSON(projected), true
+			return responses.MustMarshalJSON(projected), true
 		}
 		return raw, false
 	}
@@ -189,18 +192,18 @@ func projectDuplicateTextParts(raw jsonv1.RawMessage, count int, user bool, kind
 		if json.Unmarshal(parts[at], &part) != nil {
 			continue
 		}
-		kind := jsonString(part, "type")
+		kind := responses.StringField(part, "type")
 		if kind != "input_text" || json.Unmarshal(part["text"], &text) != nil {
 			continue
 		}
 		if projected := project(text); projected != text {
-			part["text"] = mustMarshalJSON(projected)
-			parts[at] = mustMarshalJSON(part)
+			part["text"] = responses.MustMarshalJSON(projected)
+			parts[at] = responses.MustMarshalJSON(part)
 			changed = true
 		}
 	}
 	if changed {
-		return mustMarshalJSON(parts), true
+		return responses.MustMarshalJSON(parts), true
 	}
 	return raw, false
 }
@@ -217,7 +220,7 @@ func duplicateOutputHostParts(raw jsonv1.RawMessage) map[string][]int {
 		if !duplicateOutputItem(item) {
 			continue
 		}
-		id := jsonString(item, "call_id")
+		id := responses.StringField(item, "call_id")
 		var text string
 		count := 1
 		if json.Unmarshal(item["output"], &text) != nil {
@@ -234,10 +237,10 @@ func duplicateOutputHostParts(raw jsonv1.RawMessage) map[string][]int {
 }
 
 func duplicateOutputItem(item map[string]jsonv1.RawMessage) bool {
-	if jsonString(item, "call_id") == "" {
+	if responses.StringField(item, "call_id") == "" {
 		return false
 	}
-	switch jsonString(item, "type") {
+	switch responses.StringField(item, "type") {
 	case "custom_tool_call_output", "function_call_output":
 		return true
 	}

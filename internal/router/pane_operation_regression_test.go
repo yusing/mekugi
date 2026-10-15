@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestPaneOperationRegressionMCatReadLabels(t *testing.T) {
@@ -102,7 +103,7 @@ func TestPaneOperationRegressionDecorativeEcho(t *testing.T) {
 func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 	const patch = "*** Begin Patch\n*** Add File: pane.txt\n+first\n*** End Patch\n"
 	codeModes := []string{
-		"const patch = " + string(mustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));",
+		"const patch = " + string(responses.MustMarshalJSON(patch)) + "; text(await tools.apply_patch(patch));",
 		"const patch = `" + patch + "`; text(await tools.apply_patch(patch));",
 		"text(await tools.apply_patch(`" + patch + "`));",
 		"const patch = `*** Begin Patch\n*** Add File: pane.txt\n+Use \\`mcat\\` and \\${literal}\n*** End Patch\n`; text(await tools.apply_patch(patch));",

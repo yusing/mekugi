@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"errors"
 	"io"
@@ -181,7 +184,7 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			transform.shellThreadID, transform.shellTurnID = "thread", "turn"
 			run := func(call, script string) (execTrackRun, mekugiHistory, *mekugiResponseTransform) {
 				t.Helper()
-				arguments := string(mustMarshalJSON(map[string]any{"cmd": script, "workdir": workspace, "shell": "bash"}))
+				arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": script, "workdir": workspace, "shell": "bash"}))
 				retainCommandObservation(t, transform, call, arguments)
 				key := [3]string{"thread", "turn", call + "-host"}
 				shell.hub.start(key, "/bin/bash -c "+quoteShellWord(script))

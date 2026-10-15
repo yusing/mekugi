@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json"
 	"errors"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // responsesToolCatalog owns the request-local decode of every Responses tool
@@ -58,10 +60,10 @@ func decodeResponsesToolDefinition(raw json.RawMessage) (*responsesToolDefinitio
 func newResponsesToolDefinition(fields map[string]json.RawMessage) *responsesToolDefinition {
 	tool := &responsesToolDefinition{
 		fields:      fields,
-		Type:        jsonString(fields, "type"),
-		Name:        jsonString(fields, "name"),
-		Description: jsonString(fields, "description"),
-		Title:       jsonString(fields, "title"),
+		Type:        responses.StringField(fields, "type"),
+		Name:        responses.StringField(fields, "name"),
+		Description: responses.StringField(fields, "description"),
+		Title:       responses.StringField(fields, "title"),
 	}
 	if nested, ok := fields["tools"]; ok {
 		tool.nested = decodeResponsesToolSection(nested, true)
@@ -73,13 +75,13 @@ func (tool *responsesToolDefinition) MarshalJSON() ([]byte, error) {
 	if tool == nil || tool.fields == nil {
 		return []byte("null"), nil
 	}
-	return marshalProtocolJSON(tool.fields)
+	return responses.MarshalJSON(tool.fields)
 }
 
 // setDescription updates the tool description in both the field and the underlying map.
 func (tool *responsesToolDefinition) setDescription(description string) {
 	tool.Description = description
-	tool.fields["description"] = mustMarshalJSON(description)
+	tool.fields["description"] = responses.MustMarshalJSON(description)
 }
 
 // rawField returns the raw JSON for the named field.
@@ -116,7 +118,7 @@ func decodeResponsesToolCatalog(fields map[string]json.RawMessage) *responsesToo
 			catalog.inputObjectsErr = errors.Join(catalog.inputObjectsErr, err)
 			continue
 		}
-		if jsonString(item, "type") != "additional_tools" {
+		if responses.StringField(item, "type") != "additional_tools" {
 			continue
 		}
 		rawTools, toolsPresent := item["tools"]
@@ -159,7 +161,7 @@ func decodeResponsesToolSection(raw json.RawMessage, present bool) *responsesToo
 
 // encodeTop encodes the top-level tools back into the request fields.
 func (c *responsesToolCatalog) encodeTop(fields map[string]json.RawMessage) error {
-	encoded, err := marshalProtocolJSON(c.top.tools)
+	encoded, err := responses.MarshalJSON(c.top.tools)
 	if err != nil {
 		return err
 	}
@@ -174,7 +176,7 @@ func (c *responsesToolCatalog) encodeAdditional(fields map[string]json.RawMessag
 			if tool == nil || tool.nested != section {
 				continue
 			}
-			encoded, err := marshalProtocolJSON(section.tools)
+			encoded, err := responses.MarshalJSON(section.tools)
 			if err != nil {
 				return err
 			}
@@ -182,17 +184,17 @@ func (c *responsesToolCatalog) encodeAdditional(fields map[string]json.RawMessag
 			break
 		}
 	}
-	encodedTools, err := marshalProtocolJSON(group.tools.tools)
+	encodedTools, err := responses.MarshalJSON(group.tools.tools)
 	if err != nil {
 		return err
 	}
 	group.item["tools"] = encodedTools
-	encodedItem, err := marshalProtocolJSON(group.item)
+	encodedItem, err := responses.MarshalJSON(group.item)
 	if err != nil {
 		return err
 	}
 	c.inputItems[group.itemIndex] = encodedItem
-	encodedInput, err := marshalProtocolJSON(c.inputItems)
+	encodedInput, err := responses.MarshalJSON(c.inputItems)
 	if err != nil {
 		return err
 	}

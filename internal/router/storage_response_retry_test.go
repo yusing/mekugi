@@ -14,6 +14,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.T) {
@@ -90,7 +92,7 @@ func TestResponseTranslationRetriesPersistenceAfterBackgroundCleanup(t *testing.
 					t.Fatal(err)
 				}
 				history, found, err := reopened.lookup(t.Context(), workspace, "new-call")
-				if err != nil || !found || jsonString(history.UpstreamItem, "input") != source {
+				if err != nil || !found || responses.StringField(history.UpstreamItem, "input") != source {
 					t.Fatalf("completed evidence not durable: found=%v err=%v history=%+v", found, err, history)
 				}
 			})

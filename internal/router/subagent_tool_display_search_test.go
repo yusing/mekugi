@@ -3,6 +3,8 @@ package router
 import (
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestSearchDisplayQueryAndTarget(t *testing.T) {
@@ -37,9 +39,9 @@ func TestSearchDisplayQueryAndTarget(t *testing.T) {
 			if got := toolActivityShell(tc.source); got != tc.want {
 				t.Fatalf("native display = %q, want %q", got, tc.want)
 			}
-			source := `text(await tools.exec_command({cmd:` + string(mustMarshalJSON(tc.source)) + `}));`
+			source := `text(await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(tc.source)) + `}));`
 			calls, ok := toolActivityUnwrapExecCalls(source, false)
-			if !ok || len(calls) != 1 || jsonString(calls[0], "arguments") != string(mustMarshalJSON(map[string]string{"cmd": tc.source})) {
+			if !ok || len(calls) != 1 || responses.StringField(calls[0], "arguments") != string(responses.MustMarshalJSON(map[string]string{"cmd": tc.source})) {
 				t.Fatalf("exec capture did not preserve command: %v", calls)
 			}
 		})

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -136,7 +137,7 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 	}
 	prepared := make(map[string]mekugiHistory, len(histories))
 	for callID, history := range histories {
-		encodedItem, err := marshalProtocolJSON(history.UpstreamItem)
+		encodedItem, err := responses.MarshalJSON(history.UpstreamItem)
 		if err != nil {
 			return fmt.Errorf("encode mekugi history item: %w", err)
 		}
@@ -148,7 +149,7 @@ func (p *mekugiProxy) rememberBatch(sessionID string, histories map[string]mekug
 			}
 		}
 		if history.ResolvedBaseline != nil {
-			history.bytes += len(mustMarshalJSON(history.ResolvedBaseline))
+			history.bytes += len(responses.MustMarshalJSON(history.ResolvedBaseline))
 		}
 		history.bytes += len(history.ChangeID) + len(history.ExecutingThread) + len(history.Caller) + len(history.Source)
 		for _, file := range history.ReviewFiles {
@@ -314,8 +315,8 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	filtered := make([]map[string]json.RawMessage, 0, len(items))
 	removedCached := 0
 	for index, item := range items {
-		if jsonString(item, "type") == "message" {
-			id := jsonString(item, "id")
+		if responses.StringField(item, "type") == "message" {
+			id := responses.StringField(item, "id")
 			_, generated := commentaryIDs[id]
 			if p.replayStore != nil {
 				var err error
@@ -346,11 +347,11 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	editOutputs := make(map[string]map[string]json.RawMessage)
 	continuations := make(map[string]string)
 	for index, item := range items {
-		itemType := jsonString(item, "type")
+		itemType := responses.StringField(item, "type")
 		if itemType != "custom_tool_call" && itemType != "function_call" && itemType != "custom_tool_call_output" && itemType != "function_call_output" {
 			continue
 		}
-		callID := jsonString(item, "call_id")
+		callID := responses.StringField(item, "call_id")
 		if callID == "" {
 			return nil, incompatibleRequest("unsupported_tool_history", "A retained tool item has no host call identity. Start a new session.")
 		}
@@ -359,13 +360,13 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 				CellID    string          `json:"cell_id"`
 				SessionID json.RawMessage `json:"session_id"`
 			}
-			switch strings.TrimPrefix(jsonString(item, "name"), "functions.") {
+			switch strings.TrimPrefix(responses.StringField(item, "name"), "functions.") {
 			case "wait":
-				if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil && args.CellID != "" {
+				if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil && args.CellID != "" {
 					continuations[callID] = "cell:" + args.CellID
 				}
 			case "write_stdin":
-				if json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil && len(args.SessionID) != 0 {
+				if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil && len(args.SessionID) != 0 {
 					continuations[callID] = "session:" + strings.Trim(string(args.SessionID), `"`)
 				}
 			}
@@ -436,10 +437,10 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			}
 			if !history.ReplayCarrier {
 				upstreamKind := codeModeCarrierCustom
-				if jsonString(history.UpstreamItem, "type") == carrierItemType(codeModeCarrierFunction) {
+				if responses.StringField(history.UpstreamItem, "type") == carrierItemType(codeModeCarrierFunction) {
 					upstreamKind = codeModeCarrierFunction
 				}
-				item["type"] = mustMarshalJSON(carrierOutputItemType(upstreamKind))
+				item["type"] = responses.MustMarshalJSON(carrierOutputItemType(upstreamKind))
 				changed = true
 			}
 			continue
@@ -447,13 +448,13 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		if itemType != carrierItemType(carrierKind) {
 			return nil, fmt.Errorf("replayed call %q changed item type", callID)
 		}
-		if jsonString(item, "name") != history.CarrierName {
+		if responses.StringField(item, "name") != history.CarrierName {
 			return nil, fmt.Errorf("replayed call %q changed carrier name", callID)
 		}
 		if validatedCarriers[callID] {
 			return nil, fmt.Errorf("replayed call %q appears more than once", callID)
 		}
-		if jsonString(item, carrierPayloadField(carrierKind)) != history.carrierInput() {
+		if responses.StringField(item, carrierPayloadField(carrierKind)) != history.carrierInput() {
 			return nil, fmt.Errorf("replayed call %q changed translated payload", callID)
 		}
 		validatedCarriers[callID] = true
@@ -464,8 +465,8 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 		if len(history.UpstreamItem) != 0 {
 			items[index] = maps.Clone(history.UpstreamItem)
 		} else {
-			item["name"] = mustMarshalJSON(cmp.Or(history.ToolName, applyPatchToolName))
-			item["input"] = mustMarshalJSON(history.Script)
+			item["name"] = responses.MustMarshalJSON(cmp.Or(history.ToolName, applyPatchToolName))
+			item["input"] = responses.MustMarshalJSON(history.Script)
 		}
 		changed = true
 	}
@@ -539,7 +540,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	}
 	request.cachedInput -= removedCached
 	if changed {
-		encoded, err := marshalProtocolJSON(items)
+		encoded, err := responses.MarshalJSON(items)
 		if err != nil {
 			return nil, fmt.Errorf("encode replayed Responses input: %w", err)
 		}
@@ -552,17 +553,17 @@ func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessa
 	var parts []json.RawMessage
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
-		parts = []json.RawMessage{mustMarshalJSON(map[string]string{"type": "input_text", "text": text})}
+		parts = []json.RawMessage{responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": text})}
 	} else if err := json.Unmarshal(raw, &parts); err != nil {
 		return nil, false, errors.New("tool output must be text or content parts")
 	}
-	notice := mustMarshalJSON(map[string]string{"type": "input_text", "text": warning})
+	notice := responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": warning})
 	for _, part := range parts {
 		if sameJSONValue(part, notice) {
 			return raw, false, nil
 		}
 	}
-	return mustMarshalJSON(append(parts, notice)), true, nil
+	return responses.MustMarshalJSON(append(parts, notice)), true, nil
 }
 
 func (t *mekugiResponseTransform) recordLocal(callID string, history *mekugiHistory) {

@@ -34,7 +34,7 @@ type autoLiveDiff struct {
 	stopped bool // The UI session ended; later requests cannot be served.
 }
 
-func newAutoLiveDiff(ctx context.Context, replay string) (*autoLiveDiff, func()) {
+func newAutoLiveDiff(ctx context.Context) (*autoLiveDiff, func()) {
 	ctx, cancel := context.WithCancel(ctx)
 	a := &autoLiveDiff{
 		events:     newLiveDiffBroker(ctx),

@@ -3,6 +3,9 @@ package router
 import (
 	"bytes"
 	"encoding/base64"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
 	"fmt"
 	"slices"
@@ -12,6 +15,7 @@ import (
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -38,7 +42,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				map[string]any{"type": "input_text", "text": "Script failed\nWall time 0.0 seconds\nOutput:\n"},
 				map[string]any{"type": "input_text", "text": "Script error:\n" + detail},
 			}
-			input := mustMarshalJSON([]any{
+			input := responses.MustMarshalJSON([]any{
 				map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "rejected", "input": "opaque rejected script"},
 				map[string]any{"type": "custom_tool_call_output", "call_id": "rejected", "output": output},
 			})

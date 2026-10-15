@@ -121,7 +121,7 @@ func (s *responsesWebSocket) writeError(ctx context.Context, err error) ([]byte,
 			fields["error"] = body["error"]
 		}
 	}
-	body := mustMarshalJSON(fields)
+	body := responseevents.MustMarshalJSON(fields)
 	writeErr := s.downstream.Write(ctx, websocket.MessageText, body)
 	s.errorDelivered = writeErr == nil
 	return body, writeErr
@@ -272,7 +272,7 @@ func webSocketInput(raw json.RawMessage) ([]json.RawMessage, error) {
 	}
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
-		return []json.RawMessage{mustMarshalJSON(map[string]any{
+		return []json.RawMessage{responseevents.MustMarshalJSON(map[string]any{
 			"type": "message", "role": "user",
 			"content": []any{map[string]string{"type": "input_text", "text": text}},
 		})}, nil
@@ -303,7 +303,7 @@ func (s *responsesWebSocket) run() error {
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(message.body, &fields)
-			if jsonString(fields, "type") == responseevents.Create {
+			if responseevents.StringField(fields, "type") == responseevents.Create {
 				if err := s.execute(message.body, nil); err != nil {
 					return err
 				}
@@ -316,7 +316,7 @@ func (s *responsesWebSocket) run() error {
 			}
 			var fields map[string]json.RawMessage
 			_ = json.Unmarshal(message.body, &fields)
-			if jsonString(fields, "type") == responseevents.Created {
+			if responseevents.StringField(fields, "type") == responseevents.Created {
 				if err := s.execute(nil, message.body); err != nil {
 					return err
 				}
@@ -333,7 +333,7 @@ func (s *responsesWebSocket) control(body []byte) error {
 	}
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
-	if jsonString(fields, "type") == responseevents.Create {
+	if responseevents.StringField(fields, "type") == responseevents.Create {
 		if s.queuedCreate != nil {
 			return incompatibleRequest("invalid_websocket_request", "a Responses WebSocket continuation is already queued")
 		}
@@ -343,7 +343,7 @@ func (s *responsesWebSocket) control(body []byte) error {
 	if s.upstream == nil {
 		return incompatibleRequest("invalid_websocket_request", "send response.create before a WebSocket control message; Chat Completions providers do not support steering")
 	}
-	if jsonString(fields, "type") == responseevents.Steer {
+	if responseevents.StringField(fields, "type") == responseevents.Steer {
 		input, err := webSocketInput(fields["input"])
 		if err != nil {
 			return err
@@ -351,7 +351,7 @@ func (s *responsesWebSocket) control(body []byte) error {
 		if err := s.retain(input); err != nil {
 			return err
 		}
-		s.steers = append(s.steers, webSocketSteer{parent: jsonString(fields, "previous_response_id"), input: input})
+		s.steers = append(s.steers, webSocketSteer{parent: responseevents.StringField(fields, "previous_response_id"), input: input})
 	}
 	// Steering is user input, not an inference request. Forward it exactly once,
 	// without changing its fields or treating an acknowledgement as completion.
@@ -459,9 +459,9 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 		if parent == "" {
 			parent = s.lastID
 		}
-		fields = map[string]json.RawMessage{"previous_response_id": mustMarshalJSON(parent)}
+		fields = map[string]json.RawMessage{"previous_response_id": responseevents.MustMarshalJSON(parent)}
 	}
-	parentID := jsonString(fields, "previous_response_id")
+	parentID := responseevents.StringField(fields, "previous_response_id")
 	var parent *webSocketHistory
 	if parentID != "" {
 		parent = s.histories[parentID]
@@ -512,12 +512,12 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	fullInput = append(fullInput, steering...)
 	cachedInput := len(fullInput)
 	fullInput = append(fullInput, input...)
-	requestFields["input"] = mustMarshalJSON(fullInput)
+	requestFields["input"] = responseevents.MustMarshalJSON(fullInput)
 	requestFields["stream"] = json.RawMessage("true")
 	if parentID != "" {
-		requestFields["previous_response_id"] = mustMarshalJSON(parentID)
+		requestFields["previous_response_id"] = responseevents.MustMarshalJSON(parentID)
 	}
-	body, err := marshalProtocolJSON(requestFields)
+	body, err := responseevents.MarshalJSON(requestFields)
 	if err != nil {
 		return err
 	}
@@ -596,16 +596,16 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	}
 	previous := fields["previous_response_id"]
 	delete(fields, "previous_response_id")
-	native, err := marshalProtocolJSON(fields)
+	native, err := responseevents.MarshalJSON(fields)
 	if err != nil {
 		return nil, err
 	}
-	if isChatCompletionsModel(jsonString(fields, "model")) {
+	if isChatCompletionsModel(responseevents.StringField(fields, "model")) {
 		if string(fields["generate"]) == "false" {
 			// Chat Completions has no non-generating transport warmup. Preserve Codex's
 			// prewarm/history handshake without running and discarding inference.
 			response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
-			payload := mustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})
+			payload := responseevents.MustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})
 			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
 				Body: io.NopCloser(bytes.NewReader(append(append([]byte("data: "), payload...), '\n', '\n')))}, nil
 		}
@@ -682,7 +682,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	// metadata event Codex consumes, leaving subsequent replay and reset to Codex.
 	// Source: codex-rs/codex-api/src/sse/responses.rs:222:230 (turn_state).
 	if state := responseHeaders.Get("x-codex-turn-state"); state != "" {
-		metadata := mustMarshalJSON(map[string]any{
+		metadata := responseevents.MustMarshalJSON(map[string]any{
 			"type": "response.metadata", "headers": map[string]string{"x-codex-turn-state": state},
 		})
 		if err := s.downstream.Write(responseCtx, websocket.MessageText, metadata); err != nil {
@@ -715,7 +715,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 				}
 				continue
 			}
-			if isResponseAncillaryEvent(jsonString(fields, "type")) {
+			if isResponseAncillaryEvent(responseevents.StringField(fields, "type")) {
 				e.streamDiagnostics.observe(message.body)
 				e.observation.Message(message.body)
 				e.clientObservation.Message(message.body)
@@ -774,7 +774,7 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	s.observeProvider(e.ctx, e.observation, body)
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
-	kind := jsonString(fields, "type")
+	kind := responseevents.StringField(fields, "type")
 	if err := e.observeProviderHistory(body); err != nil {
 		e.streamDiagnostics.readEndedFrom(err, "router_history")
 		return 0, err

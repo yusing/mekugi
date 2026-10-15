@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/internal/providercodec"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Preserve the existing wire instruction on both providers; diagnostic identity
@@ -123,7 +124,7 @@ func translateProviderRequest(body []byte, service *openCodeService) (_ *provide
 			return nil, errors.New("unsupported OpenCode model")
 		}
 		// Preserve the explicit-history rejection before catalog-format validation.
-		if jsonString(request.fields, "previous_response_id") != "" {
+		if responses.StringField(request.fields, "previous_response_id") != "" {
 			return nil, errors.New("OpenCode requires explicit conversation history, not previous_response_id")
 		}
 		format = service.format(model)

@@ -626,7 +626,7 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			}
 			// Streaming completion belongs to the event, just as on upstream
 			// SSE. A nonstream client needs that state in its unwrapped JSON.
-			if !body.stream && jsonString(terminal, "status") == "" {
+			if !body.stream && responseevents.StringField(terminal, "status") == "" {
 				terminal["status"], _ = json.Marshal(responseevents.Kind(event.Type).Status())
 				event.Response, _ = json.Marshal(terminal)
 			}

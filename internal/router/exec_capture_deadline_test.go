@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestNativeExecForwardingWhileCaptureWorkersUnavailable(t *testing.T) {
@@ -21,7 +23,7 @@ func TestNativeExecForwardingWhileCaptureWorkersUnavailable(t *testing.T) {
 	attachTestReplayStore(t, proxy)
 	workspace := t.TempDir()
 	transform := prepareNativeStockTransform(t, proxy, workspace, "deadline-session")
-	arguments := string(mustMarshalJSON(map[string]any{"cmd": "rm missing", "workdir": workspace}))
+	arguments := string(responses.MustMarshalJSON(map[string]any{"cmd": "rm missing", "workdir": workspace}))
 	started := time.Now()
 	retainCommandObservation(t, transform, "deadline-call", arguments)
 	if elapsed := time.Since(started); elapsed > execCaptureHold+250*time.Millisecond {

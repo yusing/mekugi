@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Exercise the provider wire, not the locally reconstructed tool catalog.
@@ -63,11 +64,11 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if !sameJSONValue(warmedTools, request["tools"]) {
 					t.Error("first turn changed the warmed tool catalog")
 				}
-				if jsonString(request, "previous_response_id") != "warm" || len(input) != 1 {
-					t.Errorf("first turn discarded warmed prefix: parent=%q items=%d", jsonString(request, "previous_response_id"), len(input))
+				if responses.StringField(request, "previous_response_id") != "warm" || len(input) != 1 {
+					t.Errorf("first turn discarded warmed prefix: parent=%q items=%d", responses.StringField(request, "previous_response_id"), len(input))
 				}
 			case "next", "astra", "astra-next":
-				if jsonString(request, "previous_response_id") != ids[index-1] || len(input) != 1 {
+				if responses.StringField(request, "previous_response_id") != ids[index-1] || len(input) != 1 {
 					t.Errorf("%s unnecessarily resent unchanged history", id)
 				}
 				if !sameJSONValue(warmedTools, request["tools"]) {
@@ -96,10 +97,10 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 			request["previous_response_id"] = ids[index-1]
 			request["input"] = []any{map[string]string{"role": "user", "content": id}}
 		}
-		request["client_metadata"] = map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(metadata)), threadIDHeader: "instruction-cache-thread"}
+		request["client_metadata"] = map[string]string{codexTurnMetadataHeader: string(responses.MustMarshalJSON(metadata)), threadIDHeader: "instruction-cache-thread"}
 		socketWrite(t, ctx, conn, request)
-		if event := socketRead(t, ctx, conn); jsonString(event, "type") != "response.completed" {
-			t.Fatalf("%s failed: %s", id, mustMarshalJSON(event))
+		if event := socketRead(t, ctx, conn); responses.StringField(event, "type") != "response.completed" {
+			t.Fatalf("%s failed: %s", id, responses.MustMarshalJSON(event))
 		}
 	}
 }
@@ -178,19 +179,19 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 					t.Errorf("first turn changed prewarmed input item %d:\nprewarm: %s\nturn:    %s", index, warmInput[index], turnInput[index])
 				}
 			}
-			if got := jsonString(warm.fields, "instructions"); got != testBaseInstructions+"\n"+projected {
+			if got := responses.StringField(warm.fields, "instructions"); got != testBaseInstructions+"\n"+projected {
 				t.Fatalf("effective instruction cleanup = %q", got)
 			}
 			for _, raw := range warmInput {
 				var item map[string]json.RawMessage
 				_ = json.Unmarshal(raw, &item)
-				if jsonString(item, "type") == "message" && jsonString(item, "role") == "developer" && jsonString(item, "content") != "Follow the task.\n\n"+projected+"\n"+instructionOmitStart+"omitted-rtk-policy"+instructionOmitEnd {
+				if responses.StringField(item, "type") == "message" && responses.StringField(item, "role") == "developer" && responses.StringField(item, "content") != "Follow the task.\n\n"+projected+"\n"+instructionOmitStart+"omitted-rtk-policy"+instructionOmitEnd {
 					t.Fatal("effective developer cleanup differs from recorded projection")
 				}
 			}
 			// The comparison is meaningful only if the prewarm was projected.
 			if bytes.Contains(warm.fields["input"], []byte(conflictingProgress)) || !bytes.Contains(append(slices.Clone(warm.fields["tools"]), warm.fields["input"]...), []byte(frontendGuidanceStart)) {
-				t.Fatalf("prewarm skipped Mekugi projection: %s", mustMarshalJSON(warm.fields))
+				t.Fatalf("prewarm skipped Mekugi projection: %s", responses.MustMarshalJSON(warm.fields))
 			}
 		})
 	}
@@ -208,16 +209,16 @@ func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.
 func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	stock, _ := recordedInstructionCleanup(t)
-	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{"model": "gpt-test", "generate": false, "instructions": stock, "tools": []any{map[string]string{"type": "web_search"}}, "input": []any{}}))
+	request, err := parseResponsesRequest(responses.MustMarshalJSON(map[string]any{"model": "gpt-test", "generate": false, "instructions": stock, "tools": []any{map[string]string{"type": "web_search"}}, "input": []any{}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := mustMarshalJSON(request.fields)
+	before := responses.MustMarshalJSON(request.fields)
 	transform, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true)
 	if err != nil || transform != nil {
 		t.Fatalf("native handshake initialized execution or failed: %v, %v", transform, err)
 	}
-	if !sameJSONValue(before, mustMarshalJSON(request.fields)) {
+	if !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
 		t.Fatal("unsupported prewarm catalog was partially rewritten")
 	}
 }

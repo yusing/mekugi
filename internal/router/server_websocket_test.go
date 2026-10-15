@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func socketWrite(t *testing.T, ctx context.Context, conn *websocket.Conn, value any) {
 	t.Helper()
-	if err := conn.Write(ctx, websocket.MessageText, mustMarshalJSON(value)); err != nil {
+	if err := conn.Write(ctx, websocket.MessageText, responses.MustMarshalJSON(value)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -36,7 +37,7 @@ func socketRead(t *testing.T, ctx context.Context, conn *websocket.Conn) map[str
 // Provider handlers propagate errors to their caller instead of invoking FailNow
 // outside the test goroutine.
 func providerSocketWrite(ctx context.Context, conn *websocket.Conn, value any) error {
-	return conn.Write(ctx, websocket.MessageText, mustMarshalJSON(value))
+	return conn.Write(ctx, websocket.MessageText, responses.MustMarshalJSON(value))
 }
 
 func providerSocketRead(ctx context.Context, conn *websocket.Conn) (map[string]json.RawMessage, error) {
@@ -110,8 +111,8 @@ func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if jsonString(create, "type") != "response.create" {
-			t.Errorf("create = %s", mustMarshalJSON(create))
+		if responses.StringField(create, "type") != "response.create" {
+			t.Errorf("create = %s", responses.MustMarshalJSON(create))
 		}
 		if string(create["access_programs"]) != `{"cyber":"standard"}` {
 			t.Errorf("access programs = %s", create["access_programs"])
@@ -125,8 +126,8 @@ func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if jsonString(steer, "type") != "response.steer" || jsonString(steer, "input") != "change direction" {
-			t.Errorf("steer = %s", mustMarshalJSON(steer))
+		if responses.StringField(steer, "type") != "response.steer" || responses.StringField(steer, "input") != "change direction" {
+			t.Errorf("steer = %s", responses.MustMarshalJSON(steer))
 		}
 		if err := providerSocketSteeredSuccessor(ctx, upstream, "s1"); err != nil {
 			t.Error(err)
@@ -138,12 +139,12 @@ func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if jsonString(continuation, "previous_response_id") != "successor" {
-			t.Errorf("continuation = %s", mustMarshalJSON(continuation))
+		if responses.StringField(continuation, "previous_response_id") != "successor" {
+			t.Errorf("continuation = %s", responses.MustMarshalJSON(continuation))
 		}
 		var input []map[string]json.RawMessage
 		_ = json.Unmarshal(continuation["input"], &input)
-		if len(input) != 1 || jsonString(input[0], "content") != "next task" {
+		if len(input) != 1 || responses.StringField(input[0], "content") != "next task" {
 			t.Errorf("cached/steering input was replayed: %s", continuation["input"])
 		}
 		if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", "last")); err != nil {
@@ -153,18 +154,18 @@ func TestResponsesWebSocketSteeringAndAutomaticSuccessor(t *testing.T) {
 		_, _, _ = upstream.Read(ctx)
 	}), nil, codexAuthHeaders())
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "initial"})
-	if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.created" {
-		t.Fatalf("created = %s", mustMarshalJSON(got))
+	if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.created" {
+		t.Fatalf("created = %s", responses.MustMarshalJSON(got))
 	}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.steer", "previous_response_id": "parent", "input": "change direction"})
 	for _, kind := range []string{"response.steer.accepted", "response.incomplete", "response.created", "response.completed"} {
-		if got := socketRead(t, ctx, conn); jsonString(got, "type") != kind {
-			t.Fatalf("got %s, want %s", mustMarshalJSON(got), kind)
+		if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != kind {
+			t.Fatalf("got %s, want %s", responses.MustMarshalJSON(got), kind)
 		}
 	}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "previous_response_id": "successor", "input": []any{map[string]string{"role": "user", "content": "next task"}}})
-	if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
-		t.Fatalf("last = %s", mustMarshalJSON(got))
+	if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
+		t.Fatalf("last = %s", responses.MustMarshalJSON(got))
 	}
 	conn.CloseNow()
 	select {
@@ -190,7 +191,7 @@ func TestResponsesWebSocketPendingAndPrewarm(t *testing.T) {
 			return
 		}
 		if string(prewarm["generate"]) != "false" {
-			t.Errorf("prewarm = %s", mustMarshalJSON(prewarm))
+			t.Errorf("prewarm = %s", responses.MustMarshalJSON(prewarm))
 		}
 		if err := providerSocketWrite(ctx, upstream, socketEvent("response.completed", "warm")); err != nil {
 			t.Error(err)
@@ -201,8 +202,8 @@ func TestResponsesWebSocketPendingAndPrewarm(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if jsonString(create, "previous_response_id") != "warm" || string(create["input"]) != "[]" || len(create["generate"]) != 0 {
-			t.Errorf("prewarm continuation = %s", mustMarshalJSON(create))
+		if responses.StringField(create, "previous_response_id") != "warm" || string(create["input"]) != "[]" || len(create["generate"]) != 0 {
+			t.Errorf("prewarm continuation = %s", responses.MustMarshalJSON(create))
 		}
 		if err := providerSocketWrite(ctx, upstream, socketEvent("response.created", "parent")); err != nil {
 			t.Error(err)
@@ -232,12 +233,12 @@ func TestResponsesWebSocketPendingAndPrewarm(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if jsonString(next, "previous_response_id") != "parent" {
-			t.Errorf("continuation parent = %s", mustMarshalJSON(next))
+		if responses.StringField(next, "previous_response_id") != "parent" {
+			t.Errorf("continuation parent = %s", responses.MustMarshalJSON(next))
 		}
 		var input []map[string]json.RawMessage
 		_ = json.Unmarshal(next["input"], &input)
-		if len(input) != 1 || jsonString(input[0], "call_id") != "call" || jsonString(input[0], "output") != "result" {
+		if len(input) != 1 || responses.StringField(input[0], "call_id") != "call" || responses.StringField(input[0], "output") != "result" {
 			t.Errorf("pending steering replayed or tool input lost: %s", next["input"])
 		}
 		if err := providerSocketWrite(ctx, upstream, socketEvent("response.created", "successor")); err != nil {
@@ -256,20 +257,20 @@ func TestResponsesWebSocketPendingAndPrewarm(t *testing.T) {
 	_ = socketRead(t, ctx, conn)
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.steer", "previous_response_id": "parent", "input": "after tool"})
 	for _, kind := range []string{"response.steer.accepted", "response.completed", "response.steer.pending"} {
-		if got := socketRead(t, ctx, conn); jsonString(got, "type") != kind {
-			t.Fatalf("got %s, want %s", mustMarshalJSON(got), kind)
+		if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != kind {
+			t.Fatalf("got %s, want %s", responses.MustMarshalJSON(got), kind)
 		}
 	}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "previous_response_id": "parent", "input": []any{map[string]string{"type": "function_call_output", "call_id": "call", "output": "result"}}})
 	_ = socketRead(t, ctx, conn)
-	if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
-		t.Fatalf("completion = %s", mustMarshalJSON(got))
+	if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
+		t.Fatalf("completion = %s", responses.MustMarshalJSON(got))
 	}
 }
 
 func TestResponsesWebSocketSteeringAdmissionHistory(t *testing.T) {
 	input := func(text string) []json.RawMessage {
-		items, err := webSocketInput(mustMarshalJSON(text))
+		items, err := webSocketInput(responses.MustMarshalJSON(text))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -284,7 +285,7 @@ func TestResponsesWebSocketSteeringAdmissionHistory(t *testing.T) {
 	s.observeControl([]byte(`{"type":"response.steer.failed","steer":{"id":"rejected","previous_response_id":"parent"}}`))
 	s.observeControl([]byte(`{"type":"response.steer.accepted","steer":{"id":"late","previous_response_id":"parent"}}`))
 	s.commitSteering(history, "parent")
-	got := string(mustMarshalJSON(history.input))
+	got := string(responses.MustMarshalJSON(history.input))
 	if strings.Contains(got, "must not be retained") || strings.Contains(got, "different parent") ||
 		!strings.Contains(got, "accepted after continuation send") || len(history.input) != 2 {
 		t.Fatalf("admitted history = %s", got)
@@ -325,8 +326,8 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 	defer conn.CloseNow()
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": grokModel, "generate": false, "input": "warm up"})
 	event := socketRead(t, ctx, conn)
-	if jsonString(event, "type") != "response.completed" {
-		t.Fatalf("prewarm response = %s", mustMarshalJSON(event))
+	if responses.StringField(event, "type") != "response.completed" {
+		t.Fatalf("prewarm response = %s", responses.MustMarshalJSON(event))
 	}
 	var response map[string]json.RawMessage
 	_ = json.Unmarshal(event["response"], &response)
@@ -335,7 +336,7 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 		t.Fatal("Grok prewarm generated inference")
 	default:
 	}
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": grokModel, "previous_response_id": jsonString(response, "id"), "input": []any{}})
+	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": grokModel, "previous_response_id": responses.StringField(response, "id"), "input": []any{}})
 	select {
 	case body := <-started:
 		if !strings.Contains(string(body), "warm up") || strings.Contains(string(body), "previous_response_id") {
@@ -433,7 +434,7 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 			}
 			if i == 0 {
 				if string(request["generate"]) != "false" {
-					t.Errorf("warmup may generate: %s", mustMarshalJSON(request))
+					t.Errorf("warmup may generate: %s", responses.MustMarshalJSON(request))
 				}
 			} else {
 				if len(request["generate"]) != 0 {
@@ -450,11 +451,11 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 					wantParent = "turn"
 					wantInput = "next"
 				}
-				if jsonString(request, "previous_response_id") != wantParent {
+				if responses.StringField(request, "previous_response_id") != wantParent {
 					t.Errorf("parent = %s", request["previous_response_id"])
 				}
 				var input []map[string]json.RawMessage
-				if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != 1 || jsonString(input[0], "content") != wantInput {
+				if err := json.Unmarshal(request["input"], &input); err != nil || len(input) != 1 || responses.StringField(input[0], "content") != wantInput {
 					t.Errorf("incremental history = %s", request["input"])
 				}
 			}
@@ -466,11 +467,11 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 		_, _, _ = upstream.Read(ctx)
 	}), proxy, headers)
 	metadata := func(value any) map[string]string {
-		return map[string]string{codexTurnMetadataHeader: string(mustMarshalJSON(value)), threadIDHeader: "prewarm-thread"}
+		return map[string]string{codexTurnMetadataHeader: string(responses.MustMarshalJSON(value)), threadIDHeader: "prewarm-thread"}
 	}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": "warmup context"}}, "generate": false, "client_metadata": map[string]string{codexTurnMetadataHeader: `{"request_kind":"prewarm"}`}})
-	if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
-		t.Fatalf("warmup produced a warning: %s", mustMarshalJSON(got))
+	if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
+		t.Fatalf("warmup produced a warning: %s", responses.MustMarshalJSON(got))
 	}
 	turnMetadata := metadata(codexTurnMetadata{RequestKind: "turn", Directories: map[string]json.RawMessage{t.TempDir(): nil}})
 	for i, parent := range []string{"warm", "turn"} {
@@ -479,8 +480,8 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 			input = "next"
 		}
 		socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": input}}, "previous_response_id": parent, "tools": testExecResponsesTools(), "client_metadata": turnMetadata})
-		if got := socketRead(t, ctx, conn); jsonString(got, "type") != "response.completed" {
-			t.Fatalf("turn produced a warning: %s", mustMarshalJSON(got))
+		if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
+			t.Fatalf("turn produced a warning: %s", responses.MustMarshalJSON(got))
 		}
 	}
 }
@@ -551,14 +552,14 @@ func TestResponsesWebSocketLocalErrorStatus(t *testing.T) {
 			}
 			for {
 				event := socketRead(t, ctx, conn)
-				if jsonString(event, "type") != "error" {
+				if responses.StringField(event, "type") != "error" {
 					continue
 				}
 				if string(event["status"]) != test.status {
-					t.Fatalf("status = %s, want %s: %s", event["status"], test.status, mustMarshalJSON(event))
+					t.Fatalf("status = %s, want %s: %s", event["status"], test.status, responses.MustMarshalJSON(event))
 				}
 				var detail map[string]json.RawMessage
-				if err := json.Unmarshal(event["error"], &detail); err != nil || jsonString(detail, "message") == "" {
+				if err := json.Unmarshal(event["error"], &detail); err != nil || responses.StringField(detail, "message") == "" {
 					t.Fatalf("missing Codex error detail: %s", event["error"])
 				}
 				break
@@ -592,11 +593,11 @@ func TestResponsesWebSocketAutomaticParentErrorStatus(t *testing.T) {
 		_, _, _ = upstream.Read(ctx)
 	}), nil, codexAuthHeaders())
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "task"})
-	if event := socketRead(t, ctx, conn); jsonString(event, "type") != "response.completed" {
-		t.Fatalf("completion = %s", mustMarshalJSON(event))
+	if event := socketRead(t, ctx, conn); responses.StringField(event, "type") != "response.completed" {
+		t.Fatalf("completion = %s", responses.MustMarshalJSON(event))
 	}
 	event := socketRead(t, ctx, conn)
-	if jsonString(event, "type") != "error" || string(event["status"]) != "502" {
-		t.Fatalf("provider ancestry must not be a client error: %s", mustMarshalJSON(event))
+	if responses.StringField(event, "type") != "error" || string(event["status"]) != "502" {
+		t.Fatalf("provider ancestry must not be a client error: %s", responses.MustMarshalJSON(event))
 	}
 }

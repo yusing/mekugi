@@ -290,7 +290,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				if root.OutputThroughput.OutputTokens != 130 || out.Code != http.StatusOK {
 					t.Fatalf("terminal measurement or delivery changed: %+v, %d", root.OutputThroughput, out.Code)
 				}
-				if state, err := copySSETransformed(io.Discard, strings.NewReader(out.Body.String()), nil, nil); err != nil || !isResponseTerminal(state) {
+				if state, err := copySSETransformed(io.Discard, strings.NewReader(out.Body.String()), nil, nil); err != nil || !state.Terminal() {
 					t.Fatalf("downstream terminal missing: %v, %v", state, err)
 				}
 			})

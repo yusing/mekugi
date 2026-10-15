@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Source: codex-rs/core/tests/suite/pending_input.rs:1137:1217@68e1a421
@@ -52,8 +53,8 @@ func TestResponsesWebSocketInstantInterrupt(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if jsonString(next, "type") != "response.create" || jsonString(next, "previous_response_id") != "parent" || !bytes.Contains(next["input"], []byte("second prompt")) || bytes.Contains(next["input"], []byte("first prompt")) {
-			t.Errorf("interrupt or input replayed instead of host continuation: %s", mustMarshalJSON(next))
+		if responses.StringField(next, "type") != "response.create" || responses.StringField(next, "previous_response_id") != "parent" || !bytes.Contains(next["input"], []byte("second prompt")) || bytes.Contains(next["input"], []byte("first prompt")) {
+			t.Errorf("interrupt or input replayed instead of host continuation: %s", responses.MustMarshalJSON(next))
 		}
 		for _, kind := range []string{"response.created", "response.completed"} {
 			if err := providerSocketWrite(ctx, upstream, socketEvent(kind, "next")); err != nil {
@@ -64,20 +65,20 @@ func TestResponsesWebSocketInstantInterrupt(t *testing.T) {
 		_, _, _ = upstream.Read(ctx)
 	}), nil, codexAuthHeaders())
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": "first prompt"})
-	if got := jsonString(socketRead(t, ctx, conn), "type"); got != "response.created" {
+	if got := responses.StringField(socketRead(t, ctx, conn), "type"); got != "response.created" {
 		t.Fatalf("first event = %s", got)
 	}
 	if err := conn.Write(ctx, websocket.MessageText, interrupt); err != nil {
 		t.Fatal(err)
 	}
 	for _, kind := range []string{"response.interrupt.accepted", "response.output_item.interrupted", "response.incomplete"} {
-		if got := jsonString(socketRead(t, ctx, conn), "type"); got != kind {
+		if got := responses.StringField(socketRead(t, ctx, conn), "type"); got != kind {
 			t.Fatalf("event = %s, want %s", got, kind)
 		}
 	}
 	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "previous_response_id": "parent", "input": "second prompt"})
 	for _, kind := range []string{"response.created", "response.completed"} {
-		if got := jsonString(socketRead(t, ctx, conn), "type"); got != kind {
+		if got := responses.StringField(socketRead(t, ctx, conn), "type"); got != kind {
 			t.Fatalf("follow-up event = %s, want %s", got, kind)
 		}
 	}

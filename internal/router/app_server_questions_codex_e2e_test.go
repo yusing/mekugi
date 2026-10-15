@@ -5,6 +5,9 @@ package router
 import (
 	"bytes"
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -56,7 +59,7 @@ func (p *questionCodexProvider) forwardExecution(ctx, _ context.Context, body []
 			"title": "Who should receive the update?", "options": []string{"Customers", "Internal team"},
 		}}}
 	}
-	item := map[string]any{"type": "function_call", "id": fmt.Sprintf("question-item-%s", p.mode), "call_id": fmt.Sprintf("question-call-%s", p.mode), "name": name, "arguments": string(mustMarshalJSON(args)), "status": "completed"}
+	item := map[string]any{"type": "function_call", "id": fmt.Sprintf("question-item-%s", p.mode), "call_id": fmt.Sprintf("question-call-%s", p.mode), "name": name, "arguments": string(responses.MustMarshalJSON(args)), "status": "completed"}
 	response := map[string]any{"id": "question-response", "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}
 	return routerFaultCodexStreamResponse(routerFaultSSE(
 		map[string]any{"type": "response.created", "response": map[string]any{"id": "question-response", "status": "in_progress", "output": []any{}}},

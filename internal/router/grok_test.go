@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func grokTestRequest(t *testing.T, stream bool) []byte {
@@ -35,7 +37,7 @@ func grokTestHeaders() http.Header {
 func grokTestSSE(chunks ...any) string {
 	var out strings.Builder
 	for _, chunk := range chunks {
-		fmt.Fprintf(&out, "data: %s\n\n", mustMarshalJSON(chunk))
+		fmt.Fprintf(&out, "data: %s\n\n", responses.MustMarshalJSON(chunk))
 	}
 	out.WriteString("data: [DONE]\n\n")
 	return out.String()
@@ -75,7 +77,7 @@ func TestGrokToolStreamThroughMekugi(t *testing.T) {
 					if err := json.Unmarshal(payload, &envelope); err != nil {
 						t.Fatal(err)
 					}
-					if jsonString(envelope, "type") == "response.completed" {
+					if responses.StringField(envelope, "type") == "response.completed" {
 						completed++
 					}
 				}
@@ -215,7 +217,7 @@ func TestGrokOAuthRefreshSerializesAndPreservesStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if jsonString(entry, "refresh_token") != "rotated-refresh" || jsonString(entry, "unrelated") != "keep" || store["other-account"] == nil {
+	if responses.StringField(entry, "refresh_token") != "rotated-refresh" || responses.StringField(entry, "unrelated") != "keep" || store["other-account"] == nil {
 		t.Fatal("store fields lost")
 	}
 	info, err := os.Stat(path)

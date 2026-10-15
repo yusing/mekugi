@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 const (
@@ -49,7 +50,7 @@ func (a *grokAuth) credentials(ctx context.Context) (grokCredentials, error) {
 	if err != nil {
 		return grokCredentials{}, err
 	}
-	expiry, err := time.Parse(time.RFC3339Nano, jsonString(entry, "expires_at"))
+	expiry, err := time.Parse(time.RFC3339Nano, responses.StringField(entry, "expires_at"))
 	if err != nil {
 		return grokCredentials{}, errors.New("grok OAuth expiry is invalid; run grok login")
 	}
@@ -59,7 +60,7 @@ func (a *grokAuth) credentials(ctx context.Context) (grokCredentials, error) {
 			return grokCredentials{}, err
 		}
 	}
-	token := jsonString(entry, "key")
+	token := responses.StringField(entry, "key")
 	if token == "" {
 		return grokCredentials{}, errors.New("grok access token is missing; run grok login")
 	}
@@ -92,7 +93,7 @@ func (a *grokAuth) read() (map[string]json.RawMessage, map[string]json.RawMessag
 	if json.Unmarshal(store[grokIssuer+"::"+grokOAuthClientID], &entry) != nil || entry == nil {
 		return nil, nil, errors.New("grok OAuth login is missing; run grok login --oauth or set XAI_API_KEY")
 	}
-	if jsonString(entry, "auth_mode") != "oidc" || jsonString(entry, "oidc_issuer") != grokIssuer || jsonString(entry, "oidc_client_id") != grokOAuthClientID {
+	if responses.StringField(entry, "auth_mode") != "oidc" || responses.StringField(entry, "oidc_issuer") != grokIssuer || responses.StringField(entry, "oidc_client_id") != grokOAuthClientID {
 		return nil, nil, errors.New("unsupported Grok OAuth credential issuer or client")
 	}
 	return store, entry, nil
@@ -151,14 +152,14 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	expiry, err := time.Parse(time.RFC3339Nano, jsonString(entry, "expires_at"))
+	expiry, err := time.Parse(time.RFC3339Nano, responses.StringField(entry, "expires_at"))
 	if err != nil {
 		return nil, errors.New("invalid Grok OAuth expiry")
 	}
-	if expiry.After(a.now().Add(time.Minute)) && (rejectedToken == "" || jsonString(entry, "key") != rejectedToken) {
+	if expiry.After(a.now().Add(time.Minute)) && (rejectedToken == "" || responses.StringField(entry, "key") != rejectedToken) {
 		return entry, nil
 	}
-	refresh := jsonString(entry, "refresh_token")
+	refresh := responses.StringField(entry, "refresh_token")
 	if refresh == "" {
 		return nil, errors.New("grok refresh token is missing; run grok login")
 	}
@@ -179,7 +180,7 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	}
 	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}, "client_id": {grokOAuthClientID}}
 	for _, key := range []string{"principal_type", "principal_id"} {
-		if value := jsonString(entry, key); value != "" {
+		if value := responses.StringField(entry, key); value != "" {
 			form.Set(key, value)
 		}
 	}
@@ -199,13 +200,13 @@ func (a *grokAuth) refresh(ctx context.Context, rejectedToken string) (map[strin
 	if tokens.AccessToken == "" || tokens.ExpiresIn <= 0 || tokens.ExpiresIn > int64((365*24*time.Hour)/time.Second) {
 		return nil, errors.New("invalid Grok OAuth refresh response; run grok login")
 	}
-	entry["key"] = mustMarshalJSON(tokens.AccessToken)
+	entry["key"] = responses.MustMarshalJSON(tokens.AccessToken)
 	if tokens.RefreshToken != "" {
-		entry["refresh_token"] = mustMarshalJSON(tokens.RefreshToken)
+		entry["refresh_token"] = responses.MustMarshalJSON(tokens.RefreshToken)
 	}
-	entry["expires_at"] = mustMarshalJSON(a.now().Add(time.Duration(tokens.ExpiresIn) * time.Second).UTC().Format(time.RFC3339Nano))
-	store[grokIssuer+"::"+grokOAuthClientID] = mustMarshalJSON(entry)
-	if err := writeGrokCredentials(a.path, mustMarshalJSON(store)); err != nil {
+	entry["expires_at"] = responses.MustMarshalJSON(a.now().Add(time.Duration(tokens.ExpiresIn) * time.Second).UTC().Format(time.RFC3339Nano))
+	store[grokIssuer+"::"+grokOAuthClientID] = responses.MustMarshalJSON(entry)
+	if err := writeGrokCredentials(a.path, responses.MustMarshalJSON(store)); err != nil {
 		return nil, err
 	}
 	return entry, nil

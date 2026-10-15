@@ -15,9 +15,7 @@ func TestResponseHooksProviderUsage(t *testing.T) {
 		`{"type":"response.completed","response":{"output":[],"usage":{"input_tokens":2,"output_tokens":1}}}`,
 		`[DONE]`,
 	} {
-		if err := hooks.observe([]byte(payload), true); err != nil {
-			t.Fatal(err)
-		}
+		hooks.observe([]byte(payload), true)
 	}
 	if len(observed) != 1 || observed[0].InputTokens != 2 || observed[0].OutputTokens != 1 {
 		t.Fatalf("provider usage = %+v", observed)

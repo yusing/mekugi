@@ -195,7 +195,7 @@ func TestAppServerRestoreDiffScopeBeforeNewTurn(t *testing.T) {
 	} {
 		liveDiffScopeCapture(t, store, edit.workspace, edit.thread, edit.call, edit.path, "before", "after")
 	}
-	auto, stop := newAutoLiveDiff(t.Context(), store.directory)
+	auto, stop := newAutoLiveDiff(t.Context())
 	defer stop()
 	auto.enable()
 	u := newAppServerSessionTestUI(t, workspace)
@@ -266,7 +266,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			liveDiffScopeCapture(t, store, workspace, "main", "edit", filepath.Join(workspace, "restored.go"), "before", "after")
 			u := newAppServerSessionTestUI(t, workspace)
 			w := u.client.Input.(*appServerTestInput)
-			auto, stop := newAutoLiveDiff(t.Context(), store.directory)
+			auto, stop := newAutoLiveDiff(t.Context())
 			defer stop()
 			auto.enable()
 			u.shell.auto, u.shell.diff.store = auto, store

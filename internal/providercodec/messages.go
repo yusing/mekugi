@@ -1,9 +1,12 @@
 package providercodec
 
-// Source: internal/router/provider_messages.go:1:326@5a2082938e797e6e15c374eb6ae135a0753dea24
-
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
+	// Source: internal/router/provider_messages.go:1:326@5a2082938e797e6e15c374eb6ae135a0753dea24
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -54,7 +57,7 @@ func (messagesEndpoint) encode(model string, history []providerMessage, tools []
 	if o.maxOutput != nil {
 		body["max_tokens"] = o.maxOutput
 	}
-	switch jsonString(o.textFormat, "type") {
+	switch responses.StringField(o.textFormat, "type") {
 	case "json_object":
 		return nil, fmt.Errorf("%s Messages requires a JSON schema for structured output", d.Name)
 	case "json_schema":
@@ -259,12 +262,12 @@ func normalizeAnthropicStream(reader io.Reader, d Diagnostics, send func(provide
 			switch block.kind {
 			case "thinking", "redacted_thinking":
 				if block.kind == "thinking" {
-					block.raw["thinking"] = mustMarshalJSON(block.text.String())
+					block.raw["thinking"] = responses.MustMarshalJSON(block.text.String())
 					if block.signature.Len() > 0 {
-						block.raw["signature"] = mustMarshalJSON(block.signature.String())
+						block.raw["signature"] = responses.MustMarshalJSON(block.signature.String())
 					}
 				}
-				return false, send(providerChunk{RetainedReasoning: mustMarshalJSON(block.raw)})
+				return false, send(providerChunk{RetainedReasoning: responses.MustMarshalJSON(block.raw)})
 			case "tool_use":
 				arguments := block.arguments.String()
 				if arguments == "" {

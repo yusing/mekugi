@@ -76,7 +76,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	auto, stopAuto := newAutoLiveDiff(t.Context(), store.directory)
+	auto, stopAuto := newAutoLiveDiff(t.Context())
 	defer stopAuto()
 	restoredProxy.autoLiveDiff = auto
 	second := startAppResumeTerminalWithProxy(t, newCommand, root, restoredProxy)

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/internal/responses"
 	"github.com/yusing/mekugi/internal/sourceparse"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -94,7 +95,7 @@ func toolActivityUnwrapExecCalls(source string, requireResultMetadata bool) ([]m
 		if expression != nil && expression.Kind() == "await_expression" && !requireResultMetadata {
 			if args, ok := toolActivityCallArguments(expression.NamedChild(0), bytes, "tools", applyPatchToolName); ok && len(args) == 1 && args[0].Kind() == "identifier" {
 				if patch, found := bindings[args[0].Utf8Text(bytes)]; found {
-					calls = append(calls, map[string]json.RawMessage{"name": mustMarshalJSON(applyPatchToolName), "input": mustMarshalJSON(patch)})
+					calls = append(calls, map[string]json.RawMessage{"name": responses.MustMarshalJSON(applyPatchToolName), "input": responses.MustMarshalJSON(patch)})
 					continue
 				}
 			}
@@ -344,11 +345,11 @@ func toolActivityStaticToolCall(call *sitter.Node, bytes []byte) (map[string]jso
 			return nil, false
 		}
 	}
-	item := map[string]json.RawMessage{"name": mustMarshalJSON(name)}
+	item := map[string]json.RawMessage{"name": responses.MustMarshalJSON(name)}
 	if text, ok := value.(string); ok {
-		item["input"] = mustMarshalJSON(text)
+		item["input"] = responses.MustMarshalJSON(text)
 	} else if args.NamedChildCount() != 0 {
-		item["arguments"] = mustMarshalJSON(string(mustMarshalJSON(value)))
+		item["arguments"] = responses.MustMarshalJSON(string(responses.MustMarshalJSON(value)))
 	}
 	return item, true
 }

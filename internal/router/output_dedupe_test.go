@@ -2,7 +2,11 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -15,7 +19,7 @@ const duplicateTestHeader = "Script completed\nWall time 0.1 seconds\nOutput:\n"
 
 func duplicateTestInput(command, id, body string) []any {
 	return []any{
-		continuationTestCall("exec", id, "text((await tools.exec_command({cmd:"+string(mustMarshalJSON(command))+"})).output)"),
+		continuationTestCall("exec", id, "text((await tools.exec_command({cmd:"+string(responses.MustMarshalJSON(command))+"})).output)"),
 		map[string]any{"type": "custom_tool_call_output", "call_id": id, "output": duplicateTestHeader + body},
 	}
 }
@@ -62,13 +66,13 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 			input := append(duplicateTestInput(tc.command, "a", tc.before), duplicateTestInput("new command", "b", tc.after)...)
 			request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
 			items := duplicateTestItems(t, request)
-			if got := jsonString(items[3], "output"); got != duplicateTestHeader+tc.want {
+			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+tc.want {
 				t.Fatalf("output = %q, want %q", got, duplicateTestHeader+tc.want)
 			}
-			if got := jsonString(items[1], "output"); got != duplicateTestHeader+"[O1]\n"+tc.before {
+			if got := responses.StringField(items[1], "output"); got != duplicateTestHeader+"[O1]\n"+tc.before {
 				t.Fatal("source anchor or verbatim body changed")
 			}
-			if !sameJSONValue(request.originalFields["input"], mustMarshalJSON(input)) {
+			if !sameJSONValue(request.originalFields["input"], responses.MustMarshalJSON(input)) {
 				t.Fatal("original host input changed")
 			}
 			projected := bytes.Clone(request.fields["input"])
@@ -83,7 +87,7 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 	body := strings.Repeat("unique host output ", 20) + "\n"
 	warning := "router-only notice\n" + body
-	session := string(mustMarshalJSON(map[string]any{"output": body, "session_id": 42}))
+	session := string(responses.MustMarshalJSON(map[string]any{"output": body, "session_id": 42}))
 	input := duplicateTestInput("cat file", "source", body)
 	input = append(input,
 		continuationTestOutput("parts", duplicateTestHeader, body),
@@ -93,7 +97,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		continuationTestOutput("", body),
 		map[string]any{"type": "function_call_output", "call_id": "image", "output": []any{map[string]any{"type": "input_image", "image_url": "data:image/png;base64,example"}}},
 	)
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON(input)}}
+	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
 	counts := duplicateOutputHostParts(request.fields["input"])
 	items := duplicateTestItems(t, request)
 	// Use the production append owner after the original boundary was recorded.
@@ -104,7 +108,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		}
 		items[at]["output"] = appended
 	}
-	request.setInput(mustMarshalJSON(items))
+	request.setInput(responses.MustMarshalJSON(items))
 	projectDuplicateOutputs(request, counts)
 	got := duplicateTestItems(t, request)
 	for _, at := range []int{1, 2, 3} {
@@ -120,7 +124,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		t.Fatalf("native header changed: %q", text)
 	}
 	for at := 4; at < len(got); at++ {
-		if !sameJSONValue(mustMarshalJSON(got[at]), mustMarshalJSON(items[at])) {
+		if !sameJSONValue(responses.MustMarshalJSON(got[at]), responses.MustMarshalJSON(items[at])) {
 			t.Fatalf("excluded item %d changed", at)
 		}
 	}
@@ -214,8 +218,8 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 		t.Fatalf("repeated output identity used the wrong part boundary: %q", got)
 	}
 	exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
-	grown.fields["previous_response_id"] = mustMarshalJSON("parent")
-	if err := exchange.reconcileProviderHistory(grown, mustMarshalJSON(grown.fields)); err != nil {
+	grown.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.fields)); err != nil {
 		t.Fatal(err)
 	}
 	if grown.cachedInput != len(original) || grown.rebaseInput {
@@ -234,7 +238,7 @@ func TestDuplicateOutputSourceIDs(t *testing.T) {
 		continuationTestOutput("batch", duplicateTestHeader, b, c),
 		continuationTestOutput("repeat", a, b, c),
 	}
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON(input)}}
+	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
 	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
 	items := duplicateTestItems(t, request)
 	var parts []struct {
@@ -268,15 +272,15 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 	literal := "[same as `" + strings.Repeat("literal host content ", 20) + "`]\n"
 	input = append(input, duplicateTestInput("literal", "f", literal)...)
 	input = append(input, duplicateTestInput("literal again", "g", literal)...)
-	original := mustMarshalJSON(input)
+	original := responses.MustMarshalJSON(input)
 	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": original}}
 	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
 	first := bytes.Clone(request.fields["input"])
 	items := duplicateTestItems(t, request)
-	if jsonString(items[7], "output") != jsonString(items[9], "output") || strings.Contains(jsonString(items[9], "output"), "combined") {
+	if responses.StringField(items[7], "output") != responses.StringField(items[9], "output") || strings.Contains(responses.StringField(items[9], "output"), "combined") {
 		t.Fatal("new markers referenced a marker-only unit")
 	}
-	if jsonString(items[11], "output") != duplicateTestHeader+"[O4]\n"+literal || jsonString(items[13], "output") != duplicateTestHeader+"[same as O4]\n" {
+	if responses.StringField(items[11], "output") != duplicateTestHeader+"[O4]\n"+literal || responses.StringField(items[13], "output") != duplicateTestHeader+"[same as O4]\n" {
 		t.Fatal("literal host marker text did not remain a verbatim source")
 	}
 	request.setInput(original)
@@ -345,7 +349,7 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 				if texts(items[0]) != source || texts(items[1]) != body || texts(items[2]) != want {
 					t.Fatalf("wire content changed incorrectly: %s", request.fields["input"])
 				}
-				if !sameJSONValue(request.originalFields["input"], mustMarshalJSON(input)) {
+				if !sameJSONValue(request.originalFields["input"], responses.MustMarshalJSON(input)) {
 					t.Fatal("original snapshot changed")
 				}
 				if !enabled || tc.name != "skill snapshot" {
@@ -365,8 +369,8 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 					t.Fatal("third snapshot referenced a generated marker")
 				}
 				exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
-				grown.fields["previous_response_id"] = mustMarshalJSON("parent")
-				if err := exchange.reconcileProviderHistory(grown, mustMarshalJSON(grown.fields)); err != nil {
+				grown.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+				if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.fields)); err != nil {
 					t.Fatal(err)
 				}
 				if grown.cachedInput != len(prefix) || grown.rebaseInput {
@@ -395,21 +399,21 @@ func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
 		user([]any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{frame})}}),
 	}
 	input = append(input, duplicateTestInput("read file", "output", body)...)
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON(input)}}
+	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
 	projectDuplicateOutputs(request, duplicateOutputHostParts(request.fields["input"]))
 	items := duplicateTestItems(t, request)
 	for at := range 5 {
-		if !sameJSONValue(mustMarshalJSON(items[at]), mustMarshalJSON(input[at])) {
+		if !sameJSONValue(responses.MustMarshalJSON(items[at]), responses.MustMarshalJSON(input[at])) {
 			t.Fatalf("ineligible item %d changed", at)
 		}
 	}
 	header, _, _ := strings.Cut(frame, "\n")
 	header += "\n"
 	source := user([]any{map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{header + "[O1]\n" + body})}})
-	if !sameJSONValue(mustMarshalJSON(items[5]), mustMarshalJSON(source)) {
+	if !sameJSONValue(responses.MustMarshalJSON(items[5]), responses.MustMarshalJSON(source)) {
 		t.Fatal("eligible attachment source lost its anchor or verbatim body")
 	}
-	if got := jsonString(items[7], "output"); got != duplicateTestHeader+"[same as O1]\n" {
+	if got := responses.StringField(items[7], "output"); got != duplicateTestHeader+"[same as O1]\n" {
 		t.Fatalf("tool did not reference the visible attachment: %q", got)
 	}
 }
@@ -442,7 +446,7 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 		// envelopes move after ordinary parts, which must stay full and earlier.
 		_, array := content.([]any)
 		supported := array && len(content.([]any)) == 2
-		if strings.Contains(jsonString(items[len(items)-1], "output"), "[same as") != supported {
+		if strings.Contains(responses.StringField(items[len(items)-1], "output"), "[same as") != supported {
 			t.Fatalf("wrong source eligibility for %T: %s", content, attempt.request.fields["input"])
 		}
 		if supported {
@@ -466,7 +470,7 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	}
 	input := append(duplicateTestInput("a", "a", body), duplicateTestInput("b", "b", body)...)
 	input = append(input, duplicateTestInput("c", "c", body+"new line\n")...)
-	request, err := parseResponsesRequest(mustMarshalJSON(map[string]any{"input": input}))
+	request, err := parseResponsesRequest(responses.MustMarshalJSON(map[string]any{"input": input}))
 	if err != nil {
 		t.Fatal(err)
 	}

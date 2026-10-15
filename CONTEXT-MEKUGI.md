@@ -8,7 +8,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Behavior | Authoritative area |
 | --- | --- |
 | Review-diff rendering used by observed change evidence | Root-package `review*.go` |
-| Shared source capability, Go identifiers, and shell-header semantics | `internal/sourcekind`, `internal/golex`, `internal/shellsyntax` |
+| Shared source capability and shell-header semantics | `internal/sourcekind`, `internal/shellsyntax` |
 | Shared source parsing, literal decoding, and nonblocking source-file opens | `internal/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
 | Native screen composition, transcript switching, and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |

@@ -2,7 +2,11 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"net/http"
 	"os"
@@ -53,7 +57,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatal("resume leaked attachment framing into recalled prompt")
 	}
 	providerParts := []map[string]any{{"type": "input_text", "text": input[0].Text}, {"type": "input_image", "image_url": "data:image/png;base64,test"}, {"type": "input_text", "text": input[1].Text}}
-	raw := mustMarshalJSON([]any{map[string]any{"type": "message", "role": "user", "content": providerParts}})
+	raw := responses.MustMarshalJSON([]any{map[string]any{"type": "message", "role": "user", "content": providerParts}})
 	if question := requestUserTextFromInput(raw, "/root", false); question != draft.text {
 		t.Fatalf("attachment became naming text: %q", question)
 	}
@@ -87,7 +91,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 
 func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 	request := modelTestRequest(t, "gpt-6-sol")
-	raw := mustMarshalJSON([]any{map[string]any{"role": "user", "content": []any{
+	raw := responses.MustMarshalJSON([]any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Review @example"},
 		map[string]any{"type": "input_text", "text": encodeFileAttachments([]string{"Attached file /work/example:\nexact content"})},
 	}}})
@@ -108,10 +112,10 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 	}
 	for _, automatic := range []bool{false, true} {
 		request.setInput(raw)
-		request.fields["previous_response_id"] = mustMarshalJSON("parent")
+		request.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
 		projectFileAttachments(&request)
 		exchange := &webSocketExchange{parentID: "parent", automatic: automatic, history: &webSocketHistory{parent: &webSocketHistory{providerHistory: prefix}}}
-		if err := exchange.reconcileProviderHistory(&request, mustMarshalJSON(request.fields)); err != nil {
+		if err := exchange.reconcileProviderHistory(&request, responses.MustMarshalJSON(request.fields)); err != nil {
 			t.Fatal(err)
 		}
 		if request.cachedInput != 2 || request.rebaseInput {
@@ -191,7 +195,7 @@ func TestComposerFileAttachmentProjectionLeavesLookalikes(t *testing.T) {
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "quoted " + encodeFileAttachments([]string{"Attached file data"})}}},
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": fileAttachmentPrefix + "invalid" + fileAttachmentSuffix}}},
 	} {
-		raw := mustMarshalJSON([]any{item})
+		raw := responses.MustMarshalJSON([]any{item})
 		request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
 		projectFileAttachments(&request)
 		if !bytes.Equal(raw, request.fields["input"]) {
@@ -229,7 +233,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 				if multipart {
 					content = []map[string]string{{"type": "input_text", "text": text}}
 				}
-				request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustMarshalJSON([]any{
+				request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{
 					map[string]any{"role": "user", "content": content},
 					map[string]any{"role": "user", "content": []map[string]string{{"type": "input_text", "text": encodeFileAttachments(frames)}}},
 				})}}
@@ -242,10 +246,10 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 				if test.suppressed {
 					want = 1
 				}
-				if len(messages) != want || !test.suppressed && !sameJSONValue(messages[0]["content"], mustMarshalJSON(content)) {
+				if len(messages) != want || !test.suppressed && !sameJSONValue(messages[0]["content"], responses.MustMarshalJSON(content)) {
 					t.Fatalf("wrong selected-skill suppression: %s", request.fields["input"])
 				}
-				if !sameJSONValue(messages[len(messages)-1]["content"], mustMarshalJSON([]map[string]string{{"type": "input_text", "text": frames[0]}})) {
+				if !sameJSONValue(messages[len(messages)-1]["content"], responses.MustMarshalJSON([]map[string]string{{"type": "input_text", "text": frames[0]}})) {
 					t.Fatal("snapshot or omission notice changed")
 				}
 			})

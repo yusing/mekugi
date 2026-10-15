@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func snapshotTestHistory() mekugiHistory {
@@ -85,7 +86,7 @@ func TestReplaySnapshotsRoundTripDedupAndLegacy(t *testing.T) {
 			t.Fatalf("restored evidence differs: found=%v err=%v got=%+v", found, err, got)
 		}
 	}
-	data, err := marshalProtocolJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "legacy", History: original})
+	data, err := responses.MarshalJSON(replayRecord{Version: 1, Workspace: "/w", CallID: "legacy", History: original})
 	if err != nil {
 		t.Fatal(err)
 	}

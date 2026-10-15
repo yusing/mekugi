@@ -3,6 +3,9 @@ package router
 import (
 	"encoding/base64"
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"errors"
 	"strings"
@@ -20,7 +23,7 @@ type openCodeReasoning struct {
 const openCodeReasoningPrefix = "mekugi-opencode-v1:"
 
 func sealOpenCodeReasoning(service *openCodeService, model string, item any) string {
-	data := mustMarshalJSON(openCodeReasoning{Provider: service.prefix, Model: model, Item: mustMarshalJSON(item)})
+	data := responses.MustMarshalJSON(openCodeReasoning{Provider: service.prefix, Model: model, Item: responses.MustMarshalJSON(item)})
 	return openCodeReasoningPrefix + base64.RawStdEncoding.EncodeToString(data)
 }
 

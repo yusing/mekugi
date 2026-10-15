@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func (s *mekugiReplayStore) storageSnapshot() (storageSnapshot, error) {
@@ -463,7 +464,7 @@ func TestStorageAdmissionDoesNotPruneUnrelatedSessions(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				data, err := marshalProtocolJSON(index)
+				data, err := responses.MarshalJSON(index)
 				if err != nil {
 					return err
 				}
@@ -677,8 +678,8 @@ func TestStorageRetentionRejectsObsoleteHandleNames(t *testing.T) {
 	oldOutput := "output-r_AAAAAAAAAAAAAAAAAAAAAA.json"
 	oldIndex := strings.Replace(changeIndexName(workspace, ""), changeIndexPrefix, "changes-", 1)
 	for name, data := range map[string][]byte{
-		oldOutput: mustMarshalJSON(shellOutputRecord{Version: 1, ID: "r_AAAAAAAAAAAAAAAAAAAAAA", Stdout: "old output"}),
-		oldIndex: mustMarshalJSON(changeIndex{
+		oldOutput: responses.MustMarshalJSON(shellOutputRecord{Version: 1, ID: "r_AAAAAAAAAAAAAAAAAAAAAA", Stdout: "old output"}),
+		oldIndex: responses.MustMarshalJSON(changeIndex{
 			Version: 1, Workspace: workspace,
 			Streams: []changeStream{{Thread: "old", Next: 1}},
 			Changes: map[string]trackedChange{"hp_a1": {Correlation: "old-call"}},
@@ -727,7 +728,7 @@ func TestNewRequestDoesNotReadUnrelatedRetentionCatalog(t *testing.T) {
 		Version: 1, Thread: "unrelated-thread", LastUsed: time.Now().Add(-15 * 24 * time.Hour),
 		Files: map[string]bool{"obsolete.json": true},
 	}
-	if err := os.WriteFile(filepath.Join(store.directory, name), mustMarshalJSON(invalid), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.directory, name), responses.MustMarshalJSON(invalid), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.readRetainedSession(name); err == nil {
@@ -747,7 +748,7 @@ func TestBackgroundRetentionReportsUnrelatedCatalogFailure(t *testing.T) {
 		Version: 1, Thread: "unrelated-thread", LastUsed: time.Now().Add(-15 * 24 * time.Hour),
 		Files: map[string]bool{"obsolete.json": true},
 	}
-	if err := os.WriteFile(filepath.Join(store.directory, name), mustMarshalJSON(invalid), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(store.directory, name), responses.MustMarshalJSON(invalid), 0600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -817,7 +818,7 @@ func BenchmarkStorageReserveChange(b *testing.B) {
 			Correlation: strings.Repeat("x", 2048) + strconv.Itoa(number),
 		}
 	}
-	baseline, err := marshalProtocolJSON(index)
+	baseline, err := responses.MarshalJSON(index)
 	if err != nil {
 		b.Fatal(err)
 	}

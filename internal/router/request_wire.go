@@ -81,17 +81,6 @@ func (r parsedResponsesRequest) wireBody(fields map[string]json.RawMessage) ([]b
 	return out.Bytes(), nil
 }
 
-// Protocol JSON is sent as application/json, never embedded in HTML.
-func marshalProtocolJSON(value any) ([]byte, error) {
-	var out bytes.Buffer
-	encoder := json.NewEncoder(&out)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
-		return nil, err
-	}
-	return bytes.TrimSuffix(out.Bytes(), []byte{'\n'}), nil
-}
-
 // Projection may rebuild an unchanged field using a different JSON spelling.
 // Preserve the incoming spelling whenever the decoded value is unchanged.
 func sameJSONValue(left, right []byte) bool {

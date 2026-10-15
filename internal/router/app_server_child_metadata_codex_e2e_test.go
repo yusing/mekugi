@@ -4,6 +4,9 @@ package router
 
 import (
 	"context"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
@@ -118,7 +121,7 @@ func (p *appServerChildMetadataProvider) forwardExecution(_, _ context.Context, 
 	}
 	var item map[string]any
 	call := func(name, namespace string, args any) map[string]any {
-		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": namespace, "arguments": string(mustMarshalJSON(args)), "status": "completed"}
+		return map[string]any{"type": "function_call", "id": fmt.Sprintf("fc_%s_%d", thread, turn), "call_id": fmt.Sprintf("call_%s_%d", thread, turn), "name": name, "namespace": namespace, "arguments": string(responses.MustMarshalJSON(args)), "status": "completed"}
 	}
 	if metadata.SubagentKind != "" {
 		if turn == 1 {

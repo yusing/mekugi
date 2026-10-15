@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAttachedFiles bool) string {
@@ -91,10 +93,10 @@ func requestUserTextFromInput(raw json.RawMessage, recipient string, includeAtta
 // messages and completion notifications must not replace the question source.
 func nativeAssignmentText(item map[string]json.RawMessage, recipient string) (string, bool) {
 	if !strings.HasPrefix(recipient, "/root/") || strings.ContainsAny(recipient, "\r\n\x00") ||
-		jsonString(item, "type") != "agent_message" || jsonString(item, "recipient") != recipient {
+		responses.StringField(item, "type") != "agent_message" || responses.StringField(item, "recipient") != recipient {
 		return "", false
 	}
-	sender := jsonString(item, "author")
+	sender := responses.StringField(item, "author")
 	if sender != "/root" && !strings.HasPrefix(sender, "/root/") || strings.ContainsAny(sender, "\r\n\x00") {
 		return "", false
 	}

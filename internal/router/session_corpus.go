@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 type corpusCallRef struct {
@@ -299,7 +300,7 @@ func inspectionEmptyPoll(call sessionInspectionCall, history mekugiHistory, foun
 		return false
 	}
 	var item map[string]json.RawMessage
-	if json.Unmarshal(mustMarshalJSON(call.item), &item) != nil {
+	if json.Unmarshal(responses.MustMarshalJSON(call.item), &item) != nil {
 		return false
 	}
 	if !inspectionEmptyInput(item, history, found) {
@@ -336,22 +337,22 @@ func inspectionEmptyPoll(call sessionInspectionCall, history mekugiHistory, foun
 
 // Empty-poll recognition belongs to offline evidence analysis, not continuation policy.
 func inspectionEmptyInput(item map[string]json.RawMessage, history mekugiHistory, known bool) bool {
-	if namespace := jsonString(item, "namespace"); namespace != "" && namespace != "functions" {
+	if namespace := responses.StringField(item, "namespace"); namespace != "" && namespace != "functions" {
 		return false
 	}
-	name := strings.TrimPrefix(jsonString(item, "name"), "functions.")
+	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
 	if name == "exec" {
-		source := jsonString(item, "input")
+		source := responses.StringField(item, "input")
 		nested, ok := toolActivityUnwrapExec(source, false)
 		if !ok {
 			return false
 		}
-		item, name = nested, jsonString(nested, "name")
+		item, name = nested, responses.StringField(nested, "name")
 	}
 	var args struct {
 		Chars string `json:"chars"`
 	}
-	return name == "write_stdin" && json.Unmarshal([]byte(jsonString(item, "arguments")), &args) == nil && args.Chars == ""
+	return name == "write_stdin" && json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil && args.Chars == ""
 }
 
 func inspectionEmptyOutput(call executionCall, texts []string, notice executionContinuation) bool {
@@ -369,7 +370,7 @@ func inspectionEmptyOutput(call executionCall, texts []string, notice executionC
 		if text == "" {
 			continue
 		}
-		part := mustMarshalJSON(map[string]string{"type": "input_text", "text": text})
+		part := responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": text})
 		if executionAnnotationMatches(part, notice) {
 			continue
 		}

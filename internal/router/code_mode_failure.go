@@ -3,6 +3,9 @@ package router
 import (
 	"cmp"
 	"encoding/json"
+
+	"github.com/yusing/mekugi/internal/responses"
+
 	jsonv2 "encoding/json/v2"
 	"strings"
 )
@@ -20,18 +23,18 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 		return
 	}
 	trailing := len(items)
-	for trailing > 0 && strings.HasSuffix(jsonString(items[trailing-1], "type"), "_output") {
+	for trailing > 0 && strings.HasSuffix(responses.StringField(items[trailing-1], "type"), "_output") {
 		trailing--
 	}
 	calls := make(map[string]map[string]json.RawMessage)
 	for _, item := range items[:trailing] {
-		if jsonString(item, "type") == "custom_tool_call" {
-			calls[jsonString(item, "call_id")] = item
+		if responses.StringField(item, "type") == "custom_tool_call" {
+			calls[responses.StringField(item, "call_id")] = item
 		}
 	}
 	for _, item := range items[trailing:] {
-		callID := jsonString(item, "call_id")
-		if callID == "" || jsonString(item, "type") != "custom_tool_call_output" {
+		callID := responses.StringField(item, "call_id")
+		if callID == "" || responses.StringField(item, "type") != "custom_tool_call_output" {
 			continue
 		}
 		call, found := calls[callID]
@@ -40,15 +43,15 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 				call, found = history.UpstreamItem, history.UpstreamItem != nil
 			}
 		}
-		if !found || jsonString(call, "type") != "custom_tool_call" || jsonString(call, "name") != codeModeToolName ||
-			jsonString(call, "namespace") != "" && jsonString(call, "namespace") != "functions" {
+		if !found || responses.StringField(call, "type") != "custom_tool_call" || responses.StringField(call, "name") != codeModeToolName ||
+			responses.StringField(call, "namespace") != "" && responses.StringField(call, "namespace") != "functions" {
 			continue
 		}
 		if text, failed := codeModeFailureText(executionOutputTexts(item["output"])); failed {
 			p.activity.collectEvent(activityEvent{thread: thread, source: "code-mode-failure\x00" + callID, kind: "error", callID: callID, text: text})
 		}
 		if codeModeReturnedNothing(item["output"]) {
-			source := jsonString(call, "input")
+			source := responses.StringField(call, "input")
 			if history, ok := visible[callID]; ok {
 				// The host ran the translated carrier, not the model's script.
 				source = cmp.Or(history.CarrierPayload, history.Script)

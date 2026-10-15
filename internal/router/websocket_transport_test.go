@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 func TestWebSocketNonstreamTerminalReconstruction(t *testing.T) {
@@ -28,7 +29,7 @@ func TestWebSocketNonstreamTerminalReconstruction(t *testing.T) {
 					body := &webSocketResponseBody{prefetched: [][]byte{
 						[]byte(`{"type":"response.output_item.done","output_index":2,"item":{"id":"last"}}`),
 						[]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"first"}}`),
-						mustMarshalJSON(map[string]any{"type": "response." + kind, "response": terminal}),
+						responses.MustMarshalJSON(map[string]any{"type": "response." + kind, "response": terminal}),
 					}}
 					raw, err := io.ReadAll(body)
 					if err != nil {

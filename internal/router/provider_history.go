@@ -27,7 +27,7 @@ func (h providerHistory) append(input []json.RawMessage) (providerHistory, error
 		if err := decoder.Decode(&value); err != nil {
 			return providerHistory{}, err
 		}
-		h.digest = sha256.Sum256(append(h.digest[:], mustMarshalJSON(value)...))
+		h.digest = sha256.Sum256(append(h.digest[:], responseevents.MustMarshalJSON(value)...))
 		h.count++
 	}
 	return h, nil
@@ -51,7 +51,7 @@ func (e *webSocketExchange) reconcileProviderHistory(request *parsedResponsesReq
 		e.reconciliationReason = "stateless_provider"
 		return nil
 	}
-	parentID := jsonString(fields, "previous_response_id")
+	parentID := responseevents.StringField(fields, "previous_response_id")
 	var cached providerHistory
 	if parentID != "" && e.history.parent != nil && parentID == e.parentID {
 		cached = e.history.parent.providerHistory
@@ -102,7 +102,7 @@ func (e *webSocketExchange) beginProviderHistory(fields map[string]json.RawMessa
 	e.providerOutput = nil
 	e.history.providerHistory = providerHistory{}
 	e.providerBase = providerHistory{}
-	e.providerUsesParent = jsonString(fields, "previous_response_id") != ""
+	e.providerUsesParent = responseevents.StringField(fields, "previous_response_id") != ""
 	if e.providerUsesParent && e.history.parent != nil {
 		e.providerBase = e.history.parent.providerHistory
 	}

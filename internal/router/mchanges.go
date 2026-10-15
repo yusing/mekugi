@@ -23,6 +23,8 @@ const changesReadUsage = "mchanges --list [ID[..ID] ...] [--workspace DIR] [--ma
 const maxChangeReadBytes = 64 << 20
 
 type changeReadOptions struct {
+	// Only initial reads collect unavailable targets; frozen recovery stays strict.
+	unavailable   changeReadFailures
 	overlapLabels map[string]string
 	mine          bool
 	view          string
@@ -30,6 +32,28 @@ type changeReadOptions struct {
 	workspace     string
 	maxTokens     int
 	ids           []string
+}
+
+// A nil collector makes dependency reads strict, as required by recovery and mutation.
+type changeReadFailures map[string]error
+
+func (failures changeReadFailures) skip(id string, err error) bool {
+	if failures == nil {
+		return false
+	}
+	failures[id] = err
+	return true
+}
+
+func (s *mekugiReplayStore) readChangeRecord(workspace, id, correlation, call string) (replayRecord, error) {
+	record, found, err := s.read(workspace, call, false)
+	if err != nil {
+		return replayRecord{}, fmt.Errorf("change %s: %w", id, err)
+	}
+	if !found || record.History.ChangeID != id || record.History.CorrelationID != correlation {
+		return replayRecord{}, fmt.Errorf("change %s has a missing or inconsistent attempt", id)
+	}
+	return record, nil
 }
 
 func parseChangeRead(arguments []string, cwd string) (changeReadOptions, error) {
@@ -198,18 +222,7 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 				continue
 			}
 			var readErr error
-			for _, call := range change.Calls {
-				record, found, err := s.read(options.workspace, call.ID, false)
-				if err != nil {
-					readErr = fmt.Errorf("change %s: %w", id, err)
-					break
-				}
-				if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
-					readErr = fmt.Errorf("change %s has a missing or inconsistent attempt", id)
-					break
-				}
-			}
-			if readErr == nil && options.view == "net" {
+			if options.view == "net" {
 				if len(change.Calls) == 0 || change.RetiredCalls != 0 {
 					readErr = fmt.Errorf("change %s has pending or retired history; cannot produce a complete --net view", id)
 				}
@@ -220,20 +233,28 @@ func (s *mekugiReplayStore) readChangeView(ctx context.Context, options changeRe
 			}
 			readable = append(readable, id)
 			snapshot.Selected[id] = change
-			for _, call := range change.Calls {
+		}
+		options.ids = readable
+		options.unavailable = make(changeReadFailures)
+		output, err = s.renderChanges(ctx, options, index)
+		for _, id := range readable {
+			if failure := options.unavailable[id]; failure != nil {
+				targetErrors = append(targetErrors, failure)
+				delete(snapshot.Selected, id)
+			}
+		}
+		snapshot.IDs = slices.DeleteFunc(readable, func(id string) bool { return options.unavailable[id] != nil })
+		for _, id := range snapshot.IDs {
+			for _, call := range snapshot.Selected[id].Calls {
 				names = append(names, replayRecordName(options.workspace, call.ID, false))
 			}
 		}
-		options.ids = readable
-		snapshot.IDs = readable
-		if err := s.retainFiles(names...); err != nil {
-			return err
+		if retainErr := s.retainFiles(names...); retainErr != nil {
+			return retainErr
 		}
-		if len(readable) == 0 && len(targetErrors) > 0 {
+		if len(snapshot.IDs) == 0 && len(targetErrors) > 0 && err == nil {
 			output = availableChangeRanges(index, missingStreams)
-			return nil
 		}
-		output, err = s.renderChanges(ctx, options, index)
 		if partial, ok := errors.AsType[*partialChangeReadError](err); ok {
 			targetErrors = append(targetErrors, partial.error)
 			return nil
@@ -375,16 +396,21 @@ func (s *mekugiReplayStore) renderChanges(ctx context.Context, options changeRea
 		}
 		records := make([]replayRecord, len(change.Calls))
 		excludedOnly := len(change.Calls) != 0
+		var readErr error
 		for i, call := range change.Calls {
-			record, found, err := s.read(options.workspace, call.ID, false)
+			record, err := s.readChangeRecord(options.workspace, id, change.Correlation, call.ID)
 			if err != nil {
-				return "", err
-			}
-			if !found || record.History.ChangeID != id || record.History.CorrelationID != change.Correlation {
-				return "", fmt.Errorf("change %s has a missing or inconsistent attempt", id)
+				readErr = err
+				break
 			}
 			records[i] = record
 			excludedOnly = excludedOnly && len(record.History.ReviewFiles) != 0 && !slices.ContainsFunc(record.History.ReviewFiles, authoredReview)
+		}
+		if readErr != nil {
+			if options.unavailable.skip(id, readErr) {
+				continue
+			}
+			return "", readErr
 		}
 		if options.view != "history" && change.RetiredCalls == 0 && excludedOnly {
 			continue

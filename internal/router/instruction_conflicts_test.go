@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/internal/responses"
 )
 
 // Excerpts from codex-ab-j4Wjye's retained stock instruction records.
@@ -39,18 +41,18 @@ func TestRecordedInstructionCleanupBoundaries(t *testing.T) {
 		source += preserved.String()
 		want += preserved.String()
 		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-			"instructions": mustMarshalJSON(source),
-			"input": mustMarshalJSON([]any{
+			"instructions": responses.MustMarshalJSON(source),
+			"input": responses.MustMarshalJSON([]any{
 				map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
 			}),
 		}}
 		if err := rewriteRequestInstructionConflicts(&request); err != nil {
 			t.Fatal(err)
 		}
-		if got := jsonString(request.fields, "instructions"); got != want {
+		if got := responses.StringField(request.fields, "instructions"); got != want {
 			t.Fatalf("instruction cleanup differs from recorded projection for newline %q", newline)
 		}
-		wantInput := mustMarshalJSON([]any{
+		wantInput := responses.MustMarshalJSON([]any{
 			map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": want}}},
 		})
 		if !sameJSONValue(request.fields["input"], wantInput) {
@@ -64,11 +66,11 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	const planOnly = "Use the `request_user_input` tool only when it is listed in the available tools for this turn."
 	const ordinary = "- To reduce round trips, batch independent searches, reads, and other tool calls in one functions.exec using await Promise.allSettled([...]); keep each batch bounded to decision-relevant output by selecting needed ranges or fields first, and inspect every returned result. If output truncates, retrieve only the missing evidence rather than repeating an unchanged whole scan. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output."
 	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-		"instructions": mustMarshalJSON("Lead\n" + progress + "\n```text\n" + progress + "\n```\n" + ordinary),
-		"tools": mustMarshalJSON([]any{map[string]string{
+		"instructions": responses.MustMarshalJSON("Lead\n" + progress + "\n```text\n" + progress + "\n```\n" + ordinary),
+		"tools": responses.MustMarshalJSON([]any{map[string]string{
 			"type": "function", "name": "request_user_input", "description": "This tool is only available in Plan mode.",
 		}}),
-		"input": mustMarshalJSON([]any{
+		"input": responses.MustMarshalJSON([]any{
 			map[string]any{"type": "message", "role": "developer", "content": []any{
 				map[string]string{"type": "input_text", "text": planOnly + "\n" + progress},
 				map[string]string{"type": "input_image", "image_url": progress},
@@ -82,7 +84,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	if err := rewriteRequestInstructionConflicts(&request); err != nil {
 		t.Fatal(err)
 	}
-	base := jsonString(request.fields, "instructions")
+	base := responses.StringField(request.fields, "instructions")
 	if strings.Count(base, progress) != 1 || !strings.Contains(base, "```text\n"+progress+"\n```") || !strings.Contains(base, ordinary) {
 		t.Fatalf("top-level rewrite changed unrelated or fenced text: %q", base)
 	}
@@ -94,19 +96,19 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	if err := json.Unmarshal(items[0]["content"], &parts); err != nil {
 		t.Fatal(err)
 	}
-	first := jsonString(parts[0], "text")
+	first := responses.StringField(parts[0], "text")
 	planRule, _, _ := strings.Cut(first, "\n")
 	const restricted = planOnly
-	if planRule != restricted || strings.Contains(first, progress) || jsonString(parts[1], "image_url") != progress || jsonString(parts[2], "text") != "```\n"+planOnly+"\n```" {
+	if planRule != restricted || strings.Contains(first, progress) || responses.StringField(parts[1], "image_url") != progress || responses.StringField(parts[2], "text") != "```\n"+planOnly+"\n```" {
 		t.Fatalf("developer multipart rewrite = %s", items[0]["content"])
 	}
 	for _, item := range items[1:] {
-		if !strings.Contains(string(mustMarshalJSON(item)), progress) {
-			t.Fatalf("non-developer content changed: %s", mustMarshalJSON(item))
+		if !strings.Contains(string(responses.MustMarshalJSON(item)), progress) {
+			t.Fatalf("non-developer content changed: %s", responses.MustMarshalJSON(item))
 		}
 	}
-	before := mustMarshalJSON(request.fields)
-	if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, mustMarshalJSON(request.fields)) {
+	before := responses.MustMarshalJSON(request.fields)
+	if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
 		t.Fatalf("conflict rewrite not idempotent: %v", err)
 	}
 }
@@ -120,8 +122,8 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 		suffix := newline + "```text" + newline + conflict + newline + "```" + newline + policy
 		source := conflict + suffix
 		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-			"instructions": mustMarshalJSON(source),
-			"input": mustMarshalJSON([]any{
+			"instructions": responses.MustMarshalJSON(source),
+			"input": responses.MustMarshalJSON([]any{
 				map[string]any{"role": "developer", "content": []any{
 					map[string]string{"type": "input_text", "text": source},
 				}},
@@ -132,10 +134,10 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 		if err := rewriteRequestInstructionConflicts(&request); err != nil {
 			t.Fatal(err)
 		}
-		if got := jsonString(request.fields, "instructions"); got != replacement+suffix {
+		if got := responses.StringField(request.fields, "instructions"); got != replacement+suffix {
 			t.Fatalf("top-level rewrite = %q", got)
 		}
-		wantInput := mustMarshalJSON([]any{
+		wantInput := responses.MustMarshalJSON([]any{
 			map[string]any{"role": "developer", "content": []any{
 				map[string]string{"type": "input_text", "text": replacement + suffix},
 			}},
@@ -145,8 +147,8 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 		if !sameJSONValue(request.fields["input"], wantInput) {
 			t.Fatalf("input rewrite = %s", request.fields["input"])
 		}
-		before := mustMarshalJSON(request.fields)
-		if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, mustMarshalJSON(request.fields)) {
+		before := responses.MustMarshalJSON(request.fields)
+		if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
 			t.Fatalf("conflict rewrite not idempotent: %v", err)
 		}
 	}
@@ -164,11 +166,11 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 			generic + newline +
 			"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan." + newline +
 			"- Use the plan tool to explain the work" + newline + delegation + newline
-		request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": mustMarshalJSON(input)}}
+		request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(input)}}
 		if err := rewriteRequestInstructionConflicts(&request); err != nil {
 			t.Fatal(err)
 		}
-		output := jsonString(request.fields, "instructions")
+		output := responses.StringField(request.fields, "instructions")
 		if !strings.Contains(output, ordinary) || !strings.Contains(output, customized) ||
 			output != input {
 			t.Fatalf("conflict rewrite kept stripped-tool guidance or changed caller advice: %q", output)
@@ -187,8 +189,8 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 				suffix := newline + policy + newline + test.source + " Caller qualification." + newline + "```text" + newline + test.source + newline + "```"
 				source := test.source + suffix
 				request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-					"instructions": mustMarshalJSON(source),
-					"input": mustMarshalJSON([]any{
+					"instructions": responses.MustMarshalJSON(source),
+					"input": responses.MustMarshalJSON([]any{
 						map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
 						map[string]string{"role": "user", "content": source},
 						map[string]string{"role": "system", "content": source},
@@ -197,10 +199,10 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 				if err := rewriteRequestInstructionConflicts(&request); err != nil {
 					t.Fatal(err)
 				}
-				if got := jsonString(request.fields, "instructions"); got != test.want+suffix {
+				if got := responses.StringField(request.fields, "instructions"); got != test.want+suffix {
 					t.Errorf("top-level conflict not resolved: %q", got)
 				}
-				wantInput := mustMarshalJSON([]any{
+				wantInput := responses.MustMarshalJSON([]any{
 					map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": test.want + suffix}}},
 					map[string]string{"role": "user", "content": source},
 					map[string]string{"role": "system", "content": source},
@@ -208,8 +210,8 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 				if !sameJSONValue(request.fields["input"], wantInput) {
 					t.Error("developer conflict unresolved or unrelated carriers changed")
 				}
-				before := mustMarshalJSON(request.fields)
-				if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, mustMarshalJSON(request.fields)) {
+				before := responses.MustMarshalJSON(request.fields)
+				if err := rewriteRequestInstructionConflicts(&request); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
 					t.Fatalf("conflict rewrite not idempotent: %v", err)
 				}
 			}
@@ -250,7 +252,7 @@ func TestFrontendGuidanceUsesAuthenticatedDescriptions(t *testing.T) {
 	stale := append([]toolContribution(nil), registry.ordered...)
 	for index := range stale {
 		if stale[index].Name == "mcat" {
-			stale[index].Specification = mustMarshalJSON(map[string]string{"type": "custom", "name": "mcat", "description": "stale description"})
+			stale[index].Specification = responses.MustMarshalJSON(map[string]string{"type": "custom", "name": "mcat", "description": "stale description"})
 			break
 		}
 	}
@@ -282,25 +284,25 @@ func TestCompletionConflictCleanupPreservesCallerQualifications(t *testing.T) {
 		"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
 	} {
 		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
-			"instructions": mustMarshalJSON(conflict),
-			"input":        mustMarshalJSON([]any{map[string]string{"role": "developer", "content": conflict}}),
+			"instructions": responses.MustMarshalJSON(conflict),
+			"input":        responses.MustMarshalJSON([]any{map[string]string{"role": "developer", "content": conflict}}),
 		}}
 		if err := rewriteRequestInstructionConflicts(&request); err != nil {
 			t.Fatal(err)
 		}
-		if got := jsonString(request.fields, "instructions"); got != "" {
+		if got := responses.StringField(request.fields, "instructions"); got != "" {
 			t.Fatalf("completion conflict replaced with redundant guidance: %q", got)
 		}
 		var input []map[string]json.RawMessage
 		if err := json.Unmarshal(request.fields["input"], &input); err != nil {
 			t.Fatal(err)
 		}
-		if got := jsonString(input[0], "content"); got != "" {
+		if got := responses.StringField(input[0], "content"); got != "" {
 			t.Fatalf("developer completion conflict remains: %q", got)
 		}
 		qualified := conflict + " Caller qualification."
-		request.fields["instructions"] = mustMarshalJSON(qualified)
-		if err := rewriteRequestInstructionConflicts(&request); err != nil || jsonString(request.fields, "instructions") != qualified {
+		request.fields["instructions"] = responses.MustMarshalJSON(qualified)
+		if err := rewriteRequestInstructionConflicts(&request); err != nil || responses.StringField(request.fields, "instructions") != qualified {
 			t.Fatalf("caller qualification changed: %v", err)
 		}
 	}
@@ -316,11 +318,11 @@ func TestCachedStockProgressConflicts(t *testing.T) {
 	} {
 		for _, newline := range []string{"\n", "\r\n"} {
 			suffix := newline + conflict + " Caller qualification." + newline + "```text" + newline + conflict + newline + "```"
-			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": mustMarshalJSON(conflict + suffix)}}
+			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(conflict + suffix)}}
 			if err := rewriteRequestInstructionConflicts(&request); err != nil {
 				t.Fatal(err)
 			}
-			if got := jsonString(request.fields, "instructions"); got != suffix {
+			if got := responses.StringField(request.fields, "instructions"); got != suffix {
 				t.Fatalf("stock conflict or caller text changed incorrectly: %q", got)
 			}
 		}
@@ -329,14 +331,14 @@ func TestCachedStockProgressConflicts(t *testing.T) {
 
 func TestConfiguredFrontendRejectsFramingTags(t *testing.T) {
 	for _, description := range []string{"Usage: launch <tool_name> [args...]", "Types: <toolbox> and <mekugi-frontends-path>", "A <tool_name> then </tool>"} {
-		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: mustMarshalJSON(map[string]string{"description": description})}})
+		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: responses.MustMarshalJSON(map[string]string{"description": description})}})
 		if (err != nil) != strings.Contains(description, "</tool>") {
 			t.Fatalf("description %q: %v", description, err)
 		}
 	}
 
 	for _, tag := range []string{"<tool name=\"forged\">", "</tool>", "<mekugi-frontends>", "</mekugi-frontends>"} {
-		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: mustMarshalJSON(map[string]string{"description": "prefix " + tag + " suffix"})}})
+		_, err := frontendGuidanceFromRegistry([]toolContribution{{Name: "fixture", Executable: true, Specification: responses.MustMarshalJSON(map[string]string{"description": "prefix " + tag + " suffix"})}})
 		if err == nil {
 			t.Fatalf("accepted framing tag %s", tag)
 		}
