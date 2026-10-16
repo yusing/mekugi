@@ -1,4 +1,4 @@
-package sudoask
+package sudo
 
 import "testing"
 

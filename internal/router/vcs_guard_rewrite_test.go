@@ -12,7 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
 func TestVCSGuardHostItemIdentity(t *testing.T) {
@@ -24,7 +24,7 @@ func TestVCSGuardHostItemIdentity(t *testing.T) {
 			select {
 			case request := <-shell.guard.requests:
 				items <- request.item
-				request.reply <- vcsguard.Reply{OK: true}
+				request.reply <- shellapproval.Reply{OK: true}
 			case <-t.Context().Done():
 				return
 			}
@@ -34,7 +34,7 @@ func TestVCSGuardHostItemIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 	git := quoteShellWord(filepath.Join(shell.real, "git"))
 	file := filepath.Join(t.TempDir(), "push.sh")
 	if err := os.WriteFile(file, []byte("git push\n"), 0o600); err != nil {
@@ -61,7 +61,7 @@ func TestVCSGuardFixturesIsolateInheritedSession(t *testing.T) {
 	t.Parallel()
 	outer := newVCSGuardShell(t)
 	asked := outer.answer(t, false)
-	guard, _ := vcsguard.Paths(filepath.Join(outer.root, "bin"))
+	guard, _ := shellapproval.Paths(filepath.Join(outer.root, "bin"))
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestVCSGuardApprovedWriteRunsUnchanged$", "-test.count=1")
@@ -101,7 +101,7 @@ func TestVCSGuardInstrumentedNativeShells(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+			guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 			rewrite := func(script string) string {
 				t.Helper()
 				changed, err := shellinstrumentation.RewriteCommands(script, helper, guard, "", "")
@@ -185,7 +185,7 @@ func TestVCSGuardNestedShellMissingPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 	for _, script := range []string{"bash -c", "bash -c --", "bash -o"} {
 		original := runShell(t, shell.env, "bash", "-c", script)
 		changed, err := shellinstrumentation.RewriteCommands(script, helper, guard, "", "")
@@ -215,7 +215,7 @@ func TestVCSGuardInstrumentedExecArgv0(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 	// A native executable is necessary: a shebang interpreter replaces argv0.
 	// Git's classifier sees only a global -c option, so no approval is involved.
 	script := "exec -a custom-name " + quoteShellWord(target) + " -c 'printf \"%s\\n\" \"$0\"'"

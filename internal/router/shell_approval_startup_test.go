@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
@@ -37,7 +37,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					t.Fatal(err)
 				}
 				ready := false
-				err = RunSession(testHistory(), testRecovery(), segments, testChanges(), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), options, NewCriticalErrors(), func(session Session) {
+				err = RunSession(testHistory(), testRecovery(), segments, testChanges(), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, NewCriticalErrors(), func(session Session) {
 					ready = true
 					defer cancel()
 					// Stop at backend launch, after the production approval startup boundary.
@@ -47,7 +47,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					if !errors.Is(startErr, os.ErrNotExist) {
 						t.Errorf("report failure blocked backend launch: %v", startErr)
 					}
-					_, channel := vcsguard.Paths(session.FrontendDirectory)
+					_, channel := shellapproval.Paths(session.FrontendDirectory)
 					socket, linkErr := os.Readlink(channel)
 					if !guard {
 						if !errors.Is(linkErr, os.ErrNotExist) {

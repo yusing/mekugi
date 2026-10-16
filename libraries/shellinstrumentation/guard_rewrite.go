@@ -38,7 +38,7 @@ func RewriteCommands(script, helper, directory, sudoDirectory, item string) (str
 			return true
 		}
 		commandDirectory := directory
-		if guard.directory == SudoDirectory {
+		if guard.directory == SudoDirectory || guard.mode == "--vcs-shell" && commandDirectory == "" {
 			commandDirectory = sudoDirectory
 		}
 		if commandDirectory == "" {
@@ -175,4 +175,10 @@ func toolPathSuffix(word *syntax.Word, name string) bool {
 	}
 	last, ok := parts[len(parts)-1].(*syntax.Lit)
 	return ok && strings.Contains(last.Value, "/") && filepath.Base(last.Value) == name
+}
+
+// acceptsDirectory keeps shell trampolines independent of either guard policy.
+func (g commandGuardSpec) acceptsDirectory(directory string) bool {
+	name := filepath.Base(directory)
+	return name == g.directory || g.mode == "--vcs-shell" && name == SudoDirectory
 }

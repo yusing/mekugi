@@ -3,6 +3,9 @@ package composition
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/remotewriteapproval"
+	"github.com/yusing/mekugi/modules/sudoapproval"
+
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/sessionnaming"
 
@@ -36,6 +39,8 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c.Add(outputdeduplication.Module, func() outputdeduplication.Deps { return outputdeduplication.Deps{} })
 	c.Add(agentguidance.Module, func() agentguidance.Deps { return agentguidance.Deps{} })
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
+	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
+	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })
 	binder := new(binding.Registry)
 	runtime, err := c.Activate(ctx, binder)
 	if err != nil {

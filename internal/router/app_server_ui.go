@@ -216,6 +216,9 @@ func startAppServerUI(service *history.Service, segments *reports.Service, ctx c
 	if proxy != nil {
 		u.execTrack = proxy.execTrack
 		u.guard = proxy.guard
+		if u.guard != nil {
+			u.approvals.initGuards(u.guard.guards)
+		}
 		if proxy.skillsManager {
 			u.skillEnvironment = cmd.Environ()
 		}

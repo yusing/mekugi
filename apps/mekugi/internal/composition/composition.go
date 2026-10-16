@@ -175,7 +175,16 @@ type Gap struct {
 	Result    capability.Result
 }
 
+func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
+	if err := r.binder.ShellApproval(guard); err != nil {
+		return err
+	}
+	r.runtime.Guards = append(r.runtime.Guards, guard)
+	return nil
+}
+
 type Runtime struct {
+	Guards           []binding.ShellApproval
 	Naming           *binding.SessionNaming
 	Guidance         *binding.Guidance
 	InputProjections []binding.InputProjection

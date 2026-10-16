@@ -18,7 +18,7 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -157,7 +157,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+			guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 			prior := shellhook.Invocation{}
 			var disabled []string
 			conflictMarker := filepath.Join(t.TempDir(), "caller-hook-ran")

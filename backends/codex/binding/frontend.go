@@ -14,6 +14,7 @@ type Registrar interface {
 	InputProjection(InputProjection) error
 	Guidance(Guidance) error
 	SessionNaming(SessionNaming) error
+	ShellApproval(ShellApproval) error
 }
 
 type Binder interface {
@@ -28,6 +29,7 @@ type Bindings[S any] struct {
 
 // Registry collects composition-ordered bindings without executing them.
 type Registry struct {
+	guards      []ShellApproval
 	commands    []command.Spec
 	projections []InputProjection
 	guidance    *Guidance
@@ -35,6 +37,9 @@ type Registry struct {
 }
 
 func (r *Registry) Capability(mechanism capability.Mechanism) capability.Result {
+	if mechanism == capability.ShellApproval {
+		return capability.Result{State: capability.Available, Reason: "composed shell approval policies; host hook availability checked at launch"}
+	}
 	if mechanism == capability.ExecutableFrontend {
 		return capability.Result{State: capability.Available, Reason: "compiled frontend registration"}
 	}

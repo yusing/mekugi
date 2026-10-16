@@ -8,11 +8,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/contracts/approval"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/shell"
 )
@@ -59,18 +62,23 @@ type nativeApprovalDock struct {
 	painted  bool
 	patches  map[string][]string // Live fileChange item paths, for edit approvals.
 	parked   questionEditor
-	allowed  map[guardApprovalKey]bool
+	grants   map[binding.ShellGuardKind]binding.CommandGrants
 }
 
 func (a *nativeApproval) denialChoice() int {
 	return slices.IndexFunc(a.choices, func(c nativeApprovalChoice) bool { return c.deny })
 }
 
-type guardApprovalKey struct{ cwd, executable, command string }
+func (d *nativeApprovalDock) initGuards(guards []binding.ShellApproval) {
+	d.grants = make(map[binding.ShellGuardKind]binding.CommandGrants, len(guards))
+	for _, guard := range guards {
+		d.grants[guard.Kind] = guard.NewSession()
+	}
+}
 
-func guardApprovalIdentity(request *vcsApproval) guardApprovalKey {
+func guardApprovalIdentity(request *vcsApproval) approval.Command {
 	command, _ := json.Marshal(request.argv)
-	return guardApprovalKey{request.cwd, request.executable, string(command)}
+	return approval.Command{Directory: request.cwd, Executable: request.executable, Arguments: string(command)}
 }
 
 // threadPermissions keeps --yolo's policy on thread requests. Approval mode
@@ -123,6 +131,12 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 	if request.finished() {
 		return
 	}
+	kind, known := binding.GuardForRequest(request.kind)
+	grants := u.approvals.grants[kind]
+	if !known || grants == nil {
+		request.reply <- shellapproval.Reply{Reason: "approval module is not active"}
+		return
+	}
 	details := u.approvalDirectory(request.cwd)
 	details = append(details, "Denying fails only this command with exit status 1.")
 	a := &nativeApproval{
@@ -153,9 +167,9 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 		u.openSudoPassword(a)
 		return
 	}
-	if u.approvals.allowed[guardApprovalIdentity(request)] {
+	if grants.Allows(guardApprovalIdentity(request)) {
 		u.recordApproval(a, "Approved for this session")
-		request.reply <- vcsguard.Reply{OK: true}
+		request.reply <- shellapproval.Reply{OK: true}
 		return
 	}
 	u.addApproval(a)
@@ -601,14 +615,12 @@ func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalCho
 			u.expireApprovals() // The command already has its answer.
 			return nil
 		}
-		reply := vcsguard.Reply{OK: choice.approve}
+		reply := shellapproval.Reply{OK: choice.approve}
 		if !choice.approve {
 			reply.Reason = feedback
 		} else if choice.session {
-			if u.approvals.allowed == nil {
-				u.approvals.allowed = make(map[guardApprovalKey]bool)
-			}
-			u.approvals.allowed[guardApprovalIdentity(a.guard)] = true
+			kind, _ := binding.GuardForRequest(a.guard.kind)
+			u.approvals.grants[kind].Allow(guardApprovalIdentity(a.guard))
 		}
 		a.guard.reply <- reply
 	} else {
@@ -624,7 +636,7 @@ func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalCho
 	u.endApproval(a, choice.outcome)
 	if a.guard != nil && choice.approve && choice.session {
 		for _, pending := range slices.Clone(u.approvals.pending) {
-			if pending.guard != nil && guardApprovalIdentity(pending.guard) == guardApprovalIdentity(a.guard) {
+			if pending.guard != nil && pending.guard.kind == a.guard.kind && guardApprovalIdentity(pending.guard) == guardApprovalIdentity(a.guard) {
 				if err := u.answerApproval(pending, nativeApprovalChoice{approve: true, outcome: "Approved for this session"}); err != nil {
 					return err
 				}

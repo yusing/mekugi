@@ -1,4 +1,4 @@
-package vcsguard
+package remote
 
 import (
 	"strings"
@@ -175,12 +175,5 @@ func TestAliasLookupKeepsGlobals(t *testing.T) {
 	Writes([]string{"git", "-C", "repo", "-c", "alias.x=push", "x"}, lookup)
 	if got := strings.Join(seen, " "); got != "-C repo -c alias.x=push x" {
 		t.Fatalf("lookup saw %q", got)
-	}
-}
-
-func TestPaths(t *testing.T) {
-	directory, channel := Paths("/run/mekugi-tools-1/bin")
-	if directory != "/run/mekugi-tools-1/vcs-guard" || channel != "/run/mekugi-tools-1/vcs-approval.sock" || ChannelOf(directory) != channel {
-		t.Fatalf("paths = %q %q", directory, channel)
 	}
 }

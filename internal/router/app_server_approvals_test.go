@@ -19,8 +19,8 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/internal/livediff"
 
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -216,7 +216,7 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		id++
 		item := fmt.Sprintf("cmd-%d", id)
 		appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: item, Type: "commandExecution", Command: "git push origin main", Status: "inProgress"}})
-		return &vcsApproval{thread: "main", item: item, cwd: "/work", argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+		return &vcsApproval{thread: "main", item: item, cwd: "/work", argv: []string{"git", "push", "origin", "main"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
 	}
 	approved, denied, expired := newRequest(), newRequest(), newRequest()
 	for _, request := range []*vcsApproval{approved, denied, expired} {
@@ -278,7 +278,7 @@ func TestNativeApprovalGuardSessionMatchesExactCommandAndWorkdir(t *testing.T) {
 				kind = "sudo"
 			}
 			request := func(cwd string, argv ...string) *vcsApproval {
-				return &vcsApproval{cwd: cwd, kind: kind, executable: "/bin/" + tool, argv: argv, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+				return &vcsApproval{cwd: cwd, kind: kind, executable: "/bin/" + tool, argv: argv, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
 			}
 			first, queued := request("/work", tool, "push", "origin", "main"), request("/work", tool, "push", "origin", "main")
 			u.addGuardApproval(first)
@@ -525,10 +525,10 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			approvalTestCommand(t, u, 1, map[string]any{"reason": "Publish the release branch."})
 		}},
 		{"approval-guarded-write", 80, func(t *testing.T, u *appServerUI) {
-			u.addGuardApproval(&vcsApproval{thread: "main", cwd: "/workspace", argv: []string{"gh", "pr", "merge", "12", "--squash"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+			u.addGuardApproval(&vcsApproval{thread: "main", cwd: "/workspace", argv: []string{"gh", "pr", "merge", "12", "--squash"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
 		}},
 		{"approval-guarded-denial", 80, func(t *testing.T, u *appServerUI) {
-			u.addGuardApproval(&vcsApproval{cwd: "/workspace", argv: []string{"git", "push"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+			u.addGuardApproval(&vcsApproval{cwd: "/workspace", argv: []string{"git", "push"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
 			questionTestPaint(t, u, 80)
 			appServerTestKeys(t, u, "do not publish yet")
 		}},
@@ -586,7 +586,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 				u.shell.paintOutput(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
-				u.addGuardApproval(&vcsApproval{thread: thread, item: "cmd", argv: []string{"git", "push", "origin", "main"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+				u.addGuardApproval(&vcsApproval{thread: thread, item: "cmd", argv: []string{"git", "push", "origin", "main"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
 			} else {
 				approvalTestCommand(t, u, 7, map[string]any{"threadId": thread, "availableDecisions": []string{"accept", "decline"}})
 			}

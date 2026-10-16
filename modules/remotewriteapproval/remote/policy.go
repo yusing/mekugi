@@ -1,65 +1,16 @@
-// Package vcsguard decides which version-control invocations publish to a
-// remote, and defines the approval channel between a guarded command and the
-// router. The helper that intercepts these commands and the router that asks
-// the user share this package, so both agree on the wire format.
-//
-// Write approval covers remote writes only: pushes of any ref or tag to
-// any remote, Subversion commits and repository-side operations, and hosting
-// mutations through gh. Local history edits such as commit, merge or rebase
-// are not remote writes. Commands that cannot be classified fail closed.
-package vcsguard
+// Package remote classifies remote-write approval policy.
+package remote
 
+// Source: internal/vcsguard/vcsguard.go:64:419@[bff7c655] remote-write policy.
 import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/syntax"
 )
-
-// Timeout bounds how long a guarded command waits for an answer. A command
-// that receives none is denied.
-const Timeout = 5 * time.Minute
-
-// Channel names the session-local Unix approval socket.
-const Channel = "vcs-approval.sock"
-
-// Message asks the router to approve one remote write.
-type Message struct {
-	Kind       string   `json:"kind,omitempty"` // sudo command or sudo-password; empty for remote writes.
-	Thread     string   `json:"thread,omitempty"`
-	Item       string   `json:"item,omitempty"`
-	Cwd        string   `json:"cwd,omitempty"`
-	Argv       []string `json:"argv"`
-	Executable string   `json:"executable"` // Resolved tool, separate from its display name.
-}
-
-// Reply answers a Message. Reason explains a denial to the command's stderr.
-type Reply struct {
-	Password string `json:"password,omitempty"` // Askpass pipe only; never retained.
-	OK       bool   `json:"ok"`
-	Reason   string `json:"reason,omitempty"`
-}
-
-// MaxMessage bounds one approval request or reply.
-const MaxMessage = 1 << 20
-
-// Paths returns the guard directory and approval channel for a frontend
-// directory.
-func Paths(frontendDirectory string) (directory, channel string) {
-	root := filepath.Dir(frontendDirectory)
-	return filepath.Join(root, shellinstrumentation.VCSDirectory), filepath.Join(root, Channel)
-}
-
-// ChannelOf returns the approval channel beside a guard directory.
-func ChannelOf(directory string) string {
-	return filepath.Join(filepath.Dir(directory), Channel)
-}
 
 // Lookup resolves a Git alias with the invocation's global options. It
 // reports false when the name is not an alias.

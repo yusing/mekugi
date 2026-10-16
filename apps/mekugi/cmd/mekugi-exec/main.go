@@ -25,12 +25,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
+
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/sudoask"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
@@ -72,7 +73,7 @@ func main() {
 	}
 	if len(os.Args) >= 4 && (strings.TrimSuffix(os.Args[1], "-default") == "--vcs-command" || strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell") {
 		if strings.TrimSuffix(os.Args[1], "-default") == "--vcs-shell" && len(os.Args) >= 6 && os.Args[3] == shellinstrumentation.SudoDirectoryFlag {
-			if err := os.Setenv(sudoask.DirectoryEnvironment, os.Args[4]); err != nil {
+			if err := os.Setenv(shellapproval.DirectoryEnvironment, os.Args[4]); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
@@ -103,7 +104,7 @@ func main() {
 	}
 	// Explicit instrumentation selects the operation; exec -a may give its
 	// eventual target the same argument zero as a different helper.
-	if filepath.Base(os.Args[0]) == sudoask.Askpass {
+	if filepath.Base(os.Args[0]) == shellapproval.Askpass {
 		os.Exit(sudoPassword())
 	}
 	if filepath.Base(os.Args[0]) == "sudo" {

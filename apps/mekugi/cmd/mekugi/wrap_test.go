@@ -17,13 +17,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/internal/sudoask"
-	"github.com/yusing/mekugi/internal/vcsguard"
+
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 )
 
@@ -161,7 +163,7 @@ func TestFrontendPathSurvivesLoginBash(t *testing.T) {
 	if err := os.WriteFile(prior, []byte("export MEKUGI_PRIOR_BASH_ENV=preserved\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend, "", false, segmenttransport.Endpoints{})
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "BASH_ENV=" + prior}, frontend, "", nil, segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,11 +184,11 @@ func TestFrontendShellEnvironmentGuardsBash(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin"}, frontend, helper, true, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
+	environment, err := frontendShellEnvironment([]string{"PATH=/usr/bin:/bin"}, frontend, helper, testShellGuards(true), segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, _ := vcsguard.Paths(frontend)
+	guard, _ := shellapproval.Paths(frontend)
 	values := map[string]string{}
 	for _, entry := range environment {
 		key, value, _ := strings.Cut(entry, "=")
@@ -224,7 +226,7 @@ func TestFrontendScriptSudo(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			environment, err := frontendShellEnvironment([]string{"PATH=" + real + ":" + custom + ":/usr/bin:/bin", "BASH_ENV=" + prior}, frontend, helper, guard, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
+			environment, err := frontendShellEnvironment([]string{"PATH=" + real + ":" + custom + ":/usr/bin:/bin", "BASH_ENV=" + prior}, frontend, helper, testShellGuards(guard), segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -852,7 +854,7 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\nprintf '%s\\n' \"$3\" > \"$MEKUGI_TEST_TRACK_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, "CODEX_THREAD_ID=outer-thread", shellinstrumentation.Guard + "=1", shellinstrumentation.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, false, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
+	environment, err := frontendShellEnvironment([]string{"PATH=" + os.Getenv("PATH"), "MEKUGI_TEST_TRACK_LOG=" + log, "CODEX_THREAD_ID=outer-thread", shellinstrumentation.Guard + "=1", shellinstrumentation.ShTrackerEnvironment + "=/outer/exec-track.sh"}, frontend, helper, nil, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -865,15 +867,15 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if slices.Contains(environment, "CODEX_THREAD_ID=outer-thread") {
 		t.Fatal("new session inherited command identity")
 	}
-	guard, _ := vcsguard.Paths(frontend)
+	guard, _ := shellapproval.Paths(frontend)
 	if _, err := os.Stat(guard); !os.IsNotExist(err) {
 		t.Fatalf("unguarded shell installed guard: %v", err)
 	}
-	if _, err := os.Stat(sudoask.Path(frontend)); !os.IsNotExist(err) {
+	if _, err := os.Stat(shellapproval.SudoDirectory(frontend)); !os.IsNotExist(err) {
 		t.Fatalf("unguarded shell installed sudo helpers: %v", err)
 	}
 	for _, entry := range environment {
-		if strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=") {
+		if strings.HasPrefix(entry, shellapproval.DirectoryEnvironment+"=") {
 			t.Fatal("unguarded shell exposed sudo instrumentation")
 		}
 	}
@@ -928,11 +930,11 @@ func TestFrontendNestedGuardOptOut(t *testing.T) {
 		}
 	}
 	env := []string{"PATH=" + real + ":/usr/bin:/bin", "BASH_ENV=" + userEnv}
-	env, err := frontendShellEnvironment(env, outer, helper, true, segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
+	env, err := frontendShellEnvironment(env, outer, helper, testShellGuards(true), segmenttransport.Endpoints{Requests: filepath.Join(t.TempDir(), "requests"), Directory: filepath.Join(t.TempDir(), "reports")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	env, err = frontendShellEnvironment(env, inner, "", false, segmenttransport.Endpoints{})
+	env, err = frontendShellEnvironment(env, inner, "", nil, segmenttransport.Endpoints{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -944,4 +946,11 @@ func TestFrontendNestedGuardOptOut(t *testing.T) {
 			t.Fatalf("nested opt-out %q = %q, %v", name, out, err)
 		}
 	}
+}
+
+func testShellGuards(enabled bool) []binding.ShellApproval {
+	if !enabled {
+		return nil
+	}
+	return []binding.ShellApproval{{Kind: binding.RemoteWrite}, {Kind: binding.Sudo}}
 }

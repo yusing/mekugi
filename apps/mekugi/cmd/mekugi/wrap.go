@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -25,8 +27,8 @@ import (
 
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router"
-	"github.com/yusing/mekugi/internal/sudoask"
-	"github.com/yusing/mekugi/internal/vcsguard"
+
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"golang.org/x/term"
 )
@@ -137,7 +139,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(frontends.History, frontends.Recovery, frontends.Segments, frontends.Changes, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, options, issues, func(session router.Session) {
+		routerDone <- router.RunSession(frontends.History, frontends.Recovery, frontends.Segments, frontends.Changes, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Guards, options, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()
@@ -181,7 +183,11 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if session.AXReadOutput != "" {
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
 	}
-	guard := appUI && session.ShellGuard
+	guards := session.Guards
+	if !appUI {
+		guards = nil
+	}
+	guard := len(guards) != 0
 	if guard && session.FrontendDirectory == "" {
 		cancel()
 		return 1, errors.Join(errors.New("Shell guard requires Mekugi mode; use --shell-guard=false to disable it"), <-routerDone)
@@ -195,19 +201,21 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		if frontends.Segments.Live != nil {
 			reportEndpoints = frontends.Segments.Live.Endpoints()
 		}
-		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper, guard, reportEndpoints)
+		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper, guards, reportEndpoints)
 		if err != nil {
 			cancel()
 			return 1, errors.Join(err, <-routerDone)
 		}
 		if helper != "" {
 			guardDirectory := ""
-			if guard {
-				guardDirectory, _ = vcsguard.Paths(session.FrontendDirectory)
+			for _, registration := range guards {
+				if registration.Kind == binding.RemoteWrite {
+					guardDirectory, _ = shellapproval.Paths(session.FrontendDirectory)
+				}
 			}
 			sudoDirectory, tracker := "", ""
 			for _, entry := range cmd.Env {
-				if value, ok := strings.CutPrefix(entry, sudoask.DirectoryEnvironment+"="); ok {
+				if value, ok := strings.CutPrefix(entry, shellapproval.DirectoryEnvironment+"="); ok {
 					sudoDirectory = value
 				}
 				if value, ok := strings.CutPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"="); ok {
@@ -360,8 +368,8 @@ const frontendBashEnvMarker = "# Mekugi frontend shell startup\n"
 // A guard puts the helper ahead of the version-control tools, and defines a
 // function for each absolute path to one, in Bash, so remote writes
 // wait for the user's approval.
-func frontendShellEnvironment(environment []string, directory, helper string, guard bool, reports segmenttransport.Endpoints) ([]string, error) {
-	if guard && helper == "" {
+func frontendShellEnvironment(environment []string, directory, helper string, guards []binding.ShellApproval, reports segmenttransport.Endpoints) ([]string, error) {
+	if len(guards) != 0 && helper == "" {
 		return nil, errors.New("Shell guard requires mekugi-exec beside mekugi; install both or use --shell-guard=false")
 	}
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
@@ -383,7 +391,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	var inheritedGuards []string
 	if userBashEnvSet && filepath.Base(previous) == "frontend-bash-env" {
 		if data, err := os.ReadFile(previous); err == nil && strings.HasPrefix(string(data), frontendBashEnvMarker) {
-			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), shellinstrumentation.VCSDirectory), sudoask.Path(filepath.Join(filepath.Dir(previous), "bin")))
+			inheritedGuards = append(inheritedGuards, filepath.Join(filepath.Dir(previous), shellinstrumentation.VCSDirectory), shellapproval.SudoDirectory(filepath.Join(filepath.Dir(previous), "bin")))
 			previous = userBashEnv
 		}
 	}
@@ -396,40 +404,63 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 	if previous != "" {
 		startup += ". " + shellsyntax.Quote(previous) + "\n"
 	}
-	front := directory
-	if guard {
-		sudoDirectory := sudoask.Path(directory)
-		if err := os.MkdirAll(sudoDirectory, 0o700); err != nil {
+	guardDirectory, sudoDirectory := "", ""
+	for _, guard := range guards {
+		switch guard.Kind {
+		case binding.RemoteWrite:
+			guardDirectory, _ = shellapproval.Paths(directory)
+		case binding.Sudo:
+			sudoDirectory = shellapproval.SudoDirectory(directory)
+		}
+	}
+	shellDirectory := guardDirectory
+	if shellDirectory == "" {
+		shellDirectory = sudoDirectory
+	}
+	for _, resource := range []struct {
+		directory string
+		tools     []string
+	}{
+		{guardDirectory, commandanalysis.VCSTools},
+		{sudoDirectory, []string{"sudo", shellapproval.Askpass}},
+	} {
+		if resource.directory == "" {
+			continue
+		}
+		if err := os.MkdirAll(resource.directory, 0700); err != nil {
 			return nil, err
 		}
-		for _, name := range []string{"sudo", sudoask.Askpass} {
-			if err := os.Symlink(helper, filepath.Join(sudoDirectory, name)); err != nil {
+		tools := resource.tools
+		if resource.directory == shellDirectory {
+			tools = slices.Concat(tools, shellinstrumentation.Shells)
+		}
+		for _, tool := range tools {
+			if err := os.Symlink(helper, filepath.Join(resource.directory, tool)); err != nil {
 				return nil, err
 			}
 		}
-		guardDirectory, _ := vcsguard.Paths(directory)
-		if err := os.MkdirAll(guardDirectory, 0o700); err != nil {
-			return nil, fmt.Errorf("prepare VCS write guard: %w", err)
-		}
-		for _, tool := range slices.Concat(commandanalysis.VCSTools, shellinstrumentation.Shells) {
-			if err := os.Symlink(helper, filepath.Join(guardDirectory, tool)); err != nil && !errors.Is(err, os.ErrExist) {
-				return nil, fmt.Errorf("prepare VCS write guard: %w", err)
-			}
-		}
-		front = guardDirectory + string(os.PathListSeparator) + directory + string(os.PathListSeparator) + sudoDirectory
+	}
+	front := directory
+	if guardDirectory != "" {
+		front = guardDirectory + string(os.PathListSeparator) + front
+	}
+	if sudoDirectory != "" {
+		front += string(os.PathListSeparator) + sudoDirectory
 	}
 	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
-	if guard {
-		guardDirectory, _ := vcsguard.Paths(directory)
+	if guardDirectory != "" {
 		startup += shellinstrumentation.Functions(guardDirectory, shellinstrumentation.KnownPaths(basePath, commandanalysis.VCSTools), commandanalysis.VCSTools)
-		tools := []string{"sudo"}
-		startup += shellinstrumentation.Functions(sudoask.Path(directory), shellinstrumentation.KnownPaths(basePath, tools), tools)
 	}
+	if sudoDirectory != "" {
+		tools := []string{"sudo"}
+		startup += shellinstrumentation.Functions(sudoDirectory, shellinstrumentation.KnownPaths(basePath, tools), tools)
+	}
+
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
-		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=")
+		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, shellapproval.DirectoryEnvironment+"=")
 	})
-	if guard {
-		environment = append(environment, sudoask.DirectoryEnvironment+"="+sudoask.Path(directory))
+	if sudoDirectory != "" {
+		environment = append(environment, shellapproval.DirectoryEnvironment+"="+sudoDirectory)
 	}
 	if helper != "" && reports.Requests != "" {
 		socket, trackDirectory := reports.Requests, reports.Directory

@@ -10,9 +10,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 type nativeQuestionOption struct {
@@ -284,7 +284,7 @@ func (u *appServerUI) resolveQuestionCall(c *nativeQuestionCall, outcome string)
 	c.resolved = true
 	if c.sudo != nil {
 		if !c.sent && !c.sudo.finished() {
-			c.sudo.reply <- vcsguard.Reply{Reason: "sudo authentication canceled"}
+			c.sudo.reply <- shellapproval.Reply{Reason: "sudo authentication canceled"}
 			u.recordApproval(&nativeApproval{thread: c.thread, turn: c.turn, item: c.sudo.item}, "Denied: sudo authentication canceled")
 		}
 		for i := range c.questions {

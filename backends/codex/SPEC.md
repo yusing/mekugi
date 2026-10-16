@@ -53,6 +53,20 @@ starts no thread or inference, closes its process before final launch, and leave
 persistent settings unchanged. Per-turn validation checks the actual selected
 thread workspace; later conflicts block admission rather than being rewritten.
 
+## Shell approval registrations
+
+Bindings declare remote-write or sudo participation and a module-owned grant
+factory. Duplicate kinds and incomplete factories fail composition. Launch installs
+only registered helper resources and the local decision server rejects unregistered
+request kinds before presentation. With no guards, independent tracking remains
+available and caller hooks are preserved. Native hook availability is still checked
+against the selected host at launch and turn admission.
+
+The backend owns the private command/askpass wire types and resource names.
+Secrets travel only to the askpass pipe; they are absent from grant identities.
+The application owns shared socket lifetime and UI delivery, while modules own
+policy and exact grants. Removing a module does not change another module's grants.
+
 ## Input projection
 
 Bindings register named two-phase projections in composition order. Preparation

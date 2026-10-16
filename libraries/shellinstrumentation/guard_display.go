@@ -40,7 +40,7 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 				// several literal parts. The final two parts are : and PATH.
 				parts := assign.Value.Parts
 				directory, literal := shellsyntax.StaticWord(&syntax.Word{Parts: parts[:len(parts)-2]})
-				if literal && filepath.Base(directory) == guard.directory && isGuardDirectory(directory) {
+				if literal && guard.acceptsDirectory(directory) && isGuardDirectory(directory) {
 					start, end := int(assign.Pos().Offset()), int(call.Args[0].Pos().Offset())
 					item := ""
 					if len(call.Assigns) > 1 {
@@ -90,7 +90,7 @@ func DisplayScript(script string, isGuardDirectory func(string) bool) string {
 		}
 		word := call.Args[target]
 		guard, _ := commandGuard(word)
-		if guard == nil || filepath.Base(directory) != guard.directory ||
+		if guard == nil || !guard.acceptsDirectory(directory) ||
 			(mode != guard.mode && mode != guard.mode+"-default") {
 			return true
 		}

@@ -1,22 +1,8 @@
-// Package sudoask owns invocation-local sudo askpass setup.
-package sudoask
+// Package sudo classifies sudo approval and authentication policy.
+package sudo
 
-import (
-	"path/filepath"
-	"strings"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-)
-
-const (
-	Askpass              = "mekugi-sudo-askpass"
-	DirectoryEnvironment = "MEKUGI_SUDO_DIRECTORY"
-	CommandEnvironment   = "MEKUGI_SUDO_COMMAND"
-)
-
-func Path(frontend string) string {
-	return filepath.Join(filepath.Dir(frontend), shellinstrumentation.SudoDirectory)
-}
+// Source: internal/sudoask/sudo.go:22:88@[bff7c655] sudo option policy.
+import "strings"
 
 // Interactive leaves explicitly selected input modes to sudo.
 func Interactive(args []string) bool {
@@ -86,3 +72,6 @@ func applicable(args []string, password bool) bool {
 	}
 	return len(args) > 0 && !(len(args) == 1 && (args[0] == "-k" || args[0] == "-h"))
 }
+
+// ValidPassword accepts one askpass answer without line framing characters.
+func ValidPassword(password string) bool { return !strings.ContainsAny(password, "\r\n") }

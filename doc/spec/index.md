@@ -64,6 +64,6 @@ policy; the native UI contract owns manual name-save interaction and rendering.
 - [`REQ-CHANGES-001`](changes.md): observed stock edits and command effects, durable change IDs, and bounded review reads
 - [`REQ-EXECUTION-001`](execution.md): stock editing, execution, and executable frontends
 - [`REQ-EXECUTION-002`](execution.md): Bash and Linux dash-backed sh command timing and per-segment list tracking
-- [`REQ-EXECUTION-003`](execution.md): approval guard for remote VCS writes
-- [`REQ-EXECUTION-004`](execution.md): sudo command approval and secret password entry
+- [`REQ-EXECUTION-003`](../../modules/remotewriteapproval/SPEC.md): approval guard for remote VCS writes
+- [`REQ-EXECUTION-004`](../../modules/sudoapproval/SPEC.md): sudo command approval and secret password entry
 - [Agent guidance](../../modules/agentguidance/SPEC.md): caller-preserving additive tool guidance

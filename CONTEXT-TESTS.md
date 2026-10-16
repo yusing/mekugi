@@ -49,6 +49,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Router behavior | `./internal/router` |
 | Session publication, namespaces, leases, and retention | `./modules/sessionhistory/...`, plus affected router persistence/fork/recovery integration |
 | Command-segment report transport and retained reports | `./modules/commandsegments/...`, plus router `ExecTrack`, `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |
+| Composed approval policy and grants | `./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/binding ./apps/mekugi/internal/composition`, plus launcher `SelectedGuards` and router `ShellApprovalComposition`, `NativeApprovalGuard`, `Sudo` consumers |
 | Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus router `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
 | Shell/source execution-scope classification | `./libraries/commandanalysis/... ./libraries/sourceanalysis/sourceparse ./internal/execscope`, plus router observation, native trace, preview, and display tests |
 | Provider credentials and model metadata | `./providers/grok/... ./providers/opencode/...`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, and accounting consumers |
@@ -56,7 +57,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Optional session naming | `./modules/sessionnaming/...`, plus router `SessionTitle`, `NativeSessionTitle`, `TerminalTitle`, and submitted-assignment consumers; installed persistence/resume cases in `app_server_session_title_codex_e2e_test.go` |
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
 | Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |
-| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./internal/vcsguard ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
+| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./capturer` |

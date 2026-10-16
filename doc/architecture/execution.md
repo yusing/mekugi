@@ -69,6 +69,9 @@ in `libraries/sourceanalysis/sourceparse`, used by observation and presentation.
 The dynamic-source flag remains separate from recognized literal commands so
 capture does not narrow its coverage to only the statically visible subset.
 
+The approval modules own classification and per-UI exact grants. The backend owns
+the shared wire types; application launch installs only composed resources.
+
 The invocation's shell-approval server owns the VCS/sudo decision socket, pending
 requests, cancellation, and shutdown join independently of segment reporting.
 The UI consumes that server's requests; report arrival or transport closure does

@@ -13,8 +13,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 // Model mise's system fallback: skip the manager and its active delegating
@@ -46,7 +46,7 @@ exit 127
 			if err := os.Symlink(manager, filepath.Join(shimDirectory, name)); err != nil {
 				t.Fatal(err)
 			}
-			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+			guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 			path := guard + ":" + shimDirectory + ":" + shell.real + ":" + filepath.Dir(execTrackShellExecutable(t, "bash")) + ":" + execTrackPath()
 			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			defer cancel()
@@ -134,7 +134,7 @@ exit 127
 				if len(seen) != 2 {
 					t.Fatalf("command snippets=%d: %q; records=%+v", len(seen), feed.lines, view.entries)
 				}
-				request.reply <- vcsguard.Reply{Reason: "denied in test"}
+				request.reply <- shellapproval.Reply{Reason: "denied in test"}
 				if exit, ok := cmd.Wait().(*exec.ExitError); !ok || exit.ExitCode() != 1 || !strings.Contains(stderr.String(), "remote write denied") {
 					t.Fatalf("nested write escaped: %s", stderr.String())
 				}

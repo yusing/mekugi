@@ -15,7 +15,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
+	"github.com/yusing/mekugi/modules/remotewriteapproval/remote"
 	"golang.org/x/sys/unix"
 )
 
@@ -57,7 +58,7 @@ func guardCommand(directory, name, explicit, argv0 string, defaultPath bool, arg
 		}
 		return strings.TrimSuffix(string(output), "\n"), true
 	}
-	if vcsguard.Writes(argv, lookup) {
+	if remote.Writes(argv, lookup) {
 		if ok, reason := approve(directory, real, argv, ""); !ok {
 			fmt.Fprintf(os.Stderr, "mekugi: remote write denied: %s\n", reason)
 			return 1
@@ -180,8 +181,8 @@ func approve(directory, executable string, argv []string, kind string) (bool, st
 	}
 	// The router owns the decision timeout; allow its denial to arrive before
 	// the client closes and would otherwise look like a withdrawn request.
-	deadline := time.Now().Add(vcsguard.Timeout + 5*time.Second)
-	socket, err := os.Readlink(vcsguard.ChannelOf(directory))
+	deadline := time.Now().Add(shellapproval.Timeout + 5*time.Second)
+	socket, err := os.Readlink(shellapproval.ChannelOf(directory))
 	if err != nil {
 		return false, unavailable
 	}
@@ -194,16 +195,16 @@ func approve(directory, executable string, argv []string, kind string) (bool, st
 		return false, unavailable
 	}
 	cwd, _ := os.Getwd()
-	message := vcsguard.Message{Kind: kind, Thread: os.Getenv("CODEX_THREAD_ID"), Item: os.Getenv(shellinstrumentation.ItemEnvironment), Cwd: cwd, Argv: argv, Executable: executable}
+	message := shellapproval.Message{Kind: kind, Thread: os.Getenv("CODEX_THREAD_ID"), Item: os.Getenv(shellinstrumentation.ItemEnvironment), Cwd: cwd, Argv: argv, Executable: executable}
 	data, err := json.Marshal(&message)
-	if err != nil || len(data) > vcsguard.MaxMessage {
+	if err != nil || len(data) > shellapproval.MaxMessage {
 		return false, "invalid approval request"
 	}
 	if _, err := conn.Write(data); err != nil {
 		return false, unavailable
 	}
-	var reply vcsguard.Reply
-	if err := json.UnmarshalRead(io.LimitReader(conn, vcsguard.MaxMessage), &reply); err != nil {
+	var reply shellapproval.Reply
+	if err := json.UnmarshalRead(io.LimitReader(conn, shellapproval.MaxMessage), &reply); err != nil {
 		return false, "no valid answer from Mekugi"
 	}
 	if !reply.OK && reply.Reason == "" {

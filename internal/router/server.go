@@ -21,8 +21,6 @@ import (
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
-	"github.com/yusing/mekugi/internal/sudoask"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
@@ -33,8 +31,8 @@ import (
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
-	"github.com/yusing/mekugi/internal/vcsguard"
 )
 
 const (
@@ -54,7 +52,7 @@ var errUpstreamResponseWithoutTerminal = errors.New("upstream Responses response
 type Session struct {
 	BaseURL                string
 	CodeModeEnabled        bool
-	ShellGuard             bool
+	Guards                 []binding.ShellApproval
 	GrokEnabled            bool
 	GrokUnprefixed         bool
 	ThirdPartyOnly         bool
@@ -62,7 +60,7 @@ type Session struct {
 	AXReadOutput           string
 	SkillsManagerAvailable bool
 	// StartAppUI starts the UI and returns its joined lifetime.
-	// ShellGuard controls remote-write and sudo approval independently of Codex policy.
+	// Guards contains only the enabled, composed approval modules.
 	StartAppUI           func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error)
 	StartHeadless        func(context.Context, *exec.Cmd, io.Reader, io.Writer) (func() error, error)
 	FrontendDirectory    string
@@ -71,9 +69,12 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if options.mode == "" {
 		return errors.New("session configuration has not been parsed")
+	}
+	if !options.shellGuard {
+		guards = nil
 	}
 	grokEnabled, standalone := options.grok, options.standalone
 	faint, err := terminalui.SupportsFaint(ctx, options.ansiFaint)
@@ -321,7 +322,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.mode == "mekugi", ShellGuard: options.shellGuard, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.mode == "mekugi", Guards: guards, SkillsManagerAvailable: skillsManagerAvailable}
 		if mekugiCalls != nil {
 			session.StartHeadless = func(ctx context.Context, cmd *exec.Cmd, input io.Reader, output io.Writer) (func() error, error) {
 				return startHeadlessAppServer(ctx, cmd, input, output, mekugiCalls, issues)
@@ -330,14 +331,21 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				instrumentation := execInstrumentation{}
-				if session.ShellGuard {
-					guard, channel := vcsguard.Paths(frontendDirectory)
+				if len(session.Guards) != 0 {
+					guard, channel := shellapproval.Paths(frontendDirectory)
 					var approvalErr error
-					mekugiCalls.guard, approvalErr = listenShellApprovals(ctx, channel, vcsguard.Timeout)
+					mekugiCalls.guard, approvalErr = listenShellApprovals(ctx, channel, shellapproval.Timeout, guards)
 					if approvalErr != nil {
 						return nil, fmt.Errorf("listen for guarded shell commands: %w", approvalErr)
 					}
-					instrumentation = execInstrumentation{vcs: guard, sudo: sudoask.Path(frontendDirectory)}
+					for _, registration := range guards {
+						switch registration.Kind {
+						case binding.RemoteWrite:
+							instrumentation.vcs = guard
+						case binding.Sudo:
+							instrumentation.sudo = shellapproval.SudoDirectory(frontendDirectory)
+						}
+					}
 				}
 				// Reporting is auxiliary; acquisition or attachment failure
 				// cannot close the independent command approval channel.

@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
 func TestShellApprovalLifecycleIndependentOfReports(t *testing.T) {
 	t.Parallel()
 	shell := newVCSGuardShell(t, 5*time.Second)
-	_, link := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	_, link := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 	socket, err := os.Readlink(link)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestShellApprovalLifecycleIndependentOfReports(t *testing.T) {
 	if got := shell.invoked(t); len(got) != 0 {
 		t.Fatalf("command ran before approval: %q", got)
 	}
-	request.reply <- vcsguard.Reply{OK: true}
+	request.reply <- shellapproval.Reply{OK: true}
 	if run := awaitRun(results); run.code != 0 || run.stderr != "" {
 		t.Fatalf("approved command: %+v", run)
 	}

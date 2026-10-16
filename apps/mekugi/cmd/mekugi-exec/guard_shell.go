@@ -7,7 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/internal/sudoask"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"golang.org/x/sys/unix"
@@ -33,13 +34,16 @@ func guardShell(directory, target, argv0 string, defaultPath bool, args []string
 		fmt.Fprintln(os.Stderr, err)
 		return 127
 	}
-	sudoDirectory := os.Getenv(sudoask.DirectoryEnvironment)
+	sudoDirectory := os.Getenv(shellapproval.DirectoryEnvironment)
 	if directory == "" {
 		directory = foundDirectory
 		// A PATH-dispatched trampoline can also outlive an environment clear.
 		// Its invocation-local sibling exists only when sudo guarding is enabled.
 		if sudoDirectory == "" && directory != "" {
-			candidate := filepath.Join(filepath.Dir(directory), shellinstrumentation.SudoDirectory)
+			candidate := directory
+			if filepath.Base(directory) != shellinstrumentation.SudoDirectory {
+				candidate = filepath.Join(filepath.Dir(directory), shellinstrumentation.SudoDirectory)
+			}
 			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 				sudoDirectory = candidate
 			} else if err != nil && !os.IsNotExist(err) {
@@ -47,6 +51,11 @@ func guardShell(directory, target, argv0 string, defaultPath bool, args []string
 				return 1
 			}
 		}
+	}
+	// The selected trampoline can belong to sudo alone. Its location must not
+	// enable a remote-write policy that composition omitted.
+	if filepath.Base(directory) == shellinstrumentation.SudoDirectory {
+		sudoDirectory, directory = directory, ""
 	}
 	commandString := false
 	payload := -1

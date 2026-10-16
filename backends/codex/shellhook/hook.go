@@ -44,7 +44,7 @@ type Input struct {
 func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, disabled []string) (config, state, identityHash string, err error) {
 	// Hook runs carry only this description of what the hook does.
 	status := "Tracking shell segments"
-	if directory != "" {
+	if directory != "" || sudoDirectory != "" {
 		status = "Applying shell guard"
 	}
 	arguments := []string{helper, Flag, directory, sudoDirectory, tracker}

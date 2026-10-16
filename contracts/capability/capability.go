@@ -6,6 +6,7 @@ const (
 	ExecutableFrontend Mechanism = "executable-frontend"
 	InputProjection    Mechanism = "input-projection"
 	GuidanceProjection Mechanism = "guidance-projection"
+	ShellApproval      Mechanism = "shell-approval"
 	ThreadNaming       Mechanism = "thread-naming"
 )
 

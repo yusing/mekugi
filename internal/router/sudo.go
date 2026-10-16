@@ -3,9 +3,10 @@ package router
 import (
 	"fmt"
 	"slices"
-	"strings"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/modules/sudoapproval/sudo"
+
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
 func (u *appServerUI) openSudoPassword(a *nativeApproval) {
@@ -25,10 +26,10 @@ func (u *appServerUI) submitSudoPassword(c *nativeQuestionCall) error {
 		return nil
 	}
 	q := &c.questions[0]
-	reply := vcsguard.Reply{Reason: "sudo authentication denied"}
+	reply := shellapproval.Reply{Reason: "sudo authentication denied"}
 	if q.done && !q.skipped && len(q.answer) == 1 {
 		password := q.answer[0]
-		if strings.ContainsAny(password, "\r\n") {
+		if !sudo.ValidPassword(password) {
 			u.setNotice("sudo password must be a single line", true)
 			return nil
 		}

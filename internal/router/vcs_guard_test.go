@@ -12,7 +12,7 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
 type approvalShell struct {
@@ -23,8 +23,8 @@ type approvalShell struct {
 func newApprovalShell(t *testing.T, timeout time.Duration) *approvalShell {
 	t.Helper()
 	shell := newExecTrackShell(t)
-	_, channel := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-	guard, err := listenShellApprovals(t.Context(), channel, timeout)
+	_, channel := shellapproval.Paths(filepath.Join(shell.root, "bin"))
+	guard, err := listenShellApprovals(t.Context(), channel, timeout, testGuards())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ type vcsGuardShell struct {
 // arguments, as the wrapper puts it ahead of the frontend directory.
 func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 	t.Helper()
-	wait := vcsguard.Timeout
+	wait := shellapproval.Timeout
 	if len(timeout) > 0 {
 		wait = timeout[0]
 	}
@@ -51,7 +51,7 @@ func newVCSGuardShell(t *testing.T, timeout ...time.Duration) *vcsGuardShell {
 	if err != nil {
 		t.Fatal(err)
 	}
-	guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	guard, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 	if err := os.MkdirAll(guard, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func (s *vcsGuardShell) answer(t *testing.T, ok bool) <-chan []string {
 			select {
 			case request := <-s.guard.requests:
 				asked <- request.argv
-				request.reply <- vcsguard.Reply{OK: ok, Reason: "denied in test"}
+				request.reply <- shellapproval.Reply{OK: ok, Reason: "denied in test"}
 			case <-t.Context().Done():
 				return
 			}
@@ -337,7 +337,7 @@ func TestVCSGuardConcurrentApprovalRequests(t *testing.T) {
 				t.Fatalf("request body was lost or mixed: prefix=%q, bytes=%d", prefix, len(body))
 			}
 			seen[prefix] = true
-			request.reply <- vcsguard.Reply{Reason: "concurrent denial"}
+			request.reply <- shellapproval.Reply{Reason: "concurrent denial"}
 		case <-time.After(5 * time.Second):
 			t.Fatal("approval request missing")
 		}
@@ -356,7 +356,7 @@ func TestVCSGuardConcurrentApprovalRequests(t *testing.T) {
 func TestVCSGuardClosesPendingApproval(t *testing.T) {
 	t.Parallel()
 	shell := newVCSGuardShell(t)
-	_, link := vcsguard.Paths(filepath.Join(shell.root, "bin"))
+	_, link := shellapproval.Paths(filepath.Join(shell.root, "bin"))
 	socket, err := os.Readlink(link)
 	if err != nil {
 		t.Fatal(err)

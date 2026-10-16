@@ -173,8 +173,8 @@ func TestRunSessionPropagatesShellGuard(t *testing.T) {
 			notified := false
 			err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), append([]string{"--mode", "passthrough"}, tc.flags...), nil, func(session Session) {
 				notified = true
-				if session.ShellGuard != tc.want {
-					t.Errorf("session guard = %t, want %t", session.ShellGuard, tc.want)
+				if (len(session.Guards) != 0) != tc.want {
+					t.Errorf("session guard = %t, want %t", len(session.Guards) != 0, tc.want)
 				}
 				cancel()
 			}, nil)
@@ -194,5 +194,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 	if err != nil {
 		return err
 	}
-	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), ctx, commands, testInputProjections(), testGuidance(), testNaming(), options, issues, ready, artifacts)
+	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
 }

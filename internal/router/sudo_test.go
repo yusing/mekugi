@@ -12,8 +12,8 @@ import (
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/sudoask"
-	"github.com/yusing/mekugi/internal/vcsguard"
+
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 )
 
 // Exercise the installed wrapper, askpass pipe, approval socket and real input
@@ -147,11 +147,11 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 	u.status, u.model, u.reasoningEffort = "Ready", "snapshot-model", "high"
 	u.session.start("main", "/workspace")
 	u.turn = "turn"
-	u.addGuardApproval(&vcsApproval{kind: "sudo", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+	u.addGuardApproval(&vcsApproval{kind: "sudo", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
 	rows, _ := u.mainFrame(80, 20, 0)
 	assertNativeUISnapshot(t, "native-sudo-approval", rows)
 	appServerTestKeys(t, u, "1\r")
-	u.addGuardApproval(&vcsApproval{kind: "sudo-password", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})})
+	u.addGuardApproval(&vcsApproval{kind: "sudo-password", thread: "main", cwd: "/workspace", argv: []string{"sudo", "apt", "update"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "1234-secret")
 	rows, _ = u.mainFrame(80, 20, 0)
@@ -160,7 +160,7 @@ func TestUISnapshotSudoDialogs(t *testing.T) {
 
 func TestSudoPasswordWithdrawal(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
 	u.addGuardApproval(request)
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "private-draft")
@@ -176,7 +176,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 
 func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u, input := newAppServerTestUI()
-	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan vcsguard.Reply, 1), done: make(chan struct{})}
+	request := &vcsApproval{kind: "sudo-password", thread: "main", argv: []string{"sudo", "id"}, reply: make(chan shellapproval.Reply, 1), done: make(chan struct{})}
 	u.openSudoPassword(&nativeApproval{thread: "main", turn: "old-turn", subject: "sudo id", guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
@@ -209,17 +209,17 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 
 func newSudoShell(t *testing.T) (*approvalShell, string, string) {
 	t.Helper()
-	shell := newApprovalShell(t, vcsguard.Timeout)
+	shell := newApprovalShell(t, shellapproval.Timeout)
 	helper, err := execTrackHelper()
 	if err != nil {
 		t.Fatal(err)
 	}
 	frontend := filepath.Join(shell.root, "bin")
-	directory := sudoask.Path(frontend)
+	directory := shellapproval.SudoDirectory(frontend)
 	if err := os.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"sudo", sudoask.Askpass} {
+	for _, name := range []string{"sudo", shellapproval.Askpass} {
 		if err := os.Symlink(helper, filepath.Join(directory, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -266,7 +266,7 @@ func TestSudoApprovalWithoutPassword(t *testing.T) {
 				if request.kind != "sudo" || !slices.Equal(request.argv, append([]string{"sudo"}, args...)) {
 					t.Fatal("command approval lost exact arguments")
 				}
-				request.reply <- vcsguard.Reply{OK: allow, Reason: "fixture denial"}
+				request.reply <- shellapproval.Reply{OK: allow, Reason: "fixture denial"}
 			case <-result:
 				t.Fatal("sudo ran without command approval")
 			case <-time.After(10 * time.Second):
@@ -348,7 +348,7 @@ func TestGuardShellArgv0DoesNotSelectSudo(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, "sudo"), []byte("#!/bin/sh\nprintf WRONG_DISPATCH\nexit 47\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	for _, argv0 := range []string{"sudo", sudoask.Askpass} {
+	for _, argv0 := range []string{"sudo", shellapproval.Askpass} {
 		t.Run(argv0, func(t *testing.T) {
 			script := "exec -a " + quoteShellWord(argv0) + " " + quoteShellWord(execTrackShellExecutable(t, "sh")) + ` -c 'printf "shell:%s" "$0"; exit 23'`
 			rewritten, err := shellinstrumentation.RewriteCommands(script, helper, filepath.Join(directory, "vcs-guard"), "", "")
@@ -365,13 +365,16 @@ func TestGuardShellArgv0DoesNotSelectSudo(t *testing.T) {
 
 func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 	for _, tc := range []struct {
-		name               string
-		clean, path, allow bool
+		name                         string
+		clean, path, allow, sudoOnly bool
 	}{
 		{name: "ordinary", allow: true},
 		{name: "clean-environment-denial", clean: true},
 		{name: "clean-environment-approval", clean: true, allow: true},
 		{name: "path-trampoline", path: true},
+		{name: "sudo-only-clean-denial", clean: true, sudoOnly: true},
+		{name: "sudo-only-clean-approval", clean: true, allow: true, sudoOnly: true},
+		{name: "sudo-only-path", path: true, sudoOnly: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			shell, sudoDirectory, real := newSudoShell(t)
@@ -379,11 +382,14 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			guardDirectory, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-			if err := os.Mkdir(guardDirectory, 0700); err != nil {
+			guardDirectory, _ := shellapproval.Paths(filepath.Join(shell.root, "bin"))
+			shellDirectory := guardDirectory
+			if tc.sudoOnly {
+				guardDirectory, shellDirectory = "", sudoDirectory
+			} else if err := os.Mkdir(guardDirectory, 0700); err != nil {
 				t.Fatal(err)
 			}
-			trampoline := filepath.Join(guardDirectory, "sh")
+			trampoline := filepath.Join(shellDirectory, "sh")
 			if err := os.Symlink(helper, trampoline); err != nil {
 				t.Fatal(err)
 			}
@@ -392,6 +398,15 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := quoteShellWord(executable) + " -n probe 'arg with spaces'"
+			prefix := ""
+			if tc.sudoOnly {
+				git := filepath.Join(real, "git")
+				if err := os.WriteFile(git, []byte("#!/bin/sh\nprintf git-ran\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				body = quoteShellWord(git) + " push; " + body
+				prefix = "git-ran"
+			}
 			cmd := exec.CommandContext(t.Context(), trampoline, "-c", body)
 			cmd.Env = []string{"PATH=" + execTrackPath()}
 			if !tc.path {
@@ -408,7 +423,7 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 					t.Fatalf("display changed authored shell: %q want %q", displayed, script)
 				}
 				cmd = exec.CommandContext(t.Context(), nativeShell, "-c", rewritten)
-				cmd.Env = []string{"PATH=" + execTrackPath(), sudoask.DirectoryEnvironment + "=" + sudoDirectory}
+				cmd.Env = []string{"PATH=" + execTrackPath(), shellapproval.DirectoryEnvironment + "=" + sudoDirectory}
 			}
 			result := make(chan execTrackRun, 1)
 			go func() {
@@ -424,7 +439,7 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 				if request.kind != "sudo" || request.executable != executable || !slices.Equal(request.argv, []string{executable, "-n", "probe", "arg with spaces"}) || !tc.path && request.item != "nested-command" {
 					t.Fatalf("nested approval lost command identity: %#v", request)
 				}
-				request.reply <- vcsguard.Reply{OK: tc.allow, Reason: "nested fixture denial"}
+				request.reply <- shellapproval.Reply{OK: tc.allow, Reason: "nested fixture denial"}
 			case got := <-result:
 				t.Fatalf("nested sudo ran without approval: %+v", got)
 			case <-time.After(10 * time.Second):
@@ -433,10 +448,10 @@ func TestSudoNestedShellPreservesGuardResources(t *testing.T) {
 			select {
 			case got := <-result:
 				if tc.allow {
-					if got.code != 23 || got.stdout != "-n\nprobe\narg with spaces\n" {
+					if got.code != 23 || got.stdout != prefix+"-n\nprobe\narg with spaces\n" {
 						t.Fatalf("approved command changed: %+v", got)
 					}
-				} else if got.code != 1 || got.stdout != "mekugi: sudo command denied: nested fixture denial\n" {
+				} else if got.code != 1 || got.stdout != prefix+"mekugi: sudo command denied: nested fixture denial\n" {
 					t.Fatalf("denied command ran: %+v", got)
 				}
 			case <-time.After(10 * time.Second):
