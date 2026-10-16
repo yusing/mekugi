@@ -25,7 +25,9 @@ queued continuation bytes are drained before expiration is applied.
 Replay has read-only input admission. Its decoder consumes fragmented SGR,
 legacy mouse and navigation reports without treating their payload as playback
 commands. Ctrl-C remains available after an incomplete report; a new Escape
-starts independent disambiguation. [Playback](../../../../modules/sessionreplay/SPEC.md)
+starts independent disambiguation. Queued continuation bytes remain part of their
+report after a slow frame instead of becoming a standalone Escape.
+[Playback](../../../../modules/sessionreplay/SPEC.md)
 owns scheduling and semantic playback controls.
 
 ## Panes

@@ -281,6 +281,85 @@ func (p *uiReplayPlayback) control(key byte, elapsed time.Duration) (bool, error
 	return p.key(key)
 }
 
+// run owns replay input, clock and rendering lifecycles. Paint supplies the
+// current terminal geometry without participating in input admission.
+func (p *uiReplayPlayback) run(keys <-chan byte, paint func() error, headless bool, stderr io.Writer) error {
+	var input terminalsession.ReplayInput
+	defer input.Close()
+	tick := time.NewTicker(33 * time.Millisecond)
+	defer tick.Stop()
+	last, progress := time.Now(), time.Now()
+	if err := paint(); err != nil {
+		return err
+	}
+	for {
+		var key byte
+		var open bool
+		select {
+		case <-p.ctx.Done():
+			return p.ctx.Err()
+		case <-input.EscapeReady():
+			// A slow paint may leave both the deadline and continuation ready.
+			// Give one queued byte precedence, then return to lifecycle dispatch.
+			select {
+			case key, open = <-keys:
+			default:
+				input.ExpireEscape()
+				if p.ui.shell.output != nil {
+					p.ui.shell.outputKey("\x1b")
+					if err := paint(); err != nil {
+						return err
+					}
+					continue
+				}
+				return nil
+			}
+		case key, open = <-keys:
+		case <-tick.C:
+			now := time.Now()
+			if !p.Paused {
+				if err := p.step(now.Sub(last), playback.Tick); err != nil {
+					return err
+				}
+			}
+			last = now
+			if p.Paused {
+				continue
+			}
+			if err := paint(); err != nil {
+				return err
+			}
+			if headless && now.Sub(progress) >= 5*time.Second {
+				fmt.Fprintf(stderr, "Replay %s/%s · %d/%d events · %d frames\n", replayTime(p.Position), replayTime(p.Until), p.Next, len(p.Source.Events), len(p.frames))
+				progress = now
+			}
+			if p.Position >= p.Until {
+				if headless {
+					return nil
+				}
+				p.Paused = true
+			}
+			continue
+		}
+		if !open {
+			return io.EOF
+		}
+		key = input.Consume(key)
+		if key == 0 {
+			continue
+		}
+		now := time.Now()
+		quit, err := p.control(key, now.Sub(last))
+		last = now
+		if err != nil || quit {
+			return err
+		}
+		if err = paint(); err != nil {
+			return err
+		}
+	}
+}
+
 // RunSessionUIReplay is an offline entry point. It shares the native presenter,
 // but constructs no host, upstream connection, execution capability, or store.
 func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Service, ctx context.Context, args []string, stdin, stdout, stderr *os.File) (code int) {
@@ -357,11 +436,6 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 	}()
 	started := time.Now()
 	run := func(keys <-chan byte, out io.Writer) error {
-		var input terminalsession.ReplayInput
-		defer input.Close()
-		tick := time.NewTicker(33 * time.Millisecond)
-		defer tick.Stop()
-		last, progress := time.Now(), time.Now()
 		paint := func() error {
 			w, h := *width, *height
 			if !*headless {
@@ -373,67 +447,7 @@ func RunSessionUIReplay(activity *activitymodel.Service, service *playback.Servi
 			}
 			return p.paint(out, w, h)
 		}
-		if err := paint(); err != nil {
-			return err
-		}
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-input.EscapeReady():
-				// Only a standalone Escape quits; CSI/SS3/mouse reports do not.
-				input.ExpireEscape()
-				if p.ui.shell.output != nil {
-					p.ui.shell.outputKey("\x1b")
-					if err := paint(); err != nil {
-						return err
-					}
-					continue
-				}
-				return nil
-			case key, ok := <-keys:
-				if !ok {
-					return io.EOF
-				}
-				key = input.Consume(key)
-				if key == 0 {
-					continue
-				}
-				now := time.Now()
-				quit, err := p.control(key, now.Sub(last))
-				last = now
-				if err != nil || quit {
-					return err
-				}
-				if err = paint(); err != nil {
-					return err
-				}
-			case <-tick.C:
-				now := time.Now()
-				if !p.Paused {
-					if err := p.step(now.Sub(last), playback.Tick); err != nil {
-						return err
-					}
-				}
-				last = now
-				if p.Paused {
-					continue
-				}
-				if err := paint(); err != nil {
-					return err
-				}
-				if *headless && now.Sub(progress) >= 5*time.Second {
-					fmt.Fprintf(stderr, "Replay %s/%s · %d/%d events · %d frames\n", replayTime(p.Position), replayTime(p.Until), p.Next, len(source.Events), len(p.frames))
-					progress = now
-				}
-				if p.Position >= p.Until {
-					if *headless {
-						return nil
-					}
-					p.Paused = true
-				}
-			}
-		}
+		return p.run(keys, paint, *headless, stderr)
 	}
 	if *headless {
 		err = run(nil, io.Discard)
