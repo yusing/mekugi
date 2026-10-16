@@ -19,10 +19,12 @@ observation capacity must remain visible and bounded without terminating unrelat
 - [Activity](../../modules/activity/SPEC.md) owns feed records, roster derivation, semantic values,
   canonical group membership and retained output in the attached session store. Its terminal view owns disclosure, geometry,
   cards, agent colors and reveal animation over those values.
-- `internal/ui/diffview` owns file/change navigation and live preview cards, including
-  their viewport and reveal animation. Captured-file composition and attribution
-  remain in `internal/livediff`; [live preview](../../modules/livepreview/SPEC.md)
-  owns plain snapshots, source projection, turn retirement and provisional publication.
+- [Change history](../../modules/changehistory/SPEC.md) owns saved-review composition,
+  attribution, file/change indexes and caller selection. Its terminal view owns
+  navigation painting and viewports over that model.
+- [Live preview](../../modules/livepreview/SPEC.md) owns plain snapshots, source
+  projection, turn retirement and provisional publication. Its terminal view owns
+  cards, source windows, reveal animation and settling timers.
   The application review join owns admitted scope and retained-change delivery
   even when live preview is absent.
   Rendering a preview cannot finalize evidence.

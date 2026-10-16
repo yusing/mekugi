@@ -18,9 +18,9 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 // Live edits temporarily replace their caller's transcript, never another pane.
@@ -165,7 +165,7 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 		}
 	case "coverage":
 		if strings.HasPrefix(event.Status, "RECONNECTING:") {
-			u.liveDock = diffview.PreviewPane{}
+			u.liveDock = previewview.PreviewPane{}
 			clear(u.livePending)
 		}
 	case "change":

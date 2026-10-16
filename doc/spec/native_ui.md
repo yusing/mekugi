@@ -378,6 +378,30 @@ edits refresh content without moving the chosen file or scroll position. Saved
 Diff has no follow mode; streaming-preview following is unchanged. Roster
 selection changes the transcript without closing an open Diff.
 
+The saved-review [model](../../modules/changehistory/SPEC.md) owns captured
+composition, attribution and caller selection. Its Files navigator uses stable
+path ordering, with folders first in tree mode. Tree/flat preference and collapsed
+folders survive filtering; matching descendants remain selectable. Clearing the
+filter restores its prior navigation position. Next/previous file navigation
+uses the matching set and reveals destinations inside collapsed folders.
+
+The Changes tab paints captured order as one graph lane per caller, branching
+from `main` at that caller's first change. Rows show change ID, source, file count
+and known line counts; unavailable counts use `?`. Single-file changes show the
+file nested beside a wide diff or inline in a stacked list. Shared
+[diff labels](../../libraries/diffrender/SPEC.md) preserve status and rename sources.
+Change navigation visits each captured file in order; caller selection composes
+other callers as baseline without altering evidence.
+
+The active list row is shaded without a separate marker column. Hover underlines
+its text, excluding tree/graph lanes. Moving the cursor previews the file while
+retaining list focus; Enter opens it at its heading, and Esc returns to the list.
+Opening a caller branch remembers the prior caller filter for Esc. File and hunk
+jumps remember the file-local position they leave; scrolling through a file does
+not. A scrolled file keeps its heading pinned. Updates retain selected file,
+cursor and top-row identities, while resize preserves the logical source anchor
+and keeps the focused list entry visible. Help does not permanently consume rows.
+
 Clicking a compact Edit event opens the shared dialog at the clicked file’s
 captured diff, rather than the first file in a multi-file capture. This temporary file preview shows the exact
 retained capture, not the combined result of later edits, so shifted or superseded

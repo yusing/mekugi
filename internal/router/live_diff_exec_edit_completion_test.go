@@ -18,7 +18,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 )
 
@@ -277,41 +276,4 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("late shell completion resurrected the dock")
 	}
-}
-
-func TestExecEditCompletionTerminalFrameBeforeHostExit(t *testing.T) {
-	t.Parallel()
-	workspace := t.TempDir()
-	observation, path := execEditThenTestObservation(t, workspace)
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
-	terminal := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
-	terminal.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	registry := &execWindowRegistry{}
-	registry.open(&execWindow{ref: "edit-and-test", roots: []string{workspace}, thread: "thread"})
-	defer registry.close("edit-and-test")
-	registry.preview("edit-and-test", observation, broker, workspace, "thread", "/root", nil)
-	writeTestFile(t, path, "aft")
-	terminal.frame(t, func(frame string) bool {
-		frame = ansi.Strip(frame)
-		return strings.Contains(frame, "observed so far") && strings.Contains(frame, "+aft")
-	})
-	writeTestFile(t, path, "after\n")
-	frame := terminal.frame(t, func(frame string) bool {
-		frame = ansi.Strip(frame)
-		return strings.Contains(frame, "observed edit") && strings.Contains(frame, "+after") && !strings.Contains(frame, "observed so far")
-	})
-	if strings.Contains(frame, "other writes unknown") || strings.Contains(frame, "go test") {
-		t.Fatalf("test observation leaked into the completed edit card: %s", frame)
-	}
-	registry.mu.Lock()
-	open := registry.find("edit-and-test").closed.IsZero()
-	registry.mu.Unlock()
-	if !open {
-		t.Fatal("rendered completion finalized the still-running host invocation")
-	}
-	terminal.quit(t)
 }

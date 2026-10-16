@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -30,11 +29,11 @@ type terminalSelection struct {
 	pane                       terminalRect
 	questions                  []uint64
 	snippets                   []liveActivitySnippet
-	mention                    string                // Concise description Reference inserts.
-	diff                       []livediff.LineSource // Diff row attribution, aligned with rows.
-	workspace                  string                // Diff workspace for the mentioned path.
-	top, fixed                 int                   // Frozen document viewport and pinned prefix rows.
-	screenRows                 int                   // Frame height at the press, for resize invalidation.
+	mention                    string                  // Concise description Reference inserts.
+	diff                       []diffrender.LineSource // Diff row attribution, aligned with rows.
+	workspace                  string                  // Diff workspace for the mentioned path.
+	top, fixed                 int                     // Frozen document viewport and pinned prefix rows.
+	screenRows                 int                     // Frame height at the press, for resize invalidation.
 }
 
 // document retains off-screen rows in the same coordinate space as the press.
@@ -569,7 +568,7 @@ func (u *terminalUI) selectionScreen(source []string, x, y int) ([]string, strin
 // divider; each row's text starts after its gutter and line number.
 func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
 	c, pane := u.diff, u.layout.diff
-	if c == nil || !c.diffMode || u.diffFailure != "" || len(c.painted) <= c.sourceY || len(u.paintedRows) != u.height {
+	if c == nil || u.diffFailure != "" || len(c.painted) <= c.sourceY || len(u.paintedRows) != u.height {
 		return nil
 	}
 	// Rows above sourceY are the title or a stacked navigator and its rule.
@@ -579,7 +578,7 @@ func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
 	}
 	rows, _ := u.selectionScreen(u.paintedRows, x, y)
 	contentLeft := make([]int, rect.y+rect.h)
-	sources := make([]livediff.LineSource, rect.y+rect.h)
+	sources := make([]diffrender.LineSource, rect.y+rect.h)
 	for row, source := range c.painted[c.sourceY : c.sourceY+rect.h] {
 		contentLeft[rect.y+row] = rect.x + source.Content
 		sources[rect.y+row] = source
@@ -588,15 +587,15 @@ func (u *terminalUI) diffSelection(x, y int) *terminalSelection {
 	if len(c.lines) > rect.h {
 		lines, sources := c.lines, c.rendering.Sources
 		fixed := 0
-		if c.pinned && len(c.view.Files) > c.view.Selected && c.offset > c.rendering.Starts[c.view.Selected] {
+		if len(c.view.Files) > c.view.Selected && c.offset > c.rendering.Starts[c.view.Selected] {
 			heading := c.rendering.Starts[c.view.Selected]
 			lines = append([]string{lines[heading]}, lines...)
-			sources = append([]livediff.LineSource{sources[heading]}, sources...)
+			sources = append([]diffrender.LineSource{sources[heading]}, sources...)
 			fixed = 1
 		}
 		s.document(lines, c.offset, fixed)
 		s.contentLeft = make([]int, len(s.rows))
-		s.diff = make([]livediff.LineSource, len(s.rows))
+		s.diff = make([]diffrender.LineSource, len(s.rows))
 		for i, source := range sources {
 			if rect.y+i >= len(s.rows) {
 				break

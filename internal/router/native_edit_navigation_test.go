@@ -11,7 +11,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -20,9 +20,9 @@ func TestNativeEditClickOpensExactCapturedDiffDialog(t *testing.T) {
 		for _, repeated := range []bool{false, true} {
 			t.Run(fmt.Sprint(grouped, repeated), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
-				captures := []livediff.Chunk{
-					liveDiffCapture("wrong", "file20.go", 1, "wrong-old\n", "wrong-new\n", livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
-					liveDiffCapture("target", "file20.go", 2, "target-old\n", "target-new\n", livediff.Origin{Change: "amber20", Caller: "/root", Source: "apply_patch"}),
+				captures := []presentation.Chunk{
+					liveDiffCapture("wrong", "file20.go", 1, "wrong-old\n", "wrong-new\n", presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
+					liveDiffCapture("target", "file20.go", 2, "target-old\n", "target-new\n", presentation.Origin{Change: "amber20", Caller: "/root", Source: "apply_patch"}),
 				}
 				c := liveDiffChangesController(t, 120, 28, captures)
 				u.shell.diff = c
@@ -168,9 +168,9 @@ func TestNativeEditDialogShowsHistoricalHunkNotLaterCapture(t *testing.T) {
 	before := liveDiffLinesFile("target", 100)
 	after := strings.Replace(before, "target_line_80", "clicked_hunk", 1)
 	later := strings.Repeat("later_hunk\n", 100) + after
-	captures := []livediff.Chunk{
-		liveDiffCapture("clicked", "target.go", 1, before, after, livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
-		liveDiffCapture("later", "target.go", 2, after, later, livediff.Origin{Change: "amber2", Caller: "/root", Source: "apply_patch"}),
+	captures := []presentation.Chunk{
+		liveDiffCapture("clicked", "target.go", 1, before, after, presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
+		liveDiffCapture("later", "target.go", 2, after, later, presentation.Origin{Change: "amber2", Caller: "/root", Source: "apply_patch"}),
 	}
 	c := liveDiffChangesController(t, 120, 24, captures)
 	u.shell.diff = c

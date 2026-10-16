@@ -14,11 +14,11 @@ import (
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 type liveDiffPreviewWorker struct {
@@ -211,7 +211,7 @@ func (w *liveDiffPreviewWorker) run() {
 		}
 		// Coalesce bursts, but keep producing while the provider is still
 		// streaming. No filesystem work runs on the provider forwarding path.
-		timer := time.NewTimer(diffview.PreviewFrameDelay)
+		timer := time.NewTimer(previewview.PreviewFrameDelay)
 		select {
 		case <-w.ctx.Done():
 			timer.Stop()
@@ -236,7 +236,7 @@ func (w *liveDiffPreviewWorker) run() {
 		// Do not manufacture a live shell stream after completion if no target
 		// diff was shown while input was arriving. The terminal can keep such a
 		// completion out of its live dock while retaining the final projection.
-		release := final && (encoded && len(lastFiles) == 0 || time.Since(finishedAt) >= diffview.PreviewFinishDrain)
+		release := final && (encoded && len(lastFiles) == 0 || time.Since(finishedAt) >= previewview.PreviewFinishDrain)
 		// Provider deltas arrive in bursts. Reveal the received input at a steady
 		// pace instead of jumping per burst. A completed call waits briefly for the
 		// reveal to catch up; a cancelled transport shows its final input at once.
@@ -244,7 +244,7 @@ func (w *liveDiffPreviewWorker) run() {
 		if w.ctx.Err() == nil && !release {
 			frames := 1
 			if !lastAdvance.IsZero() {
-				frames = int(time.Since(lastAdvance) / diffview.PreviewFrameDelay)
+				frames = int(time.Since(lastAdvance) / previewview.PreviewFrameDelay)
 			}
 			lastAdvance = time.Now()
 			shown = pacer.advance(input, frames, final, encoded)
@@ -282,7 +282,7 @@ func (w *liveDiffPreviewWorker) run() {
 		if changed && !release && !lastReveal.IsZero() && w.ctx.Err() == nil {
 			// Transport candidates may arrive every animation frame. Reveal a
 			// new target unit only after the preceding one has settled visibly.
-			if delay := time.Until(lastReveal.Add(diffview.PreviewUnitDelay)); delay > 0 {
+			if delay := time.Until(lastReveal.Add(previewview.PreviewUnitDelay)); delay > 0 {
 				timer := time.NewTimer(delay)
 				select {
 				case <-timer.C:

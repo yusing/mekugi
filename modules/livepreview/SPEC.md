@@ -21,7 +21,7 @@ retained-change delivery, independently of this optional feature. It supplies an
 immutable admitted scope to preview and uses the existing change-history and
 command-segment owners. The module imports neither feature.
 
-`internal/ui/diffview` retains terminal layout, source following, file windows,
+`terminalview` owns terminal layout, source following, file windows,
 selection, reveal animation, and per-call settling timers. The
 [native UI contract](../../doc/spec/native_ui.md) owns their interaction. Saved
 review composition and durable changes remain outside this module.

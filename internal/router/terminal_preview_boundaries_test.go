@@ -11,7 +11,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
@@ -22,7 +22,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
 	sub := testReview(broker).Subscribe()
 	<-sub.Events()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	baseline := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
 	previous, _ := baseline.project("*** Begin Patch\n*** Add File: previous.txt\n+PREVIOUS DIFF\n*** End Patch\n", workspace, true)
 	previous.ID, previous.Workspace, previous.Thread, previous.Complete = "baseline", workspace, "root", true

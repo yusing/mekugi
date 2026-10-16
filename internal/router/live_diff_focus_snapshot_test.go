@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -14,11 +14,10 @@ func TestUISnapshotLiveDiffFocus(t *testing.T) {
 	for _, width := range []int{70, 120} {
 		for _, focused := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%d-files-%t", width, focused), func(t *testing.T) {
-				c := liveDiffChangesController(t, width, 18, []livediff.Chunk{
-					liveDiffCapture("one", "a.go", 1, "old\n", "new\n", livediff.Origin{}),
-					liveDiffCapture("two", "b.go", 2, "before\n", "after\n", livediff.Origin{}),
+				c := liveDiffChangesController(t, width, 18, []presentation.Chunk{
+					liveDiffCapture("one", "a.go", 1, "old\n", "new\n", presentation.Origin{}),
+					liveDiffCapture("two", "b.go", 2, "before\n", "after\n", presentation.Origin{}),
 				})
-				c.native = true
 				c.navigation.Focused = focused
 				var output bytes.Buffer
 				c.stdout = &output

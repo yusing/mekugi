@@ -59,7 +59,7 @@ func (r *Renderer) ColorDiffRows(ctx context.Context, theme Theme, path, source 
 		if err != nil {
 			return err
 		}
-		AlignHunkColors(rows, before, after)
+		diffmodel.AlignRows(rows, before, after)
 		return nil
 	})
 }
@@ -80,7 +80,7 @@ func (r *Renderer) DiffOutput(ctx context.Context, theme Theme, source string, c
 		color = func(review diffmodel.ReviewFile, rows []diffmodel.ReviewRow) error {
 			before, after, err := r.ColorHunk(ctx, theme, review, rows)
 			if err == nil {
-				AlignHunkColors(rows, before, after)
+				diffmodel.AlignRows(rows, before, after)
 			}
 			return err
 		}
@@ -238,22 +238,6 @@ func diffRows(source, path string, sections *[]diffSection, color func(diffmodel
 	}
 	finish(len(lines))
 	return result, nil
-}
-
-// AlignHunkColors replaces caller-owned row text with its before/after color,
-// preserving hunk geometry without allocating another row slice.
-func AlignHunkColors(rows []diffmodel.ReviewRow, before, after []string) {
-	oldIndex, newIndex := 0, 0
-	for i, row := range rows {
-		if row.Kind != '+' {
-			rows[i].Text = before[oldIndex]
-			oldIndex++
-		}
-		if row.Kind != '-' {
-			rows[i].Text = after[newIndex]
-			newIndex++
-		}
-	}
 }
 
 // Output retention expands the separator tab in diff -u timestamp headers.

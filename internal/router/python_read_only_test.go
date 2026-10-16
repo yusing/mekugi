@@ -12,7 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -25,7 +25,7 @@ func TestUISnapshotPythonReadOnlyScriptSource(t *testing.T) {
 	if err != nil || !recognized || len(files) != 1 {
 		t.Fatalf("script source preview: %+v %t %v", files, recognized, err)
 	}
-	pane := diffview.PreviewPane{Prefer: "/root"}
+	pane := previewview.PreviewPane{Prefer: "/root"}
 	pane.Update(previewmodel.Preview{ID: "read-only", Workspace: directory, Caller: "/root", Status: previewmodel.PreviewEdit, Files: files})
 	rows, err := pane.Render(t.Context(), directory, diffrender.DarkTheme, 80, 12)
 	if err != nil {

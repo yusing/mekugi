@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -213,12 +213,12 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 		{Name: "/root/a", Started: now.Add(-time.Minute), InputTokens: 1000, OutputTokens: 100},
 		{Name: "/root/b", Started: now.Add(-time.Minute)},
 	}})
-	chunk := func(caller, diff string, incomplete string) livediff.Chunk {
-		return livediff.Chunk{Origin: livediff.Origin{Caller: caller}, Review: diffmodel.ReviewFile{Diff: diff, Incomplete: incomplete}}
+	chunk := func(caller, diff string, incomplete string) presentation.Chunk {
+		return presentation.Chunk{Origin: presentation.Origin{Caller: caller}, Review: diffmodel.ReviewFile{Diff: diff, Incomplete: incomplete}}
 	}
-	v.lineCounts = liveDiffCallerCounts([]livediff.File{
-		{Chunks: []livediff.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
-		{Chunks: []livediff.Chunk{chunk("/root", "@@ -0,0 +1 @@\n+d", ""), chunk("/root/b", "", "truncated")}},
+	v.lineCounts = presentation.CallerCounts([]presentation.File{
+		{Chunks: []presentation.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
+		{Chunks: []presentation.Chunk{chunk("/root", "@@ -0,0 +1 @@\n+d", ""), chunk("/root/b", "", "truncated")}},
 	})
 	v.netCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
 	lines := v.nativeRoster(150, 8, now, true)
@@ -249,11 +249,11 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 
 // Rewritten scratch files outside the workspace are not project edits.
 func TestLiveDiffCallerCountsSkipFilesOutsideWorkspace(t *testing.T) {
-	chunk := func(caller, workspace, before, after string) livediff.Chunk {
-		return livediff.Chunk{Workspace: workspace, Origin: livediff.Origin{Caller: caller},
+	chunk := func(caller, workspace, before, after string) presentation.Chunk {
+		return presentation.Chunk{Workspace: workspace, Origin: presentation.Origin{Caller: caller},
 			Review: diffmodel.ReviewFile{BeforePath: before, AfterPath: after, Diff: "@@ -1 +1 @@\n-x\n+y"}}
 	}
-	counts := liveDiffCallerCounts([]livediff.File{{Chunks: []livediff.Chunk{
+	counts := presentation.CallerCounts([]presentation.File{{Chunks: []presentation.Chunk{
 		chunk("/root", "/w", "/w/a.go", "/w/a.go"),
 		chunk("/root", "/w", "/tmp/stats.txt", "/tmp/stats.txt"),
 		chunk("/root", "/w", "/w-other/b.go", "/w-other/b.go"),

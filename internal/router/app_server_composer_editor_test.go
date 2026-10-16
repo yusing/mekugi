@@ -17,8 +17,8 @@ import (
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/livediff"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"golang.org/x/term"
 )
 
@@ -92,8 +92,8 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 		}
 		c := u.shell.diff
 		c.workspace = dir
-		c.files = []livediff.File{{Path: path, Chunks: []livediff.Chunk{
-			liveDiffCapture("selected", path, 1, "before\n", "original file\n", livediff.Origin{}),
+		c.files = []presentation.File{{Path: path, Chunks: []presentation.Chunk{
+			liveDiffCapture("selected", path, 1, "before\n", "original file\n", presentation.Origin{}),
 		}}}
 		c.view.Files = c.files
 		c.view.RefreshVisible()

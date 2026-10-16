@@ -1,9 +1,7 @@
 package router
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -16,9 +14,8 @@ import (
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 func previewViewFixture(id string, rows int) previewmodel.Preview {
@@ -32,7 +29,7 @@ func previewViewFixture(id string, rows int) previewmodel.Preview {
 
 func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	for _, size := range []int{2, 30, 300, 2000} {
 		pane.Update(previewViewFixture("one", size))
 		lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 12)
@@ -62,7 +59,7 @@ func TestLiveDiffPreviewPaneFollowAndLifecycle(t *testing.T) {
 
 func TestLiveDiffPreviewPaneFinishedCardPersistsUntilReplaced(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(previewViewFixture("done", 2))
 	pane.Update(previewViewFixture("live", 2))
 	pane.Update(previewmodel.Preview{ID: "done"})
@@ -79,104 +76,9 @@ func TestLiveDiffPreviewPaneFinishedCardPersistsUntilReplaced(t *testing.T) {
 	}
 }
 
-func TestLiveDiffPreviewUpdatePreemptsDistantFrame(t *testing.T) {
-	t.Parallel()
-	c := newLiveDiffTerminalController(nil, "/workspace", os.Stdout)
-	defer c.close()
-	c.scope.Workspaces = map[string]map[string]bool{"/workspace": {"thread": true}}
-	c.previewPane.Update(previewViewFixture("finished", 1))
-	c.previewPane.Update(previewViewFixture("live", 1))
-	c.previewPane.Update(previewmodel.Preview{ID: "finished"})
-	c.previewFrame.Reset(time.Minute)
-	c.previewFrameC = c.previewFrame.C
-	c.previewFrameDue = time.Now().Add(time.Minute)
-	preview := previewViewFixture("live", 2)
-	if done, err := c.applyEvent(t.Context(), reviewEvent{Kind: "preview", Preview: &preview}); done || err != nil {
-		t.Fatalf("preview event: done=%v err=%v", done, err)
-	}
-	if !c.dirty || c.previewFrameC != nil {
-		t.Fatalf("already-paced input was delayed again: dirty=%v timer=%v", c.dirty, c.previewFrameC != nil)
-	}
-}
-
-func TestLiveDiffFirstAndCompletedInputRedrawImmediately(t *testing.T) {
-	t.Parallel()
-	c := newLiveDiffTerminalController(nil, "/workspace", os.Stdout)
-	defer c.close()
-	c.scope.Workspaces = map[string]map[string]bool{"/workspace": {"thread": true}}
-	c.dirty = false
-	preview := previewViewFixture("first", 1)
-	if _, err := c.applyEvent(t.Context(), reviewEvent{Kind: "preview", Preview: &preview}); err != nil || !c.dirty || c.previewFrameC != nil {
-		t.Fatalf("first input waited for pacing timer: dirty=%v timer=%v err=%v", c.dirty, c.previewFrameC != nil, err)
-	}
-	c.dirty = false
-	if _, err := c.applyEvent(t.Context(), reviewEvent{Kind: "preview", Preview: &previewmodel.Preview{ID: "first"}}); err != nil || !c.dirty || c.previewFrameC != nil {
-		t.Fatalf("completion waited for pacing timer: dirty=%v timer=%v err=%v", c.dirty, c.previewFrameC != nil, err)
-	}
-}
-
-func TestLiveDiffFinishedInputRemainsOnTerminalWhileWaiting(t *testing.T) {
-	t.Parallel()
-	master, slave, err := pty.Open()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer master.Close()
-	defer slave.Close()
-	if err := pty.Setsize(master, &pty.Winsize{Rows: 12, Cols: 100}); err != nil {
-		t.Fatal(err)
-	}
-	c := newLiveDiffTerminalController(nil, "/workspace", slave)
-	defer c.close()
-	c.coverage = ""
-	c.previewPane.Update(previewViewFixture("done", 2))
-	c.previewPane.Update(previewmodel.Preview{ID: "done"})
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	resizes := make(chan os.Signal, 1)
-	frames := make(chan string, 2)
-	go func() {
-		var pending synchronizedFrameBuffer
-		buffer := make([]byte, 8192)
-		for {
-			n, err := master.Read(buffer)
-			if err != nil {
-				return
-			}
-			pending.Append(buffer[:n])
-			for {
-				frame, ok := pending.Next()
-				if !ok {
-					break
-				}
-				frames <- string(frame)
-			}
-		}
-	}()
-	done := make(chan error, 1)
-	go func() { done <- c.run(ctx, nil, nil, resizes) }()
-	for index := range 2 {
-		select {
-		case frame := <-frames:
-			if !strings.Contains(ansi.Strip(frame), "○ edit") || !strings.Contains(frame, "+stream_0002") || strings.Contains(frame, "Waiting for live input") {
-				t.Fatalf("waiting frame lost completed input: %q", frame)
-			}
-			if index == 0 {
-				resizes <- os.Interrupt
-			}
-		case <-time.After(2 * time.Second):
-			t.Fatal("terminal did not redraw after resize")
-		}
-	}
-	cancel()
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	for i := 1; i <= 500; i++ {
 		pane.Update(previewViewFixture("one", i))
 	}
@@ -202,7 +104,7 @@ func TestLiveDiffPreviewPaneLatestOnlyAndIndependent(t *testing.T) {
 
 func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	preview := previewViewFixture("one", 1)
 	preview.Input = strings.Repeat("界", 100) + "TIP\n"
 	pane.Update(preview)
@@ -225,7 +127,7 @@ func TestLiveDiffPreviewLayoutAndWrapping(t *testing.T) {
 func TestLiveDiffPreviewRepeatedSnapshotKeepsFocus(t *testing.T) {
 	t.Parallel()
 	// A repeated snapshot must not move focus, because prepare reuses it.
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(previewViewFixture("one", 30))
 	first, _ := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 80, 8)
 	pane.Update(previewViewFixture("one", 30))
@@ -237,7 +139,7 @@ func TestLiveDiffPreviewRepeatedSnapshotKeepsFocus(t *testing.T) {
 
 func BenchmarkLiveDiffPreviewPaneFrame(b *testing.B) {
 	preview := previewViewFixture("one", 2000)
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	base := preview.Input
 	sequence := 0
 	b.ReportAllocs()
@@ -255,7 +157,7 @@ func BenchmarkLiveDiffPreviewPaneFrame(b *testing.B) {
 
 func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	first := previewViewFixture("first", 100)
 	first.Caller = "/root/editor"
 	second := previewViewFixture("second", 200)
@@ -316,7 +218,7 @@ func TestLiveDiffConcurrentPreviewCards(t *testing.T) {
 
 func TestLiveDiffPreviewCallerSafeAndBounded(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	preview := previewViewFixture("caller", 1)
 	preview.Caller = "/root/\x1b[2J" + strings.Repeat("界", 80)
 	pane.Update(preview)
@@ -335,7 +237,7 @@ func TestLiveDiffPreviewCallerSafeAndBounded(t *testing.T) {
 
 func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	preview := previewViewFixture("caller", 1)
 	preview.Caller = "/root/review_stock_preview"
 	pane.Update(preview)
@@ -359,7 +261,7 @@ func TestLiveDiffPreviewCallerUsesAvailableWidth(t *testing.T) {
 }
 
 func BenchmarkLiveDiffConcurrentPreviewFrame(b *testing.B) {
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	for i := range 16 {
 		pane.Update(previewViewFixture(fmt.Sprint(i), 2000))
 	}
@@ -389,7 +291,7 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 		{"diff tail", previewmodel.Preview{Status: previewmodel.PreviewEdit, Input: "+x\n", DiffText: true, Truncated: true}, "◐ edit · tail"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var pane diffview.PreviewPane
+			var pane previewview.PreviewPane
 			tc.preview.ID, tc.preview.Workspace, tc.preview.Thread = "one", "/workspace", "thread"
 			pane.Update(tc.preview)
 			lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 120, 8)
@@ -401,7 +303,7 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 			}
 		})
 	}
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit, Files: []diffmodel.ReviewFile{modified}})
 	pane.Update(previewmodel.Preview{ID: "one"})
 	lines, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 120, 8)
@@ -413,7 +315,7 @@ func TestLiveDiffPreviewTitleShowsFileStatusAndCounts(t *testing.T) {
 
 func TestLiveDiffPendingEditRemovesEmptyCard(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit, Input: "\n"})
 	pane.Update(previewmodel.Preview{ID: "one", Workspace: "/workspace", Thread: "thread"})
 	if len(pane.Views) != 0 || len(pane.Order) != 0 {
@@ -427,7 +329,7 @@ func TestLiveDiffPendingEditRemovesEmptyCard(t *testing.T) {
 
 func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 	t.Parallel()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	for _, call := range []struct{ id, caller string }{{"a1", "/root/a"}, {"b1", "/root/b"}, {"c1", "/root/c"}} {
 		preview := previewViewFixture(call.id, 5)
 		preview.Caller = call.caller
@@ -468,7 +370,7 @@ func TestLiveDiffPreviewCardsKeepSlotsAndGutter(t *testing.T) {
 	}
 
 	// Line numbers keep their width when the source shrinks back.
-	var single diffview.PreviewPane
+	var single previewview.PreviewPane
 	single.Update(previewViewFixture("one", 100))
 	if _, err := single.Render(t.Context(), "/workspace", diffrender.DarkTheme, 100, 10); err != nil {
 		t.Fatal(err)
@@ -595,39 +497,39 @@ func TestLiveDiffPreviewPacerBuffersUnits(t *testing.T) {
 
 func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
 	t.Parallel()
-	rows := func(texts ...string) []diffview.PreviewRow {
-		var out []diffview.PreviewRow
+	rows := func(texts ...string) []previewview.PreviewRow {
+		var out []previewview.PreviewRow
 		for i, text := range texts {
-			out = append(out, diffview.PreviewRow{Number: i + 1, Kind: ' ', Text: text})
+			out = append(out, previewview.PreviewRow{Number: i + 1, Kind: ' ', Text: text})
 		}
 		return out
 	}
 	start := time.Unix(100, 0)
 	before := rows("a\n", "b\n", "par")
-	born := diffview.PreviewBirths(nil, before, nil, start)
+	born := previewview.PreviewBirths(nil, before, nil, start)
 	// A first display cascades, bounded by the maximum stagger.
-	if !born[0].Equal(start) || !born[1].After(born[0]) || born[2].Sub(start) > diffview.PreviewMaxStagger {
+	if !born[0].Equal(start) || !born[1].After(born[0]) || born[2].Sub(start) > previewview.PreviewMaxStagger {
 		t.Fatalf("first cascade: %v", born)
 	}
 	later := start.Add(time.Second)
 	after := rows("a\n", "b\n", "partial\n", "c\n")
-	next := diffview.PreviewBirths(before, after, born, later)
+	next := previewview.PreviewBirths(before, after, born, later)
 	// Unchanged and grown rows keep their times; only the new row fades.
 	if !slices.Equal(next[:3], born) || !next[3].Equal(later) {
 		t.Fatalf("carried births: %v from %v", next, born)
 	}
 	// A clipped tail slides and renumbers without refading its rows.
 	slid := rows("b\n", "partial\n", "c\n", "d\n")
-	shifted := diffview.PreviewBirths(after, slid, next, later.Add(time.Second))
+	shifted := previewview.PreviewBirths(after, slid, next, later.Add(time.Second))
 	if !slices.Equal(shifted[:3], next[1:]) || !shifted[3].Equal(later.Add(time.Second)) {
 		t.Fatalf("sliding tail: %v from %v", shifted, next)
 	}
 	// Context renumbered under an inserted row keeps its time.
-	renumbered := slices.Insert(slices.Clone(after), 1, diffview.PreviewRow{Number: 2, Kind: '+', Text: "new\n"})
+	renumbered := slices.Insert(slices.Clone(after), 1, previewview.PreviewRow{Number: 2, Kind: '+', Text: "new\n"})
 	for i := 2; i < len(renumbered); i++ {
 		renumbered[i].Number++
 	}
-	inserted := diffview.PreviewBirths(after, renumbered, next, later.Add(2*time.Second))
+	inserted := previewview.PreviewBirths(after, renumbered, next, later.Add(2*time.Second))
 	if !inserted[0].Equal(next[0]) || !inserted[1].Equal(later.Add(2*time.Second)) || !slices.Equal(inserted[2:], next[1:]) {
 		t.Fatalf("renumbered context: %v from %v", inserted, next)
 	}
@@ -636,8 +538,8 @@ func TestLiveDiffPreviewBirthsCarryAcrossSnapshots(t *testing.T) {
 func TestLiveDiffPreviewCompletionDoesNotFadeFinalSnapshot(t *testing.T) {
 	t.Parallel()
 	start := time.Unix(100, 0)
-	view := diffview.PreviewView{Current: previewViewFixture("done", 2)}
-	motion := diffview.PreviewMotion{Enabled: true, Canvas: diffrender.DarkTheme.Canvas(), Now: start}
+	view := previewview.PreviewView{Current: previewViewFixture("done", 2)}
+	motion := previewview.PreviewMotion{Enabled: true, Canvas: diffrender.DarkTheme.Canvas(), Now: start}
 	streaming, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 70, 8, motion)
 	if err != nil {
 		t.Fatal(err)
@@ -698,9 +600,9 @@ func TestLiveDiffPreviewPacerKeepsEscapesWhole(t *testing.T) {
 func TestLiveDiffPreviewFadesOnlyChangedText(t *testing.T) {
 	t.Parallel()
 	path := "/workspace/a.txt"
-	view := diffview.PreviewView{Current: previewmodel.Preview{ID: "fade", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit,
+	view := previewview.PreviewView{Current: previewmodel.Preview{ID: "fade", Workspace: "/workspace", Thread: "thread", Status: previewmodel.PreviewEdit,
 		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile(path, path, "keep\nold\n", "keep\nnew\n")}}}
-	motion := diffview.PreviewMotion{Enabled: true, Canvas: diffrender.DarkTheme.Canvas(), Now: time.Now()}
+	motion := previewview.PreviewMotion{Enabled: true, Canvas: diffrender.DarkTheme.Canvas(), Now: time.Now()}
 	fading, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 6, motion)
 	if err != nil {
 		t.Fatal(err)

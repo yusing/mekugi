@@ -12,6 +12,18 @@ Decoration preserves source text, row identity and wrapping geometry. Deletions
 and additions are tokenized separately. Partial or clipped unified output remains
 displayable without claiming complete changed-line counts.
 
+Layout records logical rows, wrapped rows, hunk boundaries and caller-supplied
+source attribution together. Deferred syntax decorates intersecting complete
+hunks only; it cannot change that geometry. File-section and viewport policy
+remain with the feature. Shared file labels use the model's status, including
+rename sources and unavailable counts.
+
+Replacement blocks emphasize changed words across consecutive rows while
+preserving syntax colors. Retained words keep their ordinary row fill; pure
+additions and removals do not invent word comparisons. Large blocks may omit
+word emphasis to bound work. Graphemes, source text and copy coordinates remain
+unchanged.
+
 Unknown languages, oversized syntax inputs and lexer failures fall back to plain
 text. Cancellation propagates. Each renderer retains bounded syntax caches;
 sessions share no mutable cache. Wrapping carries styles onto independently

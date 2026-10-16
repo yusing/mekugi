@@ -7,9 +7,9 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -28,7 +28,7 @@ func TestUISnapshotMoveActivityAndDialog(t *testing.T) {
 	c := liveDiffChangesController(t, 100, 24, nil)
 	c.workspace, c.data = workspace, newLiveDiffData()
 	c.data.order = []string{"move"}
-	c.data.attempts["move"] = liveDiffAttempt{thread: "main", correlation: "move\x000", chunks: []livediff.Chunk{{Workspace: workspace, Review: file}}}
+	c.data.attempts["move"] = liveDiffAttempt{thread: "main", correlation: "move\x000", chunks: []presentation.Chunk{{Workspace: workspace, Review: file}}}
 	u.shell.diff = c
 	if !u.shell.openActivityEdit(u.view, 1, pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)) {
 		t.Fatal("compressed move endpoint did not open exact captured dialog")

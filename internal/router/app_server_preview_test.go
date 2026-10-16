@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -27,7 +29,6 @@ import (
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -500,7 +501,6 @@ func newNativePreview(t *testing.T) *nativePreview {
 	u.ensureShell()
 	u.shell.diff.close()
 	u.shell.diff = newLiveDiffTerminalController(store, workspace, os.Stdout)
-	u.shell.diff.native, u.shell.diff.diffMode = true, true
 	u.shell.diff.stdout = u.shell.diffScreen
 	u.shell.diff.size = func() (int, int, error) {
 		return max(1, u.shell.layout.diff.w), max(3, u.shell.layout.diff.h), nil
@@ -1243,7 +1243,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 	keys("\x02" + "2\t")
 	frame := render()
 	l := &d.navigation.Changes
-	single := slices.IndexFunc(l.Rows, func(row diffview.ChangeRow) bool { return row.Kind == 'c' && len(l.Nodes[row.Node].Files) == 1 })
+	single := slices.IndexFunc(l.Rows, func(row changeview.ChangeRow) bool { return row.Kind == 'c' && len(l.Nodes[row.Node].Files) == 1 })
 	if single < 0 || strings.Contains(frame, " 1f ") || !strings.Contains(frame, "broker_race_test.go") {
 		t.Fatalf("a single-file change does not name its file:\n%s", frame)
 	}
@@ -1275,7 +1275,7 @@ func TestNativeDiffNavigatorPointerMovesAndBack(t *testing.T) {
 		t.Fatal("Esc did not return to the list")
 	}
 	// Enter on a branch filters its caller; Esc restores the previous filter.
-	branch := slices.IndexFunc(l.Rows, func(row diffview.ChangeRow) bool { return row.Kind == 'b' })
+	branch := slices.IndexFunc(l.Rows, func(row changeview.ChangeRow) bool { return row.Kind == 'b' })
 	if branch < 0 {
 		t.Fatal("no branch row")
 	}

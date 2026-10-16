@@ -43,7 +43,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Changed owner | Focused check |
 | --- | --- |
 | Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
-| Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./internal/ui/...`, plus affected router integration tests |
+| Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected router integration tests |
 | Neutral activity content, parsing and retained output | `./modules/activity/... ./contracts/scope ./libraries/sourceanalysis/markdownsyntax`, plus router receipt/command/segment/dialog and terminal operation-group/tail consumers |
 | Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./internal/router -run AppServer` |
 | Rollout evidence and offline source decoding | `./backends/codex/rollout`, plus router context, resume-settings, restored-Activity, session-inspection, corpus and optional-AX consumers |
@@ -65,7 +65,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Shell-hook helper, registration, and effective configuration | `./apps/mekugi/internal/launch ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Shared diff decoration and terminal primitives | `./libraries/diffrender/... ./libraries/terminalui/...`, plus affected native and replay consumers |
 | Shared display-text sanitization | `./libraries/textsanitize`, plus diff, Markdown, activity, native dialog and source-copy consumers |
-| Live diff UI or streaming | `./modules/livepreview/... ./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
+| Live diff UI or streaming | `./modules/changehistory/presentation ./modules/changehistory/terminalview ./modules/livepreview/...`, plus router `Diff\|Preview\|Native\|Terminal\|Selection\|SessionUIReplay`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./modules/outputdeduplication/...` |
 | Duplicate-output projection and submitted attachment codec | `./modules/outputdeduplication/... ./libraries/modelprotocol/attachments ./backends/codex/binding`, plus router duplicate-output, attachment, continuation, and provider-prefix consumers |
@@ -142,12 +142,13 @@ harness tests. The same package selection applies to `update-ui-snapshots`.
 Router fixtures cover
 skills and file pickers, Main's composer, resume
 sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
-output dialogs live in `modules/activity/terminalview/testdata/snapshots/`; diff navigation,
-change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
+output dialogs live in `modules/activity/terminalview/testdata/snapshots/`.
+Saved Diff rows, navigation and change graphs live in
+`modules/changehistory/terminalview/testdata/snapshots/`; streaming and native-batch
+previews live in `modules/livepreview/terminalview/testdata/snapshots/`.
 Launcher debug handoffs live in `apps/mekugi/internal/launch/testdata/snapshots/`.
 Shared Markdown, links and Mermaid fixtures live in `libraries/terminalui/testdata/snapshots/`.
-Shared source syntax styles live in `libraries/diffrender/testdata/snapshots/`;
-composed Diff rows remain in `internal/livediff/testdata/snapshots/`.
+Shared source syntax styles live in `libraries/diffrender/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories.
 
 `testsupport/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,

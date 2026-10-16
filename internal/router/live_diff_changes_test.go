@@ -15,22 +15,21 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 // liveDiffChangesController renders captures in diff mode at a fixed size.
-func liveDiffChangesController(t *testing.T, width, height int, captures []livediff.Chunk) *liveDiffTerminalController {
+func liveDiffChangesController(t *testing.T, width, height int, captures []presentation.Chunk) *liveDiffTerminalController {
 	t.Helper()
 	c := newLiveDiffTerminalController(nil, "/w", nil)
 	t.Cleanup(c.close)
 	c.stdout = io.Discard
 	c.size = func() (int, int, error) { return width, height, nil }
-	c.diffMode = true
-	c.view.Merge(livediff.GroupCaptures(captures))
+	c.view.Merge(presentation.GroupCaptures(captures))
 	c.view.RefreshVisible()
-	c.view.Following = false
+
 	c.frame(t)
 	return c
 }
@@ -51,8 +50,8 @@ func liveDiffLinesFile(path string, lines int) string {
 	return text.String()
 }
 
-func liveDiffCapture(key, path string, order uint64, before, after string, origin livediff.Origin) livediff.Chunk {
-	return livediff.Chunk{
+func liveDiffCapture(key, path string, order uint64, before, after string, origin presentation.Origin) presentation.Chunk {
+	return presentation.Chunk{
 		Key: key, CaptureOrder: order, Origin: origin,
 		Review: diffmodel.RenderReviewFile("/w/"+path, "/w/"+path, before, after),
 	}
@@ -60,9 +59,9 @@ func liveDiffCapture(key, path string, order uint64, before, after string, origi
 
 // Scrolling through a file must not leave a mid-file position for the next open.
 func TestLiveDiffOpenAfterScrollThroughLandsOnHeader(t *testing.T) {
-	var captures []livediff.Chunk
+	var captures []presentation.Chunk
 	for i, path := range []string{"a.go", "b.go", "c.go"} {
-		captures = append(captures, liveDiffCapture(path, path, uint64(i+1), "", liveDiffLinesFile(path, 30), livediff.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root", Source: "apply_patch"}))
+		captures = append(captures, liveDiffCapture(path, path, uint64(i+1), "", liveDiffLinesFile(path, 30), presentation.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root", Source: "apply_patch"}))
 		captures[i].Review = diffmodel.RenderReviewFile("", "/w/"+path, "", liveDiffLinesFile(path, 30))
 	}
 	c := liveDiffChangesController(t, 120, 20, captures)
@@ -126,11 +125,11 @@ func TestLiveDiffOpenAfterScrollThroughLandsOnHeader(t *testing.T) {
 }
 
 func TestLiveDiffChangesGraphLanesAndJumps(t *testing.T) {
-	main := livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
-	tests := livediff.Origin{Change: "apple1", Caller: "/root/script_tests", Source: "apply_patch"}
-	pane := livediff.Origin{Change: "arch1", Caller: "/root/pane_trace", Source: "python"}
-	later := livediff.Origin{Change: "amber2", Caller: "/root", Source: "sed"}
-	captures := []livediff.Chunk{
+	main := presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
+	tests := presentation.Origin{Change: "apple1", Caller: "/root/script_tests", Source: "apply_patch"}
+	pane := presentation.Origin{Change: "arch1", Caller: "/root/pane_trace", Source: "python"}
+	later := presentation.Origin{Change: "amber2", Caller: "/root", Source: "sed"}
+	captures := []presentation.Chunk{
 		liveDiffCapture("k1", "a.go", 1, "one\n", "ONE\n", main),
 		liveDiffCapture("k2", "b.go", 2, "two\n", "TWO\n", tests),
 		liveDiffCapture("k3", "c.go", 3, "three\n", "THREE\n", pane),
@@ -192,14 +191,14 @@ func TestLiveDiffChangesGraphLanesAndJumps(t *testing.T) {
 // row drops its source instead of truncating it. A single-file change nests
 // its file beside the diff and names it on its own row in a stacked list.
 func TestLiveDiffChangesRowFormat(t *testing.T) {
-	origin := livediff.Origin{Change: "apple1", Caller: "/root", Source: "apply_patch"}
-	single := liveDiffChangesController(t, 130, 20, []livediff.Chunk{liveDiffCapture("k1", "broker.go", 1, "one\n", "ONE\n", origin)})
+	origin := presentation.Origin{Change: "apple1", Caller: "/root", Source: "apply_patch"}
+	single := liveDiffChangesController(t, 130, 20, []presentation.Chunk{liveDiffCapture("k1", "broker.go", 1, "one\n", "ONE\n", origin)})
 	s := &single.navigation.Changes
 	if rows := s.Render(false, false, "", 60, 4, diffrender.DarkTheme); len(s.Rows) != 2 || !strings.Contains(ansi.Strip(rows[2]), "apple1 apply_patch 1f") || !strings.Contains(ansi.Strip(rows[3]), "└ M broker.go +1 -1") {
 		t.Fatalf("a side navigator did not nest the single file: %q", rows)
 	}
 	s.Inline = true
-	s.Rebuild(&single.view, single.workspace)
+	s.Rebuild(&single.view.View, single.workspace)
 	if len(s.Rows) != 1 {
 		t.Fatalf("an inline single-file change expanded into %d rows", len(s.Rows))
 	}
@@ -211,15 +210,15 @@ func TestLiveDiffChangesRowFormat(t *testing.T) {
 	if row := s.Render(false, false, "", 60, 3, diffrender.DarkTheme)[2]; !strings.Contains(row, "\x1b[4m") || strings.Index(row, "\x1b[4m") < strings.Index(row, "●") {
 		t.Fatalf("hover underlined the graph: %q", row)
 	}
-	c := liveDiffChangesController(t, 130, 20, []livediff.Chunk{
+	c := liveDiffChangesController(t, 130, 20, []presentation.Chunk{
 		liveDiffCapture("k1", "broker.go", 1, "one\n", "ONE\n", origin),
 		liveDiffCapture("k2", "queue.go", 2, "two\n", "TWO\n", origin),
 	})
 	l := &c.navigation.Changes
 	l.Expanded = map[string]bool{"apple1": true}
-	l.Rebuild(&c.view, c.workspace)
+	l.Rebuild(&c.view.View, c.workspace)
 	rows := l.Render(false, false, "", 40, 5, diffrender.DarkTheme)
-	file := diffview.FileLabel(diffmodel.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", diffrender.DarkTheme)
+	file := diffrender.FileLabel(diffmodel.Status{Before: "/w/broker.go", After: "/w/broker.go", Edited: true}, "broker.go", "/w", diffrender.DarkTheme)
 	if !strings.Contains(rows[3], file) || !strings.Contains(ansi.Strip(rows[3]), "├ M broker.go +1 -1") {
 		t.Fatalf("file row = %q, want shared label %q", rows[3], file)
 	}
@@ -259,7 +258,7 @@ func TestLiveDiffFileStatus(t *testing.T) {
 		{"binary rename with edit", []diffmodel.ReviewFile{diffmodel.RenderBinaryReviewFile("/w/old.bin", "/w/a.go", 3, 4, "abc", "abd")}, "RM old.bin → a.go"},
 		{"mchanges conflict", []diffmodel.ReviewFile{conflicted}, "UU a.go"},
 	} {
-		if got := ansi.Strip(diffview.FileLabel(diffmodel.StatusOf(tc.regions...), "a.go", "/w", diffrender.DarkTheme)); got != tc.want {
+		if got := ansi.Strip(diffrender.FileLabel(diffmodel.StatusOf(tc.regions...), "a.go", "/w", diffrender.DarkTheme)); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
 	}
@@ -269,8 +268,8 @@ func TestLiveDiffFileStatus(t *testing.T) {
 func TestLiveDiffTreeConflictClearsWhenResolved(t *testing.T) {
 	base := "a\n"
 	markers := "<<<<<<< workspace\na\n=======\nb\n>>>>>>> mchanges revert amber1\n"
-	origin := livediff.Origin{Change: "amber2", Caller: "/root", Source: "mchanges"}
-	captures := []livediff.Chunk{liveDiffCapture("k1", "a.go", 1, base, markers, origin)}
+	origin := presentation.Origin{Change: "amber2", Caller: "/root", Source: "mchanges"}
+	captures := []presentation.Chunk{liveDiffCapture("k1", "a.go", 1, base, markers, origin)}
 	row := func() string {
 		c := liveDiffChangesController(t, 130, 20, captures)
 		for _, line := range c.navigation.Render(c.files, c.rendering.Counts, c.view.Selected, 34, 6, diffrender.DarkTheme) {
@@ -283,22 +282,22 @@ func TestLiveDiffTreeConflictClearsWhenResolved(t *testing.T) {
 	if got := row(); !strings.Contains(got, "UU a.go") {
 		t.Fatalf("conflicted row = %q", got)
 	}
-	captures = append(captures, liveDiffCapture("k2", "a.go", 2, markers, "b\n", livediff.Origin{Change: "amber3", Caller: "/root", Source: "apply_patch"}))
+	captures = append(captures, liveDiffCapture("k2", "a.go", 2, markers, "b\n", presentation.Origin{Change: "amber3", Caller: "/root", Source: "apply_patch"}))
 	if got := row(); !strings.Contains(got, "M a.go") {
 		t.Fatalf("resolved row = %q", got)
 	}
 }
 
 func TestLiveDiffCallerFilterComposesOthersAsBaseline(t *testing.T) {
-	main := livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
-	tests := livediff.Origin{Change: "apple1", Caller: "/root/script_tests", Source: "python"}
-	captures := []livediff.Chunk{
+	main := presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
+	tests := presentation.Origin{Change: "apple1", Caller: "/root/script_tests", Source: "python"}
+	captures := []presentation.Chunk{
 		liveDiffCapture("k1", "a.go", 1, "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n", "ONE\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n", main),
 		liveDiffCapture("k2", "a.go", 2, "ONE\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n", "ONE\ntwo\nthree\nfour\nfive\nsix\nseven\nEIGHT\n", tests),
 		liveDiffCapture("k3", "b.go", 3, "x\n", "X\n", main),
 	}
 	c := liveDiffChangesController(t, 130, 30, captures)
-	if got := diffview.Callers(&c.view); strings.Join(got, ",") != "/root,/root/script_tests" {
+	if got := presentation.Callers(&c.view.View); strings.Join(got, ",") != "/root,/root/script_tests" {
 		t.Fatalf("callers = %v", got)
 	}
 	c.handleKey('a')
@@ -356,16 +355,16 @@ func TestAgentDisplayName(t *testing.T) {
 // Keys may arrive between an update and the next paint; the Changes tab
 // must neither index removed files nor open the wrong one.
 func TestLiveDiffChangesSurviveShrinkingMerge(t *testing.T) {
-	origin := func(change string) livediff.Origin {
-		return livediff.Origin{Change: change, Caller: "/root", Source: "apply_patch"}
+	origin := func(change string) presentation.Origin {
+		return presentation.Origin{Change: change, Caller: "/root", Source: "apply_patch"}
 	}
-	captures := []livediff.Chunk{
+	captures := []presentation.Chunk{
 		liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", origin("amber1")),
 		liveDiffCapture("k2", "b.go", 2, "b\n", "B\n", origin("amber2")),
 		liveDiffCapture("k3", "c.go", 3, "c\n", "C\n", origin("amber3")),
 	}
 	c := liveDiffChangesController(t, 130, 20, captures)
-	c.view.Merge(livediff.GroupCaptures(captures[2:]))
+	c.view.Merge(presentation.GroupCaptures(captures[2:]))
 	c.view.RefreshVisible()
 	for _, key := range []byte("}}{\t\r") {
 		c.handleKey(key)
@@ -378,9 +377,9 @@ func TestLiveDiffChangesSurviveShrinkingMerge(t *testing.T) {
 }
 
 func TestLiveDiffChangesFilterAndQueryDetails(t *testing.T) {
-	worker := livediff.Origin{Change: "apple1", Caller: "/root/worker", Source: "sed"}
-	other := livediff.Origin{Change: "arch1", Caller: "/root/other", Source: "python3"}
-	c := liveDiffChangesController(t, 130, 20, []livediff.Chunk{
+	worker := presentation.Origin{Change: "apple1", Caller: "/root/worker", Source: "sed"}
+	other := presentation.Origin{Change: "arch1", Caller: "/root/other", Source: "python3"}
+	c := liveDiffChangesController(t, 130, 20, []presentation.Chunk{
 		liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", worker),
 	})
 	// One caller: the filtered view is unchanged, but the heading still says so.
@@ -390,7 +389,7 @@ func TestLiveDiffChangesFilterAndQueryDetails(t *testing.T) {
 		t.Fatalf("Files heading = %q", heading)
 	}
 	// Accepting a Changes query opens the match instead of the caller's branch row.
-	c = liveDiffChangesController(t, 130, 20, []livediff.Chunk{
+	c = liveDiffChangesController(t, 130, 20, []presentation.Chunk{
 		liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", other),
 		liveDiffCapture("k2", "b.go", 2, "b\n", "B\n", worker),
 	})
@@ -405,14 +404,14 @@ func TestLiveDiffChangesFilterAndQueryDetails(t *testing.T) {
 
 // A change's captures of one file share a capture order; they are one change.
 func TestLiveDiffBaselineCountsChangesOnce(t *testing.T) {
-	main := livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
+	main := presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}
 	first := liveDiffCapture("k1", "a.go", 1, "one\n", "", main)
 	first.Review = diffmodel.RenderReviewFile("/w/a.go", "", "one\n", "")
 	second := liveDiffCapture("k2", "a.go", 1, "", "two\n", main)
 	second.Review = diffmodel.RenderReviewFile("", "/w/a.go", "", "two\n")
-	third := liveDiffCapture("k3", "a.go", 2, "two\n", "TWO\n", livediff.Origin{Change: "apple1", Caller: "/root/worker"})
-	var view livediff.View
-	view.Merge(livediff.GroupCaptures([]livediff.Chunk{first, second, third}))
+	third := liveDiffCapture("k3", "a.go", 2, "two\n", "TWO\n", presentation.Origin{Change: "apple1", Caller: "/root/worker"})
+	var view changeview.View
+	view.Merge(presentation.GroupCaptures([]presentation.Chunk{first, second, third}))
 	view.FilterCaller("/root/worker")
 	for _, file := range view.Visible {
 		if file.Baseline != 1 {
@@ -423,41 +422,41 @@ func TestLiveDiffBaselineCountsChangesOnce(t *testing.T) {
 
 // Captures without a caller filter as their own caller, distinct from all.
 func TestLiveDiffUnknownCallerFilters(t *testing.T) {
-	c := liveDiffChangesController(t, 130, 20, []livediff.Chunk{
-		liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", livediff.Origin{Change: "amber1", Caller: "/root"}),
-		liveDiffCapture("k2", "b.go", 2, "b\n", "B\n", livediff.Origin{Change: "old1"}),
-		liveDiffCapture("k3", "c.go", 3, "c\n", "C\n", livediff.Origin{Change: "apple1", Caller: "/root/worker"}),
+	c := liveDiffChangesController(t, 130, 20, []presentation.Chunk{
+		liveDiffCapture("k1", "a.go", 1, "a\n", "A\n", presentation.Origin{Change: "amber1", Caller: "/root"}),
+		liveDiffCapture("k2", "b.go", 2, "b\n", "B\n", presentation.Origin{Change: "old1"}),
+		liveDiffCapture("k3", "c.go", 3, "c\n", "C\n", presentation.Origin{Change: "apple1", Caller: "/root/worker"}),
 	})
 	var cycle []string
 	for range 4 {
 		c.handleKey('a')
 		cycle = append(cycle, c.view.Caller)
 	}
-	if got := strings.Join(cycle, ","); got != "/root,"+livediff.UnknownCaller+",/root/worker," {
+	if got := strings.Join(cycle, ","); got != "/root,"+presentation.UnknownCaller+",/root/worker," {
 		t.Fatalf("a cycled %q", got)
 	}
 	c.handleKey('\t')
 	l := &c.navigation.Changes
-	branch := slices.IndexFunc(l.Rows, func(row diffview.ChangeRow) bool {
+	branch := slices.IndexFunc(l.Rows, func(row changeview.ChangeRow) bool {
 		return row.Kind == 'b' && l.Nodes[row.Node].Caller == ""
 	})
 	l.Cursor = branch
 	c.openChangeRow()
-	if c.view.Caller != livediff.UnknownCaller || len(l.Nodes) != 1 || l.Nodes[0].Change != "old1" {
+	if c.view.Caller != presentation.UnknownCaller || len(l.Nodes) != 1 || l.Nodes[0].Change != "old1" {
 		t.Fatalf("Enter on the unknown branch: caller %q, nodes %+v", c.view.Caller, l.Nodes)
 	}
 	c.filterCaller("")
 	l.Query = "@unknown"
-	l.Rebuild(&c.view, c.workspace)
+	l.Rebuild(&c.view.View, c.workspace)
 	if len(l.Nodes) != 1 || l.Nodes[0].Change != "old1" {
 		t.Fatalf("@unknown matched %+v", l.Nodes)
 	}
 }
 
 func TestLiveDiffHunkJumpKeepsLeftPosition(t *testing.T) {
-	var captures []livediff.Chunk
+	var captures []presentation.Chunk
 	for i, path := range []string{"a.go", "b.go"} {
-		captures = append(captures, liveDiffCapture(path, path, uint64(i+1), "", liveDiffLinesFile(path, 30), livediff.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root"}))
+		captures = append(captures, liveDiffCapture(path, path, uint64(i+1), "", liveDiffLinesFile(path, 30), presentation.Origin{Change: fmt.Sprintf("amber%d", i+1), Caller: "/root"}))
 		captures[i].Review = diffmodel.RenderReviewFile("", "/w/"+path, "", liveDiffLinesFile(path, 30))
 	}
 	c := liveDiffChangesController(t, 120, 20, captures)

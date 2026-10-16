@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	json "encoding/json/v2"
@@ -13,8 +15,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -101,7 +103,7 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 	rows := []string{"  a.go +2 -1", "  42│+new", "  43│-old", "  44│ ctx", "  9│+other"}
 	u := selectionTestUI(rows...)
 	u.layout = terminalLayout{diff: terminalRect{0, 0, 40, len(rows)}}
-	u.diff = &liveDiffTerminalController{diffMode: true, workspace: "/w", painted: []livediff.LineSource{
+	u.diff = &liveDiffTerminalController{workspace: "/w", painted: []diffrender.LineSource{
 		{Path: "/w/a.go", Content: 2},
 		{Change: "amber1", Path: "/w/a.go", Line: 42, Content: 5},
 		{Change: "amber1", Path: "/w/a.go", Line: 43, Content: 5},
@@ -139,13 +141,12 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 
 func TestTerminalUIDiffSelectionUsesRenderedPane(t *testing.T) {
 	for _, width := range []int{80, 130} { // Without and with the side file navigator.
-		captures := []livediff.Chunk{
-			liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a.go", 8), livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
-			liveDiffCapture("b", "b.go", 2, "", liveDiffLinesFile("b.go", 2), livediff.Origin{Change: "amber2", Caller: "/root", Source: "apply_patch"}),
+		captures := []presentation.Chunk{
+			liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a.go", 8), presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
+			liveDiffCapture("b", "b.go", 2, "", liveDiffLinesFile("b.go", 2), presentation.Origin{Change: "amber2", Caller: "/root", Source: "apply_patch"}),
 		}
 		c := liveDiffChangesController(t, width, 16, captures)
 		c.view.Open(0)
-		c.native = true
 		screen := vt.NewEmulator(width, 16)
 		defer screen.Close()
 		c.stdout = screen
@@ -269,7 +270,7 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 func TestTerminalUIDiffSelectionEdges(t *testing.T) {
 	u := selectionTestUI("  1│-a", "  2│-b", "  7│+c", "  8│ d")
 	u.layout = terminalLayout{diff: terminalRect{0, 0, 40, 4}}
-	u.diff = &liveDiffTerminalController{diffMode: true, sourceY: 1, painted: []livediff.LineSource{
+	u.diff = &liveDiffTerminalController{sourceY: 1, painted: []diffrender.LineSource{
 		{},
 		{Change: "amber1", Line: 2, Deleted: true, Content: 4},
 		{Change: "amber1", Line: 7, Content: 4},

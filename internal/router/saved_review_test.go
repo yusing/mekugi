@@ -82,7 +82,7 @@ func TestLiveDiffPreviewMailboxPreservesExpandedScopeBarrier(t *testing.T) {
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true}}})
 	sub := testReview(broker).Subscribe()
-	<-sub.Events() // The HTTP writer has sent the initial scope and is paused.
+	<-sub.Events() // The subscriber consumed the initial scope and is paused.
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true, "thread": true}}})
 	broker.Update(previewViewFixture("new-thread", 20), false)
 	// Force the preview-ready branch rather than relying on select scheduling.

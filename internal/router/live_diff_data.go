@@ -10,8 +10,9 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
@@ -19,7 +20,7 @@ type liveDiffAttempt struct {
 	change, correlation string
 	thread              string
 	stream              int
-	chunks              []livediff.Chunk
+	chunks              []presentation.Chunk
 	receipt             *capturedActivityEdit
 }
 
@@ -65,7 +66,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 				d.bytes += len(attempt.receipt.text)
 			}
 		}
-		origin := livediff.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
+		origin := presentation.Origin{Change: event.ID, Caller: history.Caller, Source: cmp.Or(history.Source, history.ToolName)}
 		for n, file := range history.ReviewFiles {
 			canonical := func(path string) string {
 				if path == "" {
@@ -81,7 +82,7 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 			if d.bytes > changes.MaxReadBytes {
 				return errors.New("live diff exceeds 64 MiB; use mchanges with a narrower range")
 			}
-			attempt.chunks = append(attempt.chunks, livediff.Chunk{
+			attempt.chunks = append(attempt.chunks, presentation.Chunk{
 				Key: key + "/" + strconv.Itoa(n), Stream: event.Workspace + "\x00" + event.Namespace + "\x00" + strconv.Itoa(event.Stream),
 				Workspace: event.Workspace, CaptureOrder: record.CaptureOrder,
 				Review: file, Origin: origin,
@@ -93,12 +94,12 @@ func (d *liveDiffData) apply(ctx context.Context, store *mekugiReplayStore, even
 	return nil
 }
 
-func (d *liveDiffData) files() []livediff.File {
-	var captures []livediff.Chunk
+func (d *liveDiffData) files() []presentation.File {
+	var captures []presentation.Chunk
 	for _, key := range d.order {
 		captures = append(captures, d.attempts[key].chunks...)
 	}
-	return livediff.GroupCaptures(captures)
+	return presentation.GroupCaptures(captures)
 }
 
 func (s *mekugiReplayStore) liveDiffSnapshot(ctx context.Context, scope previewmodel.Scope) (*liveDiffData, error) {

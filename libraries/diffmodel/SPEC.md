@@ -13,6 +13,9 @@ content remains incomplete evidence; directory metadata supplies no invented
 rows. Binary and link metadata remain distinct from text. Source rows preserve
 line endings and missing final newlines.
 
+Grouping follows supplied capture order across moves, deletion and recreation,
+preserving the caller's evidence indexes. Row alignment advances the old and new
+sides independently and retains row kinds and geometry.
 Composition follows captured identities and order, retaining only known rows.
 Hidden and highlighted regions follow source changes rather than painted lines.
 An inconsistent chain fails without publishing a partial replacement. Merge
@@ -29,5 +32,5 @@ consumers.
 Pure tests cover diff construction, row parsing, composition, highlights,
 consistency, merge conflicts, and metadata-only evidence. Command and renderer
 acceptance verify shared status, path presentation, and unchanged retained views.
-The [change interface](../../doc/spec/changes.md) owns user-facing review and
+The [change-history module](../../modules/changehistory/SPEC.md) owns user-facing review and
 mutation guarantees.

@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
+
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 
-	"github.com/charmbracelet/x/ansi"
-	"github.com/creack/pty"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -72,40 +74,6 @@ func TestExecScopePreviewFooterDeduplicatesBoundedTargets(t *testing.T) {
 	if got, want := execScopePreviewFooter(observation), "may write · 2 scoped paths · tracked.txt, also.txt · other writes unknown · bounded scope"; got != want {
 		t.Fatalf("bounded VCS scope footer = %q, want %q", got, want)
 	}
-}
-
-func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
-	t.Parallel()
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
-		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
-	})
-	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 22)
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	registry := &execWindowRegistry{}
-	for index := range 8 {
-		ref := fmt.Sprintf("watch-%d", index)
-		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
-		registry.preview(ref, execObservation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller", nil)
-	}
-	broker.Update(previewmodel.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
-		Status: previewmodel.PreviewEdit, Input: "cat /tmp/example\n"}, false)
-	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "cat /tmp/example") })
-	plain := ansi.Strip(frame)
-	if strings.Count(plain, "same-caller ·") != 1 || strings.Contains(plain, "No scoped changes") ||
-		strings.Contains(plain, "other writes unknown") || !strings.Contains(plain, "cat /tmp/example") {
-		t.Fatalf("empty exec watches crowded streaming input: %s", plain)
-	}
-	active := len(broker.Current())
-	if active != 1 {
-		t.Fatalf("empty exec watches occupied %d preview slots, want only the script", active)
-	}
-	registry.close("watch-0", "watch-1", "watch-2", "watch-3", "watch-4", "watch-5", "watch-6", "watch-7")
-	ui.quit(t)
 }
 
 func captureRunningExecScope(t *testing.T) (string, string, *execObservation) {
@@ -189,7 +157,7 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
+			broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
 			registry := &execWindowRegistry{}
 			window := &execWindow{ref: "vcs", roots: []string{repo}, thread: "thread"}
 			registry.open(window)
@@ -221,90 +189,6 @@ func TestExecRunningPreviewExcludesVCSScope(t *testing.T) {
 	}
 }
 
-func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testing.T) {
-	repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before bytes\n", "restored.txt": "committed bytes\n"})
-	tracked := filepath.Join(repo, "tracked.txt")
-	writeTestFile(t, filepath.Join(repo, "restored.txt"), "dirty bytes\n")
-	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF\ngit restore -- restored.txt", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
-	if !observed || observation == nil {
-		t.Fatal("mixed scope missing")
-	}
-	outside := filepath.Join(repo, "outside.txt")
-	if err := os.WriteFile(outside, []byte("outside before\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// Exercise both qualification markers on an ordinary captured scope: the
-	// omitted target represents a path beyond the bounded pre-call capture.
-	observation.Reason = "additional targets were unresolved"
-	observation.Omitted = append(observation.Omitted, execOmission{Path: "also.txt", Reason: "fixture capture bound"})
-
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
-		Workspaces: map[string]map[string]bool{repo: {"thread": true}},
-	})
-	registry := &execWindowRegistry{}
-	registry.open(&execWindow{ref: "call-1", roots: []string{repo}, thread: "thread"})
-	ui := startLiveDiffTerminal(t, repo, store.directory, connection, 22)
-	// Keep the literal path on one row regardless of the build's temp root.
-	if err := pty.Setsize(ui.pty, &pty.Winsize{Rows: 22, Cols: uint16(max(100, ansi.StringWidth(tracked)+16))}); err != nil {
-		t.Fatal(err)
-	}
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	registry.preview("call-1", *observation, broker, repo, "thread", "exec-test-caller", nil)
-	runExecVCSTestGit(t, repo, "restore", "--", "restored.txt")
-
-	if err := os.WriteFile(tracked, []byte("restored bytes\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(outside, []byte("outside secret marker\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	running := ui.frame(t, func(frame string) bool {
-		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "observed so far") && strings.Contains(plain, "+restored bytes")
-	})
-	plainRunning := ansi.Strip(running)
-	if strings.Contains(plainRunning, "may write") || !strings.Contains(plainRunning, "observed changes") ||
-		strings.Contains(plainRunning, "other writes unknown") ||
-		strings.Contains(plainRunning, "outside secret marker") || strings.Contains(plainRunning, "outside.txt") ||
-		strings.Contains(plainRunning, "restored.txt") || strings.Contains(plainRunning, "will restore") {
-		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)
-	}
-	preview := waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
-		return preview.ID == "running:call-1" && preview.Status == previewmodel.PreviewRunning && len(preview.Files) == 1
-	})
-	if preview.Workspace != repo || preview.Thread != "thread" {
-		t.Fatalf("active observation lost caller scope: %+v", preview)
-	}
-	if path := preview.Files[0].AfterPath; path != tracked {
-		t.Fatalf("running preview reported path %q outside captured target %q", path, tracked)
-	}
-
-	registry.close("call-1")
-	waitExecScopePreviewGone(t, broker, "running:call-1")
-	removed := ui.frame(t, func(frame string) bool {
-		plain := ansi.Strip(frame)
-		return !strings.Contains(plain, "exec-test-caller") && !strings.Contains(plain, "observed so far")
-	})
-	if strings.Contains(ansi.Strip(removed), "restored bytes") {
-		t.Fatalf("closed running preview remained rendered: %s", ansi.Strip(removed))
-	}
-	if err := os.WriteFile(tracked, []byte("after cancellation\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, found, err := store.lookup(t.Context(), repo, "call-1"); err != nil || found {
-		t.Fatalf("display-only running observation persisted change evidence: found=%v err=%v", found, err)
-	}
-	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
-	if err != nil || len(files) != 0 {
-		t.Fatalf("display-only running observation entered durable live history: files=%+v err=%v", files, err)
-	}
-	ui.quit(t)
-}
-
 func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 	// The capacity case needs all process-wide preview slots. Keep its parent
 	// serial; the lifecycle cases can share slots after the capacity case closes.
@@ -314,7 +198,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
+		broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 			Workspaces: map[string]map[string]bool{repo: {"thread": true}},
 		})
 		registry := &execWindowRegistry{}
@@ -351,7 +235,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, broker, stopBroker := liveDiffTestBroker(t, store, previewmodel.Scope{
+			broker, stopBroker := liveDiffTestBroker(t, store, previewmodel.Scope{
 				Workspaces: map[string]map[string]bool{repo: {"thread": true}},
 			})
 			registry := &execWindowRegistry{}
@@ -396,5 +280,115 @@ func TestExecPreviewEditThenTestKeepsKnownTarget(t *testing.T) {
 	footer := execScopePreviewFooter(*observation)
 	if !strings.Contains(footer, "source.go") || !strings.Contains(footer, "other writes unknown") {
 		t.Fatalf("footer confuses known edit with unknown test effects: %q", footer)
+	}
+}
+
+func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
+	t.Parallel()
+	workspace := t.TempDir()
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
+		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
+	})
+	registry := &execWindowRegistry{}
+	for index := range 8 {
+		ref := fmt.Sprintf("watch-%d", index)
+		registry.open(&execWindow{ref: ref, roots: []string{workspace}, thread: "thread"})
+		registry.preview(ref, execObservation{Class: execscope.Opaque.String(), Reason: "unresolved command"}, broker, workspace, "thread", "same-caller", nil)
+	}
+	broker.Update(previewmodel.Preview{ID: "script", Workspace: workspace, Thread: "thread", Caller: "same-caller",
+		Status: previewmodel.PreviewEdit, Input: "cat /tmp/example\n"}, false)
+	var pane previewview.PreviewPane
+	for _, snapshot := range broker.Current() {
+		pane.Update(snapshot)
+	}
+	rows, err := pane.Render(t.Context(), workspace, diffrender.TerminalTheme, 120, 22)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := ansi.Strip(strings.Join(rows, "\n"))
+	if strings.Count(plain, "same-caller ·") != 1 || strings.Contains(plain, "No scoped changes") ||
+		strings.Contains(plain, "other writes unknown") || !strings.Contains(plain, "cat /tmp/example") {
+		t.Fatalf("empty exec watches crowded streaming input: %s", plain)
+	}
+	active := len(broker.Current())
+	if active != 1 {
+		t.Fatalf("empty exec watches occupied %d preview slots, want only the script", active)
+	}
+	registry.close("watch-0", "watch-1", "watch-2", "watch-3", "watch-4", "watch-5", "watch-6", "watch-7")
+}
+
+func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testing.T) {
+	repo := newExecVCSTestRepo(t, map[string]string{"tracked.txt": "before bytes\n", "restored.txt": "committed bytes\n"})
+	tracked := filepath.Join(repo, "tracked.txt")
+	writeTestFile(t, filepath.Join(repo, "restored.txt"), "dirty bytes\n")
+	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: "cat > tracked.txt <<'EOF'\nafter\nEOF\ngit restore -- restored.txt", Workdir: repo, Shell: "bash"}}, false, false, execCaptureEnv{directory: repo})
+	if !observed || observation == nil {
+		t.Fatal("mixed scope missing")
+	}
+	outside := filepath.Join(repo, "outside.txt")
+	if err := os.WriteFile(outside, []byte("outside before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Exercise both qualification markers on an ordinary captured scope: the
+	// omitted target represents a path beyond the bounded pre-call capture.
+	observation.Reason = "additional targets were unresolved"
+	observation.Omitted = append(observation.Omitted, execOmission{Path: "also.txt", Reason: "fixture capture bound"})
+
+	store, err := openMekugiReplayStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
+		Workspaces: map[string]map[string]bool{repo: {"thread": true}},
+	})
+	registry := &execWindowRegistry{}
+	registry.open(&execWindow{ref: "call-1", roots: []string{repo}, thread: "thread"})
+	registry.preview("call-1", *observation, broker, repo, "thread", "exec-test-caller", nil)
+	runExecVCSTestGit(t, repo, "restore", "--", "restored.txt")
+
+	if err := os.WriteFile(tracked, []byte("restored bytes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, []byte("outside secret marker\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	preview := waitExecScopePreview(t, broker, func(preview previewmodel.Preview) bool {
+		return preview.ID == "running:call-1" && preview.Status == previewmodel.PreviewRunning && len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, "+restored bytes")
+	})
+	var pane previewview.PreviewPane
+	pane.Update(preview)
+	rows, err := pane.Render(t.Context(), repo, diffrender.TerminalTheme, 240, 22)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainRunning := ansi.Strip(strings.Join(rows, "\n"))
+	if strings.Contains(plainRunning, "may write") || !strings.Contains(plainRunning, "observed changes") ||
+		strings.Contains(plainRunning, "other writes unknown") ||
+		strings.Contains(plainRunning, "outside secret marker") || strings.Contains(plainRunning, "outside.txt") ||
+		strings.Contains(plainRunning, "restored.txt") || strings.Contains(plainRunning, "will restore") {
+		t.Fatalf("running preview escaped its captured scope or lost its qualification: %s", plainRunning)
+	}
+	if preview.Workspace != repo || preview.Thread != "thread" {
+		t.Fatalf("active observation lost caller scope: %+v", preview)
+	}
+	if path := preview.Files[0].AfterPath; path != tracked {
+		t.Fatalf("running preview reported path %q outside captured target %q", path, tracked)
+	}
+
+	registry.close("call-1")
+	waitExecScopePreviewGone(t, broker, "running:call-1")
+	if err := os.WriteFile(tracked, []byte("after cancellation\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := store.lookup(t.Context(), repo, "call-1"); err != nil || found {
+		t.Fatalf("display-only running observation persisted change evidence: found=%v err=%v", found, err)
+	}
+	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{repo: {"thread": true}}})
+	if err != nil || len(files) != 0 {
+		t.Fatalf("display-only running observation entered durable live history: files=%+v err=%v", files, err)
 	}
 }

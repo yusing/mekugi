@@ -2,15 +2,14 @@ package router
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -69,7 +68,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 			if err := data.reconcile(t.Context(), reader, scope); err != nil {
 				t.Fatal(err)
 			}
-			var captures []livediff.Chunk
+			var captures []presentation.Chunk
 			for _, file := range data.files() {
 				captures = append(captures, file.Chunks...)
 			}
@@ -86,49 +85,19 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 	}
 }
 
-func TestLiveDiffTerminalDependencyHistory(t *testing.T) {
-	w := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(w, "node_modules")
-	for i := range 10 {
-		gap := diffmodel.RenderIncompleteReviewFile(path, path, "dependency directory metadata capture incomplete")
-		gap.OriginNote = execInventoryNote
-		putTestChange(t, t.Context(), store, w, fmt.Sprintf("gap-%d", i), gap)
-		putTestChange(t, t.Context(), store, w, fmt.Sprintf("install-%d", i), diffmodel.ReviewFile{
-			BeforePath: path, AfterPath: path, Directory: true, Incomplete: "directory contents intentionally not captured",
-		})
-	}
-	connection, _, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{w: {"stock-thread": true}}})
-	ui := startLiveDiffTerminal(t, w, store.directory, connection, 24)
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-	ui.write(t, "v")
-	frame := ui.frame(t, func(frame string) bool { return strings.Contains(ansi.Strip(frame), "M node_modules/") })
-	if strings.Contains(frame, "metadata capture incomplete") || strings.Contains(frame, "contents intentionally not captured") {
-		t.Fatal("saved terminal still renders dependency diagnostic rows")
-	}
-	var rows []string
-	for row := 1; row <= 24; row++ {
-		rows = append(rows, liveDiffFrameRow(frame, row))
-	}
-	t.Log("saved dependency terminal frame:\n" + strings.Join(rows, "\n"))
-}
-
 func TestLiveDiffDirectoryLifecycleAndCallerFilter(t *testing.T) {
 	for _, paths := range [][4]string{
 		{"", "/w/node_modules", "/w/node_modules", ""},
 		{"/w/node_modules", "", "", "/w/node_modules"},
 	} {
-		var captures []livediff.Chunk
+		var captures []presentation.Chunk
 		for i := range 2 {
-			captures = append(captures, livediff.Chunk{Key: fmt.Sprint(i), CaptureOrder: uint64(i + 1),
-				Origin: livediff.Origin{Caller: fmt.Sprintf("/root/agent%d", i)},
+			captures = append(captures, presentation.Chunk{Key: fmt.Sprint(i), CaptureOrder: uint64(i + 1),
+				Origin: presentation.Origin{Caller: fmt.Sprintf("/root/agent%d", i)},
 				Review: diffmodel.ReviewFile{BeforePath: paths[2*i], AfterPath: paths[2*i+1], Directory: true}})
 		}
-		view := livediff.View{}
-		view.Merge(livediff.GroupCaptures(captures))
+		view := changeview.View{}
+		view.Merge(presentation.GroupCaptures(captures))
 		view.RefreshVisible()
 		visible := view.Visible[view.Files[0].Key()]
 		if paths[0] == "" {

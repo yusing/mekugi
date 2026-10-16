@@ -11,7 +11,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -70,7 +70,7 @@ func (v *liveActivityView) nativeRoster(width, limit int, now time.Time, focused
 	}
 	var totals []string
 	if v.netCounts != nil {
-		totals = append(totals, strings.TrimSpace(diffview.CountStats(*v.netCounts, v.painter.Theme)))
+		totals = append(totals, strings.TrimSpace(diffrender.CountStats(*v.netCounts, v.painter.Theme)))
 	}
 	if input+output > 0 {
 		in, out := liveActivityTokenParts(activityPaneAgent{InputTokens: input, OutputTokens: output, UsagePartial: tokensPartial})

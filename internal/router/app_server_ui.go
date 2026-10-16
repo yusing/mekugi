@@ -306,11 +306,6 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 							return err
 						}
 						u.dirty = true
-					case <-u.shell.diff.previewFrameC:
-						u.shell.diff.previewFrameC = nil
-						u.shell.diff.previewFrameDue = time.Time{}
-						u.shell.diff.dirty = true
-						u.dirty = true
 					case <-u.shell.diff.escapeC:
 						u.shell.diff.escapeC = nil
 						u.shell.diff.escapeKey()
@@ -1610,7 +1605,6 @@ func (u *appServerUI) ensureShell() {
 	u.agents.bare = true
 	shell := &terminalUI{main: u, agents: u.agents, review: review, diffScreen: new(nativeDiffScreen)}
 	shell.diff = newLiveDiffTerminalController(store, "", os.Stdout)
-	shell.diff.native, shell.diff.diffMode = true, true
 	shell.diff.stdout = shell.diffScreen
 	shell.diff.size = func() (int, int, error) { return max(1, shell.layout.diff.w), max(3, shell.layout.diff.h), nil }
 	u.shell = shell

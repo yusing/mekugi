@@ -4,9 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
 func TestPaneOperationRegressionMCatReadLabels(t *testing.T) {
@@ -120,73 +118,6 @@ func TestPaneOperationRegressionApplyPatchDisplay(t *testing.T) {
 	} {
 		if patches := stockLiteralPatchInputs(source); len(patches) != 0 {
 			t.Fatalf("dynamic template entered patch capture: %q", patches)
-		}
-	}
-}
-
-func TestPaneOperationRegressionCodeModePatchStreamsThroughPTY(t *testing.T) {
-	t.Parallel()
-	for _, quote := range []string{"double", "template"} {
-		t.Run(quote, func(t *testing.T) {
-			t.Parallel()
-			workspace := t.TempDir()
-			store, err := openMekugiReplayStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
-				Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
-			})
-			ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 18)
-			ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-			worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
-			t.Cleanup(worker.stop)
-
-			var opening, lineBreak string
-			if quote == "double" {
-				opening, lineBreak = `const patch = "`, `\n`
-			} else {
-				opening, lineBreak = "const patch = `", "\n"
-			}
-			worker.appendDelta(opening + "*** Begin Patch")
-			worker.appendDelta(lineBreak + "*** Add File: new.txt" + lineBreak + "+first line" + lineBreak)
-			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
-				plain := ansi.Strip(frame)
-				return strings.Contains(plain, "new.txt") && strings.Contains(plain, "+first line")
-			}), "new.txt", "+first line")
-
-			worker.appendDelta("+second line" + lineBreak)
-			assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
-				return strings.Contains(ansi.Strip(frame), "+second line")
-			}), "new.txt", "+first line", "+second line")
-			if quote == "template" {
-				worker.appendDelta("+Use \\`mcat\\` and \\${literal}\n+after escapes\n")
-				assertCodeModePatchFrame(t, ui.frame(t, func(frame string) bool {
-					return strings.Contains(ansi.Strip(frame), "+after escapes")
-				}), "+Use `mcat` and ${literal}", "+after escapes")
-			}
-			ui.quit(t)
-		})
-	}
-}
-
-func assertCodeModePatchFrame(t *testing.T, frame string, ordered ...string) {
-	t.Helper()
-	plain := ansi.Strip(frame)
-	if !strings.Contains(plain, "· ◐ ") {
-		t.Fatalf("progressive patch frame is not a provisional diff preview: %q", plain)
-	}
-	last := -1
-	for _, want := range ordered {
-		position := strings.Index(plain, want)
-		if position <= last {
-			t.Fatalf("progressive patch frame %q does not contain ordered %q after byte %d", plain, want, last)
-		}
-		last = position
-	}
-	for _, wrapper := range []string{"const patch", "tools.apply_patch", "*** Begin Patch", "*** Add File:"} {
-		if strings.Contains(plain, wrapper) {
-			t.Fatalf("terminal leaked exec wrapper %q: %q", wrapper, plain)
 		}
 	}
 }

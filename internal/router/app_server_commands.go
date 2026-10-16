@@ -8,7 +8,7 @@ import (
 	"github.com/yusing/mekugi/contracts/scope"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
 
@@ -206,7 +206,7 @@ func (u *appServerUI) resetDiffScope() {
 		return
 	}
 	u.shell.diff.resetScope()
-	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = diffview.PreviewPane{}, "", false
+	u.shell.liveDock, u.shell.diffFailure, u.shell.diffUnseen = previewview.PreviewPane{}, "", false
 	u.shell.review.ResetScope()
 }
 

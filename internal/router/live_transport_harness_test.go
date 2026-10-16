@@ -3,31 +3,11 @@ package router
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"strings"
 	"sync"
-	"time"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
 
-const maxLiveDiffEventBytes = 1 << 20
-
-const liveDiffEventsPath = "/internal/live-diff"
-
-// Test-only bridges let existing subprocess rendering tests drive local state.
-// The bootstrap file is a private connection capability, not changing view data.
-type liveDiffConnection struct {
-	Endpoint string
-	Token    string
-}
-
-var testLiveConnections sync.Map
-var testLiveCoverage sync.Map
 var testLiveReviews sync.Map
 
 func newLivePreview(ctx context.Context) *previewmodel.Session {
@@ -43,102 +23,6 @@ func testReview(service *previewmodel.Session) *savedReview {
 		panic("preview fixture is missing its application review owner")
 	}
 	return value.(*savedReview)
-}
-
-func testLiveConnection(owner any) liveDiffConnection {
-	value, _ := testLiveConnections.LoadOrStore(owner, liveDiffConnection{Token: rand.Text()})
-	return value.(liveDiffConnection)
-}
-func setLiveEndpoint(b *previewmodel.Session, endpoint string) {
-	c := testLiveConnection(b)
-	c.Endpoint = endpoint
-	testLiveConnections.Store(b, c)
-}
-func liveDescriptor(b *previewmodel.Session) liveDiffConnection { return testLiveConnection(b) }
-func serveLiveEvents(b *previewmodel.Session, w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Authorization") != "Bearer "+liveDescriptor(b).Token {
-		http.Error(w, "invalid live diff capability", http.StatusUnauthorized)
-		return
-	}
-	coverage := make(chan reviewEvent, 1)
-	testLiveCoverage.Store(b, coverage)
-	defer testLiveCoverage.Delete(b)
-	sub := testReview(b).Subscribe()
-	defer testReview(b).Unsubscribe(sub)
-	controller := http.NewResponseController(w)
-	w.Header().Set("Content-Type", "application/x-ndjson")
-	w.Header().Set("Cache-Control", "no-store")
-	write := func(event reviewEvent) error {
-		data, err := json.Marshal(event)
-		if err != nil || len(data) > maxLiveDiffEventBytes {
-			return errors.New("live diff event exceeds capacity")
-		}
-		if err := controller.SetWriteDeadline(time.Now().Add(2 * time.Second)); err != nil {
-			return err
-		}
-		if _, err := w.Write(append(data, '\n')); err != nil {
-			return err
-		}
-		return controller.Flush()
-	}
-	// The snapshot barrier must precede the separate preview mailbox.
-	if write(<-sub.Events()) != nil {
-		return
-	}
-	// Restore retained turn state before replaceable preview snapshots.
-	select {
-	case event := <-sub.Events():
-		if write(event) != nil {
-			return
-		}
-	default:
-	}
-	heartbeat := time.NewTicker(10 * time.Second)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case event := <-coverage:
-			if write(event) != nil {
-				return
-			}
-		case <-b.Context().Done():
-			_ = write(reviewEvent{Kind: "end"})
-			return
-		case <-r.Context().Done():
-			return
-		case <-sub.PreviewGap():
-			_ = write(reviewEvent{Kind: "reset"})
-			return
-		case <-sub.Gap():
-			_ = write(reviewEvent{Kind: "reset"})
-			return
-		case <-sub.Ready():
-			for _, event := range testReview(b).TakePreviews(sub) {
-				if write(event) != nil {
-					return
-				}
-			}
-		case event := <-sub.Events():
-			if write(event) != nil {
-				return
-			}
-		case <-heartbeat.C:
-			if write(reviewEvent{Kind: "heartbeat"}) != nil {
-				return
-			}
-		}
-	}
-}
-
-func liveDiffRequest(ctx context.Context, connection liveDiffConnection, method string, body io.Reader) (*http.Request, error) {
-	if !strings.HasPrefix(connection.Endpoint, "http://127.0.0.1:") {
-		return nil, fmt.Errorf("invalid local live diff endpoint")
-	}
-	req, err := http.NewRequestWithContext(ctx, method, connection.Endpoint, body)
-	if err == nil {
-		req.Header.Set("Authorization", "Bearer "+connection.Token)
-	}
-	return req, err
 }
 
 func currentLivePreview(service *previewmodel.Session, id string) (previewmodel.Preview, bool) {

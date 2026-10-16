@@ -2,10 +2,6 @@ package router
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,41 +15,21 @@ import (
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
-	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
-func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope previewmodel.Scope) (string, *previewmodel.Session, context.CancelFunc) {
+func liveDiffTestBroker(t *testing.T, store *mekugiReplayStore, scope previewmodel.Scope) (*previewmodel.Session, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
 	broker := newLivePreview(ctx)
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+liveDiffEventsPath, func(w http.ResponseWriter, r *http.Request) { serveLiveEvents(broker, w, r) })
-	server := httptest.NewServer(mux)
-	t.Cleanup(func() { cancel(); server.Close() })
-	setLiveEndpoint(broker, server.URL+liveDiffEventsPath)
 	setLiveScope(broker, scope)
 	store.liveDiff = testReview(broker).Publish
-	connection := filepath.Join(t.TempDir(), "connection.json")
-	data, err := json.Marshal(liveDescriptor(broker))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(connection, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	return connection, broker, cancel
-}
-
-func liveDiffTestSession(t *testing.T, store *mekugiReplayStore, workspace string) string {
-	t.Helper()
-	path, _, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
-		Workspaces: map[string]map[string]bool{workspace: {"thread": true, "identity-thread": true, "flush-thread": true}},
-	})
-	return path
+	return broker, cancel
 }
 
 func waitLiveDiffChange(t *testing.T, sub *reviewSubscription) reviewChange {
@@ -80,7 +56,7 @@ func TestLiveDiffDirectPublicationAndDurableReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	workspace := t.TempDir()
-	_, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"identity-thread": true}}})
+	broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"identity-thread": true}}})
 	sub := testReview(broker).Subscribe()
 	liveDiffIdentityCapture(t, store, workspace, "one", "", "file.txt", "", "original\n")
 	event := waitLiveDiffChange(t, sub)
@@ -150,49 +126,6 @@ func TestLiveDiffScopeReconciliationUsesCachedAttempts(t *testing.T) {
 	}
 }
 
-func TestLiveDiffStreamReconnectSnapshotBarrier(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	requests := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		if r.Header.Get("Authorization") != "Bearer test" {
-			t.Error("viewer omitted its private capability")
-		}
-		encoder := json.NewEncoder(w)
-		scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{}}
-		_ = encoder.Encode(reviewEvent{Kind: "scope", Scope: &scope, Resync: true})
-		if requests == 1 {
-			_ = encoder.Encode(reviewEvent{Kind: "reset"})
-		} else {
-			_ = encoder.Encode(reviewEvent{Kind: "end"})
-		}
-	}))
-	defer server.Close()
-	output := make(chan reviewEvent, 32)
-	liveDiffStream(ctx, liveDiffConnection{Endpoint: server.URL, Token: "test"}, output)
-	var kinds []string
-	for event := range output {
-		kinds = append(kinds, event.Kind)
-		if event.Kind == "scope" && !event.Resync {
-			t.Fatal("reconnect did not request a fresh snapshot")
-		}
-	}
-	if fmt.Sprint(kinds) != "[scope coverage scope end]" {
-		t.Fatalf("reconnect transitions: %v", kinds)
-	}
-}
-
-func TestLiveDiffPublisherRequiresCapability(t *testing.T) {
-	broker := newLivePreview(t.Context())
-	response := httptest.NewRecorder()
-	func(w http.ResponseWriter, r *http.Request) { serveLiveEvents(broker, w, r) }(response, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}\n")))
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated connection accepted: %d %s", response.Code, response.Body.String())
-	}
-}
-
 func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	transform, proxy, _, workspace := newMekugiTestTransform(t)
 	store, err := openMekugiReplayStore(t.TempDir())
@@ -200,7 +133,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		t.Fatal(err)
 	}
 	proxy.replayStore = store
-	_, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
+	broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
 		Workspaces: map[string]map[string]bool{workspace: {transform.shellThreadID: true}},
 	})
 	sub := testReview(broker).Subscribe()
@@ -228,7 +161,7 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 		t.Fatalf("one durable batch was split into display updates: %+v", event)
 	}
 	data := newLiveDiffData()
-	view := livediff.View{Following: true}
+	view := changeview.View{}
 	view.Merge(nil) // The connected pane starts empty before this batch.
 	for _, change := range event.Changes {
 		if err := data.apply(t.Context(), store, change); err != nil {
@@ -237,9 +170,6 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	}
 	view.Merge(data.files())
 	view.RefreshVisible()
-	if view.Files[view.Selected].Path != filepath.Join(workspace, "second.txt") {
-		t.Fatal("FOLLOW selected an older call from the durable batch")
-	}
 	for _, file := range view.Files {
 		if !view.Visible[file.Key()].Highlighted {
 			t.Fatal("durable batch lost a file's recency marker")
@@ -254,94 +184,12 @@ func TestLiveDiffJSONBatchKeepsFollowAndRecency(t *testing.T) {
 	}
 }
 
-func TestLiveDiffDelayedCaptureDoesNotFollowBackwards(t *testing.T) {
-	path := "same.txt"
-	older := liveDiffHighlightChunk("older", path, "@@ -20 +20 @@\n-old\n+OLDER20\n")
-	older.CaptureOrder, older.SnapshotOrder = 1, 1
-	newer := liveDiffHighlightChunk("newer", path, "@@ -90 +90 @@\n-old\n+NEWER90\n")
-	newer.CaptureOrder, newer.SnapshotOrder = 2, 2
-	view := livediff.View{Following: true}
-	view.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{newer}}})
-	view.Merge([]livediff.File{{Path: path, Chunks: []livediff.Chunk{older, newer}}})
-	if view.Latest != "newer" || view.Files[view.Selected].Path != path {
-		t.Fatal("late publication of an older capture moved FOLLOW backwards")
-	}
-
-}
-
-type liveDiffPausedWriter struct {
-	http.ResponseWriter
-	ctx     context.Context
-	ready   chan struct{}
-	release chan struct{}
-	paused  bool
-}
-
-func (w *liveDiffPausedWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
-
-func (w *liveDiffPausedWriter) Flush() {
-	w.ResponseWriter.(http.Flusher).Flush()
-	if !w.paused {
-		w.paused = true
-		close(w.ready)
-		select {
-		case <-w.release:
-		case <-w.ctx.Done():
-		}
-	}
-}
-
-func TestLiveDiffExpandedScopeBeforePreviewOnDelayedTransport(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	broker := newLivePreview(ctx)
-	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true}}})
-	ready, release := make(chan struct{}), make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		func(w http.ResponseWriter, r *http.Request) { serveLiveEvents(broker, w, r) }(&liveDiffPausedWriter{ResponseWriter: w, ctx: ctx, ready: ready, release: release}, r)
-	}))
-	t.Cleanup(func() { cancel(); server.Close() })
-	setLiveEndpoint(broker, server.URL+liveDiffEventsPath)
-	events := make(chan reviewEvent, 16)
-	go liveDiffStream(ctx, liveDescriptor(broker), events)
-	select {
-	case <-ready:
-	case <-ctx.Done():
-		t.Fatal("initial snapshot did not reach the writer")
-	}
-	if event := <-events; event.Kind != "scope" {
-		t.Fatal("missing initial scope")
-	}
-	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{"/workspace": {"old": true, "thread": true}}})
-	broker.Update(previewViewFixture("new-thread", 20), false)
-	close(release)
-	var scope *previewmodel.Scope
-	for scope == nil {
-		select {
-		case event := <-events:
-			if event.Kind != "scope" {
-				t.Fatalf("preview overtook expanded scope: %+v", event)
-			}
-			scope = event.Scope
-		case <-ctx.Done():
-			t.Fatal("scope expansion was not delivered")
-		}
-	}
-	select {
-	case event := <-events:
-		if event.Preview == nil || !scope.Workspaces[event.Preview.Workspace][event.Preview.Thread] {
-			t.Fatalf("missing authorized preview after scope: %+v", event)
-		}
-	case <-ctx.Done():
-		t.Fatal("preview was not delivered")
-	}
-}
-
 func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 	workspace := t.TempDir()
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"thread": true}}})
 	sub := testReview(broker).Subscribe()
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	worker := liveDiffPreviewWorker{ctx: t.Context(), kind: applyPatchToolName}
 	for _, input := range []string{
 		"*** Begin Patch\n*** Add File: empty.txt\n",
@@ -439,7 +287,7 @@ func TestLiveDiffBoundedPreviewOmitsDeletedFiles(t *testing.T) {
 			t.Fatal("original deletion evidence changed")
 		}
 		for _, retain := range []bool{false, true} {
-			pane := diffview.PreviewPane{Retain: retain}
+			pane := previewview.PreviewPane{Retain: retain}
 			pane.Update(bounded)
 			var rows []string
 			var err error

@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
@@ -161,10 +161,9 @@ func TestOutputSelectionScrollBeyondViewport(t *testing.T) {
 
 func TestDiffSelectionScrollFromEOFAndRestart(t *testing.T) {
 	const width, height = 130, 12
-	c := liveDiffChangesController(t, width, height, []livediff.Chunk{
-		liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a.go", 40), livediff.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
+	c := liveDiffChangesController(t, width, height, []presentation.Chunk{
+		liveDiffCapture("a", "a.go", 1, "", liveDiffLinesFile("a.go", 40), presentation.Origin{Change: "amber1", Caller: "/root", Source: "apply_patch"}),
 	})
-	c.native = true
 	c.view.Open(0)
 	c.frame(t)
 	c.view.ScrollTo(c.rendering, len(c.lines)-1)

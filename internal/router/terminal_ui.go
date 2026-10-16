@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffrender"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
@@ -31,7 +31,7 @@ type terminalUI struct {
 	focus, drag                                    int // 0 transcript/composer, 1 diff, 3 roster; drag 1 main, 2 auxiliary, 3 files, 4 roster
 	diffOpen                                       bool
 	diffUnseen                                     bool // Saved changes arrived while Diff was closed.
-	liveDock                                       diffview.PreviewPane
+	liveDock                                       previewview.PreviewPane
 	livePending                                    map[string]nativePendingPreview
 	liveHidden                                     bool // Presentation only, local to this frontend session.
 	prefix                                         bool
@@ -444,7 +444,7 @@ func (u *terminalUI) send(s string) error {
 	}
 	for _, key := range []byte(s) {
 		if u.focus == 1 {
-			if key == 'e' && u.main != nil && u.diff.diffMode && !u.diff.help && u.diff.escape == "" {
+			if key == 'e' && u.main != nil && !u.diff.help && u.diff.escape == "" {
 				n := &u.diff.navigation
 				if n.Focused && !n.Filtering && !n.ChangesTab && n.Cursor >= 0 && n.Cursor < len(n.Entries) {
 					if file := n.Entries[n.Cursor].File; file >= 0 && file < len(u.diff.files) {
@@ -609,7 +609,7 @@ func (u *terminalUI) mouse(s string) error {
 		case y == u.layout.horizontal && x > u.layout.vertical && u.layout.horizontal >= 0:
 			u.drag = 2
 			return nil
-		case u.layout.diff.contains(x, y) && u.diff.diffMode && u.diff.navigation.Width(u.layout.diff.w) > 0 && x-u.layout.diff.x == u.diff.navigation.Width(u.layout.diff.w):
+		case u.layout.diff.contains(x, y) && u.diff.navigation.Width(u.layout.diff.w) > 0 && x-u.layout.diff.x == u.diff.navigation.Width(u.layout.diff.w):
 			u.drag = 3
 			return nil
 		}

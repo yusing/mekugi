@@ -219,88 +219,11 @@ settling behavior. The application owns review scope and retained-change deliver
 saved Diff and captured Activity receipts remain available when live preview is
 omitted. Preview values never establish retained change evidence.
 
-The saved diff view uses completed known-edit patch and command evidence. It includes
-changes from children that are visible to the parent. The viewer switches
-to it after root completion, and back to stream for the
-next prompt. The user can switch or browse without changing execution or durable evidence. Each mode's
-footer reports what the other holds: live calls from the diff view, and
-captured files from the stream view. A child caller's card label uses the
-same color as that agent in the agents pane.
-
-Replacement blocks emphasize removed and inserted words with stronger red and
-green backgrounds, like git-delta, while preserving source syntax colors.
-Unchanged words keep the subtle changed-row fill. Comparisons span consecutive
-replacement rows so line reflow does not mark all retained words as changed.
-Pure additions and removals keep their row fill. Large replacement blocks may
-omit word emphasis to keep rendering bounded. This decoration changes no source
-text, line coordinates, selection, or retained evidence. Source previews use
-the same decoration for the replacement rows available in their visible window.
-
-The saved diff navigator is a presentation index over captured files, not a
-reordering of capture history. Wide panes show a persistent, collapsible left
-dock with colored status and inline added/removed counts. `s` shows and focuses
-the file/Changes navigator; pressing it again hides the navigator. Narrow
-standalone panes use a full-width picker so code retains its reading width.
-Narrow native panes stack the list above the diff; focusing the list enlarges
-it without covering the diff.
-The diff pane header omits the redundant file/path/row count; section headings
-within the diff still identify each file.
-Tree and flat choices remain stable for the viewer lifetime. Filtering shows
-matching relative paths, including descendants of collapsed folders; clearing
-it restores the tree's expansion and navigation position. Files use stable
-path ordering, with folders first in tree mode. Next/previous file navigation
-uses the matching set, revealing destinations inside collapsed folders.
-
-The navigator and diff have independent viewports and keyboard focus. Arrow keys
-act on the focused region. Keyboard focus is visible;
-the active list row is shaded in place rather than marked by a separate arrow
-column, leaving that cell available for file names and graph rows. Moving the
-cursor onto a file, or onto a change (its first file), shows that file while
-the list keeps focus; Enter opens it and focuses the diff. The row under the
-pointer is underlined, apart from its tree or graph lanes. Clicking a list row
-selects it while keeping list focus; clicking diff content focuses the diff. After Enter
-opens a file, Esc returns to the list; after Enter on a branch sets its caller
-filter, Esc restores the previous filter. Otherwise Esc closes help or the
-filter, then leaves the list.
-Mouse scrolling targets the region under the pointer. Opening a file from the
-navigator or a change starts at its section heading. Next/previous file
-navigation restores a position only where the reader stopped before jumping
-away; scrolling past a file keeps none. Without a title row, the open file's
-heading stays pinned while its content scrolls. Hunk navigation uses rendered
-hunk boundaries and, like a file jump, keeps the position of a file it leaves.
-Each change record keeps the canonical path of the agent that issued it and
-the tool or program that wrote it (`apply_patch`, or the observed program such
-as `sed` or `python3`). The navigator's Changes tab lists captured changes in
-capture order as a graph with one lane per caller, branching from `main` at the
-caller's first change; each row shows the change ID, source, file count, known
-line counts. A single-file change always shows its file: nested below it
-beside the diff, or in place of the count when the list is stacked with the
-diff or covers it, where it has no file rows to expand. Missing line counts use `?`, not a command-failure glyph. A file's
-section heading lists the changes it composes. Every saved authored capture participates
-in composition regardless of command exit status. If retained contents cannot
-form one coherent diff, the pane shows the individual captured edits with their
-IDs instead of hiding them behind a composition error or inventing a net diff.
-The saved Diff title reports unavailable line totals for such a fallback, or for
-binary or incomplete history, rather than summing separate edits as a net outcome.
-Next/previous change navigation
-opens each file of each change in that order. A caller filter shows one
-caller's changes: other callers' captures compose as baseline, so the
-shown diff remains the exact net effect of that caller's edits, and the heading
-counts the changes folded into it. Agents appear by display name: `main` for the root,
-otherwise the path below it. Records from before attribution show an unknown
-caller, which filters like any other. File rows in the tree, flat list, Changes
-tab, and streaming title share one format: a colored git-style status, one
-space, then the name. The status is `A`, `D`, `M`, `R` for a rename with no
-content change, or `RM` for a rename with captured edits. `?` marks incomplete
-evidence without claiming a confirmed modification; a rename
-names its source as `old → new`. `UU` marks a net diff that still adds
-`mchanges` revert or apply conflict markers, and clears once they are resolved.
-Incoming updates refresh content while retaining the chosen file, navigator cursor, and top-row identity
-where those entries still exist. Resize keeps the logical diff anchor and the
-focused navigator entry visible. File status, known line counts, folder file
-counts, and recent-update marks remain distinct from capture confirmation;
-unknown counts are not presented as zero. Help is available without permanently
-occupying code rows. These controls change no execution or durable evidence.
+The [change-history module](../../modules/changehistory/SPEC.md) owns saved-review
+composition, attribution, caller filtering and selected-file semantics. Its
+terminal view and the [UI contract](native_ui.md) own navigation, viewport anchors,
+source copying and layout. Shared source geometry, syntax, word emphasis and file
+labels belong to the [diff renderer](../../libraries/diffrender/SPEC.md).
 
 Mekugi owns the native terminal composition, while Codex app-server remains the
 execution authority. The [UI contract](native_ui.md)

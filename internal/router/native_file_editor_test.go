@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
@@ -15,7 +15,7 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	c := u.shell.diff
-	c.files = []livediff.File{navigationFile("src/selected.go"), navigationFile("other.go")}
+	c.files = []presentation.File{navigationFile("src/selected.go"), navigationFile("other.go")}
 	c.navigation.Rebuild(c.files, "")
 	c.navigation.Focused = true
 	u.shell.focus = 1

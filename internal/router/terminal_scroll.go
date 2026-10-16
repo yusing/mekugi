@@ -5,16 +5,10 @@ import (
 )
 
 func (c *liveDiffTerminalController) scroll(key byte) bool {
-	if !c.diffMode {
-		return c.previewPane.Scroll(key)
-	}
 	if key == 'r' {
 		return false
 	}
-	total := len(c.lines)
-	if c.pinned {
-		total++
-	}
+	total := len(c.lines) + 1
 	next, _, ok := terminalui.PaneScroll(key, c.offset, c.rows, total)
 	if !ok {
 		return false

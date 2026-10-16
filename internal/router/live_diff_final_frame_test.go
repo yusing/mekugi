@@ -11,8 +11,6 @@ import (
 	"time"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 func newLiveDiffFinalFrameTransform(t *testing.T) (*mekugiResponseTransform, *previewmodel.Session, *reviewSubscription) {
@@ -261,52 +259,6 @@ func waitLiveDiffWorkerDone(t *testing.T, worker *liveDiffPreviewWorker) {
 	case <-worker.done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("live diff preview worker did not stop")
-	}
-}
-
-func TestLiveDiffFinalFramePTYShowsCompleteEditAfterTruncatedPreview(t *testing.T) {
-	t.Parallel()
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	connection, broker, _ := liveDiffTestBroker(t, store, previewmodel.Scope{
-		Workspaces: map[string]map[string]bool{workspace: {"thread": true}},
-	})
-	sub := testReview(broker).Subscribe()
-	<-sub.Events()
-	ui := startLiveDiffTerminal(t, workspace, store.directory, connection, 18)
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
-
-	worker := startLiveDiffPreview(t.Context(), broker, workspace, "thread", "exec")
-	t.Cleanup(worker.stop)
-	fullInput := liveDiffCodeModeCat(t, "pty.txt", "session_line", "FINAL_FRAME_MARKER")
-	worker.appendDelta(fullInput[:strings.Index(fullInput, "FINAL_FRAME_MARKER")])
-	firstFrame := ui.frame(t, func(frame string) bool {
-		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "◐ A pty.txt") && strings.Contains(plain, "session_line")
-	})
-	if strings.Contains(ansi.Strip(firstFrame), "FINAL_FRAME_MARKER") {
-		t.Fatal("truncated streaming frame unexpectedly contained the final marker")
-	}
-	worker.finish(fullInput)
-	finalFrame := ui.frame(t, func(frame string) bool {
-		plain := ansi.Strip(frame)
-		return strings.Contains(plain, "○ A pty.txt +2 -0") && strings.Contains(plain, "FINAL_FRAME_MARKER")
-	})
-	if plain := ansi.Strip(finalFrame); !strings.Contains(plain, "session_line") {
-		t.Fatalf("final PTY frame lost earlier content: %q", plain)
-	}
-	select {
-	case <-worker.done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("final PTY preview worker did not finish")
-	}
-	worker.appendDelta(" // LATE_RESURRECTION")
-	_, active := currentLivePreview(broker, worker.preview.ID)
-	if active {
-		t.Fatal("completed PTY preview was resurrected")
 	}
 }
 

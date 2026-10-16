@@ -5,9 +5,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
+
 	"github.com/yusing/mekugi/libraries/pathdisplay"
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 func (c *liveDiffTerminalController) revealFile() {
@@ -58,7 +59,7 @@ func (c *liveDiffTerminalController) stepFile(direction int) {
 		}
 	}
 	c.view.Selected = n.Matches[(index+direction+len(n.Matches))%len(n.Matches)]
-	c.view.Following = false
+
 	c.revealFile()
 }
 
@@ -94,7 +95,7 @@ func (c *liveDiffTerminalController) openChangeRow() {
 	node := l.Nodes[row.Node]
 	switch {
 	case row.Kind == 'b':
-		previous, caller := c.view.Caller, livediff.CallerKey(node.Caller)
+		previous, caller := c.view.Caller, presentation.CallerKey(node.Caller)
 		if previous == caller {
 			caller = ""
 		}
@@ -112,7 +113,7 @@ func (c *liveDiffTerminalController) openChangeRow() {
 		if len(node.Files) > 0 {
 			c.openChange(node.Change, node.Files[0].File)
 		}
-		l.Rebuild(&c.view, c.workspace)
+		l.Rebuild(&c.view.View, c.workspace)
 		l.FocusChange(node.Change, c.navRows)
 	}
 }
@@ -140,21 +141,21 @@ func (c *liveDiffTerminalController) openChange(change string, file int) {
 		return
 	}
 	c.view.Open(file)
-	c.navigation.Changes.Target = diffview.ChangeTarget{Change: change, File: c.view.Files[file].Key()}
+	c.navigation.Changes.Target = presentation.ChangeTarget{Change: change, File: c.view.Files[file].Key()}
 	c.revealFile()
 }
 
 // stepChange opens the next or previous file of a change, in capture order.
 func (c *liveDiffTerminalController) stepChange(direction int) {
 	l := &c.navigation.Changes
-	var targets []diffview.ChangeTarget
+	var targets []presentation.ChangeTarget
 	var files []int
 	for _, node := range l.Nodes {
 		for _, file := range node.Files {
 			if file.File >= len(c.view.Files) {
 				continue
 			}
-			targets = append(targets, diffview.ChangeTarget{Change: node.Change, File: c.view.Files[file.File].Key()})
+			targets = append(targets, presentation.ChangeTarget{Change: node.Change, File: c.view.Files[file.File].Key()})
 			files = append(files, file.File)
 		}
 	}
@@ -183,26 +184,26 @@ func (c *liveDiffTerminalController) stepChange(direction int) {
 // filterCaller shows only one caller's changes; an empty caller shows all.
 func (c *liveDiffTerminalController) filterCaller(caller string) {
 	c.view.FilterCaller(caller)
-	c.navigation.Changes.Target = diffview.ChangeTarget{}
+	c.navigation.Changes.Target = presentation.ChangeTarget{}
 	c.refreshChanges()
 }
 
 // refreshChanges rebuilds what the navigator derives from captures: the
 // Changes tab, caller marks, and the filter shown in the Files heading.
 func (c *liveDiffTerminalController) refreshChanges() {
-	c.files = make([]livediff.File, len(c.view.Files))
+	c.files = make([]presentation.File, len(c.view.Files))
 	for i, file := range c.view.Files {
 		c.files[i] = c.view.Visible[file.Key()]
 	}
 	c.navigation.Rebuild(c.files, c.workspace)
-	c.navigation.Changes.Rebuild(&c.view, c.workspace)
+	c.navigation.Changes.Rebuild(&c.view.View, c.workspace)
 	c.navigation.Dots = c.callerDots()
 	c.navigation.Caller = c.view.Caller
 }
 
 // cycleCaller steps the caller filter through all, then each caller.
 func (c *liveDiffTerminalController) cycleCaller() {
-	callers := append([]string{""}, diffview.Callers(&c.view)...)
+	callers := append([]string{""}, presentation.Callers(&c.view.View)...)
 	next := (slices.Index(callers, c.view.Caller) + 1) % len(callers)
 	c.filterCaller(callers[next])
 }
@@ -221,7 +222,7 @@ func (c *liveDiffTerminalController) editFilter(key byte) {
 		if *query != "" {
 			if n.ChangesTab {
 				// Accepting opens the first match's first file without toggling it.
-				if first := slices.IndexFunc(n.Changes.Rows, func(row diffview.ChangeRow) bool { return row.Kind == 'c' }); first >= 0 {
+				if first := slices.IndexFunc(n.Changes.Rows, func(row changeview.ChangeRow) bool { return row.Kind == 'c' }); first >= 0 {
 					if node := n.Changes.Nodes[n.Changes.Rows[first].Node]; len(node.Files) > 0 {
 						c.openChange(node.Change, node.Files[0].File)
 						n.Changes.FocusChange(node.Change, c.navRows)
@@ -241,7 +242,7 @@ func (c *liveDiffTerminalController) editFilter(key byte) {
 		}
 	}
 	if n.ChangesTab {
-		n.Changes.Rebuild(&c.view, c.workspace)
+		n.Changes.Rebuild(&c.view.View, c.workspace)
 		n.Changes.Cursor, n.Changes.Top = 0, 0
 		return
 	}
@@ -274,10 +275,10 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 		n.ChangesTab = !n.ChangesTab
 		n.Hidden, n.Filtering = false, false
 		if c.lastWidth < 100 && !n.Focused {
-			n.Focused, c.view.Following = true, false
+			n.Focused = true
 		}
 		if n.ChangesTab {
-			n.Changes.Rebuild(&c.view, c.workspace)
+			n.Changes.Rebuild(&c.view.View, c.workspace)
 			if target := n.Changes.Target; target.Change != "" {
 				n.Changes.FocusChange(target.Change, c.navRows)
 			}
@@ -293,7 +294,7 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 			}
 		}
 		n.Hidden = false
-		n.Focused, n.Filtering, c.view.Following = true, true, false
+		n.Focused, n.Filtering = true, true
 		return true
 	case 't':
 		n.Flat = !n.Flat
@@ -305,7 +306,7 @@ func (c *liveDiffTerminalController) navigationKey(key byte) bool {
 		n.Hidden, n.Focused = n.Focused, !n.Focused
 		n.Filtering = false
 		if n.Focused {
-			c.view.Following = false
+
 			c.revealFile()
 		}
 		return true
@@ -414,7 +415,7 @@ func (c *liveDiffTerminalController) changesKey(key byte) bool {
 				l.Expanded = make(map[string]bool)
 			}
 			l.Expanded[change] = key == 'l'
-			l.Rebuild(&c.view, c.workspace)
+			l.Rebuild(&c.view.View, c.workspace)
 			l.FocusChange(change, c.navRows)
 		}
 	default:

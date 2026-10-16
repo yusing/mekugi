@@ -1,16 +1,11 @@
 package router
 
 import (
-	"fmt"
 	"os"
-	"strings"
 	"testing"
 
-	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
-
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 func TestScrollableDiffKeys(t *testing.T) {
@@ -30,8 +25,9 @@ func TestScrollableDiffKeys(t *testing.T) {
 		{name: "b page up", keys: "b", offset: 40, starting: 50},
 		{name: "home", keys: "\x1b[H", offset: 0, starting: 50},
 		{name: "g home", keys: "g", offset: 0, starting: 50},
-		{name: "end", keys: "\x1b[F", offset: 90, starting: 50},
-		{name: "G end", keys: "G", offset: 90, starting: 50},
+		// The pinned file heading leaves nine source rows in the ten-row pane.
+		{name: "end", keys: "\x1b[F", offset: 91, starting: 50},
+		{name: "G end", keys: "G", offset: 91, starting: 50},
 		{name: "removed saved resume shortcut", keys: "r", offset: 50, starting: 50},
 		{name: "clamp at top", keys: "k", offset: 0, starting: 0},
 		{name: "clamp at bottom", keys: "j", offset: 99, starting: 99},
@@ -48,10 +44,6 @@ func TestScrollableDiffKeys(t *testing.T) {
 			if got := controller.view.Scroll["scroll.txt"]; got != test.offset {
 				t.Fatalf("live diff offset = %d, want %d", got, test.offset)
 			}
-			if controller.view.Following {
-				t.Fatalf("live diff following = %v, want %v", controller.view.Following, false)
-			}
-
 		})
 	}
 }
@@ -76,8 +68,8 @@ func TestScrollablePaneWheelAgreesAtConsumers(t *testing.T) {
 			for _, key := range []byte(test.seq) {
 				controller.handleKey(key)
 			}
-			if got := controller.view.Scroll["scroll.txt"]; got != test.diffWant || controller.view.Following {
-				t.Fatalf("live diff wheel offset/follow = %d/%v, want %d/false", got, controller.view.Following, test.diffWant)
+			if got := controller.view.Scroll["scroll.txt"]; got != test.diffWant {
+				t.Fatalf("live diff wheel offset = %d, want %d", got, test.diffWant)
 			}
 
 			activity := newLiveActivityView()
@@ -90,70 +82,17 @@ func TestScrollablePaneWheelAgreesAtConsumers(t *testing.T) {
 	}
 }
 
-func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
-	controller := newLiveDiffTerminalController(nil, "/workspace", os.Stdout)
-	defer controller.close()
-	controller.scope.Workspaces = map[string]map[string]bool{"/workspace": {"thread": true}}
-	preview := terminalScrollStreamPreview(30)
-	if _, err := controller.applyEvent(t.Context(), reviewEvent{Kind: "preview", Preview: &preview}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12); err != nil {
-		t.Fatal(err)
-	}
-
-	for _, key := range []byte("\x1b[<64;1;1M") {
-		controller.handleKey(key)
-	}
-	stream := controller.previewPane.Views["scroll-stream"]
-	if !stream.Paused || stream.ScrollRow != 26 {
-		t.Fatalf("wheel did not pause the stream at its previous row: paused=%v row=%d", stream.Paused, stream.ScrollRow)
-	}
-
-	preview = terminalScrollStreamPreview(40)
-	if _, err := controller.applyEvent(t.Context(), reviewEvent{Kind: "preview", Preview: &preview}); err != nil {
-		t.Fatal(err)
-	}
-	lines, err := controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12)
-	if err != nil {
-		t.Fatal(err)
-	}
-	visible := strings.Join(lines, "\n")
-	if !stream.Paused || stream.ScrollRow != 26 || !strings.Contains(visible, "stream_0027") || strings.Contains(visible, "stream_0040") {
-		t.Fatalf("stream update moved its paused viewport: row=%d paused=%v lines=%q", stream.ScrollRow, stream.Paused, visible)
-	}
-
-	controller.handleKey('r')
-	lines, err = controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if stream.Paused || !strings.Contains(strings.Join(lines, "\n"), "stream_0040") {
-		t.Fatalf("resume did not return the stream viewport to its tip: paused=%v lines=%q", stream.Paused, lines)
-	}
-}
-
 func newTerminalScrollTestController(offset int) *liveDiffTerminalController {
 	controller := newLiveDiffTerminalController(nil, "", os.Stdout)
 	lines := make([]string, 100)
-	controller.diffMode, controller.lines, controller.offset, controller.rows = true, lines, offset, 10
+	controller.lines, controller.offset, controller.rows = lines, offset, 10
 	controller.lastWidth, controller.lastHeight = 80, 20
-	controller.rendering = livediff.Render{Lines: lines, Starts: []int{0}}
-	controller.view = livediff.View{
-		Files:  []livediff.File{{Path: "scroll.txt"}},
+	controller.rendering = changeview.Render{Lines: lines, Starts: []int{0}}
+	controller.view = changeview.View{
+		Files:  []presentation.File{{Path: "scroll.txt"}},
 		Scroll: map[string]int{"scroll.txt": offset},
 	}
 	return controller
-}
-
-func terminalScrollStreamPreview(rows int) previewmodel.Preview {
-	var input strings.Builder
-	for row := 1; row <= rows; row++ {
-		fmt.Fprintf(&input, "+stream_%04d\n", row)
-	}
-	return previewmodel.Preview{
-		ID: "scroll-stream", Workspace: "/workspace", Thread: "thread", Input: input.String(),
-	}
 }
 
 func TestScrollablePaneWheelBurstAccumulates(t *testing.T) {
@@ -176,10 +115,10 @@ func TestScrollablePaneWheelBurstAccumulates(t *testing.T) {
 func TestScrollableDiffBeforePaintAndAfterFileChange(t *testing.T) {
 	for _, geometry := range []struct {
 		name   string
-		render livediff.Render
+		render changeview.Render
 	}{
 		{name: "not painted"},
-		{name: "removed file", render: livediff.Render{Lines: []string{"old", "other"}, Starts: []int{0, 1}}},
+		{name: "removed file", render: changeview.Render{Lines: []string{"old", "other"}, Starts: []int{0, 1}}},
 	} {
 		t.Run(geometry.name, func(t *testing.T) {
 			for _, keys := range []string{"\x1b[5~", "\x1b[6~", "\x1b[A", "\x1b[B", "g", "G", "\x1b[<64;1;2M"} {
@@ -193,7 +132,7 @@ func TestScrollableDiffBeforePaintAndAfterFileChange(t *testing.T) {
 					t.Fatalf("input used stale geometry: selection=%d scroll=%v", c.view.Selected, c.view.Scroll)
 				}
 				// Valid painted geometry restores ordinary scrolling immediately.
-				c.rendering = livediff.Render{Lines: make([]string, 100), Starts: []int{0}}
+				c.rendering = changeview.Render{Lines: make([]string, 100), Starts: []int{0}}
 				c.lines, c.offset = c.rendering.Lines, 50
 				c.handleKey('k')
 				if c.view.Scroll["scroll.txt"] != 49 {

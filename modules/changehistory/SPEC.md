@@ -7,10 +7,11 @@ Retain, review, apply, and revert observed filesystem change evidence.
 ## Scope
 
 The module owns change identities, stream allocation, attempt membership,
-retained review and mutation semantics, frozen read selections, and semantic
-retirement. The application supplies validated host observations and publishes
+retained review and mutation semantics, frozen read selections, semantic
+retirement, and renderer-neutral saved-review presentation. The application supplies validated host observations and publishes
 immutable evidence before its change membership. Capture acquisition, provisional
-live previews, host execution, and terminal painting have separate owners.
+live previews and host execution have separate owners. The module's terminal view
+paints its presentation values over the shared diff renderer.
 
 ## Behavior
 
@@ -154,9 +155,40 @@ change index, or when the subcommand or a mutation operand is dynamic, the
 command has no source-resolved recording scope. A read with dynamic operands
 stays neutral.
 
+### Saved review presentation
+
+Saved review consumes immutable captured evidence, including visible children's
+changes, without reading current workspace content. Capture order determines
+composition and change navigation; receipt arrival and caller identity do not
+reorder effects. Files retain identity through moves, deletion and recreation.
+All authored captures participate regardless of command exit status.
+
+The model preserves selected file and change identities across updates. Initial
+history is a baseline; later captures carry recent-update marks. A caller filter
+composes other callers' edits as baseline, preserving the selected caller's exact
+effect and its provenance. Unknown callers remain separately selectable. Changes
+can be queried by ID, caller display name or source, and files by their displayed
+workspace-relative paths. Filtering does not reorder retained capture history.
+
+Inconsistent chains show their separate captured edits with change IDs instead
+of hiding evidence or inventing a combined result. Unknown, binary and incomplete
+history produce unavailable net counts. Project totals describe the unfiltered
+composed outcome; caller totals describe known captured edit activity. Captures
+outside their owning workspace contribute neither project total. No selected
+project evidence remains distinct from a known zero net result.
+
+Shared file status and source attribution remain available to command output,
+file and change navigation, rendered rows and source-copy consumers. Terminal
+viewport positions, focus, wrapping and scroll anchors belong to
+the terminal view. The [UI contract](../../doc/spec/native_ui.md) owns terminal
+interaction; the [diff renderer](../../libraries/diffrender/SPEC.md) owns source
+painting and terminal geometry.
+
 ## Lifecycle
 
-Stateless operations over durable records. Composition supplies session history;
+Durable operations are stateless over supplied records. Saved-review models and
+terminal viewports are attachment-local and restore no transient state on replay.
+Composition supplies session history;
 callers select the retained namespace, thread, and workspace explicitly. No
 operation restores a process, approval, or execution handle. The authenticated
 frontend holds its session lease through recovery publication and stream delivery.
@@ -210,3 +242,6 @@ status. Cancellation suppresses delivery without repeating completed effects.
   membership or reuse expired identities.
 - Live-view and receipt consumers receive the same committed membership and
   authored evidence, while terminal snapshots remain unchanged.
+- Pure presentation tests cover composition, caller filtering, provenance,
+  selection and project-versus-caller counts. Renderer snapshots and application
+  consumers cover navigation, resize, viewport syntax, source copy and replay.

@@ -11,8 +11,8 @@ import (
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -42,12 +42,12 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		if tc.kind == "delete" {
 			afterPath = ""
 		}
-		chunk := livediff.Chunk{Key: "edit", CaptureOrder: 1, Review: diffmodel.RenderReviewFile(beforePath, afterPath, tc.before, tc.after)}
-		c := liveDiffChangesController(t, 120, 24, []livediff.Chunk{chunk})
+		chunk := presentation.Chunk{Key: "edit", CaptureOrder: 1, Review: diffmodel.RenderReviewFile(beforePath, afterPath, tc.before, tc.after)}
+		c := liveDiffChangesController(t, 120, 24, []presentation.Chunk{chunk})
 		u.shell.diff = c
 		c.data = newLiveDiffData()
 		c.data.order = []string{"edit"}
-		c.data.attempts["edit"] = liveDiffAttempt{thread: "main", correlation: "patch\x000", chunks: []livediff.Chunk{chunk}}
+		c.data.attempts["edit"] = liveDiffAttempt{thread: "main", correlation: "patch\x000", chunks: []presentation.Chunk{chunk}}
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.workspace, chunk.Review.AfterPath))
 		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch"}}}}
 	} else {

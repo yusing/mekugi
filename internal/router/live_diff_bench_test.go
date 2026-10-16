@@ -7,7 +7,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 func BenchmarkLiveDiffWrappedRender(b *testing.B) {
@@ -15,10 +16,10 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 		chunk := liveDiffHighlightChunk("edit", "file.go",
 			fmt.Sprintf("@@ -0,0 +1,%d @@\n", rows)+
 				strings.Repeat("+var value = \""+strings.Repeat("abcdefgh ", 15)+"\"\n", rows))
-		files := []livediff.File{{Path: "file.go", Chunks: []livediff.Chunk{chunk}}}
+		files := []presentation.File{{Path: "file.go", Chunks: []presentation.Chunk{chunk}}}
 		for _, warm := range []bool{false, true} {
 			b.Run(fmt.Sprintf("%d/warm=%t", rows, warm), func(b *testing.B) {
-				var renderer livediff.Renderer
+				var renderer changeview.Renderer
 				if warm {
 					if _, err := renderer.Render(b.Context(), diffrender.DarkTheme, files, "", 100); err != nil {
 						b.Fatal(err)
@@ -27,7 +28,7 @@ func BenchmarkLiveDiffWrappedRender(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
 					if !warm {
-						renderer = livediff.Renderer{}
+						renderer = changeview.Renderer{}
 					}
 					if _, err := renderer.Render(b.Context(), diffrender.DarkTheme, files, "", 100); err != nil {
 						b.Fatal(err)

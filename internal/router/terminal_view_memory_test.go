@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
 )
 
 func TestTerminalViewMemory(t *testing.T) {
@@ -25,7 +25,7 @@ func TestTerminalViewMemory(t *testing.T) {
 	}
 	u.modelsLoading = true
 	u.shell.diffOpen = true
-	u.shell.diff.view.Merge(livediff.GroupCaptures([]livediff.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", livediff.Origin{})}))
+	u.shell.diff.view.Merge(presentation.GroupCaptures([]presentation.Chunk{liveDiffCapture("main", "main.go", 1, "old\n", "new é\n", presentation.Origin{})}))
 	u.shell.diff.view.RefreshVisible()
 	var first string
 	for _, width := range []int{120, 100, 120} {

@@ -1,43 +1,23 @@
 package router
 
 import (
-	"context"
 	"os"
-	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
-	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
-	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
-
-func TestLiveDiffRedirectedWithoutExternalRenderer(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	out, err := os.CreateTemp(t.TempDir(), "output")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer out.Close()
-	status := RunLiveDiff(t.Context(), []string{"--workspace", t.TempDir(), "--replay-dir", t.TempDir(), "--session-file", "connection.json"}, out, out, out)
-	data, err := os.ReadFile(out.Name())
-	if err != nil || status != 1 || !strings.Contains(string(data), "live view needs a terminal") {
-		t.Fatalf("redirected invocation: %d %q %v", status, data, err)
-	}
-}
 
 func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	workspace := t.TempDir()
@@ -45,10 +25,10 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	after := filepath.Join(workspace, "sub", "new.txt")
 	source := "const path = " + strconv.Quote(before)
 	diff := "--- " + strconv.Quote(before) + "\n+++ " + strconv.Quote(after) + "\n@@ -1 +1 @@\n-old\n+" + source + "\n"
-	chunk := livediff.Chunk{
+	chunk := presentation.Chunk{
 		Review: diffmodel.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: after, Chunks: []livediff.Chunk{chunk}}}, workspace, 240)
+	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{{Path: after, Chunks: []presentation.Chunk{chunk}}}, workspace, 240)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,53 +38,16 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	}
 }
 
-func TestLiveDiffFollowPauseAndResume(t *testing.T) {
-	view := livediff.View{Following: true}
-	first := livediff.File{Path: "a", Chunks: []livediff.Chunk{{Key: "first"}}}
-	second := livediff.File{Path: "b", Chunks: []livediff.Chunk{{Key: "second"}}}
-	view.Merge([]livediff.File{first})
-	view.Merge([]livediff.File{first, second})
-	if view.Files[view.Selected].Path != "b" {
-		t.Fatal("following did not select new edit")
-	}
-	view.Following = false
-	view.Selected = 0
-	third := livediff.File{Path: "c", Chunks: []livediff.Chunk{{Key: "third"}}}
-	view.Merge([]livediff.File{first, second, third})
-	if view.Files[view.Selected].Path != "a" {
-		t.Fatal("paused update changed selection")
-	}
-	view.FollowLatest()
-	if !view.Following || view.Files[view.Selected].Path != "c" {
-		t.Fatal("resume did not follow the edit received while paused")
-	}
-	view.Merge([]livediff.File{first, second, third})
-	if view.Files[view.Selected].Path != "c" {
-		t.Fatal("repeated snapshot stole follow selection")
-	}
-}
-
-func TestLiveDiffFollowUsesCaptureOrderNotFileGrouping(t *testing.T) {
-	view := livediff.View{Following: true}
-	view.Merge([]livediff.File{
-		{Path: "a", Chunks: []livediff.Chunk{{Key: "a1", SnapshotOrder: 1}, {Key: "a2", SnapshotOrder: 3}}},
-		{Path: "b", Chunks: []livediff.Chunk{{Key: "b1", SnapshotOrder: 2}}},
-	})
-	if view.Latest != "a2" || view.Files[view.Selected].Path != "a" {
-		t.Fatal("file grouping overrode latest capture order")
-	}
-}
-
 func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
-	v := livediff.View{Scroll: map[string]int{"old": 40}}
-	v.Merge([]livediff.File{
-		{Path: "b", Chunks: []livediff.Chunk{{Key: "old", Status: "prepared"}}},
+	v := changeview.View{Scroll: map[string]int{"old": 40}}
+	v.Merge([]presentation.File{
+		{Path: "b", Chunks: []presentation.Chunk{{Key: "old", Status: "prepared"}}},
 		{Path: "c"},
 	})
-	v.Merge([]livediff.File{
+	v.Merge([]presentation.File{
 		{Path: "c"},
 		{Path: "a"},
-		{Path: "b", Chunks: []livediff.Chunk{{Key: "new"}, {Key: "old"}}},
+		{Path: "b", Chunks: []presentation.Chunk{{Key: "new"}, {Key: "old"}}},
 	})
 	if v.Files[v.Selected].Path != "b" || v.Scroll["old"] != 40 ||
 		v.Files[0].Chunks[0].Key != "old" ||
@@ -112,7 +55,7 @@ func TestLiveDiffMergePreservesFileAndPosition(t *testing.T) {
 		t.Fatalf("viewport shifted: %#v", v)
 	}
 	v.Selected = 1
-	v.Merge(append(slices.Clone(v.Files), livediff.File{Path: "d"}))
+	v.Merge(append(slices.Clone(v.Files), presentation.File{Path: "d"}))
 	if v.Files[v.Selected].Path != "c" || v.Scroll["old"] != 40 {
 		t.Fatal("other-file update stole navigation")
 	}
@@ -192,7 +135,7 @@ func TestLiveDiffLegacyChangeFlagsDoNotAffectSavedEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := livediff.View{}
+	view := changeview.View{}
 	view.Merge(files)
 	view.RefreshVisible()
 	if len(view.Files) != 1 {
@@ -208,10 +151,10 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "x.go")
-	file := livediff.File{Path: path, Chunks: []livediff.Chunk{{
+	file := presentation.File{Path: path, Chunks: []presentation.Chunk{{
 		Review: diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 80)
+	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{file}, workspace, 80)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,170 +164,6 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(text), "new") || !strings.Contains(text, "\x1b[") {
 		t.Fatalf("native renderer did not Render: %q", text)
-	}
-}
-
-func TestLiveDiffTerminalProcess(t *testing.T) {
-	if os.Getenv("MEKUGI_LIVE_DIFF_TEST_CHILD") == "1" {
-		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
-		defer stop()
-		if os.Getenv("MEKUGI_LIVE_DIFF_SIMULATION_TEST") == "1" {
-			os.Exit(RunLiveDiff(ctx, []string{"--simulate", "--speed", "20"}, os.Stdin, os.Stdout, os.Stderr))
-		}
-		os.Exit(RunLiveDiff(ctx, []string{"--workspace", os.Getenv("MEKUGI_LIVE_DIFF_WORKSPACE"), "--replay-dir", os.Getenv("MEKUGI_LIVE_DIFF_REPLAY"), "--session-file", os.Getenv("MEKUGI_LIVE_DIFF_SESSION")}, os.Stdin, os.Stdout, os.Stderr))
-	}
-	t.Setenv("COLORFGBG", "")
-	t.Setenv("PATH", t.TempDir())
-	workspace := t.TempDir()
-	store, err := openMekugiReplayStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	liveDiffTestChange(t, store, workspace, "one", "first.go")
-	liveDiffTestChange(t, store, workspace, "two", "second.go")
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
-	cmd.Env = append(os.Environ(),
-		"MEKUGI_LIVE_DIFF_TEST_CHILD=1", "MEKUGI_LIVE_DIFF_WORKSPACE="+workspace,
-		"MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+liveDiffTestSession(t, store, workspace), "GIT_PAGER=cat")
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 120})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer terminal.Close()
-	chunks := make(chan string, 128)
-	go func() {
-		defer close(chunks)
-		buf := make([]byte, 8192)
-		for {
-			n, err := terminal.Read(buf)
-			if n > 0 {
-				select {
-				case chunks <- string(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	waitFor := func(want ...string) string {
-		t.Helper()
-		var output strings.Builder
-		for {
-			select {
-			case text, open := <-chunks:
-				output.WriteString(text)
-				plain := ansi.Strip(output.String())
-				if !slices.ContainsFunc(want, func(part string) bool {
-					return !strings.Contains(output.String(), part) && !strings.Contains(plain, part)
-				}) {
-					return output.String()
-				}
-				if !open {
-					t.Fatalf("viewer exited before %q: %q", want, output.String())
-				}
-			case <-ctx.Done():
-				t.Fatalf("waiting for %q: %q", want, output.String())
-			}
-		}
-	}
-	initial := waitFor("STREAM · v diff")
-	if !strings.Contains(initial, "\x1b]11;?\x1b\\") {
-		t.Fatalf("viewer did not query the terminal background: %q", initial)
-	}
-	if _, err := terminal.Write([]byte("v")); err != nil {
-		t.Fatal(err)
-	}
-	waitFor("v stream")
-	for _, reply := range []struct {
-		text  string
-		theme diffrender.Theme
-	}{
-		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", diffrender.LightTheme},
-		{"\x1b]11;rgb:1111/1111/1111\a", diffrender.DarkTheme},
-	} {
-		// Exercise a reply fragmented at every byte, including ESC + ST.
-		for _, key := range []byte(reply.text) {
-			if _, err := terminal.Write([]byte{key}); err != nil {
-				t.Fatal(err)
-			}
-		}
-		waitFor(reply.theme.Foreground(chroma.GenericInserted), "DIFF · v stream")
-	}
-	// Unrelated and malformed OSC payloads must not flush, navigate, or quit,
-	// even when they include escape-prefixed command keys or overflow the buffer.
-	if _, err := terminal.Write([]byte("\x1b]0;qFnp\a\x1b]11;rgb:ff/ff/\x1bF\a\x1b]11;rgb:ff/ff/\x1bq\a" +
-		"\x1b]0;" + strings.Repeat("F", 1024) + "\x1b\\")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := terminal.Write([]byte("gnkjjj?")); err != nil {
-		t.Fatal(err)
-	}
-	waitFor("Diff navigation") // Barrier: all navigation keys have been handled.
-	if _, err := terminal.Write([]byte("?")); err != nil {
-		t.Fatal(err)
-	}
-	// New files must not move the paused selection or its visible source row.
-	selectedFileHighlighted := func(output, name string, height int) bool {
-		for row := 1; row <= height; row++ {
-			raw := liveDiffFrameRawRow(output, row)
-			if strings.Contains(ansi.Strip(raw), name) && strings.Contains(raw, diffrender.DarkTheme.SelectionBackground()) {
-				return true
-			}
-		}
-		return false
-	}
-	before := waitFor("M second.go", "DIFF · v stream", diffrender.DarkTheme.SelectionBackground())
-	if !selectedFileHighlighted(before, "M second.go", 20) {
-		t.Fatalf("navigation did not select second.go: %q", liveDiffFrameRow(before, 5))
-	}
-	lastRow := func(output string, row int) string {
-		start := strings.LastIndex(output, "\x1b["+strconv.Itoa(row)+";1H\x1b[0m\x1b[2K")
-		if start < 0 {
-			return ""
-		}
-		return liveDiffFrameRow(output[start:], row)
-	}
-	_, beforeSource, _ := strings.Cut(lastRow(before, 2), "│")
-	liveDiffTestChange(t, store, workspace, "three", "first.go")
-	liveDiffTestChange(t, store, workspace, "four", "third.go")
-	after := waitFor("M second.go", "3/3 · tree", "DIFF · v stream", diffrender.DarkTheme.SelectionBackground())
-	if !selectedFileHighlighted(after, "M second.go", 20) {
-		t.Fatalf("new files moved paused selection: %q", liveDiffFrameRow(after, 5))
-	}
-	_, source, _ := strings.Cut(lastRow(after, 2), "│")
-	if source != beforeSource {
-		t.Fatalf("new files moved paused source row: before %q, after %q", beforeSource, source)
-	}
-	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 25, Cols: 100}); err != nil {
-		t.Fatal(err)
-	}
-	resized := waitFor("M second.go", diffrender.DarkTheme.SelectionBackground())
-	if !selectedFileHighlighted(resized, "M second.go", 25) {
-		t.Fatal("resize lost selected file highlight")
-	}
-	if _, err := terminal.Write([]byte("r")); err != nil {
-		t.Fatal(err)
-	}
-	if output := waitFor("DIFF · v stream", "M second.go", diffrender.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M second.go", 25) {
-		t.Fatalf("removed r shortcut changed selected file: %s", output)
-	}
-	if _, err := terminal.Write([]byte{3}); err != nil {
-		t.Fatal(err)
-	}
-	exit := make(chan error, 1)
-	go func() { exit <- cmd.Wait() }()
-	select {
-	case err := <-exit:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-ctx.Done():
-		t.Fatal("viewer failed to quit and restore the terminal")
 	}
 }
 
@@ -418,80 +197,6 @@ func TestLiveDiffDoesNotInferPrivateScopeFromScriptText(t *testing.T) {
 	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil || len(files) != 2 {
 		t.Fatalf("script spelling hid workspace evidence: %#v %v", files, err)
-	}
-}
-
-func TestLiveDiffTerminalCancel(t *testing.T) {
-	testLiveDiffTerminalCancel(t, "")
-}
-
-func TestLiveDiffTerminalInterruptDuringOSC(t *testing.T) {
-	testLiveDiffTerminalCancel(t, "\x1b]11;rgb:ff/"+strings.Repeat("F", 1024)+"\x03")
-}
-
-func testLiveDiffTerminalCancel(t *testing.T, keys string) {
-	t.Helper()
-	workspace := t.TempDir()
-	store := testReplayStore(mekugiReplayStore{directory: t.TempDir()})
-	t.Setenv("PATH", t.TempDir())
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLiveDiffTerminalProcess$")
-	cmd.Env = append(os.Environ(), "MEKUGI_LIVE_DIFF_TEST_CHILD=1",
-		"MEKUGI_LIVE_DIFF_WORKSPACE="+workspace, "MEKUGI_LIVE_DIFF_REPLAY="+store.directory, "MEKUGI_LIVE_DIFF_SESSION="+liveDiffTestSession(t, store, workspace))
-	terminal, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 20, Cols: 90})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer terminal.Close()
-	ready := make(chan struct{})
-	output := make(chan string, 1)
-	go func() {
-		var text strings.Builder
-		var buf [4096]byte
-		notified := false
-		for {
-			n, err := terminal.Read(buf[:])
-			text.Write(buf[:n])
-			if !notified && strings.Contains(text.String(), "STREAM · v diff") {
-				close(ready)
-				notified = true
-			}
-			if err != nil {
-				output <- text.String()
-				return
-			}
-		}
-	}()
-	select {
-	case <-ready:
-	case <-ctx.Done():
-		t.Fatal("viewer did not start")
-	}
-	if keys != "" {
-		if _, err := terminal.Write([]byte(keys)); err != nil {
-			t.Fatal(err)
-		}
-	} else if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	exit := make(chan error, 1)
-	go func() { exit <- cmd.Wait() }()
-	select {
-	case err := <-exit:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-ctx.Done():
-		t.Fatal("context cancellation left terminal reader running")
-	}
-	select {
-	case text := <-output:
-		if !strings.Contains(text, "\x1b[?25h\x1b[?1049l") {
-			t.Fatalf("terminal was not restored: %q", text)
-		}
-	case <-ctx.Done():
-		t.Fatal("terminal output remained open")
 	}
 }
 
@@ -530,7 +235,7 @@ func liveDiffIdentityCapture(t *testing.T, store *mekugiReplayStore, workspace, 
 	}
 }
 
-func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace string, view *livediff.View) {
+func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace string, view *changeview.View) {
 	t.Helper()
 	files, err := store.liveDiffSnapshotFiles(t.Context(), previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: nil}})
 	if err != nil {
@@ -540,7 +245,7 @@ func liveDiffRefreshTest(t *testing.T, store *mekugiReplayStore, workspace strin
 	view.RefreshVisible()
 }
 
-func liveDiffVisibleText(file livediff.File) string {
+func liveDiffVisibleText(file presentation.File) string {
 	var text strings.Builder
 	for _, chunk := range file.Chunks {
 		text.WriteString(chunk.Status + "\n" + chunk.Review.UnifiedDiff())
@@ -554,7 +259,7 @@ func TestLiveDiffSavedMoveCarriesBaselineToDestination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := livediff.View{Scroll: make(map[string]int)}
+	v := changeview.View{Scroll: make(map[string]int)}
 	liveDiffIdentityCapture(t, store, workspace, "A", "a.txt", "a.txt", "old\n", "first\n")
 	liveDiffRefreshTest(t, store, workspace, &v)
 	liveDiffIdentityCapture(t, store, workspace, "move", "a.txt", "b.txt", "first\n", "first\n")
@@ -578,7 +283,7 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			v := livediff.View{Scroll: map[string]int{workspace + "\x00A/0": 9}}
+			v := changeview.View{Scroll: map[string]int{workspace + "\x00A/0": 9}}
 			order := []string{"A", "B"}
 			if reverse {
 				slices.Reverse(order)
@@ -588,7 +293,7 @@ func TestLiveDiffMoveIntoDeletedPathKeepsChainsSeparate(t *testing.T) {
 				liveDiffIdentityCapture(t, store, workspace, id, path, path, "old"+id+"\n", id+"\n")
 			}
 			liveDiffRefreshTest(t, store, workspace, &v)
-			v.Selected = slices.IndexFunc(v.Files, func(f livediff.File) bool { return f.Key() == workspace+"\x00A/0" })
+			v.Selected = slices.IndexFunc(v.Files, func(f presentation.File) bool { return f.Key() == workspace+"\x00A/0" })
 			liveDiffIdentityCapture(t, store, workspace, "deleteB", "b.txt", "", "B\n", "")
 			liveDiffRefreshTest(t, store, workspace, &v)
 			liveDiffIdentityCapture(t, store, workspace, "moveA", "a.txt", "b.txt", "A\n", "A\n")

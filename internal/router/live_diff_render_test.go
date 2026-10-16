@@ -15,16 +15,17 @@ import (
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/modules/changehistory/presentation"
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 )
 
 func TestLiveDiffNativeRows(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -9,3 +9,3 @@\n context\n-old\n+new\n \n")
 	chunk.Status = ""
-	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: "file.txt", Chunks: []livediff.Chunk{chunk}}}, "", 80)
+	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{{Path: "file.txt", Chunks: []presentation.Chunk{chunk}}}, "", 80)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +53,8 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 			review = diffmodel.ReviewFile{BeforePath: path,
 				Diff: "--- file.txt\n+++ /dev/null\n@@ -1,20 +0,0 @@\n" + strings.Repeat("-content\n", 20)}
 		}
-		chunk := livediff.Chunk{Review: review}
-		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, "", 90)
+		chunk := presentation.Chunk{Review: review}
+		render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{{Path: path, Chunks: []presentation.Chunk{chunk}}}, "", 90)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,7 +77,7 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "unknown.extension",
 		"@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\x1b]52;c;secret\a\x1b[2J\x1b[31m\t界 é 👩‍💻\n\\ No newline at end of file\n")
 	for _, width := range []int{1, 2, 3, 12, 36, 90} {
-		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: "unknown.extension", Chunks: []livediff.Chunk{chunk}}}, "", width)
+		render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{{Path: "unknown.extension", Chunks: []presentation.Chunk{chunk}}}, "", width)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,19 +158,19 @@ func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
 func TestLiveDiffNativeErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := new(livediff.Renderer).Render(ctx, diffrender.TerminalTheme, nil, "", 80); !errors.Is(err, context.Canceled) {
+	if _, err := new(changeview.Renderer).Render(ctx, diffrender.TerminalTheme, nil, "", 80); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
 	if _, err := new(diffrender.Renderer).ColorSource(ctx, diffrender.TerminalTheme, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("syntax cancellation: %v", err)
 	}
 	chunk := liveDiffHighlightChunk("edit", "file.go", "@@ -1 +1 @@\n+missing removal\n")
-	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: "file.go", Chunks: []livediff.Chunk{chunk}}}, "", 80)
+	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{{Path: "file.go", Chunks: []presentation.Chunk{chunk}}}, "", 80)
 	if err == nil || len(render.Lines) != 0 {
 		t.Fatalf("malformed capture returned a partial successful view: %+v %v", render, err)
 	}
 	chunk.Review.Diff = strings.Repeat("x", changes.MaxReadBytes+1)
-	if _, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Chunks: []livediff.Chunk{chunk}}}, "", 80); err == nil {
+	if _, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme, []presentation.File{{Chunks: []presentation.Chunk{chunk}}}, "", 80); err == nil {
 		t.Fatal("unbounded source accepted")
 	}
 }
@@ -177,16 +178,16 @@ func TestLiveDiffNativeErrors(t *testing.T) {
 func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "visible.txt", "@@ -1 +1 @@\n-old\n+new\n")
 	chunk.Status = ""
-	files := []livediff.File{
+	files := []presentation.File{
 		{Path: "reverted-first"},
-		{Path: "visible.txt", Chunks: []livediff.Chunk{chunk}},
+		{Path: "visible.txt", Chunks: []presentation.Chunk{chunk}},
 		{Path: "reverted-middle"},
-		{Path: "deleted.txt", Chunks: []livediff.Chunk{{Review: diffmodel.ReviewFile{
+		{Path: "deleted.txt", Chunks: []presentation.Chunk{{Review: diffmodel.ReviewFile{
 			BeforePath: "deleted.txt", Diff: "--- deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-removed source\n",
 		}}}},
 		{Path: "reverted-last"},
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 90)
+	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 		!strings.Contains(text, "Deleted file") || render.Counts[3].Removed != 1 {
 		t.Fatalf("hidden/deleted presentation is wrong: %q", text)
 	}
-	view := livediff.View{Files: files, Scroll: map[string]int{}}
+	view := changeview.View{Files: files, Scroll: map[string]int{}}
 	for offset := range len(render.Lines) {
 		view.ScrollTo(render, offset)
 		want := 1
@@ -213,12 +214,12 @@ func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 }
 
 func TestLiveDiffIncompleteHistory(t *testing.T) {
-	chunk := livediff.Chunk{Key: "unreadable", Review: diffmodel.RenderIncompleteReviewFile("file", "file", "permission denied")}
-	view := livediff.View{}
-	view.Merge([]livediff.File{{Path: "file", Chunks: []livediff.Chunk{chunk}}})
+	chunk := presentation.Chunk{Key: "unreadable", Review: diffmodel.RenderIncompleteReviewFile("file", "file", "permission denied")}
+	view := changeview.View{}
+	view.Merge([]presentation.File{{Path: "file", Chunks: []presentation.Chunk{chunk}}})
 	view.RefreshVisible()
-	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme,
-		[]livediff.File{view.Visible[view.Files[0].Key()]}, "", 100)
+	render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme,
+		[]presentation.File{view.Visible[view.Files[0].Key()]}, "", 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,15 +231,15 @@ func TestLiveDiffIncompleteHistory(t *testing.T) {
 
 func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
 	{
-		incomplete := livediff.Chunk{Key: "unreadable", CaptureOrder: 1,
+		incomplete := presentation.Chunk{Key: "unreadable", CaptureOrder: 1,
 			Review: diffmodel.RenderIncompleteReviewFile("file", "file", "permission denied")}
-		complete := livediff.Chunk{Key: "readable", CaptureOrder: 2,
+		complete := presentation.Chunk{Key: "readable", CaptureOrder: 2,
 			Review: diffmodel.RenderReviewFile("file", "file", "before\n", "NEW KNOWN CONTENT\n")}
-		view := livediff.View{}
-		view.Merge([]livediff.File{{Path: "file", Chunks: []livediff.Chunk{incomplete, complete}}})
+		view := changeview.View{}
+		view.Merge([]presentation.File{{Path: "file", Chunks: []presentation.Chunk{incomplete, complete}}})
 		view.RefreshVisible()
-		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme,
-			[]livediff.File{view.Visible[view.Files[0].Key()]}, "", 100)
+		render, err := new(changeview.Renderer).Render(t.Context(), diffrender.TerminalTheme,
+			[]presentation.File{view.Visible[view.Files[0].Key()]}, "", 100)
 		if err != nil {
 			t.Fatal(err)
 		}

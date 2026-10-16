@@ -25,8 +25,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/livediff"
-
+	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"golang.org/x/sys/unix"
 )
@@ -241,7 +240,7 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			view := livediff.View{}
+			view := changeview.View{}
 			view.Merge(data.files())
 			view.RefreshVisible()
 			if len(view.Files) == 0 {

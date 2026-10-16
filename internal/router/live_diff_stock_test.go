@@ -17,7 +17,7 @@ import (
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/ui/diffview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -46,7 +46,7 @@ func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {
 			if len(preview.Files) != 1 || !strings.Contains(preview.Files[0].Diff, "@@ -18,7 +18,7 @@\n") {
 				t.Fatalf("provisional context is not compact: %+v", preview.Files)
 			}
-			var pane diffview.PreviewPane
+			var pane previewview.PreviewPane
 			pane.Update(preview)
 			rows, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 80, 14)
 			if err != nil {
@@ -76,7 +76,7 @@ func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
 	if got, err := os.ReadFile(path); err != nil || string(got) != before {
 		t.Fatalf("preview changed the workspace: %q, %v", got, err)
 	}
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(preview)
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		lines, err := pane.Render(t.Context(), workspace, theme, 100, 12)
@@ -134,7 +134,7 @@ func TestUnprojectableFinalPatchClearsPreviewWithoutClaimingFailure(t *testing.T
 	if clear.Status != "" || len(clear.Files) != 0 || clear.Workspace != workspace {
 		t.Fatalf("unprojectable patch claimed a result: %+v", clear)
 	}
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(preview)
 	pane.Update(clear)
 	if len(pane.Views) != 0 {
@@ -176,7 +176,7 @@ func TestPendingPatchBetweenEditsKeepsLastProjectedDiff(t *testing.T) {
 	if between.Input != "" || len(between.Files) != 1 || !strings.Contains(between.Files[0].Diff, "+new()") {
 		t.Fatalf("pending edit blanked the previous diff: %+v", between)
 	}
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(first)
 	pane.Update(between)
 	lines, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 100, 10)
@@ -207,7 +207,7 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 		Input: "*** Begin Patch\n*** Update File: first.go\n@@\n-old()\n+new()\n*** End Patch\n",
 	})
 	first.Complete = true
-	var pane diffview.PreviewPane
+	var pane previewview.PreviewPane
 	pane.Update(first)
 	pending := projectStockPatchPreview(t.Context(), workspace, previewmodel.Preview{
 		ID: "next", Workspace: workspace, Thread: "thread", Caller: "/root", Status: previewmodel.PreviewEdit,

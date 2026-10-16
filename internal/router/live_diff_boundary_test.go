@@ -10,8 +10,8 @@ import (
 
 	"github.com/yusing/mekugi/modules/livepreview/projection"
 
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
+	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 )
 
 func TestLiveDiffPreviewDeltaBoundaries(t *testing.T) {
@@ -100,7 +100,7 @@ func TestLiveDiffBurstRevealsStatementsSeparately(t *testing.T) {
 					waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool {
 						return len(preview.Files) == 1 && strings.Contains(preview.Files[0].Diff, source.second)
 					})
-					if elapsed := time.Since(firstSeen); elapsed < diffview.PreviewUnitDelay-2*diffview.PreviewFrameDelay {
+					if elapsed := time.Since(firstSeen); elapsed < previewview.PreviewUnitDelay-2*previewview.PreviewFrameDelay {
 						t.Fatalf("next statement overlapped the preceding fade: %v", elapsed)
 					}
 					worker.stop()
@@ -220,7 +220,7 @@ func TestLiveDiffEmptyHeredocRetainsCompletedCard(t *testing.T) {
 	workspace := t.TempDir()
 	worker := liveDiffPreviewWorker{ctx: t.Context()}
 	for _, command := range []string{"cat >next.txt", "tee next.txt"} {
-		var pane diffview.PreviewPane
+		var pane previewview.PreviewPane
 		first, _ := worker.projectStockPreview("*** Begin Patch\n*** Add File: first.txt\n+visible\n*** End Patch\n", workspace, true)
 		first.ID, first.Workspace = "first", workspace
 		pane.Update(first)
@@ -252,7 +252,7 @@ func TestLiveDiffBufferedStatementKeepsMultiFileSnapshot(t *testing.T) {
 				}
 				return `{"cmd":` + strconv.Quote("cat >a.txt <<'EOF'\nfirst\nEOF\ncat >b.js <<'EOF'\nconst x = 1;\n"+strings.TrimPrefix(tail, "+")) + `}`
 			}
-			var pane diffview.PreviewPane
+			var pane previewview.PreviewPane
 			for _, tail := range []string{"", "+const y = fn(\n"} {
 				preview, _ := worker.project(encode(tail), workspace, false)
 				preview.ID, preview.Workspace, preview.Thread = "call", workspace, "thread"
@@ -431,7 +431,7 @@ func TestLiveDiffFinishedCallDrainIsBounded(t *testing.T) {
 		finished := time.Now()
 		worker.finish(input.String())
 		complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview previewmodel.Preview) bool { return preview.Complete })
-		if elapsed := time.Since(finished); elapsed > diffview.PreviewFinishDrain+diffview.PreviewUnitDelay+4*diffview.PreviewFrameDelay {
+		if elapsed := time.Since(finished); elapsed > previewview.PreviewFinishDrain+previewview.PreviewUnitDelay+4*previewview.PreviewFrameDelay {
 			t.Fatalf("finished call drained queued units for %v", elapsed)
 		}
 		if len(complete.Files) != 1 || !strings.Contains(complete.Files[0].Diff, "+line 29") {
