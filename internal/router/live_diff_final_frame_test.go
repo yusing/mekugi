@@ -103,7 +103,7 @@ func TestLiveDiffFinalFrameCustomInputDoneFlushesAuthoritativeEdit(t *testing.T)
 	// completed snapshot with a live, truncated version.
 	worker.appendDelta(" late update")
 	broker.mu.Lock()
-	_, active := broker.previews[complete.ID]
+	_, active := broker.previewLocked(complete.ID)
 	broker.mu.Unlock()
 	if active {
 		t.Fatal("completed preview was resurrected as a live preview")
@@ -253,7 +253,7 @@ func TestLiveDiffFinalFrameCodeModeHeredocIncludesLastLineAfterContextCancellati
 func liveDiffBrokerHasActivePreview(broker *liveDiffBroker, id string) bool {
 	broker.mu.Lock()
 	defer broker.mu.Unlock()
-	_, active := broker.previews[id]
+	_, active := broker.previewLocked(id)
 	return active
 }
 
@@ -307,7 +307,7 @@ func TestLiveDiffFinalFramePTYShowsCompleteEditAfterTruncatedPreview(t *testing.
 	}
 	worker.appendDelta(" // LATE_RESURRECTION")
 	broker.mu.Lock()
-	_, active := broker.previews[worker.preview.ID]
+	_, active := broker.previewLocked(worker.preview.ID)
 	broker.mu.Unlock()
 	if active {
 		t.Fatal("completed PTY preview was resurrected")

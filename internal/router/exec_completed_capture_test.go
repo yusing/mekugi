@@ -97,7 +97,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			}
 			for _, event := range broker.takePreviews(sub) {
 				if event.Preview != nil {
-					u.shell.preview(*event.Preview)
+					u.shell.preview(*event.Preview, false)
 				}
 			}
 			awaitMain(t, u, "Edited")
@@ -120,7 +120,7 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				capture.update(t.Context(), broker, preview, tracking, tracking.state())
 				for _, event := range broker.takePreviews(sub) {
 					if event.Preview != nil {
-						u.shell.preview(*event.Preview)
+						u.shell.preview(*event.Preview, false)
 					}
 				}
 				if capture.text != "" {

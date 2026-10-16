@@ -434,7 +434,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 			// Admission can reject a new card while the broker is full. Keep
 			// retrying until it is visible, even if its files remain unchanged.
 			broker.mu.Lock()
-			_, visible := broker.previews[preview.ID]
+			_, visible := broker.previewLocked(preview.ID)
 			broker.mu.Unlock()
 			if visible {
 				continue
@@ -452,8 +452,7 @@ func runExecScopePreview(ctx context.Context, broker *liveDiffBroker, observatio
 func (b *liveDiffBroker) discardRunningPreview(preview diffview.Preview) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, active := b.previews[preview.ID]; active {
-		delete(b.previews, preview.ID)
+	if b.removePreviewLocked(preview.ID) {
 		b.emitPreviewLocked(diffview.Preview{ID: preview.ID, Workspace: preview.Workspace, Thread: preview.Thread})
 	}
 }

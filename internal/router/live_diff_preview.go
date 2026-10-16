@@ -551,8 +551,7 @@ func (w *liveDiffPreviewWorker) projectShellWithTool(program, directory string, 
 func (b *liveDiffBroker) discardPreview(id string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if _, active := b.previews[id]; active {
-		delete(b.previews, id)
+	if b.removePreviewLocked(id) {
 		b.emitPreviewLocked(diffview.Preview{ID: id})
 	}
 }
@@ -561,7 +560,7 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if remove {
-		delete(b.previews, preview.ID)
+		b.removePreviewLocked(preview.ID)
 		b.emitPreviewLocked(diffview.Preview{ID: preview.ID})
 		return
 	}
@@ -571,10 +570,8 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 	if !b.scope.Workspaces[preview.Workspace][preview.Thread] {
 		return
 	}
-	if b.previews == nil {
-		b.previews = make(map[string]diffview.Preview)
-	}
-	if _, exists := b.previews[preview.ID]; !exists && !preview.Complete && len(b.previews) >= 16 {
+	at := slices.IndexFunc(b.previews, func(old diffview.Preview) bool { return old.ID == preview.ID })
+	if at < 0 && !preview.Complete && len(b.previews) >= 16 {
 		return
 	}
 	// Only source hunks can open live cards. Metadata and capture failures
@@ -588,20 +585,20 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 		// Incomplete fragments retain the latest displayed projection, including
 		// a bounded raw-diff window, never the preceding shell source. A lone
 		// newline is the pending stock-patch marker, not a new blank edit.
-		if previous := b.previews[preview.ID]; len(previous.Files) != 0 || previous.DiffText {
+		if previous, _ := b.previewLocked(preview.ID); len(previous.Files) != 0 || previous.DiffText {
 			preview.Files, preview.Input, preview.Tool = previous.Files, previous.Input, previous.Tool
 			preview.DiffText, preview.Truncated = previous.DiffText, previous.Truncated
 		}
 	}
 	if len(preview.Files) == 0 && strings.TrimSpace(preview.Input) == "" {
 		// Neither a patch header nor a status establishes a displayable hunk.
-		delete(b.previews, preview.ID)
+		b.removePreviewLocked(preview.ID)
 		preview.Status, preview.Input = "", ""
 		b.emitPreviewLocked(preview)
 		return
 	}
 	if preview.Complete {
-		delete(b.previews, preview.ID)
+		b.removePreviewLocked(preview.ID)
 		if preview.Evaluated {
 			b.completedPreviews = slices.DeleteFunc(b.completedPreviews, func(old diffview.Preview) bool {
 				return old.ID == preview.ID
@@ -611,8 +608,10 @@ func (b *liveDiffBroker) publishPreview(preview diffview.Preview, remove bool) {
 			}
 			b.completedPreviews = append(b.completedPreviews, preview)
 		}
+	} else if at >= 0 {
+		b.previews[at] = preview
 	} else {
-		b.previews[preview.ID] = preview
+		b.previews = append(b.previews, preview)
 	}
 	b.emitPreviewLocked(preview)
 }

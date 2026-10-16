@@ -163,7 +163,11 @@ func (p *PreviewPane) Update(preview Preview) {
 		}
 		p.Views[preview.ID] = view
 	}
-	view.Current, view.Complete, view.updated = preview, preview.Complete, time.Now()
+	// Replayed completion may refresh content, but cannot restart its hold.
+	if !view.Complete || !preview.Complete {
+		view.updated = time.Now()
+	}
+	view.Current, view.Complete = preview, preview.Complete
 	if p.Retain {
 		p.batch(preview.Caller)
 	}

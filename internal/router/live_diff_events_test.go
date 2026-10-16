@@ -507,7 +507,7 @@ func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 	preview := diffview.Preview{ID: "mixed", Workspace: workspace, Thread: "thread", Status: diffview.PreviewRunning,
 		Files: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(workspace, "empty.txt"), "", ""), valid}}
 	broker.publishPreview(preview, false)
-	if shown := broker.previews[preview.ID]; len(shown.Files) != 1 || shown.Files[0] != valid || len(preview.Files) != 2 {
+	if shown, _ := broker.previewLocked(preview.ID); len(shown.Files) != 1 || shown.Files[0] != valid || len(preview.Files) != 2 {
 		t.Fatalf("mixed admission lost a valid hunk or changed evidence: %+v", shown)
 	}
 	for _, event := range broker.takePreviews(sub) {
@@ -526,7 +526,7 @@ func TestLiveDiffPreviewScriptPayloadBound(t *testing.T) {
 	broker.publishPreview(diffview.Preview{ID: "large-script", Workspace: "/workspace", Thread: "thread",
 		Input: strings.Repeat("界\n", 50000) + "TAIL"}, false)
 	broker.mu.Lock()
-	preview := broker.previews["large-script"]
+	preview, _ := broker.previewLocked("large-script")
 	broker.mu.Unlock()
 	if !preview.Truncated || len(responses.MustMarshalJSON(preview)) > 48<<10 ||
 		!strings.HasSuffix(preview.Input, "TAIL") || strings.Contains(preview.Status, "UNAVAILABLE") {

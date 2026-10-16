@@ -70,7 +70,7 @@ func TestLiveDiffSocketAndNewRegularFile(t *testing.T) {
 		go runExecScopePreview(ctx, broker, execObservation{Files: []execFileSnapshot{before, beforeRegular}}, diffview.Preview{ID: "socket", Workspace: root, Thread: "thread"}, nil, nil)
 		time.Sleep(time.Second)
 		synctest.Wait()
-		preview := broker.previews["socket"]
+		preview, _ := broker.previewLocked("socket")
 		if len(preview.Files) != 1 || preview.Files[0].AfterPath != regular || !strings.Contains(preview.Files[0].Diff, "+new source") {
 			t.Fatalf("socket displayed or new regular file hidden: %+v", preview)
 		}

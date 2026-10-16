@@ -145,7 +145,7 @@ func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 		synctest.Wait()
 		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "cancellation republished an already removed preview")
 		broker.mu.Lock()
-		_, active := broker.previews[previewID]
+		_, active := broker.previewLocked(previewID)
 		broker.mu.Unlock()
 		if active {
 			t.Errorf("preview %q remained active after cancellation", previewID)
@@ -212,7 +212,7 @@ func TestExecScopePreviewRetriesAfterBrokerAdmissionRejection(t *testing.T) {
 			t.Fatalf("retried preview lost its changed-file projection: %+v", preview)
 		}
 		broker.mu.Lock()
-		active, found := broker.previews[previewID]
+		active, found := broker.previewLocked(previewID)
 		count := len(broker.previews)
 		broker.mu.Unlock()
 		if !found || active.Status != diffview.PreviewRunning || count != 16 {
@@ -250,7 +250,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 		advanceExecCleanupPreviewTicker(t)
 		assertNoExecCleanupPreview(t, broker.takePreviews(sub), "unchanged large file became a running change")
 		broker.mu.Lock()
-		_, active := broker.previews[previewID]
+		_, active := broker.previewLocked(previewID)
 		broker.mu.Unlock()
 		if active {
 			t.Fatal("unchanged large file occupied a preview slot")
@@ -281,7 +281,7 @@ func TestExecScopePreviewDoesNotTreatReadBudgetAsChange(t *testing.T) {
 func assertExecCleanupPreviewNotActive(t *testing.T, broker *liveDiffBroker, id string) {
 	t.Helper()
 	broker.mu.Lock()
-	_, active := broker.previews[id]
+	_, active := broker.previewLocked(id)
 	count := len(broker.previews)
 	broker.mu.Unlock()
 	if active || count != 16 {

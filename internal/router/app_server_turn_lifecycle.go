@@ -31,7 +31,7 @@ func (u *appServerUI) endTurnPreviews(thread, turn string) {
 		for _, id := range slices.Clone(u.shell.liveDock.Order) {
 			view := u.shell.liveDock.Views[id]
 			if view != nil && view.Current.Thread == thread && view.Current.Turn == turn {
-				u.shell.preview(diffview.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn})
+				u.shell.preview(diffview.Preview{ID: id, Workspace: view.Current.Workspace, Thread: thread, Turn: turn}, false)
 			}
 		}
 	}
@@ -72,12 +72,13 @@ func (b *liveDiffBroker) setPreviewTurn(thread, turn string, active bool) {
 		return p.Thread == thread && p.Turn != "" && (p.Turn != turn || !active)
 	}
 	retired := make(map[string]diffview.Preview)
-	for id, preview := range b.previews {
-		if stale(preview) {
-			delete(b.previews, id)
-			retired[id] = preview
+	b.previews = slices.DeleteFunc(b.previews, func(preview diffview.Preview) bool {
+		if !stale(preview) {
+			return false
 		}
-	}
+		retired[preview.ID] = preview
+		return true
+	})
 	for _, preview := range b.completedPreviews {
 		if stale(preview) {
 			retired[preview.ID] = preview
@@ -86,7 +87,8 @@ func (b *liveDiffBroker) setPreviewTurn(thread, turn string, active bool) {
 	// A finished input frame may already be queued but not yet displayed.
 	// Replace it too, or draining the mailbox could reopen the interrupted dock.
 	if b.subscriber != nil {
-		for _, preview := range b.subscriber.previews {
+		for _, event := range b.subscriber.previews {
+			preview := *event.Preview
 			if stale(preview) {
 				retired[preview.ID] = preview
 			}

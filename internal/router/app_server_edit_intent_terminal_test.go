@@ -112,7 +112,7 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	// the next model request can supply durable outer-cell evidence.
 	u.shell.diff.data = newLiveDiffData()
 	u.shell.preview(diffview.Preview{ID: "observed", Workspace: workspace, Thread: "main", Complete: true,
-		HostItems: []string{"cmd"}, EditReceipt: receipt.text, Files: history.ReviewFiles})
+		HostItems: []string{"cmd"}, EditReceipt: receipt.text, Files: history.ReviewFiles}, false)
 	if err := u.paint(slave, width, height); err != nil {
 		t.Fatal(err)
 	}
