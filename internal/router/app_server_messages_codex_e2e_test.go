@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -153,7 +155,7 @@ func (p *appServerDirectedMessageProvider) completed() bool {
 
 func (p *appServerDirectedMessageProvider) forwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
 	metadata, _ := decodeCodexTurnMetadata(headers)
-	thread := headers.Get(threadIDHeader)
+	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID
 	}

@@ -16,6 +16,11 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 
 	"github.com/coder/websocket"
@@ -51,25 +56,17 @@ func TestProviderWebSocketReuseAndMetadata(t *testing.T) {
 	}))
 	defer upstream.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
-	headers := http.Header{"Authorization": {"Bearer test"}, chatGPTAccountIDHeader: {"account"}}
-	headers.Set(threadIDHeader, "thread")
-	var previousLease *providerWebSocketLease
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
+	headers := http.Header{"Authorization": {"Bearer test"}, openai.AccountIDHeader: {"account"}}
+	headers.Set(codexresponses.ThreadIDHeader, "thread")
 	for _, turn := range []string{"one", "two"} {
 		headers.Set("x-codex-turn-state", turn)
-		headers.Set(codexTurnMetadataHeader, turn)
+		headers.Set(codexresponses.TurnMetadataHeader, turn)
 		response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), headers, "session")
 		if err != nil {
 			t.Fatal(err)
 		}
-		current := response.Body.(*webSocketResponseBody)
-		if previousLease != nil {
-			// Force a delayed previous-lease callback after its connection has
-			// been acquired by the next request. It must not close that request.
-			current.entry.release(previousLease, false)
-		}
-		previousLease = current.lease
 		if (turn == "one" && response.Header.Get("x-request-id") != "handshake-only") || (turn == "two" && response.Header.Get("x-request-id") != "") {
 			t.Fatal("handshake evidence leaked between exchanges")
 		}
@@ -94,7 +91,7 @@ func TestProviderWebSocketReuseAndMetadata(t *testing.T) {
 		if err := json.Unmarshal(sent["client_metadata"], &metadata); err != nil {
 			t.Fatal(err)
 		}
-		if metadata["x-codex-turn-state"] != turn || metadata[codexTurnMetadataHeader] != turn {
+		if metadata["x-codex-turn-state"] != turn || metadata[codexresponses.TurnMetadataHeader] != turn {
 			t.Fatalf("stale metadata: %v", metadata)
 		}
 	}
@@ -104,7 +101,7 @@ func TestProviderWebSocketReuseAndMetadata(t *testing.T) {
 }
 
 func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
-	for _, scenario := range []string{"cancel", "close during read", "EOF", "invalid JSON", "oversized message", "idle timeout"} {
+	for _, scenario := range []string{"cancel", "close during read", "EOF", "invalid JSON", "idle timeout"} {
 		t.Run(scenario, func(t *testing.T) {
 			var connections, sends atomic.Int32
 			release := make(chan struct{})
@@ -125,8 +122,6 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 					switch scenario {
 					case "invalid JSON":
 						_ = conn.Write(r.Context(), websocket.MessageText, []byte(`not JSON`))
-					case "oversized message":
-						_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"response.output_text.delta","delta":"`+strings.Repeat("x", 256)+`"}`))
 					}
 					return
 				}
@@ -135,10 +130,10 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 			}))
 			defer upstream.Close()
 			client := newProviderClient(upstream.URL, upstream.Client())
-			client.enableWebSockets(t.Context())
-			defer client.websockets.close()
+			client.openai.EnableWebSockets(t.Context())
+			defer client.openai.Close()
 			if scenario == "idle timeout" {
-				client.streamIdleTimeout = 20 * time.Millisecond
+				client.openai.StreamIdleTimeout = 20 * time.Millisecond
 			}
 			responseCtx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -147,20 +142,10 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 				close(release)
 				t.Fatal(err)
 			}
-			if scenario == "oversized message" {
-				client.websockets.mu.Lock()
-				for entry := range client.websockets.entries {
-					entry.conn.SetReadLimit(128)
-				}
-				client.websockets.mu.Unlock()
-			}
 			switch scenario {
 			case "idle timeout": // Leave the provider connected but silent.
 			case "cancel":
 				cancel()
-				// Let the cancellation callback retire the lease before reading.
-				// Both its done channel and the request context can now wake Read.
-				<-response.Body.(*webSocketResponseBody).entry.receiverDone
 				close(release)
 			case "close during read":
 				readDone := make(chan error, 1)
@@ -201,7 +186,7 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 				}
 				if scenario == "idle timeout" {
 					close(release)
-					if !errors.Is(err, errUpstreamStreamIdleTimeout) {
+					if !errors.Is(err, httptransport.ErrStreamIdleTimeout) {
 						t.Fatalf("idle timeout lost classification: %v", err)
 					}
 				}
@@ -242,8 +227,8 @@ func TestProviderWebSocketHandshakeFallbackBoundary(t *testing.T) {
 			}))
 			defer upstream.Close()
 			client := newProviderClient(upstream.URL, upstream.Client())
-			client.enableWebSockets(t.Context())
-			defer client.websockets.close()
+			client.openai.EnableWebSockets(t.Context())
+			defer client.openai.Close()
 			response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","input":[]}`), codexAuthHeaders(), "session")
 			if err != nil {
 				t.Fatal(err)
@@ -294,8 +279,8 @@ func TestProviderWebSocketConcurrentAndAuthIsolation(t *testing.T) {
 	}))
 	defer upstream.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
 	done := make(chan error, 2)
 	run := func(headers http.Header) {
 		response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","input":[]}`), headers, "same-session")
@@ -359,8 +344,8 @@ func TestProviderWebSocketNonstreamReconstructsOutput(t *testing.T) {
 	}))
 	defer upstream.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
 	response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":false,"input":[]}`), codexAuthHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)
@@ -398,116 +383,6 @@ func (c *webSocketCountingTransform) TransformSSE(payload []byte) ([][]byte, err
 }
 func (c *webSocketCountingTransform) Finish(bool) error { c.finishes++; return nil }
 
-func TestProviderWebSocketLimitsAndShutdown(t *testing.T) {
-	var connections atomic.Int32
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		connections.Add(1)
-		conn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			return
-		}
-		defer conn.CloseNow()
-		if _, _, err = conn.Read(r.Context()); err != nil {
-			return
-		}
-		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"response.created","response":{"status":"in_progress"}}`))
-		_, _, _ = conn.Read(r.Context())
-	}))
-	defer upstream.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
-	var responses []*http.Response
-	for range providerWebSocketLimit {
-		response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
-		if err != nil {
-			t.Fatal(err)
-		}
-		responses = append(responses, response)
-	}
-	deadline, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
-	defer cancel()
-	if response, err := client.forwardExecution(deadline, t.Context(), []byte(`{"model":"gpt-test","input":[]}`), codexAuthHeaders(), "session"); err == nil {
-		response.Body.Close()
-		t.Fatal("pool exceeded capacity")
-	}
-	if connections.Load() != providerWebSocketLimit {
-		t.Fatal("capacity wait started another handshake")
-	}
-	client.websockets.close()
-	for _, response := range responses {
-		if _, err := io.ReadAll(response.Body); err == nil {
-			t.Fatal("shutdown left in-flight response alive")
-		}
-		_ = response.Body.Close()
-	}
-	client.websockets.mu.Lock()
-	remaining := len(client.websockets.entries)
-	client.websockets.mu.Unlock()
-	if remaining != 0 {
-		t.Fatal("shutdown retained pool entries")
-	}
-}
-
-func TestProviderWebSocketRetiresIdleAndOldConnections(t *testing.T) {
-	for _, mode := range []string{"idle", "age"} {
-		t.Run(mode, func(t *testing.T) {
-			var connections atomic.Int32
-			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				connections.Add(1)
-				conn, err := websocket.Accept(w, r, nil)
-				if err != nil {
-					return
-				}
-				defer conn.CloseNow()
-				for {
-					if _, _, err = conn.Read(r.Context()); err != nil {
-						return
-					}
-					_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"response.completed","response":{"status":"completed","output":[]}}`))
-				}
-			}))
-			defer upstream.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.enableWebSockets(t.Context())
-			defer client.websockets.close()
-			call := func() {
-				response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","input":[]}`), codexAuthHeaders(), "session")
-				if err != nil {
-					t.Fatal(err)
-				}
-				if _, err = io.ReadAll(response.Body); err != nil {
-					t.Fatal(err)
-				}
-				_ = response.Body.Close()
-			}
-			call()
-			var retired <-chan struct{}
-			client.websockets.mu.Lock()
-			for entry := range client.websockets.entries {
-				retired = entry.done
-				if mode == "idle" {
-					entry.idleTimer.Reset(time.Millisecond)
-				} else {
-					entry.born = time.Now().Add(-providerWebSocketLifetime)
-				}
-			}
-			client.websockets.mu.Unlock()
-			if mode == "idle" {
-				select {
-				case <-retired:
-				case <-time.After(5 * time.Second):
-					t.Fatal("idle expiry did not close connection")
-				}
-			}
-			call()
-			if connections.Load() != 2 {
-				t.Fatal("expired connection was reused")
-			}
-		})
-	}
-}
-
 func TestProviderWebSocketWrappedErrorPreservesStatusAndHeaders(t *testing.T) {
 	var sends atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -525,8 +400,8 @@ func TestProviderWebSocketWrappedErrorPreservesStatusAndHeaders(t *testing.T) {
 	}))
 	defer upstream.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
 	response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)
@@ -588,7 +463,7 @@ func TestRunSessionUsesProviderWebSocketsByDefault(t *testing.T) {
 			t.Fatal(err)
 		}
 		request.Header = codexAuthHeaders()
-		request.Header.Set(threadIDHeader, "thread")
+		request.Header.Set(codexresponses.ThreadIDHeader, "thread")
 		request.Header.Set(sessionIDHeader, "session")
 		response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 		if err != nil {
@@ -616,9 +491,9 @@ func TestRunSessionUsesProviderWebSocketsByDefault(t *testing.T) {
 
 func TestWebSocketRequestPreservesRichBodyMetadata(t *testing.T) {
 	headers := codexAuthHeaders()
-	headers.Set(codexTurnMetadataHeader, "bounded header metadata")
+	headers.Set(codexresponses.TurnMetadataHeader, "bounded header metadata")
 	headers.Set("x-codex-turn-state", "current state")
-	payload, handshake, _, err := webSocketRequest([]byte(`{"model":"model","input":[],"client_metadata":{"x-codex-turn-metadata":"full body metadata","custom":"preserved"}}`), headers, "session")
+	payload, handshake, _, err := codexresponses.WebSocketRequest([]byte(`{"model":"model","input":[],"client_metadata":{"x-codex-turn-metadata":"full body metadata","custom":"preserved"}}`), headers, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -628,7 +503,7 @@ func TestWebSocketRequestPreservesRichBodyMetadata(t *testing.T) {
 	if err := json.Unmarshal(payload, &sent); err != nil {
 		t.Fatal(err)
 	}
-	if sent.Metadata[codexTurnMetadataHeader] != "full body metadata" || sent.Metadata["custom"] != "preserved" || sent.Metadata["x-codex-turn-state"] != "current state" || handshake.Get(codexTurnMetadataHeader) != "" || handshake.Get("x-codex-turn-state") != "" {
+	if sent.Metadata[codexresponses.TurnMetadataHeader] != "full body metadata" || sent.Metadata["custom"] != "preserved" || sent.Metadata["x-codex-turn-state"] != "current state" || handshake.Get(codexresponses.TurnMetadataHeader) != "" || handshake.Get("x-codex-turn-state") != "" {
 		t.Fatal("body metadata overwritten or per-turn metadata retained in handshake")
 	}
 }
@@ -654,8 +529,8 @@ func TestWebSocketCapturePreservesCompletedResponseAfterCancellation(t *testing.
 	}
 	defer capture.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
@@ -715,8 +590,8 @@ func TestWebSocketCaptureCountsFirstUnreadMessage(t *testing.T) {
 	}
 	defer capture.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response, err := client.forwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 		if err != nil {
@@ -754,9 +629,9 @@ func TestProviderWebSocketLeavesGrokOnHTTP(t *testing.T) {
 	}))
 	defer upstream.Close()
 	client := newProviderClient("http://127.0.0.1:1", nil)
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
-	client.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-test", withDialTimeout(nil))}
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
+	client.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-test", httptransport.Client(nil))}
 	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)
@@ -794,8 +669,8 @@ func TestProviderWebSocketAncillaryEventsAndEventOwnedCompletion(t *testing.T) {
 			}))
 			defer upstream.Close()
 			client := newProviderClient(upstream.URL, upstream.Client())
-			client.enableWebSockets(t.Context())
-			defer client.websockets.close()
+			client.openai.EnableWebSockets(t.Context())
+			defer client.openai.Close()
 			parsed := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			output := httptest.NewRecorder()
 			if err := executeRequest(t.Context(), t.Context(), parsed, codexAuthHeaders(), "session", client, output, nil, nil); err != nil {
@@ -858,33 +733,25 @@ func TestWebSocketCaptureIncludesQueuedAndReservedReadsOnClose(t *testing.T) {
 	}
 	defer capture.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(t.Context())
-	defer client.websockets.close()
+	client.openai.EnableWebSockets(t.Context())
+	defer client.openai.Close()
+	received := make(chan struct{})
+	begin := client.openai.ObserveWebSocket
+	client.openai.ObserveWebSocket = func(ctx context.Context, payload []byte, headers, responseHeaders http.Header) openai.Observation {
+		return captureReceiveBarrier{Observation: begin(ctx, payload, headers, responseHeaders), terminal: reserved, received: received}
+	}
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response, err := client.forwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 		if err != nil {
 			t.Error(err)
 			return
 		}
-		body := response.Body.(*webSocketResponseBody)
-		// The bounded queue holds the second message; the receiver has read
-		// and observed the third but is blocked delivering it. This is the
-		// release/admission boundary that previously lost bytes and ownership.
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			client.websockets.mu.Lock()
-			pending := body.lease.pending
-			terminal := body.lease.terminal
-			client.websockets.mu.Unlock()
-			if pending && terminal {
-				break
-			}
-			if time.Now().After(deadline) {
-				response.Body.Close()
-				t.Error("receiver never reserved its blocked delivery")
-				return
-			}
-			time.Sleep(time.Millisecond)
+		select {
+		case <-received:
+		case <-time.After(5 * time.Second):
+			response.Body.Close()
+			t.Error("receiver did not observe the queued terminal")
+			return
 		}
 		_ = response.Body.Close()
 		w.WriteHeader(http.StatusBadGateway)
@@ -924,5 +791,18 @@ func TestWebSocketCaptureIncludesQueuedAndReservedReadsOnClose(t *testing.T) {
 	next.Body.Close()
 	if err != nil || connections.Load() != 2 || !bytes.Contains(data, []byte("new-response")) || bytes.Contains(data, []byte("old-response")) {
 		t.Fatalf("reserved old payload crossed into next request: connections=%d err=%v body=%s", connections.Load(), err, data)
+	}
+}
+
+type captureReceiveBarrier struct {
+	openai.Observation
+	terminal []byte
+	received chan struct{}
+}
+
+func (o captureReceiveBarrier) Message(payload []byte) {
+	o.Observation.Message(payload)
+	if bytes.Equal(payload, o.terminal) {
+		close(o.received)
 	}
 }

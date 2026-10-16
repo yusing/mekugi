@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -203,7 +205,7 @@ func (r parsedResponsesRequest) promptCacheKey() string {
 		return ""
 	}
 	var key string
-	if json.Unmarshal(raw, &key) != nil || !validCodexCacheKey(key) {
+	if json.Unmarshal(raw, &key) != nil || !codexresponses.ValidCacheKey(key) {
 		return ""
 	}
 	return key

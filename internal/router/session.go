@@ -5,13 +5,12 @@ package router
 import (
 	"net/http"
 	"strings"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 const (
-	sessionIDHeader       = "session-id"
-	threadIDHeader        = "thread-id"
-	clientRequestIDHeader = "x-client-request-id"
-	codexWindowIDHeader   = "x-codex-window-id"
+	sessionIDHeader = "session-id"
 
 	maxSessionHistories = 256
 	maxSessionTurns     = 128
@@ -26,7 +25,7 @@ func routingSessionID(headers http.Header, request parsedResponsesRequest) strin
 	if key := request.promptCacheKey(); key != "" {
 		return key
 	}
-	for _, value := range headers.Values(clientRequestIDHeader) {
+	for _, value := range headers.Values(codexresponses.ClientRequestIDHeader) {
 		if strings.TrimSpace(value) != "" {
 			return value
 		}
@@ -35,7 +34,7 @@ func routingSessionID(headers http.Header, request parsedResponsesRequest) strin
 }
 
 func codexThreadID(headers http.Header) string {
-	for _, value := range headers.Values(threadIDHeader) {
+	for _, value := range headers.Values(codexresponses.ThreadIDHeader) {
 		if value = strings.TrimSpace(value); value != "" {
 			return value
 		}

@@ -19,6 +19,11 @@ import (
 	"testing/synctest"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -88,8 +93,8 @@ func serverMetadataHeaders(t *testing.T, requestKind string, workspaces map[stri
 		t.Fatal(err)
 	}
 	headers := make(http.Header)
-	headers.Set(codexTurnMetadataHeader, string(encoded))
-	headers.Set(threadIDHeader, "thread-1")
+	headers.Set(codexresponses.TurnMetadataHeader, string(encoded))
+	headers.Set(codexresponses.ThreadIDHeader, "thread-1")
 	return headers
 }
 
@@ -107,7 +112,7 @@ func serverCompactionMetadataHeaders(t *testing.T) http.Header {
 		t.Fatal(err)
 	}
 	headers := make(http.Header)
-	headers.Set(codexTurnMetadataHeader, string(encoded))
+	headers.Set(codexresponses.TurnMetadataHeader, string(encoded))
 	return headers
 }
 
@@ -115,7 +120,7 @@ func TestExecuteRequestFailsClosedBeforeUpstreamWhenRewriteIsIneligible(t *testi
 	workspace := t.TempDir()
 	validHeaders := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil})
 	missingThreadHeaders := validHeaders.Clone()
-	missingThreadHeaders.Del(threadIDHeader)
+	missingThreadHeaders.Del(codexresponses.ThreadIDHeader)
 	tests := []struct {
 		name      string
 		sessionID string
@@ -230,8 +235,8 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	}
 	compactMetadata["thread_id"], compactMetadata["parent_thread_id"] = "agent-thread", "root"
 	compactMetadata["agent_name"], compactMetadata["subagent_kind"] = "/root/probe", "thread_spawn"
-	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, compactMetadata)))
-	headers.Set(threadIDHeader, "agent-thread")
+	headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, compactMetadata)))
+	headers.Set(codexresponses.ThreadIDHeader, "agent-thread")
 
 	var output bytes.Buffer
 	err = executeRequest(t.Context(), t.Context(), parsed, headers, "session", provider, &output, nil, proxy)
@@ -588,7 +593,7 @@ func (writer *serverBlockingWriter) Write(content []byte) (int, error) {
 func TestStreamIdleTimeoutPausesDuringDownstreamBackpressure(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		upstreamReader, upstreamWriter := io.Pipe()
-		stream := newStreamIdleReadCloser(t.Context(), upstreamReader, time.Minute)
+		stream := httptransport.IdleRead(t.Context(), upstreamReader, time.Minute)
 		defer func() { _ = stream.Close() }()
 		defer func() { _ = upstreamWriter.Close() }()
 
@@ -615,9 +620,6 @@ func TestStreamIdleTimeoutPausesDuringDownstreamBackpressure(t *testing.T) {
 		synctest.Wait()
 		time.Sleep(2 * time.Minute)
 		synctest.Wait()
-		if stream.timedOut.Load() {
-			t.Fatal("upstream stream timed out while downstream processing was blocked")
-		}
 
 		close(downstream.release)
 		if err := <-upstreamResult; err != nil {
@@ -636,7 +638,7 @@ func TestStreamIdleTimeoutPausesDuringDownstreamBackpressure(t *testing.T) {
 func TestStreamIdleTimeoutResetsOnPartialSSEBytes(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		upstreamReader, upstreamWriter := io.Pipe()
-		stream := newStreamIdleReadCloser(t.Context(), upstreamReader, time.Minute)
+		stream := httptransport.IdleRead(t.Context(), upstreamReader, time.Minute)
 		defer func() { _ = stream.Close() }()
 		defer func() { _ = upstreamWriter.Close() }()
 
@@ -681,7 +683,7 @@ func TestExecuteRequestStreamIdleTimeoutLifecycle(t *testing.T) {
 		response := &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-			Body:       newStreamIdleReadCloser(t.Context(), upstreamReader, time.Minute),
+			Body:       httptransport.IdleRead(t.Context(), upstreamReader, time.Minute),
 		}
 		provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 		recorder := httptest.NewRecorder()
@@ -704,7 +706,7 @@ func TestExecuteRequestStreamIdleTimeoutLifecycle(t *testing.T) {
 		synctest.Wait()
 
 		err := <-result
-		if !errors.Is(err, errUpstreamStreamIdleTimeout) {
+		if !errors.Is(err, httptransport.ErrStreamIdleTimeout) {
 			t.Fatalf("error = %v, want stream idle timeout", err)
 		}
 
@@ -750,7 +752,7 @@ func TestExecuteRequestCancellationAfterResponseLifecycle(t *testing.T) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-			Body: newStreamIdleReadCloser(executionCtx, &serverBlockingSSEBody{
+			Body: httptransport.IdleRead(executionCtx, &serverBlockingSSEBody{
 				ctx: executionCtx, content: strings.NewReader("event: response.created\ndata: {\"type\":\"response.created\"}\n\n"), blocked: blocked,
 			}, time.Hour),
 		}, nil
@@ -890,8 +892,8 @@ func TestModelsHandlerForwardsCodexAuthenticationQueryAndResponse(t *testing.T) 
 			"Authorization":      "Bearer caller-token",
 			"ChatGPT-Account-ID": "caller-account",
 			"Accept":             "application/json",
-			"Originator":         codexClientIdentity,
-			"User-Agent":         codexClientIdentity,
+			"Originator":         codexresponses.ClientIdentity,
+			"User-Agent":         codexresponses.ClientIdentity,
 		} {
 			if got := request.Header.Get(name); got != want {
 				t.Errorf("header %s = %q, want %q", name, got, want)
@@ -1185,34 +1187,34 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 
 	headers.Add(sessionIDHeader, "session-primary")
 	headers.Add(sessionIDHeader, "session-secondary")
-	headers.Set(threadIDHeader, "thread")
-	headers.Set(clientRequestIDHeader, "client-request")
-	headers.Set(codexWindowIDHeader, "window:0")
-	headers.Set(codexBetaFeaturesHeader, "feature")
-	headers.Set(codexResponsesLiteHeader, "true")
-	headers.Set(openAISubagentHeader, threadSpawnSubagent)
-	headers.Set(codexTurnMetadataHeader, "metadata")
+	headers.Set(codexresponses.ThreadIDHeader, "thread")
+	headers.Set(codexresponses.ClientRequestIDHeader, "client-request")
+	headers.Set(codexresponses.WindowIDHeader, "window:0")
+	headers.Set(codexresponses.BetaFeaturesHeader, "feature")
+	headers.Set(codexresponses.ResponsesLiteHeader, "true")
+	headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
+	headers.Set(codexresponses.TurnMetadataHeader, "metadata")
 	headers.Set("x-codex-turn-state", "opaque-turn-state")
-	headers.Set(mekugiCaptureIDHeader, "capture")
+	headers.Set(codexresponses.CaptureIDHeader, "capture")
 	httpClient := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 		trusted := map[string]string{
 			"Authorization":      "Bearer caller-token",
 			"ChatGPT-Account-ID": "caller-account",
-			"Originator":         codexClientIdentity,
-			"User-Agent":         codexClientIdentity,
+			"Originator":         codexresponses.ClientIdentity,
+			"User-Agent":         codexresponses.ClientIdentity,
 		}
 		for name, value := range trusted {
 			if got := request.Header.Get(name); got != value {
 				t.Errorf("header %s = %q, want %q", name, got, value)
 			}
 		}
-		for _, name := range []string{threadIDHeader, clientRequestIDHeader, codexWindowIDHeader, codexBetaFeaturesHeader, codexResponsesLiteHeader, openAISubagentHeader, codexTurnMetadataHeader, "x-codex-turn-state", mekugiCaptureIDHeader} {
+		for _, name := range []string{codexresponses.ThreadIDHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.BetaFeaturesHeader, codexresponses.ResponsesLiteHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader, "x-codex-turn-state", codexresponses.CaptureIDHeader} {
 			if got, want := request.Header.Values(name), headers.Values(name); !slices.Equal(got, want) {
 				t.Errorf("header %s = %q, want %q", name, got, want)
 			}
 		}
-		if got := request.Header[codexSessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
-			t.Errorf("%s = %q, want cache key", codexSessionIDHeader, got)
+		if got := request.Header[codexresponses.SessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
+			t.Errorf("%s = %q, want cache key", codexresponses.SessionIDHeader, got)
 		}
 		if got := request.Header.Get(sessionIDHeader); got != "" {
 			t.Errorf("%s = %q, want empty", sessionIDHeader, got)
@@ -1223,13 +1225,13 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 		return serverHTTPResponse("{}"), nil
 	})}
 	client := newProviderClient(testProviderBaseURL, httpClient)
-	client.streamIdleTimeout = time.Minute
+	client.openai.StreamIdleTimeout = time.Minute
 	response, err := client.forwardExecution(t.Context(), t.Context(), []byte("{}"), headers, "cache-key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := response.Body.(*streamIdleReadCloser); !ok {
-		t.Fatalf("response body = %T, want stream idle wrapper", response.Body)
+	if _, err := io.ReadAll(response.Body); err != nil {
+		t.Fatal(err)
 	}
 	if err := response.Body.Close(); err != nil {
 		t.Fatal(err)
@@ -1239,7 +1241,7 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 func codexAuthHeaders() http.Header {
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer caller-token")
-	headers.Set(chatGPTAccountIDHeader, "caller-account")
+	headers.Set(openai.AccountIDHeader, "caller-account")
 	return headers
 }
 
@@ -1249,10 +1251,10 @@ func TestProviderClientRejectsMissingOrMalformedCodexAuthentication(t *testing.T
 		headers http.Header
 		want    string
 	}{
-		{"missing authorization", http.Header{chatGPTAccountIDHeader: []string{"account"}}, "Authorization"},
-		{"multiple authorizations", http.Header{"Authorization": []string{"Bearer one", "Bearer two"}, chatGPTAccountIDHeader: []string{"account"}}, "Authorization"},
-		{"unsupported scheme", http.Header{"Authorization": []string{"Basic token"}, chatGPTAccountIDHeader: []string{"account"}}, "invalid bearer"},
-		{"empty token", http.Header{"Authorization": []string{"Bearer "}, chatGPTAccountIDHeader: []string{"account"}}, "invalid bearer"},
+		{"missing authorization", http.Header{openai.AccountIDHeader: []string{"account"}}, "Authorization"},
+		{"multiple authorizations", http.Header{"Authorization": []string{"Bearer one", "Bearer two"}, openai.AccountIDHeader: []string{"account"}}, "Authorization"},
+		{"unsupported scheme", http.Header{"Authorization": []string{"Basic token"}, openai.AccountIDHeader: []string{"account"}}, "invalid bearer"},
+		{"empty token", http.Header{"Authorization": []string{"Bearer "}, openai.AccountIDHeader: []string{"account"}}, "invalid bearer"},
 		{"missing account", http.Header{"Authorization": []string{"Bearer token"}}, "ChatGPT-Account-ID"},
 	}
 	for _, test := range tests {
@@ -1282,8 +1284,8 @@ func TestProviderClientOmitsUnsafeCodexCacheKey(t *testing.T) {
 			var forwarded bool
 			httpClient := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 				forwarded = true
-				if values, ok := request.Header[codexSessionIDHeader]; ok {
-					t.Errorf("%s = %q, want omitted", codexSessionIDHeader, values)
+				if values, ok := request.Header[codexresponses.SessionIDHeader]; ok {
+					t.Errorf("%s = %q, want omitted", codexresponses.SessionIDHeader, values)
 				}
 				return serverHTTPResponse("{}"), nil
 			})}
@@ -1306,12 +1308,12 @@ func TestProviderClientOmitsUnsafeCodexCacheKey(t *testing.T) {
 func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "session")
-	headers.Set(threadIDHeader, "thread")
-	headers.Set(clientRequestIDHeader, "client-request")
-	headers.Set(codexWindowIDHeader, "window:0")
-	headers.Set(codexBetaFeaturesHeader, "feature")
-	headers.Set(codexResponsesLiteHeader, "true")
-	headers.Set(codexTurnMetadataHeader, "metadata")
+	headers.Set(codexresponses.ThreadIDHeader, "thread")
+	headers.Set(codexresponses.ClientRequestIDHeader, "client-request")
+	headers.Set(codexresponses.WindowIDHeader, "window:0")
+	headers.Set(codexresponses.BetaFeaturesHeader, "feature")
+	headers.Set(codexresponses.ResponsesLiteHeader, "true")
+	headers.Set(codexresponses.TurnMetadataHeader, "metadata")
 	headers.Set("x-codex-turn-state", "opaque-turn-state")
 	var attempts []http.Header
 	httpClient := &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
@@ -1337,13 +1339,13 @@ func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 		t.Fatalf("upstream attempts = %d, want 2", len(attempts))
 	}
 	for attempt, forwarded := range attempts {
-		if got := forwarded[codexSessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
-			t.Errorf("attempt %d %s = %q, want cache key", attempt+1, codexSessionIDHeader, got)
+		if got := forwarded[codexresponses.SessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
+			t.Errorf("attempt %d %s = %q, want cache key", attempt+1, codexresponses.SessionIDHeader, got)
 		}
 		if got := forwarded.Get(sessionIDHeader); got != "" {
 			t.Errorf("attempt %d %s = %q, want empty", attempt+1, sessionIDHeader, got)
 		}
-		for _, name := range []string{threadIDHeader, clientRequestIDHeader, codexWindowIDHeader, codexBetaFeaturesHeader, codexResponsesLiteHeader, codexTurnMetadataHeader, "x-codex-turn-state"} {
+		for _, name := range []string{codexresponses.ThreadIDHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.BetaFeaturesHeader, codexresponses.ResponsesLiteHeader, codexresponses.TurnMetadataHeader, "x-codex-turn-state"} {
 			if got, want := forwarded.Values(name), headers.Values(name); !slices.Equal(got, want) {
 				t.Errorf("attempt %d header %s = %q, want %q", attempt+1, name, got, want)
 			}
@@ -1375,8 +1377,8 @@ func TestProviderClientCancelsRequestWithCodexRequestHeaders(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("upstream request did not start")
 	}
-	if got := forwarded[codexSessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
-		t.Fatalf("forwarded %s = %q, want cache key", codexSessionIDHeader, got)
+	if got := forwarded[codexresponses.SessionIDHeader]; !slices.Equal(got, []string{"cache-key"}) {
+		t.Fatalf("forwarded %s = %q, want cache key", codexresponses.SessionIDHeader, got)
 	}
 	if got := forwarded.Get(sessionIDHeader); got != "" {
 		t.Fatalf("forwarded %s = %q, want empty", sessionIDHeader, got)

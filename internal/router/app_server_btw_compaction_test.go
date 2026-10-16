@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -37,8 +39,8 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 		metadata.ThreadID = thread
 		metadata.Directories = map[string]jsonv1.RawMessage{workspace: nil}
 		headers := make(http.Header)
-		headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
-		headers.Set(threadIDHeader, thread)
+		headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
+		headers.Set(codexresponses.ThreadIDHeader, thread)
 		return request, headers
 	}
 	request, headers := requestFor(thread)

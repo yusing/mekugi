@@ -33,6 +33,10 @@ meaning, publication, compatibility, and adoption by a viewing thread.
 [Bounded commands](../../modules/boundedcommand/SPEC.md) own foreground output
 selection and return delivery omissions to the frontend host.
 
+The [OpenAI provider](../../providers/openai/SPEC.md) owns upstream exchanges;
+[HTTP primitives](../../libraries/httptransport/SPEC.md) share body lifetime mechanics.
+Codex request shaping belongs to the [backend adapter](../../backends/codex/responses/SPEC.md).
+
 ## Inventory
 
 - [`CTR-WORKSPACE-001`](workspace.md): workspace membership, composition, and extraction boundaries

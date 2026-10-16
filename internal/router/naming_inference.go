@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yusing/mekugi/providers/openai"
+
 	"github.com/yusing/mekugi/contracts/inference"
 )
 
@@ -17,13 +19,13 @@ func namingCompletion(provider responseProvider, accounting *threadUsage, thread
 	if provider == nil {
 		return nil
 	}
-	authorization, accountID, err := requiredCodexAuthHeaders(headers)
+	authorization, accountID, err := openai.Credentials(headers)
 	if err != nil {
 		return nil
 	}
 	auxHeaders := http.Header{}
 	auxHeaders.Set("Authorization", authorization)
-	auxHeaders.Set(chatGPTAccountIDHeader, accountID)
+	auxHeaders.Set(openai.AccountIDHeader, accountID)
 	return func(ctx context.Context, request inference.Request) (string, error) {
 		body, err := json.Marshal(map[string]any{
 			"model": request.Model, "reasoning": map[string]string{"effort": request.Effort},

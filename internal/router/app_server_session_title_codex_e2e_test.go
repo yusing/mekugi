@@ -15,6 +15,9 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/charmbracelet/x/vt"
@@ -103,9 +106,9 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Fixture authentication is added only at the local router boundary.
 		r.Header.Set("Authorization", "Bearer fixture-token")
-		r.Header.Set(chatGPTAccountIDHeader, "fixture-account")
+		r.Header.Set(openai.AccountIDHeader, "fixture-account")
 		select {
-		case threads <- r.Header.Get(threadIDHeader):
+		case threads <- r.Header.Get(codexresponses.ThreadIDHeader):
 		default:
 		}
 		handler.ServeHTTP(w, r)

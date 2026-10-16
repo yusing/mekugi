@@ -8,6 +8,7 @@ use (
 	./libraries/commandanalysis
 	./libraries/commandargs
 	./libraries/diffmodel
+	./libraries/httptransport
 	./libraries/legacycall
 	./libraries/mcptransport
 	./libraries/modelprotocol
@@ -31,6 +32,7 @@ use (
 	./modules/sourceoutline
 	./modules/symbolquery
 	./providers/grok
+	./providers/openai
 	./providers/opencode
 	./testsupport/moduletest
 	./testsupport/uisnapshot

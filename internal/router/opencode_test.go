@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -164,7 +167,7 @@ func TestOpenCodeRoutesAndCredentials(t *testing.T) {
 						if request.Header.Get("x-opencode-session") != openCodeSessionID(service.Prefix, "child-thread") {
 							t.Error("stable provider-scoped session identity missing")
 						}
-						for _, name := range []string{chatGPTAccountIDHeader, threadIDHeader, openAISubagentHeader, codexTurnMetadataHeader} {
+						for _, name := range []string{openai.AccountIDHeader, codexresponses.ThreadIDHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader} {
 							if request.Header.Get(name) != "" {
 								t.Errorf("Codex header forwarded: %s", name)
 							}

@@ -3,6 +3,8 @@ package router
 import (
 	"crypto/sha256"
 	"net/http"
+
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 // A handler retains only its latest catalog, bounding retention to one response.
@@ -21,7 +23,7 @@ type modelsCacheEntry struct {
 }
 
 func modelsRequestCacheKey(request *http.Request) (modelsCacheKey, bool) {
-	authorization, account, err := requiredCodexAuthHeaders(request.Header)
+	authorization, account, err := openai.Credentials(request.Header)
 	if err != nil {
 		return modelsCacheKey{}, false
 	}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 // Model the Codex-owned lifecycle: capture the first response's sticky token,
@@ -34,7 +36,7 @@ func TestTurnStateRoundTrip(t *testing.T) {
 					if got := r.Header.Get("x-codex-turn-state"); got != want {
 						t.Errorf("step %d lost or leaked turn state", step)
 					}
-					if r.Header.Get(codexSessionIDHeader) != "stable-session" {
+					if r.Header.Get(codexresponses.SessionIDHeader) != "stable-session" {
 						t.Error("session affinity changed")
 					}
 					token := "opaque-turn-a"

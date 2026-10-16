@@ -10,6 +10,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -572,7 +574,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 	if cause := requestCancellationCause(a.executionCtx, requestErr); cause != "" {
 		fields["cancellation_cause"] = cause
 	}
-	if errors.Is(requestErr, errUpstreamStreamIdleTimeout) {
+	if errors.Is(requestErr, httptransport.ErrStreamIdleTimeout) {
 		fields["idle_timeout_observed"] = true
 	}
 

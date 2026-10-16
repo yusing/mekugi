@@ -17,6 +17,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 const cacheAffinityE2EPrompt = `Call the exec tool exactly 12 times, sequentially and never in parallel. Call 1 must run printf 'probe 1\n', call 2 must run printf 'probe 2\n', and continue through call 12 running printf 'probe 12\n'. Do not combine calls. Do not edit any file. After the twelfth tool result, answer only: done`
@@ -141,7 +144,7 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 	handler := responsesHandler(
 		t.Context(),
 		10*time.Minute,
-		newProviderClient(codexBaseURL, httpClient),
+		newProviderClient(openai.BaseURL, httpClient),
 		nil,
 		newManagedMekugiProxy(t),
 	)
@@ -214,12 +217,12 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 	}
 	expectedHeaders := capturedInbound[0]
 	codexRequestHeaderNames := []string{
-		threadIDHeader,
-		clientRequestIDHeader,
-		codexWindowIDHeader,
-		codexBetaFeaturesHeader,
-		codexResponsesLiteHeader,
-		codexTurnMetadataHeader,
+		codexresponses.ThreadIDHeader,
+		codexresponses.ClientRequestIDHeader,
+		codexresponses.WindowIDHeader,
+		codexresponses.BetaFeaturesHeader,
+		codexresponses.ResponsesLiteHeader,
+		codexresponses.TurnMetadataHeader,
 	}
 	for _, name := range codexRequestHeaderNames {
 		if len(expectedHeaders.Values(name)) == 0 {
@@ -227,7 +230,7 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 		}
 	}
 	for index, headers := range capturedInbound {
-		if _, _, err := requiredCodexAuthHeaders(headers); err != nil {
+		if _, _, err := openai.Credentials(headers); err != nil {
 			t.Fatalf("incoming request %d has invalid Codex authentication: %v", index+1, err)
 		}
 		for _, name := range codexRequestHeaderNames {
@@ -245,10 +248,10 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 		}
 	}
 	for index, headers := range forwardedHeaders {
-		if _, _, err := requiredCodexAuthHeaders(headers); err != nil {
+		if _, _, err := openai.Credentials(headers); err != nil {
 			t.Fatalf("upstream attempt %d has invalid Codex authentication: %v", index+1, err)
 		}
-		if got := headers.Get(codexSessionIDHeader); got != keys[index] {
+		if got := headers.Get(codexresponses.SessionIDHeader); got != keys[index] {
 			t.Fatalf("upstream attempt %d Session_id = %q, want prompt_cache_key %q", index+1, got, keys[index])
 		}
 		if got := headers.Get(sessionIDHeader); got != "" {

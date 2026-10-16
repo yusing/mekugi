@@ -13,6 +13,9 @@ import (
 	"testing/synctest"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -23,7 +26,7 @@ import (
 const generatedTitleResponse = `{"id":"title","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Improve session naming"}]}]}`
 
 func sessionTitleAuthHeaders() http.Header {
-	return http.Header{"Authorization": {"Bearer test"}, chatGPTAccountIDHeader: {"account"}}
+	return http.Header{"Authorization": {"Bearer test"}, openai.AccountIDHeader: {"account"}}
 }
 
 func awaitSessionTitle(t *testing.T, g *sessionNaming) sessionTitleUpdate {
@@ -53,7 +56,7 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 				if strings.Contains(string(body), "tools") || binding.SubmittedUserText(parsed.fields["input"], "/root", true) != "First request" {
 					t.Errorf("naming input: %s", body)
 				}
-				if headers.Get("Authorization") != "Bearer test" || headers.Get(chatGPTAccountIDHeader) != "account" || headers.Get(codexTurnMetadataHeader) != "" || headers.Get(threadIDHeader) != "" || cacheKey != "" {
+				if headers.Get("Authorization") != "Bearer test" || headers.Get(openai.AccountIDHeader) != "account" || headers.Get(codexresponses.TurnMetadataHeader) != "" || headers.Get(codexresponses.ThreadIDHeader) != "" || cacheKey != "" {
 					t.Error("naming request leaked execution identity or lost authentication")
 				}
 				if stream {
@@ -64,8 +67,8 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 			g := newTestSessionNaming(t.Context(), provider)
 			g.register(appServerThreadInfo{ID: "main"})
 			headers := sessionTitleAuthHeaders()
-			headers.Set(codexTurnMetadataHeader, "private-turn")
-			headers.Set(threadIDHeader, "main")
+			headers.Set(codexresponses.TurnMetadataHeader, "private-turn")
+			headers.Set(codexresponses.ThreadIDHeader, "main")
 			g.observeInput("main", responses.MustMarshalJSON("First request"))
 			g.observeInput("main", responses.MustMarshalJSON("Later request"))
 			g.completed("main", headers)
@@ -162,9 +165,9 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 				request.fields["stream"] = mustTestJSON(t, stream)
 				request.streamResponse = stream
 				headers := serverMetadataHeaders(t, "turn", nil)
-				headers.Set(threadIDHeader, "main")
+				headers.Set(codexresponses.ThreadIDHeader, "main")
 				headers.Set("Authorization", "Bearer test")
-				headers.Set(chatGPTAccountIDHeader, "account")
+				headers.Set(openai.AccountIDHeader, "account")
 				response := `{"id":"response","status":"` + status + `","output":[]}`
 				if stream {
 					response = "data: {\"type\":\"response." + status + "\",\"response\":" + response + "}\n\n"
@@ -253,9 +256,9 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	}}}))
 	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(string(mustTestJSON(t, request.fields))))
 	req.Header = serverMetadataHeaders(t, "turn", nil)
-	req.Header.Set(threadIDHeader, "main")
+	req.Header.Set(codexresponses.ThreadIDHeader, "main")
 	req.Header.Set("Authorization", "Bearer fixture-token")
-	req.Header.Set(chatGPTAccountIDHeader, "fixture-account")
+	req.Header.Set(openai.AccountIDHeader, "fixture-account")
 	output := httptest.NewRecorder()
 	handler(output, req)
 	if output.Code != 200 || output.Body.String() != `{"id":"primary","status":"completed","output":[]}` {
@@ -321,8 +324,8 @@ func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
 		{"no credentials", nil, false},
 		{"no account", http.Header{"Authorization": {"Bearer test"}}, false},
 		{"third-party credentials", http.Header{"Authorization": {"Bearer other-provider"}}, false},
-		{"invalid credentials", http.Header{"Authorization": {"Basic other-provider"}, chatGPTAccountIDHeader: {"account"}}, false},
-		{"multiple credentials", http.Header{"Authorization": {"Bearer test", "Bearer other"}, chatGPTAccountIDHeader: {"account"}}, false},
+		{"invalid credentials", http.Header{"Authorization": {"Basic other-provider"}, openai.AccountIDHeader: {"account"}}, false},
+		{"multiple credentials", http.Header{"Authorization": {"Bearer test", "Bearer other"}, openai.AccountIDHeader: {"account"}}, false},
 		{"no API", sessionTitleAuthHeaders(), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -411,7 +414,7 @@ func TestSessionTitleThirdPartyRequestWithoutCodexAuth(t *testing.T) {
 		g.register(appServerThreadInfo{ID: "main"})
 		request := modelTestRequest(t, "opencode-go:test")
 		headers := serverMetadataHeaders(t, "turn", nil)
-		headers.Set(threadIDHeader, "main")
+		headers.Set(codexresponses.ThreadIDHeader, "main")
 		headers.Set("Authorization", "Bearer third-party-fixture")
 		const primary = `{"id":"primary","status":"completed","output":[]}`
 		var output strings.Builder

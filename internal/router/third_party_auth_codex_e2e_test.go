@@ -18,6 +18,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 )
 
@@ -77,7 +81,7 @@ func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
 				defer upstream.Close()
 				provider := newProviderClient("http://unused.invalid", nil)
 				provider.thirdPartyOnly = true
-				provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-fixture-only", withDialTimeout(nil)), unprefixed: unprefixed}
+				provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-fixture-only", httptransport.Client(nil)), unprefixed: unprefixed}
 				mux := http.NewServeMux()
 				endpoint := responsesWebSocketHandler(ctx, time.Minute, provider, nil, nil)
 				defer endpoint.Close()
@@ -85,7 +89,7 @@ func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
 				mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, time.Minute, provider, nil, nil))
 				router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					boundaryCalls.Add(1)
-					if r.Header.Get("Authorization") != "" || r.Header.Get(chatGPTAccountIDHeader) != "" {
+					if r.Header.Get("Authorization") != "" || r.Header.Get(openai.AccountIDHeader) != "" {
 						t.Error("Codex attached authentication to third-party execution")
 					}
 					wantMethod := http.MethodPost

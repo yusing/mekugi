@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -83,8 +85,8 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 		Directories: map[string]jsonv1.RawMessage{workspace: nil},
 	}
 	headers := serverMetadataHeaders(t, "turn", metadata.Directories)
-	headers.Set(threadIDHeader, metadata.ThreadID)
-	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+	headers.Set(codexresponses.ThreadIDHeader, metadata.ThreadID)
+	headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 	recorder := httptest.NewRecorder()
 	err = executeRequest(t.Context(), t.Context(), request, headers, "router-fault-session",
 		provider, &trackedResponseWriter{ResponseWriter: recorder}, issues, proxy)

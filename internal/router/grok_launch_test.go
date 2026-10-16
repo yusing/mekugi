@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 
 	"github.com/yusing/mekugi/internal/livediff"
@@ -51,7 +53,7 @@ func TestGrokLaunchRejectsWrongNamespacesAndOpenAI(t *testing.T) {
 	for _, unprefixed := range []bool{false, true} {
 		provider := newProviderClient("http://unused.invalid", nil)
 		provider.thirdPartyOnly = true
-		provider.grok = &grokClient{unprefixed: unprefixed, auth: grok.NewAuth("", "test", withDialTimeout(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+		provider.grok = &grokClient{unprefixed: unprefixed, auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			t.Fatal("wrong-mode model reached a provider")
 			return nil, nil
 		})}}

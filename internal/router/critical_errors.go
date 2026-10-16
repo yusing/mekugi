@@ -15,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/coder/websocket"
@@ -177,7 +179,7 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 			category, message = "authentication", "Mekugi upstream authentication was rejected. Check your Codex or Grok credentials before retrying."
 		case f.upstreamStatusCode == 429:
 			category, message = "rate_limit", "The upstream service rate-limited this turn. Wait before retrying."
-		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, errUpstreamStreamIdleTimeout):
+		case errors.Is(err, context.DeadlineExceeded), errors.Is(err, httptransport.ErrStreamIdleTimeout):
 			category, message = "timeout", "The upstream response timed out. Retry the turn."
 		case f.failurePhase == requestFailurePrepare:
 			message = "Mekugi could not prepare this request. Check the session's tool and configuration compatibility before retrying."

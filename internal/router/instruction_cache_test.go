@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -97,7 +99,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 			request["previous_response_id"] = ids[index-1]
 			request["input"] = []any{map[string]string{"role": "user", "content": id}}
 		}
-		request["client_metadata"] = map[string]string{codexTurnMetadataHeader: string(responses.MustMarshalJSON(metadata)), threadIDHeader: "instruction-cache-thread"}
+		request["client_metadata"] = map[string]string{codexresponses.TurnMetadataHeader: string(responses.MustMarshalJSON(metadata)), codexresponses.ThreadIDHeader: "instruction-cache-thread"}
 		socketWrite(t, ctx, conn, request)
 		if event := socketRead(t, ctx, conn); responses.StringField(event, "type") != "response.completed" {
 			t.Fatalf("%s failed: %s", id, responses.MustMarshalJSON(event))

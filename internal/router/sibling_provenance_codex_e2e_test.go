@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -561,7 +563,7 @@ func (p *nativeSiblingProvenanceProvider) forwardExecution(ctx context.Context, 
 		return nil, fmt.Errorf("native fixture lacks authenticated turn metadata")
 	}
 	if metadata.ThreadID == "" {
-		metadata.ThreadID = headers.Get(threadIDHeader)
+		metadata.ThreadID = headers.Get(codexresponses.ThreadIDHeader)
 	}
 	p.mu.Lock()
 	p.counts[metadata.AgentName]++

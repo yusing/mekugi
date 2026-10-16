@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 const codexE2EPrompt = `Use stock exec tools.exec_command and tools.apply_patch for operations. Use the executable Mekugi frontends from PATH for focused reads and validation.
@@ -39,7 +41,7 @@ func TestCodexMekugiGrammarE2E(t *testing.T) {
 	server := httptest.NewServer(responsesHandler(
 		t.Context(),
 		10*time.Minute,
-		newProviderClient(codexBaseURL, nil),
+		newProviderClient(openai.BaseURL, nil),
 		nil,
 		newManagedMekugiProxy(t),
 	))

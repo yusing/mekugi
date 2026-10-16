@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 // Only the side answer reports high authoritative usage. Its next question
@@ -27,7 +29,7 @@ func (p *btwCompactionProvider) forwardExecution(_, _ context.Context, _ []byte,
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	metadata, _ := decodeCodexTurnMetadata(headers)
-	thread := headers.Get(threadIDHeader)
+	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID
 	}
@@ -75,7 +77,7 @@ func TestAppServerBTWCompactionNativeCodexE2E(t *testing.T) {
 	handler := responsesHandler(t.Context(), time.Minute, provider, nil, proxy)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metadata, valid := decodeCodexTurnMetadata(r.Header)
-		thread := r.Header.Get(threadIDHeader)
+		thread := r.Header.Get(codexresponses.ThreadIDHeader)
 		if thread == "" {
 			thread = metadata.ThreadID
 		}

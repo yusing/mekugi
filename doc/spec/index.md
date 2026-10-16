@@ -44,7 +44,8 @@ policy; the native UI contract owns manual name-save interaction and rendering.
 - [`REQ-MCP-001`](../../libraries/mcptransport/SPEC.md): reserved invocation-local MCP transport
 - [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
-- [`REQ-TRANSPORT-001`](transport.md): Codex-facing and provider Responses transports
+- [`REQ-TRANSPORT-001`](transport.md): Codex-facing Responses transport
+- [OpenAI provider](../../providers/openai/SPEC.md): credential validation, model exchange, HTTP and WebSocket transport
 - [`REQ-THIRD-PARTY-001`](third_party.md): shared third-party native-agent routing
 - [`REQ-GROK-001`](grok.md): Grok provider route
 - [`REQ-OPENCODE-001`](opencode.md): OpenCode Go and Zen provider routes

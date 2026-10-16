@@ -132,8 +132,8 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	// Use the same durable replay store as production.
 	attachTestReplayStore(t, proxy)
 	providerClient := newProviderClient(upstream.URL, upstream.Client())
-	providerClient.enableWebSockets(t.Context())
-	defer providerClient.websockets.close()
+	providerClient.openai.EnableWebSockets(t.Context())
+	defer providerClient.openai.Close()
 	ws := responsesWebSocketHandler(t.Context(), time.Minute, providerClient, nil, proxy)
 	defer ws.Close()
 	httpResponses := responsesHandler(t.Context(), time.Minute, providerClient, nil, proxy)

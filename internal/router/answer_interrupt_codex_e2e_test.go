@@ -224,8 +224,8 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 			defer upstream.Close()
 			client := newProviderClient(upstream.URL, upstream.Client())
-			client.enableWebSockets(t.Context())
-			defer client.websockets.close()
+			client.openai.EnableWebSockets(t.Context())
+			defer client.openai.Close()
 			handler := responsesHandler(t.Context(), time.Minute, client, issues, proxy)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				for key, values := range codexAuthHeaders() {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
@@ -128,13 +130,13 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			}
 			metadata.ThreadID = thread
 			metadata.Directories = map[string]json.RawMessage{workspace: nil}
-			headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
-			headers.Set(threadIDHeader, thread)
+			headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
+			headers.Set(codexresponses.ThreadIDHeader, thread)
 			request.fields["input"] = mustTestJSON(t, append(items, map[string]any{"role": "user", "content": "Summarize."}))
 			if missingWorkspace {
 				metadata, _ := decodeCodexTurnMetadata(headers)
 				metadata.Directories = nil
-				headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+				headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 			}
 			original, err := request.wireBody(request.fields)
 			if err != nil {

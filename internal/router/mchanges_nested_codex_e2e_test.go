@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -56,7 +58,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 	defer p.mu.Unlock()
 	p.turns++
 	metadata, _ := decodeCodexTurnMetadata(headers)
-	thread := headers.Get(threadIDHeader)
+	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID
 	}

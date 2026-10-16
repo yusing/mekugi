@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/backends/codex/rollout"
@@ -47,7 +49,7 @@ func (p *appResumeProvider) forwardExecution(_, _ context.Context, body []byte, 
 	if err := json.Unmarshal(body, &settings); err != nil {
 		return nil, err
 	}
-	thread := headers.Get(threadIDHeader)
+	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		metadata, _ := decodeCodexTurnMetadata(headers)
 		thread = metadata.ThreadID

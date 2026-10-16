@@ -16,6 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
 
@@ -137,14 +141,15 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 		}
 		runErr = errors.Join(runErr, capture.Close())
 	}()
-	provider := newProviderClient(codexBaseURL, nil)
+	openaiHTTP := httptransport.Client(nil)
+	openaiHTTP.Transport = capture.Transport(openaiHTTP.Transport)
+	provider := newProviderClient(openai.BaseURL, openaiHTTP)
 	provider.thirdPartyOnly = grokEnabled || standalone
-	provider.httpClient.Transport = capture.Transport(provider.httpClient.Transport)
-	provider.streamIdleTimeout = options.streamIdleTimeout
-	provider.enableWebSockets(ctx)
+	provider.openai.StreamIdleTimeout = options.streamIdleTimeout
+	provider.openai.EnableWebSockets(ctx)
 	// Cover early setup returns before ctx is canceled; close is idempotent
 	// with enableWebSockets' normal context-shutdown callback.
-	defer provider.websockets.close()
+	defer provider.openai.Close()
 	if grokEnabled || standalone {
 		apiKey := strings.TrimSpace(os.Getenv("XAI_API_KEY"))
 		path := options.grokAuthFile
@@ -157,9 +162,9 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 				path = filepath.Join(home, ".grok", "auth.json")
 			}
 		}
-		auth := grok.NewAuth(path, apiKey, withDialTimeout(nil))
+		auth := grok.NewAuth(path, apiKey, httptransport.Client(nil))
 		if _, authErr := auth.Credentials(ctx); authErr == nil {
-			client := withDialTimeout(nil)
+			client := httptransport.Client(nil)
 			client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 			client.Transport = capture.Transport(client.Transport)
 			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: options.streamIdleTimeout}
@@ -183,7 +188,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 	provider.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
 	provider.opencode = make(map[string]*grokClient)
 	for _, service := range openCode.Services() {
-		client := withDialTimeout(nil)
+		client := httptransport.Client(nil)
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		client.Transport = capture.Transport(client.Transport)
 		provider.opencode[service.Prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.streamIdleTimeout}
@@ -657,7 +662,7 @@ func (f *requestFinalization) finish(
 			f.observation.outcome = requestOutcomeTimedOut
 		case errors.Is(requestErr, errDownstreamDisconnected),
 			errors.Is(requestErr, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
-			if errors.Is(requestErr, errUpstreamStreamIdleTimeout) {
+			if errors.Is(requestErr, httptransport.ErrStreamIdleTimeout) {
 				f.failurePhase = requestFailureInspectResponse
 			}
 			if responseStarted {
@@ -665,7 +670,7 @@ func (f *requestFinalization) finish(
 			} else {
 				f.observation.outcome = requestOutcomeCanceledBeforeResponse
 			}
-		case errors.Is(requestErr, errUpstreamStreamIdleTimeout):
+		case errors.Is(requestErr, httptransport.ErrStreamIdleTimeout):
 			f.observation.outcome = requestOutcomeStreamIdleTimedOut
 		default:
 			f.observation.outcome = requestOutcomeFailed
@@ -688,7 +693,7 @@ func requestResponseStarted(output io.Writer) bool {
 
 func (f *requestFinalization) classifyCopyError(err error) {
 	switch {
-	case errors.Is(err, errUpstreamStreamIdleTimeout):
+	case errors.Is(err, httptransport.ErrStreamIdleTimeout):
 		f.failurePhase = requestFailureStreamIdleTimeout
 	case errors.Is(err, errResponseTransform):
 		f.failurePhase = requestFailureTransform

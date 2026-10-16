@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestDeprecatedTerraRoutesToSol(t *testing.T) {
 	request := modelTestRequest(t, "gpt-5.6-terra")
 	headers := serverMetadataHeaders(t, "turn", nil)
-	headers.Set(threadIDHeader, "terra-thread")
+	headers.Set(codexresponses.ThreadIDHeader, "terra-thread")
 	attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, issues: NewCriticalErrors()}, t.Context(), t.Context(), request, headers, "")
 	if err := attempt.prepare(); err != nil {
 		t.Fatal(err)
@@ -72,8 +74,8 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 					request.fields["stream"] = mustTestJSON(t, stream)
 					headers := serverMetadataHeaders(t, "turn", nil)
 					if child {
-						headers.Set(openAISubagentHeader, threadSpawnSubagent)
-						headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{RequestKind: "turn", SubagentKind: threadSpawnSubagentKind})))
+						headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
+						headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{RequestKind: "turn", SubagentKind: threadSpawnSubagentKind})))
 					}
 					// Repeated completed responses exceed every old schedule threshold.
 					body := `{"id":"result","status":"completed","output":[{"type":"function_call"},{"type":"function_call"},{"type":"function_call"},{"type":"message","role":"assistant"},{"type":"message","role":"assistant"}],"usage":{"input_tokens":100000}}`

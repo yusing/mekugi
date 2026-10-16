@@ -10,103 +10,61 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"mime"
-	"net"
 	"net/http"
-	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 const (
-	codexBaseURL           = "https://chatgpt.com/backend-api/codex"
-	codexClientIdentity    = "codex_cli_rs"
-	chatGPTAccountIDHeader = "Chatgpt-Account-Id"
-
-	defaultDialTimeout          = 5 * time.Second
 	maxUpstreamSniffBytes       = 64 << 10
 	maxUpstreamErrorDetailBytes = 8 << 10
-	maxUpstreamRetries          = 5
-	initialUpstreamRetryBackoff = 100 * time.Millisecond
-	maxUpstreamRetryBackoff     = 30 * time.Second
-	selectedModelAtCapacity     = "selected model is at capacity"
-	codexBetaFeaturesHeader     = "x-codex-beta-features"
-	codexResponsesLiteHeader    = "x-openai-internal-codex-responses-lite"
-	openAISubagentHeader        = "x-openai-subagent"
-	mekugiCaptureIDHeader       = "x-mekugi-capture-id"
-	codexSessionIDHeader        = "Session_id"
 	upstreamJSONBufferBytes     = 64 << 20
 )
 
 var (
-	utf8BOM                      = []byte{0xef, 0xbb, 0xbf}
-	errResponseTransform         = errors.New("transform upstream response")
-	errResponseWrite             = errors.New("write downstream response")
-	errUpstreamStreamIdleTimeout = errors.New("upstream response stream idle timeout")
+	utf8BOM              = []byte{0xef, 0xbb, 0xbf}
+	errResponseTransform = errors.New("transform upstream response")
+	errResponseWrite     = errors.New("write downstream response")
 )
 
 type providerClient struct {
-	thirdPartyOnly    bool
-	titleGenerator    *sessionNaming
-	serviceTiers      *serviceTierSettings
-	websockets        *providerWebSockets
-	opencode          map[string]*grokClient
-	grok              *grokClient
-	httpClient        *http.Client
-	baseURL           string
-	streamIdleTimeout time.Duration
+	openai         *openai.Client
+	thirdPartyOnly bool
+	titleGenerator *sessionNaming
+	serviceTiers   *serviceTierSettings
+	opencode       map[string]*grokClient
+	grok           *grokClient
 }
 
 func newProviderClient(baseURL string, supplied *http.Client) *providerClient {
-	return &providerClient{httpClient: withDialTimeout(supplied), baseURL: baseURL}
-}
-
-// requiredCodexAuthHeaders enforces the router's authentication boundary.
-// Codex owns login and token refresh; a custom provider configured with
-// requires_openai_auth = true attaches its managed credentials to every request.
-// The router validates those headers and relays them to the ChatGPT Codex backend.
-func requiredCodexAuthHeaders(headers http.Header) (string, string, error) {
-	authorizationValues := headers.Values("Authorization")
-	if len(authorizationValues) != 1 {
-		return "", "", errors.New("codex request must provide exactly one Authorization header; configure the provider with requires_openai_auth = true")
+	provider := openai.New(baseURL, supplied)
+	provider.ObserveWebSocket = func(ctx context.Context, payload []byte, headers, responseHeaders http.Header) openai.Observation {
+		return capturer.BeginWebSocketAttempt(ctx, payload, headers, responseHeaders)
 	}
-	scheme, token, ok := strings.Cut(authorizationValues[0], " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || token != strings.TrimSpace(token) {
-		return "", "", errors.New("codex request has an invalid bearer Authorization header")
-	}
-	accountValues := headers.Values(chatGPTAccountIDHeader)
-	if len(accountValues) != 1 || accountValues[0] == "" || accountValues[0] != strings.TrimSpace(accountValues[0]) {
-		return "", "", errors.New("codex request must provide exactly one non-empty ChatGPT-Account-ID header")
-	}
-	return authorizationValues[0], accountValues[0], nil
+	return &providerClient{openai: provider}
 }
 
 func (c *providerClient) forwardModels(ctx context.Context, headers http.Header, rawQuery string) (*http.Response, error) {
-	authorization, accountID, err := requiredCodexAuthHeaders(headers)
+	authorization, account, err := openai.Credentials(headers)
 	if err != nil {
-		return nil, criticalDiagnostic(err, "models_auth_headers",
-			"the model catalog request is missing valid Codex Authorization or account headers", true)
+		return nil, criticalDiagnostic(err, "models_auth_headers", "the model catalog request is missing valid Codex Authorization or account headers", true)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.baseURL, "/")+"/models", nil)
-	if err != nil {
-		return nil, fmt.Errorf("build upstream models request: %w", err)
-	}
-	request.URL.RawQuery = rawQuery
-	request.Header.Set("Authorization", authorization)
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set(chatGPTAccountIDHeader, accountID)
-	request.Header.Set("Originator", codexClientIdentity)
-	request.Header.Set("User-Agent", codexClientIdentity)
-	response, err := c.httpClient.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("forward upstream models request: %w", err)
-	}
-	return response, nil
+	upstream := http.Header{}
+	upstream.Set("Authorization", authorization)
+	upstream.Set(openai.AccountIDHeader, account)
+	upstream.Set("Accept", "application/json")
+	upstream.Set("Originator", codexresponses.ClientIdentity)
+	upstream.Set("User-Agent", codexresponses.ClientIdentity)
+	return c.openai.Models(ctx, upstream, rawQuery)
 }
 
 func (c *providerClient) forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
@@ -137,243 +95,30 @@ func (c *providerClient) forwardExecution(startCtx, responseCtx context.Context,
 		return nil, incompatibleRequest("third_party_model_required", "This launch supports only its authenticated third-party models; use mekugi codex for OpenAI models")
 	}
 
-	authorization, accountID, err := requiredCodexAuthHeaders(headers)
+	authorization, account, err := openai.Credentials(headers)
 	if err != nil {
 		return nil, err
 	}
-	if c.websockets != nil {
-		upstreamHeaders := http.Header{}
-		upstreamHeaders.Set("Authorization", authorization)
-		upstreamHeaders.Set(chatGPTAccountIDHeader, accountID)
-		upstreamHeaders.Set("Originator", codexClientIdentity)
-		upstreamHeaders.Set("User-Agent", codexClientIdentity)
-		forwardCodexRequestHeaders(upstreamHeaders, headers)
-		if validCodexCacheKey(cacheKey) {
-			upstreamHeaders[codexSessionIDHeader] = []string{cacheKey}
-		}
-		response, fallback, err := c.forwardWebSocket(startCtx, responseCtx, body, upstreamHeaders, cacheKey)
-		if !fallback {
-			return response, err
-		}
+	upstream := http.Header{}
+	upstream.Set("Authorization", authorization)
+	upstream.Set(openai.AccountIDHeader, account)
+	upstream.Set("Content-Type", "application/json")
+	upstream.Set("Accept", "application/json, text/event-stream")
+	upstream.Set("Originator", codexresponses.ClientIdentity)
+	upstream.Set("User-Agent", codexresponses.ClientIdentity)
+	codexresponses.ForwardHeaders(upstream, headers)
+	if codexresponses.ValidCacheKey(cacheKey) {
+		upstream[codexresponses.SessionIDHeader] = []string{cacheKey}
 	}
-	endpoint := strings.TrimRight(c.baseURL, "/") + "/responses"
-	for attempt := 0; ; attempt++ {
-		requestCtx, cancelRequest := context.WithCancel(responseCtx)
-		stopStartCancellation := context.AfterFunc(startCtx, cancelRequest)
-		request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint, bytes.NewReader(body))
+	var websocket *openai.WebSocketRequest
+	if c.openai.WebSocketsEnabled() {
+		payload, handshake, stream, err := codexresponses.WebSocketRequest(body, upstream, cacheKey)
 		if err != nil {
-			stopStartCancellation()
-			cancelRequest()
-			return nil, fmt.Errorf("build upstream request: %w", err)
+			return nil, err
 		}
-		defaults := []struct {
-			name  string
-			value string
-		}{
-			{"Authorization", authorization},
-			{"Content-Type", "application/json"},
-			{"Accept", "application/json, text/event-stream"},
-			{chatGPTAccountIDHeader, accountID},
-			{"Originator", codexClientIdentity},
-			{"User-Agent", codexClientIdentity},
-		}
-		for _, header := range defaults {
-			request.Header.Set(header.name, header.value)
-		}
-		forwardCodexRequestHeaders(request.Header, headers)
-		if validCodexCacheKey(cacheKey) {
-			request.Header[codexSessionIDHeader] = []string{cacheKey}
-		}
-		response, err := c.httpClient.Do(request)
-		if err != nil {
-			stopStartCancellation()
-			cancelRequest()
-			return nil, fmt.Errorf("forward upstream request: %w", err)
-		}
-		finishResponseStart := func() error {
-			if !stopStartCancellation() {
-				cancelRequest()
-				_ = response.Body.Close()
-				if err := startCtx.Err(); err != nil {
-					return err
-				}
-				return context.Canceled
-			}
-			var body io.ReadCloser = &cancelOnCloseReadCloser{body: response.Body, cancel: cancelRequest}
-			if c.streamIdleTimeout > 0 {
-				body = newStreamIdleReadCloser(responseCtx, body, c.streamIdleTimeout)
-			}
-			response.Body = body
-			return nil
-		}
-		if response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
-			if err := finishResponseStart(); err != nil {
-				return nil, fmt.Errorf("forward upstream request: %w", err)
-			}
-			return response, nil
-		}
-		recoverable := responseHasRecoverableUpstreamError(response)
-		if err := finishResponseStart(); err != nil {
-			return nil, fmt.Errorf("forward upstream request: %w", err)
-		}
-		if !recoverable || attempt == maxUpstreamRetries {
-			return response, nil
-		}
-		delay := upstreamRetryDelay(response, attempt)
-		_ = response.Body.Close()
-		timer := time.NewTimer(delay)
-		select {
-		case <-timer.C:
-		case <-startCtx.Done():
-			timer.Stop()
-			return nil, fmt.Errorf("wait to retry upstream request: %w", startCtx.Err())
-		}
+		websocket = &openai.WebSocketRequest{Payload: payload, Headers: handshake, Stream: stream}
 	}
-}
-
-func forwardCodexRequestHeaders(destination, source http.Header) {
-	for _, name := range []string{
-		threadIDHeader,
-		clientRequestIDHeader,
-		codexWindowIDHeader,
-		codexBetaFeaturesHeader,
-		codexResponsesLiteHeader,
-		openAISubagentHeader,
-		codexTurnMetadataHeader,
-		// Codex owns this provider-issued, per-turn sticky-routing token. Relay
-		// it unchanged; never derive it from or retain it with the session key.
-		"x-codex-turn-state",
-		mekugiCaptureIDHeader,
-	} {
-		for _, value := range source.Values(name) {
-			destination.Add(name, value)
-		}
-	}
-}
-
-func validCodexCacheKey(value string) bool {
-	if value == "" || strings.TrimSpace(value) != value {
-		return false
-	}
-	for index := range len(value) {
-		char := value[index]
-		if (char < 0x20 && char != '\t') || char == 0x7f {
-			return false
-		}
-	}
-	return true
-}
-
-type cancelOnCloseReadCloser struct {
-	body   io.ReadCloser
-	cancel context.CancelFunc
-}
-
-func (r *cancelOnCloseReadCloser) Read(body []byte) (int, error) {
-	return r.body.Read(body)
-}
-
-func (r *cancelOnCloseReadCloser) Close() error {
-	err := r.body.Close()
-	r.cancel()
-	return err
-}
-
-type streamIdleReadCloser struct {
-	ctx       context.Context
-	body      io.ReadCloser
-	timeout   time.Duration
-	timedOut  atomic.Bool
-	closeOnce sync.Once
-	closeErr  error
-}
-
-func newStreamIdleReadCloser(ctx context.Context, body io.ReadCloser, timeout time.Duration) *streamIdleReadCloser {
-	return &streamIdleReadCloser{ctx: ctx, body: body, timeout: timeout}
-}
-
-func (r *streamIdleReadCloser) Read(buffer []byte) (int, error) {
-	if r.timedOut.Load() {
-		return 0, errUpstreamStreamIdleTimeout
-	}
-	expired := make(chan struct{})
-	timer := time.AfterFunc(r.timeout, func() {
-		r.timedOut.Store(true)
-		_ = r.closeBody()
-		close(expired)
-	})
-	read, err := r.body.Read(buffer)
-	if !timer.Stop() {
-		<-expired
-	}
-	if r.timedOut.Load() {
-		if contextErr := r.ctx.Err(); contextErr != nil {
-			return read, errors.Join(contextErr, errUpstreamStreamIdleTimeout, err)
-		}
-		return read, errors.Join(errUpstreamStreamIdleTimeout, err)
-	}
-	return read, err
-}
-
-func (r *streamIdleReadCloser) closeBody() error {
-	r.closeOnce.Do(func() {
-		r.closeErr = r.body.Close()
-	})
-	return r.closeErr
-}
-
-func (r *streamIdleReadCloser) Close() error {
-	return r.closeBody()
-}
-
-func upstreamRetryDelay(response *http.Response, attempt int) time.Duration {
-	if value := strings.TrimSpace(response.Header.Get("Retry-After")); value != "" {
-		if seconds, err := strconv.ParseUint(value, 10, 64); err == nil {
-			if seconds >= uint64(maxUpstreamRetryBackoff/time.Second) {
-				return maxUpstreamRetryBackoff
-			}
-			return min(time.Duration(seconds)*time.Second, maxUpstreamRetryBackoff)
-		}
-		if retryAt, err := http.ParseTime(value); err == nil {
-			return min(max(time.Until(retryAt), 0), maxUpstreamRetryBackoff)
-		}
-	}
-	delay := min(initialUpstreamRetryBackoff<<attempt, maxUpstreamRetryBackoff)
-	half := delay / 2
-	return half + rand.N(delay-half)
-}
-
-func responseHasRecoverableUpstreamError(response *http.Response) bool {
-	if response == nil || response.Body == nil || response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
-		return false
-	}
-	detail, err := io.ReadAll(io.LimitReader(response.Body, maxUpstreamErrorDetailBytes+1))
-	replayResponseBody(response, detail, response.Body)
-	if err != nil || len(detail) > maxUpstreamErrorDetailBytes {
-		return false
-	}
-	message := strings.ToLower(upstreamErrorMessage(detail))
-	return strings.Contains(message, selectedModelAtCapacity)
-}
-
-func upstreamErrorMessage(body []byte) string {
-	var envelope struct {
-		Error json.RawMessage `json:"error"`
-	}
-	if json.Unmarshal(body, &envelope) != nil || len(envelope.Error) == 0 {
-		return ""
-	}
-	var providerError struct {
-		Message string `json:"message"`
-	}
-	if json.Unmarshal(envelope.Error, &providerError) == nil {
-		return strings.TrimSpace(providerError.Message)
-	}
-	var message string
-	if json.Unmarshal(envelope.Error, &message) == nil {
-		return strings.TrimSpace(message)
-	}
-	return ""
+	return c.openai.Responses(startCtx, responseCtx, body, upstream, websocket)
 }
 
 func prepareUpstreamBody(response *http.Response, streamRequested bool) (bool, error) {
@@ -388,7 +133,7 @@ func prepareUpstreamBody(response *http.Response, streamRequested bool) (bool, e
 	probe := bufio.NewReader(io.LimitReader(response.Body, maxUpstreamSniffBytes+1))
 	var prefix bytes.Buffer
 	defer func() {
-		replayResponseBody(response, prefix.Bytes(), io.MultiReader(probe, response.Body))
+		httptransport.RestorePrefix(response, prefix.Bytes(), io.MultiReader(probe, response.Body))
 	}()
 	firstLine := true
 	for {
@@ -419,13 +164,6 @@ func prepareUpstreamBody(response *http.Response, streamRequested bool) (bool, e
 			return false, err
 		}
 	}
-}
-
-func replayResponseBody(response *http.Response, prefix []byte, remainder io.Reader) {
-	response.Body = struct {
-		io.Reader
-		io.Closer
-	}{io.MultiReader(bytes.NewReader(prefix), remainder), response.Body}
 }
 
 func isSSELine(line string) bool {
@@ -775,20 +513,4 @@ func trimSSELineEnding(line string) (string, string) {
 		return before, "\n"
 	}
 	return line, ""
-}
-
-func withDialTimeout(client *http.Client) *http.Client {
-	if client == nil {
-		client = &http.Client{}
-	}
-	cloned := *client
-	if cloned.Transport == nil {
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.DialContext = (&net.Dialer{
-			Timeout:   defaultDialTimeout,
-			KeepAlive: 30 * time.Second,
-		}).DialContext
-		cloned.Transport = transport
-	}
-	return &cloned
 }

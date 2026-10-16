@@ -13,6 +13,11 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
 )
@@ -20,7 +25,7 @@ import (
 func thirdPartyUnauthenticatedHeaders() http.Header {
 	headers := grokTestHeaders()
 	headers.Del("Authorization")
-	headers.Del(chatGPTAccountIDHeader)
+	headers.Del(openai.AccountIDHeader)
 	headers.Set("X-Api-Key", "unrelated-provider-secret")
 	return headers
 }
@@ -30,7 +35,7 @@ func assertThirdPartyHeaderIsolation(t *testing.T, headers http.Header, key stri
 	if headers.Get("Authorization") != "Bearer "+key {
 		t.Error("provider-issued authorization missing or replaced")
 	}
-	for _, name := range []string{chatGPTAccountIDHeader, threadIDHeader, openAISubagentHeader, codexTurnMetadataHeader, codexSessionIDHeader, "X-Api-Key"} {
+	for _, name := range []string{openai.AccountIDHeader, codexresponses.ThreadIDHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader, codexresponses.SessionIDHeader, "X-Api-Key"} {
 		if headers.Get(name) != "" {
 			t.Errorf("unrelated credential or Codex header forwarded: %s", name)
 		}
@@ -57,7 +62,7 @@ func TestThirdPartyGrokExecutionWithoutCodexAuthentication(t *testing.T) {
 			}))
 			defer server.Close()
 			provider := newProviderClient("http://unused.invalid", nil)
-			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "grok-only", withDialTimeout(nil))}
+			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "grok-only", httptransport.Client(nil))}
 			var request map[string]any
 			if err := json.Unmarshal(grokTestRequest(t, stream), &request); err != nil {
 				t.Fatal(err)
@@ -116,7 +121,7 @@ func TestThirdPartyConfigurationDoesNotBypassOpenAIAuthentication(t *testing.T) 
 		return serverHTTPResponse("{}"), nil
 	})}
 	provider := newProviderClient("http://unused.invalid", client)
-	provider.grok = &grokClient{httpClient: client, auth: grok.NewAuth("", "grok-only", withDialTimeout(nil))}
+	provider.grok = &grokClient{httpClient: client, auth: grok.NewAuth("", "grok-only", httptransport.Client(nil))}
 	_, err := provider.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-5.6-sol","input":[]}`), http.Header{}, "")
 	if err == nil || !strings.Contains(err.Error(), "Authorization") {
 		t.Fatalf("expected OpenAI authentication rejection, got %v", err)

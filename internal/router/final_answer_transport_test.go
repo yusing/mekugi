@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"context"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -95,8 +98,8 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 						defer upstream.Close()
 						client := newProviderClient(upstream.URL, upstream.Client())
 						if upstreamWS {
-							client.enableWebSockets(ctx)
-							defer client.websockets.close()
+							client.openai.EnableWebSockets(ctx)
+							defer client.openai.Close()
 						}
 						var handler http.Handler = responsesHandler(ctx, time.Second, client, nil, proxy)
 						if downstreamWS {
@@ -111,10 +114,10 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 						if child {
 							metadata.SubagentKind = threadSpawnSubagentKind
 						}
-						headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+						headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 						headers.Set(sessionIDHeader, "answer-stream-session")
 						headers.Set("Authorization", "Bearer test")
-						headers.Set(chatGPTAccountIDHeader, "account")
+						headers.Set(openai.AccountIDHeader, "account")
 						request := serverRequest(t, func(fields map[string]any) { fields["stream"] = true })
 						var next func() ([]byte, error)
 						if downstreamWS {

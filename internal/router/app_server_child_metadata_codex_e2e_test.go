@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -109,7 +111,7 @@ type appServerChildMetadataProvider struct {
 
 func (p *appServerChildMetadataProvider) forwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*http.Response, error) {
 	metadata, _ := decodeCodexTurnMetadata(headers)
-	thread := headers.Get(threadIDHeader)
+	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
 		thread = metadata.ThreadID
 	}

@@ -11,6 +11,9 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
 )
 
 func TestCodexAuxiliaryRoutesPreserveNativeOperations(t *testing.T) {
@@ -25,7 +28,7 @@ func TestCodexAuxiliaryRoutesPreserveNativeOperations(t *testing.T) {
 			body := []byte(" {\"opaque\": [1, null], \"input\": \"untouched\"}\n")
 			headers := codexAuthHeaders()
 			headers.Set("Content-Type", "application/json; charset=utf-8")
-			nativeHeaders := []string{threadIDHeader, clientRequestIDHeader, codexWindowIDHeader, codexBetaFeaturesHeader, codexResponsesLiteHeader, openAISubagentHeader, codexTurnMetadataHeader, "x-codex-turn-state", "x-codex-image-turn-id", "x-openai-encrypted-tool-arguments", "x-openai-tool-output-truncation-policy"}
+			nativeHeaders := []string{codexresponses.ThreadIDHeader, codexresponses.ClientRequestIDHeader, codexresponses.WindowIDHeader, codexresponses.BetaFeaturesHeader, codexresponses.ResponsesLiteHeader, codexresponses.SubagentHeader, codexresponses.TurnMetadataHeader, "x-codex-turn-state", "x-codex-image-turn-id", "x-openai-encrypted-tool-arguments", "x-openai-tool-output-truncation-policy"}
 			for _, name := range nativeHeaders {
 				headers.Add(name, "opaque-first")
 				headers.Add(name, "opaque-second")
@@ -44,13 +47,13 @@ func TestCodexAuxiliaryRoutesPreserveNativeOperations(t *testing.T) {
 				if request.ContentLength != int64(len(body)) {
 					t.Errorf("content length = %d, want %d", request.ContentLength, len(body))
 				}
-				for _, name := range append(nativeHeaders, "Authorization", chatGPTAccountIDHeader, "Content-Type") {
+				for _, name := range append(nativeHeaders, "Authorization", openai.AccountIDHeader, "Content-Type") {
 					if !slices.Equal(request.Header.Values(name), headers.Values(name)) {
 						t.Errorf("header %s = %q, want %q", name, request.Header.Values(name), headers.Values(name))
 					}
 				}
 				for _, name := range []string{"Originator", "User-Agent"} {
-					if request.Header.Get(name) != codexClientIdentity {
+					if request.Header.Get(name) != codexresponses.ClientIdentity {
 						t.Errorf("%s = %q", name, request.Header.Get(name))
 					}
 				}

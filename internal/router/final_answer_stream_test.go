@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -240,11 +242,11 @@ func TestAnswerStreamsWithoutUsageCommentary(t *testing.T) {
 			headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 			if child {
 				var metadata codexTurnMetadata
-				if err := json.Unmarshal([]byte(headers.Get(codexTurnMetadataHeader)), &metadata); err != nil {
+				if err := json.Unmarshal([]byte(headers.Get(codexresponses.TurnMetadataHeader)), &metadata); err != nil {
 					t.Fatal(err)
 				}
 				metadata.SubagentKind = threadSpawnSubagentKind
-				headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, metadata)))
+				headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 			}
 			answer := finalAnswerTestEvents(t, "final_answer")
 			terminal := finalAnswerTestTerminal(t, "completed", true)

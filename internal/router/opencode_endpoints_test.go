@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/providers/openai"
+
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -93,7 +95,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 					} else if r.Header.Get("Authorization") != "Bearer go-key" || r.Header.Get("x-api-key") != "" {
 						t.Error("wrong Responses auth")
 					}
-					if r.Header.Get(chatGPTAccountIDHeader) != "" {
+					if r.Header.Get(openai.AccountIDHeader) != "" {
 						t.Error("Codex account forwarded")
 					}
 					body, _ := io.ReadAll(r.Body)

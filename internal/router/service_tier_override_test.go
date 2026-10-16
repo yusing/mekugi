@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -238,7 +240,7 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 			executor := requestExecutor{provider: provider, output: &bytes.Buffer{}, serviceTiers: u.serviceTiers}
 			headers := serverMetadataHeaders(t, "turn", nil)
-			headers.Set(threadIDHeader, u.thread)
+			headers.Set(codexresponses.ThreadIDHeader, u.thread)
 			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
@@ -424,9 +426,9 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	proxy.activity.attachNativePane("root")
 	defer root.Close()
 	headers := serverMetadataHeaders(t, "turn", nil)
-	headers.Set(openAISubagentHeader, threadSpawnSubagent)
-	headers.Set(threadIDHeader, "child")
-	headers.Set(codexTurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{
+	headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
+	headers.Set(codexresponses.ThreadIDHeader, "child")
+	headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, codexTurnMetadata{
 		RequestKind: "turn", ThreadID: "child", ParentThreadID: "root",
 		AgentName: "/root/tier-test", SubagentKind: "thread_spawn",
 	})))

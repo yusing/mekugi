@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -116,8 +118,8 @@ func TestRequestPreparationBeginsOnlyNewRootTurn(t *testing.T) {
 			Directories: map[string]json.RawMessage{workspace: nil},
 		}
 		headers := make(http.Header)
-		headers.Set(codexTurnMetadataHeader, string(responses.MustMarshalJSON(metadata)))
-		headers.Set(threadIDHeader, thread)
+		headers.Set(codexresponses.TurnMetadataHeader, string(responses.MustMarshalJSON(metadata)))
+		headers.Set(codexresponses.ThreadIDHeader, thread)
 		return headers
 	}
 	prepare := func(ctx context.Context, turnID string) *requestAttempt {

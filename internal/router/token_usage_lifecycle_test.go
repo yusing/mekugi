@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -191,7 +193,7 @@ func TestTokenUsageGapRetainsObservedTotals(t *testing.T) {
 							body["status"] = "incomplete"
 						case "compaction":
 							currentHeaders = serverCompactionMetadataHeaders(t)
-							currentHeaders.Set(threadIDHeader, "thread-1")
+							currentHeaders.Set(codexresponses.ThreadIDHeader, "thread-1")
 							req = serverRequest(t, func(f map[string]any) {
 								f["model"] = "gpt-6-astra"
 								f["stream"] = true

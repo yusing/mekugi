@@ -20,6 +20,11 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 
 	vt "github.com/charmbracelet/x/vt"
@@ -130,14 +135,14 @@ func TestThirdPartyResumeModelNativeCodexE2E(t *testing.T) {
 			defer upstream.Close()
 			provider := newProviderClient("http://unused.invalid", nil)
 			provider.thirdPartyOnly = true
-			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "resume-fixture-only", withDialTimeout(nil)), unprefixed: unprefixed}
+			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "resume-fixture-only", httptransport.Client(nil)), unprefixed: unprefixed}
 			handler := responsesHandler(t.Context(), time.Minute, provider, nil, nil)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Authorization") != "" || r.Header.Get(chatGPTAccountIDHeader) != "" {
+				if r.Header.Get("Authorization") != "" || r.Header.Get(openai.AccountIDHeader) != "" {
 					t.Error("third-party resume attached Codex authentication")
 				}
 				mu.Lock()
-				threads = append(threads, r.Header.Get(threadIDHeader))
+				threads = append(threads, r.Header.Get(codexresponses.ThreadIDHeader))
 				mu.Unlock()
 				handler(w, r)
 			}))

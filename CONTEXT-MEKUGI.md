@@ -38,7 +38,8 @@ behavioral contract. UI presentation packages and router session integration are
 | Automatic notices and root-visible child activity | `internal/router/critical_errors.go`, `internal/router/subagent_activity.go`; boundaries in `doc/architecture/notices.md` and `doc/architecture/activity.md` |
 | Per-thread token/cost reports and final-answer stream ordering | `internal/router/thread_usage.go`, `internal/router/token_cost.go`, `internal/router/final_answer_stream.go` |
 | Codex-facing WebSocket sessions, incremental history, and steering | `internal/router/server_websocket.go` |
-| Codex authentication and upstream Responses transport | `internal/router/client.go`, `internal/router/client_websocket.go` |
+| OpenAI credentials, model exchange, HTTP inference and WebSocket connections | `providers/openai`; Codex header/framing policy in `backends/codex/responses/openai.go`; provider selection and capture binding in `internal/router/client.go` |
+| Shared HTTP defaults, idle-read lifetime and inspected-body replay | `libraries/httptransport`; provider and diagnostic consumers share its timeout identity |
 | Provider-measured output throughput and response-byte receipt timing | `internal/router/output_throughput.go`, `internal/router/thread_usage_store.go`, `internal/router/stream_diagnostics.go`; capture snapshots remain in `capturer` |
 | Stock tool preservation and response observation | `internal/router/mekugi_proxy.go`, `internal/router/mekugi_response_transform.go`, `internal/router/native_apply_patch.go` |
 | Shell/source execution-scope classification and bounded provider queries | `internal/execscope`; immutable stock command inputs and literal JavaScript extraction in `libraries/commandanalysis`; host observation and retained-change resolution remain in `internal/router/exec_observation.go` and `internal/router/exec_changes.go` |

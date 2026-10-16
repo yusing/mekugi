@@ -10,6 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -65,7 +69,7 @@ func (d *streamDiagnostics) responseStarted(response *http.Response) {
 		d.Transport = "http3"
 	default:
 		switch response.Body.(type) {
-		case *webSocketResponseBody, *webSocketExchange:
+		case *openai.WebSocketBody, *webSocketExchange:
 			d.Transport = "websocket"
 		case *grokResponseBody:
 			d.Transport = "chat_response_bridge"
@@ -246,7 +250,7 @@ func (d *streamDiagnostics) readEnded(err error) {
 	}
 	diagnostic, _ := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err))
 	d.ReadTermination = diagnostic.code
-	if errors.Is(err, errUpstreamStreamIdleTimeout) {
+	if errors.Is(err, httptransport.ErrStreamIdleTimeout) {
 		d.ReadTermination = "upstream_idle_timeout"
 	}
 	if d.ReadOrigin != "upstream" {

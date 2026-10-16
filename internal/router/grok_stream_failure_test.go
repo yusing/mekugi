@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -99,7 +101,7 @@ func TestGrokClientDeliversFailureBeforeReadError(t *testing.T) {
 		io.WriteString(w, "data: {\"error\":{\"message\":\"private-provider-content\"}}\n\n")
 	}))
 	defer server.Close()
-	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", withDialTimeout(nil))}
+	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
@@ -144,11 +146,11 @@ type grokFailureReader struct{ err error }
 func (r grokFailureReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestGrokClientFailedTerminalRetainsTimeoutAccounting(t *testing.T) {
-	client := &grokClient{auth: grok.NewAuth("", "test", withDialTimeout(nil)), httpClient: &http.Client{
+	client := &grokClient{auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{
 		Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK,
 				Header: http.Header{"Content-Type": []string{"text/event-stream"}},
-				Body:   io.NopCloser(grokFailureReader{errUpstreamStreamIdleTimeout})}, nil
+				Body:   io.NopCloser(grokFailureReader{httptransport.ErrStreamIdleTimeout})}, nil
 		}),
 	}}
 	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
@@ -157,7 +159,7 @@ func TestGrokClientFailedTerminalRetainsTimeoutAccounting(t *testing.T) {
 	}
 	var output bytes.Buffer
 	state, err := copyUpstreamBodyTransformed(&output, response, true, nil, nil)
-	if state != responseTerminalFailed || !errors.Is(err, errUpstreamStreamIdleTimeout) {
+	if state != responseTerminalFailed || !errors.Is(err, httptransport.ErrStreamIdleTimeout) {
 		t.Fatalf("state=%v err=%v", state, err)
 	}
 	finalization := &requestFinalization{upstreamTerminalState: state}

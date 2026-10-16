@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/providers/openai"
+
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -38,7 +40,7 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			err := newProviderHTTPError("OpenCode Go", 403, []byte(test.body),
 				http.Header{"Authorization": {"Bearer provider-secret"}},
-				http.Header{"Authorization": {"Bearer caller-secret"}, http.CanonicalHeaderKey(chatGPTAccountIDHeader): {"account-secret"}})
+				http.Header{"Authorization": {"Bearer caller-secret"}, http.CanonicalHeaderKey(openai.AccountIDHeader): {"account-secret"}})
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("missing detail: %v", err)
 			}

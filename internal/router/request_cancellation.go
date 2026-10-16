@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 	"errors"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
 )
 
 var (
@@ -27,7 +29,7 @@ func requestCancellationCause(execution context.Context, err error) string {
 		return "downstream_context_canceled"
 	case errors.Is(err, context.DeadlineExceeded) && errors.Is(execution.Err(), context.DeadlineExceeded):
 		return "downstream_deadline_exceeded"
-	case errors.Is(err, errUpstreamStreamIdleTimeout):
+	case errors.Is(err, httptransport.ErrStreamIdleTimeout):
 		return "upstream_idle_timeout"
 	case errors.Is(err, context.Canceled):
 		return "cancellation_unknown"

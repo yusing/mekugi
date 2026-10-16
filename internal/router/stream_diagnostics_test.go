@@ -16,6 +16,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -31,7 +35,7 @@ func TestStreamDiagnosticsReadTermination(t *testing.T) {
 		{"unexpected", io.ErrUnexpectedEOF, "upstream_unexpected_eof", 0},
 		{"cancel", context.Canceled, "upstream_canceled", 0},
 		{"deadline", context.DeadlineExceeded, "upstream_deadline", 0},
-		{"idle", errors.Join(errUpstreamStreamIdleTimeout, context.DeadlineExceeded), "upstream_idle_timeout", 0},
+		{"idle", errors.Join(httptransport.ErrStreamIdleTimeout, context.DeadlineExceeded), "upstream_idle_timeout", 0},
 		{"close", fmt.Errorf("secret wrapper: %w", websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "secret reason"}), "upstream_websocket_close_1001", 1001},
 		{"unknown", errors.New("secret transport"), "upstream_transport_unknown", 0},
 	} {
@@ -154,9 +158,9 @@ func TestStreamDiagnosticsWebSocketClose(t *testing.T) {
 	}))
 	defer upstream.Close()
 	client := newProviderClient(upstream.URL, upstream.Client())
-	client.enableWebSockets(ctx)
-	defer client.websockets.close()
-	response, err := client.forwardExecution(ctx, ctx, []byte(`{"model":"gpt-test","stream":true,"input":[]}`), http.Header{"Authorization": {"Bearer test"}, chatGPTAccountIDHeader: {"account"}}, "session")
+	client.openai.EnableWebSockets(ctx)
+	defer client.openai.Close()
+	response, err := client.forwardExecution(ctx, ctx, []byte(`{"model":"gpt-test","stream":true,"input":[]}`), http.Header{"Authorization": {"Bearer test"}, openai.AccountIDHeader: {"account"}}, "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +181,7 @@ func TestStreamDiagnosticsNativeDownstreamClose(t *testing.T) {
 	d := &streamDiagnostics{}
 	exchange := &webSocketExchange{
 		ctx: t.Context(), streamDiagnostics: d,
-		session: &responsesWebSocket{provider: &providerClient{}, clientMessages: messages},
+		session: &responsesWebSocket{provider: newProviderClient("http://unused.invalid", nil), clientMessages: messages},
 	}
 	_, err := copySSETransformed(io.Discard, exchange, nil, &responseHooks{streamDiagnostics: d})
 	if !errors.Is(err, closeErr) || d.ReadOrigin != "downstream" || d.ReadTermination != "downstream_websocket_close_1001" || d.WebSocketCloseCode != 1001 {
@@ -360,7 +364,7 @@ func TestStreamDiagnosticsNativeReaderShutdown(t *testing.T) {
 					cancel()
 				}
 				d := &streamDiagnostics{}
-				session := &responsesWebSocket{ctx: ctx, provider: &providerClient{}}
+				session := &responsesWebSocket{ctx: ctx, provider: newProviderClient("http://unused.invalid", nil)}
 				if origin == "upstream" {
 					session.providerMessages = messages
 				} else {

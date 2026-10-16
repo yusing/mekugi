@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestThreadUsageConcurrentObservationsAndDuplicateTerminals(t *testing.T) {
@@ -122,7 +124,7 @@ func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 	response.Header.Set("Content-Type", "text/event-stream")
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 	headers := serverCompactionMetadataHeaders(t)
-	headers.Set(threadIDHeader, "root-thread")
+	headers.Set(codexresponses.ThreadIDHeader, "root-thread")
 	var output bytes.Buffer
 	if err := executeRequest(t.Context(), t.Context(), request, headers, "compaction-session", provider, &output, nil, proxy); err != nil {
 		t.Fatal(err)

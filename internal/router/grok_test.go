@@ -17,6 +17,11 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -29,10 +34,10 @@ func grokTestRequest(t *testing.T, stream bool) []byte {
 func grokTestHeaders() http.Header {
 	headers := http.Header{}
 	headers.Set("Authorization", "Bearer codex-secret")
-	headers.Set(chatGPTAccountIDHeader, "codex-account")
-	headers.Set(openAISubagentHeader, "collab_spawn")
-	headers.Set(threadIDHeader, "child-thread")
-	headers.Set(codexTurnMetadataHeader, `{"subagent_kind":"thread_spawn","request_kind":"regular"}`)
+	headers.Set(openai.AccountIDHeader, "codex-account")
+	headers.Set(codexresponses.SubagentHeader, "collab_spawn")
+	headers.Set(codexresponses.ThreadIDHeader, "child-thread")
+	headers.Set(codexresponses.TurnMetadataHeader, `{"subagent_kind":"thread_spawn","request_kind":"regular"}`)
 	return headers
 }
 func grokTestSSE(chunks ...any) string {
@@ -100,14 +105,14 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 			var calls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
-				if r.Header.Get("Authorization") != "Bearer xai-test" || r.Header.Get(chatGPTAccountIDHeader) != "" || r.Header.Get(openAISubagentHeader) != "" {
+				if r.Header.Get("Authorization") != "Bearer xai-test" || r.Header.Get(openai.AccountIDHeader) != "" || r.Header.Get(codexresponses.SubagentHeader) != "" {
 					t.Errorf("credential boundary violated")
 				}
 				w.Header().Set("Content-Type", "text/event-stream")
 				io.WriteString(w, grokTextStream())
 			}))
 			defer server.Close()
-			client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", withDialTimeout(nil)), streamIdleTimeout: time.Second}
+			client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", httptransport.Client(nil)), streamIdleTimeout: time.Second}
 			response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), grokTestHeaders())
 			if err != nil {
 				t.Fatal(err)
@@ -121,8 +126,8 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 				t.Fatalf("body=%s", data)
 			}
 			headers := grokTestHeaders()
-			headers.Del(openAISubagentHeader)
-			headers.Del(codexTurnMetadataHeader)
+			headers.Del(codexresponses.SubagentHeader)
+			headers.Del(codexresponses.TurnMetadataHeader)
 			response, err = client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), headers)
 			if err != nil {
 				t.Fatal(err)
@@ -149,7 +154,7 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 		close(canceled)
 	}))
 	defer server.Close()
-	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", withDialTimeout(nil))}
+	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 	ctx, cancel := context.WithCancel(t.Context())
 	response, err := client.forwardExecution(ctx, ctx, grokTestRequest(t, true), grokTestHeaders())
 	if err != nil {
@@ -186,7 +191,7 @@ func TestGrokUnauthorizedRefreshRetriesOnceWithoutCredentialLeak(t *testing.T) {
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.Header.Get(chatGPTAccountIDHeader) != "" {
+		if r.Header.Get(openai.AccountIDHeader) != "" {
 			t.Error("leaked Codex account")
 		}
 		if calls == 1 {
@@ -242,7 +247,7 @@ func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
 				io.WriteString(w, grokTextStream())
 			}))
 			defer server.Close()
-			client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", withDialTimeout(nil))}
+			client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 			body := mustTestJSON(t, map[string]any{"model": "grok:" + model, "input": []any{}})
 			response, err := client.forwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
 			if model == "grok-4.7-build-fast" {
@@ -268,7 +273,7 @@ func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
 		io.WriteString(w, grokTextStream())
 	}))
 	defer server.Close()
-	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth(path, "", withDialTimeout(nil))}
+	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth(path, "", httptransport.Client(nil))}
 	body := mustTestJSON(t, map[string]any{"model": "grok:grok-4.7-build-fast", "input": []any{}})
 	response, err := client.forwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
 	if err != nil {
@@ -298,7 +303,7 @@ func grokTestHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
 func TestGrokCloseUnblocksUpstreamRead(t *testing.T) {
 	upstream, writer := io.Pipe()
 	defer writer.Close()
-	client := &grokClient{auth: grok.NewAuth("", "test", withDialTimeout(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &grokClient{auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: upstream}, nil
 	})}}
 	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
@@ -342,7 +347,7 @@ func TestGrokAPIKeyStartupWithoutHome(t *testing.T) {
 }
 
 func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
-	client := &grokClient{auth: grok.NewAuth("", "test", withDialTimeout(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &grokClient{auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		t.Error("unsupported budget reached provider")
 		return nil, fmt.Errorf("unexpected inference")
 	})}}

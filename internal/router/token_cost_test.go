@@ -6,6 +6,8 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestTokenCostDisjointCategories(t *testing.T) {
@@ -160,7 +162,7 @@ func TestTokenCostIncludesCompactionAcrossTransports(t *testing.T) {
 				headers := serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 				if step == 0 {
 					headers = serverCompactionMetadataHeaders(t)
-					headers.Set(threadIDHeader, "thread-1")
+					headers.Set(codexresponses.ThreadIDHeader, "thread-1")
 				}
 				body := map[string]any{
 					"id": model, "status": "completed", "output": []any{},

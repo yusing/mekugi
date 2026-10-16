@@ -17,6 +17,11 @@ import (
 	"syscall"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/capturer"
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -30,7 +35,7 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 	endpoint := &responsesWebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
 		if provider.grok == nil && len(provider.opencode) == 0 {
-			if _, _, err := requiredCodexAuthHeaders(r.Header); err != nil {
+			if _, _, err := openai.Credentials(r.Header); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -535,7 +540,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	headers := s.headers.Clone()
 	var metadata map[string]json.RawMessage
 	if json.Unmarshal(requestFields["client_metadata"], &metadata) == nil {
-		for _, key := range []string{codexTurnMetadataHeader, "x-codex-turn-state", threadIDHeader, codexWindowIDHeader, openAISubagentHeader} {
+		for _, key := range []string{codexresponses.TurnMetadataHeader, "x-codex-turn-state", codexresponses.ThreadIDHeader, codexresponses.WindowIDHeader, codexresponses.SubagentHeader} {
 			if value, ok := responseevents.DecodeString(metadata[key]); ok {
 				headers.Set(key, value)
 			}
@@ -611,17 +616,17 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		}
 		return s.provider.forwardExecution(startCtx, responseCtx, native, headers, cacheKey)
 	}
-	authorization, account, err := requiredCodexAuthHeaders(headers)
+	authorization, account, err := openai.Credentials(headers)
 	if err != nil {
 		return nil, err
 	}
 	upstreamHeaders := make(http.Header)
 	upstreamHeaders.Set("Authorization", authorization)
-	upstreamHeaders.Set(chatGPTAccountIDHeader, account)
-	upstreamHeaders.Set("Originator", codexClientIdentity)
-	upstreamHeaders.Set("User-Agent", codexClientIdentity)
-	forwardCodexRequestHeaders(upstreamHeaders, headers)
-	payload, handshake, _, err := webSocketRequest(native, upstreamHeaders, cacheKey)
+	upstreamHeaders.Set(openai.AccountIDHeader, account)
+	upstreamHeaders.Set("Originator", codexresponses.ClientIdentity)
+	upstreamHeaders.Set("User-Agent", codexresponses.ClientIdentity)
+	codexresponses.ForwardHeaders(upstreamHeaders, headers)
+	payload, handshake, _, err := codexresponses.WebSocketRequest(native, upstreamHeaders, cacheKey)
 	if err != nil {
 		return nil, err
 	}
@@ -633,16 +638,9 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	}
 	var responseHeaders http.Header
 	if s.upstream == nil {
-		client := *s.provider.httpClient
-		client.Timeout = 0
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-		transport := &webSocketHandshakeTransport{RoundTripper: client.Transport}
-		client.Transport = transport
-		conn, response, dialErr := websocket.Dial(startCtx, strings.TrimRight(s.provider.baseURL, "/")+"/responses", &websocket.DialOptions{
-			HTTPClient: &client, HTTPHeader: handshake,
-		})
+		conn, response, dialErr := s.provider.openai.Dial(startCtx, handshake)
 
-		if rejected := transport.rejected; rejected != nil {
+		if rejected := response; rejected != nil && rejected.StatusCode != http.StatusSwitchingProtocols {
 			attempt := capturer.BeginWebSocketAttempt(responseCtx, nil, handshake, rejected.Header)
 			body := attempt.HTTPErrorBody(rejected.Body, rejected.StatusCode, rejected.Header.Get("Content-Type"), rejected.Header.Get("Content-Encoding"))
 			// A truncated error body cannot erase an already-known status used
@@ -742,8 +740,8 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	e.first = nil
 	var timer *time.Timer
 	var idle <-chan time.Time
-	if s.provider.streamIdleTimeout > 0 {
-		timer = time.NewTimer(s.provider.streamIdleTimeout)
+	if s.provider.openai.StreamIdleTimeout > 0 {
+		timer = time.NewTimer(s.provider.openai.StreamIdleTimeout)
 		idle = timer.C
 		defer timer.Stop()
 	}
@@ -753,7 +751,7 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 			e.streamDiagnostics.readEndedFrom(e.ctx.Err(), "context")
 			return 0, e.ctx.Err()
 		case <-idle:
-			return 0, errUpstreamStreamIdleTimeout
+			return 0, httptransport.ErrStreamIdleTimeout
 		case message := <-s.clientMessages:
 			if err := webSocketMessageReadError(e.ctx, message); err != nil {
 				e.streamDiagnostics.readEndedFrom(err, "downstream")

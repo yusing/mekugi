@@ -1,11 +1,16 @@
-package router
+package openai
 
+// Source: internal/router/client_websocket.go:1:729@49f759d6 pooled provider transport.
+
+// Wire JSON retains the existing v1 acceptance and exact encoding semantics.
 import (
 	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -18,8 +23,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/capturer"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -29,7 +36,6 @@ const (
 	providerWebSocketLimit    = 32
 	providerWebSocketIdle     = time.Minute
 	providerWebSocketLifetime = 50 * time.Minute
-	responsesWebSocketBeta    = "responses_websockets=2026-02-06"
 )
 
 // The pool owns connections, not conversation state. Every lease sends the full
@@ -64,16 +70,16 @@ type providerWebSocket struct {
 type providerWebSocketLease struct {
 	messages    chan []byte
 	released    chan struct{}
-	observation *capturer.WebSocketAttempt
+	observation observation
 	pending     bool
 	terminal    bool
 }
 
-func newProviderWebSocketLease(observation *capturer.WebSocketAttempt) *providerWebSocketLease {
+func newProviderWebSocketLease(observation observation) *providerWebSocketLease {
 	return &providerWebSocketLease{messages: make(chan []byte, 1), released: make(chan struct{}), observation: observation}
 }
 
-func (c *providerClient) enableWebSockets(ctx context.Context) {
+func (c *Client) EnableWebSockets(ctx context.Context) {
 	c.websockets = &providerWebSockets{ctx: ctx, client: c.httpClient, endpoint: strings.TrimRight(c.baseURL, "/") + "/responses", entries: make(map[*providerWebSocket]struct{}), changed: make(chan struct{})}
 	context.AfterFunc(ctx, c.websockets.close)
 }
@@ -109,8 +115,8 @@ func (p *providerWebSockets) discardLocked(entry *providerWebSocket, err error) 
 	p.signalLocked()
 }
 
-func (p *providerWebSockets) acquire(ctx context.Context, headers http.Header, begin func(http.Header) *capturer.WebSocketAttempt) (*providerWebSocket, http.Header, *http.Response, error) {
-	encoded, _ := json.Marshal(headers)
+func (p *providerWebSockets) acquire(ctx context.Context, headers http.Header, begin func(http.Header) observation) (*providerWebSocket, http.Header, *http.Response, error) {
+	encoded, _ := json.Marshal(&headers, jsonv1.DefaultOptionsV1())
 	key := sha256.Sum256(encoded)
 	for {
 		p.mu.Lock()
@@ -161,21 +167,14 @@ func (p *providerWebSockets) acquire(ctx context.Context, headers http.Header, b
 		entry := &providerWebSocket{cancel: dialCancel, pool: p, key: key, born: time.Now(), busy: true, receiverDone: make(chan struct{}), done: make(chan struct{})}
 		p.entries[entry] = struct{}{}
 		p.mu.Unlock()
-		// Never follow a redirect with provider credentials or turn a rejected
-		// upgrade into a successful request to a different endpoint.
-		client := *p.client
-		client.Timeout = 0 // The lease owns the deadline, including rejected response bodies.
-		handshakeTransport := &webSocketHandshakeTransport{RoundTripper: client.Transport}
-		client.Transport = handshakeTransport
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-		conn, response, err := websocket.Dial(dialCtx, p.endpoint, &websocket.DialOptions{HTTPClient: &client, HTTPHeader: headers})
+		conn, response, err := dialWebSocket(dialCtx, p.client, p.endpoint, headers)
 		p.mu.Lock()
 		if err != nil {
-			if rejected := handshakeTransport.rejected; rejected != nil {
+			if rejected := response; rejected != nil && rejected.StatusCode != http.StatusSwitchingProtocols {
 				// Dial truncates failed upgrade bodies. The transport retained the real
 				// body and its cancellation, which now belong to the HTTP error path.
 				entry.cancel = nil
-				rejected.Body = &cancelOnCloseReadCloser{body: rejected.Body, cancel: dialCancel}
+				rejected.Body = httptransport.CancelOnClose(rejected.Body, dialCancel)
 				response = rejected
 			}
 			p.discardLocked(entry, err)
@@ -212,7 +211,7 @@ func (entry *providerWebSocket) readLoop(ctx context.Context) {
 		var event struct {
 			Type string `json:"type"`
 		}
-		_ = json.Unmarshal(payload, &event)
+		_ = json.Unmarshal(payload, &event, jsonv1.DefaultOptionsV1())
 		entry.pool.mu.Lock()
 		// An idle read may span acquisition of a new lease. Active reads retain
 		// their original identity even when cancellation removes the connection.
@@ -323,81 +322,12 @@ func (entry *providerWebSocket) release(lease *providerWebSocketLease, reuse boo
 	return true
 }
 
-// Source: codex-rs/core/src/client.rs:824:840,1237:1262,1789:1796 and
-// codex-rs/core/src/responses_metadata.rs:307:353 in the read-only Codex clone.
-// Turn metadata travels in response.create, not a sticky handshake header.
-func webSocketRequest(body []byte, headers http.Header, cacheKey string) ([]byte, http.Header, bool, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-		return nil, nil, false, errors.New("invalid provider request")
-	}
-	var stream bool
-	if value := fields["stream"]; value != nil {
-		if err := json.Unmarshal(value, &stream); err != nil {
-			return nil, nil, false, err
-		}
-	}
-	delete(fields, "stream")
-	// Full-input mode never relies on a previous connection's response cache.
-	if value := fields["previous_response_id"]; len(value) != 0 && string(value) != "null" {
-		return nil, nil, false, errors.New("provider websocket full-input mode does not accept previous_response_id")
-	}
-	delete(fields, "previous_response_id")
-	fields["type"] = json.RawMessage(`"response.create"`)
-	metadata := make(map[string]json.RawMessage)
-	if value := fields["client_metadata"]; len(value) != 0 && string(value) != "null" {
-		if err := json.Unmarshal(value, &metadata); err != nil || metadata == nil {
-			return nil, nil, false, errors.New("invalid provider client_metadata")
-		}
-	}
-	handshake := headers.Clone()
-	for _, key := range []string{codexTurnMetadataHeader, "x-codex-turn-state"} {
-		if value := headers.Get(key); value != "" {
-			if _, present := metadata[key]; !present || key == "x-codex-turn-state" {
-				metadata[key], _ = json.Marshal(value)
-			}
-		}
-		handshake.Del(key)
-	}
-	for _, key := range []string{threadIDHeader, codexWindowIDHeader, openAISubagentHeader} {
-		if value := headers.Get(key); value != "" {
-			if _, exists := metadata[key]; !exists {
-				metadata[key], _ = json.Marshal(value)
-			}
-		}
-	}
-	if validCodexCacheKey(cacheKey) {
-		handshake[codexSessionIDHeader] = []string{cacheKey}
-	}
-	// Match Codex's stable handshake identity; request correlation stays in the
-	// capturer's context and does not force a new connection on every turn.
-	handshake.Del(clientRequestIDHeader)
-	if thread := headers.Get(threadIDHeader); thread != "" {
-		handshake.Set(clientRequestIDHeader, thread)
-	}
-	handshake.Del(mekugiCaptureIDHeader)
-	handshake.Del("Content-Type")
-	handshake.Del("Accept")
-	handshake.Set("OpenAI-Beta", responsesWebSocketBeta)
-	if value := headers.Get(codexResponsesLiteHeader); value != "" {
-		metadata["ws_request_header_x_openai_internal_codex_responses_lite"], _ = json.Marshal(value)
-	}
-	if len(metadata) != 0 {
-		fields["client_metadata"], _ = json.Marshal(metadata)
-	}
-	payload, err := json.Marshal(fields)
-	return payload, handshake, stream, err
-}
-
-func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, bool, error) {
-	payload, handshake, stream, err := webSocketRequest(body, headers, cacheKey)
-	if err != nil {
-		return nil, false, err
-	}
+func (c *Client) forwardWebSocket(startCtx, responseCtx context.Context, request *WebSocketRequest, headers http.Header) (*http.Response, bool, error) {
+	payload, handshake, stream := request.Payload, request.Headers, request.Stream
 	requestCtx, cancel := context.WithCancel(responseCtx)
 	stopStart := context.AfterFunc(startCtx, cancel)
-	entry, responseHeaders, rejected, err := c.websockets.acquire(requestCtx, handshake, func(responseHeaders http.Header) *capturer.WebSocketAttempt {
-		return capturer.BeginWebSocketAttempt(responseCtx, payload, headers, responseHeaders)
+	entry, responseHeaders, rejected, err := c.websockets.acquire(requestCtx, handshake, func(responseHeaders http.Header) observation {
+		return c.observe(responseCtx, payload, headers, responseHeaders)
 	})
 	if err != nil {
 		if !stopStart() {
@@ -415,11 +345,11 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 				return nil, true, nil // Explicit unsupported handshake; no response.create was sent.
 			}
 			if rejected.StatusCode != http.StatusSwitchingProtocols {
-				var responseBody io.ReadCloser = &cancelOnCloseReadCloser{body: rejected.Body, cancel: cancel}
-				if c.streamIdleTimeout > 0 {
-					responseBody = newStreamIdleReadCloser(responseCtx, responseBody, c.streamIdleTimeout)
+				var responseBody io.ReadCloser = httptransport.CancelOnClose(rejected.Body, cancel)
+				if c.StreamIdleTimeout > 0 {
+					responseBody = httptransport.IdleRead(responseCtx, responseBody, c.StreamIdleTimeout)
 				}
-				observation := capturer.BeginWebSocketAttempt(responseCtx, nil, headers, rejected.Header)
+				observation := c.observe(responseCtx, nil, headers, rejected.Header)
 				rejected.Body = observation.HTTPErrorBody(responseBody, rejected.StatusCode, rejected.Header.Get("Content-Type"), rejected.Header.Get("Content-Encoding"))
 				return rejected, false, nil
 			}
@@ -445,10 +375,10 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 	}
 	var prefetched [][]byte
 	var event struct {
-		Type       string                     `json:"type"`
-		Status     int                        `json:"status"`
-		StatusCode int                        `json:"status_code"`
-		Headers    map[string]json.RawMessage `json:"headers"`
+		Type       string                    `json:"type"`
+		Status     int                       `json:"status"`
+		StatusCode int                       `json:"status_code"`
+		Headers    map[string]jsontext.Value `json:"headers"`
 	}
 	prefixBytes := 0
 	for {
@@ -465,10 +395,10 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 		// Decode into a fresh envelope; absent fields must not retain earlier
 		// ancillary metadata while deciding the actual response status.
 		event.Type, event.Status, event.StatusCode, event.Headers = "", 0, 0, nil
-		if json.Unmarshal(message, &event) != nil {
+		if json.Unmarshal(message, &event, jsonv1.DefaultOptionsV1()) != nil {
 			return fail(errors.New("provider websocket sent invalid JSON"))
 		}
-		if !isResponseAncillaryEvent(event.Type) {
+		if !responseevents.Kind(event.Type).Ancillary() {
 			if event.Type == responseevents.Error {
 				prefetched = nil
 			}
@@ -488,7 +418,7 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 		}
 		return fail(err)
 	}
-	result := &webSocketResponseBody{entry: entry, lease: lease, ctx: requestCtx, cancel: cancel, observation: observation, stream: stream, idleTimeout: c.streamIdleTimeout, prefetched: prefetched}
+	result := &WebSocketBody{entry: entry, lease: lease, ctx: requestCtx, cancel: cancel, observation: observation, stream: stream, idleTimeout: c.StreamIdleTimeout, prefetched: prefetched}
 	result.stopCancellation = context.AfterFunc(requestCtx, func() { entry.release(lease, false) })
 	status := http.StatusOK
 	if event.Type == responseevents.Error {
@@ -510,7 +440,7 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 		for name, raw := range event.Headers {
 			value := string(raw)
 			var decoded string
-			if json.Unmarshal(raw, &decoded) == nil {
+			if json.Unmarshal(raw, &decoded, jsonv1.DefaultOptionsV1()) == nil {
 				value = decoded
 			} else if value != "true" && value != "false" && (len(value) == 0 || (value[0] != '-' && (value[0] < '0' || value[0] > '9'))) {
 				continue
@@ -535,17 +465,17 @@ func (c *providerClient) forwardWebSocket(startCtx, responseCtx context.Context,
 	return &http.Response{StatusCode: status, Header: visibleHeaders, Body: result}, false, nil
 }
 
-type webSocketResponseBody struct {
+type WebSocketBody struct {
 	mu               sync.Mutex
 	closing          atomic.Bool
-	items            map[int]json.RawMessage
+	items            map[int]jsontext.Value
 	itemBytes        int
 	entry            *providerWebSocket
 	lease            *providerWebSocketLease
 	ctx              context.Context
 	cancel           context.CancelFunc
 	stopCancellation func() bool
-	observation      *capturer.WebSocketAttempt
+	observation      observation
 	stream           bool
 	errorResponse    bool
 	idleTimeout      time.Duration
@@ -556,7 +486,7 @@ type webSocketResponseBody struct {
 	readErr          error
 }
 
-func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
+func (body *WebSocketBody) Read(destination []byte) (int, error) {
 	body.mu.Lock()
 	defer body.mu.Unlock()
 	for body.buffer.Len() == 0 {
@@ -581,7 +511,7 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			var err error
 			payload, err = body.entry.next(ctx, body.lease)
 			if err != nil && body.ctx.Err() == nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				err = errors.Join(errUpstreamStreamIdleTimeout, err)
+				err = errors.Join(httptransport.ErrStreamIdleTimeout, err)
 			}
 			cancel()
 			if err != nil {
@@ -591,12 +521,12 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			}
 		}
 		var event struct {
-			Type        string          `json:"type"`
-			Response    json.RawMessage `json:"response"`
-			Item        json.RawMessage `json:"item"`
-			OutputIndex *int            `json:"output_index"`
+			Type        string         `json:"type"`
+			Response    jsontext.Value `json:"response"`
+			Item        jsontext.Value `json:"item"`
+			OutputIndex *int           `json:"output_index"`
 		}
-		if err := json.Unmarshal(payload, &event); err != nil {
+		if err := json.Unmarshal(payload, &event, jsonv1.DefaultOptionsV1()); err != nil {
 			body.readErr = err
 			return 0, err
 		}
@@ -608,7 +538,7 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 				return 0, body.readErr
 			}
 			if body.items == nil {
-				body.items = make(map[int]json.RawMessage)
+				body.items = make(map[int]jsontext.Value)
 			}
 			body.itemBytes += len(event.Item) - len(body.items[*event.OutputIndex])
 			if body.itemBytes > upstreamJSONBufferBytes {
@@ -617,18 +547,18 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 			}
 			body.items[*event.OutputIndex] = event.Item
 		}
-		var terminal map[string]json.RawMessage
+		var terminal map[string]jsontext.Value
 		switch {
 		case responseevents.Kind(event.Type).Terminal():
-			if json.Unmarshal(event.Response, &terminal) != nil || terminal == nil {
+			if json.Unmarshal(event.Response, &terminal, jsonv1.DefaultOptionsV1()) != nil || terminal == nil {
 				body.readErr = errors.New("invalid websocket terminal response")
 				return 0, body.readErr
 			}
 			// Streaming completion belongs to the event, just as on upstream
 			// SSE. A nonstream client needs that state in its unwrapped JSON.
 			if !body.stream && responseevents.StringField(terminal, "status") == "" {
-				terminal["status"], _ = json.Marshal(responseevents.Kind(event.Type).Status())
-				event.Response, _ = json.Marshal(terminal)
+				terminal["status"], _ = json.Marshal(responseevents.Kind(event.Type).Status(), jsonv1.DefaultOptionsV1())
+				event.Response, _ = json.Marshal(&terminal, jsonv1.DefaultOptionsV1())
 			}
 			body.terminal = true
 		case event.Type == responseevents.Error:
@@ -651,13 +581,13 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 				return 0, body.readErr
 			}
 			if len(body.items) > 0 {
-				var output []json.RawMessage
-				if json.Unmarshal(terminal["output"], &output) != nil || len(output) == 0 {
+				var output []jsontext.Value
+				if json.Unmarshal(terminal["output"], &output, jsonv1.DefaultOptionsV1()) != nil || len(output) == 0 {
 					for _, index := range slices.Sorted(maps.Keys(body.items)) {
 						output = append(output, body.items[index])
 					}
-					terminal["output"], _ = json.Marshal(output)
-					event.Response, _ = json.Marshal(terminal)
+					terminal["output"], _ = json.Marshal(&output, jsonv1.DefaultOptionsV1())
+					event.Response, _ = json.Marshal(&terminal, jsonv1.DefaultOptionsV1())
 					if len(event.Response) > upstreamJSONBufferBytes {
 						body.readErr = errors.New("upstream JSON response exceeds the router buffer budget")
 						return 0, body.readErr
@@ -671,7 +601,7 @@ func (body *webSocketResponseBody) Read(destination []byte) (int, error) {
 	return body.buffer.Read(destination)
 }
 
-func (body *webSocketResponseBody) Close() error {
+func (body *WebSocketBody) Close() error {
 	if body.closing.Swap(true) {
 		return nil
 	}

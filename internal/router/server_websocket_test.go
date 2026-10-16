@@ -10,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 
 	"github.com/coder/websocket"
@@ -308,7 +312,7 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 	started := make(chan []byte, 1)
 	stopped := make(chan struct{})
 	provider := newProviderClient("http://unused.invalid", nil)
-	provider.grok = &grokClient{auth: grok.NewAuth("", "test", withDialTimeout(nil)), httpClient: &http.Client{
+	provider.grok = &grokClient{auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{
 		Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 			body, _ := io.ReadAll(request.Body)
 			started <- body
@@ -469,9 +473,9 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 		_, _, _ = upstream.Read(ctx)
 	}), proxy, headers)
 	metadata := func(value any) map[string]string {
-		return map[string]string{codexTurnMetadataHeader: string(responses.MustMarshalJSON(value)), threadIDHeader: "prewarm-thread"}
+		return map[string]string{codexresponses.TurnMetadataHeader: string(responses.MustMarshalJSON(value)), codexresponses.ThreadIDHeader: "prewarm-thread"}
 	}
-	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": "warmup context"}}, "generate": false, "client_metadata": map[string]string{codexTurnMetadataHeader: `{"request_kind":"prewarm"}`}})
+	socketWrite(t, ctx, conn, map[string]any{"type": "response.create", "model": "gpt-test", "input": []any{map[string]string{"role": "user", "content": "warmup context"}}, "generate": false, "client_metadata": map[string]string{codexresponses.TurnMetadataHeader: `{"request_kind":"prewarm"}`}})
 	if got := socketRead(t, ctx, conn); responses.StringField(got, "type") != "response.completed" {
 		t.Fatalf("warmup produced a warning: %s", responses.MustMarshalJSON(got))
 	}
@@ -510,7 +514,7 @@ func TestResponsesHTTPPrewarmCannotBypassPreparation(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"grok-test","input":[],"generate":false}`))
 	request.Header = serverMetadataHeaders(t, "prewarm", nil)
 	request.Header.Set(sessionIDHeader, "prewarm-session")
-	request.Header.Set(threadIDHeader, "prewarm-thread")
+	request.Header.Set(codexresponses.ThreadIDHeader, "prewarm-thread")
 	provider := &serverFakeProvider{}
 	recorder := httptest.NewRecorder()
 	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{registry: &toolRegistry{guidance: testGuidance()}})(recorder, request)
@@ -539,12 +543,12 @@ func TestResponsesWebSocketLocalErrorStatus(t *testing.T) {
 			defer cancel()
 			headers := codexAuthHeaders()
 			headers.Set(sessionIDHeader, "error-session")
-			headers.Set(threadIDHeader, "error-thread")
+			headers.Set(codexresponses.ThreadIDHeader, "error-thread")
 			var proxy *mekugiProxy
 			if test.metadata != "" {
 				proxy = newManagedMekugiProxy(t)
 				metadata := serverMetadataHeaders(t, test.metadata, map[string]json.RawMessage{t.TempDir(): nil})
-				headers.Set(codexTurnMetadataHeader, metadata.Get(codexTurnMetadataHeader))
+				headers.Set(codexresponses.TurnMetadataHeader, metadata.Get(codexresponses.TurnMetadataHeader))
 			}
 			conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				t.Error("invalid request reached provider")

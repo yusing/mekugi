@@ -6,6 +6,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/providers/openai"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
 )
 
 // These are Codex-owned backend operations, not Responses requests. In
@@ -30,11 +35,9 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 	if provider.thirdPartyOnly {
 		return
 	}
-	client := *provider.httpClient
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	for _, path := range codexAuxiliaryPaths {
 		mux.HandleFunc("POST /v1/"+path, func(writer http.ResponseWriter, request *http.Request) {
-			authorization, account, err := requiredCodexAuthHeaders(request.Header)
+			authorization, account, err := openai.Credentials(request.Header)
 			if err != nil {
 				http.Error(writer, err.Error(), http.StatusBadRequest)
 				return
@@ -45,7 +48,7 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 			defer cancelUpstream()
 			stopStart := context.AfterFunc(startCtx, cancelUpstream)
 			defer stopStart()
-			upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(provider.baseURL, "/")+"/"+path, request.Body)
+			upstream, err := http.NewRequestWithContext(ctx, http.MethodPost, "/"+path, request.Body)
 			if err != nil {
 				http.Error(writer, "build Codex auxiliary request", http.StatusBadGateway)
 				return
@@ -53,21 +56,21 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 			upstream.URL.RawQuery = request.URL.RawQuery
 			upstream.ContentLength = request.ContentLength
 			upstream.Header.Set("Authorization", authorization)
-			upstream.Header.Set(chatGPTAccountIDHeader, account)
+			upstream.Header.Set(openai.AccountIDHeader, account)
 			upstream.Header.Set("Content-Type", request.Header.Get("Content-Type"))
 			if encoding := request.Header.Get("Content-Encoding"); encoding != "" {
 				upstream.Header.Set("Content-Encoding", encoding)
 			}
 			upstream.Header.Set("Accept", "application/json")
-			upstream.Header.Set("Originator", codexClientIdentity)
-			upstream.Header.Set("User-Agent", codexClientIdentity)
-			forwardCodexRequestHeaders(upstream.Header, request.Header)
+			upstream.Header.Set("Originator", codexresponses.ClientIdentity)
+			upstream.Header.Set("User-Agent", codexresponses.ClientIdentity)
+			codexresponses.ForwardHeaders(upstream.Header, request.Header)
 			for _, name := range []string{"x-codex-image-turn-id", "x-openai-encrypted-tool-arguments", "x-openai-tool-output-truncation-policy"} {
 				for _, value := range request.Header.Values(name) {
 					upstream.Header.Add(name, value)
 				}
 			}
-			response, err := client.Do(upstream)
+			response, err := provider.openai.Forward(upstream)
 			if err != nil {
 				http.Error(writer, "forward Codex auxiliary request", http.StatusBadGateway)
 				return
@@ -77,8 +80,8 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 				http.Error(writer, "Codex auxiliary request timed out or was canceled", http.StatusBadGateway)
 				return
 			}
-			if provider.streamIdleTimeout > 0 {
-				response.Body = newStreamIdleReadCloser(ctx, response.Body, provider.streamIdleTimeout)
+			if provider.openai.StreamIdleTimeout > 0 {
+				response.Body = httptransport.IdleRead(ctx, response.Body, provider.openai.StreamIdleTimeout)
 			}
 			copyAuxiliaryResponseHeaders(writer.Header(), response.Header)
 			writer.WriteHeader(response.StatusCode)

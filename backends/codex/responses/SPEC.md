@@ -31,6 +31,20 @@ sanitized diagnostic classification remains separate. A consumer write failure
 prevents a second terminal write. Stream failure and optional upstream closure
 preserve the original error for request accounting.
 
+## OpenAI request shaping
+
+The adapter selects the existing Codex identity, capability, and routing headers.
+Unrelated caller headers are excluded. Full-input WebSocket requests omit HTTP's
+stream field and reject incremental previous-response dependencies. Existing
+client metadata is preserved; turn metadata and sticky turn state travel in the
+message rather than a reused handshake. Current sticky state takes precedence.
+The handshake uses stable thread correlation and excludes per-exchange capture
+identity. Valid session affinity remains separate from caller session headers.
+
+Transport receives prepared bytes and headers and does not reinterpret Codex
+policy. The [OpenAI provider](../../../providers/openai/SPEC.md) owns credential
+validation, model-catalog exchange, pooling, retries, and upstream connections.
+
 ## Ownership and acceptance
 
 Each translated request owns its immutable tool mapping and stream state. The

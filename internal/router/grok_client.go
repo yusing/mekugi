@@ -11,6 +11,10 @@ import (
 	"strings"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
+	"github.com/yusing/mekugi/libraries/httptransport"
+
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
 
@@ -50,7 +54,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		credentials.headers = http.Header{
 			"Authorization": {"Bearer " + g.openCode.APIKey}, "User-Agent": {"mekugi"},
 		}
-		if session := openCodeSessionID(g.openCode.Prefix, headers.Get(threadIDHeader)); session != "" {
+		if session := openCodeSessionID(g.openCode.Prefix, headers.Get(codexresponses.ThreadIDHeader)); session != "" {
 			credentials.headers.Set("x-opencode-session", session)
 		}
 		switch tr.format {
@@ -133,7 +137,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		defer stopStart()
 		defer cancel()
-		body := newStreamIdleReadCloser(ctx, response.Body, 5*time.Second)
+		body := httptransport.IdleRead(ctx, response.Body, 5*time.Second)
 		defer body.Close()
 		// Bound the complete error read, including a provider that drips bytes.
 		timer := time.AfterFunc(5*time.Second, func() { _ = body.Close() })
@@ -154,9 +158,9 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		cancel()
 		return nil, startCtx.Err()
 	}
-	var upstream io.ReadCloser = &cancelOnCloseReadCloser{body: response.Body, cancel: cancel}
+	var upstream io.ReadCloser = httptransport.CancelOnClose(response.Body, cancel)
 	if g.streamIdleTimeout > 0 {
-		upstream = newStreamIdleReadCloser(ctx, upstream, g.streamIdleTimeout)
+		upstream = httptransport.IdleRead(ctx, upstream, g.streamIdleTimeout)
 	}
 	var price *opencode.Price
 	if service != nil {

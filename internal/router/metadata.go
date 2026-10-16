@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"slices"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
-
-const codexTurnMetadataHeader = "x-codex-turn-metadata"
 
 type codexTurnMetadata struct {
 	activityIdentityInvalid bool
@@ -34,7 +34,7 @@ type codexTurnMetadata struct {
 func decodeCodexTurnMetadata(headers http.Header) (codexTurnMetadata, bool) {
 	values := []string{}
 	for name, headerValues := range headers {
-		if !strings.EqualFold(name, codexTurnMetadataHeader) {
+		if !strings.EqualFold(name, codexresponses.TurnMetadataHeader) {
 			continue
 		}
 		for _, value := range headerValues {

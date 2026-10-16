@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -457,8 +459,8 @@ func TestNativeApprovalFeedbackWebSocketContinuation(t *testing.T) {
 	}
 	headers := codexAuthHeaders()
 	headers.Set(sessionIDHeader, "approval-session")
-	headers.Set(threadIDHeader, "thread-1")
-	headers.Set(codexTurnMetadataHeader, string(responses.MustMarshalJSON(codexTurnMetadata{
+	headers.Set(codexresponses.ThreadIDHeader, "thread-1")
+	headers.Set(codexresponses.TurnMetadataHeader, string(responses.MustMarshalJSON(codexTurnMetadata{
 		RequestKind: "turn", TurnID: "turn", Directories: map[string]jsontext.Value{t.TempDir(): nil},
 	})))
 	conn := testResponsesSocket(t, ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
