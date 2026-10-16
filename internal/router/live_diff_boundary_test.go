@@ -409,28 +409,30 @@ func TestLiveDiffInterpreterReplacementPreview(t *testing.T) {
 
 func TestLiveDiffFinishedCallDrainIsBounded(t *testing.T) {
 	t.Parallel()
-	workspace := t.TempDir()
-	broker := newLiveDiffBroker(t.Context())
-	broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
-	sub := broker.subscribe()
-	defer broker.unsubscribe(sub)
-	<-sub.events
-	var input strings.Builder
-	input.WriteString("*** Begin Patch\n*** Add File: notes.md\n")
-	for i := range 30 {
-		input.WriteString("+line " + strconv.Itoa(i) + "\n")
-	}
-	input.WriteString("*** End Patch\n")
-	worker := startLiveDiffPreview(t.Context(), broker, workspace, "root", applyPatchToolName)
-	defer worker.stop()
-	worker.appendDelta(input.String())
-	finished := time.Now()
-	worker.finish(input.String())
-	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool { return preview.Complete })
-	if elapsed := time.Since(finished); elapsed > diffview.PreviewFinishDrain+diffview.PreviewUnitDelay+4*diffview.PreviewFrameDelay {
-		t.Fatalf("finished call drained queued units for %v", elapsed)
-	}
-	if len(complete.Files) != 1 || !strings.Contains(complete.Files[0].Diff, "+line 29") {
-		t.Fatalf("completion lost final input: %+v", complete)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		workspace := t.TempDir()
+		broker := newLiveDiffBroker(t.Context())
+		broker.setScope(liveDiffScope{Workspaces: map[string]map[string]bool{workspace: {"root": true}}})
+		sub := broker.subscribe()
+		defer broker.unsubscribe(sub)
+		<-sub.events
+		var input strings.Builder
+		input.WriteString("*** Begin Patch\n*** Add File: notes.md\n")
+		for i := range 30 {
+			input.WriteString("+line " + strconv.Itoa(i) + "\n")
+		}
+		input.WriteString("*** End Patch\n")
+		worker := startLiveDiffPreview(t.Context(), broker, workspace, "root", applyPatchToolName)
+		defer worker.stop()
+		worker.appendDelta(input.String())
+		finished := time.Now()
+		worker.finish(input.String())
+		complete := waitLiveDiffWorkerPreview(t, broker, sub, func(preview diffview.Preview) bool { return preview.Complete })
+		if elapsed := time.Since(finished); elapsed > diffview.PreviewFinishDrain+diffview.PreviewUnitDelay+4*diffview.PreviewFrameDelay {
+			t.Fatalf("finished call drained queued units for %v", elapsed)
+		}
+		if len(complete.Files) != 1 || !strings.Contains(complete.Files[0].Diff, "+line 29") {
+			t.Fatalf("completion lost final input: %+v", complete)
+		}
+	})
 }
