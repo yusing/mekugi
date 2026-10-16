@@ -205,7 +205,7 @@ func TestRosterStripWheelDoesNotScrollFeed(t *testing.T) {
 	}
 }
 
-func TestRosterDesignScrolledTreeCardsAndSelection(t *testing.T) {
+func TestRosterDesignScrolledTreeCards(t *testing.T) {
 	now := time.Now()
 	v := liveActivityTestView("/root", "/root/a", "/root/b", "/root/b/x", "/root/b/y", "/root/c", "/root/d", "/root/e")
 	rows := v.testRoster()
@@ -214,21 +214,6 @@ func TestRosterDesignScrolledTreeCardsAndSelection(t *testing.T) {
 		if name, _ := activityui.RosterTree(rows, i, 2); name != want {
 			t.Errorf("scrolled tree %d = %q, want %q", i, name, want)
 		}
-	}
-	summaryColumn := func(lines []string, agent string) int {
-		for _, line := range plainLines(lines) {
-			if i := strings.Index(line, "Read "+agent+".go"); i >= 0 && strings.Contains(line, " "+agent+" ") {
-				return ansi.StringWidth(line[:i])
-			}
-		}
-		return -1
-	}
-	v.Selected = "/root"
-	top := summaryColumn(v.renderRosterPane(60, 5, now), "a")
-	v.Selected = "/root/e"
-	bottom := summaryColumn(v.renderRosterPane(60, 5, now), "e")
-	if top < 0 || top != bottom {
-		t.Errorf("summary column moved while scrolling: %d -> %d", top, bottom)
 	}
 	cards := plainLines(v.RenderCards(rows[:3], 40, 9, now))
 	// Card activity and metrics rows share the name column and tree guide.

@@ -906,11 +906,6 @@ func (v *View) renderAgentRows(rows []activitypresentation.AgentRow, width, limi
 	v.RosterOffset, v.rosterEnd, v.RosterSelected = start, end, v.Selected
 	names, indents := make([]string, end-start), make([]string, end-start)
 	nameWidth := 1
-	for i := range rows {
-		// Full-tree widths keep the summary column still while the window scrolls.
-		name, _ := RosterTree(rows, i, 0)
-		nameWidth = max(nameWidth, ansi.StringWidth(name))
-	}
 	for i := start; i < end; i++ {
 		name, indent := RosterTree(rows, i, start)
 		names[i-start], indents[i-start] = name, indent

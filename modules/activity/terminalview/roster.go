@@ -130,8 +130,11 @@ func (v *View) NativeRoster(width, limit int, now time.Time, focused bool) []str
 		end-- // Room for the hidden-count row.
 	}
 	nameWidth := 4
-	for _, row := range rows {
-		name, _ := RosterTree(rows, slices.IndexFunc(rows, func(other activitypresentation.AgentRow) bool { return other.Agent.Name == row.Agent.Name }), 0)
+	for _, item := range items[start:end] {
+		if item.finished != nil {
+			continue
+		}
+		name, _ := RosterTree(rows, slices.IndexFunc(rows, func(other activitypresentation.AgentRow) bool { return other.Agent.Name == item.row.Agent.Name }), 0)
 		nameWidth = max(nameWidth, ansi.StringWidth(name))
 	}
 	nameWidth = min(nameWidth, max(8, width/4))
