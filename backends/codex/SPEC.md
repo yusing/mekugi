@@ -76,12 +76,9 @@ request-local state. Each preparation returns its own application function.
 Duplicate names and incomplete registrations fail activation.
 
 Projection results carry input bytes and repetition receipts for the application
-consumer, without exposing backend execution or private request objects. The
-binding API also owns recognition of Codex execution headers and live-session
-JSON, shared by projection and continuation observation. These recognizers inspect
-host metadata; they never interpret printed body text as a new host outcome.
+consumer, without exposing backend execution or private request objects.
 
-## Static execution-source evidence
+## Execution evidence
 
 The binding recognizes supported transparent JavaScript tool invocations for
 preview, continuation correlation and offline inspection. It preserves literal
@@ -95,6 +92,18 @@ These candidates establish neither execution nor success. Host observations and
 retained filesystem evidence remain authoritative; UI labels and corpus findings
 belong to their consumers. Recognition never rewrites the submitted program or
 serializes parallel calls.
+
+The binding also decodes execution handles, result text and host completion
+headers for live continuation projection, restored evidence and offline queries.
+Retained carrier facts can inform classification after the consumer has validated
+their identity; classification itself authenticates neither a record nor a result.
+Opaque source and printed lookalikes cannot supply native-result provenance.
+
+Continuation annotations have one wire definition shared by their producer and
+recognizer. Recognition requires the exact annotation envelope and expected host
+handle, so unrelated text remains intact. The application chooses advice from the
+active tool catalog and tracks request-local provenance; the backend decoder never
+resumes a process or chooses a next call. Offline findings remain query policy.
 
 ## Guidance projection
 

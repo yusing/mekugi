@@ -26,19 +26,6 @@ func statusWaitFloor(kind string, maximumJSON []byte) int {
 	return floor
 }
 
-// Continuations describe the next host call at an observed yield. They never
-// resume a process, allocate an ID, or retain execution state.
-type executionNextCall struct {
-	Tool  string `json:"tool"`
-	Input any    `json:"input"`
-}
-
-type executionContinuation struct {
-	Handle   map[string]any     `json:"handle"`
-	NextCall *executionNextCall `json:"next_call"`
-	Reason   string             `json:"reason,omitempty"`
-}
-
 type executionContinuationTools struct {
 	exec, cellWait, sessionWait string
 	nestedSessionWait           bool
@@ -128,140 +115,46 @@ func codeModeSessionWaitSection(description string) string {
 	return ""
 }
 
-func (t executionContinuationTools) forCell(id string) executionContinuation {
-	result := executionContinuation{Handle: map[string]any{"cell_id": id}}
+func (t executionContinuationTools) forCell(id string) binding.ExecutionContinuation {
+	result := binding.ExecutionContinuation{Handle: map[string]any{"cell_id": id}}
 	if t.cellWait != "" {
 		args := map[string]any{"cell_id": id}
 		if t.cellWaitMS > 0 {
 			args["yield_time_ms"] = t.cellWaitMS
 		}
-		result.NextCall = &executionNextCall{Tool: t.cellWait, Input: args}
+		result.NextCall = &binding.ExecutionNextCall{Tool: t.cellWait, Input: args}
 	} else {
 		result.Reason = "The host wait tool is not exposed in this request. Do not restart the running call."
 	}
 	return result
 }
 
-func (t executionContinuationTools) forSession(id int64) executionContinuation {
-	result := executionContinuation{Handle: map[string]any{"session_id": id}}
+func (t executionContinuationTools) forSession(id int64) binding.ExecutionContinuation {
+	result := binding.ExecutionContinuation{Handle: map[string]any{"session_id": id}}
 	args := map[string]any{"session_id": id, "chars": ""}
 	if t.sessionWait != "" {
 		if t.sessionWaitMS > 0 {
 			args["yield_time_ms"] = t.sessionWaitMS
 		}
-		result.NextCall = &executionNextCall{Tool: t.sessionWait, Input: args}
+		result.NextCall = &binding.ExecutionNextCall{Tool: t.sessionWait, Input: args}
 	} else if t.exec != "" && t.nestedSessionWait && id <= 1<<53-1 {
 		if t.nestedSessionWaitMS > 0 {
 			args["yield_time_ms"] = t.nestedSessionWaitMS
 		}
 		source := "text(await tools.write_stdin(" + string(responses.MustMarshalJSON(args)) + "));"
-		result.NextCall = &executionNextCall{Tool: t.exec, Input: source}
+		result.NextCall = &binding.ExecutionNextCall{Tool: t.exec, Input: source}
 	} else {
 		result.Reason = "The host session continuation tool is not exposed in this request. Do not restart the running call."
 	}
 	return result
 }
 
-type executionCall struct {
-	codeMode      bool
-	native        bool
-	nativePayload bool
-	cellID        string
-	resumeHandle  string
-}
-
-func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistory, known bool, execName string) string {
-	if namespace := responses.StringField(item, "namespace"); namespace != "" && namespace != "functions" {
-		return ""
-	}
-	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
-	if name == strings.TrimPrefix(execName, "functions.") {
-		source := responses.StringField(item, "input")
-		nested, ok := binding.SingleExecutionCall(source, false)
-		if !ok {
-			return ""
-		}
-		item = nested
-		name = responses.StringField(item, "name")
-	}
-	var args struct {
-		CellID    string `json:"cell_id"`
-		SessionID int64  `json:"session_id"`
-	}
-	if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) != nil {
-		return ""
-	}
-	if name == "wait" && args.CellID != "" {
-		return "cell:" + args.CellID
-	}
-	if name == "write_stdin" && args.SessionID > 0 {
-		return "session:" + strconv.FormatInt(args.SessionID, 10)
-	}
-	return ""
-}
-
-func executionOutputTexts(raw json.RawMessage) []string {
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
-		return []string{text}
-	}
-	var parts []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(raw, &parts) != nil || len(parts) == 0 || parts[0].Type != "input_text" {
+// Convert validated retained history without exporting its private record shape.
+func (h mekugiHistory) executionEvidence(known bool) *binding.RetainedExecution {
+	if !known || h.TranslationError != "" {
 		return nil
 	}
-	texts := make([]string, len(parts))
-	for i, part := range parts {
-		if part.Type == "input_text" {
-			texts[i] = part.Text
-		}
-	}
-	return texts
-}
-
-func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, known bool, execName string) executionCall {
-	if namespace := responses.StringField(item, "namespace"); namespace != "" && namespace != "functions" {
-		return executionCall{}
-	}
-	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
-	call := executionCall{resumeHandle: executionResumeHandle(item, history, known, execName)}
-	if after, ok := strings.CutPrefix(call.resumeHandle, "cell:"); ok {
-		call.cellID = after
-	}
-	if known && history.TranslationError == "" {
-		call.codeMode = history.effectiveCarrierKind() == codeModeCarrierCustom
-		call.native = history.effectiveCarrierKind() == codeModeCarrierFunction
-		call.nativePayload = history.ToolName == nativeExecCommandToolName
-		if call.codeMode && history.ToolName == "exec" {
-			if nested, ok := binding.SingleExecutionCall(history.Script, true); ok {
-				name := responses.StringField(nested, "name")
-				call.nativePayload = name == nativeExecCommandToolName || name == "write_stdin"
-			}
-		}
-		if call.codeMode || call.native {
-			return call
-		}
-	}
-	switch name {
-	case "exec_command", "write_stdin":
-		call.native = true
-	case strings.TrimPrefix(execName, "functions."):
-		call.codeMode = true
-		if nested, ok := binding.SingleExecutionCall(responses.StringField(item, "input"), true); ok {
-			call.nativePayload = responses.StringField(nested, "name") == "exec_command" || responses.StringField(nested, "name") == "write_stdin"
-		}
-	case "wait":
-		var args struct {
-			CellID string `json:"cell_id"`
-		}
-		if json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil {
-			call.cellID = args.CellID
-			call.codeMode = args.CellID != ""
-		}
-	}
-	return call
+	return &binding.RetainedExecution{CarrierKind: string(h.effectiveCarrierKind()), ToolName: h.ToolName, Script: h.Script}
 }
 
 // Project only after replay validation has established the original calls.
@@ -272,9 +165,9 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 		return
 	}
 	tools := executionTools(catalog, execName)
-	calls := make(map[string]executionCall)
-	cells := make(map[string]executionCall)
-	notices := make(map[int]executionContinuation)
+	calls := make(map[string]binding.ExecutionCall)
+	cells := make(map[string]binding.ExecutionCall)
+	notices := make(map[int]binding.ExecutionContinuation)
 	pending := make(map[string]int)
 	changed := false
 	for index, item := range items {
@@ -285,41 +178,41 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 		switch responses.StringField(item, "type") {
 		case "custom_tool_call", "function_call":
 			history, known := visible[callID]
-			call := executionCallFor(item, history, known, execName)
-			delete(pending, call.resumeHandle)
+			call := binding.ClassifyExecutionCall(item, history.executionEvidence(known), execName)
+			delete(pending, call.ResumeHandle)
 			calls[callID] = call
 		case "custom_tool_call_output", "function_call_output":
 			call, known := calls[callID]
 			delete(calls, callID)
 			if !known {
 				if history, found := visible[callID]; found {
-					call = executionCallFor(history.UpstreamItem, history, true, execName)
-					delete(pending, call.resumeHandle)
+					call = binding.ClassifyExecutionCall(history.UpstreamItem, history.executionEvidence(true), execName)
+					delete(pending, call.ResumeHandle)
 					known = true
 				}
 			}
 			if !known {
 				continue
 			}
-			if call.cellID != "" {
-				origin := cells[call.cellID]
-				call.nativePayload = origin.nativePayload
+			if call.CellID != "" {
+				origin := cells[call.CellID]
+				call.NativePayload = origin.NativePayload
 			}
-			texts := executionOutputTexts(item["output"])
+			texts := binding.ExecutionOutputTexts(item["output"])
 
 			if len(texts) == 0 {
 				continue
 			}
-			var notice *executionContinuation
-			if call.codeMode {
+			var notice *binding.ExecutionContinuation
+			if call.CodeMode {
 				status, cell, body := binding.CodeModeExecutionHeader(texts[0])
-				if status == "running" && (call.cellID == "" || call.cellID == cell) {
+				if status == "running" && (call.CellID == "" || call.CellID == cell) {
 					cells[cell] = call
 					value := tools.forCell(cell)
 					notice = &value
 				} else if status != "" && status != "running" {
-					delete(cells, call.cellID)
-					if call.nativePayload && status != "Script terminated" {
+					delete(cells, call.CellID)
+					if call.NativePayload && status != "Script terminated" {
 						// The first text may include output when the host
 						// serializes its content as one string.
 						texts[0] = body
@@ -339,7 +232,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 						}
 					}
 				}
-			} else if call.native {
+			} else if call.Native {
 				if session := binding.NativeExecutionSession(texts[0]); session != 0 {
 					value := tools.forSession(session)
 					notice = &value
@@ -370,7 +263,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 		if json.Unmarshal(item["output"], &parts) == nil {
 			kept := parts[:0:0]
 			for _, part := range parts {
-				if executionAnnotationMatches(part, notice) && !responses.SameJSONValue(part, annotation) {
+				if binding.ExecutionAnnotationMatches(part, notice.Handle) && !responses.SameJSONValue(part, annotation) {
 					changed = true
 					continue
 				}
@@ -393,25 +286,7 @@ func projectExecutionContinuations(request *codexresponses.Request, catalog *cod
 	}
 }
 
-func executionAnnotationMatches(part json.RawMessage, notice executionContinuation) bool {
-	var content struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if json.Unmarshal(part, &content) != nil || content.Type != "input_text" || !responses.SameJSONValue(part, responses.MustMarshalJSON(content)) {
-		return false
-	}
-	var envelope struct {
-		Continuation *executionContinuation `json:"continuation"`
-	}
-	if json.Unmarshal([]byte(content.Text), &envelope) != nil || envelope.Continuation == nil {
-		return false
-	}
-	return responses.SameJSONValue([]byte(content.Text), responses.MustMarshalJSON(envelope)) &&
-		responses.SameJSONValue(responses.MustMarshalJSON(envelope.Continuation.Handle), responses.MustMarshalJSON(notice.Handle))
-}
-
-func executionHandleKey(notice executionContinuation) string {
+func executionHandleKey(notice binding.ExecutionContinuation) string {
 	if cell, ok := notice.Handle["cell_id"].(string); ok {
 		return "cell:" + cell
 	}

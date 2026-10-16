@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -147,7 +149,7 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 	case 3:
 		for _, item := range request.Input {
 			if item.Type == "function_call_output" && item.CallID == "instant-wait" {
-				output := strings.Join(executionOutputTexts([]byte(item.Output)), "\n")
+				output := strings.Join(binding.ExecutionOutputTexts([]byte(item.Output)), "\n")
 				if !strings.Contains(output, "cell-survived") || !strings.Contains(output, "Script completed") {
 					return nil, fmt.Errorf("wait did not complete the original cell: %s", output)
 				}

@@ -32,6 +32,9 @@ owns permissions, sandboxing, command processes, yielded sessions, and
 `write_stdin` continuation. Mekugi never reruns a stock call while observing,
 replaying, or displaying it.
 
+The [Codex backend](../../backends/codex/SPEC.md#execution-evidence) owns execution
+evidence decoding shared by live continuation advice and offline inspection.
+
 Completed edit observations may append a separate
 agent-visible change-ID and summary text part as specified in
 [applied changes](changes.md), preserving the original host result content.

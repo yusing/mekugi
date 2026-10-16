@@ -274,7 +274,7 @@ func TestNativeContinuationUsesAvailableDirectTool(t *testing.T) {
 	projectExecutionContinuations(&request, catalog, "exec_command", nil)
 	var items []map[string]json.RawMessage
 	_ = json.Unmarshal(request.Fields["input"], &items)
-	texts := executionOutputTexts(items[1]["output"])
+	texts := binding.ExecutionOutputTexts(items[1]["output"])
 	if len(texts) != 2 || !strings.Contains(texts[1], `"tool":"write_stdin"`) ||
 		!strings.Contains(texts[1], `"input":{"chars":"","session_id":42}`) {
 		t.Fatalf("native action = %v", texts)
@@ -283,7 +283,7 @@ func TestNativeContinuationUsesAvailableDirectTool(t *testing.T) {
 
 func TestMissingContinuationToolDoesNotInventAuthority(t *testing.T) {
 	tools := executionContinuationTools{}
-	for _, continuation := range []executionContinuation{tools.forCell("cell-1"), tools.forSession(42)} {
+	for _, continuation := range []binding.ExecutionContinuation{tools.forCell("cell-1"), tools.forSession(42)} {
 		if continuation.NextCall != nil || continuation.Reason == "" {
 			t.Fatalf("invented continuation: %+v", continuation)
 		}
@@ -360,7 +360,7 @@ func TestExecutionContinuationRecognizesSessionJavaScriptFromHistory(t *testing.
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			call := continuationTestCall("exec", "resume", test.source)
-			if got := executionResumeHandle(call, mekugiHistory{}, false, "exec"); got != "session:42" {
+			if got := binding.ExecutionResumeHandle(call, "exec"); got != "session:42" {
 				t.Fatalf("resume handle = %q, want session:42", got)
 			}
 		})
