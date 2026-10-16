@@ -152,7 +152,7 @@ func RunStorageInspection(service *history.Service, segments *reports.Service, c
 	result.Bytes, result.SHA256 = len(data), fmt.Sprintf("%x", sha256.Sum256(data))
 	if *field != "" {
 		if *offset > len(data) || *offset < len(data) && !utf8.RuneStart(data[*offset]) {
-			return fail(errors.New("offset must be a UTF-8 boundary within the selected text"))
+			return fail(fmt.Errorf("%s: offset must be a UTF-8 boundary within the selected text", result.Target))
 		}
 		end := min(len(data), *offset+*textBytes)
 		for end < len(data) && !utf8.RuneStart(data[end]) {

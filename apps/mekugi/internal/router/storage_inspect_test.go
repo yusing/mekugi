@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,6 +39,21 @@ func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 		}
 		return result
 	}
+	checkOffsets := func(args []string, target, text string) {
+		t.Helper()
+		offsets := []int{len(text) + 1}
+		if at := strings.Index(text, "π"); at >= 0 {
+			offsets = append(offsets, at+1)
+		}
+		for _, offset := range offsets {
+			var out, stderr bytes.Buffer
+			args := append(slices.Clone(args), "--offset", strconv.Itoa(offset))
+			status := RunStorageInspection(testHistory(), testReports(), t.Context(), args, &out, &stderr)
+			if status != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), target) || !strings.Contains(stderr.String(), "UTF-8 boundary") {
+				t.Fatalf("offset %d for %s: status=%d stdout=%s stderr=%s", offset, target, status, &out, &stderr)
+			}
+		}
+	}
 	metadata := run(base)
 	if metadata.Text != "" || metadata.Dependencies != 4 || metadata.Bytes == 0 {
 		t.Fatalf("unexpected default disclosure: %+v", metadata)
@@ -62,11 +78,14 @@ func TestStorageInspectionBoundedPagesAndNoMutation(t *testing.T) {
 	if err := json.Unmarshal([]byte(text.String()), &got); err != nil || !reflect.DeepEqual(&got, durableHistory(h).ResolvedBaseline) {
 		t.Fatalf("paged evidence differs: %v", err)
 	}
+	checkOffsets(append(slices.Clone(base), "--field", "baseline"), metadata.Target, text.String())
 	for _, path := range snapshotTestBlobs(t, store) {
-		result := run([]string{"--replay-dir", store.directory, "--object", filepath.Base(path), "--field", "all", "--text-bytes", "65536"})
+		args := []string{"--replay-dir", store.directory, "--object", filepath.Base(path), "--field", "all", "--text-bytes", "65536"}
+		result := run(args)
 		if result.Text == "" || result.NextOffset != nil {
 			t.Fatal("could not inspect compressed object")
 		}
+		checkOffsets(args, result.Target, result.Text)
 	}
 	if after := storageInspectionFiles(t, store.directory); !reflect.DeepEqual(before, after) {
 		t.Fatal("read-only inspection changed store contents, modes or timestamps")
