@@ -42,7 +42,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   process resources separate; reclaim only owned resources and protect running/shared dependencies.
   Mekugi-owned reads and copies retain caller authorization; cross-thread input retains its
   originating authority. See [authority and publication](docs/contracts/record-publication.md) and
-  [activity identity](doc/architecture/activity.md).
+  [activity identity](modules/activity/SPEC.md#observation-authority).
 - **Continuity:** preserve existing behavior for affected forks, side threads, switching, and
   fresh resume. Restore inherited authorization from durable records/visible history, never live
   parents; replay cannot revive processes or handles. See [replay](apps/mekugi/internal/frontends/SPEC.md),
@@ -65,7 +65,7 @@ acceptance cases, not a blanket request to implement every listed concern.
 - **Auxiliary behavior:** progress, capture, and diagnostics remain non-invasive and independently
   bounded. Remove generated history by provenance, not text resemblance. Keep secrets/content out
   of sanitized metrics and credentials isolated by provider. Provider usage, local estimates, and
-  transport expansion are distinct measures. See [activity](doc/spec/activity.md),
+  transport expansion are distinct measures. See [activity](modules/activity/SPEC.md),
   [notices](modules/notifications/SPEC.md), [metrics](modules/transportdiagnostics/SPEC.md), and [providers](docs/contracts/provider-routing.md).
 
 ## Validation and installation

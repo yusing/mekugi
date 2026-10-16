@@ -4,10 +4,12 @@
 
 Activity presents supplied host observations, source content and retained output.
 It does not execute tools, infer missing outcomes or write commentary into model
-responses. The [module specification](SPEC.md) owns parsing and output retention;
-[classification](../../doc/spec/activity.md) owns tool interpretation. The
-[native session](../../doc/spec/native_ui.md) owns observation intake, history,
-pane layout, input routing and dialog interaction. `presentation` owns the retained
+responses. The [module specification](SPEC.md) owns observation authority,
+classification, parsing and output retention.
+[Session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md) owns
+displayed-thread identity, input admission and bounded child history; the
+[native session](../../doc/spec/native_ui.md) owns pane layout, input routing and
+dialog interaction. `presentation` owns the retained
 feed records, roster derivation, neutral values and canonical group membership;
 `terminalview` owns disclosure, blocks and painting. Application adapters supply
 typed observations and host reconciliation without retaining a second transcript. Group members retain entry, operation
@@ -32,6 +34,9 @@ Observed differences replace intent even while later commands run, but do not
 complete the host invocation or publish a change reference. Later observations
 replace earlier counts, including removing counts after a return to baseline;
 comparison failure remains retryable, not a no-op.
+Captured edit paths use the shared workspace path display: workspace paths are
+relative and external paths remain absolute, including stock patch rows without a
+command directory.
 
 | Evidence | Presentation |
 | --- | --- |
@@ -73,6 +78,24 @@ invocation's multiple operations reveal at 80 ms intervals in Main, children and
 roster summaries; restored history appears immediately. A completed child
 compaction is an event and latest activity; attempts and failures do not imply it.
 
+Skill rows emphasize the skill name; reference paths and run arguments keep normal
+weight. Per-command Run excerpts omit terminating semicolons, preserving quoted
+semicolons and other executable syntax. Literal `echo`/`printf` section headings
+beside other operations are decoration: colon-ended or bordered headings, and
+newline-framed `printf` titles using capitalized multi-word text or one uppercase
+word, with only letters, spaces, hyphens and slashes. Literal newline-terminated
+`printf` confirmations ending in `checks passed.` or `evidence remains available.`
+also qualify with that capitalized text grammar. Data-bearing formats, standalone,
+redirected, escaped or dynamic headings remain Run. Live/successful tracked
+headings are omitted; failed ones stay visible.
+
+A known command directory different from the displayed workspace adds muted
+`· in DIR` to the invocation's first row. Workspace subdirectories display
+relatively, outside directories absolutely; operation paths are relative to DIR.
+Workspace commands and unknown directories/workspaces have no suffix. Live and
+restored rows use the same host evidence; reads from different directories never
+merge.
+
 ## Command state, output and timing
 
 Run changes to Running on host start and Ran on host completion. A yielded
@@ -88,6 +111,13 @@ a code gutter; JavaScript source always sits below its heading. Main limits
 wrapped previews to five rows with a hidden-line count. Tabs expand to four spaces.
 Opening source uses the dialog, not transcript expansion. Interpreter previews
 use their own language colors.
+
+Literal interpreter wrappers such as `python -c`, `python - <<'PY'` and `node -e`
+show multiline programs in their own language, with source indentation intact.
+Their heading names the interpreter and replaces the program with `…`; one-line
+programs keep the literal command. A lone `-` without redirected stdin says
+`· program read from stdin`. Provisional and completed views share this projection,
+which never evaluates source or implies success.
 
 Output has a dashed gutter distinct from source. The tail shows five nonblank
 lines, or three in panes shorter than 40 rows, and counts omitted lines in the
@@ -148,6 +178,24 @@ collapses normally; failed, blocked, stopped or error-bearing output stays open.
 Approval/question prompts remain independent. Only observed structured data is
 available, not inferred source, raw streams or missing rollout observations.
 
+Literal VCS commands specialize Run: `git commit` and `svn commit`/`ci` are Commit;
+`git add` with paths, `-A` or `-u` is Stage; git diff/show, svn diff and `mchanges`
+patch/net/summary reads are Diff; `git diff --check` is Check; git status (long,
+short or porcelain v1) and svn status are Status. Rows retain scope paths and
+source flags that affect the displayed result, including Git `-C` and stat forms.
+Commit headings use the first nonblank line of literal `-m` text or quoted stdin
+message forms (heredoc, here-string or `$(cat <<'EOF' … EOF)`); file/existing
+messages have no invented heading. Diff headings name working tree, staged,
+literal revisions, SVN `rN`, or change IDs (`mine` when absent).
+
+Dynamic words, expanding globs/braces, environment assignments, `git -c`,
+interactive/editor/external-diff/output-writing options and unsupported output
+forms remain Run. This includes dry-run, porcelain v2/NUL output, remote/verbose
+SVN status, `REV:PATH`, custom Git pretty formats/prefixes, mixed file-summary formats,
+and `mchanges` list/history/apply/revert. Redirection qualifies only for commit
+message stdin or discarded/merged stderr. Copy-detecting stat/numstat needs summary
+evidence to distinguish copies from moves; literal revision tildes are not expansion.
+
 Version-control rows retain verb, heading and muted source. Commit/Stage use gold;
 Diff/Status/Check use read blue. Commit subjects preserve amend/fixup/squash markers
 in amber. Headings elide before source, wrapping below 16 cells. Paths after `in`
@@ -155,6 +203,22 @@ remain emphasized. Untimed, successful staging immediately before the same
 invocation's commit folds into it; timed, failed, skipped stages and stages before
 skipped commits remain separate. Committed requires completion plus observed
 commit output, not merely requested source.
+
+A successful command's own output supplies parsed patch/stat/numstat/shortstat,
+name-status/name-only, SVN diff-summary, status and commit rows. Hunk counts stay
+within declared extents; copies create the destination with a `copy of` note,
+not a moved source. A scaled stat graph supplies only a total, not an invented
+added/removed split. Unreadable or unattributable output keeps its ordinary tail.
+Silent successful Stage/Check commands may precede a commit in combined output;
+other mixed lists do not guess attribution. Tracked segments use their own output.
+
+Observed Git commits may enrich file counts from a read-only lookup of the printed
+hash in the proven command directory. It runs independently of UI input, at most
+two reads at once, bounded to two seconds and 4 MiB. Pending, unavailable or
+unreadable objects leave output-observed created/deleted/moved files without counts.
+Consecutive `-C` options resolve in order. A prior non-VCS shell segment invalidates
+the initial directory, so enrichment then requires an absolute `-C`, also on replay.
+Output naming no commit claims none.
 
 Successful history-list/summary and version-control output uses grouped change
 rows with shared counts and bars. History reads describe retained changes, not new
@@ -304,7 +368,7 @@ Loaded-skill counts represent the current context under the [module specificatio
 Empty or unknown counts stay hidden. Labels use `1 loaded skill` or `N loaded skills`;
 hover underlines the label and clicking opens sorted names in the shared dialog
 without changing selection. Exit/resume restores confirmed loads, including inherited
-history, under [bounded restoration](../../doc/architecture/activity.md).
+history, under [bounded restoration](../../apps/mekugi/internal/sessionpresentation/SPEC.md#codex-history-binding).
 
 ## Acceptance
 

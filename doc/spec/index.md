@@ -4,7 +4,7 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "75"
+  revision: "76"
   files:
     - ../../providers/grok/SPEC.md
     - ../../providers/opencode/SPEC.md
@@ -14,7 +14,7 @@ pjdoc:
     - native_ui.md
     - ../../docs/contracts/responses-transport.md
     - ../../modules/notifications/SPEC.md
-    - activity.md
+    - ../../modules/activity/SPEC.md
     - ../../modules/activity/CONTRACT.md
     - ../../apps/mekugi/internal/frontends/SPEC.md
     - ../../modules/agentmetrics/SPEC.md
@@ -58,7 +58,7 @@ resume evidence and renderer-keyed persistence.
 - [Grok](../../providers/grok/SPEC.md): authentication, models and Codex adaptation policy
 - [OpenCode](../../providers/opencode/SPEC.md): Go/Zen catalog, inference and Codex adaptation policy
 - [Notifications](../../modules/notifications/SPEC.md): native diagnostic delivery and recovery
-- [`REQ-ACTIVITY-001`](activity.md): observed tool classification
+- [Activity](../../modules/activity/SPEC.md): observed tool classification, identity and retained output
 - [Activity presentation](../../modules/activity/CONTRACT.md): native operation rows and agent feeds
 - [`REQ-USAGE-001`](../../modules/usage/SPEC.md): per-thread provider accounting and reference costs
 - [File reading](../../modules/fileread/SPEC.md): authenticated raw-row reading

@@ -10,16 +10,77 @@ source nor establishes that an operation ran.
 
 ## Behavior
 
+### Observation authority
+
+Main and child feeds consume typed host command, edit, collaboration, web, image,
+MCP and other tool observations. Host items and turn events establish execution
+state; source recognition for previews and capture does not. Unknown tools retain
+their host identity and available arguments, including MCP server/tool identity.
+Observation preserves original inputs, results, parallel execution and host-owned
+continuations. It adds no conversation commentary or model turns and does not
+reconstruct a second lifecycle from provider requests or arbitrary printed output.
+
+Attribution requires validated stable thread relationships and canonical agent
+identity, never routing-session IDs or message text. Request preparation precedes
+identity admission. Deferred observations keep their originating thread.
+Ambiguous ancestry suppresses attribution, not execution
+or substantive child output. Authenticated recipient-input observations supplement
+assignment and directed-message bodies as display data, without waiting for a root
+provider response. Source identity deduplicates live and restored observations.
+
+An `exec` cell has no host activity item of its own. A newly observed host
+`Script failed` result supplies one error row, including failures before any nested
+tool runs. Its first-line preview is bounded; the full error remains available to
+the content dialog and restores from retained rollout evidence. Repeated requests
+do not repeat the error, and the model receives its original result unchanged.
+If a finished cell returned only its host header and optional script error, its
+trace-correlated command rows with output say `output not returned to the model`.
+Yielded cells and cells that printed content receive no note. These notes remain
+for the live router session and are not reconstructed on resume.
+
+Wait/input observations retain typed host command/item identity; an uncorrelated
+poll cannot name a guessed command. A turn ending before its wait item completes
+shows `Wait ended`, without claiming any child finished. A later host wait result
+replaces it; restoring a stopped turn applies the same rule without reviving waits.
+
+### Source interpretation
+
+Classification describes the visible operation, not its effects:
+
+| Label | Recognized source |
+| --- | --- |
+| Read | Simple `cat`, valid `mcat`, bounded `sed -n` print programs, `nl -ba FILE`, single-file `cat`/`nl` piped to those print ranges, or `cat` piped to bounded `head` |
+| Search | Literal `rg` and `grep`, showing query and target rather than execution flags |
+| List | Simple listings, with `ls` path operands or `.` when absent |
+| Inspect | `inspect_file`, including options and multiple paths |
+| Skill | `skills-mgr get` and `skills-mgr run`, including references |
+| Run | Unrecognized or unsafe-to-simplify source, retaining its original preview |
+
+Globs and simple shell parameter references stay literal. Parameter operators and
+executable substitutions normally remain Run; bounded `sed -n` is classified by
+its literal flags/program even with dynamic input operands. Their source remains
+visible and unevaluated, and Read does not describe embedded substitution effects.
+In-place edits and non-print programs are not reads.
+
+Literal absolute executables, command-resolution-preserving `env` assignments and
+unsets, and literal `bash`/`sh`/`dash -c` or `-lc` scripts without extra arguments
+or redirections retain classification. Unknown wrapper options, dynamic arguments
+and PATH changes remain Run. Plain `timeout DURATION` also preserves classification
+for decimal durations with optional `s`, `m`, `h` or `d`; options and dynamic bounds
+remain Run. Display never changes the executed source.
+
+Mixed scripts and `&&` chains retain classified operations and Run neighbors in
+source order, without claiming they ran. Other unsupported compounds remain Run.
+Recognized output-only search pipelines and discarded stderr for `find`, `rg`,
+`grep` and `ls` do not obscure the operation. Effectful/unknown pipeline stages and
+ambiguous abbreviated listing options remain Run. Whole setup programs retain
+their source and known timeout metadata. Literal `mread` recovery calls add no row.
+
 Blank lines separate operations except inside fenced source. Each operation keeps
 its verb, label, source language/body, explicit timeout annotations and read
 targets. Unknown labels remain available rather than being discarded. Read ranges
 belong to file reads; target-only operations retain their literal operands. Skill
 program invocations retain program source rather than becoming skill reads.
-
-Edit receipts retain their source across adjacent tool-managed-file summaries.
-An edit with no resolved target explicitly says that paths are unavailable.
-Generated edit operations omit their diff bodies from the feed; authored Markdown
-and retained change evidence are unaffected.
 
 The same content values can carry authored messages and reasoning supplied by host
 adapters. Their kind does not establish host execution state.
@@ -32,6 +93,34 @@ Read merging, reasoning compaction, batch flattening and stage folding preserve
 those identities for dialogs and cross-pane navigation.
 Source values contain no styles, geometry, callbacks or live handles. Shared fence
 and inline-code recognition belongs to `sourceanalysis`.
+
+### Edit evidence
+
+Statically scoped `sed -i`, `cat` redirections, `rm`, `mv`, and supported Python or
+JavaScript writes show requested Edit/Delete/Move intent without applied counts.
+Variable redirection targets stay unevaluated; heredoc bodies stay out of Run cards.
+Moves into explicit directories name each requested destination; other destinations
+remain as requested until captured evidence establishes the resulting paths.
+Unresolved writes retain Run source, alongside any resolved targets. A successful
+tracked writer, including a no-op, establishes only that its command ran.
+
+Stock `apply_patch`, including transparent literal-bound nested calls, produces no
+generic Run row, bare Edit row or patch body. Authenticated completed receipts use
+the same review files as [change history](../changehistory/SPEC.md) to identify
+Create/Edit/Delete/Move effects and counts. A transparent cell's completed receipt
+describes its workspace effects without asserting nested patch success. Incomplete
+capture has unavailable counts; failed or unfinished patches have no successful
+summary. Repeated receipts deduplicate and replace intent without removing sibling
+failures, skipped work or output. Combined output stays with the final operation.
+
+Edit receipts retain their source across tool-managed-file summaries. An edit with
+no resolved target says paths are unavailable. Generated edit operations omit diff
+bodies from the feed; authored Markdown and retained evidence remain unchanged.
+Completed native file-change items may open their host-supplied diffs before the
+batch exits, with durable review preferred when available. Pending, failed and
+declined items supply no completed-diff fallback. This navigation neither snapshots
+the workspace nor publishes change evidence; [live preview](../livepreview/SPEC.md) owns provisional diffs and
+[capture](../../docs/contracts/change-evidence.md) owns observed effects.
 
 ## Retained output
 
@@ -90,6 +179,11 @@ segments still count after aggregate failure. Feed trimming retains context load
 compaction clears them, and bounded history restoration cannot overwrite a newer
 live reset. Unknown context is not an empty confirmed set.
 
+Roster tokens and cost consume [per-thread usage](../usage/SPEC.md), not a second
+ledger. Final edit totals consume composed saved-review evidence, not cumulative
+caller counters. Presentation cannot finalize captured changes, reconstruct missing
+provider usage or revive replayed processes.
+
 `presentation` owns records, semantic derivation, plain values and canonical flat
 group membership. Typed adapter evidence stays private to source records; published
 values contain no callbacks, terminal state or live output handles. `terminalview`
@@ -121,3 +215,7 @@ exercise the same parser, preserving invocation membership, actual rendered rows
 and source-copy behavior. Output cases cover chunked CRLF, bounds, shared retention,
 aggregate replacement, unknown exits and snapshot stability. Real stream/segment
 and dialog consumers cover paced completion, release fallback and source numbering.
+Application checks cover unchanged host inputs/results and parallel execution,
+authenticated attribution, repeated script errors, live-only output notes, waits
+ending without completion and intent replaced by observed evidence. Source parsing
+and renderer checks alone do not establish execution or capture coverage.

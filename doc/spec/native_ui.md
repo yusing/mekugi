@@ -15,7 +15,7 @@ presentation only, not conversation history.
 
 Operation-row formatting and feed controls are specified by
 [native activity presentation](../../modules/activity/CONTRACT.md); shared classification belongs to
-[activity observation](activity.md), and router cost totals to [usage reporting](../../modules/usage/SPEC.md).
+[activity observation](../../modules/activity/SPEC.md), and router cost totals to [usage reporting](../../modules/usage/SPEC.md).
 
 ### Offline playback
 

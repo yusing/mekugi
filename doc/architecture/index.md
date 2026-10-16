@@ -4,12 +4,13 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "55"
+  revision: "56"
   files:
     - ../../docs/contracts/provider-routing.md
     - ../../docs/contracts/composition.md
     - ui.md
-    - activity.md
+    - ../../modules/activity/SPEC.md
+    - ../../apps/mekugi/internal/sessionpresentation/SPEC.md
     - ../../docs/contracts/record-publication.md
     - ../../apps/mekugi/internal/frontends/SPEC.md
     - ../../backends/codex/SPEC.md
@@ -47,8 +48,8 @@ resume evidence and renderer-keyed persistence.
 
 - [Provider routing](../../docs/contracts/provider-routing.md): provider/backend authority and native-agent continuity
 - [Notifications](../../modules/notifications/SPEC.md): bounded delivery, presentation claims and recovery
-- [`CTR-ACTIVITY-001`](activity.md): activity identity, collection, and native integration
-- [`CTR-ACTIVITY-002`](activity.md): bounded native child history pages
+- [Activity](../../modules/activity/SPEC.md): host observation authority, identity and feed/output ownership
+- [Session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md): displayed thread, input admission and bounded child history
 - [`CTR-USAGE-001`](../../modules/usage/SPEC.md): provider accounting ownership
 - [Retained publication](../../docs/contracts/record-publication.md): filesystem authority, cross-owner publication, and continuity
 - [`CTR-PLUGIN-001`](../../apps/mekugi/internal/frontends/SPEC.md): authenticated executable catalog
