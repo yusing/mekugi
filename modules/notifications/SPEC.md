@@ -44,7 +44,8 @@ Each notice has one delivery claim at a time. Claims retain the complete batch
 and the repeat count captured at reservation. Error and progress surfaces receive
 independent acknowledgements. Success acknowledges only the captured count;
 failed or hidden delivery releases the claim for retry. Retrying never duplicates
-progress items in the attached view.
+progress items in the attached view. Pending invocation notices remain eligible
+after the transcript is cleared or replaced.
 
 A protocol write or host outcome is not a display receipt. The actual renderer
 acknowledges a surface only after successfully painting it visibly. Replaced

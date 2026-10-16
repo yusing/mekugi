@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
 
 // Only commands implemented by the native shell belong in this catalog.
@@ -148,7 +149,8 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.turnStarted = time.Time{}
 	u.exitUsage = appServerTokenUsage{}
 	u.alert = false
-	u.setNotice("", false)
+	u.feedback = noticepresentation.Model{}
+	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	u.session.outputs = activityui.Retention{}
 	painter := u.view.painter
 	*u.view = *newLiveActivityView()

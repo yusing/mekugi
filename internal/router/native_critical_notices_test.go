@@ -223,6 +223,49 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 	}
 }
 
+func TestNativeCleanupNoticeTranscriptReplacement(t *testing.T) {
+	for _, delivered := range []bool{false, true} {
+		t.Run(fmt.Sprintf("delivered=%t", delivered), func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.issues.cleanupNotice("", "", "planning", "pending cleanup plan")
+			first := u.applyCriticalNotices()
+			u.ensureShell()
+			defer u.shell.diffScreen.Close()
+			height := 3
+			if delivered {
+				height = 12
+			}
+			u.mainFrame(80, height, 0)
+			first.finish(true)
+			if got := len(u.issues.Notices.Pending()); (got == 0) != delivered {
+				t.Fatalf("initial delivery: pending=%d delivered=%t", got, delivered)
+			}
+			if err := u.clearSessionPresentation(); err != nil {
+				t.Fatal(err)
+			}
+			u.thread = "replacement"
+			retry := u.applyCriticalNotices()
+			if delivered {
+				if retry != nil || len(u.view.entries) != 0 {
+					t.Fatal("delivered progress returned in replacement transcript")
+				}
+				return
+			}
+			if retry == nil {
+				t.Fatal("pending progress did not retry")
+			}
+			rows, _ := u.mainFrame(80, 12, 0)
+			if !strings.Contains(ansi.Strip(strings.Join(rows, "\n")), "pending cleanup plan") {
+				t.Fatal("replacement transcript did not paint pending progress")
+			}
+			retry.finish(true)
+			if len(u.view.entries) != 1 || len(u.issues.Notices.Pending()) != 0 {
+				t.Fatalf("retry: entries=%d pending=%v", len(u.view.entries), u.issues.Notices.Pending())
+			}
+		})
+	}
+}
+
 func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.issues = testCriticalErrors()
