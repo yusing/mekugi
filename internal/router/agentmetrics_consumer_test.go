@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -119,8 +121,8 @@ func TestAgentMetricsSessionInspectionWholeRolloutAndDefectEvidence(t *testing.T
 	}
 	const patch = "*** Begin Patch\n*** Add File: observed.txt\n+ready\n*** End Patch\n"
 	if err := store.put(t.Context(), root, map[string]mekugiHistory{
-		"edit":                              {ToolName: applyPatchToolName, Script: patch, CarrierName: applyPatchToolName, CarrierKind: codeModeCarrierCustom, CarrierPayload: patch, NativePatches: []nativePatchObservation{{Input: patch}}},
-		nativePatchDerivedCallID("edit", 0): {ToolName: applyPatchToolName, Script: patch, CorrelationID: "edit\x000", Report: "Success", ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(root, "observed.txt"), "", "ready\n")}},
+		"edit":                            {ToolName: applyPatchToolName, Script: patch, CarrierName: applyPatchToolName, CarrierKind: codeModeCarrierCustom, CarrierPayload: patch, NativePatches: []nativePatchObservation{{Input: patch}}},
+		legacycall.PatchCallID("edit", 0): {ToolName: applyPatchToolName, Script: patch, CorrelationID: "edit\x000", Report: "Success", ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(root, "observed.txt"), "", "ready\n")}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +144,7 @@ func TestAgentMetricsSessionInspectionWholeRolloutAndDefectEvidence(t *testing.T
 		t.Helper()
 		var stdout, stderr bytes.Buffer
 		args := append([]string{"--session", rollout, "--replay-dir", replay}, options...)
-		status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), args, &stdout, &stderr)
+		status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), args, &stdout, &stderr)
 		var result sessionInspection
 		if status == 0 {
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {

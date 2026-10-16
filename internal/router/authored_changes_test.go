@@ -61,7 +61,7 @@ func TestAuthoredChangesKnownEditsIgnoreIncidentalEffectsAndGitIgnore(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			record, found, err := reopened.lookup(f.ctx, f.workspace, execDerivedCallID("edit", false))
+			record, found, err := reopened.lookup(f.ctx, f.workspace, legacycall.ExecCallID("edit", false))
 			if err != nil || !found || record.ChangeID == "" || len(record.ReviewFiles) != 1 || record.ReviewFiles[0].Incomplete != "" {
 				t.Fatalf("durable known edit: %+v, %v", record, err)
 			}
@@ -103,7 +103,7 @@ func TestAuthoredChangesLegacyObservationNoiseExcluded(t *testing.T) {
 	path := filepath.Join(f.workspace, "random-generated-file")
 	file := diffmodel.RenderReviewFile("", path, "", strings.Repeat("generated\n", 1000))
 	file.OriginNote = execInventoryNote
-	f.publish(t, id, "window", execDerivedCallID("outer", false), mekugiHistory{ToolName: nativeExecCommandToolName, ExecOutcome: &execOutcome{Class: "opaque", Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}})
+	f.publish(t, id, "window", legacycall.ExecCallID("outer", false), mekugiHistory{ToolName: nativeExecCommandToolName, ExecOutcome: &execOutcome{Class: "opaque", Coverage: execCoveragePartial}, ReviewFiles: []diffmodel.ReviewFile{file}})
 	for _, view := range []string{"list", "summary", "", "net"} {
 		text, err := f.store.changes.Read(f.ctx, f.store.scoped(f.ctx).changeScope(), changes.Query{Workspace: f.workspace, IDs: []string{id}, View: view})
 		if err != nil || strings.Contains(text, "generated") || strings.Contains(text, "incomplete captured scope") || strings.Contains(text, "1000") {
@@ -173,7 +173,7 @@ func TestAuthoredChangesNamedFormatterKeepsFinalSourceEdits(t *testing.T) {
 	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "format", history: history, output: responses.MustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
 		t.Fatal(err)
 	}
-	record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("format", false))
+	record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("format", false))
 	if err != nil || !found || record.ChangeID == "" {
 		t.Fatalf("named formatter missing: %+v, %v", record, err)
 	}

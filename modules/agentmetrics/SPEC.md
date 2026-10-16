@@ -7,8 +7,9 @@ Measure actual reader invocations, observed edits, and recorded host completion.
 ## Scope
 
 AX evidence is separate from provider usage, transport metrics and supplied defect
-judgments. Application adapters own authenticated command execution, artifact selection and
-report assembly. The [Codex backend](../../backends/codex/SPEC.md#supplied-offline-rollouts)
+judgments. Application adapters own authenticated command execution and artifact selection.
+This module contributes query-local AX collectors and owns their report encoding
+through the inspection slot. The [Codex backend](../../backends/codex/SPEC.md#supplied-offline-rollouts)
 owns rollout decoding; this module owns event pairing and completeness.
 
 ## Behavior

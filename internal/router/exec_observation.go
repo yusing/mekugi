@@ -20,6 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -1275,13 +1277,6 @@ func execResultState(toolName string, raw json.RawMessage) (terminal bool, exit 
 	return true, nil, false, text, ""
 }
 
-func execDerivedCallID(callID string, codeMode bool) string {
-	if codeMode {
-		return callID + ":effects"
-	}
-	return callID + ":exec:1"
-}
-
 func execObservationScript(observation execObservation) string {
 	if len(observation.Commands) == 0 {
 		return "# exec commands are not literal\n"
@@ -1424,7 +1419,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 		if member.history.ExecObservation == nil || !terminal {
 			continue
 		}
-		derived := execDerivedCallID(member.callID, member.history.ExecObservation.CodeMode)
+		derived := legacycall.ExecCallID(member.callID, member.history.ExecObservation.CodeMode)
 		retained, found, err := p.replayStore.lookup(ctx, workspace, derived)
 		if err != nil {
 			return err
@@ -1444,7 +1439,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	first := members[0]
 	thread := first.history.ExecutingThread
 	observation := mergeExecObservations(members)
-	derivedCallID := execDerivedCallID(first.callID, first.history.ExecObservation.CodeMode)
+	derivedCallID := legacycall.ExecCallID(first.callID, first.history.ExecObservation.CodeMode)
 	correlation := first.callID + "\x00exec"
 	script := execObservationScript(observation)
 	refs := make([]string, 0, len(members))
@@ -1593,7 +1588,7 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	records := map[string]mekugiHistory{derivedCallID: record}
 	for _, member := range members[1:] {
 		memberObservation := *member.history.ExecObservation
-		memberCallID := execDerivedCallID(member.callID, memberObservation.CodeMode)
+		memberCallID := legacycall.ExecCallID(member.callID, memberObservation.CodeMode)
 		memberScript := execObservationScript(memberObservation)
 		memberArguments := string(responses.MustMarshalJSON(map[string]string{"cmd": memberScript}))
 		records[memberCallID] = mekugiHistory{

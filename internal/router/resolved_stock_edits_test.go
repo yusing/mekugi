@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -39,7 +41,7 @@ func TestSupportedSnapshotGeneratorRetainsInitialCreation(t *testing.T) {
 	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "generate", history: history, output: responses.MustMarshalJSON(map[string]any{"exit_code": 0})}}); err != nil {
 		t.Fatal(err)
 	}
-	record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("generate", false))
+	record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("generate", false))
 	if err != nil || !found || len(record.ReviewFiles) != 2 || record.ChangeID == "" {
 		t.Fatalf("generator capture missing: %+v, %v", record, err)
 	}
@@ -90,7 +92,7 @@ func TestPythonTemporaryWriteAndRestoreRetainsIncompleteHistory(t *testing.T) {
 	if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: "temporary", history: history, output: output}}); err != nil {
 		t.Fatal(err)
 	}
-	record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("temporary", false))
+	record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("temporary", false))
 	if err != nil || !found || record.ChangeID != "" || len(record.ReviewFiles) != 0 {
 		t.Fatalf("attempt vanished or fabricated intermediate diff: %+v, %v", record, err)
 	}
@@ -212,7 +214,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 				t.Fatal(err)
 			}
 			for index, want := range []string{"patch-first", "patch-second"} {
-				record, found, err := f.store.lookup(f.ctx, f.workspace, nativePatchDerivedCallID("repeated-cell", index))
+				record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.PatchCallID("repeated-cell", index))
 				if err != nil || !found || len(record.HostResults) != 1 || record.HostResults[0].CallID != want {
 					t.Fatalf("patch occurrence %d lost host outcome: %+v, %v", index, record, err)
 				}
@@ -223,7 +225,7 @@ func TestResolvedRepeatedStockCallsRetainEveryOutcome(t *testing.T) {
 					t.Fatal("duplicate failure borrowed cell-window effects or lost failure")
 				}
 			}
-			record, found, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("repeated-cell", true))
+			record, found, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("repeated-cell", true))
 			if err != nil || !found || len(record.HostResults) != 2 || record.HostResults[0].CallID != "command-first" ||
 				record.HostResults[1].CallID != "command-second" || record.HostResults[1].ExitCode == nil || *record.HostResults[1].ExitCode != 7 ||
 				strings.Count(record.Script, command) != 2 || len(record.ReviewFiles) != 1 || record.ExecOutcome.Coverage != execCoverageExact {

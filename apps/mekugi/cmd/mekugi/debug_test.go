@@ -91,7 +91,7 @@ func TestUISnapshotDebugHandoffAfterCodexExit(t *testing.T) {
 				t.Fatalf("diagnostic handoff is not a session inspection command: %q", resolved)
 			}
 			var diagnosticErrors bytes.Buffer
-			if code := router.RunSessionInspection(testComposition(t).History, new(evidence.Service), new(transportcapture.Service), t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
+			if code := router.RunSessionInspection(testComposition(t).Inspection, new(evidence.Service), new(transportcapture.Service), t.Context(), argv[1:], io.Discard, &diagnosticErrors); code != 0 {
 				t.Fatalf("printed diagnostic command failed: %d: %s", code, &diagnosticErrors)
 			}
 			normalized := strings.ReplaceAll(after, commandargs.Quote(argv[2]), "'/tmp/mekugi-debug-session'")

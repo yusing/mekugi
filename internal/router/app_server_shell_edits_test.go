@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -73,7 +75,7 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if edit == nil {
 			t.Fatal("shell mutation has no pre-submission observation")
 		}
-		if _, found, err := store.lookup(ctx, workspace, execDerivedCallID(edit.call, false)); found || err != nil {
+		if _, found, err := store.lookup(ctx, workspace, legacycall.ExecCallID(edit.call, false)); found || err != nil {
 			t.Fatalf("start allocated completed evidence: %v, %v", found, err)
 		}
 		if output, exit := mutateTestChanges(t, ctx, store, workspace, mutation, id); exit != 0 {
@@ -89,7 +91,7 @@ func TestAppServerShellEditsRevertApplyReplay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		history, found, err := fresh.lookup(ctx, workspace, execDerivedCallID(edit.call, false))
+		history, found, err := fresh.lookup(ctx, workspace, legacycall.ExecCallID(edit.call, false))
 		if err != nil || !found || history.ChangeID == "" || len(history.ReviewFiles) != 1 || len(history.HostResults) != 1 || history.HostResults[0].CallID != item || history.HostResults[0].Tool != "userShell" {
 			t.Fatalf("durable shell edit: %+v, %v, %v", history, found, err)
 		}
@@ -133,7 +135,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		if u.noticeAlert {
 			t.Fatal(u.notice)
 		}
-		history, found, err := u.proxy.replayStore.lookup(u.session.waitContext, u.session.cwd, execDerivedCallID(edit.call, false))
+		history, found, err := u.proxy.replayStore.lookup(u.session.waitContext, u.session.cwd, legacycall.ExecCallID(edit.call, false))
 		if err != nil || !found || history.ExecOutcome.Exit == nil || *history.ExecOutcome.Exit != exit {
 			t.Fatalf("shell outcome: %+v, %v, %v", history, found, err)
 		}

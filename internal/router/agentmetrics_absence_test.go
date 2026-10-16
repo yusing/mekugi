@@ -38,7 +38,7 @@ func TestAgentMetricsAbsentDebugSession(t *testing.T) {
 	defer usage.Close()
 	var paths []string
 	ready := false
-	err = RunSession(history, testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, nil, new(transportcapture.Service),
+	err = RunSession(history, testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, nil, new(transportcapture.Service), testInspector(nil, new(transportcapture.Service)),
 		ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil,
 		func(session Session) {
 			ready = true
@@ -96,7 +96,7 @@ func TestAgentMetricsAbsentSessionInspection(t *testing.T) {
 		stockRolloutItem(map[string]any{"type": "function_call_output", "call_id": "read", "output": "source contents"}),
 	)
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testHistory(), nil, new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir(), "--field", "all"}, &stdout, &stderr)
+	code := RunSessionInspection(testInspector(nil, new(transportcapture.Service)), nil, new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir(), "--field", "all"}, &stdout, &stderr)
 	var result sessionInspection
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || code != 0 || stderr.Len() != 0 || result.TotalCalls != 1 || len(result.Calls) != 1 || result.Calls[0].CallID != "read" || result.AX != nil {
 		t.Fatalf("inspection code=%d result=%+v stderr=%q decode=%v", code, result, &stderr, err)
@@ -105,7 +105,7 @@ func TestAgentMetricsAbsentSessionInspection(t *testing.T) {
 		stdout.Reset()
 		stderr.Reset()
 		// A missing rollout distinguishes capability rejection from opening inputs.
-		code := RunSessionInspection(testHistory(), nil, new(transportcapture.Service), t.Context(), append([]string{"--session", filepath.Join(root, "missing")}, option...), &stdout, &stderr)
+		code := RunSessionInspection(testInspector(nil, new(transportcapture.Service)), nil, new(transportcapture.Service), t.Context(), append([]string{"--session", filepath.Join(root, "missing")}, option...), &stdout, &stderr)
 		if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "agent metrics are unavailable") {
 			t.Fatalf("option %q: code=%d stdout=%q stderr=%q", option, code, &stdout, &stderr)
 		}
@@ -119,7 +119,7 @@ func TestAgentMetricsAbsentDebugInspection(t *testing.T) {
 		writeDebugInspectionFixture(t, filepath.Join(directory, name), "invalid stale AX evidence")
 	}
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testHistory(), nil, new(transportcapture.Service), t.Context(), []string{"--debug-dir", directory}, &stdout, &stderr)
+	code := RunSessionInspection(testInspector(nil, new(transportcapture.Service)), nil, new(transportcapture.Service), t.Context(), []string{"--debug-dir", directory}, &stdout, &stderr)
 	var result debugSessionInspection
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || code != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspection code=%d stderr=%q decode=%v", code, &stderr, err)
@@ -145,7 +145,7 @@ func TestAgentMetricsAbsentIgnoresInvalidCommandTiming(t *testing.T) {
 			)
 			for _, metrics := range []*evidence.Service{nil, new(evidence.Service)} {
 				var stdout, stderr bytes.Buffer
-				code := RunSessionInspection(testHistory(), metrics, new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay}, &stdout, &stderr)
+				code := RunSessionInspection(testInspector(metrics, new(transportcapture.Service)), metrics, new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay}, &stdout, &stderr)
 				if metrics == nil {
 					var result sessionInspection
 					if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || code != 0 || result.TotalCalls != 1 || len(result.Calls) != 1 || result.Calls[0].CallID != "read" {
@@ -156,7 +156,7 @@ func TestAgentMetricsAbsentIgnoresInvalidCommandTiming(t *testing.T) {
 				}
 				stdout.Reset()
 				stderr.Reset()
-				code = RunSessionCorpusInspection(testHistory(), metrics, new(transportcapture.Service), t.Context(), []string{"--sessions-dir", root, "--replay-dir", replay, "--since", "2026-10-15T00:00:00Z", "--until", "2026-10-17T00:00:00Z"}, &stdout, &stderr)
+				code = RunSessionCorpusInspection(testInspector(metrics, new(transportcapture.Service)), t.Context(), []string{"--sessions-dir", root, "--replay-dir", replay, "--since", "2026-10-15T00:00:00Z", "--until", "2026-10-17T00:00:00Z"}, &stdout, &stderr)
 				var corpus sessionCorpus
 				if err := json.Unmarshal(stdout.Bytes(), &corpus); err != nil || code != 0 {
 					t.Fatalf("corpus: code=%d stderr=%q decode=%v", code, &stderr, err)

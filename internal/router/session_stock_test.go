@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -23,7 +25,7 @@ func TestSessionInspectionCanceledEmptySource(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testHistory(), nil, nil, ctx,
+	code := RunSessionInspection(testInspector(nil, nil), nil, nil, ctx,
 		[]string{"--session", path, "--replay-dir", t.TempDir()}, &stdout, &stderr)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "context canceled") {
 		t.Fatalf("canceled inspection: code=%d stdout=%q stderr=%q", code, &stdout, &stderr)
@@ -73,7 +75,7 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 		ReviewFiles: []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", filepath.Join(root, "observed.txt"), "", "ready\n")},
 	}
 	if err := store.put(t.Context(), root, map[string]mekugiHistory{
-		"patch-call": parent, nativePatchDerivedCallID("patch-call", 0): derived,
+		"patch-call": parent, legacycall.PatchCallID("patch-call", 0): derived,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestSessionInspectionReadsObservedStockPatchOutcome(t *testing.T) {
 		stockRolloutItem(map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": "Success. Added observed.txt."}),
 	)
 	var out, diagnostic bytes.Buffer
-	status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
+	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--ax"}, &out, &diagnostic)
 	if status != 0 {
 		t.Fatalf("inspection failed: %s", diagnostic.String())
 	}
@@ -124,7 +126,7 @@ func TestCorpusStockMcatRereadCandidate(t *testing.T) {
 				stockRolloutItem(map[string]any{"type": cmp.Or(tc.secondKind, "custom_tool_call"), "name": tc.prefix + "exec", "namespace": tc.secondNamespace, "call_id": "second", "input": `await tools.exec_command({cmd: "mcat file.go 50:150"});`}),
 			)
 			var out, diagnostic bytes.Buffer
-			status := RunSessionCorpusInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{
+			status := RunSessionCorpusInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{
 				"--sessions-dir", root, "--replay-dir", filepath.Join(t.TempDir(), "replay"),
 				"--since", "2026-09-14T00:00:00Z", "--until", "2026-09-16T00:00:00Z",
 			}, &out, &diagnostic)

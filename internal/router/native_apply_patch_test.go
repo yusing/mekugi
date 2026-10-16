@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -73,7 +75,7 @@ func reconcileNativePatchResult(t *testing.T, proxy *mekugiProxy, workspace, pat
 		t.Fatal(err)
 	}
 	t.Cleanup(transform.Close)
-	history, found, err := proxy.replayStore.lookup(transform.ctx, workspace, nativePatchDerivedCallID("patch-call", 0))
+	history, found, err := proxy.replayStore.lookup(transform.ctx, workspace, legacycall.PatchCallID("patch-call", 0))
 	if err != nil || !found {
 		t.Fatalf("derived stock edit missing: found=%v err=%v", found, err)
 	}
@@ -203,7 +205,7 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 					t.Fatalf("running state = terminal %v, cell %q, output %q", terminal, cell, output)
 				}
 				reconcile(items)
-				if _, found, err := proxy.replayStore.lookup(transform.ctx, workspace, nativePatchDerivedCallID("code-call", 0)); err != nil || found {
+				if _, found, err := proxy.replayStore.lookup(transform.ctx, workspace, legacycall.PatchCallID("code-call", 0)); err != nil || found {
 					t.Fatalf("yielded patch was prematurely completed: found=%v err=%v", found, err)
 				}
 				items = append(items,
@@ -227,7 +229,7 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			proxy.activity.observe("root", "", "/root", false)
 			proxy.activity.observe("thread-1", "root", "/root/editor", true)
 			reconcile(items)
-			history, found, err := proxy.replayStore.lookup(transform.ctx, workspace, nativePatchDerivedCallID("code-call", 0))
+			history, found, err := proxy.replayStore.lookup(transform.ctx, workspace, legacycall.PatchCallID("code-call", 0))
 			if err != nil || !found {
 				t.Fatalf("completed patch missing: found=%v err=%v", found, err)
 			}
@@ -284,7 +286,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, responses.MustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n")); err != nil {
 				t.Fatal(err)
 			}
-			if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, nativePatchDerivedCallID("cell", 0)); err != nil || found {
+			if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.PatchCallID("cell", 0)); err != nil || found {
 				t.Fatalf("yielded cell finalized: %v, %v", found, err)
 			}
 			// Model the actual terminal workspace, without evaluating patch inputs.
@@ -304,7 +306,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 			var ids []string
 			seen := make(map[string]bool)
 			for index := range history.NativePatches {
-				attempt, found, err := proxy.replayStore.lookup(t.Context(), workspace, nativePatchDerivedCallID("cell", index))
+				attempt, found, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.PatchCallID("cell", index))
 				if err != nil || !found || attempt.Script != history.NativePatches[index].Input || attempt.AlreadySatisfied {
 					t.Fatalf("lost or misreported attempt: %+v, %v", attempt, err)
 				}

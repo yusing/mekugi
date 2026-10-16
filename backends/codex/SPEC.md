@@ -150,6 +150,10 @@ identity-validated opener. Rollout reads cannot resume a thread or replay effect
 
 ### Supplied offline rollouts
 
+The offline-rollout binding attaches the bounded decoder to its consumer during
+composition. It acquires no live backend resources. A scripted binder supplies
+the same decoded-source interface for module acceptance.
+
 Logical inspection reads the caller-selected regular UTF-8 JSONL file without
 starting Codex, scanning other sessions or writing state. Files are at most
 64 MiB, lines below 32 MiB and logical calls limited to 10,000. Malformed,

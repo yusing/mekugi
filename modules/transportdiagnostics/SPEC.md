@@ -39,7 +39,8 @@ Provider usage is authoritative. Complete, incomplete, unknown legacy and missin
 usage observations remain distinct, including explicit zero-token observations.
 Attempt coverage reconciles with request attempts; an exchange without usage
 keeps usage absent. Incomplete capture is never presented as zero consumption.
-Offline corpus totals exclude incomplete or unknown usage evidence. Stream
+The inspection contribution supplies provider-usage summaries and owner-encoded
+token evidence. Offline corpus totals exclude incomplete or unknown usage evidence. Stream
 receipt timing and paired output tokens follow the shared
 [throughput contract](../usage/SPEC.md#output-throughput). The launch average is
 summed paired output tokens divided by summed durations, excluding unmeasured

@@ -14,7 +14,7 @@ import (
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
@@ -26,7 +26,7 @@ import (
 type debugOutput struct {
 	agentMetrics             *evidence.Service
 	axReadPath, axReportPath string
-	history                  *history.Service
+	inspection               *query.Service
 	instructionContent       map[string]bool
 	writes                   *persistence.Counter
 	release                  func() error
@@ -42,7 +42,7 @@ type debugOutput struct {
 
 type debugContextKey struct{}
 
-func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, enabled bool, capturePath string) (*debugOutput, error) {
+func openDebugOutput(inspector *query.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, enabled bool, capturePath string) (*debugOutput, error) {
 	if !enabled {
 		return nil, nil
 	}
@@ -96,7 +96,7 @@ func openDebugOutput(service *history.Service, agentMetrics *evidence.Service, d
 		paths = append(paths, capture, metrics)
 	}
 	paths = append(paths, instructionsPath)
-	d = &debugOutput{history: service, agentMetrics: agentMetrics,
+	d = &debugOutput{inspection: inspector, agentMetrics: agentMetrics,
 		writes: new(persistence.Counter), release: release, paths: paths,
 		capturePath: capture, metricsPath: metrics,
 	}

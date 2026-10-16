@@ -65,7 +65,7 @@ mekugi inspect-session --session /path/to/rollout.jsonl
 mekugi inspect-session --debug-dir /path/to/debug --field diagnostic
 ```
 
-See [session inspection](../../doc/spec/session.md) and [AX evidence](../../modules/agentmetrics/SPEC.md).
+See [session inspection](../../modules/sessioninspection/SPEC.md) and [AX evidence](../../modules/agentmetrics/SPEC.md).
 
 ### Replay a session
 

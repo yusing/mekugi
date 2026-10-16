@@ -15,6 +15,7 @@ import (
 	"github.com/yusing/mekugi/modules/outputrecovery"
 	"github.com/yusing/mekugi/modules/remotewriteapproval"
 	"github.com/yusing/mekugi/modules/sessionhistory"
+	"github.com/yusing/mekugi/modules/sessioninspection"
 	"github.com/yusing/mekugi/modules/sessionnaming"
 	"github.com/yusing/mekugi/modules/sourceoutline"
 	"github.com/yusing/mekugi/modules/sudoapproval"
@@ -43,11 +44,13 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c.Add(sessionnaming.Module, func() sessionnaming.Deps { return sessionnaming.Deps{} })
 	c.Add(remotewriteapproval.Module, func() remotewriteapproval.Deps { return remotewriteapproval.Deps{} })
 	c.Add(sudoapproval.Module, func() sudoapproval.Deps { return sudoapproval.Deps{} })
+	inspection := c.Add(sessioninspection.Module, func() sessioninspection.Deps { return sessioninspection.Deps{} })
 	binder := new(binding.Registry)
 	runtime, err := c.Activate(ctx, binder)
 	if err != nil {
 		return nil, err
 	}
+	runtime.Inspection = inspection.Value()
 	runtime.TransportDiagnostics = diagnostics.Value()
 	runtime.AgentMetrics = metrics.Value()
 	runtime.Usage = usage.Value()

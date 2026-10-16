@@ -3,6 +3,7 @@ package capability
 type Mechanism string
 
 const (
+	Rollout            Mechanism = "rollout"
 	ExecutableFrontend Mechanism = "executable-frontend"
 	InputProjection    Mechanism = "input-projection"
 	GuidanceProjection Mechanism = "guidance-projection"

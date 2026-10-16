@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
+
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"golang.org/x/term"
 )
@@ -44,7 +46,7 @@ func RunLiveDiff(ctx context.Context, args []string, stdin, stdout, stderr *os.F
 		*workspace, err = filepath.Abs(*workspace)
 	}
 	if err == nil {
-		*workspace, err = canonicalInspectionWorkspace(*workspace)
+		*workspace, err = query.Workspace(*workspace)
 	}
 	if err != nil {
 		return fail(err)

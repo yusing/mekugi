@@ -124,7 +124,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testHistory(), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	t.Parallel()
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testHistory(), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}

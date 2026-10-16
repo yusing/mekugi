@@ -4,7 +4,10 @@ package moduletest
 
 import (
 	"context"
+	"errors"
 	"testing"
+
+	"github.com/yusing/mekugi/contracts/inspection"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
@@ -13,6 +16,8 @@ import (
 )
 
 type Scripted struct {
+	ReadRollout          binding.RolloutReader
+	RolloutRegistrations int
 	binding.Registry
 	Capabilities map[capability.Mechanism]capability.Result
 }
@@ -21,7 +26,7 @@ func (s *Scripted) Capability(mechanism capability.Mechanism) capability.Result 
 	if result, ok := s.Capabilities[mechanism]; ok {
 		return result
 	}
-	if mechanism == capability.ExecutableFrontend || mechanism == capability.InputProjection || mechanism == capability.GuidanceProjection || mechanism == capability.ThreadNaming || mechanism == capability.ShellApproval {
+	if mechanism == capability.Rollout || mechanism == capability.ExecutableFrontend || mechanism == capability.InputProjection || mechanism == capability.GuidanceProjection || mechanism == capability.ThreadNaming || mechanism == capability.ShellApproval {
 		return capability.Result{State: capability.Available, Reason: "scripted binding registration"}
 	}
 	return capability.Result{State: capability.Unknown, Reason: "not scripted"}
@@ -71,4 +76,30 @@ func BindCommand[S any](definition command.Definition[S], service S) command.Con
 			return definition.Run(service, ctx, request)
 		},
 	}
+}
+
+func (s *Scripted) Rollout(attach func(binding.RolloutReader) error) error {
+	if attach == nil {
+		return errors.New("missing rollout consumer")
+	}
+	s.RolloutRegistrations++
+	return attach(func(ctx context.Context, path string, observe func(binding.RolloutEvent) error) (binding.Rollout, error) {
+		if s.ReadRollout == nil {
+			return binding.Rollout{}, errors.New("rollout read is not scripted")
+		}
+		return s.ReadRollout(ctx, path, observe)
+	})
+}
+
+func BindInspection[S any](definition inspection.Definition[S], service S) inspection.Contribution {
+	var contribution inspection.Contribution
+	if definition.NewAX != nil {
+		contribution.NewAX = func() inspection.AXCollector { return definition.NewAX(service) }
+	}
+	if definition.ProviderUsage != nil {
+		contribution.ProviderUsage = func(ctx context.Context, path string, filter inspection.UsageFilter) (map[string]inspection.Usage, error) {
+			return definition.ProviderUsage(service, ctx, path, filter)
+		}
+	}
+	return contribution
 }
