@@ -306,8 +306,9 @@ Repeated replies quote input again only after another message intervenes, not
 after tools/reasoning/progress. Question replies link to the Asked record as
 `re: your answer`, without a duplicate user band. Missing target identity leaves
 plain text, never fabricated navigation. Hover/click identifies and highlights
-the exact destination. A child turn without a final answer promotes only that
-turn's last message. Authenticated recipient-input observations supply bodies
+the exact destination. Live, restored and replayed child turns preserve explicit
+final answers; otherwise only the turn's last nonblank message is promoted.
+Authenticated recipient-input observations supply bodies
 missing from host notifications exactly once, bounded to 64 KiB with explicit
 clipping; legacy envelopes never enter provider output.
 

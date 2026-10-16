@@ -188,13 +188,17 @@ func (s *State) item(e observation.TextEvent, main, completed bool) []observatio
 			updates = append(updates, u)
 		}
 	case "agentMessage":
-		if item.AsyncQuestion || !main && (!completed || strings.TrimSpace(item.Text) == "") {
+		if !main && !completed {
+			return updates
+		}
+		u.Kind = messageKind(item, main)
+		if u.Kind == "" {
 			return updates
 		}
 		if !main {
 			u.Phase = "message"
-			if item.Final {
-				u.Kind, u.Phase = "final", "item/completed"
+			if u.Kind == "final" {
+				u.Phase = "item/completed"
 				s.finals[item.Ref.ThreadID] = true
 			}
 			s.messages[item.Ref.ThreadID] = u
@@ -208,11 +212,22 @@ func (s *State) item(e observation.TextEvent, main, completed bool) []observatio
 	return updates
 }
 
+func messageKind(item observation.TextItem, main bool) string {
+	if item.AsyncQuestion || !main && strings.TrimSpace(item.Text) == "" {
+		return ""
+	}
+	if !main && item.Final {
+		return "final"
+	}
+	return "text"
+}
+
 // History projects one retained turn without reading or changing active state.
 // Older pages cannot promote commentary whose later items are not in the page.
 func History(items []observation.TextEvent, main, promote bool) map[string]observation.TextUpdate {
 	result := make(map[string]observation.TextUpdate)
 	last := ""
+	hasFinal := false
 	for _, e := range items {
 		i := e.Item
 		u := observation.TextUpdate{Ref: i.Ref, Kind: "text", Phase: string(e.Kind), Text: i.Text, Status: i.Status, Observed: e.At}
@@ -223,12 +238,11 @@ func History(items []observation.TextEvent, main, promote bool) map[string]obser
 				continue
 			}
 		case "agentMessage":
-			if i.AsyncQuestion {
+			u.Kind = messageKind(i, main)
+			if u.Kind == "" {
 				continue
 			}
-			if !main && i.Final {
-				u.Kind = "final"
-			}
+			hasFinal = hasFinal || u.Kind == "final"
 			last = i.Ref.ItemID
 		case "userMessage":
 			if !main {
@@ -239,7 +253,7 @@ func History(items []observation.TextEvent, main, promote bool) map[string]obser
 		}
 		result[i.Ref.ItemID] = u
 	}
-	if !main && promote && last != "" {
+	if !main && promote && !hasFinal && last != "" {
 		u := result[last]
 		u.Kind = "final"
 		result[last] = u
