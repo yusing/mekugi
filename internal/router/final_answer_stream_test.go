@@ -84,7 +84,7 @@ func TestFinalAnswerStreamCodexCompletion(t *testing.T) {
 				var output bytes.Buffer
 				state, err := copySSETransformed(&output, strings.NewReader(finalAnswerTestWire(append(slices.Clone(answer), terminal))),
 					transform, &responseHooks{onUsage: transform.observeResponseUsage})
-				if err != nil || state != responseTerminalCompleted {
+				if err != nil || state != responses.TerminalCompleted {
 					t.Fatalf("state=%v, error=%v", state, err)
 				}
 				events := finalAnswerTestPayloads(output.String())
@@ -196,7 +196,7 @@ func TestFinalAnswerStreamFlushesWithoutUsage(t *testing.T) {
 			}
 			var output bytes.Buffer
 			// Include a real downstream transform to exercise composed draining.
-			chain := composeResponseTransformers(transform, &webSocketCountingTransform{})
+			chain := codexresponses.Compose(transform, &webSocketCountingTransform{})
 			_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
 			if stop == "read_error" {
 				if !errors.Is(err, failure) {
@@ -225,7 +225,7 @@ func (r finalAnswerErrorReader) Read([]byte) (int, error) { return 0, r.err }
 func TestFinalAnswerStreamLargeDeltaStreamsUnchanged(t *testing.T) {
 	t.Parallel()
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
-	event := mustTestJSON(t, map[string]any{"type": "response.output_text.delta", "item_id": "answer", "delta": strings.Repeat("x", upstreamJSONBufferBytes+1)})
+	event := mustTestJSON(t, map[string]any{"type": "response.output_text.delta", "item_id": "answer", "delta": strings.Repeat("x", codexresponses.MaxResponseBytes+1)})
 	visible, err := transform.TransformSSE(event)
 	if err != nil || len(visible) != 1 || !bytes.Equal(visible[0], event) || transform.finalAnswer.disabled {
 		t.Fatalf("large delta was withheld or changed: events=%d, disabled=%v, err=%v", len(visible), transform.finalAnswer.disabled, err)

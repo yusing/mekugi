@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"strings"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
+
 	"github.com/yusing/mekugi/providers/openai"
 
 	"github.com/yusing/mekugi/contracts/inference"
@@ -51,7 +54,7 @@ func namingCompletion(provider responseProvider, accounting *threadUsage, thread
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
 			return "", errors.New("session title request rejected by upstream")
 		}
-		stream, err := prepareUpstreamBody(response, true)
+		stream, err := codexresponses.PrepareBody(response, true)
 		if err != nil {
 			return "", err
 		}
@@ -64,7 +67,7 @@ func namingCompletion(provider responseProvider, accounting *threadUsage, thread
 		if err != nil {
 			return "", err
 		}
-		if state != responseTerminalCompleted {
+		if state != responseevents.TerminalCompleted {
 			return "", errors.New("session title request did not complete")
 		}
 		return collector.text, nil

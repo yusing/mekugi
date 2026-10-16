@@ -59,7 +59,7 @@ type requestAttempt struct {
 
 	response          *http.Response
 	streamResponse    bool
-	responseTransform responseTransformer
+	responseTransform codexresponses.Transformer
 	finishUsage       bool
 }
 
@@ -376,7 +376,7 @@ func (a *requestAttempt) forward() error {
 		}
 		a.mekugiTransform.ctx = ctx
 	}
-	a.streamResponse, err = prepareUpstreamBody(a.response, a.request.Stream)
+	a.streamResponse, err = codexresponses.PrepareBody(a.response, a.request.Stream)
 	if err != nil {
 		a.response.Body.Close()
 		return fmt.Errorf("execute request: inspect upstream response: %w", err)
@@ -388,10 +388,10 @@ func (a *requestAttempt) prepareResponse() error {
 	a.hooks.upstreamStatus = a.response.StatusCode
 	if a.response.StatusCode >= http.StatusOK && a.response.StatusCode < http.StatusMultipleChoices {
 		if a.bridge != nil {
-			a.responseTransform = composeResponseTransformers(a.responseTransform, a.bridge)
+			a.responseTransform = codexresponses.Compose(a.responseTransform, a.bridge)
 		}
 		if a.mekugiTransform != nil {
-			a.responseTransform = composeResponseTransformers(a.responseTransform, a.mekugiTransform)
+			a.responseTransform = codexresponses.Compose(a.responseTransform, a.mekugiTransform)
 		}
 	}
 	if a.mekugiTransform != nil && a.responseTransform == nil {
@@ -477,7 +477,7 @@ func (a *requestAttempt) deliver() error {
 		if _, err := a.executor.output.Write(stagedBody); err != nil {
 			return fmt.Errorf("execute request: copy upstream response: %w", err)
 		}
-		confirmResponseDelivery(a.responseTransform, stagedBody)
+		codexresponses.ConfirmDelivery(a.responseTransform, stagedBody)
 	} else {
 		var err error
 		a.finalization.failurePhase = requestFailureInspectResponse
@@ -506,11 +506,11 @@ func (a *requestAttempt) deliver() error {
 	case a.response.StatusCode < http.StatusOK || a.response.StatusCode >= http.StatusMultipleChoices:
 		a.finalization.observation.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
-	case a.finalization.upstreamTerminalState == responseTerminalCompleted ||
-		a.finalization.upstreamTerminalState == responseTerminalSteered ||
-		a.finalization.upstreamTerminalState == responseTerminalInterrupted:
+	case a.finalization.upstreamTerminalState == responses.TerminalCompleted ||
+		a.finalization.upstreamTerminalState == responses.TerminalSteered ||
+		a.finalization.upstreamTerminalState == responses.TerminalInterrupted:
 		a.finalization.observation.outcome = requestOutcomeCompleted
-	case a.finalization.upstreamTerminalState == responseTerminalFailed:
+	case a.finalization.upstreamTerminalState == responses.TerminalFailed:
 		a.finalization.observation.outcome = requestOutcomeFailed
 		a.finalization.failurePhase = requestFailureTerminalValidation
 	default:
@@ -523,7 +523,7 @@ func (a *requestAttempt) deliver() error {
 func (a *requestAttempt) observeTitleSuccess() {
 	if a.metadataValid && a.metadata.RequestKind == responses.Turn && !a.prewarm &&
 		a.response.StatusCode >= 200 && a.response.StatusCode < 300 &&
-		a.finalization.upstreamTerminalState == responseTerminalCompleted {
+		a.finalization.upstreamTerminalState == responses.TerminalCompleted {
 		a.executor.titleGenerator.completed(a.threadID, a.headers)
 	}
 }
@@ -548,7 +548,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 				"error": map[string]any{"code": "invalid_prompt", "message": a.finalization.diagnosticMessage},
 			},
 		})
-		_, deliveryErr := writeSSEEvent(a.executor.output, responseSSELines(payload, "\n"), "\n", nil, nil)
+		deliveryErr := codexresponses.WriteEvent(a.executor.output, payload)
 		requestErr = errors.Join(requestErr, deliveryErr)
 		if deliveryErr == nil && a.executor.issues != nil {
 			a.executor.issues.mu.Lock()

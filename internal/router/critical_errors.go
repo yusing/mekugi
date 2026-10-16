@@ -15,6 +15,9 @@ import (
 	"sync"
 	"syscall"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
+
 	"github.com/yusing/mekugi/libraries/httptransport"
 
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
@@ -195,9 +198,9 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 			case errors.Is(err, errUpstreamResponseWithoutTerminal):
 				state := f.upstreamTerminalState.String()
 				diagnostic = &criticalDiagnosticError{code: "missing_upstream_terminal:" + state, summary: "the upstream response ended without a completed or failed terminal state; observed state was " + state}
-			case errors.Is(err, errResponseWrite), f.failurePhase == requestFailureWriteResponse:
+			case errors.Is(err, codexresponses.ErrWrite), f.failurePhase == requestFailureWriteResponse:
 				diagnostic = &criticalDiagnosticError{code: "downstream_response_write", summary: "the downstream response could not be written", distinct: true}
-			case f.failurePhase == requestFailureTerminalValidation && err == nil && f.upstreamTerminalState != responseTerminalUnknown:
+			case f.failurePhase == requestFailureTerminalValidation && err == nil && f.upstreamTerminalState != responseevents.TerminalUnknown:
 				diagnostic = &criticalDiagnosticError{code: "upstream_" + f.upstreamTerminalState.String(), summary: "the upstream response reported terminal state " + f.upstreamTerminalState.String()}
 			}
 			message += " Failure phase: " + phase + "."

@@ -643,7 +643,7 @@ type requestFinalization struct {
 	providerFailure       error
 	diagnosticReference   string
 	diagnosticCode        string
-	upstreamTerminalState responseTerminalState
+	upstreamTerminalState responses.TerminalState
 }
 
 func (f *requestFinalization) finish(
@@ -657,7 +657,7 @@ func (f *requestFinalization) finish(
 		switch {
 		case errors.Is(requestErr, context.DeadlineExceeded):
 			f.observation.outcome = requestOutcomeTimedOut
-		case errors.Is(requestErr, errDownstreamDisconnected),
+		case errors.Is(requestErr, codexresponses.ErrDownstreamDisconnected),
 			errors.Is(requestErr, context.Canceled) && errors.Is(ctx.Err(), context.Canceled):
 			if errors.Is(requestErr, httptransport.ErrStreamIdleTimeout) {
 				f.failurePhase = requestFailureInspectResponse
@@ -692,9 +692,9 @@ func (f *requestFinalization) classifyCopyError(err error) {
 	switch {
 	case errors.Is(err, httptransport.ErrStreamIdleTimeout):
 		f.failurePhase = requestFailureStreamIdleTimeout
-	case errors.Is(err, errResponseTransform):
+	case errors.Is(err, codexresponses.ErrTransform):
 		f.failurePhase = requestFailureTransform
-	case errors.Is(err, errResponseWrite):
+	case errors.Is(err, codexresponses.ErrWrite):
 		f.failurePhase = requestFailureWriteResponse
 	default:
 		f.failurePhase = requestFailureInspectResponse

@@ -174,7 +174,7 @@ func TestRequestAttemptFinishDoesNotDuplicateDeliveredTerminal(t *testing.T) {
 		`{"type":"response.created","response":{"id":"already-failed-response","status":"in_progress"}}`,
 		`{"type":"response.failed","response":{"id":"already-failed-response","status":"failed","error":{"code":"invalid_prompt","message":"prior terminal failure"}}}`,
 	} {
-		if _, err := writeSSEEvent(output, responseSSELines([]byte(event), "\n"), "\n", nil, nil); err != nil {
+		if err := codexresponses.WriteEvent(output, []byte(event)); err != nil {
 			t.Fatal(err)
 		}
 	}

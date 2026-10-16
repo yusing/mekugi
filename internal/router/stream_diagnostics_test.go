@@ -287,7 +287,7 @@ func TestStreamDiagnosticsHTTPBodyEnd(t *testing.T) {
 			}
 			d := &streamDiagnostics{}
 			state, err := copyUpstreamBodyTransformed(io.Discard, response, true, nil, &responseHooks{streamDiagnostics: d})
-			if state != responseTerminalPending {
+			if state != responses.TerminalPending {
 				t.Fatalf("incomplete response accepted: %v", state)
 			}
 			if mode == "truncated" {

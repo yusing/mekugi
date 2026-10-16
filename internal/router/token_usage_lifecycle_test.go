@@ -126,7 +126,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer conn.CloseNow()
-				conn.SetReadLimit(upstreamJSONBufferBytes)
+				conn.SetReadLimit(codexresponses.MaxResponseBytes)
 				socketWrite(t, ctx, conn, request.Fields)
 				for {
 					event := socketRead(t, ctx, conn)
@@ -402,7 +402,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
-	conn.SetReadLimit(upstreamJSONBufferBytes)
+	conn.SetReadLimit(codexresponses.MaxResponseBytes)
 	request := serverRequest(t, func(f map[string]any) {
 		f["model"] = configured
 		f["service_tier"] = requestedTier

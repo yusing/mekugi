@@ -72,6 +72,20 @@ Transport receives prepared bytes and headers and does not reinterpret Codex
 policy. The [OpenAI provider](../../../providers/openai/SPEC.md) owns credential
 validation, model-catalog exchange, pooling, retries, and upstream connections.
 
+## Response delivery
+
+The backend preserves JSON and SSE framing through ordered response transforms.
+Stream detection replays inspected bytes; JSON responses are bounded to 64 MiB.
+SSE retains comments, metadata fields, multiline payloads and line endings, and
+stops at a terminal event without waiting for provider EOF. A downstream
+disconnect remains cancellation even when its error also wraps EOF.
+
+Raw payload observations precede transformation. Streaming delivery confirmation
+follows successful writes and flushes. Non-stream callers stage and validate the
+result before exposing headers or confirming delivery. The application owns body
+closure, provider-failure reporting, accounting and byte-receipt diagnostics;
+these responsibilities do not change protocol framing or tool execution.
+
 ## Ownership and acceptance
 
 Each translated request owns its immutable tool mapping and stream state. The

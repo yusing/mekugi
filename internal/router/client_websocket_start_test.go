@@ -171,7 +171,7 @@ func TestProviderWebSocketAncillaryPrefixBudget(t *testing.T) {
 			return
 		}
 		sends.Add(1)
-		payload := []byte(`{"type":"codex.response.metadata","padding":"` + strings.Repeat("x", maxUpstreamSniffBytes) + `"}`)
+		payload := []byte(`{"type":"codex.response.metadata","padding":"` + strings.Repeat("x", 64<<10) + `"}`)
 		_ = conn.Write(r.Context(), websocket.MessageText, payload)
 		_, _, _ = conn.Read(r.Context())
 	}))

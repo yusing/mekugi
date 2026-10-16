@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 
@@ -366,7 +368,7 @@ func TestProviderWebSocketNonstreamReconstructsOutput(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &terminal); err != nil {
 		t.Fatal(err)
 	}
-	if state != responseTerminalCompleted || len(terminal.Output) != 2 || terminal.Output[0].Type != "message" || terminal.Output[1].Type != "function_call" || transform.jsonCalls != 1 || transform.streamCalls != 0 || transform.finishes != 1 || usage.InputTokens != 5 {
+	if state != responseevents.TerminalCompleted || len(terminal.Output) != 2 || terminal.Output[0].Type != "message" || terminal.Output[1].Type != "function_call" || transform.jsonCalls != 1 || transform.streamCalls != 0 || transform.finishes != 1 || usage.InputTokens != 5 {
 		t.Fatalf("nonstream contract failed: %s %+v %+v", output.String(), transform, usage)
 	}
 }
@@ -694,7 +696,7 @@ func TestProviderWebSocketAncillaryEventsAndEventOwnedCompletion(t *testing.T) {
 	}
 	for _, kind := range []string{"unknown.event", "codex.unknown", "responsesapi.unknown"} {
 		payload := mustTestJSON(t, map[string]string{"type": kind})
-		if state := observeResponseTerminal(payload, true); state != responseTerminalInvalid {
+		if state := responseevents.ObserveTerminal(payload, true); state != responseevents.TerminalInvalid {
 			t.Fatalf("unknown event %q became valid: %v", kind, state)
 		}
 	}

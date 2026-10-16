@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
+
 	"github.com/yusing/mekugi/providers/opencode"
 )
 
@@ -72,7 +74,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 		body := []byte(`{"type":"error","error":{"message":"` + message + `"}}`)
 		issues.record(&requestFinalization{
 			sessionID: "same", failurePhase: requestFailureTerminalValidation,
-			upstreamTerminalState: responseTerminalFailed,
+			upstreamTerminalState: responseevents.TerminalFailed,
 			observation:           requestObservation{outcome: requestOutcomeFailed},
 			providerFailure:       terminalProviderError(body, true),
 		}, nil)

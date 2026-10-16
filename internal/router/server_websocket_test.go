@@ -49,7 +49,7 @@ func providerSocketWrite(ctx context.Context, conn *websocket.Conn, value any) e
 func providerSocketRead(ctx context.Context, conn *websocket.Conn) (map[string]json.RawMessage, error) {
 	// Protocol fixtures include the full instruction/tool catalog. Use the
 	// production budgets rather than the WebSocket library's 32 KiB default.
-	conn.SetReadLimit(max(responsesRequestBufferBytes, upstreamJSONBufferBytes))
+	conn.SetReadLimit(max(responsesRequestBufferBytes, codexresponses.MaxResponseBytes))
 	_, body, err := conn.Read(ctx)
 	if err != nil {
 		return nil, err

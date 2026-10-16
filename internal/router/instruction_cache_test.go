@@ -36,7 +36,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		upstream.SetReadLimit(upstreamJSONBufferBytes)
+		upstream.SetReadLimit(codexresponses.MaxResponseBytes)
 		defer upstream.CloseNow()
 		var warmedTools json.RawMessage
 		for index, id := range ids {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/httptransport"
 )
 
@@ -23,7 +25,7 @@ func requestCancellationCause(execution context.Context, err error) string {
 		return "router_shutdown"
 	case errors.Is(err, context.DeadlineExceeded) && errors.Is(err, errResponseStartTimeout):
 		return "response_start_timeout"
-	case errors.Is(err, errDownstreamDisconnected):
+	case errors.Is(err, codexresponses.ErrDownstreamDisconnected):
 		return "downstream_disconnected"
 	case errors.Is(err, context.Canceled) && errors.Is(execution.Err(), context.Canceled):
 		return "downstream_context_canceled"

@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -69,7 +71,7 @@ func TestResponsesWebSocketTerminalOutputBudget(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			history := &webSocketHistory{output: []json.RawMessage{streamed}}
-			initial := upstreamJSONBufferBytes - tc.remaining
+			initial := codexresponses.MaxResponseBytes - tc.remaining
 			s := &responsesWebSocket{downstream: conn, retainedBytes: initial, histories: make(map[string]*webSocketHistory)}
 			output := &webSocketOutput{exchange: &webSocketExchange{session: s, ctx: t.Context(), history: history}}
 			err := output.message(responses.MustMarshalJSON(map[string]any{"type": "response.completed", "response": map[string]any{"id": "done", "output": tc.output}}))

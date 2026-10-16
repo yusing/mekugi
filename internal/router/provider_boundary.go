@@ -19,7 +19,7 @@ const providerNoHostedSearchInstruction = "\nOpenAI-hosted web search is unavail
 func providerCodecDiagnostics(name, subject, prefix, contentCode string) codexresponses.Diagnostics {
 	return codexresponses.Diagnostics{
 		Name: name, Subject: subject, Prefix: prefix, ContentErrorCode: contentCode,
-		BufferBytes: upstreamJSONBufferBytes,
+		BufferBytes: codexresponses.MaxResponseBytes,
 		Error: func(code, summary, detail string) error {
 			if detail == "" {
 				return staticCriticalDiagnostic(code, summary)

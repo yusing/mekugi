@@ -599,7 +599,7 @@ func TestStreamIdleTimeoutPausesDuringDownstreamBackpressure(t *testing.T) {
 
 		downstream := &serverBlockingWriter{blocked: make(chan struct{}), release: make(chan struct{})}
 		type copyResult struct {
-			state responseTerminalState
+			state responses.TerminalState
 			err   error
 		}
 		result := make(chan copyResult, 1)
@@ -629,7 +629,7 @@ func TestStreamIdleTimeoutPausesDuringDownstreamBackpressure(t *testing.T) {
 		if got.err != nil {
 			t.Fatal(got.err)
 		}
-		if got.state != responseTerminalCompleted {
+		if got.state != responses.TerminalCompleted {
 			t.Fatalf("terminal state = %s, want completed", got.state)
 		}
 	})
@@ -643,7 +643,7 @@ func TestStreamIdleTimeoutResetsOnPartialSSEBytes(t *testing.T) {
 		defer func() { _ = upstreamWriter.Close() }()
 
 		type copyResult struct {
-			state responseTerminalState
+			state responses.TerminalState
 			err   error
 		}
 		result := make(chan copyResult, 1)
@@ -669,7 +669,7 @@ func TestStreamIdleTimeoutResetsOnPartialSSEBytes(t *testing.T) {
 		if got.err != nil {
 			t.Fatal(got.err)
 		}
-		if got.state != responseTerminalCompleted {
+		if got.state != responses.TerminalCompleted {
 			t.Fatalf("terminal state = %s, want completed", got.state)
 		}
 	})
@@ -725,22 +725,22 @@ func TestCopySSETransformedKeepsMalformedStateInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state != responseTerminalInvalid {
+	if state != responses.TerminalInvalid {
 		t.Fatalf("terminal state = %v, want invalid", state)
 	}
 
 	for _, test := range []struct {
 		name              string
-		current, observed responseTerminalState
+		current, observed responses.TerminalState
 	}{
-		{name: "invalid then completed", current: responseTerminalInvalid, observed: responseTerminalCompleted},
-		{name: "invalid then failed", current: responseTerminalInvalid, observed: responseTerminalFailed},
-		{name: "completed then invalid", current: responseTerminalCompleted, observed: responseTerminalInvalid},
-		{name: "failed then invalid", current: responseTerminalFailed, observed: responseTerminalInvalid},
+		{name: "invalid then completed", current: responses.TerminalInvalid, observed: responses.TerminalCompleted},
+		{name: "invalid then failed", current: responses.TerminalInvalid, observed: responses.TerminalFailed},
+		{name: "completed then invalid", current: responses.TerminalCompleted, observed: responses.TerminalInvalid},
+		{name: "failed then invalid", current: responses.TerminalFailed, observed: responses.TerminalInvalid},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := mergeResponseTerminalState(test.current, test.observed); got != responseTerminalInvalid {
-				t.Fatalf("mergeResponseTerminalState() = %v, want invalid", got)
+			if got := responses.MergeTerminal(test.current, test.observed); got != responses.TerminalInvalid {
+				t.Fatalf("responses.MergeTerminal() = %v, want invalid", got)
 			}
 		})
 	}
@@ -1396,7 +1396,7 @@ func TestProviderClientCancelsRequestWithCodexRequestHeaders(t *testing.T) {
 
 func TestCopyJSONTransformedRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
 	t.Parallel()
-	_, err := copyJSONTransformed(io.Discard, io.LimitReader(serverRepeatingReader{}, upstreamJSONBufferBytes+1), nil, nil)
+	_, err := codexresponses.CopyBody(io.Discard, io.LimitReader(serverRepeatingReader{}, codexresponses.MaxResponseBytes+1), false, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "router buffer budget") {
 		t.Fatalf("error = %v, want router buffer budget rejection", err)
 	}

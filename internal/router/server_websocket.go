@@ -154,8 +154,6 @@ func webSocketMessageReadError(ctx context.Context, message webSocketMessage) er
 
 // A peer disconnect can reach the writer before the reader cancels the
 // session. Classify it by its transport cause, not goroutine scheduling.
-var errDownstreamDisconnected = errors.New("downstream disconnected")
-
 func downstreamDisconnectError(err error) error {
 	code := websocket.CloseStatus(err)
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
@@ -163,7 +161,7 @@ func downstreamDisconnectError(err error) error {
 		errors.Is(err, syscall.ECONNRESET) ||
 		code == websocket.StatusNormalClosure || code == websocket.StatusGoingAway ||
 		code == websocket.StatusAbnormalClosure {
-		return errors.Join(errDownstreamDisconnected, err)
+		return errors.Join(codexresponses.ErrDownstreamDisconnected, err)
 	}
 	return err
 }
@@ -265,7 +263,7 @@ func (s *responsesWebSocket) retain(items []json.RawMessage) error {
 	for _, item := range items {
 		s.retainedBytes += len(item)
 	}
-	if s.retainedBytes > upstreamJSONBufferBytes {
+	if s.retainedBytes > codexresponses.MaxResponseBytes {
 		return errors.New("responses WebSocket history exceeds the router buffer budget")
 	}
 	return nil
@@ -479,7 +477,7 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	}
 	if !automatic {
 		s.retainedBytes += len(command)
-		if s.retainedBytes > upstreamJSONBufferBytes {
+		if s.retainedBytes > codexresponses.MaxResponseBytes {
 			return errors.New("responses WebSocket history exceeds the router buffer budget")
 		}
 	}
@@ -654,7 +652,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 			return nil, fmt.Errorf("connect provider WebSocket: %w", dialErr)
 		}
 		s.upstream = conn
-		conn.SetReadLimit(upstreamJSONBufferBytes)
+		conn.SetReadLimit(codexresponses.MaxResponseBytes)
 		responseHeaders = response.Header.Clone()
 		s.providerMessages = readResponsesWebSocket(s.ctx, conn, nil)
 	}
@@ -711,7 +709,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 				}
 				continue
 			}
-			if isResponseAncillaryEvent(responseevents.StringField(fields, "type")) {
+			if responseevents.Kind(responseevents.StringField(fields, "type")).Ancillary() {
 				e.streamDiagnostics.observe(message.body)
 				e.observation.Message(message.body)
 				e.clientObservation.Message(message.body)
@@ -805,7 +803,7 @@ func (w *webSocketOutput) Write(data []byte) (int, error) {
 		if end < 0 {
 			return len(data), nil
 		}
-		payload := ssePayload(strings.SplitAfter(string(raw[:end]), "\n"))
+		payload := codexresponses.SSEPayload(strings.SplitAfter(string(raw[:end]), "\n"))
 		w.buffer.Next(end + 2)
 		if len(payload) == 0 {
 			continue

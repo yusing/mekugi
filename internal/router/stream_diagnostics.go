@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/providers/openai"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -285,10 +287,10 @@ func (d *streamDiagnostics) copyStopped(err error) {
 		return
 	}
 	switch {
-	case errors.Is(err, errResponseWrite):
+	case errors.Is(err, codexresponses.ErrWrite):
 		d.CopyStop = "downstream_write_error"
 		d.writeStopped(err)
-	case errors.Is(err, errResponseTransform):
+	case errors.Is(err, codexresponses.ErrTransform):
 		d.CopyStop = "translation_error"
 	case err != nil:
 		d.CopyStop = "read_error"

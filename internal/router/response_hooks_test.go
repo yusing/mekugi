@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestResponseHooksProviderUsage(t *testing.T) {
@@ -15,7 +17,7 @@ func TestResponseHooksProviderUsage(t *testing.T) {
 		`{"type":"response.completed","response":{"output":[],"usage":{"input_tokens":2,"output_tokens":1}}}`,
 		`[DONE]`,
 	} {
-		hooks.observe([]byte(payload), true)
+		hooks.Observe([]byte(payload), true)
 	}
 	if len(observed) != 1 || observed[0].InputTokens != 2 || observed[0].OutputTokens != 1 {
 		t.Fatalf("provider usage = %+v", observed)
@@ -26,7 +28,7 @@ func TestResponseHooksPreserveSSEHeartbeat(t *testing.T) {
 	const wire = ": ping\n\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[]}}\n\n"
 	var output bytes.Buffer
 	state, err := copySSETransformed(&output, strings.NewReader(wire), nil, &responseHooks{})
-	if err != nil || state != responseTerminalCompleted || output.String() != wire {
+	if err != nil || state != responseevents.TerminalCompleted || output.String() != wire {
 		t.Fatalf("state=%v error=%v output=%q", state, err, output.String())
 	}
 }

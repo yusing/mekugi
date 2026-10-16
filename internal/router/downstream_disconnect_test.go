@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -24,7 +26,7 @@ func TestDownstreamEOFDuringResponseSniffing(t *testing.T) {
 		Body:   io.NopCloser(finalAnswerErrorReader{disconnected}),
 	}
 	defer response.Body.Close()
-	if _, err := prepareUpstreamBody(response, true); !errors.Is(err, errDownstreamDisconnected) {
+	if _, err := codexresponses.PrepareBody(response, true); !errors.Is(err, codexresponses.ErrDownstreamDisconnected) {
 		t.Fatalf("response sniffing lost disconnect: %v", err)
 	}
 }
@@ -51,7 +53,7 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			for _, started := range []bool{false, true} {
 				// The reader has not canceled the context yet.
-				err := fmt.Errorf("%w: %w", errResponseWrite, downstreamDisconnectError(fmt.Errorf("private address: %w", test.err)))
+				err := fmt.Errorf("%w: %w", codexresponses.ErrWrite, downstreamDisconnectError(fmt.Errorf("private address: %w", test.err)))
 				if !errors.Is(err, test.err) {
 					t.Fatal("lost original cause")
 				}
@@ -139,13 +141,13 @@ func TestHTTPDownstreamDisconnectFinalization(t *testing.T) {
 					if !errors.Is(err, original) || !errors.Is(err, test.err) {
 						t.Fatalf("lost original error: %v", err)
 					}
-					if errors.Is(err, errDownstreamDisconnected) != test.disconnected {
-						t.Fatalf("disconnect classification=%v, want %v: %v", errors.Is(err, errDownstreamDisconnected), test.disconnected, err)
+					if errors.Is(err, codexresponses.ErrDownstreamDisconnected) != test.disconnected {
+						t.Fatalf("disconnect classification=%v, want %v: %v", errors.Is(err, codexresponses.ErrDownstreamDisconnected), test.disconnected, err)
 					}
 					if !requestResponseStarted(writer) || writer.statusCode != http.StatusOK {
 						t.Fatalf("write/flush did not commit response: %+v", writer)
 					}
-					requestErr := fmt.Errorf("%w: %w", errResponseWrite, err)
+					requestErr := fmt.Errorf("%w: %w", codexresponses.ErrWrite, err)
 					// The actual failed operation commits HTTP output. Also check
 					// finalization when this error reaches an uncommitted output.
 					for _, output := range []*trackedResponseWriter{{ResponseWriter: httptest.NewRecorder()}, writer} {
@@ -229,12 +231,12 @@ func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = output.Write(event)
-	if !errors.Is(err, errDownstreamDisconnected) || ctx.Err() != nil {
+	if !errors.Is(err, codexresponses.ErrDownstreamDisconnected) || ctx.Err() != nil {
 		t.Fatalf("write error=%v, context=%v", err, ctx.Err())
 	}
 	f := &requestFinalization{}
 	issues := NewCriticalErrors()
-	f.finish(ctx, errors.Join(errResponseWrite, err), output, issues)
+	f.finish(ctx, errors.Join(codexresponses.ErrWrite, err), output, issues)
 	if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Pending()) != 0 {
 		t.Fatalf("disconnect produced outcome %v, notices %v", f.observation.outcome, issues.Pending())
 	}
@@ -243,7 +245,7 @@ func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
 func TestDownstreamWriteDiagnostics(t *testing.T) {
 	original := websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private reason"}
 	d := &streamDiagnostics{ReadOrigin: "upstream", ReadTermination: "upstream_eof"}
-	d.copyStopped(errors.Join(errResponseWrite, downstreamDisconnectError(original)))
+	d.copyStopped(errors.Join(codexresponses.ErrWrite, downstreamDisconnectError(original)))
 	if d.WriteTermination != "downstream_websocket_close_1001" || d.WriteWebSocketCloseCode != 1001 {
 		t.Fatalf("missing write cause: %+v", d)
 	}

@@ -1,19 +1,21 @@
-package router
+package responses
+
+// Source: internal/router/response_transform.go:1:65@5f1db30f ordered transformation.
 
 import "errors"
 
-type responseTransformer interface {
+type Transformer interface {
 	TransformJSON([]byte) ([]byte, error)
 	TransformSSE([]byte) ([][]byte, error)
 	Finish(bool) error
 }
 
-type responseTransformerChain struct {
-	first  responseTransformer
-	second responseTransformer
+type transformerChain struct {
+	first  Transformer
+	second Transformer
 }
 
-func (chain responseTransformerChain) TransformJSON(payload []byte) ([]byte, error) {
+func (chain transformerChain) TransformJSON(payload []byte) ([]byte, error) {
 	payload, err := chain.first.TransformJSON(payload)
 	if err != nil {
 		return nil, err
@@ -21,7 +23,7 @@ func (chain responseTransformerChain) TransformJSON(payload []byte) ([]byte, err
 	return chain.second.TransformJSON(payload)
 }
 
-func (chain responseTransformerChain) TransformSSE(payload []byte) ([][]byte, error) {
+func (chain transformerChain) TransformSSE(payload []byte) ([][]byte, error) {
 	payloads, err := chain.first.TransformSSE(payload)
 	if err != nil {
 		return nil, err
@@ -37,29 +39,29 @@ func (chain responseTransformerChain) TransformSSE(payload []byte) ([][]byte, er
 	return transformed, nil
 }
 
-func (chain responseTransformerChain) Finish(streamEvent bool) error {
+func (chain transformerChain) Finish(streamEvent bool) error {
 	return errors.Join(chain.first.Finish(streamEvent), chain.second.Finish(streamEvent))
 }
 
 // Delivery observers run only after the transport writes and flushes an event.
-func confirmResponseDelivery(transformer responseTransformer, payload []byte) {
+func ConfirmDelivery(transformer Transformer, payload []byte) {
 	if observer, ok := transformer.(interface{ Delivered([]byte) }); ok {
 		observer.Delivered(payload)
 	}
 }
 
-func (chain responseTransformerChain) Delivered(payload []byte) {
-	confirmResponseDelivery(chain.first, payload)
-	confirmResponseDelivery(chain.second, payload)
+func (chain transformerChain) Delivered(payload []byte) {
+	ConfirmDelivery(chain.first, payload)
+	ConfirmDelivery(chain.second, payload)
 }
 
-func composeResponseTransformers(first, second responseTransformer) responseTransformer {
+func Compose(first, second Transformer) Transformer {
 	switch {
 	case first == nil:
 		return second
 	case second == nil:
 		return first
 	default:
-		return responseTransformerChain{first: first, second: second}
+		return transformerChain{first: first, second: second}
 	}
 }

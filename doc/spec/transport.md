@@ -145,3 +145,7 @@ WebSocket inference, HTTP fallback, retry, and upstream connection lifetime.
 [Codex request shaping](../../backends/codex/responses/SPEC.md#openai-request-shaping)
 owns headers, full-input framing, and per-request metadata. Dedicated Codex
 WebSocket session semantics remain above.
+
+The [backend delivery contract](../../backends/codex/responses/SPEC.md#response-delivery)
+owns JSON/SSE framing and ordered transformation. Application integration retains
+accounting, receipt timing, failure reporting and downstream admission.

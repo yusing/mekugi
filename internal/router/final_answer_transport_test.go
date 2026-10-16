@@ -156,7 +156,7 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 										return nil, err
 									}
 									if line == "\n" || line == "\r\n" {
-										return ssePayload(lines), nil
+										return codexresponses.SSEPayload(lines), nil
 									}
 									lines = append(lines, line)
 								}

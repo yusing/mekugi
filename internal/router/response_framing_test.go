@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -64,7 +66,7 @@ func TestAnswerSSEFraming(t *testing.T) {
 					reader = io.MultiReader(reader, finalAnswerErrorReader{disconnected})
 				}
 				var output bytes.Buffer
-				chain := composeResponseTransformers(transform, &webSocketCountingTransform{})
+				chain := codexresponses.Compose(transform, &webSocketCountingTransform{})
 				_, err := copySSETransformed(&output, reader, chain, &responseHooks{onUsage: transform.observeResponseUsage})
 				switch stop {
 				case "read_error":
@@ -72,7 +74,7 @@ func TestAnswerSSEFraming(t *testing.T) {
 						t.Fatalf("upstream error changed: %v", err)
 					}
 				case "transform_error":
-					if !errors.Is(err, errResponseTransform) {
+					if !errors.Is(err, codexresponses.ErrTransform) {
 						t.Fatalf("transform error changed: %v", err)
 					}
 				default:
@@ -89,7 +91,7 @@ func TestAnswerSSEFraming(t *testing.T) {
 					}
 					for index, frame := range frames {
 						lines := strings.Split(frame, "\n")
-						payload := ssePayload(lines)
+						payload := codexresponses.SSEPayload(lines)
 						var event struct {
 							Type     string                     `json:"type"`
 							Item     map[string]json.RawMessage `json:"item"`
@@ -123,7 +125,7 @@ func TestAnswerSSEFraming(t *testing.T) {
 					}
 					for i, frame := range frames {
 						lines := strings.Split(frame, "\n")
-						payload := ssePayload(lines)
+						payload := codexresponses.SSEPayload(lines)
 						if !bytes.Equal(payload, expected[i]) {
 							t.Fatalf("payload %d changed: %q, want %q", i, payload, expected[i])
 						}
@@ -145,26 +147,5 @@ func TestAnswerSSEFraming(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-func TestEncodeSSEMultilinePayloadPreservesFields(t *testing.T) {
-	payload := []byte("{\n  \"type\": \"response.in_progress\"\n}")
-	for _, ending := range []string{"\n", "\r\n", ""} {
-		t.Run(map[string]string{"\n": "lf", "\r\n": "crlf", "": "unterminated"}[ending], func(t *testing.T) {
-			fields := "event: response.in_progress\nid: provider-id\nretry: 1000\n: keep comment\n"
-			lines := strings.SplitAfter(fields, "\n")
-			lines = append(lines[:len(lines)-1], "data: old"+ending)
-			encoded := encodeSSEEventPayload(lines, payload)
-			if !strings.HasPrefix(encoded, fields) {
-				t.Fatal("non-data fields changed")
-			}
-			recovered := ssePayload(strings.SplitAfter(encoded, "\n"))
-			if !bytes.Equal(recovered, payload) {
-				t.Fatalf("multiline payload changed: %q", recovered)
-			}
-			if ending == "" && strings.HasSuffix(encoded, "\n") {
-				t.Fatal("unterminated frame acquired a final newline")
-			}
-		})
 	}
 }

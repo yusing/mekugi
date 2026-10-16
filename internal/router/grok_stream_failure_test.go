@@ -110,7 +110,7 @@ func TestGrokClientDeliversFailureBeforeReadError(t *testing.T) {
 	var output bytes.Buffer
 	state, err := copyUpstreamBodyTransformed(&output, response, true, nil, nil)
 	body := output.Bytes()
-	if state != responseTerminalFailed {
+	if state != responses.TerminalFailed {
 		t.Fatalf("terminal = %v", state)
 	}
 	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
@@ -159,7 +159,7 @@ func TestGrokClientFailedTerminalRetainsTimeoutAccounting(t *testing.T) {
 	}
 	var output bytes.Buffer
 	state, err := copyUpstreamBodyTransformed(&output, response, true, nil, nil)
-	if state != responseTerminalFailed || !errors.Is(err, httptransport.ErrStreamIdleTimeout) {
+	if state != responses.TerminalFailed || !errors.Is(err, httptransport.ErrStreamIdleTimeout) {
 		t.Fatalf("state=%v err=%v", state, err)
 	}
 	finalization := &requestFinalization{upstreamTerminalState: state}
