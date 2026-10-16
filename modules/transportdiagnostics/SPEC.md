@@ -19,7 +19,7 @@ accounting belongs to [usage](../usage/SPEC.md), local projection estimates to
 reader/edit evidence to [agent metrics](../agentmetrics/SPEC.md).
 
 [Diagnostics](../diagnostics/SPEC.md) owns debug bundles; the application owns
-the existing HTTP listener. Its metrics endpoint and [session dialog](../../doc/spec/native_ui.md#session-metrics) consume
+the existing HTTP listener. Its metrics endpoint and [session dialog](../../apps/mekugi/internal/sessionpresentation/SPEC.md#session-metrics) consume
 the same detached snapshot. Rendering and exports do not maintain alternate
 counters or calculations. Observation adds no listener, network hop or private
 correlation header.

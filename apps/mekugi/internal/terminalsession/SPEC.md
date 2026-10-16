@@ -12,6 +12,12 @@ selected targets and intents to their owners.
 Main admission; [session control](../sessioncontrol/SPEC.md) issues host operations.
 Feature views own disclosure, navigation and animation.
 
+Storage and observation work must not stall input, cancellation, rendering or
+unrelated lifecycle delivery, including through shared queues or locks. Missing
+metadata and exhausted observation capacity remain visible and bounded without
+terminating unrelated work. Presentation introduces no execution path, capturer,
+history store, accounting ledger or model-visible commentary.
+
 ## Input
 
 The live decoder separates key sequences, SGR pointer reports, terminal color and
@@ -30,6 +36,91 @@ report after a slow frame instead of becoming a standalone Escape.
 [Playback](../../../../modules/sessionreplay/SPEC.md)
 owns scheduling and semantic playback controls.
 
+## Composer controls
+
+The terminal adapts these controls to [conversation drafts](../../../../modules/conversation/SPEC.md)
+and [session operations](../sessioncontrol/SPEC.md#interactive-operations):
+
+| Input | Action |
+| --- | --- |
+| Enter / Tab | Conversation: submit or steer / queue for the next turn; both submit while idle. Shell Mode: both submit immediately, including while Main is busy |
+| Alt-Up / Shift-Left | Restore locally waiting input ahead of the draft |
+| Escape | Dismiss selection, picker or help, or resume transcript following first; otherwise interrupt, expediting uncommitted steers when eligible |
+| Ctrl-C | Clear the draft, then interrupt, then quit when idle with no waiting input |
+| Arrows | Move by grapheme/display row; at the first/last row, browse input history |
+| Ctrl/Alt-Left/Right, Meta-b/f | Move to the previous word start or next word end |
+| Ctrl-Up/Down | Move to logical line boundaries |
+| Alt-Backspace/Delete, Ctrl-W | Delete the previous/next word; Ctrl-W deletes the previous word |
+| Ctrl-K | Delete to logical line end, or its following newline |
+| Ctrl-Z / Ctrl-Y | Undo / redo |
+| Ctrl-V | Attach a PNG from the desktop clipboard |
+| Ctrl-G | Edit the draft externally without submitting |
+| Shift-Up/Down | Select adjacent model-advertised reasoning levels without wrapping |
+
+Word edits skip punctuation and whitespace without splitting attachment tokens.
+Editing and the visible window follow the caret. Images, files, skills and selected
+text have distinct token colors, retained by submitted host text elements; literal
+lookalikes never gain attachment identity. Tokens stay on one row when they fit,
+otherwise wrap at grapheme boundaries.
+
+A paste containing exactly one absolute PNG/JPEG/GIF path, including shell quoting
+or a local file URL, attaches that user-owned file and a trailing space. Other
+pastes are text. External editing uses `$EDITOR`, then `$VISUAL`, then `vi`, with
+arguments supported. Terminal/input ownership is released during the editor and
+restored afterward. Failure preserves the original draft and names its recovery
+file. Conversation owns binding reconciliation; adapter cleanup follows its
+attachment-lifetime contract.
+
+`?` in an empty focused composer opens shortcuts above the composer. `?` or Escape
+closes them; another key dismisses them and retains its usual action. A mouse event
+only dismisses help. Nonempty drafts and pasted question marks remain literal.
+At a word boundary, `@` opens file completion and `$` opens skill completion.
+Up/Down or Ctrl-P/N wrap selection; Tab/Enter inserts without submitting; Escape
+closes without removing the token. Paths with spaces are quoted. Paste does not
+open completion. Loading, empty and failed lookups remain visible.
+
+An initial `/` opens the local command catalog. Typing filters; arrows select;
+Tab completes only the command token, preserving arguments and attachments;
+Enter executes; Escape closes unchanged. Arguments and paste close or bypass
+completion. Local commands never become model prompts; unknown commands report
+feedback. Shell Mode, selected by an initial `!`, has a red frame and Bash syntax
+highlighting and disables attachment completion.
+
+`/lock` and `/unlock` control the persisted interrupt-key lock. Locked input cannot
+interrupt, discard waiting input or quit through Escape/Ctrl-C. Draft clearing,
+undo, copying, contextual dismissal, explicit commands and steering still work.
+The visible Locked indicator names `/unlock`.
+
+## Questions and approvals
+
+[Conversation](../../../../modules/conversation/SPEC.md#questions-and-approvals)
+owns prompt lifecycle. Clicking a pending banner or Ctrl-B q opens approvals
+before questions. The dock replaces live edits, occupies at most half of Main,
+and accepts answers only after painting. Other pane focus retains Main's pending
+count. Hidden prompts leave normal interrupt behavior intact.
+
+Questions show their position, full scrollable text, options/descriptions and
+Other. Only visible options set column widths; narrow layouts omit descriptions
+before answer text. Up/Down or Ctrl-P/N wrap; digits choose; other text edits Other.
+Tab adds a synchronous option note. Enter records and advances, submitting at the
+last question; Ctrl-] skips. Gaps require `Submit with N unanswered?` confirmation.
+Left/Right navigate questions only outside text editing; ordinary and word-motion
+keys otherwise move the caret. Escape closes a note before hiding the dock and
+retaining answers. PgUp/PgDn reaches long question bodies and option lists.
+
+Approval docks show the host scope, command/summary, non-root directory, reason
+and choices. Digits/arrows select and Enter confirms; Escape only hides. Supported
+command denials accept typed/pasted reasons; digits select choices while the reason
+is empty. Other approval types ignore text/paste. Answer editors reuse literal
+Unicode, paste, undo, attachments, references and external editing, but disable
+completion and Shell Mode. Secret entry is masked and disallows external editing.
+Ctrl-C and pane/queued-input shortcuts retain their ordinary behavior.
+
+Pending banners preserve Main's editing; questions warn when a new-turn prompt
+would dismiss older calls. Input labels distinguish answering, option notes,
+waiting turns and parked drafts from approval waiting. Host delivery remains
+separate from painted readiness and offline prompt tests.
+
 ## Panes
 
 Main starts at full width. Diff toggles the auxiliary column open and closed.
@@ -46,6 +137,23 @@ frames. The roster uses four rows unfocused and up to 40% of the height when
 focused. Its separator captures pointer gestures without storing a preferred
 roster height. Column-divider dragging and prefix Left/Right resizing share the
 retained split; saved Diff owns its file-navigator width.
+
+Ctrl-B then 1 selects Main, 2 toggles Diff, and 3 focuses Agents. Ctrl-B PgUp/PgDn
+scrolls the displayed transcript or its active live source; the wheel targets the
+pane under the pointer. Pane titles and status hints expose focus, scroll and
+unread state. Main's title uses the sanitized host name, truncated to available
+width without an unnamed placeholder. Child display hides and preserves Main's
+draft, disabling typing, paste, submission, settings and keyboard interruption;
+navigation and copying remain available. Reference returns to Main before insertion.
+Roster selection leaves an open Diff intact. A blank row separates the composer
+from content when height permits. Uncolored border labels use the text foreground.
+
+The welcome is presentation only. Releases show `mekugi-v<version> • codex v<version>`;
+the embedded release tag precedes module/revision metadata, source releases use
+their module version, and development builds show `Mekugi <revision>` or `Mekugi dev`.
+Unavailable backend versions are omitted. It remains while composing the first
+prompt, including six-row Main frames, yielding to history, live edits, modals and
+the full multiline composer.
 
 ## Selection and source copy
 
@@ -94,6 +202,26 @@ Clipboard bytes and the painted-row cache advance only after a successful
 terminal write. Failed writes leave pending clipboard delivery and the previous
 frame available for retry. External-editor handoff invalidates the painted cache.
 
+Reference labels identify selected message, composer text, side answer, status or
+dialog content. Diff labels retain change IDs and selected gutter lines, preferring
+new-file coordinates and using old-file lines for deletion-only selections. Composed
+or multiple changes retain that attribution; unattributed rows say Selected diff.
+Colliding labels across draft and waiting input gain counters. Mentions remain
+atomic through undo, history, external editing and rejection; resume rebinds a
+unique label to its submitted quote. Oversized/omitted quotes report notices.
+
+`/copy` selects the active thread's latest completed response, including history,
+as whole Markdown, fenced blocks or blockquotes. Bounded previews never truncate
+clipboard content. Streaming and other threads cannot replace that response.
+Enter copies and Escape cancels; absent responses show an explicit empty state.
+Copying during work neither interrupts nor submits input.
+
+The `/btw` side-answer dock leaves ordinary input targeting Main. It shows elapsed
+Answering progress until settlement and preserves truncation/omission notices.
+PgUp/PgDn scrolls; frozen selection pins the question. Reference, Copy and Clear
+exclude decoration and preserve Markdown source. Escape clears selection, dismisses
+prompts/menus, then closes the side answer under Conversation's cleanup contract.
+
 ## Preferences
 
 Successful resume restores the Main/right-column split, Diff visibility, keyboard
@@ -103,6 +231,46 @@ by the current terminal layout. Roster height remains automatically fitted. Scro
 positions, filters, selections, drafts and transient live docks are not persisted.
 The terminal adapter owns these fields; the preference module owns identity,
 publication, debounce, flush and failure behavior.
+
+`--ansi-faint=auto|on|off` selects terminal-local dimming. Auto disables ANSI faint
+when `mosh-server` is in process ancestry; detached multiplexers may require an
+explicit override. Detection scans no unrelated sessions. Unsupported faint uses
+muted text and agent-color variants without changing semantic or syntax colors.
+
+## Notifications and lifecycle titles
+
+Codex-compatible titles mark Main's running work; pending questions, approvals and
+unsupported requests take precedence with `Action Required`, even when hidden.
+Settled Main turns remove the spinner; child completion does not settle Main.
+Herdr owns seen/unseen completion indicators. Exit and external editing clear titles.
+
+The application reads effective workspace `tui.notifications`,
+`tui.notification_method` and `tui.notification_condition` without writing config.
+Only successful live Main completion and eligible approval, synchronous-input or
+async-question events notify; pending questions take priority and history/duplicates
+do not notify. [Notifications](../../../../modules/notifications/SPEC.md#desktop-eligibility)
+owns eligibility. Focus reports never become composer input. `osc9` emits OSC 9,
+`bel` emits BEL, and `auto` uses OSC 9 in supported terminals/Herdr, otherwise BEL;
+tmux outside Herdr receives passthrough-wrapped OSC 9. Text is generic. Failures
+report auxiliary notices; disabling desktop signals leaves lifecycle titles active.
+
+## Offline playback
+
+Interactive replay requires terminal stdin/stdout, restores terminal modes on exit,
+and always labels streaming as simulated. Space or `p` pauses, `+`/`-` changes speed,
+`[`/`]` seeks, and `r` restarts. Pane controls and focused Ctrl-E disclosure remain
+available. Dialogs retain navigation and close controls; outside them Escape or
+`q` quits, and Ctrl-C always quits. Wheel reports scroll Main. No control submits
+host intent or opens an execution connection.
+
+`--headless` paints to a discard sink at `--width`/`--height`, default 160 by 48,
+bounded to 20–1000 columns and 8–500 rows. It emits JSON timings on stdout, progress
+and coverage on stderr, and no terminal bytes. Frame timing includes pacing,
+layout and writes, with writes measured separately; terminal backpressure is
+absent. Compare identical inputs, seed, speed and size, using 1.0x for representative
+latency. Acceleration changes batching, not recorded times, and cannot establish
+original wall-time latency. Profiling is [opt-in](../../../../docs/contributing/development.md#profile-live-sessions-and-replay)
+and creates no automatic profile files.
 
 ## Acceptance
 

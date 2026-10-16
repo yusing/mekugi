@@ -151,7 +151,7 @@ reference eligible repeated model-input text only after observation and retentio
 consume its original content; it preserves the change notice. Provisional values
 never establish durable evidence. Omitting live preview leaves saved review and
 captured Activity receipts available. The module contracts own preview and saved
-review behavior; the [terminal UI contract](../../doc/spec/native_ui.md) owns
+review behavior; [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns
 layout, navigation, source copying and input.
 
 ## Acceptance

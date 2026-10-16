@@ -4,14 +4,16 @@ pjdoc:
   kind: spec
   scope: root
   status: draft
-  revision: "77"
+  revision: "78"
   files:
     - ../../providers/grok/SPEC.md
     - ../../providers/opencode/SPEC.md
     - ../../docs/contracts/provider-routing.md
     - ../../apps/mekugi/internal/launch/SPEC.md
     - ../../apps/mekugi/internal/headless/SPEC.md
-    - native_ui.md
+    - ../../apps/mekugi/internal/sessioncontrol/SPEC.md
+    - ../../apps/mekugi/internal/sessionpresentation/SPEC.md
+    - ../../modules/conversation/SPEC.md
     - ../../apps/mekugi/internal/terminalsession/SPEC.md
     - ../../docs/contracts/responses-transport.md
     - ../../modules/notifications/SPEC.md
@@ -41,7 +43,8 @@ Module-owned contracts live with their implementation:
 [completed command-segment reports](../../modules/commandsegments/SPEC.md), and
 [bounded commands](../../modules/boundedcommand/SPEC.md).
 [Session naming](../../modules/sessionnaming/SPEC.md) owns optional automatic title
-policy; the native UI contract owns manual name-save interaction and rendering.
+policy; [session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md#session-title-and-progress)
+owns manual name-save interaction.
 
 [Session preferences](../../modules/sessionpreferences/SPEC.md) owns applied settings,
 resume evidence and renderer-keyed persistence.
@@ -52,7 +55,9 @@ resume evidence and renderer-keyed persistence.
 - [`REQ-MCP-001`](../../libraries/mcptransport/SPEC.md): reserved invocation-local MCP transport
 - [Invocation launch](../../apps/mekugi/internal/launch/SPEC.md): command selection and session-scoped Codex lifecycle
 - [Headless client](../../apps/mekugi/internal/headless/SPEC.md): single-prompt JSONL automation and host outcomes
-- [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
+- [Session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md): submission, interruption, settings and session operations
+- [Session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md): resume, displayed identity, title, status and metrics
+- [Conversation](../../modules/conversation/SPEC.md): drafts, attachments, questions, approvals and side answers
 - [Terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md): input, panes, source selection, clipboard and renderer preferences
 - [`REQ-TRANSPORT-001`](../../docs/contracts/responses-transport.md): Responses admission, transport, catalog and auxiliary integration
 - [OpenAI provider](../../providers/openai/SPEC.md): credential validation, model exchange, HTTP and WebSocket transport

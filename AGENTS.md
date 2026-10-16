@@ -54,15 +54,15 @@ acceptance cases, not a blanket request to implement every listed concern.
   unknown state gets no label. Format workspace paths with `libraries/pathdisplay.ForWorkspace`,
   preserving external and operational paths. If genuinely new UI lacks a stock counterpart,
   settle its shape with the user. See [terminal interaction](apps/mekugi/internal/terminalsession/SPEC.md),
-  [session behavior](doc/spec/native_ui.md),
-  [activity display](modules/activity/CONTRACT.md), and [UI ownership](doc/architecture/ui.md).
+  [session behavior](apps/mekugi/internal/sessionpresentation/SPEC.md),
+  [activity display](modules/activity/CONTRACT.md), and [session control](apps/mekugi/internal/sessioncontrol/SPEC.md).
 - **Ownership:** reuse authenticated snapshots, portable core, managed stores, classifiers, and
   capturers rather than duplicate policy in adapters. Validate registry exposure at its owner.
   Frontend guidance belongs to the authenticated registry; preserve caller base policy except
   declared omissions/conflicts. See
   [plugin boundary](apps/mekugi/internal/frontends/SPEC.md) and [guide](modules/agentguidance/SPEC.md).
 - **Responsiveness:** slow storage or unresolved observations for one owner must not stall
-  unrelated input, cancellation, or lifecycle delivery. See [UI ownership](doc/architecture/ui.md).
+  unrelated input, cancellation, or lifecycle delivery. See [presentation boundary](apps/mekugi/internal/terminalsession/SPEC.md#boundary).
 - **Auxiliary behavior:** progress, capture, and diagnostics remain non-invasive and independently
   bounded. Remove generated history by provenance, not text resemblance. Keep secrets/content out
   of sanitized metrics and credentials isolated by provider. Provider usage, local estimates, and

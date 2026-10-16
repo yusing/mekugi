@@ -4,11 +4,13 @@ pjdoc:
   kind: architecture
   scope: root
   status: draft
-  revision: "56"
+  revision: "57"
   files:
     - ../../docs/contracts/provider-routing.md
     - ../../docs/contracts/composition.md
-    - ui.md
+    - ../../apps/mekugi/internal/terminalsession/SPEC.md
+    - ../../apps/mekugi/internal/sessioncontrol/SPEC.md
+    - ../../modules/conversation/SPEC.md
     - ../../modules/activity/SPEC.md
     - ../../apps/mekugi/internal/sessionpresentation/SPEC.md
     - ../../docs/contracts/record-publication.md
@@ -44,7 +46,9 @@ resume evidence and renderer-keyed persistence.
 
 - [`CTR-WORKSPACE-001`](../../docs/contracts/composition.md): workspace membership, composition, and import boundaries
 
-- [`CTR-UI-001`](ui.md): presentation, app-server client, and router integration boundaries
+- [Terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md): input, panes, source selection and responsive rendering
+- [Session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md): identity-bound host operations and settlement
+- [Conversation](../../modules/conversation/SPEC.md): neutral drafts, attachments, prompt and side-answer state
 
 - [Provider routing](../../docs/contracts/provider-routing.md): provider/backend authority and native-agent continuity
 - [Notifications](../../modules/notifications/SPEC.md): bounded delivery, presentation claims and recovery

@@ -170,7 +170,7 @@ model/effort/tier, layout, roster, child history, and retained Diff return; expl
 `-m`/`-c` overrides named settings. Drafts, selections, filters, and scroll positions do
 not return. Third-party `exec resume`/`exec
 fork` uses the mode's default model unless given `-m`. See [resume
-details](doc/spec/native_ui.md).
+details](apps/mekugi/internal/sessionpresentation/SPEC.md#resume-and-switching).
 
 ### Approvals
 
@@ -222,7 +222,7 @@ The composer always targets Main. Narrow terminals show one pane.
 | Action | Shortcut |
 | --- | --- |
 | Show Main / toggle Diff / focus Agents | `Ctrl-B`, then `1` / `2` / `3` |
-| Resize splits | Drag dividers, or `Ctrl-B`, then arrows; Up/Down in Agents adjusts its height |
+| Resize Main/Diff split | Drag its divider, or `Ctrl-B`, then Left/Right; Agents height fits its content |
 | Resize Diff navigator | `Ctrl-B`, then `[` / `]` |
 | Browse displayed transcript | `Ctrl-B`, then PageUp / PageDown |
 
@@ -230,8 +230,9 @@ The wheel scrolls under the pointer. Markdown supports colored code, responsive 
 and terminal Mermaid flowcharts; unsupported diagrams remain source. `/title TITLE`
 saves a manual title and skips automatic naming. Otherwise a new session may make a
 separate GPT-6 Luna medium-reasoning title request; unavailable credentials or Luna
-silently skip it. Notifications follow Codex's `tui.notifications`. See the [UI
-contract](doc/spec/native_ui.md) for complete controls.
+silently skip it. Notifications follow Codex's `tui.notifications`. See
+[terminal controls](apps/mekugi/internal/terminalsession/SPEC.md) and
+[session behavior](apps/mekugi/internal/sessionpresentation/SPEC.md).
 
 ### Composer
 
@@ -258,7 +259,7 @@ uncommitted steers; committed input is never resent and Tab-queued input stays q
 Without steers, Esc interrupts without resending. Ctrl-C clears the draft first, then
 interrupts/restores input. Picker/help/selection dismissal takes precedence. Copying
 needs OSC 52; Linux image paste needs `wl-paste` or `xclip`. See [input
-details](doc/spec/native_ui.md).
+details](apps/mekugi/internal/terminalsession/SPEC.md#composer-controls).
 
 ### Live diff pane
 
@@ -266,10 +267,11 @@ Source-content edits stream, including patches, `cat` heredocs, and supported Py
 writes. Copies, removals, formatters, and other command effects stay in saved changes.
 Only completed edits become saved changes. Temporary views replace
 only the editing agent's transcript. `/live` toggles them without stopping capture;
-new launches enable them again. `v` switches views, `s` opens the navigator, `/` filters,
+new launches enable them again. In saved Diff, `s` opens the navigator, `/` filters,
 `n`/`p` changes files, `[`/`]` jumps hunks. Tab opens Changes by caller. Click an Edit
 for its hunk; `Ctrl-B e` pins files, `Ctrl-B r` resumes following.
-See [all diff controls](doc/spec/native_ui.md).
+See [saved-review controls](modules/changehistory/SPEC.md#terminal-review) and
+[live-view controls](modules/livepreview/SPEC.md#terminal-live-views).
 
 ### Agents pane
 

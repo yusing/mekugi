@@ -118,6 +118,11 @@ a rejected shell command stays separate from prose and can be recalled from hist
 Confirmed session replacement preserves waiting input, retires submitted payloads,
 and closes the side conversation. Rejected replacement preserves them all.
 
+Submissions carrying attachments or skills, including stacked input and encoded
+snapshots, must fit a conservative 1 MiB UTF-8 text budget; larger input returns
+unsent with an actionable notice. Ordinary text limits remain Codex-owned. This
+bounds attachment growth, not the context size of an arbitrary existing conversation.
+
 ### Side questions
 
 `/btw QUESTION` opens a temporary conversation without changing Main's input,
@@ -198,6 +203,42 @@ files are never reclaimed; submitted image files remain available for host resum
 The application sends composed payloads through session control. Codex owns turn
 execution, acknowledgements and durable input history. Image bytes and framing remain
 host-owned. Terminal painting consumes bound byte spans; source text remains unchanged.
+
+### File and skill acquisition
+
+The application roots completion in the active thread's absolute workspace, never
+the router directory. Ordinary file lookup uses Codex's ignore-aware search. `@!`
+uses a cancellable, debounced read-only scan to include ignored files, excluding
+VCS metadata and directory-symlink traversal. Pending updates coalesce; stale or
+cancelled results cannot replace another workspace's current selection.
+
+Enabled, exact, unambiguous `$name` references bind at a word boundary or submission,
+including pasted input. Unknown, disabled, ambiguous names and shell variables remain
+literal. A pending catalog lookup delays submission; failure reports unavailable
+references without suppressing available skills from another source.
+
+When available in Mekugi mode, `skills-mgr list --codex` runs in that workspace with
+the wrapped environment. Managed names take precedence over same-named Codex entries.
+Submission/queueing resolves them with `skills-mgr get --codex NAME`, including
+explicitly invoked skills omitted from the managed model catalog. Native entries
+retain their exact metadata path, including placeholders. Repeated names attach
+once. Instructions use ordinary snapshot budgets/envelopes and project as user
+input, never a synthetic native path or name-only replacement.
+
+Replay recovers immutable instructions and identity from submitted envelopes without
+rerunning the manager. Recalled references read current content when submitted again.
+Host text elements retain file/skill byte ranges relative to each text part; native
+skill metadata can restore unambiguous bindings when elements are absent. Explicit
+elements take precedence for repeated labels; absent metadata leaves lookalikes
+literal. Oversized/unreadable instructions use omission receipts, never truncation.
+
+`/skills` offers Codex's List and Enable/Disable actions. Listing inserts `$`;
+management filters enabled/disabled entries by display/canonical name. Space/Enter
+saves a path-scoped toggle; checkboxes change only after success, failures stay
+visible, and closing reloads the catalog. Managed references never enter
+`skills/config/write` with invented paths; their configuration belongs to the manager.
+Plugin browsing is outside this picker. Terminal completion and editing controls
+belong to [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md#composer-controls).
 
 ## Records
 

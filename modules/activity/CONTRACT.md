@@ -8,7 +8,7 @@ responses. The [module specification](SPEC.md) owns observation authority,
 classification, parsing and output retention.
 [Session presentation](../../apps/mekugi/internal/sessionpresentation/SPEC.md) owns
 displayed-thread identity, input admission and bounded child history; the
-[native session](../../doc/spec/native_ui.md) owns pane layout, input routing and
+[terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane layout, input routing and
 dialog interaction. `presentation` owns the retained
 feed records, roster derivation, neutral values and canonical group membership;
 `terminalview` owns disclosure, blocks and painting. Application adapters supply
@@ -111,6 +111,11 @@ a code gutter; JavaScript source always sits below its heading. Main limits
 wrapped previews to five rows with a hidden-line count. Tabs expand to four spaces.
 Opening source uses the dialog, not transcript expansion. Interpreter previews
 use their own language colors.
+
+Run previews omit literal Bash/Sh `-c`/`-lc` and PowerShell `-Command`/`-c` launch
+wrappers, including literal `-NoLogo`/`-NoProfile`. Outer redirects, assignments,
+extra arguments or dynamic words keep the wrapper intact. The inner source keeps
+shell highlighting; live and restored display never changes execution.
 
 Literal interpreter wrappers such as `python -c`, `python - <<'PY'` and `node -e`
 show multiline programs in their own language, with source indentation intact.
@@ -257,6 +262,98 @@ without authored-heading rules. Public app-server summaries are displayable;
 raw/encrypted reasoning is not. Completed collapsed sections keep their full
 source in dialog pages. Fully shown short content has no redundant detail target.
 
+Main and children share parsing, grouping and viewport behavior. User messages
+have a distinct band; assistant text, operations and final-answer cards retain
+their identities rather than becoming a second transcript. Image-view tools show
+View with their workspace path; attached user images claim no tool inspection.
+Completed attributable searches may show a result count; missing, truncated,
+failed or ambiguous output supplies none. Successful one-line command output
+stays visible rather than becoming a line-count toggle.
+
+Asked rows retain full questions and observed answers with shared Markdown and
+source copying. Adjacent question records share their Main heading. Approval facts
+decorate the associated host item, never a separate Approval/Session event:
+Pending Approval, Approved, Denied and Auto Denied remain distinct from execution
+success. External resolution and turn end say Resolved elsewhere or Turn ended
+before an answer. Command dialogs retain decision scope/denial reason; compound
+guard decisions stay on their aggregate shell row.
+
+Attachments show one Attached or Attach failed receipt per submitted file/skill
+snapshot before agent activity, including after resume. Chunked content has one
+receipt; stacked snapshots stay separate. Paths use shared workspace formatting
+without transport quotes. Successful receipts open the exact submitted content;
+failures name omissions and open no invented content. Rejected submissions claim
+no success. Transport envelopes remain hidden from transcripts and recalled input.
+
+Adjacent traffic with one agent forms a thread. Assignments/messages retain exact
+entry links; off-screen old entries shrink to excerpts only when that shortens
+them. Omitted-row links open the retained entry, never nearby similar text. The
+latest exchange keeps the larger excerpt; narrative gaps do not consume excerpt
+rows. Reasoning between traffic appears after its rail closes; later Main tools
+retain their own narrative heading or a continued heading. Settled off-screen
+operation groups collapse to counted verbs and failure counts; running, skipped,
+declined, unconfirmed, unanswered and outcome-unknown work stays visible. Resume
+starts settled groups collapsed. Shrinking preserves a scrolled-up anchor.
+
+Replies link to their own retained assignment or user input. An answer to the
+latest adjacent assignment omits a redundant link; older assignments keep theirs.
+Repeated replies quote input again only after another message intervenes, not
+after tools/reasoning/progress. Question replies link to the Asked record as
+`re: your answer`, without a duplicate user band. Missing target identity leaves
+plain text, never fabricated navigation. Hover/click identifies and highlights
+the exact destination. A child turn without a final answer promotes only that
+turn's last message. Authenticated recipient-input observations supply bodies
+missing from host notifications exactly once, bounded to 64 KiB with explicit
+clipping; legacy envelopes never enter provider output.
+
+### Public reasoning and disclosure
+
+Only host public summaries appear, including restored or completion-only summaries.
+Empty items create no row; late deltas cannot reopen completed items. Short one-row
+bodies and heading-only summaries stay directly visible. Longer summaries split
+at Markdown/bold titles or short plain titles, never inside fences; rendering,
+section detection and source copy share fence boundaries. Body text retains
+Markdown and uniform faint/italic styling. Untitled sections use Thinking/Thought;
+titled sections keep their titles. The latest three body rows and omitted-row count
+preview longer streams, paced like command output.
+
+Earlier sections fold as a new one starts. Completion first drains queued text,
+then leaves the latest completed item open until later activity and a five-second
+quiet period shared with successful command output across Main and children.
+Restored long summaries start folded. Collapsed sections share one row and one
+item duration; dialogs retain each section's full body as pages. Observed durations
+appear only from one second onward, on the final section rather than per section.
+No duration is invented when timing is absent.
+
+For providers streaming untitled reasoning, an observed request start supplies
+Thinking progress until public text takes over. Other output or turn end removes
+an empty placeholder; a previous item's late completion cannot remove a newer one.
+Timing prefers request start, then item start, then first visible summary. Turn end
+settles unfinished summaries. Raw/encrypted reasoning is never a substitute.
+Roster status uses collapsed section labels without body or duration, retaining
+short text when it fits and Thinking/Thought otherwise. Only live waiting/reasoning
+animates; completion and history do not restart it.
+
+Ctrl-E cycles the displayed transcript through default, expanded events, and
+expanded all. Events expands narrative, public reasoning and hooks; all additionally
+opens retained operation source/output. User prompts are unchanged. The choice is
+pane-local, applies to arriving content, preserves follow/scroll anchors and names
+the next choice in its hint. Default restores ordinary automatic folding.
+Manual scrollback and earlier-content jumps pause following; Live/Diff toggles,
+resize and dialogs do not. Reaching the last full viewport or Escape resumes follow
+and clears unread counts; paused views offer Back to bottom above the composer.
+
+## Running processes
+
+The composer shows a live count only while commands from Main or admitted children
+are running. `/ps` opens the shared dialog with one tab per whole invocation in start
+order, including a single-command tab. Each page retains owning agent, original
+display source, output and outcome. Live pages follow until scrolled away; new
+commands join while open, and completed pages remain until closing. Empty state is
+explicit. Yielded commands remain running until host completion; restored history
+never revives them. Session switching closes the dialog. Reading or closing it
+neither interrupts work nor submits model input.
+
 ## Content dialog
 
 The dialog captures input above both panes and leaves transcript follow unchanged.
@@ -356,7 +453,7 @@ Arrows/k/j stop at either end; n/Tab/p also navigate, a toggles Main/current chi
 Roster wheel scrolling changes neither selection nor transcript follow. Transcript
 page/wheel scrolling pauses follow and Esc resumes it; frozen selections retain
 their own navigation. Running headers scroll normally; the composer process count
-and `/ps` dialog follow the [running-process contract](../../doc/spec/native_ui.md#running-processes).
+and `/ps` dialog follow [running processes](#running-processes).
 
 Statuses mean only observed open response, latest error, plaintext FINAL_ANSWER,
 or none. Final summaries do not repeat their marker, and no glyph asserts that an

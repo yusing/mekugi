@@ -23,7 +23,7 @@ command-segment owners. The module imports neither feature.
 
 `terminalview` owns terminal layout, source following, file windows,
 selection, reveal animation, and per-call settling timers. The
-[native UI contract](../../doc/spec/native_ui.md) owns their interaction. Saved
+[terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane composition and input routing. Saved
 review composition and durable changes remain outside this module.
 
 ## Behavior
@@ -134,6 +134,32 @@ projection or uniquely matched writer segments finish, independently of followin
 tests. Such cards say `observed`; they do not claim the shell or tests succeeded.
 Unknown additional targets remain distinct from known displayed files. Terminal
 host outcomes and the capture owner remain authoritative for effects and status.
+
+### Terminal live views
+
+`/live` toggles presentation; `on`/`off` apply explicitly. It defaults on at every
+launch, including resume, and lasts only for that frontend. Hiding reserves no
+space and does not stop updates or capture; showing it reveals only current cards.
+Eligible source replaces only its owner's selected transcript above Main's composer,
+never saved Diff. Child edits cannot take over Main. Prompt/picker/help docks take
+precedence over live source.
+
+Each file gets at least 15 rows including its heading, plus one shared Live heading;
+short terminals show a file-count summary instead. At capacity, new files advance
+the window without shrinking existing splits. Ctrl-B e cycles and pins the displayed
+thread's file window; later arrivals cannot steal it. Wheel and Ctrl-B PgUp/PgDn
+scroll live source independently of transcript and saved Diff. Reaching the source
+tip resumes following; Ctrl-B r resumes both source following and the newest window.
+
+Each completed call expires after its own 1.5-second settling interval, independently
+of running siblings or newer edits. A surviving pinned file keeps its window;
+expiry of the selected call follows the newest remaining file. With no cards,
+the transcript returns. History never reconstructs transient bursts, and projection
+first received at completion opens none. Finished input remains labelled preview,
+not success; observed changes describe differences without exclusive attribution
+or successful command completion. Following tests retain their own running state,
+not the edit's dock. Shared captured baselines avoid rereading already-edited source
+from app-server file-change notifications.
 
 ## Lifecycle
 

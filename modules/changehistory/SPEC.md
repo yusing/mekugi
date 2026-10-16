@@ -203,9 +203,47 @@ project evidence remains distinct from a known zero net result.
 Shared file status and source attribution remain available to command output,
 file and change navigation, rendered rows and source-copy consumers. Terminal
 viewport positions, focus, wrapping and scroll anchors belong to
-the terminal view. The [UI contract](../../doc/spec/native_ui.md) owns terminal
-interaction; the [diff renderer](../../libraries/diffrender/SPEC.md) owns source
+the terminal view. The [terminal session](../../apps/mekugi/internal/terminalsession/SPEC.md) owns pane composition
+and selection; the [diff renderer](../../libraries/diffrender/SPEC.md) owns source
 painting and terminal geometry.
+
+### Terminal review
+
+New changes badge Diff rather than opening it. Saved review never follows streams;
+updates preserve the selected file and scroll position. Tab switches Files/Changes,
+`t` toggles tree/flat navigation, `/` filters, `n`/`p` visits matching files, and `[`/`]`
+jumps hunks. `s` shows/focuses or hides the navigator without covering the diff.
+Narrow layouts stack navigation above content. List and content focus are separate:
+arrows act on the focused region, list clicks retain list focus, and content clicks
+focus content. Enter opens the selected file at its heading; Escape returns to
+the list. Selection is shaded and hover underlines text, excluding graph/tree lanes.
+
+Files use stable path order, folders first in tree mode. Tree/flat choice and
+collapsed folders survive filters; matching descendants remain selectable.
+Clearing a filter restores prior navigation, and next/previous reveals destinations
+inside collapsed folders. Changes uses one graph lane per caller branching from
+Main at its first change. Rows retain ID, source, file count and known line counts;
+unavailable counts use `?`. Single-file changes show their file beside a wide diff
+or inline when stacked. Caller selection retains its prior filter for Escape.
+
+Cursor movement previews without leaving list focus. File/hunk jumps remember the
+file-local position they leave; ordinary scrolling does not. File headings pin
+while scrolled. Updates retain file/cursor/top-row identities; resizing preserves
+the logical source anchor and keeps focused entries visible. Help consumes no
+permanent rows. Shared diff labels preserve status and rename sources.
+
+In the Files list, `e` opens the selected file's current on-disk contents with
+`$EDITOR`, then `$VISUAL`, then `vi`, supporting editor arguments. Folder rows do
+nothing; filtering keeps `e` literal. The application releases the terminal and
+returns to the same selection after exit; missing files/editor failures report
+notices. This explicit current-file read does not replace captured evidence.
+
+Clicking an Activity edit opens the exact retained invocation and clicked file in
+the shared dialog, including grouped captures and superseded hunks. It never
+substitutes later composed edits or nearby matching paths. Closing preserves pane
+filters, scroll and focus; arriving changes remain available. Only the pointed
+edit text underlines, not its gutter, gaps or stat bar. Dialog copy/selection uses
+the shared frozen-source lifecycle.
 
 ## Lifecycle
 

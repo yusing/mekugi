@@ -50,6 +50,19 @@ are explicitly mapped; unsupported options fail rather than acquiring a differen
 meaning. `--yolo` disables host approval and sandbox prompts only when supplied.
 Resume retains the selected host thread and is unavailable to headless runs.
 
+The interactive client connects only to Codex app-server, submitting intent and
+answering supported host requests; it never connects to the JavaScript execution
+host or adds model calls for UI plumbing. Explicit model/config/feature flags and
+resume selectors retain their meaning. Without `--yolo`, configured host approval
+and sandbox policy applies; with it, start/resume requests repeat `never` and
+`danger-full-access`. Independent remote-write/sudo guards retain their owners.
+There is one interactive UI, with no fallback client selection.
+
+The UI excludes PTY emulation or screen scraping for Main, settings clones,
+onboarding, cloud tasks, voice, Git-write or edit-rollback UI actions, browser
+frontends/remote hosting, and new authentication flows. These limits do not change
+Codex-owned execution or explicitly invoked change-history tools.
+
 `codex headless --yolo` selects the [headless client](../headless/SPEC.md).
 Launch rejects resume, unsupported CLI options, and passthrough mode; explicit
 `--yolo` is required because the client cannot answer approvals.
@@ -122,6 +135,24 @@ ten seconds. Interactive output is width-bounded and cleared before handoff;
 redirected output uses complete lines. Display failure stops progress only.
 Cancellation/deadline failures take precedence over generic process/configuration
 advice, and private bootstrap stderr is not exposed. Normal launch advertises no browser URL.
+
+### Interactive exit
+
+After terminal restoration, the client prints unsent drafts/notices, Main's latest
+cumulative host token usage and a shell-quoted continuation command for an established
+thread. Input/total exclude cached input; cached/reasoning counts appear separately
+when nonzero. Zero or unavailable usage omits the token line. Child usage and router
+cost totals are not added. The continuation preserves the original executable,
+router flags and Codex options before invocation rewrites, replacing a prior resume
+selector with `resume THREAD_ID`. Color-capable output highlights commands in cyan,
+respecting `NO_COLOR`.
+
+Established sessions also offer `replay-session --session THREAD_ID`, with the
+original executable and actual `--debug-dir` when debugging. No established thread
+means no continuation/replay hint; successful archival instead prints
+`Session archived: THREAD_ID`. Unexpected app-server exit preserves its diagnostic
+and child status rather than looking like a clean quit. Redirected/noninteractive
+commands retain Codex's own exit output.
 
 ## Acceptance
 

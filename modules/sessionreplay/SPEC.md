@@ -103,5 +103,5 @@ binding, deterministic UTF-8 synthesis, recorded-clock controls and backward-res
 isolation. Application acceptance covers decoded item variants, fork ownership,
 Main/child history, source rejection, read-only controls and unchanged renderer
 snapshots. Offline replay does not establish live host behavior or original
-terminal latency. See [terminal replay](../../doc/spec/native_ui.md#offline-playback)
+terminal latency. See [terminal replay](../../apps/mekugi/internal/terminalsession/SPEC.md#offline-playback)
 and the [profiling guide](../../docs/contributing/development.md#profile-live-sessions-and-replay).
