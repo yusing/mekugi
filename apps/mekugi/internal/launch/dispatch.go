@@ -14,7 +14,7 @@ import (
 	"github.com/yusing/mekugi/libraries/mcptransport"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
-	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 )
 
 // Source: main.go:36:48 process signals and router exit behavior.

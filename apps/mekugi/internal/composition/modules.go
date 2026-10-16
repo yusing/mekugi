@@ -12,8 +12,8 @@ import (
 
 	"github.com/yusing/mekugi/modules/diagnostics"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/modules/agentguidance"
 	"github.com/yusing/mekugi/modules/agentmetrics"
 	"github.com/yusing/mekugi/modules/boundedcommand"

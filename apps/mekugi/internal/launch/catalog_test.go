@@ -19,7 +19,7 @@ import (
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/creack/pty"
-	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 )
 
 const testNativeModelCatalog = `{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2","shell_type":"unified_exec","apply_patch_tool_type":"freeform","model_messages":{"instructions_template":"native instructions"}}]}`

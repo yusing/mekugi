@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 )
 
 // Explicit invocation models win over Grok's default, which wins over the

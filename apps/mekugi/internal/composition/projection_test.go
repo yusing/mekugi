@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/internal/router"
 	"github.com/yusing/mekugi/modules/outputdeduplication"
 )
 

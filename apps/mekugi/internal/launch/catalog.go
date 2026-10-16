@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"golang.org/x/term"
 )
 

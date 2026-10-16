@@ -19,10 +19,10 @@ A skip is unavailable coverage, not a pass for that boundary. This focused set d
 replace the offline suite or feature-specific host fixtures listed below. It uses local
 mock providers and does not establish live-model behavior.
 
-## internal/router
+## apps/mekugi/internal/router
 
-The fixtures are the `internal/router/*_codex_e2e_test.go` files. List them with
-`git grep -h '^func Test.*E2E' -- 'internal/router/*_codex_e2e_test.go'`.
+The fixtures are the `apps/mekugi/internal/router/*_codex_e2e_test.go` files. List them with
+`git grep -h '^func Test.*E2E' -- 'apps/mekugi/internal/router/*_codex_e2e_test.go'`.
 
 The built-in OpenAI fixture uses the existing local base-URL override and fake
 credentials. It checks native web-tool exposure, internal turn metadata,
@@ -51,7 +51,7 @@ The guard fixtures use fake VCS executables and the installed host to verify
 native command-hook dispatch, approvals, denial, and helper failure blocking:
 
 ```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^(TestAppServerVCSGuardNativeCodexYolo|TestAppServerGuardTransportFailureNativeCodex)$' TEST_FLAGS='-tags=codex_e2e -count=1'
+make test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN='^(TestAppServerVCSGuardNativeCodexYolo|TestAppServerGuardTransportFailureNativeCodex)$' TEST_FLAGS='-tags=codex_e2e -count=1'
 ```
 
 The transport-failure cases disconnect an unrelated MCP endpoint or remove/fail
@@ -71,10 +71,10 @@ installed Codex execution and measured reports under read-only and workspace-wri
 sandboxes. Run the affected acceptance without changing the host policy:
 
 ```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags codex_e2e -count=1'
+make test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN='^TestAppServerExecTrackNativeCodex(Sandbox)?$' TEST_FLAGS='-tags codex_e2e -count=1'
 ```
 
-A tagged compile-only check is `go test -tags codex_e2e ./internal/router -run '^$'`.
+A tagged compile-only check is `go test -tags codex_e2e ./apps/mekugi/internal/router -run '^$'`.
 
 These deterministic tests do not prove live-model behavior or decrypt prior
 encrypted assignments. If a task needs real provider behavior, report that

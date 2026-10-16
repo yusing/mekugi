@@ -7,7 +7,7 @@ import (
 
 	"github.com/yusing/mekugi/providers/opencode"
 
-	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 )
 
 func TestPrepareOpenCodeCatalog(t *testing.T) {

@@ -2,7 +2,7 @@
 
 ## CTR-ACTIVITY-001 — Activity identity and collection
 
-Native session integration in `internal/router` consumes Codex app-server events.
+Native session integration in `apps/mekugi/internal/router` consumes Codex app-server events.
 [Activity](../../modules/activity/SPEC.md) owns source interpretation, retained
 output, enriched neutral values and canonical grouping membership; its terminal
 view owns disclosure, layout, animated tails and painting.

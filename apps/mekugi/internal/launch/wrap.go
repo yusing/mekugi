@@ -32,7 +32,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 
-	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"golang.org/x/term"

@@ -12,8 +12,8 @@ The inherited tracking guard also makes isolated command shells skip reporting.
 and tests while iterating, for example:
 
 ```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^TestShellRunnerMRun'
-make test TEST_PACKAGES='./backends/codex/appserver ./internal/router' TEST_RUN=AppServer
+make test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN='^TestShellRunnerMRun'
+make test TEST_PACKAGES='./backends/codex/appserver ./apps/mekugi/internal/router' TEST_RUN=AppServer
 ```
 
 The default is `@workspace`, expanded from the explicit members in `go.work`.
@@ -45,10 +45,10 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Captured diff model, composition, merge and status | `./libraries/diffmodel/...`, plus affected router and terminal consumers |
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected router integration tests |
 | Neutral activity content, parsing and retained output | `./modules/activity/... ./contracts/scope ./libraries/sourceanalysis/markdownsyntax`, plus router receipt/command/segment/dialog and terminal operation-group/tail consumers |
-| Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./internal/router -run AppServer` |
+| Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./apps/mekugi/internal/router -run AppServer` |
 | Rollout evidence and offline source decoding | `./backends/codex/rollout`, plus router context, resume-settings, restored-Activity, session-inspection, corpus and optional-AX consumers |
 | Offline reconstruction, scheduling and playback | `./modules/sessionreplay/... ./backends/codex/rollout`, plus router `SessionUIReplay`, hook and optional-transport consumers |
-| Router behavior | `./internal/router` |
+| Router behavior | `./apps/mekugi/internal/router` |
 | Bounded notices, feedback and recovery | `./modules/notifications/...`, plus router `Critical`, `Notice`, `Notification`, request-fault, cleanup and title consumers |
 | Applied settings and renderer preferences | `./modules/sessionpreferences/...`, plus router `NativePaneState`, `AppliedSettings`, resume, controls and settings consumers |
 | Session publication, namespaces, leases, and retention | `./modules/sessionhistory/...`, plus affected router persistence/fork/recovery integration |
@@ -62,11 +62,11 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Optional session naming | `./modules/sessionnaming/...`, plus router `SessionTitle`, `NativeSessionTitle`, `TerminalTitle`, and submitted-assignment consumers; installed persistence/resume cases in `app_server_session_title_codex_e2e_test.go` |
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
 | Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |
-| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/internal/launch ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
+| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/internal/launch ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./apps/mekugi/internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Shared diff decoration and terminal primitives | `./libraries/diffrender/... ./libraries/terminalui/...`, plus affected native and replay consumers |
 | Shared display-text sanitization | `./libraries/textsanitize`, plus diff, Markdown, activity, native dialog and source-copy consumers |
 | Live diff UI or streaming | `./modules/changehistory/presentation ./modules/changehistory/terminalview ./modules/livepreview/...`, plus router `Diff\|Preview\|Native\|Terminal\|Selection\|SessionUIReplay`, plus terminal acceptance below |
-| Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
+| Terminal layout, Activity, or Agents | `./apps/mekugi/internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./modules/outputdeduplication/...` |
 | Duplicate-output projection and submitted attachment codec | `./modules/outputdeduplication/... ./libraries/modelprotocol/attachments ./backends/codex/binding`, plus router duplicate-output, attachment, continuation, and provider-prefix consumers |
 | Per-thread provider accounting, pricing and retained throughput | `./modules/usage/... ./contracts/inference ./backends/codex/responses`, plus router `ThreadUsage`, `TokenUsage`, `TokenCost`, `OutputThroughput`, `Roster` and naming consumers |
@@ -80,10 +80,10 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Retained changes, frozen selections, and mutation | `./modules/changehistory/...`, plus router `MChanges`, `Changes`, retention/fork/recovery, and live-view consumers |
 | Retained paging | `./modules/outputrecovery/...`, then router mread/storage/fork integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
-| Bounded commands | `./modules/boundedcommand/...`, plus `./internal/router -run MRun` for authenticated delivery and process lifecycle |
+| Bounded commands | `./modules/boundedcommand/...`, plus `./apps/mekugi/internal/router -run MRun` for authenticated delivery and process lifecycle |
 | Invocation launch and process dispatch | `./apps/mekugi/internal/launch`, plus executable build |
-| Native frontend host acceptance | `-tags codex_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
-| Native mrun continuation acceptance | `-tags codex_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
+| Native frontend host acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
+| Native mrun continuation acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `@workspace` |
 
 Native reader latency checks include a fresh authenticated worker, a 3,000-row
@@ -91,7 +91,7 @@ read, the three-document architecture batch, and an eight-file Go inspection at
 the default shared budget. Run them without installing a binary:
 
 ```sh
-make test TEST_PACKAGES=./internal/router TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
+make test TEST_PACKAGES=./apps/mekugi/internal/router TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeFrontends -benchtime=3x -count=1'
 ```
 
 The inspection batch intentionally exercises incomplete-output recovery. These
@@ -110,7 +110,7 @@ Fresh-process resolver and authenticated frontend benchmarks use normal caches;
 the frontend measurements exclude registry creation and active-session leases:
 
 ```sh
-make test TEST_PACKAGES='./modules/symbolquery/query ./internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
+make test TEST_PACKAGES='./modules/symbolquery/query ./apps/mekugi/internal/router' TEST_RUN='^$' TEST_FLAGS='-bench=BenchmarkNativeSymbol -benchtime=5x -count=1'
 ```
 
 Frontend descriptions and supplementary `guidance.md` live with their command
@@ -119,7 +119,7 @@ its Codex binding owns the shared layout and instruction projection. Check the
 actual authenticated snapshot and prepared-request projection after prose changes:
 
 ```sh
-make test TEST_PACKAGES='./modules/agentguidance/... ./internal/router ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
+make test TEST_PACKAGES='./modules/agentguidance/... ./apps/mekugi/internal/router ./apps/mekugi/internal/composition' TEST_RUN='Guidance|Instruction|ConflictRewrite|Prewarm|ComposedFrontendCatalog'
 ```
 
 ## Static checks
@@ -136,7 +136,7 @@ Enable the staged-tree snapshot commit gate as described in
 
 `make test-ui-snapshots` runs offline rendered-output regression tests without Codex
 or model requests. Select a case with `SNAPSHOT='^TestUISnapshotNativeSessionShortcuts$'`.
-Set `SNAPSHOT_PACKAGES=./internal/router` (or another owning package) to avoid
+Set `SNAPSHOT_PACKAGES=./apps/mekugi/internal/router` (or another owning package) to avoid
 compiling and testing unrelated UI packages; the check still includes the snapshot
 harness tests. The same package selection applies to `update-ui-snapshots`.
 Router fixtures cover
@@ -185,7 +185,7 @@ isolating mutable thread, workspace, and process state. Startup and shutdown
 tests still need their own owners. Disposable Git fixtures must isolate system
 and global configuration so setup does not invoke personal signing programs or
 hooks; keep repository-local settings for filter and worktree boundary tests.
-Resolve fixture shells with `execTrackShellExecutable` in `internal/router/exec_track_test.go`:
+Resolve fixture shells with `execTrackShellExecutable` in `apps/mekugi/internal/router/exec_track_test.go`:
 `exec.Command` resolves names before `Cmd.Env` is set, so an isolated environment alone
 can still select the live session's approval guard. Keep fixture tools first for nested shells.
 Use controlled time for in-process lifetimes, including retention retries and

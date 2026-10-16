@@ -12,7 +12,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
-	"github.com/yusing/mekugi/internal/router"
+	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 

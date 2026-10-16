@@ -439,7 +439,7 @@ func TestOpenCodeStartupAndMode(t *testing.T) {
 
 func TestEveryEmbeddedGoModelHasAnEndpoint(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
-	body, err := os.ReadFile("../../providers/opencode/snapshot/opencode-go-models.json")
+	body, err := os.ReadFile("../../../../providers/opencode/snapshot/opencode-go-models.json")
 	if err != nil {
 		t.Fatal(err)
 	}

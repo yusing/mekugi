@@ -24,11 +24,11 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if err = registry.installFrontends(); err != nil {
 		b.Fatal(err)
 	}
-	source, err := filepath.Abs("../../libraries/sourceanalysis/gooutline/outline.go")
+	source, err := filepath.Abs("../../../../libraries/sourceanalysis/gooutline/outline.go")
 	if err != nil {
 		b.Fatal(err)
 	}
-	second, err := filepath.Abs("../../libraries/sourceanalysis/sourcekind/sourcekind.go")
+	second, err := filepath.Abs("../../../../libraries/sourceanalysis/sourcekind/sourcekind.go")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -40,11 +40,11 @@ func BenchmarkNativeFrontends(b *testing.B) {
 		return value
 	}
 	inspectBatch := []string{
-		abs("app_server_ui.go"), abs("live_activity_view.go"), abs("../../modules/activity/terminalview/paint.go"),
+		abs("app_server_ui.go"), abs("live_activity_view.go"), abs("../../../../modules/activity/terminalview/paint.go"),
 		abs("vcs_display.go"), abs("server.go"), abs("native_shell.go"),
-		abs("storage_retention.go"), abs("../../modules/changehistory/internal/retained/mutate.go"),
+		abs("storage_retention.go"), abs("../../../../modules/changehistory/internal/retained/mutate.go"),
 	}
-	docs := []string{abs("../../doc/architecture/ui.md"), abs("../../doc/architecture/activity.md"), abs("../../doc/architecture/boundary.md")}
+	docs := []string{abs("../../../../doc/architecture/ui.md"), abs("../../../../doc/architecture/activity.md"), abs("../../../../doc/architecture/boundary.md")}
 	rows := filepath.Join(directory, "rows.txt")
 	if err := os.WriteFile(rows, []byte(strings.Repeat("word\n", 3000)), 0o600); err != nil {
 		b.Fatal(err)
@@ -83,7 +83,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 	if _, err := exec.LookPath("gopls"); err != nil {
 		b.Skip("gopls is not on PATH")
 	}
-	root, err := filepath.Abs("../..")
+	root, err := filepath.Abs("../../../..")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func BenchmarkNativeSymbolFrontend(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			args := []string{"--max-tokens", "3000"}
 			for range tuples {
-				args = append(args, "refs", "internal/router/naming_inference.go", "namingCompletion")
+				args = append(args, "refs", "apps/mekugi/internal/router/naming_inference.go", "namingCompletion")
 			}
 			for b.Loop() {
 				cmd := exec.CommandContext(b.Context(), registry.frontends["msymbol"], args...)

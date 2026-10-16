@@ -10,7 +10,7 @@ import (
 
 func TestSnapshotCommitHookChecksStagedTree(t *testing.T) {
 	workspace := gitTestWorkspace(t)
-	hooks, err := filepath.Abs("../../.githooks")
+	hooks, err := filepath.Abs("../../../../.githooks")
 	if err != nil {
 		t.Fatal(err)
 	}
