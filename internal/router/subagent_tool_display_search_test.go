@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -40,7 +42,7 @@ func TestSearchDisplayQueryAndTarget(t *testing.T) {
 				t.Fatalf("native display = %q, want %q", got, tc.want)
 			}
 			source := `text(await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(tc.source)) + `}));`
-			calls, ok := toolActivityUnwrapExecCalls(source, false)
+			calls, ok := binding.ExecutionCalls(source, false)
 			if !ok || len(calls) != 1 || responses.StringField(calls[0], "arguments") != string(responses.MustMarshalJSON(map[string]string{"cmd": tc.source})) {
 				t.Fatalf("exec capture did not preserve command: %v", calls)
 			}

@@ -29,6 +29,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Selected-file editor handoff | `internal/router/native_file_editor.go`, `internal/router/terminal_ui.go`; shared editor runner and terminal restoration in `internal/router/app_server_composer_editor.go`, `internal/router/app_server_ui.go` |
 | Shared Diff syntax and word highlighting | `internal/livediff/render.go`, `internal/livediff/word_diff.go`, `internal/livediff/theme.go`; source previews in `internal/ui/diffview/preview.go` |
 | Codex app-server stdio RPC and child-process lifecycle | `backends/codex/appserver` |
+| Transparent Codex JavaScript source recognition | `backends/codex/binding/execution_source.go`; preview, continuation correlation and offline corpus inspection consume its literal candidates without executing them |
 | Host-selected rollout identity, bounded context usage and resume settings | `backends/codex/rollout`; display precedence and Activity projection stay in router consumers |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
 | Invocation-local Mekugi TOML configuration and service-tier selection | `internal/router/config.go`, `internal/router/service_tier.go`; OpenCode service configuration in `providers/opencode` |

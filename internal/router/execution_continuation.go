@@ -177,7 +177,7 @@ func executionResumeHandle(item map[string]json.RawMessage, history mekugiHistor
 	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
 	if name == strings.TrimPrefix(execName, "functions.") {
 		source := responses.StringField(item, "input")
-		nested, ok := toolActivityUnwrapExec(source, false)
+		nested, ok := binding.SingleExecutionCall(source, false)
 		if !ok {
 			return ""
 		}
@@ -235,7 +235,7 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 		call.native = history.effectiveCarrierKind() == codeModeCarrierFunction
 		call.nativePayload = history.ToolName == nativeExecCommandToolName
 		if call.codeMode && history.ToolName == "exec" {
-			if nested, ok := toolActivityUnwrapExec(history.Script, true); ok {
+			if nested, ok := binding.SingleExecutionCall(history.Script, true); ok {
 				name := responses.StringField(nested, "name")
 				call.nativePayload = name == nativeExecCommandToolName || name == "write_stdin"
 			}
@@ -249,7 +249,7 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 		call.native = true
 	case strings.TrimPrefix(execName, "functions."):
 		call.codeMode = true
-		if nested, ok := toolActivityUnwrapExec(responses.StringField(item, "input"), true); ok {
+		if nested, ok := binding.SingleExecutionCall(responses.StringField(item, "input"), true); ok {
 			call.nativePayload = responses.StringField(nested, "name") == "exec_command" || responses.StringField(nested, "name") == "write_stdin"
 		}
 	case "wait":

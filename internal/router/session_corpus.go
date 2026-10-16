@@ -353,7 +353,7 @@ func inspectionEmptyInput(item map[string]json.RawMessage, history mekugiHistory
 	name := strings.TrimPrefix(responses.StringField(item, "name"), "functions.")
 	if name == "exec" {
 		source := responses.StringField(item, "input")
-		nested, ok := toolActivityUnwrapExec(source, false)
+		nested, ok := binding.SingleExecutionCall(source, false)
 		if !ok {
 			return false
 		}
