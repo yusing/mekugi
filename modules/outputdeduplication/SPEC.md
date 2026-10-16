@@ -9,8 +9,9 @@ Reduce repeated model-input text while preserving host execution and evidence.
 The module owns request-local matching, reference text, eligibility, and repetition
 receipts. The Codex binding selects original host parts and submitted attachment
 bodies. The application applies the projection after its evidence consumers and
-maps returned call receipts to native activity identities. The
-[metrics contract](../../doc/spec/metrics.md) owns local token estimates.
+maps returned call receipts to native activity identities. The module also owns
+local token-savings estimates; capture aggregates their receipts without reading
+output content or initializing a tokenizer.
 
 ## Behavior
 
@@ -66,6 +67,21 @@ only their own current input. Fresh projections of the same original host input
 are byte-identical, and extending that input preserves earlier projected items.
 The [transport contract](../../doc/spec/transport.md) owns provider-history reconciliation.
 
+### Local savings estimates
+
+Each receipt reports the net local content-token difference before and after
+projection, including anchors and references. Savings can be negative and are
+not provider billing savings. Estimates count decoded JSON keys and scalar values
+independently, excluding punctuation, ordering, whitespace and string-escape
+spelling. Equivalent numbers normalize without losing precision; arrays retain
+every element. Literal code and JSON strings keep their internal escapes.
+These pinned GPT-5 estimates are never exact provider input or billed tokens.
+
+An unavailable estimate leaves projection and repetition receipts intact and is
+counted as unmeasured. Tokenization is initialized only when measuring changed
+input, not when composing a frontend worker. Unchanged input has zero savings.
+The [metrics contract](../../doc/spec/metrics.md) owns invocation aggregation and
+presentation of these receipts.
 
 ## Lifecycle
 

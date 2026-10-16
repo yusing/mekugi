@@ -62,11 +62,9 @@ difference before and after projection, including anchors and references; they c
 be negative and are not provider billing savings. Unmeasured projections are
 counted explicitly. These invocation-local totals are not restored on resume.
 
-Output-deduplication estimates count decoded JSON keys and scalar values independently,
-excluding punctuation, field ordering, whitespace and string-escape spelling. Equivalent
-numeric spellings normalize without losing precision. Arrays retain every element.
-Literal content, including code and JSON strings, keeps its internal escapes. These
-local GPT-5 estimates must not be labeled as exact provider input or billed tokens.
+The [output-deduplication module](../../modules/outputdeduplication/SPEC.md#local-savings-estimates)
+owns local token estimation. Capture aggregates supplied measurements and explicit
+unmeasured receipts without tokenizing or retaining projected content.
 
 With `--debug`, the snapshot includes optional `storage_writes` with cumulative
 `bytes` and a `scope` description, displayed in `/session` Overview and debug

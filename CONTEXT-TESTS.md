@@ -61,7 +61,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
-| Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./capturer` |
+| Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./modules/outputdeduplication/...` |
 | Duplicate-output projection and submitted attachment codec | `./modules/outputdeduplication/... ./libraries/modelprotocol/attachments ./backends/codex/binding`, plus router duplicate-output, attachment, continuation, and provider-prefix consumers |
 | Per-thread provider accounting, pricing and retained throughput | `./modules/usage/... ./contracts/inference ./backends/codex/responses`, plus router `ThreadUsage`, `TokenUsage`, `TokenCost`, `OutputThroughput`, `Roster` and naming consumers |
 | Capture metrics | `./capturer` |

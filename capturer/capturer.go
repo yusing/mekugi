@@ -22,7 +22,6 @@ import (
 	"github.com/yusing/mekugi/contracts/inference"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
-	"github.com/yusing/mekugi/libraries/outputbudget/tokenizer"
 
 	"github.com/yusing/mekugi/libraries/persistence"
 )
@@ -103,7 +102,6 @@ type Recorder struct {
 	fingerprintKey      [32]byte
 	mu                  sync.Mutex
 	file                *os.File
-	codec               *tokenizer.Codec
 	mode                string
 	requestSequence     uint64
 	metrics             MetricsSnapshot
@@ -184,11 +182,8 @@ func ObserveProjectedRequest(ctx context.Context, body []byte) {
 
 // New creates one in-process recorder. It never starts a server.
 func New(config Config) (*Recorder, error) {
-	codec, err := tokenizer.New()
-	if err != nil {
-		return nil, fmt.Errorf("load capture tokenizer: %w", err)
-	}
 	var file *os.File
+	var err error
 	if config.Output != "" {
 		file, err = os.OpenFile(config.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
@@ -203,7 +198,7 @@ func New(config Config) (*Recorder, error) {
 		return nil, fmt.Errorf("initialize private cache fingerprints: %w", err)
 	}
 	return &Recorder{
-		writes: config.Writes, fingerprintKey: fingerprintKey, file: file, codec: codec, mode: config.Mode,
+		writes: config.Writes, fingerprintKey: fingerprintKey, file: file, mode: config.Mode,
 		lastRequestSequence: make(map[string]uint64),
 		metrics:             newMetricsSnapshot(config.Mode),
 	}, nil

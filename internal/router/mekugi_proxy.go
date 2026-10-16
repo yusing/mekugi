@@ -452,7 +452,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		if summary == nil {
 			continue
 		}
-		capturer.ObserveOutputDeduplication(ctx, before, result.Input, summary.OutputRepetitions)
+		capturer.ObserveOutputDeduplication(ctx, summary.OutputRepetitions, summary.SavedTokens, summary.TokensMeasured)
 		if len(summary.RepeatedCalls) == 0 {
 			continue
 		}
