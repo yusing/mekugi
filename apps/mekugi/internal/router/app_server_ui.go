@@ -158,6 +158,7 @@ type appServerUI struct {
 	archived                bool
 	interruptLocked         bool
 	mainContentPainted      bool
+	promptRect              terminalsession.Rect
 	status                  string
 	exitUsage               appServerTokenUsage
 	resumeArgv              []string
@@ -1341,6 +1342,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
 			dockRect.Y++
 			u.composerRect.Y++
+			u.promptRect.Y++
 			u.noticeDetails.Y++
 			u.noticeDismiss.Y++
 			if u.btw != nil && u.btw.rect.H > 0 {
@@ -1427,15 +1429,15 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	}
 	frame = append(frame, btwRows...)
 	u.questions.rect = terminalsession.Rect{0, len(frame), width, len(questionRows)}
+	if u.activeQuestionCall() != nil {
+		u.promptRect = u.questions.rect
+	}
 	frame = append(frame, questionRows...)
+	if u.approvals.Open {
+		u.promptRect = terminalsession.Rect{0, len(frame), width, len(approvalRows)}
+	}
 	frame = append(frame, approvalRows...)
 	frame = append(frame, make([]string, gap)...)
-	if !readOnly && u.activeQuestionCall() != nil {
-		u.questions.painted = true
-	}
-	if !readOnly && u.approvals.Open {
-		u.approvals.painted = true
-	}
 	// Visual reference: Grok CLI PromptStyle / PromptWidget::draw, source
 	// crates/codegen/xai-grok-pager/src/views/prompt_widget/mod.rs:217:240,3007:3078
 	// @be7ce6e8cffe46d20bef9834b211616082ee866b. Keep continuation rows aligned.

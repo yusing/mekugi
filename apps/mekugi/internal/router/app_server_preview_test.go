@@ -1468,10 +1468,11 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 	p.ui.openQuestions()
 	rows, _ := p.ui.mainFrame(72, 28, 0)
 	t.Logf("question dock:\n%s", ansi.Strip(strings.Join(rows, "\n")))
+	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "1\r")
 	p.serve()
 	p.ui.openQuestions()
-	p.ui.mainFrame(72, 28, 0)
+	questionTestPaint(t, p.ui, 72)
 	appServerTestKeys(t, p.ui, "2\r")
 	p.serve()
 	if p.ui.questionCount() != 0 || p.ui.Text != "Keep my draft" {

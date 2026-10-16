@@ -105,8 +105,10 @@ The visible Locked indicator names `/unlock`.
 [Conversation](../../../../modules/conversation/SPEC.md#questions-and-approvals)
 owns prompt lifecycle. Clicking a pending banner or Ctrl-B q opens approvals
 before questions. The dock replaces live edits, occupies at most half of Main,
-and accepts answers only after painting. Other pane focus retains Main's pending
-count. Hidden prompts leave normal interrupt behavior intact.
+and accepts answers only after successful delivery of a frame that shows it.
+Rendering an unseen dock beneath a content dialog or frozen selection does not
+make it ready. Other pane focus retains Main's pending count. Hidden prompts leave
+normal interrupt behavior intact.
 
 Questions show their position, full scrollable text, options/descriptions and
 Other. Only visible options set column widths; narrow layouts omit descriptions

@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
+	"io"
 	"reflect"
 	"slices"
 	"strings"
@@ -58,8 +59,17 @@ func questionTestAsync(t *testing.T, u *appServerUI, item string, titles ...stri
 
 func questionTestPaint(t *testing.T, u *appServerUI, width int) string {
 	t.Helper()
-	rows, _ := u.mainFrame(width, 28, 0)
-	return strings.Join(rows, "\n")
+	if u.session.paths == nil {
+		u.session.start(u.Thread, u.session.cwd)
+	}
+	if u.shell == nil {
+		u.ensureShell()
+		t.Cleanup(func() { u.shell.diffScreen.Close() })
+	}
+	if err := u.paint(io.Discard, width+2, 31); err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(u.shell.frame.Rows, "\n")
 }
 
 func TestNativeQuestionSyncAnswerEncoding(t *testing.T) {

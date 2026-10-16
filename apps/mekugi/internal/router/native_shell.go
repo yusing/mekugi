@@ -262,6 +262,7 @@ func (u *appServerUI) transcriptView() *activityAdapter {
 // optional saved Diff on the right, a caller-local live dock, the fitted roster
 // below, and a status bar for the focused pane.
 func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
+	u.main.promptRect = terminalsession.Rect{}
 	width, height := max(1, u.width), max(1, u.height)
 	now := u.main.now()
 	u.agents.FeedOnly, u.agents.Focused = true, u.Focus == 3
@@ -380,7 +381,26 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		rows[y], copyRows[y] = terminalui.ExtractCopy(rows[y])
 	}
 	u.paintSelection(rows)
-	return u.frame.Write(out, rows, copyRows, u.width, u.faint)
+	if err := u.frame.Write(out, rows, copyRows, u.width, u.faint); err != nil {
+		return err
+	}
+	// Composing Main does not show a prompt covered by a dialog or frozen selection.
+	prompt := u.main.promptRect
+	prompt.H = min(prompt.H, max(0, l.Main.H-prompt.Y))
+	prompt.X, prompt.Y = prompt.X+l.Main.X, prompt.Y+l.Main.Y
+	visible := prompt.W > 0 && prompt.H > 0 && u.output == nil
+	if s := u.selection; s != nil {
+		visible = visible && (prompt.X+prompt.W <= s.Rect.X || s.Rect.X+s.Rect.W <= prompt.X || prompt.Y+prompt.H <= s.Rect.Y || s.Rect.Y+s.Rect.H <= prompt.Y)
+	}
+	if visible {
+		if u.main.activeQuestionCall() != nil {
+			u.main.questions.painted = true
+		}
+		if u.main.approvals.Open {
+			u.main.approvals.painted = true
+		}
+	}
+	return nil
 }
 
 // nativeStatus shows view selectors and only the focused view's keys.
