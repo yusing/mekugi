@@ -36,7 +36,7 @@ func observeTestCommand(t *testing.T, workdir, command string) *execObservation 
 	t.Helper()
 	observation, observed := captureExecObservation([]commandanalysis.Command{{Command: command, Workdir: workdir, Shell: "bash"}}, false, false, execCaptureEnv{})
 	if !observed {
-		t.Fatalf("%q was not observed", command)
+		t.Fatalf("%q was not observed; observation=%+v", command, observation)
 	}
 	return observation
 }
