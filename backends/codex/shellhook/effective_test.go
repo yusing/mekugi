@@ -2,6 +2,7 @@ package shellhook
 
 import (
 	json "encoding/json/v2"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,11 @@ func TestValidateGuardHookCompetingShellHooks(t *testing.T) {
 		name, matcher, trust, event string
 		enabled, async, conflict    bool
 	}{
+		{"range", "^[A-Z]ash$", "trusted", "preToolUse", true, false, true},
+		{"POSIX atom", "^[[:upper:]]ash$", "trusted", "preToolUse", true, false, true},
+		{"case folding", "(?i)^bash$", "trusted", "preToolUse", true, false, true},
+		{"word boundary", `^\bBash\b$`, "trusted", "preToolUse", true, false, true},
+		{"escaped bracket", `^[\[B]ash$`, "trusted", "preToolUse", true, false, true},
 		{"Bash rewrite", "^Bash$", "trusted", "preToolUse", true, false, true},
 		{"exec rewrite", "^exec_command$", "managed", "preToolUse", true, false, true},
 		{"shell rewrite", "^shell(_command)?$", "trusted", "preToolUse", true, false, true},
@@ -77,6 +83,26 @@ func TestValidateGuardHookCompetingShellHooks(t *testing.T) {
 			err := Validate(guardHookTestResult(t, "/workspace", guardHookTestEntry(hash), other), "/workspace", hash)
 			if (err != nil) != tt.conflict {
 				t.Fatalf("conflict=%v error=%v", tt.conflict, err)
+			}
+		})
+	}
+}
+
+func TestValidateGuardHookRejectsUnverifiableMatchers(t *testing.T) {
+	for _, matcher := range []string{
+		`^[A-Z&&[^A]]ash$`, `^[[B]]ash$`, `^[AB&&A]ash$`, `^[AB--A]ash$`, `^[AB~~A]ash$`,
+		`^\b{start}Bash$`, `^Bash\b{end}$`, `^\b{start-half}Bash$`, `^Bash\b{end-half}$`, `\<Bash\>`,
+	} {
+		t.Run(matcher, func(t *testing.T) {
+			other := guardHookTestEntry("other")
+			other["key"], other["matcher"] = "other", matcher
+			data := guardHookTestResult(t, "/workspace", guardHookTestEntry("guard"), other)
+			if err := Validate(data, "/workspace", "guard"); err == nil || !strings.Contains(err.Error(), "cannot verify hook matcher") {
+				t.Fatalf("unverifiable matcher admitted: %v", err)
+			}
+			other["async"] = true
+			if err := Validate(guardHookTestResult(t, "/workspace", guardHookTestEntry("guard"), other), "/workspace", "guard"); err != nil {
+				t.Fatalf("async observer rejected: %v", err)
 			}
 		})
 	}

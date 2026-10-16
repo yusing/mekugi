@@ -51,7 +51,10 @@ func TestAppServerGuardHookChecksBeforeEachNewTurn(t *testing.T) {
 }
 
 func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
-	for _, response := range []string{`"result":{"data":[]}`, `"error":{"code":-1,"message":"offline"}`} {
+	other := guardHookTestEntry("other")
+	other["key"], other["matcher"] = "other", `^[A-Z&&[^A]]ash$`
+	unverifiable := guardHookTestResult(t, "/workspace", guardHookTestEntry("guard"), other)
+	for _, response := range []string{`"result":{"data":[]}`, `"error":{"code":-1,"message":"offline"}`, `"result":` + string(unverifiable)} {
 		u, wire := newAppServerTestUI()
 		u.session.cwd, u.guardHookCheck.hash = "/workspace", "guard"
 		appServerTestKeys(t, u, "first\rsecond\rtyping")

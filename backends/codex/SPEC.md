@@ -41,6 +41,8 @@ native hook result. Host hook-shell launch, timeout and delivery failures retain
 Codex's external-hook policy. The application checks effective workspace hooks
 before admitting each new user turn and preserves drafts on failure. Feature
 approval policy and session grants remain separate from this protocol owner.
+Hook matchers outside the verified shared regex syntax block guarded admission
+with an explanation; an unverified matcher is never treated as nonmatching.
 
 ## Input projection
 
