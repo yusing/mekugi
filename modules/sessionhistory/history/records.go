@@ -12,6 +12,8 @@ import (
 const MaxRecordBytes = 32 << 20
 
 // ReadRecord reads one regular, bounded UTF-8 retained record without effects.
+// On a read or validation failure, returned bytes are for resource accounting
+// only; they are not a valid retained record.
 // Source: internal/router/shell_output_store.go:304:331@efcbf71f readManagedOutputFile.
 func ReadRecord(name string) ([]byte, error) {
 	info, err := os.Lstat(name)
@@ -32,12 +34,12 @@ func ReadRecord(name string) ([]byte, error) {
 	var buffer bytes.Buffer
 	buffer.Grow(int(info.Size()) + bytes.MinRead)
 	_, err = buffer.ReadFrom(io.LimitReader(file, MaxRecordBytes+1))
-	if err != nil {
-		return nil, err
-	}
 	data := buffer.Bytes()
+	if err != nil {
+		return data, err
+	}
 	if len(data) > MaxRecordBytes || !utf8.Valid(data) {
-		return nil, errors.New("invalid read recovery record encoding or size")
+		return data, errors.New("invalid read recovery record encoding or size")
 	}
 	return data, nil
 }

@@ -49,7 +49,7 @@ type HookObservations struct {
 	Thread    string
 	Dropped   int
 	Runs      []HookObservation
-	Bytes     int `json:"-"` // Published input size, charged to offline replay's corpus bound.
+	Bytes     int `json:"-"` // Bytes read, including rejected input, charged to replay's corpus bound.
 }
 
 func HookObservationsName(workspace, thread string) string {
@@ -65,16 +65,19 @@ func (s *Store) ReadHookObservations(workspace, thread string) (HookObservations
 	}
 	path := filepath.Join(s.directory, HookObservationsName(workspace, thread))
 	data, err := ReadRecord(path)
+	r.Bytes = len(data)
 	if errors.Is(err, os.ErrNotExist) {
 		return r, nil
 	}
 	if err != nil {
 		return r, err
 	}
-	if err := json.Unmarshal(data, &r, json.RejectUnknownMembers(true)); err != nil {
+	err = json.Unmarshal(data, &r, json.RejectUnknownMembers(true))
+	// Decoding null can clear the value, but never the cost of reading it.
+	r.Bytes = len(data)
+	if err != nil {
 		return r, err
 	}
-	r.Bytes = len(data)
 	if r.Version != 1 || r.Workspace != workspace || r.Thread != thread {
 		return r, errors.New("hook observation identity mismatch")
 	}

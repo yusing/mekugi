@@ -156,13 +156,13 @@ func (s *Service) Read(ctx context.Context, options ReadOptions) (*Source, error
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if err != nil {
-			r.HookUnavailable = append(r.HookUnavailable, fmt.Sprintf("%s: %v", thread, err))
-			hooks = history.HookObservations{}
-		}
 		totalBytes += hooks.Bytes
 		if totalBytes > 256<<20 {
 			return nil, errors.New("replay corpus exceeds 256 MiB")
+		}
+		if err != nil {
+			r.HookUnavailable = append(r.HookUnavailable, fmt.Sprintf("%s: %v", thread, err))
+			hooks = history.HookObservations{}
 		}
 		if hooks.Dropped > 0 {
 			r.HookUnavailable = append(r.HookUnavailable, fmt.Sprintf("%s: %d earlier observations were not retained", thread, hooks.Dropped))
