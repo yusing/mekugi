@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -131,7 +130,7 @@ func (g *grokClient) forwardExecution(startCtx, responseCtx context.Context, bod
 		if err != nil {
 			stopStart()
 			cancel()
-			return nil, errors.New("grok retry after authentication refresh failed")
+			return nil, fmt.Errorf("grok retry after authentication refresh failed: %w", forwardCriticalDiagnostic(err))
 		}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
