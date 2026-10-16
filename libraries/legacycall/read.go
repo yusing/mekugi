@@ -34,7 +34,7 @@ func Read(directory, workspace, callID string, commentary bool, limit int) (Reco
 	if !info.Mode().IsRegular() || info.Size() > int64(limit) {
 		return Record{}, false, errors.New("invalid replay record file")
 	}
-	f, err := os.Open(name)
+	f, err := openRetained(name, limit)
 	if err != nil {
 		return Record{}, false, err
 	}

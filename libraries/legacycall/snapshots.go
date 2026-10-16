@@ -94,7 +94,7 @@ func SnapshotData(directory, name string, limit int) ([]byte, bool, error) {
 	if !info.Mode().IsRegular() || info.Size() > int64(limit) {
 		return nil, false, errors.New("invalid snapshot file")
 	}
-	f, err := os.Open(path)
+	f, err := openRetained(path, limit)
 	if err != nil {
 		return nil, false, err
 	}
