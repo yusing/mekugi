@@ -24,8 +24,8 @@ func TestComposerPastePausedTranscriptThenReference(t *testing.T) {
 	u.Turn = "active"
 	u.view.Following = false
 	composerShellKeys(t, u, "\x1b[200~'"+image+"'\x1b[201~")
-	if u.paste || u.shell.input.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.view.Following {
-		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v/%v following=%v", u.Text, u.Images, u.paste, u.shell.input.Pasting(), u.view.Following)
+	if u.shell.input.Pasting() || len(u.Images) != 1 || u.Text != "[Image 1] " || u.view.Following {
+		t.Fatalf("paste on scrollback: draft=%q image=%v paste=%v following=%v", u.Text, u.Images, u.shell.input.Pasting(), u.view.Following)
 	}
 	u.shell.selection = &terminalSelection{Selection: selectedTerminalText("quote"), mention: "message"}
 	composerShellKeys(t, u, "rtyped")
@@ -59,8 +59,8 @@ func TestComposerPasteTerminatorBypassesSelection(t *testing.T) {
 	// A selection must not consume any byte of the opaque end marker.
 	u.shell.selection = &terminalSelection{Selection: selectedTerminalText("selected")}
 	composerShellKeys(t, u, "\x1b[201~typed")
-	if u.Text != "payloadtyped" || u.paste || u.shell.input.Pasting() || wire.Len() != 0 {
-		t.Fatalf("selection consumed paste boundary: draft=%q paste=%v/%v", u.Text, u.paste, u.shell.input.Pasting())
+	if u.Text != "payloadtyped" || u.shell.input.Pasting() || wire.Len() != 0 {
+		t.Fatalf("selection consumed paste boundary: draft=%q paste=%v", u.Text, u.shell.input.Pasting())
 	}
 }
 

@@ -165,13 +165,13 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		if strings.Contains(render(), "first-start") {
 			t.Fatal("read output must start compact")
 		}
-		if _, err := u.key(5); err != nil {
+		if _, err := u.key("\x05"); err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(render(), "first-start") {
 			t.Fatal("expanded events opened command output")
 		}
-		if _, err := u.key(5); err != nil {
+		if _, err := u.key("\x05"); err != nil {
 			t.Fatal(err)
 		}
 		text := render()
@@ -189,7 +189,7 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		if !strings.Contains(render(), "first-end") {
 			t.Fatal("released output erased the retained inline tail")
 		}
-		if _, err := u.key(5); err != nil {
+		if _, err := u.key("\x05"); err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(render(), "third-start") {

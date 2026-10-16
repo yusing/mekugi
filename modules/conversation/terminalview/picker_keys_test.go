@@ -25,7 +25,4 @@ func TestPickerKeysPreserveEditorAndEffectIntents(t *testing.T) {
 	if SkillsKey(&p, true, "2") != PickerChooseSkills || p.Selected != 1 || SkillsKey(&p, false, " ") != PickerToggleSkill || SkillsKey(&p, false, "\x03") != PickerCloseSkills {
 		t.Fatal("skill effects were not returned")
 	}
-	if SkillsKey(&p, false, "\x1b[200~") != PickerPass {
-		t.Fatal("paste framing must remain application-owned")
-	}
 }

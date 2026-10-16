@@ -63,7 +63,7 @@ func (u *appServerUI) refreshPicker() {
 		u.picker.Open = false
 		return
 	}
-	if u.paste || u.escape != "" || !utf8.ValidString(u.Text) {
+	if u.pasted != nil || u.shell != nil && u.shell.input.Pending() || !utf8.ValidString(u.Text) {
 		return
 	}
 	p := &u.picker

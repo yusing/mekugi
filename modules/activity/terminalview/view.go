@@ -1605,32 +1605,16 @@ func (v *View) ShowAgent(step int) {
 	v.Follow()
 }
 
-func (v *View) HandleRosterKey(escape string, key byte) (string, bool) {
-	if key == 27 {
-		return "\x1b", false
-	}
-	if escape != "" {
-		escape += string(key)
-		if escape == "\x1b[" || escape == "\x1bO" {
-			return escape, false
-		}
-		switch escape {
-		case "\x1b[A", "\x1bOA":
-			key = 'k'
-		case "\x1b[B", "\x1bOB":
-			key = 'j'
-		default:
-			return "", false
-		}
-	}
+// HandleRosterKey interprets a complete key from the attached terminal decoder.
+func (v *View) HandleRosterKey(key string) bool {
 	switch key {
-	case 3, 'q':
-		return "", true
-	case 'j', 'n', '\t':
+	case "\x03", "q":
+		return true
+	case "j", "n", "\t", "\x1b[B", "\x1bOB":
 		v.ShowAgent(1)
-	case 'k', 'p':
+	case "k", "p", "\x1b[A", "\x1bOA":
 		v.ShowAgent(-1)
-	case 'a':
+	case "a":
 		if v.displayingChild() {
 			v.requestDisplay("/root")
 		} else {
@@ -1638,5 +1622,5 @@ func (v *View) HandleRosterKey(escape string, key byte) (string, bool) {
 		}
 		v.Follow()
 	}
-	return "", false
+	return false
 }

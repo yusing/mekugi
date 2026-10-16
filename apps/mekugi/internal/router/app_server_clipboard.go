@@ -43,9 +43,7 @@ func (u *appServerUI) insertImage(path string) {
 // finishPaste inserts a bracketed paste as one edit. A lone path to an image
 // file, as terminals paste for copied or dropped files, attaches that file
 // instead, followed by a space as in Codex. The user's file is never removed.
-func (u *appServerUI) finishPaste() {
-	text := string(u.pasted)
-	u.pasted = nil
+func (u *appServerUI) finishPaste(text string) {
 	if q := u.currentQuestion(); q != nil {
 		q.Edit(!q.Note)
 	}
@@ -196,34 +194,21 @@ func clipboardImage(ctx context.Context) (string, error) {
 	return file.Name(), nil
 }
 
-// Paste payload is opaque. Match only the complete terminator, even after an
-// incomplete OSC/CSI or a second Escape; no payload byte enters the key parser.
-func (u *appServerUI) pasteByte(key byte) {
-	u.pasted = append(u.pasted, key)
-	const end = "\x1b[201~"
-	if key != '~' || !bytes.HasSuffix(u.pasted, []byte(end)) {
-		return
-	}
-	u.pasted = u.pasted[:len(u.pasted)-len(end)]
-	u.paste = false
-	u.escape = ""
-	// Normalize terminal line endings only after finding the exact boundary.
-	u.pasted = pasteText(u.pasted)
+// paste inserts an already-framed payload. Terminal control bytes never reach key handling.
+func (u *appServerUI) paste(payload []byte) {
+	text := string(pasteText(payload))
 	switch {
 	case u.approvals.Open:
-		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 && len(u.pasted) > 0 {
+		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 && text != "" {
 			a.Selected = a.DenialChoice()
-			u.insertDraft(string(u.pasted))
+			u.insertDraft(text)
 			u.Run = composer.NoRun
 		}
-		u.pasted = nil
 	case u.picker.modal == "manage":
-		u.picker.Query += string(u.pasted)
-		u.pasted = nil
+		u.picker.Query += text
 	case u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings" || u.picker.modal == "archive":
-		u.pasted = nil
 	default:
-		u.finishPaste()
+		u.finishPaste(text)
 	}
 	u.picker.Dismissed, u.picker.Open = u.completionTarget(), false
 	u.refreshPicker()

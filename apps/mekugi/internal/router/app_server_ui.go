@@ -181,9 +181,7 @@ type appServerUI struct {
 	composerWidth           int
 	cursorColumn            *int
 	ownedImages             map[string]bool
-	escape                  string
-	paste                   bool
-	pasted                  []byte // Bracketed paste text, inserted when the paste ends.
+	pasted                  []byte // Non-nil while collecting an admitted, already-framed paste.
 	dirty                   bool
 	keybindings             bool
 	resumeNotice            string // Settings fallback survives the old session's presentation reset.
@@ -990,119 +988,78 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 	return nil
 }
 
-func (u *appServerUI) key(key byte) (bool, error) {
-	if u.composerReadOnly() {
+// key interprets one complete terminal key. Framing belongs to terminalsession.Decoder.
+func (u *appServerUI) key(key string) (bool, error) {
+	if !u.prepareComposerInput() {
 		return false, nil
 	}
-	if u.paste {
-		u.pasteByte(key)
-		return false, nil
+	if handled, err := u.approvalKey(key); handled {
+		return false, err
 	}
-	if u.activeQuestionCall() != nil && !u.questions.painted {
-		u.hideQuestions()
-	}
-	if u.approvals.Open && !u.approvals.painted {
-		u.hideApprovals()
-	}
-	if u.escape == "" && key != 27 {
-		if handled, err := u.approvalKey(string([]byte{key})); handled {
-			return false, err
-		}
-		if handled, err := u.questionKey(string([]byte{key})); handled {
-			return false, err
-		}
+	if handled, err := u.questionKey(key); handled {
+		return false, err
 	}
 	defer u.refreshPicker()
-	if u.statusPanelKey(string([]byte{key})) {
+	if u.statusPanelKey(key) {
 		return false, nil
 	}
-	// An exact /compact has a submission meaning for Tab, not just completion.
-	compactTab := key == '\t' && strings.TrimSpace(u.Text) == "/compact" && u.picker.modal == ""
-	if u.escape == "" && key != 27 && !compactTab && u.pickerKey(string([]byte{key})) {
-		return false, nil
+	if strings.HasPrefix(key, "\x1b") {
+		u.keybindings = false
 	}
-	if u.escape == "\x1b" && (key == 127 || key == 8) {
-		u.escape = ""
+	if key == "\x1b\x7f" || key == "\x1b\x08" {
 		u.deleteWord(true)
 		return false, nil
 	}
 	// macOS terminals commonly encode Option+Left/Right as Meta-b/f.
-	if u.escape == "\x1b" && (key == 'b' || key == 'f') {
-		sequence := u.escape + string(key)
-		u.escape = ""
-		u.moveDraft(sequence)
+	if key == "\x1bb" || key == "\x1bf" {
+		u.moveDraft(key)
 		return false, nil
 	}
-	// A bare Escape dismisses keybindings. Do not eat the next
-	// ordinary key while waiting for a CSI sequence that never arrives.
-	if u.escape == "\x1b" && key != '[' && key != 'O' {
+	// Unbound Meta input retains the ordinary key after dismissing help.
+	if len(key) == 2 && key[0] == 27 && key[1] != '[' && key[1] != 'O' {
 		u.pickerKey("\x1b")
-		u.escape = ""
+		key = key[1:]
 	}
-	if u.escape == "" {
-		if u.currentQuestion() == nil && !u.approvals.Open && key == '?' && u.Text == "" && (u.shell == nil || u.shell.Focus == 0) {
-			u.keybindings = !u.keybindings
-			return false, nil
-		}
-		u.keybindings = false
+	// An exact /compact has a submission meaning for Tab, not just completion.
+	compactTab := key == "\t" && strings.TrimSpace(u.Text) == "/compact" && u.picker.modal == ""
+	if !compactTab && u.pickerKey(key) {
+		return false, nil
 	}
-	if u.escape != "" || key == 27 {
-		u.escape += string(key)
-		if u.escape == "\x1b" || u.escape == "\x1b[" || u.escape == "\x1bO" {
-			return false, nil
-		}
-		if key >= 0x40 && key <= 0x7e || len(u.escape) > 32 {
-			if handled, err := u.approvalKey(u.escape); handled {
-				u.escape = ""
-				return false, err
-			}
-			if handled, err := u.questionKey(u.escape); handled {
-				u.escape = ""
-				return false, err
-			}
-			if u.pickerKey(u.escape) {
-				u.escape = ""
-				return false, nil
-			}
-			switch u.escape {
-			case "\x1b[1;2A", "\x1b[1;2B":
-				sequence := u.escape
-				u.escape = ""
-				return false, u.stepReasoning(strings.HasSuffix(sequence, "A"))
-			case "\x1b[1;3A", "\x1b[1;2D":
-				u.editQueued()
-			case "\x1b[122;6u":
-				u.undoDraft(true)
-			case "\x1b[3;3~":
-				u.deleteWord(false)
-			case "\x1b[127;3u", "\x1b[8;3u":
-				u.deleteWord(true)
-			case "\x1b[3~":
-				u.deleteDraft(false)
-			case "\x1b[200~":
-				u.paste = true
-				u.pasted = nil
-				u.Run = composer.NoRun
-			case "\x1b[201~": // A stray terminator is not composer input.
-
-			case "\x1b[5~":
-				u.transcriptView().ScrollKey('b')
-			case "\x1b[6~":
-				u.transcriptView().ScrollKey(' ')
-			default:
-				// Only caret movement ends an edit run; forward deletes still group.
-				u.moveDraft(u.escape)
-			}
-			u.escape = ""
+	if u.currentQuestion() == nil && !u.approvals.Open && key == "?" && u.Text == "" && (u.shell == nil || u.shell.Focus == 0) {
+		u.keybindings = !u.keybindings
+		return false, nil
+	}
+	u.keybindings = false
+	if strings.HasPrefix(key, "\x1b") {
+		switch key {
+		case "\x1b[1;2A", "\x1b[1;2B":
+			return false, u.stepReasoning(strings.HasSuffix(key, "A"))
+		case "\x1b[1;3A", "\x1b[1;2D":
+			u.editQueued()
+		case "\x1b[122;6u":
+			u.undoDraft(true)
+		case "\x1b[3;3~":
+			u.deleteWord(false)
+		case "\x1b[127;3u", "\x1b[8;3u":
+			u.deleteWord(true)
+		case "\x1b[3~":
+			u.deleteDraft(false)
+		case "\x1b[5~":
+			u.transcriptView().ScrollKey('b')
+		case "\x1b[6~":
+			u.transcriptView().ScrollKey(' ')
+		default:
+			// Only caret movement ends an edit run; forward deletes still group.
+			u.moveDraft(key)
 		}
 		return false, nil
 	}
 	switch key {
-	case 5: // Ctrl+E discloses the displayed transcript, leaving the draft intact.
+	case "\x05": // Ctrl+E discloses the displayed transcript, leaving the draft intact.
 		u.transcriptView().ToggleExpansion()
-	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
+	case "\x17": // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
-	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
+	case "\x0b": // Ctrl+K kills to the logical line end, or joins at its newline.
 		at := u.Cursor()
 		end := len(u.Text)
 		if next := strings.IndexByte(u.Text[at:], '\n'); next >= 0 {
@@ -1118,19 +1075,19 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			}
 		}
 		u.deleteDraftRange(at, end)
-	case 26:
+	case "\x1a":
 		u.undoDraft(false)
-	case 25:
+	case "\x19":
 		u.undoDraft(true)
-	case 7:
+	case "\x07":
 		if q := u.currentQuestion(); q != nil && q.IsSecret {
 			u.setNotice("External editor is unavailable for secret answers", false)
 			return false, nil
 		}
 		return false, errOpenComposerEditor
-	case 22:
+	case "\x16":
 		u.pasteImage()
-	case 3:
+	case "\x03":
 		if u.Replacement.Archiving() {
 			u.setNotice("Archiving session…", false)
 			return false, nil
@@ -1159,11 +1116,11 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		return true, nil
-	case 127, 8:
+	case "\x7f", "\x08":
 		u.deleteDraft(true)
-	case '\n':
+	case "\n":
 		u.insertDraft("\n")
-	case '\r':
+	case "\r":
 		if u.Replacement.Archiving() {
 			u.setNotice("Archiving session…", false)
 			return false, nil
@@ -1239,21 +1196,21 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.setNotice("", false)
 		u.view.Follow()
 		return false, u.flushInput()
-	case '\t':
+	case "\t":
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
 		text := strings.TrimSpace(u.Text)
 		if text == "/compact" {
 			return false, u.submitCompact(true)
 		}
 		if u.shellMode() || text == "" || strings.HasPrefix(text, "/") || u.Turn == "" && !u.Starting() && !u.InputPending() {
-			return u.key('\r')
+			return u.key("\r")
 		}
 		u.conversation().Queued = append(u.conversation().Queued, u.takeDraft())
 		u.pruneDraftImages()
 		u.setNotice("", false)
 	default:
-		if key >= 32 {
-			u.insertDraft(string([]byte{key}))
+		if len(key) > 0 && key[0] >= 32 {
+			u.insertDraft(key)
 		}
 	}
 	return false, nil

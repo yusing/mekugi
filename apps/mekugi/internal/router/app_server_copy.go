@@ -49,8 +49,6 @@ func (u *appServerUI) showCopyPicker() {
 func (u *appServerUI) copyPickerKey(key string) bool {
 	p := &u.picker
 	switch key {
-	case "\x1b[200~", "\x1b[201~":
-		return false
 	case "\x1b", "\x03":
 		p.modal, p.Open, p.Choices, p.copyTexts = "", false, nil, nil
 	case "\x1b[A", "\x1bOA", "\x10":

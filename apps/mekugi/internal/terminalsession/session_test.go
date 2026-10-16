@@ -18,17 +18,17 @@ func TestDecoderPasteAndTerminalReplies(t *testing.T) {
 			events = append(events, event)
 		}
 	}
-	if len(events) < 4 || events[0].Kind != ColorInput || events[1] != (Input{FocusInput, "\x1b[O"}) || events[2].Kind != PasteStart {
+	if len(events) < 5 || events[0].Kind != ColorInput || events[1] != (Input{FocusInput, "\x1b[O"}) || events[2].Kind != PasteStart {
 		t.Fatalf("decoded prefix: %v", events)
 	}
 	var pasted strings.Builder
-	for _, event := range events[3 : len(events)-1] {
+	for _, event := range events[3 : len(events)-2] {
 		if event.Kind != PasteInput {
 			t.Fatalf("paste became terminal input: %+v", event)
 		}
 		pasted.WriteString(event.Text)
 	}
-	if pasted.String() != "\x02\x1b]x\x1b[201~" || decoder.Pasting() || events[len(events)-1] != (Input{KeyInput, "z"}) {
+	if pasted.String() != "\x02\x1b]x" || events[len(events)-2] != (Input{Kind: PasteEnd}) || decoder.Pasting() || events[len(events)-1] != (Input{KeyInput, "z"}) {
 		t.Fatalf("paste boundary: %q, %v", pasted.String(), events)
 	}
 	decoder.Feed(27, now)

@@ -15,13 +15,17 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 type appServerTestInput struct {
 	bytes.Buffer
 	requestID string
+	keys      terminalsession.Decoder
 }
+
+func (i *appServerTestInput) keyDecoder() *terminalsession.Decoder { return &i.keys }
 
 // Synthetic host responses still enter through the real request ledger. The
 // transport stub reserves their explicit IDs without adding fixture wire output.
@@ -128,9 +132,15 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 	}
 	u.Text = ""
 	appServerTestKeys(t, u, "\x1b")
+	if !w.keys.Pending() || u.Text != "" || w.Len() != 0 {
+		t.Fatal("partial paste start was interpreted before its continuation")
+	}
 	appServerTestKeys(t, u, "[200~split\rpaste\x1b")
+	if !w.keys.Pasting() || w.Len() != 0 {
+		t.Fatal("partial paste terminator ended paste or submitted input")
+	}
 	appServerTestKeys(t, u, "[201~")
-	if u.Text != "split\npaste" || w.Len() != 0 {
+	if u.Text != "split\npaste" || w.keys.Pasting() || w.keys.Pending() || w.Len() != 0 {
 		t.Fatal("split paste submitted or lost data")
 	}
 }
@@ -146,7 +156,7 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 		t.Fatalf("cleared draft not restorable: %q notice=%q", u.Text, u.feedback.Text)
 	}
 	u.Text = ""
-	if quit, err := u.key(3); !quit || err != nil {
+	if quit, err := u.key("\x03"); !quit || err != nil {
 		t.Fatalf("idle Ctrl-C quit=%v err=%v", quit, err)
 	}
 	u, w = newAppServerTestUI()
@@ -155,12 +165,12 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again interrupts") {
 		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.Text, w.String())
 	}
-	if quit, err := u.key(3); quit || err != nil || !strings.Contains(w.String(), "turn/interrupt") {
+	if quit, err := u.key("\x03"); quit || err != nil || !strings.Contains(w.String(), "turn/interrupt") {
 		t.Fatalf("active Ctrl-C quit=%v err=%v sent=%q", quit, err, w.String())
 	}
 	u, w = newAppServerTestUI()
 	u.AwaitingTurn = true
-	if quit, err := u.key(3); quit || err != nil || w.Len() != 0 {
+	if quit, err := u.key("\x03"); quit || err != nil || w.Len() != 0 {
 		t.Fatalf("starting Ctrl-C quit=%v err=%v", quit, err)
 	}
 }
@@ -189,8 +199,9 @@ func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 
 func appServerTestKeys(t *testing.T, u *appServerUI, keys string) {
 	t.Helper()
+	decoder := u.client.Input.(interface{ keyDecoder() *terminalsession.Decoder }).keyDecoder()
 	for _, key := range []byte(keys) {
-		if quit, err := u.key(key); quit || err != nil {
+		if quit, err := u.input(decoder.Feed(key, u.now())); quit || err != nil {
 			t.Fatalf("key %q: quit=%v err=%v", key, quit, err)
 		}
 	}
@@ -215,8 +226,8 @@ func TestAppServerUIInput(t *testing.T) {
 	}
 	u.Text = ""
 	appServerTestKeys(t, u, "\x7f\x1b[200~one\rtwo\n你好\x1b[201~")
-	if u.Text != "one\ntwo\n你好" || u.paste || w.Len() != 0 {
-		t.Fatalf("paste submitted or corrupted: draft=%q paste=%v wire=%q", u.Text, u.paste, w.String())
+	if u.Text != "one\ntwo\n你好" || w.keys.Pasting() || w.Len() != 0 {
+		t.Fatalf("paste submitted or corrupted: draft=%q paste=%v wire=%q", u.Text, w.keys.Pasting(), w.String())
 	}
 	u.Text = "/unsupported"
 	appServerTestKeys(t, u, "\r")

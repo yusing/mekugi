@@ -28,7 +28,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if !u.interruptLocked || u.Text != "" {
 				t.Fatal("lock not applied locally")
 			}
-			quit, err := u.key(3)
+			quit, err := u.key("\x03")
 			if err != nil || quit {
 				t.Fatalf("locked Ctrl-C quit=%v err=%v", quit, err)
 			}
@@ -45,7 +45,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 				t.Fatal("lock lacks persistent indicator")
 			}
 			appServerTestKeys(t, u, "/unlock\r")
-			quit, err = u.key(3)
+			quit, err = u.key("\x03")
 			if err != nil || u.interruptLocked {
 				t.Fatal("unlock did not restore keyboard handling")
 			}

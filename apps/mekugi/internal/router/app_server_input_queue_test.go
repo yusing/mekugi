@@ -441,7 +441,7 @@ func TestAppServerInterruptLocallyStackedInputDoesNotQuit(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.Settings.BeginLive()
 	appServerTestKeys(t, u, "not sent\r")
-	quit, err := u.key(3)
+	quit, err := u.key("\x03")
 	if quit || err != nil || u.Text != "not sent" || len(u.conversation().Unsent) != 0 || w.Len() != 0 {
 		t.Fatalf("quit=%v err=%v draft=%q requests=%s", quit, err, u.Text, w.String())
 	}

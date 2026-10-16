@@ -31,8 +31,6 @@ func (u *appServerUI) archivePrompt() string {
 func (u *appServerUI) archivePickerKey(key string) bool {
 	p := &u.picker
 	switch key {
-	case "\x1b[200~", "\x1b[201~":
-		return false
 	case "\x1b", "\x03":
 		p.modal, p.Open, p.Choices = "", false, nil
 	case "\x1b[A", "\x1bOA", "\x10", "\x1b[B", "\x1bOB", "\x0e", "\t":

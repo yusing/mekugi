@@ -1,6 +1,11 @@
 package router
 
-import "io"
+import (
+	"io"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+)
 
 // drainKeys consumes queued continuation bytes before deciding that a pending
 // Escape was a standalone key. Rendering and tick work can exceed the Escape
@@ -23,4 +28,43 @@ func (u *appServerUI) drainKeys(keys <-chan byte) error {
 		}
 	}
 	return nil
+}
+
+// prepareComposerInput keeps an unseen prompt from taking input intended for the draft.
+func (u *appServerUI) prepareComposerInput() bool {
+	if u.composerReadOnly() {
+		return false
+	}
+	if u.activeQuestionCall() != nil && !u.questions.painted {
+		u.hideQuestions()
+	}
+	if u.approvals.Open && !u.approvals.painted {
+		u.hideApprovals()
+	}
+	return true
+}
+
+// input consumes complete keys and framed paste events, never terminal byte sequences.
+func (u *appServerUI) input(event terminalsession.Input) (bool, error) {
+	switch event.Kind {
+	case terminalsession.KeyInput:
+		return u.key(event.Text)
+	case terminalsession.PasteStart:
+		u.pasted = nil
+		if u.prepareComposerInput() {
+			u.keybindings, u.Run = false, composer.NoRun
+			u.pasted = make([]byte, 0)
+		}
+	case terminalsession.PasteInput:
+		if u.pasted != nil {
+			u.pasted = append(u.pasted, event.Text...)
+		}
+	case terminalsession.PasteEnd:
+		payload := u.pasted
+		u.pasted = nil
+		if payload != nil && !u.composerReadOnly() {
+			u.paste(payload)
+		}
+	}
+	return false, nil
 }

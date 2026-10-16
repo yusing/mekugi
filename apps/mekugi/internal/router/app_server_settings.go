@@ -419,8 +419,6 @@ func (u *appServerUI) chooseServiceTier() {
 func (u *appServerUI) settingsPickerKey(key string) bool {
 	p := &u.picker
 	switch key {
-	case "\x1b[200~", "\x1b[201~":
-		return false
 	case "\x1b", "\x03":
 		p.modal, p.Open, p.Choices = "", false, nil
 		u.settingsChoices = ""

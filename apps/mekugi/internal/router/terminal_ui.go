@@ -36,7 +36,6 @@ type terminalUI struct {
 	livePending map[string]nativePendingPreview
 	liveHidden  bool // Presentation only, local to this frontend session.
 	prefix      bool
-	agentEscape string
 	layout      terminalsession.Layout
 	paneTabs    [4]terminalsession.Rect // Visible status-bar selectors, indexed by pane.
 	faint       bool                    // Output capability is local to this terminal, not request or global state.
@@ -52,15 +51,22 @@ func (u *terminalUI) key(key byte) error {
 	switch event.Kind {
 	case terminalsession.NoInput:
 		return nil
-	case terminalsession.PasteInput:
-		if u.output != nil || u.main != nil && (u.main.statusPanel != nil || u.main.resumePicker != nil) {
+	case terminalsession.PasteStart, terminalsession.PasteInput, terminalsession.PasteEnd:
+		if event.Kind == terminalsession.PasteStart {
+			u.prefix = false
+		}
+		if u.main == nil {
 			return nil
 		}
-		if u.Focus == 0 {
-			_, err := u.main.key(key)
-			return err
+		if u.output != nil || u.Focus != 0 || u.main.statusPanel != nil || u.main.resumePicker != nil || u.main.composerReadOnly() {
+			u.main.pasted = nil
+			return nil
 		}
-		return nil
+		if event.Kind == terminalsession.PasteStart && u.selection != nil && !u.selection.Dragging() {
+			u.selection = nil
+		}
+		_, err := u.main.input(event)
+		return err
 	case terminalsession.ColorInput:
 		u.terminalColor(event.Text)
 		return nil
@@ -70,14 +76,6 @@ func (u *terminalUI) key(key byte) error {
 		}
 		if event.Text == "\x1b[O" {
 			u.clearSkillsHover()
-		}
-		return nil
-	case terminalsession.PasteStart, terminalsession.PasteEnd:
-		if event.Kind == terminalsession.PasteStart {
-			u.prefix = false
-		}
-		if u.Focus == 0 {
-			return u.send(event.Text)
 		}
 		return nil
 	case terminalsession.MouseInput:
@@ -99,13 +97,13 @@ func (u *terminalUI) key(key byte) error {
 		return nil
 	}
 	if u.output != nil {
-		return u.send(string([]byte{key}))
+		return u.send(event.Text)
 	}
 	if u.prefix {
 		u.prefix = false
 		switch key {
 		case 2:
-			return u.send(string([]byte{2}))
+			return u.send("\x02")
 		case '1', '2':
 			u.selectNativePane(int(key - '1'))
 		case '3':
@@ -137,7 +135,7 @@ func (u *terminalUI) key(key byte) error {
 		u.prefix = true
 		return nil
 	}
-	return u.send(string([]byte{key}))
+	return u.send(event.Text)
 }
 
 func (u *terminalUI) resize(key string) {
@@ -244,7 +242,7 @@ func (u *terminalUI) send(s string) error {
 		return u.main.resumePickerKey(s)
 	}
 
-	if s == "\x1b" && u.main != nil && u.Focus == 0 && !u.main.paste {
+	if s == "\x1b" && u.main != nil && u.Focus == 0 {
 		if handled, err := u.main.approvalKey(s); handled {
 			return err
 		}
@@ -259,7 +257,7 @@ func (u *terminalUI) send(s string) error {
 	if s == "\x1b" && u.main != nil && u.Focus == 0 && u.main.pickerKey(s) {
 		return nil
 	}
-	if u.main != nil && u.Focus == 0 && !u.main.paste {
+	if u.main != nil && u.Focus == 0 {
 		if s == "\x1b" && u.selectionKey(s) {
 			return nil
 		}
@@ -277,7 +275,6 @@ func (u *terminalUI) send(s string) error {
 		if transcript != nil && !transcript.Following {
 			transcript.Follow()
 			u.selection = nil
-			u.agentEscape = ""
 			return nil
 		}
 	}
@@ -293,7 +290,7 @@ func (u *terminalUI) send(s string) error {
 		u.Focus = 0
 		return nil
 	}
-	if s == "\x1b" && u.Focus == 0 && u.main != nil && !u.main.paste {
+	if s == "\x1b" && u.Focus == 0 && u.main != nil {
 		if u.main.Turn != "" || u.main.Starting() || u.main.InputPending() || len(u.main.conversation().Unsent)+len(u.main.conversation().Queued) > 0 {
 			return u.main.keyboardEscape()
 		}
@@ -301,14 +298,9 @@ func (u *terminalUI) send(s string) error {
 	}
 
 	if u.Focus == 0 {
-		for _, key := range []byte(s) {
-			quit, err := u.main.key(key)
-			if err != nil {
-				return err
-			}
-			u.main.quitRequested = u.main.quitRequested || quit
-		}
-		return nil
+		quit, err := u.main.input(terminalsession.Input{Kind: terminalsession.KeyInput, Text: s})
+		u.main.quitRequested = u.main.quitRequested || quit
+		return err
 	}
 	if u.Focus == 1 {
 		if s == "e" && u.main != nil {
@@ -321,14 +313,11 @@ func (u *terminalUI) send(s string) error {
 		}
 		return nil
 	}
-	for _, key := range []byte(s) {
-		only, selected := u.agents.displayingChild(), u.agents.Selected
-		var quit bool
-		u.agentEscape, quit = u.agents.HandleRosterKey(u.agentEscape, key)
-		u.showRosterPick(only, selected)
-		if quit {
-			u.Focus = 0
-		}
+	only, selected := u.agents.displayingChild(), u.agents.Selected
+	quit := u.agents.HandleRosterKey(s)
+	u.showRosterPick(only, selected)
+	if quit {
+		u.Focus = 0
 	}
 	return nil
 }

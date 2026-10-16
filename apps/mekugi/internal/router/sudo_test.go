@@ -182,7 +182,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u.openSudoPassword(&nativeApproval{Approval: prompt.Approval{Thread: "main", Turn: "old-turn", Subject: "sudo id"}, guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
-	if _, err := u.key(7); err != nil || u.Text != "fixture-secret" {
+	if _, err := u.key("\x07"); err != nil || u.Text != "fixture-secret" {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
 	u.hideQuestions()

@@ -243,7 +243,6 @@ func (u *appServerUI) resumePickerKey(key string) error {
 		p.selected = max(0, min(len(rows)-1, to))
 	}
 	switch key {
-	case "\x1b[200~", "\x1b[201~":
 	case "\x1b":
 		if p.query != "" {
 			p.query, p.selected, p.top = "", 0, 0

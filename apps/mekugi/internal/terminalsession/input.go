@@ -44,15 +44,25 @@ func (d *Decoder) Feed(key byte, now time.Time) Input {
 		const end = "\x1b[201~"
 		if key == end[d.pasteEnd] {
 			d.pasteEnd++
-		} else if key == 27 {
+			if d.pasteEnd == len(end) {
+				d.paste, d.pasteEnd = false, 0
+				return Input{Kind: PasteEnd}
+			}
+			return Input{}
+		}
+		// A partial terminator is payload unless the entire marker matches.
+		// Keep a new Escape as the next candidate without losing the old one.
+		payload := end[:d.pasteEnd]
+		d.pasteEnd = 0
+		if key == 27 {
 			d.pasteEnd = 1
 		} else {
-			d.pasteEnd = 0
+			payload += string([]byte{key})
 		}
-		if d.pasteEnd == len(end) {
-			d.paste, d.pasteEnd = false, 0
+		if payload == "" {
+			return Input{}
 		}
-		return Input{PasteInput, string([]byte{key})}
+		return Input{PasteInput, payload}
 	}
 	if d.reply != nil {
 		done := key == 7 || d.replyEscape && key == '\\'
@@ -92,9 +102,9 @@ func (d *Decoder) Feed(key byte, now time.Time) Input {
 			return Input{FocusInput, s}
 		case "\x1b[200~":
 			d.paste, d.pasteEnd = true, 0
-			return Input{PasteStart, s}
+			return Input{Kind: PasteStart}
 		case "\x1b[201~":
-			return Input{PasteEnd, s}
+			return Input{Kind: PasteEnd}
 		}
 		if strings.HasPrefix(s, "\x1b[<") {
 			return Input{MouseInput, s}

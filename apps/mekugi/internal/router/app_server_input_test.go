@@ -32,8 +32,8 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 			if err := u.drainKeys(keys); err != nil {
 				t.Fatal(err)
 			}
-			if u.Text != tc.want || wire.Len() != 0 || u.shell.input.Pasting() || u.paste {
-				t.Fatalf("draft=%q want=%q wire=%q paste=%v/%v", u.Text, tc.want, wire.String(), u.shell.input.Pasting(), u.paste)
+			if u.Text != tc.want || wire.Len() != 0 || u.shell.input.Pasting() {
+				t.Fatalf("draft=%q want=%q wire=%q paste=%v", u.Text, tc.want, wire.String(), u.shell.input.Pasting())
 			}
 		})
 	}

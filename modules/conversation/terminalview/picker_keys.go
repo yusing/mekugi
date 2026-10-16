@@ -49,9 +49,6 @@ func PickerKey(p *completion.State, key string) PickerAction {
 }
 
 func SkillsKey(p *completion.State, menu bool, key string) PickerAction {
-	if key == "\x1b[200~" || key == "\x1b[201~" {
-		return PickerPass
-	}
 	n := len(p.Choices)
 	if menu {
 		n = 2
