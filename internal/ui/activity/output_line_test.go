@@ -4,10 +4,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 )
 
 func TestOutputConsumersSplitCRLFAndOverwrite(t *testing.T) {
-	var retained Output
+	var retained activitymodel.Output
 	var tail OutputTail
 	for _, chunk := range []string{"\r", "\n\r", "\nA\r", "\n10%\r", "100%\r", "\nlast"} {
 		retained.Write(chunk)
@@ -29,15 +31,15 @@ func TestOutputConsumersSplitCRLFAndOverwrite(t *testing.T) {
 }
 
 func TestOutputConsumersKeepDistinctLineLimits(t *testing.T) {
-	var retained Output
+	var retained activitymodel.Output
 	var tail OutputTail
-	long := strings.Repeat("x", OutputLineBytes+4)
+	long := strings.Repeat("x", activitymodel.OutputLineBytes+4)
 	for _, chunk := range []string{long[:OutputTailBytes+1], long[OutputTailBytes+1:], "\r", "\nend\n"} {
 		retained.Write(chunk)
 		tail.Write(chunk)
 	}
 	view := retained.View()
-	if !view.Truncated || view.Dropped != 0 || !slices.Equal(view.Lines, []string{strings.Repeat("x", OutputLineBytes) + "…", "end"}) {
+	if !view.Truncated || view.Dropped != 0 || !slices.Equal(view.Lines, []string{strings.Repeat("x", activitymodel.OutputLineBytes) + "…", "end"}) {
 		t.Fatalf("retained lines have incorrect limit/reset: lengths %v, truncated %v, dropped %d", lineLengths(view.Lines), view.Truncated, view.Dropped)
 	}
 	if tail.Pending() != 2 {

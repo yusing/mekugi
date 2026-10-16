@@ -329,16 +329,12 @@ a selection before a later Esc closes the dialog. Wheel, arrow, page, and
 Home/End scrolling preserve the frozen selection, including off-screen rows.
 Changing pages, navigating search, or resizing clears it; End resumes live
 following when there is no selection. The footer offers no drag-selection hint.
-Output retention is separate from the animated display tail: each command has
-a 1 MiB budget including line slots, with lines capped at 16 KiB. Older lines
-are dropped with a visible count. The session has a 16 MiB retention budget,
-releasing the oldest completed output first; running commands are never released
-and can temporarily exceed the session budget. A released page says so and
-shows its bounded display tail instead. Tracked segment output that exceeds the
-between-frame buffer or loses attribution is released, and the feed uses the
-host's combined output instead. Completion replaces streamed content
-with the host aggregate when supplied. Restored commands retain their available
-host aggregates, not streams that were never persisted.
+[Retained activity output](../../internal/activity/SPEC.md#retained-output) owns
+content bounds, completed outcomes and session retention independently of the
+animated tail. Dropped lines have a visible count. A released page says so and
+shows its bounded display tail instead. When tracked output loses attribution or
+exceeds its between-frame buffer, the feed uses the host's combined output.
+Dialogs observe current retained completion even while the feed's tail is rolling.
 
 A successful `mchanges --list` or `--summary` read shows its host output as
 change rows laid out like confirmed edit rows rather than a tail; a `--summary`

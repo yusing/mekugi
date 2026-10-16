@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -50,7 +52,7 @@ type liveActivityNativeItem struct {
 	capturedEdit       *capturedActivityEdit  // Exact invocation receipt reconciled by the live diff owner.
 	editPages          []activityui.Block     // Completed host file changes, available before outer-cell capture.
 	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
-	output             *activityui.Output     // A command's retained host output, which the output dialog reads.
+	output             *activitymodel.Output  // A command's retained host output, which the output dialog reads.
 	hook               *activityui.HookDetails
 }
 

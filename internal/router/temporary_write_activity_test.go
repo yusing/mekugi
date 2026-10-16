@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/internal/execscope"
-
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 const temporaryPlanSetup = "batch_plan_dir=$(mktemp -d /tmp/mekugi-batches.XXXXXX)\nexport MEKUGI_BATCH_PLAN_DIR=\"$batch_plan_dir\"\n"
@@ -104,7 +104,7 @@ func TestUISnapshotTemporaryWriteActivity(t *testing.T) {
 				v.childrenOnly = agent != "Main"
 				v.clock = func() time.Time { return now }
 				v.painter.Theme = diffrender.DarkTheme
-				output := new(activityui.Retention).New()
+				output := new(activitymodel.Retention).New()
 				output.Finish(new("/tmp/mekugi-batches.YcIbga/plan.json\n"), new(0))
 				v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 					Seq: 1, Agent: agent, Kind: "tool", CallID: "plan", Text: toolActivityShell(command), Observed: now,

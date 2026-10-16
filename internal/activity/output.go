@@ -1,18 +1,18 @@
 package activity
 
+// Source: internal/ui/activity/output.go@[11705e68]
+
 import (
 	"slices"
 	"strings"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 // Output keeps a command's host output for reading in full, apart from the
 // display tail rows show: its latest OutputBytes, sanitized line by line, and
 // a count of the lines before them. A Retention bounds what a session keeps
-// across commands. Outputs belong to the UI goroutine.
+// across commands. A serialized session owner reads and mutates outputs.
 type Output struct {
-	outputLineBuffer
+	buffer    LineBuffer
 	lines     []string
 	bytes     int  // Retained line bytes, charged to the retention.
 	dropped   int  // Lines before lines.
@@ -22,6 +22,7 @@ type Output struct {
 	exited    bool // The host reported an exit status.
 	exit      int
 	version   int
+	snapshot  *OutputView
 	owner     *Retention
 }
 
@@ -58,8 +59,8 @@ func (r *Retention) charge(n int) {
 			continue
 		}
 		r.bytes -= o.bytes
-		o.lines, o.line, o.bytes, o.released = nil, nil, 0, true
-		o.version++
+		o.lines, o.buffer.Line, o.bytes, o.released = nil, nil, 0, true
+		o.changed()
 		r.outputs = slices.Delete(r.outputs, i, i+1)
 	}
 }
@@ -70,31 +71,29 @@ func (o *Output) Write(output string) {
 	if o.done || o.released {
 		return
 	}
-	before := o.bytes + len(o.line)
-	o.outputLineBuffer.write(output, OutputLineBytes, o.endLine)
+	before := o.bytes + len(o.buffer.Line)
+	o.buffer.Write(output, OutputLineBytes, o.endLine)
 	o.trim()
-	o.version++
+	o.changed()
 	if o.owner != nil {
-		o.owner.charge(o.bytes + len(o.line) - before)
+		o.owner.charge(o.bytes + len(o.buffer.Line) - before)
 	}
 }
 
 func (o *Output) endLine() {
-	line := string(o.line)
-	if len(line) > OutputLineBytes {
+	if len(o.buffer.Line) > OutputLineBytes {
 		o.truncated = true
-		line = strings.ToValidUTF8(line[:OutputLineBytes], "") + "…"
 	}
-	line = strings.TrimRight(textsanitize.Safe(line, false), " ")
+	line := LineText(o.buffer.Line, OutputLineBytes)
 	o.lines = append(o.lines, line)
 	o.bytes += len(line) + outputLineOverhead
-	o.line = o.line[:0]
+	o.buffer.Line = o.buffer.Line[:0]
 	o.trim()
 }
 
 // trim drops complete head lines, clearing their references as they leave.
 func (o *Output) trim() {
-	for o.bytes+len(o.line) > OutputBytes && len(o.lines) > 0 {
+	for o.bytes+len(o.buffer.Line) > OutputBytes && len(o.lines) > 0 {
 		o.bytes -= len(o.lines[0]) + outputLineOverhead
 		o.lines[0] = ""
 		o.lines = o.lines[1:]
@@ -109,16 +108,16 @@ func (o *Output) Finish(aggregate *string, exit *int) {
 		return
 	}
 	if aggregate != nil && !o.released {
-		before := o.bytes + len(o.line)
-		o.lines, o.line, o.cr, o.bytes, o.dropped = nil, nil, false, 0, 0
+		before := o.bytes + len(o.buffer.Line)
+		o.lines, o.buffer, o.bytes, o.dropped = nil, LineBuffer{}, 0, 0
 		o.truncated = false
 		if o.owner != nil {
 			o.owner.bytes -= before
 		}
 		o.Write(*aggregate)
 	}
-	if len(o.line) > 0 {
-		before := o.bytes + len(o.line)
+	if len(o.buffer.Line) > 0 {
+		before := o.bytes + len(o.buffer.Line)
 		o.endLine()
 		if o.owner != nil {
 			o.owner.charge(o.bytes - before)
@@ -128,29 +127,30 @@ func (o *Output) Finish(aggregate *string, exit *int) {
 	if exit != nil {
 		o.exited, o.exit = true, *exit
 	}
-	o.version++
+	o.changed()
 	if o.owner != nil {
 		o.owner.charge(0) // Settled output may now be released.
 	}
 }
 
 // Release ends output retention when segment attribution becomes unavailable.
-// It belongs to the UI goroutine, like Write and Finish.
+// The session owner serializes it with Write, Finish and View.
 func (o *Output) Release() {
-	before := o.bytes + len(o.line)
-	o.lines, o.line, o.bytes = nil, nil, 0
+	before := o.bytes + len(o.buffer.Line)
+	o.lines, o.buffer.Line, o.bytes = nil, nil, 0
 	o.done, o.released = true, true
-	o.version++
+	o.changed()
 	if o.owner != nil {
 		o.owner.charge(-before)
 	}
 }
 
-// OutputView is what an Output retains at one moment.
+// OutputView is a read-only snapshot. Its lines are independent of later output
+// mutations; consumers must not modify the published slice.
 type OutputView struct {
 	Lines     []string // Retained lines, then an unfinished one.
 	Dropped   int      // Lines before Lines no longer retained.
-	Truncated bool     // A retained line lost bytes to the per-line limit.
+	Truncated bool     // The current stream or replacement aggregate lost bytes to the line cap.
 	Released  bool     // The session released this output for newer output.
 	Done      bool
 	Exited    bool // Exit is the host's reported status.
@@ -162,19 +162,23 @@ func (o *Output) Version() int {
 	return o.version
 }
 
+func (o *Output) changed() {
+	o.version++
+	o.snapshot = nil
+}
+
 func (o *Output) View() OutputView {
-	lines := o.lines
-	if len(o.line) > 0 {
-		line := string(o.line)
-		if len(line) > OutputLineBytes {
-			line = strings.ToValidUTF8(line[:OutputLineBytes], "") + "…"
-		}
-		line = strings.TrimRight(textsanitize.Safe(line, false), " ")
-		lines = append(slices.Clip(lines), line)
+	if o.snapshot != nil {
+		return *o.snapshot
+	}
+	lines := slices.Clone(o.lines)
+	if len(o.buffer.Line) > 0 {
+		lines = append(lines, LineText(o.buffer.Line, OutputLineBytes))
 	}
 	// Trailing blank lines only pad the output.
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	return OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit}
+	o.snapshot = &OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.buffer.Line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit}
+	return *o.snapshot
 }

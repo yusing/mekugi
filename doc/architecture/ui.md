@@ -16,7 +16,8 @@ observation capacity must remain visible and bounded without terminating unrelat
   and file-status classification. It operates on supplied values without filesystem
   reads or terminal types. Callers choose display paths; terminal views own colors,
   labels, geometry, selection, and follow state.
-- [Parsed activity](../../internal/activity/SPEC.md) owns semantic operation content.
+- [Activity content](../../internal/activity/SPEC.md) owns semantic operations and
+  bounded retained output, independently of terminal reveal pacing.
   `internal/ui/activity` attaches terminal block state, aggregation, cards, agent
   labels/colors and animation. Its painter embeds the shared terminal painter.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including

@@ -5,8 +5,9 @@ import (
 	"slices"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
 )
@@ -151,7 +152,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.alert = false
 	u.feedback = noticepresentation.Model{}
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
-	u.session.outputs = activityui.Retention{}
+	u.session.outputs = activitymodel.Retention{}
 	painter := u.view.painter
 	*u.view = *newLiveActivityView()
 	u.view.painter, u.view.conversation = painter, true

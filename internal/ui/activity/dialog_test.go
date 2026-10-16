@@ -80,13 +80,12 @@ func TestDialogPageNotes(t *testing.T) {
 	var p Painter
 	for _, tc := range []struct {
 		name   string
-		output *Output
+		output *activitymodel.Output
 		want   string
 	}{
-		{"waiting", &Output{}, "Waiting for output…"},
-		{"empty", &Output{done: true}, "No output"},
-		{"released", &Output{done: true, released: true}, "released"},
-		{"dropped", &Output{done: true, dropped: 3, lines: []string{"kept"}}, "3 earlier lines"},
+		{"waiting", &activitymodel.Output{}, "Waiting for output…"},
+		{"empty", completedOutput(""), "No output"},
+		{"released", releasedOutput(), "released"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			page := p.DialogPage(Block{Verb: "Run", Output: tc.output}, 100)
@@ -102,7 +101,7 @@ func TestDialogPageNotes(t *testing.T) {
 			if !strings.Contains(strings.Join(notes, " "), tc.want) {
 				t.Fatalf("notes=%q", notes)
 			}
-			if page.Live == tc.output.done {
+			if page.Live == tc.output.View().Done {
 				t.Fatal("incorrect live state")
 			}
 		})
@@ -111,7 +110,7 @@ func TestDialogPageNotes(t *testing.T) {
 
 func TestDialogReleasedOutputUsesLastTail(t *testing.T) {
 	var p Painter
-	output := &Output{done: true, released: true}
+	output := releasedOutput()
 	page := p.DialogPage(Block{Verb: "Run", Output: output, Tail: []string{"last visible line"}, TailOmitted: 4}, 80)
 	if !strings.Contains(page.Text, "last visible line") {
 		t.Fatalf("released output lost tail: %+v", page)
@@ -167,7 +166,7 @@ func TestDialogFrameDimensions(t *testing.T) {
 
 func TestDialogCopiesShortSourceWithoutOutput(t *testing.T) {
 	var p Painter
-	page := p.DialogPage(Block{Verb: "Run", Code: "true", Output: &Output{done: true}}, 80)
+	page := p.DialogPage(Block{Verb: "Run", Code: "true", Output: completedOutput("")}, 80)
 	if page.Text != "true" {
 		t.Fatalf("copy = %q", page.Text)
 	}
@@ -175,16 +174,27 @@ func TestDialogCopiesShortSourceWithoutOutput(t *testing.T) {
 
 func TestDialogDroppedReadKeepsRangeOffset(t *testing.T) {
 	var p Painter
-	page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt", Ranges: []string{"42:100"}}}, Output: &Output{done: true, dropped: 3, lines: []string{"kept"}}}, 80)
+	output := overflowingOutput(t, "kept")
+	view := output.View()
+	page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt", Ranges: []string{"42:100"}}}, Output: output}, 80)
+	found, note := false, false
 	for _, line := range page.Lines {
-		if line.Gutter == "│" {
-			if line.Number != 45 {
-				t.Fatalf("read number = %d", line.Number)
+		if line.Number == 0 {
+			if line.Gutter != "" {
+				t.Fatal("note has gutter")
 			}
-			return
+			note = note || strings.Contains(ansi.Strip(line.Text), fmt.Sprintf("%d earlier lines", view.Dropped))
+		}
+		if line.Gutter == "│" && !found {
+			if line.Number != 42+view.Dropped {
+				t.Fatalf("read number = %d, dropped = %d", line.Number, view.Dropped)
+			}
+			found = true
 		}
 	}
-	t.Fatal("read output absent")
+	if !found || !note {
+		t.Fatalf("read output or dropped note absent: output=%t note=%t", found, note)
+	}
 }
 
 func TestDialogReadSyntaxPreservesLines(t *testing.T) {
@@ -267,7 +277,7 @@ func TestDialogSkillReadMarkdown(t *testing.T) {
 				block := Block{Content: activitymodel.ParseOperation("Skill `example`")}
 				block.Tail = strings.Split(content, "\n")
 				if retained {
-					block.Output = &Output{done: true, lines: block.Tail}
+					block.Output = completedOutput(content)
 					block.Tail = []string{"stale tail"}
 				}
 				page := p.DialogPage(block, width)
@@ -303,14 +313,17 @@ func TestDialogSkillReadMarkdown(t *testing.T) {
 }
 
 func TestDialogSkillOutputStates(t *testing.T) {
+	live := new(activitymodel.Output)
+	live.Write("# Guide")
+	dropped := overflowingOutput(t, "# Guide")
 	for _, tc := range []struct {
 		name   string
-		output *Output
+		output *activitymodel.Output
 		note   string
 	}{
-		{"live", &Output{lines: []string{"# Guide"}}, ""},
-		{"dropped", &Output{done: true, dropped: 4, lines: []string{"# Guide"}}, "4 earlier lines"},
-		{"released", &Output{done: true, released: true}, "released"},
+		{"live", live, ""},
+		{"dropped", dropped, fmt.Sprintf("%d earlier lines", dropped.View().Dropped)},
+		{"released", releasedOutput(), "released"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var p Painter
@@ -319,8 +332,13 @@ func TestDialogSkillOutputStates(t *testing.T) {
 			for _, line := range page.Lines {
 				rows = append(rows, ansi.Strip(line.Text))
 			}
-			if page.Text != "# Guide" || !strings.Contains(strings.Join(rows, "\n"), "Guide\n") || !strings.Contains(strings.Join(rows, "\n"), tc.note) || page.Live == tc.output.done {
-				t.Fatalf("skill state lost: %+v", page)
+			view := tc.output.View()
+			want := strings.Join(view.Lines, "\n")
+			if view.Released {
+				want = "# Guide"
+			}
+			if page.Text != want || !strings.Contains(strings.Join(rows, "\n"), "Guide\n") || !strings.Contains(strings.Join(rows, "\n"), tc.note) || page.Live == tc.output.View().Done {
+				t.Fatalf("skill state %s lost: live=%t, copied bytes=%d", tc.name, page.Live, len(page.Text))
 			}
 		})
 	}
@@ -398,4 +416,29 @@ func TestDialogNarrativeCopiesMarkdown(t *testing.T) {
 	if len(page.Lines) == 0 {
 		t.Fatalf("page %+v", page)
 	}
+}
+
+func completedOutput(text string) *activitymodel.Output {
+	output := new(activitymodel.Output)
+	output.Finish(new(text), nil)
+	return output
+}
+
+func releasedOutput() *activitymodel.Output {
+	output := new(activitymodel.Output)
+	output.Release()
+	return output
+}
+
+func overflowingOutput(t *testing.T, last string) *activitymodel.Output {
+	t.Helper()
+	output := new(activitymodel.Output)
+	line := strings.Repeat("x", activitymodel.OutputLineBytes)
+	output.Write(strings.Repeat(line+"\n", activitymodel.OutputBytes/activitymodel.OutputLineBytes+3))
+	output.Write(last + "\n")
+	output.Finish(nil, nil)
+	if output.View().Dropped == 0 {
+		t.Fatal("fixture did not exceed output retention")
+	}
+	return output
 }

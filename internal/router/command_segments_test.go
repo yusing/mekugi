@@ -11,9 +11,10 @@ import (
 	"testing/synctest"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/gofrs/flock"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 )
@@ -319,9 +320,9 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			entry := activityPaneEntry{Seq: 1, Text: "Run `echo one`\n\nRun `false`", native: &liveActivityNativeItem{thread: "main", turn: "t", item: item.ID, command: item.Command}}
 			first, second := u.session.outputs.New(), u.session.outputs.New()
 			if mode == "truncated" {
-				first.Write(strings.Repeat("line\n", activityui.OutputBytes/5))
+				first.Write(strings.Repeat("line\n", activitymodel.OutputBytes/5))
 			} else if mode == "long-line" {
-				first.Write(strings.Repeat("x", activityui.OutputLineBytes+1))
+				first.Write(strings.Repeat("x", activitymodel.OutputLineBytes+1))
 			} else {
 				first.Write("one\n")
 			}

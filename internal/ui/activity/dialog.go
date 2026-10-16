@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -51,7 +53,7 @@ const dialogHighlightBytes = 256 << 10
 // width; numbered lines wrap as they are shown.
 func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	width = max(8, width)
-	view := OutputView{Lines: block.Tail, Dropped: block.TailOmitted, Done: !block.Running, Exited: !block.Running, Exit: block.ExitCode}
+	view := activitymodel.OutputView{Lines: block.Tail, Dropped: block.TailOmitted, Done: !block.Running, Exited: !block.Running, Exit: block.ExitCode}
 	if block.Hook != nil {
 		view.Exited = false
 	}

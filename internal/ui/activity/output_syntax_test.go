@@ -162,7 +162,7 @@ func TestDiffOutputUsesPaneSyntaxAndRetainedTailContext(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, verb := range []string{"Run", "Diff"} {
-			var output Output
+			var output activitymodel.Output
 			output.Write(source)
 			block := Block{Kind: "op", Verb: verb, Code: "mchanges amber1", Output: &output, Tail: []string{"-var answer = 41", "+var answer = 42"}, TailOmitted: 6}
 			tail := p.tailColors(block)
@@ -215,7 +215,7 @@ func TestCapturedEditDialogUsesPaneSyntax(t *testing.T) {
 }
 
 func TestTimestampedDiffRetainedSyntax(t *testing.T) {
-	var output Output
+	var output activitymodel.Output
 	output.Write("--- old path.go\t2026-09-30 10:00:00.123 +0800\n+++ new path.go\t2026-09-30 10:01:00.123 +0800\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42")
 	p := Painter{Theme: diffrender.DarkTheme}
 	block := Block{Kind: "op", Verb: "Run", Output: &output, Tail: []string{"+var answer = 42"}, TailOmitted: 4}

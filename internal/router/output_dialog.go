@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/charmbracelet/x/ansi"
@@ -64,7 +66,7 @@ type outputDialog struct {
 }
 
 type outputPageKey struct {
-	output *activityui.Output
+	output *activitymodel.Output
 	source uint64
 	index  int // Distinguishes output-less pages such as skipped commands.
 }
@@ -81,7 +83,7 @@ type outputTab struct {
 
 type outputDialogKey struct {
 	page, width, version int
-	output               *activityui.Output
+	output               *activitymodel.Output
 	theme                diffrender.Theme
 	body                 string
 	approval             string

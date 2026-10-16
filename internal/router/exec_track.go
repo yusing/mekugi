@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -82,10 +84,10 @@ type execTrackSegment struct {
 	ended   bool
 	code    int
 	output  activityui.OutputTail
-	fresh   []byte             // Output since the last view, bounded like a retained output.
-	vcs     bool               // A VCS command whose raw output becomes change rows.
-	raw     []byte             // A VCS segment's unsanitized output, bounded like fresh.
-	full    *activityui.Output // Retained by the UI, which alone reads and writes it.
+	fresh   []byte                // Output since the last view, bounded like a retained output.
+	vcs     bool                  // A VCS command whose raw output becomes change rows.
+	raw     []byte                // A VCS segment's unsanitized output, bounded like fresh.
+	full    *activitymodel.Output // Retained by the UI, which alone reads and writes it.
 }
 
 func attachExecTrack(server *segmenttransport.Server, instrumentation execInstrumentation) (*execTrackHub, error) {
@@ -562,7 +564,7 @@ func (t *execTrack) apply(message segmenttransport.Message) {
 			if segment.vcs {
 				segment.raw = append(segment.raw, message.Data...)
 			}
-			if over := max(len(segment.fresh), len(segment.raw)) - activityui.OutputBytes; over > 0 {
+			if over := max(len(segment.fresh), len(segment.raw)) - activitymodel.OutputBytes; over > 0 {
 				// Without a complete pending stream, use the host aggregate
 				// rather than splice unrelated byte ranges into retained output.
 				segment.fresh, segment.raw = nil, nil
@@ -601,7 +603,7 @@ type commandSegment struct {
 	tail    []string
 	omit    int
 	changes []activityui.ChangeRow
-	output  *activityui.Output
+	output  *activitymodel.Output
 	source  string
 	raw     string       // A finished VCS segment's complete output, for its change rows.
 	commit  gitCommitKey // The commit object whose files complete changes.
@@ -621,7 +623,7 @@ type execTrackView struct {
 // segments the list never reached as skipped; a segment still open when the
 // shell finished is the one the shell exited in. Segment output is retained
 // in outputs, when given, on the UI goroutine that views it.
-func (h *execTrackHub) view(key [3]string, final bool, text func(string) string, outputs *activityui.Retention) (execTrackView, bool) {
+func (h *execTrackHub) view(key [3]string, final bool, text func(string) string, outputs *activitymodel.Retention) (execTrackView, bool) {
 	if h == nil {
 		return execTrackView{}, false
 	}

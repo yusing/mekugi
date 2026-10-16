@@ -13,8 +13,8 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
-func outputSelectionFixture(text string, live bool) (*terminalUI, *activityui.Output) {
-	output := new(activityui.Retention).New()
+func outputSelectionFixture(text string, live bool) (*terminalUI, *activitymodel.Output) {
+	output := new(activitymodel.Retention).New()
 	output.Write(text)
 	if !live {
 		output.Finish(nil, new(0))
@@ -172,7 +172,7 @@ func TestOutputDialogMouseSelectionClearedByNavigation(t *testing.T) {
 
 func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	const source = "# Skill guide\n\nUse **careful steps**."
-	output := new(activityui.Retention).New()
+	output := new(activitymodel.Retention).New()
 	output.Write(source)
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
