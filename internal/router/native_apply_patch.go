@@ -11,6 +11,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -473,10 +475,6 @@ func nativePatchReview(files []nativePatchFileSnapshot) ([]diffmodel.ReviewFile,
 	return reviews, complete
 }
 
-func nativePatchDerivedCallID(callID string, index int) string {
-	return callID + ":apply:" + strconv.Itoa(index+1)
-}
-
 // Native patch baselines in a exec cell share one observation window, not
 // intermediate per-tool states. Assign each path's window evidence once, to its
 // first observation. A move with shared endpoints is recorded as independent
@@ -541,7 +539,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 		if tool := history.nativeCell.patchCall(observation.Input, occurrence); tool != nil && !tool.terminal {
 			continue // Outer completion cannot finish a still-running nested edit.
 		}
-		derivedCallID := nativePatchDerivedCallID(callID, index)
+		derivedCallID := legacycall.PatchCallID(callID, index)
 		if retained, found, err := p.replayStore.lookup(ctx, workspace, derivedCallID); err != nil {
 			return err
 		} else if found {

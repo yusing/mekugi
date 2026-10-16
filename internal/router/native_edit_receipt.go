@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -238,10 +240,10 @@ func editReceiptHunks(diff string, budget *int) string {
 func (s *mekugiReplayStore) agentEditNotice(ctx context.Context, workspace, callID string, history mekugiHistory) (string, error) {
 	var calls []string
 	for index := range history.NativePatches {
-		calls = append(calls, nativePatchDerivedCallID(callID, index))
+		calls = append(calls, legacycall.PatchCallID(callID, index))
 	}
 	if history.ExecObservation != nil {
-		calls = append(calls, execDerivedCallID(callID, history.ExecObservation.CodeMode))
+		calls = append(calls, legacycall.ExecCallID(callID, history.ExecObservation.CodeMode))
 	}
 	if history.ResolvedBaseline != nil {
 		// Dynamic nested calls are unknown in the immutable pre-cell carrier.

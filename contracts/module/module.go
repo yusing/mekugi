@@ -5,6 +5,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/guidance"
+	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
 )
@@ -24,6 +25,7 @@ const (
 // Slots contains the contribution families implemented by the current binder.
 // Further families are added with their first consumer, rather than placeholders.
 type Slots struct {
+	Inspection  []inspection.Contribution
 	Guidance    []guidance.Section
 	Commands    []command.Contribution
 	RecordKinds []recordkind.Spec
@@ -33,6 +35,7 @@ type Slots struct {
 // Contributions declares typed commands before construction. Slots holds the
 // complete collected runtime values passed to hosts.
 type Contributions[S any] struct {
+	Inspection  []inspection.Definition[S]
 	Guidance    []guidance.Section
 	Commands    []command.Definition[S]
 	RecordKinds []recordkind.Spec
@@ -53,6 +56,7 @@ type Descriptor[D, S, B any] struct {
 	HostsCommands   bool
 	HostsRecords    bool
 	HostsReferences bool
+	HostsInspection bool
 	New             func(D, Slots) (S, error)
 	Bindings        B
 	Start           func(context.Context, S) error

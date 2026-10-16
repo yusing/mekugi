@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -70,7 +72,7 @@ func runSnapshotExec(t *testing.T, proxy *mekugiProxy, workspace, callID, comman
 		map[string]any{"type": "function_call", "call_id": callID, "name": nativeExecCommandToolName, "arguments": arguments},
 		map[string]any{"type": "function_call_output", "call_id": callID, "output": nativeExecOutput("Process exited with code 0")},
 	})
-	history, _, err := proxy.replayStore.lookup(t.Context(), workspace, execDerivedCallID(callID, false))
+	history, _, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.ExecCallID(callID, false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +223,7 @@ func TestWorkspaceSnapshotOverlappingCallsRecordAnEffectOnce(t *testing.T) {
 		if err := proxy.finalizeExecObservations(f.ctx, f.workspace, []execCompletion{{callID: ref, history: history, output: responses.MustMarshalJSON(nativeExecOutput("Process exited with code 0"))}}); err != nil {
 			t.Fatal(err)
 		}
-		record, _, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID(ref, false))
+		record, _, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID(ref, false))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -334,11 +336,11 @@ func TestWorkspaceSnapshotClaimsStayWithinTheirWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	outerRecord, _, err := f.store.lookup(f.ctx, f.workspace, execDerivedCallID("outer", false))
+	outerRecord, _, err := f.store.lookup(f.ctx, f.workspace, legacycall.ExecCallID("outer", false))
 	if err != nil || len(outerRecord.ReviewFiles) != 1 {
 		t.Fatalf("outer record: %+v, %v", reviewPaths(outerRecord), err)
 	}
-	nestedRecord, _, err := f.store.lookup(f.ctx, inner, execDerivedCallID("nested", false))
+	nestedRecord, _, err := f.store.lookup(f.ctx, inner, legacycall.ExecCallID("nested", false))
 	if err != nil || len(nestedRecord.ReviewFiles) != 0 {
 		t.Fatalf("a claim crossed into another workspace's comparison: %+v, %v", reviewPaths(nestedRecord), err)
 	}

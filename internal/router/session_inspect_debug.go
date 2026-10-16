@@ -13,10 +13,14 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
+
+const maxSessionInspectionBytes = 64 << 20
 
 type debugInspectionArtifact struct {
 	Bytes   *int64         `json:"bytes,omitempty"`
@@ -31,7 +35,7 @@ type debugInspectionEvidence struct {
 	Source   string                    `json:"source"`
 	Line     int                       `json:"line"`
 	Metadata map[string]jsontext.Value `json:"metadata"`
-	Text     map[string]inspectedText  `json:"text,omitempty"`
+	Text     map[string]query.Text     `json:"text,omitempty"`
 }
 
 type debugSessionInspection struct {
@@ -85,9 +89,9 @@ func inspectDebugSession(agentMetrics *evidence.Service, diagnostics *transportc
 				}
 			}
 			if entry.Text == nil {
-				entry.Text = make(map[string]inspectedText)
+				entry.Text = make(map[string]query.Text)
 			}
-			entry.Text[key] = inspectText(text, true, textBytes)
+			entry.Text[key] = query.TextValue(text, true, textBytes)
 		}
 		result.Evidence = append(result.Evidence, entry)
 	}

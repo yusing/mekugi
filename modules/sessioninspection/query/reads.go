@@ -1,54 +1,15 @@
-package router
+// Source: internal/router/session_corpus_reads.go@[d9f28a74] static read selections.
+package query
 
 import (
-	"encoding/json"
 	"math"
 	"path/filepath"
 	"strings"
 
-	"github.com/yusing/mekugi/backends/codex/rollout"
-
-	"github.com/yusing/mekugi/backends/codex/binding"
-
-	"github.com/yusing/mekugi/libraries/commandargs"
-
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
-	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"mvdan.cc/sh/v3/syntax"
 )
-
-func corpusReadSelectionsForCall(call rollout.Call) []corpusReadSelection {
-	if call.Item.Namespace != "" && call.Item.Namespace != "functions" {
-		return nil
-	}
-	readCommand := func(input string) []corpusReadSelection {
-		var arguments struct {
-			Command string `json:"cmd"`
-		}
-		if json.Unmarshal([]byte(input), &arguments) != nil {
-			return nil
-		}
-		return corpusReadSelections(arguments.Command)
-	}
-	name := strings.TrimPrefix(call.Item.Name, "functions.")
-	if call.Item.Type == "function_call" && name == "exec_command" {
-		return readCommand(call.Item.Arguments)
-	}
-	if call.Item.Type != "custom_tool_call" || name != "exec" {
-		return nil
-	}
-	calls, ok := binding.ExecutionCalls(call.Item.Input, false)
-	if !ok {
-		return nil
-	}
-	var selections []corpusReadSelection
-	for _, nested := range calls {
-		if responses.StringField(nested, "name") == "exec_command" {
-			selections = append(selections, readCommand(responses.StringField(nested, "arguments"))...)
-		}
-	}
-	return selections
-}
 
 type corpusReadSelection struct {
 	path        string

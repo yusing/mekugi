@@ -85,7 +85,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{
+	status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{
 		"--failures", "--replay-dir", directory, failure.diagnosticReference,
 	}, &stdout, &stderr)
 	if status != 0 {
@@ -101,7 +101,7 @@ func TestFailureReferencePersistsWithoutDebugAndResolvesAfterReopen(t *testing.T
 
 	stdout.Reset()
 	stderr.Reset()
-	status = RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--failures", "--replay-dir", directory}, &stdout, &stderr)
+	status = RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--failures", "--replay-dir", directory}, &stdout, &stderr)
 	if status != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspect-session --failures status=%d stderr=%q", status, stderr.String())
 	}
@@ -183,7 +183,7 @@ func TestInspectFailuresRejectsSessionInspectionOptionCombinations(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			args := append([]string{"--failures", "--replay-dir", directory}, test.extra...)
 			var stdout, stderr bytes.Buffer
-			status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), args, &stdout, &stderr)
+			status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), args, &stdout, &stderr)
 			if status != 2 {
 				t.Fatalf("status=%d, want usage error 2; stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 			}

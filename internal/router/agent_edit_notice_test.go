@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -98,7 +100,7 @@ func TestAgentEditNoticeNativePatchProjectionAndReplay(t *testing.T) {
 		if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 			t.Fatal(err)
 		}
-		assertEditNotice(t, transform.ctx, proxy, workspace, &request, "patch-call", nativePatchDerivedCallID("patch-call", 0), original, "file.txt", true)
+		assertEditNotice(t, transform.ctx, proxy, workspace, &request, "patch-call", legacycall.PatchCallID("patch-call", 0), original, "file.txt", true)
 	}
 }
 
@@ -205,7 +207,7 @@ func TestAgentEditNoticeRetainsAllIDsWhenStatisticsTruncate(t *testing.T) {
 	workspace := t.TempDir()
 	var ids []string
 	for index := range 2 {
-		call := nativePatchDerivedCallID("many-patches", index)
+		call := legacycall.PatchCallID("many-patches", index)
 		id, err := proxy.replayStore.changes.Reserve(t.Context(), proxy.replayStore.scoped(t.Context()).changeScope(), workspace, "author", call)
 		if err != nil {
 			t.Fatal(err)

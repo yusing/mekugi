@@ -55,7 +55,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Projected frontend guidance | `modules/agentguidance/codexbinding` renders selected command descriptions and module-owned `guidance.md` contributions; `internal/router/tool_registry.go` authenticates and publishes the invocation snapshot. |
 | Inherited instruction cleanup and request-phase integration | `modules/agentguidance`; `internal/router/request_guidance.go`, `internal/router/instruction_cache_test.go`, `internal/router/stock_guidance_workflow_test.go`; recorded stock fixtures in `internal/router/testdata/instruction-cleanup/`, contract in `modules/agentguidance/SPEC.md` |
 | AX runtime evidence and offline measurements | `modules/agentmetrics/evidence`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
-| Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `apps/mekugi/cmd/mekugi/main.go` |
+| Offline logical session inspection | `modules/sessioninspection/query` owns retained joins and findings; its `codexbinding` interprets host identities and execution evidence. `contracts/inspection` collects optional AX and provider usage; application CLI dispatch remains in `internal/router/session_inspect.go` and `session_corpus.go`. |
 | Offline UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage in `docs/contributing/development.md` |
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |
 | Observed review capture and host outcomes | `internal/router/native_apply_patch.go`, `internal/router/exec_observation.go`, `internal/router/app_server_shell_edits.go`; pure review model in `libraries/diffmodel` |
@@ -81,7 +81,7 @@ current source and contracts explain intended behavior, not historical execution
 live under `$CODEX_HOME/sessions`, defaulting to `~/.codex/sessions`. Locate an exact session ID
 with a filename glob using `rg --files --hidden --no-ignore` in that directory, then verify
 `session_meta` identity and workspace. Do not count child sessions or inherited fork history as
-independent user sessions. The logical inspection interface is in `doc/spec/session.md`.
+independent user sessions. The logical inspection interface is in `modules/sessioninspection/SPEC.md` (logical queries), `doc/spec/session.md` (debug/failure diagnosis).
 
 - `mekugi inspect-session --session /absolute/path/to/rollout.jsonl` reads call identities and
   outcomes without running recorded operations. Select private text only when needed.

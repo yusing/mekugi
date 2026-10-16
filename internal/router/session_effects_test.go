@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -45,7 +47,7 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 			}
 			parent := mekugiHistory{ToolName: name, CarrierName: name, CarrierKind: carrier, CarrierPayload: script, Script: script,
 				ExecObservation: &execObservation{CodeMode: !tc.native}}
-			derivedID := execDerivedCallID("call", !tc.native)
+			derivedID := legacycall.ExecCallID("call", !tc.native)
 			derived := mekugiHistory{ToolName: nativeExecCommandToolName, CorrelationID: "call\x00exec", Report: "retained shell result",
 				ExecOutcome: &execOutcome{Status: tc.status, Coverage: tc.coverage, CodeMode: !tc.native, ScopeReason: "scope diagnostic"}}
 			if tc.status != "" {
@@ -66,12 +68,12 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 				derived.CorrelationID = "other\x00exec"
 			}
 			if tc.shared {
-				derived.ExecOutcome.SharedWith = execDerivedCallID("owner", !tc.native)
+				derived.ExecOutcome.SharedWith = legacycall.ExecCallID("owner", !tc.native)
 			}
 			records := map[string]mekugiHistory{}
 			if tc.patch {
 				parent.NativePatches = []nativePatchObservation{{Input: "patch input"}}
-				records[nativePatchDerivedCallID("call", 0)] = mekugiHistory{ToolName: applyPatchToolName, Script: "patch input", CorrelationID: "call\x000", Report: "patch result", ReviewFiles: derived.ReviewFiles}
+				records[legacycall.PatchCallID("call", 0)] = mekugiHistory{ToolName: applyPatchToolName, Script: "patch input", CorrelationID: "call\x000", Report: "patch result", ReviewFiles: derived.ReviewFiles}
 			}
 			records["call"] = parent
 			if !tc.missing {
@@ -101,7 +103,7 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 				before[entry.Name()] = info
 			}
 			var stdout, stderr bytes.Buffer
-			code := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--text-bytes", "15", "--ax"}, &stdout, &stderr)
+			code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--text-bytes", "15", "--ax"}, &stdout, &stderr)
 			if tc.mismatch {
 				if code != 1 || !strings.Contains(stderr.String(), "inconsistent effect observation") {
 					t.Fatalf("identity accepted: %d %s", code, stderr.String())

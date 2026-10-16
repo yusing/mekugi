@@ -12,6 +12,7 @@ import (
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/guidance"
+	"github.com/yusing/mekugi/contracts/inspection"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/contracts/recordkind"
 	"github.com/yusing/mekugi/contracts/reference"
@@ -20,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
@@ -39,6 +41,7 @@ func (h *Handle[S]) Value() S {
 }
 
 type entry struct {
+	inspection   []inspection.Contribution
 	id           module.ID
 	requires     []module.ID
 	lifetime     module.Lifetime
@@ -87,7 +90,22 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.commands = append(node.commands, contribution)
 	}
+	for _, definition := range descriptor.Contributes.Inspection {
+		var contribution inspection.Contribution
+		if definition.NewAX != nil {
+			contribution.NewAX = func() inspection.AXCollector { return definition.NewAX(handle.Value()) }
+		}
+		if definition.ProviderUsage != nil {
+			contribution.ProviderUsage = func(ctx context.Context, path string, filter inspection.UsageFilter) (map[string]inspection.Usage, error) {
+				return definition.ProviderUsage(handle.Value(), ctx, path, filter)
+			}
+		}
+		node.inspection = append(node.inspection, contribution)
+	}
 	node.construct = func(slots module.Slots, binder binding.Binder, runtime *Runtime) error {
+		if !descriptor.HostsInspection {
+			slots.Inspection = nil
+		}
 		if !descriptor.HostsGuidance {
 			slots.Guidance = nil
 		}
@@ -187,6 +205,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Inspection           *query.Service
 	TransportDiagnostics *transportcapture.Service
 	AgentMetrics         *evidence.Service
 	Usage                *accounting.Service
@@ -224,6 +243,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	c.sealed = true
 	runtime := new(Runtime)
 	records := slices.Clone(c.LegacyRecordKinds)
+	var inspections []inspection.Contribution
 	var references []reference.Resolver
 	var guidance []guidance.Section
 	positions := make(map[module.ID]int)
@@ -240,6 +260,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		records = append(records, node.records...)
 		references = append(references, node.references...)
 		guidance = append(guidance, node.guidance...)
+		inspections = append(inspections, node.inspection...)
 	}
 	for i, node := range c.entries {
 		if !node.validFactory {
@@ -293,7 +314,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
+		if err := node.construct(module.Slots{Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}
@@ -310,4 +331,8 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		}
 	}
 	return runtime, nil
+}
+
+func (r *moduleRegistrar) Rollout(attach func(binding.RolloutReader) error) error {
+	return r.binder.Rollout(attach)
 }

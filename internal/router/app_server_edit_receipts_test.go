@@ -3,6 +3,7 @@ package router
 import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/commandargs"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -305,7 +306,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 		t.Fatal(err)
 	}
-	record, found, err := proxy.replayStore.lookup(t.Context(), workspace, execDerivedCallID("cell", true))
+	record, found, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.ExecCallID("cell", true))
 	if err != nil || !found || record.ChangeID == "" || record.ExecOutcome.Status != execStatusCompleted {
 		t.Fatalf("exec record: found=%v err=%v record=%+v", found, err, record)
 	}

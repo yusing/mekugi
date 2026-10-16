@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -75,7 +77,7 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+func RunSession(service *history.Service, recovered *recovery.Service, segments *segmentservice.Service, changes changes.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, inspector *query.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
 	if diagnostics == nil && options.captureOutput != "" {
 		return errors.New("transport diagnostics are unavailable")
 	}
@@ -100,7 +102,7 @@ func RunSession(service *history.Service, recovered *recovery.Service, segments 
 			return err
 		}
 	}
-	debug, err := openDebugOutput(service, agentMetrics, diagnostics, options.debug, options.captureOutput)
+	debug, err := openDebugOutput(inspector, agentMetrics, diagnostics, options.debug, options.captureOutput)
 	if err != nil {
 		return err
 	}

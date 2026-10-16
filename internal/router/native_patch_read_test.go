@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/internal/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -93,7 +95,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 				}
 			}
 			reconcile(proxy)
-			patchHistory := lookup(proxy, nativePatchDerivedCallID("reader-cell", 0))
+			patchHistory := lookup(proxy, legacycall.PatchCallID("reader-cell", 0))
 			if patchHistory.ChangeID == "" || patchHistory.TranslationError != "" || len(patchHistory.ReviewFiles) != 1 {
 				t.Fatalf("real patch evidence missing: %+v", patchHistory)
 			}
@@ -105,7 +107,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			}
 			assertCommandAndIDs := func(p *mekugiProxy) {
 				t.Helper()
-				command := lookup(p, execDerivedCallID("reader-cell", true))
+				command := lookup(p, legacycall.ExecCallID("reader-cell", true))
 				status := execStatusCompleted
 				if tc.exit != 0 {
 					status = execStatusFailed
@@ -137,7 +139,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			}
 			reconcile(resumed)
 			assertCommandAndIDs(resumed)
-			if replayed := lookup(resumed, nativePatchDerivedCallID("reader-cell", 0)); replayed.ChangeID != patchHistory.ChangeID {
+			if replayed := lookup(resumed, legacycall.PatchCallID("reader-cell", 0)); replayed.ChangeID != patchHistory.ChangeID {
 				t.Fatalf("resume replaced patch change ID: %+v", replayed)
 			}
 		})

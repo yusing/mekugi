@@ -2,6 +2,7 @@ package router
 
 import (
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
@@ -86,11 +87,11 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	}
 	items := []any{firstCall, codeOutput("first-cell")}
 	reconcile(items)
-	first, found := lookup(nativePatchDerivedCallID("first-cell", 0))
+	first, found := lookup(legacycall.PatchCallID("first-cell", 0))
 	if !found || first.ChangeID == "" || len(first.ReviewFiles) != 1 || first.TranslationError != "" {
 		t.Fatalf("completed patch delayed by sibling process: found=%v evidence=%+v", found, first)
 	}
-	if _, found := lookup(execDerivedCallID("first-cell", true)); found {
+	if _, found := lookup(legacycall.ExecCallID("first-cell", true)); found {
 		t.Fatal("yielded command captured before its process exited")
 	}
 	outer, found := lookup("first-cell")
@@ -132,11 +133,11 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	}
 	items = append(items, secondCall, codeOutput("second-cell"))
 	reconcile(items)
-	second, found := lookup(nativePatchDerivedCallID("second-cell", 0))
+	second, found := lookup(legacycall.PatchCallID("second-cell", 0))
 	if !found || second.ChangeID == "" || second.ChangeID == first.ChangeID {
 		t.Fatalf("second patch evidence missing: found=%v evidence=%+v", found, second)
 	}
-	firstAgain, found := lookup(nativePatchDerivedCallID("first-cell", 0))
+	firstAgain, found := lookup(legacycall.PatchCallID("first-cell", 0))
 	if !found || firstAgain.ChangeID != first.ChangeID {
 		t.Fatalf("first patch changed after second edit: found=%v evidence=%+v", found, firstAgain)
 	}
@@ -166,7 +167,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	}
 	items = append(items, map[string]any{"role": "user", "content": "continue"})
 	reconcile(items)
-	command, found := lookup(execDerivedCallID("first-cell", true))
+	command, found := lookup(legacycall.ExecCallID("first-cell", true))
 	wantStatus := execStatusCompleted
 	if exit != 0 {
 		wantStatus = execStatusFailed
@@ -175,7 +176,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 		len(command.ReviewFiles) != 1 || command.ReviewFiles[0].AfterPath != filepath.Join(workspace, "command.txt") {
 		t.Fatalf("terminal command did not finalize: found=%v evidence=%+v", found, command)
 	}
-	firstLast, found := lookup(nativePatchDerivedCallID("first-cell", 0))
+	firstLast, found := lookup(legacycall.PatchCallID("first-cell", 0))
 	if !found || firstLast.ChangeID != first.ChangeID {
 		t.Fatalf("first patch changed after command exit: found=%v evidence=%+v", found, firstLast)
 	}

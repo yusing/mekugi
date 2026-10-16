@@ -10,6 +10,7 @@ import (
 )
 
 type Registrar interface {
+	Rollout(func(RolloutReader) error) error
 	Frontend(command.Spec) error
 	InputProjection(InputProjection) error
 	Guidance(Guidance) error
@@ -37,6 +38,9 @@ type Registry struct {
 }
 
 func (r *Registry) Capability(mechanism capability.Mechanism) capability.Result {
+	if mechanism == capability.Rollout {
+		return capability.Result{State: capability.Available, Reason: "bounded offline rollout reader"}
+	}
 	if mechanism == capability.ShellApproval {
 		return capability.Result{State: capability.Available, Reason: "composed shell approval policies; host hook availability checked at launch"}
 	}

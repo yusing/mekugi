@@ -2,7 +2,6 @@ package router
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessioninspection/query"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
@@ -24,7 +25,7 @@ type debugAXThread struct {
 	Reads    *evidence.AXReadMetrics `json:"reads,omitempty"`
 	ThreadID string                  `json:"thread_id"`
 	State    string                  `json:"state"`
-	Report   *sessionAXReport        `json:"report,omitempty"`
+	Report   json.RawMessage         `json:"report,omitempty"`
 }
 
 func (d *debugOutput) observeAXThread(id string) {
@@ -93,19 +94,19 @@ func (d *debugOutput) writeAXReport() error {
 		} else if len(paths[id]) > 1 {
 			entry.State = "rollout_ambiguous"
 		} else if len(paths[id]) == 1 {
-			var stdout, stderr bytes.Buffer
-			// Reuse the one validated log snapshot rather than rescanning it
-			// for every thread (or accepting partial evidence on a later timeout).
-			code := RunSessionInspection(d.history, d.agentMetrics, nil, ctx, []string{"--session", paths[id][0], "--ax", "--limit", "1"}, &stdout, &stderr)
-			var inspection sessionInspection
-			if code != 0 || json.Unmarshal(stdout.Bytes(), &inspection) != nil || inspection.AX == nil {
+			replayDirectory, err := defaultMekugiReplayDirectory()
+			var result query.Result
+			if err == nil {
+				result, err = d.inspection.Inspect(ctx, query.SingleOptions{Session: paths[id][0], ReplayDirectory: replayDirectory, AX: true, Limit: 1, TextBytes: 4096, Collector: d.agentMetrics.NewInspection(&reads)})
+			}
+			if err != nil || len(result.AX) == 0 {
 				entry.State = "inspection_failed"
-			} else if inspection.AX.ThreadID != id {
+			} else if result.ThreadID != id {
 				entry.State = "rollout_identity_mismatch"
 			} else {
-				entry.State, entry.Report = "observed", inspection.AX
-				entry.Report.Reads = reads
+				entry.State, entry.Report = "observed", json.RawMessage(result.AX)
 			}
+
 		}
 		if entry.Report == nil {
 			entry.Reads = &reads

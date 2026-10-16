@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -353,7 +355,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	var sawPatch, sawNonzeroExec bool
-	failedPatch, found, err := failedStore.lookup(failedContext, failureWorkspace, nativePatchDerivedCallID(failureProvider.callID, 0))
+	failedPatch, found, err := failedStore.lookup(failedContext, failureWorkspace, legacycall.PatchCallID(failureProvider.callID, 0))
 	if err != nil || !found || failedPatch.ChangeID != "" || len(failedPatch.HostResults) != 1 || failedPatch.HostResults[0].Status != "failed" {
 		t.Fatalf("unchanged failed attempt was lost or allocated a change ID: %+v found=%t err=%v", failedPatch, found, err)
 	}
@@ -440,7 +442,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 	}
 	var previousPatchCall string
 	for index, status := range []string{"completed", "failed"} {
-		attempt, found, err := loopStore.lookup(loopContext, loopWorkspace, nativePatchDerivedCallID(loopProvider.callID, index))
+		attempt, found, err := loopStore.lookup(loopContext, loopWorkspace, legacycall.PatchCallID(loopProvider.callID, index))
 		if err != nil || !found || len(attempt.HostResults) != 1 || attempt.HostResults[0].Status != status || attempt.HostResults[0].CallID == previousPatchCall {
 			t.Fatalf("literal loop patch %d lost its distinct host outcome: %+v, %v", index, attempt, err)
 		}
@@ -449,7 +451,7 @@ func TestMChangesNestedNativeCodexE2E(t *testing.T) {
 			t.Fatalf("literal loop patch %d duplicated effects or lost failure", index)
 		}
 	}
-	commandAttempt, found, err := loopStore.lookup(loopContext, loopWorkspace, execDerivedCallID(loopProvider.callID, true))
+	commandAttempt, found, err := loopStore.lookup(loopContext, loopWorkspace, legacycall.ExecCallID(loopProvider.callID, true))
 	if err != nil || !found || len(commandAttempt.HostResults) != 2 || commandAttempt.HostResults[0].CallID == commandAttempt.HostResults[1].CallID ||
 		len(commandAttempt.ReviewFiles) != 1 || commandAttempt.ExecOutcome.Coverage != execCoverageExact {
 		t.Fatalf("literal command loop lost host occurrences or scoped effects: %+v, %v", commandAttempt, err)

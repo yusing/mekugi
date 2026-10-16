@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/legacycall"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -69,7 +71,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 					map[string]any{"type": "custom_tool_call", "id": "patch-item", "call_id": "patch-call", "name": applyPatchToolName, "input": patch, "status": "completed"},
 					map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": result},
 				}
-				derivedCallID = nativePatchDerivedCallID("patch-call", 0)
+				derivedCallID = legacycall.PatchCallID("patch-call", 0)
 			} else if tool == "exec" {
 				patch := "*** Begin Patch\n*** Update File: file.txt\n@@\n-old\n+new\n*** End Patch\n"
 				source := "await tools.apply_patch(" + string(mustTestJSON(t, patch)) + ");"
@@ -84,7 +86,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				items = []any{call, map[string]any{"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
 					map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
 				}}}
-				derivedCallID = nativePatchDerivedCallID("code-call", 0)
+				derivedCallID = legacycall.PatchCallID("code-call", 0)
 			} else {
 				arguments := string(mustTestJSON(t, map[string]any{"cmd": "printf 'new\\n' > file.txt", "workdir": workspace}))
 				retainCommandObservation(t, transform, "exec-call", arguments)
@@ -92,7 +94,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 					map[string]any{"type": "function_call", "call_id": "exec-call", "name": nativeExecCommandToolName, "arguments": arguments, "status": "completed"},
 					map[string]any{"type": "function_call_output", "call_id": "exec-call", "output": nativeExecOutput("Process exited with code 0")},
 				}
-				derivedCallID = execDerivedCallID("exec-call", false)
+				derivedCallID = legacycall.ExecCallID("exec-call", false)
 			}
 			if _, found, err := firstProxy.replayStore.lookup(t.Context(), workspace, derivedCallID); err != nil || found {
 				t.Fatalf("terminal evidence existed before the host result: found=%t err=%v", found, err)

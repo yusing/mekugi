@@ -34,7 +34,7 @@ func TestTransportDiagnosticsAbsentDebugSession(t *testing.T) {
 	defer usage.Close()
 	var paths []string
 	ready := false
-	err = RunSession(history, testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), nil,
+	err = RunSession(history, testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), nil, testInspector(new(evidence.Service), nil),
 		ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil,
 		func(session Session) {
 			defer cancel()
@@ -93,7 +93,7 @@ func TestTransportDiagnosticsAbsentRejectsCaptureOutput(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Capability rejection precedes session resources and mutable outputs.
-			err = RunSession(nil, nil, nil, nil, nil, nil, nil, t.Context(), nil, nil, nil, nil, nil, options, nil,
+			err = RunSession(nil, nil, nil, nil, nil, nil, nil, nil, t.Context(), nil, nil, nil, nil, nil, options, nil,
 				func(Session) { t.Error("unavailable capture reached readiness") },
 				func([]string) { t.Error("unavailable capture created debug artifacts") })
 			if err == nil || !strings.Contains(err.Error(), "transport diagnostics are unavailable") {
@@ -117,7 +117,7 @@ func TestTransportDiagnosticsAbsentDebugInspection(t *testing.T) {
 		writeDebugInspectionFixture(t, filepath.Join(directory, name), "invalid stale transport evidence")
 	}
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testHistory(), new(evidence.Service), nil, t.Context(), []string{"--debug-dir", directory, "--request-id", "req-b", "--field", "all"}, &stdout, &stderr)
+	code := RunSessionInspection(testInspector(new(evidence.Service), nil), new(evidence.Service), nil, t.Context(), []string{"--debug-dir", directory, "--request-id", "req-b", "--field", "all"}, &stdout, &stderr)
 	var result debugSessionInspection
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || code != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspection code=%d stderr=%q decode=%v", code, &stderr, err)
@@ -158,14 +158,14 @@ func TestTransportDiagnosticsAbsentOfflineConsumers(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testHistory(), new(evidence.Service), nil, t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir()}, &stdout, &stderr)
+	code := RunSessionInspection(testInspector(new(evidence.Service), nil), new(evidence.Service), nil, t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir()}, &stdout, &stderr)
 	var single sessionInspection
 	if err := json.Unmarshal(stdout.Bytes(), &single); err != nil || code != 0 || stderr.Len() != 0 || single.TotalCalls != 1 || len(single.Calls) != 1 || single.Calls[0].CallID != "read" {
 		t.Fatalf("single code=%d result=%+v stderr=%q decode=%v", code, single, &stderr, err)
 	}
 	stdout.Reset()
 	stderr.Reset()
-	code = RunSessionCorpusInspection(testHistory(), new(evidence.Service), nil, t.Context(), []string{"--sessions-dir", root, "--replay-dir", t.TempDir(), "--since", "2023-11-14T00:00:00Z", "--until", "2023-11-15T00:00:00Z"}, &stdout, &stderr)
+	code = RunSessionCorpusInspection(testInspector(new(evidence.Service), nil), t.Context(), []string{"--sessions-dir", root, "--replay-dir", t.TempDir(), "--since", "2023-11-14T00:00:00Z", "--until", "2023-11-15T00:00:00Z"}, &stdout, &stderr)
 	var corpus sessionCorpus
 	if err := json.Unmarshal(stdout.Bytes(), &corpus); err != nil || code != 0 || stderr.Len() != 0 || len(corpus.Unavailable) != 0 || len(corpus.Sessions) != 1 || corpus.Sessions[0].SelectedCalls != 1 || corpus.Sessions[0].ProviderUsage.State != "unavailable" {
 		t.Fatalf("corpus code=%d result=%+v stderr=%q decode=%v", code, corpus, &stderr, err)
@@ -175,7 +175,7 @@ func TestTransportDiagnosticsAbsentOfflineConsumers(t *testing.T) {
 func TestTransportDiagnosticsAbsentRejectsCorpusCaptureBeforeInputs(t *testing.T) {
 	root := t.TempDir()
 	var stdout, stderr bytes.Buffer
-	code := RunSessionCorpusInspection(testHistory(), new(evidence.Service), nil, t.Context(), []string{
+	code := RunSessionCorpusInspection(testInspector(new(evidence.Service), nil), t.Context(), []string{
 		"--sessions-dir", filepath.Join(root, "missing-sessions"), "--capture", filepath.Join(root, "missing-capture"),
 	}, &stdout, &stderr)
 	if code != 1 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "transport diagnostics are unavailable") {

@@ -202,5 +202,5 @@ func testRunSession(service *history.Service, recovered *recovery.Service, ctx c
 		return err
 	}
 	defer usage.Close()
-	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), new(transportcapture.Service), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
+	return RunSession(service, recovered, &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), new(transportcapture.Service), testInspector(new(evidence.Service), new(transportcapture.Service)), ctx, commands, testInputProjections(), testGuidance(), testNaming(), testGuards(), options, issues, ready, artifacts)
 }

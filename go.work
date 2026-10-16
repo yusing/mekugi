@@ -28,6 +28,7 @@ use (
 	./modules/outputrecovery
 	./modules/remotewriteapproval
 	./modules/sessionhistory
+	./modules/sessioninspection
 	./modules/sessionnaming
 	./modules/sourceoutline
 	./modules/sudoapproval
