@@ -53,7 +53,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   unknown state gets no label. Format workspace paths with `libraries/pathdisplay.ForWorkspace`,
   preserving external and operational paths. If genuinely new UI lacks a stock counterpart,
   settle its shape with the user. See [UI](doc/spec/native_ui.md),
-  [activity display](doc/spec/activity_display.md), and [UI ownership](doc/architecture/ui.md).
+  [activity display](modules/activity/CONTRACT.md), and [UI ownership](doc/architecture/ui.md).
 - **Ownership:** reuse authenticated snapshots, portable core, managed stores, classifiers, and
   capturers rather than duplicate policy in adapters. Validate registry exposure at its owner.
   Frontend guidance belongs to the authenticated registry; preserve caller base policy except

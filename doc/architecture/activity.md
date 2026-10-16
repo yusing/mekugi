@@ -4,7 +4,7 @@
 
 Native session integration in `internal/router` consumes Codex app-server events.
 [Activity content](../../modules/activity/SPEC.md) owns renderer-neutral source
-interpretation and bounded retained output; `internal/ui/activity` owns terminal
+interpretation and bounded retained output; `modules/activity/terminalview` owns terminal
 blocks, aggregation, animated tails and painting.
 The [UI boundary](ui.md) owns their
 integration, and the [activity contract](../spec/activity.md) owns classification.
@@ -73,7 +73,7 @@ loaded. Stable Activity entry IDs survive older-page insertion and continue
 to own output and Main links. Transcript retention retires completed records
 before live running commands, which survive until completion. A feed may
 temporarily exceed its normal retained-record limit when all retained commands
-are live; [running-header pinning](../spec/activity_display.md#agents-roster-and-navigation)
+are live; [running-header pinning](../../modules/activity/CONTRACT.md#agents-roster-and-navigation)
 does not revive running state on replay.
 While an older page is pending, same-child lifecycle notifications reconcile
 after the page; deltas are not retained, and buffer saturation cancels the

@@ -4,7 +4,7 @@
 
 The [UI](native_ui.md) consumes app-server events for live activity and
 history. These shared classification rules describe operations, not generated
-conversation messages. [Activity presentation](activity_display.md) owns row
+conversation messages. [Activity presentation](../../modules/activity/CONTRACT.md) owns row
 layout; [session notices](../../modules/notifications/SPEC.md) own actionable diagnostics.
 No activity observer generates conversation commentary.
 
@@ -210,7 +210,7 @@ Native MCP items retain server/tool identity; other tool items use their typed
 host identity and available arguments. Unknown calls remain visible without claiming
 an inferred operation. [Parsed operations](../../modules/activity/SPEC.md) interpret
 the classified text without execution or terminal state.
-[Native activity presentation](activity_display.md) owns grouping,
+[Native activity presentation](../../modules/activity/CONTRACT.md) owns grouping,
 clipping, and agent headings. Source item identity deduplicates live and restored
 activity without altering provider responses or the host's replay history.
 

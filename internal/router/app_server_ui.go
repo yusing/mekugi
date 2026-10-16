@@ -31,9 +31,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -1426,7 +1426,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if !readOnly && (u.currentQuestion() != nil || u.approvals.open) {
 		border = u.view.painter.Theme.Accent()
 	} else if !readOnly && u.shellMode() {
-		border = activityui.Red
+		border = terminalui.Red
 	}
 	const inputColor = "\x1b[39m"
 	focused := !readOnly && (u.shell == nil || u.shell.focus == 0)
@@ -1542,7 +1542,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	case status == "":
 		return ""
 	case u.alert:
-		return activityui.Red + "✗ " + activityui.ErrorPreview(u.status) + terminalui.Reset
+		return terminalui.Red + "✗ " + activityui.ErrorPreview(u.status) + terminalui.Reset
 	case u.turn != "":
 		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + terminalui.Reset
 		if status == "Working" {
@@ -1576,7 +1576,7 @@ func scrollLabel(v *liveActivityView) string {
 		if v.unseen > 0 {
 			label += fmt.Sprintf(" · %d new", v.unseen)
 		}
-		return activityui.Amber + label + terminalui.Reset
+		return terminalui.Amber + label + terminalui.Reset
 	case v.offset > 0:
 		return terminalui.Dim + fmt.Sprintf("▲ %d", v.offset) + terminalui.Undim
 	}

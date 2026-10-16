@@ -1,6 +1,6 @@
 package router
 
-import activityui "github.com/yusing/mekugi/internal/ui/activity"
+import activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 // liveActivitySpan is a cached run's position in transcript row coordinates.
 type liveActivitySpan struct {

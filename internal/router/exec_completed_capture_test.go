@@ -10,8 +10,8 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {

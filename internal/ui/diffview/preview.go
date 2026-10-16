@@ -13,7 +13,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
@@ -589,7 +588,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 			source[i].Text = textsanitize.Safe(source[i].Text, true)
 			if source[i].Kind == 0 {
 				if strings.HasPrefix(source[i].Text, "--- ") || strings.HasPrefix(source[i].Text, "+++ ") {
-					source[i].Text = diffrender.Subtle + source[i].Text[:4] + diffrender.SubtleReset + activityui.Path(source[i].Text[4:])
+					source[i].Text = diffrender.Subtle + source[i].Text[:4] + diffrender.SubtleReset + terminalui.StyledPath(source[i].Text[4:])
 				} else {
 					source[i].Text = diffrender.Subtle + source[i].Text + diffrender.SubtleReset
 				}
@@ -658,12 +657,12 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 // title follows the agents roster: a state glyph, then what the card shows.
 // Edits use the file navigator's status letter and live line counts.
 func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int) string {
-	glyph := activityui.Amber + "◐" + terminalui.Reset
+	glyph := terminalui.Amber + "◐" + terminalui.Reset
 	var label string
 	reason, unavailable := strings.CutPrefix(p.Current.Status, PreviewUnavailable)
 	switch {
 	case unavailable:
-		glyph, label = activityui.Red+"!"+terminalui.Reset, textsanitize.Safe(reason, false)
+		glyph, label = terminalui.Red+"!"+terminalui.Reset, textsanitize.Safe(reason, false)
 	case len(p.Current.Files) > 0:
 		file := p.Current.Files[p.file]
 		path := file.AfterPath
@@ -699,7 +698,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 		}
 	}
 	label = glyph + " " + label
-	caller := activityui.AgentDisplayName(p.Current.Caller)
+	caller := terminalui.AgentDisplayName(p.Current.Caller)
 	if caller == "" {
 		caller = p.Current.Thread
 	}
@@ -709,7 +708,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 	// Put attribution first so narrow panes do not silently lose the caller.
 	// The caller keeps the agents pane's color for the same canonical path.
 	caller = ansi.Truncate(textsanitize.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
-	if color := activityui.Color(p.Current.Caller); color != "" {
+	if color := terminalui.AgentColor(p.Current.Caller); color != "" {
 		caller = color + caller + "\x1b[0m"
 	}
 	return theme.Accent() + caller + "\x1b[0m" + theme.Accent() + " · \x1b[0m" + label + "\x1b[0m"

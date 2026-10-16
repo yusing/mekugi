@@ -16,8 +16,8 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 const (
@@ -534,11 +534,11 @@ func (v *liveActivityView) glyph(agent activityPaneAgent) string {
 	}
 	switch v.agentStatus(agent) {
 	case '◐':
-		return activityui.Amber + "◐" + terminalui.Reset
+		return terminalui.Amber + "◐" + terminalui.Reset
 	case '!':
-		return activityui.Red + "!" + terminalui.Reset
+		return terminalui.Red + "!" + terminalui.Reset
 	case '✓':
-		return activityui.Green + "✓" + terminalui.Reset
+		return terminalui.Green + "✓" + terminalui.Reset
 	}
 	return terminalui.Dim + "·" + terminalui.Undim
 }
@@ -876,7 +876,7 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	}
 	right := "FOLLOW"
 	if !v.following {
-		right = activityui.Amber + "PAUSED" + terminalui.Reset
+		right = terminalui.Amber + "PAUSED" + terminalui.Reset
 		if v.unseen > 0 {
 			right += fmt.Sprintf(" · %d new", v.unseen)
 		}
@@ -906,9 +906,9 @@ func (v *liveActivityView) activityHeader(width int) string {
 	}
 	right := v.status
 	if right == "" && !v.following {
-		right = activityui.Amber + "paused" + terminalui.Reset
+		right = terminalui.Amber + "paused" + terminalui.Reset
 		if v.unseen > 0 {
-			right += activityui.Amber + fmt.Sprintf(" · %d new", v.unseen) + terminalui.Reset
+			right += terminalui.Amber + fmt.Sprintf(" · %d new", v.unseen) + terminalui.Reset
 		}
 		right += terminalui.Dim + " · End follows" + terminalui.Undim
 	}
@@ -1105,7 +1105,7 @@ func rosterTree(rows []liveActivityRosterRow, index, start int) (name, indent st
 	}
 	parent := parentAt(index)
 	if rows[index].depth == 0 || parent < 0 {
-		return activityui.AgentDisplayName(rows[index].agent.Name), ""
+		return terminalui.AgentDisplayName(rows[index].agent.Name), ""
 	}
 	var guides []string
 	for i := parent; i >= 0; i = parentAt(i) {
@@ -1200,7 +1200,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 		}
 		name = strings.TrimRight(liveActivityMiddle(name, available), " ")
 		split := strings.LastIndexAny(name, " /") + 1
-		styled := activityui.DimColor(row.agent.Name) + name[:split] + terminalui.Undim + activityui.Color(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + terminalui.Reset
+		styled := terminalui.DimAgentColor(row.agent.Name) + name[:split] + terminalui.Undim + terminalui.AgentColor(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + terminalui.Reset
 		prefix := " " + v.glyph(row.agent) + " "
 		switch {
 		case cards && !compact:
@@ -1347,11 +1347,11 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 	var parts []string
 	column := 1
 	for _, row := range rows {
-		name := activityui.AgentDisplayName(row.agent.Name)
+		name := terminalui.AgentDisplayName(row.agent.Name)
 		if row.agent.Name == v.selected || row.agent.Name == v.hovered {
 			name = activityui.Underline(name)
 		}
-		part := v.glyph(row.agent) + " " + activityui.Color(row.agent.Name) + name + terminalui.Reset
+		part := v.glyph(row.agent) + " " + terminalui.AgentColor(row.agent.Name) + name + terminalui.Reset
 		if last := min(width, column+ansi.StringWidth(part)-1); column <= last {
 			v.hits = append(v.hits, liveActivityHit{row: 2, first: column, last: last, agent: row.agent.Name})
 		}

@@ -1,6 +1,6 @@
 package router
 
-import activityui "github.com/yusing/mekugi/internal/ui/activity"
+import activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 // openErrors exposes the focused transcript's errors through the shared content
 // dialog, newest first on opening. Left/Right reaches earlier retained errors.

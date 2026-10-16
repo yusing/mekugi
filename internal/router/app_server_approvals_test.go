@@ -23,7 +23,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -637,9 +636,9 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			entry := view.entries[count-1]
 			feed := view.renderFeed(48, 30)
 			rows := feed.lines
-			color, label := activityui.Green, "Approved"
+			color, label := terminalui.Green, "Approved"
 			if tc.choice != 0 {
-				color, label = activityui.Red, "Denied"
+				color, label = terminalui.Red, "Denied"
 			}
 			if !strings.Contains(strings.Join(rows, "\n"), color+label+terminalui.Reset) || entry.Agent == "Session" {
 				t.Fatalf("approval rows = %q", rows)

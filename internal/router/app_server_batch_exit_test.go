@@ -6,7 +6,7 @@ import (
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {

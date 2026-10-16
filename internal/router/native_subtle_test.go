@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -51,14 +51,14 @@ func TestNativeUISubtleForeground(t *testing.T) {
 		"roster tokens":  strings.Replace(metrics, "↑2K", "↑x", 1),
 		"composer":       strings.Join(frame, ""),
 		"metadata":       p.Label("Edit", "`file` · x"),
-		"path":           activityui.Path("x/file"),
+		"path":           terminalui.StyledPath("x/file"),
 		"reasoning":      strings.Join(p.Block(activityui.Block{Kind: "summary", Body: "x"}, 80), ""),
 		"after link":     strings.Join(p.Block(activityui.Block{Kind: "summary", Body: "before [link](https://example.com) x"}, 80), ""),
 	} {
 		t.Run(name, func(t *testing.T) {
 			screen := vt.NewEmulator(100, 1)
 			defer screen.Close()
-			_, _ = screen.Write([]byte(activityui.FaintFallback(row)))
+			_, _ = screen.Write([]byte(terminalui.FaintFallback(row)))
 			for x := range 100 {
 				cell := screen.CellAt(x, 0)
 				if cell.Content != "x" {

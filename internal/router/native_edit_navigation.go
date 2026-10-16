@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // openActivityEdit resolves an exact host invocation, never a nearby edit or path.

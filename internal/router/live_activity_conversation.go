@@ -10,7 +10,7 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // liveActivityPrompt marks the user's text in the composer and transcript.
@@ -609,7 +609,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	reply := block.From != "/root" && block.Kind != "start" && entry.Kind != "assignment"
 	switch {
 	case block.Kind == "start":
-		glyph, detail = activityui.Green+"▶"+terminalui.Reset, "started"
+		glyph, detail = terminalui.Green+"▶"+terminalui.Reset, "started"
 		if block.Label != "" {
 			detail += " · " + ansi.Strip(p.Inline(block.Label))
 		}
@@ -624,9 +624,9 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 			detail = "replied"
 		}
 	case block.Kind == "final":
-		glyph, detail = activityui.Green+"✓"+terminalui.Reset, "finished"
+		glyph, detail = terminalui.Green+"✓"+terminalui.Reset, "finished"
 	case block.Kind == "error":
-		glyph = activityui.Red + "✗" + terminalui.Reset
+		glyph = terminalui.Red + "✗" + terminalui.Reset
 		if thread.joined {
 			detail = "failed"
 		}

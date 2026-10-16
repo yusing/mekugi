@@ -2,8 +2,8 @@
 
 ## Purpose and scope
 
-Interpret classified operations and retain bounded host output for activity feeds
-and output dialogs. Host adapters supply the facts and retain authority over tool
+Interpret classified operations, retain bounded host output, and paint activity
+values for terminal feeds and dialogs. Host adapters retain authority over tool
 identity, execution, outcomes and captured changes. Parsing neither evaluates
 source nor establishes that an operation ran.
 
@@ -70,8 +70,12 @@ consumer-owned.
 
 This owner stores no durable records and registers no Codex mechanism. The current
 application adapter supplies host output and outcomes; restored content comes from
-host history and command-segment records. Feed assembly, roster state, dialog
-membership and terminal painting remain with their current application consumers.
+host history and command-segment records. Feed assembly, roster state and dialog
+membership remain application-owned. The module's terminal view paints supplied
+blocks using shared terminal primitives; the [presentation contract](CONTRACT.md)
+owns observable rows and interaction. This renderer API still carries output
+handles and terminal annotations. It is separate from neutral parsed content,
+not an immutable session-view publication.
 
 ## Failure and absence
 

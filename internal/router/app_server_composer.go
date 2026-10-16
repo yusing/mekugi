@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/rivo/uniseg"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // cursorBack counts bytes after the caret, so an untouched draft starts at its end.

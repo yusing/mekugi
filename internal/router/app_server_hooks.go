@@ -8,8 +8,8 @@ import (
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Source: codex-rs/app-server-protocol/src/protocol/v2/hook.rs HookRunSummary.

@@ -27,9 +27,58 @@ and quote context independently of narrow-screen layout. Fragment identities are
 scoped by the consumer, and frozen selections need no mutable global registry.
 Consumers extract private annotations before delivering rows to a terminal.
 
+Canonical agent names and colors are shared by activity and Diff presentation.
+The root displays as `main`; children display their path below `/root/`. Colors
+depend only on canonical identity and survive reconnects. Shared path decoration
+emphasizes the filename without changing the supplied display path. Callers still
+resolve workspace-relative display and authority before painting.
+
+## Authored Markdown
+
+Inline code uses content-detected syntax colors, with the existing accent for
+plain or unrecognized spans; fenced code uses its language. Styling never changes
+source, wrapping or copying. Recognized local links show their label as a terminal
+hyperlink; wrapping preserves the destination without underlining padding/gutters.
+Raw file-shaped text, including inline code, links only when the caller verifies a
+regular target, using session workspace metadata for relative paths. Missing paths
+and ordinary prose remain unlinked. Spaces may be enclosed in code or an explicit
+link. Fenced code stays literal.
+
+ATX headings require one to six markers and a space or line end; closing markers
+are hidden. Setext underlines make the previous paragraph an H1/H2. Headings are
+bold, with theme magenta/cyan/yellow/green/blue for levels one through five and
+default foreground for level six. Inline styles restore their heading style.
+H1/H2 add dim double/single rules as wide as the title, at least three cells.
+Subdued reasoning uses bold headings without colors/rules. Source copy preserves
+markers and Setext underlines while excluding generated rules.
+
+Tables require a complete matching delimiter row and support optional outer
+pipes, escaped pipes and code spans. They paint bordered grids with emphasized
+headers, alignment, links and wrapped cells. Fenced tables stay literal;
+blockquote tables keep their rail. Narrow tables become separated header/value
+records rather than clipping columns. Labels share a display-width column, or
+stack above values when that column would exceed half the pane. Rendering follows
+current streaming/restored text and width.
+
+## Mermaid
+
 Mermaid drawing accepts a bounded supported flowchart subset,
 respects available width and returns unavailable for unsupported syntax rather
 than emitting a partial diagram. The text consumer owns fallback presentation.
+Supported forms include flowchart/graph in TD/TB/BT/LR/RL directions, rectangle,
+decision and stadium nodes, solid/dashed directed/undirected/bidirectional edges,
+pipe or spaced directed labels, and chained `&` endpoint groups. Quoted labels
+preserve punctuation and semicolons; `<br>`, `<br/>` and `<br />` wrap node labels.
+Horizontal layouts fall back to their vertical equivalent when necessary without
+losing nodes or edges. Every edge has its own lane; crossings are not junctions.
+
+Limits are 16 KiB source, 16 nodes, 24 expanded edges, 24 references per group,
+256 display cells per node label, 40 per edge label and 65,536 canvas cells.
+Unsupported syntax, other HTML/entities, unsafe/non-additive-width labels, open
+fences or unfit diagrams preserve source display. Subgraphs and other Mermaid
+families remain unsupported. Drawing uses no external renderer and follows text
+and width, including quotes/replay. The port derives from
+[Codex 0.159.0](https://github.com/openai/codex/tree/687a119f0fcaace47e1f1abcc77cec6c813fd6da/codex-rs/mermaid).
 
 ## Acceptance
 

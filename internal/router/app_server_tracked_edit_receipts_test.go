@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -78,7 +80,7 @@ func assertTrackedReceiptStats(t *testing.T, view *liveActivityView, entry int) 
 		t.Fatalf("captured stats missing from rendered blocks: %+v", blocks)
 	}
 	painted := strings.Join(frame, "\n")
-	if !strings.Contains(ansi.Strip(painted), "+3 -1") || !strings.Contains(ansi.Strip(painted), "+1 -2") || !strings.Contains(painted, activityui.Green+"━") || !strings.Contains(painted, activityui.Red+"━") {
+	if !strings.Contains(ansi.Strip(painted), "+3 -1") || !strings.Contains(ansi.Strip(painted), "+1 -2") || !strings.Contains(painted, terminalui.Green+"━") || !strings.Contains(painted, terminalui.Red+"━") {
 		t.Fatalf("counts not painted with diff colors: %q", painted)
 	}
 	if reparsed := parseLiveActivity(view.entries[entry].activityPaneEntry); !reflect.DeepEqual(reparsed, blocks) {

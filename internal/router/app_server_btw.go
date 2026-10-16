@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // The dock owns presentation and RPC correlation only. Codex owns the snapshot,
@@ -414,7 +414,7 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	}
 	color := u.view.painter.Theme.Accent()
 	if b.alert {
-		color = activityui.Red
+		color = terminalui.Red
 	}
 	status := textsanitize.Safe(b.status, false)
 	if (b.busy || b.starting) && b.status == "Answering" && !b.alert && !b.started.IsZero() {
@@ -429,7 +429,7 @@ func (u *appServerUI) btwRows(width, height int) []string {
 		rows = append(rows, ansi.Truncate(color+"│ "+terminalui.Reset+row, width, "…"))
 	}
 	if b.attachmentNotice != "" {
-		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+textsanitize.Safe(b.attachmentNotice, false)+terminalui.Reset, width, "…"))
+		rows = append(rows, ansi.Truncate(terminalui.Red+"│ "+textsanitize.Safe(b.attachmentNotice, false)+terminalui.Reset, width, "…"))
 	}
 	var answer []string
 	for index, item := range b.answer {

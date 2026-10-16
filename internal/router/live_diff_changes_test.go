@@ -8,13 +8,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/internal/execscope"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
@@ -346,7 +347,7 @@ func TestExecObservationSourceLabel(t *testing.T) {
 
 func TestAgentDisplayName(t *testing.T) {
 	for name, want := range map[string]string{"/root": "main", "/root/worker": "worker", "/root/a/x": "a/x", "": ""} {
-		if got := activityui.AgentDisplayName(name); got != want {
+		if got := terminalui.AgentDisplayName(name); got != want {
 			t.Errorf("agentDisplayName(%q) = %q, want %q", name, got, want)
 		}
 	}

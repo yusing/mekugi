@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -14,7 +16,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestComposerErrorClickAndDismiss(t *testing.T) {
@@ -87,7 +88,7 @@ func TestUISnapshotComposerError(t *testing.T) {
 			u.setNotice("File contents omitted: setup.sh (attachment budget exceeded).\nThe attachment result names the missing content.", true)
 			rows, _ := u.mainFrame(width, 8, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("composer-error-%d", width), rows)
-			if !strings.Contains(rows[u.noticeDismiss.y], activityui.Green) || !strings.Contains(ansi.Strip(rows[u.noticeDismiss.y]), "[✓]") {
+			if !strings.Contains(rows[u.noticeDismiss.y], terminalui.Green) || !strings.Contains(ansi.Strip(rows[u.noticeDismiss.y]), "[✓]") {
 				t.Fatal("dismiss check is missing its shared success color")
 			}
 		})

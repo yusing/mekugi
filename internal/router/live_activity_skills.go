@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 type activeSkillSet []string
