@@ -109,8 +109,8 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	if p.ui.session.reasoning[[3]string{"root", "turn", "reasoning"}] != "Inspecting repaint timing." {
 		t.Fatal("seek did not replay earlier reasoning")
 	}
-	for _, entry := range p.ui.view.entries {
-		if strings.Contains(entry.Text, "captured output") || strings.Contains(entry.Text, "Repaint diagnosis") {
+	for _, entry := range p.ui.view.Entries {
+		if strings.Contains(entry.Source.Text, "captured output") || strings.Contains(entry.Source.Text, "Repaint diagnosis") {
 			t.Fatalf("future content survived rewind: %+v", entry)
 		}
 	}

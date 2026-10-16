@@ -151,7 +151,7 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	}
 	u.statusPanelKey("r")
 	u.statusPanelKey("\x1b")
-	if u.statusPanel != nil || wire.Len() != 0 || len(u.view.entries) != 0 || u.turn != "active" || u.status != "Working" {
+	if u.statusPanel != nil || wire.Len() != 0 || len(u.view.Entries) != 0 || u.turn != "active" || u.status != "Working" {
 		t.Fatalf("local dialog disturbed active session: wire=%q turn=%q status=%q", wire.String(), u.turn, u.status)
 	}
 }

@@ -21,7 +21,7 @@ func TestNativeWelcome(t *testing.T) {
 	}
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.mainFrame(80, 24, 0)
-	if len(u.view.entries) != 0 {
+	if len(u.view.Entries) != 0 {
 		t.Fatal("welcome entered history")
 	}
 }

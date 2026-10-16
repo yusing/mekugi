@@ -128,8 +128,8 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 					t.Fatal("endpoint retained reverted counts")
 				}
 				for _, view := range []*liveActivityView{u.view, u.agents} {
-					for _, entry := range view.entries {
-						if entry.native != nil && entry.native.capturedEdit != nil {
+					for _, entry := range view.Entries {
+						if entry.Source.native != nil && entry.Source.native.capturedEdit != nil {
 							t.Fatal("UI retained a withdrawn receipt")
 						}
 					}

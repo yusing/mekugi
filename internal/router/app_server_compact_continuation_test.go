@@ -342,8 +342,8 @@ func TestUISnapshotNativeCompactQueuedContinuation(t *testing.T) {
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "compact-turn", "item": appServerItem{ID: "compaction", Type: "contextCompaction"}})
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerOneRequest(t, w, "turn/start", compactContinuationText)
-	for i := range u.view.entries {
-		u.view.entries[i].Observed = u.now()
+	for i := range u.view.Entries {
+		u.view.Entries[i].Source.Observed = u.now()
 	}
 	rows, _ := u.mainFrame(80, 16, 0)
 	assertNativeUISnapshot(t, "native-compact-queued-continuation", rows)

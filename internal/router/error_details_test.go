@@ -58,7 +58,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				t.Fatal("stock host evidence changed")
 			}
 			full := "exec script failed: " + detail
-			if len(view.entries) != 1 || view.entries[0].ErrorDetail != full || view.entries[0].Text != activityui.ErrorPreview(full) {
+			if len(view.Entries) != 1 || view.Entries[0].Source.ErrorDetail != full || view.Entries[0].Source.Text != activityui.ErrorPreview(full) {
 				t.Fatal("full evidence or bounded preview lost, or repeated failure duplicated")
 			}
 			if child {
@@ -133,11 +133,11 @@ func TestErrorDetailsRestoredRollout(t *testing.T) {
 				view = u.agents
 			}
 			full := "exec script failed: " + detail
-			index := slices.IndexFunc(view.entries, func(e liveActivityRecord) bool { return e.Kind == "error" && e.CallID == "rejected" })
-			if index < 0 || view.entries[index].ErrorDetail != full || view.entries[index].Text != activityui.ErrorPreview(full) {
+			index := slices.IndexFunc(view.Entries, func(e liveActivityRecord) bool { return e.Source.Kind == "error" && e.Source.CallID == "rejected" })
+			if index < 0 || view.Entries[index].Source.ErrorDetail != full || view.Entries[index].Source.Text != activityui.ErrorPreview(full) {
 				t.Fatal("restoration clipped the full host error")
 			}
-			if !u.shell.openEntry(view, view.entries[index].Seq) {
+			if !u.shell.openEntry(view, view.Entries[index].Source.Seq) {
 				t.Fatal("restored error has no dialog")
 			}
 			assertErrorDialog(t, u.shell, full)

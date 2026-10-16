@@ -54,17 +54,17 @@ func (u *appServerUI) endTurnWaits(thread, turn string, now time.Time) []activit
 		if view == nil {
 			continue
 		}
-		for _, entry := range view.entries {
-			n := entry.native
+		for _, entry := range view.Entries {
+			n := entry.Source.native
 			if n == nil || n.thread != thread || n.turn != turn || n.wait == nil || (n.phase == "item/completed" || n.phase == "turn/completed") {
 				continue
 			}
 			native, block := *n, *n.wait
 			block.Body = "Wait ended"
 			native.phase, native.wait = "turn/completed", &block
-			entry.native, entry.Text = &native, block.ProgressText()
-			entry.Seq, entry.Observed = u.session.next(), now
-			entries = append(entries, entry.activityPaneEntry)
+			entry.Source.native, entry.Source.Text = &native, block.ProgressText()
+			entry.Source.Seq, entry.Source.Observed = u.session.next(), now
+			entries = append(entries, entry.Source)
 		}
 	}
 	return entries

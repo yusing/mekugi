@@ -2,8 +2,9 @@
 
 ## Purpose and scope
 
-Interpret classified operations, retain bounded host output, derive renderer-neutral
-activity values, and paint those values in terminal feeds and dialogs. Host adapters retain authority over tool
+Own host-operation feeds, agent roster derivation and bounded output, with
+renderer-neutral publications and terminal feeds and dialogs. Application adapters
+supply typed source facts and reconcile host items; the host retains authority over
 identity, execution, outcomes and captured changes. Parsing neither evaluates
 source nor establishes that an operation ran.
 
@@ -59,8 +60,9 @@ reports, never reconstructed unrecorded streams.
 
 ## Lifecycle and integration
 
-The composed activity service keeps its output state in the application's attached
-session store. Main and children share that state; separate attachments and offline
+The composed activity service keeps feed models, roster state and output retention
+in the application's attached session store. Main and children have distinct feeds
+and share output retention; separate attachments and offline
 replay resets receive distinct stores. Confirmed replacement retires the old store;
 a failed replacement keeps it. The application serializes access. Replacement
 drops output state with the associated feeds and dialogs;
@@ -72,20 +74,29 @@ consumer-owned.
 
 ## Records and Codex connection
 
-This owner stores no durable records and registers no Codex mechanism. The current
-application adapter supplies host output and outcomes; restored content comes from
-host history and command-segment records. Feed assembly and roster state remain application-owned. Each feed record keeps
-its source, enriched values, terminal disclosure annotations and cache revision
-together through append, replacement, in-place annotation changes, removal and
-history reordering. Stable entry identities move with the record. Main invalidates
-cross-entry dependent layouts; ordinary Activity updates retain unrelated completed
-layouts. No second transcript or index-aligned source/value collection is maintained.
+The module stores no durable records and registers no Codex mechanism. Its
+application adapter supplies original typed observations; restored observations
+come from host history and command-segment records. One record owns each source,
+its neutral values and its revision through replacement, mutation, removal and
+history reordering. Publication sequence and display order are independent.
+Retention keeps the newest 2,000 records while protecting live invocations.
 
-`presentation` owns plain semantic values and canonical flat group membership. It
-imports no terminal types and carries no callbacks or live output handles. Source
-text, requested-operation values and numeric detail facts remain unpainted.
-`terminalview` owns disclosure, geometry, styles, wrapping and animation; the
-[presentation contract](CONTRACT.md) defines observable behavior.
+The model derives canonical roster order, observed status, latest activity and
+active skills. Missing parents promote their children without reordering siblings.
+Main and child identities stay distinct; Main's roster summary reads its existing
+feed rather than copying it. Loaded skills come from confirmed reads or submitted
+attachments. Failed/declined segments load nothing; independently successful
+segments still count after aggregate failure. Feed trimming retains context loads,
+compaction clears them, and bounded history restoration cannot overwrite a newer
+live reset. Unknown context is not an empty confirmed set.
+
+`presentation` owns records, semantic derivation, plain values and canonical flat
+group membership. Typed adapter evidence stays private to source records; published
+values contain no callbacks, terminal state or live output handles. `terminalview`
+owns disclosure annotations keyed by source identity, geometry, styles and wrapping.
+Renderer adapters own focus, offsets, animation and cache invalidation. Main
+invalidates dependent layouts; ordinary Activity updates retain unrelated completed
+layouts. The [presentation contract](CONTRACT.md) defines observable behavior.
 
 Retained streams stay with their invocation or segment. Feed publications carry
 bounded tails and scoped output identities rather than whole retained snapshots.

@@ -43,9 +43,9 @@ func TestRosterSummaryFormatting(t *testing.T) {
 
 func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b", "/root/c")
-	v.agents[0].Role = "explorer"
-	v.agents[0].InputTokens, v.agents[0].OutputTokens = 1000, 20
-	v.agents[0].Turns, v.agents[0].Roundtrips, v.agents[0].CostKnown, v.agents[0].Cost = 1, 1, true, .25
+	v.Agents[0].Role = "explorer"
+	v.Agents[0].InputTokens, v.Agents[0].OutputTokens = 1000, 20
+	v.Agents[0].Turns, v.Agents[0].Roundtrips, v.Agents[0].CostKnown, v.Agents[0].Cost = 1, 1, true, .25
 	lines := plainLines(v.renderRosterPane(120, 8, time.Now()))
 	// Metrics share the agent's row, in columns aligned across rows.
 	if !strings.Contains(lines[1], "Read a.go") || strings.Contains(lines[1], "explorer") || !strings.Contains(strings.Join(strings.Fields(lines[1]), " "), "↑ 1K ↓ 20 $0.25 T+1") ||
@@ -75,5 +75,5 @@ func TestRosterMetricsInlineAndHitTargets(t *testing.T) {
 func TestUISnapshotRosterStripSelectionStyling(t *testing.T) {
 	v := liveActivityTestView("/root/a", "/root/b")
 	v.selected, v.hovered = "/root/a", "/root/b"
-	uisnapshot.AssertTerminal(t, "testdata/snapshots/roster-strip-selection.txt", []string{v.renderStrip(v.roster(), 80), "plain after roster"}, 80)
+	uisnapshot.AssertTerminal(t, "testdata/snapshots/roster-strip-selection.txt", []string{v.renderStrip(v.Roster(), 80), "plain after roster"}, 80)
 }

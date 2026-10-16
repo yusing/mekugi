@@ -63,13 +63,13 @@ func (u *appServerUI) processPages(pages []activityui.Block) []activityui.Block 
 			}
 		}
 	}
-	for _, record := range u.agents.entries {
-		page, ok := bySource[record.Seq]
-		if n := record.native; ok && n != nil {
-			bySource[record.Seq] = activityui.Block{
-				Source: record.Seq, Owner: page.Owner, Kind: "op", Verb: "Run", Lang: "bash",
+	for _, record := range u.agents.Entries {
+		page, ok := bySource[record.Source.Seq]
+		if n := record.Source.native; ok && n != nil {
+			bySource[record.Source.Seq] = activityui.Block{
+				Source: record.Source.Seq, Owner: page.Owner, Kind: "op", Verb: "Run", Lang: "bash",
 				Code:   toolActivityShellSource(appServerDisplayCommand(n.command)),
-				Output: retainedOutputID(n.output, 1), Tail: record.outputTail, TailOmitted: record.outputOmit,
+				Output: retainedOutputID(n.output, 1), Tail: record.Source.outputTail, TailOmitted: record.Source.outputOmit,
 				Running: n.running, Approval: n.approval,
 				Started: n.commandStarted, Ended: n.commandEnded, Duration: n.duration, NotificationTiming: true,
 			}

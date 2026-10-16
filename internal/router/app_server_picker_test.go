@@ -98,8 +98,8 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 		t.Fatalf("skill filtering = %+v", u.picker.choices)
 	}
 	appServerTestKeys(t, u, "\t")
-	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != path || len(u.view.entries) != 0 {
-		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.draft, u.skills, len(u.view.entries))
+	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != path || len(u.view.Entries) != 0 {
+		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.draft, u.skills, len(u.view.Entries))
 	}
 	w.Reset()
 	appServerTestKeys(t, u, "\r")
@@ -136,7 +136,7 @@ func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 	requests = pickerRequests(t, w)
 	pickerReply(t, u, requests[1].ID, `{"files":[{"root":"/work","path":"file name.go"}]}`)
 	appServerTestKeys(t, u, "\t")
-	if u.draft != `see @"file name.go" ` || len(u.view.entries) != 0 {
+	if u.draft != `see @"file name.go" ` || len(u.view.Entries) != 0 {
 		t.Fatalf("file insertion submitted or did not quote whitespace: %q", u.draft)
 	}
 	appServerTestKeys(t, u, "\x1a")
@@ -192,7 +192,7 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 			}
 		}
 	}
-	if len(u.view.entries) != 0 || strings.Contains(w.String(), "turn/start") {
+	if len(u.view.Entries) != 0 || strings.Contains(w.String(), "turn/start") {
 		t.Fatal("picker activity polluted transcript or submitted a turn")
 	}
 }

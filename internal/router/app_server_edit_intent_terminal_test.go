@@ -100,8 +100,8 @@ func TestAppServerEditIntentTerminalFrames(t *testing.T) {
 	u.shell.diff.data = data
 	// Completed tracked edit segments must receive the same captured counts
 	// as untracked commands while the neighboring test keeps its own state.
-	for i := range u.view.entries {
-		if native := u.view.entries[i].native; native != nil && native.item == "cmd" {
+	for i := range u.view.Entries {
+		if native := u.view.Entries[i].Source.native; native != nil && native.item == "cmd" {
 			native.segments = []commandSegment{
 				{source: "cat >> a.go", text: "Edit `a.go` · cat (requested)"},
 				{source: "python3", text: "Edit `b.go` · python3 (requested)"},

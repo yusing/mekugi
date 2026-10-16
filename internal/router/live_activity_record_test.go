@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
@@ -22,22 +24,22 @@ func TestLiveActivityRecordRetentionAndHistoryInsertion(t *testing.T) {
 	if !v.markUnreturned("child", "command") {
 		t.Fatal("output annotation missing")
 	}
-	revision := v.entries[2].revision
+	revision := v.Entries[2].Revision
 	v.renderFeed(90, 24)
-	before := v.lastSeq
+	before := v.LastSeq
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: before + 1, Agent: "/root/worker", Kind: "text", Text: "Older page one", Observed: now},
 		{Seq: before + 2, Agent: "/root/worker", Kind: "text", Text: "Older page two", Observed: now},
 	}})
-	if len(v.entries) != liveActivityFeedLimit || v.entries[0].Seq != 3 {
+	if len(v.Entries) != liveActivityFeedLimit || v.Entries[0].Source.Seq != 3 {
 		t.Fatal("retention did not discard only the two oldest records")
 	}
 	v.insertHistory(before, func(entry activityPaneEntry) bool { return entry.Seq == 3 })
-	i := slices.IndexFunc(v.entries, func(record liveActivityRecord) bool { return record.Seq == 3 })
-	if i != 2 || v.entries[i].revision != revision || v.entries[i].native.item != "command" {
+	i := slices.IndexFunc(v.Entries, func(record liveActivityRecord) bool { return record.Source.Seq == 3 })
+	if i != 2 || v.Entries[i].Revision != revision || v.Entries[i].Source.native.item != "command" {
 		t.Fatal("history insertion detached retained presentation identity")
 	}
-	blocks := v.entries[i].blocks
+	blocks := v.blocks(i)
 	if len(blocks) != 2 || blocks[0].Label != "`printf result`" || !slices.Equal(blocks[0].Tail, []string{"result"}) || blocks[1].Body != unreturnedOutputNote {
 		t.Fatalf("retention or reordering lost source output or its annotation: %+v", blocks)
 	}
@@ -57,13 +59,13 @@ func TestLiveActivityRecordMutationOwnsInvalidation(t *testing.T) {
 	v.renderFeed(90, 24)
 	stableKey, stable := liveActivityCacheRun(t, v, 1)
 	changedKey, _ := liveActivityCacheRun(t, v, 3)
-	revision := v.entries[2].revision
+	revision := v.Entries[2].Revision
 	v.mutateEntry(2, func(record *liveActivityRecord) {
-		record.Observed = now.Add(time.Hour)
-		record.Text = "Updated result"
-		record.blocks = parseLiveActivity(record.activityPaneEntry)
+		record.Source.Observed = now.Add(time.Hour)
+		record.Source.Text = "Updated result"
+		record.Values = activityui.Values(parseLiveActivity(record.Source))
 	})
-	if v.entries[2].revision <= revision {
+	if v.Entries[2].Revision <= revision {
 		t.Fatal("source and annotation mutation did not advance its revision")
 	}
 	if _, present := v.runs[changedKey]; present {

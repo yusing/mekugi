@@ -59,11 +59,11 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	waitTargetTestAgent(t, u, "b", "/root/beta", false)
 	waitTargetTestAgent(t, u, "nested", "/root/alpha/nested", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-	if u.view.entries[0].native.wait == nil {
+	if u.view.Entries[0].Source.native.wait == nil {
 		t.Fatal("live wait lacks structured roster status")
 	}
 	want := "Waiting for agent · alpha, alpha/nested"
-	if got := u.view.entries[0].Text; got != want {
+	if got := u.view.Entries[0].Source.Text; got != want {
 		t.Fatalf("start = %q, want %q", got, want)
 	}
 	if rendered := u.view.renderFeed(120, 30).lines; len(rendered) != 0 {
@@ -80,8 +80,8 @@ func TestAppServerWaitTargetsSnapshotAndRender(t *testing.T) {
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "a", "turn": map[string]any{"id": "work", "status": "completed"}})
 	waitTargetTestAgent(t, u, "new", "/root/new", true)
 	waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-	if len(u.view.entries) != 1 || u.view.entries[0].Text != "Finished waiting · alpha, alpha/nested" {
-		t.Fatalf("completion changed start targets: %+v", u.view.entries)
+	if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "Finished waiting · alpha, alpha/nested" {
+		t.Fatalf("completion changed start targets: %+v", u.view.Entries)
 	}
 }
 
@@ -142,10 +142,10 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	waitTargetTestStore(t, restored, store)
 	restored.restoreHistory(history)
-	if restored.view.entries[0].native.wait == nil {
+	if restored.view.Entries[0].Source.native.wait == nil {
 		t.Fatal("restored wait lacks structured roster status")
 	}
-	if got := restored.view.entries[0].Text; got != "Finished waiting · alpha, alpha/nested" {
+	if got := restored.view.Entries[0].Source.Text; got != "Finished waiting · alpha, alpha/nested" {
 		t.Fatalf("main replay lost targets: %q", got)
 	}
 	if rendered := restored.view.renderFeed(120, 30).lines; len(rendered) != 0 {
@@ -157,7 +157,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 	}
 	restored.session.registerThread(appServerThreadInfo{ID: "a", AgentNickname: "alpha"})
 	restored.restoreActivityThread(appServerThreadInfo{ID: "a", Turns: history})
-	if got := restored.agents.entries[0].Text; got != "Finished waiting · alpha/nested" {
+	if got := restored.agents.Entries[0].Source.Text; got != "Finished waiting · alpha/nested" {
 		t.Fatalf("child replay lost targets: %q", got)
 	}
 	if restored.turn != "" {
@@ -177,7 +177,7 @@ func TestAppServerWaitTargetsDurableReplay(t *testing.T) {
 		waitTargetTestStore(t, fresh, freshStore)
 		waitTargetTestAgent(t, fresh, "today", "/root/today", true)
 		fresh.restoreHistory(history)
-		if got := fresh.view.entries[0].Text; got != "Finished waiting" {
+		if got := fresh.view.Entries[0].Source.Text; got != "Finished waiting" {
 			t.Fatalf("missing scoped evidence inferred targets: %q", got)
 		}
 	}
@@ -207,14 +207,14 @@ func TestAppServerWaitTargetsStorageFailureKeepsLiveDisplay(t *testing.T) {
 				waitTargetTestAgent(t, u, "a", "/root/alpha", true)
 			}
 			waitTargetTestEvent(t, u, "item/started", "main", "t", "w")
-			if got := u.view.entries[0].Text; got != "Waiting for agent · alpha" {
+			if got := u.view.Entries[0].Source.Text; got != "Waiting for agent · alpha" {
 				t.Fatalf("storage blocked live start: %q", got)
 			}
 			if !strings.Contains(u.feedback.Text, "Wait targets could not") {
 				t.Fatalf("storage failure missing notice: %q", u.feedback.Text)
 			}
 			waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
-			if got := u.view.entries[0].Text; got != "Finished waiting · alpha" {
+			if got := u.view.Entries[0].Source.Text; got != "Finished waiting · alpha" {
 				t.Fatalf("storage blocked live completion: %q", got)
 			}
 		})

@@ -1005,10 +1005,7 @@ unknown count, including in session totals; detailed capture gaps remain in Diff
 Narrow child-agent roster rows retain context before other metrics;
 the composer's bottom border shows `model (effort) • used/window • percent%`
 as one right-aligned caption, shortening or omitting the model first when narrow.
-Main's title and child roster rows show unique loaded skill counts for each agent's current context, from successful reads or submitted skill attachments, not the catalog. Labels use `1 loaded skill` or `N loaded skills`.
-Failed or declined read segments load nothing; independently confirmed successful segments still count after aggregate failure. Feed trimming retains names; compaction clears them. Empty and unknown counts stay hidden.
-Hover underlines only the count label, clearing on pointer leave or focus loss. Clicking a count opens sorted skill names in the existing shared dialog without changing selection.
-Exit/resume restores confirmed loads, including inherited history, independently of transcript selection under the [bounded restoration contract](../architecture/activity.md).
+Main's title and child roster rows use the [Activity loaded-skill presentation](../../modules/activity/CONTRACT.md#agents-roster-and-navigation).
 
 Working roster rows show the latest operation or public summary, including its
 target, rather than a generic running/working label. Child names use their canonical

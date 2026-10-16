@@ -50,8 +50,8 @@ func TestAppServerResumeStartup(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":5,"result":{"data":[],"nextCursor":null}}`)
-	if u.thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" || u.view.entries[1].Text != "Saved answer" {
-		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.entries)
+	if u.thread != "saved" || u.status != "Ready" || u.model != "model" || u.reasoningEffort != "high" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" || u.view.Entries[1].Source.Text != "Saved answer" {
+		t.Fatalf("resume state: %+v, entries=%+v", u, u.view.Entries)
 	}
 	if got := contextWindowLabel(*u.session.agent("/root")); got != "120K/400K • 30%" {
 		t.Fatalf("startup lost replayed usage: %s", got)
@@ -91,10 +91,10 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 		{ID: "edit", Type: "fileChange", Changes: []appServerFileChange{{Path: "a.go", Diff: "+changed"}}},
 		{ID: "spawn", Type: "collabAgentToolCall", Tool: "spawnAgent", ReceiverThreadIDs: []string{"child"}},
 	}}})
-	if u.turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.entries) != 2 || u.view.entries[0].blocks[0].ExitCode != 2 {
+	if u.turn != "" || len(u.session.agents) != 1 || u.session.agents[0].Responding || len(u.view.Entries) != 2 || u.view.blocks(0)[0].ExitCode != 2 {
 		t.Fatalf("history revived lifecycle or lost tools: %+v", u.session)
 	}
-	if !u.shell.openActivityEdit(u.view, u.view.entries[1].Seq, "a.go") {
+	if !u.shell.openActivityEdit(u.view, u.view.Entries[1].Source.Seq, "a.go") {
 		t.Fatal("restored completed host edit lost diff navigation")
 	}
 	u.shell.outputKey("\x1b")
@@ -103,7 +103,7 @@ func TestAppServerResumeHistoryDoesNotReviveEffects(t *testing.T) {
 		t.Fatal("active snapshot did not restore steer/interrupt target")
 	}
 	appServerTestMessage(t, u, `{"method":"item/agentMessage/delta","params":{"threadId":"main","turnId":"active","itemId":"partial","delta":" answer"}}`)
-	if u.view.entries[len(u.view.entries)-1].Text != "Partial answer" {
+	if u.view.Entries[len(u.view.Entries)-1].Source.Text != "Partial answer" {
 		t.Fatal("snapshot swallowed subsequent delta")
 	}
 }

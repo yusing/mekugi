@@ -331,18 +331,18 @@ func (u *appServerUI) recordSyncQuestionAnswer(c *nativeQuestionCall) {
 			continue
 		}
 		native := &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: "question-answer/" + string(c.request), phase: "item/completed"}
-		for _, previous := range slices.Backward(v.entries) {
-			if previous.native == nil || previous.native.thread != c.thread {
+		for _, previous := range slices.Backward(v.Entries) {
+			if previous.Source.native == nil || previous.Source.native.thread != c.thread {
 				continue
 			}
-			if previous.Kind == "question" && previous.native.item == "question/"+string(c.request) {
-				native.question = previous.Seq
+			if previous.Source.Kind == "question" && previous.Source.native.item == "question/"+string(c.request) {
+				native.question = previous.Source.Seq
 			}
-			if native.replySource == "" && previous.Agent == "You" && previous.native.turn == c.turn {
-				native.replySource = previous.Text
+			if native.replySource == "" && previous.Source.Agent == "You" && previous.Source.native.turn == c.turn {
+				native.replySource = previous.Source.Text
 			}
 		}
-		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: u.now(), native: native}}})
+		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question_reply", Text: strings.Join(answers, "\n"), Observed: u.now(), native: native}}})
 	}
 }
 func (u *appServerUI) endSyncQuestions(turn string) {
@@ -820,7 +820,7 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 		if v == nil {
 			continue
 		}
-		entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: id, phase: "question", questions: records}}
+		entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.thread, turn: c.turn, item: id, phase: "question", questions: records}}
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	}
 }
@@ -950,8 +950,8 @@ func (u *appServerUI) questionRows(width, height int) []string {
 // skills loaded into Main's current context.
 func (u *appServerUI) mainTitleDetail() string {
 	details := []string{u.questionBadge()}
-	if set := u.view.activeSkills()["Main"]; set != nil {
-		details = append(details, set.label())
+	if set := u.view.ActiveSkills()["Main"]; set != nil {
+		details = append(details, skillLabel(set))
 	}
 	return strings.Join(slices.DeleteFunc(details, func(detail string) bool { return detail == "" }), terminalui.Dim+" · "+terminalui.Undim)
 }

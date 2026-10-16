@@ -45,9 +45,9 @@ func TestNativeReplyExcerptOpensExactActivityMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seq, activity uint64
-	for _, entry := range u.view.entries {
-		if entry.native != nil && entry.native.item == "target\x00main" {
-			seq, activity = entry.Seq, entry.activitySeq
+	for _, entry := range u.view.Entries {
+		if entry.Source.native != nil && entry.Source.native.item == "target\x00main" {
+			seq, activity = entry.Source.Seq, entry.Source.activitySeq
 		}
 	}
 	if seq == 0 || activity == 0 {
@@ -216,9 +216,9 @@ func TestNativeRepliesShareHeaderQuoteAnswerLayout(t *testing.T) {
 				if kind == "agent excerpt" {
 					entry.activitySeq = 5
 				}
-				v.entries = []liveActivityRecord{
-					{activityPaneEntry: question, blocks: nil},
-					{activityPaneEntry: entry, blocks: []activityui.Block{block}},
+				v.Entries = []liveActivityRecord{
+					{Source: question, Values: activityui.Values(nil)},
+					{Source: entry, Values: activityui.Values([]activityui.Block{block})},
 				}
 				run := v.conversationItem(1, 1, width, conversationThread{})
 				if len(run.lines) < 5 {

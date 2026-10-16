@@ -169,15 +169,15 @@ func (u *terminalUI) openBlocks(view *liveActivityView, pages []activityui.Block
 }
 
 func (u *terminalUI) openEntry(view *liveActivityView, seq uint64) bool {
-	for index, entry := range view.entries {
-		if entry.Seq != seq {
+	for index, entry := range view.Entries {
+		if entry.Source.Seq != seq {
 			continue
 		}
-		blocks := slices.Clone(view.entries[index].blocks)
+		blocks := view.blocks(index)
 		for i := range blocks {
-			blocks[i].Source = entry.Seq
+			blocks[i].Source = entry.Source.Seq
 			if blocks[i].Verb == "" {
-				blocks[i].Verb = entry.Agent
+				blocks[i].Verb = entry.Source.Agent
 			}
 		}
 		u.openBlocks(view, blocks)
@@ -191,31 +191,31 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 	if source == 0 {
 		return nil
 	}
-	for _, entry := range v.entries {
-		if entry.Seq != source || entry.native == nil || entry.native.command == "" && len(entry.native.segments) == 0 {
+	for _, entry := range v.Entries {
+		if entry.Source.Seq != source || entry.Source.native == nil || entry.Source.native.command == "" && len(entry.Source.native.segments) == 0 {
 			continue
 		}
 		// PTY, restored and lossy reports have no trustworthy output split.
-		separate := len(entry.native.segments) == 1 || len(entry.native.segments) > 1 && len(entry.outputTail) == 0
-		for _, segment := range entry.native.segments {
-			if len(entry.native.segments) > 1 && !segment.skipped && segment.output == nil {
+		separate := len(entry.Source.native.segments) == 1 || len(entry.Source.native.segments) > 1 && len(entry.Source.outputTail) == 0
+		for _, segment := range entry.Source.native.segments {
+			if len(entry.Source.native.segments) > 1 && !segment.skipped && segment.output == nil {
 				separate = false
 			}
 		}
 		if !separate {
-			operations := toolOperationBlocks(entry.Text)
-			if len(entry.native.segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
+			operations := toolOperationBlocks(entry.Source.Text)
+			if len(entry.Source.native.segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
 				return nil
 			}
-			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.native.command)), Lang: "bash", Output: retainedOutputID(entry.native.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
+			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.Source.native.command)), Lang: "bash", Output: retainedOutputID(entry.Source.native.output, 1), Tail: entry.Source.outputTail, TailOmitted: entry.Source.outputOmit, Running: entry.Source.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
 			// Keep edit source out of Run pages just as the feed does. The
 			// operations describe intent; only the batch owns output and exit.
-			classified := toolOperationBlocks(toolActivityShellInDirectory(appServerDisplayCommand(entry.native.command), entry.native.commandCwd))
+			classified := toolOperationBlocks(toolActivityShellInDirectory(appServerDisplayCommand(entry.Source.native.command), entry.Source.native.commandCwd))
 			if slices.ContainsFunc(classified, func(block activityui.Block) bool { return block.EditSource != "" }) {
 				if segments, ok := shellinstrumentation.Split(pages[0].Code); ok {
 					classified = nil
 					for _, segment := range segments {
-						classified = append(classified, toolOperationBlocks(execSegmentTextInDirectory(segment.Source, entry.native.commandCwd))...)
+						classified = append(classified, toolOperationBlocks(execSegmentTextInDirectory(segment.Source, entry.Source.native.commandCwd))...)
 					}
 				}
 				for i := range classified {
@@ -229,12 +229,12 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 					pages[0].RequestedOperations = append(pages[0].RequestedOperations, block.Value)
 				}
 			}
-			setCommandFacts(pages, entry.activityPaneEntry)
-			pages[0].Approval = entry.native.approval
+			setCommandFacts(pages, entry.Source)
+			pages[0].Approval = entry.Source.native.approval
 			return pages
 		}
 		var pages []activityui.Block
-		for _, grouped := range commandSegmentBlocks(entry.activityPaneEntry, true) {
+		for _, grouped := range commandSegmentBlocks(entry.Source, true) {
 			for _, value := range activitypresentation.Originals(grouped.Value) {
 				if value.Segment {
 					value.Source = source
@@ -243,9 +243,9 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			}
 		}
 		slices.SortStableFunc(pages, func(a, b activityui.Block) int { return cmp.Compare(a.Operation, b.Operation) })
-		setCommandFacts(pages, entry.activityPaneEntry)
+		setCommandFacts(pages, entry.Source)
 		if len(pages) > 0 {
-			pages[0].Approval = entry.native.approval
+			pages[0].Approval = entry.Source.native.approval
 		}
 		return pages
 	}
@@ -381,43 +381,43 @@ func (d *outputDialog) refreshPages() {
 		commands := d.view.commandOutputPages(origin.Source)
 		if len(commands) == 0 {
 			if origin.Source != 0 {
-				for index, entry := range d.view.entries {
-					if entry.Seq != origin.Source {
+				for index, entry := range d.view.Entries {
+					if entry.Source.Seq != origin.Source {
 						continue
 					}
-					if entry.native != nil {
-						origin.Approval = entry.native.approval
+					if entry.Source.native != nil {
+						origin.Approval = entry.Source.native.approval
 					}
-					if origin.Hook != nil && len(entry.blocks) == 1 {
-						current := entry.blocks[0]
+					if origin.Hook != nil && len(entry.Values) == 1 {
+						current := d.view.blocks(index)[0]
 						current.Source = origin.Source
 						origin = current
-					} else if (origin.Kind == "op" || origin.Kind == "reads") && entry.native != nil {
+					} else if (origin.Kind == "op" || origin.Kind == "reads") && entry.Source.native != nil {
 						timed := []activityui.Block{origin}
-						setCommandFacts(timed, entry.activityPaneEntry)
+						setCommandFacts(timed, entry.Source)
 						origin = timed[0]
-						origin.Running = entry.native.running
-						if origin.Output == 0 && len(entry.blocks) > 0 {
+						origin.Running = entry.Source.native.running
+						if origin.Output == 0 && len(entry.Values) > 0 {
 							// Compound output pages were rebuilt above. A single
 							// operation follows the projected record, including
 							// output attached by a separate host-exit observation.
-							origin.Tail, origin.TailOmitted = entry.blocks[0].Tail, entry.blocks[0].TailOmitted
+							origin.Tail, origin.TailOmitted = entry.Values[0].Tail, entry.Values[0].TailOmitted
 						}
 					} else if origin.Kind != "op" && origin.Kind != "reads" {
-						if origin.Kind != "summary" && len(d.view.entries[index].blocks) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.entries[index].blocks) {
+						if origin.Kind != "summary" && len(d.view.Entries[index].Values) == 1 || origin.Kind == "summary" && origin.Section < len(d.view.Entries[index].Values) {
 							section := 0
 							if origin.Kind == "summary" {
 								section = origin.Section
 							}
-							current := d.view.entries[index].blocks[section]
+							current := d.view.blocks(index)[section]
 							current.Source = origin.Source
 							if current.Verb == "" {
 								current.Verb = origin.Verb
 							}
 							origin = current
 						}
-						if entry.native != nil && entry.native.live {
-							origin.Live = entry.native.phase == "summary" || entry.native.phase == "item/started" || entry.native.phase == "item/agentMessage/delta"
+						if entry.Source.native != nil && entry.Source.native.live {
+							origin.Live = entry.Source.native.phase == "summary" || entry.Source.native.phase == "item/started" || entry.Source.native.phase == "item/agentMessage/delta"
 						}
 					}
 					break

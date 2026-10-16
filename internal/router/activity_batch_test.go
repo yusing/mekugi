@@ -217,11 +217,11 @@ func TestActivitySingleCommandObservedTimestamps(t *testing.T) {
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	item["status"], item["durationMs"], item["exitCode"] = "completed", 123, 0
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-	for _, entry := range u.view.entries {
-		if entry.CallID != "timestamps" || entry.native == nil {
+	for _, entry := range u.view.Entries {
+		if entry.Source.CallID != "timestamps" || entry.Source.native == nil {
 			continue
 		}
-		blocks := parseLiveActivity(entry.activityPaneEntry)
+		blocks := parseLiveActivity(entry.Source)
 		if len(blocks) != 1 || !blocks[0].NotificationTiming || blocks[0].Started.Before(started) || blocks[0].Ended.Before(blocks[0].Started) || blocks[0].Duration != 123*time.Millisecond {
 			t.Fatalf("notification timestamps/host duration: %+v", blocks)
 		}

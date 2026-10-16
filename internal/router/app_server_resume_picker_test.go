@@ -143,8 +143,8 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"named","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"named","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	resumeTestSettle(t, u, w)
-	if u.thread != "named" || u.status != "Ready" || len(u.view.entries) != 2 || u.view.entries[1].Text != "Saved answer" {
-		t.Fatalf("resumed state: thread=%q status=%q entries=%+v", u.thread, u.status, u.view.entries)
+	if u.thread != "named" || u.status != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "Saved answer" {
+		t.Fatalf("resumed state: thread=%q status=%q entries=%+v", u.thread, u.status, u.view.Entries)
 	}
 }
 
@@ -227,6 +227,8 @@ func TestAppServerResumePickerSearchFilterAndPages(t *testing.T) {
 func TestAppServerResumeSwitchesSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	outputs := u.session.activity.Outputs(&u.session.state)
+	u.ensureShell()
+	feed := u.view.Model
 	appServerTestUserMessage(t, u, "old-user", "", "old transcript")
 	appServerTestKeys(t, u, "/resume\r")
 	list := resumeTestOne(t, w, "thread/list")
@@ -246,25 +248,25 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"data":[{"id":"main","preview":"old transcript"},{"id":"saved","preview":"Saved question"}],"nextCursor":null}}`, list.ID))
 	resumeTestKeys(t, u, "\x1b[B", "\r")
 	resume := resumeTestPrepared(t, u, w)
-	if resume.Params.ThreadID != "saved" || !u.replacement.pending() || u.thread != "main" || len(u.view.entries) != 1 {
-		t.Fatalf("switch request/state: %+v thread=%q entries=%+v", resume.Params, u.thread, u.view.entries)
+	if resume.Params.ThreadID != "saved" || !u.replacement.pending() || u.thread != "main" || len(u.view.Entries) != 1 {
+		t.Fatalf("switch request/state: %+v thread=%q entries=%+v", resume.Params, u.thread, u.view.Entries)
 	}
 	// The current session stays live until Codex confirms the switch.
 	appServerTestUserMessage(t, u, "late-old", "", "late old transcript")
-	if len(resumeTestRequests(t, w)) != 0 || len(u.view.entries) != 2 || len(u.resumePending) != 0 {
-		t.Fatalf("current session not live while switching: entries=%+v pending=%d", u.view.entries, len(u.resumePending))
+	if len(resumeTestRequests(t, w)) != 0 || len(u.view.Entries) != 2 || len(u.resumePending) != 0 {
+		t.Fatalf("current session not live while switching: entries=%+v pending=%d", u.view.Entries, len(u.resumePending))
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"model":"model","thread":{"id":"saved","cwd":"/work","turns":[{"id":"old","status":"completed","items":[{"type":"userMessage","id":"question","content":[{"type":"text","text":"Saved question"}]},{"type":"agentMessage","id":"answer","text":"Saved answer"}]}]}}}`, resume.ID))
 	methods := resumeTestSettle(t, u, w)
-	if u.session.activity.Outputs(&u.session.state) == outputs {
+	if u.session.activity.Outputs(&u.session.state) == outputs || u.view.Model == feed {
 		t.Fatal("confirmed replacement retained the old activity scope")
 	}
 	if len(methods) == 0 || methods[0] != "thread/unsubscribe" || !slices.Contains(methods, "model/list") {
 		t.Fatalf("switch follow-up requests: %v", methods)
 	}
-	if u.thread != "saved" || u.replacement.pending() || u.replacement.target != "" || u.status != "Ready" || len(u.view.entries) != 2 || u.view.entries[0].Text != "Saved question" {
-		t.Fatalf("switched state: thread=%q status=%q entries=%+v", u.thread, u.status, u.view.entries)
+	if u.thread != "saved" || u.replacement.pending() || u.replacement.target != "" || u.status != "Ready" || len(u.view.Entries) != 2 || u.view.Entries[0].Source.Text != "Saved question" {
+		t.Fatalf("switched state: thread=%q status=%q entries=%+v", u.thread, u.status, u.view.Entries)
 	}
 	if frame := resumeTestFrame(t, u, 120, 20); strings.Contains(frame, "old transcript") || strings.Contains(frame, "late old") {
 		t.Fatalf("old transcript remains rendered:\n%s", frame)
@@ -296,6 +298,8 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 	u, w := newResumeSessionTestUI(t)
 	outputs := u.session.activity.Outputs(&u.session.state)
+	u.ensureShell()
+	feed := u.view.Model
 	appServerTestUserMessage(t, u, "old-user", "", "keep this")
 	appServerTestKeys(t, u, "/resume missing\r")
 	resume := resumeTestPrepared(t, u, w)
@@ -305,14 +309,14 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 		t.Fatal("input escaped to the old thread while switching")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"no rollout"}}`, resume.ID))
-	if u.thread != "main" || u.replacement.pending() || u.replacement.target != "" || !strings.Contains(u.feedback.Text, "no rollout") || u.draft != "held" || len(u.view.entries) != 2 || u.view.entries[1].Text != "arrived while switching" {
-		t.Fatalf("failed switch lost state: thread=%q notice=%q entries=%+v", u.thread, u.feedback.Text, u.view.entries)
+	if u.thread != "main" || u.replacement.pending() || u.replacement.target != "" || !strings.Contains(u.feedback.Text, "no rollout") || u.draft != "held" || len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "arrived while switching" {
+		t.Fatalf("failed switch lost state: thread=%q notice=%q entries=%+v", u.thread, u.feedback.Text, u.view.Entries)
 	}
 	appServerTestKeys(t, u, "\r")
 	if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "main" {
 		t.Fatalf("input after failed switch targeted %q", start.Params.ThreadID)
 	}
-	if u.session.activity.Outputs(&u.session.state) != outputs {
+	if u.session.activity.Outputs(&u.session.state) != outputs || u.view.Model != feed {
 		t.Fatal("failed replacement discarded activity state")
 	}
 }

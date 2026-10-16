@@ -542,8 +542,8 @@ func (u *appServerUI) approvalItem(thread, turn, item string) *liveActivityNativ
 		if view == nil {
 			continue
 		}
-		for _, entry := range view.entries {
-			n := entry.native
+		for _, entry := range view.Entries {
+			n := entry.Source.native
 			if n == nil || n.item != item || thread != "" && n.thread != thread || turn != "" && n.turn != turn {
 				continue
 			}
@@ -581,7 +581,7 @@ func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
 		entry.Agent = u.session.path(a.thread)
 		u.applyActivity([]activityPaneEntry{entry}, nil)
 	} else {
-		entry.Seq, entry.Agent = u.view.lastSeq+1, "Main"
+		entry.Seq, entry.Agent = u.view.LastSeq+1, "Main"
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	}
 }

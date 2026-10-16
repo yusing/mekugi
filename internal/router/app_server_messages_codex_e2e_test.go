@@ -100,17 +100,17 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 		if started && provider.completed() {
 			var assignmentCount, messageCount, excerptCount int
 			var activitySeq uint64
-			for _, entry := range u.agents.entries {
-				if entry.assignment != nil && entry.assignment.text == assignment {
+			for _, entry := range u.agents.Entries {
+				if entry.Source.assignment != nil && entry.Source.assignment.text == assignment {
 					assignmentCount++
 				}
-				if entry.Kind == "reply" && strings.Contains(entry.Text, message) {
+				if entry.Source.Kind == "reply" && strings.Contains(entry.Source.Text, message) {
 					messageCount++
-					activitySeq = entry.Seq
+					activitySeq = entry.Source.Seq
 				}
 			}
-			for _, entry := range u.view.entries {
-				if entry.Kind == "reply" && entry.activitySeq == activitySeq && activitySeq != 0 {
+			for _, entry := range u.view.Entries {
+				if entry.Source.Kind == "reply" && entry.Source.activitySeq == activitySeq && activitySeq != 0 {
 					excerptCount++
 				}
 			}

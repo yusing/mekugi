@@ -162,7 +162,7 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 			t.Fatalf("invalid state applied: %s %v", body, err)
 		}
 		u.paneError(err)
-		if u.thread != "main" || !strings.Contains(u.view.entries[len(u.view.entries)-1].Text, "Pane layout") {
+		if u.thread != "main" || !strings.Contains(u.view.Entries[len(u.view.Entries)-1].Source.Text, "Pane layout") {
 			t.Fatal("layout failure was fatal or invisible")
 		}
 	}

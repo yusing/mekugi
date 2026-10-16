@@ -31,11 +31,11 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	label("Compacting context")
 	item("main", "t", "c", "item/completed")
 	label("Working")
-	before := len(u.view.entries)
+	before := len(u.view.Entries)
 	item("main", "t", "c", "item/completed")
 	item("main", "t", "c", "item/started")
 	label("Working")
-	if len(u.view.entries) != before {
+	if len(u.view.Entries) != before {
 		t.Fatal("duplicate compaction completion created an event")
 	}
 	frame, _ := u.mainFrame(80, 24, 0)
@@ -46,9 +46,9 @@ func TestAppServerProgressCompactionLifecycle(t *testing.T) {
 	for _, status := range []string{"interrupted", "failed", "completed"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": status}})
 		item("main", status, "pending", "item/started")
-		before = len(u.view.entries)
+		before = len(u.view.Entries)
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": status, "status": status}})
-		if u.compacting != nil || strings.Contains(u.sessionLabel(time.Now()), "Compacting") || len(u.view.entries) != before {
+		if u.compacting != nil || strings.Contains(u.sessionLabel(time.Now()), "Compacting") || len(u.view.Entries) != before {
 			t.Fatal("turn end retained compaction or fabricated completion")
 		}
 	}
@@ -67,23 +67,23 @@ func TestAppServerProgressWaitAndReplay(t *testing.T) {
 		if got := ansi.Strip(u.sessionLabel(time.Now())); !strings.Contains(got, "Working") {
 			t.Fatalf("wait replaced composer: %q", got)
 		}
-		if len(u.view.entries) != 1 || u.view.entries[0].Kind != "progress" || u.view.entries[0].native.question != 0 {
-			t.Fatalf("wait did not reconcile as an event: %+v", u.view.entries)
+		if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Kind != "progress" || u.view.Entries[0].Source.native.question != 0 {
+			t.Fatalf("wait did not reconcile as an event: %+v", u.view.Entries)
 		}
 	}
-	if !strings.Contains(u.view.entries[0].Text, "Finished waiting") || !strings.Contains(u.view.entries[0].Text, "child: Still running") {
+	if !strings.Contains(u.view.Entries[0].Source.Text, "Finished waiting") || !strings.Contains(u.view.Entries[0].Source.Text, "child: Still running") {
 		t.Fatal("wait start did not complete")
 	}
 	history := []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{wait, {ID: "c", Type: "contextCompaction"}}}}
 	v := newAppServerSessionTestUI(t, t.TempDir())
 	v.restoreHistory(history)
-	if len(v.view.entries) != 2 || v.compacting != nil || v.turn != "" {
-		t.Fatalf("restored events revived work or went missing: %+v", v.view.entries)
+	if len(v.view.Entries) != 2 || v.compacting != nil || v.turn != "" {
+		t.Fatalf("restored events revived work or went missing: %+v", v.view.Entries)
 	}
 	v.session.registerThread(appServerThreadInfo{ID: "child"})
 	v.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: history})
-	if len(v.agents.entries) != 2 || v.agents.entries[1].Text != "Context compacted" {
-		t.Fatalf("child replay missing progress: %+v", v.agents.entries)
+	if len(v.agents.Entries) != 2 || v.agents.Entries[1].Source.Text != "Context compacted" {
+		t.Fatalf("child replay missing progress: %+v", v.agents.Entries)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	wait := appServerItem{ID: "w", Type: "collabAgentToolCall", Tool: "wait", Status: "inProgress"}
 	u.session.registerThread(appServerThreadInfo{ID: "child"})
 	u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: []appServerHistoryTurn{{ID: "t", Status: "inProgress", Items: []appServerItem{wait}}}})
-	if !strings.Contains(u.agents.entries[0].Text, "Waiting for agent") || u.session.agent(u.session.paths["child"]).Responding {
+	if !strings.Contains(u.agents.Entries[0].Source.Text, "Waiting for agent") || u.session.agent(u.session.paths["child"]).Responding {
 		t.Fatal("unfinished historical wait claimed completion or revived work")
 	}
 	// A later turn must not restart animation for the restored wait.
@@ -105,8 +105,8 @@ func TestAppServerProgressUnfinishedChildWait(t *testing.T) {
 	}
 	wait.Status = "failed"
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": wait})
-	if u.agents.entries[0].Text != "Wait failed" || u.agents.entries[0].native.phase != "item/completed" {
-		t.Fatalf("live completion could not replace history: %+v", u.agents.entries[0])
+	if u.agents.Entries[0].Source.Text != "Wait failed" || u.agents.Entries[0].Source.native.phase != "item/completed" {
+		t.Fatalf("live completion could not replace history: %+v", u.agents.Entries[0])
 	}
 }
 
@@ -147,8 +147,8 @@ func TestAppServerWaitRosterOnly(t *testing.T) {
 				notify("item/completed")
 				check(want)
 				items = append(items, wait)
-				if len(feed.entries) != len(items) {
-					t.Fatalf("same-item duplicate not reconciled: %d entries", len(feed.entries))
+				if len(feed.Entries) != len(items) {
+					t.Fatalf("same-item duplicate not reconciled: %d entries", len(feed.Entries))
 				}
 			}
 			// Full history and repeated live delivery must preserve roster-only
@@ -185,7 +185,7 @@ func TestAppServerProgressTerminalPolling(t *testing.T) {
 	poll("main", "t", "proc", "")
 	poll("main", "t", "proc", "")
 	label("Still running")
-	if len(u.view.entries) != 0 {
+	if len(u.view.Entries) != 0 {
 		t.Fatal("polls flooded transcript")
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "other", Type: "commandExecution", ProcessID: "other"}})

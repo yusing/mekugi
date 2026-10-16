@@ -128,8 +128,8 @@ func TestNativeBatchElapsedFailureAndResume(t *testing.T) {
 			}
 			finishPacing(view)
 			found := false
-			for _, entry := range view.entries {
-				for _, block := range entry.blocks {
+			for _, entry := range view.Entries {
+				for _, block := range u.view.disclosure.Blocks(entry.Values) {
 					if block.BatchExit {
 						if found || block.Duration != 191129*time.Millisecond || block.ExitCode != 1 {
 							t.Fatalf("incorrect batch timing or exit: %+v", block)
@@ -164,8 +164,8 @@ func TestNativeCapturedBatchKeepsSingleElapsedResult(t *testing.T) {
 				data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: "main", calls: []string{"batch"}, text: "Edit `a.txt` +1 -1 · printf"}}
 				u.view.applyCapturedEdits(data)
 				count := 0
-				for _, entry := range u.view.entries {
-					for _, block := range entry.blocks {
+				for _, entry := range u.view.Entries {
+					for _, block := range u.view.disclosure.Blocks(entry.Values) {
 						if block.BatchExit {
 							count++
 							if block.Duration != time.Second || block.ExitCode != exit || block.Output == 0 || strings.Join(u.view.retainedOutput(block).View().Lines, "\n") != "retained batch output" {

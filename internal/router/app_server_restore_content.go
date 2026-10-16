@@ -86,9 +86,9 @@ func (u *appServerUI) restoreHistoryNotice(message string, incomplete bool) {
 		r.notices = append(r.notices, restoredHistoryNotice{message, incomplete}) // Shown after Main's history.
 		return
 	}
-	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
+	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: message, Observed: time.Now()}}})
 	// Notices advance Main independently of the Activity sequence.
-	u.session.seq = max(u.session.seq, u.view.lastSeq)
+	u.session.seq = max(u.session.seq, u.view.LastSeq)
 }
 
 func (u *appServerUI) restoreActivityResponse(method string, m appserver.Message) error {

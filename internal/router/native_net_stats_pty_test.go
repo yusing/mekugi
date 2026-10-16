@@ -43,7 +43,7 @@ func TestNativeUINetStatsPTY(t *testing.T) {
 	publish("unrelated", "/root/other", "unrelated", "", filepath.Join(workspace, "unrelated.txt"), "", "unrelated\n")
 
 	u := newAppServerSessionTestUI(t, workspace)
-	u.agents.agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
+	u.agents.Agents = []activityPaneAgent{{Name: "/root"}, {Name: "/root/worker"}}
 	u.shell.focus = 3
 	u.shell.diff.store = store
 	scope := previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true, "child": true}}}

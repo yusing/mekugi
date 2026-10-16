@@ -16,8 +16,8 @@ observation capacity must remain visible and bounded without terminating unrelat
   and file-status classification. It operates on supplied values without filesystem
   reads or terminal types. Callers choose display paths; terminal views own colors,
   labels, geometry, selection, and follow state.
-- [Activity](../../modules/activity/SPEC.md) owns semantic values, canonical group
-  membership and retained output. Its terminal view owns disclosure, geometry,
+- [Activity](../../modules/activity/SPEC.md) owns feed records, roster derivation, semantic values,
+  canonical group membership and retained output in the attached session store. Its terminal view owns disclosure, geometry,
   cards, agent colors and reveal animation over those values.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including
   their viewport and reveal animation. Captured-file composition and attribution
@@ -38,8 +38,8 @@ observation capacity must remain visible and bounded without terminating unrelat
   framing, bounded diagnostics, initialization, and shutdown. It does not import the
   router or terminal UI and does not interpret model responses.
 
-The router remains the integration owner for the native session, composer, transcript
-and roster state, and app-server event reconciliation. It adapts authenticated activity,
+The router integrates the native session, composer, pane navigation and app-server
+event reconciliation with Activity's feed and roster models. It adapts authenticated activity,
 scoped replay/change observations and accounting into display
 values. Shared Markdown annotations travel with rendered fragments through wrapping,
 record layouts, gutters and viewport clipping. The router resolves them against the

@@ -155,14 +155,14 @@ func TestAppServerComposerImageEchoReconcilesPending(t *testing.T) {
 	appServerTestKeys(t, u, "before ")
 	u.attachImage(filepath.Join(t.TempDir(), "image.png"))
 	appServerTestKeys(t, u, " after\r")
-	if len(u.view.entries) != 1 || u.view.entries[0].Text != "before [Image 1] after" {
-		t.Fatalf("missing immediate image echo: %+v", u.view.entries)
+	if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "before [Image 1] after" {
+		t.Fatalf("missing immediate image echo: %+v", u.view.Entries)
 	}
 	for _, method := range []string{"item/started", "item/completed"} {
 		appServerTestMessage(t, u, `{"method":"`+method+`","params":{"threadId":"main","turnId":"t","item":{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"before "},{"type":"localImage"},{"type":"text","text":" after"}]}}}`)
 	}
-	if len(u.view.entries) != 1 || u.view.entries[0].Text != "before [Image 1] after" || u.view.entries[0].native.item != "user-1" {
-		t.Fatalf("authoritative image echo duplicated or lost placeholder: %+v", u.view.entries)
+	if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "before [Image 1] after" || u.view.Entries[0].Source.native.item != "user-1" {
+		t.Fatalf("authoritative image echo duplicated or lost placeholder: %+v", u.view.Entries)
 	}
 }
 

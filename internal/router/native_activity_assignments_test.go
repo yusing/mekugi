@@ -37,9 +37,9 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	collab("task-1", "spawnAgent", "Check the original answer.")
 	collab("task-2", "followupTask", "Check the edited answer.")
 	var next []activityPaneEntry
-	for _, entry := range u.view.entries {
-		if entry.Kind == "assignment" {
-			next = append(next, entry.activityPaneEntry)
+	for _, entry := range u.view.Entries {
+		if entry.Source.Kind == "assignment" {
+			next = append(next, entry.Source)
 		}
 	}
 	if len(next) != 1 || next[0].assignment.text != "Check the edited answer." {
@@ -52,8 +52,8 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	if !strings.Contains(main, "▶ reviewer started") || !strings.Contains(main, "├─→ follow-up") || !strings.Contains(main, "├─✓ finished") || strings.Contains(main, "↩ re:") {
 		t.Fatalf("follow-up answer was not threaded under its assignment:\n%s", main)
 	}
-	for _, entry := range u.view.entries {
-		if entry.Kind == "start" && entry.Agent != "Main" {
+	for _, entry := range u.view.Entries {
+		if entry.Source.Kind == "start" && entry.Source.Agent != "Main" {
 			t.Fatal("root spawn rendered as child speech")
 		}
 	}

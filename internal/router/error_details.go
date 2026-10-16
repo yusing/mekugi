@@ -16,12 +16,12 @@ func (u *terminalUI) openErrors() {
 		return
 	}
 	var pages []activityui.Block
-	for _, entry := range view.entries {
-		if entry.Kind != "error" || !view.visible(entry.activityPaneEntry) {
+	for _, entry := range view.Entries {
+		if entry.Source.Kind != "error" || !view.visible(entry.Source) {
 			continue
 		}
-		for _, block := range entry.blocks {
-			block.Source = entry.Seq
+		for _, block := range view.disclosure.Blocks(entry.Values) {
+			block.Source = entry.Source.Seq
 			pages = append(pages, block)
 		}
 	}

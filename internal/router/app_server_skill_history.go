@@ -4,6 +4,8 @@ import (
 	json "encoding/json/v2"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 // Skill counts need the whole current context, independent of the deliberately
@@ -30,8 +32,7 @@ func (u *appServerUI) startSkillHistory() {
 			continue
 		}
 		h.skills = &appServerSkillHistory{cursors: make(map[string]bool)}
-		u.agents.activeSkills()
-		if u.agents.skillHistory[u.session.path(h.info.ID)] {
+		if !u.agents.NeedsSkillHistory(u.session.path(h.info.ID)) {
 			continue // A live boundary already established the current context.
 		}
 		if err := u.requestSkillHistory(h, ""); err != nil {
@@ -93,22 +94,22 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 			break
 		}
 		native := &liveActivityNativeItem{thread: thread, turn: entry.TurnID, item: item.ID, status: item.Status, phase: "item/completed", command: item.Command}
-		record := liveActivityRecord{activityPaneEntry: activityPaneEntry{Kind: "tool", native: native}}
+		record := liveActivityRecord{Source: activityPaneEntry{Kind: "tool", native: native}}
 		switch item.Type {
 		case "userMessage":
-			record.Kind, native.item = "attachments", item.ID+"/attachments"
+			record.Source.Kind, native.item = "attachments", item.ID+"/attachments"
 			native.attachments = appServerAttachmentBlocks(u.session.cwd, item.Content)
 		case "commandExecution":
-			u.restoreCommandSegments(&record.activityPaneEntry, item, u.session.cwd)
+			u.restoreCommandSegments(&record.Source, item, u.session.cwd)
 			if item.ExitCode != nil && *item.ExitCode != 0 && len(native.segments) == 0 {
 				continue
 			}
-			record.Text = appServerToolText(item, u.session.cwd)
+			record.Source.Text = appServerToolText(item, u.session.cwd)
 		default:
 			continue
 		}
-		record.blocks = parseLiveActivity(record.activityPaneEntry)
-		scan.names = scan.names.with(skillLoads(record)...)
+		record.Values = activityui.Values(parseLiveActivity(record.Source))
+		scan.names = scan.names.With(activitypresentation.SkillLoads(record)...)
 	}
 	if page.NextCursor != "" {
 		if scan.cursors[page.NextCursor] {
@@ -123,16 +124,8 @@ func (u *appServerUI) skillHistoryResponse(thread string, m appserver.Message) e
 	v, name := u.agents, u.session.path(h.info.ID)
 	// Observe a live reset before adopting the historical snapshot. Its newer
 	// context wins, even if the reset's entry has already left the feed.
-	v.activeSkills()
-	if !v.skillHistory[name] {
-		if v.retiredSkills == nil {
-			v.retiredSkills = make(map[string]activeSkillSet)
-		}
-		v.retiredSkills[name] = h.skills.names.with(v.retiredSkills[name]...)
-		v.skillHistory[name] = true
-	}
+	v.RestoreSkills(name, h.skills.names)
 	h.skills.names = nil
-	v.skills = nil
 	u.dirty = true
 	return nil
 }

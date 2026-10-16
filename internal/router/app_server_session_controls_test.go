@@ -16,8 +16,8 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, "/compact\r")
 			r := appServerOneRequest(t, w, "thread/compact/start", "")
-			if !u.compaction.ackPending || !u.starting() || u.submission.text != "" || len(u.view.entries) != 0 {
-				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.compaction.ackPending, u.starting(), u.view.entries)
+			if !u.compaction.ackPending || !u.starting() || u.submission.text != "" || len(u.view.Entries) != 0 {
+				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.compaction.ackPending, u.starting(), u.view.Entries)
 			}
 			if beforeAck {
 				appServerTestTurn(t, u, "compact-turn")
@@ -62,8 +62,8 @@ func TestAppServerCompactFailureRestoresCommand(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\r")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if u.draft != "/compact" || u.compaction.ackPending || u.starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.entries) != 0 {
-		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.draft, u.feedback.Text, u.view.entries)
+	if u.draft != "/compact" || u.compaction.ackPending || u.starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
+		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.draft, u.feedback.Text, u.view.Entries)
 	}
 }
 
@@ -116,21 +116,21 @@ func TestAppServerClearStartsFreshThreadAndRetiresOldEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.Reset()
-	if req.Method != "thread/start" || req.Params.SessionStartSource != "clear" || req.Params.Model != "chosen" || req.Params.ServiceTier != "priority" || req.Params.Config.Effort != "high" || !u.replacement.pending() || len(u.view.entries) == 0 {
-		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.replacement.pending(), u.view.entries)
+	if req.Method != "thread/start" || req.Params.SessionStartSource != "clear" || req.Params.Model != "chosen" || req.Params.ServiceTier != "priority" || req.Params.Config.Effort != "high" || !u.replacement.pending() || len(u.view.Entries) == 0 {
+		t.Fatalf("clear request/state: %+v clearing=%v entries=%+v", req, u.replacement.pending(), u.view.Entries)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"thread":{"id":"fresh","cwd":"/tmp"},"model":"chosen","reasoningEffort":"high","serviceTier":"priority"}}`, req.ID))
 	requests := appServerTurnRequests(t, w)
 	if len(requests) != 2 || requests[0].Method != "thread/unsubscribe" || requests[1].Method != "model/list" {
 		t.Fatalf("clear follow-up requests: %+v", requests)
 	}
-	if u.thread != "fresh" || u.replacement.pending() || len(u.view.entries) != 0 {
-		t.Fatalf("old presentation retained: thread=%q entries=%+v", u.thread, u.view.entries)
+	if u.thread != "fresh" || u.replacement.pending() || len(u.view.Entries) != 0 {
+		t.Fatalf("old presentation retained: thread=%q entries=%+v", u.thread, u.view.Entries)
 	}
 	appServerTestUserMessage(t, u, "late-old", "", "late old transcript")
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"late-turn"}}}`)
-	if len(u.view.entries) != 0 || u.turn != "" {
-		t.Fatalf("retired events repopulated session: %+v turn=%q", u.view.entries, u.turn)
+	if len(u.view.Entries) != 0 || u.turn != "" {
+		t.Fatalf("retired events repopulated session: %+v turn=%q", u.view.Entries, u.turn)
 	}
 	var frame bytes.Buffer
 	if err := u.paint(&frame, 80, 20); err != nil {
@@ -149,8 +149,8 @@ func TestAppServerClearFailureKeepsTranscript(t *testing.T) {
 	appServerTestKeys(t, u, "/clear\r")
 	r := appServerOneRequest(t, w, "thread/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, r.ID))
-	if u.thread != "main" || u.replacement.pending() || len(u.view.entries) != 1 || u.view.entries[0].Text != "keep this" || !strings.Contains(u.feedback.Text, "unavailable") {
-		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.thread, u.view.entries, u.feedback.Text)
+	if u.thread != "main" || u.replacement.pending() || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "keep this" || !strings.Contains(u.feedback.Text, "unavailable") {
+		t.Fatalf("failed clear discarded state: thread=%q entries=%+v notice=%q", u.thread, u.view.Entries, u.feedback.Text)
 	}
 }
 

@@ -176,7 +176,7 @@ func TestRequestedConsecutiveInspectGroupingBoundaries(t *testing.T) {
 func TestRequestedRosterGlyphCenteredInThreeCellGutter(t *testing.T) {
 	now := time.Now()
 	view := liveActivityTestView("/root", "/root/a")
-	view.agents[1].Responding = true
+	view.Agents[1].Responding = true
 	lines := plainLines(view.render(100, 16, now))
 	for _, glyph := range []string{"·", "◐"} {
 		found := false
@@ -198,11 +198,11 @@ func TestRequestedRootRosterOwnActivityAndAddressedMessage(t *testing.T) {
 		{Seq: 1, Agent: "/root", Kind: "tool", Text: "Read `main.go`", Observed: now},
 		{Seq: 2, Agent: "/root/a", Kind: "tool", Text: "Read `child.go`", Observed: now},
 	}})
-	if summary, _ := view.current(view.agents[0], now); !strings.Contains(summary, "main.go") {
+	if summary, _ := view.current(view.Agents[0], now); !strings.Contains(summary, "main.go") {
 		t.Fatalf("root own activity missing: %q", summary)
 	}
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 3, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Answer"}, Observed: now}}})
-	if summary, _ := view.current(view.agents[0], now); !strings.Contains(ansi.Strip(summary), "← a") {
+	if summary, _ := view.current(view.Agents[0], now); !strings.Contains(ansi.Strip(summary), "← a") {
 		t.Fatalf("newer addressed message missing: %q", summary)
 	}
 }
@@ -210,19 +210,19 @@ func TestRequestedRootRosterOwnActivityAndAddressedMessage(t *testing.T) {
 func TestRequestedRosterMetricSlotsStableAcrossAvailabilityAndFormat(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a")
-	view.agents[0].Started = now.Add(-52 * time.Second)
-	view.agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(52 * time.Second)}
-	view.agents[0].LastResponse = now
-	view.agents[0].InputTokens, view.agents[0].OutputTokens = 140_600, 789
-	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost, view.agents[0].CostKnown = 7, 7, .5171, true
-	full := plainLines(view.metricTable(view.roster(), now))[0]
-	view.agents[0].InputTokens, view.agents[0].OutputTokens = 73_700, 844
-	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost = 14, 14, 12.0811
-	view.agents[0].LastResponse = now.Add(-4 * time.Second)
-	changed := plainLines(view.metricTable(view.roster(), now))[0]
-	view.agents[0].InputTokens, view.agents[0].OutputTokens = 0, 0
-	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].CostKnown = 0, 0, false
-	empty := plainLines(view.metricTable(view.roster(), now))[0]
+	view.Agents[0].Started = now.Add(-52 * time.Second)
+	view.Agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(52 * time.Second)}
+	view.Agents[0].LastResponse = now
+	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 140_600, 789
+	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].Cost, view.Agents[0].CostKnown = 7, 7, .5171, true
+	full := plainLines(view.metricTable(view.Roster(), now))[0]
+	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 73_700, 844
+	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].Cost = 14, 14, 12.0811
+	view.Agents[0].LastResponse = now.Add(-4 * time.Second)
+	changed := plainLines(view.metricTable(view.Roster(), now))[0]
+	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 0, 0
+	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].CostKnown = 0, 0, false
+	empty := plainLines(view.metricTable(view.Roster(), now))[0]
 	for _, marker := range []string{"·", "↑", "↓", "$", "T+"} {
 		a, b := strings.Index(full, marker), strings.Index(changed, marker)
 		if a < 0 || b < 0 || ansi.StringWidth(full[:a]) != ansi.StringWidth(changed[:b]) {

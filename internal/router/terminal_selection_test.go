@@ -369,7 +369,7 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		view := u.view
 		if activity {
 			view = u.agents
-			u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+			u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 			u.shell.diffOpen = false
 
 		}

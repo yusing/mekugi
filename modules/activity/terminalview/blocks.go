@@ -20,11 +20,15 @@ import (
 // Cached feed values retain bounded tails, never whole retained streams.
 type Block struct {
 	presentation.Value
+	Annotation
+	OutputSnapshot       *activitymodel.OutputView
+	OutputContextLimited bool
+}
+
+// Annotation belongs only to terminal disclosure and layout, never feed records.
+type Annotation struct {
 	VerbAlign, VerbColumn, PathAlign, StatAlign, StatScale int
-	TailRows                                               int
-	OutputSnapshot                                         *activitymodel.OutputView
-	OutputContextLimited                                   bool
-	SourceRows                                             int
+	TailRows, SourceRows                                   int
 	Flash, Collapsed, Hovered, Expanded                    bool
 }
 

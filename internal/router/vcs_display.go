@@ -1541,14 +1541,14 @@ func (v *liveActivityView) resolveCommit(key gitCommitKey) bool {
 		return false
 	}
 	changed := false
-	for i, entry := range v.entries {
-		if entry.native == nil || entry.native.commit != key &&
-			!slices.ContainsFunc(entry.native.segments, func(segment commandSegment) bool { return segment.commit == key }) {
+	for i, entry := range v.Entries {
+		if entry.Source.native == nil || entry.Source.native.commit != key &&
+			!slices.ContainsFunc(entry.Source.native.segments, func(segment commandSegment) bool { return segment.commit == key }) {
 			continue
 		}
 		v.mutateEntry(i, func(record *liveActivityRecord) {
-			for j := range record.blocks {
-				record.blocks[j].Changes = commitChanges(record.blocks[j].Changes, key)
+			for j := range record.Values {
+				record.Values[j].Changes = commitChanges(record.Values[j].Changes, key)
 			}
 		})
 		changed = true

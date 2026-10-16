@@ -28,20 +28,20 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		for _, entry := range view.entries {
-			if entry.native == nil || entry.native.item != "cmd" {
+		for _, entry := range view.Entries {
+			if entry.Source.native == nil || entry.Source.native.item != "cmd" {
 				continue
 			}
-			native := *entry.native
+			native := *entry.Source.native
 			native.phase = "item/commandExecution/outputDelta"
 			native.capturedEdit = nil // Host refresh carries no router receipt.
 			native.segments = []commandSegment{{source: "python3", text: "Edit `a.go` · python3 (requested)"}, {source: "go test ./...", text: "Run `go test ./...`", running: true}}
-			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 99, Agent: entry.Agent, Kind: "tool", CallID: entry.CallID, Text: entry.Text, native: &native}}})
-			if !u.shell.openActivityEdit(view, entry.Seq, "a.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
+			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 99, Agent: entry.Source.Agent, Kind: "tool", CallID: entry.Source.CallID, Text: entry.Source.Text, native: &native}}})
+			if !u.shell.openActivityEdit(view, entry.Source.Seq, "a.go") || !strings.Contains(u.shell.output.pages[0].Code, "+after") {
 				t.Fatal("early observed source was lost")
 			}
 			u.shell.outputKey("\x1b")
-			for _, block := range view.entries[0].blocks {
+			for _, block := range view.blocks(0) {
 				if block.EditSource != "" && (block.EditOutcome != "" || strings.Contains(block.EditSource, "requested")) {
 					t.Fatalf("stale edit status survived receipt: %+v", block)
 				}
@@ -62,7 +62,7 @@ func trackedEditReceiptData(thread string, calls ...string) *liveDiffData {
 
 func assertTrackedReceiptStats(t *testing.T, view *liveActivityView, entry int) {
 	t.Helper()
-	blocks := view.entries[entry].blocks
+	blocks := view.blocks(entry)
 	counts := map[string][2]int{}
 	var frame []string
 	for _, block := range blocks {
@@ -84,7 +84,7 @@ func assertTrackedReceiptStats(t *testing.T, view *liveActivityView, entry int) 
 	if !strings.Contains(ansi.Strip(painted), "+3 -1") || !strings.Contains(ansi.Strip(painted), "+1 -2") || !strings.Contains(painted, terminalui.Green+"━") || !strings.Contains(painted, terminalui.Red+"━") {
 		t.Fatalf("counts not painted with diff colors: %q", painted)
 	}
-	if reparsed := parseLiveActivity(view.entries[entry].activityPaneEntry); !reflect.DeepEqual(reparsed, blocks) {
+	if reparsed := parseLiveActivity(view.Entries[entry].Source); !reflect.DeepEqual(reparsed, blocks) {
 		t.Fatalf("reparse discarded corrected projection:\n%+v\n%+v", blocks, reparsed)
 	}
 }
@@ -118,7 +118,7 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 				view.applyCapturedEdits(data)
 				assertTrackedReceiptStats(t, view, 0)
 				var outputKept, testKept, failedKept, skippedKept bool
-				for _, block := range view.entries[0].blocks {
+				for _, block := range view.blocks(0) {
 					switch {
 					case block.Code == sources[0]:
 						t.Fatalf("successful edit source leaked into Activity: %+v", block)
@@ -134,8 +134,8 @@ func TestAppServerTrackedEditReceiptPreservesSegments(t *testing.T) {
 						t.Fatalf("successful intent survived receipt: %+v", block)
 					}
 				}
-				if !outputKept || !testKept || !failedKept || !skippedKept || len(view.entries[0].blocks) != 6 {
-					t.Fatalf("receipt lost segment output/state: %+v", view.entries[0].blocks)
+				if !outputKept || !testKept || !failedKept || !skippedKept || len(view.blocks(0)) != 6 {
+					t.Fatalf("receipt lost segment output/state: %+v", view.blocks(0))
 				}
 			}
 		})
@@ -163,7 +163,7 @@ func TestUISnapshotTrackedEditReceiptOutputSourceOnlyInDialog(t *testing.T) {
 	}}})
 	u.agents.applyCapturedEdits(trackedEditReceiptData("child", "cmd"))
 	var outputs []string
-	for _, block := range u.agents.entries[0].blocks {
+	for _, block := range u.agents.blocks(0) {
 		if block.Output == 0 {
 			continue
 		}
@@ -206,14 +206,14 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	add(3, "main", "unrelated")
 	data := trackedEditReceiptData("main", "anchor", "sibling")
 	view.applyCapturedEdits(data)
-	if len(view.entries[0].blocks) != 0 {
-		t.Fatalf("grouped sibling duplicated aggregate: %+v", view.entries[0].blocks)
+	if len(view.blocks(0)) != 0 {
+		t.Fatalf("grouped sibling duplicated aggregate: %+v", view.blocks(0))
 	}
 	for _, i := range []int{1, 2} {
-		if len(view.entries[i].blocks) != 1 || view.entries[i].blocks[0].EditOutcome != "ran" {
-			t.Fatalf("receipt changed unrelated thread/item: %+v", view.entries[i].blocks)
+		if len(view.blocks(i)) != 1 || view.blocks(i)[0].EditOutcome != "ran" {
+			t.Fatalf("receipt changed unrelated thread/item: %+v", view.blocks(i))
 		}
-		if _, _, _, _, ok := activityui.EditStat(view.entries[i].blocks[0].Label); ok {
+		if _, _, _, _, ok := activityui.EditStat(view.blocks(i)[0].Label); ok {
 			t.Fatal("unrelated command acquired receipt counts")
 		}
 	}
@@ -221,7 +221,7 @@ func TestAppServerTrackedEditReceiptExactAnchor(t *testing.T) {
 	for range 2 {
 		view.applyCapturedEdits(data)
 		assertTrackedReceiptStats(t, view, 3)
-		if len(view.entries[0].blocks) != 0 {
+		if len(view.blocks(0)) != 0 {
 			t.Fatal("late anchor revived sibling stats")
 		}
 	}
@@ -255,13 +255,13 @@ func TestAppServerTrackedEditReceiptRestored(t *testing.T) {
 				restored.restoreActivityThread(appServerThreadInfo{ID: thread, Cwd: workspace, Turns: turns})
 				view = restored.agents
 			}
-			if len(view.entries) != 1 || view.entries[0].native == nil || len(view.entries[0].native.segments) != 3 {
-				t.Fatalf("tracked history missing: %+v", view.entries)
+			if len(view.Entries) != 1 || view.Entries[0].Source.native == nil || len(view.Entries[0].Source.native.segments) != 3 {
+				t.Fatalf("tracked history missing: %+v", view.Entries)
 			}
 			for range 2 {
 				restored.applyCapturedEdits()
 				assertTrackedReceiptStats(t, view, 0)
-				last := view.entries[0].blocks[len(view.entries[0].blocks)-1]
+				last := view.blocks(0)[len(view.blocks(0))-1]
 				if last.Verb != "Run" || last.ExitCode != 2 || last.Output == 0 || strings.Join(view.retainedOutput(last).View().Lines, "\n") != "test failed" {
 					t.Fatalf("restored neighbor lost retained failure/output: %+v", last)
 				}
@@ -286,7 +286,7 @@ func TestAppServerTrackedEditReceiptKeepsSiblingCombinedOutput(t *testing.T) {
 		data := trackedEditReceiptData("main", "anchor", "sibling")
 		for range 2 {
 			u.view.applyCapturedEdits(data)
-			blocks := u.view.entries[0].blocks
+			blocks := u.view.blocks(0)
 			if len(blocks) != 1 || blocks[0].Verb != "Edited" || blocks[0].Code != "" || u.view.retainedOutput(blocks[0]) != output || !reflect.DeepEqual(blocks[0].Tail, tail) {
 				t.Fatalf("grouped sibling lost combined host output: %+v", blocks)
 			}
@@ -334,12 +334,12 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 					ID: call, Type: "commandExecution", Command: "cat > " + path + " <<'EOF'\nafter\nEOF\ngo test ./...", Status: "inProgress"}})
 				for _, view := range []*liveActivityView{u.view, u.agents} {
 					found := false
-					for _, entry := range view.entries {
-						if entry.native == nil || entry.native.item != call {
+					for _, entry := range view.Entries {
+						if entry.Source.native == nil || entry.Source.native.item != call {
 							continue
 						}
 						found = true
-						if !u.shell.openActivityEdit(view, entry.Seq, path) {
+						if !u.shell.openActivityEdit(view, entry.Source.Seq, path) {
 							t.Fatalf("%s: observed Edited link cannot open before durable capture", call)
 						}
 						code := u.shell.output.pages[0].Code

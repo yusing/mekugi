@@ -50,7 +50,7 @@ func TestLiveActivitySeparateRosterSharesSelectionAndFeedState(t *testing.T) {
 func (v *liveActivityView) renderRosterPane(width, height int, now time.Time) []string {
 	width, height = max(1, width-1), max(1, height)
 	v.hits = v.hits[:0]
-	rows := v.roster()
+	rows := v.Roster()
 	v.rosterTop, v.rosterBottom, v.rosterRight = 2, height, width
 	lines := []string{v.renderHeader(rows, width, true)}
 	if height > 1 && len(rows) > 0 {

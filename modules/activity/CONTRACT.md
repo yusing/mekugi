@@ -7,9 +7,10 @@ It does not execute tools, infer missing outcomes or write commentary into model
 responses. The [module specification](SPEC.md) owns parsing and output retention;
 [classification](../../doc/spec/activity.md) owns tool interpretation. The
 [native session](../../doc/spec/native_ui.md) owns observation intake, history,
-pane layout, input routing and dialog interaction. Neutral enriched values and canonical group membership belong to `presentation`;
-terminal disclosure, blocks and painting belong to `terminalview`. Feed assembly
-and roster state remain application-owned. Group members retain entry, operation
+pane layout, input routing and dialog interaction. `presentation` owns the retained
+feed records, roster derivation, neutral values and canonical group membership;
+`terminalview` owns disclosure, blocks and painting. Application adapters supply
+typed observations and host reconciliation without retaining a second transcript. Group members retain entry, operation
 and reasoning-section identity through read merges, reasoning compaction, batch
 flattening and stage folding. Dialogs consume that same flat membership.
 
@@ -246,7 +247,9 @@ HTTP(S) links copy destinations in transcripts and do nothing on dialog click.
 
 Canonical-path trees follow observation order and stable identity. Each row has
 status, name, latest activity and metrics; continuation guides show ancestry,
-or a relative path when parents are off-screen. Root activity may be its latest
+or a relative path when parents are off-screen. Unknown parents do not hide their
+children. Responding, latest-error and answered states describe observations, not
+task completion. Root activity may be its latest
 observation or a newer directed message, otherwise a dim dash. Explicit labels
 for wait/start/resume/interrupt/input/MCP describe observed requests, never inferred
 completion. Wait previews name only supplied targets; batches name their latest
@@ -296,6 +299,12 @@ or none. Final summaries do not repeat their marker, and no glyph asserts that a
 agent finished. Operations/source/output retain five-row bounds without clipping
 status. Hidden-line counts underline on hover; only retained extra detail makes
 content clickable. Full authored messages use the shared transcript renderer.
+
+Loaded-skill counts represent the current context under the [module specification](SPEC.md#records-and-codex-connection).
+Empty or unknown counts stay hidden. Labels use `1 loaded skill` or `N loaded skills`;
+hover underlines the label and clicking opens sorted names in the shared dialog
+without changing selection. Exit/resume restores confirmed loads, including inherited
+history, under [bounded restoration](../../doc/architecture/activity.md).
 
 ## Acceptance
 

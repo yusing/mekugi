@@ -117,7 +117,7 @@ func TestTerminalUIIdleLiveCollapsesAfterLinger(t *testing.T) {
 					u.shell.diffOpen = saved
 
 					if child {
-						u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+						u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 					}
 					screen := vt.NewEmulator(120, 40)
 					defer screen.Close()
@@ -173,7 +173,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Responding: true}}
+			u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Responding: true}}
 			view, caller := u.view, "/root"
 			if activity {
 				view, caller = u.agents, "/root/worker"
@@ -215,7 +215,7 @@ func TestTerminalUITranscriptFollowAcrossLiveLayout(t *testing.T) {
 				}
 			}
 			assertLiveFollow(paint(120, 40))
-			u.agents.agents[0].Responding = false
+			u.agents.Agents[0].Responding = false
 			assertLiveFollow(paint(120, 40))
 			u.shell.diffOpen = true
 			paint(120, 40)

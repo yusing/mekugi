@@ -52,11 +52,11 @@ func approvalTestChoices(u *appServerUI) []string {
 func approvalTestTranscript(t *testing.T, u *appServerUI) string {
 	t.Helper()
 	var rows []string
-	for _, entry := range u.view.entries {
-		if entry.Agent == "Session" {
+	for _, entry := range u.view.Entries {
+		if entry.Source.Agent == "Session" {
 			t.Fatal("approval added a Session entry")
 		}
-		for _, block := range entry.blocks {
+		for _, block := range u.view.disclosure.Blocks(entry.Values) {
 			rows = append(rows, u.view.painter.Block(block, 100)...)
 		}
 	}
@@ -92,7 +92,7 @@ func TestNativeApprovalCommandReturnsTheOfferedDecision(t *testing.T) {
 	if len(u.approvals.pending) != 0 || u.approvals.open {
 		t.Fatal("answered approval remains")
 	}
-	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Approved") || len(u.view.entries) != 1 {
+	if got := approvalTestTranscript(t, u); !strings.Contains(got, "git push origin main · Approved") || len(u.view.Entries) != 1 {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -174,7 +174,7 @@ func TestNativeApprovalEndsWhenResolvedElsewhere(t *testing.T) {
 	if strings.Contains(input.String(), `"decision"`) {
 		t.Fatalf("ended approval was answered: %s", input.String())
 	}
-	if got := approvalTestTranscript(t, u); strings.Contains(got, "Pending Approval") || len(u.view.entries) != 1 || u.view.entries[0].native.approval != "Turn ended before an answer" {
+	if got := approvalTestTranscript(t, u); strings.Contains(got, "Pending Approval") || len(u.view.Entries) != 1 || u.view.Entries[0].Source.native.approval != "Turn ended before an answer" {
 		t.Fatalf("transcript = %q", got)
 	}
 }
@@ -247,15 +247,15 @@ func TestNativeApprovalGuardedWrite(t *testing.T) {
 		t.Fatal("expired write was answered")
 	}
 	for i, want := range []string{"Approved", "Denied", "Auto Denied: no answer within 5 minutes"} {
-		if len(u.view.entries) != 3 || u.view.entries[i].blocks[0].Approval != want+"\nCommand: git push origin main" {
-			t.Fatalf("approval %d = %+v", i, u.view.entries)
+		if len(u.view.Entries) != 3 || u.view.blocks(i)[0].Approval != want+"\nCommand: git push origin main" {
+			t.Fatalf("approval %d = %+v", i, u.view.Entries)
 		}
 	}
 	withdrawn := newRequest()
 	u.addGuardApproval(withdrawn)
 	withdrawn.outcome = "withdrawn"
 	close(withdrawn.done)
-	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.view.entries[3].native.approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
+	if !u.expireApprovals() || strings.Contains(approvalTestTranscript(t, u), "Approval") || u.view.Entries[3].Source.native.approval != "Withdrawn: the command stopped\nCommand: git push origin main" {
 		t.Fatalf("transcript = %q", approvalTestTranscript(t, u))
 	}
 }
@@ -584,7 +584,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			}
 			if !tc.early {
 				notify("item/started")
-				u.shell.openEntry(view, view.entries[len(view.entries)-1].Seq)
+				u.shell.openEntry(view, view.Entries[len(view.Entries)-1].Source.Seq)
 				u.shell.paintOutput(make([]string, 18), 80, 18)
 			}
 			if tc.guard {
@@ -595,11 +595,11 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			a := u.approvals.pending[0]
 			if tc.guard && tc.early && !tc.child {
 				notify("item/started")
-				native := *view.entries[0].native
+				native := *view.Entries[0].Source.native
 				native.phase = "item/commandExecution/outputDelta"
 				native.segments = []commandSegment{{source: item.Command, text: toolActivityShell(item.Command), running: true}}
 				u.applyActivity([]activityPaneEntry{{Seq: u.session.next(), Agent: u.session.path(thread), Kind: "tool", Text: toolActivityShell(item.Command), native: &native}}, nil)
-				if len(view.entries) != 1 || len(view.entries[0].blocks) != 1 || !strings.HasPrefix(view.entries[0].native.approval, "Pending Approval") {
+				if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || !strings.HasPrefix(view.Entries[0].Source.native.approval, "Pending Approval") {
 					t.Fatal("early guard pending state was not reconciled")
 				}
 			}
@@ -630,23 +630,23 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if tc.guard {
 				outcome += "\nCommand: git push origin main"
 			}
-			if len(view.entries) != count || view.entries[count-1].native.approval != outcome {
-				t.Fatalf("entries = %+v", view.entries)
+			if len(view.Entries) != count || view.Entries[count-1].Source.native.approval != outcome {
+				t.Fatalf("entries = %+v", view.Entries)
 			}
-			entry := view.entries[count-1]
+			entry := view.Entries[count-1]
 			feed := view.renderFeed(48, 30)
 			rows := feed.lines
 			color, label := terminalui.Green, "Approved"
 			if tc.choice != 0 {
 				color, label = terminalui.Red, "Denied"
 			}
-			if !strings.Contains(strings.Join(rows, "\n"), color+label+terminalui.Reset) || entry.Agent == "Session" {
+			if !strings.Contains(strings.Join(rows, "\n"), color+label+terminalui.Reset) || entry.Source.Agent == "Session" {
 				t.Fatalf("approval rows = %q", rows)
 			}
 			assertNativeUISnapshot(t, "approval-outcome-"+tc.name, rows)
 			row := slices.IndexFunc(feed.snippets, func(s liveActivitySnippet) bool {
 				block, ok := view.snippetBlock(s)
-				return ok && block.Source == entry.Seq
+				return ok && block.Source == entry.Source.Seq
 			})
 			if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) {
 				t.Fatal("approval command has no clickable output dialog")
@@ -677,7 +677,7 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 				appServerTestNotify(t, u, method, map[string]any{"threadId": "child", "turnId": "turn", "reviewId": "review", "targetItemId": target, "review": map[string]any{"status": state}, "decisionSource": "agent"})
 			}
 			review("item/autoApprovalReview/started", "inProgress", "cmd")
-			if got := u.agents.entries[0].blocks[0].Approval; got != "Pending Approval" {
+			if got := u.agents.blocks(0)[0].Approval; got != "Pending Approval" {
 				t.Fatalf("pending state = %q", got)
 			}
 			review("item/autoApprovalReview/completed", status, "cmd")
@@ -687,8 +687,8 @@ func TestUISnapshotNativeAutoApprovalStates(t *testing.T) {
 			// Untargeted network reviews and missing items cannot add a row.
 			review("item/autoApprovalReview/completed", "approved", "")
 			review("item/autoApprovalReview/completed", "approved", "missing")
-			if len(u.agents.entries) != 1 || len(u.view.entries) != 0 || u.agents.entries[0].blocks[0].Approval != want {
-				t.Fatalf("review changed another record: %+v", u.agents.entries)
+			if len(u.agents.Entries) != 1 || len(u.view.Entries) != 0 || u.agents.blocks(0)[0].Approval != want {
+				t.Fatalf("review changed another record: %+v", u.agents.Entries)
 			}
 			if status == "approved" || status == "denied" {
 				uisnapshot.AssertTerminal(t, "testdata/snapshots/approval-auto-"+status+".txt", append(u.agents.renderFeed(48, 30).lines, "plain after approval"), 48)

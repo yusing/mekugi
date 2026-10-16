@@ -128,11 +128,11 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, workspace)
 	restored.proxy = &mekugiProxy{replayStore: store}
 	restored.restoreHistory([]appServerHistoryTurn{{ID: key[1], Status: "completed", Items: []appServerItem{item}}})
-	for _, entry := range restored.view.entries {
-		if entry.CallID != item.ID || entry.native == nil {
+	for _, entry := range restored.view.Entries {
+		if entry.Source.CallID != item.ID || entry.Source.native == nil {
 			continue
 		}
-		segments := entry.native.segments
+		segments := entry.Source.native.segments
 		if len(segments) != 4 {
 			t.Fatalf("restored segments: %+v", segments)
 		}
@@ -144,7 +144,7 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 		if segments[3].timing != (segmenttransport.Timing{}) {
 			t.Fatalf("skipped acquired timing: %+v", segments[3].timing)
 		}
-		blocks := commandSegmentBlocks(entry.activityPaneEntry, false)
+		blocks := commandSegmentBlocks(entry.Source, false)
 		for _, block := range blocks {
 			if block.Code == "sleep .04" && block.Duration != time.Duration(short) {
 				t.Fatalf("short block duration: %+v", block)

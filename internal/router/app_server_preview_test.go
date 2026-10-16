@@ -187,8 +187,8 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p.until("explorer thought")
 	render("grok thought readable", "• Thought")
 	retained := false
-	for _, record := range p.ui.agents.entries {
-		blocks := record.blocks
+	for _, record := range p.ui.agents.Entries {
+		blocks := p.ui.agents.disclosure.Blocks(record.Values)
 		for _, block := range blocks {
 			if block.Kind == "summary" && block.Body == nativePreviewGrokReasoning {
 				retained = p.ui.agents.painter.DialogPage(block, 120).Text == nativePreviewGrokReasoning
@@ -243,7 +243,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	if got := agents(); strings.Contains(got, "Running") || !strings.Contains(got, "┆ ok      example.com") || !regexp.MustCompile(`Ran +│ for test in`).MatchString(got) {
 		t.Fatalf("passed test run lacks its settled state:\n%s", got)
 	}
-	nextEvent(t, p.ui, p.ui.agents.entries[len(p.ui.agents.entries)-1].native.thread)
+	nextEvent(t, p.ui, p.ui.agents.Entries[len(p.ui.agents.Entries)-1].Source.native.thread)
 	settleActivity(time.Now().Add(activityui.OutputDebounce), p.ui.agents)
 	if got := agents(); strings.Contains(got, "┆ ok ") || !strings.Contains(got, "┆ … +6 lines") {
 		t.Fatalf("passed test run output did not collapse:\n%s", got)
@@ -327,8 +327,8 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.submission.text != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.entries, func(e liveActivityRecord) bool {
-		return e.Agent == "You" && e.Text == "also check Unsubscribe"
+	if p.ui.submission.text != "" || p.ui.turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
+		return e.Source.Agent == "You" && e.Source.Text == "also check Unsubscribe"
 	}) {
 		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.submission.text, p.ui.turn)
 	}
@@ -348,13 +348,13 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 		t.Fatalf("interrupt did not return queued input: %q", p.ui.draft)
 	}
 	keys("\x03")
-	for _, agent := range p.ui.agents.agents {
+	for _, agent := range p.ui.agents.Agents {
 		if agent.Responding {
 			t.Fatalf("%s still responding after interrupt", agent.Name)
 		}
 	}
 	keys("hello\r")
-	if !strings.HasPrefix(p.ui.status, "Completed in ") || !slices.ContainsFunc(p.ui.view.entries, func(e liveActivityRecord) bool { return strings.Contains(e.Text, "I heard: hello") }) {
+	if !strings.HasPrefix(p.ui.status, "Completed in ") || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool { return strings.Contains(e.Source.Text, "I heard: hello") }) {
 		t.Fatalf("new turn not answered: %q", p.ui.status)
 	}
 	keys("\x03")
@@ -401,8 +401,8 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 		t.Fatal("queued compaction did not complete visibly")
 	}
 	keys("/clear\r")
-	if p.ui.thread != "preview-clear-1" || len(p.ui.view.entries) != 0 {
-		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.thread, p.ui.view.entries)
+	if p.ui.thread != "preview-clear-1" || len(p.ui.view.Entries) != 0 {
+		t.Fatalf("clear did not open empty thread: thread=%q entries=%+v", p.ui.thread, p.ui.view.Entries)
 	}
 	if frame := render(); strings.Contains(frame, "Context compacted") || strings.Contains(frame, "old transcript") {
 		t.Fatalf("clear retained previous presentation:\n%s", frame)
@@ -1204,7 +1204,7 @@ func (p *nativePreview) reply(id jsontext.Value, result any) {
 
 func (p *nativePreview) userMessage(turn, clientID string, content any) {
 	p.notify("item/completed", map[string]any{"threadId": p.ui.thread, "turnId": turn, "item": map[string]any{
-		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.entries)), "type": "userMessage", "clientId": clientID, "content": content,
+		"id": fmt.Sprintf("preview-user-%d-%d", p.message, len(p.ui.view.Entries)), "type": "userMessage", "clientId": clientID, "content": content,
 	}})
 }
 
@@ -1319,19 +1319,19 @@ func TestNativeUIPreviewSessionReplyIdentity(t *testing.T) {
 	if strings.Contains(text, "Message received:") || strings.Contains(text, "not loaded") || strings.Count(text, "The initial race test exposed") != 1 {
 		t.Fatalf("fake session repeated or misformatted reply: %s", text)
 	}
-	for _, entry := range main.entries {
-		if entry.Kind == "final" && entry.activitySeq == 0 {
+	for _, entry := range main.Entries {
+		if entry.Source.Kind == "final" && entry.Source.activitySeq == 0 {
 			t.Fatal("preview child reply has no real Activity target")
 		}
-		if entry.native != nil && entry.native.item == "main-answer" {
-			if entry.native.turn != "preview-turn-1" || entry.native.question == 0 {
-				t.Fatalf("preview used a fabricated turn or omitted ordinary reply link: %+v", entry.native)
+		if entry.Source.native != nil && entry.Source.native.item == "main-answer" {
+			if entry.Source.native.turn != "preview-turn-1" || entry.Source.native.question == 0 {
+				t.Fatalf("preview used a fabricated turn or omitted ordinary reply link: %+v", entry.Source.native)
 			}
 		}
 	}
 	var assignments int
-	for _, entry := range main.entries {
-		if entry.assignment != nil && entry.assignment.to == "/root/tester" {
+	for _, entry := range main.Entries {
+		if entry.Source.assignment != nil && entry.Source.assignment.to == "/root/tester" {
 			assignments++
 		}
 	}
@@ -1367,9 +1367,9 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 			}
 			paint()
 			var seq uint64
-			for _, entry := range view.entries {
-				if entry.native != nil && entry.native.item == item {
-					seq = entry.Seq
+			for _, entry := range view.Entries {
+				if entry.Source.native != nil && entry.Source.native.item == item {
+					seq = entry.Source.Seq
 				}
 			}
 			if seq == 0 {

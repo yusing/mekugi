@@ -187,8 +187,8 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			if len(questionReplies(reply)) != 1 {
 				t.Fatal("reply not submitted")
 			}
-			for _, entry := range u.view.entries {
-				if entry.Agent == "You" {
+			for _, entry := range u.view.Entries {
+				if entry.Source.Agent == "You" {
 					t.Fatal("pending reply created duplicate user band")
 				}
 			}
@@ -199,8 +199,8 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			if strings.Count(frame, "Who receives it?") != 1 || strings.Count(frame, "Internal") != 1 || !strings.Contains(frame, "answered") {
 				t.Fatalf("duplicate or missing answer:\n%s", frame)
 			}
-			for _, entry := range u.view.entries {
-				if entry.Agent == "You" {
+			for _, entry := range u.view.Entries {
+				if entry.Source.Agent == "You" {
 					t.Fatal("committed reply created duplicate user band")
 				}
 			}
@@ -247,7 +247,7 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			appServerTestKeys(t, u, "3"+literal+"\r")
 			lifecycleUserMessage(t, u, "turn", "reply", u.submission.text)
 		}
-		entry := u.view.entries[0].activityPaneEntry
+		entry := u.view.Entries[0].Source
 		if got := entry.native.questions[0].Answer; got != literal {
 			t.Fatalf("sync=%v: displayed %q, want literal %q", sync, got, literal)
 		}
@@ -286,12 +286,12 @@ func TestQuestionReplyBecomesMainReplyAnchor(t *testing.T) {
 				}
 			}
 			var reply, ack activityPaneEntry
-			for _, entry := range u.view.entries {
-				if entry.Kind == "question_reply" {
-					reply = entry.activityPaneEntry
+			for _, entry := range u.view.Entries {
+				if entry.Source.Kind == "question_reply" {
+					reply = entry.Source
 				}
-				if entry.native != nil && entry.native.item == "ack" {
-					ack = entry.activityPaneEntry
+				if entry.Source.native != nil && entry.Source.native.item == "ack" {
+					ack = entry.Source
 				}
 			}
 			if reply.Seq == 0 || ack.native == nil || ack.native.question != reply.Seq || reply.Text != "Customers" {
@@ -319,9 +319,9 @@ func TestQuestionReplyLinkSkipsContinuationHeading(t *testing.T) {
 	questionTestAsync(t, u, "ask", "Which audience?")
 	lifecycleUserMessage(t, u, "turn", "reply", lifecycleReply(t, "ask", 0, "Which audience?", "Customers"))
 	var reply uint64
-	for _, entry := range u.view.entries {
-		if entry.Kind == "question_reply" {
-			reply = entry.Seq
+	for _, entry := range u.view.Entries {
+		if entry.Source.Kind == "question_reply" {
+			reply = entry.Source.Seq
 		}
 	}
 	feed := u.view.renderFeed(100, 60)

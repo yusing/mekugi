@@ -169,9 +169,9 @@ func TestCommandSegmentsBatchForkOwnershipSurvivesParentExpiry(t *testing.T) {
 				view = u.agents
 			}
 			var restored *liveActivityNativeItem
-			for _, entry := range view.entries {
-				if entry.CallID == item.ID {
-					restored = entry.native
+			for _, entry := range view.Entries {
+				if entry.Source.CallID == item.ID {
+					restored = entry.Source.native
 				}
 			}
 			if restored == nil || len(restored.segments) != 2 || strings.Join(restored.segments[0].output.View().Lines, "\n") != "one" {

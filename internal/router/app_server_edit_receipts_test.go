@@ -108,16 +108,16 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 		{u.view, "main", "cat-call", "direct.go", "cat"},
 		{u.agents, "child", "python-call", "nested.go", "python3"},
 	} {
-		for i, entry := range tc.view.entries {
-			if entry.native == nil || entry.native.thread != tc.thread || entry.native.item != tc.item {
+		for i, entry := range tc.view.Entries {
+			if entry.Source.native == nil || entry.Source.native.thread != tc.thread || entry.Source.native.item != tc.item {
 				continue
 			}
-			if !strings.Contains(entry.Text, "Edit `"+tc.path+"` +1 -1 · "+tc.program) ||
-				len(tc.view.entries[i].blocks) == 0 || tc.view.entries[i].blocks[0].Verb != "Edit" {
-				t.Fatalf("receipt for %s: %+v, blocks %+v", tc.item, entry, tc.view.entries[i].blocks)
+			if !strings.Contains(entry.Source.Text, "Edit `"+tc.path+"` +1 -1 · "+tc.program) ||
+				len(tc.view.blocks(i)) == 0 || tc.view.blocks(i)[0].Verb != "Edit" {
+				t.Fatalf("receipt for %s: %+v, blocks %+v", tc.item, entry, tc.view.blocks(i))
 			}
 			for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.entries[i].blocks[0], 120), "\n")
+				painted := strings.Join((&activityui.Painter{Theme: theme}).Block(tc.view.blocks(i)[0], 120), "\n")
 				// The file row names its outcome and source.
 				heading := "Edited " + tc.path + " +1 -1 via " + tc.program
 				if tc.program == "apply_patch" {
@@ -140,12 +140,12 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 	restored.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: workspace, Turns: []appServerHistoryTurn{{ID: "c", Status: "completed", Items: []appServerItem{sibling}}}})
 	assertCapturedCommand(t, restored.agents, "child", sibling.ID, "Search", 0)
 	for _, view := range []*liveActivityView{u.agents, restored.agents} {
-		for _, entry := range view.entries {
-			if entry.native == nil || entry.native.item != sibling.ID {
+		for _, entry := range view.Entries {
+			if entry.Source.native == nil || entry.Source.native.item != sibling.ID {
 				continue
 			}
 			var rows []string
-			for _, block := range entry.blocks {
+			for _, block := range view.disclosure.Blocks(entry.Values) {
 				if block.Verb == "Edit" {
 					t.Fatalf("captured sibling retained edit intent: %+v", block)
 				}
@@ -158,12 +158,12 @@ func TestUISnapshotAppServerCapturedEditReceipts(t *testing.T) {
 
 func assertCapturedCommand(t *testing.T, view *liveActivityView, thread, item, verb string, exit int) {
 	t.Helper()
-	for i, entry := range view.entries {
-		if entry.native == nil || entry.native.thread != thread || entry.native.item != item || entry.Kind != "tool" {
+	for i, entry := range view.Entries {
+		if entry.Source.native == nil || entry.Source.native.thread != thread || entry.Source.native.item != item || entry.Source.Kind != "tool" {
 			continue
 		}
-		if len(view.entries[i].blocks) == 0 || view.entries[i].blocks[0].Verb != verb || view.entries[i].blocks[0].ExitCode != exit {
-			t.Fatalf("%s: text %q, blocks %+v, want %s exit %d", item, entry.Text, view.entries[i].blocks, verb, exit)
+		if len(view.blocks(i)) == 0 || view.blocks(i)[0].Verb != verb || view.blocks(i)[0].ExitCode != exit {
+			t.Fatalf("%s: text %q, blocks %+v, want %s exit %d", item, entry.Source.Text, view.blocks(i), verb, exit)
 		}
 		return
 	}
@@ -188,7 +188,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	item.ExitCode = new(2)
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
-	if !strings.Contains(u.view.entries[0].Text, "+1 -1") {
+	if !strings.Contains(u.view.Entries[0].Source.Text, "+1 -1") {
 		t.Fatal("host refresh lost captured counts")
 	}
 	// A new receipt must replace the cached projection.
@@ -197,7 +197,7 @@ func TestAppServerCapturedEditsReuseReceipt(t *testing.T) {
 	data.attempts["receipt"] = liveDiffAttempt{receipt: &updated}
 	u.applyCapturedEdits()
 	assertCapturedCommand(t, u.view, "main", "cmd", "Edit", 2)
-	if !strings.Contains(u.view.entries[0].Text, "+2 -1") {
+	if !strings.Contains(u.view.Entries[0].Source.Text, "+2 -1") {
 		t.Fatal("new receipt did not replace captured counts")
 	}
 }
@@ -219,7 +219,7 @@ func TestAppServerCapturedEditsPreserveTrackedExits(t *testing.T) {
 	}}
 	for range 2 {
 		v.applyCapturedEdits(data)
-		blocks := v.entries[0].blocks
+		blocks := v.blocks(0)
 		if len(blocks) != 4 || blocks[0].Verb != "Edit" || blocks[0].ExitCode != 0 || blocks[1].ExitCode != 0 || blocks[2].ExitCode != 0 || blocks[3].ExitCode != 1 {
 			t.Fatalf("receipt overwrote per-command statuses: %+v", blocks)
 		}
@@ -255,8 +255,8 @@ func TestAppServerGroupedReceiptOmitsBookkeeping(t *testing.T) {
 	}}
 	for range 2 {
 		v.applyCapturedEdits(data)
-		if v.entries[1].Text != "" || len(v.entries[1].blocks) != 0 || v.visible(v.entries[1].activityPaneEntry) {
-			t.Fatalf("successful sibling retained a placeholder: %+v", v.entries[1])
+		if v.Entries[1].Source.Text != "" || len(v.blocks(1)) != 0 || v.visible(v.Entries[1].Source) {
+			t.Fatalf("successful sibling retained a placeholder: %+v", v.Entries[1])
 		}
 		assertCapturedCommand(t, v, "main", "tests", "Run", 2)
 		assertCapturedCommand(t, v, "main", "failed-edit", "Edit", 1)
@@ -363,7 +363,7 @@ func TestAppServerCapturedRemovalKeepsRunNeighbors(t *testing.T) {
 				check := func(view *liveActivityView) {
 					for range 2 {
 						view.applyCapturedEdits(data)
-						blocks := view.entries[0].blocks
+						blocks := view.blocks(0)
 						if len(blocks) != 2 {
 							t.Fatalf("lost neighbor: %+v", blocks)
 						}
@@ -399,9 +399,9 @@ func TestAppServerCapturedEditKeepsCommandPaths(t *testing.T) {
 	data.attempts["receipt"] = liveDiffAttempt{receipt: &capturedActivityEdit{thread: "main", calls: []string{"cmd"}, text: "Edit `edit.go` +1 -1"}}
 	check := func(view *liveActivityView) {
 		t.Helper()
-		entry := view.entries[0]
-		if !strings.Contains(entry.Text, "Read `read.go`") || !strings.Contains(entry.Text, "Search `/command-dir/query` in `src`") || !strings.Contains(entry.Text, "Edit `edit.go` +1 -1") || entry.native.command != item.Command {
-			t.Fatalf("receipt changed neighboring paths, query or source: %q", entry.Text)
+		entry := view.Entries[0]
+		if !strings.Contains(entry.Source.Text, "Read `read.go`") || !strings.Contains(entry.Source.Text, "Search `/command-dir/query` in `src`") || !strings.Contains(entry.Source.Text, "Edit `edit.go` +1 -1") || entry.Source.native.command != item.Command {
+			t.Fatalf("receipt changed neighboring paths, query or source: %q", entry.Source.Text)
 		}
 	}
 	u.shell.diff.data = data

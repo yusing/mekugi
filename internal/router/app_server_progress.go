@@ -124,8 +124,8 @@ func (u *appServerUI) observeProgress(method string, p appServerEvent) {
 		u.polling = nil
 		key := [2]string{p.TurnID, p.Item.ID}
 		if method == "item/started" {
-			for _, entry := range u.view.entries {
-				if entry.native != nil && entry.native.thread == p.ThreadID && entry.native.turn == p.TurnID && entry.native.item == p.Item.ID && entry.native.phase == "item/completed" {
+			for _, entry := range u.view.Entries {
+				if entry.Source.native != nil && entry.Source.native.thread == p.ThreadID && entry.Source.native.turn == p.TurnID && entry.Source.native.item == p.Item.ID && entry.Source.native.phase == "item/completed" {
 					return
 				}
 			}

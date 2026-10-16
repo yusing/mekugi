@@ -108,8 +108,8 @@ func TestAppServerSteersStackUntilSendable(t *testing.T) {
 	if len(u.steers) != 0 || u.submission.text != "" || len(u.pendingInputPreview(80)) != 0 {
 		t.Fatalf("committed steers still pending: %+v", u.steers)
 	}
-	if len(u.view.entries) != 2 || u.view.entries[1].Text != "second\nthird" {
-		t.Fatalf("committed steers missing from transcript: %+v", u.view.entries)
+	if len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "second\nthird" {
+		t.Fatalf("committed steers missing from transcript: %+v", u.view.Entries)
 	}
 	appServerTestTurnEnd(t, u, "t", "completed")
 	if u.draft != "" || len(appServerTurnRequests(t, w)) != 0 {
@@ -126,8 +126,8 @@ func TestAppServerQueuedInputStacksIntoNextTurn(t *testing.T) {
 	}
 	appServerTestTurnEnd(t, u, "t", "completed")
 	start := appServerOneRequest(t, w, "turn/start", "one\ntwo")
-	if len(u.queued) != 0 || !u.starting() || len(u.view.entries) != 1 || u.view.entries[0].Text != "one\ntwo" {
-		t.Fatalf("queued turn not started and echoed: %+v", u.view.entries)
+	if len(u.queued) != 0 || !u.starting() || len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != "one\ntwo" {
+		t.Fatalf("queued turn not started and echoed: %+v", u.view.Entries)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t2"}}}`, start.ID))
 	if len(u.inputHistory) != 2 || u.inputHistory[0].text != "one" {
@@ -380,8 +380,8 @@ func TestAppServerInterruptBeforeFirstCommitRestoresCleanComposer(t *testing.T) 
 			if !responseFirst {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turn":{"id":"t"}}}`, start.ID))
 			}
-			if u.draft != "first prompt" || len(u.view.entries) != 0 || u.status != "Ready" || u.starting() || u.turn != "" {
-				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.draft, u.view.entries, u.status, u.starting(), u.turn)
+			if u.draft != "first prompt" || len(u.view.Entries) != 0 || u.status != "Ready" || u.starting() || u.turn != "" {
+				t.Fatalf("not clean: draft=%q entries=%+v status=%q starting=%v turn=%q", u.draft, u.view.Entries, u.status, u.starting(), u.turn)
 			}
 			if len(appServerTurnRequests(t, w)) != 0 {
 				t.Fatal("automatically resent restored input")

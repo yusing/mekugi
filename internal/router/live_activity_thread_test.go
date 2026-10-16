@@ -17,9 +17,9 @@ func threadTestView() *liveActivityView {
 	reply := strings.Repeat("Inspection found no behavioral failure. ", 16)
 	v := newLiveActivityView()
 	v.conversation, v.feedOnly = true, true
-	v.entries = []liveActivityRecord{
-		{Seq: 1, Agent: "Main", Kind: "start", Observed: start, assignment: &activityAssignment{to: "/root/reviewer", text: task}, blocks: []activityui.Block{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}}},
-		{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), activitySeq: 9, blocks: []activityui.Block{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}}},
+	v.Entries = []liveActivityRecord{
+		{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "start", Observed: start, assignment: &activityAssignment{to: "/root/reviewer", text: task}}, Values: activityui.Values([]activityui.Block{{Kind: "start", From: "/root", To: "/root/reviewer", Label: "gpt-6-astra", Body: task}})},
+		{Source: activityPaneEntry{Seq: 2, Agent: "/root/reviewer", Kind: "reply", Observed: start.Add(58 * time.Second), activitySeq: 9}, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root/reviewer", To: "/root", Body: reply}})},
 	}
 	return v
 }
@@ -74,7 +74,7 @@ func TestConversationThreadsReplyUnderAssignment(t *testing.T) {
 func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	v := threadTestView()
 	// Pending: the assignment is the latest item, so it stays in full.
-	v.entries = v.entries[:1]
+	v.Entries = v.Entries[:1]
 	pending := threadPlain(v.renderFeed(60, 40))
 	if strings.Contains(strings.Join(pending, "\n"), "lines") || len(pending) < 5 {
 		t.Fatalf("an unanswered assignment was collapsed:\n%s", strings.Join(pending, "\n"))
@@ -82,11 +82,11 @@ func TestConversationThreadEndsAtOtherTraffic(t *testing.T) {
 	// Another agent's traffic in between ends the thread; the reply keeps its
 	// own heading, and the closing connector.
 	v = threadTestView()
-	other := activityPaneEntry{Seq: 3, Agent: "/root/other", Kind: "reply", Observed: v.entries[1].Observed, activitySeq: 8}
-	v.entries = []liveActivityRecord{
-		v.entries[0],
-		{activityPaneEntry: other, blocks: []activityui.Block{{Kind: "message", From: "/root/other", To: "/root", Body: "Unrelated."}}},
-		v.entries[1],
+	other := activityPaneEntry{Seq: 3, Agent: "/root/other", Kind: "reply", Observed: v.Entries[1].Source.Observed, activitySeq: 8}
+	v.Entries = []liveActivityRecord{
+		v.Entries[0],
+		{Source: other, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root/other", To: "/root", Body: "Unrelated."}})},
+		v.Entries[1],
 	}
 	text := strings.Join(threadPlain(v.renderFeed(60, 40)), "\n")
 	if strings.Contains(text, "├─") || strings.Contains(text, " lines\n") || !strings.Contains(text, "← reviewer") {
@@ -99,15 +99,15 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			const width = 60
 			v := threadTestView()
-			reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.entries[0].Observed.Add(time.Second)}
+			reasoning := activityPaneEntry{Seq: 3, Agent: "Main", Kind: "reasoning", Text: "**Waiting on review**\n\nThe reviewer is still reading.", Observed: v.Entries[0].Source.Observed.Add(time.Second)}
 			if kind != "reasoning" {
 				reasoning.Kind, reasoning.Text = "progress", kind+" · reviewer still reading"
 				reasoning.native = &liveActivityNativeItem{wait: &activityui.Block{Kind: "progress", Body: reasoning.Text}}
 			}
-			v.entries = []liveActivityRecord{
-				v.entries[0],
-				{activityPaneEntry: reasoning, blocks: parseLiveActivity(reasoning)},
-				v.entries[1],
+			v.Entries = []liveActivityRecord{
+				v.Entries[0],
+				{Source: reasoning, Values: activityui.Values(parseLiveActivity(reasoning))},
+				v.Entries[1],
 			}
 			feed := v.renderFeed(width, 40)
 			plain := threadPlain(feed)
@@ -134,7 +134,7 @@ func TestConversationAsidesFollowThread(t *testing.T) {
 			}
 
 			// Reasoning after the latest item is outside the thread until it continues.
-			v.entries = v.entries[:2]
+			v.Entries = v.Entries[:2]
 			v.runs = nil
 			pending := strings.Join(threadPlain(v.renderFeed(width, 40)), "\n")
 			if strings.Contains(pending, " lines") || strings.Contains(pending, "│ The reviewer") {
@@ -220,7 +220,7 @@ func TestConversationConsecutiveReasoning(t *testing.T) {
 				t.Fatal("reasoning did not request dialog")
 			}
 			page := v.painter.DialogPage(shell.output.pages[0], 80)
-			if page.Text != v.entries[opened].Text {
+			if page.Text != v.Entries[opened].Source.Text {
 				t.Fatalf("wrong item opened: %q", page.Text)
 			}
 			opened++

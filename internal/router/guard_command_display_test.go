@@ -67,8 +67,8 @@ func TestAppServerGuardCommandDisplay(t *testing.T) {
 					if thread == "child" {
 						view = u.agents
 					}
-					if len(view.entries) != 1 || view.entries[0].Text != want || view.entries[0].native.command != command {
-						t.Fatalf("command entries = %+v; want display %q with unchanged host command", view.entries, want)
+					if len(view.Entries) != 1 || view.Entries[0].Source.Text != want || view.Entries[0].Source.native.command != command {
+						t.Fatalf("command entries = %+v; want display %q with unchanged host command", view.Entries, want)
 					}
 				}
 				u := newAppServerSessionTestUI(t, t.TempDir())
@@ -154,7 +154,7 @@ func TestUISnapshotGuardedHeredocCommit(t *testing.T) {
 	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(0), DurationMS: new(int64(500)),
 	}}}})
-	if entry := u.view.entries[0]; entry.native.command != command {
+	if entry := u.view.Entries[0]; entry.Source.native.command != command {
 		t.Fatal("host command changed")
 	}
 	assertNativeUISnapshot(t, "guarded-heredoc-commit", strings.Split(mainFeed(u, 90), "\n"))
@@ -220,9 +220,9 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	u.restoreHistory([]appServerHistoryTurn{{ID: "past", Status: "completed", Items: []appServerItem{{
 		ID: "cmd", Type: "commandExecution", Command: command, AggregatedOutput: &output, ExitCode: new(1),
 	}}}})
-	entry := u.view.entries[0]
-	pages := u.view.commandOutputPages(entry.Seq)
-	if len(pages) != 1 || pages[0].Code != source || entry.native.command != command || u.view.retainedOutput(pages[0]) != entry.native.output {
+	entry := u.view.Entries[0]
+	pages := u.view.commandOutputPages(entry.Source.Seq)
+	if len(pages) != 1 || pages[0].Code != source || entry.Source.native.command != command || u.view.retainedOutput(pages[0]) != entry.Source.native.output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}
 	terminal := &terminalUI{main: u}

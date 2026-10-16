@@ -163,6 +163,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 		u.agents.painter, u.agents.mainView = painter, u.view
 		u.agents.childrenOnly, u.agents.bare = true, true
 	}
+	u.attachActivity()
 	if u.shell != nil {
 		u.shell.selection, u.shell.output = nil, nil
 		u.shell.focus, u.shell.drag = 0, 0

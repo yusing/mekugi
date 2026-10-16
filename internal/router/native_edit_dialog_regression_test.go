@@ -49,12 +49,12 @@ func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, capture
 		c.data.order = []string{"edit"}
 		c.data.attempts["edit"] = liveDiffAttempt{thread: "main", correlation: "patch\x000", chunks: []livediff.Chunk{chunk}}
 		want = chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(c.workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(c.workspace, chunk.Review.AfterPath))
-		u.view.entries = []liveActivityRecord{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch"}}}
+		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch"}}}}
 	} else {
 		change := appServerFileChange{Path: path, Diff: tc.host}
 		change.Kind.Type = tc.kind
 		item := appServerItem{Type: "fileChange", Status: "completed", Changes: []appServerFileChange{change}}
-		u.view.entries = []liveActivityRecord{{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}
+		u.view.Entries = []liveActivityRecord{{Source: activityPaneEntry{Seq: 1, native: &liveActivityNativeItem{thread: "main", item: "patch", editPages: appServerEditPages(item, u.session.cwd, "item/completed")}}}}
 	}
 	if !u.shell.openActivityEdit(u.view, 1, path) {
 		t.Fatal("edit dialog did not open")

@@ -60,9 +60,9 @@ func TestUISnapshotDirectoryDeletion(t *testing.T) {
 			u.applyCapturedEdits()
 			u.view.pace(u.view.now().Add(time.Second))
 			var seq uint64
-			for _, entry := range u.view.entries {
-				if entry.native != nil && entry.native.item == "delete-call" {
-					seq = entry.Seq
+			for _, entry := range u.view.Entries {
+				if entry.Source.native != nil && entry.Source.native.item == "delete-call" {
+					seq = entry.Source.Seq
 				}
 			}
 			wantPages := 4

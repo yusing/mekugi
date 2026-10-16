@@ -6,6 +6,6 @@ import (
 )
 
 var Module = module.Descriptor[Deps, *feed.Service, module.NoBindings]{
-	ID: "activity", Summary: "Retain host-operation content for activity presentation",
+	ID: "activity", Summary: "Own host-operation feeds, roster derivation and retained output",
 	Lifetime: module.AttachedSession, New: newService,
 }

@@ -40,15 +40,15 @@ type nativePendingPreview struct {
 // A Main excerpt carries an Activity identity, not a nearby question or run.
 func (u *terminalUI) openActivityReply(seq uint64) bool {
 	v := u.main.view
-	for _, entry := range v.entries {
-		if entry.Seq != seq || entry.activitySeq == 0 {
+	for _, entry := range v.Entries {
+		if entry.Source.Seq != seq || entry.Source.activitySeq == 0 {
 			continue
 		}
-		for _, target := range u.agents.entries {
-			if target.Seq != entry.activitySeq {
+		for _, target := range u.agents.Entries {
+			if target.Source.Seq != entry.Source.activitySeq {
 				continue
 			}
-			return u.openEntry(u.agents, target.Seq)
+			return u.openEntry(u.agents, target.Source.Seq)
 		}
 	}
 	return false
@@ -379,8 +379,8 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 		} else {
 			l.codex = terminalRect{left.x + 1, left.y + 1, iw, ih}
 			detail := u.main.mainTitleDetail()
-			if set := u.main.view.activeSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
-				detail = strings.TrimSuffix(detail, set.label()) + activityui.Underline(set.label())
+			if set := u.main.view.ActiveSkills()["Main"]; set != nil && u.main.view.skillsHover == "Main" {
+				detail = strings.TrimSuffix(detail, skillLabel(set)) + activityui.Underline(skillLabel(set))
 			}
 			name := "Main"
 			if u.agents.only {
@@ -389,9 +389,9 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			title := nativeTitle(1, name, detail, u.focus == 0)
 			// The skill count ends the title, after the frame corner and a space.
 			// A truncated title has no reliable target.
-			if set := u.main.view.activeSkills()["Main"]; !u.agents.only && set != nil && strings.HasSuffix(ansi.Strip(detail), set.label()) && ansi.StringWidth(title)+5 <= left.w {
+			if set := u.main.view.ActiveSkills()["Main"]; !u.agents.only && set != nil && strings.HasSuffix(ansi.Strip(detail), skillLabel(set)) && ansi.StringWidth(title)+5 <= left.w {
 				end := left.x + 2 + ansi.StringWidth(title)
-				l.mainSkills = terminalRect{end - ansi.StringWidth(set.label()), left.y, ansi.StringWidth(set.label()), 1}
+				l.mainSkills = terminalRect{end - ansi.StringWidth(skillLabel(set)), left.y, ansi.StringWidth(skillLabel(set)), 1}
 			}
 			headerRight := u.main.mainHeaderRight(left.w, u.focus == 0)
 			if u.agents.only {
@@ -515,7 +515,7 @@ func (u *terminalUI) nativeStatus() string {
 	if u.diffUnseen {
 		diffBadge = terminalui.Amber + " ●" + "\x1b[39m"
 	}
-	responding, _ := u.agents.statusCounts(u.agents.roster())
+	responding, _ := u.agents.statusCounts(u.agents.Roster())
 	agentsBadge := ""
 	if responding > 0 {
 		agentsBadge = terminalui.Amber + superscript(responding) + "\x1b[39m"

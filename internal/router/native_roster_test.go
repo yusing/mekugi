@@ -117,7 +117,7 @@ func TestNativeRosterRoleLegendAndCompactSpacing(t *testing.T) {
 			}
 		}
 	}
-	for _, agent := range v.agents[1:] {
+	for _, agent := range v.Agents[1:] {
 		if got := v.nativeGlyph(agent); got != v.roleColor("worker")+"✓"+terminalui.Reset {
 			t.Fatalf("status did not preserve role color and completion shape: %q", got)
 		}
@@ -133,7 +133,7 @@ func TestNativeRosterOverflowLegendKeepsSelectedRole(t *testing.T) {
 		{Name: "/root/c", Role: "explorer"},
 		{Name: "/root/d", Role: "worker"},
 	}})
-	for _, agent := range v.agents[1:] {
+	for _, agent := range v.Agents[1:] {
 		v.selected = agent.Name
 		lines := v.nativeRoster(60, 8, time.Now(), true)
 		legend := lines[len(lines)-1]

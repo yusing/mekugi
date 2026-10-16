@@ -213,6 +213,7 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 		return nil, err
 	}
 	u := &appServerUI{session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
 		u.titleGenerator = generator
@@ -843,7 +844,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		// visibly blocked, until interrupted.
 		u.status, u.alert = "Blocked on unsupported request "+m.Method+" · Ctrl-C interrupts", true
 		u.blockNotification(m)
-		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: u.now()}}})
+		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Session", Kind: "text", Text: u.status, Observed: u.now()}}})
 		return nil
 	}
 	if handled, err := u.settingsMessage("", m); handled || err != nil {
@@ -1247,7 +1248,7 @@ func mainActivityLinked(entry activityPaneEntry) bool {
 }
 
 func (u *appServerUI) applyMainActivity(entry activityPaneEntry) {
-	entry.Seq = u.view.lastSeq + 1
+	entry.Seq = u.view.LastSeq + 1
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 }
 
@@ -1319,7 +1320,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		draft = []string{""}
 		caret.Row, caret.Column = 0, 0
 	}
-	if dock == 0 && len(transcript.entries) == 0 && height >= 6 && height > min(6, len(draft))+borderRows && !u.pickerVisible() {
+	if dock == 0 && len(transcript.Entries) == 0 && height >= 6 && height > min(6, len(draft))+borderRows && !u.pickerVisible() {
 		height--
 		defer func() {
 			frameRows = append([]string{ansi.Truncate(u.welcome(), max(1, width), "…")}, frameRows...)
@@ -1583,6 +1584,7 @@ func scrollLabel(v *liveActivityView) string {
 }
 
 func (u *appServerUI) ensureShell() {
+	u.attachActivity()
 	u.view.conversation = true
 	u.view.painter.FileLink = u.markdownFileExists
 	if u.shell != nil {
@@ -1590,6 +1592,7 @@ func (u *appServerUI) ensureShell() {
 	}
 	if u.agents == nil {
 		u.agents = newLiveActivityView()
+		u.attachActivity()
 	}
 	u.agents.painter.FileLink = u.markdownFileExists
 	u.agents.childrenOnly = true

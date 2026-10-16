@@ -83,12 +83,12 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 				if agent == nil || agent.Role != "explorer" {
 					continue
 				}
-				for _, entry := range u.agents.entries {
-					if entry.Agent == path && entry.Kind == "tool" && strings.Contains(entry.Text, "printf CHILD_METADATA_TOOL") {
+				for _, entry := range u.agents.Entries {
+					if entry.Source.Agent == path && entry.Source.Kind == "tool" && strings.Contains(entry.Source.Text, "printf CHILD_METADATA_TOOL") {
 						for _, view := range []*liveActivityView{u.view, u.agents} {
 							found := false
-							for _, summary := range view.entries {
-								found = found || summary.Kind == "reasoning" && summary.Text == "Checking the native fixture."
+							for _, summary := range view.Entries {
+								found = found || summary.Source.Kind == "reasoning" && summary.Source.Text == "Checking the native fixture."
 							}
 							if !found {
 								t.Fatal("real app-server public summary missing")
@@ -101,7 +101,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		case err := <-client.Done:
 			t.Fatalf("app-server exited before child metadata and tool activity: %v", err)
 		case <-ctx.Done():
-			t.Fatalf("child identity, role, or tool activity missing: %v; paths=%v agents=%+v entries=%+v", ctx.Err(), u.session.paths, u.session.agents, u.agents.entries)
+			t.Fatalf("child identity, role, or tool activity missing: %v; paths=%v agents=%+v entries=%+v", ctx.Err(), u.session.paths, u.session.agents, u.agents.Entries)
 		}
 	}
 }

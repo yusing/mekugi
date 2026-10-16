@@ -20,8 +20,8 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	awaitMain(t, u, "exit 3")
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "failed")})
 	hookShown := false
-	for _, entry := range u.view.entries {
-		for _, block := range entry.blocks {
+	for _, entry := range u.view.Entries {
+		for _, block := range u.view.disclosure.Blocks(entry.Values) {
 			if block.Output != 0 {
 				t.Fatal("absent activity retained output")
 			}
@@ -48,8 +48,8 @@ func TestActivityAbsenceKeepsOfflineReplay(t *testing.T) {
 	if frame := replayPlaybackTestPaint(t, p, 120, 28); !strings.Contains(frame, "Repaint diagnosis complete") {
 		t.Fatalf("absent activity blocked replay: %s", frame)
 	}
-	for _, entry := range p.ui.view.entries {
-		if entry.native != nil && entry.native.output != nil {
+	for _, entry := range p.ui.view.Entries {
+		if entry.Source.native != nil && entry.Source.native.output != nil {
 			t.Fatal("offline replay retained output without activity")
 		}
 	}
@@ -69,8 +69,8 @@ func TestActivityAbsenceUnknownExit(t *testing.T) {
 			item := appServerItem{ID: "command", Type: "commandExecution", Command: "go test ./...", Status: "failed", AggregatedOutput: new("interrupted\n")}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 			found := false
-			for _, entry := range u.view.entries {
-				for _, block := range entry.blocks {
+			for _, entry := range u.view.Entries {
+				for _, block := range u.view.disclosure.Blocks(entry.Values) {
 					if block.Verb != "Run" {
 						continue
 					}
@@ -113,9 +113,9 @@ func TestActivityAbsenceDialogRefresh(t *testing.T) {
 			notify("item/commandExecution/outputDelta", map[string]any{"itemId": item.ID, "delta": "first\n"})
 			awaitMain(t, u, "first")
 			var seq uint64
-			for _, entry := range u.view.entries {
-				if entry.native != nil && entry.native.item == item.ID {
-					seq = entry.Seq
+			for _, entry := range u.view.Entries {
+				if entry.Source.native != nil && entry.Source.native.item == item.ID {
+					seq = entry.Source.Seq
 					break
 				}
 			}

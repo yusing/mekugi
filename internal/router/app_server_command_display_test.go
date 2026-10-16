@@ -58,22 +58,22 @@ func TestAppServerFrontendCommandClassification(t *testing.T) {
 				for _, method := range []string{"item/started", "item/completed"} {
 					appServerTestNotify(t, u, method, map[string]any{"threadId": "main", "turnId": "t", "item": item})
 				}
-				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.want || u.view.entries[0].native.command != command {
-					t.Fatalf("classified live entries: %+v; want %q", u.view.entries, tc.want)
+				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.want || u.view.Entries[0].Source.native.command != command {
+					t.Fatalf("classified live entries: %+v; want %q", u.view.Entries, tc.want)
 				}
 				appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "t", "item": item})
-				if len(u.agents.entries) != 2 || u.agents.entries[1].Text != tc.want || u.agents.entries[1].native.command != command {
-					t.Fatalf("classified child text: %q; want %q", u.agents.entries[len(u.agents.entries)-1].Text, tc.want)
+				if len(u.agents.Entries) != 2 || u.agents.Entries[1].Source.Text != tc.want || u.agents.Entries[1].Source.native.command != command {
+					t.Fatalf("classified child text: %q; want %q", u.agents.Entries[len(u.agents.Entries)-1].Source.Text, tc.want)
 				}
 				restored := newAppServerSessionTestUI(t, t.TempDir())
 				restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
-				if len(restored.view.entries) != 1 || restored.view.entries[0].Text != tc.want {
-					t.Fatalf("classified restored entries: %+v", restored.view.entries)
+				if len(restored.view.Entries) != 1 || restored.view.Entries[0].Source.Text != tc.want {
+					t.Fatalf("classified restored entries: %+v", restored.view.Entries)
 				}
 				restored.session.path("child")
 				restored.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: restored.session.cwd, Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}})
-				if len(restored.agents.entries) != 1 || restored.agents.entries[0].Text != tc.want {
-					t.Fatalf("classified restored child text: %q; want %q", restored.agents.entries[len(restored.agents.entries)-1].Text, tc.want)
+				if len(restored.agents.Entries) != 1 || restored.agents.Entries[0].Source.Text != tc.want {
+					t.Fatalf("classified restored child text: %q; want %q", restored.agents.Entries[len(restored.agents.Entries)-1].Source.Text, tc.want)
 				}
 			})
 		}
@@ -195,10 +195,10 @@ func TestAppServerImageViewLiveAndRestored(t *testing.T) {
 		}
 		check := func(v *liveActivityView) {
 			t.Helper()
-			if len(v.entries) != 1 || v.entries[0].Text != "View `images/a.png`" {
-				t.Fatalf("image activity: %+v", v.entries)
+			if len(v.Entries) != 1 || v.Entries[0].Source.Text != "View `images/a.png`" {
+				t.Fatalf("image activity: %+v", v.Entries)
 			}
-			blocks := parseLiveActivity(v.entries[0].activityPaneEntry)
+			blocks := parseLiveActivity(v.Entries[0].Source)
 			if len(blocks) != 1 || blocks[0].Verb != "View" || len(blocks[0].Reads) != 1 || blocks[0].Reads[0].Path != "images/a.png" {
 				t.Fatalf("image blocks: %+v", blocks)
 			}
@@ -244,16 +244,16 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 				if thread != "main" {
 					view = u.agents
 				}
-				entry := view.entries[len(view.entries)-1]
-				if entry.native.command != item.Command || entry.native.commandTimeout != tc.want {
-					t.Fatalf("%s/%s timeout = %q, want %q", thread, tc.id, entry.native.commandTimeout, tc.want)
+				entry := view.Entries[len(view.Entries)-1]
+				if entry.Source.native.command != item.Command || entry.Source.native.commandTimeout != tc.want {
+					t.Fatalf("%s/%s timeout = %q, want %q", thread, tc.id, entry.Source.native.commandTimeout, tc.want)
 				}
-				blocks := parseLiveActivity(entry.activityPaneEntry)
+				blocks := parseLiveActivity(entry.Source)
 				if got := strings.Join(blocks[0].Timeouts, " "); got != tc.want {
 					t.Fatalf("%s/%s displayed timeout = %q", thread, tc.id, got)
 				}
 				if method == "item/completed" {
-					rendered := strings.Join(view.painter.Block(entry.blocks[0], 90), "\n")
+					rendered := strings.Join(view.painter.Block(view.disclosure.Blocks(entry.Values)[0], 90), "\n")
 					if strings.Contains(rendered, "(timeout ") != (tc.want != "") {
 						t.Fatalf("%s/%s rendered timeout: %s", thread, tc.id, rendered)
 					}
@@ -263,7 +263,7 @@ func TestAppServerCommandTimeoutInput(t *testing.T) {
 	}
 	restored := newAppServerSessionTestUI(t, t.TempDir())
 	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{{ID: "timed", Type: "commandExecution", Command: "skills-mgr get skill"}}}})
-	if len(restored.view.entries[0].blocks[0].Timeouts) != 0 {
+	if len(restored.view.blocks(0)[0].Timeouts) != 0 {
 		t.Fatal("restored a timeout without original invocation input")
 	}
 }
@@ -357,13 +357,13 @@ func TestAppServerCommandWorkdirDisplay(t *testing.T) {
 			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: tc.command, Cwd: tc.cwd, CommandActions: tc.actions}
 			check := func(u *appServerUI) {
 				t.Helper()
-				if len(u.view.entries) != 1 || u.view.entries[0].Text != tc.text || u.view.entries[0].native.workdir != tc.workdir {
-					t.Fatalf("entries = %+v; want text %q in %q", u.view.entries, tc.text, tc.workdir)
+				if len(u.view.Entries) != 1 || u.view.Entries[0].Source.Text != tc.text || u.view.Entries[0].Source.native.workdir != tc.workdir {
+					t.Fatalf("entries = %+v; want text %q in %q", u.view.Entries, tc.text, tc.workdir)
 				}
-				if u.view.entries[0].native.command != tc.command {
+				if u.view.Entries[0].Source.native.command != tc.command {
 					t.Fatal("retained command source changed")
 				}
-				blocks := parseLiveActivity(u.view.entries[0].activityPaneEntry)
+				blocks := parseLiveActivity(u.view.Entries[0].Source)
 				if len(blocks) == 0 || blocks[0].Workdir != tc.workdir {
 					t.Fatalf("blocks = %+v; want workdir %q", blocks, tc.workdir)
 				}
@@ -394,8 +394,8 @@ func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 		appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	}
 	var blocks []activityui.Block
-	for _, entry := range u.view.entries {
-		blocks = append(blocks, parseLiveActivity(entry.activityPaneEntry)...)
+	for _, entry := range u.view.Entries {
+		blocks = append(blocks, parseLiveActivity(entry.Source)...)
 	}
 	if len(blocks) != 3 || !blocks[0].ShowWorkdir || blocks[1].ShowWorkdir || blocks[1].Workdir != other {
 		t.Fatalf("blocks = %+v", blocks)
@@ -423,8 +423,8 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 			item := appServerItem{ID: "cmd", Type: "commandExecution", Command: command, DurationMS: new(int64(500))}
 			u := newAppServerSessionTestUI(t, t.TempDir())
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
-			entry := u.view.entries[0]
-			blocks := parseLiveActivity(entry.activityPaneEntry)
+			entry := u.view.Entries[0]
+			blocks := parseLiveActivity(entry.Source)
 			var p activityui.Painter
 			var rows []string
 			for _, block := range blocks {
@@ -433,7 +433,7 @@ func TestAppServerWholeScriptTimeoutSuffix(t *testing.T) {
 			if got := strings.Join(rows, "\n"); !strings.Contains(got, "(timeout 10s)") {
 				t.Fatalf("missing timeout suffix: %s", got)
 			}
-			if entry.native.command != command || blocks[0].Code != command {
+			if entry.Source.native.command != command || blocks[0].Code != command {
 				t.Fatalf("whole script source changed: %+v", blocks[0])
 			}
 		})

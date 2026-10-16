@@ -53,8 +53,8 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 		} else {
 			u.view.applyAppServerItem(true, u.session.cwd, "main", "main", "t", "input", "item/completed", "", item)
 		}
-		if !reflect.DeepEqual(u.view.entries[0].native.spans, want) {
-			t.Fatalf("restore=%v spans=%+v", restore, u.view.entries[0].native.spans)
+		if !reflect.DeepEqual(u.view.Entries[0].Source.native.spans, want) {
+			t.Fatalf("restore=%v spans=%+v", restore, u.view.Entries[0].Source.native.spans)
 		}
 	}
 }

@@ -113,7 +113,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	if err := u.restorePaneContent(root); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.view.entries) != 0 {
+	if len(u.view.Entries) != 0 {
 		t.Fatal("Main history rendered before its children were read")
 	}
 	child := map[string]any{"id": "child", "cwd": workspace, "parentThreadId": "main", "path": writeTestRollout(t, "child", childRecords...),
@@ -142,8 +142,8 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		return entry.Kind + "|" + strings.SplitN(entry.Text, "\n", 2)[0]
 	}
 	var main []string
-	for _, entry := range u.view.entries {
-		main = append(main, entry.Agent+"|"+summary(entry.activityPaneEntry))
+	for _, entry := range u.view.Entries {
+		main = append(main, entry.Source.Agent+"|"+summary(entry.Source))
 	}
 	want := []string{
 		"You|text|Review it",
@@ -160,16 +160,16 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 	if !slices.Equal(main, want) {
 		t.Fatalf("Main history:\n%s\nwant:\n%s", strings.Join(main, "\n"), strings.Join(want, "\n"))
 	}
-	for _, entry := range u.view.entries {
-		if (entry.Kind == "start" || entry.Kind == "reply" || entry.Kind == "final") && entry.activitySeq == 0 {
+	for _, entry := range u.view.Entries {
+		if (entry.Source.Kind == "start" || entry.Source.Kind == "reply" || entry.Source.Kind == "final") && entry.Source.activitySeq == 0 {
 			t.Fatalf("Main copy does not excerpt its Activity entry: %+v", entry)
 		}
 	}
 
 	var pane []string
-	for _, entry := range u.agents.entries {
-		if entry.Agent == "/root/reviewer" {
-			pane = append(pane, summary(entry.activityPaneEntry))
+	for _, entry := range u.agents.Entries {
+		if entry.Source.Agent == "/root/reviewer" {
+			pane = append(pane, summary(entry.Source))
 		}
 	}
 	wantPane := []string{
@@ -236,8 +236,8 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	u.agents = newLiveActivityView()
 	u.requests["1"] = "thread/resume"
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved","turns":[{"id":"active","status":"inProgress","items":[{"type":"userMessage","id":"q","content":[{"type":"text","text":"Still running"}]}]}]}}}`)
-	if u.turn != "active" || !u.session.agent("/root").Responding || len(u.view.entries) != 0 {
-		t.Fatalf("resume lost the active turn or rendered early: turn=%q entries=%+v", u.turn, u.view.entries)
+	if u.turn != "active" || !u.session.agent("/root").Responding || len(u.view.Entries) != 0 {
+		t.Fatalf("resume lost the active turn or rendered early: turn=%q entries=%+v", u.turn, u.view.Entries)
 	}
 	// Attach only the activity collector.
 	activity := newSubagentActivity()
@@ -245,14 +245,14 @@ func TestAppServerResumeDefersHistoryButKeepsActiveTurn(t *testing.T) {
 	activity.attachNativePane("saved")
 	activity.collect("saved", "late", "error", "exec script failed: late")
 	appServerTestMessage(t, u, `{"id":2,"result":{"data":[],"nextCursor":null}}`)
-	if len(u.view.entries) != 0 {
-		t.Fatalf("observed activity preceded resumed history: %+v", u.view.entries)
+	if len(u.view.Entries) != 0 {
+		t.Fatalf("observed activity preceded resumed history: %+v", u.view.Entries)
 	}
 	appServerTestMessage(t, u, `{"id":3,"result":{"data":[],"nextCursor":null}}`)
 	appServerTestMessage(t, u, `{"id":4,"result":{"data":[],"nextCursor":null}}`)
 	var texts []string
-	for _, entry := range u.view.entries {
-		texts = append(texts, entry.Text)
+	for _, entry := range u.view.Entries {
+		texts = append(texts, entry.Source.Text)
 	}
 	if !slices.Equal(texts, []string{"Still running", "exec script failed: late"}) {
 		t.Fatalf("Main order = %q", texts)

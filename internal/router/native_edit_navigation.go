@@ -16,8 +16,8 @@ func (u *terminalUI) openActivityEdit(view *liveActivityView, seq uint64, path s
 }
 
 func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path string) ([]activityui.Block, string) {
-	for _, entry := range view.entries {
-		if entry.Seq != seq || entry.native == nil {
+	for _, entry := range view.Entries {
+		if entry.Source.Seq != seq || entry.Source.native == nil {
 			continue
 		}
 		var order []string
@@ -27,9 +27,9 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 		for _, key := range order {
 			attempt := u.diff.data.attempts[key]
 			call, _, _ := strings.Cut(attempt.correlation, "\x00")
-			match := attempt.thread == entry.native.thread && call == entry.native.item
+			match := attempt.thread == entry.Source.native.thread && call == entry.Source.native.item
 			if receipt := attempt.receipt; receipt != nil {
-				match = receipt.thread == entry.native.thread && slices.Contains(receipt.calls, entry.native.item)
+				match = receipt.thread == entry.Source.native.thread && slices.Contains(receipt.calls, entry.Source.native.item)
 			}
 			if !match || len(attempt.chunks) == 0 {
 				continue
@@ -44,7 +44,7 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 				}
 				pages = append(pages, activityui.Block{Kind: "op", Verb: chunk.Review.Action().Title(), Path: display, Code: chunk.Review.UnifiedDiffWithPaths(pathdisplay.ForWorkspace(workspace, chunk.Review.BeforePath), pathdisplay.ForWorkspace(workspace, chunk.Review.AfterPath)), Lang: "diff", Fenced: true})
 			}
-			for _, block := range entry.blocks {
+			for _, block := range view.disclosure.Blocks(entry.Values) {
 				if block.DirectoryDeletion() && activityui.EditPath(block) == path {
 					for _, page := range pages {
 						if strings.HasPrefix(page.Path, strings.TrimSuffix(path, "/")+"/") {
@@ -60,10 +60,10 @@ func (u *terminalUI) activityEditPages(view *liveActivityView, seq uint64, path 
 		// Codex can finish a nested edit while sibling commands keep its cell
 		// open. Its completed item already carries that invocation's diff;
 		// opening it must not wait for the outer cell's durable capture.
-		if receipt := entry.native.capturedEdit; receipt != nil && len(receipt.pages) > 0 {
+		if receipt := entry.Source.native.capturedEdit; receipt != nil && len(receipt.pages) > 0 {
 			return receipt.pages, path
 		}
-		return entry.native.editPages, path
+		return entry.Source.native.editPages, path
 	}
 	return nil, path
 }

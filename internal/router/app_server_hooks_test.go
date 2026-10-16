@@ -34,21 +34,21 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	start := hookTestRun(u.session.cwd, "running")
 	start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 	appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-	if len(u.view.entries) != 1 || !u.view.entries[0].blocks[0].Running {
+	if len(u.view.Entries) != 1 || !u.view.blocks(0)[0].Running {
 		t.Fatal("hook start did not create a running Run block")
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": appServerTurn{ID: "t", Status: "completed"}})
-	if !u.view.entries[0].blocks[0].Running {
+	if !u.view.blocks(0)[0].Running {
 		t.Fatal("turn completion ended an async hook")
 	}
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "turnId": "later", "run": hookTestRun(u.session.cwd, "completed")})
 	// Duplicate completion and a late start cannot add a row or revive work.
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "completed")})
 	appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-	if len(u.view.entries) != 1 {
-		t.Fatalf("hook notifications duplicated rows: %d", len(u.view.entries))
+	if len(u.view.Entries) != 1 {
+		t.Fatalf("hook notifications duplicated rows: %d", len(u.view.Entries))
 	}
-	b := u.view.entries[0].blocks[0]
+	b := u.view.blocks(0)[0]
 	if b.Running || u.view.retainedOutput(b).View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
 		t.Fatalf("hook completion borrowed a shell exit or lost host timing: %+v", b)
 	}
@@ -59,7 +59,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "later", "item": appServerItem{ID: "next", Type: "commandExecution", Command: "true", ExitCode: new(0)}})
 	settleActivity(u.now().Add(activityui.OutputDebounce), u.view, u.agents)
-	if !u.view.entries[0].blocks[0].Collapsed {
+	if !u.view.blocks(0)[0].Collapsed {
 		t.Fatal("successful hook output did not use Run collapse")
 	}
 }
@@ -76,7 +76,7 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			// Completion alone must be visible, independently of Main's same run ID.
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "completed")})
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "child", "run": run})
-			b := u.agents.entries[len(u.agents.entries)-1].blocks[0]
+			b := u.agents.blocks(len(u.agents.Entries) - 1)[0]
 			if b.Running || b.Collapsible() || b.ExitCode != 0 || u.agents.retainedOutput(b).View().Exited || !b.Hook.HasError {
 				t.Fatalf("hook outcome was flattened to a command exit: %+v", b)
 			}
@@ -84,7 +84,7 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			if !strings.Contains(page.Text, "error: cannot execute") || strings.Contains(page.Text, "unsafe") || strings.Contains(ansi.Strip(page.Detail), "exit") {
 				t.Fatalf("hook detail lost errors or fabricated an exit: %+v", page)
 			}
-			if len(u.view.entries) != 1 {
+			if len(u.view.Entries) != 1 {
 				t.Fatal("child hook leaked into Main")
 			}
 		})
@@ -99,7 +99,7 @@ func TestAppServerHookRetentionFailureKeepsLiveOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "failed")})
-	if len(u.view.entries) != 1 || !strings.Contains(u.feedback.Text, "could not be retained") {
+	if len(u.view.Entries) != 1 || !strings.Contains(u.feedback.Text, "could not be retained") {
 		t.Fatal("retention failure hid live output or lacked a notice")
 	}
 }
@@ -112,7 +112,7 @@ func TestAppServerHookOpenDialogTracksCompletion(t *testing.T) {
 			start := hookTestRun(u.session.cwd, "running")
 			start["completedAt"], start["durationMs"], start["entries"] = nil, nil, nil
 			appServerTestNotify(t, u, "hook/started", map[string]any{"threadId": "main", "run": start})
-			if !u.shell.openEntry(u.view, u.view.entries[0].Seq) {
+			if !u.shell.openEntry(u.view, u.view.Entries[0].Source.Seq) {
 				t.Fatal("hook dialog did not open")
 			}
 			d := u.shell.output
@@ -142,8 +142,8 @@ func TestAppServerHookPagedChildWithoutTurns(t *testing.T) {
 	entry := u.session.hookEntry("child", observation, false)
 	h.placements = append(h.placements, &restoredPlacement{entry: entry, at: observation.At})
 	restoreContentReply(t, u, 3, map[string]any{"data": []any{}})
-	if len(u.agents.entries) != 1 || u.agents.entries[0].Kind != "hook" || len(h.placements) != 0 || u.historyTarget() != nil {
-		t.Fatalf("empty paginated history lost a hook or left false older history: entries=%d placements=%d", len(u.agents.entries), len(h.placements))
+	if len(u.agents.Entries) != 1 || u.agents.Entries[0].Source.Kind != "hook" || len(h.placements) != 0 || u.historyTarget() != nil {
+		t.Fatalf("empty paginated history lost a hook or left false older history: entries=%d placements=%d", len(u.agents.Entries), len(h.placements))
 	}
 }
 
@@ -177,16 +177,16 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	fresh.restoring = &appServerActivityRestore{root: root}
 	fresh.readRestoredRollouts()
 	fresh.restoreMainHistory(nil, fresh.restoring.main, nil)
-	if len(fresh.view.entries) != 2 {
-		t.Fatalf("resume lost hooks outside turns: %d", len(fresh.view.entries))
+	if len(fresh.view.Entries) != 2 {
+		t.Fatalf("resume lost hooks outside turns: %d", len(fresh.view.Entries))
 	}
-	for _, entry := range fresh.view.entries {
-		b := entry.blocks[0]
+	for _, entry := range fresh.view.Entries {
+		b := fresh.view.disclosure.Blocks(entry.Values)[0]
 		if b.Running || !fresh.view.retainedOutput(b).View().Done {
 			t.Fatal("resume revived a hook")
 		}
 	}
-	if activityui.RowVerb(fresh.view.entries[1].blocks[0]) != "Hook Run" || !strings.Contains(fresh.view.entries[1].Text, "outcome unknown") {
+	if activityui.RowVerb(fresh.view.blocks(1)[0]) != "Hook Run" || !strings.Contains(fresh.view.Entries[1].Source.Text, "outcome unknown") {
 		t.Fatal("unfinished restored hook claims completion")
 	}
 	foreign, err := reopened.publication.ReadHookObservations("/other", "main")
@@ -203,14 +203,14 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	if err := playback.advance(playback.Until); err != nil {
 		t.Fatal(err)
 	}
-	if len(playback.ui.view.entries) != 2 || playback.ui.session.waitStore != nil || playback.ui.view.entries[1].blocks[0].Running {
+	if len(playback.ui.view.Entries) != 2 || playback.ui.session.waitStore != nil || playback.ui.view.blocks(1)[0].Running {
 		t.Fatal("offline replay lost hooks or acquired live resources")
 	}
 	fresh.clock = u.clock
 	end := hookTestRun(u.session.cwd, "completed")
 	end["id"] = "unfinished"
 	appServerTestNotify(t, fresh, "hook/completed", map[string]any{"threadId": "main", "run": end})
-	if len(fresh.view.entries) != 2 || activityui.RowVerb(fresh.view.entries[1].blocks[0]) != "Hook Ran" {
+	if len(fresh.view.Entries) != 2 || activityui.RowVerb(fresh.view.blocks(1)[0]) != "Hook Ran" {
 		t.Fatal("a fresh host completion could not settle a restored unknown hook")
 	}
 	// Corrupt optional hook history is disclosed without losing the host replay.
@@ -254,7 +254,7 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 		"startedAt": 1000, "completedAt": 1001, "durationMs": 5,
 		"entries": []map[string]any{{"kind": "feedback", "text": "mekugi: VCS guard instrumentation failed: VCS guard: cannot parse command: 1:10: reached EOF without closing quote `'`"}}}})
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection.txt", strings.Join(u.view.renderConversation(80).lines, "\n")+"\n")
-	if !u.shell.openEntry(u.view, u.view.entries[len(u.view.entries)-1].Seq) {
+	if !u.shell.openEntry(u.view, u.view.Entries[len(u.view.Entries)-1].Source.Seq) {
 		t.Fatal("guard rejection dialog did not open")
 	}
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection-dialog.txt", drawOutputDialog(u.shell)+"\n")

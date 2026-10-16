@@ -56,7 +56,7 @@ func TestAppServerPublicSummaryNotifications(t *testing.T) {
 	// A reused item ID in a new turn must not replace earlier summaries.
 	reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": "main", "turnId": "next", "itemId": "same-id", "delta": "Next public summary."})
 	main = ansi.Strip(strings.Join(u.view.renderFeed(90, 40).lines, "\n"))
-	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.view.entries[0].Text != "**Complete**\n\nFinal public main." {
+	if !strings.Contains(main, "• Complete") || !strings.Contains(main, "Next public summary.") || u.view.Entries[0].Source.Text != "**Complete**\n\nFinal public main." {
 		t.Fatalf("turn identity lost: %q", main)
 	}
 }
@@ -92,8 +92,8 @@ func TestAppServerRestorePublicSummaries(t *testing.T) {
 	}
 	// Raw-only items are decodable but produce no visible entry.
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"raw","type":"reasoning","summary":[],"content":["PRIVATE"]}}}`)
-	if len(u.view.entries) != 1 {
-		t.Fatalf("raw reasoning reached transcript: %+v", u.view.entries)
+	if len(u.view.Entries) != 1 {
+		t.Fatalf("raw reasoning reached transcript: %+v", u.view.Entries)
 	}
 }
 
@@ -317,8 +317,8 @@ func TestAppServerThinkingFromRequestStart(t *testing.T) {
 	}
 	thinkingRows := func(view *liveActivityView) int {
 		rows := 0
-		for _, entry := range view.entries {
-			if entry.Kind == "reasoning" {
+		for _, entry := range view.Entries {
+			if entry.Source.Kind == "reasoning" {
 				rows++
 			}
 		}
@@ -489,8 +489,8 @@ func TestUISnapshotAppServerReasoningLifecycle(t *testing.T) {
 				snapshot("done")
 				reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "completed"}})
 				nextEvent(t, u, thread)
-				if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.entries) != 2 {
-					t.Fatalf("reasoning completion retained live state or duplicated entries: %+v", view.entries)
+				if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.Entries) != 2 {
+					t.Fatalf("reasoning completion retained live state or duplicated entries: %+v", view.Entries)
 				}
 			})
 		}

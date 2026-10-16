@@ -27,7 +27,7 @@ func expansionFixture(main bool) *liveActivityView {
 	v.appendEntry(activityPaneEntry{Seq: 1, Agent: agent, Kind: "text", Text: narrative, Observed: now}, []activityui.Block{{Kind: "text", Body: narrative}})
 	v.appendEntry(activityPaneEntry{Seq: 2, Agent: agent, Kind: "reasoning", Observed: now}, []activityui.Block{{Kind: "summary", Label: "Inspecting", Body: "**Inspecting**\n\n" + strings.Repeat("Public reasoning detail.\n\n", 6), Collapsed: true, Live: true}})
 	v.appendEntry(activityPaneEntry{Seq: 3, Agent: agent, Kind: "tool", Text: "Run printf", Observed: now}, []activityui.Block{{Kind: "op", Verb: "Run", Label: "printf", Code: strings.Repeat("echo retained-source\n", 8), Lang: "bash", Fenced: true, Tail: []string{"first output", "last output"}, Collapsed: true}})
-	v.lastSeq = 3
+	v.LastSeq = 3
 	return v
 }
 
@@ -89,11 +89,11 @@ func TestLiveActivityExpansionViewportCache(t *testing.T) {
 		clear(lexer.sources)
 		v := viewportSyntaxView(main, "viewportfixture")
 		const skillSource = "package offscreenSkill"
-		v.entries[1].blocks = append(v.entries[1].blocks, activityui.Block{
+		v.replaceEntry(1, v.Entries[1].Source, append(v.blocks(1), activityui.Block{
 			Kind: "op", Verb: "Attached skill", Label: "viewport", Collapsed: true,
 			Tail: strings.Split(strings.Repeat("Skill detail.\n\n", 20)+"```viewportfixture\n"+skillSource+"\n```", "\n"),
-		})
-		first := strings.ReplaceAll(v.entries[1].blocks[0].Code, "\t", "    ")
+		}))
+		first := strings.ReplaceAll(v.blocks(1)[0].Code, "\t", "    ")
 		for range 2 {
 			v.toggleExpansion()
 			v.viewport(v.renderFeed(70, 9), 9)
@@ -130,7 +130,7 @@ func TestLiveActivityExpansionViewportCache(t *testing.T) {
 				t.Fatal("repeat toggle rebuilt a cached layout")
 			}
 		}
-		v.entries[1].blocks[0].Code = "package updated\nfunc updated() int { return 42 }\n"
+		v.Entries[1].Values[0].Code = "package updated\nfunc updated() int { return 42 }\n"
 		v.invalidateEntry(2)
 		v.following, v.offset = false, 0
 		v.viewport(v.renderFeed(70, 9), 9)
@@ -184,8 +184,8 @@ func TestAppServerExpansionRetainedReads(t *testing.T) {
 		if !strings.Contains(render(), "third-start") {
 			t.Fatal("arriving reads ignored pane expansion")
 		}
-		u.view.entries[0].native.output.Release()
-		u.view.invalidateEntry(u.view.entries[0].Seq)
+		u.view.Entries[0].Source.native.output.Release()
+		u.view.invalidateEntry(u.view.Entries[0].Source.Seq)
 		if !strings.Contains(render(), "first-end") {
 			t.Fatal("released output erased the retained inline tail")
 		}
@@ -266,12 +266,12 @@ func BenchmarkLiveActivityExpansion(b *testing.B) {
 		for _, action := range []string{"toggle", "scroll", "cold-toggle"} {
 			b.Run(fmt.Sprintf("Main=%t/%s", main, action), func(b *testing.B) {
 				v := viewportSyntaxView(main, "go")
-				prefix := append([]liveActivityRecord(nil), v.entries...)
+				prefix := append([]liveActivityRecord(nil), v.Entries...)
 				for range 39 {
 					for _, record := range prefix {
-						entry := record.activityPaneEntry
-						entry.Seq = uint64(len(v.entries) + 1)
-						v.appendEntry(entry, record.blocks)
+						entry := record.Source
+						entry.Seq = uint64(len(v.Entries) + 1)
+						v.appendEntry(entry, v.disclosure.Blocks(record.Values))
 					}
 				}
 				for range 3 {

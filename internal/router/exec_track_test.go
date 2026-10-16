@@ -763,7 +763,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	restored := newAppServerSessionTestUI(t, u.session.cwd)
 	restored.proxy = &mekugiProxy{replayStore: store}
 	restored.restoreHistory([]appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}})
-	segments := restored.view.entries[0].native.segments
+	segments := restored.view.Entries[0].Source.native.segments
 	if len(segments) != 2 || segments[0].text != "Read `a.go`" || segments[1].text != "Search `needle` in `src`" || segments[0].source != "mcat "+quoteShellWord(cwd+"/a.go") {
 		t.Fatalf("restored paths or source changed: %+v", segments)
 	}
@@ -773,7 +773,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	child.proxy = &mekugiProxy{replayStore: store}
 	child.session.path("child")
 	child.restoreActivityThread(appServerThreadInfo{ID: "child", Cwd: cwd, Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{item}}}})
-	parts := child.agents.entries[0].native.segments
+	parts := child.agents.Entries[0].Source.native.segments
 	if len(parts) != 2 || parts[0].text != "Read `a.go`" || parts[1].text != "Search `needle` in `src`" {
 		t.Fatalf("restored child paths used main workspace: %+v", parts)
 	}

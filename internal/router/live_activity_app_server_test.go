@@ -31,16 +31,16 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 	if strings.Count(shown, "❯") != 1 || !strings.Contains(shown, "  I do not want blue for everything") || len(feed.questions) == 0 {
 		t.Fatalf("stacked input did not render as one prompt: %q", shown)
 	}
-	if v.questionRows[v.entries[1].Seq] <= v.questionRows[v.entries[0].Seq]+10 {
+	if v.questionRows[v.Entries[1].Source.Seq] <= v.questionRows[v.Entries[0].Source.Seq]+10 {
 		t.Fatalf("stacked input lost its own navigation row: %+v", v.questionRows)
 	}
-	second := v.questionRows[v.entries[1].Seq]
+	second := v.questionRows[v.Entries[1].Source.Seq]
 	if feed.heads[second] != second || feed.heads[second-1] == second {
 		t.Fatalf("continued prompt lost its flash range: heads=%+v target=%d", feed.heads, second)
 	}
 	v.painter.Theme = diffrender.DarkTheme
 	v.feedOnly = true
-	v.flashQuestion, v.flashUntil = v.entries[1].Seq, time.Now().Add(time.Second)
+	v.flashQuestion, v.flashUntil = v.Entries[1].Source.Seq, time.Now().Add(time.Second)
 	v.offset = second
 	frame := strings.Join(v.render(100, 12, time.Now()), "\n")
 	if !strings.Contains(frame, "I do not want blue for everything") || !strings.Contains(frame, v.painter.Theme.SelectionBackground()) {
@@ -56,19 +56,19 @@ func TestConversationJoinsConsecutiveUserMessagesInTurn(t *testing.T) {
 func TestLiveActivityNativeItemsShareStateAndRendering(t *testing.T) {
 	v := newLiveActivityView()
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "partial", appServerItem{})
-	first := v.entries[0].Seq
+	first := v.Entries[0].Source.Seq
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/started", "", appServerItem{Type: "agentMessage"})
-	if v.entries[0].Text != "partial" {
+	if v.Entries[0].Source.Text != "partial" {
 		t.Fatal("late start erased streamed activity")
 	}
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "complete"})
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "late", appServerItem{})
-	if len(v.entries) != 1 || v.entries[0].Text != "complete" || v.entries[0].Seq != first || v.entries[0].blocks[0].Body != "complete" {
+	if len(v.Entries) != 1 || v.Entries[0].Source.Text != "complete" || v.Entries[0].Source.Seq != first || v.blocks(0)[0].Body != "complete" {
 		t.Fatal("activity identity/update diverged")
 	}
 	v.applyAppServerItem(true, "", "root", "child", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "child"})
 	v.applyAppServerItem(true, "", "root", "root", "turn", "cmd", "item/completed", "", appServerItem{Type: "commandExecution", Command: "printf ok", Status: "completed"})
-	if len(v.entries) != 3 || v.entries[1].Agent != "Thread child" || v.entries[2].blocks[0].Verb != "Run" || v.entries[2].blocks[0].Code != "printf ok" {
+	if len(v.Entries) != 3 || v.Entries[1].Source.Agent != "Thread child" || v.blocks(2)[0].Verb != "Run" || v.blocks(2)[0].Code != "printf ok" {
 		t.Fatal("native items did not enter shared activity blocks")
 	}
 	// Main is the same activity viewport, not another row cache or renderer.
@@ -122,10 +122,10 @@ func TestLiveActivityMainQuestionBranchLink(t *testing.T) {
 	}
 	// Editing an answer after the same prompt is submitted again must retain
 	// its original target, not jump to the newer identical question.
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: question}}})
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Edited answer"})
-	for _, record := range v.entries {
-		if record.native != nil && record.native.item == "answer" && record.native.question != 1 {
+	for _, record := range v.Entries {
+		if record.Source.native != nil && record.Source.native.item == "answer" && record.Source.native.question != 1 {
 			t.Fatal("answer edit changed its original question link")
 		}
 	}
@@ -139,7 +139,7 @@ func TestAppServerActivityExcludesMain(t *testing.T) {
 		{Seq: 2, Agent: "/root/reviewer", Kind: "text", Text: "CHILD_ONLY"},
 	}, Agents: []activityPaneAgent{{Name: "/root"}, {Name: "/root/reviewer"}}})
 	feed := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
-	if strings.Contains(feed, "MAIN_ONLY") || !strings.Contains(feed, "CHILD_ONLY") || len(u.agents.roster()) != 2 {
+	if strings.Contains(feed, "MAIN_ONLY") || !strings.Contains(feed, "CHILD_ONLY") || len(u.agents.Roster()) != 2 {
 		t.Fatal("Activity duplicated Main or removed its roster entry")
 	}
 }
@@ -164,7 +164,7 @@ func TestAppServerMainRosterSummary(t *testing.T) {
 	if got, _ := u.agents.current(root, time.Now()); ansi.Strip(got) != "Roster fixed" {
 		t.Fatalf("Main completed summary stale: %q", got)
 	}
-	if len(u.agents.entries) != 0 {
+	if len(u.agents.Entries) != 0 {
 		t.Fatal("Main summary was copied into Activity")
 	}
 }
@@ -181,15 +181,15 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	}
 	feed := ansi.Strip(strings.Join(u.agents.renderFeed(80, 20).lines, "\n"))
 	status, _ := u.agents.current(activityPaneAgent{Name: "/root/reviewer"}, time.Now())
-	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.agents.entries) != 1 {
+	if !strings.Contains(feed, "Updated public summary") || !strings.Contains(status, "Updated public summary") || len(u.agents.Entries) != 1 {
 		t.Fatal("summary must remain in Activity and update status")
 	}
-	u.agents.agents = []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}
+	u.agents.Agents = []activityPaneAgent{{Name: "/root/reviewer", Responding: true}}
 	live := strings.Join(u.agents.renderFeed(80, 20).lines, "\n")
 	if !strings.Contains(ansi.Strip(live), "Updated public summary") {
 		t.Fatal("reasoning summary is missing from Activity")
 	}
-	u.agents.agents[0].Responding = false
+	u.agents.Agents[0].Responding = false
 	if idle := strings.Join(u.agents.renderFeed(80, 20).lines, "\n"); !strings.Contains(idle, "Updated public summary") {
 		t.Fatal("reasoning transcript disappeared after completion")
 	}
@@ -206,7 +206,7 @@ func TestAppServerActivityReasoningSummaries(t *testing.T) {
 	if !strings.Contains(detail, "Updated public summary") || strings.Contains(detail, "Reasoning summary") {
 		t.Fatal("detailed summary must remain visible, not a labelled card")
 	}
-	if len(legacy.entries) != 0 || len(u.view.entries) != 0 {
+	if len(legacy.Entries) != 0 || len(u.view.Entries) != 0 {
 		t.Fatal("changed Main or legacy reasoning policy")
 	}
 }
@@ -328,7 +328,7 @@ func TestLiveActivityQuestionLinksKeepIndividualPrompts(t *testing.T) {
 		{Seq: 2, Agent: "You", Kind: "text", Text: "Steering prompt", native: &liveActivityNativeItem{thread: "root", turn: "turn", item: "steer"}},
 	}})
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/agentMessage/delta", "Live answer", appServerItem{})
-	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.lastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
+	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: v.LastSeq + 1, Agent: "You", Kind: "text", Text: "Steering prompt"}}})
 	v.applyAppServerItem(true, "", "root", "root", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "Final answer body"})
 	v.render(80, 12, time.Now())
 	if v.questionRows[1] == v.questionRows[2] {

@@ -54,11 +54,7 @@ func (u *appServerUI) startChildHistory(info appServerThreadInfo) error {
 		u.childHistory = make(map[string]*appServerChildHistory)
 	}
 	u.childHistory[info.ID], u.historyLoading = h, h
-	if u.agents.skillHistory == nil {
-		u.agents.skillHistory = make(map[string]bool)
-	}
-	u.agents.skillHistory[u.session.path(info.ID)] = false
-	u.agents.skills = nil
+	u.agents.MarkSkillHistoryUnknown(u.session.path(info.ID))
 	return u.requestChildHistory("thread/turns/list", map[string]any{"threadId": info.ID, "itemsView": "notLoaded", "sortDirection": "desc", "limit": appServerHistoryPageSize})
 }
 
@@ -362,7 +358,7 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 	r.paging = true
 	defer func() { r.paging = wasPaging }()
 	r.pane[name], r.itemAt[h.info.ID] = selected, h.itemAt
-	before := u.agents.lastSeq
+	before := u.agents.LastSeq
 	info := h.info
 	info.Turns = []appServerHistoryTurn{turn}
 	// Historical pages may not reset a newer live lifecycle or cumulative
@@ -372,14 +368,14 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 	*u.session.agent(name) = agent
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: slices.Clone(u.session.agents)})
 	first := uint64(0)
-	for _, entry := range u.agents.entries {
-		if entry.Seq > before {
-			first = entry.Seq
+	for _, entry := range u.agents.Entries {
+		if entry.Source.Seq > before {
+			first = entry.Source.Seq
 			break
 		}
 	}
 	if !u.historyLoading.initial {
-		retained := slices.ContainsFunc(u.agents.entries, func(entry liveActivityRecord) bool { return entry.Seq == h.firstSeq })
+		retained := slices.ContainsFunc(u.agents.Entries, func(entry liveActivityRecord) bool { return entry.Source.Seq == h.firstSeq })
 		u.agents.insertHistory(before, func(entry activityPaneEntry) bool {
 			return retained && entry.Seq == h.firstSeq || !retained && entry.native != nil && entry.native.thread == h.info.ID
 		})
@@ -387,18 +383,18 @@ func (u *appServerUI) renderChildHistoryPage(h *appServerChildHistory, turn appS
 			// A failed initial read may already have placed this retained
 			// assignment/message in Main without its Activity link. The same
 			// source observation keeps its identity through the pending slots.
-			existing := slices.IndexFunc(u.view.entries, func(entry liveActivityRecord) bool {
-				return p.entry.assignment != nil && entry.assignment == p.entry.assignment || p.entry.message != nil && entry.message == p.entry.message
+			existing := slices.IndexFunc(u.view.Entries, func(entry liveActivityRecord) bool {
+				return p.entry.assignment != nil && entry.Source.assignment == p.entry.assignment || p.entry.message != nil && entry.Source.message == p.entry.message
 			})
 			if existing >= 0 {
 				if p.link != nil && mainActivityLinked(p.entry) {
-					entry := u.view.entries[existing].activityPaneEntry
+					entry := u.view.Entries[existing].Source
 					entry.activitySeq = *p.link
 					u.view.replaceEntry(existing, entry, parseLiveActivity(entry))
 				}
 				continue
 			}
-			before := u.view.lastSeq
+			before := u.view.LastSeq
 			u.applyRestoredMain([]*restoredPlacement{p})
 			u.view.insertHistory(before, func(entry activityPaneEntry) bool { return entry.Observed.After(p.at) })
 		}
@@ -442,18 +438,18 @@ func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPan
 		}
 	}
 	var indices []int
-	for i, entry := range v.entries {
-		if entry.Seq <= before {
+	for i, entry := range v.Entries {
+		if entry.Source.Seq <= before {
 			indices = append(indices, i)
 		}
 	}
-	at := slices.IndexFunc(indices, func(i int) bool { return belongs(v.entries[i].activityPaneEntry) })
+	at := slices.IndexFunc(indices, func(i int) bool { return belongs(v.Entries[i].Source) })
 	if at < 0 {
 		at = len(indices)
 	}
 	var added []int
-	for i, entry := range v.entries {
-		if entry.Seq > before {
+	for i, entry := range v.Entries {
+		if entry.Source.Seq > before {
 			added = append(added, i)
 		}
 	}
@@ -461,12 +457,12 @@ func (v *liveActivityView) insertHistory(before uint64, belongs func(activityPan
 	v.reorderEntries(indices)
 	v.historyOrder = true
 	clear(v.events)
-	for _, entry := range v.entries {
-		if v.standalone(entry.activityPaneEntry) {
+	for _, entry := range v.Entries {
+		if v.standalone(entry.Source) {
 			if v.events == nil {
 				v.events = make(map[string]liveActivityEvent)
 			}
-			v.events[entry.Agent] = liveActivityEvent{entry.Seq, cmp.Or(entry.Observed, v.now())}
+			v.events[entry.Source.Agent] = liveActivityEvent{entry.Source.Seq, cmp.Or(entry.Source.Observed, v.now())}
 		}
 	}
 	if anchor != 0 {

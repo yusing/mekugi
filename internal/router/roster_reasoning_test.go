@@ -28,7 +28,7 @@ func TestAppServerRosterReasoningTitlePreservesTranscript(t *testing.T) {
 				if got, _ := u.agents.current(agent, time.Now()); ansi.Strip(got) != "Checking routing" {
 					t.Fatalf("streaming body flooded roster status: %q", ansi.Strip(got))
 				}
-				if len(view.entries) != 1 || view.entries[0].Text != full.String() {
+				if len(view.Entries) != 1 || view.Entries[0].Source.Text != full.String() {
 					t.Fatal("roster title replaced the retained reasoning")
 				}
 			}
@@ -36,14 +36,14 @@ func TestAppServerRosterReasoningTitlePreservesTranscript(t *testing.T) {
 			if got, _ := u.agents.current(agent, time.Now()); ansi.Strip(got) != "Checking routing" {
 				t.Fatalf("completion lost reasoning title: %q", ansi.Strip(got))
 			}
-			if page := view.painter.DialogPage(view.entries[0].blocks[0], 80); page.Text != full.String() {
+			if page := view.painter.DialogPage(view.blocks(0)[0], 80); page.Text != full.String() {
 				t.Fatalf("completed dialog lost full reasoning: %q", page.Text)
 			}
 			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat next.go"}})
 			if got, _ := u.agents.current(agent, time.Now()); ansi.Strip(got) != "Read next.go" {
 				t.Fatalf("reasoning title obscured newer operation: %q", ansi.Strip(got))
 			}
-			if view.entries[0].Text != full.String() {
+			if view.Entries[0].Source.Text != full.String() {
 				t.Fatal("later operation discarded reasoning")
 			}
 		})

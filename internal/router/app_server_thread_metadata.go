@@ -53,23 +53,23 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 		return
 	}
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		for i := range view.entries {
+		for i := range view.Entries {
 			view.mutateEntry(i, func(entry *liveActivityRecord) {
-				if entry.Agent == old {
-					entry.Agent = name
+				if entry.Source.Agent == old {
+					entry.Source.Agent = name
 				}
-				if entry.assignment != nil {
-					if entry.assignment.from == old {
-						entry.assignment.from = name
+				if entry.Source.assignment != nil {
+					if entry.Source.assignment.from == old {
+						entry.Source.assignment.from = name
 					}
-					if entry.assignment.to == old {
-						entry.assignment.to = name
+					if entry.Source.assignment.to == old {
+						entry.Source.assignment.to = name
 					}
 				}
 				// Preserve merged exits, filters and answer links while renaming
 				// only the display identities in already-parsed blocks.
-				for j := range entry.blocks {
-					block := &entry.blocks[j]
+				for j := range entry.Values {
+					block := &entry.Values[j]
 					if block.From == old {
 						block.From = name
 					}
@@ -89,7 +89,7 @@ func (u *appServerUI) renameThreadActivity(old, name string) {
 			view.rosterSelected = name
 		}
 		view.runs = nil
-		view.renameRetiredSkills(old, name)
+		view.RenameRetiredSkills(old, name)
 	}
 	for thread, entry := range u.session.messages {
 		if entry.Agent == old {

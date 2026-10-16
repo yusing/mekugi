@@ -133,7 +133,7 @@ exit 127
 					}
 				}
 				if len(seen) != 2 {
-					t.Fatalf("command snippets=%d: %q; records=%+v", len(seen), feed.lines, view.entries)
+					t.Fatalf("command snippets=%d: %q; records=%+v", len(seen), feed.lines, view.Entries)
 				}
 				request.reply <- shellapproval.Reply{Reason: "denied in test"}
 				if exit, ok := cmd.Wait().(*exec.ExitError); !ok || exit.ExitCode() != 1 || !strings.Contains(stderr.String(), "remote write denied") {

@@ -63,26 +63,26 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	tools := func(entry activityPaneEntry) bool {
 		return v.conversationTool(entry) && entry.Kind != "question"
 	}
-	for i := 0; i < len(v.entries); {
-		if !v.visible(v.entries[i].activityPaneEntry) {
+	for i := 0; i < len(v.Entries); {
+		if !v.visible(v.Entries[i].Source) {
 			i++
 			continue
 		}
 		last, j := i, i+1
 		// Codex can report consecutive steers as separate user items even
 		// though they form one uninterrupted input in the transcript.
-		if first := v.entries[i].activityPaneEntry; first.Agent == "You" && first.native != nil && first.native.turn != "" {
-			for ; j < len(v.entries); j++ {
-				next := v.entries[j].activityPaneEntry
+		if first := v.Entries[i].Source; first.Agent == "You" && first.native != nil && first.native.turn != "" {
+			for ; j < len(v.Entries); j++ {
+				next := v.Entries[j].Source
 				if !v.visible(next) || next.Agent != "You" || next.native == nil || next.native.thread != first.native.thread || next.native.turn != first.native.turn {
 					break
 				}
 				last = j
 			}
 		}
-		if v.entries[i].Agent == v.conversationSpeaker() && v.entries[i].Kind == "reasoning" {
-			for ; j < len(v.entries); j++ {
-				next := v.entries[j].activityPaneEntry
+		if v.Entries[i].Source.Agent == v.conversationSpeaker() && v.Entries[i].Source.Kind == "reasoning" {
+			for ; j < len(v.Entries); j++ {
+				next := v.Entries[j].Source
 				if !v.visible(next) {
 					continue
 				}
@@ -93,17 +93,17 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			}
 		}
 		for _, same := range []func(activityPaneEntry) bool{tools} {
-			if !same(v.entries[i].activityPaneEntry) {
+			if !same(v.Entries[i].Source) {
 				continue
 			}
-			for ; j < len(v.entries) && (!v.visible(v.entries[j].activityPaneEntry) || same(v.entries[j].activityPaneEntry)); j++ {
-				if v.visible(v.entries[j].activityPaneEntry) {
+			for ; j < len(v.Entries) && (!v.visible(v.Entries[j].Source) || same(v.Entries[j].Source)); j++ {
+				if v.visible(v.Entries[j].Source) {
 					last = j
 				}
 			}
 			break
 		}
-		entry := v.entries[i].activityPaneEntry
+		entry := v.Entries[i].Source
 		items = append(items, item{first: i, last: last, agent: v.threadAgent(i), aside: entry.Agent == v.conversationSpeaker() && entry.Kind == "reasoning", lead: -1})
 		i = j
 	}
@@ -149,12 +149,12 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	}
 	items = append(ordered, held...)
 	traffic := func(it item) bool {
-		entry := v.entries[it.first].activityPaneEntry
+		entry := v.Entries[it.first].Source
 		return it.agent != "" || entry.Agent != v.conversationSpeaker() && entry.Agent != "You"
 	}
 	lead, headed := -1, false // Latest lead's position, and whether tools follow it.
 	for k := 0; k < len(items); k++ {
-		switch entry := v.entries[items[k].first].activityPaneEntry; {
+		switch entry := v.Entries[items[k].first].Source; {
 		case entry.Agent == "You":
 			lead = -1
 		case v.conversationLead(items[k].first):
@@ -176,8 +176,8 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 	// Tools that continue it after agent traffic name it instead.
 	for k := 1; k < len(items); k++ {
 		previous := items[k-1]
-		items[k].attached = items[k].lead < 0 && v.conversationTool(v.entries[items[k].first].activityPaneEntry) &&
-			previous.aside && v.entries[previous.first].Agent == v.conversationSpeaker() && v.conversationLead(previous.first)
+		items[k].attached = items[k].lead < 0 && v.conversationTool(v.Entries[items[k].first].Source) &&
+			previous.aside && v.Entries[previous.first].Source.Agent == v.conversationSpeaker() && v.conversationLead(previous.first)
 	}
 	start := 0 // Thread's first item.
 	for k, it := range items {
@@ -188,12 +188,12 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			start = k
 		}
 		thread.followed = continues(k, k+1)
-		key := liveActivityRunKey{first: v.entries[it.first].Seq, last: v.entries[it.last].Seq, revision: v.runRevision(it.first, it.last+1), width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.excerpt(v.passed[v.entries[it.first].Seq]), tail: v.tailRows(), expansion: v.expansion}
-		if v.entries[it.first].Agent == "You" {
+		key := liveActivityRunKey{first: v.Entries[it.first].Source.Seq, last: v.Entries[it.last].Source.Seq, revision: v.RunRevision(it.first, it.last+1), width: width, theme: v.painter.Theme, hover: -1, main: true, thread: thread, excerpt: v.excerpt(v.passed[v.Entries[it.first].Source.Seq]), tail: v.tailRows(), expansion: v.expansion}
+		if v.Entries[it.first].Source.Agent == "You" {
 			key.expansion, key.excerpt = 0, false
 		}
 		if it.lead >= 0 {
-			key.lead = v.entries[it.lead].Seq
+			key.lead = v.Entries[it.lead].Source.Seq
 		}
 		if v.snippet.run == key.first {
 			key.hover = v.snippet.block
@@ -203,7 +203,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			ok = false
 		}
 		for k := it.first; k <= it.last; k++ {
-			if n := v.entries[k].native; n != nil && n.running {
+			if n := v.Entries[k].Source.native; n != nil && n.running {
 				ok = false
 				break
 			}
@@ -254,17 +254,17 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 		for seq, row := range run.entryRows {
 			v.questionRows[seq] = head + row
 		}
-		if entry := v.entries[it.first].activityPaneEntry; entry.Kind == "start" || entry.Kind == "assignment" {
+		if entry := v.Entries[it.first].Source; entry.Kind == "start" || entry.Kind == "assignment" {
 			v.questionRows[entry.Seq] = head
 		}
 		owner := it.first
 		for row := range run.lines {
 			start := head
-			if v.entries[it.first].Agent == "You" {
-				for owner < it.last && run.entryRows[v.entries[owner+1].Seq] <= row {
+			if v.Entries[it.first].Source.Agent == "You" {
+				for owner < it.last && run.entryRows[v.Entries[owner+1].Source.Seq] <= row {
 					owner++
 				}
-				start += run.entryRows[v.entries[owner].Seq]
+				start += run.entryRows[v.Entries[owner].Source.Seq]
 			}
 			feed.heads = append(feed.heads, start)
 		}
@@ -274,10 +274,10 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 			feed.passing = append(feed.passing, liveActivityPassing{key.first, len(feed.lines)})
 		}
 	}
-	for _, entry := range v.entries {
-		if entry.Kind == "question_reply" && entry.native != nil {
-			if row, ok := v.questionRows[entry.native.question]; ok {
-				v.questionRows[entry.Seq] = row
+	for _, entry := range v.Entries {
+		if entry.Source.Kind == "question_reply" && entry.Source.native != nil {
+			if row, ok := v.questionRows[entry.Source.native.question]; ok {
+				v.questionRows[entry.Source.Seq] = row
 			}
 		}
 	}
@@ -288,7 +288,7 @@ func (v *liveActivityView) renderConversation(width int) liveActivityFeed {
 // sentMessage reports a spawn, follow-up or Main message with an Activity
 // entry, which becomes an excerpt once it has scrolled out of view.
 func (v *liveActivityView) sentMessage(index int) bool {
-	entry, blocks := v.entries[index].activityPaneEntry, v.entries[index].blocks
+	entry, blocks := v.Entries[index].Source, v.Entries[index].Values
 	if entry.activitySeq == 0 || len(blocks) == 0 {
 		return false
 	}
@@ -298,7 +298,7 @@ func (v *liveActivityView) sentMessage(index int) bool {
 // conversationLead reports Main reasoning or commentary, which heads the
 // tools that follow it.
 func (v *liveActivityView) conversationLead(index int) bool {
-	entry, blocks := v.entries[index].activityPaneEntry, v.entries[index].blocks
+	entry, blocks := v.Entries[index].Source, v.Entries[index].Values
 	switch {
 	case entry.Agent != v.conversationSpeaker():
 		return false
@@ -311,12 +311,12 @@ func (v *liveActivityView) conversationLead(index int) bool {
 // continuation is one row naming the lead a tool group resumes after agent
 // traffic, so the tools cannot read as that traffic's.
 func (v *liveActivityView) continuation(index, width int) string {
-	entry, p := v.entries[index].activityPaneEntry, &v.painter
+	entry, p := v.Entries[index].Source, &v.painter
 	if entry.Kind == "text" {
 		return conversationHeading(p.Theme.Accent()+"●"+terminalui.Reset, "\x1b[1m"+p.Theme.Accent()+"main"+terminalui.Reset, "continued", entry, width)
 	}
 	suffix := terminalui.Dim + " · continued" + terminalui.Undim
-	row := p.Block(v.entries[index].blocks[0], width)[0]
+	row := p.Block(v.blocks(index)[0], width)[0]
 	return ansi.Truncate(row, max(0, width-ansi.StringWidth(suffix)), "…") + terminalui.Reset + suffix
 }
 
@@ -342,11 +342,11 @@ const conversationSourceRows = 5
 // threadAgent names the agent an item of agent traffic concerns, or "" when
 // the item cannot join a thread.
 func (v *liveActivityView) threadAgent(index int) string {
-	entry := v.entries[index].activityPaneEntry
-	if entry.Agent == "You" || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" || len(v.entries[index].blocks) == 0 {
+	entry := v.Entries[index].Source
+	if entry.Agent == "You" || entry.Agent == v.conversationSpeaker() && entry.Kind != "start" && entry.Kind != "assignment" || len(v.Entries[index].Values) == 0 {
 		return ""
 	}
-	return trafficAgent(entry, v.entries[index].blocks[0])
+	return trafficAgent(entry, v.blocks(index)[0])
 }
 
 // trafficAgent is the recipient of Main's assignments and messages, and
@@ -375,9 +375,9 @@ func (v *liveActivityView) threadTask(thread conversationThread, index int, seq 
 	if !thread.joined || seq == 0 {
 		return false
 	}
-	for _, entry := range slices.Backward(v.entries[thread.first:index]) {
-		if entry.Kind == "start" || entry.Kind == "assignment" {
-			return entry.Seq == seq
+	for _, entry := range slices.Backward(v.Entries[thread.first:index]) {
+		if entry.Source.Kind == "start" || entry.Source.Kind == "assignment" {
+			return entry.Source.Seq == seq
 		}
 	}
 	return false
@@ -409,9 +409,9 @@ func (c *conversationLines) hang(lead, indent string, lines []string) {
 }
 
 func (v *liveActivityView) conversationItem(first, last, width int, thread conversationThread) liveActivityRun {
-	entry := v.entries[first].activityPaneEntry
+	entry := v.Entries[first].Source
 	v.painter.CopyScope = entry.Seq
-	blocks := v.entries[first].blocks
+	blocks := v.blocks(first)
 	var out conversationLines
 	var laid []activityui.Block // Tool blocks, indexed by the snippets naming them.
 	batch := false
@@ -421,9 +421,9 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 	case entry.Agent == v.conversationSpeaker() && (entry.Kind == "reasoning" || entry.Kind == "progress"):
 		var summaries []activityui.Block
 		for k := first; k <= last; k++ {
-			if v.visible(v.entries[k].activityPaneEntry) {
-				for _, block := range v.entries[k].blocks {
-					block.Source = v.entries[k].Seq
+			if v.visible(v.Entries[k].Source) {
+				for _, block := range v.blocks(k) {
+					block.Source = v.Entries[k].Source.Seq
 					summaries = append(summaries, block)
 				}
 			}
@@ -446,7 +446,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		}
 	case entry.Agent == "You":
 		for k := first; k <= last; k++ {
-			next := v.entries[k].activityPaneEntry
+			next := v.Entries[k].Source
 			entryRows[next.Seq] = len(out.lines)
 			v.userItemContinued(&out, next, width, k != first)
 		}
@@ -455,12 +455,12 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		unconfirmed := false
 		restored := true
 		for k := first; k <= last; k++ {
-			if v.visible(v.entries[k].activityPaneEntry) {
-				n := v.entries[k].native
+			if v.visible(v.Entries[k].Source) {
+				n := v.Entries[k].Source.native
 				restored = restored && n != nil && !n.live
 				unconfirmed = unconfirmed || n.unconfirmed() && (n.output == nil || !n.output.View().Exited || n.output.View().Exit == 0)
 				for _, block := range v.shownBlocks(k) {
-					block.Source = v.entries[k].Seq
+					block.Source = v.Entries[k].Source.Seq
 					block.TailRows = v.tailRows()
 					group = append(group, block)
 				}
@@ -520,9 +520,9 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 		out.add(0, mainHeading(p, entry, width))
 		gutter := mainGutter(p)
 		if entry.native != nil && entry.native.question != 0 && v.mainReplyQuotes(first, entry.native.question) {
-			for _, question := range v.entries[:first] {
-				if question.Seq == entry.native.question {
-					v.replyContext(&out, question.activityPaneEntry, gutter, width-2)
+			for _, question := range v.Entries[:first] {
+				if question.Source.Seq == entry.native.question {
+					v.replyContext(&out, question.Source, gutter, width-2)
 					out.add(0, gutter) // End the user excerpt before Main's own Markdown.
 					break
 				}
@@ -638,8 +638,8 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 		if block.Kind == "message" {
 			glyph, name = terminalui.Dim+"✉"+terminalui.Undim, p.Route(block)
 		}
-		if i := slices.IndexFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == entry.Agent }); i >= 0 {
-			if role := liveActivityRole(v.agents[i]); role != "" {
+		if i := slices.IndexFunc(v.Agents, func(a activityPaneAgent) bool { return a.Name == entry.Agent }); i >= 0 {
+			if role := liveActivityRole(v.Agents[i]); role != "" {
 				detail += " · " + role
 			}
 		}
@@ -650,7 +650,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 		color = activityui.Gutter(block.From, p.Theme)
 	}
 	if thread.joined {
-		out.add(0, threadHeading(color+"├─"+terminalui.Reset+glyph, detail, entry, v.entries[thread.previous].activityPaneEntry, reply, width))
+		out.add(0, threadHeading(color+"├─"+terminalui.Reset+glyph, detail, entry, v.Entries[thread.previous].Source, reply, width))
 	} else {
 		out.add(0, conversationHeading(glyph, name, detail, entry, width))
 	}
@@ -683,10 +683,10 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 			}
 			if block.Kind == "final" {
 				// A plain answer links to the latest task it could answer.
-				for _, question := range slices.Backward(v.entries[:index]) {
-					if (question.Kind == "start" || question.Kind == "assignment") && question.assignment != nil && question.assignment.to == agent {
-						if !v.threadTask(thread, index, question.Seq) {
-							v.replyContext(out, question.activityPaneEntry, gutter, body)
+				for _, question := range slices.Backward(v.Entries[:index]) {
+					if (question.Source.Kind == "start" || question.Source.Kind == "assignment") && question.Source.assignment != nil && question.Source.assignment.to == agent {
+						if !v.threadTask(thread, index, question.Source.Seq) {
+							v.replyContext(out, question.Source, gutter, body)
 						}
 						break
 					}
@@ -727,14 +727,14 @@ func threadHeading(lead, detail string, entry, previous activityPaneEntry, reply
 // the first reply to it does, and a later one only when another message sits
 // between them. Main's own tools, reasoning and progress are not messages.
 func (v *liveActivityView) mainReplyQuotes(index int, question uint64) bool {
-	for _, previous := range slices.Backward(v.entries[:index]) {
-		if previous.Seq == question {
+	for _, previous := range slices.Backward(v.Entries[:index]) {
+		if previous.Source.Seq == question {
 			return true
 		}
-		if !v.visible(previous.activityPaneEntry) || previous.Agent == v.conversationSpeaker() && previous.Kind != "text" && previous.Kind != "final" {
+		if !v.visible(previous.Source) || previous.Source.Agent == v.conversationSpeaker() && previous.Source.Kind != "text" && previous.Source.Kind != "final" {
 			continue
 		}
-		return previous.Agent != v.conversationSpeaker() || previous.Kind != "text" || previous.native == nil || previous.native.question != question
+		return previous.Source.Agent != v.conversationSpeaker() || previous.Source.Kind != "text" || previous.Source.native == nil || previous.Source.native.question != question
 	}
 	return true
 }

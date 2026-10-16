@@ -4,6 +4,8 @@ import (
 	"slices"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
@@ -258,4 +260,15 @@ func (a *subagentActivity) takeNativeActivity(root string) []activityPaneEntry {
 	clear(a.events[len(kept):])
 	a.events = kept
 	return entries
+}
+
+func (entry activityPaneEntry) ActivityFacts() activitypresentation.Facts {
+	facts := activitypresentation.Facts{Seq: entry.Seq, Agent: entry.Agent, Kind: entry.Kind, ContextBoundary: contextBoundary(entry)}
+	if n := entry.native; n != nil {
+		facts.Running, facts.Live, facts.Restored, facts.Unconfirmed = n.running, n.live, !n.live, n.unconfirmed()
+	}
+	return facts
+}
+func (agent activityPaneAgent) ActivityAgent() activitypresentation.AgentFacts {
+	return activitypresentation.AgentFacts{Name: agent.Name, Responding: agent.Responding, Final: agent.Final}
 }

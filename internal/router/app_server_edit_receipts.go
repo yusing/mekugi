@@ -48,8 +48,8 @@ func (u *appServerUI) applyCapturedEdits() {
 		u.view.applyCapturedEdits(data)
 		u.agents.applyCapturedEdits(data)
 		return !slices.ContainsFunc(receipt.calls, func(call string) bool {
-			return !slices.ContainsFunc(u.agents.entries, func(entry liveActivityRecord) bool {
-				return entry.native != nil && entry.native.thread == receipt.thread && entry.native.item == call
+			return !slices.ContainsFunc(u.agents.Entries, func(entry liveActivityRecord) bool {
+				return entry.Source.native != nil && entry.Source.native.thread == receipt.thread && entry.Source.native.item == call
 			})
 		})
 	})
@@ -68,9 +68,9 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 		return
 	}
 	entries := make(map[[2]string]int)
-	for i, entry := range v.entries {
-		if entry.Kind == "tool" && entry.native != nil {
-			entries[[2]string{entry.native.thread, entry.native.item}] = i
+	for i, entry := range v.Entries {
+		if entry.Source.Kind == "tool" && entry.Source.native != nil {
+			entries[[2]string{entry.Source.native.thread, entry.Source.native.item}] = i
 		}
 	}
 	for _, key := range data.order {
@@ -86,7 +86,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			if !found {
 				continue
 			}
-			entry := v.entries[i].activityPaneEntry
+			entry := v.Entries[i].Source
 			// Host refreshes replace the native item; unchanged projections already
 			// carry this immutable receipt and need no shell classification.
 			if entry.native.capturedEdit == receipt {
@@ -104,7 +104,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			}
 			exit := 0
 			var batch *activityui.Block
-			for _, block := range v.entries[i].blocks {
+			for _, block := range v.blocks(i) {
 				if block.BatchExit {
 					batch = new(block)
 					continue
@@ -161,7 +161,7 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				blocks := parseLiveActivity(entry)
 				// Reparsed tracked blocks already carry each segment's own exit.
 				// A receipt must not spread one failure to successful siblings.
-				if len(v.entries[i].blocks) > 0 && len(entry.native.segments) == 0 {
+				if len(v.Entries[i].Values) > 0 && len(entry.native.segments) == 0 {
 					for j := range blocks {
 						blocks[j].ExitCode = exit
 					}

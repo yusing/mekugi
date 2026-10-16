@@ -234,7 +234,7 @@ func TestTerminalSourceRenderedTables(t *testing.T) {
 				view := u.view
 				if activity {
 					view = u.agents
-					u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+					u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 					u.shell.diffOpen = false
 				}
 				view.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: source})
@@ -278,7 +278,7 @@ func TestTerminalSourceActivityCodeTabs(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	t.Cleanup(func() { u.shell.diff.close(); u.shell.diffScreen.Close() })
-	u.agents.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+	u.agents.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 	u.shell.diffOpen = false
 	u.agents.applyAppServerItem(true, "", "main", "main", "turn", "answer", "item/completed", "", appServerItem{Type: "agentMessage", Text: "```\n\tx := 1  \n```"})
 	var wire bytes.Buffer

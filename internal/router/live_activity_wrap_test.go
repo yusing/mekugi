@@ -12,7 +12,8 @@ import (
 
 func TestLiveActivityWrappedUserBand(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.LightTheme, diffrender.DarkTheme} {
-		v := liveActivityView{painter: activityui.Painter{Theme: theme}}
+		v := newLiveActivityView()
+		v.painter = activityui.Painter{Theme: theme}
 		var out conversationLines
 		v.userItemContinued(&out, activityPaneEntry{Text: "one two three four five six seven eight"}, 12, false)
 		if len(out.lines) < 2 {

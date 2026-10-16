@@ -189,16 +189,16 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 		appServerTestNotify(t, u, method, params)
 	}
 	notify("item/started", map[string]any{"item": item})
-	if len(u.view.entries) != 1 || len(u.view.entries[0].blocks) == 0 {
+	if len(u.view.Entries) != 1 || len(u.view.blocks(0)) == 0 {
 		t.Fatal("start did not create command block")
 	}
-	retained := u.view.retainedOutput(u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1])
+	retained := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1])
 	if retained == nil {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
 	u.flushStreamOutput()
-	if got := u.view.retainedOutput(u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1]); got != retained {
+	if got := u.view.retainedOutput(u.view.blocks(0)[len(u.view.blocks(0))-1]); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "aggregate\nfinal\n"
@@ -461,7 +461,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 	third := retention.New()
 	third.Write("third only\n")
 	third.Finish(nil, new(0))
-	view.entries[0].native.segments = append(view.entries[0].native.segments, commandSegment{text: "Run `echo third`", output: third})
+	view.Entries[0].Source.native.segments = append(view.Entries[0].Source.native.segments, commandSegment{text: "Run `echo third`", output: third})
 	drawOutputDialog(u)
 	u.outputKey("\x1b[C")
 	drawOutputDialog(u)
@@ -472,8 +472,8 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 	combined := retention.New()
 	combined.Write("first\nsecond\nthird\n")
 	combined.Finish(nil, new(1))
-	view.entries[0].native.output = combined
-	view.entries[0].outputTail = []string{"first", "second", "third"}
+	view.Entries[0].Source.native.output = combined
+	view.Entries[0].Source.outputTail = []string{"first", "second", "third"}
 	frame = drawOutputDialog(u)
 	if len(u.output.pages) != 1 || !strings.Contains(frame, "combined output") || u.output.laid.Text != "first\nsecond\nthird" || !strings.Contains(frame, "exit 1") {
 		t.Fatalf("lossy report falsely attributed combined output: %s", frame)
@@ -584,7 +584,7 @@ func TestCommandDurationRestoresAndStopsInDialog(t *testing.T) {
 	duration := int64(70000)
 	item := appServerItem{ID: "cmd", Type: "commandExecution", Command: "echo ok", DurationMS: &duration, Status: "completed"}
 	v.applyAppServerItem(true, "/w", "main", "main", "turn", "cmd", "item/completed", "", item)
-	b := v.entries[0].blocks[0]
+	b := v.blocks(0)[0]
 	if b.Duration != 70*time.Second || b.Running {
 		t.Fatalf("restored timing %+v", b)
 	}
@@ -598,8 +598,8 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": map[string]any{"id": "timed", "type": "commandExecution", "command": "sleep 2", "status": "inProgress"}})
 	index := -1
-	for i, entry := range u.view.entries {
-		if entry.native != nil && entry.native.item == "timed" {
+	for i, entry := range u.view.Entries {
+		if entry.Source.native != nil && entry.Source.native.item == "timed" {
 			index = i
 			break
 		}
@@ -607,8 +607,8 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 	if index < 0 {
 		t.Fatal("missing running command")
 	}
-	u.view.entries[index].native.commandStarted = time.Now().Add(-2 * time.Second)
-	u.view.entries[index].blocks = parseLiveActivity(u.view.entries[index].activityPaneEntry)
+	u.view.Entries[index].Source.native.commandStarted = time.Now().Add(-2 * time.Second)
+	u.view.replaceEntry(index, u.view.Entries[index].Source, parseLiveActivity(u.view.Entries[index].Source))
 	u.view.runs = nil
 	feed := u.view.renderFeed(100, 30)
 	if !strings.Contains(ansi.Strip(strings.Join(feed.lines, "\n")), "2s") {
@@ -664,9 +664,9 @@ func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 					t.Fatalf("live batch title %q, want %q", title, want)
 				}
 			}
-			view.entries[0].native.running, view.entries[0].native.duration = false, 7*time.Second
+			view.Entries[0].Source.native.running, view.Entries[0].Source.native.duration = false, 7*time.Second
 			if segmented {
-				view.entries[0].native.segments[1].running = false
+				view.Entries[0].Source.native.segments[1].running = false
 			}
 			second.Finish(nil, new(0))
 			want = " · 7s"
@@ -729,7 +729,7 @@ func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 		t.Fatal("completion failed to refresh narrative without moving reader")
 	}
 	// The retained page remains readable after its source ages out of the feed.
-	u.agents.entries = nil
+	u.agents.Entries = nil
 	drawOutputDialog(u.shell)
 	if !strings.Contains(d.laid.Text, "Final paragraph.") {
 		t.Fatal("eviction lost the last available narrative")
@@ -738,7 +738,7 @@ func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 
 // testOutputBlock binds fixture output through the same source owner as live observations.
 func testOutputBlock(view *liveActivityView, block activityui.Block, output *activitymodel.Output) activityui.Block {
-	block.Source, block.Output = uint64(len(view.entries)+1), 1
+	block.Source, block.Output = uint64(len(view.Entries)+1), 1
 	view.appendEntry(activityPaneEntry{Seq: block.Source, native: &liveActivityNativeItem{output: output}}, []activityui.Block{block})
 	return block
 }
@@ -750,8 +750,8 @@ func TestOutputDialogFlatOriginsSurviveFeedAgingAndRelease(t *testing.T) {
 	entry := activityPaneEntry{Seq: 41, Kind: "tool", Text: "Run `echo last`", outputTail: []string{"last"}, outputOmit: 1, native: &liveActivityNativeItem{output: output}}
 	view.appendEntry(entry, parseLiveActivity(entry))
 	ui := &terminalUI{}
-	ui.openBlocks(view, view.entries[0].blocks)
-	view.removeEntries(0, len(view.entries))
+	ui.openBlocks(view, view.blocks(0))
+	view.removeEntries(0, len(view.Entries))
 	ui.output.layout(60)
 	if ui.output.laid.Text != "first\nlast" || strings.Contains(ansi.Strip(ui.output.laid.Detail), "exit") {
 		t.Fatalf("aged output = %+v", ui.output.laid)
@@ -781,7 +781,7 @@ func TestOutputDialogFoldedStageKeepsSegmentPages(t *testing.T) {
 		{text: "Stage `a.go` · git", output: stage}, {text: "Commit `update` · git", output: commit},
 	}}}
 	view.appendEntry(entry, parseLiveActivity(entry))
-	if len(view.entries[0].blocks) != 1 || len(view.entries[0].blocks[0].Members) != 2 {
+	if len(view.blocks(0)) != 1 || len(view.blocks(0)[0].Members) != 2 {
 		t.Fatal("feed lost folded stage membership")
 	}
 	pages := view.commandOutputPages(entry.Seq)

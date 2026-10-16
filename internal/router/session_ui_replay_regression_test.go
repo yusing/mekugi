@@ -129,9 +129,9 @@ func TestSessionUIReplayRustAgentStatusShapesReachFinalWaitDisplay(t *testing.T)
 	}
 	replayPlaybackTestPaint(t, p, 120, 28)
 	var finalWait string
-	for _, entry := range p.ui.view.entries {
-		if entry.native != nil && entry.native.item == "wait" && entry.native.wait != nil {
-			finalWait = entry.native.wait.ProgressText()
+	for _, entry := range p.ui.view.Entries {
+		if entry.Source.native != nil && entry.Source.native.item == "wait" && entry.Source.native.wait != nil {
+			finalWait = entry.Source.native.wait.ProgressText()
 		}
 	}
 	if !strings.Contains(finalWait, "Finished waiting") {
@@ -257,11 +257,11 @@ func TestSessionUIReplayEndPaintSettlesQueuedCommandOutput(t *testing.T) {
 		t.Fatal("session-end frame leaves recorded completed command running")
 	}
 	var tail []string
-	for _, entry := range p.ui.view.entries {
-		if entry.native != nil && entry.native.item == command.ID {
-			tail = entry.outputTail
-			if entry.native.phase != "item/completed" || !entry.native.commandEnded.Equal(end) {
-				t.Fatalf("final command evidence unsettled: %+v", entry.native)
+	for _, entry := range p.ui.view.Entries {
+		if entry.Source.native != nil && entry.Source.native.item == command.ID {
+			tail = entry.Source.outputTail
+			if entry.Source.native.phase != "item/completed" || !entry.Source.native.commandEnded.Equal(end) {
+				t.Fatalf("final command evidence unsettled: %+v", entry.Source.native)
 			}
 		}
 	}

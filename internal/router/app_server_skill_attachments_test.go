@@ -129,14 +129,14 @@ func TestSkillAttachmentTranscriptAndHistoryMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			u.restoreHistory(turns)
-			if len(u.view.entries) == 0 || u.view.entries[0].native == nil || len(u.view.entries[0].native.spans) != 1 || u.view.entries[0].native.spans[0].Start != tc.wantStart {
-				t.Fatalf("restored transcript did not preserve selected skill: %+v", u.view.entries)
+			if len(u.view.Entries) == 0 || u.view.Entries[0].Source.native == nil || len(u.view.Entries[0].Source.native.spans) != 1 || u.view.Entries[0].Source.native.spans[0].Start != tc.wantStart {
+				t.Fatalf("restored transcript did not preserve selected skill: %+v", u.view.Entries)
 			}
 			if len(u.inputHistory) != 1 || len(u.inputHistory[0].skills) != 1 || u.inputHistory[0].skills[0].start != tc.wantStart {
 				t.Fatalf("history binding disagrees with transcript: %+v", u.inputHistory)
 			}
-			if !strings.Contains(u.view.entries[0].Text, "$review") {
-				t.Fatalf("restored transcript lost skill text: %+v", u.view.entries[0])
+			if !strings.Contains(u.view.Entries[0].Source.Text, "$review") {
+				t.Fatalf("restored transcript lost skill text: %+v", u.view.Entries[0])
 			}
 		})
 	}

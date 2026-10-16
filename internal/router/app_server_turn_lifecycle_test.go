@@ -22,13 +22,13 @@ func TestAppServerInterruptedWaitEndsBeforeContinue(t *testing.T) {
 			if thread != "main" {
 				view = u.agents
 			}
-			if len(view.entries) != 1 || view.entries[0].Text != "Wait ended · target" || view.entries[0].native.phase != "turn/completed" {
-				t.Fatalf("interrupted wait survived continue: %+v", view.entries)
+			if len(view.Entries) != 1 || view.Entries[0].Source.Text != "Wait ended · target" || view.Entries[0].Source.native.phase != "turn/completed" {
+				t.Fatalf("interrupted wait survived continue: %+v", view.Entries)
 			}
 			// A late real item result replaces the display-only turn closure.
 			wait.Status = "completed"
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "turn", "item": wait})
-			if !strings.HasPrefix(view.entries[0].Text, "Finished waiting") {
+			if !strings.HasPrefix(view.Entries[0].Source.Text, "Finished waiting") {
 				t.Fatal("late host result was lost")
 			}
 		})
@@ -44,8 +44,8 @@ func TestAppServerRestoredStoppedWait(t *testing.T) {
 			u.session.registerThread(appServerThreadInfo{ID: "child"})
 			u.restoreActivityThread(appServerThreadInfo{ID: "child", Turns: history})
 			for _, view := range []*liveActivityView{u.view, u.agents} {
-				if view.entries[0].Text != "Wait ended" || view.entries[0].native.phase != "turn/completed" {
-					t.Fatalf("stopped history revived waiting: %+v", view.entries[0])
+				if view.Entries[0].Source.Text != "Wait ended" || view.Entries[0].Source.native.phase != "turn/completed" {
+					t.Fatalf("stopped history revived waiting: %+v", view.Entries[0])
 				}
 			}
 		})

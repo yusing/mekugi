@@ -60,7 +60,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				}
 			}
 			if x < 0 {
-				t.Fatalf("confirmed skill count missing after restore and trim: %v", view.activeSkills()[owner])
+				t.Fatalf("confirmed skill count missing after restore and trim: %v", view.ActiveSkills()[owner])
 			}
 			if thread == "child" {
 				assertNativeUISnapshot(t, "native-roster-loaded-skill", []string{strings.Split(screen.String(), "\n")[y]})
@@ -101,8 +101,8 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 				t.Fatal("rendered count did not open the unique skill names")
 			}
 			appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": thread, "turnId": "live", "item": map[string]any{"id": "reset", "type": "contextCompaction"}})
-			if len(view.activeSkills()[owner]) != 0 {
-				t.Fatalf("skills survived a live context reset: %+v", view.entries[len(view.entries)-1].activityPaneEntry)
+			if len(view.ActiveSkills()[owner]) != 0 {
+				t.Fatalf("skills survived a live context reset: %+v", view.Entries[len(view.Entries)-1].Source)
 			}
 		})
 	}

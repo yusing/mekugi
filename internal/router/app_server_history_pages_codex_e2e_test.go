@@ -156,10 +156,10 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	}
 	pageBytes := drainHistoryLoader(t, u)
 	pageDuration := time.Since(started)
-	if u.restoring != nil || len(u.agents.entries) != 100 || pageBytes*10 >= len(full.Result) {
-		t.Fatalf("unbounded consumer hydration: entries=%d page=%d full=%d", len(u.agents.entries), pageBytes, len(full.Result))
+	if u.restoring != nil || len(u.agents.Entries) != 100 || pageBytes*10 >= len(full.Result) {
+		t.Fatalf("unbounded consumer hydration: entries=%d page=%d full=%d", len(u.agents.Entries), pageBytes, len(full.Result))
 	}
-	if !strings.HasPrefix(u.agents.entries[0].Text, "item 1900 ") || !strings.HasPrefix(u.agents.entries[99].Text, "item 1999 ") {
+	if !strings.HasPrefix(u.agents.Entries[0].Source.Text, "item 1900 ") || !strings.HasPrefix(u.agents.Entries[99].Source.Text, "item 1999 ") {
 		t.Fatal("host descending pages not rendered chronologically")
 	}
 	if u.session.agent("/root/worker").Started.Unix() != 100 || u.session.agent("/root/worker").LastResponse.Unix() != 110 {
@@ -169,7 +169,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	drainHistoryLoader(t, u)
-	if len(u.agents.entries) != 200 || !strings.HasPrefix(u.agents.entries[0].Text, "item 1800 ") {
+	if len(u.agents.Entries) != 200 || !strings.HasPrefix(u.agents.Entries[0].Source.Text, "item 1800 ") {
 		t.Fatal("installed anchor page boundary lost or duplicated")
 	}
 	// Fork history is host-visible lineage, never an unscoped parent read.
@@ -222,8 +222,8 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if set := fresh.agents.activeSkills()["/root/worker"]; len(set) != 1 || set[0] != "commit" || len(fresh.agents.entries) != 100 {
-		t.Fatalf("fresh inherited skills = %v; Activity entries=%d", set, len(fresh.agents.entries))
+	if set := fresh.agents.ActiveSkills()["/root/worker"]; len(set) != 1 || set[0] != "commit" || len(fresh.agents.Entries) != 100 {
+		t.Fatalf("fresh inherited skills = %v; Activity entries=%d", set, len(fresh.agents.Entries))
 	}
 	t.Logf("synthetic 2000-message restoration: full result + projection %d bytes / %s; metadata + recent100 %d bytes / %s (latency diagnostic, no timing threshold)", len(full.Result), fullDuration, pageBytes, pageDuration)
 }

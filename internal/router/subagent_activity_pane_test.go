@@ -33,12 +33,12 @@ func plainLines(lines []string) []string {
 
 func TestLiveActivityViewRosterTreeOverflowAndSelection(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b", "/root/a/x", "/root/c", "/root/a/y", "/root/d", "/root/e")
-	view.agents[0].Responding = true
-	view.agents[1].Final = true
+	view.Agents[0].Responding = true
+	view.Agents[1].Final = true
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 8, Agent: "/root/c", Kind: "error", Text: "failed", Observed: time.Now()}}})
 	var order []string
-	for _, row := range view.roster() {
-		order = append(order, strings.Repeat(">", row.depth)+row.agent.Name)
+	for _, row := range view.Roster() {
+		order = append(order, strings.Repeat(">", row.Depth)+row.Agent.Name)
 	}
 	if got := strings.Join(order, " "); got != "/root/a >/root/a/x >/root/a/y /root/b /root/c /root/d /root/e" {
 		t.Fatalf("roster order = %s", got)
@@ -163,7 +163,7 @@ func TestLiveActivityViewTinyAndNarrowPanes(t *testing.T) {
 
 func TestLiveActivityRosterShowsUsageByLayout(t *testing.T) {
 	view := liveActivityTestView("/root/a", "/root/b")
-	view.agents[0].InputTokens, view.agents[0].OutputTokens = 146_800, 3_200
+	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 146_800, 3_200
 	for _, width := range []int{140} {
 		lines := plainLines(view.render(width, 20, time.Now()))
 		row := slices.IndexFunc(lines, func(line string) bool { return strings.Contains(line, "↑") })
@@ -185,16 +185,16 @@ func TestLiveActivityRosterShowsUsageByLayout(t *testing.T) {
 func TestLiveActivityCombinedRosterShowsTimerCostAndUsage(t *testing.T) {
 	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	view := liveActivityTestView("/root/a", "/root/b")
-	view.agents[0].Started = now.Add(-8 * time.Minute)
-	view.agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(7*time.Minute + 57*time.Second)}
-	view.agents[0].LastResponse = now.Add(-3 * time.Second)
-	view.agents[0].InputTokens, view.agents[0].OutputTokens = 1_000, 0
-	view.agents[0].Turns, view.agents[0].Roundtrips, view.agents[0].Cost, view.agents[0].CostKnown = 2, 2, 1.2, true
-	view.agents[1].Started = now.Add(-7 * time.Minute)
-	view.agents[1].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(5 * time.Minute)}
-	view.agents[1].LastResponse = now.Add(-2 * time.Minute)
-	view.agents[1].InputTokens, view.agents[1].OutputTokens = 500, 0
-	view.agents[1].Turns, view.agents[1].Roundtrips, view.agents[1].Cost, view.agents[1].CostKnown = 1, 1, 0, false
+	view.Agents[0].Started = now.Add(-8 * time.Minute)
+	view.Agents[0].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(7*time.Minute + 57*time.Second)}
+	view.Agents[0].LastResponse = now.Add(-3 * time.Second)
+	view.Agents[0].InputTokens, view.Agents[0].OutputTokens = 1_000, 0
+	view.Agents[0].Turns, view.Agents[0].Roundtrips, view.Agents[0].Cost, view.Agents[0].CostKnown = 2, 2, 1.2, true
+	view.Agents[1].Started = now.Add(-7 * time.Minute)
+	view.Agents[1].WorkTimer = activeWorkTimer{Known: true, ElapsedNS: int64(5 * time.Minute)}
+	view.Agents[1].LastResponse = now.Add(-2 * time.Minute)
+	view.Agents[1].InputTokens, view.Agents[1].OutputTokens = 500, 0
+	view.Agents[1].Turns, view.Agents[1].Roundtrips, view.Agents[1].Cost, view.Agents[1].CostKnown = 1, 1, 0, false
 	lines := plainLines(view.render(90, 20, now))
 	for i := range lines {
 		lines[i] = strings.Join(strings.Fields(lines[i]), " ")

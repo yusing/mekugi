@@ -234,7 +234,7 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 			params["serviceTier"] = tier
 		}
 		if len(questionReplies(s.text)) == 0 {
-			s.seq = u.view.lastSeq + 1
+			s.seq = u.view.LastSeq + 1
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: u.now(),
 				native: &liveActivityNativeItem{thread: u.thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", spans: s.composerDraft.displaySpans()}}}})
 		}
@@ -280,7 +280,7 @@ func (u *appServerUI) withdraw(s composerSubmission) {
 	u.appServerInputOperation.withdrawStart()
 	u.interruption.cancelDeferred()
 	u.view.removePendingInput(s.seq)
-	if s.interrupted && len(u.view.entries) == 0 {
+	if s.interrupted && len(u.view.Entries) == 0 {
 		u.status, u.turnStarted = "Ready", time.Time{}
 	}
 	if s.interrupted && u.compaction.interrupting {

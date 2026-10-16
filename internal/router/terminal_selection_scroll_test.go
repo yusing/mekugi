@@ -26,7 +26,7 @@ func TestTerminalSelectionScrollBeyondViewport(t *testing.T) {
 			view := u.view
 			if surface == "Activity" {
 				view = u.agents
-				view.agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
+				view.Agents = []activityPaneAgent{{Name: "/root/worker", Final: true}}
 			}
 			if surface == "btw" {
 				u.btw = &appServerBTW{question: "side question", status: "completed", answer: []btwAnswer{{text: text}}}

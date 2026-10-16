@@ -85,10 +85,10 @@ func TestRunningProcessesLifecycle(t *testing.T) {
 	}
 	entries := make([]activityPaneEntry, liveActivityFeedLimit)
 	for i := range entries {
-		entries[i] = activityPaneEntry{Seq: u.view.lastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
+		entries[i] = activityPaneEntry{Seq: u.view.LastSeq + uint64(i) + 1, Agent: "Main", Kind: "text", Text: "Later event"}
 	}
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: entries})
-	u.session.seq = u.view.lastSeq
+	u.session.seq = u.view.LastSeq
 	reopen := func() {
 		if err := u.shell.send("\x1b"); err != nil {
 			t.Fatal(err)

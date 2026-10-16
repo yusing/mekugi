@@ -10,9 +10,9 @@ func (u *appServerUI) refreshRosterRoles() {
 		return
 	}
 	// History restoration can share this slice with the host session.
-	u.agents.agents = slices.Clone(u.agents.agents)
-	for i := range u.agents.agents {
-		agent := &u.agents.agents[i]
+	u.agents.Agents = slices.Clone(u.agents.Agents)
+	for i := range u.agents.Agents {
+		agent := &u.agents.Agents[i]
 		host := u.session.agent(agent.Name)
 		if host == nil {
 			continue

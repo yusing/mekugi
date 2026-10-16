@@ -16,13 +16,13 @@ import (
 func (u *appServerUI) showCopyPicker() {
 	u.deleteDraftRange(0, len(u.draft))
 	var response string
-	for _, entry := range slices.Backward(u.view.entries) {
-		n := entry.native
-		if n == nil || n.thread != u.thread || entry.Agent != "Main" {
+	for _, entry := range slices.Backward(u.view.Entries) {
+		n := entry.Source.native
+		if n == nil || n.thread != u.thread || entry.Source.Agent != "Main" {
 			continue
 		}
-		if entry.Kind == "text" && n.phase == "item/completed" {
-			response = entry.Text
+		if entry.Source.Kind == "text" && n.phase == "item/completed" {
+			response = entry.Source.Text
 		}
 		if strings.TrimSpace(response) != "" {
 			break

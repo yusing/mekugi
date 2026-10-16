@@ -155,9 +155,9 @@ func TestLiveActivityRequestedEditReplacedByReceipt(t *testing.T) {
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 3, Agent: "/root/worker", Kind: "tool", CallID: "edit-call", Text: "Edit `a.go` +1 -1 · cat",
 	}}})
-	if len(view.entries) != 1 || view.entries[0].Seq != 1 || view.entries[0].Text != "Edit `a.go` +1 -1 · cat" ||
-		len(view.entries[0].blocks) != 1 || view.entries[0].blocks[0].Verb != "Edit" || view.entries[0].blocks[0].ExitCode != 2 {
-		t.Fatalf("confirmed receipt did not replace requested edit and retain exit: records %+v", view.entries)
+	if len(view.Entries) != 1 || view.Entries[0].Source.Seq != 1 || view.Entries[0].Source.Text != "Edit `a.go` +1 -1 · cat" ||
+		len(view.blocks(0)) != 1 || view.blocks(0)[0].Verb != "Edit" || view.blocks(0)[0].ExitCode != 2 {
+		t.Fatalf("confirmed receipt did not replace requested edit and retain exit: records %+v", view.Entries)
 	}
 }
 
@@ -209,8 +209,8 @@ func TestAppServerSedStartsAsEditBeforeReceipt(t *testing.T) {
 			}}
 			view.applyCapturedEdits(data)
 			assertCapturedCommand(t, view, thread, "sed-call", "Edit", 0)
-			if len(view.entries) != 1 || !strings.Contains(view.entries[0].Text, "+1 -1") || strings.Contains(view.entries[0].Text, "requested") {
-				t.Fatalf("receipt failed to replace requested edit in place: %+v", view.entries)
+			if len(view.Entries) != 1 || !strings.Contains(view.Entries[0].Source.Text, "+1 -1") || strings.Contains(view.Entries[0].Source.Text, "requested") {
+				t.Fatalf("receipt failed to replace requested edit in place: %+v", view.Entries)
 			}
 		})
 	}
@@ -248,12 +248,12 @@ func TestAppServerEditIntentLiveAndRestored(t *testing.T) {
 			if item.ExitCode != nil || item.Command != command {
 				t.Fatal("classification modified the native command item")
 			}
-			for _, entry := range view.entries {
-				if entry.native == nil || entry.native.item != "cmd" {
+			for _, entry := range view.Entries {
+				if entry.Source.native == nil || entry.Source.native.item != "cmd" {
 					continue
 				}
-				if !strings.Contains(entry.Text, "Edit `a.go` · cat (requested)") || strings.Contains(entry.Text, "PRIVATE_NATIVE_SOURCE") || !strings.Contains(entry.Text, "Run `go test ./internal/router`") {
-					t.Fatalf("native edit intent display = %q", entry.Text)
+				if !strings.Contains(entry.Source.Text, "Edit `a.go` · cat (requested)") || strings.Contains(entry.Source.Text, "PRIVATE_NATIVE_SOURCE") || !strings.Contains(entry.Source.Text, "Run `go test ./internal/router`") {
+					t.Fatalf("native edit intent display = %q", entry.Source.Text)
 				}
 			}
 			if thread == "main" {

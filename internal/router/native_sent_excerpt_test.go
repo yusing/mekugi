@@ -49,9 +49,9 @@ func TestNativeSentMessagesBecomeExcerptsOutOfView(t *testing.T) {
 		t.Fatal(err)
 	}
 	var seq, activity uint64
-	for _, entry := range u.view.entries {
-		if entry.Kind == "assignment" {
-			seq, activity = entry.Seq, entry.activitySeq
+	for _, entry := range u.view.Entries {
+		if entry.Source.Kind == "assignment" {
+			seq, activity = entry.Source.Seq, entry.Source.activitySeq
 		}
 	}
 	if seq == 0 || activity == 0 || !u.shell.openActivityReply(seq) {
@@ -77,8 +77,8 @@ func TestSentExcerptKeepsScrolledViewportStill(t *testing.T) {
 	v.conversation, v.feedOnly = true, true
 	start := time.Date(2026, 9, 28, 8, 44, 12, 0, time.Local)
 	task := strings.Repeat("Remove only the fixtures you created. ", 20)
-	v.entries = []liveActivityRecord{
-		{Seq: 1, Agent: "Main", Kind: "assignment", Observed: start, activitySeq: 5, assignment: &activityAssignment{to: "/root/fixtures", text: task}, blocks: []activityui.Block{{Kind: "message", From: "/root", To: "/root/fixtures", Body: task}}},
+	v.Entries = []liveActivityRecord{
+		{Source: activityPaneEntry{Seq: 1, Agent: "Main", Kind: "assignment", Observed: start, activitySeq: 5, assignment: &activityAssignment{to: "/root/fixtures", text: task}}, Values: activityui.Values([]activityui.Block{{Kind: "message", From: "/root", To: "/root/fixtures", Body: task}})},
 	}
 	for i := range 20 {
 		entry := activityPaneEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "text", Text: fmt.Sprint("Note ", i, "."), Observed: start}

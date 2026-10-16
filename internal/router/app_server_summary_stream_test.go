@@ -37,12 +37,12 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			body := "Inspecting layout\n\nFirst checkpoint.\nSecond checkpoint.\n\n**Checking completion.**\n\nThird checkpoint.\nFourth checkpoint.\n"
 			notify("item/started", map[string]any{"item": map[string]any{"id": "r", "type": "reasoning"}})
 			notify("item/reasoning/summaryTextDelta", map[string]any{"itemId": "r", "delta": body})
-			if len(view.entries) != 1 || len(view.renderFeed(80, 40).lines) != 0 {
+			if len(view.Entries) != 1 || len(view.renderFeed(80, 40).lines) != 0 {
 				t.Fatal("summary position was not reserved invisibly before its first frame")
 			}
 			u.flushStreamOutput()
 			snapshot("first-frame")
-			if len(view.entries) != 1 || len(view.entries[0].blocks) != 1 || view.entries[0].blocks[0].Body == strings.TrimSpace(body) {
+			if len(view.Entries) != 1 || len(view.blocks(0)) != 1 || view.blocks(0)[0].Body == strings.TrimSpace(body) {
 				t.Fatal("burst jumped directly to its full body")
 			}
 			at = at.Add(2 * time.Second)
@@ -54,11 +54,11 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			snapshot("rolling")
 			rollCommandOutput(u)
 			snapshot("done")
-			if view.entries[0].blocks[0].Collapsed || view.entries[0].blocks[1].Collapsed || settleActivity(at.Add(time.Minute), view) {
+			if view.blocks(0)[0].Collapsed || view.blocks(0)[1].Collapsed || settleActivity(at.Add(time.Minute), view) {
 				t.Fatal("latest completed reasoning did not stay open")
 			}
-			if len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 || view.entries[0].blocks[0].Live || view.entries[0].blocks[1].Live || view.entries[0].blocks[0].Thought != 0 || view.entries[0].blocks[1].Thought != 2*time.Second {
-				t.Fatalf("section completion or item duration lost: %+v", view.entries)
+			if len(u.session.summaries) != 0 || len(view.blocks(0)) != 2 || view.blocks(0)[0].Live || view.blocks(0)[1].Live || view.blocks(0)[0].Thought != 0 || view.blocks(0)[1].Thought != 2*time.Second {
+				t.Fatalf("section completion or item duration lost: %+v", view.Entries)
 			}
 			// The compact row retains one dialog page per original section.
 			nextEvent(t, u, thread)
@@ -69,7 +69,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 				opened := false
 				for _, snippet := range feed.snippets {
 					block, ok := view.snippetBlock(snippet)
-					if !ok || block.Source != view.entries[0].Seq || len(block.Members) != 2 {
+					if !ok || block.Source != view.Entries[0].Source.Seq || len(block.Members) != 2 {
 						continue
 					}
 					if !u.shell.openOutput(view, snippet) {
@@ -88,7 +88,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			}
 			notify("item/reasoning/summaryTextDelta", map[string]any{"itemId": "r", "delta": "Late text."})
 			rollCommandOutput(u)
-			if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 {
+			if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(view.blocks(0)) != 2 {
 				t.Fatal("late delta reopened completed reasoning")
 			}
 		})
@@ -103,7 +103,7 @@ func TestAppServerEmptyReasoningStartsDoNotCreateRows(t *testing.T) {
 			appServerTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "t", "item": map[string]any{"id": id, "type": "reasoning"}})
 		}
 		u.flushStreamOutput()
-		if len(u.view.entries) != 0 || len(u.agents.entries) != 0 {
+		if len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
 			t.Fatal("empty reasoning starts created visible placeholders")
 		}
 		appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t", "status": "interrupted"}})
@@ -115,7 +115,7 @@ func TestAppServerEmptyReasoningStartsDoNotCreateRows(t *testing.T) {
 			appServerTestNotify(t, u, "item/reasoning/summaryTextDelta", map[string]any{"threadId": thread, "turnId": "t", "itemId": id, "delta": "Late public summary."})
 		}
 		u.flushStreamOutput()
-		if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(u.view.entries) != 0 || len(u.agents.entries) != 0 {
+		if len(u.session.thinking) != 0 || len(u.session.summaries) != 0 || len(u.view.Entries) != 0 || len(u.agents.Entries) != 0 {
 			t.Fatal("late delta reopened interrupted empty reasoning")
 		}
 	}

@@ -35,14 +35,14 @@ func TestRosterDesignMessageOwnerAndAssignment(t *testing.T) {
 	}
 	now := time.Now()
 	v := liveActivityTestView("/root", "/root/a")
-	if empty, _ := v.current(v.agents[0], now); ansi.Strip(empty) != "Read root.go" {
+	if empty, _ := v.current(v.Agents[0], now); ansi.Strip(empty) != "Read root.go" {
 		t.Errorf("main without inbound = %q", empty)
 	}
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 3, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Older inbound"}, Observed: now},
 		{Seq: 4, Agent: "/root/a", Kind: "reply", message: &activityMessage{from: "/root/a", to: "/root", text: "Latest inbound"}, Observed: now},
 	}})
-	summary, _ := v.current(v.agents[0], now)
+	summary, _ := v.current(v.Agents[0], now)
 	if !strings.Contains(ansi.Strip(summary), "Latest inbound") || strings.Contains(ansi.Strip(summary), "Older inbound") || !strings.Contains(ansi.Strip(summary), "← a") {
 		t.Fatalf("main inbound summary = %q", summary)
 	}
@@ -57,10 +57,10 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 		{Name: "/root/b", Responding: true},
 		{Name: "/root/a/x"}, {Name: "/root/a/y"},
 	}, Entries: []activityPaneEntry{{Seq: 1, Agent: "/root/a/x", Kind: "error", Text: "failed", Observed: now}}})
-	rows := v.roster()
+	rows := v.Roster()
 	var names []string
 	for _, row := range rows {
-		names = append(names, row.agent.Name)
+		names = append(names, row.Agent.Name)
 	}
 	if got := strings.Join(names, ","); got != "/root,/root/a,/root/a/x,/root/a/y,/root/b" {
 		t.Fatalf("tree order = %s", got)
@@ -112,8 +112,8 @@ func TestRosterDesignSeparateHeaderTreeAndMetrics(t *testing.T) {
 func TestRosterDesignCompactViewportAndWheel(t *testing.T) {
 	now := time.Now()
 	v := liveActivityTestView("/root/a", "/root/b", "/root/c", "/root/d", "/root/e", "/root/f", "/root/g", "/root/h")
-	v.agents[0].Responding = true
-	v.agents[7].Responding = true
+	v.Agents[0].Responding = true
+	v.Agents[7].Responding = true
 	// A responding agent's earlier error counts once, as its visible ◐ status.
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
 		{Seq: 9, Agent: "/root/g", Kind: "error", Text: "failed", Observed: now},
@@ -206,7 +206,7 @@ func TestRosterStripWheelDoesNotScrollFeed(t *testing.T) {
 func TestRosterDesignScrolledTreeCardsAndSelection(t *testing.T) {
 	now := time.Now()
 	v := liveActivityTestView("/root", "/root/a", "/root/b", "/root/b/x", "/root/b/y", "/root/c", "/root/d", "/root/e")
-	rows := v.roster()
+	rows := v.Roster()
 	// With b's parent off-screen, b is flat and its children draw no guide for it.
 	for i, want := range map[int]string{3: "├ x", 4: "└ y"} {
 		if name, _ := rosterTree(rows, i, 2); name != want {

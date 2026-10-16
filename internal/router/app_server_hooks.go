@@ -58,8 +58,8 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 	}
 	// Use the existing item reconciliation to ignore duplicate starts and late
 	// starts after completion. Hook identity is thread + run, independently of turn.
-	for _, entry := range view.entries {
-		if n := entry.native; n != nil && n.hook != nil && n.thread == event.ThreadID && n.item == run.ID {
+	for _, entry := range view.Entries {
+		if n := entry.Source.native; n != nil && n.hook != nil && n.thread == event.ThreadID && n.item == run.ID {
 			if n.phase == "item/completed" || !completed && n.phase != "hook/restored" {
 				return nil
 			}

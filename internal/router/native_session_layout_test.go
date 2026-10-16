@@ -39,7 +39,7 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 			t.Fatal("invalid value changed preference or lost draft")
 		}
 	}
-	if len(u.view.entries) != 0 {
+	if len(u.view.Entries) != 0 {
 		t.Fatal("local toggle entered the transcript")
 	}
 	other, _ := newAppServerTestUI()
@@ -97,7 +97,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.agents.agents = []activityPaneAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
+			u.agents.Agents = []activityPaneAgent{{Name: "/root", Responding: true}, {Name: "/root/worker", Responding: true}}
 			screen := vt.NewEmulator(width, 40)
 			defer screen.Close()
 			paint := func() string {

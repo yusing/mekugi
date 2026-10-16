@@ -74,9 +74,9 @@ func (n *liveActivityNativeItem) unconfirmed() bool {
 }
 
 func (v *liveActivityView) entrySeq(entry activityPaneEntry) uint64 {
-	for _, current := range v.entries {
-		if entry.native != nil && entry.native.sameItem(current.native) || entry.native == nil && current.Seq == entry.Seq {
-			return current.Seq
+	for _, current := range v.Entries {
+		if entry.native != nil && entry.native.sameItem(current.Source.native) || entry.native == nil && current.Source.Seq == entry.Seq {
+			return current.Source.Seq
 		}
 	}
 	return 0
@@ -89,7 +89,7 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 	if thread == "" || turn == "" || id == "" {
 		return
 	}
-	entry := activityPaneEntry{Seq: v.lastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
+	entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "text", Text: item.Text, Observed: v.now(),
 		native: &liveActivityNativeItem{thread: thread, turn: turn, item: id, phase: method, live: live, command: item.Command, status: item.Status, exit: item.ExitCode, duration: appServerDuration(item)}}
 	if thread != main {
 		entry.Agent = "Thread " + thread
@@ -125,9 +125,9 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 				for _, reply := range replies {
 					questionID, _, ok := questionReplyIdentity(reply)
 					if ok && entry.native.question == 0 {
-						for _, question := range v.entries {
-							if question.Kind == "question" && question.native != nil && question.native.thread == thread && question.native.item == questionID {
-								entry.native.question = question.Seq
+						for _, question := range v.Entries {
+							if question.Source.Kind == "question" && question.Source.native != nil && question.Source.native.thread == thread && question.Source.native.item == questionID {
+								entry.native.question = question.Source.Seq
 								break
 							}
 						}
@@ -160,7 +160,7 @@ func (v *liveActivityView) applyAppServerItem(live bool, cwd, main, thread, turn
 			} else {
 				entry.Agent = "Thread " + thread
 			}
-			entry.Seq, entry.Kind, entry.Text = v.lastSeq+1, "attachments", ""
+			entry.Seq, entry.Kind, entry.Text = v.LastSeq+1, "attachments", ""
 			entry.native = &liveActivityNativeItem{thread: thread, turn: turn, item: id + "/attachments", phase: method, live: live, attachments: blocks}
 			v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		}
@@ -217,22 +217,22 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 	if entry.native == nil {
 		return false
 	}
-	for i, previous := range v.entries {
-		if previous.native != nil && previous.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.native.thread && entry.Text == previous.Text {
+	for i, previous := range v.Entries {
+		if previous.Source.native != nil && previous.Source.native.phase == "input/pending" && entry.Agent == "You" && entry.native.thread == previous.Source.native.thread && entry.Text == previous.Source.Text {
 			// Reconcile the local echo with Codex's authoritative user item.
-			entry.Seq, entry.Observed = previous.Seq, previous.Observed
+			entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
 			v.replaceEntry(i, entry, parseLiveActivity(entry))
 			return true
 		}
-		if !entry.native.sameItem(previous.native) {
+		if !entry.native.sameItem(previous.Source.native) {
 			continue
 		}
 		if entry.native.phase == "approval/updated" {
-			native := *previous.native
+			native := *previous.Source.native
 			native.approval = entry.native.approval
-			current := previous.activityPaneEntry
+			current := previous.Source
 			current.native = &native
-			blocks := slices.Clone(previous.blocks)
+			blocks := v.blocks(i)
 			if native.command != "" && len(blocks) > 1 && !slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
 				blocks = parseLiveActivity(current)
 			} else {
@@ -241,21 +241,21 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 			v.replaceEntry(i, current, blocks)
 			return true
 		}
-		entry.native.approval = previous.native.approval
-		if previous.native.capturedEdit != nil {
-			entry.native.capturedEdit = previous.native.capturedEdit
-			entry.Text = previous.Text
+		entry.native.approval = previous.Source.native.approval
+		if previous.Source.native.capturedEdit != nil {
+			entry.native.capturedEdit = previous.Source.native.capturedEdit
+			entry.Text = previous.Source.Text
 		}
-		if previous.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.native.phase != "approval/updated" && previous.native.phase != "hook/restored" || previous.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
+		if previous.Source.native.phase == "item/completed" || entry.native.phase == "item/started" && previous.Source.native.phase != "approval/updated" && previous.Source.native.phase != "hook/restored" || previous.Source.native.phase == "turn/completed" && entry.native.phase != "item/completed" {
 			return true
 		}
 		if entry.native.phase == "item/agentMessage/delta" {
-			entry.Text = previous.Text + entry.Text
+			entry.Text = previous.Source.Text + entry.Text
 		}
-		entry.Seq, entry.Observed = previous.Seq, previous.Observed
-		entry.native.question = previous.native.question
+		entry.Seq, entry.Observed = previous.Source.Seq, previous.Source.Observed
+		entry.native.question = previous.Source.native.question
 		blocks := parseLiveActivity(entry)
-		for _, annotation := range v.entries[i].blocks {
+		for _, annotation := range v.blocks(i) {
 			if annotation.Repeated != "" && len(blocks) > 0 {
 				blocks[len(blocks)-1].Repeated = annotation.Repeated
 			}
@@ -270,8 +270,8 @@ func (v *liveActivityView) mergeNative(entry activityPaneEntry) bool {
 }
 
 func (v *liveActivityView) removePendingInput(seq uint64) {
-	for i, entry := range v.entries {
-		if entry.Seq == seq && entry.native != nil && entry.native.phase == "input/pending" {
+	for i, entry := range v.Entries {
+		if entry.Source.Seq == seq && entry.Source.native != nil && entry.Source.native.phase == "input/pending" {
 			v.removeEntries(i, i+1)
 			return
 		}

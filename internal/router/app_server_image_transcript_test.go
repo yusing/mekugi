@@ -23,11 +23,11 @@ func TestAppServerImageTranscriptHighlight(t *testing.T) {
 			appServerTestKeys(t, u, "\r")
 			check := func(v *liveActivityView) {
 				t.Helper()
-				if len(v.entries) != 1 {
-					t.Fatalf("unexpected duplicate or synthetic tool activity: %+v", v.entries)
+				if len(v.Entries) != 1 {
+					t.Fatalf("unexpected duplicate or synthetic tool activity: %+v", v.Entries)
 				}
 				var out conversationLines
-				v.userItemContinued(&out, v.entries[0].activityPaneEntry, width, false)
+				v.userItemContinued(&out, v.Entries[0].Source, width, false)
 				screen := vt.NewEmulator(width, len(out.lines))
 				defer screen.Close()
 				if _, err := screen.Write([]byte(strings.Join(out.lines, "\r\n"))); err != nil {

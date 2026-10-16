@@ -228,12 +228,12 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 		slots := placeRestored(turn, itemAt, byTurn[index])
 		u.applyRestoredMain(slots[0])
 		for i, item := range turn.Items {
-			before := u.view.lastSeq
+			before := u.view.LastSeq
 			u.restoreHistoryItem(turn, item)
 			at := cmp.Or(itemAt[item.ID], historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt)))
 			if !at.IsZero() {
-				for j := len(u.view.entries) - 1; j >= 0 && u.view.entries[j].Seq > before; j-- {
-					u.view.mutateEntry(j, func(record *liveActivityRecord) { record.Observed = at })
+				for j := len(u.view.Entries) - 1; j >= 0 && u.view.Entries[j].Source.Seq > before; j-- {
+					u.view.mutateEntry(j, func(record *liveActivityRecord) { record.Source.Observed = at })
 				}
 			}
 			u.applyRestoredMain(slots[i+1])
@@ -244,7 +244,7 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 			if turn.Error != nil && strings.TrimSpace(turn.Error.Message) != "" {
 				text += ": " + turn.Error.Message
 			}
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "error", Text: text,
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "error", Text: text,
 				Observed: historyTime(cmp.Or(turn.CompletedAt, turn.StartedAt))}}})
 		}
 		if turn.Status == "inProgress" {
@@ -257,7 +257,7 @@ func (u *appServerUI) restoreMainHistory(turns []appServerHistoryTurn, placement
 	root.Turns = uint64(len(turns))
 	root.Responding = u.turn != ""
 	// Keep future activity sequence numbers ahead of the hydrated transcript.
-	u.session.seq = max(u.session.seq, u.view.lastSeq)
+	u.session.seq = max(u.session.seq, u.view.LastSeq)
 	u.applyActivity(nil, u.session.agents)
 }
 
@@ -316,7 +316,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		method = appServerHistoryProgressPhase(item, turn.Status)
 		if text, wait, _ := appServerProgress(item, method); text != "" {
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-				Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
+				Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: time.Now(),
 				native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, wait: wait},
 			}}})
 		}
@@ -324,7 +324,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	}
 	switch item.Type {
 	case "imageView":
-		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
+		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
 			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":
@@ -332,7 +332,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		if item.Type == "fileChange" {
 			text = appServerEditText(item, u.session.cwd)
 		}
-		entry := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
+		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: text, CallID: item.ID, Observed: time.Now(),
 			native: &liveActivityNativeItem{thread: u.thread, turn: turn.ID, item: item.ID, phase: method, command: item.Command, commandCwd: appServerCommandDirectory(item, u.session.cwd), status: item.Status, duration: appServerDuration(item), searchResults: appServerSearchResults(item), workdir: appServerCommandWorkdir(item, u.session.cwd)}}
 		if item.Type == "fileChange" {
 			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
@@ -342,7 +342,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 		u.restoreCommandSegments(&entry, item, u.session.cwd)
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
-			exit := activityPaneEntry{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
+			exit := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "exit", Text: strconv.Itoa(*item.ExitCode), CallID: item.ID}
 			exit.outputTail, exit.outputOmit = appServerOutputTail(item.AggregatedOutput)
 			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{exit}})
 		}

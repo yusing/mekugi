@@ -189,7 +189,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 		}
 		if rejected {
 			appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-			if len(u.view.entries) != 0 || u.draft != "你好 first message" || u.starting() {
+			if len(u.view.Entries) != 0 || u.draft != "你好 first message" || u.starting() {
 				t.Fatal("rejection retained a false user message or lost the draft")
 			}
 			continue
@@ -198,7 +198,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 			appServerTestMessage(t, u, `{"method":"`+method+`","params":{"threadId":"main","turnId":"t","item":{"id":"user-1","type":"userMessage","content":[{"type":"text","text":"你好 first message"}]}}}`)
 		}
 		appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"t"}}}`)
-		if len(u.view.entries) != 1 || u.view.entries[0].native.item != "user-1" {
+		if len(u.view.Entries) != 1 || u.view.Entries[0].Source.native.item != "user-1" {
 			t.Fatal("server echo duplicated the local user message")
 		}
 	}
@@ -269,13 +269,13 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	} {
 		appServerTestMessage(t, u, wire)
 	}
-	if len(u.view.entries) != 2 || u.view.entries[1].Text != "hello" {
-		t.Fatalf("delta assembly: %+v", u.view.entries)
+	if len(u.view.Entries) != 2 || u.view.Entries[1].Source.Text != "hello" {
+		t.Fatalf("delta assembly: %+v", u.view.Entries)
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"main","turnId":"t","item":{"id":"i","type":"agentMessage","text":"hello!"}}}`)
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"child","turnId":"t","item":{"id":"i","type":"agentMessage","text":"child answer"}}}`)
-	if len(u.view.entries) != 3 || u.view.entries[1].Text != "hello!" || u.view.entries[2].Agent != "Thread child" {
-		t.Fatalf("completion or cross-thread collision: %+v", u.view.entries)
+	if len(u.view.Entries) != 3 || u.view.Entries[1].Source.Text != "hello!" || u.view.Entries[2].Source.Agent != "Thread child" {
+		t.Fatalf("completion or cross-thread collision: %+v", u.view.Entries)
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"t","status":"completed"}}}`)
 	if u.turn != "t" {
@@ -287,7 +287,7 @@ func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	if err := u.paint(&frame, 100, 30); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.view.entries) != 3 || strings.Contains(frame.String(), "PRIVATE_REASONING") || !strings.Contains(frame.String(), "child answer") {
+	if len(u.view.Entries) != 3 || strings.Contains(frame.String(), "PRIVATE_REASONING") || !strings.Contains(frame.String(), "child answer") {
 		t.Fatalf("unexpected visible content: %q", frame.String())
 	}
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"t","status":"completed"}}}`)

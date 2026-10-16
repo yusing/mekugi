@@ -84,7 +84,7 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 				}
 			default:
 				update := entry
-				update.Seq = v.lastSeq + 1
+				update.Seq = v.LastSeq + 1
 				native := *entry.native
 				update.native = &native
 				switch change {
@@ -165,7 +165,7 @@ func TestLiveActivityCacheMainInvalidatesLaterQuotes(t *testing.T) {
 	if !strings.Contains(strings.Join(later.lines, "\n"), "Original prompt") {
 		t.Fatal("fixture did not quote the earlier prompt")
 	}
-	entry := v.entries[1].activityPaneEntry
+	entry := v.Entries[1].Source
 	entry.Text = "Updated prompt"
 	v.replaceEntry(1, entry, parseLiveActivity(entry))
 	if _, present := v.runs[laterKey]; present {
@@ -218,7 +218,7 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 					b.ReportAllocs()
 					iteration := 0
 					for b.Loop() {
-						entry.Seq = v.lastSeq + 1
+						entry.Seq = v.LastSeq + 1
 						entry.outputTail = []string{fmt.Sprintf("package result %d", iteration%10)}
 						v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 						if cold {
