@@ -30,7 +30,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 		return !p.Complete && strings.Contains(fmt.Sprint(p.Files), "+const Source48")
 	})
 	u := nativeBatchFixture(t)
-	u.shell.preview(partial)
+	u.shell.preview(partial, false)
 	revealNativeDock(u.shell)
 	screen := vt.NewEmulator(140, 48)
 	defer screen.Close()
@@ -46,7 +46,7 @@ func TestLiveDiffCodeModeNativeSourceFollowLifecycle(t *testing.T) {
 	}
 	worker.finish(input)
 	complete := waitLiveDiffWorkerPreview(t, broker, sub, func(p diffview.Preview) bool { return p.Complete })
-	u.shell.preview(complete)
+	u.shell.preview(complete, false)
 	if !strings.Contains(paint(), "Source79") {
 		t.Fatal("following remained on the stalled prefix")
 	}

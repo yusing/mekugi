@@ -51,7 +51,7 @@ func waitExecScopePreviewGone(t *testing.T, broker *liveDiffBroker, id string) {
 	defer ticker.Stop()
 	for {
 		broker.mu.Lock()
-		_, exists := broker.previews[id]
+		_, exists := broker.previewLocked(id)
 		broker.mu.Unlock()
 		if !exists {
 			return
@@ -342,7 +342,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 		}
 		broker.mu.Lock()
 		count := len(broker.previews)
-		_, overflow := broker.previews["running:"+refs[16]]
+		_, overflow := broker.previewLocked("running:" + refs[16])
 		broker.mu.Unlock()
 		if count != 16 || overflow {
 			t.Fatalf("running preview registry exceeded its display bound: count=%d overflow=%v", count, overflow)
@@ -383,7 +383,7 @@ func TestExecRunningPreviewRegistryBoundsBackgroundAndShutdown(t *testing.T) {
 				t.Fatal(err)
 			}
 			broker.mu.Lock()
-			_, exists := broker.previews["running:lifecycle"]
+			_, exists := broker.previewLocked("running:lifecycle")
 			broker.mu.Unlock()
 			if exists {
 				t.Fatalf("%s lifecycle kept publishing a running preview", lifecycle)

@@ -53,7 +53,7 @@ func (u *terminalUI) openActivityReply(seq uint64) bool {
 }
 
 // preview updates the shared dock by call ID, including caller-less completion markers.
-func (u *terminalUI) preview(preview diffview.Preview) {
+func (u *terminalUI) preview(preview diffview.Preview, restored bool) {
 	if u.main != nil && preview.Complete && len(preview.HostItems) > 0 {
 		receipt := &capturedActivityEdit{thread: preview.Thread, calls: preview.HostItems, text: preview.EditReceipt}
 		for _, file := range preview.Files {
@@ -98,6 +98,11 @@ func (u *terminalUI) preview(preview diffview.Preview) {
 		}
 	}
 	dock := &u.liveDock
+	// Restoration may carry receipts for expired calls, but cannot reopen them.
+	if restored && preview.Complete && dock.Views[preview.ID] == nil {
+		delete(u.livePending, preview.ID)
+		return
+	}
 	dock.Retain = true
 	if preview.Caller == "" && preview.Workspace != "" {
 		preview.Caller = "/root"
@@ -134,8 +139,28 @@ func (u *terminalUI) applyDiff(ctx context.Context, event liveDiffEvent) {
 			preview.Workspace != "" && !u.diff.scope.Workspaces[preview.Workspace][preview.Thread] {
 			return
 		}
-		u.preview(*preview)
+		u.preview(*preview, event.Resync)
 		return
+	case "scope":
+		if event.Resync && event.Scope != nil {
+			retained := func(preview diffview.Preview, complete bool) bool {
+				return event.Scope.Workspaces[preview.Workspace][preview.Thread] &&
+					(complete || slices.Contains(event.PreviewIDs, preview.ID))
+			}
+			u.liveDock.Order = slices.DeleteFunc(u.liveDock.Order, func(id string) bool {
+				view := u.liveDock.Views[id]
+				if retained(view.Current, view.Complete) {
+					return false
+				}
+				delete(u.liveDock.Views, id)
+				return true
+			})
+			for id, pending := range u.livePending {
+				if !retained(pending.preview, false) {
+					delete(u.livePending, id)
+				}
+			}
+		}
 	case "coverage":
 		if strings.HasPrefix(event.Status, "RECONNECTING:") {
 			u.liveDock = diffview.PreviewPane{}

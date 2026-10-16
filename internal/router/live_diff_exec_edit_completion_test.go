@@ -51,7 +51,7 @@ func TestUISnapshotNativeMoveKeepsTranscript(t *testing.T) {
 	u := nativeBatchFixture(t)
 	for _, event := range auto.events.takePreviews(sub) {
 		if event.Preview != nil {
-			u.shell.preview(*event.Preview)
+			u.shell.preview(*event.Preview, false)
 		}
 	}
 	revealNativeDock(u.shell)
@@ -126,7 +126,7 @@ func TestExecEditCompletionFastPythonWriteWhileTestRuns(t *testing.T) {
 	for _, event := range broker.takePreviews(sub) {
 		if event.Preview != nil {
 			completed = completed || event.Preview.Complete
-			u.shell.preview(*event.Preview)
+			u.shell.preview(*event.Preview, false)
 			revealNativeDock(u.shell)
 		}
 	}
@@ -250,10 +250,10 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 	u.status = "Working"
 	workspace := t.TempDir()
 	preview := diffview.Preview{ID: "running:edit-then-test", Workspace: workspace, Thread: "thread", Caller: "/root", Tool: nativeExecCommandToolName, Status: diffview.PreviewRunning, Input: "observed edit"}
-	u.shell.preview(preview)
+	u.shell.preview(preview, false)
 	revealNativeDock(u.shell)
 	preview.Complete = true
-	u.shell.preview(preview)
+	u.shell.preview(preview, false)
 	revealNativeDock(u.shell)
 	if u.shell.liveDock.Live() != 0 || u.status != "Working" {
 		t.Fatal("edit completion changed process status or retained an active dock")
@@ -271,7 +271,7 @@ func TestNativeUIExecEditCompletionRetainsWorkingStatusAndClearsDock(t *testing.
 		t.Fatal("completed dock did not clear independently of process Working status")
 	}
 	// A final host observation must not create a second, late completion card.
-	u.shell.preview(diffview.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: diffview.PreviewRunning})
+	u.shell.preview(diffview.Preview{ID: "late:edit-then-test", Workspace: workspace, Tool: nativeExecCommandToolName, Complete: true, Status: diffview.PreviewRunning}, false)
 	revealNativeDock(u.shell)
 	if len(u.shell.liveDock.Order) != 0 {
 		t.Fatal("late shell completion resurrected the dock")

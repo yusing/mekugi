@@ -69,7 +69,7 @@ func TestAppServerInterruptedLiveDiffCannotReopen(t *testing.T) {
 	child.ID, child.Thread, child.Caller = "child-edit", "child", "/root/child"
 	for _, preview := range []diffview.Preview{main, child} {
 		auto.events.publishPreview(preview, false)
-		u.shell.preview(preview)
+		u.shell.preview(preview, false)
 		revealNativeDock(u.shell)
 	}
 	queued := main

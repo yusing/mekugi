@@ -390,7 +390,12 @@ call expires, the dock resumes following the newest remaining file.
 
 The router publishes to one in-process UI mailbox without waiting for rendering.
 Replaceable previews retain only the latest frame per call; a mailbox that falls
-behind resynchronizes from durable changes and retained display state.
+behind resynchronizes from durable changes and retained display state. Surviving
+live files keep their observation order, pinned selection and source viewport.
+Resynchronization does not restart a completed call's settling interval or reveal
+previously unseen completed work. Previews outside the current scope and absent
+unfinished calls retire; already displayed completions may finish their original
+settling interval.
 
 Provider input arrives in bursts. The stream view reveals each call's received
 input at its recent arrival rate, so the preview grows steadily rather than

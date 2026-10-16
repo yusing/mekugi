@@ -31,7 +31,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
@@ -290,8 +289,6 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 						u.shell.auto.mu.Unlock()
 						u.dirty = true
 					case <-diffGap:
-						u.shell.liveDock = diffview.PreviewPane{}
-						clear(u.shell.livePending)
 						sub = u.shell.auto.events.subscribe()
 						diffEvents, diffGap, diffReady = sub.events, sub.gap, sub.previewReady
 						u.dirty = true

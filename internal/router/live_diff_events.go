@@ -28,13 +28,14 @@ type liveDiffEvent struct {
 	Preview      *diffview.Preview `json:",omitempty"`
 	TurnRevision uint64            `json:",omitzero"`
 	Resync       bool              `json:",omitzero"`
+	PreviewIDs   []string          `json:",omitempty"` // Complete membership at a resync barrier.
 }
 
 type liveDiffSubscriber struct {
 	events       chan liveDiffEvent
 	gap          chan struct{}
 	previewReady chan struct{}
-	previews     []diffview.Preview // Latest per ID, guarded by the broker mutex.
+	previews     []liveDiffEvent // Latest preview event per ID, including restoration provenance.
 }
 
 // The router owns this mailbox for the single in-process UI. Enqueueing never
@@ -48,7 +49,7 @@ type liveDiffBroker struct {
 	turnStatus        string
 	completedPreviews []diffview.Preview             // Last 16 evaluated snapshots in this turn, oldest first.
 	previewTurns      map[string]liveDiffPreviewTurn // Latest native turn per thread.
-	previews          map[string]diffview.Preview
+	previews          []diffview.Preview             // Active calls in first-observation order, at most 16.
 }
 
 func newLiveDiffBroker(ctx context.Context) *liveDiffBroker {
@@ -91,15 +92,17 @@ func (b *liveDiffBroker) emitPreviewLocked(preview diffview.Preview) {
 	if sub == nil {
 		return
 	}
-	if i := slices.IndexFunc(sub.previews, func(old diffview.Preview) bool { return old.ID == preview.ID }); i >= 0 {
-		sub.previews = slices.Delete(sub.previews, i, i+1)
+	event := liveDiffEvent{Kind: "preview", Preview: &preview}
+	if i := slices.IndexFunc(sub.previews, func(old liveDiffEvent) bool { return old.Preview.ID == preview.ID }); i >= 0 {
+		sub.previews[i] = event
+	} else {
+		if len(sub.previews) >= 32 {
+			close(sub.gap)
+			b.subscriber = nil
+			return
+		}
+		sub.previews = append(sub.previews, event)
 	}
-	if len(sub.previews) >= 32 {
-		close(sub.gap)
-		b.subscriber = nil
-		return
-	}
-	sub.previews = append(sub.previews, preview)
 	select {
 	case sub.previewReady <- struct{}{}:
 	default:
@@ -121,9 +124,7 @@ drain:
 			break drain
 		}
 	}
-	for _, preview := range sub.previews {
-		events = append(events, liveDiffEvent{Kind: "preview", Preview: &preview})
-	}
+	events = append(events, sub.previews...)
 	sub.previews = nil
 	return events
 }
@@ -197,16 +198,39 @@ func (b *liveDiffBroker) subscribe() *liveDiffSubscriber {
 	b.subscriber = sub
 	event := b.scopeEventLocked()
 	event.Resync = true
+	for _, previews := range [][]diffview.Preview{b.completedPreviews, b.previews} {
+		for _, preview := range previews {
+			if b.scope.Workspaces[preview.Workspace][preview.Thread] {
+				event.PreviewIDs = append(event.PreviewIDs, preview.ID)
+				sub.previews = append(sub.previews, liveDiffEvent{Kind: "preview", Preview: &preview, Resync: true})
+			}
+		}
+	}
 	sub.events <- event
 	if b.turnStatus != "" {
 		sub.events <- liveDiffEvent{Kind: "turn", Status: b.turnStatus, TurnRevision: b.turnRevision}
-	}
-	sub.previews = append(sub.previews, b.completedPreviews...)
-	for _, preview := range b.previews {
-		sub.previews = append(sub.previews, preview)
 	}
 	if len(sub.previews) > 0 {
 		sub.previewReady <- struct{}{}
 	}
 	return sub
+}
+
+// previewLocked reads bounded active state without changing observation order.
+func (b *liveDiffBroker) previewLocked(id string) (diffview.Preview, bool) {
+	for _, preview := range b.previews {
+		if preview.ID == id {
+			return preview, true
+		}
+	}
+	return diffview.Preview{}, false
+}
+
+func (b *liveDiffBroker) removePreviewLocked(id string) bool {
+	i := slices.IndexFunc(b.previews, func(preview diffview.Preview) bool { return preview.ID == id })
+	if i < 0 {
+		return false
+	}
+	b.previews = slices.Delete(b.previews, i, i+1)
+	return true
 }

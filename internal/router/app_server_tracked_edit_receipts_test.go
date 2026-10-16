@@ -23,7 +23,7 @@ func TestObservedEditReceiptBeforeHostItemSurvivesSegmentRefresh(t *testing.T) {
 	// The tracker sees host starts on the transport reader. Its completion
 	// can reach the preview mailbox before the UI consumes that same item.
 	u.shell.preview(diffview.Preview{ID: "early", Workspace: u.session.cwd, Thread: "main", Complete: true,
-		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"})
+		HostItems: []string{"cmd"}, Files: []diffmodel.ReviewFile{file}, EditReceipt: "Edit `a.go` +1 -1 · python3"}, false)
 	command := "python3 - <<'PY'\np='a.go';s=open(p).read().replace('before','after');open(p,'w').write(s)\nPY\ngo test ./..."
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "t", "item": appServerItem{ID: "cmd", Type: "commandExecution", Command: command, Status: "inProgress"}})
 	for _, view := range []*liveActivityView{u.view, u.agents} {
@@ -325,7 +325,7 @@ func TestObservedEditReceiptsBeforeHostRows(t *testing.T) {
 				if tc.lines == 4000 && (len(preview.Files) != 0 || !preview.Truncated) {
 					t.Fatal("fixture did not cross live-card clipping")
 				}
-				u.shell.preview(preview)
+				u.shell.preview(preview, false)
 			}
 			for i := range tc.calls {
 				path, call := fmt.Sprintf("a%d.go", i), fmt.Sprintf("cmd%d", i)
@@ -371,7 +371,7 @@ func TestPendingObservedEditReceiptsStayBounded(t *testing.T) {
 	receipt := editReceiptText(u.session.cwd, mekugiHistory{ReviewFiles: []diffmodel.ReviewFile{file}, ExecOutcome: &execOutcome{Labels: []string{"cat"}}})
 	for i := range 256 {
 		call := fmt.Sprintf("cmd%d", i)
-		u.shell.preview(diffview.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt})
+		u.shell.preview(diffview.Preview{ID: call, Workspace: u.session.cwd, Thread: "main", Complete: true, HostItems: []string{call}, EditReceipt: receipt}, false)
 	}
 	pending := u.pendingEditReceipts
 	if len(pending) == 0 || len(pending) >= 256 || pending[len(pending)-1].calls[0] != "cmd255" {
