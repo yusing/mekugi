@@ -375,12 +375,16 @@ func (d DialogPage) Rows(i, width int) []string {
 // MatchRow finds a case-insensitive substring in a logical line and locates
 // its first display row. Search must not lose text at visual wrap boundaries.
 func (d DialogPage) MatchRow(i, width int, query string) (int, bool) {
-	text := strings.ToLower(ansi.Strip(d.Lines[i].Text))
+	line := d.Lines[i]
+	text := strings.ToLower(ansi.Strip(line.Text))
 	at := strings.Index(text, strings.ToLower(query))
 	if at < 0 {
 		return 0, false
 	}
-	if d.Lines[i].Wrap {
+	if line.Gutter != "" {
+		width = d.textWidth(width)
+	}
+	if line.Wrap || line.Gutter != "" {
 		for _, first := range text[at:] {
 			return wrappedRows(text[:at]+string(first), max(1, width)) - 1, true
 		}

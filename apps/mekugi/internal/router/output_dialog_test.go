@@ -155,6 +155,48 @@ func TestOutputDialogTracksRetainedOutputAfterOpening(t *testing.T) {
 	}
 }
 
+func TestOutputDialogSearchRevealsWrappedNumberedMatch(t *testing.T) {
+	full := strings.Repeat("prefix 界 ", 160) + "Needle" + strings.Repeat(" tail", 160) + "\nNeedle"
+	for _, tc := range []struct {
+		name  string
+		block activityui.Block
+	}{
+		{"source", activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt", Ranges: []string{"100:101"}}}}},
+		{"output", activityui.Block{Kind: "op", Verb: "Run", Code: "go test ./..."}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := new(activitymodel.Retention).New()
+			output.Finish(&full, new(0))
+			view := newActivityAdapter()
+			u := &terminalUI{}
+			u.openBlocks(view, []activityui.Block{testOutputBlock(view, tc.block, output)})
+			drawOutputDialog(u)
+			d := u.output
+			if strings.Contains(ansi.Strip(strings.Join(d.body, "\n")), "Needle") {
+				t.Fatal("fixture already shows the distant match")
+			}
+			for _, key := range []string{"/", "needle", "\r"} {
+				u.outputKey(key)
+			}
+			drawOutputDialog(u)
+			first, top := d.match, d.top
+			if first < 0 || top == 0 || !strings.Contains(ansi.Strip(strings.Join(d.body, "\n")), "Needle") {
+				t.Fatalf("search did not reveal the matching wrapped row: match=%d top=%d body=%q", first, top, d.body)
+			}
+			u.outputKey("n")
+			drawOutputDialog(u)
+			if d.match != first+1 || !strings.Contains(ansi.Strip(strings.Join(d.body, "\n")), "Needle") {
+				t.Fatal("next did not reveal the next logical match")
+			}
+			u.outputKey("N")
+			drawOutputDialog(u)
+			if d.match != first || d.top != top {
+				t.Fatal("previous did not return to the first matching wrapped row")
+			}
+		})
+	}
+}
+
 func TestOutputDialogRestoredCommandUsesRetainedAggregate(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true

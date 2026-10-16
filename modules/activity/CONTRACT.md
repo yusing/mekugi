@@ -386,7 +386,8 @@ literal command output. Copies preserve retained source, not painting.
 Live output is visibly marked. Live pages follow until scrolled away; End or
 returning to bottom resumes.
 Narrative pages refresh from their source while preserving navigation. `/` starts
-case-insensitive substring search, Enter finds and n/N advances. `y` copies current
+case-insensitive substring search, Enter finds and n/N advances, revealing the
+matching wrapped row. `y` copies current
 retained output, or source when no output exists. The terminal's
 [shared selection controls](../../apps/mekugi/internal/terminalsession/SPEC.md#selection-and-source-copy)
 govern frozen content, scrolling, Reference/Copy/Clear and dismissal. Reference
