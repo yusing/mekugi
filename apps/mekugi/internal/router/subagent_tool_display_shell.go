@@ -8,13 +8,16 @@ import (
 	"strconv"
 	"strings"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
+	"mvdan.cc/sh/v3/syntax"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	"github.com/yusing/mekugi/modules/symbolquery/query"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 func toolActivityShellLanguage(script, language, cwd string) string {
@@ -128,10 +131,10 @@ func toolActivityReads(script, cwd string) (string, bool) {
 				return false
 			}
 			if statement, ok := node.(*syntax.Stmt); ok && !hasEdit {
-				_, hasEdit = toolActivityEditStatement(script, toolActivityUnwrapTimeout(statement))
+				_, hasEdit = toolActivityEditStatement(script, shellsyntax.UnwrapTimeout(statement))
 				if !hasEdit && hasHeredoc && !hasSetup {
 					// A commit's heredoc is its message, not a program.
-					_, hasEdit = vcsStatement(statement)
+					_, hasEdit = activitypresentation.VCSStatement(statement)
 				}
 			}
 			return !hasEdit
@@ -276,40 +279,6 @@ func toolActivityReadSeparator(statement *syntax.Stmt) bool {
 	return strings.HasSuffix(heading, ":") && strings.TrimSpace(strings.TrimSuffix(heading, ":")) != ""
 }
 
-// A plain timeout changes the execution bound, not the displayed operation.
-var toolActivityTimeoutDuration = regexp.MustCompile(`^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)[smhd]?$`)
-
-// Unwrap only a display copy. Keep argument positions, redirections, and all
-// host-owned source bytes; unsupported options and dynamic durations stay Run.
-func toolActivityUnwrapTimeout(statement *syntax.Stmt) *syntax.Stmt {
-	if statement == nil {
-		return statement
-	}
-	call, ok := statement.Cmd.(*syntax.CallExpr)
-	if !ok || len(call.Assigns) != 0 {
-		return statement
-	}
-	args := call.Args
-	for len(args) >= 3 {
-		name, literal := shellsyntax.Literal(args[0])
-		if !literal || filepath.Base(name) != "timeout" {
-			break
-		}
-		duration, literal := shellsyntax.Literal(args[1])
-		if !literal || !toolActivityTimeoutDuration.MatchString(duration) {
-			return statement
-		}
-		args = args[2:]
-	}
-	if len(args) == len(call.Args) {
-		return statement
-	}
-	innerCall, innerStatement := *call, *statement
-	innerCall.Args = args
-	innerStatement.Cmd = &innerCall
-	return &innerStatement
-}
-
 // Keep env parsing at the existing shell owner. Only the display copy changes;
 // unsupported options, dynamic environment values, and PATH changes stay Run.
 func toolActivityUnwrapEnv(statement *syntax.Stmt) *syntax.Stmt {
@@ -358,7 +327,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 		}
 		result = activitymodel.AddTimeouts(result, timeouts)
 	}()
-	statement = toolActivityUnwrapTimeout(statement)
+	statement = shellsyntax.UnwrapTimeout(statement)
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
 		return "", false
 	}
@@ -379,8 +348,8 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 	if display, ok := toolActivityEditStatement(script, statement); ok {
 		return display, true
 	}
-	if call, ok := vcsStatement(statement); ok {
-		return call.display, true
+	if call, ok := activitypresentation.VCSStatement(statement); ok {
+		return call, true
 	}
 	if binary, ok := statement.Cmd.(*syntax.BinaryCmd); ok {
 		if binary.Op == syntax.AndStmt && len(statement.Redirs) == 0 {
@@ -469,7 +438,7 @@ func toolActivityTimeoutSource(script string, statement *syntax.Stmt) string {
 			heredoc = true
 		}
 		if stmt, ok := node.(*syntax.Stmt); ok {
-			if inner := toolActivityUnwrapTimeout(stmt); inner != stmt {
+			if inner := shellsyntax.UnwrapTimeout(stmt); inner != stmt {
 				spans = append(spans, span{int(stmt.Cmd.(*syntax.CallExpr).Args[0].Pos().Offset()), int(inner.Cmd.(*syntax.CallExpr).Args[0].Pos().Offset())})
 			}
 		}
@@ -490,7 +459,7 @@ func toolActivityTimeouts(statement *syntax.Stmt) []string {
 	if inner := toolActivityUnwrapEnv(statement); inner != statement {
 		return toolActivityTimeouts(inner)
 	}
-	unwrapped := toolActivityUnwrapTimeout(statement)
+	unwrapped := shellsyntax.UnwrapTimeout(statement)
 	if unwrapped == statement {
 		return nil
 	}
@@ -540,7 +509,7 @@ func toolActivityLiteralCall(statement *syntax.Stmt) ([]string, bool) {
 
 // Preserve patterns as source, without expansion or executable substitutions.
 func toolActivityPatternCall(script string, statement *syntax.Stmt) ([]string, bool) {
-	statement = toolActivityUnwrapTimeout(statement)
+	statement = shellsyntax.UnwrapTimeout(statement)
 	if statement == nil || len(statement.Redirs) != 0 || statement.Background || statement.Negated ||
 		statement.Coprocess || statement.Disown {
 		return nil, false

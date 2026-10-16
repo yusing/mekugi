@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -25,14 +27,14 @@ func appServerToolText(item appServerItem, cwd string) string {
 	if action := item.Action; action != nil {
 		switch action.Type {
 		case "openPage":
-			return "Open " + commentaryCode(action.URL)
+			return "Open " + markdownsyntax.QuoteCode(action.URL)
 		case "findInPage":
-			return "Search " + commentaryCode(action.Pattern) + " in " + commentaryCode(action.URL)
+			return "Search " + markdownsyntax.QuoteCode(action.Pattern) + " in " + markdownsyntax.QuoteCode(action.URL)
 		case "search":
 			query = cmp.Or(strings.Join(action.Queries, " | "), action.Query, query)
 		}
 	}
-	return "Search " + commentaryCode(query)
+	return "Search " + markdownsyntax.QuoteCode(query)
 }
 
 // Count returned records only when host evidence is complete and attributable

@@ -12,6 +12,9 @@ titles. Preserve readable Unicode, combining marks, joiners and newlines; expand
 tabs to four spaces. Callers may explicitly retain valid SGR color sequences.
 Plain-content consumers strip colors as well.
 
+Structured-output parsers may strip escape sequences before interpreting fields,
+preserving tabs and line delimiters. Displayed fields still use full sanitization.
+
 Returned strings remain independent of reusable scratch storage. Sanitization does
 not change the original tool input, captured evidence or model-visible output.
 

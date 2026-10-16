@@ -5,19 +5,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/charmbracelet/x/ansi"
 )
 
 func TestChangeRowsBoundRowsAndWidth(t *testing.T) {
 	var rows []ChangeRow
-	for i := range ChangeRowsShown + 2 {
+	for i := range presentation.ChangeRowsShown + 2 {
 		rows = append(rows, ChangeRow{Verb: "Edited", Label: fmt.Sprintf("internal/some/deeply/nested/package/file%d.go", i), Added: i + 1, Removed: 1, Note: "a long retained reason"})
 	}
 	var p Painter
 	block := Block{Kind: "op", Verb: "Run", Code: "mchanges --summary", Tail: []string{"x", "y"}, Changes: rows}
 	lines := p.Block(block, 50)
-	if got := len(lines); got != 1+ChangeRowsShown+1 {
-		t.Fatalf("rows = %d, want %d", got, 1+ChangeRowsShown+1)
+	if got := len(lines); got != 1+presentation.ChangeRowsShown+1 {
+		t.Fatalf("rows = %d, want %d", got, 1+presentation.ChangeRowsShown+1)
 	}
 	if last := ansi.Strip(lines[len(lines)-1]); strings.TrimSpace(last) != "… +2 more" {
 		t.Fatalf("last row = %q", last)

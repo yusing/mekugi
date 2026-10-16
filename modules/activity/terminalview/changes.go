@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -17,9 +18,6 @@ type ChangeRow = presentation.ChangeRow
 // Hash is the gold VCS output uses for commit hashes and branches.
 const Hash = "\x1b[38;5;179m"
 
-// ChangeRowsShown bounds the change rows open output shows.
-const ChangeRowsShown = 12
-
 // changeRows lays out change history as edit rows: a verb column, paths or
 // IDs in one column, counts in the next, and bars scaled against the largest
 // row. A label column too wide for its row narrows so the counts stay in view.
@@ -31,7 +29,7 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 		}
 		return row.Footer
 	})
-	shown := rows[:min(len(rows), ChangeRowsShown)]
+	shown := rows[:min(len(rows), presentation.ChangeRowsShown)]
 	verbs, labels, counts, scale := 0, 0, 0, 0
 	for _, row := range shown {
 		if row.Verb != "" {
@@ -131,22 +129,6 @@ func statusCode(code string) string {
 		out.WriteString("\x1b[39m")
 	}
 	return out.String()
-}
-
-// ChangeTotals sums a row set's known line counts. A footer that states
-// totals, as a commit's does, is authoritative over the rows it summarizes.
-func ChangeTotals(rows []ChangeRow) (added, removed int) {
-	for _, row := range rows {
-		if row.Footer && (row.Added != 0 || row.Removed != 0) {
-			return row.Added, row.Removed
-		}
-	}
-	for _, row := range rows {
-		if !row.Footer {
-			added, removed = added+max(0, row.Added), removed+max(0, row.Removed)
-		}
-	}
-	return added, removed
 }
 
 func changePlainLabel(r ChangeRow) string {

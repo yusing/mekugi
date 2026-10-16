@@ -4,6 +4,7 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	jsonv1 "encoding/json"
 
@@ -29,7 +30,7 @@ func (s *activityStart) label() string {
 	var parts []string
 	for _, value := range []string{s.model, s.effort, s.tier} {
 		if value != "" {
-			parts = append(parts, commentaryCode(value))
+			parts = append(parts, markdownsyntax.QuoteCode(value))
 		}
 	}
 	return strings.Join(parts, " ")

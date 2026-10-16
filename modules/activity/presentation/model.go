@@ -39,7 +39,10 @@ type Model[S Source, A AgentSource] struct {
 	skills            map[string]SkillSet
 	skillsRevision    uint64
 }
-type Session[S Source, A AgentSource] struct{ Main, Children Model[S, A] }
+type Session[S Source, A AgentSource] struct {
+	Main, Children Model[S, A]
+	Commits        *CommitReader
+}
 
 const FeedLimit = 2000
 

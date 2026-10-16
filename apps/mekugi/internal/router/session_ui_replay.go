@@ -24,11 +24,12 @@ import (
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 
 	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/term"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-	"golang.org/x/term"
 )
 
 type uiReplayPlayback struct {
@@ -79,6 +80,7 @@ func (p *uiReplayPlayback) reset() {
 }
 
 func (p *uiReplayPlayback) close() {
+	p.ui.commits.Close()
 	p.ui.shell.diff.close()
 	p.ui.shell.diffScreen.Close()
 	p.ui.session.state = scope.Store{}

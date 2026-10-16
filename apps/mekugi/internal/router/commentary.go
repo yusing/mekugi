@@ -3,7 +3,6 @@ package router
 import (
 	"crypto/sha256"
 	"fmt"
-	"strings"
 )
 
 func qualifiedToolName(namespace, name string) string {
@@ -30,22 +29,4 @@ func (p *mekugiProxy) commentaryMessageIDs(sessionID string) map[string]struct{}
 		}
 	}
 	return result
-}
-
-// commentaryCode keeps backticks in names or previews from ending the code span.
-func commentaryCode(value string) string {
-	longest, run := 0, 0
-	for _, r := range value {
-		if r == '`' {
-			run++
-			longest = max(longest, run)
-		} else {
-			run = 0
-		}
-	}
-	fence := strings.Repeat("`", longest+1)
-	if longest > 0 || strings.HasPrefix(value, " ") || strings.HasSuffix(value, " ") {
-		return fence + " " + value + " " + fence
-	}
-	return fence + value + fence
 }

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -31,6 +33,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
@@ -46,8 +49,9 @@ import (
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"golang.org/x/term"
+
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 type appServerItem struct {
@@ -122,8 +126,8 @@ type appServerUI struct {
 	statusConfig            appServerStatusConfig
 	picker                  composerPicker
 	skillEnvironment        []string
-	commitReads             chan gitCommitKey        // Commit objects read off the UI goroutine.
-	commandSegmentWrites    chan commandSegmentWrite // Completed replay writes, consumed only by the UI.
+	commits                 *activitypresentation.CommitReader // Attached Activity enrichment owner.
+	commandSegmentWrites    chan commandSegmentWrite           // Completed replay writes, consumed only by the UI.
 	commandSegmentPending   int
 	restoredSegments        map[string]*reports.Report // Turn-local, validated and adopted history.
 	client                  *appserver.Client
@@ -259,6 +263,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 		defer u.cancelPickerScan()
 		defer u.shell.diff.close()
 		defer u.shell.diffScreen.Close()
+		defer func() { u.commits.Close() }()
 		if proxy != nil {
 			defer proxy.activity.releasePane()
 		}
@@ -317,10 +322,8 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 						u.dirty = true
 					case result := <-u.picker.scanResults:
 						u.applyPickerScan(result)
-					case key := <-u.commitReads:
-						if u.commitRead(key) {
-							u.dirty = true
-						}
+					case <-u.commits.Updates():
+						u.startCommitReads()
 					case err := <-u.commandSegmentWrites:
 						u.commandSegmentRetained(err)
 					case update := <-u.titleUpdates:

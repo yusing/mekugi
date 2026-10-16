@@ -12,8 +12,9 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"mvdan.cc/sh/v3/syntax"
+
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
 func appServerDuration(item appServerItem) time.Duration {
@@ -208,7 +209,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			if len(blocks) > 0 {
 				last := &blocks[len(blocks)-1]
 				last.Tail, last.TailOmitted = entry.outputTail, entry.outputOmit
-				last.Changes = commitChanges(entry.native.changes, entry.native.commit)
+				last.Changes = entry.native.changes
 				// A read's output is what the agent read; it starts collapsed.
 				last.Collapsed = (entry.native.collapsed || last.ReadOutput()) && last.Collapsible()
 			}
@@ -385,7 +386,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 			last.Duration = time.Duration(segment.timing.ElapsedNS)
 		}
 		last.Tail, last.TailOmitted, last.Output = segment.tail, segment.omit, retainedOutputID(segment.output, segmentIndex+2)
-		last.Changes = commitChanges(segment.changes, segment.commit)
+		last.Changes = segment.changes
 		blocks = append(blocks, operations...)
 	}
 	singleOutput := len(entry.native.segments) == 1 && entry.native.segments[0].output == nil && entry.native.output != nil
@@ -405,7 +406,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 		for i := len(blocks) - 1; i >= 0; i-- {
 			if !blocks[i].Skipped {
 				blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = entry.outputTail, entry.outputOmit, retainedOutputID(entry.native.output, 1)
-				blocks[i].Changes = commitChanges(entry.native.changes, entry.native.commit)
+				blocks[i].Changes = entry.native.changes
 				break
 			}
 		}

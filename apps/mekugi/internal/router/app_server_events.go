@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"github.com/yusing/mekugi/contracts/scope"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -20,12 +22,13 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
+	"mvdan.cc/sh/v3/expand"
+	"mvdan.cc/sh/v3/syntax"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
-	"mvdan.cc/sh/v3/expand"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 // appServerSession adapts app-server notifications for every thread of the
@@ -491,7 +494,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			delete(s.commands, key)
 			entries = append(entries, done...)
 		case "imageView":
-			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
+			entries = append(entries, activityPaneEntry{Seq: s.next(), Agent: agent, Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(s.cwd, item.Path)), CallID: id, Observed: now, native: native})
 		case "fileChange":
 			if len(item.Changes) > 0 {
 				native.editPages = appServerEditPages(item, s.cwd, method)
@@ -769,13 +772,13 @@ func appServerCommandText(item appServerItem, cwd string) string {
 	for _, action := range item.CommandActions {
 		switch action.Type {
 		case "read":
-			parts = append(parts, "Read "+commentaryCode(pathdisplay.ForWorkspace(cwd, action.Path)))
+			parts = append(parts, "Read "+markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(cwd, action.Path)))
 		case "listFiles":
-			parts = append(parts, "List "+commentaryCode(cmp.Or(pathdisplay.ForWorkspace(cwd, action.Path), ".")))
+			parts = append(parts, "List "+markdownsyntax.QuoteCode(cmp.Or(pathdisplay.ForWorkspace(cwd, action.Path), ".")))
 		case "search":
-			text := "Search " + commentaryCode(action.Query)
+			text := "Search " + markdownsyntax.QuoteCode(action.Query)
 			if action.Path != "" {
-				text += " in " + commentaryCode(pathdisplay.ForWorkspace(cwd, action.Path))
+				text += " in " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(cwd, action.Path))
 			}
 			parts = append(parts, text)
 		default:
@@ -925,7 +928,7 @@ func appServerEditText(item appServerItem, cwd string) string {
 		if moved := cmp.Or(change.Kind.MovePath, change.Kind.MovePath2); moved != "" {
 			verb, path = "Move", pathdisplay.Move(cwd, change.Path, moved)
 		}
-		text := verb + " " + commentaryCode(path) + fmt.Sprintf(" · +%d −%d", added, removed)
+		text := verb + " " + markdownsyntax.QuoteCode(path) + fmt.Sprintf(" · +%d −%d", added, removed)
 		switch item.Status {
 		case "failed", "declined":
 			text += " · " + item.Status

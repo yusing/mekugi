@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -19,6 +21,7 @@ import (
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -329,7 +332,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 	}
 	switch item.Type {
 	case "imageView":
-		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + commentaryCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
+		entry := activityPaneEntry{Seq: u.view.LastSeq + 1, Agent: "Main", Kind: "tool", Text: "View " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(u.session.cwd, item.Path)), CallID: item.ID, Observed: time.Now(),
 			native: &liveActivityNativeItem{thread: u.Thread, turn: turn.ID, item: item.ID, phase: method, searchResults: appServerSearchResults(item)}}
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	case "commandExecution", "fileChange", "webSearch":

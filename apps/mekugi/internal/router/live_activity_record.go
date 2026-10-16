@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"slices"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -80,6 +81,17 @@ func (u *appServerUI) attachActivity() {
 	state := u.session.activity.Model[activitypresentation.Session[activityPaneEntry, activityPaneAgent]](&u.session.state)
 	if state == nil {
 		return
+	}
+	if state.Commits == nil && u.replay == nil {
+		ctx := u.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		state.Commits = activitypresentation.NewCommitReader(ctx)
+	}
+	if u.commits != state.Commits {
+		u.commits.Close()
+		u.commits = state.Commits
 	}
 	if u.view != nil && u.view.Model != &state.Main {
 		state.Main = *u.view.Model

@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -113,7 +115,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 				if count == 1 {
 					noun = "file"
 				}
-				summaries = append(summaries, fmt.Sprintf("Delete %s • %d %s · %s", commentaryCode(strings.TrimSuffix(pathdisplay.ForWorkspace(workspace, root), "/")+"/"), count, noun, strings.Join(exec.Labels, ", ")))
+				summaries = append(summaries, fmt.Sprintf("Delete %s • %d %s · %s", markdownsyntax.QuoteCode(strings.TrimSuffix(pathdisplay.ForWorkspace(workspace, root), "/")+"/"), count, noun, strings.Join(exec.Labels, ", ")))
 				directories[root] = 0
 			}
 			grouped = true
@@ -132,18 +134,18 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 			path = pathdisplay.Move(workspace, file.BeforePath, file.AfterPath)
 		}
 		if file.Directory {
-			summaries = append(summaries, action+" "+commentaryCode(path+"/"))
+			summaries = append(summaries, action+" "+markdownsyntax.QuoteCode(path+"/"))
 			continue
 		}
 		if file.Incomplete != "" {
 			continue
 		}
-		summary := action + " " + commentaryCode(path)
+		summary := action + " " + markdownsyntax.QuoteCode(path)
 		if file.OriginNote != "" && !receiptNamesSharedOrigin(exec, file.OriginNote) {
 			summary += " (" + file.OriginNote + ")"
 		}
 		if file.CopyFrom != "" {
-			summary += " (copy of " + commentaryCode(pathdisplay.ForWorkspace(workspace, file.CopyFrom)) + ")"
+			summary += " (copy of " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(workspace, file.CopyFrom)) + ")"
 		}
 		if file.Binary {
 			summary += " binary"
@@ -170,7 +172,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		// full path/reason records in mchanges without flooding Activity.
 		summary := "Capture · " + captureGapSummary(reasons)
 		if history.ChangeID != "" {
-			summary += " · " + commentaryCode("mchanges "+history.ChangeID+" --summary")
+			summary += " · " + markdownsyntax.QuoteCode("mchanges "+history.ChangeID+" --summary")
 		}
 		summaries = append(summaries, summary)
 	}

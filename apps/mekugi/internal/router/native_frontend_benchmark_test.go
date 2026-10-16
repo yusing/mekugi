@@ -40,7 +40,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	}
 	inspectBatch := []string{
 		abs("app_server_ui.go"), abs("live_activity_view.go"), abs("../../../../modules/activity/terminalview/paint.go"),
-		abs("vcs_display.go"), abs("server.go"), abs("native_shell.go"),
+		abs("../../../../modules/activity/presentation/vcs_source.go"), abs("server.go"), abs("native_shell.go"),
 		abs("storage_retention.go"), abs("../../../../modules/changehistory/internal/retained/mutate.go"),
 	}
 	docs := []string{abs("../../../../docs/contracts/composition.md"), abs("../../../../docs/contracts/record-publication.md"), abs("../../../../docs/contracts/provider-routing.md")}

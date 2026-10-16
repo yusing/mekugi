@@ -3,6 +3,8 @@ package router
 import (
 	"cmp"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
@@ -454,7 +456,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 			*entries = append(*entries, entry)
 		}
 	case "imageView":
-		entry.Kind, entry.Text = "tool", "View "+commentaryCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
+		entry.Kind, entry.Text = "tool", "View "+markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(info.Cwd, item.Path))
 		*entries = append(*entries, entry)
 	case "commandExecution", "fileChange", "webSearch":
 		entry.Kind, entry.Text = "tool", appServerToolText(item, info.Cwd)

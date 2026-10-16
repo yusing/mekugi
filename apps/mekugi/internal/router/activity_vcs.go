@@ -1,0 +1,86 @@
+package router
+
+import (
+	"slices"
+
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+)
+
+// commandOutputRows adapts observed change-history or VCS output, retaining the
+// immutable commit key whose files can complete the output-observed rows.
+func commandOutputRows(item appServerItem) ([]activitypresentation.ChangeRow, activitypresentation.CommitKey) {
+	if rows := mchangesOutputRows(item); rows != nil || item.AggregatedOutput == nil {
+		return rows, activitypresentation.CommitKey{}
+	}
+	return activitypresentation.VCSOutputRows(toolActivityShellSource(appServerDisplayCommand(item.Command)), item.Cwd, *item.AggregatedOutput)
+}
+
+// A prior unclassified command may change the shell cwd. Do not enrich a later
+// commit against the invocation's initial cwd in that case.
+// Literal VCS commands change only their own process directory, if any.
+func vcsSegmentCwd(cwd string, prior []commandSegment) string {
+	for _, segment := range prior {
+		if segment.skipped {
+			continue
+		}
+		if !activitypresentation.VCSPreservesDirectory(toolActivityShellSource(segment.source)) {
+			return ""
+		}
+	}
+	return cwd
+}
+
+// startCommitReads projects cached immutable files and admits bounded background reads.
+// The attached Activity owner coalesces completion notifications; no work blocks input.
+func (u *appServerUI) startCommitReads() {
+	if u.commits == nil {
+		return
+	}
+	for _, view := range []*liveActivityView{u.view, u.agents} {
+		if view == nil {
+			continue
+		}
+		for i, record := range view.Entries {
+			native := record.Source.native
+			if native == nil {
+				continue
+			}
+			var keys []activitypresentation.CommitKey
+			if native.commit.Hash != "" {
+				keys = append(keys, native.commit)
+			}
+			for _, segment := range native.segments {
+				if segment.commit.Hash != "" {
+					keys = append(keys, segment.commit)
+				}
+			}
+			for _, key := range keys {
+				files, ready := u.commits.Request(key)
+				if !ready {
+					continue
+				}
+				view.mutateEntry(i, func(record *liveActivityRecord) {
+					// Source records and published rows can outlive this revision.
+					updated := *record.Source.native
+					if updated.commit == key {
+						updated.changes = activitypresentation.CommitChanges(updated.changes, key, files)
+						updated.commit = activitypresentation.CommitKey{}
+					}
+					updated.segments = slices.Clone(updated.segments)
+					for j := range updated.segments {
+						segment := &updated.segments[j]
+						if segment.commit == key {
+							segment.changes = activitypresentation.CommitChanges(segment.changes, key, files)
+							segment.commit = activitypresentation.CommitKey{}
+						}
+					}
+					record.Source.native = &updated
+					for j := range record.Values {
+						record.Values[j].Changes = activitypresentation.CommitChanges(record.Values[j].Changes, key, files)
+					}
+				})
+				u.dirty = true
+			}
+		}
+	}
+}

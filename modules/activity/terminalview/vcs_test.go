@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/charmbracelet/x/ansi"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
@@ -99,7 +102,7 @@ func TestVCSStatusRowsUseTwoCellCodes(t *testing.T) {
 
 func TestVCSFooterFollowsElidedRows(t *testing.T) {
 	var rows []ChangeRow
-	for range ChangeRowsShown + 2 {
+	for range presentation.ChangeRowsShown + 2 {
 		rows = append(rows, ChangeRow{Code: "M", Label: "a.go", Added: 1})
 	}
 	rows = append(rows, ChangeRow{Footer: true, Note: "14 files", Added: 14})

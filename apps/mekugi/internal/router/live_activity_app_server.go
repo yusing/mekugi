@@ -49,7 +49,7 @@ type liveActivityNativeItem struct {
 	live               bool                             // From a live notification; restored history never sets it.
 	settled            time.Time                        // Successful output stays open from then until its agent's next event.
 	changes            []activitypresentation.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
-	commit             gitCommitKey                     // The commit object whose files complete changes.
+	commit             activitypresentation.CommitKey   // The commit object whose files complete changes.
 	collapsed          bool                             // Settled output or a restored block.
 	spans              []activityui.TextSpan            // Attachment spans, not text resembling image labels.
 	question           uint64                           // Original user entry.

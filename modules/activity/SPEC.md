@@ -94,6 +94,20 @@ those identities for dialogs and cross-pane navigation.
 Source values contain no styles, geometry, callbacks or live handles. Shared fence
 and inline-code recognition belongs to `sourceanalysis`.
 
+Activity owns literal Git, SVN and change-read source recognition and interpretation
+of their observed output into neutral change rows. Application adapters remove
+authenticated host wrappers and supply the command's selected directory; shared
+shell syntax remains library-owned. Recognition neither evaluates source nor grants
+execution or filesystem authority. Change-history reads retain their existing
+evidence owner.
+
+Observed Git commit output may request read-only enrichment of the named immutable
+commit in its proven directory. The attached Activity session owns these bounded,
+asynchronous reads and their cache. Main and children share that owner; replacement
+and shutdown retire it without blocking input. Pending or failed reads preserve the
+original output evidence. Offline replay interprets retained output without starting
+Git or inheriting live enrichment caches. Rendering and disclosure remain terminal-owned.
+
 ### Edit evidence
 
 Statically scoped `sed -i`, `cat` redirections, `rm`, `mv`, and supported Python or
@@ -219,3 +233,6 @@ Application checks cover unchanged host inputs/results and parallel execution,
 authenticated attribution, repeated script errors, live-only output notes, waits
 ending without completion and intent replaced by observed evidence. Source parsing
 and renderer checks alone do not establish execution or capture coverage.
+VCS checks exercise literal classification, output parsing and rendered rows through
+live/restored consumers, plus directory/hash isolation, bounded reads, cancellation,
+cache reuse and attachment retirement.

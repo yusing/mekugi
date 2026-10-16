@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
@@ -117,7 +119,7 @@ func (s *appServerSession) hookEntry(thread string, observation history.HookObse
 	if run.SourcePath == builtinHookSource {
 		label += " · builtin"
 	} else {
-		label += " · " + commentaryCode(pathdisplay.ForWorkspace(s.cwd, run.SourcePath))
+		label += " · " + markdownsyntax.QuoteCode(pathdisplay.ForWorkspace(s.cwd, run.SourcePath))
 	}
 	if run.ExecutionMode == "async" {
 		label += " · async"

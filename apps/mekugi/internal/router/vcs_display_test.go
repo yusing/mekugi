@@ -1,12 +1,10 @@
 package router
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -79,7 +77,8 @@ func vcsCommandUI(t *testing.T, workspace string) *appServerUI {
 
 func TestVCSCommitShowsTheRecordedCommit(t *testing.T) {
 	g, output := vcsCommitFixture(t, "amend! feat(router): pin latest reply")
-	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
+	_, commit := activitypresentation.VCSOutputRows("git commit -m x", g.dir, output)
+	hash := commit.Hash
 	script := "git diff --check && git add a.go b.go gone.txt && timeout 90s git commit -F - <<'EOF'\namend! feat(router): pin latest reply\n\nbody\nEOF"
 	var err error
 	script, err = shellinstrumentation.RewriteCommands(script, displayGuardHelper, displayGuardDirectory, "", "")
@@ -159,118 +158,64 @@ func TestVCSStatAndCommitShowSharedFileCodes(t *testing.T) {
 	}
 }
 
-func TestVCSCommitWithoutItsObjectKeepsOutputEvidence(t *testing.T) {
-	_, output := vcsCommitFixture(t, "feat: add b")
-	// Without the host's cwd there is no repository to read the commit from.
-	rows, _ := vcsOutputRows("git commit -m 'feat: add b'", "", output)
-	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
-	want := []activitypresentation.ChangeRow{
-		{Code: "A", Label: "b.go"},
-		{Code: "D", Label: "gone.txt"},
-		{Footer: true, Label: hash, Note: "on main · 3 files", Added: 3, Removed: 2},
+func TestVCSCommitOfManyFilesClosesOnce(t *testing.T) {
+	g := newGitFixture(t)
+	for i := range activitypresentation.ChangeRowsShown + 1 {
+		g.write(fmt.Sprintf("f%02d", i), "x\n")
 	}
-	if !reflect.DeepEqual(rows, want) {
-		t.Fatalf("rows = %+v\nwant %+v", rows, want)
+	g.run("add", ".")
+	output := g.run("commit", "-m", "many")
+	rows, key := activitypresentation.VCSOutputRows("git commit -m many", g.dir, output)
+	reader := activitypresentation.NewCommitReader(t.Context())
+	defer reader.Close()
+	reader.Request(key)
+	select {
+	case <-reader.Updates():
+	case <-t.Context().Done():
+		t.Fatal(t.Context().Err())
 	}
-	// A message the command did not spell out comes from the output.
-	rows, _ = vcsOutputRows("git commit --amend --no-edit", "", output)
-	if footer := rows[len(rows)-1]; footer.Note != "feat: add b · on main · 3 files" {
-		t.Fatalf("unnamed commit footer = %+v", footer)
-	}
-	// Output that names no commit claims none.
-	if rows, _ := vcsOutputRows("git commit -m x", "", "On branch main\nnothing to commit, working tree clean\n"); rows != nil {
-		t.Fatalf("nothing committed, rows = %+v", rows)
-	}
-}
-
-func TestVCSCommitReadIsBoundedToItsObject(t *testing.T) {
-	g, output := vcsCommitFixture(t, "feat: cached")
-	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
-	calls := 0
-	run := gitShowRun
-	gitShowRun = func(ctx context.Context, dir string, args ...string) ([]byte, error) {
-		calls++
-		if dir != g.dir || !slices.Contains(args, hash+"^{commit}") {
-			t.Errorf("git show in %q with %q", dir, args)
-		}
-		if _, ok := ctx.Deadline(); !ok {
-			t.Error("git show has no deadline")
-		}
-		return run(ctx, dir, args...)
-	}
-	t.Cleanup(func() { gitShowRun = run })
-	// A relative -C directory resolves against the host's cwd.
-	rows, key := vcsOutputRows("git -C "+filepath.Base(g.dir)+" commit -m x", filepath.Dir(g.dir), output)
-	if key != (gitCommitKey{g.dir, hash}) {
-		t.Fatalf("key = %+v", key)
-	}
-	// Until its object is read, the output's rows stand and the object is
-	// requested rather than read in place.
-	if got := commitChanges(rows, key); !reflect.DeepEqual(got, rows) || calls != 0 {
-		t.Fatalf("unread rows = %+v after %d reads", got, calls)
-	}
-	if !slices.Contains(gitShowRequests(), key) {
-		t.Fatal("unread commit was not requested")
-	}
-	if !gitShowRead(t.Context(), key) {
+	files, ready := reader.Request(key)
+	if !ready {
 		t.Fatal("commit object unread")
 	}
-	// A commit hash names immutable content, so it is read once.
-	for range 2 {
-		if got := commitChanges(rows, key); len(got) != 4 || got[0].Added != 2 || got[3] != rows[len(rows)-1] {
-			t.Fatalf("rows = %+v", got)
-		}
-	}
-	if calls != 1 || slices.Contains(gitShowRequests(), key) {
-		t.Fatalf("git show ran %d times", calls)
+	rows = activitypresentation.CommitChanges(rows, key, files)
+	if footers := slices.DeleteFunc(slices.Clone(rows), func(row activitypresentation.ChangeRow) bool { return !row.Footer }); len(footers) != 1 || len(rows) != 14 {
+		t.Fatalf("rows = %+v", rows)
 	}
 }
 
 func TestVCSCommitReadDoesNotBlockTheUI(t *testing.T) {
 	g, output := vcsCommitFixture(t, "feat: slow")
-	release := make(chan struct{})
-	run := gitShowRun
-	gitShowRun = func(ctx context.Context, dir string, args ...string) ([]byte, error) {
-		if dir == g.dir {
-			select {
-			case <-release:
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}
-		return run(ctx, dir, args...)
+	bin := t.TempDir()
+	program := "#!/bin/sh\nwhile [ ! -f \"$2/release\" ]; do sleep 0.01; done\nprintf '2\\t1\\ta.go\\n1\\t0\\tb.go\\n0\\t1\\tgone.txt\\n create mode 100644 b.go\\n delete mode 100644 gone.txt\\n'\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(program), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { gitShowRun = run })
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	u := vcsCommandUI(t, g.dir)
 	item := map[string]any{"id": "cmd", "type": "commandExecution", "command": "git commit -m 'feat: slow'", "cwd": g.dir,
 		"status": "completed", "exitCode": 0, "aggregatedOutput": output}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	u.startCommitReads()
-	// While the object is read, the output's own rows show.
 	if got := mainFeed(u, 90); !strings.Contains(got, "A  b.go\n") || strings.Contains(got, "a.go") {
 		t.Fatalf("pending commit =\n%s", got)
 	}
-	close(release)
+	if err := os.WriteFile(filepath.Join(g.dir, "release"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if got := awaitMain(t, u, "M  a.go      +2 -1"); !strings.Contains(got, "A  b.go      +1") {
 		t.Fatalf("read commit =\n%s", got)
 	}
-}
-
-func TestVCSCommitOfManyFilesClosesOnce(t *testing.T) {
-	g := newGitFixture(t)
-	for i := range activityui.ChangeRowsShown + 1 {
-		g.write(fmt.Sprintf("f%02d", i), "x\n")
+	previous := u.commits
+	if err := u.clearSessionPresentation(); err != nil {
+		t.Fatal(err)
 	}
-	g.run("add", ".")
-	output := g.run("commit", "-m", "many")
-	rows, key := vcsOutputRows("git commit -m many", g.dir, output)
-	commitChanges(rows, key)
-	if !gitShowRead(t.Context(), key) {
-		t.Fatal("commit object unread")
+	if u.commits == previous {
+		t.Fatal("replacement retained commit cache")
 	}
-	rows = commitChanges(rows, key)
-	if footers := slices.DeleteFunc(slices.Clone(rows), func(row activitypresentation.ChangeRow) bool { return !row.Footer }); len(footers) != 1 || len(rows) != 14 {
-		t.Fatalf("rows = %+v", rows)
+	_, key := activitypresentation.VCSOutputRows("git commit -m x", g.dir, output)
+	if _, ready := previous.Request(key); ready {
+		t.Fatal("retired attachment remained active")
 	}
 }
 
@@ -377,194 +322,5 @@ func TestVCSCommandClassification(t *testing.T) {
 		if got := toolActivityShell(source); !strings.HasPrefix(got, "Run") {
 			t.Errorf("%q classified as %q", source, got)
 		}
-	}
-}
-
-func TestVCSDiffRowsCountEachHunk(t *testing.T) {
-	gitPatch := strings.Join([]string{
-		"diff --git a/internal/a.go b/internal/a.go",
-		"index 1..2 100644",
-		"--- a/internal/a.go",
-		"+++ b/internal/a.go",
-		"@@ -1,3 +1,3 @@",
-		" keep",
-		"--- a removed line that looks like a header",
-		"+++ an added line that looks like a header",
-		" keep",
-		"@@ -10 +10,2 @@",
-		"-old",
-		"+new",
-		"+more",
-		"\\ No newline at end of file",
-		"diff --git a/new.go b/new.go",
-		"new file mode 100644",
-		"--- /dev/null",
-		"+++ b/new.go",
-		"@@ -0,0 +1 @@",
-		"+package x",
-		"diff --git a/gone.go b/gone.go",
-		"deleted file mode 100644",
-		"--- a/gone.go",
-		"+++ /dev/null",
-		"@@ -1,2 +0,0 @@",
-		"-a",
-		"-b",
-		"diff --git a/old name.go b/new name.go",
-		"similarity index 90%",
-		"rename from old name.go",
-		"rename to new name.go",
-		"diff --git a/logo.png b/logo.png",
-		"Binary files a/logo.png and b/logo.png differ",
-		"diff --git \"a/tab\\there.go\" \"b/tab\\there.go\"",
-		"--- \"a/tab\\there.go\"",
-		"+++ \"b/tab\\there.go\"",
-		"@@ -1 +1 @@",
-		"-x",
-		"+y",
-		"",
-	}, "\n")
-	want := []activitypresentation.ChangeRow{
-		{Code: "M", Label: "internal/a.go", Added: 3, Removed: 2},
-		{Code: "A", Label: "new.go", Added: 1},
-		{Code: "D", Label: "gone.go", Removed: 2},
-		{Code: "R", From: "old name.go", Label: "new name.go"},
-		{Code: "M", Label: "logo.png", Note: "binary"},
-		{Code: "M", Label: "tab    here.go", Added: 1, Removed: 1},
-	}
-	if rows, _ := vcsOutputRows("git diff", "", "\x1b[1m"+gitPatch); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("git rows = %+v\nwant %+v", rows, want)
-	}
-	svnPatch := "Index: trunk/a.c\n===================================================================\n--- trunk/a.c\t(revision 4811)\n+++ trunk/a.c\t(working copy)\n@@ -1 +1,2 @@\n-a\n+b\n+c\n" +
-		"Index: trunk/new.c\n===================================================================\n--- trunk/new.c\t(nonexistent)\n+++ trunk/new.c\t(working copy)\n@@ -0,0 +1 @@\n+x\n"
-	want = []activitypresentation.ChangeRow{{Code: "M", Label: "trunk/a.c", Added: 2, Removed: 1}, {Code: "A", Label: "trunk/new.c", Added: 1}}
-	if rows, _ := vcsOutputRows("svn diff", "", svnPatch); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("svn rows = %+v", rows)
-	}
-	// mchanges prints each record's patch with quoted paths; one path's
-	// records sum.
-	mchangesPatch := "amber1\n--- \"a.go\"\n+++ \"a.go\"\n@@ -1 +1 @@\n-x\n+y\namber2\n--- \"a.go\"\n+++ \"a.go\"\n@@ -1 +1,2 @@\n-y\n+z\n+w\n--- /dev/null\n+++ \"b.go\"\n@@ -0,0 +1 @@\n+b\n"
-	want = []activitypresentation.ChangeRow{{Code: "M", Label: "a.go", Added: 3, Removed: 2}, {Code: "A", Label: "b.go", Added: 1}}
-	if rows, _ := vcsOutputRows("mchanges amber1..amber2", "", mchangesPatch); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("mchanges rows = %+v", rows)
-	}
-	// A merge's combined diff names no counts, and its headers no move.
-	merge := "commit 0123456789abcdef\nMerge: 1234567 89abcde\n\n    merge\n\ndiff --cc a.go\nindex 1,2..3\n--- a/a.go\n+++ b/a.go\n@@@ -1,1 -1,1 +1,2 @@@\n  x\n++y\n" + gitPatch
-	if rows, _ := vcsOutputRows("git show", "", merge); len(rows) != 6 || rows[0].Label != "internal/a.go" {
-		t.Fatalf("merge rows = %+v", rows)
-	}
-	// A list's combined output cannot be attributed to its diff.
-	if rows, _ := vcsOutputRows("echo x && git diff", "", gitPatch); rows != nil {
-		t.Fatalf("combined output read as a diff: %+v", rows)
-	}
-	var many strings.Builder
-	for i := range activityui.ChangeRowsShown + 1 {
-		fmt.Fprintf(&many, "--- f%d\n+++ f%d\n@@ -1 +1 @@\n-a\n+b\n", i, i)
-	}
-	rows, _ := vcsOutputRows("svn diff", "", many.String())
-	if footer := rows[len(rows)-1]; !footer.Footer || footer.Note != "13 files" || footer.Added != 13 || footer.Removed != 13 {
-		t.Fatalf("many-file footer = %+v", footer)
-	}
-}
-
-func TestVCSStatRows(t *testing.T) {
-	for _, tc := range []struct {
-		command, output string
-		want            []activitypresentation.ChangeRow
-	}{
-		{"git diff --stat", " a.go         | 3 ++-\n {old => new}/b.go | 0\n logo.png     | Bin 0 -> 12 bytes\n 3 files changed, 2 insertions(+), 1 deletion(-)\n", []activitypresentation.ChangeRow{
-			{Code: "M", Label: "a.go", Added: 2, Removed: 1},
-			{Code: "R", From: "old/b.go", Label: "new/b.go"},
-			{Code: "M", Label: "logo.png", Note: "binary"},
-			{Footer: true, Note: "3 files", Added: 2, Removed: 1},
-		}},
-		// A scaled graph does not split its counts; only the totals are exact.
-		{"git diff --stat", " a.go | 300 ++++++++++-----\n b.go |   4 +\n 2 files changed, 204 insertions(+), 100 deletions(-)\n", []activitypresentation.ChangeRow{
-			{Code: "M", Label: "a.go", Note: "300 lines"},
-			{Code: "M", Label: "b.go", Note: "4 lines"},
-			{Footer: true, Note: "2 files", Added: 204, Removed: 100},
-		}},
-		{"git show --numstat", "commit 0123456789abcdef\nAuthor: T <t@example.com>\n\n    subject\n\n12\t3\ta.go\n-\t-\tlogo.png\n1\t1\tsrc/{a => b}/c.go\n", []activitypresentation.ChangeRow{
-			{Code: "M", Label: "a.go", Added: 12, Removed: 3},
-			{Code: "M", Label: "logo.png", Note: "binary"},
-			{Code: "R", From: "src/a/c.go", Label: "src/b/c.go", Added: 1, Removed: 1},
-		}},
-		{"git diff --shortstat", " 1 file changed, 4 insertions(+)\n", []activitypresentation.ChangeRow{{Footer: true, Note: "1 file", Added: 4}}},
-		{"git diff --name-status", "M\ta.go\nA\tb.go\nR087\told.go\tnew.go\nD\tgone.go\n", []activitypresentation.ChangeRow{
-			{Code: "M", Label: "a.go"}, {Code: "A", Label: "b.go"}, {Code: "R", From: "old.go", Label: "new.go"}, {Code: "D", Label: "gone.go"},
-		}},
-		{"git show --name-only", "commit 0123456789abcdef\nAuthor: T <t@example.com>\nDate:   now\n\n    subject\n\na.go\n", []activitypresentation.ChangeRow{{Label: "a.go"}}},
-		{"svn diff --summarize", "M       trunk/a.c\nA       trunk/b.c\n M      trunk\n", []activitypresentation.ChangeRow{
-			{Verb: "Edited", Label: "trunk/a.c"}, {Verb: "Created", Label: "trunk/b.c"}, {Verb: "Edited", Label: "trunk", Note: "properties"},
-		}},
-	} {
-		if rows, _ := vcsOutputRows(tc.command, "", tc.output); !reflect.DeepEqual(rows, tc.want) {
-			t.Errorf("%s:\n got %+v\nwant %+v", tc.command, rows, tc.want)
-		}
-	}
-}
-
-func TestVCSStatusRows(t *testing.T) {
-	long := strings.Join([]string{
-		"On branch feat/vcs-events",
-		"Your branch is ahead of 'origin/feat/vcs-events' by 2 commits.",
-		"  (use \"git push\" to publish your local commits)",
-		"",
-		"Changes to be committed:",
-		"  (use \"git restore --staged <file>...\" to unstage)",
-		"\tmodified:   internal/router/vcs_display.go",
-		"\tnew file:   internal/router/vcs_display_test.go",
-		"\trenamed:    old.go -> new.go",
-		"",
-		"Changes not staged for commit:",
-		"\tmodified:   internal/router/vcs_display.go",
-		"\tdeleted:    gone.go",
-		"\tmodified:   sub (new commits)",
-		"",
-		"Unmerged paths:",
-		"\tboth modified:   conflict.go",
-		"",
-		"Untracked files:",
-		"  (use \"git add <file>...\" to include in what will be committed)",
-		"\tscratch.txt",
-		"",
-	}, "\n")
-	want := []activitypresentation.ChangeRow{
-		{Code: "MM", Label: "internal/router/vcs_display.go"},
-		{Code: "A ", Label: "internal/router/vcs_display_test.go"},
-		{Code: "R ", From: "old.go", Label: "new.go"},
-		{Code: " D", Label: "gone.go"},
-		{Code: " M", Label: "sub"},
-		{Code: "UU", Label: "conflict.go"},
-		{Code: "??", Label: "scratch.txt"},
-		{Footer: true, Label: "feat/vcs-events", Note: "↑2"},
-	}
-	if rows, _ := vcsOutputRows("git status", "", long); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("long status = %+v\nwant %+v", rows, want)
-	}
-	short := "## main...origin/main [ahead 1, behind 3]\nM  a.go\n M b.go\nR  x -> y\n?? z\n"
-	want = []activitypresentation.ChangeRow{{Code: "M ", Label: "a.go"}, {Code: " M", Label: "b.go"}, {Code: "R ", From: "x", Label: "y"}, {Code: "??", Label: "z"}, {Footer: true, Label: "main", Note: "↑1 ↓3"}}
-	if rows, _ := vcsOutputRows("git status -sb", "", short); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("short status = %+v", rows)
-	}
-	clean := "On branch main\nYour branch and 'origin/main' have diverged,\nand have 1 and 2 different commits each, respectively.\n\nnothing to commit, working tree clean\n"
-	want = []activitypresentation.ChangeRow{{Footer: true, Label: "main", Note: "↑1 ↓2 · clean"}}
-	if rows, _ := vcsOutputRows("git status", "", clean); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("clean status = %+v", rows)
-	}
-	svn := "M       trunk/a.c\n?       trunk/new.c\n M      trunk\nC       trunk/c.c\n"
-	want = []activitypresentation.ChangeRow{{Code: "M ", Label: "trunk/a.c"}, {Code: "? ", Label: "trunk/new.c"}, {Code: " M", Label: "trunk"}, {Code: "C ", Label: "trunk/c.c"}}
-	if rows, _ := vcsOutputRows("svn st", "", svn); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("svn status = %+v", rows)
-	}
-}
-
-func TestVCSSVNCommitRows(t *testing.T) {
-	output := "Sending        trunk/a.c\nAdding  (bin)  trunk/logo.png\nDeleting       trunk/old.c\nTransmitting file data ..done\nCommitting transaction...\nCommitted revision 4812.\n"
-	want := []activitypresentation.ChangeRow{
-		{Verb: "Edited", Label: "trunk/a.c"}, {Verb: "Created", Label: "trunk/logo.png"}, {Verb: "Deleted", Label: "trunk/old.c"},
-		{Footer: true, Label: "r4812"},
-	}
-	if rows, _ := vcsOutputRows("svn commit -m 'r: fix'", "", output); !reflect.DeepEqual(rows, want) {
-		t.Fatalf("svn commit rows = %+v", rows)
 	}
 }

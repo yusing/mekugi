@@ -25,9 +25,10 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
+
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
-	"golang.org/x/sys/unix"
 )
 
 // Owned by TestMain, like the shared registry fixtures. Build once per test
@@ -671,14 +672,7 @@ func awaitMain(t *testing.T, u *appServerUI, want string) string {
 	for {
 		u.flushStreamOutput()
 		u.startCommitReads()
-		for drained := false; !drained; {
-			select {
-			case key := <-u.commitReads:
-				u.commitRead(key)
-			default:
-				drained = true
-			}
-		}
+
 		u.view.pace(time.Now())
 		main := ansi.Strip(strings.Join(u.view.renderFeed(90, 60).lines, "\n"))
 		if strings.Contains(main, want) {

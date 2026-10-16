@@ -5,6 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 func TestVCSUnsupportedFormatsKeepLiteralOutput(t *testing.T) {
@@ -44,10 +48,10 @@ func TestVCSCumulativeDirectoriesPreserveSymlinkResolution(t *testing.T) {
 		{outer, "git -C link -C " + quoteShellWord("../"+filepath.Base(g.dir)) + " commit -m x"},
 		{outer, "git -C link -C " + quoteShellWord(g.dir) + " commit -m x"},
 	} {
-		_, key := vcsOutputRows(tc.command, tc.cwd, output)
+		_, key := activitypresentation.VCSOutputRows(tc.command, tc.cwd, output)
 		// The final absolute -C supersedes a prior relative path for resolution;
 		// actual output remains required before a key can be requested.
-		got, err := filepath.EvalSymlinks(key.dir)
+		got, err := filepath.EvalSymlinks(key.Directory)
 		if err != nil || got != g.dir {
 			t.Fatalf("directory %q: %+v, %v", tc.command, key, err)
 		}
@@ -83,10 +87,10 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 				}
 				commit := candidate.native.segments[1].commit
 				if prior == "git add a.go" {
-					if commit.dir != g.dir || commit.hash == "" {
+					if commit.Directory != g.dir || commit.Hash == "" {
 						t.Fatalf("known directory lost: %+v", commit)
 					}
-				} else if commit != (gitCommitKey{}) {
+				} else if commit != (activitypresentation.CommitKey{}) {
 					t.Fatalf("unproven cwd used: %+v", commit)
 				}
 			}
@@ -115,7 +119,7 @@ func TestVCSPatchCopiesKeepTheirSource(t *testing.T) {
 			output = g.run("diff", "--cached", "-C", "--find-copies-harder", format, "--summary")
 			command += " " + format + " --summary"
 		}
-		rows, _ := vcsOutputRows(command, g.dir, output)
+		rows, _ := activitypresentation.VCSOutputRows(command, g.dir, output)
 		if len(rows) > 0 && rows[len(rows)-1].Footer {
 			rows = rows[:len(rows)-1]
 		}
@@ -140,5 +144,56 @@ func TestVCSPatchCopiesKeepTheirSource(t *testing.T) {
 				t.Fatalf("unexpected file: %+v", row)
 			}
 		}
+	}
+}
+
+func TestSessionUIReplayVCSKeepsRetainedEvidenceAcrossReset(t *testing.T) {
+	g, output := vcsCommitFixture(t, "recorded commit")
+	live := vcsCommandUI(t, g.dir)
+	item := map[string]any{"id": "commit", "type": "commandExecution", "command": "git commit -m 'recorded commit'", "cwd": g.dir,
+		"status": "completed", "exitCode": 0, "aggregatedOutput": output}
+	appServerTestNotify(t, live, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
+	awaitMain(t, live, "M  a.go")
+	// An offline replay neither borrows the live cache nor starts another Git read.
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n: > \"$2/replayed-git\"\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	meta := replayTestMeta("root")
+	meta["payload"].(map[string]any)["cwd"] = g.dir
+	path := replayTestWrite(t, t.TempDir(), "root.jsonl", meta,
+		replayTestRecord("event_msg", replayTestEpoch, map[string]any{"type": "task_started", "turn_id": "turn"}),
+		replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+2000, map[string]any{
+			"type": "CommandExecution", "id": "commit", "command": []string{"git", "commit", "-m", "recorded commit"},
+			"cwd": g.dir, "aggregated_output": output, "exit_code": 0, "status": "completed"}),
+		replayTestRecord("event_msg", replayTestEpoch+3000, map[string]any{"type": "task_complete", "turn_id": "turn"}))
+	source, err := replayReadTest(t, nil, t.Context(), path, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newUIReplayPlayback(new(activitymodel.Service), t.Context(), source, 1)
+	t.Cleanup(p.close)
+	for range 2 {
+		if err := p.seek(3 * time.Second); err != nil {
+			t.Fatal(err)
+		}
+		replayPlaybackTestPaint(t, p, 90, 28)
+		if got := mainFeed(p.ui, 90); !strings.Contains(got, "A  b.go") || strings.Contains(got, "M  a.go") {
+			t.Fatalf("replayed evidence:\n%s", got)
+		}
+		if p.ui.commits != nil {
+			t.Fatal("replay acquired a Git reader")
+		}
+		previous := p.ui.view.Model
+		if err := p.seek(0); err != nil {
+			t.Fatal(err)
+		}
+		if p.ui.view.Model == previous || strings.Contains(mainFeed(p.ui, 90), "b.go") {
+			t.Fatal("backward reset retained future VCS rows")
+		}
+	}
+	if _, err := os.Stat(filepath.Join(g.dir, "replayed-git")); !os.IsNotExist(err) {
+		t.Fatalf("replay started Git: %v", err)
 	}
 }

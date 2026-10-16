@@ -8,6 +8,7 @@ import (
 	"github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/charmbracelet/x/ansi"
+
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
@@ -100,7 +101,7 @@ func (p *Painter) vcsHeading(verb, head string) string {
 func (p *Painter) vcsSummary(block Block) string {
 	head, source, _ := presentation.VCSSource(block.Label)
 	detail := p.vcsHeading(block.Verb, head)
-	if counts := editCounts(ChangeTotals(block.Changes)); counts != "" {
+	if counts := editCounts(presentation.ChangeTotals(block.Changes)); counts != "" {
 		detail = strings.TrimSpace(detail + " " + countText(counts))
 	}
 	detail = strings.TrimSpace(detail + " " + terminalui.Dim + "· " + source + terminalui.Undim)

@@ -21,9 +21,10 @@ import (
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
+	"mvdan.cc/sh/v3/syntax"
+
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 // Codex can wait 150 ms for early process exit before reporting the command
@@ -245,7 +246,7 @@ func (h *execTrackHub) claim(ctx context.Context, hello segmenttransport.Message
 			h.started = slices.Delete(h.started, index, index+1)
 			track := &execTrack{script: hello.Script, serial: command.serial, terminal: hello.Terminal, dirty: true}
 			for _, source := range hello.Segments {
-				track.segments = append(track.segments, execTrackSegment{source: source, edit: execSegmentEdits(source), vcs: vcsSegment(source)})
+				track.segments = append(track.segments, execTrackSegment{source: source, edit: execSegmentEdits(source), vcs: activitypresentation.VCSOutputSource(toolActivityShellSource(source))})
 			}
 			h.tracks[key] = track
 			for preview := range h.previews {
@@ -628,8 +629,8 @@ type commandSegment struct {
 	changes []activitypresentation.ChangeRow
 	output  *activitymodel.Output
 	source  string
-	raw     string       // A finished VCS segment's complete output, for its change rows.
-	commit  gitCommitKey // The commit object whose files complete changes.
+	raw     string                         // A finished VCS segment's complete output, for its change rows.
+	commit  activitypresentation.CommitKey // The commit object whose files complete changes.
 }
 
 // execTrackView is a report as presented at one frame.
@@ -804,7 +805,7 @@ func (u *appServerUI) trackedCommandDone(key [3]string, entry activityPaneEntry,
 	for i := range native.segments {
 		// A commit reads its object from the directory the host ran it in.
 		if segment := &native.segments[i]; segment.raw != "" && segment.changes == nil {
-			segment.changes, segment.commit = vcsOutputRows(segment.source, vcsSegmentCwd(item.Cwd, native.segments[:i]), segment.raw)
+			segment.changes, segment.commit = activitypresentation.VCSOutputRows(toolActivityShellSource(appServerDisplayCommand(segment.source)), vcsSegmentCwd(item.Cwd, native.segments[:i]), segment.raw)
 		}
 	}
 	// Successful segments' output stays open until the agent's next event.
