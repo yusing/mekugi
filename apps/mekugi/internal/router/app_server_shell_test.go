@@ -181,7 +181,7 @@ func TestAppServerShellOlderCompletionKeepsNewOrigin(t *testing.T) {
 func TestAppServerShellComposer(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "!echo $HOME")
-	if u.completionTarget().kind != 0 || w.Len() != 0 {
+	if u.completionTarget().Kind != 0 || w.Len() != 0 {
 		t.Fatal("shell variable opened a picker")
 	}
 	frame, _ := u.mainFrame(80, 20, 0)

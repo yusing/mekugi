@@ -22,7 +22,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 				u.Turn = "turn"
 			}
 			appServerTestKeys(t, u, "/arch\r")
-			if u.picker.modal != "archive" || u.picker.selected != 0 || wire.Len() != 0 {
+			if u.picker.modal != "archive" || u.picker.Selected != 0 || wire.Len() != 0 {
 				t.Fatal("archive must first ask for confirmation, defaulting to No")
 			}
 			for _, width := range []int{40, 80} {
@@ -64,7 +64,7 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 		}
 		u.pickerKey(cancel)
 		u.refreshPicker()
-		if wire.Len() != 0 || u.picker.open || u.Replacement.Pending() || u.quitRequested || u.Text != "" {
+		if wire.Len() != 0 || u.picker.Open || u.Replacement.Pending() || u.quitRequested || u.Text != "" {
 			t.Fatalf("cancel %q archived, left confirmation open or accepted hidden paste: %q", cancel, u.Text)
 		}
 	}

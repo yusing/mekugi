@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/conversation/completion"
+
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
@@ -522,9 +524,9 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 	}()
 	if m.Method == "skills/changed" {
-		u.picker.skillsLoaded = false
-		u.picker.skillsProblem = ""
-		u.picker.resolved = composerTarget{}
+		u.picker.SkillsLoaded = false
+		u.picker.SkillsProblem = ""
+		u.picker.Resolved = completion.Target{}
 	}
 	// Input observations precede the output items that answer them. Drain
 	// before a completion, not just on the next paint tick, so links bind once.
@@ -1171,7 +1173,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		if text == "/skills" {
 			u.deleteDraftRange(0, len(u.Text))
-			u.picker.modal, u.picker.open, u.picker.selected, u.picker.top = "menu", true, 0, 0
+			u.picker.modal, u.picker.Open, u.picker.Selected, u.picker.Top = "menu", true, 0, 0
 			return false, nil
 		}
 		if text == "/quit" {

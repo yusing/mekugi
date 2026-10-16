@@ -11,6 +11,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/modules/conversation/completion"
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
@@ -23,120 +27,25 @@ import (
 // @86be5320b068ef67b56348b02aa8c33706955da6. File and skill completion. Searches
 // remain Codex-owned, through app-server rather than a second filesystem index.
 
-type composerTarget struct {
-	kind       byte
-	start, end int
-	query      string
-}
-
-type composerChoice struct {
-	name, path, description string
-	display                 string
-	copyText                string
-	enabled                 bool
-	directory               bool
-	indices                 []int
-}
-
-func (c composerChoice) label() string {
-	if c.display != "" {
-		return c.display
-	}
-	return c.name
-}
-
 type composerPicker struct {
+	completion.State
+	terminalui.ChoiceListLayout
 	scanResults          chan pickerScanResult
 	scanCancel           context.CancelFunc
 	scanID               uint64
-	scanTarget           composerTarget
+	scanTarget           completion.Target
 	scanCwd              string
-	modal                string // "menu" or "manage" replaces the composer, as in Codex.
-	query                string
-	initial              map[string]bool
+	modal                string
 	toggleID, togglePath string
-	top                  int
-	rowStart, rowCount   int
 	rect                 terminalsession.Rect
-	target, dismissed    composerTarget
-	open                 bool
-	choices              []composerChoice
-	selected             int
-	loading              bool
-	problem              string
-	// One in-flight request; edits coalesce until its response, which is never
-	// allowed to replace results for a different query or workspace.
-	pending       *composerTarget
-	pendingCwd    string
-	resolved      composerTarget
-	resolvedCwd   string
-	skills        []composerChoice
-	skillsCwd     string
-	skillsLoaded  bool
-	skillsProblem string
+	copyTexts            []string
 }
 
-func (u *appServerUI) completionTarget() composerTarget {
+func (u *appServerUI) completionTarget() completion.Target {
 	if u.shellMode() {
-		return composerTarget{}
+		return completion.Target{}
 	}
-	at := u.Cursor()
-	if strings.HasPrefix(u.Text, "/") && at > 0 {
-		end := strings.IndexFunc(u.Text, unicode.IsSpace)
-		if end < 0 {
-			end = len(u.Text)
-		}
-		if at <= end {
-			return composerTarget{kind: '/', end: end, query: u.Text[1:end]}
-		}
-	}
-	start := at
-	for start > 0 {
-		r, n := utf8.DecodeLastRuneInString(u.Text[:start])
-		if unicode.IsSpace(r) {
-			break
-		}
-		start -= n
-	}
-	if start == len(u.Text) || (u.Text[start] != '@' && u.Text[start] != '$') {
-		return composerTarget{}
-	}
-	end := at
-	for end < len(u.Text) {
-		r, n := utf8.DecodeRuneInString(u.Text[end:])
-		if unicode.IsSpace(r) {
-			break
-		}
-		end += n
-	}
-	if at < start {
-		return composerTarget{}
-	}
-	for _, file := range u.Files {
-		if start < file.End && end > file.Start {
-			return composerTarget{}
-		}
-	}
-	for _, skill := range u.Skills {
-		if start < skill.End && end > skill.Start {
-			return composerTarget{}
-		}
-	}
-	for _, image := range u.Images {
-		if start < image.End && end > image.Start {
-			return composerTarget{}
-		}
-	}
-	for _, selection := range u.Selections {
-		if start < selection.End && end > selection.Start {
-			return composerTarget{}
-		}
-	}
-	query := u.Text[start+1 : end]
-	if u.Text[start] == '$' && !u.skillQueryCompletable(query) {
-		return composerTarget{}
-	}
-	return composerTarget{u.Text[start], start, end, query}
+	return u.picker.FindTarget(u.Draft)
 }
 
 func (u *appServerUI) refreshPicker() {
@@ -150,7 +59,7 @@ func (u *appServerUI) refreshPicker() {
 		}
 	}
 	if u.currentQuestion() != nil || u.approvals.Open {
-		u.picker.open = false
+		u.picker.Open = false
 		return
 	}
 	if u.paste || u.escape != "" || !utf8.ValidString(u.Text) {
@@ -162,7 +71,7 @@ func (u *appServerUI) refreshPicker() {
 	u.Skills = draft.Skills
 	target := u.completionTarget()
 	bindingOnly := false
-	if target.kind == 0 && p.modal == "" && (!p.skillsLoaded || p.skillsCwd != u.session.cwd) {
+	if target.Kind == 0 && p.modal == "" && (!p.SkillsLoaded || p.SkillsCwd != u.session.cwd) {
 		query := u.skillBindingQuery(draft, false)
 		for _, part := range slices.Concat(u.conversation().Unsent, u.conversation().Queued) {
 			if query == "" {
@@ -170,124 +79,79 @@ func (u *appServerUI) refreshPicker() {
 			}
 		}
 		if query != "" {
-			target, bindingOnly = composerTarget{kind: '$', query: query}, true
+			target, bindingOnly = completion.Target{Kind: '$', Query: query}, true
 		}
 	}
 	defer func() {
 		if bindingOnly {
-			p.open = false
+			p.Open = false
 		}
 	}()
 	if p.modal == "menu" || p.modal == "copy" || p.modal == "settings" || p.modal == "archive" {
-		p.open = true
+		p.Open = true
 		return
 	}
 	if p.modal == "manage" {
-		target = composerTarget{kind: '$', query: p.query}
+		target = completion.Target{Kind: '$', Query: p.Query}
 	}
-	if target != p.dismissed {
-		p.dismissed = composerTarget{}
-	}
-	if target.kind == 0 || target == p.dismissed {
-		p.open = false
+	if !p.Activate(target, bindingOnly) {
 		u.cancelPickerScan()
 		return
 	}
-	if target != p.target {
-		p.target, p.choices, p.problem = target, nil, ""
-		p.resolved = composerTarget{}
-	}
-	if !p.open && !bindingOnly {
-		p.resolved = composerTarget{}
-		p.problem = ""
-	}
-	p.open = true
-	if target.kind == '/' {
+	if target.Kind == '/' {
 		u.cancelPickerScan()
-		u.filterCommands(target.query)
+		u.filterCommands(target.Query)
 		return
 	}
 	cwd := u.session.cwd
 	if !filepath.IsAbs(cwd) {
-		p.loading, p.problem = false, "Waiting for the thread workspace…"
+		p.Loading, p.Problem = false, "Waiting for the thread workspace…"
 		return
 	}
-	if target.kind != '@' || !strings.HasPrefix(target.query, "!") {
+	if target.Kind != '@' || !strings.HasPrefix(target.Query, "!") {
 		u.cancelPickerScan()
 	}
-	if target.kind == '$' && (p.skillsLoaded || p.skillsProblem != "") && p.skillsCwd == cwd {
-		p.loading = false
-		u.filterSkills(target.query)
+	if target.Kind == '$' && (p.SkillsLoaded || p.SkillsProblem != "") && p.SkillsCwd == cwd {
+		p.Loading = false
+		u.picker.FilterSkills(target.Query, u.picker.modal == "manage")
 
 		return
 	}
-	if target.kind == '@' && target.query == "" {
-		p.loading, p.choices, p.problem = false, nil, "Type to search files"
+	if target.Kind == '@' && target.Query == "" {
+		p.Loading, p.Choices, p.Problem = false, nil, "Type to search files"
 		return
 	}
-	if p.resolved == target && p.resolvedCwd == cwd {
+	if p.Resolved == target && p.ResolvedCwd == cwd {
 		return
 	}
-	p.loading, p.choices, p.problem = true, nil, ""
-	if target.kind == '@' && strings.HasPrefix(target.query, "!") {
+	p.Loading, p.Choices, p.Problem = true, nil, ""
+	if target.Kind == '@' && strings.HasPrefix(target.Query, "!") {
 		u.searchExcludedFiles(target, cwd)
 		return
 	}
-	if p.pending != nil {
+	if p.Pending != nil {
 		return
 	}
 	u.requestPicker(target, cwd)
 }
 
-func (u *appServerUI) requestPicker(target composerTarget, cwd string) {
+func (u *appServerUI) requestPicker(target completion.Target, cwd string) {
 	p := &u.picker
 	method := "fuzzyFileSearch"
-	params := map[string]any{"query": target.query, "roots": []string{cwd}}
-	if target.kind == '$' {
+	params := map[string]any{"query": target.Query, "roots": []string{cwd}}
+	if target.Kind == '$' {
 		method, params = "skills/list", map[string]any{"cwds": []string{cwd}, "forceReload": true}
 	}
-	p.pending, p.pendingCwd = new(target), cwd
+	p.Pending, p.PendingCwd = new(target), cwd
 	if err := u.request(method, params); err != nil {
-		p.pending, p.loading = nil, false
-		p.resolved, p.resolvedCwd = target, cwd
-		p.problem = "Search failed: " + err.Error()
-		if target.kind == '$' {
-			p.skillsCwd, p.skillsProblem = cwd, p.problem
-			u.setNotice("Skill attachment unavailable: "+p.problem+". References remain text.", true)
+		p.Pending, p.Loading = nil, false
+		p.Resolved, p.ResolvedCwd = target, cwd
+		p.Problem = "Search failed: " + err.Error()
+		if target.Kind == '$' {
+			p.SkillsCwd, p.SkillsProblem = cwd, p.Problem
+			u.setNotice("Skill attachment unavailable: "+p.Problem+". References remain text.", true)
 		}
 	}
-}
-
-// Source: codex-rs/utils/fuzzy-match/src/lib.rs:12:72
-// @86be5320b068ef67b56348b02aa8c33706955da6. Lower scores favor compact prefix matches.
-func pickerMatchScore(name, query string) (int, bool) {
-	lower := func(s string) string { return strings.ToLower(strings.ReplaceAll(s, "İ", "i\u0307")) }
-	needle := []rune(lower(query))
-	if len(needle) == 0 {
-		return 0, true
-	}
-	first, last, matched := -1, 0, 0
-	for i, r := range []rune(lower(name)) {
-		if r != needle[matched] {
-			continue
-		}
-		if first < 0 {
-			first = i
-		}
-		last = i
-		matched++
-		if matched == len(needle) {
-			break
-		}
-	}
-	if matched != len(needle) {
-		return 0, false
-	}
-	score := last - first + 1 - len(needle)
-	if first == 0 {
-		score -= 100
-	}
-	return score, true
 }
 
 func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
@@ -299,12 +163,12 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 		return false
 	}
 	p := &u.picker
-	if p.pending == nil {
+	if p.Pending == nil {
 		return true
 	}
-	target, cwd := *p.pending, p.pendingCwd
-	p.pending = nil
-	var choices []composerChoice
+	target, cwd := *p.Pending, p.PendingCwd
+	p.Pending = nil
+	var choices []completion.Choice
 	var err error
 	problem := ""
 	if m.Error != nil {
@@ -350,7 +214,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 				if skill.Interface != nil && skill.Interface.DisplayName != "" {
 					display = skill.Interface.DisplayName
 				}
-				choices = append(choices, composerChoice{name: skill.Name, path: skill.Path, description: description, display: display, enabled: skill.Enabled})
+				choices = append(choices, completion.Choice{Name: skill.Name, Path: skill.Path, Description: description, Display: display, Enabled: skill.Enabled})
 			}
 			if len(entry.Errors) > 0 {
 				problem = fmt.Sprintf("%d skill load errors: %s", len(entry.Errors), entry.Errors[0].Message)
@@ -359,10 +223,8 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 	} else {
 		var result struct {
 			Files []struct {
-				Root      string `json:"root"`
-				Path      string `json:"path"`
-				MatchType string `json:"match_type"`
-				Indices   []int  `json:"indices"`
+				Root string `json:"root"`
+				Path string `json:"path"`
 			} `json:"files"`
 		}
 		err = json.Unmarshal(m.Result, &result)
@@ -375,7 +237,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 			if composer.VCSPath(file.Path) {
 				continue
 			}
-			choices = append(choices, composerChoice{name: file.Path, path: file.Path, directory: file.MatchType == "directory", indices: file.Indices})
+			choices = append(choices, completion.Choice{Name: file.Path, Path: file.Path})
 		}
 	}
 	if err != nil {
@@ -395,9 +257,9 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 			if loadErr == nil {
 				names := make(map[string]bool)
 				for _, choice := range managed {
-					names[choice.name] = true
+					names[choice.Name] = true
 				}
-				choices = slices.DeleteFunc(choices, func(choice composerChoice) bool { return names[choice.name] })
+				choices = slices.DeleteFunc(choices, func(choice completion.Choice) bool { return names[choice.Name] })
 				choices = append(choices, managed...)
 				available = true
 			} else {
@@ -407,13 +269,9 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 				problem += "skills-mgr: " + loadErr.Error()
 			}
 		}
-		p.skills, p.skillsCwd, p.skillsLoaded = choices, cwd, available
-		p.skillsProblem = ""
-		if !available {
-			p.skillsProblem = problem
-		}
-		if p.modal == "manage" && p.initial == nil {
-			u.rememberSkillState()
+		p.Catalog(choices, cwd, available, problem)
+		if p.modal == "manage" && p.Initial == nil {
+			u.picker.RememberSkills()
 		}
 		if problem != "" && cwd == u.session.cwd {
 			label := "Skill catalog incomplete: "
@@ -423,77 +281,70 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 			u.setNotice(label+problem+". Unavailable references remain text.", true)
 		}
 	}
-	if target == p.target && cwd == u.session.cwd {
-		p.choices, p.loading, p.problem = choices, false, problem
-		p.selected = min(p.selected, max(0, len(choices)-1))
-		p.resolved, p.resolvedCwd = target, cwd
-	}
+	p.Resolve(target, cwd, u.session.cwd, choices, problem)
 	u.refreshPicker()
 	return true
 }
 
 func (u *appServerUI) pickerKey(key string) bool {
 	p := &u.picker
-	if p.modal == "archive" && p.open {
+	if p.modal == "archive" && p.Open {
 		return u.archivePickerKey(key)
 	}
-	if p.modal == "settings" && p.open {
+	if p.modal == "settings" && p.Open {
 		return u.settingsPickerKey(key)
 	}
-	if p.modal == "copy" && p.open {
+	if p.modal == "copy" && p.Open {
 		return u.copyPickerKey(key)
 	}
-	if p.modal != "" && p.open {
-		return u.skillsModalKey(key)
+	if p.modal != "" && p.Open {
+		switch conversationui.SkillsKey(&p.State, p.modal == "menu", key) {
+		case conversationui.PickerPass:
+			return false
+		case conversationui.PickerCloseSkills:
+			u.closeSkillsModal()
+		case conversationui.PickerToggleSkill:
+			u.toggleSkill()
+		case conversationui.PickerChooseSkills:
+			u.chooseSkillsAction()
+		}
+		return true
 	}
-	if !p.open {
+	if !p.Open {
 		return false
 	}
 	// Drafts can also change outside key(), through editor or transcript reference.
-	if u.completionTarget() != p.target {
+	if u.completionTarget() != p.Target {
 		u.refreshPicker()
 		return false
 	}
-	switch key {
-	case "\x1b":
-		p.dismissed, p.open = p.target, false
+	switch conversationui.PickerKey(&p.State, key) {
+	case conversationui.PickerDismiss:
 		u.cancelPickerScan()
 		return true
-	case "\x1b[A", "\x1bOA", "\x10", "\x1b[B", "\x1bOB", "\x0e":
-		n := len(p.choices)
-		if n > 0 {
-			step := 1
-			if key == "\x1b[A" || key == "\x1bOA" || key == "\x10" {
-				step = -1
-			}
-			p.selected = (p.selected + step + n) % n
-		}
+	case conversationui.PickerHandled:
 		return true
-	case "\t", "\r":
-		if len(p.choices) == 0 {
-			p.dismissed, p.open = p.target, false
-			return key == "\t" || p.target.kind == '$'
-		}
-		choice, target := p.choices[p.selected], p.target
-		if target.kind == '/' {
-			u.deleteDraftRange(target.start, target.end)
-			u.InsertText(choice.name + " ")
-			u.Run, p.open = composer.NoRun, false
+	case conversationui.PickerAccept:
+		choice, target := p.Choices[p.Selected], p.Target
+		if target.Kind == '/' {
+			u.deleteDraftRange(target.Start, target.End)
+			u.InsertText(choice.Name + " ")
+			u.Run, p.Open = composer.NoRun, false
 			// Enter continues through the existing local command dispatcher.
 			return key == "\t"
 		}
-		text := choice.path
-		if target.kind == '$' {
-			text = "$" + choice.name
+		text := choice.Path
+		if target.Kind == '$' {
+			text = "$" + choice.Name
 		} else if strings.ContainsFunc(text, unicode.IsSpace) && !strings.Contains(text, "\"") {
 			text = "\"" + text + "\""
 		}
-		if target.kind == '@' {
+		if target.Kind == '@' {
 			text = "@" + text
 		}
 		imagePath := ""
-		if target.kind == '@' {
-			path := choice.path
+		if target.Kind == '@' {
+			path := choice.Path
 			if !filepath.IsAbs(path) {
 				path = filepath.Join(u.session.cwd, path)
 			}
@@ -503,30 +354,30 @@ func (u *appServerUI) pickerKey(key string) bool {
 			}
 		}
 		// One undo step restores the original token, not a half-completed edit.
-		u.deleteDraftRange(target.start, target.end)
+		u.deleteDraftRange(target.Start, target.End)
 		u.InsertText(text)
 		if imagePath != "" {
-			u.Images = append(u.Images, composer.Token{Start: target.start, End: target.start + len(text), Path: imagePath})
+			u.Images = append(u.Images, composer.Token{Start: target.Start, End: target.Start + len(text), Path: imagePath})
 			u.RenumberImages()
 		}
-		if target.kind == '@' && imagePath == "" {
-			u.Files = append(u.Files, composer.Token{Start: target.start, End: target.start + len(text), Path: choice.path})
+		if target.Kind == '@' && imagePath == "" {
+			u.Files = append(u.Files, composer.Token{Start: target.Start, End: target.Start + len(text), Path: choice.Path})
 			slices.SortFunc(u.Files, func(a, b composer.Token) int { return a.Start - b.Start })
 		}
-		if target.kind == '$' {
-			u.Skills = append(u.Skills, composer.Token{Start: target.start, End: target.start + len(text), Name: choice.name, Path: choice.path})
+		if target.Kind == '$' {
+			u.Skills = append(u.Skills, composer.Token{Start: target.Start, End: target.Start + len(text), Name: choice.Name, Path: choice.Path})
 		}
 		if u.Cursor() == len(u.Text) || u.Text[u.Cursor()] != ' ' {
 			u.InsertText(" ")
 		} else {
 			u.CursorBack--
 		}
-		u.Run, p.open = composer.NoRun, false
+		u.Run, p.Open = composer.NoRun, false
 		return true
 	}
 	return false
 }
 
 func (u *appServerUI) pickerVisible() bool {
-	return !u.composerReadOnly() && u.picker.open && (u.shell == nil || u.shell.Focus == 0)
+	return !u.composerReadOnly() && u.picker.Open && (u.shell == nil || u.shell.Focus == 0)
 }

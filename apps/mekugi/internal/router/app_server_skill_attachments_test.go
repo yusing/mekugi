@@ -73,7 +73,7 @@ func TestSkillAttachmentPastedBeforeCatalogResponse(t *testing.T) {
 	}
 	u.session.cwd = workspace
 	appServerTestKeys(t, u, "\x1b[200~use $review please\x1b[201~")
-	if u.picker.open || len(u.Skills) != 0 {
+	if u.picker.Open || len(u.Skills) != 0 {
 		t.Fatalf("paste opened picker or bound before catalog: %+v %+v", u.picker, u.Skills)
 	}
 	appServerTestKeys(t, u, "\r")
@@ -193,7 +193,7 @@ func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 		t.Fatalf("foreground picker hid catalog failure: %q", u.feedback.Text)
 	}
 	pickerReply(t, u, fileID, `{"files":[{"root":"/work","path":"foo.go","match_type":"file"}]}`)
-	if u.Text != "@foo" || !u.picker.open || len(u.picker.choices) != 1 {
+	if u.Text != "@foo" || !u.picker.Open || len(u.picker.Choices) != 1 {
 		t.Fatalf("background failure broke foreground picker: %q %+v", u.Text, u.picker)
 	}
 }

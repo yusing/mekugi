@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/completion"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -181,11 +183,11 @@ func TestUISnapshotNativeFilePicker(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.view.Painter.Theme = diffrender.DarkTheme
 			u.session.cwd = "/workspace"
-			u.picker = composerPicker{open: true, target: composerTarget{kind: '@', query: "snapshot"}, selected: 1, choices: []composerChoice{
-				{name: "internal/uisnapshot/snapshot.go", path: "internal/uisnapshot/snapshot.go"},
-				{name: "internal/ui/activity/snapshot_test.go", path: "internal/ui/activity/snapshot_test.go"},
-				{name: "internal/ui/diffview/snapshot_test.go", path: "internal/ui/diffview/snapshot_test.go"},
-			}}
+			u.picker = composerPicker{State: completion.State{Open: true, Target: completion.Target{Kind: '@', Query: "snapshot"}, Selected: 1, Choices: []completion.Choice{
+				{Name: "internal/uisnapshot/snapshot.go", Path: "internal/uisnapshot/snapshot.go"},
+				{Name: "internal/ui/activity/snapshot_test.go", Path: "internal/ui/activity/snapshot_test.go"},
+				{Name: "internal/ui/diffview/snapshot_test.go", Path: "internal/ui/diffview/snapshot_test.go"},
+			}}}
 			assertNativeUISnapshot(t, fmt.Sprintf("native-file-picker-%d", width), u.renderPicker(width, 7))
 		})
 	}

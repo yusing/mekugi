@@ -158,7 +158,7 @@ func TestAppServerSettingsModelListPagination(t *testing.T) {
 		t.Fatalf("catalog=%+v", u.models)
 	}
 	appServerTestKeys(t, u, "/model\r")
-	if (u.picker.modal != "settings" || len(u.picker.choices) != 2 || u.picker.choices[0].name != "one" || u.picker.choices[1].name != "two") || w.Len() != 0 {
+	if (u.picker.modal != "settings" || len(u.picker.Choices) != 2 || u.picker.Choices[0].Name != "one" || u.picker.Choices[1].Name != "two") || w.Len() != 0 {
 		t.Fatalf("choices=%q", u.feedback.Text)
 	}
 }
@@ -243,7 +243,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					t.Fatal(err)
 				}
 				appServerTestKeys(t, u, command+"\r")
-				if u.picker.modal != "settings" || len(u.picker.choices) != 2 || u.Text != "" || w.Len() != 0 {
+				if u.picker.modal != "settings" || len(u.picker.Choices) != 2 || u.Text != "" || w.Len() != 0 {
 					t.Fatalf("picker did not open locally: %+v", u.picker)
 				}
 				appServerTestKeys(t, u, "\x1b[B\r")
@@ -255,7 +255,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					field, value = "serviceTier", nil
 				}
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", field: value})
-				if u.picker.open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
+				if u.picker.Open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.conversation().Submitted[u.Submission().ID].Text != "" {
 					t.Fatal("selection polluted transcript or changed confirmed settings")
 				}
 			})
@@ -269,7 +269,7 @@ func TestAppServerSettingsPickerLoadingAndCancellation(t *testing.T) {
 		u.modelsLoading = true
 		appServerTestRequest(t, u, "99", "model/list")
 		appServerTestKeys(t, u, "/model\r")
-		if !u.picker.loading || u.picker.modal != "settings" {
+		if !u.picker.Loading || u.picker.modal != "settings" {
 			t.Fatal("missing loading picker")
 		}
 		appServerTestKeys(t, u, "\r")
@@ -279,10 +279,10 @@ func TestAppServerSettingsPickerLoadingAndCancellation(t *testing.T) {
 		}
 		appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"one"}]}}`)
 		if cancel {
-			if u.picker.open || u.Text != "retained draft" {
+			if u.picker.Open || u.Text != "retained draft" {
 				t.Fatal("late catalog reopened cancelled picker or changed draft")
 			}
-		} else if u.picker.loading || len(u.picker.choices) != 1 {
+		} else if u.picker.Loading || len(u.picker.Choices) != 1 {
 			t.Fatal("catalog did not populate picker")
 		}
 		if w.Len() != 0 || len(u.view.Entries) != 0 {
@@ -294,7 +294,7 @@ func TestAppServerSettingsPickerLoadingAndCancellation(t *testing.T) {
 func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "/effort\r\x1b[A\x1b[B\x1b[6~\r")
-	if u.picker.problem == "" || w.Len() != 0 {
+	if u.picker.Problem == "" || w.Len() != 0 {
 		t.Fatal("empty catalog lacks feedback or submits")
 	}
 	appServerTestKeys(t, u, "\x1b[200~do not submit\x1b[201~")
@@ -303,14 +303,14 @@ func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 	}
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.open || u.settingsChoices != "" {
+	if u.picker.Open || u.settingsChoices != "" {
 		t.Fatal("Escape did not cancel")
 	}
 	u.modelsLoading = true
 	appServerTestRequest(t, u, "99", "model/list")
 	appServerTestKeys(t, u, "/model\r")
 	appServerTestMessage(t, u, `{"id":99,"error":{"code":-1,"message":"unavailable"}}`)
-	if u.picker.loading || u.picker.problem == "" || len(u.view.Entries) != 0 {
+	if u.picker.Loading || u.picker.Problem == "" || len(u.view.Entries) != 0 {
 		t.Fatal("failed catalog lacks local feedback")
 	}
 }

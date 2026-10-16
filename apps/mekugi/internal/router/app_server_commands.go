@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
+	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	json "encoding/json/v2"
 	"slices"
@@ -18,26 +19,26 @@ import (
 )
 
 // Only commands implemented by the native shell belong in this catalog.
-var nativeCommands = []composerChoice{
-	{name: "/model", description: "Choose the model"},
-	{name: "/reasoning", description: "Choose the reasoning effort"},
-	{name: "/effort", description: "Choose the reasoning effort"},
-	{name: "/live", description: "Show or hide Live edits for this session"},
-	{name: "/tier", description: "Choose the service tier"},
-	{name: "/skills", description: "List or manage skills"},
-	{name: "/btw", description: "Ask a side question without changing Main"},
-	{name: "/ps", description: "Show running processes"},
-	{name: "/session", description: "Show request metrics, cache and transport"},
-	{name: "/title", description: "Rename this session"},
-	{name: "/status", description: "Show session settings and usage limits"},
-	{name: "/copy", description: "Copy the last response or part of it"},
-	{name: "/resume", description: "Resume a saved session"},
-	{name: "/archive", description: "Archive this session"},
-	{name: "/compact", description: "Compact context now; Tab queues while busy"},
-	{name: "/clear", description: "Clear the transcript and start a new session"},
-	{name: "/lock", description: "Prevent accidental keyboard interruption"},
-	{name: "/unlock", description: "Allow keyboard interruption again"},
-	{name: "/quit", description: "Quit the session"},
+var nativeCommands = []completion.Choice{
+	{Name: "/model", Description: "Choose the model"},
+	{Name: "/reasoning", Description: "Choose the reasoning effort"},
+	{Name: "/effort", Description: "Choose the reasoning effort"},
+	{Name: "/live", Description: "Show or hide Live edits for this session"},
+	{Name: "/tier", Description: "Choose the service tier"},
+	{Name: "/skills", Description: "List or manage skills"},
+	{Name: "/btw", Description: "Ask a side question without changing Main"},
+	{Name: "/ps", Description: "Show running processes"},
+	{Name: "/session", Description: "Show request metrics, cache and transport"},
+	{Name: "/title", Description: "Rename this session"},
+	{Name: "/status", Description: "Show session settings and usage limits"},
+	{Name: "/copy", Description: "Copy the last response or part of it"},
+	{Name: "/resume", Description: "Resume a saved session"},
+	{Name: "/archive", Description: "Archive this session"},
+	{Name: "/compact", Description: "Compact context now; Tab queues while busy"},
+	{Name: "/clear", Description: "Clear the transcript and start a new session"},
+	{Name: "/lock", Description: "Prevent accidental keyboard interruption"},
+	{Name: "/unlock", Description: "Allow keyboard interruption again"},
+	{Name: "/quit", Description: "Quit the session"},
 }
 
 // Source: codex-rs/tui/src/chatwidget/slash_dispatch.rs:268:310 and
@@ -225,19 +226,19 @@ func (u *appServerUI) resetDiffScope() {
 func (u *appServerUI) filterCommands(query string) {
 	p := &u.picker
 	previous := ""
-	if p.selected < len(p.choices) {
-		previous = p.choices[p.selected].name
+	if p.Selected < len(p.Choices) {
+		previous = p.Choices[p.Selected].Name
 	}
-	p.choices, p.loading, p.problem = nil, false, ""
+	p.Choices, p.Loading, p.Problem = nil, false, ""
 	for _, command := range nativeCommands {
-		if _, ok := pickerMatchScore(command.name[1:], query); ok {
-			p.choices = append(p.choices, command)
+		if _, ok := completion.MatchScore(command.Name[1:], query); ok {
+			p.Choices = append(p.Choices, command)
 		}
 	}
-	slices.SortStableFunc(p.choices, func(a, b composerChoice) int {
-		aScore, _ := pickerMatchScore(a.name[1:], query)
-		bScore, _ := pickerMatchScore(b.name[1:], query)
+	slices.SortStableFunc(p.Choices, func(a, b completion.Choice) int {
+		aScore, _ := completion.MatchScore(a.Name[1:], query)
+		bScore, _ := completion.MatchScore(b.Name[1:], query)
 		return aScore - bScore
 	})
-	p.selected = max(0, slices.IndexFunc(p.choices, func(c composerChoice) bool { return c.name == previous }))
+	p.Selected = max(0, slices.IndexFunc(p.Choices, func(c completion.Choice) bool { return c.Name == previous }))
 }

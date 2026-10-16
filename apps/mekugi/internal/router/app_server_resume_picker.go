@@ -99,7 +99,7 @@ func (u *appServerUI) openResumePicker(startup bool) error {
 		cwd = u.resumeCwd
 	}
 	u.cancelPickerScan()
-	u.picker.open = false
+	u.picker.Open = false
 	u.resumePicker = &appServerResumePicker{startup: startup, cwd: cwd, all: cwd == ""}
 	return u.loadResumePage(true)
 }

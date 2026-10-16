@@ -401,10 +401,10 @@ func (u *terminalUI) mouse(s string) error {
 			switch button &^ 28 {
 			case 0:
 				p := &u.main.picker
-				row := y - u.layout.Main.Y - p.rect.Y - p.rowStart
-				if row >= 0 && row < p.rowCount {
-					p.selected = p.top + row
-					if p.target.kind == '/' {
+				row := y - u.layout.Main.Y - p.rect.Y - p.RowStart
+				if row >= 0 && row < p.RowCount {
+					p.Selected = p.Top + row
+					if p.Target.Kind == '/' {
 						return u.send("\r")
 					}
 					u.main.pickerKey("\r")

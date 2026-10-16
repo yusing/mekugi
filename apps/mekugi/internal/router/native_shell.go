@@ -246,7 +246,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 	if left.W >= 4 && left.H >= 1 {
 		iw, ih := l.Main.W, l.Main.H
 		dockRows := 0
-		if mainEdit && !u.main.keybindings && !u.main.picker.open {
+		if mainEdit && !u.main.keybindings && !u.main.picker.Open {
 			dockRows = ih
 		}
 		rosterHits := u.agents.Hits

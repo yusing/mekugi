@@ -21,16 +21,16 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 	u.Settings.BeginLive()
 	appServerTestKeys(t, u, "/live\r")
 	defer u.shell.diffScreen.Close()
-	if !u.shell.liveHidden || u.picker.open || u.Text != "" || wire.Len() != 0 {
+	if !u.shell.liveHidden || u.picker.Open || u.Text != "" || wire.Len() != 0 {
 		t.Fatal("toggle did not hide Live locally")
 	}
 	appServerTestKeys(t, u, "/live\r")
-	if u.shell.liveHidden || u.picker.open || u.Text != "" || wire.Len() != 0 {
+	if u.shell.liveHidden || u.picker.Open || u.Text != "" || wire.Len() != 0 {
 		t.Fatal("second toggle did not show Live locally")
 	}
 	for _, command := range []string{"/live off", "/live off", "/live on", "/live on"} {
 		appServerTestKeys(t, u, command+"\r")
-		if u.shell.liveHidden != strings.HasSuffix(command, "off") || u.picker.open || u.Text != "" || wire.Len() != 0 {
+		if u.shell.liveHidden != strings.HasSuffix(command, "off") || u.picker.Open || u.Text != "" || wire.Len() != 0 {
 			t.Fatalf("direct setting failed: %s", command)
 		}
 	}
@@ -60,11 +60,11 @@ func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 		appServerTestKeys(t, u, "/live\r")
 		defer u.shell.diffScreen.Close()
 		appServerTestMessage(t, u, reply)
-		if !u.shell.liveHidden || u.picker.open || wire.Len() != 0 {
+		if !u.shell.liveHidden || u.picker.Open || wire.Len() != 0 {
 			t.Fatal("model response disturbed Live toggle")
 		}
 		appServerTestKeys(t, u, "/live\r")
-		if u.shell.liveHidden || u.picker.open || wire.Len() != 0 {
+		if u.shell.liveHidden || u.picker.Open || wire.Len() != 0 {
 			t.Fatal("interleaved reply prevented toggling back")
 		}
 	}

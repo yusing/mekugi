@@ -140,7 +140,7 @@ func (u *appServerUI) openQuestionCall(c *nativeQuestionCall) {
 	u.focusPrompt()
 }
 func (u *appServerUI) focusPrompt() {
-	u.picker.open, u.keybindings = false, false
+	u.picker.Open, u.keybindings = false, false
 	u.cancelPickerScan()
 	if u.shell != nil {
 		u.shell.Focus = 0

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/conversation/completion"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -57,17 +59,17 @@ func TestComposerFilePickerScopesAndCoalescesRequests(t *testing.T) {
 	if len(requests) != 1 || requests[0].Method != "fuzzyFileSearch" || requests[0].Params.Query != "a" || len(requests[0].Params.Roots) != 1 || requests[0].Params.Roots[0] != "/work/one" {
 		t.Fatalf("initial search = %+v", requests)
 	}
-	if !u.picker.loading || u.picker.target.query != "ab" {
+	if !u.picker.Loading || u.picker.Target.Query != "ab" {
 		t.Fatalf("typing did not coalesce: %+v", u.picker)
 	}
 	pickerReply(t, u, requests[0].ID, `{"files":[{"root":"/work/one","path":"stale.go"}]}`)
 	requests = pickerRequests(t, w)
-	if len(requests) != 2 || requests[1].Params.Query != "ab" || len(u.picker.choices) != 0 {
-		t.Fatalf("stale response was shown or latest search missing: %+v, %+v", requests, u.picker.choices)
+	if len(requests) != 2 || requests[1].Params.Query != "ab" || len(u.picker.Choices) != 0 {
+		t.Fatalf("stale response was shown or latest search missing: %+v, %+v", requests, u.picker.Choices)
 	}
 	pickerReply(t, u, requests[1].ID, `{"files":[{"root":"/work/other","path":"leak.go"},{"root":"/work/one","path":"ab.go"}]}`)
-	if len(u.picker.choices) != 1 || u.picker.choices[0].path != "ab.go" {
-		t.Fatalf("unscoped search results: %+v", u.picker.choices)
+	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Path != "ab.go" {
+		t.Fatalf("unscoped search results: %+v", u.picker.Choices)
 	}
 	u.session.cwd = "/work/two"
 	u.refreshPicker()
@@ -95,8 +97,8 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 		t.Fatalf("skill list scope = %+v", requests)
 	}
 	pickerReply(t, u, requests[0].ID, fmt.Sprintf(`{"data":[{"cwd":"/other","skills":[{"name":"quiet","path":"/other/SKILL.md","enabled":true}]},{"cwd":%q,"skills":[{"name":"quiet","path":%q,"enabled":true,"interface":{"shortDescription":"Short help"}},{"name":"queue","path":"/work/queue/SKILL.md","enabled":false},{"name":"build","path":"/work/build/SKILL.md","enabled":true}]}]}`, workspace, path))
-	if len(u.picker.choices) != 1 || u.picker.choices[0].name != "quiet" || u.picker.choices[0].description != "Short help" {
-		t.Fatalf("skill filtering = %+v", u.picker.choices)
+	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Name != "quiet" || u.picker.Choices[0].Description != "Short help" {
+		t.Fatalf("skill filtering = %+v", u.picker.Choices)
 	}
 	appServerTestKeys(t, u, "\t")
 	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path || len(u.view.Entries) != 0 {
@@ -151,7 +153,7 @@ func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 	v, input := newAppServerTestUI()
 	v.session.cwd = "/work"
 	appServerTestKeys(t, v, "\x1b[200~@secret $quiet\x1b[201~")
-	if v.Text != "@secret $quiet" || v.picker.open || input.Len() != 0 {
+	if v.Text != "@secret $quiet" || v.picker.Open || input.Len() != 0 {
 		t.Fatalf("paste opened search: draft=%q picker=%+v", v.Text, v.picker)
 	}
 }
@@ -165,7 +167,7 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if !u.picker.open {
+	if !u.picker.Open {
 		t.Fatal("picker did not open")
 	}
 	if err := u.shell.key(27); err != nil {
@@ -175,11 +177,11 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	if err := u.shell.flushEscape(); err != nil {
 		t.Fatal(err)
 	}
-	if u.picker.open || u.Text != "@file" {
+	if u.picker.Open || u.Text != "@file" {
 		t.Fatalf("escape altered draft or left picker open: %q %+v", u.Text, u.picker)
 	}
 	u.refreshPicker()
-	if u.picker.open {
+	if u.picker.Open {
 		t.Fatal("dismissed picker reopened without an edit")
 	}
 	for _, size := range [][2]int{{1, 1}, {12, 5}, {80, 24}} {
@@ -267,7 +269,7 @@ func TestComposerPickerFailureRecoveryAndRendering(t *testing.T) {
 	request := pickerRequests(t, w)[0]
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"offline"}}`, request.ID))
 	rows, _ := u.mainFrame(80, 20, 5)
-	if !strings.Contains(strings.Join(rows, "\n"), "Search failed: offline") || u.picker.loading {
+	if !strings.Contains(strings.Join(rows, "\n"), "Search failed: offline") || u.picker.Loading {
 		t.Fatal("missing error feedback")
 	}
 	if len(pickerRequests(t, w)) != 1 {
@@ -301,7 +303,7 @@ func TestComposerPickerScore(t *testing.T) {
 		{"hello", "hl", -99, true}, {"İstanbul", "is", -99, true}, {"a-b-c", "abc", -98, true},
 		{"abc", "abc", -100, true}, {"my_file", "file", 0, true}, {"straße", "strasse", 0, false},
 	} {
-		score, ok := pickerMatchScore(test.name, test.query)
+		score, ok := completion.MatchScore(test.name, test.query)
 		if score != test.score || ok != test.ok {
 			t.Fatalf("%q %q = %d,%v", test.name, test.query, score, ok)
 		}
@@ -325,7 +327,7 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 	}
 	u.insertDraft("@s")
 	target := u.completionTarget()
-	u.picker = composerPicker{open: true, target: target, choices: []composerChoice{{name: "shot.png", path: "shot.png"}}}
+	u.picker = composerPicker{State: completion.State{Open: true, Target: target, Choices: []completion.Choice{{Name: "shot.png", Path: "shot.png"}}}}
 	before := u.Text
 	if !u.pickerKey("\t") || len(u.Images) != 1 || u.Images[0].Path != path {
 		t.Fatalf("image choice: %q %+v", u.Text, u.Images)
@@ -350,11 +352,11 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 		u.Text = "long prompt @file"
 		u.refreshPicker()
 		target := u.completionTarget()
-		u.picker = composerPicker{open: true, target: target, resolved: target, resolvedCwd: "/work", choices: []composerChoice{{name: "file.go", path: "file.go"}}}
+		u.picker = composerPicker{State: completion.State{Open: true, Target: target, Resolved: target, ResolvedCwd: "/work", Choices: []completion.Choice{{Name: "file.go", Path: "file.go"}}}}
 		if err := u.applyEditorDraft("new"); err != nil {
 			t.Fatal(err)
 		}
-		if u.picker.open {
+		if u.picker.Open {
 			t.Fatal("editor left stale picker visible")
 		}
 		appServerTestKeys(t, u, key)

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/modules/conversation/completion"
 )
 
 func managedSkillsExecutable(cwd string, environment []string) (string, error) {
@@ -34,7 +36,7 @@ func managedSkillsExecutable(cwd string, environment []string) (string, error) {
 	return executable, nil
 }
 
-func readManagedSkills(ctx context.Context, cwd string, environment []string) ([]composerChoice, error) {
+func readManagedSkills(ctx context.Context, cwd string, environment []string) ([]completion.Choice, error) {
 	executable, err := managedSkillsExecutable(cwd, environment)
 	if err != nil {
 		return nil, err
@@ -55,10 +57,10 @@ func readManagedSkills(ctx context.Context, cwd string, environment []string) ([
 	if err := xml.Unmarshal(output, &document); err != nil {
 		return nil, fmt.Errorf("invalid catalog: %w", err)
 	}
-	var choices []composerChoice
+	var choices []completion.Choice
 	for _, skill := range document.Skills {
 		if skill.Name != "" {
-			choices = append(choices, composerChoice{name: skill.Name, description: skill.Description, enabled: true})
+			choices = append(choices, completion.Choice{Name: skill.Name, Description: skill.Description, Enabled: true})
 		}
 	}
 	return choices, nil

@@ -4,6 +4,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/modules/conversation/completion"
+
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -34,9 +37,13 @@ func (u *appServerUI) showCopyPicker() {
 	}
 	u.cancelPickerScan()
 	p := &u.picker
-	p.modal, p.open, p.selected, p.top = "copy", true, 0, 0
-	p.target, p.problem, p.loading = composerTarget{}, "", false
-	p.choices = responseCopyChoices(response)
+	p.modal, p.Open, p.Selected, p.Top = "copy", true, 0, 0
+	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
+	p.Choices, p.copyTexts = nil, nil
+	for _, choice := range responseCopyChoices(response) {
+		p.Choices = append(p.Choices, choice.Choice)
+		p.copyTexts = append(p.copyTexts, choice.copyText)
+	}
 }
 
 func (u *appServerUI) copyPickerKey(key string) bool {
@@ -45,42 +52,47 @@ func (u *appServerUI) copyPickerKey(key string) bool {
 	case "\x1b[200~", "\x1b[201~":
 		return false
 	case "\x1b", "\x03":
-		p.modal, p.open, p.choices = "", false, nil
+		p.modal, p.Open, p.Choices, p.copyTexts = "", false, nil, nil
 	case "\x1b[A", "\x1bOA", "\x10":
-		p.selected = (p.selected + len(p.choices) - 1) % len(p.choices)
+		p.Selected = (p.Selected + len(p.Choices) - 1) % len(p.Choices)
 	case "\x1b[B", "\x1bOB", "\x0e":
-		p.selected = (p.selected + 1) % len(p.choices)
+		p.Selected = (p.Selected + 1) % len(p.Choices)
 	case "\x1b[5~":
-		p.selected = max(0, p.selected-8)
+		p.Selected = max(0, p.Selected-8)
 	case "\x1b[6~":
-		p.selected = min(len(p.choices)-1, p.selected+8)
+		p.Selected = min(len(p.Choices)-1, p.Selected+8)
 	case "\x1b[H", "\x1bOH":
-		p.selected = 0
+		p.Selected = 0
 	case "\x1b[F", "\x1bOF":
-		p.selected = len(p.choices) - 1
+		p.Selected = len(p.Choices) - 1
 	case "\r":
 		if u.shell == nil {
 			u.setNotice("Terminal clipboard unavailable", true)
 		} else {
-			u.shell.copyText(p.choices[p.selected].copyText)
+			u.shell.copyText(p.copyTexts[p.Selected])
 		}
-		p.modal, p.open, p.choices = "", false, nil
+		p.modal, p.Open, p.Choices, p.copyTexts = "", false, nil, nil
 	}
 	return true
 }
 
 // Source: codex-rs/tui/src/markdown.rs:171:249@1cc7e236 extract_copy_targets.
-func responseCopyChoices(source string) []composerChoice {
-	var choices []composerChoice
+type copyChoice struct {
+	completion.Choice
+	copyText string
+}
+
+func responseCopyChoices(source string) []copyChoice {
+	var choices []copyChoice
 	add := func(label, value string) {
 		preview := ""
 		for line := range strings.SplitSeq(value, "\n") {
 			if line = strings.TrimSpace(line); line != "" {
-				preview = pickerTruncateName(line, 72)
+				preview = terminalui.TruncateGraphemes(line, 72)
 				break
 			}
 		}
-		choices = append(choices, composerChoice{name: label, description: preview, copyText: value})
+		choices = append(choices, copyChoice{Choice: completion.Choice{Name: label, Description: preview}, copyText: value})
 	}
 	add("Whole response", source)
 	data := []byte(source)

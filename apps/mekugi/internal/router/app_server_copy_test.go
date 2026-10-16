@@ -34,7 +34,7 @@ func TestResponseCopyChoices(t *testing.T) {
 			got := responseCopyChoices(tc.source)
 			labels, values := []string{}, []string{}
 			for _, choice := range got {
-				labels = append(labels, choice.name)
+				labels = append(labels, choice.Name)
 				values = append(values, choice.copyText)
 			}
 			wantLabels := append([]string{"Whole response"}, tc.labels...)
@@ -54,7 +54,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	applyTranscriptFixture(u.view, true, "", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", appServerItem{})
 	u.Turn = "new"
 	appServerTestKeys(t, u, "/cop\r")
-	if u.picker.modal != "copy" || u.Text != "" || len(u.picker.choices) != 2 {
+	if u.picker.modal != "copy" || u.Text != "" || len(u.picker.Choices) != 2 {
 		t.Fatalf("picker=%+v draft=%q", u.picker, u.Text)
 	}
 	frame := ansi.Strip(strings.Join(u.renderPicker(80, 8), "\n"))
@@ -67,7 +67,7 @@ func TestAppServerCopyPicker(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "\x1b[B\r")
 	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("printf '界'  \n")) + "\x07"
-	if u.shell.frame.Clipboard != want || u.picker.open || u.Turn != "new" || wire.Len() != 0 {
+	if u.shell.frame.Clipboard != want || u.picker.Open || u.Turn != "new" || wire.Len() != 0 {
 		t.Fatalf("clipboard=%q picker=%+v wire=%s", u.shell.frame.Clipboard, u.picker, wire.Bytes())
 	}
 	if u.feedback.Alert || u.feedback.Text != "Copy sent to terminal clipboard" {
@@ -93,12 +93,12 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	u.session.start("main", "")
 	u.restoreMainHistory([]appServerHistoryTurn{{ID: "old", Status: "completed", Items: []appServerItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
 	appServerTestKeys(t, u, "/copy\r")
-	if u.picker.choices[0].copyText != "restored" {
+	if u.picker.copyTexts[0] != "restored" {
 		t.Fatal("resume lost copy source")
 	}
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.open || u.shell.frame.Clipboard != "" || u.Text != "" {
+	if u.picker.Open || u.shell.frame.Clipboard != "" || u.Text != "" {
 		t.Fatal("cancel copied or reopened")
 	}
 	u.Thread = "different"

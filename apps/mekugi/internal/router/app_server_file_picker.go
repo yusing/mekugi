@@ -9,14 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/completion"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 type pickerScanResult struct {
 	id      uint64
-	target  composerTarget
+	target  completion.Target
 	cwd     string
-	choices []composerChoice
+	choices []completion.Choice
 	problem string
 }
 
@@ -24,7 +26,7 @@ type pickerScanResult struct {
 // opts into this read-only native-client search instead; it never invokes a
 // model tool or changes ignore configuration. Only the thread's absolute cwd
 // supplies filesystem scope, never the router process directory.
-func (u *appServerUI) searchExcludedFiles(target composerTarget, cwd string) {
+func (u *appServerUI) searchExcludedFiles(target completion.Target, cwd string) {
 	p := &u.picker
 	if p.scanCancel != nil && p.scanTarget == target && p.scanCwd == cwd {
 		return
@@ -41,7 +43,7 @@ func (u *appServerUI) searchExcludedFiles(target composerTarget, cwd string) {
 	p.scanCancel, p.scanTarget, p.scanCwd = cancel, target, cwd
 	p.scanID++
 	id, results := p.scanID, p.scanResults
-	p.loading, p.choices, p.problem = true, nil, ""
+	p.Loading, p.Choices, p.Problem = true, nil, ""
 	go func() {
 		// Do not restart a filesystem walk for each byte in a burst of typing.
 		timer := time.NewTimer(100 * time.Millisecond)
@@ -51,7 +53,7 @@ func (u *appServerUI) searchExcludedFiles(target composerTarget, cwd string) {
 			return
 		case <-timer.C:
 		}
-		choices, problem := scanPickerFiles(ctx, cwd, strings.TrimPrefix(target.query, "!"))
+		choices, problem := scanPickerFiles(ctx, cwd, strings.TrimPrefix(target.Query, "!"))
 		result := pickerScanResult{id, target, cwd, choices, problem}
 		select {
 		case results <- result:
@@ -68,12 +70,12 @@ func (u *appServerUI) cancelPickerScan() {
 	}
 }
 
-func scanPickerFiles(ctx context.Context, cwd, query string) ([]composerChoice, string) {
+func scanPickerFiles(ctx context.Context, cwd, query string) ([]completion.Choice, string) {
 	if !filepath.IsAbs(cwd) {
 		return nil, "File search requires an absolute thread workspace"
 	}
 	type match struct {
-		choice composerChoice
+		choice completion.Choice
 		score  int
 	}
 	var best []match
@@ -82,7 +84,7 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]composerChoice, 
 		if a.score != b.score {
 			return a.score - b.score
 		}
-		return strings.Compare(a.choice.path, b.choice.path)
+		return strings.Compare(a.choice.Path, b.choice.Path)
 	}
 	err := filepath.WalkDir(cwd, func(path string, entry fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
@@ -109,11 +111,11 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]composerChoice, 
 			return err
 		}
 		relative = filepath.ToSlash(relative)
-		score, ok := pickerMatchScore(relative, query)
+		score, ok := completion.MatchScore(relative, query)
 		if !ok {
 			return nil
 		}
-		candidate := match{composerChoice{name: relative, path: relative, directory: entry.IsDir()}, score}
+		candidate := match{completion.Choice{Name: relative, Path: relative}, score}
 		index, _ := slices.BinarySearchFunc(best, candidate, less)
 		if index < 50 {
 			best = slices.Insert(best, index, candidate)
@@ -129,7 +131,7 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]composerChoice, 
 	if err != nil {
 		return nil, "File search failed: " + err.Error()
 	}
-	choices := make([]composerChoice, 0, len(best))
+	choices := make([]completion.Choice, 0, len(best))
 	for _, match := range best {
 		choices = append(choices, match.choice)
 	}
@@ -142,15 +144,13 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]composerChoice, 
 
 func (u *appServerUI) applyPickerScan(result pickerScanResult) {
 	p := &u.picker
-	if result.id != p.scanID || result.cwd != u.session.cwd || result.target != u.completionTarget() || !p.open {
+	if result.id != p.scanID || result.cwd != u.session.cwd || result.target != u.completionTarget() || !p.Open {
 		return
 	}
 	if p.scanCancel != nil {
 		p.scanCancel()
 		p.scanCancel = nil
 	}
-	p.choices, p.problem, p.loading = result.choices, result.problem, false
-	p.resolved, p.resolvedCwd = result.target, result.cwd
-	p.selected = min(p.selected, max(0, len(p.choices)-1))
+	p.Resolve(result.target, result.cwd, u.session.cwd, result.choices, result.problem)
 	u.dirty = true
 }

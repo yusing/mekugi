@@ -6,6 +6,10 @@ Provide terminal input, raw-mode lifetime, Markdown painting and source-aware co
 fragments without feature state or backend control. Consumers own pane composition,
 key bindings, selection lifetime, file-link authorization and backend interaction.
 
+Choice-list drawing shares visible-row column measurement, selection styling and
+viewport hit geometry. Consumers supply item text and retain selection meaning,
+headers, actions and key interpretation.
+
 ## Behavior
 
 Raw-mode cleanup restores the caller's terminal state. Canceling an input reader

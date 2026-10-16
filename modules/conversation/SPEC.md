@@ -17,6 +17,13 @@ Conversation retains queued compaction intent and payload ordering. Its Codex
 binding maps backend-owned identities, offered choices and review facts to neutral
 question and approval records; response wire encoding remains backend-owned.
 
+Completion owns byte-based targets, choices, filtering, dismissed targets and
+workspace-scoped result admission. Its terminal view owns completion and skill-menu
+painting and key interpretation. The application performs host searches, file scans
+and skill writes, retaining their cancellation and response handles. Application
+menus share list drawing without transferring settings, archive or copy actions to
+Conversation.
+
 Detached prompt views exclude draft text, secrets and live handles. Terminal
 presentation consumes those values and returns editor or response intents; the
 application executes their effects. Key interaction and Main input readiness follow
@@ -213,6 +220,12 @@ host-owned. Terminal painting consumes bound byte spans; source text remains unc
 
 ### File and skill acquisition
 
+Completion replaces the whole token around the caret, retaining its byte span even
+when the caret is inside the token. Bound attachments remain opaque. Dismissing a
+target keeps it closed until the target changes; changed queries retain only matching
+results. Choosing a file or skill preserves its exact identity through the ordinary
+composer undo and attachment lifecycle.
+
 The application roots completion in the active thread's absolute workspace, never
 the router directory. Ordinary file lookup uses Codex's ignore-aware search. `@!`
 uses a cancellable, debounced read-only scan to include ignored files, excluding
@@ -240,8 +253,8 @@ elements take precedence for repeated labels; absent metadata leaves lookalikes
 literal. Oversized/unreadable instructions use omission receipts, never truncation.
 
 `/skills` offers Codex's List and Enable/Disable actions. Listing inserts `$`;
-management filters enabled/disabled entries by display/canonical name. Space/Enter
-saves a path-scoped toggle; checkboxes change only after success, failures stay
+management filters enabled/disabled entries by display/canonical name. Selecting a
+toggle saves its native path; enabled state changes only after success, failures stay
 visible, and closing reloads the catalog. Managed references never enter
 `skills/config/write` with invented paths; their configuration belongs to the manager.
 Plugin browsing is outside this picker. Terminal completion and editing controls
@@ -262,6 +275,7 @@ successful attachments. A rejected host submission preserves its editable payloa
 
 Neutral tests cover mixed-token edits, grapheme boundaries, undo/history isolation,
 external-editor reconciliation, joining, question commitment/rejection, approval
-choice mapping, detached views, and secret exclusion. Router acceptance exercises the same owner
+choice mapping, detached views, secret exclusion, completion targets, result admission
+and skill filtering. Router acceptance exercises the same owner
 through terminal input, queue restoration, question and approval editors, side questions,
 attachment submission and replay. Terminal snapshots remain renderer-owned.

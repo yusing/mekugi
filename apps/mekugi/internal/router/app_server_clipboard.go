@@ -218,14 +218,14 @@ func (u *appServerUI) pasteByte(key byte) {
 		}
 		u.pasted = nil
 	case u.picker.modal == "manage":
-		u.picker.query += string(u.pasted)
+		u.picker.Query += string(u.pasted)
 		u.pasted = nil
 	case u.picker.modal == "menu" || u.picker.modal == "copy" || u.picker.modal == "settings" || u.picker.modal == "archive":
 		u.pasted = nil
 	default:
 		u.finishPaste()
 	}
-	u.picker.dismissed, u.picker.open = u.completionTarget(), false
+	u.picker.Dismissed, u.picker.Open = u.completionTarget(), false
 	u.refreshPicker()
 }
 

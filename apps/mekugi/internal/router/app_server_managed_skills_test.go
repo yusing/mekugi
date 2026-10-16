@@ -100,8 +100,8 @@ func TestManagedSkillQueuedSnapshotAndNativeManagement(t *testing.T) {
 		t.Fatalf("queue reopened source: %+v", frames)
 	}
 	u.picker.modal = "manage"
-	u.filterSkills("review")
-	if len(u.picker.choices) != 0 {
+	u.picker.FilterSkills("review", u.picker.modal == "manage")
+	if len(u.picker.Choices) != 0 {
 		t.Fatal("managed name exposed to Codex config writes")
 	}
 }

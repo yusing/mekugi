@@ -73,7 +73,7 @@ func TestNativeControlsLockedDraftAndContextualEscape(t *testing.T) {
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.picker.open || wire.Len() != 0 {
+	if u.picker.Open || wire.Len() != 0 {
 		t.Fatal("lock broke contextual picker dismissal")
 	}
 }

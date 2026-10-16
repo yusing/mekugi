@@ -1,5 +1,7 @@
 package router
 
+import "github.com/yusing/mekugi/modules/conversation/completion"
+
 // Source: codex-rs/tui/src/chatwidget/slash_dispatch.rs:240:278 and
 // codex-rs/tui/src/app/event_dispatch.rs:3705:3771@ddb33e34b.
 // Codex owns stopping the turn and archiving the thread and its descendants.
@@ -11,11 +13,11 @@ func (u *appServerUI) showArchivePicker() {
 	u.deleteDraftRange(0, len(u.Text))
 	u.cancelPickerScan()
 	p := &u.picker
-	p.modal, p.open, p.selected, p.top = "archive", true, 0, 0
-	p.target, p.problem, p.loading = composerTarget{}, "", false
-	p.choices = []composerChoice{
-		{name: "No, don't archive", description: "Return to the current session"},
-		{name: "Yes, archive", description: "Archive this session now"},
+	p.modal, p.Open, p.Selected, p.Top = "archive", true, 0, 0
+	p.Target, p.Problem, p.Loading = completion.Target{}, "", false
+	p.Choices = []completion.Choice{
+		{Name: "No, don't archive", Description: "Return to the current session"},
+		{Name: "Yes, archive", Description: "Archive this session now"},
 	}
 }
 
@@ -32,12 +34,12 @@ func (u *appServerUI) archivePickerKey(key string) bool {
 	case "\x1b[200~", "\x1b[201~":
 		return false
 	case "\x1b", "\x03":
-		p.modal, p.open, p.choices = "", false, nil
+		p.modal, p.Open, p.Choices = "", false, nil
 	case "\x1b[A", "\x1bOA", "\x10", "\x1b[B", "\x1bOB", "\x0e", "\t":
-		p.selected = 1 - p.selected
+		p.Selected = 1 - p.Selected
 	case "\r":
-		confirm := p.selected == 1
-		p.modal, p.open, p.choices = "", false, nil
+		confirm := p.Selected == 1
+		p.modal, p.Open, p.Choices = "", false, nil
 		if confirm {
 			u.Replacement.Archive()
 			if err := u.request("thread/archive", map[string]any{"threadId": u.Thread}); err != nil {

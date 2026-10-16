@@ -129,7 +129,7 @@ func TestUISnapshotNativeTierPicker(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
 				u, input := newServiceTierPickerTestUI(t, tc.model, tc.hostTier, tc.overrides)
 				appServerTestKeys(t, u, "/tier\r")
-				if !u.picker.open || u.settingsChoices != "/tier" || u.picker.selected != tc.selected {
+				if !u.picker.Open || u.settingsChoices != "/tier" || u.picker.Selected != tc.selected {
 					t.Fatalf("picker did not select effective tier: %+v", u.picker)
 				}
 				if input.Len() != 0 || u.serviceTier != tc.hostTier || u.model != tc.model {
@@ -147,7 +147,7 @@ func TestUISnapshotNativeTierPickerModelSwitch(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b")
 	appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "unconfigured", "effort": "high", "serviceTier": "priority"}})
 	appServerTestKeys(t, u, "/tier\r")
-	if u.picker.problem != "" || u.picker.selected != 1 || u.serviceTier != "priority" || u.model != "unconfigured" {
+	if u.picker.Problem != "" || u.picker.Selected != 1 || u.serviceTier != "priority" || u.model != "unconfigured" {
 		t.Fatalf("model switch retained override or lost host settings: picker=%+v model=%s tier=%s", u.picker, u.model, u.serviceTier)
 	}
 	assertNativeUISnapshot(t, "native-tier-model-switch-100", u.renderPicker(100, 7))
@@ -163,10 +163,10 @@ func TestUISnapshotNativeTierPickerCatalogStates(t *testing.T) {
 				appServerTestKeys(t, u, "/tier\r")
 				if state == "failed" {
 					appServerTestMessage(t, u, `{"id":99,"error":{"code":-1,"message":"catalog unavailable"}}`)
-					if u.modelsLoading || u.picker.loading || u.picker.problem == "" {
+					if u.modelsLoading || u.picker.Loading || u.picker.Problem == "" {
 						t.Fatal("catalog failure did not end loading and preserve its error")
 					}
-				} else if !u.picker.loading {
+				} else if !u.picker.Loading {
 					t.Fatal("picker did not expose catalog loading state")
 				}
 				assertNativeUISnapshot(t, fmt.Sprintf("native-tier-%s-%d", state, width), u.renderPicker(width, 7))
@@ -190,7 +190,7 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			appServerTestKeys(t, u, "/tier\r"+tc.keys)
 			if tc.initial != tc.applied {
 				assertAppServerSettingsRequest(t, input, "thread/settings/update", map[string]any{"threadId": "main", "serviceTier": tc.want})
-				if u.picker.open || !u.Settings.Pending() || u.serviceTier != tc.initial {
+				if u.picker.Open || !u.Settings.Pending() || u.serviceTier != tc.initial {
 					t.Fatal("selection replaced host settings before confirmation")
 				}
 				appServerTestNotify(t, u, "thread/settings/updated", map[string]any{"threadId": "main", "threadSettings": map[string]any{"model": "gpt-6.1-sol", "effort": "high", "serviceTier": tc.want}})

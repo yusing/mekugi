@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/conversation/completion"
 )
 
 func TestComposerFilePickerExcludedMode(t *testing.T) {
@@ -24,7 +26,7 @@ func TestComposerFilePickerExcludedMode(t *testing.T) {
 	if problem != "" {
 		t.Fatal(problem)
 	}
-	if len(choices) != 1 || choices[0].path != "node_modules/excluded-module.js" {
+	if len(choices) != 1 || choices[0].Path != "node_modules/excluded-module.js" {
 		t.Fatalf("@! should include ignored files, not VCS metadata: %+v", choices)
 	}
 	u, w := newAppServerTestUI()
@@ -41,7 +43,7 @@ func TestComposerFilePickerExcludedMode(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("excluded search did not finish")
 	}
-	if len(u.picker.choices) != 1 || u.picker.loading {
+	if len(u.picker.Choices) != 1 || u.picker.Loading {
 		t.Fatalf("excluded picker = %+v", u.picker)
 	}
 	appServerTestKeys(t, u, "\t")
@@ -56,8 +58,8 @@ func TestComposerFilePickerNormalHidesGitMetadata(t *testing.T) {
 	appServerTestKeys(t, u, "@g")
 	request := pickerRequests(t, w)[0]
 	pickerReply(t, u, request.ID, `{"files":[{"root":"/work","path":".git","match_type":"directory"},{"root":"/work","path":".git/config"},{"root":"/work","path":"nested/.git/HEAD"},{"root":"/work","path":"git.go"}]}`)
-	if len(u.picker.choices) != 1 || u.picker.choices[0].path != "git.go" {
-		t.Fatalf("normal @ exposes git metadata: %+v", u.picker.choices)
+	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Path != "git.go" {
+		t.Fatalf("normal @ exposes git metadata: %+v", u.picker.Choices)
 	}
 }
 
@@ -67,10 +69,10 @@ func TestComposerFilePickerCanceledResultsCannotReopen(t *testing.T) {
 	u.session.cwd = t.TempDir()
 	t.Cleanup(u.cancelPickerScan)
 	appServerTestKeys(t, u, "@!a")
-	id, target := u.picker.scanID, u.picker.target
+	id, target := u.picker.scanID, u.picker.Target
 	u.pickerKey("\x1b")
-	u.applyPickerScan(pickerScanResult{id: id, target: target, cwd: u.session.cwd, choices: []composerChoice{{name: "a", path: "a"}}})
-	if u.picker.open || len(u.picker.choices) != 0 {
+	u.applyPickerScan(pickerScanResult{id: id, target: target, cwd: u.session.cwd, choices: []completion.Choice{{Name: "a", Path: "a"}}})
+	if u.picker.Open || len(u.picker.Choices) != 0 {
 		t.Fatal("canceled scan reopened picker")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -86,12 +88,12 @@ func TestComposerFilePickerUsesWholeTokenAtCaret(t *testing.T) {
 	u.Text = "see @src/main.go next"
 	u.CursorBack = len("main.go next")
 	target := u.completionTarget()
-	if target.query != "src/main.go" || target.start != 4 || target.end != 16 {
+	if target.Query != "src/main.go" || target.Start != 4 || target.End != 16 {
 		t.Fatalf("caret completion = %+v", target)
 	}
 	u.Text = "email@example.com"
 	u.CursorBack = 0
-	if u.completionTarget().kind != 0 {
+	if u.completionTarget().Kind != 0 {
 		t.Fatal("email opened picker")
 	}
 }
@@ -119,11 +121,11 @@ func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(u.session.cwd, "target.txt"), []byte("test"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	u.picker.modal, u.picker.open = "manage", true
-	u.picker.skills = []composerChoice{{name: "review", path: "/work/review/SKILL.md", enabled: true}}
-	u.picker.skillsLoaded, u.picker.skillsCwd = true, u.session.cwd
-	u.rememberSkillState()
-	u.filterSkills("")
+	u.picker.modal, u.picker.Open = "manage", true
+	u.picker.Skills = []completion.Choice{{Name: "review", Path: "/work/review/SKILL.md", Enabled: true}}
+	u.picker.SkillsLoaded, u.picker.SkillsCwd = true, u.session.cwd
+	u.picker.RememberSkills()
+	u.picker.FilterSkills("", u.picker.modal == "manage")
 	u.toggleSkill()
 	request := pickerRequests(t, w)[0]
 	u.closeSkillsModal()
@@ -135,8 +137,8 @@ func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 		t.Fatal("search timeout")
 	}
 	pickerReply(t, u, request.ID, `{"effectiveEnabled":false}`)
-	if len(u.picker.choices) != 1 || u.picker.choices[0].path != "target.txt" {
-		t.Fatalf("skill response corrupted file results: %+v", u.picker.choices)
+	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Path != "target.txt" {
+		t.Fatalf("skill response corrupted file results: %+v", u.picker.Choices)
 	}
 	appServerTestKeys(t, u, "\t")
 	if u.Text != "@target.txt " {

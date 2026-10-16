@@ -12,15 +12,15 @@ func TestComposerCommandCatalog(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.session.cwd = "" // Local commands do not depend on workspace discovery.
 	appServerTestKeys(t, u, "/")
-	if !u.picker.open || len(u.picker.choices) != len(nativeCommands) || len(pickerRequests(t, wire)) != 0 {
+	if !u.picker.Open || len(u.picker.Choices) != len(nativeCommands) || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("catalog = %+v, requests = %s", u.picker, wire.Bytes())
 	}
 	frame := ansi.Strip(strings.Join(u.renderPicker(80, 8), "\n"))
-	if !strings.Contains(frame, "/model") || !strings.Contains(frame, u.picker.choices[0].description) {
+	if !strings.Contains(frame, "/model") || !strings.Contains(frame, u.picker.Choices[0].Description) {
 		t.Fatalf("missing command labels/descriptions: %s", frame)
 	}
 	appServerTestKeys(t, u, "\x1b[B\t")
-	if u.Text != "/reasoning " || u.picker.open || len(pickerRequests(t, wire)) != 0 {
+	if u.Text != "/reasoning " || u.picker.Open || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("Tab did not complete locally: draft=%q picker=%+v", u.Text, u.picker)
 	}
 }
@@ -28,8 +28,8 @@ func TestComposerCommandCatalog(t *testing.T) {
 func TestComposerCommandEnterAndDismiss(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	appServerTestKeys(t, u, "/sk")
-	if len(u.picker.choices) != 1 || u.picker.choices[0].name != "/skills" {
-		t.Fatalf("filtered choices = %+v", u.picker.choices)
+	if len(u.picker.Choices) != 1 || u.picker.Choices[0].Name != "/skills" {
+		t.Fatalf("filtered choices = %+v", u.picker.Choices)
 	}
 	appServerTestKeys(t, u, "\r")
 	if u.picker.modal != "menu" || u.Text != "" || len(pickerRequests(t, wire)) != 0 {
@@ -39,11 +39,11 @@ func TestComposerCommandEnterAndDismiss(t *testing.T) {
 	appServerTestKeys(t, u, "/")
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.open || u.Text != "/" {
+	if u.picker.Open || u.Text != "/" {
 		t.Fatal("Escape must dismiss without changing the draft")
 	}
 	appServerTestKeys(t, u, "mod")
-	if !u.picker.open || len(u.picker.choices) != 1 {
+	if !u.picker.Open || len(u.picker.Choices) != 1 {
 		t.Fatal("editing after dismissal must reopen filtered catalog")
 	}
 }
@@ -53,7 +53,7 @@ func TestComposerCommandBoundaries(t *testing.T) {
 		t.Run(draft, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, draft)
-			if u.picker.open {
+			if u.picker.Open {
 				t.Fatalf("unexpected catalog for %q", draft)
 			}
 		})
@@ -75,7 +75,7 @@ func TestComposerCommandSmallFrame(t *testing.T) {
 				t.Fatalf("row exceeds width %d: %q", width, row)
 			}
 		}
-		if u.picker.top > u.picker.selected || u.picker.top+u.picker.rowCount <= u.picker.selected {
+		if u.picker.Top > u.picker.Selected || u.picker.Top+u.picker.RowCount <= u.picker.Selected {
 			t.Fatal("selection outside visible viewport")
 		}
 	}
@@ -102,7 +102,7 @@ func TestUISnapshotComposerCommandWithPastedImage(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			path := answerImageFixture(t)
 			appServerTestKeys(t, u, "\n\x1b[200~"+path+"\x1b[201~\x1b[H\x1b[D/bt")
-			if !u.picker.open || u.picker.target.query != "bt" {
+			if !u.picker.Open || u.picker.Target.Query != "bt" {
 				t.Fatalf("image blocked command completion: %q %+v", u.Text, u.picker)
 			}
 			if key == "\t" {

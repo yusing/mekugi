@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/conversation/completion"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	json "encoding/json/v2"
@@ -230,8 +232,8 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 		if m.Error != nil {
 			u.modelsLoading, u.reasoningKey = false, nil
 			if u.picker.modal == "settings" {
-				u.picker.loading = false
-				u.picker.problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
+				u.picker.Loading = false
+				u.picker.Problem = "Model choices unavailable · Esc to close; use an explicit VALUE"
 			}
 			u.setNotice("Model choices unavailable: "+m.Error.Message, true)
 			return true, nil
@@ -365,9 +367,9 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 	u.cancelPickerScan()
 	p := &u.picker
-	p.modal, p.open, p.selected, p.top = "settings", true, 0, 0
-	p.target, p.problem, p.loading = composerTarget{}, "", u.modelsLoading
-	p.choices = nil
+	p.modal, p.Open, p.Selected, p.Top = "settings", true, 0, 0
+	p.Target, p.Problem, p.Loading = completion.Target{}, "", u.modelsLoading
+	p.Choices = nil
 	u.settingsChoices = command
 	current := u.model
 	switch command {
@@ -382,19 +384,19 @@ func (u *appServerUI) showSettingsPicker(command string, choices []string) {
 			choices = append(choices, current)
 		}
 	}
-	if p.loading {
+	if p.Loading {
 		return
 	}
 	for _, value := range choices {
-		choice := composerChoice{name: value}
+		choice := completion.Choice{Name: value}
 		if value == current {
-			choice.description = "Current"
-			p.selected = len(p.choices)
+			choice.Description = "Current"
+			p.Selected = len(p.Choices)
 		}
-		p.choices = append(p.choices, choice)
+		p.Choices = append(p.Choices, choice)
 	}
-	if len(p.choices) == 0 {
-		p.problem = "No advertised choices · Esc to close; use an explicit VALUE"
+	if len(p.Choices) == 0 {
+		p.Problem = "No advertised choices · Esc to close; use an explicit VALUE"
 	}
 }
 
@@ -420,26 +422,26 @@ func (u *appServerUI) settingsPickerKey(key string) bool {
 	case "\x1b[200~", "\x1b[201~":
 		return false
 	case "\x1b", "\x03":
-		p.modal, p.open, p.choices = "", false, nil
+		p.modal, p.Open, p.Choices = "", false, nil
 		u.settingsChoices = ""
 	case "\x1b[A", "\x1bOA", "\x10", "\x1b[B", "\x1bOB", "\x0e", "\t":
-		if n := len(p.choices); n > 0 {
+		if n := len(p.Choices); n > 0 {
 			step := 1
 			if key == "\x1b[A" || key == "\x1bOA" || key == "\x10" {
 				step = -1
 			}
-			p.selected = (p.selected + step + n) % n
+			p.Selected = (p.Selected + step + n) % n
 		}
 	case "\x1b[5~":
-		p.selected = max(0, p.selected-8)
+		p.Selected = max(0, p.Selected-8)
 	case "\x1b[6~":
-		p.selected = max(0, min(len(p.choices)-1, p.selected+8))
+		p.Selected = max(0, min(len(p.Choices)-1, p.Selected+8))
 	case "\x1b[H", "\x1bOH":
-		p.selected = 0
+		p.Selected = 0
 	case "\x1b[F", "\x1bOF":
-		p.selected = max(0, len(p.choices)-1)
+		p.Selected = max(0, len(p.Choices)-1)
 	case "\r":
-		if p.loading || len(p.choices) == 0 {
+		if p.Loading || len(p.Choices) == 0 {
 			return true
 		}
 		field := "model"
@@ -449,7 +451,7 @@ func (u *appServerUI) settingsPickerKey(key string) bool {
 		case "/tier":
 			field = "serviceTier"
 		}
-		var value any = p.choices[p.selected].name
+		var value any = p.Choices[p.Selected].Name
 		if field == "serviceTier" && value == "default" {
 			value = nil
 		}
@@ -458,10 +460,10 @@ func (u *appServerUI) settingsPickerKey(key string) bool {
 			u.setNotice("Settings update failed: "+err.Error(), true)
 		}
 		if accepted {
-			p.modal, p.open, p.choices = "", false, nil
+			p.modal, p.Open, p.Choices = "", false, nil
 			u.settingsChoices = ""
 		} else {
-			p.problem = u.feedback.Text
+			p.Problem = u.feedback.Text
 		}
 	}
 	return true
