@@ -31,8 +31,8 @@ func TestOutputTailStreamsBoundedTail(t *testing.T) {
 	for i := range 10000 {
 		long.Write(strings.Repeat("y", 100) + fmt.Sprintf(" %d\n", i))
 	}
-	if len(long.lines) > OutputTailLines || len(long.pending) > OutputPendingLines || len(long.line) > OutputTailBytes+1 {
-		t.Fatalf("tail retained %d lines, %d pending and a %d-byte line", len(long.lines), len(long.pending), len(long.line))
+	if len(long.lines) > OutputTailLines || len(long.pending) > OutputPendingLines || len(long.buffer.Line) > OutputTailBytes+1 {
+		t.Fatalf("tail retained %d lines, %d pending and a %d-byte line", len(long.lines), len(long.pending), len(long.buffer.Line))
 	}
 	long.Reveal(long.Pending())
 	if tail, omitted := long.Lines(); len(tail) != OutputTailLines || omitted != 10000-OutputTailLines || tail[4] != strings.Repeat("y", 100)+" 9999" {

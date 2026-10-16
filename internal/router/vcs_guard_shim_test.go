@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 // Model mise's system fallback: skip the manager and its active delegating
@@ -86,7 +87,7 @@ exit 127
 				case <-ctx.Done():
 					t.Fatal("second command did not reach its approval")
 				}
-				outputs := new(activityui.Retention)
+				outputs := new(activitymodel.Retention)
 				var live execTrackView
 				// Approval and segment reports use separate transports. Wait
 				// for the observed boundary, not only the approval request.

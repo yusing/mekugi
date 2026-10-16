@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/libraries/textsanitize"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -113,7 +113,7 @@ func UnderlineEdit(text string) string {
 // starts its line over, as a terminal redraws a progress line. Complete lines
 // wait until revealed, so a burst can scroll through rather than jump.
 type OutputTail struct {
-	outputLineBuffer
+	buffer  activitymodel.LineBuffer
 	lines   []outputLine // Last revealed non-blank complete lines, sanitized.
 	pending []outputLine // Complete lines awaiting a reveal, oldest first.
 	count   int          // Lines before the current line.
@@ -133,18 +133,18 @@ func TailOutput(output string) ([]string, int) {
 }
 
 func (t *OutputTail) Write(output string) {
-	t.outputLineBuffer.write(output, OutputTailBytes, t.endLine)
+	t.buffer.Write(output, OutputTailBytes, t.endLine)
 }
 
 func (t *OutputTail) endLine() {
-	if text := outputText(t.line); text != "" {
+	if text := outputText(t.buffer.Line); text != "" {
 		t.pending = append(t.pending, outputLine{t.count, text})
 		if len(t.pending) > OutputPendingLines {
 			t.pending = slices.Delete(t.pending, 0, 1)
 		}
 	}
 	t.count++
-	t.line = t.line[:0]
+	t.buffer.Line = t.buffer.Line[:0]
 }
 
 // Pending counts complete lines awaiting a reveal.
@@ -195,7 +195,7 @@ func (t *OutputTail) Flush() bool {
 // nothing is pending, and the count of lines before the first of them.
 func (t *OutputTail) Lines() ([]string, int) {
 	lines := t.lines
-	if text := outputText(t.line); text != "" && len(t.pending) == 0 {
+	if text := outputText(t.buffer.Line); text != "" && len(t.pending) == 0 {
 		lines = append(slices.Clip(lines), outputLine{t.count, text})
 	}
 	lines = lines[max(0, len(lines)-OutputTailLines):]
@@ -211,11 +211,8 @@ func (t *OutputTail) Lines() ([]string, int) {
 
 // outputText sanitizes one bounded line; blank lines carry nothing.
 func outputText(raw []byte) string {
-	line := string(raw)
-	if len(line) > OutputTailBytes {
-		line = strings.ToValidUTF8(line[:OutputTailBytes], "") + "…"
-	}
-	if line = strings.TrimRight(textsanitize.Safe(line, false), " "); strings.TrimSpace(line) != "" {
+	line := activitymodel.LineText(raw, OutputTailBytes)
+	if strings.TrimSpace(line) != "" {
 		return line
 	}
 	return ""

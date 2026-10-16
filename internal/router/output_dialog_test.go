@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -24,7 +26,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, command := range []string{string(command), shellinstrumentation.ShScript("/private/exec-track.sh", string(command))} {
-		output := new(activityui.Retention).New()
+		output := new(activitymodel.Retention).New()
 		output.Write("build failed\n")
 		output.Finish(nil, new(2))
 		view := newLiveActivityView()
@@ -45,7 +47,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 	}
 }
 
-func dialogForOutput(output *activityui.Output) *terminalUI {
+func dialogForOutput(output *activitymodel.Output) *terminalUI {
 	view := newLiveActivityView()
 	d := &outputDialog{view: view, pages: []activityui.Block{{Kind: "op", Verb: "Run", Code: "go test ./...", Output: output}}, match: -1}
 	d.showPage(0)
@@ -59,7 +61,7 @@ func drawOutputDialog(u *terminalUI) string {
 }
 
 func TestOutputDialogLiveFollowPauseAndEnd(t *testing.T) {
-	output := new(activityui.Retention).New()
+	output := new(activitymodel.Retention).New()
 	for i := range 30 {
 		output.Write(fmt.Sprintf("line %02d\n", i))
 	}
@@ -86,7 +88,7 @@ func TestOutputDialogLiveFollowPauseAndEnd(t *testing.T) {
 }
 
 func TestOutputDialogWheelAndOutsideClickIsolation(t *testing.T) {
-	output := new(activityui.Retention).New()
+	output := new(activitymodel.Retention).New()
 	for i := range 30 {
 		output.Write(fmt.Sprintf("line %02d\n", i))
 	}
@@ -109,7 +111,7 @@ func TestOutputDialogWheelAndOutsideClickIsolation(t *testing.T) {
 }
 
 func TestOutputDialogSearchAndCopyRetainedText(t *testing.T) {
-	output := new(activityui.Retention).New()
+	output := new(activitymodel.Retention).New()
 	output.Write("alpha\nneedle one\nbeta\nneedle two\n")
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
@@ -142,7 +144,7 @@ func TestOutputDialogSearchAndCopyRetainedText(t *testing.T) {
 }
 
 func TestOutputDialogTracksRetainedOutputAfterOpening(t *testing.T) {
-	output := new(activityui.Retention).New()
+	output := new(activitymodel.Retention).New()
 	output.Write("streamed\n")
 	u := dialogForOutput(output)
 	drawOutputDialog(u)
@@ -224,7 +226,7 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 }
 
 func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
-	retention := new(activityui.Retention)
+	retention := new(activitymodel.Retention)
 	first, second := retention.New(), retention.New()
 	first.Write("segment one\n")
 	first.Finish(nil, new(0))
@@ -254,7 +256,7 @@ func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
 func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 	for _, width := range []int{100, 50} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			output := new(activityui.Retention).New()
+			output := new(activitymodel.Retention).New()
 			output.Write("modal content\n")
 			output.Finish(nil, new(0))
 			u := dialogForOutput(output)
@@ -320,7 +322,7 @@ func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 
 func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	key := [3]string{"main", "t", "cmd"}
-	retention := new(activityui.Retention)
+	retention := new(activitymodel.Retention)
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: {
 		segments: []execTrackSegment{{source: "echo one", began: true, fresh: []byte("initial\n")}, {source: "echo two"}}, dirty: true,
 	}}}
@@ -345,7 +347,7 @@ func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	if previous == nil {
 		t.Fatal("overflow setup did not allocate segment output")
 	}
-	hub.tracks[other].apply(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: strings.Repeat("x", activityui.OutputBytes+1)})
+	hub.tracks[other].apply(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: strings.Repeat("x", activitymodel.OutputBytes+1)})
 	overflow, _ := hub.view(other, false, func(string) string { return "Run `echo huge`" }, retention)
 	if overflow.output || !hub.tracks[other].lossy {
 		t.Fatal("over-bound fresh output did not select combined host fallback")
@@ -359,7 +361,7 @@ func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	key := [3]string{"main", "t", "lossy"}
 	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("partial")}, {source: "echo done"}}}
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
-	var retention activityui.Retention
+	var retention activitymodel.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
 	output := view.segments[0].output
 	track.apply(segmenttransport.Message{Type: segmenttransport.Lossy})
@@ -370,7 +372,7 @@ func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 }
 
 func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
-	output := new(activityui.Retention).New()
+	output := new(activitymodel.Retention).New()
 	for i := range 30 {
 		output.Write(fmt.Sprintf("row %02d\n", i))
 	}
@@ -402,7 +404,7 @@ func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	key := [3]string{"thread", "turn", "item"}
 	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("first\n")}, {source: "sleep 1"}}}
 	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
-	var retention activityui.Retention
+	var retention activitymodel.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
 	output := view.segments[0].output
 	if output == nil || output.View().Done || strings.Join(output.View().Lines, "\n") != "first" {
@@ -421,7 +423,7 @@ func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 }
 
 func TestOutputDialogCommandTabs(t *testing.T) {
-	retention := new(activityui.Retention)
+	retention := new(activitymodel.Retention)
 	first, second := retention.New(), retention.New()
 	first.Write("package main\n\n")
 	first.Finish(nil, new(0))
@@ -479,7 +481,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 }
 
 func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
-	output := new(activityui.Retention).New()
+	output := new(activitymodel.Retention).New()
 	view := newLiveActivityView()
 	entry := activityPaneEntry{Seq: 10, Agent: "Main", Kind: "tool", Text: "Read `main.go`", native: &liveActivityNativeItem{command: "cat main.go", output: output, running: true, segments: []commandSegment{{source: "cat main.go", text: "Read `main.go`", running: true}}}}
 	view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
@@ -504,7 +506,7 @@ func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
 
 func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
 	view := newLiveActivityView()
-	retention := new(activityui.Retention)
+	retention := new(activitymodel.Retention)
 	for i, path := range []string{"first.go", "second.py"} {
 		output := retention.New()
 		output.Write(path + " only\n")
@@ -532,7 +534,7 @@ func TestOutputDialogMergedTrackedReadsKeepAllInvocations(t *testing.T) {
 }
 
 func TestOutputDialogTabsKeepNavigationState(t *testing.T) {
-	retention := new(activityui.Retention)
+	retention := new(activitymodel.Retention)
 	first, second := retention.New(), retention.New()
 	first.Write(strings.Repeat("first row\n", 50))
 	first.Finish(nil, new(0))
@@ -560,7 +562,7 @@ func TestOutputDialogTabsKeepNavigationState(t *testing.T) {
 
 func TestSharedDialogCloseButton(t *testing.T) {
 	for _, width := range []int{12, 40, 80, 160} {
-		u := dialogForOutput(&activityui.Output{})
+		u := dialogForOutput(&activitymodel.Output{})
 		u.output.pages[0].Body = "Dialog body"
 		rows := make([]string, 20)
 		u.paintOutput(rows, width, len(rows))
@@ -635,7 +637,7 @@ func TestRunDurationLiveAndCompletedRendering(t *testing.T) {
 func TestBatchDialogDoesNotAttributeInvocationTimingToSegments(t *testing.T) {
 	for _, segmented := range []bool{false, true} {
 		t.Run(fmt.Sprint(segmented), func(t *testing.T) {
-			retention := new(activityui.Retention)
+			retention := new(activitymodel.Retention)
 			first, second := retention.New(), retention.New()
 			first.Write("first\n")
 			first.Finish(nil, new(0))

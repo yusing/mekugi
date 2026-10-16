@@ -197,7 +197,7 @@ func navigationBatchDialog() *terminalUI {
 	v := newLiveActivityView()
 	v.painter.Theme = diffrender.DarkTheme
 	d := &outputDialog{view: v, match: -1}
-	retention := new(activityui.Retention)
+	retention := new(activitymodel.Retention)
 	for i, path := range []string{
 		"/workspace/deeply/nested/internal/router/navigation.go",
 		"/workspace/deeply/nested/internal/ui/activity/paint.go",

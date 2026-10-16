@@ -51,11 +51,11 @@ type Block struct {
 	Segment            bool // Ends one tracked segment of a command list; shows that segment's exit.
 	Skipped            bool // A tracked segment the command list never reached.
 	Tail               []string
-	TailOmitted        int          // Output lines before Tail.
-	TailRows           int          // Tail lines open output shows; 0 shows all of Tail.
-	Changes            []ChangeRow  // Change history rows open output shows instead of Tail.
-	Output             *Output      // The invocation's retained output, which the output dialog reads.
-	Hook               *HookDetails // Hook metadata on an ordinary Run operation.
+	TailOmitted        int                   // Output lines before Tail.
+	TailRows           int                   // Tail lines open output shows; 0 shows all of Tail.
+	Changes            []ChangeRow           // Change history rows open output shows instead of Tail.
+	Output             *activitymodel.Output // The invocation's retained output, which the output dialog reads.
+	Hook               *HookDetails          // Hook metadata on an ordinary Run operation.
 	// Members are merged read invocations or compact reasoning sections,
 	// each retained as a separate output dialog page.
 	Members    []Block

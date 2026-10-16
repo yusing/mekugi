@@ -6,8 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/pathdisplay"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
 
 // Source: codex-rs/app-server-protocol/src/protocol/v2/hook.rs HookRunSummary.
@@ -34,7 +36,7 @@ type appServerHookRun struct {
 const builtinHookSource = "/<session-flags>/config.toml"
 
 func hookOutput(run appServerHookRun) (string, bool) {
-	var output activityui.Output
+	var output activitymodel.Output
 	hasError := false
 	for _, entry := range run.Entries {
 		hasError = hasError || entry.Kind == "error"
@@ -64,7 +66,7 @@ func (u *appServerUI) hookEvent(method string, event appServerEvent) error {
 	}
 	run := *event.Run
 	completed := method == "hook/completed"
-	var previousOutput *activityui.Output
+	var previousOutput *activitymodel.Output
 	view := u.agents
 	if event.ThreadID == u.thread {
 		view = u.view

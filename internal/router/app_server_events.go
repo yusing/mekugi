@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
@@ -41,7 +43,7 @@ type appServerSession struct {
 	metadata        map[string]string                  // Child thread → pending metadata request ID; empty when settled.
 	commands        map[[3]string]*appServerCommandRun // Live commands by thread, turn, item.
 	summaries       map[[3]string]*appServerSummaryRun // Public summaries pacing through the same frame cadence.
-	outputs         activityui.Retention               // Command output the output dialog reads, bounded across the session.
+	outputs         activitymodel.Retention            // Command output the output dialog reads, bounded across the session.
 	cwd             string
 	waits           map[[3]string][]appServerWaitTarget // Start-time targets by thread, turn, item.
 	waitStore       *mekugiReplayStore

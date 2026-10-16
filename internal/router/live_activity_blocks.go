@@ -265,7 +265,7 @@ func setApprovalBlocks(blocks []activityui.Block, outcome string) {
 // operations: without a complete segment report none owns the batch's exit.
 func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitted int) []activityui.Block {
 	last, count, batch := -1, 0, -1
-	var output *activityui.Output
+	var output *activitymodel.Output
 	for i, block := range blocks {
 		output = cmp.Or(output, block.Output)
 		if block.Segment {
