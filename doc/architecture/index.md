@@ -22,8 +22,8 @@ pjdoc:
 # Mekugi architecture ownership
 
 Each listed file owns one stable component boundary. Observable behavior belongs to
-the [interface contracts](../spec/index.md); product intent and journeys remain outside
-this governed architecture set. Architecture documents name responsibilities and
+the [interface contracts](../spec/index.md); intent and journeys belong to the
+[product specification](../../docs/product.md). Architecture documents name responsibilities and
 collaborators without restating implementation.
 
 Retained session publication and retention are owned by

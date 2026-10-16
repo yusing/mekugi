@@ -1,22 +1,20 @@
-# Mekugi product specification
+# Mekugi product
 
 ## Problem
 
-Stock Codex is the execution authority, but repeated source reads, large tool
-outputs, and unclear progress can raise model cost and make long-running work
-harder to follow. Provider and client behavior also needs evidence from the real
-request path before optimization claims are credible.
+Repeated source reads, large tool outputs, and unclear progress can raise model
+cost and make long-running work harder to follow. Mekugi adds bounded,
+recoverable tools and visible progress around stock Codex.
 
 ## Outcome
 
-Mekugi adds bounded, recoverable tools and visible progress around stock Codex.
 Codex still owns editing, command execution, permissions, sandboxing, native
 agents, patch review, and live command sessions. Mekugi observes completed work
 for review and measures actual traffic without replaying effects.
 
 Success is measured in this order:
 
-1. Reduce model round trips and payload size.
+1. Reduce model cost, including unnecessary round trips and payload size.
 2. Make agent and user workflows clearer and more recoverable.
 3. Improve agent performance without weakening correctness or host authority.
 
@@ -26,7 +24,7 @@ or model prose.
 
 ## Product principles
 
-- **Codex remains in charge.** Mekugi may project tools, persist evidence,
+- **Codex remains in charge.** Mekugi may expose executable frontends, persist evidence,
   observe, and display; Codex executes effects and owns their lifecycle.
 - **Evidence must be usable.** Readers retain omitted output, and observed
   edits support focused review only after their result and workspace outcome
@@ -35,13 +33,12 @@ or model prose.
   completed visible history from durable records, not one live router process.
 - **Auxiliary features stay non-invasive.** Progress, metrics, and diagnostics
   do not decide whether an edit, command, or provider response succeeds.
-- **One component owns each meaning.** The router, executable frontends,
-  capturer, and live viewer share observed facts instead of independently
-  approximating execution outcomes.
+- **One component owns each meaning.** Features share observed facts instead of
+  independently approximating execution outcomes.
 
-The [interface requirements](spec/index.md) define observable behavior and
-acceptance criteria. The [architecture contracts](architecture/index.md)
-define ownership and boundaries.
+Feature specifications own detailed behavior and acceptance. Shared
+[interface](../doc/spec/index.md) and [ownership](../doc/architecture/index.md)
+indexes link those owners rather than defining another copy of their contracts.
 
 ## User journeys
 
@@ -64,6 +61,11 @@ can batch independent calls. Session IDs returned by Codex continue through
 Users see host progress, child activity, command outcomes, and
 provider-authoritative usage without adding that display text to later model context.
 
+### Automate and inspect without an interactive session
+
+The headless client streams host messages and frontend events as JSONL. Offline
+inspection and replay use retained evidence without executing recorded effects.
+
 ### Evaluate optimizations with real evidence
 
 Operators compare isolated control and treatment runs using hidden correctness
@@ -72,21 +74,23 @@ transport-only byte changes.
 
 ## Scope
 
+Codex is the agent backend and the terminal is the interactive renderer.
+Headless execution and offline replay retain their own command entrypoints.
+
 Mekugi includes:
 
 - bounded UTF-8 source reads, symbol lookup, structural inspection, and
   retained output continuation through authenticated executable frontends;
 - observation of stock edits, change review, and provisional live previews;
-- stock JavaScript tool execution with batching and
-  yielded-session continuation;
-- durable replay, session inspection, commentary, diagnostics, and
+- bounded foreground command output alongside stock JavaScript tool execution,
+  batching, and yielded-session continuation;
+- durable replay, session inspection, retained host facts, diagnostics, and
   provider-authoritative usage reporting;
 - authenticated third-party model routing; and
 - content-safe captured metrics for evaluating real traffic.
 
 User installation, configuration, and commands belong in the
-[README](../README.md). Detailed behavior belongs to the corresponding file
-in the specification index.
+[README](../README.md).
 
 ## Non-goals
 
@@ -94,6 +98,8 @@ Mekugi does not:
 
 - replace Codex's sandbox, permission flow, patch UI, native agent lifecycle,
   or process control;
+- provide direct execution, runtime plugin loading, a browser renderer, or a
+  second agent backend;
 - provide an interactive editor, a hosted benchmark service, or a second
   conversation store;
 - make binary or non-UTF-8 content editable through source readers;

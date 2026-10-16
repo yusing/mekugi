@@ -34,7 +34,7 @@ pjdoc:
 # Mekugi interface contracts
 
 Each listed file owns one observable interface contract and its acceptance cases.
-Product intent and journeys belong to the separate repository product specification;
+Product intent and journeys belong to the [product specification](../../docs/product.md);
 architecture files own component boundaries. Related facts are cited by stable ID or
 linked, not copied.
 
