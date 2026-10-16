@@ -37,7 +37,9 @@ distinguish `applied`, `no_changes`, `already_satisfied`, `rejected`, `unconfirm
 observations do not enter patch-based AX edit counts.
 
 Completed host results, observed effects and outcome classification remain
-distinct. Failed commands stay rejected even when files changed. Shared effects
+distinct. A missing derived patch outcome is unconfirmed, even when host output
+or another operation reports changes. Recorded patch or command failure stays
+rejected even when files changed. Shared effects
 identify their owner; missing observations do not claim zero files. Unconfirmed
 completion and partial coverage cannot establish a successful no-op. Inspection
 does not certify semantic correctness, revive processes or references, or grant
