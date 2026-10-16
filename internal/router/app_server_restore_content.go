@@ -467,7 +467,7 @@ func (u *appServerUI) restoreActivityItem(info appServerThreadInfo, turn appServ
 			entry.native.editPages = appServerEditPages(item, info.Cwd, entry.native.phase)
 		}
 		s.retainOutput(entry.native, item)
-		appServerSucceededOutput(&entry, item, time.Time{})
+		appServerCommandOutput(&entry, item, time.Time{})
 		u.restoreCommandSegments(&entry, item, u.session.cwd)
 		*entries = append(*entries, entry)
 		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {

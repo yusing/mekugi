@@ -338,7 +338,7 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 			entry.native.editPages = appServerEditPages(item, u.session.cwd, method)
 		}
 		u.session.retainOutput(entry.native, item)
-		appServerSucceededOutput(&entry, item, time.Time{})
+		appServerCommandOutput(&entry, item, time.Time{})
 		u.restoreCommandSegments(&entry, item, u.session.cwd)
 		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 		if len(entry.native.segments) == 0 && item.ExitCode != nil && *item.ExitCode != 0 {
