@@ -2,8 +2,8 @@
 
 ## Purpose and scope
 
-Interpret classified operations, retain bounded host output, and paint activity
-values for terminal feeds and dialogs. Host adapters retain authority over tool
+Interpret classified operations, retain bounded host output, derive renderer-neutral
+activity values, and paint those values in terminal feeds and dialogs. Host adapters retain authority over tool
 identity, execution, outcomes and captured changes. Parsing neither evaluates
 source nor establishes that an operation ran.
 
@@ -23,8 +23,12 @@ and retained change evidence are unaffected.
 The same content values can carry authored messages and reasoning supplied by host
 adapters. Their kind does not establish host execution state.
 
-The parser owns no feed, grouping across invocations or terminal state. Consumers
-attach observed timing/outcomes, aggregate read invocations and choose rendering.
+The parser owns no feed, grouping across invocations or terminal state. Presentation
+values enrich parsed content with observed timing, outcomes, identities, questions,
+hook facts and bounded output tails. Terminal disclosure selects eligible adjacent
+operations; neutral grouping joins their values and keeps flat original membership.
+Read merging, reasoning compaction, batch flattening and stage folding preserve
+those identities for dialogs and cross-pane navigation.
 Source values contain no styles, geometry, callbacks or live handles. Shared fence
 and inline-code recognition belongs to `sourceanalysis`.
 
@@ -70,12 +74,27 @@ consumer-owned.
 
 This owner stores no durable records and registers no Codex mechanism. The current
 application adapter supplies host output and outcomes; restored content comes from
-host history and command-segment records. Feed assembly, roster state and dialog
-membership remain application-owned. The module's terminal view paints supplied
-blocks using shared terminal primitives; the [presentation contract](CONTRACT.md)
-owns observable rows and interaction. This renderer API still carries output
-handles and terminal annotations. It is separate from neutral parsed content,
-not an immutable session-view publication.
+host history and command-segment records. Feed assembly and roster state remain application-owned. Each feed record keeps
+its source, enriched values, terminal disclosure annotations and cache revision
+together through append, replacement, in-place annotation changes, removal and
+history reordering. Stable entry identities move with the record. Main invalidates
+cross-entry dependent layouts; ordinary Activity updates retain unrelated completed
+layouts. No second transcript or index-aligned source/value collection is maintained.
+
+`presentation` owns plain semantic values and canonical flat group membership. It
+imports no terminal types and carries no callbacks or live output handles. Source
+text, requested-operation values and numeric detail facts remain unpainted.
+`terminalview` owns disclosure, geometry, styles, wrapping and animation; the
+[presentation contract](CONTRACT.md) defines observable behavior.
+
+Retained streams stay with their invocation or segment. Feed publications carry
+bounded tails and scoped output identities rather than whole retained snapshots.
+Feed syntax uses bounded retained context, preserving source headers without
+publishing whole streams. Full immutable snapshots are requested for dialog
+content. An open dialog retains direct output handles with its flat original pages, so feed
+aging does not invalidate them. It refreshes from unpaced source records before
+visible feed reveal and follows newly observed segments. Release falls back to the
+bounded tail without reviving discarded bytes or inventing a successful exit.
 
 ## Failure and absence
 

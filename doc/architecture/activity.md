@@ -3,9 +3,9 @@
 ## CTR-ACTIVITY-001 — Activity identity and collection
 
 Native session integration in `internal/router` consumes Codex app-server events.
-[Activity content](../../modules/activity/SPEC.md) owns renderer-neutral source
-interpretation and bounded retained output; `modules/activity/terminalview` owns terminal
-blocks, aggregation, animated tails and painting.
+[Activity](../../modules/activity/SPEC.md) owns source interpretation, retained
+output, enriched neutral values and canonical grouping membership; its terminal
+view owns disclosure, layout, animated tails and painting.
 The [UI boundary](ui.md) owns their
 integration, and the [activity contract](../spec/activity.md) owns classification.
 Codex retains execution, scheduling, recipients, interrupts, waits, and lifecycle.
@@ -31,14 +31,9 @@ presentation; they are not an outcome-accounting store. Presentation cannot
 finalize edits, reconstruct missing provider usage, or revive
 replayed processes.
 
-Each native feed retains one presentation record per source entry, containing
-the entry, its parsed blocks and its cache revision. The feed's record owner
-handles append, replacement, in-place metadata and annotation edits, removal,
-and history reordering together with cache invalidation. Parsed annotations and
-stable entry IDs move with their source;
-consumers do not maintain index-aligned entry and block collections. Main's
-threaded layout invalidates cross-entry dependent runs on record updates, while
-ordinary Activity updates keep unrelated completed runs warm.
+The [activity lifecycle boundary](../../modules/activity/SPEC.md#records-and-codex-connection)
+owns source/value identity, record invalidation, grouped membership and scoped
+output consumption by feeds and dialogs.
 
 ## CTR-ACTIVITY-002 — Native child history pages
 

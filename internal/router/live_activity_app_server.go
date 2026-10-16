@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -39,21 +41,21 @@ type liveActivityNativeItem struct {
 	approval           string // UI decision, independent of the host execution result.
 	workdir            string // Display form of a command's directory outside the shown workspace.
 	searchResults      *int
-	running            bool                   // Started live and not yet completed; replay never sets it.
-	live               bool                   // From a live notification; restored history never sets it.
-	settled            time.Time              // Successful output stays open from then until its agent's next event.
-	changes            []activityui.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
-	commit             gitCommitKey           // The commit object whose files complete changes.
-	collapsed          bool                   // Settled output or a restored block.
-	spans              []activityui.TextSpan  // Attachment spans, not text resembling image labels.
-	question           uint64                 // Original user entry.
-	thought            time.Duration          // Reasoning time from its start to completion.
-	replaces           string                 // Pending thinking block this reasoning item takes over.
-	attachments        []activityui.Block     // Submitted file snapshot outcomes, recovered from host history.
-	capturedEdit       *capturedActivityEdit  // Exact invocation receipt reconciled by the live diff owner.
-	editPages          []activityui.Block     // Completed host file changes, available before outer-cell capture.
-	segments           []commandSegment       // A tracked command's own segments, replacing its single row.
-	output             *activitymodel.Output  // A command's retained host output, which the output dialog reads.
+	running            bool                             // Started live and not yet completed; replay never sets it.
+	live               bool                             // From a live notification; restored history never sets it.
+	settled            time.Time                        // Successful output stays open from then until its agent's next event.
+	changes            []activitypresentation.ChangeRow // Change rows read from a successful change history, VCS read, or commit.
+	commit             gitCommitKey                     // The commit object whose files complete changes.
+	collapsed          bool                             // Settled output or a restored block.
+	spans              []activityui.TextSpan            // Attachment spans, not text resembling image labels.
+	question           uint64                           // Original user entry.
+	thought            time.Duration                    // Reasoning time from its start to completion.
+	replaces           string                           // Pending thinking block this reasoning item takes over.
+	attachments        []activityui.Block               // Submitted file snapshot outcomes, recovered from host history.
+	capturedEdit       *capturedActivityEdit            // Exact invocation receipt reconciled by the live diff owner.
+	editPages          []activityui.Block               // Completed host file changes, available before outer-cell capture.
+	segments           []commandSegment                 // A tracked command's own segments, replacing its single row.
+	output             *activitymodel.Output            // A command's retained host output, which the output dialog reads.
 	hook               *activityui.HookDetails
 }
 

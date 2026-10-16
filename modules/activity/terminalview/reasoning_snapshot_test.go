@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -76,7 +77,7 @@ func TestUISnapshotReasoningCompleted(t *testing.T) {
 			name := fmt.Sprintf("%s_%d", tc.name, width)
 			t.Run(name, func(t *testing.T) {
 				p := Painter{Theme: diffrender.DarkTheme}
-				block := Block{Kind: "summary", Body: reasoningSnapshotBody, Elapsed: "12s", Collapsed: tc.collapsed, Hovered: tc.hovered}
+				block := Block{Kind: "summary", Body: reasoningSnapshotBody, Thought: 12 * time.Second, Collapsed: tc.collapsed, Hovered: tc.hovered}
 				uisnapshot.Assert(t, "testdata/snapshots/reasoning_completed_"+name+".txt", strings.Join(p.Block(block, width), "\n")+"\n")
 			})
 		}
@@ -88,7 +89,7 @@ func TestUISnapshotReasoningDialog(t *testing.T) {
 		name := fmt.Sprintf("complete_%d", width)
 		t.Run(name, func(t *testing.T) {
 			p := Painter{Theme: diffrender.DarkTheme}
-			block := Block{Kind: "summary", Body: "**Inspecting the reasoning display**\n\n" + reasoningSnapshotBody, Elapsed: "12s", Collapsed: true}
+			block := Block{Kind: "summary", Body: "**Inspecting the reasoning display**\n\n" + reasoningSnapshotBody, Thought: 12 * time.Second, Collapsed: true}
 			page := p.DialogPage(block, width-4)
 			var rows []string
 			for i := range page.Lines {
@@ -102,18 +103,19 @@ func TestUISnapshotReasoningDialog(t *testing.T) {
 
 func TestUISnapshotReasoningShortSummary(t *testing.T) {
 	for _, tc := range []struct {
-		name, body, elapsed string
-		width               int
+		name, body string
+		elapsed    time.Duration
+		width      int
 	}{
-		{"subsecond", "Locating rendition file", "", 40},
-		{"timed", "Locating rendition file", "2s", 40},
-		{"heading", "**Locating rendition file**\n\nThe complete body remains available in the dialog.", "2s", 40},
-		{"long", "A long summary that needs shortening before its elapsed duration\nMore details.", "12s", 32},
-		{"tiny", "Locating rendition file", "12s", 8},
+		{"subsecond", "Locating rendition file", 0, 40},
+		{"timed", "Locating rendition file", 2 * time.Second, 40},
+		{"heading", "**Locating rendition file**\n\nThe complete body remains available in the dialog.", 2 * time.Second, 40},
+		{"long", "A long summary that needs shortening before its elapsed duration\nMore details.", 12 * time.Second, 32},
+		{"tiny", "Locating rendition file", 12 * time.Second, 8},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Painter{Theme: diffrender.DarkTheme}
-			block := Block{Kind: "summary", Body: tc.body, Elapsed: tc.elapsed, Collapsed: true}
+			block := Block{Kind: "summary", Body: tc.body, Thought: tc.elapsed, Collapsed: true}
 			rows := p.Block(block, tc.width)
 			uisnapshot.Assert(t, "testdata/snapshots/reasoning_short_"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 			page := p.DialogPage(block, tc.width)
@@ -131,7 +133,7 @@ func TestUISnapshotReasoningShortSummary(t *testing.T) {
 
 func TestUISnapshotReasoningShortUncollapsed(t *testing.T) {
 	p := Painter{Theme: diffrender.DarkTheme}
-	block := Block{Kind: "summary", Body: "Locating rendition file", Elapsed: "12s"}
+	block := Block{Kind: "summary", Body: "Locating rendition file", Thought: 12 * time.Second}
 	rows := p.Block(block, 26)
 	uisnapshot.Assert(t, "testdata/snapshots/reasoning_short_uncollapsed.txt", strings.Join(rows, "\n")+"\n")
 }

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -675,7 +677,7 @@ func vcsSegment(source string) bool {
 // commandOutputRows reads a successful command's output as change rows when
 // it is a change history, VCS read, or commit, with the commit whose files
 // complete them once read.
-func commandOutputRows(item appServerItem) ([]activityui.ChangeRow, gitCommitKey) {
+func commandOutputRows(item appServerItem) ([]activitypresentation.ChangeRow, gitCommitKey) {
 	if rows := mchangesOutputRows(item); rows != nil || item.AggregatedOutput == nil {
 		return rows, gitCommitKey{}
 	}
@@ -690,7 +692,7 @@ func commandOutputRows(item appServerItem) ([]activityui.ChangeRow, gitCommitKey
 // and checks, which print nothing on success, may precede a commit in one
 // output; other lists interleave output, so they keep the plain tail, as do
 // commands without a recognized row.
-func vcsOutputRows(command, cwd, output string) ([]activityui.ChangeRow, gitCommitKey) {
+func vcsOutputRows(command, cwd, output string) ([]activitypresentation.ChangeRow, gitCommitKey) {
 	program, err := syntax.NewParser().Parse(strings.NewReader(toolActivityShellSource(appServerDisplayCommand(command))), "")
 	if err != nil || len(program.Stmts) != 1 {
 		return nil, gitCommitKey{}
@@ -738,10 +740,10 @@ var (
 // branch, and totals, and the created, deleted, and moved files it lists,
 // without counts. The key names the commit object whose files replace them
 // once read; without a host cwd there is none.
-func gitCommitRows(call vcsCall, cwd string, lines []string) ([]activityui.ChangeRow, gitCommitKey) {
+func gitCommitRows(call vcsCall, cwd string, lines []string) ([]activitypresentation.ChangeRow, gitCommitKey) {
 	var head []string
-	footer := activityui.ChangeRow{Footer: true}
-	var fallback []activityui.ChangeRow
+	footer := activitypresentation.ChangeRow{Footer: true}
+	var fallback []activitypresentation.ChangeRow
 	for _, line := range lines {
 		if match := gitCommitHead.FindStringSubmatch(line); match != nil && head == nil {
 			head = match
@@ -781,27 +783,27 @@ func gitCommitRows(call vcsCall, cwd string, lines []string) ([]activityui.Chang
 }
 
 // gitSummaryRow reads one --summary line: a created, deleted, or moved file.
-func gitSummaryRow(line string) (activityui.ChangeRow, bool) {
+func gitSummaryRow(line string) (activitypresentation.ChangeRow, bool) {
 	if match := gitSummaryMode.FindStringSubmatch(line); match != nil {
 		path := vcsPath(match[2])
 		status := diffmodel.Status{After: path}
 		if match[1] == "delete" {
 			status.Before, status.After = path, ""
 		}
-		return activityui.ChangeRow{Code: status.ShortCode(), Label: path}, true
+		return activitypresentation.ChangeRow{Code: status.ShortCode(), Label: path}, true
 	}
 	if match := gitSummaryMove.FindStringSubmatch(line); match != nil {
 		from, to := gitRenamePaths(match[2])
 		from, to = vcsPath(from), vcsPath(to)
 		status := diffmodel.Status{Before: from, After: to}
-		row := activityui.ChangeRow{From: from, Label: to}
+		row := activitypresentation.ChangeRow{From: from, Label: to}
 		if match[1] == "copy" {
 			status.Before, row.From, row.Note = "", "", "copy of "+from
 		}
 		row.Code = status.ShortCode()
 		return row, true
 	}
-	return activityui.ChangeRow{}, false
+	return activitypresentation.ChangeRow{}, false
 }
 
 // vcsDirectory resolves a git -C directory against the command's own cwd.
@@ -856,7 +858,7 @@ type gitCommitKey struct{ dir, hash string }
 // gitCommitRead is a commit object's files, or ok false when it could not
 // be read.
 type gitCommitRead struct {
-	rows []activityui.ChangeRow
+	rows []activitypresentation.ChangeRow
 	ok   bool
 }
 
@@ -908,7 +910,7 @@ func (b *vcsBoundedBuffer) Write(p []byte) (int, error) {
 // counts its object records, once a background read has cached them. Until
 // then, and for an unreadable object, the output's rows stay; an unread
 // object is requested for gitShowRequests.
-func commitChanges(rows []activityui.ChangeRow, key gitCommitKey) []activityui.ChangeRow {
+func commitChanges(rows []activitypresentation.ChangeRow, key gitCommitKey) []activitypresentation.ChangeRow {
 	if key.hash == "" || len(rows) == 0 {
 		return rows
 	}
@@ -961,7 +963,7 @@ func gitShowRead(ctx context.Context, key gitCommitKey) bool {
 	read := gitCommitRead{ok: err == nil}
 	if read.ok {
 		// The commit's own footer states its totals; a second would repeat them.
-		read.rows = slices.DeleteFunc(gitStatRows("numstat", strings.Split(string(output), "\n")), func(row activityui.ChangeRow) bool { return row.Footer })
+		read.rows = slices.DeleteFunc(gitStatRows("numstat", strings.Split(string(output), "\n")), func(row activitypresentation.ChangeRow) bool { return row.Footer })
 	}
 	c.Lock()
 	defer c.Unlock()
@@ -986,12 +988,12 @@ var (
 
 // svnCommitRows reads the files svn commit sent and the revision it made.
 // svn reports no line counts.
-func svnCommitRows(lines []string) []activityui.ChangeRow {
-	var rows []activityui.ChangeRow
+func svnCommitRows(lines []string) []activitypresentation.ChangeRow {
+	var rows []activitypresentation.ChangeRow
 	revision := ""
 	for _, line := range lines {
 		if match := svnCommitFile.FindStringSubmatch(line); match != nil {
-			row := activityui.ChangeRow{Verb: svnCommitVerbs[match[1]], Label: vcsPath(match[2])}
+			row := activitypresentation.ChangeRow{Verb: svnCommitVerbs[match[1]], Label: vcsPath(match[2])}
 			if match[1] == "Replacing" {
 				row.Note = "replaced"
 			}
@@ -1003,7 +1005,7 @@ func svnCommitRows(lines []string) []activityui.ChangeRow {
 	if revision == "" {
 		return nil // Nothing claims a commit.
 	}
-	return append(rows, activityui.ChangeRow{Footer: true, Label: "r" + revision})
+	return append(rows, activitypresentation.ChangeRow{Footer: true, Label: "r" + revision})
 }
 
 // patchFile is one file of a unified diff.
@@ -1022,7 +1024,7 @@ var patchHunk = regexp.MustCompile(`^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@`)
 // patchRows reads a unified diff from git, svn, or mchanges as one row per
 // file, counting lines within each hunk's stated extent so content that
 // looks like a header is still counted as content.
-func patchRows(lines []string) []activityui.ChangeRow {
+func patchRows(lines []string) []activitypresentation.ChangeRow {
 	var files []*patchFile
 	var file *patchFile
 	start := func(git bool) {
@@ -1098,11 +1100,11 @@ func patchRows(lines []string) []activityui.ChangeRow {
 			}
 		}
 	}
-	var rows []activityui.ChangeRow
+	var rows []activitypresentation.ChangeRow
 	index := make(map[string]int)
 	for _, file := range files {
 		status := diffmodel.Status{Before: file.from, After: file.to, Edited: file.added+file.removed > 0}
-		row := activityui.ChangeRow{Label: file.to, Added: file.added, Removed: file.removed}
+		row := activitypresentation.ChangeRow{Label: file.to, Added: file.added, Removed: file.removed}
 		switch {
 		case file.copied:
 			status.Before, row.Note = "", "copy of "+file.from
@@ -1136,12 +1138,12 @@ func patchRows(lines []string) []activityui.ChangeRow {
 }
 
 // vcsTotals closes more rows than a group shows with their totals.
-func vcsTotals(rows []activityui.ChangeRow) []activityui.ChangeRow {
+func vcsTotals(rows []activitypresentation.ChangeRow) []activitypresentation.ChangeRow {
 	if len(rows) <= activityui.ChangeRowsShown {
 		return rows
 	}
 	added, removed := activityui.ChangeTotals(rows)
-	return append(rows, activityui.ChangeRow{Footer: true, Note: fmt.Sprintf("%d files", len(rows)), Added: added, Removed: removed})
+	return append(rows, activitypresentation.ChangeRow{Footer: true, Note: fmt.Sprintf("%d files", len(rows)), Added: added, Removed: removed})
 }
 
 func patchExtent(count string) int {
@@ -1239,14 +1241,14 @@ var (
 // git show's commit header before them. A --stat graph scaled to fit its
 // width does not split a file's count exactly, so its rows show only the
 // total; the closing totals are exact either way.
-func gitStatRows(format string, lines []string) []activityui.ChangeRow {
-	var rows []activityui.ChangeRow
-	var footer *activityui.ChangeRow
-	verbs := make(map[string]activityui.ChangeRow)
+func gitStatRows(format string, lines []string) []activitypresentation.ChangeRow {
+	var rows []activitypresentation.ChangeRow
+	var footer *activitypresentation.ChangeRow
+	verbs := make(map[string]activitypresentation.ChangeRow)
 	scaled := false
 	for _, line := range lines {
 		if match := gitChangedFiles.FindStringSubmatch(line); match != nil && format != "numstat" {
-			footer = &activityui.ChangeRow{Footer: true, Note: match[1] + " files"}
+			footer = &activitypresentation.ChangeRow{Footer: true, Note: match[1] + " files"}
 			if match[1] == "1" {
 				footer.Note = "1 file"
 			}
@@ -1264,7 +1266,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 		case "numstat":
 			if match := gitNumstatRow.FindStringSubmatch(line); match != nil {
 				from, to := gitRenamePaths(match[3])
-				row := activityui.ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
+				row := activitypresentation.ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
 				if from != to {
 					row.From = vcsPath(from)
 				}
@@ -1282,7 +1284,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 				continue
 			}
 			from, to := gitRenamePaths(match[1])
-			row := activityui.ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
+			row := activitypresentation.ChangeRow{Code: (diffmodel.Status{Before: from, After: to}).ShortCode(), Label: vcsPath(to)}
 			if from != to {
 				row.From = vcsPath(from)
 			}
@@ -1311,7 +1313,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 			case "D":
 				status.After = ""
 			}
-			row := activityui.ChangeRow{Label: path}
+			row := activitypresentation.ChangeRow{Label: path}
 			if match[4] != "" {
 				row.Label = vcsPath(match[4])
 				if match[1] == "R" {
@@ -1325,7 +1327,7 @@ func gitStatRows(format string, lines []string) []activityui.ChangeRow {
 			rows = append(rows, row)
 		case "name-only":
 			if line != "" && !strings.HasPrefix(line, " ") && !gitShowHeader.MatchString(line) {
-				rows = append(rows, activityui.ChangeRow{Label: vcsPath(line)})
+				rows = append(rows, activitypresentation.ChangeRow{Label: vcsPath(line)})
 			}
 		}
 	}
@@ -1369,14 +1371,14 @@ var (
 
 // svnSummaryRows reads svn diff --summarize: each path's item and property
 // status, without line counts.
-func svnSummaryRows(lines []string) []activityui.ChangeRow {
-	var rows []activityui.ChangeRow
+func svnSummaryRows(lines []string) []activitypresentation.ChangeRow {
+	var rows []activitypresentation.ChangeRow
 	for _, line := range lines {
 		match := svnSummaryRow.FindStringSubmatch(line)
 		if match == nil || match[1] == " " && match[2] == " " {
 			continue
 		}
-		row := activityui.ChangeRow{Verb: svnSummaryVerbs[match[1][0]], Label: vcsPath(match[3])}
+		row := activitypresentation.ChangeRow{Verb: svnSummaryVerbs[match[1][0]], Label: vcsPath(match[3])}
 		if match[1] == " " {
 			row.Note = "properties"
 		}
@@ -1400,9 +1402,9 @@ var (
 
 // gitStatusRows reads git status output, long or short, as two-cell status
 // rows closed by the branch and its distance from upstream.
-func gitStatusRows(lines []string) []activityui.ChangeRow {
+func gitStatusRows(lines []string) []activitypresentation.ChangeRow {
 	type entry struct{ x, y byte }
-	var rows []activityui.ChangeRow
+	var rows []activitypresentation.ChangeRow
 	codes := make(map[string]*entry)
 	add := func(path string, x, y byte) {
 		from, to, moved := strings.Cut(path, " -> ")
@@ -1415,7 +1417,7 @@ func gitStatusRows(lines []string) []activityui.ChangeRow {
 			return
 		}
 		codes[label] = &entry{x, y}
-		row := activityui.ChangeRow{Label: label}
+		row := activitypresentation.ChangeRow{Label: label}
 		if moved {
 			row.From = vcsPath(from)
 		}
@@ -1484,17 +1486,17 @@ func gitStatusRows(lines []string) []activityui.ChangeRow {
 		note = strings.TrimSpace(note + " · clean")
 		note = strings.TrimPrefix(note, "· ")
 	}
-	return append(rows, activityui.ChangeRow{Footer: true, Label: textsanitize.Safe(branch, false), Note: note})
+	return append(rows, activitypresentation.ChangeRow{Footer: true, Label: textsanitize.Safe(branch, false), Note: note})
 }
 
 var svnStatusRow = regexp.MustCompile(`^([ ACDIMRX?!~])([ CM])[ L][ +][ SX][ KOTB][ C] (.+)$`)
 
 // svnStatusRows reads svn status: each path's item and property state.
-func svnStatusRows(lines []string) []activityui.ChangeRow {
-	var rows []activityui.ChangeRow
+func svnStatusRows(lines []string) []activitypresentation.ChangeRow {
+	var rows []activitypresentation.ChangeRow
 	for _, line := range lines {
 		if match := svnStatusRow.FindStringSubmatch(line); match != nil && match[1]+match[2] != "  " {
-			rows = append(rows, activityui.ChangeRow{Code: match[1] + match[2], Label: vcsPath(match[3])})
+			rows = append(rows, activitypresentation.ChangeRow{Code: match[1] + match[2], Label: vcsPath(match[3])})
 		}
 	}
 	return rows

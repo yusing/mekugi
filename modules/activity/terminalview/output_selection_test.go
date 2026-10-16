@@ -35,7 +35,7 @@ func TestSearchOutputSelectedTailParity(t *testing.T) {
 					block := selectedOutputBlock(Block{Verb: "Search", Label: tc.label}, rows, 2)
 					full := new(Painter)
 					full.Theme = theme
-					colors := full.outputColors(block, block.Output.View().Lines)
+					colors := full.outputColors(block, block.OutputSnapshot.Lines)
 					var want []string
 					for i := block.TailOmitted; i < len(rows); i++ {
 						text := outputText([]byte(rows[i]))
@@ -99,7 +99,7 @@ func TestSearchOutputSelectedTailRetainsHighlightLimit(t *testing.T) {
 	if got := p.tailColors(block); !slices.Equal(got, block.Tail) {
 		t.Fatalf("small selected tail bypassed retained-content limit: %q", got)
 	}
-	if got := p.outputColors(block, block.Output.View().Lines); !slices.Equal(got, rows) {
+	if got := p.outputColors(block, block.OutputSnapshot.Lines); !slices.Equal(got, rows) {
 		t.Fatal("dialog bypassed retained-content limit")
 	}
 }
@@ -156,8 +156,9 @@ func TestSearchOutputSelectedTailSkipsOffscreenTokenization(t *testing.T) {
 }
 
 func selectedOutputBlock(block Block, rows []string, start int) Block {
-	block.Output = new(activitymodel.Output)
-	block.Output.Write(strings.Join(rows, "\n"))
+	output := new(activitymodel.Output)
+	output.Write(strings.Join(rows, "\n"))
+	block.OutputSnapshot = new(output.View())
 	block.TailOmitted = start
 	for _, row := range rows[start:] {
 		if text := outputText([]byte(row)); text != "" {
@@ -197,7 +198,7 @@ func BenchmarkSearchOutputRetainedSelectedTail(b *testing.B) {
 		}
 		b.Run(name, func(b *testing.B) {
 			p := Painter{Theme: diffrender.DarkTheme}
-			retained := block.Output.View().Lines
+			retained := block.OutputSnapshot.Lines
 			paint := func() []string {
 				if selected {
 					return p.tailColors(block)

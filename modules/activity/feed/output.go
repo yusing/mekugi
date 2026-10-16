@@ -180,6 +180,45 @@ func (o *Output) View() OutputView {
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
 	}
-	o.snapshot = &OutputView{Lines: lines, Dropped: o.dropped, Truncated: o.truncated || len(o.buffer.Line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit}
+	view := o.viewState()
+	view.Lines = lines
+	o.snapshot = &view
 	return *o.snapshot
+}
+
+// Context returns a bounded, immutable prefix for feed syntax detection without
+// populating the full snapshot cache. The budget includes line slots, as retained
+// output accounting does. limited distinguishes a bounded prefix from complete
+// retained evidence; it does not claim that the host truncated its output.
+func (o *Output) Context(budget int) (view OutputView, limited bool) {
+	view = o.viewState()
+	count, size := 0, 0
+	for _, line := range o.lines {
+		cost := len(line) + outputLineOverhead
+		if size+cost > budget {
+			limited = true
+			break
+		}
+		size += cost
+		count++
+	}
+	view.Lines = slices.Clone(o.lines[:count])
+	if !limited && len(o.buffer.Line) > 0 {
+		line := LineText(o.buffer.Line, OutputLineBytes)
+		if size+len(line)+outputLineOverhead > budget {
+			limited = true
+		} else {
+			view.Lines = append(view.Lines, line)
+		}
+	}
+	if !limited {
+		for len(view.Lines) > 0 && strings.TrimSpace(view.Lines[len(view.Lines)-1]) == "" {
+			view.Lines = view.Lines[:len(view.Lines)-1]
+		}
+	}
+	return view, limited
+}
+
+func (o *Output) viewState() OutputView {
+	return OutputView{Dropped: o.dropped, Truncated: o.truncated || len(o.buffer.Line) > OutputLineBytes, Released: o.released, Done: o.done, Exited: o.exited, Exit: o.exit}
 }

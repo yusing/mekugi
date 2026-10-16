@@ -3,17 +3,15 @@ package terminalview
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // Question is a presentation snapshot, never an editable or transport record.
-type Question struct {
-	Text, Answer, Options, State string
-}
+type Question = presentation.Question
 
 func (p *Painter) QuestionState(state string) string {
 	color := terminalui.Dim

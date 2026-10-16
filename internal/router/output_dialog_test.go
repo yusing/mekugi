@@ -49,7 +49,7 @@ func TestUISnapshotCombinedEditOutput(t *testing.T) {
 
 func dialogForOutput(output *activitymodel.Output) *terminalUI {
 	view := newLiveActivityView()
-	d := &outputDialog{view: view, pages: []activityui.Block{{Kind: "op", Verb: "Run", Code: "go test ./...", Output: output}}, match: -1}
+	d := &outputDialog{view: view, pages: []activityui.Block{testOutputBlock(view, activityui.Block{Kind: "op", Verb: "Run", Code: "go test ./..."}, output)}, match: -1}
 	d.showPage(0)
 	return &terminalUI{output: d}
 }
@@ -192,13 +192,13 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 	if len(u.view.entries) != 1 || len(u.view.entries[0].blocks) == 0 {
 		t.Fatal("start did not create command block")
 	}
-	retained := u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1].Output
+	retained := u.view.retainedOutput(u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1])
 	if retained == nil {
 		t.Fatal("started command has no retained output")
 	}
 	notify("item/commandExecution/outputDelta", map[string]any{"itemId": "cmd", "delta": "streamed\n"})
 	u.flushStreamOutput()
-	if got := u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1].Output; got != retained {
+	if got := u.view.retainedOutput(u.view.entries[0].blocks[len(u.view.entries[0].blocks)-1]); got != retained {
 		t.Fatal("delta changed retained output identity")
 	}
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, "aggregate\nfinal\n"
@@ -216,7 +216,7 @@ func TestOutputDialogNativeMergeKeepsRetainedOutputIdentity(t *testing.T) {
 	if index < 0 || !terminal.openOutput(u.view, feed.snippets[index]) {
 		t.Fatal("merged command has no output dialog target")
 	}
-	if terminal.output.pages[0].Output != retained {
+	if terminal.output.retainedOutput(terminal.output.pages[0]) != retained {
 		t.Fatal("completion replaced retained output identity")
 	}
 	terminal.output.layout(76)
@@ -236,10 +236,11 @@ func TestOutputDialogTrackedSegmentKeepsOwnRetention(t *testing.T) {
 		segments: []commandSegment{{text: "Run `echo one`", output: first}, {text: "Run `echo two`", output: second, exit: 2}},
 	}}
 	blocks := commandSegmentBlocks(entry, false)
-	if len(blocks) != 2 || blocks[0].Output != first || blocks[1].Output != second {
+	if len(blocks) != 2 || blocks[0].Output != 2 || blocks[1].Output != 3 {
 		t.Fatalf("tracked segment output ownership = %+v", blocks)
 	}
 	view := newLiveActivityView()
+	view.appendEntry(entry, blocks)
 	u := &terminalUI{output: &outputDialog{view: view, pages: blocks, match: -1}}
 	u.output.showPage(0)
 	u.output.layout(76)
@@ -441,7 +442,7 @@ func TestOutputDialogCommandTabs(t *testing.T) {
 			break
 		}
 	}
-	if u.output == nil || len(u.output.origins) != 1 || u.output.origins[0].Source != 10 {
+	if u.output == nil || len(u.output.origins) != 2 || u.output.origins[0].block.Source != 10 || u.output.origins[1].block.Source != 10 {
 		t.Fatal("click did not open command pages")
 	}
 	frame := drawOutputDialog(u)
@@ -496,7 +497,7 @@ func TestOutputDialogSingleObservedCommandWithoutTail(t *testing.T) {
 			t.Fatal("empty command output is not clickable")
 		}
 		u := &terminalUI{}
-		if !u.openOutput(view, snippet) || len(u.output.pages) != 1 || u.output.pages[0].Output != output {
+		if !u.openOutput(view, snippet) || len(u.output.pages) != 1 || u.output.retainedOutput(u.output.pages[0]) != output {
 			t.Fatal("single command lost its retained output")
 		}
 		return
@@ -541,7 +542,7 @@ func TestOutputDialogTabsKeepNavigationState(t *testing.T) {
 	second.Write("second row\n")
 	second.Finish(nil, new(0))
 	u := dialogForOutput(first)
-	u.output.pages = append(u.output.pages, activityui.Block{Verb: "Run", Output: second})
+	u.output.pages = append(u.output.pages, testOutputBlock(u.output.view, activityui.Block{Verb: "Run"}, second))
 	drawOutputDialog(u)
 	u.outputKey("\x1b[6~")
 	top := u.output.top
@@ -732,5 +733,83 @@ func TestNarrativeDialogRefreshesWhileStreaming(t *testing.T) {
 	drawOutputDialog(u.shell)
 	if !strings.Contains(d.laid.Text, "Final paragraph.") {
 		t.Fatal("eviction lost the last available narrative")
+	}
+}
+
+// testOutputBlock binds fixture output through the same source owner as live observations.
+func testOutputBlock(view *liveActivityView, block activityui.Block, output *activitymodel.Output) activityui.Block {
+	block.Source, block.Output = uint64(len(view.entries)+1), 1
+	view.appendEntry(activityPaneEntry{Seq: block.Source, native: &liveActivityNativeItem{output: output}}, []activityui.Block{block})
+	return block
+}
+
+func TestOutputDialogFlatOriginsSurviveFeedAgingAndRelease(t *testing.T) {
+	view := newLiveActivityView()
+	output := new(activitymodel.Retention).New()
+	output.Finish(new("first\nlast"), nil)
+	entry := activityPaneEntry{Seq: 41, Kind: "tool", Text: "Run `echo last`", outputTail: []string{"last"}, outputOmit: 1, native: &liveActivityNativeItem{output: output}}
+	view.appendEntry(entry, parseLiveActivity(entry))
+	ui := &terminalUI{}
+	ui.openBlocks(view, view.entries[0].blocks)
+	view.removeEntries(0, len(view.entries))
+	ui.output.layout(60)
+	if ui.output.laid.Text != "first\nlast" || strings.Contains(ansi.Strip(ui.output.laid.Detail), "exit") {
+		t.Fatalf("aged output = %+v", ui.output.laid)
+	}
+	output.Release()
+	ui.output.layout(60)
+	var rows []string
+	for i := range ui.output.laid.Lines {
+		rows = append(rows, ui.output.laid.Rows(i, 60)...)
+	}
+	if ui.output.laid.Text != "last" || !strings.Contains(strings.Join(rows, "\n"), "released") {
+		t.Fatalf("released output = %+v", ui.output.laid)
+	}
+
+	if len(ui.output.origins) != 1 || ui.output.origins[0].output != output || ui.output.origins[0].block.OutputSnapshot != nil {
+		t.Fatal("origin duplicated membership or retained a full snapshot")
+	}
+}
+
+func TestOutputDialogFoldedStageKeepsSegmentPages(t *testing.T) {
+	retention := new(activitymodel.Retention)
+	stage, commit := retention.New(), retention.New()
+	stage.Finish(new("staged"), new(0))
+	commit.Finish(new("committed"), new(0))
+	view := newLiveActivityView()
+	entry := activityPaneEntry{Seq: 51, Agent: "Main", Kind: "tool", Text: "Stage `a.go` · git\n\nCommit `update` · git", native: &liveActivityNativeItem{segments: []commandSegment{
+		{text: "Stage `a.go` · git", output: stage}, {text: "Commit `update` · git", output: commit},
+	}}}
+	view.appendEntry(entry, parseLiveActivity(entry))
+	if len(view.entries[0].blocks) != 1 || len(view.entries[0].blocks[0].Members) != 2 {
+		t.Fatal("feed lost folded stage membership")
+	}
+	pages := view.commandOutputPages(entry.Seq)
+	if len(pages) != 2 || pages[0].Verb != "Stage" || pages[1].Verb != "Commit" || view.retainedOutput(pages[0]) != stage || view.retainedOutput(pages[1]) != commit {
+		t.Fatalf("stage pages = %+v", pages)
+	}
+	ui := &terminalUI{}
+	feed := view.renderFeed(90, 30)
+	opened := false
+	for i, line := range feed.lines {
+		if strings.Contains(ansi.Strip(line), "Commit") {
+			opened = ui.openOutput(view, feed.snippets[i])
+			break
+		}
+	}
+	if !opened {
+		t.Fatal("commit row cannot open")
+	}
+	ui.output.layout(60)
+	if ui.output.laid.Text != "committed" {
+		t.Fatalf("commit row selected page %d: %q", ui.output.page, ui.output.laid.Text)
+	}
+	view.removeEntries(0, 1)
+	for i, want := range []string{"staged", "committed"} {
+		ui.output.showPage(i)
+		ui.output.layout(60)
+		if ui.output.laid.Text != want {
+			t.Fatalf("page %d = %q", i, ui.output.laid.Text)
+		}
 	}
 }

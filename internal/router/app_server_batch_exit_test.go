@@ -37,7 +37,7 @@ func TestAppServerBatchFailureDoesNotFailEachOperation(t *testing.T) {
 				if !strings.Contains(got, "1 failed command") || !u.shell.openOutput(view, feed.snippets[0]) || len(u.shell.output.pages) != 1 {
 					t.Fatalf("resumed batch lost its summary or aggregate output: %s", got)
 				}
-				if output := u.shell.output.pages[0].Output; output == nil || !output.View().Exited || output.View().Exit != 1 || !strings.Contains(strings.Join(output.View().Lines, "\n"), "conflict") {
+				if output := u.shell.output.retainedOutput(u.shell.output.pages[0]); output == nil || !output.View().Exited || output.View().Exit != 1 || !strings.Contains(strings.Join(output.View().Lines, "\n"), "conflict") {
 					t.Fatal("resumed batch lost its failed command output")
 				}
 			} else if strings.Count(got, "exit 1") != 1 || !strings.Contains(got, "Ran   shell batch · exit 1") || !strings.Contains(got, "┆ conflict") {

@@ -107,7 +107,8 @@ func TestDiffOutputPartialCounts(t *testing.T) {
 	// A selected preview ending before the retained hunk does not claim totals.
 	rows := strings.Split("--- a.go\n+++ a.go\n@@ -1 +1,2 @@\n-old\n+new\n+last", "\n")
 	block := selectedOutputBlock(Block{Kind: "op", Verb: "Diff", Label: "working tree · git"}, rows, 0)
-	block.Output.Finish(nil, new(0))
+	block.OutputSnapshot.Done = true
+	block.OutputSnapshot.Exited = true
 	block.Tail = block.Tail[:4]
 	p := Painter{}
 	if got := fmt.Sprint(p.tailColors(block)); !strings.Contains(got, "counts unavailable") {

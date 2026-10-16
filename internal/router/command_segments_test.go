@@ -361,7 +361,7 @@ func TestCommandSegmentsUnavailableEvidenceKeepsCombinedOutput(t *testing.T) {
 			u.restoreCommandSegments(&entry, item, workspace)
 			u.view.entries = []liveActivityRecord{{activityPaneEntry: entry}}
 			pages := u.view.commandOutputPages(1)
-			if len(pages) != 1 || pages[0].Label != "combined output" || pages[0].Output.View().Exit != 1 || strings.Join(pages[0].Output.View().Lines, "\n") != "one" {
+			if len(pages) != 1 || pages[0].Label != "combined output" || u.view.retainedOutput(pages[0]).View().Exit != 1 || strings.Join(u.view.retainedOutput(pages[0]).View().Lines, "\n") != "one" {
 				t.Fatalf("missing evidence fabricated output: %+v", pages)
 			}
 			wantStates := mode == "lossy" || mode == "released" || mode == "truncated" || mode == "long-line"
@@ -387,7 +387,8 @@ func TestCombinedOutputDialogUnwrapsOnlyLiteralShell(t *testing.T) {
 		if len(pages) != 1 || pages[0].Code != appServerDisplayCommand(command) || view.entries[0].native.command != command {
 			t.Fatalf("combined display changed execution or leaked wrapper: %+v", pages)
 		}
-		ui := &terminalUI{output: &outputDialog{view: view, origins: pages, pages: pages, match: -1}}
+		ui := &terminalUI{output: &outputDialog{view: view, pages: pages, match: -1}}
+		ui.output.replaceOrigins(pages)
 		ui.output.showPage(0)
 		frame := drawOutputDialog(ui)
 		if strings.Contains(frame, "/usr/bin/bash") != strings.Contains(command, "> output") || !strings.Contains(frame, "combined output") {

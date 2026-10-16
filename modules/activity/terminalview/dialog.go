@@ -57,8 +57,8 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	if block.Hook != nil {
 		view.Exited = false
 	}
-	if block.Output != nil {
-		view = block.Output.View()
+	if block.OutputSnapshot != nil {
+		view = *block.OutputSnapshot
 		if view.Released {
 			view.Lines, view.Dropped = block.Tail, block.TailOmitted
 		}
@@ -85,8 +85,8 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		detail = append(detail, "exit 0")
 	}
 	page.Detail = terminalui.Dim + strings.Join(detail, " · ") + terminalui.Undim
-	if len(detail) == 0 && block.Detail != "" {
-		page.Detail = block.Detail
+	if len(detail) == 0 && block.DetailLines > 0 {
+		page.Detail = terminalui.Dim + lineCount(block.DetailLines) + terminalui.Undim
 	}
 	if block.Skipped {
 		page.Detail = terminalui.Dim + "skipped" + terminalui.Undim
@@ -130,16 +130,24 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			page.Text = textsanitize.Safe(block.Body, false)
 		}
 		gap()
-		rows := block.Rows
 		if block.Kind == "error" {
 			for line := range strings.SplitSeq(page.Text, "\n") {
 				add(DialogLine{Text: terminalui.Red + line + terminalui.Reset, Wrap: true})
 			}
 		} else {
-			if rows == nil {
-				rows = func(width int) []string { return p.Markdown(block.Body, width, block.Kind == "summary") }
+			var rows []string
+			if len(block.RequestedOperations) > 0 {
+				operations := make([]Block, len(block.RequestedOperations))
+				for i, value := range block.RequestedOperations {
+					operations[i] = Block{Value: value}
+				}
+				for _, operation := range GroupOperations(operations) {
+					rows = append(rows, p.Block(operation, width)...)
+				}
+				rows = append(rows, "")
 			}
-			for _, row := range rows(width) {
+			rows = append(rows, p.Markdown(block.Body, width, block.Kind == "summary")...)
+			for _, row := range rows {
 				add(DialogLine{Text: row})
 			}
 		}
@@ -526,8 +534,8 @@ func dialogSurface(row, ink, fill string) string {
 }
 
 func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string {
-	if block.Output != nil {
-		block.Running = !block.Output.View().Done
+	if block.OutputSnapshot != nil {
+		block.Running = !block.OutputSnapshot.Done
 	}
 	verb := RowVerb(block)
 	if verb == "" {

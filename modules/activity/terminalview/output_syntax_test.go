@@ -33,7 +33,7 @@ func TestCommandOutputAutoHighlightLimit(t *testing.T) {
 			t.Fatal("small tail bypassed retained output bound")
 		}
 		page := p.DialogPage(block, 80)
-		if page.Text != strings.Join(block.Output.View().Lines, "\n") {
+		if page.Text != strings.Join(block.OutputSnapshot.Lines, "\n") {
 			t.Fatal("large output lost copyable text")
 		}
 		for _, row := range page.Lines {
@@ -164,7 +164,7 @@ func TestDiffOutputUsesPaneSyntaxAndRetainedTailContext(t *testing.T) {
 		for _, verb := range []string{"Run", "Diff"} {
 			var output activitymodel.Output
 			output.Write(source)
-			block := Block{Kind: "op", Verb: verb, Code: "mchanges amber1", Output: &output, Tail: []string{"-var answer = 41", "+var answer = 42"}, TailOmitted: 6}
+			block := Block{Kind: "op", Verb: verb, Code: "mchanges amber1", OutputSnapshot: new(output.View()), Tail: []string{"-var answer = 41", "+var answer = 42"}, TailOmitted: 6}
 			tail := p.tailColors(block)
 			if tail[1] != diffrender.SourceLine(theme, ansi.StringWidth(want[2])+4, "", want[2], '+') || !strings.Contains(tail[1], theme.RowBackground('+')) {
 				t.Fatalf("tail lacks pane syntax: %q, want %q", tail, want[2])
@@ -218,7 +218,7 @@ func TestTimestampedDiffRetainedSyntax(t *testing.T) {
 	var output activitymodel.Output
 	output.Write("--- old path.go\t2026-09-30 10:00:00.123 +0800\n+++ new path.go\t2026-09-30 10:01:00.123 +0800\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42")
 	p := Painter{Theme: diffrender.DarkTheme}
-	block := Block{Kind: "op", Verb: "Run", Output: &output, Tail: []string{"+var answer = 42"}, TailOmitted: 4}
+	block := Block{Kind: "op", Verb: "Run", OutputSnapshot: new(output.View()), Tail: []string{"+var answer = 42"}, TailOmitted: 4}
 	var renderer diffrender.Renderer
 	_, source, err := renderer.ColorHunk(t.Context(), p.Theme, diffmodel.ReviewFile{BeforePath: "path.go", AfterPath: "path.go"},
 		[]diffmodel.ReviewRow{{Kind: '-', Text: "var answer = 41\n"}, {Kind: '+', Text: "var answer = 42\n"}})

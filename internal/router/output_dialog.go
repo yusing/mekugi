@@ -1,11 +1,14 @@
 package router
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -27,7 +30,7 @@ import (
 type outputDialog struct {
 	view      *liveActivityView // Supplies the painter's theme and colors.
 	pages     []activityui.Block
-	origins   []activityui.Block                                // Original invocation members, including merged feed rows.
+	origins   []outputOrigin                                    // Original invocation members, including merged feed rows.
 	processes func(pages []activityui.Block) []activityui.Block // Rebuilds /ps pages in place of origins.
 	states    map[outputPageKey]outputPageState
 	active    outputPageKey
@@ -66,7 +69,7 @@ type outputDialog struct {
 }
 
 type outputPageKey struct {
-	output *activitymodel.Output
+	output int
 	source uint64
 	index  int // Distinguishes output-less pages such as skipped commands.
 }
@@ -112,7 +115,8 @@ func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnip
 	if len(block.Members) > 0 {
 		pages = nil
 		seen := make(map[uint64]bool)
-		for _, member := range block.Members {
+		for _, value := range block.Members {
+			member := activityui.Block{Value: value}
 			if member.EditSource != "" {
 				if seen[member.Source] {
 					continue
@@ -129,9 +133,9 @@ func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnip
 	u.openBlocks(view, pages)
 	u.output.refreshPages()
 	page := 0
-	if len(block.Members) == 0 && block.Output != nil {
+	if block.Output != 0 && (len(block.Members) == 0 || block.Kind == "op") {
 		for i, command := range u.output.pages {
-			if command.Output == block.Output {
+			if command.Source == block.Source && command.Output == block.Output {
 				page = i
 				break
 			}
@@ -143,11 +147,23 @@ func (u *terminalUI) openOutput(view *liveActivityView, snippet liveActivitySnip
 
 // openBlocks is the shared modal entry point. It never changes pane navigation.
 func (u *terminalUI) openBlocks(view *liveActivityView, pages []activityui.Block) {
+	var originals []activityui.Block
+	for _, page := range pages {
+		if len(page.Members) == 0 {
+			originals = append(originals, page)
+			continue
+		}
+		for _, value := range activitypresentation.Originals(page.Value) {
+			originals = append(originals, activityui.Block{Value: value})
+		}
+	}
+	pages = originals
 	if len(pages) == 0 {
 		return
 	}
 	u.selection = nil
-	u.output = &outputDialog{view: view, origins: pages, pages: pages, match: -1}
+	u.output = &outputDialog{view: view, pages: pages, match: -1}
+	u.output.replaceOrigins(pages)
 	u.output.refreshPages()
 	u.output.showPage(0)
 }
@@ -191,7 +207,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			if len(entry.native.segments) < 2 && len(operations) < 2 && (len(operations) == 0 || len(operations[0].Reads) < 2) {
 				return nil
 			}
-			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.native.command)), Lang: "bash", Output: entry.native.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
+			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.native.command)), Lang: "bash", Output: retainedOutputID(entry.native.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit, Running: entry.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
 			// Keep edit source out of Run pages just as the feed does. The
 			// operations describe intent; only the batch owns output and exit.
 			classified := toolOperationBlocks(toolActivityShellInDirectory(appServerDisplayCommand(entry.native.command), entry.native.commandCwd))
@@ -209,12 +225,8 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 					}
 				}
 				pages[0].Code = ""
-				pages[0].Rows = func(width int) []string {
-					var rows []string
-					for _, block := range activityui.GroupOperations(classified) {
-						rows = append(rows, v.painter.Block(block, width)...)
-					}
-					return append(append(rows, ""), v.painter.Markdown(pages[0].Body, width, false)...)
+				for _, block := range classified {
+					pages[0].RequestedOperations = append(pages[0].RequestedOperations, block.Value)
 				}
 			}
 			setCommandFacts(pages, entry.activityPaneEntry)
@@ -222,12 +234,15 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 			return pages
 		}
 		var pages []activityui.Block
-		for _, block := range commandSegmentBlocks(entry.activityPaneEntry, true) {
-			if block.Segment {
-				block.Source = source
-				pages = append(pages, block)
+		for _, grouped := range commandSegmentBlocks(entry.activityPaneEntry, true) {
+			for _, value := range activitypresentation.Originals(grouped.Value) {
+				if value.Segment {
+					value.Source = source
+					pages = append(pages, activityui.Block{Value: value})
+				}
 			}
 		}
+		slices.SortStableFunc(pages, func(a, b activityui.Block) int { return cmp.Compare(a.Operation, b.Operation) })
 		setCommandFacts(pages, entry.activityPaneEntry)
 		if len(pages) > 0 {
 			pages[0].Approval = entry.native.approval
@@ -310,13 +325,17 @@ func (u *terminalUI) openRequested(view *liveActivityView) {
 
 func (d *outputDialog) pageKey(page int) outputPageKey {
 	block := d.pages[page]
-	if block.Hook != nil {
-		return outputPageKey{source: block.Source, index: page}
+	if block.Output != 0 {
+		return outputPageKey{source: block.Source, output: block.Output}
 	}
-	if block.Output != nil {
-		return outputPageKey{output: block.Output}
+	index := block.Operation
+	if block.Kind == "summary" {
+		index = block.Section + 1
 	}
-	return outputPageKey{source: block.Source, index: page}
+	if index == 0 {
+		index = page + 1
+	}
+	return outputPageKey{source: block.Source, index: index}
 }
 
 func (d *outputDialog) showPage(page int) {
@@ -331,7 +350,10 @@ func (d *outputDialog) showPage(page int) {
 	if !exists {
 		block := d.pages[page]
 		state.match = -1
-		state.follow = block.Live || block.Running || block.Output != nil && !block.Output.View().Done
+		state.follow = block.Live || block.Running
+		if output := d.retainedOutput(block); output != nil {
+			state.follow = state.follow || !output.View().Done
+		}
 		if d.filePath != "" && page == 1 {
 			d.pendingLine = d.fileFirst
 		}
@@ -341,7 +363,9 @@ func (d *outputDialog) showPage(page int) {
 
 func (d *outputDialog) refreshPages() {
 	if d.processes != nil {
-		d.setPages(d.processes(d.pages))
+		pages := d.processes(d.pages)
+		d.replaceOrigins(pages)
+		d.setPages(pages)
 		return
 	}
 	if len(d.origins) == 0 {
@@ -349,7 +373,8 @@ func (d *outputDialog) refreshPages() {
 	}
 	var pages []activityui.Block
 	seen := make(map[uint64]bool)
-	for originIndex, origin := range d.origins {
+	for originIndex := range d.origins {
+		origin := d.origins[originIndex].block
 		if origin.Source != 0 && seen[origin.Source] {
 			continue
 		}
@@ -372,7 +397,7 @@ func (d *outputDialog) refreshPages() {
 						setCommandFacts(timed, entry.activityPaneEntry)
 						origin = timed[0]
 						origin.Running = entry.native.running
-						if origin.Output == nil && len(entry.blocks) > 0 {
+						if origin.Output == 0 && len(entry.blocks) > 0 {
 							// Compound output pages were rebuilt above. A single
 							// operation follows the projected record, including
 							// output attached by a separate host-exit observation.
@@ -398,13 +423,14 @@ func (d *outputDialog) refreshPages() {
 					break
 				}
 			}
-			d.origins[originIndex] = origin // Keep the last readable snapshot if the source ages out.
+			d.origins[originIndex].block = origin // Keep the last readable snapshot if the source ages out.
 			pages = append(pages, origin)
 		} else {
 			seen[origin.Source] = true
 			pages = append(pages, commands...)
 		}
 	}
+	d.replaceOrigins(pages)
 	d.setPages(pages)
 }
 
@@ -427,18 +453,19 @@ func (d *outputDialog) setPages(pages []activityui.Block) {
 func (d *outputDialog) layout(width int) {
 	d.refreshPages()
 	block := d.pages[d.page]
-	key := outputDialogKey{page: d.page, width: width, output: block.Output, theme: d.view.painter.Theme, body: block.Body, approval: block.Approval, live: block.Live}
-	if block.Output != nil {
-		key.version = block.Output.Version()
+	retained := d.retainedOutput(block)
+	key := outputDialogKey{page: d.page, width: width, output: retained, theme: d.view.painter.Theme, body: block.Body, approval: block.Approval, live: block.Live}
+	if retained != nil {
+		key.version = retained.Version()
 	} else {
 		key.tail, key.omitted = strings.Join(block.Tail, "\n"), block.TailOmitted
 		key.running, key.exited, key.exit = block.Running, block.Exited, block.ExitCode
 	}
 	if key == d.laidKey && d.starts != nil {
-		d.laid.Title = d.view.painter.DialogPageTitle(block, d.view.now(), width)
+		d.laid.Title = d.view.painter.DialogPageTitle(snapshotOutput(block, retained), d.view.now(), width)
 		return
 	}
-	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key
+	d.laid, d.laidKey = d.view.painter.DialogPage(snapshotOutput(block, retained), width), key
 	if d.filePath != "" {
 		d.laid.Lines = append([]activityui.DialogLine{{Text: terminalui.StyledPath(textsanitize.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
 		if block.Kind != "error" {

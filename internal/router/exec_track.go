@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
@@ -623,7 +625,7 @@ type commandSegment struct {
 	exit    int
 	tail    []string
 	omit    int
-	changes []activityui.ChangeRow
+	changes []activitypresentation.ChangeRow
 	output  *activitymodel.Output
 	source  string
 	raw     string       // A finished VCS segment's complete output, for its change rows.
@@ -709,7 +711,7 @@ func (h *execTrackHub) view(key [3]string, final bool, text func(string) string,
 				output := strings.Join(shown.tail, "\n")
 				shown.changes = mchangesOutputRows(appServerItem{Command: segment.source, AggregatedOutput: &output})
 				if len(shown.changes) > 0 && shown.omit > 0 {
-					shown.changes = append([]activityui.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
+					shown.changes = append([]activitypresentation.ChangeRow{{Note: activityui.Elision{Hidden: shown.omit}.Text()}}, shown.changes...)
 				}
 				if segment.vcs {
 					shown.raw = string(segment.raw)

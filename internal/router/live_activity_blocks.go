@@ -78,18 +78,19 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 
 func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	defer func() {
+		defer func() { identifyActivityBlocks(blocks, entry.Seq) }()
 		// An unsupported batch has one host clock, not a clock per classified
 		// operation. Keep that total visible and its output on one explicit row.
 		if n := entry.native; entry.Kind == "tool" && n != nil && n.command != "" &&
 			(len(n.segments) == 0 && (n.running || n.duration > 0) && commandTimingIsCompound(blocks, entry) || n.approval != "" && len(blocks) > 1) &&
 			!slices.ContainsFunc(blocks, func(b activityui.Block) bool { return b.BatchExit }) {
-			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: n.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}
+			batch := activityui.Block{Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true, Running: n.running, Output: retainedOutputID(n.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}
 			if len(n.segments) == 0 {
 				for i := range blocks {
-					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = nil, nil, 0
+					blocks[i].Output, blocks[i].Tail, blocks[i].TailOmitted = 0, nil, 0
 				}
 			} else {
-				batch.Output, batch.Tail, batch.TailOmitted = nil, nil, 0
+				batch.Output, batch.Tail, batch.TailOmitted = 0, nil, 0
 			}
 			blocks = append(blocks, batch)
 		}
@@ -120,8 +121,8 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		if n == nil || n.hook == nil {
 			return nil
 		}
-		return []activityui.Block{{Kind: "op", Verb: "Run", Hook: n.hook, Label: text, Running: n.running,
-			Output: n.output, Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}}
+		return []activityui.Block{{Kind: "op", Verb: "Run", Hook: new(*n.hook), Label: text, Running: n.running,
+			Output: retainedOutputID(n.output, 1), Tail: entry.outputTail, TailOmitted: entry.outputOmit, Collapsed: n.collapsed}}
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.message != nil {
@@ -131,7 +132,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		label, body, _ := strings.Cut(text, "\n")
 		block := activityui.Block{Kind: "op", Verb: "Asked", Label: label, Body: body}
 		if entry.native != nil {
-			block.Questions = entry.native.questions
+			block.Questions = slices.Clone(entry.native.questions)
 		}
 		return []activityui.Block{block}
 	case "attachments":
@@ -156,8 +157,8 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 			if entry.native != nil {
 				block.Live = i == len(blocks)-1 && (entry.native.phase == "summary" || entry.native.phase == "item/started")
 				// Duration belongs to the item, not to each detected section.
-				if i == len(blocks)-1 && entry.native.thought >= time.Second {
-					block.Elapsed = activityui.FormatDuration(entry.native.thought)
+				if i == len(blocks)-1 {
+					block.Thought = entry.native.thought
 				}
 			}
 			block.Collapsed = block.Collapsible() && (entry.native == nil || !entry.native.live || entry.native.collapsed || entry.native.phase != "item/completed")
@@ -191,10 +192,12 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		}
 		blocks := activityui.FoldStages(toolOperationBlocks(text))
 		if len(blocks) == 1 && blocks[0].Verb == "Search" && entry.native != nil {
-			blocks[0].Results = entry.native.searchResults
+			if entry.native.searchResults != nil {
+				blocks[0].Results = new(*entry.native.searchResults)
+			}
 		}
 		if entry.native != nil && len(blocks) > 0 {
-			blocks[len(blocks)-1].Output = entry.native.output
+			blocks[len(blocks)-1].Output = retainedOutputID(entry.native.output, 1)
 		}
 		if entry.native != nil && (entry.native.running || len(entry.outputTail) > 0) {
 			// The host provides one stream for the whole invocation. Place it
@@ -221,7 +224,7 @@ func toolOperationBlocks(text string) []activityui.Block {
 	content := activitymodel.ParseOperations(text)
 	blocks := make([]activityui.Block, len(content))
 	for i, value := range content {
-		blocks[i] = activityui.Block{Content: value}
+		blocks[i] = activityui.Block{Content: value, Operation: i + 1}
 	}
 	blocks = activityui.MergeLiveActivityReads(blocks)
 	// These targets share one invocation's aggregate. Dialog pages are
@@ -268,7 +271,7 @@ func setApprovalBlocks(blocks []activityui.Block, outcome string) {
 // operations: without a complete segment report none owns the batch's exit.
 func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitted int) []activityui.Block {
 	last, count, batch := -1, 0, -1
-	var output *activitymodel.Output
+	var output int
 	for i, block := range blocks {
 		output = cmp.Or(output, block.Output)
 		if block.Segment {
@@ -290,7 +293,7 @@ func commandExitBlocks(blocks []activityui.Block, code int, tail []string, omitt
 		}
 		// Any streamed tail was combined too; move it to the batch result.
 		for i := range blocks {
-			blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = nil, 0, nil
+			blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = nil, 0, 0
 		}
 		last = batch
 	}
@@ -326,7 +329,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 		command = script
 	}
 	_, classified := toolActivityReads(command, "")
-	for _, segment := range entry.native.segments {
+	for segmentIndex, segment := range entry.native.segments {
 		if classified && !segment.skipped && segment.exit == 0 {
 			if program, err := syntax.NewParser().Parse(strings.NewReader(segment.source), ""); err == nil && len(program.Stmts) == 1 && toolActivityReadSeparator(program.Stmts[0]) {
 				continue
@@ -375,12 +378,13 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 		}
 		last := &operations[len(operations)-1]
 		last.ExitCode, last.Segment = segment.exit, true
+		last.Operation = segmentIndex + 1
 		last.Exited = !segment.running && !segment.skipped
 		if !segment.skipped {
 			last.Started, last.Ended = segment.timing.Started, segment.timing.Ended
 			last.Duration = time.Duration(segment.timing.ElapsedNS)
 		}
-		last.Tail, last.TailOmitted, last.Output = segment.tail, segment.omit, segment.output
+		last.Tail, last.TailOmitted, last.Output = segment.tail, segment.omit, retainedOutputID(segment.output, segmentIndex+2)
 		last.Changes = commitChanges(segment.changes, segment.commit)
 		blocks = append(blocks, operations...)
 	}
@@ -400,7 +404,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 		}
 		for i := len(blocks) - 1; i >= 0; i-- {
 			if !blocks[i].Skipped {
-				blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = entry.outputTail, entry.outputOmit, entry.native.output
+				blocks[i].Tail, blocks[i].TailOmitted, blocks[i].Output = entry.outputTail, entry.outputOmit, retainedOutputID(entry.native.output, 1)
 				blocks[i].Changes = commitChanges(entry.native.changes, entry.native.commit)
 				break
 			}

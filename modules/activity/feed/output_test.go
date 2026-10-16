@@ -115,3 +115,32 @@ func TestOutputFinishKeepsByteBound(t *testing.T) {
 		t.Fatalf("Finish retained %d bytes, limit %d", o.bytes, OutputBytes)
 	}
 }
+
+func TestOutputContextBoundsWithoutFullSnapshot(t *testing.T) {
+	var output Output
+	output.Write("header\n" + strings.Repeat("line\n", 20000) + "unfinished")
+	context, limited := output.Context(256 << 10)
+	if !limited || len(context.Lines) == 0 || context.Lines[0] != "header" || output.snapshot != nil {
+		t.Fatal("context lost its header or built a full snapshot")
+	}
+	bytes := 0
+	for _, line := range context.Lines {
+		bytes += len(line) + outputLineOverhead
+	}
+	if bytes > 256<<10 {
+		t.Fatalf("context retained %d bytes", bytes)
+	}
+	output.Finish(new("replacement\nlast"), nil)
+	if context.Lines[0] != "header" {
+		t.Fatal("context changed with its source")
+	}
+	context, limited = output.Context(256 << 10)
+	if limited || !context.Done || context.Exited || strings.Join(context.Lines, "\n") != "replacement\nlast" || output.snapshot != nil {
+		t.Fatalf("replacement context = %+v, limited=%t", context, limited)
+	}
+	output.Release()
+	context, limited = output.Context(256 << 10)
+	if !context.Released || limited || len(context.Lines) > 0 {
+		t.Fatalf("released context = %+v, limited=%t", context, limited)
+	}
+}

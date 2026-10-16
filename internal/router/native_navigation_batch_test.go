@@ -210,7 +210,7 @@ func navigationBatchDialog() *terminalUI {
 		output := retention.New()
 		output.Write(fmt.Sprintf("page %d only\n", i+1))
 		output.Finish(nil, new(0))
-		block := activityui.Block{Kind: "op", Verb: "Read", Path: path, Output: output}
+		block := testOutputBlock(v, activityui.Block{Kind: "op", Verb: "Read", Path: path}, output)
 		if i == 2 {
 			block.Path, block.Reads = "", []activitymodel.Read{{Path: path}}
 		}

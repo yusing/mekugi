@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -47,7 +48,7 @@ func TestUISnapshotReasoningRosterTitles(t *testing.T) {
 			p := Painter{Theme: diffrender.DarkTheme}
 			blocks := ReasoningSections(tc.body)
 			for i := range blocks {
-				blocks[i].Live, blocks[i].Elapsed = tc.live, "12s"
+				blocks[i].Live, blocks[i].Thought = tc.live, 12*time.Second
 			}
 			before := slices.Clone(blocks)
 			uisnapshot.Assert(t, "testdata/snapshots/reasoning_roster_"+tc.name+".txt", p.Summary(blocks, 80)+"\n")

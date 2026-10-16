@@ -9,6 +9,9 @@ import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
+// OutputContextBytes bounds feed syntax context, including retained line slots.
+const OutputContextBytes = dialogHighlightBytes
+
 // Output syntax follows the content, never the command that produced it.
 // Both inline tails and dialogs use the same bounded renderer and cache.
 func (p *Painter) outputColors(block Block, rows []string) []string {
@@ -77,9 +80,9 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 // read source retain their original rows. Layout uses the same section geometry.
 func (p *Painter) diffOutput(block Block, content string, rows int) []string {
 	complete := !block.Running && !block.Live
-	if block.Output != nil {
-		view := block.Output.View()
-		complete = view.Done && !view.Truncated && rows == len(view.Lines)
+	if block.OutputSnapshot != nil {
+		view := *block.OutputSnapshot
+		complete = view.Done && !view.Truncated && !block.OutputContextLimited && rows == len(view.Lines)
 	}
 	p.Syntax.LayoutOnly = p.LayoutOnly
 	colored, err := p.Syntax.DiffOutput(context.Background(), p.Theme, content, complete)
@@ -129,13 +132,19 @@ func (p *Painter) hookColors(rows []string) []string {
 // Color from retained context before selecting the animated tail. Blank rows
 // are absent from the tail, and its last revealed row may precede live output.
 func (p *Painter) tailColors(block Block) []string {
-	if block.Output == nil || len(block.Tail) == 0 {
+	if block.OutputSnapshot == nil || len(block.Tail) == 0 {
 		return p.outputColors(block, block.Tail)
 	}
-	view := block.Output.View()
+	view := *block.OutputSnapshot
+	fallback := func() []string {
+		if block.OutputContextLimited {
+			return block.Tail
+		}
+		return p.outputColors(block, block.Tail)
+	}
 	start := block.TailOmitted - view.Dropped
 	if view.Released || start < 0 || start >= len(view.Lines) {
-		return p.outputColors(block, block.Tail)
+		return fallback()
 	}
 	indexes := make([]int, 0, len(block.Tail))
 	for i := start; i < len(view.Lines) && len(indexes) < len(block.Tail); i++ {
@@ -144,12 +153,12 @@ func (p *Painter) tailColors(block Block) []string {
 			continue
 		}
 		if text != block.Tail[len(indexes)] {
-			return p.outputColors(block, block.Tail)
+			return fallback()
 		}
 		indexes = append(indexes, i)
 	}
 	if len(indexes) != len(block.Tail) {
-		return p.outputColors(block, block.Tail)
+		return fallback()
 	}
 	tail := p.outputColorsAt(block, view.Lines[:indexes[len(indexes)-1]+1], indexes)
 	for i, index := range indexes {

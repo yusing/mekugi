@@ -3,13 +3,13 @@ package terminalview
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // WaitTarget retains canonical identity for both live and restored wait notices.
-type WaitTarget struct{ Name, Status string }
+type WaitTarget = presentation.WaitTarget
 
 // ProgressText is the plain-text form used by activity summaries.
 func (b Block) ProgressText() string { return b.progressText("") }

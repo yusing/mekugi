@@ -16,11 +16,13 @@ type liveActivityRecord struct {
 }
 
 func (v *liveActivityView) appendEntry(entry activityPaneEntry, blocks []activityui.Block) {
+	identifyActivityBlocks(blocks, entry.Seq)
 	v.revision++
 	v.entries = append(v.entries, liveActivityRecord{entry, blocks, v.revision})
 }
 
 func (v *liveActivityView) replaceEntry(index int, entry activityPaneEntry, blocks []activityui.Block) {
+	identifyActivityBlocks(blocks, entry.Seq)
 	v.entries[index] = liveActivityRecord{activityPaneEntry: entry, blocks: blocks}
 	v.reviseEntry(index)
 }
@@ -82,4 +84,22 @@ func (v *liveActivityView) reorderEntries(indices []int) {
 		v.entries[i] = records[old]
 	}
 	v.runs, v.skills = nil, nil
+}
+
+// Identity moves with the source record, including flat grouping membership.
+func identifyActivityBlocks(blocks []activityui.Block, source uint64) {
+	for i := range blocks {
+		blocks[i].Source = source
+		if blocks[i].Operation == 0 {
+			blocks[i].Operation = i + 1
+		}
+		for j := range blocks[i].Members {
+			if blocks[i].Members[j].Operation == blocks[i].Operation {
+				original := blocks[i].Value
+				original.Members = nil
+				blocks[i].Members[j] = original
+			}
+			blocks[i].Members[j].Source = source
+		}
+	}
 }

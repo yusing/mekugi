@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/modules/changehistory/changes"
@@ -97,7 +99,7 @@ func TestMChangesOutputRowsOnlyReadListingsAndSummaries(t *testing.T) {
 	}
 	mixed := "M\t1\t0\ta.go\nomitted 3 rows; mread r1\n"
 	rows := mchangesOutputRows(appServerItem{Command: "/tmp/bin/mchanges amber1..amber4 --summary -- a.go", AggregatedOutput: &mixed})
-	want := []activityui.ChangeRow{{Verb: "Edited", Label: "a.go", Added: 1}, {Note: "omitted 3 rows; mread r1"}}
+	want := []activitypresentation.ChangeRow{{Verb: "Edited", Label: "a.go", Added: 1}, {Note: "omitted 3 rows; mread r1"}}
 	if !reflect.DeepEqual(rows, want) {
 		t.Fatalf("rows = %#v, want %#v", rows, want)
 	}

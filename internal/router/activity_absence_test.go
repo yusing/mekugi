@@ -22,7 +22,7 @@ func TestActivityAbsenceKeepsHostOutput(t *testing.T) {
 	hookShown := false
 	for _, entry := range u.view.entries {
 		for _, block := range entry.blocks {
-			if block.Output != nil {
+			if block.Output != 0 {
 				t.Fatal("absent activity retained output")
 			}
 			if block.Hook != nil {

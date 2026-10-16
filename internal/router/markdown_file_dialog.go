@@ -13,7 +13,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	"github.com/yusing/mekugi/libraries/terminalui"
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -88,7 +87,7 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 	if format, _ := sourcekind.Classify(path); err == nil && format.Kind == "markdown" {
 		rendered := block
 		rendered.Body, rendered.Tail = content, nil
-		rendered.Detail = terminalui.Dim + fmt.Sprintf("%d lines", len(block.Tail)) + terminalui.Undim
+		rendered.DetailLines = len(block.Tail)
 		pages = []activityui.Block{rendered, block}
 	}
 	u.openBlocks(view, pages)

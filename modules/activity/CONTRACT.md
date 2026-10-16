@@ -7,8 +7,11 @@ It does not execute tools, infer missing outcomes or write commentary into model
 responses. The [module specification](SPEC.md) owns parsing and output retention;
 [classification](../../doc/spec/activity.md) owns tool interpretation. The
 [native session](../../doc/spec/native_ui.md) owns observation intake, history,
-pane layout, input routing and dialog interaction. Terminal blocks and painting
-belong to `terminalview`; feed assembly and roster state remain application-owned.
+pane layout, input routing and dialog interaction. Neutral enriched values and canonical group membership belong to `presentation`;
+terminal disclosure, blocks and painting belong to `terminalview`. Feed assembly
+and roster state remain application-owned. Group members retain entry, operation
+and reasoning-section identity through read merges, reasoning compaction, batch
+flattening and stage folding. Dialogs consume that same flat membership.
 
 ## Operation rows
 

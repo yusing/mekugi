@@ -3,6 +3,9 @@ package terminalview
 import (
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -61,16 +64,11 @@ func CompactReasoning(blocks []Block) []Block {
 			}
 		}
 		if j > i+1 {
-			var labels, bodies []string
-			for _, section := range blocks[i:j] {
-				label := section.Label
-				if label == "" {
-					label = "Thought"
-				}
-				labels, bodies = append(labels, label), append(bodies, section.Body)
+			values := make([]presentation.Value, j-i)
+			for k, b := range blocks[i:j] {
+				values[k] = b.Value
 			}
-			block.Label, block.Body = strings.Join(labels, " • "), strings.Join(bodies, "\n\n")
-			block.Elapsed, block.Members = blocks[j-1].Elapsed, blocks[i:j]
+			block.Value = presentation.Reasoning(values)
 		}
 		out = append(out, block)
 		i = j
@@ -90,9 +88,10 @@ func (p *Painter) thinkingHeader(block Block, width int) (string, bool) {
 		label = "Thought"
 	}
 	label = p.Inline(label)
-	if !block.Live && block.Elapsed != "" {
-		suffix := " for " + block.Elapsed
-		label = strings.TrimSuffix(reasoningFor(label, block.Elapsed), suffix)
+	if !block.Live && block.Thought >= time.Second {
+		elapsed := FormatDuration(block.Thought)
+		suffix := " for " + elapsed
+		label = strings.TrimSuffix(reasoningFor(label, elapsed), suffix)
 		if width > ansi.StringWidth(suffix) {
 			room := width - ansi.StringWidth(suffix)
 			return ansi.Truncate(label, room, "…") + suffix, ansi.StringWidth(label) > room

@@ -437,7 +437,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			// Thinking and reset disclosures share the existing output dialog.
 			snippet := liveActivitySnippet{run: entry.Seq, block: index}
 			toggle := v.clickTarget(&block, snippet, width)
-			for _, row := range v.paintBlock(len(out.lines), 0, func() []string { return p.Block(block, width) }) {
+			for _, row := range v.paintBlock(len(out.lines), 0, func() []string { return p.Block(v.outputContext(block), width) }) {
 				out.add(0, row)
 				if toggle {
 					out.snippets[len(out.snippets)-1] = snippet
@@ -499,7 +499,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 			} else if toggle {
 				target = snippet
 			}
-			rows := v.paintBlock(len(toggles), 0, func() []string { return p.Block(block, width-2) })
+			rows := v.paintBlock(len(toggles), 0, func() []string { return p.Block(v.outputContext(block), width-2) })
 			if len(block.Questions) > 0 {
 				entryRows[block.Source] = len(toggles)
 			}

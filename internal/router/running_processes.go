@@ -69,7 +69,7 @@ func (u *appServerUI) processPages(pages []activityui.Block) []activityui.Block 
 			bySource[record.Seq] = activityui.Block{
 				Source: record.Seq, Owner: page.Owner, Kind: "op", Verb: "Run", Lang: "bash",
 				Code:   toolActivityShellSource(appServerDisplayCommand(n.command)),
-				Output: n.output, Tail: record.outputTail, TailOmitted: record.outputOmit,
+				Output: retainedOutputID(n.output, 1), Tail: record.outputTail, TailOmitted: record.outputOmit,
 				Running: n.running, Approval: n.approval,
 				Started: n.commandStarted, Ended: n.commandEnded, Duration: n.duration, NotificationTiming: true,
 			}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -682,7 +684,7 @@ func outputBlock(block activityui.Block) bool {
 	if block.Kind != "op" && block.Kind != "reads" || block.EditSource != "" || len(block.Questions) > 0 {
 		return false
 	}
-	return block.Output != nil || len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
+	return block.Output != 0 || len(block.Tail)+block.TailOmitted > 0 || len(block.Changes) > 0 || block.Code != "" || len(block.Members) > 0
 }
 
 // snippetBlock is the block a snippet names in the last frame.
@@ -1665,6 +1667,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			limit = 0
 		} // Source and output have separate budgets.
 		part := v.paintBlock(start, limit, func() []string {
+			block := v.outputContext(block)
 			switch {
 			case tree:
 				return v.painter.Event(block, width-4)
@@ -1684,7 +1687,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		}
 		previousMessage, previousSummary = message, block.Kind == "summary"
 		// A merged read row stands for each entry it merged.
-		for _, member := range append([]activityui.Block{block}, block.Members...) {
+		for _, member := range append([]activitypresentation.Value{block.Value}, block.Members...) {
 			if member.Source != 0 {
 				if _, exists := run.entryRows[member.Source]; !exists {
 					run.entryRows[member.Source] = len(run.lines)

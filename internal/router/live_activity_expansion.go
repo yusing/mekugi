@@ -34,8 +34,8 @@ func (v *liveActivityView) discloseBlock(block activityui.Block) activityui.Bloc
 		block.Collapsed = false
 		block.Expanded = true
 		block.SourceRows, block.TailRows = 0, 0
-		if block.Output != nil {
-			output := block.Output.View()
+		if retained := v.retainedOutput(block); retained != nil {
+			output := retained.View()
 			if !output.Released {
 				block.Tail, block.TailOmitted = output.Lines, output.Dropped
 			}

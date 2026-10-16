@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -280,7 +281,12 @@ func TestAppServerThinkingFolds(t *testing.T) {
 func TestThinkingElapsedNamesWholeSecondsOnly(t *testing.T) {
 	for thought, want := range map[time.Duration]string{0: "", 900 * time.Millisecond: "", time.Second: "1s", 12500 * time.Millisecond: "12s"} {
 		entry := activityPaneEntry{Kind: "reasoning", Text: "Body.", native: &liveActivityNativeItem{phase: "item/completed", thought: thought}}
-		if got := parseLiveActivity(entry)[0].Elapsed; got != want {
+		block := parseLiveActivity(entry)[0]
+		got := ""
+		if block.Thought >= time.Second {
+			got = activityui.FormatDuration(block.Thought)
+		}
+		if got != want {
 			t.Errorf("thought %v: elapsed %q, want %q", thought, got, want)
 		}
 	}

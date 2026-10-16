@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -31,7 +32,7 @@ const (
 // mchangesOutputRows reads a successful `mchanges --list` or `--summary` as
 // change rows. Other commands, and output without a recognized row, keep
 // their plain tail; unrecognized lines stay as muted notes.
-func mchangesOutputRows(item appServerItem) []activityui.ChangeRow {
+func mchangesOutputRows(item appServerItem) []activitypresentation.ChangeRow {
 	if item.AggregatedOutput == nil {
 		return nil
 	}
@@ -55,7 +56,7 @@ func mchangesOutputRows(item appServerItem) []activityui.ChangeRow {
 	case !slices.Contains(options, "--summary"):
 		return nil
 	}
-	var rows []activityui.ChangeRow
+	var rows []activitypresentation.ChangeRow
 	recognized := false
 	for line := range strings.Lines(*item.AggregatedOutput) {
 		line = strings.TrimRight(line, "\r\n")
@@ -64,7 +65,7 @@ func mchangesOutputRows(item appServerItem) []activityui.ChangeRow {
 		}
 		row, ok := parse(line)
 		if !ok {
-			row = activityui.ChangeRow{Note: textsanitize.Safe(line, false)}
+			row = activitypresentation.ChangeRow{Note: textsanitize.Safe(line, false)}
 		}
 		recognized = recognized || ok
 		rows = append(rows, row)
@@ -77,12 +78,12 @@ func mchangesOutputRows(item appServerItem) []activityui.ChangeRow {
 
 // mchangesListOutputRow reads one `--list` row: an ID range, its status, and
 // its direct and tool-managed counts.
-func mchangesListOutputRow(line string) (activityui.ChangeRow, bool) {
+func mchangesListOutputRow(line string) (activitypresentation.ChangeRow, bool) {
 	match := mchangesListRow.FindStringSubmatch(line)
 	if match == nil {
-		return activityui.ChangeRow{}, false
+		return activitypresentation.ChangeRow{}, false
 	}
-	row := activityui.ChangeRow{Label: textsanitize.Safe(match[1], false)}
+	row := activitypresentation.ChangeRow{Label: textsanitize.Safe(match[1], false)}
 	row.Added, _ = strconv.Atoi(match[3])
 	row.Removed, _ = strconv.Atoi(match[4])
 	var notes []string
@@ -101,41 +102,41 @@ func mchangesListOutputRow(line string) (activityui.ChangeRow, bool) {
 
 // mchangesSummaryRow reads one `--summary` row: a file with its status and
 // counts, the compact tool-managed rows, or an ID's status.
-func mchangesSummaryRow(line string) (activityui.ChangeRow, bool) {
+func mchangesSummaryRow(line string) (activitypresentation.ChangeRow, bool) {
 	if status, path, ok := strings.Cut(line, " "); ok && len(status) == 1 && strings.HasSuffix(path, "/") {
 		if verb, found := mchangesSummaryVerbs[status]; found {
 			label, rest, valid := mchangesSummaryPath(strings.TrimSuffix(path, "/"))
 			if valid && rest == "" {
-				return activityui.ChangeRow{Verb: verb, Label: label + "/"}, true
+				return activitypresentation.ChangeRow{Verb: verb, Label: label + "/"}, true
 			}
 		}
 	}
 
 	if match := mchangesManagedRow.FindStringSubmatch(line); match != nil {
-		row := activityui.ChangeRow{Verb: "Edited", Label: mchangesManagedFiles, Note: match[3]}
+		row := activitypresentation.ChangeRow{Verb: "Edited", Label: mchangesManagedFiles, Note: match[3]}
 		row.Added, _ = strconv.Atoi(match[1])
 		row.Removed, _ = strconv.Atoi(match[2])
 		return row, true
 	}
 	if match := mchangesManagedGapRow.FindStringSubmatch(line); match != nil {
-		return activityui.ChangeRow{Verb: "?", Label: mchangesManagedFiles, Note: textsanitize.Safe(match[1], false)}, true
+		return activitypresentation.ChangeRow{Verb: "?", Label: mchangesManagedFiles, Note: textsanitize.Safe(match[1], false)}, true
 	}
 	if match := mchangesStatusRow.FindStringSubmatch(line); match != nil {
-		return activityui.ChangeRow{Label: textsanitize.Safe(match[1], false), Note: match[2]}, true
+		return activitypresentation.ChangeRow{Label: textsanitize.Safe(match[1], false), Note: match[2]}, true
 	}
 	fields := strings.Split(line, "\t")
 	verb, ok := mchangesSummaryVerbs[fields[0]]
 	if !ok || len(fields) < 4 {
-		return activityui.ChangeRow{}, false
+		return activitypresentation.ChangeRow{}, false
 	}
-	row := activityui.ChangeRow{Verb: verb}
+	row := activitypresentation.ChangeRow{Verb: verb}
 	var notes []string
 	// Unknown counts show none; the row's status already marks it.
 	if fields[1] != "-" || fields[2] != "-" {
 		added, addErr := strconv.Atoi(fields[1])
 		removed, removeErr := strconv.Atoi(fields[2])
 		if addErr != nil || removeErr != nil {
-			return activityui.ChangeRow{}, false
+			return activitypresentation.ChangeRow{}, false
 		}
 		row.Added, row.Removed = added, removed
 	}
@@ -146,15 +147,15 @@ func mchangesSummaryRow(line string) (activityui.ChangeRow, bool) {
 	}
 	path, after, ok := mchangesSummaryPath(rest[0])
 	if !ok {
-		return activityui.ChangeRow{}, false
+		return activitypresentation.ChangeRow{}, false
 	}
 	if moved, ok := strings.CutPrefix(after, " => "); ok {
 		if row.Label, after, ok = mchangesSummaryPath(moved); !ok || after != "" {
-			return activityui.ChangeRow{}, false
+			return activitypresentation.ChangeRow{}, false
 		}
 		row.From = path
 	} else if after != "" {
-		return activityui.ChangeRow{}, false
+		return activitypresentation.ChangeRow{}, false
 	} else {
 		row.Label = path
 	}

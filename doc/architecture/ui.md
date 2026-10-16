@@ -16,10 +16,9 @@ observation capacity must remain visible and bounded without terminating unrelat
   and file-status classification. It operates on supplied values without filesystem
   reads or terminal types. Callers choose display paths; terminal views own colors,
   labels, geometry, selection, and follow state.
-- [Activity content](../../modules/activity/SPEC.md) owns semantic operations and
-  bounded retained output, independently of terminal reveal pacing.
-  `modules/activity/terminalview` attaches terminal block state, aggregation, cards, agent
-  labels/colors and animation. Its painter embeds the shared terminal painter.
+- [Activity](../../modules/activity/SPEC.md) owns semantic values, canonical group
+  membership and retained output. Its terminal view owns disclosure, geometry,
+  cards, agent colors and reveal animation over those values.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including
   their viewport and reveal animation. Captured-file composition and attribution
   remain in `internal/livediff`; router observations supply preview snapshots.

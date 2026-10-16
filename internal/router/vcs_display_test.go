@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -162,7 +164,7 @@ func TestVCSCommitWithoutItsObjectKeepsOutputEvidence(t *testing.T) {
 	// Without the host's cwd there is no repository to read the commit from.
 	rows, _ := vcsOutputRows("git commit -m 'feat: add b'", "", output)
 	hash := gitCommitHead.FindStringSubmatch(strings.Split(output, "\n")[0])[2]
-	want := []activityui.ChangeRow{
+	want := []activitypresentation.ChangeRow{
 		{Code: "A", Label: "b.go"},
 		{Code: "D", Label: "gone.txt"},
 		{Footer: true, Label: hash, Note: "on main · 3 files", Added: 3, Removed: 2},
@@ -267,7 +269,7 @@ func TestVCSCommitOfManyFilesClosesOnce(t *testing.T) {
 		t.Fatal("commit object unread")
 	}
 	rows = commitChanges(rows, key)
-	if footers := slices.DeleteFunc(slices.Clone(rows), func(row activityui.ChangeRow) bool { return !row.Footer }); len(footers) != 1 || len(rows) != 14 {
+	if footers := slices.DeleteFunc(slices.Clone(rows), func(row activitypresentation.ChangeRow) bool { return !row.Footer }); len(footers) != 1 || len(rows) != 14 {
 		t.Fatalf("rows = %+v", rows)
 	}
 }
@@ -421,7 +423,7 @@ func TestVCSDiffRowsCountEachHunk(t *testing.T) {
 		"+y",
 		"",
 	}, "\n")
-	want := []activityui.ChangeRow{
+	want := []activitypresentation.ChangeRow{
 		{Code: "M", Label: "internal/a.go", Added: 3, Removed: 2},
 		{Code: "A", Label: "new.go", Added: 1},
 		{Code: "D", Label: "gone.go", Removed: 2},
@@ -434,14 +436,14 @@ func TestVCSDiffRowsCountEachHunk(t *testing.T) {
 	}
 	svnPatch := "Index: trunk/a.c\n===================================================================\n--- trunk/a.c\t(revision 4811)\n+++ trunk/a.c\t(working copy)\n@@ -1 +1,2 @@\n-a\n+b\n+c\n" +
 		"Index: trunk/new.c\n===================================================================\n--- trunk/new.c\t(nonexistent)\n+++ trunk/new.c\t(working copy)\n@@ -0,0 +1 @@\n+x\n"
-	want = []activityui.ChangeRow{{Code: "M", Label: "trunk/a.c", Added: 2, Removed: 1}, {Code: "A", Label: "trunk/new.c", Added: 1}}
+	want = []activitypresentation.ChangeRow{{Code: "M", Label: "trunk/a.c", Added: 2, Removed: 1}, {Code: "A", Label: "trunk/new.c", Added: 1}}
 	if rows, _ := vcsOutputRows("svn diff", "", svnPatch); !reflect.DeepEqual(rows, want) {
 		t.Fatalf("svn rows = %+v", rows)
 	}
 	// mchanges prints each record's patch with quoted paths; one path's
 	// records sum.
 	mchangesPatch := "amber1\n--- \"a.go\"\n+++ \"a.go\"\n@@ -1 +1 @@\n-x\n+y\namber2\n--- \"a.go\"\n+++ \"a.go\"\n@@ -1 +1,2 @@\n-y\n+z\n+w\n--- /dev/null\n+++ \"b.go\"\n@@ -0,0 +1 @@\n+b\n"
-	want = []activityui.ChangeRow{{Code: "M", Label: "a.go", Added: 3, Removed: 2}, {Code: "A", Label: "b.go", Added: 1}}
+	want = []activitypresentation.ChangeRow{{Code: "M", Label: "a.go", Added: 3, Removed: 2}, {Code: "A", Label: "b.go", Added: 1}}
 	if rows, _ := vcsOutputRows("mchanges amber1..amber2", "", mchangesPatch); !reflect.DeepEqual(rows, want) {
 		t.Fatalf("mchanges rows = %+v", rows)
 	}
@@ -467,31 +469,31 @@ func TestVCSDiffRowsCountEachHunk(t *testing.T) {
 func TestVCSStatRows(t *testing.T) {
 	for _, tc := range []struct {
 		command, output string
-		want            []activityui.ChangeRow
+		want            []activitypresentation.ChangeRow
 	}{
-		{"git diff --stat", " a.go         | 3 ++-\n {old => new}/b.go | 0\n logo.png     | Bin 0 -> 12 bytes\n 3 files changed, 2 insertions(+), 1 deletion(-)\n", []activityui.ChangeRow{
+		{"git diff --stat", " a.go         | 3 ++-\n {old => new}/b.go | 0\n logo.png     | Bin 0 -> 12 bytes\n 3 files changed, 2 insertions(+), 1 deletion(-)\n", []activitypresentation.ChangeRow{
 			{Code: "M", Label: "a.go", Added: 2, Removed: 1},
 			{Code: "R", From: "old/b.go", Label: "new/b.go"},
 			{Code: "M", Label: "logo.png", Note: "binary"},
 			{Footer: true, Note: "3 files", Added: 2, Removed: 1},
 		}},
 		// A scaled graph does not split its counts; only the totals are exact.
-		{"git diff --stat", " a.go | 300 ++++++++++-----\n b.go |   4 +\n 2 files changed, 204 insertions(+), 100 deletions(-)\n", []activityui.ChangeRow{
+		{"git diff --stat", " a.go | 300 ++++++++++-----\n b.go |   4 +\n 2 files changed, 204 insertions(+), 100 deletions(-)\n", []activitypresentation.ChangeRow{
 			{Code: "M", Label: "a.go", Note: "300 lines"},
 			{Code: "M", Label: "b.go", Note: "4 lines"},
 			{Footer: true, Note: "2 files", Added: 204, Removed: 100},
 		}},
-		{"git show --numstat", "commit 0123456789abcdef\nAuthor: T <t@example.com>\n\n    subject\n\n12\t3\ta.go\n-\t-\tlogo.png\n1\t1\tsrc/{a => b}/c.go\n", []activityui.ChangeRow{
+		{"git show --numstat", "commit 0123456789abcdef\nAuthor: T <t@example.com>\n\n    subject\n\n12\t3\ta.go\n-\t-\tlogo.png\n1\t1\tsrc/{a => b}/c.go\n", []activitypresentation.ChangeRow{
 			{Code: "M", Label: "a.go", Added: 12, Removed: 3},
 			{Code: "M", Label: "logo.png", Note: "binary"},
 			{Code: "R", From: "src/a/c.go", Label: "src/b/c.go", Added: 1, Removed: 1},
 		}},
-		{"git diff --shortstat", " 1 file changed, 4 insertions(+)\n", []activityui.ChangeRow{{Footer: true, Note: "1 file", Added: 4}}},
-		{"git diff --name-status", "M\ta.go\nA\tb.go\nR087\told.go\tnew.go\nD\tgone.go\n", []activityui.ChangeRow{
+		{"git diff --shortstat", " 1 file changed, 4 insertions(+)\n", []activitypresentation.ChangeRow{{Footer: true, Note: "1 file", Added: 4}}},
+		{"git diff --name-status", "M\ta.go\nA\tb.go\nR087\told.go\tnew.go\nD\tgone.go\n", []activitypresentation.ChangeRow{
 			{Code: "M", Label: "a.go"}, {Code: "A", Label: "b.go"}, {Code: "R", From: "old.go", Label: "new.go"}, {Code: "D", Label: "gone.go"},
 		}},
-		{"git show --name-only", "commit 0123456789abcdef\nAuthor: T <t@example.com>\nDate:   now\n\n    subject\n\na.go\n", []activityui.ChangeRow{{Label: "a.go"}}},
-		{"svn diff --summarize", "M       trunk/a.c\nA       trunk/b.c\n M      trunk\n", []activityui.ChangeRow{
+		{"git show --name-only", "commit 0123456789abcdef\nAuthor: T <t@example.com>\nDate:   now\n\n    subject\n\na.go\n", []activitypresentation.ChangeRow{{Label: "a.go"}}},
+		{"svn diff --summarize", "M       trunk/a.c\nA       trunk/b.c\n M      trunk\n", []activitypresentation.ChangeRow{
 			{Verb: "Edited", Label: "trunk/a.c"}, {Verb: "Created", Label: "trunk/b.c"}, {Verb: "Edited", Label: "trunk", Note: "properties"},
 		}},
 	} {
@@ -526,7 +528,7 @@ func TestVCSStatusRows(t *testing.T) {
 		"\tscratch.txt",
 		"",
 	}, "\n")
-	want := []activityui.ChangeRow{
+	want := []activitypresentation.ChangeRow{
 		{Code: "MM", Label: "internal/router/vcs_display.go"},
 		{Code: "A ", Label: "internal/router/vcs_display_test.go"},
 		{Code: "R ", From: "old.go", Label: "new.go"},
@@ -540,17 +542,17 @@ func TestVCSStatusRows(t *testing.T) {
 		t.Fatalf("long status = %+v\nwant %+v", rows, want)
 	}
 	short := "## main...origin/main [ahead 1, behind 3]\nM  a.go\n M b.go\nR  x -> y\n?? z\n"
-	want = []activityui.ChangeRow{{Code: "M ", Label: "a.go"}, {Code: " M", Label: "b.go"}, {Code: "R ", From: "x", Label: "y"}, {Code: "??", Label: "z"}, {Footer: true, Label: "main", Note: "↑1 ↓3"}}
+	want = []activitypresentation.ChangeRow{{Code: "M ", Label: "a.go"}, {Code: " M", Label: "b.go"}, {Code: "R ", From: "x", Label: "y"}, {Code: "??", Label: "z"}, {Footer: true, Label: "main", Note: "↑1 ↓3"}}
 	if rows, _ := vcsOutputRows("git status -sb", "", short); !reflect.DeepEqual(rows, want) {
 		t.Fatalf("short status = %+v", rows)
 	}
 	clean := "On branch main\nYour branch and 'origin/main' have diverged,\nand have 1 and 2 different commits each, respectively.\n\nnothing to commit, working tree clean\n"
-	want = []activityui.ChangeRow{{Footer: true, Label: "main", Note: "↑1 ↓2 · clean"}}
+	want = []activitypresentation.ChangeRow{{Footer: true, Label: "main", Note: "↑1 ↓2 · clean"}}
 	if rows, _ := vcsOutputRows("git status", "", clean); !reflect.DeepEqual(rows, want) {
 		t.Fatalf("clean status = %+v", rows)
 	}
 	svn := "M       trunk/a.c\n?       trunk/new.c\n M      trunk\nC       trunk/c.c\n"
-	want = []activityui.ChangeRow{{Code: "M ", Label: "trunk/a.c"}, {Code: "? ", Label: "trunk/new.c"}, {Code: " M", Label: "trunk"}, {Code: "C ", Label: "trunk/c.c"}}
+	want = []activitypresentation.ChangeRow{{Code: "M ", Label: "trunk/a.c"}, {Code: "? ", Label: "trunk/new.c"}, {Code: " M", Label: "trunk"}, {Code: "C ", Label: "trunk/c.c"}}
 	if rows, _ := vcsOutputRows("svn st", "", svn); !reflect.DeepEqual(rows, want) {
 		t.Fatalf("svn status = %+v", rows)
 	}
@@ -558,7 +560,7 @@ func TestVCSStatusRows(t *testing.T) {
 
 func TestVCSSVNCommitRows(t *testing.T) {
 	output := "Sending        trunk/a.c\nAdding  (bin)  trunk/logo.png\nDeleting       trunk/old.c\nTransmitting file data ..done\nCommitting transaction...\nCommitted revision 4812.\n"
-	want := []activityui.ChangeRow{
+	want := []activitypresentation.ChangeRow{
 		{Verb: "Edited", Label: "trunk/a.c"}, {Verb: "Created", Label: "trunk/logo.png"}, {Verb: "Deleted", Label: "trunk/old.c"},
 		{Footer: true, Label: "r4812"},
 	}

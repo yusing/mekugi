@@ -88,7 +88,7 @@ func TestDialogPageNotes(t *testing.T) {
 		{"released", releasedOutput(), "released"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			page := p.DialogPage(Block{Verb: "Run", Output: tc.output}, 100)
+			page := p.DialogPage(Block{Verb: "Run", OutputSnapshot: new(tc.output.View())}, 100)
 			var notes []string
 			for _, line := range page.Lines {
 				if line.Number == 0 {
@@ -111,7 +111,7 @@ func TestDialogPageNotes(t *testing.T) {
 func TestDialogReleasedOutputUsesLastTail(t *testing.T) {
 	var p Painter
 	output := releasedOutput()
-	page := p.DialogPage(Block{Verb: "Run", Output: output, Tail: []string{"last visible line"}, TailOmitted: 4}, 80)
+	page := p.DialogPage(Block{Verb: "Run", OutputSnapshot: new(output.View()), Tail: []string{"last visible line"}, TailOmitted: 4}, 80)
 	if !strings.Contains(page.Text, "last visible line") {
 		t.Fatalf("released output lost tail: %+v", page)
 	}
@@ -166,7 +166,7 @@ func TestDialogFrameDimensions(t *testing.T) {
 
 func TestDialogCopiesShortSourceWithoutOutput(t *testing.T) {
 	var p Painter
-	page := p.DialogPage(Block{Verb: "Run", Code: "true", Output: completedOutput("")}, 80)
+	page := p.DialogPage(Block{Verb: "Run", Code: "true", OutputSnapshot: new(completedOutput("").View())}, 80)
 	if page.Text != "true" {
 		t.Fatalf("copy = %q", page.Text)
 	}
@@ -176,7 +176,7 @@ func TestDialogDroppedReadKeepsRangeOffset(t *testing.T) {
 	var p Painter
 	output := overflowingOutput(t, "kept")
 	view := output.View()
-	page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt", Ranges: []string{"42:100"}}}, Output: output}, 80)
+	page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt", Ranges: []string{"42:100"}}}, OutputSnapshot: new(output.View())}, 80)
 	found, note := false, false
 	for _, line := range page.Lines {
 		if line.Number == 0 {
@@ -277,7 +277,7 @@ func TestDialogSkillReadMarkdown(t *testing.T) {
 				block := Block{Content: activitymodel.ParseOperation("Skill `example`")}
 				block.Tail = strings.Split(content, "\n")
 				if retained {
-					block.Output = completedOutput(content)
+					block.OutputSnapshot = new(completedOutput(content).View())
 					block.Tail = []string{"stale tail"}
 				}
 				page := p.DialogPage(block, width)
@@ -327,7 +327,7 @@ func TestDialogSkillOutputStates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var p Painter
-			page := p.DialogPage(Block{Kind: "reads", Verb: "Skill", Output: tc.output, Tail: []string{"# Guide"}}, 80)
+			page := p.DialogPage(Block{Kind: "reads", Verb: "Skill", OutputSnapshot: new(tc.output.View()), Tail: []string{"# Guide"}}, 80)
 			var rows []string
 			for _, line := range page.Lines {
 				rows = append(rows, ansi.Strip(line.Text))

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -19,17 +20,17 @@ func TestUISnapshotThinkingBlock(t *testing.T) {
 	}{
 		{"streaming", activityui.Block{Kind: "summary", Body: body, Live: true}},
 		{"short_streaming", activityui.Block{Kind: "summary", Body: "one\n\ntwo", Live: true}},
-		{"completed", activityui.Block{Kind: "summary", Body: body, Elapsed: "12s"}},
-		{"collapsed", activityui.Block{Kind: "summary", Body: body, Elapsed: "12s", Collapsed: true}},
+		{"completed", activityui.Block{Kind: "summary", Body: body, Thought: 12 * time.Second}},
+		{"collapsed", activityui.Block{Kind: "summary", Body: body, Thought: 12 * time.Second, Collapsed: true}},
 		{"untimed", activityui.Block{Kind: "summary", Body: "one"}},
 		{"single_streaming", activityui.Block{Kind: "summary", Body: "Checking tests", Live: true}},
 		{"heading_streaming", activityui.Block{Kind: "summary", Body: "**Checking tests**\n\n", Live: true}},
-		{"heading_completed", activityui.Block{Kind: "summary", Body: "**Checking tests**\n\n", Elapsed: "2s", Collapsed: true}},
+		{"heading_completed", activityui.Block{Kind: "summary", Body: "**Checking tests**\n\n", Thought: 2 * time.Second, Collapsed: true}},
 		{"heading_comment", activityui.Block{Kind: "summary", Body: "**Checking tests**\n<!-- -->", Collapsed: true}},
 		{"hash_heading_streaming", activityui.Block{Kind: "summary", Body: "# Checking tests\n<!-- -->", Live: true}},
-		{"hash_heading_completed", activityui.Block{Kind: "summary", Body: "# Checking tests\n<!-- -->", Elapsed: "2s", Collapsed: true}},
-		{"timed_period", activityui.Block{Kind: "summary", Body: "Checking tests.", Elapsed: "2s", Collapsed: true}},
-		{"timed_bold_period", activityui.Block{Kind: "summary", Body: "**Checking tests.**", Elapsed: "2s", Collapsed: true}},
+		{"hash_heading_completed", activityui.Block{Kind: "summary", Body: "# Checking tests\n<!-- -->", Thought: 2 * time.Second, Collapsed: true}},
+		{"timed_period", activityui.Block{Kind: "summary", Body: "Checking tests.", Thought: 2 * time.Second, Collapsed: true}},
+		{"timed_bold_period", activityui.Block{Kind: "summary", Body: "**Checking tests.**", Thought: 2 * time.Second, Collapsed: true}},
 		{"empty_completed", activityui.Block{Kind: "summary", Collapsed: true}},
 		{"titled", activityui.Block{Kind: "summary", Body: "**Checking**\n\nPublic summary.", Live: true}},
 		{"partial_title", activityui.Block{Kind: "summary", Body: "**Check", Live: true}},

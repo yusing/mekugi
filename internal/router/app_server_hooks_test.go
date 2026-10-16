@@ -47,7 +47,7 @@ func TestAppServerHookLifecycleUsesRunPresentation(t *testing.T) {
 		t.Fatalf("hook notifications duplicated rows: %d", len(u.view.entries))
 	}
 	b := u.view.entries[0].blocks[0]
-	if b.Running || b.Output.View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
+	if b.Running || u.view.retainedOutput(b).View().Exited || b.Duration != 120*time.Millisecond || !b.Started.Equal(time.Unix(1000, 0)) {
 		t.Fatalf("hook completion borrowed a shell exit or lost host timing: %+v", b)
 	}
 	u.view.expansion = 1 // Default presentation omits hook runs.
@@ -75,10 +75,10 @@ func TestAppServerHookOutcomesInChildFeed(t *testing.T) {
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "completed")})
 			appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "child", "run": run})
 			b := u.agents.entries[len(u.agents.entries)-1].blocks[0]
-			if b.Running || b.Collapsible() || b.ExitCode != 0 || b.Output.View().Exited || !b.Hook.HasError {
+			if b.Running || b.Collapsible() || b.ExitCode != 0 || u.agents.retainedOutput(b).View().Exited || !b.Hook.HasError {
 				t.Fatalf("hook outcome was flattened to a command exit: %+v", b)
 			}
-			page := u.agents.painter.DialogPage(b, 60)
+			page := u.agents.painter.DialogPage(snapshotOutput(b, u.agents.retainedOutput(b)), 60)
 			if !strings.Contains(page.Text, "error: cannot execute") || strings.Contains(page.Text, "unsafe") || strings.Contains(ansi.Strip(page.Detail), "exit") {
 				t.Fatalf("hook detail lost errors or fabricated an exit: %+v", page)
 			}
@@ -180,7 +180,7 @@ func TestHookObservationRestartResumeAndReplay(t *testing.T) {
 	}
 	for _, entry := range fresh.view.entries {
 		b := entry.blocks[0]
-		if b.Running || !b.Output.View().Done {
+		if b.Running || !fresh.view.retainedOutput(b).View().Done {
 			t.Fatal("resume revived a hook")
 		}
 	}

@@ -57,7 +57,7 @@ func TestUISnapshotAppServerReasoningPacedSections(t *testing.T) {
 			if view.entries[0].blocks[0].Collapsed || view.entries[0].blocks[1].Collapsed || settleActivity(at.Add(time.Minute), view) {
 				t.Fatal("latest completed reasoning did not stay open")
 			}
-			if len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 || view.entries[0].blocks[0].Live || view.entries[0].blocks[1].Live || view.entries[0].blocks[0].Elapsed != "" || view.entries[0].blocks[1].Elapsed != "2s" {
+			if len(u.session.summaries) != 0 || len(view.entries[0].blocks) != 2 || view.entries[0].blocks[0].Live || view.entries[0].blocks[1].Live || view.entries[0].blocks[0].Thought != 0 || view.entries[0].blocks[1].Thought != 2*time.Second {
 				t.Fatalf("section completion or item duration lost: %+v", view.entries)
 			}
 			// The compact row retains one dialog page per original section.

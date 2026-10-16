@@ -3,6 +3,8 @@ package terminalview
 import (
 	"testing"
 
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 )
 
@@ -24,7 +26,7 @@ func TestCollapseBatchKeepsUnsettledOrSingleWork(t *testing.T) {
 		}
 	}
 	merged := read
-	merged.Members = []Block{read, read}
+	merged.Members = []presentation.Value{read.Value, read.Value}
 	batch, ok := CollapseBatch([]Block{merged, run, {Kind: "op", Verb: "Edit", EditSource: "apply_patch"}, {Kind: "op", Verb: "Run", Label: "shell batch", BatchExit: true}})
 	if !ok || len(batch.Members) != 5 || batch.Members[3].EditSource != "apply_patch" {
 		t.Fatalf("batch = %+v, %v; want merged reads and the batch result as dialog pages", batch, ok)

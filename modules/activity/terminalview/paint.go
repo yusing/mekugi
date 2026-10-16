@@ -3,6 +3,7 @@ package terminalview
 import (
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/textsanitize"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 
 	"fmt"
 	"slices"
@@ -320,8 +321,8 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			// Short summaries stay visible, including heading-only summaries,
 			// both while streaming and after completion.
 			text := rows[0]
-			if !block.Live && block.Elapsed != "" {
-				text = reasoningFor(text, block.Elapsed)
+			if !block.Live && block.Thought >= time.Second {
+				text = reasoningFor(text, FormatDuration(block.Thought))
 			}
 			rows = terminalui.Hang("• ", text, width)
 			for i, row := range rows {
@@ -525,7 +526,7 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 	if start || block.Verb != "Edit" {
 		lead = color + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", cell-ansi.StringWidth(verb))
 	}
-	block.Label = editLabel(block)
+	block.Label = block.EditLabel()
 	if status != "" {
 		// The first row names the outcome that every row's tail repeats.
 		block.Label = strings.TrimSuffix(block.Label, " · "+status)
@@ -558,7 +559,7 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 // highlighted as its own command, and the invocations a group spans.
 func (p *Painter) groupSource(block Block) []string {
 	var parts []string
-	if source := strings.TrimSuffix(block.EditSource, requestedEdit); source != "" && source != "apply_patch" {
+	if source := strings.TrimSuffix(block.EditSource, presentation.RequestedEditSuffix); source != "" && source != "apply_patch" {
 		var sources []string
 		for part := range strings.SplitSeq(source, ", ") {
 			sources = append(sources, strings.Join(p.Highlight("bash", part), " ")+terminalui.Reset)
@@ -1126,7 +1127,7 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 				continue
 			}
 			section := blocks[i]
-			section.Collapsed, section.Elapsed, section.Hovered = true, "", false
+			section.Collapsed, section.Thought, section.Hovered = true, 0, false
 			if rows := p.blockRows(section, max(1, width)+2); len(rows) > 0 {
 				headers = append(headers, strings.TrimPrefix(ansi.Strip(rows[0]), "• "))
 			}

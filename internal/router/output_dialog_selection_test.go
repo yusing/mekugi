@@ -178,7 +178,7 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	u := dialogForOutput(output)
 	u.main = &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, view: newLiveActivityView()}
 	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
-	block.Output = output
+	block.Source, block.Output = u.output.pages[0].Source, u.output.pages[0].Output
 	u.output.pages[0] = block
 	frame := drawOutputDialog(u)
 	if !strings.Contains(frame, "Use careful steps.") || strings.Contains(frame, "**") || strings.Contains(frame, "# Skill guide") {

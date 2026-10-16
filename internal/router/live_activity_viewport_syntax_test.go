@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/alecthomas/chroma/v2"
@@ -346,6 +348,57 @@ func TestLiveActivityViewportSyntaxScrollEveryRow(t *testing.T) {
 					lazy.offset, eager.offset = offset, offset
 					assertViewportSyntaxEager(t, lazy, eager, 70, 3)
 				}
+			}
+		})
+	}
+}
+
+func TestActivityFeedOutputContextIsBounded(t *testing.T) {
+	for _, main := range []bool{false, true} {
+		for _, collapsed := range []bool{false, true} {
+			t.Run(fmt.Sprintf("Main=%t/collapsed=%t", main, collapsed), func(t *testing.T) {
+				view := viewportSyntaxView(main, "go")
+				output := new(activitymodel.Retention).New()
+				output.Finish(new(strings.Repeat("retained context\n", 20000)+"var answer = 42"), new(0))
+				entry := &view.entries[1]
+				entry.native = &liveActivityNativeItem{output: output}
+				block := &entry.blocks[0]
+				block.Output, block.Tail, block.TailOmitted, block.Collapsed = 1, []string{"var answer = 42"}, 20000, collapsed
+				// A cold off-screen layout and a later visible paint must leave full
+				// snapshot creation to a consumer that actually requests the stream.
+				view.renderFeed(80, 8)
+				if !reflect.ValueOf(output).Elem().FieldByName("snapshot").IsNil() {
+					t.Fatal("off-screen feed populated the full output snapshot")
+				}
+				view.following, view.offset = false, 0
+				view.renderFeed(80, 20)
+				if !reflect.ValueOf(output).Elem().FieldByName("snapshot").IsNil() {
+					t.Fatal("feed syntax populated the full output snapshot")
+				}
+				context := view.outputContext(*block)
+				if collapsed {
+					if context.OutputSnapshot != nil {
+						t.Fatal("collapsed output requested syntax context")
+					}
+				} else if context.OutputSnapshot == nil || !context.OutputContextLimited || len(context.OutputSnapshot.Lines) >= 20000 {
+					t.Fatal("feed output context was not bounded")
+				}
+			})
+		}
+		t.Run(fmt.Sprintf("Main=%t/retained diff header", main), func(t *testing.T) {
+			output := new(activitymodel.Retention).New()
+			output.Write("amber1\n--- a/sample.go\n+++ b/sample.go\n@@ -1,3 +1,3 @@\n package main\n \n-var answer = 41\n+var answer = 42")
+			view := newLiveActivityView()
+			view.conversation, view.feedOnly = main, true
+			view.painter.Theme = diffrender.DarkTheme
+			entry := activityPaneEntry{Seq: 1, Agent: "Main", Kind: "tool", Text: "Run `mchanges amber1`", outputTail: []string{"-var answer = 41", "+var answer = 42"}, outputOmit: 6, native: &liveActivityNativeItem{output: output, running: true}}
+			view.appendEntry(entry, parseLiveActivity(entry))
+			rows := strings.Join(view.renderFeed(100, 20).lines, "\n")
+			if !strings.Contains(rows, diffrender.DarkTheme.RowBackground('+')) || !strings.Contains(ansi.Strip(rows), "+var answer = 42") {
+				t.Fatalf("feed lost retained diff context: %q", rows)
+			}
+			if !reflect.ValueOf(output).Elem().FieldByName("snapshot").IsNil() {
+				t.Fatal("retained-header syntax requested a full snapshot")
 			}
 		})
 	}

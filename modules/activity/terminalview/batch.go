@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
@@ -27,14 +29,14 @@ var batchTallies = []batchTally{
 // through. Running or skipped work and questions keep their
 // rows, as does a lone operation.
 func CollapseBatch(blocks []Block) (Block, bool) {
-	var members []Block
+	var members []presentation.Value
 	operations := 0
 	for _, block := range blocks {
 		switch {
 		case block.Kind == "filter":
 			continue
 		case block.Kind != "op" && block.Kind != "reads", block.Verb == "", block.Verb == "Attach failed", block.Running, block.Skipped, block.Approval != "", block.Hook != nil,
-			block.EditSource != "" && editHeading(block) != "Edited", len(block.Questions) > 0:
+			block.EditSource != "" && block.EditHeading() != "Edited", len(block.Questions) > 0:
 			return Block{}, false
 		}
 		if !block.BatchExit {
@@ -43,13 +45,13 @@ func CollapseBatch(blocks []Block) (Block, bool) {
 		if len(block.Members) > 0 {
 			members = append(members, block.Members...)
 		} else {
-			members = append(members, block)
+			members = append(members, block.Value)
 		}
 	}
 	if operations < 2 {
 		return Block{}, false
 	}
-	return Block{Kind: "batch", Members: members, Collapsed: true}, true
+	return Block{Value: presentation.Batch(members), Collapsed: true}, true
 }
 
 // batchRow is a collapsed batch's one row: each verb's count, colored like
@@ -63,7 +65,7 @@ func (p *Painter) batchRow(block Block, width int) []string {
 	}
 	var tallies []*tally
 	for _, member := range block.Members {
-		if member.BatchExit {
+		if member.BatchExit || member.Subsumed {
 			continue
 		}
 		verb := member.Verb
@@ -76,7 +78,7 @@ func (p *Painter) batchRow(block Block, width int) []string {
 		}
 		at := slices.IndexFunc(tallies, func(t *tally) bool { return t.verb == member.Verb && t.order == order })
 		if at < 0 {
-			tallies = append(tallies, &tally{order: order, verb: member.Verb, label: RowVerb(member)})
+			tallies = append(tallies, &tally{order: order, verb: member.Verb, label: RowVerb(Block{Value: member})})
 			at = len(tallies) - 1
 		}
 		t := tallies[at]

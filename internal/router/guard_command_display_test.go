@@ -222,7 +222,7 @@ func TestUISnapshotGuardCommandOutputDialog(t *testing.T) {
 	}}}})
 	entry := u.view.entries[0]
 	pages := u.view.commandOutputPages(entry.Seq)
-	if len(pages) != 1 || pages[0].Code != source || entry.native.command != command || pages[0].Output != entry.native.output {
+	if len(pages) != 1 || pages[0].Code != source || entry.native.command != command || u.view.retainedOutput(pages[0]) != entry.native.output {
 		t.Fatalf("combined output pages = %+v; want original command display and unchanged host output", pages)
 	}
 	terminal := &terminalUI{main: u}

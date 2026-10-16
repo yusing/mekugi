@@ -6,22 +6,13 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/modules/activity/presentation"
 )
 
 // ChangeRow is one row of a change history read, such as `mchanges --list`
 // or `--summary`, or of a version-control read or commit, laid out like
 // confirmed edit rows.
-type ChangeRow struct {
-	Verb           string // Edited, Created, Deleted, Moved, Conflict or ?; empty for a change ID.
-	Code           string // Short file status, or staged/unstaged VCS status, shown in the verb column.
-	From           string // A moved file's earlier path.
-	Label          string // File path or change ID range; a footer's lead, such as a commit hash.
-	Added, Removed int    // Known line counts; zero counts are omitted.
-	Note           string // Muted detail after the counts, such as a status.
-	// Footer closes the rows with a summary, such as a commit's hash and
-	// totals, after any elided rows: Label leads, then Note and counts.
-	Footer bool
-}
+type ChangeRow = presentation.ChangeRow
 
 // Hash is the gold VCS output uses for commit hashes and branches.
 const Hash = "\x1b[38;5;179m"
@@ -49,7 +40,7 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 		if row.Code != "" {
 			verbs = max(verbs, 3)
 		}
-		labels = max(labels, ansi.StringWidth(row.plainLabel()))
+		labels = max(labels, ansi.StringWidth(changePlainLabel(row)))
 		counts = max(counts, len(editCounts(row.Added, row.Removed)))
 		scale = max(scale, row.Added+row.Removed)
 	}
@@ -81,7 +72,7 @@ func changeRows(rows []ChangeRow, padding string, width int) []string {
 			}
 			line += verb + strings.Repeat(" ", max(0, verbs-cells))
 		}
-		label := row.label(column)
+		label := changeLabel(row, column)
 		if ansi.StringWidth(label) > column {
 			label = ansi.Truncate(label, column, "…")
 		}
@@ -158,7 +149,7 @@ func ChangeTotals(rows []ChangeRow) (added, removed int) {
 	return added, removed
 }
 
-func (r ChangeRow) plainLabel() string {
+func changePlainLabel(r ChangeRow) string {
 	if r.From != "" {
 		return r.From + " → " + r.Label
 	}
@@ -167,7 +158,7 @@ func (r ChangeRow) plainLabel() string {
 
 // label shows a file with path emphasis, eliding it to fit width, and a
 // change ID, or a row with neither verb nor status, as it is.
-func (r ChangeRow) label(width int) string {
+func changeLabel(r ChangeRow, width int) string {
 	switch {
 	case r.Verb == "" && r.Code == "":
 		return r.Label
