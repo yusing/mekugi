@@ -24,7 +24,7 @@ func BenchmarkNativeFrontends(b *testing.B) {
 	if err = registry.installFrontends(); err != nil {
 		b.Fatal(err)
 	}
-	source, err := filepath.Abs("../gooutline/outline.go")
+	source, err := filepath.Abs("../../libraries/sourceanalysis/gooutline/outline.go")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -40,9 +40,9 @@ func BenchmarkNativeFrontends(b *testing.B) {
 		return value
 	}
 	inspectBatch := []string{
-		abs("app_server_ui.go"), abs("live_activity_view.go"), abs("../ui/activity/paint.go"),
+		abs("app_server_ui.go"), abs("live_activity_view.go"), abs("../../modules/activity/terminalview/paint.go"),
 		abs("vcs_display.go"), abs("server.go"), abs("native_shell.go"),
-		abs("storage_retention.go"), abs("mchanges_apply.go"),
+		abs("storage_retention.go"), abs("../../modules/changehistory/internal/retained/mutate.go"),
 	}
 	docs := []string{abs("../../doc/architecture/ui.md"), abs("../../doc/architecture/activity.md"), abs("../../doc/architecture/boundary.md")}
 	rows := filepath.Join(directory, "rows.txt")
