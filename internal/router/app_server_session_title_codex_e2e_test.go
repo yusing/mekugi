@@ -137,37 +137,20 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 			t.Fatal(err)
 		}
 		done := make(chan error, 1)
-		go func() { done <- wait() }()
+		waiterDone := make(chan struct{})
+		go func() { defer close(waiterDone); done <- wait() }()
 		screen := vt.NewEmulator(160, 30)
-		// Emulator.Close is not synchronized with its reply reader. Wake that
-		// reader with a terminal-status response and join it before closing.
-		var stoppingReplies atomic.Bool
-		repliesDone := make(chan struct{})
-		go func() {
-			defer close(repliesDone)
-			buf := make([]byte, 4096)
-			for {
-				n, err := screen.Read(buf)
-				if err != nil {
-					return
-				}
-				if stoppingReplies.Load() && string(buf[:n]) == "\x1b[?0n" {
-					return
-				}
-				// PTY shutdown can precede this cleanup handshake. Keep draining
-				// emulator replies even when the terminal no longer accepts them.
-				_, _ = outer.Write(buf[:n])
-			}
-		}()
-		t.Cleanup(func() {
-			stoppingReplies.Store(true)
-			// The last PTY chunk can end inside a control string. Cancel it and
-			// terminate strings before injecting the cleanup status query.
-			_, _ = screen.Write([]byte("\x18\x1b\\\x1b[5n"))
-			<-repliesDone
-			_ = screen.Close()
-		})
+		stopReplies := startEmulatorReplies(outer, screen)
 		chunks := readPTYChunks(runCtx, outer, 65536, 128)
+		t.Cleanup(func() {
+			stop()
+			outer.Close()
+			inner.Close()
+			<-waiterDone
+			for range chunks {
+			}
+			stopReplies()
+		})
 		await := func(label string, predicate func(string) bool) {
 			t.Helper()
 			for !predicate(screen.String()) {

@@ -3,7 +3,6 @@
 package router
 
 import (
-	"bytes"
 	"context"
 	json "encoding/json/v2"
 	"fmt"
@@ -27,7 +26,6 @@ import (
 
 	"github.com/yusing/mekugi/providers/grok"
 
-	vt "github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 	"golang.org/x/term"
 )
@@ -54,29 +52,7 @@ func startThirdPartyResumeTerminal(t *testing.T, newCommand func(context.Context
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &appResumeTerminal{t: t, ctx: ctx, cancel: cancel, outer: outer, inner: inner,
-		frames: make(chan []byte, 32), done: make(chan error, 1), screen: vt.NewEmulator(100, 30), before: before}
-	t.Cleanup(func() { s.screen.Close() })
-	go func() { _, _ = io.Copy(outer, s.screen) }()
-	go func() { s.done <- wait() }()
-	go func() {
-		defer close(s.frames)
-		buf := make([]byte, 65536)
-		for {
-			n, err := outer.Read(buf)
-			if n > 0 {
-				select {
-				case s.frames <- bytes.Clone(buf[:n]):
-				case <-ctx.Done():
-					return
-				}
-			}
-			if err != nil {
-				return
-			}
-		}
-	}()
-	return s
+	return observeAppResumeTerminal(t, ctx, cancel, outer, inner, before, wait)
 }
 
 func TestThirdPartyResumeModelNativeCodexE2E(t *testing.T) {

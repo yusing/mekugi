@@ -154,11 +154,20 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- wait() }()
+	waiterDone := make(chan struct{})
+	go func() { defer close(waiterDone); done <- wait() }()
 	frames := readPTYChunks(ctx, outer, 65536, 32)
 	screen := vt.NewEmulator(100, 30)
-	defer screen.Close()
-	go func() { _, _ = io.Copy(outer, screen) }()
+	stopReplies := startEmulatorReplies(outer, screen)
+	defer func() {
+		cancel()
+		outer.Close()
+		terminal.Close()
+		<-waiterDone
+		for range frames {
+		}
+		stopReplies()
+	}()
 	await := func(needle string) {
 		t.Helper()
 		visible := func() bool {

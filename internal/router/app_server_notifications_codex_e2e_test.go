@@ -46,11 +46,20 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- wait() }()
+	waiterDone := make(chan struct{})
+	go func() { defer close(waiterDone); done <- wait() }()
 	chunks := readPTYChunks(ctx, outer, 65536, 128)
 	screen := vt.NewEmulator(100, 30)
-	defer screen.Close()
-	go func() { _, _ = io.Copy(outer, screen) }()
+	stopReplies := startEmulatorReplies(outer, screen)
+	defer func() {
+		cancel()
+		outer.Close()
+		inner.Close()
+		<-waiterDone
+		for range chunks {
+		}
+		stopReplies()
+	}()
 	var raw bytes.Buffer
 	ingest := func(chunk []byte) { raw.Write(chunk); _, _ = screen.Write(chunk) }
 	await := func(label string, predicate func() bool) {

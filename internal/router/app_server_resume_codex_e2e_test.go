@@ -259,13 +259,16 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	if err != nil {
 		t.Fatal(err)
 	}
+	return observeAppResumeTerminal(t, ctx, cancel, outer, inner, before, wait)
+}
+
+func observeAppResumeTerminal(t *testing.T, ctx context.Context, cancel context.CancelFunc, outer, inner *os.File, before *term.State, wait func() error) *appResumeTerminal {
+	t.Helper()
 	s := &appResumeTerminal{t: t, ctx: ctx, cancel: cancel, outer: outer, inner: inner,
 		frames: make(chan []byte, 32), done: make(chan error, 1), screen: vt.NewEmulator(100, 30), before: before}
-	t.Cleanup(func() { s.screen.Close() })
-	// Answer terminal capability/color queries so emulator writes cannot block
-	// on its response pipe before the first frame reaches the assertion.
-	go func() { _, _ = io.Copy(outer, s.screen) }()
-	go func() { s.done <- wait() }()
+	stopReplies := startEmulatorReplies(outer, s.screen)
+	waiterDone := make(chan struct{})
+	go func() { defer close(waiterDone); s.done <- wait() }()
 	go func() {
 		defer close(s.frames)
 		buf := make([]byte, 65536)
@@ -283,6 +286,15 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 			}
 		}
 	}()
+	t.Cleanup(func() {
+		cancel()
+		outer.Close()
+		inner.Close()
+		<-waiterDone
+		for range s.frames {
+		}
+		stopReplies()
+	})
 	return s
 }
 
