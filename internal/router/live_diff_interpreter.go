@@ -41,7 +41,13 @@ func liveDiffInterpreterWrite(ctx context.Context, stmt *syntax.Stmt, directory 
 	if !python && identity != "node" && identity != "bun" && identity != "deno" {
 		return nil, false, nil
 	}
-	input := previewInterpreterInput{identity: identity, args: words[1:], cwd: directory, deadline: time.Now().Add(execscope.Budget)}
+	// Interpretation shares the preview deadline rather than the shorter
+	// execution-classification budget. Direct callers retain the same bound.
+	deadline := time.Now().Add(time.Second)
+	if parent, bounded := ctx.Deadline(); bounded && parent.Before(deadline) {
+		deadline = parent
+	}
+	input := previewInterpreterInput{identity: identity, args: words[1:], cwd: directory, deadline: deadline}
 	for _, redirect := range stmt.Redirs {
 		if redirect.Op != syntax.Hdoc && redirect.Op != syntax.DashHdoc {
 			return nil, false, nil
