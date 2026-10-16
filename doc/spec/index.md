@@ -7,6 +7,7 @@ pjdoc:
   revision: "73"
   files:
     - router.md
+    - ../../apps/mekugi/internal/launch/SPEC.md
     - native_ui.md
     - transport.md
     - third_party.md
@@ -46,7 +47,8 @@ resume evidence and renderer-keyed persistence.
 
 - [`REQ-CONTEXT-RESET-001`](../../modules/contextreset/SPEC.md): retained inactive instruction-file loading
 - [`REQ-MCP-001`](../../libraries/mcptransport/SPEC.md): reserved invocation-local MCP transport
-- [`REQ-ROUTER-001`](router.md): standalone and session-scoped Codex launch
+- [Invocation launch](../../apps/mekugi/internal/launch/SPEC.md): command selection and session-scoped Codex lifecycle
+- [Session integration](router.md): request, storage and diagnostic integration
 - [`REQ-NATIVE-UI-001`](native_ui.md): UI presentation and client behavior
 - [`REQ-TRANSPORT-001`](transport.md): Codex-facing Responses transport
 - [OpenAI provider](../../providers/openai/SPEC.md): credential validation, model exchange, HTTP and WebSocket transport

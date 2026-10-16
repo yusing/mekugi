@@ -1,4 +1,4 @@
-package main
+package launch
 
 import (
 	"bytes"
@@ -401,7 +401,7 @@ func TestWrappedRouterProcess(t *testing.T) {
 	if os.Getenv("MEKUGI_TEST_LAUNCH_MODE") == "standalone" {
 		os.Args = []string{os.Args[0], "exec", "--yolo", "hello"}
 	}
-	os.Exit(run())
+	os.Exit(Run())
 }
 
 func TestStandaloneRunWithoutCodexLogin(t *testing.T) {

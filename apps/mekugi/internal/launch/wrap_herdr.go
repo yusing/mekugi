@@ -1,4 +1,5 @@
-package main
+// Source: apps/mekugi/cmd/mekugi/wrap_herdr.go:1:25@[ebde9ad5]
+package launch
 
 import (
 	"os"

@@ -1,58 +1,8 @@
-# Session-scoped Codex launch
+# Session request and storage integration
 
-## REQ-ROUTER-001 — Session-scoped Codex launch
-
-`mekugi [flags] codex [Codex arguments...]` starts one private router on an
-OS-assigned port bound to `127.0.0.1` and launches Codex from PATH only after
-initialization and binding succeed. There is no standalone router or daemon command,
-fixed-listener flag, custom-provider flag, or installed old-name alias.
-This mode supports Codex models only: third-party credentials do not register
-provider models, prepare a third-party catalog, or enable third-party requests.
-
-Launch options are parsed and their launch scope is validated before activating
-the invocation's modules. The resulting configuration is invocation-local and unchanged by debug
-initialization. Authenticated frontend workers and offline inspection compose
-their services independently of live-session startup.
-
-`mekugi [flags] [Codex arguments...]` launches standalone third-party mode using
-the same Codex execution engine, without Codex authentication or login. It offers
-only authenticated Grok and configured OpenCode Go/Zen routes, retaining their
-`grok:` and `opencode*:` model namespaces. No usable third-party credentials
-causes startup failure before the main Codex process launches. API-key presence
-enables a provider; key validity is established by its inference response. Grok
-OAuth credentials are validated/refreshed through their existing owner.
-Explicit model selection wins; otherwise authenticated Grok supplies the default
-under [REQ-GROK-001](grok.md), then the first available Go model, then Zen.
-`mekugi grok` is the dedicated, unprefixed Grok-only variant.
-
-Invocation-only provider overrides select the listener, Responses transport,
-and Codex-managed authentication against the fixed ChatGPT upstream for
-`mekugi codex`. OpenAI launches retain Codex's built-in provider through an
-invocation-local base URL override, preserving native tool availability, reasoning-effort
-updates, and internal request metadata. Stock WebSockets and startup prewarming remain
-available. Codex owns retry decisions and fallback to HTTP/SSE. Third-party-only
-launches use `requires_openai_auth=false` and
-provider-owned credentials; OpenAI requests are rejected locally in these modes. Provider
-selection in config and profiles is overridden without modifying configuration.
-Provider-selection arguments are rejected. Mekugi flags precede `codex`; subsequent
-noninteractive arguments remain intact, including subcommands and `--` delimiters.
-Interactive terminal arguments follow the native client mapping below.
-
-The Mekugi flag `--deduplicate-output` defaults to `true`. Use
-`--deduplicate-output=false` to disable the
-[model-visible duplicate-output projection](execution.md#duplicate-output-projection)
-without changing host results, retained evidence, or the UI. It has no effect in
-passthrough mode.
-
-For interactive sessions, after `codex`, `--low`, `--medium`, `--high`, `--xhigh`, `--max`, and `--ultra`
-expand to invocation-local `model_reasoning_effort` config overrides. They may
-also follow `headless`. Option values and arguments after `--` remain literal;
-the selected model determines which reasoning efforts it supports.
-The wrapper also enforces `include_collaboration_mode_instructions=false` in the
-final command's invocation-only config layer, after user overrides and before `--`.
-This disables Codex's collaboration-mode instruction injection without editing config files.
-Wrapped sessions disable Codex goals through invocation-only feature and config
-overrides. The host does not expose `/goal`, goal tools or goal instructions.
+[Invocation launch](../../apps/mekugi/internal/launch/SPEC.md) owns command
+selection, private startup, host handoff, arguments, signals and shutdown.
+The [native UI contract](native_ui.md) owns interactive presentation.
 
 OpenAI auxiliary requests for standalone search, native image generation/editing,
 and history-note operations use authenticated endpoint forwarding. The router
@@ -72,27 +22,8 @@ choices without changing the model or other access programs. Grok and OpenCode
 requests are unchanged. This request-body selection cannot prevent an upstream
 eligibility-service failure during a WebSocket upgrade before the body is sent.
 
-In standalone or dedicated Grok mode, or with configured OpenCode providers, the wrapper pins the model catalog through Codex's
-`model_catalog_json` setting before launching the interactive or execution command.
-The session catalog and its cleanup follow [REQ-THIRD-PARTY-001](third_party.md).
-Other invocations do not run the catalog command or pin model metadata.
-
-Noninteractive and redirected Codex commands inherit cwd, stdin, stdout, stderr,
-and the environment, augmented only
-with `MEKUGI_BASE_URL` and the private compiled-frontend directory at
-the front of PATH. Before child launch, terminal Ctrl-C cancels startup and prevents
-launch, including signals already consumed by the startup receiver. After handoff,
-terminal Ctrl-C remains Codex-owned without double forwarding. SIGTERM to the wrapper
-terminates Codex and the router with bounded cleanup. Codex exit, launch failure,
-and cancellation clean up owned runtime resources. Ordinary exit status is
-preserved; signal exits use `128 + signal`. Unexpected router termination also
-terminates Codex rather than leaving a dead provider connection.
-
-Normal launches do not announce a browser URL. The local metrics API and `/session`
-native dialog expose invocation-owned metrics, which expire on shutdown.
-
-Interactive launches use Mekugi-owned terminal splits, including a
-[live diff pane](changes.md#live-terminal-view), under its session and lifecycle contract.
+The local metrics API and `/session` dialog expose invocation-owned metrics,
+which expire on shutdown.
 
 Detailed operational logging requires `--debug`. The composed
 [diagnostics module](../../modules/diagnostics/SPEC.md) retains private failure
@@ -307,18 +238,12 @@ launching the host. It fails on interactive host requests, failed or interrupted
 Main turns, lost host connections, output failure or cancellation. Codex retains
 execution authority. This frontend is not available in passthrough mode.
 
-## Acceptance
+## Request acceptance
 
-1. Each invocation owns a bound random loopback port without close-and-rebind races.
-2. Codex can reach it immediately on launch; no config or persistent service is changed.
-3. Startup failure does not launch Codex; all exits release owned resources.
-4. Codex arguments, exit status, terminal input, stdout, and stderr remain intact.
-5. Simultaneous frontend sessions have disjoint frontends and independent cleanup.
-6. Without `--debug`, no operational logs or session log files are created or mixed with Codex output. Private replay
-   correctness records survive shutdown and are shared safely by simultaneous wrappers.
-7. Invalid native editing/execution catalogs and forced incompatible tool choices
-   fail closed with actionable HTTP 400 errors, not retryable upstream 502 errors.
-8. Fixed listener and provider flags, bare serving, and the former wrap command reject.
+Invalid native editing/execution catalogs and forced incompatible tool choices
+fail closed with actionable HTTP 400 errors rather than retryable upstream 502
+errors. Detailed operational logging remains opt-in; private replay correctness
+records survive shutdown and remain safe across simultaneous wrappers.
 
 ### Responses transport
 

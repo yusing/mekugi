@@ -1,4 +1,5 @@
-package main
+// Source: apps/mekugi/cmd/mekugi/wrap.go:1:609@[ebde9ad5]
+package launch
 
 import (
 	"context"
@@ -147,6 +148,10 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()
+	stopFailedStartup := func(err error) (int, error) {
+		cancel()
+		return 1, errors.Join(err, <-routerDone)
+	}
 	var session router.Session
 	select {
 	case err := <-routerDone:
@@ -156,8 +161,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if session.ThirdPartyOnly {
 		catalogDirectory, catalogPath, err := prepareProviderCatalog(ctx, executable, args, session)
 		if err != nil {
-			cancel()
-			return 1, errors.Join(err, <-routerDone)
+			return stopFailedStartup(err)
 		}
 		defer func() {
 			if err := os.RemoveAll(catalogDirectory); err != nil {
@@ -172,8 +176,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		args = slices.Insert(slices.Clone(args), index, "-c", fmt.Sprintf("model_catalog_json=%q", catalogPath))
 		args, err = thirdPartyDefaultArgs(args, session)
 		if err != nil {
-			cancel()
-			return 1, errors.Join(err, <-routerDone)
+			return stopFailedStartup(err)
 		}
 	}
 
@@ -193,8 +196,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	}
 	guard := len(guards) != 0
 	if guard && session.FrontendDirectory == "" {
-		cancel()
-		return 1, errors.Join(errors.New("Shell guard requires Mekugi mode; use --shell-guard=false to disable it"), <-routerDone)
+		return stopFailedStartup(errors.New("Shell guard requires Mekugi mode; use --shell-guard=false to disable it"))
 	}
 	if session.FrontendDirectory != "" {
 		helper := ""
@@ -207,8 +209,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 		cmd.Env, err = frontendShellEnvironment(cmd.Env, session.FrontendDirectory, helper, guards, reportEndpoints)
 		if err != nil {
-			cancel()
-			return 1, errors.Join(err, <-routerDone)
+			return stopFailedStartup(err)
 		}
 		if helper != "" {
 			guardDirectory := ""
@@ -230,8 +231,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			if guard {
 				prior, disabled, discoverErr := shellhook.Discover(ctx, cmd)
 				if discoverErr != nil {
-					cancel()
-					return 1, errors.Join(fmt.Errorf("prepare shell guard: %w", discoverErr), <-routerDone)
+					return stopFailedStartup(fmt.Errorf("prepare shell guard: %w", discoverErr))
 				}
 				var config, state string
 				config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, prior, disabled)
@@ -246,8 +246,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 			}
 			if err != nil {
 				if guard {
-					cancel()
-					return 1, errors.Join(err, <-routerDone)
+					return stopFailedStartup(err)
 				}
 				fmt.Fprintln(os.Stderr, "mekugi: sh segment tracking unavailable:", err)
 			} else if guard {
@@ -285,8 +284,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		}
 	}
 	if err != nil {
-		cancel()
-		return 1, errors.Join(fmt.Errorf("launch codex: %w", err), <-routerDone)
+		return stopFailedStartup(fmt.Errorf("launch codex: %w", err))
 	}
 	codexDone := make(chan error, 1)
 	go func() { codexDone <- waitCodex() }()

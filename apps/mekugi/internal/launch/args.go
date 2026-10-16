@@ -1,4 +1,5 @@
-package main
+// Source: apps/mekugi/cmd/mekugi/args.go:1:22@[ebde9ad5]
+package launch
 
 import "strings"
 

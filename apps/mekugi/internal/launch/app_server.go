@@ -1,4 +1,5 @@
-package main
+// Source: apps/mekugi/cmd/mekugi/app_server.go:1:102@[ebde9ad5]
+package launch
 
 import (
 	"fmt"

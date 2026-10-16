@@ -1,4 +1,5 @@
-package main
+// Source: apps/mekugi/cmd/mekugi/third_party.go:1:56@[ebde9ad5]
+package launch
 
 import (
 	"errors"

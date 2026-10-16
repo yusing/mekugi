@@ -1,4 +1,5 @@
-package main
+// Source: apps/mekugi/cmd/mekugi/shell_hook.go:1:53@[ebde9ad5]
+package launch
 
 import (
 	json "encoding/json/v2"

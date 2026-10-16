@@ -182,7 +182,7 @@ persist this provenance for restart; existing retained provenance is not rewritt
 Root and child agents share their inherited namespace; forks and side threads
 receive isolated visible records, and resume reads retained evidence after a
 fresh router process. Allocation survives restart and never reuses another
-workspace's IDs. Retention belongs to [REQ-ROUTER-001](router.md); replay never
+workspace's IDs. Retention belongs to [session history](../../modules/sessionhistory/SPEC.md); replay never
 repeats a host edit.
 
 ### Bounded reads, revert, and apply

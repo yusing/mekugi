@@ -1,4 +1,5 @@
-package main
+// Source: apps/mekugi/cmd/mekugi/catalog.go:1:153@[ebde9ad5]
+package launch
 
 import (
 	"context"

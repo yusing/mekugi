@@ -1,4 +1,4 @@
-package main
+package launch
 
 import (
 	"io"
@@ -42,7 +42,7 @@ func TestWorkerArgumentsCannotSelectMCPBridge(t *testing.T) {
 			previousArgs, previousStderr := os.Args, os.Stderr
 			os.Args, os.Stderr = append([]string{tc.invoked}, tc.args...), stderr
 			t.Cleanup(func() { os.Args, os.Stderr = previousArgs, previousStderr; stderr.Close() })
-			code := run()
+			code := Run()
 			if _, err := stderr.Seek(0, io.SeekStart); err != nil {
 				t.Fatal(err)
 			}

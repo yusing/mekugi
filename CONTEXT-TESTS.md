@@ -55,17 +55,17 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Command-segment report transport and retained reports | `./modules/commandsegments/...`, plus router `ExecTrack`, `CommandSegments`, `StorageInspection`, timing and restored-activity consumers |
 | Composed approval policy and grants | `./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/binding ./apps/mekugi/internal/composition`, plus launcher `SelectedGuards` and router `ShellApprovalComposition`, `NativeApprovalGuard`, `Sudo` consumers |
 | Shared shell instrumentation | `./libraries/shellinstrumentation/... ./libraries/commandanalysis/...`, plus router `ExecTrack`, `VCSGuard`, `Sudo` and guard-display consumers |
-| Shell/source execution-scope classification | `./libraries/commandanalysis/... ./libraries/sourceanalysis/sourceparse ./internal/execscope`, plus router observation, native trace, preview, and display tests |
+| Shell/source execution-scope classification | `./libraries/commandanalysis/... ./libraries/sourceanalysis/sourceparse`, plus router observation, native trace, preview, and display tests |
 | OpenAI transport, pool lifetime and Codex request shaping | `./providers/openai/... ./libraries/httptransport/... ./backends/codex/responses`, plus router `Provider`, `WebSocket`, `Models`, `CodexAuxiliary`, timeout/cancellation and capture consumers |
 | Third-party credentials, metadata and inference transport | `./providers/grok/... ./providers/opencode/... ./libraries/httptransport`, plus router and launcher `Grok`, `OpenCode`, `ThirdParty`, provider-error and accounting consumers |
 | Provider request envelopes, catalogs, encoding, connection history, streams, delivery and response-body bridge | `./backends/codex/responses ./libraries/modelprotocol/...`, plus router request/history, instruction/stock-tool projection, Grok/OpenCode, cancellation, failed-terminal and capture consumers |
 | Optional session naming | `./modules/sessionnaming/...`, plus router `SessionTitle`, `NativeSessionTitle`, `TerminalTitle`, and submitted-assignment consumers; installed persistence/resume cases in `app_server_session_title_codex_e2e_test.go` |
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
 | Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |
-| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
+| Shell-hook helper, registration, and effective configuration | `./apps/mekugi/internal/launch ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
 | Shared diff decoration and terminal primitives | `./libraries/diffrender/... ./libraries/terminalui/...`, plus affected native and replay consumers |
 | Shared display-text sanitization | `./libraries/textsanitize`, plus diff, Markdown, activity, native dialog and source-copy consumers |
-| Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
+| Live diff UI or streaming | `./modules/livepreview/... ./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./modules/outputdeduplication/...` |
 | Duplicate-output projection and submitted attachment codec | `./modules/outputdeduplication/... ./libraries/modelprotocol/attachments ./backends/codex/binding`, plus router duplicate-output, attachment, continuation, and provider-prefix consumers |
@@ -81,7 +81,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Retained paging | `./modules/outputrecovery/...`, then router mread/storage/fork integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
 | Bounded commands | `./modules/boundedcommand/...`, plus `./internal/router -run MRun` for authenticated delivery and process lifecycle |
-| Router process entry point | `./apps/mekugi/cmd/mekugi` |
+| Invocation launch and process dispatch | `./apps/mekugi/internal/launch`, plus executable build |
 | Native frontend host acceptance | `-tags codex_e2e ./internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags codex_e2e ./internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `@workspace` |
@@ -144,7 +144,7 @@ skills and file pickers, Main's composer, resume
 sessions, the Agents roster, and responsive Activity layouts. Activity blocks and
 output dialogs live in `modules/activity/terminalview/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
-Launcher debug handoffs live in `apps/mekugi/cmd/mekugi/testdata/snapshots/`.
+Launcher debug handoffs live in `apps/mekugi/internal/launch/testdata/snapshots/`.
 Shared Markdown, links and Mermaid fixtures live in `libraries/terminalui/testdata/snapshots/`.
 Shared source syntax styles live in `libraries/diffrender/testdata/snapshots/`;
 composed Diff rows remain in `internal/livediff/testdata/snapshots/`.

@@ -138,7 +138,8 @@ mekugi exec "Explain this repository"
 Interactive launches open the [UI](#ui); noninteractive commands retain Codex's
 arguments/output/exit status. Ctrl-C cancels startup; exit prints resume/replay commands.
 Mekugi mode needs JavaScript `exec`. There is no daemon, fixed/custom endpoint, or `--oss`.
-See [launch and transport limits](doc/spec/router.md); invocation overrides leave config unchanged.
+See [launch limits](apps/mekugi/internal/launch/SPEC.md) and
+[request integration](doc/spec/router.md); invocation overrides leave config unchanged.
 
 ### Grok models
 
