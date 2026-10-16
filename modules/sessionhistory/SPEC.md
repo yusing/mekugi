@@ -52,6 +52,11 @@ Record owners declare separate budgets, aggregate limits, and records requiring
 semantic retirement instead of deletion. Admission requests background cleanup;
 it never reclaims data while publishing an operation.
 
+Independent preference files use a separate single-file publication operation,
+without store locks, catalogs, revisions or retention enrollment. It preserves
+atomic last-completed replacement and the existing directory-link behavior.
+Their owner decides paths, encoding and when publication is needed.
+
 ## Lifecycle
 
 The invocation composes record kinds before consumers open stores. Opening a

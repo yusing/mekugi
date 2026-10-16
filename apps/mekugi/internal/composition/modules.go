@@ -3,6 +3,8 @@ package composition
 import (
 	"context"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences"
+
 	"github.com/yusing/mekugi/modules/diagnostics"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -33,6 +35,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	transport := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
+	prefs := c.Add(sessionpreferences.Module, func() sessionpreferences.Deps { return sessionpreferences.Deps{History: history.Value()} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
 	changes := c.Add(changehistory.Module, func() changehistory.Deps { return changehistory.Deps{History: history.Value()} })
 	segments := c.Add(commandsegments.Module, func() commandsegments.Deps { return commandsegments.Deps{History: history.Value(), Live: liveReports} })
@@ -62,6 +65,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	runtime.Usage = usage.Value()
 	runtime.Changes = changes.Value()
 	runtime.History = history.Value()
+	runtime.Preferences = prefs.Value()
 	runtime.Recovery = recovery.Value()
 	runtime.Segments = segments.Value()
 	return runtime, nil

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 
 	"github.com/charmbracelet/x/ansi"
@@ -160,7 +162,7 @@ type appServerUI struct {
 	dirty                     bool
 	keybindings               bool
 	resumeNotice              string // Settings fallback survives the old session's presentation reset.
-	panes                     *nativePanePersistence
+	panes                     *nativePreferences
 	waitRelease               func()
 	restoring                 *appServerActivityRestore
 	childHistory              map[string]*appServerChildHistory
@@ -170,14 +172,14 @@ type appServerUI struct {
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(service *history.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
+func StartAppServerUI(service *history.Service, prefs *preferences.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors()
-	return startAppServerUI(service, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
+	return startAppServerUI(service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
+func startAppServerUI(service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -228,7 +230,9 @@ func startAppServerUI(service *history.Service, segments *reports.Service, ctx c
 	u.resumeConfig = appServerResumeConfig(cmd.Args, resumeArgv)
 	u.notifications = &nativeNotifications{out: stdout, focused: true}
 	u.resumeCwd = resumeCwd
-	u.panes = new(nativePanePersistence)
+	if prefs != nil {
+		u.panes = &nativePreferences{service: prefs}
+	}
 	if err := u.request("initialize", nil); err != nil {
 		c.Close()
 		<-c.Done
@@ -799,9 +803,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 						// Codex checkpoints resume defaults before this response.
 						// Do not let that transient effort replace saved null intent
 						// on a fresh-process retry if the corrective update fails.
-						if u.panes != nil && u.resumeEvidence.Model != "" {
-							u.panes.resumeObserved = u.now()
-							u.panes.resumeEvidence = u.resumeEvidence
+						if u.panes != nil && u.panes.attachment != nil && u.resumeEvidence.Model != "" {
+							u.panes.attachment.Recover(u.resumeEvidence, u.now())
 							u.paneError(u.panes.save(u.shell, u.now(), true))
 						}
 						settings["reasoning_effort"] = nil

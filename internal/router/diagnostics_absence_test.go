@@ -84,7 +84,7 @@ func runDiagnosticsAbsentSession(t *testing.T, ctx context.Context, args []strin
 		t.Fatal(err)
 	}
 	defer usage.Close()
-	return RunSession(history, testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage,
+	return RunSession(history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage,
 		new(evidence.Service), new(transportcapture.Service), nil, ctx,
 		testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, NewCriticalErrors(), ready,
 		func(paths []string) { t.Errorf("absent diagnostics published artifacts: %v", paths) })

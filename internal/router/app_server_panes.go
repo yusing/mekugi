@@ -1,225 +1,128 @@
 package router
 
 import (
-	"crypto/sha256"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/persistence"
-	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
-// Session preferences are separate from correctness/replay records. Applied
-// settings are host-confirmed defaults, never execution authorization or live work.
+// The terminal owns its schema; the preference module keeps it opaque.
 type nativePaneState struct {
-	Version          int                   `json:"version"`
-	Focus            int                   `json:"focus"`
-	Split            int                   `json:"split"`
-	DiffOpen         bool                  `json:"diffOpen"`
-	InterruptLocked  bool                  `json:"interruptLocked,omitzero"`
-	NavigatorColumns int                   `json:"navigatorColumns"`
-	Settings         nativeAppliedSettings `json:"settings,omitzero"`
-	ResumeObserved   time.Time             `json:"resumeObserved,omitzero"`
-	ResumeEvidence   nativeResumeEvidence  `json:"resumeEvidence,omitzero"`
-}
-
-// Pre-resume evidence is already authoritative history, not confirmation of
-// the corrective update. TierKnown preserves absence in older turn contexts.
-type nativeResumeEvidence struct {
-	Model     string `json:"model"`
-	Effort    string `json:"effort"`
-	Tier      string `json:"tier"`
-	TierKnown bool   `json:"tierKnown"`
-}
-
-func (s nativeResumeEvidence) config() map[string]any {
-	config := (nativeAppliedSettings{Model: s.Model, Effort: s.Effort, Tier: s.Tier}).config()
-	if !s.TierKnown {
-		delete(config, "service_tier")
-	}
-	return config
-}
-
-// Model identifies a complete snapshot. Empty effort/tier explicitly select the
-// host default, rather than meaning that a saved value is unknown.
-type nativeAppliedSettings struct {
-	Model    string    `json:"model"`
-	Effort   string    `json:"effort"`
-	Tier     string    `json:"tier"`
-	Observed time.Time `json:"observed"`
-}
-
-func (s nativeAppliedSettings) config() map[string]any {
-	if s.Model == "" {
-		return nil
-	}
-	config := map[string]any{"model": s.Model, "model_reasoning_effort": nil, "service_tier": nil}
-	if s.Effort != "" {
-		config["model_reasoning_effort"] = s.Effort
-	}
-	if s.Tier != "" {
-		config["service_tier"] = s.Tier
-	}
-	return config
+	Focus            int  `json:"focus"`
+	Split            int  `json:"split"`
+	DiffOpen         bool `json:"diffOpen"`
+	InterruptLocked  bool `json:"interruptLocked,omitzero"`
+	NavigatorColumns int  `json:"navigatorColumns"`
 }
 
 func (u *terminalUI) paneState() nativePaneState {
-	state := nativePaneState{Version: 1, Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, NavigatorColumns: u.diff.navigation.Columns}
+	state := nativePaneState{Focus: u.focus, Split: u.split, DiffOpen: u.diffOpen, NavigatorColumns: u.diff.navigation.Columns}
 	if u.main != nil {
 		state.InterruptLocked = u.main.interruptLocked
 	}
 	return state
 }
 
-type nativePanePersistence struct {
-	path              string
-	workspace, thread string
-	settings          nativeAppliedSettings
-	resumeObserved    time.Time
-	resumeEvidence    nativeResumeEvidence
-	last              nativePaneState
-	pending           bool
-	due               time.Time
+type nativePreferences struct {
+	service    *preferences.Service
+	attachment *preferences.Attachment
+	layout     nativePaneState
+	encoded    jsontext.Value
 }
 
-func (p *nativePanePersistence) open(u *terminalUI, workspace, thread string, resume bool) error {
-	p.path, p.workspace, p.thread = "", workspace, thread
-	p.settings, p.pending = nativeAppliedSettings{}, false
-	p.resumeObserved = time.Time{}
-	p.resumeEvidence = nativeResumeEvidence{}
-	path, err := nativePaneStatePath(workspace, thread)
+// Cache only terminal encoding, so unchanged frames do not marshal JSON.
+func (p *nativePreferences) presentation(u *terminalUI) (jsontext.Value, error) {
+	state := u.paneState()
+	if p.encoded == nil || state != p.layout {
+		encoded, err := json.Marshal(&state)
+		if err != nil {
+			return nil, err
+		}
+		p.layout, p.encoded = state, encoded
+	}
+	return p.encoded, nil
+}
+
+type nativePreferenceSnapshot struct {
+	preferences.Snapshot
+	layout nativePaneState
+}
+
+func (p *nativePreferences) read(workspace, thread string) (nativePreferenceSnapshot, error) {
+	state, err := p.service.Read(preferences.Scope{Workspace: workspace, Thread: thread}, "terminal")
+	if err != nil {
+		return nativePreferenceSnapshot{}, err
+	}
+	result := nativePreferenceSnapshot{Snapshot: state}
+	if state.Presentation == nil {
+		return result, nil
+	}
+	if err := json.Unmarshal(state.Presentation, &result.layout); err != nil {
+		return nativePreferenceSnapshot{}, err
+	}
+	layout := result.layout
+	if layout.Focus < 0 || layout.Focus > 3 || layout.Split < 0 || layout.Split > 10000 || layout.NavigatorColumns < 0 || layout.NavigatorColumns > 10000 || layout.Focus == 1 && !layout.DiffOpen || layout.Focus == 2 && layout.DiffOpen {
+		return nativePreferenceSnapshot{}, errors.New("invalid or unsupported pane state")
+	}
+	return result, nil
+}
+
+func (p *nativePreferences) open(u *terminalUI, workspace, thread string, resume bool) error {
+	p.attachment = nil
+	initial, err := p.presentation(u)
 	if err != nil {
 		return err
 	}
-	p.path = path
-	defer func() {
-		p.last = u.paneState()
-		p.last.Settings = p.settings
-		p.last.ResumeObserved = p.resumeObserved
-		p.last.ResumeEvidence = p.resumeEvidence
-	}()
-	if !resume {
-		return nil
+	p.attachment, err = p.service.Attach(preferences.Scope{Workspace: workspace, Thread: thread}, "terminal", initial)
+	if err != nil || !resume {
+		return err
 	}
 	state, err := p.read(workspace, thread)
-	if err != nil {
+	if err != nil || state.Presentation == nil {
 		return err
 	}
-	if state.Version == 0 {
-		return nil
-	}
-	p.settings = state.Settings
-	p.resumeObserved = state.ResumeObserved
-	p.resumeEvidence = state.ResumeEvidence
-	u.focus, u.split, u.diffOpen = state.Focus, state.Split, state.DiffOpen
+	layout := state.layout
+	u.focus, u.split, u.diffOpen = layout.Focus, layout.Split, layout.DiffOpen
 	if u.focus == 2 || u.focus == 1 && !u.diffOpen {
 		u.focus = 0
 	}
-	u.main.interruptLocked = state.InterruptLocked
-	u.diff.navigation.Columns = state.NavigatorColumns
+	u.main.interruptLocked = layout.InterruptLocked
+	u.diff.navigation.Columns = layout.NavigatorColumns
+	state.Presentation, err = p.presentation(u)
+	if err != nil {
+		return err
+	}
+	p.attachment.Restore(state.Snapshot)
 	return nil
 }
 
-func nativePaneStatePath(workspace, thread string) (string, error) {
-	if !filepath.IsAbs(workspace) || thread == "" {
-		return "", errors.New("session preferences require a host workspace and thread")
-	}
-	base, err := defaultMekugiReplayDirectory()
-	if err != nil {
-		return "", err
-	}
-	key := sha256.Sum256([]byte(workspace + "\x00" + thread))
-	return filepath.Join(filepath.Dir(base), "ui", fmt.Sprintf("panes-%x.json", key)), nil
-}
-
-// Read another namespace without moving the live owner's write target.
-func (p *nativePanePersistence) read(workspace, thread string) (nativePaneState, error) {
-	path, err := nativePaneStatePath(workspace, thread)
-	if err != nil {
-		return nativePaneState{}, err
-	}
-	f, err := sourceparse.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nativePaneState{}, nil
-	}
-	if err != nil {
-		return nativePaneState{}, err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nativePaneState{}, err
-	}
-	if !info.Mode().IsRegular() {
-		return nativePaneState{}, errors.New("pane state must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(f, 4097))
-	if err != nil {
-		return nativePaneState{}, err
-	}
-	if len(data) > 4096 {
-		return nativePaneState{}, errors.New("pane state exceeds size limit")
-	}
-	var state nativePaneState
-	if err := json.Unmarshal(data, &state); err != nil {
-		return nativePaneState{}, err
-	}
-	if state.Version != 1 || state.Focus < 0 || state.Focus > 3 || state.Split < 0 || state.Split > 10000 || state.NavigatorColumns < 0 || state.NavigatorColumns > 10000 || state.Focus == 1 && !state.DiffOpen || state.Focus == 2 && state.DiffOpen {
-		return nativePaneState{}, errors.New("invalid or unsupported pane state")
-	}
-	if state.Settings != (nativeAppliedSettings{}) && (state.Settings.Model == "" || state.Settings.Observed.IsZero()) {
-		return nativePaneState{}, errors.New("incomplete applied settings snapshot")
-	}
-	return state, nil
-}
-
-// Coalesce dragging and shortcut bursts, then flush a pending change on exit.
-// Failed saves are reported once, not retried on every animation frame.
-func (p *nativePanePersistence) save(u *terminalUI, now time.Time, flush bool) error {
-	if p == nil || p.path == "" {
+func (p *nativePreferences) save(u *terminalUI, now time.Time, flush bool) error {
+	if p == nil || p.attachment == nil {
 		return nil
 	}
-	state := u.paneState()
-	state.Settings = p.settings
-	state.ResumeObserved = p.resumeObserved
-	state.ResumeEvidence = p.resumeEvidence
-	if state != p.last {
-		p.last, p.pending, p.due = state, true, now.Add(250*time.Millisecond)
-	}
-	if !p.pending || !flush && now.Before(p.due) {
-		return nil
-	}
-	p.pending = false
-	data, err := json.Marshal(state)
+	state, err := p.presentation(u)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
-		return err
-	}
-	return persistence.AtomicFile(p.path, "panes-pending-", data, nil)
+	return p.attachment.Save(state, now, flush)
 }
 
 // Only authoritative start/resume results and settings notifications reach here.
-// Flush applied settings immediately; dragging still uses the existing debounce.
 func (u *appServerUI) retainAppliedSettings() {
-	if u.panes == nil || u.panes.path == "" || u.model == "" || u.settings.restoreEffort {
+	if u.panes == nil || u.panes.attachment == nil || u.model == "" || u.settings.restoreEffort {
 		return
 	}
-	if u.panes.workspace != u.session.cwd || u.panes.thread != u.thread {
+	scope := preferences.Scope{Workspace: u.session.cwd, Thread: u.thread}
+	if u.panes.attachment.Scope() != scope {
 		if err := u.panes.open(u.shell, u.session.cwd, u.thread, false); err != nil {
 			u.paneError(err)
 			return
 		}
 	}
-	u.panes.settings = nativeAppliedSettings{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: u.now()}
-	u.panes.resumeObserved = time.Time{}
-	u.panes.resumeEvidence = nativeResumeEvidence{}
+	u.panes.attachment.Apply(preferences.Applied{Model: u.model, Effort: u.reasoningEffort, Tier: u.serviceTier, Observed: u.now()})
 	u.paneError(u.panes.save(u.shell, u.now(), true))
 }
 

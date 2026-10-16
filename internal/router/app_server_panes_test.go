@@ -2,11 +2,16 @@ package router
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -14,7 +19,7 @@ import (
 func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
-	p := new(nativePanePersistence)
+	p := testPanePreferences()
 	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
@@ -25,14 +30,14 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	if err := p.save(u.shell, time.Now(), true); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(p.path)
+	data, err := os.ReadFile(testPanePath(t, p))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Contains(data, []byte(u.draft)) || bytes.Contains(data, []byte("offset")) {
 		t.Fatalf("saved non-layout state: %s", data)
 	}
-	info, err := os.Stat(p.path)
+	info, err := os.Stat(testPanePath(t, p))
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("state permissions: %v %v", info, err)
 	}
@@ -47,7 +52,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 		{"/workspace", "thread", false, false},
 	} {
 		restored := newAppServerSessionTestUI(t, tc.workspace)
-		q := new(nativePanePersistence)
+		q := testPanePreferences()
 		if err := q.open(restored.shell, tc.workspace, tc.thread, tc.resume); err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +94,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
-	p := new(nativePanePersistence)
+	p := testPanePreferences()
 	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +103,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	if err := p.save(u.shell, now, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(p.path); !os.IsNotExist(err) {
+	if _, err := os.Stat(testPanePath(t, p)); !os.IsNotExist(err) {
 		t.Fatalf("saved before debounce: %v", err)
 	}
 	u.shell.split = 63
@@ -108,20 +113,20 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 	if err := p.save(u.shell, now.Add(300*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(p.path); !os.IsNotExist(err) {
+	if _, err := os.Stat(testPanePath(t, p)); !os.IsNotExist(err) {
 		t.Fatalf("did not coalesce drag: %v", err)
 	}
 	if err := p.save(u.shell, now.Add(451*time.Millisecond), false); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.Stat(p.path)
+	before, err := os.Stat(testPanePath(t, p))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := p.save(u.shell, now.Add(time.Second), false); err != nil {
 		t.Fatal(err)
 	}
-	after, err := os.Stat(p.path)
+	after, err := os.Stat(testPanePath(t, p))
 	if err != nil || !os.SameFile(before, after) {
 		t.Fatal("unchanged state rewritten")
 	}
@@ -130,7 +135,7 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := newAppServerSessionTestUI(t, "/workspace")
-	if err := new(nativePanePersistence).open(restored.shell, "/workspace", "thread", true); err != nil {
+	if err := testPanePreferences().open(restored.shell, "/workspace", "thread", true); err != nil {
 		t.Fatal(err)
 	}
 	if restored.shell.focus != 3 || restored.shell.split != 63 {
@@ -141,15 +146,15 @@ func TestNativePaneStateDebounceAndExit(t *testing.T) {
 func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := newAppServerSessionTestUI(t, "/workspace")
-	p := new(nativePanePersistence)
+	p := testPanePreferences()
 	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(p.path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(testPanePath(t, p)), 0700); err != nil {
 		t.Fatal(err)
 	}
 	for _, body := range []string{"{", `{"version":2}`, `{"version":1,"focus":99}`, `{"version":1,"focus":1,"diffOpen":false}`, strings.Repeat("x", 4097)} {
-		if err := os.WriteFile(p.path, []byte(body), 0600); err != nil {
+		if err := os.WriteFile(testPanePath(t, p), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
 		err := p.open(u.shell, "/workspace", "thread", true)
@@ -165,7 +170,10 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	if err := os.WriteFile(blocked, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	p.path = filepath.Join(blocked, "pane.json")
+	t.Setenv("XDG_STATE_HOME", blocked)
+	if err := p.open(u.shell, "/workspace", "thread", false); err != nil {
+		t.Fatal(err)
+	}
 	u.shell.split = 60
 	if err := p.save(u.shell, time.Now(), true); err == nil {
 		t.Fatal("lost persistence failure")
@@ -173,4 +181,33 @@ func TestNativePaneStateInvalidAndUnavailable(t *testing.T) {
 	if err := p.save(u.shell, time.Now().Add(time.Second), false); err != nil {
 		t.Fatal("failed save retried every frame")
 	}
+}
+
+func testPreferences() *preferences.Service {
+	service, err := preferences.New(testHistory())
+	if err != nil {
+		panic(err)
+	}
+	return service
+}
+
+func testPanePreferences() *nativePreferences { return &nativePreferences{service: testPreferences()} }
+
+func nativePaneStatePath(workspace, thread string) (string, error) {
+	base, err := history.StateDirectory()
+	if err != nil {
+		return "", err
+	}
+	key := sha256.Sum256([]byte(workspace + "\x00" + thread))
+	return filepath.Join(base, "ui", fmt.Sprintf("panes-%x.json", key)), nil
+}
+
+func testPanePath(t *testing.T, p *nativePreferences) string {
+	t.Helper()
+	scope := p.attachment.Scope()
+	path, err := nativePaneStatePath(scope.Workspace, scope.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

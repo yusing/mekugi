@@ -14,7 +14,7 @@ import (
 func TestNativePaneStateRejectsFIFOWithoutWaiting(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	ui := newAppServerSessionTestUI(t, "/workspace")
-	preferences := new(nativePanePersistence)
+	preferences := testPanePreferences()
 	path, err := nativePaneStatePath("/workspace", "thread")
 	if err != nil {
 		t.Fatal(err)

@@ -14,6 +14,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Shared source parsing, literal decoding, and nonblocking source-file opens | `libraries/sourceanalysis/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `internal/ui/terminal`; native session integration remains in `internal/router` |
 | Native screen composition, transcript switching, and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
+| Applied settings, recovery evidence and renderer preferences | `modules/sessionpreferences/preferences`; terminal schema and host control adaptation in `internal/router/app_server_panes.go` and `app_server_resume.go` |
 | Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go`; composer error display in `internal/router/composer_notice.go` |
 | Source-aware selection, scrolling, and logical copy | `internal/router/terminal_selection.go`, `internal/router/terminal_source_selection_test.go`, `internal/router/terminal_selection_scroll_test.go` |
 | Native approval dialog, Codex approval responses, and approval-mode thread policy | `internal/router/app_server_approvals.go`; question dock in `internal/router/app_server_questions.go` |
@@ -30,7 +31,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Shared Diff syntax and word highlighting | `internal/livediff/render.go`, `internal/livediff/word_diff.go`, `internal/livediff/theme.go`; source previews in `internal/ui/diffview/preview.go` |
 | Codex app-server stdio RPC and child-process lifecycle | `backends/codex/appserver` |
 | Codex execution-source and result recognition | `backends/codex/binding/execution_source.go` and `execution_evidence.go`; preview, continuation correlation, restored evidence and offline corpus inspection consume these facts without executing them |
-| Host-selected rollout identity, bounded context usage and resume settings | `backends/codex/rollout`; display precedence and Activity projection stay in router consumers |
+| Host-selected rollout identity, bounded context usage and resume settings | `backends/codex/rollout`; resume precedence in `modules/sessionpreferences`; Activity projection stays in router consumers |
 | Supplied rollout decoding, logical call identity and recorded command endpoints | `backends/codex/rollout/inspection.go`; query selection and retained-record joins stay in the inspection consumer, metric pairing in `modules/agentmetrics/evidence` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |
 | Invocation-local Mekugi TOML configuration and service-tier selection | `internal/router/config.go`, `internal/router/service_tier.go`; OpenCode service configuration in `providers/opencode` |

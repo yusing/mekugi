@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/contracts/inference"
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
 // The only activity frontend is the UI.
@@ -29,7 +30,7 @@ type activityPaneEntry struct {
 }
 
 type activityPaneAgent struct {
-	settings     nativeResumeEvidence
+	settings     preferences.Evidence
 	settingsLive bool
 	WorkTimer    activeWorkTimer `json:",omitzero"`
 	Name         string

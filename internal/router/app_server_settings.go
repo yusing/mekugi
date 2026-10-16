@@ -2,6 +2,9 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
+
 	json "encoding/json/v2"
 	"fmt"
 	"maps"
@@ -313,7 +316,7 @@ func (u *appServerUI) settingsMessage(method string, m appserver.Message) (bool,
 	if event.ThreadID != u.thread {
 		if u.session.paths != nil && event.ThreadID != "" {
 			agent := u.session.agent(u.session.path(event.ThreadID))
-			agent.settings = nativeResumeEvidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
+			agent.settings = preferences.Evidence{Model: event.Settings.Model, Effort: event.Settings.Effort, Tier: event.Settings.ServiceTier, TierKnown: true}
 			agent.settingsLive = true
 		}
 		return true, nil

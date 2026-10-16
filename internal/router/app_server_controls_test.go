@@ -82,7 +82,7 @@ func TestNativeControlsPanePersistence(t *testing.T) {
 	u.interruptLocked = true
 	u.shell.diffOpen = true
 	u.shell.focus = 1
-	p := new(nativePanePersistence)
+	p := testPanePreferences()
 	if err := p.open(u.shell, "/workspace", "main", false); err != nil {
 		t.Fatal(err)
 	}
