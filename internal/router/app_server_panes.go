@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 )
 
 // Session preferences are separate from correctness/replay records. Applied
@@ -142,7 +143,7 @@ func (p *nativePanePersistence) read(workspace, thread string) (nativePaneState,
 	if err != nil {
 		return nativePaneState{}, err
 	}
-	f, err := os.Open(path)
+	f, err := sourceparse.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nativePaneState{}, nil
 	}
@@ -150,6 +151,13 @@ func (p *nativePanePersistence) read(workspace, thread string) (nativePaneState,
 		return nativePaneState{}, err
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nativePaneState{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return nativePaneState{}, errors.New("pane state must be a regular file")
+	}
 	data, err := io.ReadAll(io.LimitReader(f, 4097))
 	if err != nil {
 		return nativePaneState{}, err

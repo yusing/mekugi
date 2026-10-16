@@ -207,7 +207,8 @@ are not persisted in this increment.
 
 Preference writes coalesce interaction bursts and flush pending changes on
 orderly exit or cancellation. Files are private, atomically replaced, versioned
-and bounded to 4 KiB on read. Missing state uses defaults. Invalid/unavailable
+and read only from regular files, bounded to 4 KiB. A named pipe cannot wait for
+a writer during preference restoration. Missing state uses defaults. Invalid/unavailable
 state reports a presentation notice but cannot fail resume, submit a prompt or
 change execution. Simultaneous clients for the same workspace/thread use the
 last completed preference write; no process resources are restored.
