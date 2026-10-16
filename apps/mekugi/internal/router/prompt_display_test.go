@@ -121,3 +121,28 @@ func TestNativePromptSelectionVisibility(t *testing.T) {
 		}
 	}
 }
+
+func TestUISnapshotNativePromptsTinyFrame(t *testing.T) {
+	for _, height := range []int{2, 3, 4} {
+		t.Run(fmt.Sprintf("height=%d", height), func(t *testing.T) {
+			u, _ := newAppServerTestUI()
+			u.session.start("main", "")
+			u.Turn = "turn"
+			approvalTestCommand(t, u, "approval", nil)
+			questionTestSync(t, u, "question", false)
+			screen := vt.NewEmulator(80, height)
+			defer screen.Close()
+			if err := u.paint(screen, 80, height); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { u.shell.diffScreen.Close() })
+			if u.composerRect.H < 1 || u.composerRect.Y+u.composerRect.H > u.shell.layout.Main.H {
+				t.Fatalf("prompts displaced the composer: composer=%+v Main=%+v", u.composerRect, u.shell.layout.Main)
+			}
+			if len(u.pendingApprovals()) != 1 || u.questionCount() != 1 {
+				t.Fatal("a short terminal discarded pending prompts")
+			}
+			assertNativeUISnapshot(t, fmt.Sprintf("native-prompts-height-%d", height), strings.Split(screen.String(), "\n"))
+		})
+	}
+}

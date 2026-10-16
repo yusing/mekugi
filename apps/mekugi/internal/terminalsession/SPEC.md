@@ -110,6 +110,9 @@ Rendering an unseen dock beneath a content dialog or frozen selection does not
 make it ready. Other pane focus retains Main's pending count. Hidden prompts leave
 normal interrupt behavior intact.
 
+Prompt docks yield to the composer when the terminal has no space for them.
+Their requests remain pending until they can be shown and answered.
+
 Questions show their position, full scrollable text, options/descriptions and
 Other. Only visible options set column widths; narrow layouts omit descriptions
 before answer text. Up/Down or Ctrl-P/N wrap; digits choose; other text edits Other.

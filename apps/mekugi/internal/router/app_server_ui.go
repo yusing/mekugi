@@ -1361,7 +1361,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if !readOnly {
 		if d := u.approvals.View(); d.Count > 0 {
 			a := u.approvals.handles[u.approvals.Pending[0]]
-			approvalRows = conversationui.Approvals(d, &u.view.Painter.Painter, &a.layout, u.pickerSelection(), u.approvalAgent(d.Approval.Thread), width, max(1, min(height/2, room)))
+			approvalRows = conversationui.Approvals(d, &u.view.Painter.Painter, &a.layout, u.pickerSelection(), u.approvalAgent(d.Approval.Thread), width, min(height/2, room))
 		}
 	}
 	if len(approvalRows) > 0 {
@@ -1369,7 +1369,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		room -= len(approvalRows)
 	}
 	if !readOnly {
-		questionRows = conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, max(1, min(height/2, room)))
+		questionRows = conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, min(height/2, room))
 	}
 	if len(questionRows) > 0 {
 		dock = 0
