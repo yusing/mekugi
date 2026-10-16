@@ -66,8 +66,10 @@ Neither retirement nor a retained reference grants execution authority.
 The frozen call-envelope codec in `libraries/legacycall` validates the complete
 historical record, including mixed feature fields and referenced snapshots.
 Reading one feature's projection does not bypass validation of the other retained
-facts. The codec reads retained files only; publication and retention remain with
-session history, and current feature semantics remain with their owners.
+facts. Only bounded regular files supply retained evidence; atomic publication
+can expose either complete version to a lock-free reader. The codec reads retained
+files only; publication and retention remain with session history, and current
+feature semantics remain with their owners.
 
 [Command segments](../../modules/commandsegments/SPEC.md) owns completed report
 publication and restoration. New reports use their own record kind; historical
