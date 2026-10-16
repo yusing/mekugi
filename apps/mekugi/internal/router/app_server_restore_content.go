@@ -265,6 +265,10 @@ func (u *appServerUI) finishRestoredContent() error {
 		return nil
 	}
 	if u.shell != nil && u.shell.review != nil && u.shell.saved.store != nil && u.shell.diffFailure == "" {
+		if loader := u.shell.reviewLoader; loader != nil && (loader.active || len(loader.pending) > 0 || loader.resync) {
+			u.status = "Restoring saved Diff…"
+			return nil
+		}
 		a := u.shell.review
 		scope := a.Scope()
 		for workspace, threads := range scope.Workspaces {

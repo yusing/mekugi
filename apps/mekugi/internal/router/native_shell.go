@@ -129,19 +129,40 @@ func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 	dock.Update(preview)
 }
 
+// A closed subscription can still have queued scope barriers. Reject them
+// before they can authorize previews or hydrate the replacement attachment.
+// Failed retained loading leaves preview delivery active without requesting
+// another durable barrier after every event.
+func (u *terminalUI) admitReviewEvents(ctx context.Context, sub *reviewSubscription, events ...reviewEvent) bool {
+	if sub.Invalidated() {
+		return false
+	}
+	for _, event := range events {
+		u.applyDiff(ctx, event)
+	}
+	return u.diffFailure != "" || u.reviewLoader == nil || !u.reviewLoader.resync
+}
+
 // applyDiff sends saved changes to the diff pane and live edit cards to
 // the shared dock. All edits use the router preview and capture owners.
 func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 	switch event.Kind {
 	case "preview":
 		preview := event.Preview
+		scope := u.saved.scope
+		if u.reviewLoader != nil {
+			scope = u.reviewScope
+		}
 		if preview == nil ||
-			preview.Workspace != "" && !u.saved.scope.Workspaces[preview.Workspace][preview.Thread] {
+			preview.Workspace != "" && !scope.Workspaces[preview.Workspace][preview.Thread] {
 			return
 		}
 		u.preview(*preview, event.Resync)
 		return
 	case "scope":
+		if event.Scope != nil {
+			u.reviewScope = *event.Scope
+		}
 		if event.Resync && event.Scope != nil {
 			retained := func(preview previewmodel.Preview, complete bool) bool {
 				return event.Scope.Workspaces[preview.Workspace][preview.Thread] &&
@@ -172,6 +193,12 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 	if u.diffFailure != "" {
 		return
 	}
+	if u.reviewLoader != nil {
+		if err := u.reviewLoader.enqueue(event); err != nil {
+			u.diffFailure = err.Error()
+		}
+		return
+	}
 	if changed, err := u.saved.applyEvent(ctx, event); err != nil {
 		u.diffFailure = err.Error()
 	} else if changed {
@@ -183,6 +210,19 @@ func (u *terminalUI) applyDiff(ctx context.Context, event reviewEvent) {
 	}
 	if u.main != nil && (event.Kind == "scope" || event.Kind == "change") {
 		u.main.applyCapturedEdits()
+	}
+}
+
+func (u *terminalUI) loadedReview(result savedReviewResult) {
+	accepted, err := u.reviewLoader.accept(result)
+	if err != nil {
+		u.diffFailure = err.Error()
+	} else if accepted {
+		u.saved = u.reviewLoader.state
+		u.diff.Update(result.files, u.saved.coverage)
+		if u.main != nil {
+			u.main.applyCapturedEdits()
+		}
 	}
 }
 

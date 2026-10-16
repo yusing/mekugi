@@ -7,6 +7,7 @@ import (
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	changeview "github.com/yusing/mekugi/modules/changehistory/terminalview"
+	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	previewview "github.com/yusing/mekugi/modules/livepreview/terminalview"
 
@@ -23,6 +24,8 @@ type terminalUI struct {
 	diffScreen    *terminalsession.DiffScreen
 	diff          *changeview.Pane
 	saved         savedDiff
+	reviewLoader  *savedReviewLoader
+	reviewScope   previewmodel.Scope // Admitted preview authority, independent of retained loading.
 	agents        *activityAdapter
 	main          *appServerUI
 	review        *savedReview

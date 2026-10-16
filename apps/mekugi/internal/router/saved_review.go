@@ -293,6 +293,16 @@ drain:
 
 func (s *reviewSubscription) Events() <-chan reviewEvent { return s.events }
 func (s *reviewSubscription) Gap() <-chan struct{}       { return s.gap }
+func (s *reviewSubscription) Invalidated() bool {
+	select {
+	case <-s.Gap():
+		return true
+	case <-s.PreviewGap():
+		return true
+	default:
+		return false
+	}
+}
 func (s *reviewSubscription) Ready() <-chan struct{} {
 	if s.preview != nil {
 		return s.preview.Ready()

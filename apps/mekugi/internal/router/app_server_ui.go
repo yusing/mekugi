@@ -277,6 +277,8 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 	u.ensureShell()
 	u.shell.faint = faint
 	return func() error {
+		u.shell.reviewLoader = newSavedReviewLoader(ctx, u.shell.saved)
+		defer u.shell.reviewLoader.close()
 		defer func() {
 			if u.waitRelease != nil {
 				u.waitRelease()
@@ -299,11 +301,14 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 				review := u.shell.review
 				review.Preview().Enable()
 				defer func() { review.Preview().Disable() }()
+				u.shell.reviewLoader.awaitResync()
 				sub := review.Subscribe()
 				defer func() { review.Unsubscribe(sub) }()
 				diffEvents, diffGap, diffReady, previewGap := sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
 				autoChanged := review.Changed()
 				resubscribe := func() {
+					review.Unsubscribe(sub)
+					u.shell.reviewLoader.awaitResync()
 					sub = review.Subscribe()
 					diffEvents, diffGap, diffReady, previewGap = sub.Events(), sub.Gap(), sub.Ready(), sub.PreviewGap()
 					u.dirty = true
@@ -323,16 +328,27 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 						resubscribe()
 					case <-previewGap:
 						resubscribe()
+					case result := <-u.shell.reviewLoader.updates():
+						if sub.Invalidated() {
+							resubscribe()
+						}
+						u.shell.loadedReview(result)
+						if err := u.finishRestoredContent(); err != nil {
+							return err
+						}
+						u.dirty = true
 					case <-diffReady:
-						for _, event := range review.TakePreviews(sub) {
-							u.shell.applyDiff(ctx, event)
+						if !u.shell.admitReviewEvents(ctx, sub, review.TakePreviews(sub)...) {
+							resubscribe()
 						}
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
 						u.dirty = true
 					case event := <-diffEvents:
-						u.shell.applyDiff(ctx, event)
+						if !u.shell.admitReviewEvents(ctx, sub, event) {
+							resubscribe()
+						}
 						if err := u.finishRestoredContent(); err != nil {
 							return err
 						}
