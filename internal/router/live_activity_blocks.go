@@ -2,11 +2,11 @@ package router
 
 import (
 	"cmp"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -14,9 +14,6 @@ import (
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
 )
-
-// Receipt summary of tool-managed files: count, sample paths, optional source.
-var liveActivityManagedFiles = regexp.MustCompile(`^\+ (\d+) tool-managed files \((.*)\)(?: · (.+))?$`)
 
 func appServerDuration(item appServerItem) time.Duration {
 	if item.DurationMS == nil {
@@ -214,39 +211,13 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	return []activityui.Block{{Kind: "text", Body: source}}
 }
 
-// toolOperationBlocks parses a tool entry's operations, one per paragraph,
-// merging adjacent reads.
+// toolOperationBlocks attaches terminal blocks to parsed invocation content,
+// merging adjacent targets without inventing separate invocation pages.
 func toolOperationBlocks(text string) []activityui.Block {
-	var blocks []activityui.Block
-	previousSource := ""
-	for _, paragraph := range activityui.Paragraphs(text) {
-		block := activityui.ParseOperation(paragraph)
-		if match := liveActivityManagedFiles.FindStringSubmatch(paragraph); match != nil {
-			// A receipt's tool-managed files are confirmed edits of its source.
-			source := cmp.Or(match[3], previousSource)
-			block = activityui.Block{Kind: "op", Verb: "Edit", Label: match[1] + " tool-managed files (" + match[2] + ")"}
-			if source != "" {
-				block.Label += " · " + source
-				block.EditSource, block.EditHeader = source, source != previousSource
-			}
-		}
-		switch block.Verb {
-		case "Create", "Edit", "Delete", "Move":
-			if source, ok := strings.CutPrefix(block.Label, "· "); ok {
-				// A targetless edit still belongs to its invocation, but must
-				// retain the fact that its paths could not be resolved.
-				block.Label = "paths unavailable · " + source
-			}
-			if _, source, ok := strings.CutLast(block.Label, " · "); ok {
-				block.EditSource = source
-				block.EditHeader = source != previousSource
-			}
-			if block.Fenced && block.Lang == "diff" {
-				block.Code, block.Lang, block.Fenced = "", "", false
-			}
-		}
-		previousSource = block.EditSource
-		blocks = append(blocks, block)
+	content := activitymodel.ParseOperations(text)
+	blocks := make([]activityui.Block, len(content))
+	for i, value := range content {
+		blocks[i] = activityui.Block{Content: value}
 	}
 	blocks = activityui.MergeLiveActivityReads(blocks)
 	// These targets share one invocation's aggregate. Dialog pages are

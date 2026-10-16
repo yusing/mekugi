@@ -1,8 +1,12 @@
 package terminalui
 
-// Source: internal/ui/activity/copy.go:1:508@[b5ba67e3] shared source presentation.
 import (
 	"encoding/base64"
+
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
+	// Source: internal/ui/activity/copy.go:1:508@[b5ba67e3] shared source presentation.
+
 	json "encoding/json/v2"
 	"fmt"
 	"hash/fnv"
@@ -11,10 +15,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 // Source: codex-rs/tui/src/markdown_copy.rs:301:340@[75a714843] selection.
@@ -78,7 +81,7 @@ func copyInline(source string) CopyFragment {
 				continue
 			}
 		}
-		if code, end, ok := CodeSpan(source, i); ok {
+		if code, end, ok := markdownsyntax.CodeSpan(source, i); ok {
 			start := text.Len()
 			text.WriteString(code)
 			f.Styles = append(f.Styles, copyStyle{start, text.Len(), "`", "`", start + 1})

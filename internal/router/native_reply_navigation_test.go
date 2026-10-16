@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -151,7 +152,7 @@ func TestLiveActivitySkillNamesBold(t *testing.T) {
 			command = "skills-mgr " + operand
 		}
 		classified := toolActivityShell(command)
-		block := activityui.ParseOperation(classified)
+		block := activityui.Block{Content: activitymodel.ParseOperation(classified)}
 		if block.Verb != "Skill" {
 			t.Fatalf("skill command misclassified: %q", classified)
 		}

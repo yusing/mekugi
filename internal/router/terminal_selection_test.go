@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -48,7 +50,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 				x, y := 0, 0
 				if dialog {
 					u.width, u.height = 80, 18
-					u.openBlocks(u.main.view, []activityui.Block{{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "sample.go"}}, Tail: []string{source + " // outside"}}})
+					u.openBlocks(u.main.view, []activityui.Block{{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.go"}}, Tail: []string{source + " // outside"}}})
 					drawOutputDialog(u)
 					x, y = outputSelectionPoint(t, u, source)
 				}

@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 )
 
 func TestActivityTimingVisibleForClassifiedRead(t *testing.T) {
-	block := Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "sample.txt"}}, Code: "cat sample.txt", Duration: 125 * time.Millisecond}
+	block := Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt"}}, Code: "cat sample.txt", Duration: 125 * time.Millisecond}
 	var p Painter
 	page := p.DialogPage(block, 80)
 	title := ansi.Strip(page.Title)

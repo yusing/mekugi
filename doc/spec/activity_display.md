@@ -69,14 +69,13 @@ through `mchanges`.
 A path too wide for its row gives way before the row's other parts: it drops
 whole leading directories behind `…/`, keeping its nearest directories and file
 name, or elides the middle of the name itself when that alone is too wide; below
-a readable width it wraps instead. A receipt's tool-managed files are one row in the
-receipt source's `Edited` group. Unresolved edit targets remain an explicit
-`paths unavailable` row in the same group. Main also folds repeated confirmed edits of one path within
+a readable width it wraps instead. [Parsed operations](../../internal/activity/SPEC.md)
+supply receipt source inheritance, unavailable-target labels and generated edit-body
+omission. Tool-managed files occupy one row in their source's `Edited` group.
+Main also folds repeated confirmed edits of one path within
 a group into one row with summed counts; Activity keeps each invocation's rows,
 since cross-pane navigation targets them.
-They retain paths and line counts but omit diff bodies in the
-pane; durable change evidence and inline receipts are unchanged. This omission
-applies only to generated tool activity, not authored text. Notes about output
+Notes about output
 not returned to the model align with command text on their operation's branch
 and use muted, dimmed styling in either theme.
 Symbol commands use the native CLI grammar for classification: definitions show

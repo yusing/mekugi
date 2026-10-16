@@ -4,9 +4,12 @@ import (
 	"strings"
 	"testing"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -41,7 +44,7 @@ func TestUnderlinePreservesStyledRows(t *testing.T) {
 
 func TestReadsTakeOneRowEachWhenWrapped(t *testing.T) {
 	p := activityui.Painter{}
-	block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{
+	block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{
 		{Path: "internal/router/live_activity_view.go", Ranges: []string{"1:100"}},
 		{Path: "internal/router/app_server_ui.go"},
 		{Path: "internal/router/live_activity_conversation.go"},

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -175,7 +176,7 @@ func (p *Painter) Inline(line string) string {
 				continue
 			}
 		}
-		if code, end, ok := CodeSpan(line, i); ok {
+		if code, end, ok := markdownsyntax.CodeSpan(line, i); ok {
 			if rawFilePath(code) && p.linkAllowed(code) {
 				out.WriteString(p.inlineLink(code, code))
 				i = end
@@ -347,7 +348,7 @@ func (p *Painter) Markdown(text string, width int, subdued bool) []string {
 		raw := source[i]
 		line := diffrender.Safe(raw, false)
 		if fence != "" {
-			if !ClosesFence(line, fence) {
+			if !markdownsyntax.ClosesFence(line, fence) {
 				program = append(program, raw)
 				continue
 			}
@@ -370,7 +371,7 @@ func (p *Painter) Markdown(text string, width int, subdued bool) []string {
 			continue
 		}
 		flushQuote()
-		if delimiter, ok := FenceDelimiter(line); ok {
+		if delimiter, ok := markdownsyntax.FenceDelimiter(line); ok {
 			fence, lang = delimiter, strings.TrimSpace(line[len(delimiter):])
 			if copying {
 				fenceIdentity = CopyID(strconv.Itoa(i), identity)
@@ -590,9 +591,9 @@ func (p *Painter) MarkdownPreview(text string) string {
 		}
 		source[i] = line
 	}
-	if fence, ok := FenceDelimiter(source[0]); ok && strings.EqualFold(strings.TrimSpace(source[0][len(fence):]), "mermaid") {
+	if fence, ok := markdownsyntax.FenceDelimiter(source[0]); ok && strings.EqualFold(strings.TrimSpace(source[0][len(fence):]), "mermaid") {
 		for _, line := range source[1:] {
-			if ClosesFence(line, fence) {
+			if markdownsyntax.ClosesFence(line, fence) {
 				break
 			}
 			if line = strings.TrimSpace(line); line != "" {

@@ -5,7 +5,7 @@ import (
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/terminalui"
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 )
 
 // ReasoningSections keeps titled summaries independently readable and
@@ -23,13 +23,13 @@ func ReasoningSections(text string) []Block {
 	}
 	for i, line := range lines {
 		if fence != "" {
-			if terminalui.ClosesFence(line, fence) {
+			if markdownsyntax.ClosesFence(line, fence) {
 				fence = ""
 			}
 			continue
 		}
 		trimmed := strings.TrimSpace(line)
-		mark, delimiter := terminalui.FenceDelimiter(trimmed)
+		mark, delimiter := markdownsyntax.FenceDelimiter(trimmed)
 		if !delimiter && strings.HasPrefix(trimmed, "~~~") {
 			mark, delimiter = trimmed[:len(trimmed)-len(strings.TrimLeft(trimmed, "~"))], true
 		}

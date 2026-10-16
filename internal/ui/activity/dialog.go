@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -208,7 +209,7 @@ func (p *Painter) dialogSearchLine(block Block, line string) string {
 	if parts == nil {
 		// rg omits the filename when exactly one file was requested.
 		_, target, ok := strings.Cut(block.Label, " in ")
-		path, end, valid := terminalui.CodeSpan(target, 0)
+		path, end, valid := markdownsyntax.CodeSpan(target, 0)
 		number, content, numbered := strings.Cut(line, ":")
 		n, err := strconv.Atoi(number)
 		if !ok || !valid || end != len(target) || !numbered || err != nil || n < 1 {

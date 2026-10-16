@@ -13,7 +13,8 @@ preserves caller descriptors and their shared file-status flags. Mouse reports
 decode into input facts; they do not select a pane or execute a command.
 
 Faint-support detection reports terminal capability. Consumers choose fallback
-colors and meaning. Markdown shares bounded syntax decoration with `diffrender`.
+colors and meaning. Markdown shares bounded syntax decoration with `diffrender`
+and lexical source boundaries with `sourceanalysis`.
 Headings, quotes, code and responsive tables retain their source geometry through
 wrapping. Subdued rendering preserves paragraph indentation and omits heading
 colors and rules. File-shaped destinations become clickable only when the caller

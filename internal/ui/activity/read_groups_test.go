@@ -1,10 +1,14 @@
 package activity
 
-import "testing"
+import (
+	"testing"
+
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+)
 
 func TestMergeReadGroupsRetainsIndependentFirstMembers(t *testing.T) {
 	read := func(source uint64) Block {
-		return Block{Source: source, Kind: "reads", Verb: "Read", Reads: []Read{{Path: "file.go", Ranges: []string{"1:2"}}}}
+		return Block{Source: source, Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "file.go", Ranges: []string{"1:2"}}}}
 	}
 	input := []Block{read(1), read(2), {Kind: "op", Verb: "Run", Source: 3}, read(4), read(5)}
 	groups := MergeLiveActivityReads(input)

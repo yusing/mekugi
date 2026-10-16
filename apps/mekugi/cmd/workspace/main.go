@@ -183,7 +183,7 @@ func allowedImport(directory, pkg, imported string) error {
 			"shellinstrumentation": {"commandanalysis", "commandargs"},
 			"outputbudget":         {"sourceanalysis"},
 			"diffrender":           {"diffmodel", "pathdisplay"},
-			"terminalui":           {"diffrender", "pathdisplay"},
+			"terminalui":           {"diffrender", "pathdisplay", "sourceanalysis"},
 		}
 		library, _, _ := strings.Cut(strings.TrimPrefix(target, "libraries/"), "/")
 		if strings.HasPrefix(target, "libraries/") && slices.Contains(allowed[strings.TrimPrefix(owner, "libraries/")], library) {

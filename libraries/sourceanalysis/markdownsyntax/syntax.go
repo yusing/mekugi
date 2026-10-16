@@ -1,4 +1,6 @@
-package terminalui
+// Package markdownsyntax recognizes the source delimiters shared by activity
+// interpretation and terminal Markdown painting.
+package markdownsyntax
 
 import (
 	"strings"

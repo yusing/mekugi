@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	"github.com/charmbracelet/x/ansi"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -406,7 +407,7 @@ func TestActivityReadsKeepInvocationWorkdirsApart(t *testing.T) {
 
 func TestActivityReadsKeepWorkdirsApart(t *testing.T) {
 	read := func(workdir string) activityui.Block {
-		return activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}, Workdir: workdir}
+		return activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "a.go"}}, Workdir: workdir}
 	}
 	if merged := activityui.MergeLiveActivityReads([]activityui.Block{read(""), read("/other")}); len(merged) != 2 {
 		t.Fatalf("reads in different directories merged: %+v", merged)

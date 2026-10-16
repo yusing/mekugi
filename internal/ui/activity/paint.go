@@ -1,6 +1,8 @@
 package activity
 
 import (
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"fmt"
 	"slices"
 	"strconv"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
@@ -121,7 +124,7 @@ func (p *Painter) Label(verb, label string) string {
 	var out strings.Builder
 	searchTargets := false
 	for i := 0; i < len(label); {
-		if code, end, ok := terminalui.CodeSpan(label, i); ok {
+		if code, end, ok := markdownsyntax.CodeSpan(label, i); ok {
 			if verb == "Search" && searchTargets {
 				out.WriteString(Path(code))
 			} else {
@@ -369,7 +372,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		literal := block.Verb == "Search" || block.Verb == "Skill"
 		// fit shortens a path that cannot share its row with its ranges, gap
 		// cells after it, and, on the last row, the count after them.
-		fit := func(read Read, gap int, last bool) string {
+		fit := func(read activitymodel.Read, gap int, last bool) string {
 			if literal {
 				return read.Path
 			}
@@ -382,7 +385,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			return fitPath(read.Path, room-ansi.StringWidth(lineSuffix(read.Lines, false)))
 		}
-		item := func(path string, read Read) string {
+		item := func(path string, read activitymodel.Read) string {
 			item := Path(path)
 			if literal {
 				item = p.code(block.Verb, path)
@@ -714,7 +717,7 @@ func lineRanges(ranges []string) string {
 func (p *Painter) ranRow(block Block, width int) []string {
 	code, label := sourceTabs(block.Code), strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results))
 	if code == "" {
-		if span, end, ok := terminalui.CodeSpan(block.Label, 0); ok && end == len(block.Label) {
+		if span, end, ok := markdownsyntax.CodeSpan(block.Label, 0); ok && end == len(block.Label) {
 			code, label = span, ""
 		}
 	}

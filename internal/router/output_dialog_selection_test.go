@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -175,7 +177,7 @@ func TestOutputDialogSkillMarkdownSearchSelectionAndCopy(t *testing.T) {
 	output.Finish(nil, new(0))
 	u := dialogForOutput(output)
 	u.main = &appServerUI{view: newLiveActivityView()}
-	block := activityui.ParseOperation("Skill `example`")
+	block := activityui.Block{Content: activitymodel.ParseOperation("Skill `example`")}
 	block.Output = output
 	u.output.pages[0] = block
 	frame := drawOutputDialog(u)

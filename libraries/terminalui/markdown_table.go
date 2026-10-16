@@ -1,11 +1,13 @@
 package terminalui
 
-// Source: internal/ui/activity/markdown_table.go:1:261@[b5ba67e3] shared source presentation.
 import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 )
+
+// Source: internal/ui/activity/markdown_table.go:1:261@[b5ba67e3] shared source presentation.
 
 type markdownTable struct {
 	rows   [][]string
@@ -57,7 +59,7 @@ func parseMarkdownTable(lines []string) (markdownTable, int) {
 // Optional outer pipes are structural; escaped pipes and code spans are content.
 func markdownTableCells(line string) ([]string, bool) {
 	line = strings.TrimSpace(line)
-	_, fence := FenceDelimiter(line)
+	_, fence := markdownsyntax.FenceDelimiter(line)
 	if line == "" || strings.HasPrefix(line, ">") || fence ||
 		strings.HasPrefix(line, "#") || strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
 		return nil, false
@@ -76,7 +78,7 @@ func markdownTableCells(line string) ([]string, bool) {
 			trailing = false
 			continue
 		}
-		if _, end, ok := CodeSpan(line, i); ok {
+		if _, end, ok := markdownsyntax.CodeSpan(line, i); ok {
 			cell.WriteString(strings.ReplaceAll(line[i:end], `\|`, "|"))
 			i = end
 			trailing = false

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
@@ -101,7 +102,7 @@ func (p *Painter) vcsRow(block Block, width int) []string {
 func (p *Painter) vcsHeading(verb, head string) string {
 	var out strings.Builder
 	for i := 0; i < len(head); {
-		if code, end, ok := terminalui.CodeSpan(head, i); ok {
+		if code, end, ok := markdownsyntax.CodeSpan(head, i); ok {
 			switch {
 			case i > 0 || verb == "Stage":
 				out.WriteString(Path(code))

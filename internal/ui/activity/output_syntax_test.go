@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -41,7 +42,7 @@ func TestCommandOutputAutoHighlightLimit(t *testing.T) {
 			}
 		}
 		for _, hinted := range []Block{
-			{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "file.go"}}},
+			{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "file.go"}}},
 			{Verb: "Search", Label: "Search in `file.go`"},
 		} {
 			hintedRows := rows
@@ -144,7 +145,7 @@ func TestCommandOutputSyntaxBoundAndExplicitHint(t *testing.T) {
 	if got := strings.Join(p.outputColors(Block{}, rows), "\n"); got != source {
 		t.Fatal("oversized output was decorated")
 	}
-	block := Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "file.py"}}}
+	block := Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "file.py"}}}
 	if got := p.outputColors(block, []string{"return 42"})[0]; got == "return 42" || ansi.Strip(got) != "return 42" {
 		t.Fatalf("file hint lost: %q", got)
 	}

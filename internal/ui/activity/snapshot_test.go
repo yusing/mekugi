@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -18,15 +18,15 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 	}{
 		{
 			name: "timeout_narrow", width: 18,
-			block: ParseOperation("Read `file.go 1:20` (timeout 90s)"),
+			block: Block{Content: activitymodel.ParseOperation("Read `file.go 1:20` (timeout 90s)")},
 		},
 		{
 			name: "timeout_run", width: 44,
-			block: ParseOperation("Run (timeout 12.5s)\n```bash\nunknown arg\n```"),
+			block: Block{Content: activitymodel.ParseOperation("Run (timeout 12.5s)\n```bash\nunknown arg\n```")},
 		},
 		{
 			name: "timeout_day", width: 44,
-			block: ParseOperation("Run (timeout 1d)\n```bash\nbackup\n```"),
+			block: Block{Content: activitymodel.ParseOperation("Run (timeout 1d)\n```bash\nbackup\n```")},
 		},
 		{
 			name: "failed_command", width: 44,
@@ -35,7 +35,7 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 		},
 		{
 			name: "collapsed_read", width: 44,
-			block: Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "internal/ui/activity/dialog.go", Ranges: []string{"42:80"}}},
+			block: Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "internal/ui/activity/dialog.go", Ranges: []string{"42:80"}}},
 				Tail: []string{"first", "second", "third"}, TailOmitted: 36, Collapsed: true},
 		},
 		{
@@ -55,10 +55,10 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 			name: "collapsed_batch", width: 72,
 			block: func() Block {
 				batch, _ := CollapseBatch(GroupOperations([]Block{
-					{Kind: "reads", Verb: "Search", Reads: []Read{{Path: "zzz"}}},
-					{Kind: "reads", Verb: "Search", Reads: []Read{{Path: "bbb"}}},
+					{Kind: "reads", Verb: "Search", Reads: []activitymodel.Read{{Path: "zzz"}}},
+					{Kind: "reads", Verb: "Search", Reads: []activitymodel.Read{{Path: "bbb"}}},
 					{Kind: "op", Verb: "Run", Code: "foo", Lang: "bash", Fenced: true},
-					{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "bar"}}},
+					{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "bar"}}},
 					{Kind: "op", Verb: "Edit", EditSource: "apply_patch"},
 				}))
 				return batch
@@ -128,7 +128,7 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 		},
 		{
 			name: "read_range", width: 44, height: 11,
-			block: Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "sample.go", Ranges: []string{"42:43"}}},
+			block: Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.go", Ranges: []string{"42:43"}}},
 				Tail: []string{"func veryLongFunctionName() string {", "    return \"a wrapped source line\""}},
 		},
 	} {

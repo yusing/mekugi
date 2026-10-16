@@ -8,15 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
-	"github.com/yusing/mekugi/modules/symbolquery/query"
-
-	"github.com/yusing/mekugi/libraries/commandargs"
-
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"github.com/yusing/mekugi/libraries/commandargs"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/modules/symbolquery/query"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -146,8 +143,8 @@ func toolActivityReads(script, cwd string) (string, bool) {
 		offset := 0
 		for _, statement := range program.Stmts {
 			if display, ok := toolActivityStatement(script, statement, cwd); ok {
-				for _, paragraph := range activityui.Paragraphs(display) {
-					timeouts = append(timeouts, activityui.ParseOperation(paragraph).Timeouts...)
+				for _, paragraph := range activitymodel.Paragraphs(display) {
+					timeouts = append(timeouts, activitymodel.ParseOperation(paragraph).Timeouts...)
 				}
 				if !hasSetup && display == "" {
 					source.WriteString(script[offset:int(statement.Pos().Offset())])
@@ -159,7 +156,7 @@ func toolActivityReads(script, cwd string) (string, bool) {
 			return "", false
 		}
 		source.WriteString(script[offset:])
-		return activityui.AddTimeouts("Run\n"+toolActivityFenced("bash", strings.Trim(source.String(), "\r\n")), timeouts), true
+		return activitymodel.AddTimeouts("Run\n"+toolActivityFenced("bash", strings.Trim(source.String(), "\r\n")), timeouts), true
 	}
 	type statementDisplay struct {
 		display   string
@@ -359,7 +356,7 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 			result = "Run\n" + toolActivityFenced("bash", source)
 			recognized = true
 		}
-		result = activityui.AddTimeouts(result, timeouts)
+		result = activitymodel.AddTimeouts(result, timeouts)
 	}()
 	statement = toolActivityUnwrapTimeout(statement)
 	if statement.Background || statement.Negated || statement.Coprocess || statement.Disown {
@@ -371,11 +368,11 @@ func toolActivityStatement(script string, statement *syntax.Stmt, cwd string) (r
 	if argv, ok := toolActivityLiteralCall(statement); ok && len(argv) == 3 &&
 		(argv[0] == "bash" || argv[0] == "sh" || argv[0] == "dash") && (argv[1] == "-c" || argv[1] == "-lc") {
 		display, recognized := toolActivityReads(argv[2], cwd)
-		paragraphs := activityui.Paragraphs(display)
-		if recognized && len(paragraphs) == 1 && activityui.ParseOperation(paragraphs[0]).Code == strings.Trim(argv[2], "\r\n") {
+		paragraphs := activitymodel.Paragraphs(display)
+		if recognized && len(paragraphs) == 1 && activitymodel.ParseOperation(paragraphs[0]).Code == strings.Trim(argv[2], "\r\n") {
 			// Setup and heredoc programs must stay whole, including the wrapper.
-			innerTimeouts := activityui.ParseOperation(paragraphs[0]).Timeouts
-			return activityui.AddTimeouts("Run\n"+toolActivityFenced("bash", toolActivityStatementSource(script, original)), innerTimeouts), true
+			innerTimeouts := activitymodel.ParseOperation(paragraphs[0]).Timeouts
+			return activitymodel.AddTimeouts("Run\n"+toolActivityFenced("bash", toolActivityStatementSource(script, original)), innerTimeouts), true
 		}
 		return display, recognized
 	}
