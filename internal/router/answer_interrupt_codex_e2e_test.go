@@ -223,7 +223,7 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			emitted := make(chan struct{}, 2)
 			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 			defer upstream.Close()
@@ -258,7 +258,7 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 				case request := <-provider.requests:
 					return request
 				case <-terminal.ctx.Done():
-					t.Fatalf("provider request missing: notices=%v\n%s", issues.Pending(), terminal.screen.String())
+					t.Fatalf("provider request missing: notices=%v\n%s", issues.Notices.Pending(), terminal.screen.String())
 					return nil
 				}
 			}
@@ -330,7 +330,7 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			terminal.await("Answer emission acceptance complete")
 			terminal.await("completed")
 			terminal.quit()
-			if pending := issues.Pending(); len(pending) != 0 {
+			if pending := issues.Notices.Pending(); len(pending) != 0 {
 				t.Fatalf("answer interruption produced router failures: %v", pending)
 			}
 		})

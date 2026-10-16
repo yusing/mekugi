@@ -265,7 +265,7 @@ func RunSession(service *history.Service, prefs *preferences.Service, recovered 
 		}
 		mekugiCalls.noticeSink = issues.addThreadNotice
 		replayStore.storageNotice = func(session, thread, phase, message string) {
-			issues.addThreadNotice(session, thread, "storage_cleanup_"+phase, message)
+			issues.cleanupNotice(session, thread, phase, message)
 		}
 		var stopLiveDiff func()
 		mekugiCalls.autoLiveDiff, stopLiveDiff = newAutoLiveDiff(ctx)
@@ -274,7 +274,7 @@ func RunSession(service *history.Service, prefs *preferences.Service, recovered 
 		defer stopLiveDiff()
 		mekugiCalls.replayStore = replayStore
 		mekugiCalls.usage.Configure(replayStore.directory, replayStore.writes, replayStore.retentionLimits(), func(thread string, err error) {
-			mekugiCalls.notice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
+			issues.addThreadNotice("", thread, "usage_storage", "Provider usage could not be retained or restored: "+err.Error())
 		})
 		if issues != nil {
 			issues.failureStore = replayStore.publication
@@ -306,7 +306,7 @@ func RunSession(service *history.Service, prefs *preferences.Service, recovered 
 				}
 				issues.mu.Lock()
 				defer issues.mu.Unlock()
-				return retentionScope{store: issues.failureStore, writes: issues.writes, limits: issues.failureLimits, notice: func(phase, message string) { issues.addThreadNotice("", "", "storage_cleanup_"+phase, message) }}
+				return retentionScope{store: issues.failureStore, writes: issues.writes, limits: issues.failureLimits, notice: func(phase, message string) { issues.cleanupNotice("", "", phase, message) }}
 			}, func(err error) {
 				issues.addNotice("", "storage_cleanup_failure", fmt.Sprintf("Mekugi could not complete background storage cleanup: %v. Session requests continue unless storage reaches its limit.", err))
 			})

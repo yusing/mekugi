@@ -217,7 +217,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	// The host validates explicit values, including custom models and tiers.
 	accepted, err := u.updateSettings(change)
 	if accepted {
-		notice, alert := u.notice, u.noticeAlert
+		notice, alert := u.feedback.Text, u.feedback.Alert
 		u.recordDraft()
 		u.draft, u.cursorBack, u.images = "", 0, nil
 		u.setNotice(notice, alert)
@@ -462,7 +462,7 @@ func (u *appServerUI) settingsPickerKey(key string) bool {
 			p.modal, p.open, p.choices = "", false, nil
 			u.settingsChoices = ""
 		} else {
-			p.problem = u.notice
+			p.problem = u.feedback.Text
 		}
 	}
 	return true

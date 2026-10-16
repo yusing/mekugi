@@ -281,7 +281,7 @@ func TestExecuteRequestPassesThroughOriginalRequestAndRecordsUsage(t *testing.T)
 	}))
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
 	var output bytes.Buffer
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	if err := executeRequest(t.Context(), t.Context(), parsed, http.Header{}, "session", provider, &output, issues, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestExecuteRequestPassesThroughOriginalRequestAndRecordsUsage(t *testing.T)
 	if output.String() != responseBody {
 		t.Fatalf("visible response = %q, want %q", output.String(), responseBody)
 	}
-	if len(issues.Pending()) != 0 {
+	if len(issues.Notices.Pending()) != 0 {
 		t.Fatal("successful request emitted critical notice")
 	}
 }
@@ -312,7 +312,7 @@ func TestExecuteRequestRecordsUsageAndFailureWhenDeliveryFails(t *testing.T) {
 		"usage":  map[string]any{"input_tokens": 10},
 	}))
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(responseBody)}}}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	err := executeRequest(t.Context(), t.Context(), serverRequest(t, nil), serverMetadataHeaders(t, "turn", map[string]json.RawMessage{workspace: nil}), "session", provider, serverErrorWriter{err: io.ErrClosedPipe}, issues, newManagedMekugiProxy(t))
 	if err == nil {
 		t.Fatal("delivery failure returned no error")
@@ -400,7 +400,7 @@ func TestResponsesHandlerDoesNotLogClientCancellationAsOperationalEvent(t *testi
 			},
 		}, nil
 	})
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	handler := responsesHandler(t.Context(), time.Minute, provider, issues, nil)
 	handled := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -467,7 +467,7 @@ func TestExecuteRequestSuccessfulStreamLifecycle(t *testing.T) {
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 	recorder := httptest.NewRecorder()
 	writer := &trackedResponseWriter{ResponseWriter: recorder}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	err := executeRequest(
 		t.Context(), t.Context(),
 		serverRequest(t, func(request map[string]any) { request["stream"] = true }),
@@ -520,7 +520,7 @@ func TestExecuteRequestTerminalOutcomes(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{response: test.response}}}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			err := executeRequest(
 				t.Context(), t.Context(), serverRequest(t, test.mutate), http.Header{}, "session",
 				provider, io.Discard, issues, nil,
@@ -528,7 +528,7 @@ func TestExecuteRequestTerminalOutcomes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(issues.Pending()) != 1 {
+			if len(issues.Notices.Pending()) != 1 {
 				t.Fatal("terminal failure must queue one notice")
 			}
 		})
@@ -543,7 +543,7 @@ func TestExecuteRequestCancellationBeforeResponseLifecycle(t *testing.T) {
 		return nil, startCtx.Err()
 	})
 	ctx, cancel := context.WithCancel(t.Context())
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	result := make(chan error, 1)
 	go func() {
 		result <- executeRequest(
@@ -688,7 +688,7 @@ func TestExecuteRequestStreamIdleTimeoutLifecycle(t *testing.T) {
 		provider := &serverFakeProvider{results: []serverForwardResult{{response: response}}}
 		recorder := httptest.NewRecorder()
 		writer := &trackedResponseWriter{ResponseWriter: recorder}
-		issues := NewCriticalErrors()
+		issues := testCriticalErrors()
 		result := make(chan error, 1)
 		go func() {
 			result <- executeRequest(
@@ -760,7 +760,7 @@ func TestExecuteRequestCancellationAfterResponseLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	recorder := httptest.NewRecorder()
 	writer := &trackedResponseWriter{ResponseWriter: recorder}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	result := make(chan error, 1)
 	go func() {
 		result <- executeRequest(
@@ -820,7 +820,7 @@ func TestExecuteRequestCompletesAtTerminalEventBeforeStreamEOF(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	downstream := &serverCancelAfterTerminalResponseWriter{ResponseWriter: recorder, cancel: cancel}
 	writer := &trackedResponseWriter{ResponseWriter: downstream}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 
 	err := executeRequest(
 		ctx, ctx,
@@ -865,7 +865,7 @@ func TestExecuteRequestIndependentUpstreamCancellationIsFailure(t *testing.T) {
 	provider := serverProviderFunc(func(context.Context, context.Context, []byte, http.Header, string) (*http.Response, error) {
 		return nil, context.Canceled
 	})
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	err := executeRequest(
 		t.Context(), t.Context(), serverRequest(t, nil), http.Header{}, "session",
 		provider, io.Discard, issues, nil,
@@ -983,7 +983,7 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	})}
 	recorder := httptest.NewRecorder()
 
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(
 		recorder,
 		httptest.NewRequest(http.MethodGet, "/v1/models", nil),
@@ -995,7 +995,7 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	if forwarded {
 		t.Fatal("unauthenticated models request reached upstream")
 	}
-	if notices := issues.Pending(); len(notices) != 0 {
+	if notices := issues.Notices.Pending(); len(notices) != 0 {
 		t.Fatalf("catalog failure produced terminal notices: %v", notices)
 	}
 }
@@ -1005,7 +1005,7 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	httpClient := &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("%s: %w", secret, syscall.ECONNRESET)
 	})}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header = codexAuthHeaders()
 	request.Header.Set(sessionIDHeader, "models-session")
@@ -1018,7 +1018,7 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d", recorder.Code)
 	}
-	if notices := issues.Pending(); len(notices) != 0 {
+	if notices := issues.Notices.Pending(); len(notices) != 0 {
 		t.Fatalf("catalog failure produced terminal notices: %v", notices)
 	}
 	if !strings.Contains(recorder.Body.String(), secret) {
@@ -1051,7 +1051,7 @@ func TestModelsHandlerReportsUpstreamStatusAndBody(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusServiceUnavailable,
 			Body: io.NopCloser(strings.NewReader(secret))}, nil
 	})}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
@@ -1061,7 +1061,7 @@ func TestModelsHandlerReportsUpstreamStatusAndBody(t *testing.T) {
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d", recorder.Code)
 	}
-	if notices := issues.Pending(); len(notices) != 0 {
+	if notices := issues.Notices.Pending(); len(notices) != 0 {
 		t.Fatalf("catalog failure produced terminal notices: %v", notices)
 	}
 	if recorder.Body.String() != secret {
@@ -1080,7 +1080,7 @@ func TestInferenceHTTPRejectionRetainsCompleteError(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			issues.failureStore = store.publication
 			issues.failureLimits = store.retentionLimits()
 			issues.diagnostics = testDiagnostics(nil, nil)
@@ -1096,7 +1096,7 @@ func TestInferenceHTTPRejectionRetainsCompleteError(t *testing.T) {
 				provider, &output, issues, nil); err != nil {
 				t.Fatal(err)
 			}
-			if output.String() != body || len(issues.Pending()) != 1 || !strings.Contains(issues.Pending()[0], body) {
+			if output.String() != body || len(issues.Notices.Pending()) != 1 || !strings.Contains(issues.Notices.Pending()[0], body) {
 				t.Fatal("HTTP rejection body missing from delivery or notice")
 			}
 			records, err := testDiagnostics(nil, nil).ReadFailures(t.Context(), directory, "")
@@ -1145,18 +1145,18 @@ func TestModelsHandlerCatalogFailuresDoNotProduceTerminalNotices(t *testing.T) {
 				}
 				return &http.Response{StatusCode: test.status, Body: io.NopCloser(strings.NewReader("private body"))}, nil
 			})}
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 			request.Header = codexAuthHeaders()
 			modelsHandler(newProviderClient(testProviderBaseURL, client), issues)(httptest.NewRecorder(), request)
-			if notices := issues.Pending(); len(notices) != 0 {
+			if notices := issues.Notices.Pending(); len(notices) != 0 {
 				t.Fatalf("catalog failure produced terminal notices: %v", notices)
 			}
 			issues.record(&requestFinalization{
 				failurePhase: requestFailureForward,
 				observation:  requestObservation{outcome: requestOutcomeFailed},
 			}, errors.New("inference forward failed"))
-			if notices := issues.Pending(); len(notices) != 1 {
+			if notices := issues.Notices.Pending(); len(notices) != 1 {
 				t.Fatalf("inference failure lost its terminal notice: %v", notices)
 			}
 		})

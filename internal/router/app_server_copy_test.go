@@ -70,8 +70,8 @@ func TestAppServerCopyPicker(t *testing.T) {
 	if u.shell.clipboard != want || u.picker.open || u.turn != "new" || wire.Len() != 0 {
 		t.Fatalf("clipboard=%q picker=%+v wire=%s", u.shell.clipboard, u.picker, wire.Bytes())
 	}
-	if u.noticeAlert || u.notice != "Copy sent to terminal clipboard" {
-		t.Fatalf("feedback=%q", u.notice)
+	if u.feedback.Alert || u.feedback.Text != "Copy sent to terminal clipboard" {
+		t.Fatalf("feedback=%q", u.feedback.Text)
 	}
 	screen := vt.NewEmulator(100, 30)
 	defer screen.Close()
@@ -87,8 +87,8 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
 	appServerTestKeys(t, u, "/copy\r")
-	if u.notice != "No agent response to copy" || u.shell.clipboard != "" || wire.Len() != 0 {
-		t.Fatalf("empty notice=%q wire=%s", u.notice, wire.Bytes())
+	if u.feedback.Text != "No agent response to copy" || u.shell.clipboard != "" || wire.Len() != 0 {
+		t.Fatalf("empty notice=%q wire=%s", u.feedback.Text, wire.Bytes())
 	}
 	u.session.start("main", "")
 	u.restoreMainHistory([]appServerHistoryTurn{{ID: "old", Status: "completed", Items: []appServerItem{{ID: "a", Type: "agentMessage", Text: "restored"}}}}, nil, nil)
@@ -103,7 +103,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	}
 	u.thread = "different"
 	appServerTestKeys(t, u, "/copy\r")
-	if u.notice != "No agent response to copy" {
+	if u.feedback.Text != "No agent response to copy" {
 		t.Fatal("borrowed another thread's response")
 	}
 }

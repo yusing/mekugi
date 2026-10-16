@@ -98,7 +98,7 @@ Detailed operational logging requires `--debug`. The composed
 [diagnostics module](../../modules/diagnostics/SPEC.md) retains private failure
 references independently of debugging. Startup and cleanup failures go to stderr
 outside the active UI. Critical request failures use the
-[notice contract](notices.md); the launcher prints undelivered notices and
+[notice contract](../../modules/notifications/SPEC.md); the launcher prints undelivered notices and
 repetition summaries after Codex exits. Metrics and sanitized capture are
 separate from operational logging.
 `mekugi` mode also retains private durable replay state so resumed and forked conversations restore
@@ -169,7 +169,7 @@ and Grok observations precede Chat Completions conversion. The adapter supplies
 observed thread identities and bounded rollout discovery at shutdown; diagnostics
 owns collection, encoding, export and read-only inspection.
 
-Private failure details and their delivery follow the [notice contract](notices.md).
+Private failure details and their delivery follow the [notice contract](../../modules/notifications/SPEC.md).
 Model-catalog errors are catalog refresh failures, not failed inference turns.
 
 They do not queue terminal notices. Diagnostics retain the complete error, transport class or

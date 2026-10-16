@@ -36,12 +36,12 @@ func TestUISnapshotBackgroundStorageCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, _ := newAppServerTestUI()
-	u.issues = NewCriticalErrors()
+	u.issues = testCriticalErrors()
 	u.view.painter.Theme = livediff.DarkTheme
 	u.clock = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local) }
 	u.thread, u.view.conversation = "main", true
 	store.storageNotice = func(_, _ string, phase, message string) {
-		u.issues.addNotice("", "storage_cleanup_"+phase, message)
+		u.issues.cleanupNotice("", "", phase, message)
 		delivery := u.applyCriticalNotices()
 		if delivery == nil {
 			t.Fatal("cleanup notice did not reach UI")

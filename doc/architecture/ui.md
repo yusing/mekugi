@@ -51,6 +51,10 @@ Preview workers and brokers remain with router observation,
 not the view package. The launcher still owns invocation configuration and cancellation
 before handoff; the native client never executes model-requested tools.
 
+[Notifications](../../modules/notifications/SPEC.md) owns bounded recovery state,
+claims and attached feedback. Terminal integration owns rendering, actual display
+receipts, desktop signals and lifecycle titles.
+
 Live host operations have one lifecycle owner, separate from presentation status,
 elapsed time, and activity items. Input admission derives from pending submission,
 compaction, interruption, shell, replacement, and settings records, not displayed

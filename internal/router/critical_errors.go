@@ -10,10 +10,11 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"slices"
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
 
@@ -28,34 +29,21 @@ import (
 	"github.com/yusing/mekugi/libraries/persistence"
 )
 
-// CriticalErrors retains bounded, actionable session notices with complete error text,
-// but no request snapshots or operational event history. It outlives router shutdown so
-// the launcher can report notices that could not reach Codex.
+// CriticalErrors adapts request classification and private failure publication
+// to an independently optional notice owner. It holds no presentation state.
 type CriticalErrors struct {
+	Notices        *notice.Service
 	diagnostics    *diagnostic.Service
 	failureLimits  history.Limits
 	writes         *persistence.Counter
 	mu             sync.Mutex
-	entries        []*criticalNotice
-	turnOutcomes   []criticalTurnOutcome
-	overflow       uint64
 	diagnosticSalt string
 	failureStore   *history.Store
 }
 
-type criticalNotice struct {
-	session, category, message, id string
-	thread, turn, reference        string
-	count, delivered               uint64
-	inFlight                       bool
-	awaitTurn                      bool
+func NewCriticalErrors(notices *notice.Service) *CriticalErrors {
+	return &CriticalErrors{Notices: notices, diagnosticSalt: rand.Text()}
 }
-
-type criticalTurnOutcome struct {
-	thread, turn, status string
-}
-
-func NewCriticalErrors() *CriticalErrors { return &CriticalErrors{diagnosticSalt: rand.Text()} }
 
 // criticalDiagnosticError keeps a stable classification alongside the underlying
 // error. Notices and failure records include the complete error string.
@@ -85,8 +73,8 @@ func criticalDiagnostic(err error, code, summary string, distinct bool) error {
 	return &criticalDiagnosticError{err: err, code: code, summary: summary, distinct: distinct}
 }
 
-// Classify wrapped transport errors without copying addresses, close reasons,
-// URLs, headers, or arbitrary error text into notices or debug records.
+// Classify wrapped transport errors with stable codes and actionable summaries.
+// Complete error detail remains available to notices and private diagnostics.
 func forwardCriticalDiagnostic(err error) error {
 	if _, ok := errors.AsType[*requestCompatibilityError](err); ok {
 		return err
@@ -237,87 +225,24 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	if f.turnID != "" {
 		category += ":" + f.threadID + ":" + f.turnID
 	}
-	noticeID := commentaryMessageID("critical:" + f.sessionID + ":" + category)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	awaitTurn := f.threadID != "" && f.turnID != ""
-	if awaitTurn {
-		switch c.turnOutcomeLocked(f.threadID, f.turnID) {
-		case "completed", "interrupted":
-			return
-		case "failed":
-			awaitTurn = false
-		}
-	}
-	for _, notice := range c.entries {
-		if f.turnID != "" && notice.thread == f.threadID && notice.turn == f.turnID && notice.reference == f.diagnosticReference {
-			return
-		}
-	}
-	for _, notice := range c.entries {
-		if notice.session == f.sessionID && notice.category == category {
-			notice.count++
-			notice.thread, notice.turn, notice.reference = f.threadID, f.turnID, f.diagnosticReference
-			return
-		}
-	}
-	if len(c.entries) >= 256 {
-		c.overflow++
-		return
-	}
-	notice := &criticalNotice{session: f.sessionID, category: category, message: message,
-		thread: f.threadID, turn: f.turnID, reference: f.diagnosticReference,
-		id: noticeID, count: 1, awaitTurn: awaitTurn}
-	c.entries = append(c.entries, notice)
+	c.Notices.Submit(notice.Input{
+		ID:      commentaryMessageID("critical:" + f.sessionID + ":" + category),
+		Session: f.sessionID, Thread: f.threadID, Turn: f.turnID,
+		Category: category, Reference: f.diagnosticReference, Text: message, Request: true,
+	})
 }
 
-// Request attempts do not establish whether Codex can recover the turn. Keep
-// recent host outcomes so a late request finalization follows the same decision.
 func (c *CriticalErrors) observeTurnCompletion(method string, params []byte) {
 	if c == nil || method != "turn/completed" {
 		return
 	}
 	var event appServerEvent
-	if json.Unmarshal(params, &event) != nil || event.ThreadID == "" || event.Turn.ID == "" {
+	if json.Unmarshal(params, &event) != nil {
 		return
 	}
-	switch event.Turn.Status {
-	case "completed", "interrupted", "failed":
-	default:
-		return
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.turnOutcomeLocked(event.ThreadID, event.Turn.ID) == "" {
-		if len(c.turnOutcomes) == 256 {
-			c.turnOutcomes = slices.Delete(c.turnOutcomes, 0, 1)
-		}
-		c.turnOutcomes = append(c.turnOutcomes, criticalTurnOutcome{event.ThreadID, event.Turn.ID, event.Turn.Status})
-	}
-	c.entries = slices.DeleteFunc(c.entries, func(notice *criticalNotice) bool {
-		if notice.thread != event.ThreadID || notice.turn != event.Turn.ID {
-			return false
-		}
-		if event.Turn.Status == "failed" {
-			notice.awaitTurn = false
-			return false
-		}
-		return true
-	})
+	c.Notices.ObserveTurn(event.ThreadID, event.Turn.ID, event.Turn.Status)
 }
 
-func (c *CriticalErrors) turnOutcomeLocked(thread, turn string) string {
-	for _, outcome := range c.turnOutcomes {
-		if outcome.thread == thread && outcome.turn == turn {
-			return outcome.status
-		}
-	}
-	return ""
-}
-
-// Auxiliary degradation and automatic cleanup are user-visible without turning
-// successful work into a failed request. Messages here are producer-owned text,
-// not arbitrary request data. Empty session denotes a router-wide notice.
 func (c *CriticalErrors) addNotice(session, category, message string) {
 	c.addThreadNotice(session, "", category, message)
 }
@@ -326,22 +251,21 @@ func (c *CriticalErrors) addThreadNotice(session, thread, category, message stri
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for _, notice := range c.entries {
-		if notice.session == session && notice.thread == thread && notice.category == category {
-			notice.count++
-			return
-		}
-	}
-	if len(c.entries) >= 256 {
-		c.overflow++
+	c.Notices.Submit(notice.Input{ID: commentaryMessageID("notice:" + session + ":" + thread + ":" + category), Session: session, Thread: thread, Category: category, Text: message})
+}
+
+// Cleanup supplies a typed surface at the producer boundary, rather than asking
+// a renderer to infer presentation from a category string.
+func (c *CriticalErrors) cleanupNotice(session, thread, phase, message string) {
+	if c == nil {
 		return
 	}
-	c.entries = append(c.entries, &criticalNotice{
-		session: session, thread: thread, category: category, message: message,
-		id: commentaryMessageID("notice:" + session + ":" + thread + ":" + category), count: 1,
-	})
+	category := "storage_cleanup_" + phase
+	surface := notice.Error
+	if phase == "planning" || phase == "reclaimed" {
+		surface = notice.Progress
+	}
+	c.Notices.Submit(notice.Input{ID: commentaryMessageID("notice:" + session + ":" + thread + ":" + category), Session: session, Thread: thread, Category: category, Text: message, Surface: surface})
 }
 
 func requestFailureDescription(phase requestFailurePhase) string {
@@ -367,93 +291,28 @@ func requestFailureDescription(phase requestFailurePhase) string {
 	}
 }
 
-func noticeText(n *criticalNotice) string {
-	if n.count > 1 {
-		return fmt.Sprintf("%s (occurred %d times)", n.message, n.count)
-	}
-	return n.message
-}
-
-// Pending is called after the router has stopped, outside Codex's terminal UI.
-func (c *CriticalErrors) Pending() []string {
-	if c == nil {
-		return nil
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	var result []string
-	for _, n := range c.entries {
-		if n.count > n.delivered {
-			result = append(result, "mekugi: "+noticeText(n))
-		}
-	}
-	if c.overflow != 0 {
-		result = append(result, fmt.Sprintf("mekugi: %d additional failures could not be retained; check the failed turns.", c.overflow))
-	}
-	return result
-}
-
-// criticalNoticeDelivery reserves native display notices until the terminal write
-// succeeds. It never modifies provider responses or model-visible history.
-type criticalNoticeDelivery struct {
-	owner     *CriticalErrors
-	notices   []*criticalNotice
-	snapshots []criticalNotice
-}
-
-func (c *CriticalErrors) takeNative(root string, activity *subagentActivity) *criticalNoticeDelivery {
+// Take the ancestry/name snapshot before the notice owner locks: activity
+// producers may submit degradation while holding their own lock.
+func (c *CriticalErrors) takeNative(root string, activity *subagentActivity) *notice.Delivery {
 	if c == nil || root == "" {
 		return nil
 	}
-	// Snapshot ancestry before locking the notice queue: activity producers may
-	// enqueue capacity notices while holding their own lock.
-	scopedThreads := map[string]bool{root: true}
+	var descendants map[string]string
 	if activity != nil {
 		activity.mu.Lock()
-		if node := activity.threads[root]; node != nil && activity.rootLocked(root) != root {
+		if activity.threads[root] != nil && activity.rootLocked(root) != root {
 			activity.mu.Unlock()
 			return nil
 		}
-		for thread := range activity.threads {
+		descendants = make(map[string]string)
+		for thread, node := range activity.threads {
 			if activity.rootLocked(thread) == root {
-				scopedThreads[thread] = true
+				descendants[thread] = node.name
 			}
 		}
 		activity.mu.Unlock()
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delivery := &criticalNoticeDelivery{owner: c}
-	for _, notice := range c.entries {
-		if notice.awaitTurn || notice.delivered != 0 || notice.inFlight {
-			continue
-		}
-		scoped := scopedThreads[notice.thread] || notice.thread == "" && notice.session == ""
-		if !scoped {
-			continue
-		}
-		notice.inFlight = true
-		delivery.notices = append(delivery.notices, notice)
-		delivery.snapshots = append(delivery.snapshots, *notice)
-	}
-	if len(delivery.notices) == 0 {
-		return nil
-	}
-	return delivery
-}
-
-func (d *criticalNoticeDelivery) finish(success bool) {
-	if d == nil {
-		return
-	}
-	d.owner.mu.Lock()
-	defer d.owner.mu.Unlock()
-	for i, notice := range d.notices {
-		notice.inFlight = false
-		if success {
-			notice.delivered = d.snapshots[i].count
-		}
-	}
+	return c.Notices.Claim(root, descendants)
 }
 
 type requestCompatibilityError struct{ code, message string }

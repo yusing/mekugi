@@ -104,8 +104,8 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 			}
 			assertAppServerSettingsRequest(t, w, "turn/settings/update", map[string]any{"threadId": "main", "turnId": "active", "effort": "high"})
 			appServerTestMessage(t, u, tt.response)
-			if u.settings.pending() || !strings.Contains(u.notice, tt.notice) || u.reasoningEffort != "high" {
-				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.settings.pending(), u.reasoningEffort, u.notice)
+			if u.settings.pending() || !strings.Contains(u.feedback.Text, tt.notice) || u.reasoningEffort != "high" {
+				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.settings.pending(), u.reasoningEffort, u.feedback.Text)
 			}
 			if w.Len() != 0 || u.submission.text != "" {
 				t.Fatal("live settings response submitted conversation")
@@ -132,7 +132,7 @@ func TestAppServerSettingsFinishedTargetAndThreadError(t *testing.T) {
 		appServerTestKeys(t, u, "/model next\r")
 		w.Reset()
 		appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"invalid model"}}`)
-		if w.Len() != 0 || u.settings.pending() || u.model != "old" || !strings.Contains(u.notice, "invalid model") {
+		if w.Len() != 0 || u.settings.pending() || u.model != "old" || !strings.Contains(u.feedback.Text, "invalid model") {
 			t.Fatal("thread error changed metadata, emitted live RPC, or left pending guard")
 		}
 	})
@@ -159,7 +159,7 @@ func TestAppServerSettingsModelListPagination(t *testing.T) {
 	}
 	appServerTestKeys(t, u, "/model\r")
 	if (u.picker.modal != "settings" || len(u.picker.choices) != 2 || u.picker.choices[0].name != "one" || u.picker.choices[1].name != "two") || w.Len() != 0 {
-		t.Fatalf("choices=%q", u.notice)
+		t.Fatalf("choices=%q", u.feedback.Text)
 	}
 }
 

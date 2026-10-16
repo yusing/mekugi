@@ -237,7 +237,7 @@ func TestAppServerResumeSwitchesSession(t *testing.T) {
 		t.Fatalf("in-session picker frame:\n%s", frame)
 	}
 	resumeTestKeys(t, u, "\r")
-	if u.resumePicker != nil || u.notice != "Already viewing this session" || len(resumeTestRequests(t, w)) != 0 {
+	if u.resumePicker != nil || u.feedback.Text != "Already viewing this session" || len(resumeTestRequests(t, w)) != 0 {
 		t.Fatal("choosing the current session must not resume it again")
 	}
 	appServerTestKeys(t, u, "/resume\r")
@@ -300,8 +300,8 @@ func TestAppServerResumeSwitchFailureKeepsSession(t *testing.T) {
 		t.Fatal("input escaped to the old thread while switching")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"no rollout"}}`, resume.ID))
-	if u.thread != "main" || u.replacement.pending() || u.replacement.target != "" || !strings.Contains(u.notice, "no rollout") || u.draft != "held" || len(u.view.entries) != 2 || u.view.entries[1].Text != "arrived while switching" {
-		t.Fatalf("failed switch lost state: thread=%q notice=%q entries=%+v", u.thread, u.notice, u.view.entries)
+	if u.thread != "main" || u.replacement.pending() || u.replacement.target != "" || !strings.Contains(u.feedback.Text, "no rollout") || u.draft != "held" || len(u.view.entries) != 2 || u.view.entries[1].Text != "arrived while switching" {
+		t.Fatalf("failed switch lost state: thread=%q notice=%q entries=%+v", u.thread, u.feedback.Text, u.view.entries)
 	}
 	appServerTestKeys(t, u, "\r")
 	if start := resumeTestOne(t, w, "turn/start"); start.Params.ThreadID != "main" {
@@ -313,13 +313,13 @@ func TestAppServerResumeCommandRequiresIdleSession(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestTurn(t, u, "work")
 	appServerTestKeys(t, u, "/resume\r")
-	if u.resumePicker != nil || len(resumeTestRequests(t, w)) != 0 || !strings.Contains(u.notice, "disabled while a task is in progress") || strings.TrimSpace(u.draft) != "/resume" {
-		t.Fatalf("busy /resume: picker=%v notice=%q draft=%q", u.resumePicker != nil, u.notice, u.draft)
+	if u.resumePicker != nil || len(resumeTestRequests(t, w)) != 0 || !strings.Contains(u.feedback.Text, "disabled while a task is in progress") || strings.TrimSpace(u.draft) != "/resume" {
+		t.Fatalf("busy /resume: picker=%v notice=%q draft=%q", u.resumePicker != nil, u.feedback.Text, u.draft)
 	}
 	u, w = newAppServerTestUI()
 	appServerTestKeys(t, u, "/resume a b\r")
-	if len(resumeTestRequests(t, w)) != 0 || !strings.Contains(u.notice, "Use /resume") {
-		t.Fatalf("extra /resume arguments: %q", u.notice)
+	if len(resumeTestRequests(t, w)) != 0 || !strings.Contains(u.feedback.Text, "Use /resume") {
+		t.Fatalf("extra /resume arguments: %q", u.feedback.Text)
 	}
 }
 

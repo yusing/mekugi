@@ -18,7 +18,7 @@ func (*appServerTestInput) Close() error { return nil }
 
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
-	u := &appServerUI{history: testHistory(), client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
+	u := &appServerUI{issues: testCriticalErrors(), history: testHistory(), client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
 	u.approvals.initGuards(testGuards())
 	u.view.painter.FileLink = u.markdownFileExists
 	return u, w
@@ -71,12 +71,12 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "draft\x03")
-	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.notice, "Ctrl-C again quits") {
-		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.draft, u.notice)
+	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again quits") {
+		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.draft, u.feedback.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "draft" || u.notice != "" {
-		t.Fatalf("cleared draft not restorable: %q notice=%q", u.draft, u.notice)
+	if u.draft != "draft" || u.feedback.Text != "" {
+		t.Fatalf("cleared draft not restorable: %q notice=%q", u.draft, u.feedback.Text)
 	}
 	u.draft = ""
 	if quit, err := u.key(3); !quit || err != nil {
@@ -85,7 +85,7 @@ func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 	u, w = newAppServerTestUI()
 	u.turn = "turn"
 	appServerTestKeys(t, u, "steer\x03")
-	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.notice, "Ctrl-C again interrupts") {
+	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again interrupts") {
 		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.draft, w.String())
 	}
 	if quit, err := u.key(3); quit || err != nil || !strings.Contains(w.String(), "turn/interrupt") {
@@ -107,8 +107,8 @@ func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
 		t.Fatalf("notice replaced turn state: %q", label)
 	}
 	appServerTestKeys(t, u, "\x7f")
-	if u.notice != "" || u.status != "Working" {
-		t.Fatalf("edit kept stale notice %q or lost status %q", u.notice, u.status)
+	if u.feedback.Text != "" || u.status != "Working" {
+		t.Fatalf("edit kept stale notice %q or lost status %q", u.feedback.Text, u.status)
 	}
 }
 
@@ -320,23 +320,23 @@ func TestAppServerNoticeExpiry(t *testing.T) {
 	u.ensureShell()
 	u.status = "Working"
 	u.shell.copyText("copied")
-	deadline := u.noticeUntil
+	deadline := u.feedback.Until
 	if deadline.IsZero() || u.expireNotice(deadline.Add(-time.Millisecond)) {
 		t.Fatal("notice expired early")
 	}
 	u.shell.copyText("copied again")
-	if u.noticeUntil.Before(deadline) {
+	if u.feedback.Until.Before(deadline) {
 		t.Fatal("repeat notice did not refresh deadline")
 	}
-	if !u.expireNotice(u.noticeUntil) || u.notice != "" || u.status != "Working" {
+	if !u.expireNotice(u.feedback.Until) || u.feedback.Text != "" || u.status != "Working" {
 		t.Fatal("notice did not expire independently of status")
 	}
 	u.setNotice("failure", true)
-	if u.expireNotice(time.Now().Add(time.Hour)) || u.notice != "failure" {
+	if u.expireNotice(time.Now().Add(time.Hour)) || u.feedback.Text != "failure" {
 		t.Fatal("error expired")
 	}
 	u.insertDraft("x")
-	if u.notice != "" || !u.noticeUntil.IsZero() {
+	if u.feedback.Text != "" || !u.feedback.Until.IsZero() {
 		t.Fatal("editing did not clear notice")
 	}
 }

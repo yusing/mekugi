@@ -158,8 +158,8 @@ func TestSkillAttachmentLookupFailureStillSendsText(t *testing.T) {
 	if len(requests) != 2 || requests[1].Method != "turn/start" || len(u.submission.skills) != 0 || u.submission.text != "use $review please" {
 		t.Fatalf("lookup failure blocked ordinary delivery: %+v %+v", requests, u.submission)
 	}
-	if !u.noticeAlert || !strings.Contains(u.notice, "Skill attachment unavailable") {
-		t.Fatalf("lookup failure was silent: %q", u.notice)
+	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Skill attachment unavailable") {
+		t.Fatalf("lookup failure was silent: %q", u.feedback.Text)
 	}
 }
 
@@ -185,8 +185,8 @@ func TestSkillAttachmentFailureIndependentOfForegroundPicker(t *testing.T) {
 	if starts != 1 || fileID == 0 || u.submission.text != "use $review please" || len(u.submission.skills) != 0 {
 		t.Fatalf("foreground picker stranded fallback: %+v %+v", requests, u.submission)
 	}
-	if !u.noticeAlert || !strings.Contains(u.notice, "catalog unavailable") {
-		t.Fatalf("foreground picker hid catalog failure: %q", u.notice)
+	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "catalog unavailable") {
+		t.Fatalf("foreground picker hid catalog failure: %q", u.feedback.Text)
 	}
 	pickerReply(t, u, fileID, `{"files":[{"root":"/work","path":"foo.go","match_type":"file"}]}`)
 	if u.draft != "@foo" || !u.picker.open || len(u.picker.choices) != 1 {
@@ -235,7 +235,7 @@ func TestSkillAttachmentPartialCatalogFailureKeepsAvailableSkillsVisible(t *test
 	if u.submission.text != "use $review and $broken please" || len(u.submission.skills) != 1 || u.submission.skills[0].name != "review" {
 		t.Fatalf("partial catalog failure lost text or available attachment: %+v", u.submission)
 	}
-	if !u.noticeAlert || !strings.Contains(u.notice, "Skill catalog incomplete") || !strings.Contains(u.notice, "broken skill manifest") {
-		t.Fatalf("partial catalog failure was hidden: %q", u.notice)
+	if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Skill catalog incomplete") || !strings.Contains(u.feedback.Text, "broken skill manifest") {
+		t.Fatalf("partial catalog failure was hidden: %q", u.feedback.Text)
 	}
 }

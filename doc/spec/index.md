@@ -12,7 +12,7 @@ pjdoc:
     - third_party.md
     - grok.md
     - opencode.md
-    - notices.md
+    - ../../modules/notifications/SPEC.md
     - activity.md
     - activity_display.md
     - plugin.md
@@ -52,7 +52,7 @@ resume evidence and renderer-keyed persistence.
 - [`REQ-THIRD-PARTY-001`](third_party.md): shared third-party native-agent routing
 - [`REQ-GROK-001`](grok.md): Grok provider route
 - [`REQ-OPENCODE-001`](opencode.md): OpenCode Go and Zen provider routes
-- [`REQ-NOTICES-001`](notices.md): native diagnostic delivery and recovery
+- [Notifications](../../modules/notifications/SPEC.md): native diagnostic delivery and recovery
 - [`REQ-ACTIVITY-001`](activity.md): observed tool classification
 - [`REQ-ACTIVITY-DISPLAY-001`](activity_display.md): native operation rows and agent feeds
 - [`REQ-USAGE-001`](../../modules/usage/SPEC.md): per-thread provider accounting and reference costs

@@ -75,13 +75,13 @@ func TestAppServerShellIdleCompletionDoesNotStartModel(t *testing.T) {
 func TestAppServerShellRejectedAndEmpty(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "!\r")
-	if w.Len() != 0 || u.draft != "!" || u.notice == "" {
+	if w.Len() != 0 || u.draft != "!" || u.feedback.Text == "" {
 		t.Fatal("empty shell command was submitted or silently discarded")
 	}
 	appServerTestKeys(t, u, "pwd\rnext")
 	w.Reset()
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"unavailable"}}`)
-	if u.draft != "next" || !u.noticeAlert || u.starting() || u.shellCommand.standalone() || w.Len() != 0 || len(u.inputHistory) != 1 || u.inputHistory[0].text != "!pwd" {
+	if u.draft != "next" || !u.feedback.Alert || u.starting() || u.shellCommand.standalone() || w.Len() != 0 || len(u.inputHistory) != 1 || u.inputHistory[0].text != "!pwd" {
 		t.Fatalf("rejected shell lost input or blocked composer: %+v", u)
 	}
 	appServerTestKeys(t, u, "\x1b[A\r")

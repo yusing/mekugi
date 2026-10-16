@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/notifications/notice"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -12,19 +14,15 @@ import (
 
 // Successful feedback is transient; actionable errors remain until editing.
 func (u *appServerUI) setNotice(text string, alert bool) {
-	u.notice, u.noticeAlert = text, alert
+	u.feedback.Set(text, alert, u.now())
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
-	u.noticeUntil = time.Time{}
-	if text != "" && !alert {
-		u.noticeUntil = u.now().Add(3 * time.Second)
-	}
 }
 
 func (u *appServerUI) expireNotice(now time.Time) bool {
-	if u.noticeUntil.IsZero() || now.Before(u.noticeUntil) {
+	if !u.feedback.Expire(now) {
 		return false
 	}
-	u.setNotice("", false)
+	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	return true
 }
 
@@ -57,12 +55,12 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		}
 		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.painter.Colors) + activityui.Reset
 	}
-	notice := strings.ReplaceAll(livediff.Safe(u.notice, false), "\n", " ")
+	notice := strings.ReplaceAll(livediff.Safe(u.feedback.Text, false), "\n", " ")
 	switch {
 	case notice == "":
 		return label
-	case u.noticeAlert:
-		notice = activityui.Red + "✗ " + activityui.ErrorPreview(u.notice) + activityui.Reset
+	case u.feedback.Alert:
+		notice = activityui.Red + "✗ " + activityui.ErrorPreview(u.feedback.Text) + activityui.Reset
 	default:
 		notice = "\x1b[39m" + notice + activityui.Reset
 	}
@@ -82,8 +80,8 @@ func (u *appServerUI) composerErrorText() string {
 	if u.alert && u.status != "" {
 		parts = append(parts, u.status)
 	}
-	if u.noticeAlert && u.notice != "" {
-		parts = append(parts, u.notice)
+	if u.feedback.Alert && u.feedback.Text != "" {
+		parts = append(parts, u.feedback.Text)
 	}
 	return strings.Join(parts, "\n")
 }
@@ -138,7 +136,7 @@ func (u *appServerUI) composerNoticeMouse(button, x, y int, release bool) bool {
 type nativeCriticalNoticeDelivery struct {
 	ui               *appServerUI
 	composerText     string
-	errors, progress criticalNoticeDelivery
+	errors, progress notice.Batch
 }
 
 // A successful write can show the composer while transcript progress is hidden.
@@ -149,8 +147,8 @@ func (d *nativeCriticalNoticeDelivery) finish(success bool) {
 	}
 	u := d.ui
 	visible := success && (u.shell == nil || u.shell.output == nil && u.shell.selection == nil)
-	d.errors.finish(visible && u.notice == d.composerText && u.noticeDismiss.w > 0)
-	d.progress.finish(visible && u.mainContentPainted)
+	d.errors.Finish(visible && u.feedback.Text == d.composerText && u.noticeDismiss.w > 0)
+	d.progress.Finish(visible && u.mainContentPainted)
 }
 
 func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
@@ -162,38 +160,13 @@ func (u *appServerUI) applyCriticalNotices() *nativeCriticalNoticeDelivery {
 	if claim == nil {
 		return nil
 	}
-	delivery := &nativeCriticalNoticeDelivery{ui: u, errors: criticalNoticeDelivery{owner: claim.owner}, progress: criticalNoticeDelivery{owner: claim.owner}}
-	if u.noticeEntries == nil {
-		u.noticeEntries = make(map[string]bool)
+	delivery := &nativeCriticalNoticeDelivery{ui: u, errors: claim.Errors, progress: claim.Progress}
+	for _, message := range u.feedback.Receive(claim, u.now()) {
+		u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "progress", Text: message.Text, Observed: u.now()}}})
 	}
-	var errors []string
-	for i, notice := range claim.snapshots {
-		text := noticeText(&notice)
-		if notice.thread != "" && notice.thread != u.thread && activity != nil {
-			activity.mu.Lock()
-			if node := activity.threads[notice.thread]; node != nil {
-				text = node.name + ": " + text
-			}
-			activity.mu.Unlock()
-		}
-		if notice.category != "storage_cleanup_planning" && notice.category != "storage_cleanup_reclaimed" {
-			errors = append(errors, text)
-			delivery.errors.notices = append(delivery.errors.notices, claim.notices[i])
-			delivery.errors.snapshots = append(delivery.errors.snapshots, notice)
-			continue
-		}
-		delivery.progress.notices = append(delivery.progress.notices, claim.notices[i])
-		delivery.progress.snapshots = append(delivery.progress.snapshots, notice)
-		if !u.noticeEntries[notice.id] {
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
-				Seq: u.view.lastSeq + 1, Agent: "Main", Kind: "progress", Text: text, Observed: u.now(),
-			}}})
-			u.noticeEntries[notice.id] = true
-		}
-	}
-	if len(errors) > 0 {
-		delivery.composerText = strings.Join(errors, "\n\n")
-		u.setNotice(delivery.composerText, true)
+	if len(claim.Errors.Messages) > 0 {
+		delivery.composerText = u.feedback.Text
+		u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
 	}
 	u.dirty = true
 	return delivery

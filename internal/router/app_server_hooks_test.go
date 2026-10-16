@@ -95,7 +95,7 @@ func TestAppServerHookRetentionFailureKeepsLiveOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": hookTestRun(u.session.cwd, "failed")})
-	if len(u.view.entries) != 1 || !strings.Contains(u.notice, "could not be retained") {
+	if len(u.view.entries) != 1 || !strings.Contains(u.feedback.Text, "could not be retained") {
 		t.Fatal("retention failure hid live output or lacked a notice")
 	}
 }

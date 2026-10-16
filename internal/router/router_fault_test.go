@@ -80,7 +80,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	upstream := serverHTTPResponse(routerFaultSSE(created, added, malformedDone))
 	upstream.Header.Set("Content-Type", "text/event-stream")
 	provider := &serverFakeProvider{results: []serverForwardResult{{response: upstream}}}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	metadata := codexTurnMetadata{
 		RequestKind: "turn", ThreadID: "router-fault-thread", TurnID: "router-fault-turn",
 		Directories: map[string]jsonv1.RawMessage{workspace: nil},
@@ -97,7 +97,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 
 	events := routerFaultEvents(t, recorder.Body.String())
 	if len(events) < 2 || routerFaultEventString(events[0], "type") != "response.created" || routerFaultEventString(events[len(events)-1], "type") != "response.failed" {
-		t.Fatalf("stream did not end with a terminal failure after response.created: err=%v forwarded=%d status=%d issues=%+v body=%q", err, len(provider.forwarded), recorder.Code, issues.entries, recorder.Body.String())
+		t.Fatalf("stream did not end with a terminal failure after response.created: err=%v forwarded=%d status=%d issues=%+v body=%q", err, len(provider.forwarded), recorder.Code, issues.Notices.Pending(), recorder.Body.String())
 	}
 	var failed struct {
 		Response struct {
@@ -134,10 +134,10 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	if len(provider.forwarded) != 1 {
 		t.Fatalf("upstream requests = %d, want one for a deterministic transform fault", len(provider.forwarded))
 	}
-	if len(issues.entries) != 1 || issues.entries[0].count != 1 || !strings.Contains(issues.entries[0].message, message) {
-		t.Fatalf("fault did not produce exactly one actionable notice: %+v", issues.entries)
+	if len(issues.Notices.Pending()) != 1 || strings.Contains(issues.Notices.Pending()[0], "occurred") || !strings.Contains(issues.Notices.Pending()[0], message) {
+		t.Fatalf("fault did not produce exactly one actionable notice: %+v", issues.Notices.Pending())
 	}
-	if pending := issues.Pending(); len(pending) != 1 || !strings.Contains(pending[0], message) {
+	if pending := issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], message) {
 		t.Fatalf("transport write acknowledged an unpainted notice: %v", pending)
 	}
 	ui, _ := newAppServerTestUI()
@@ -147,7 +147,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	}
 	appServerTestNotify(t, ui, "turn/completed", map[string]any{"threadId": metadata.ThreadID, "turn": map[string]any{"id": metadata.TurnID, "status": "failed"}})
 	delivery := ui.applyCriticalNotices()
-	if delivery == nil || !strings.Contains(ui.notice, message) {
+	if delivery == nil || !strings.Contains(ui.feedback.Text, message) {
 		t.Fatal("host-confirmed failure lost native notice delivery")
 	}
 	ui.ensureShell()
@@ -156,13 +156,13 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 		t.Fatal(err)
 	}
 	delivery.finish(true)
-	if pending := issues.Pending(); len(pending) != 0 {
+	if pending := issues.Notices.Pending(); len(pending) != 0 {
 		t.Fatalf("visible terminal paint did not acknowledge notice: %v", pending)
 	}
 }
 
 func TestRouterFaultNoticeDeduplicatesWithinTurnButSeparatesTurns(t *testing.T) {
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	makeFault := func(turn string) requestFinalization {
 		return requestFinalization{
 			sessionID: "fault-session", threadID: "fault-thread", turnID: turn,
@@ -178,17 +178,24 @@ func TestRouterFaultNoticeDeduplicatesWithinTurnButSeparatesTurns(t *testing.T) 
 	issues.record(&first, fault)
 	retry := makeFault("turn-one")
 	issues.record(&retry, fault)
-	if first.diagnosticReference == "" || retry.diagnosticReference != first.diagnosticReference || len(issues.entries) != 1 || issues.entries[0].count != 1 {
-		t.Fatalf("same-turn retry was not deduplicated: first=%+v retry=%+v entries=%+v", first, retry, issues.entries)
+	if first.diagnosticReference == "" || retry.diagnosticReference != first.diagnosticReference || len(issues.Notices.Pending()) != 1 || strings.Contains(issues.Notices.Pending()[0], "occurred") {
+		t.Fatalf("same-turn retry was not deduplicated: first=%+v retry=%+v entries=%+v", first, retry, issues.Notices.Pending())
 	}
 
 	nextTurn := makeFault("turn-two")
 	issues.record(&nextTurn, fault)
-	if nextTurn.diagnosticReference != first.diagnosticReference || len(issues.entries) != 2 ||
-		issues.entries[0].count != 1 || issues.entries[1].count != 1 ||
-		issues.entries[0].id == issues.entries[1].id {
-		t.Fatalf("same fault on a new turn did not receive a distinct notice: %+v", issues.entries)
+	if nextTurn.diagnosticReference != first.diagnosticReference || len(issues.Notices.Pending()) != 2 ||
+		strings.Contains(issues.Notices.Pending()[0], "occurred") || strings.Contains(issues.Notices.Pending()[1], "occurred") ||
+		first.diagnosticReference == "" {
+		t.Fatalf("same fault on a new turn did not receive a distinct notice: %+v", issues.Notices.Pending())
 	}
+	issues.Notices.ObserveTurn("fault-thread", "turn-one", "failed")
+	issues.Notices.ObserveTurn("fault-thread", "turn-two", "failed")
+	claim := issues.takeNative("fault-thread", nil)
+	if claim == nil || len(claim.Errors.Messages) != 2 || claim.Errors.Messages[0].ID == claim.Errors.Messages[1].ID {
+		t.Fatalf("distinct turns lost notice identities: %+v", claim)
+	}
+	claim.Errors.Finish(false)
 }
 
 func TestRequestAttemptFinishDoesNotDuplicateDeliveredTerminal(t *testing.T) {
@@ -202,7 +209,7 @@ func TestRequestAttemptFinishDoesNotDuplicateDeliveredTerminal(t *testing.T) {
 		}
 	}
 	attempt := &requestAttempt{
-		executor:       requestExecutor{output: output, issues: NewCriticalErrors()},
+		executor:       requestExecutor{output: output, issues: testCriticalErrors()},
 		startCtx:       t.Context(),
 		executionCtx:   t.Context(),
 		hooks:          &responseHooks{deliveredResponseID: "already-failed-response", deliveredTerminal: true},

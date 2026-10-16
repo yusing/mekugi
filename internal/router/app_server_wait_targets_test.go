@@ -209,8 +209,8 @@ func TestAppServerWaitTargetsStorageFailureKeepsLiveDisplay(t *testing.T) {
 			if got := u.view.entries[0].Text; got != "Waiting for agent · alpha" {
 				t.Fatalf("storage blocked live start: %q", got)
 			}
-			if !strings.Contains(u.notice, "Wait targets could not") {
-				t.Fatalf("storage failure missing notice: %q", u.notice)
+			if !strings.Contains(u.feedback.Text, "Wait targets could not") {
+				t.Fatalf("storage failure missing notice: %q", u.feedback.Text)
 			}
 			waitTargetTestEvent(t, u, "item/completed", "main", "t", "w")
 			if got := u.view.entries[0].Text; got != "Finished waiting · alpha" {

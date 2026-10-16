@@ -18,7 +18,7 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 		!activity.observe("other", "", "/root", false) {
 		t.Fatal("failed to establish thread ownership")
 	}
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	queueCritical(issues, "main")
 	queueCritical(issues, "child")
 	queueCritical(issues, "other")
@@ -29,11 +29,11 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	u.view.conversation = true
 
 	first := u.applyCriticalNotices()
-	if first == nil || len(first.errors.notices) != 3 {
+	if first == nil || len(first.errors.Messages) != 3 {
 		t.Fatalf("native delivery = %v, want root, child, and router-wide", first)
 	}
 
-	if len(u.view.entries) != 0 || !u.noticeAlert {
+	if len(u.view.entries) != 0 || !u.feedback.Alert {
 		t.Fatal("router errors entered the transcript or missed the composer")
 	}
 	u.ensureShell()
@@ -41,10 +41,10 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 	if err := u.paint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(u.notice, "/root/worker: ") || !strings.Contains(u.notice, "router-wide capacity warning") || strings.Count(u.notice, "Enable supported tools.") != 2 {
-		t.Fatalf("composer omitted or mis-scoped native notices: %s", u.notice)
+	if !strings.Contains(u.feedback.Text, "/root/worker: ") || !strings.Contains(u.feedback.Text, "router-wide capacity warning") || strings.Count(u.feedback.Text, "Enable supported tools.") != 2 {
+		t.Fatalf("composer omitted or mis-scoped native notices: %s", u.feedback.Text)
 	}
-	before := u.notice
+	before := u.feedback.Text
 
 	rect := u.noticeDetails
 	if rect.w == 0 {
@@ -61,21 +61,21 @@ func TestNativeCriticalNoticesRenderInMainWithoutProviderMessages(t *testing.T) 
 		t.Fatal("router details lost a scoped error")
 	}
 	first.finish(true)
-	if len(issues.Pending()) != 4 {
+	if len(issues.Notices.Pending()) != 4 {
 		t.Fatal("dialog acknowledged a hidden composer batch")
 	}
 	u.shell.outputKey("q")
 	first.finish(false) // Simulate an unpainted terminal frame.
 	retry := u.applyCriticalNotices()
-	if retry == nil || len(retry.errors.notices) != 3 || len(u.view.entries) != 0 || u.notice != before {
+	if retry == nil || len(retry.errors.Messages) != 3 || len(u.view.entries) != 0 || u.feedback.Text != before {
 		t.Fatalf("retry duplicated or lost entries: delivery=%v entries=%d", retry, len(u.view.entries))
 	}
 	if err := u.paint(io.Discard, 100, 16); err != nil {
 		t.Fatal(err)
 	}
 	retry.finish(true)
-	if len(issues.Pending()) != 1 || u.applyCriticalNotices() != nil {
-		t.Fatalf("paint acknowledged unrelated root or queued duplicate: %v", issues.Pending())
+	if len(issues.Notices.Pending()) != 1 || u.applyCriticalNotices() != nil {
+		t.Fatalf("paint acknowledged unrelated root or queued duplicate: %v", issues.Notices.Pending())
 	}
 }
 
@@ -83,29 +83,29 @@ func TestNativeRequestNoticesWaitForHostTurnOutcome(t *testing.T) {
 	for _, status := range []string{"completed", "interrupted", "failed"} {
 		t.Run(status, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.issues = NewCriticalErrors()
+			u.issues = testCriticalErrors()
 			record := func(cause string) {
 				u.issues.record(&requestFinalization{sessionID: "session", threadID: "main", turnID: "turn",
 					failurePhase: requestFailureInspectResponse, observation: requestObservation{outcome: requestOutcomeFailed}}, fmt.Errorf("upstream closed: %s", cause))
 			}
 			record("StatusServiceRestart")
-			if delivery := u.applyCriticalNotices(); delivery != nil || u.noticeAlert {
+			if delivery := u.applyCriticalNotices(); delivery != nil || u.feedback.Alert {
 				t.Fatal("request attempt interrupted a retrying turn")
 			}
 			appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": status}})
 			record("late NormalClosure") // Finalization can follow the host notification.
 			delivery := u.applyCriticalNotices()
 			if status != "failed" {
-				if delivery != nil || len(u.issues.Pending()) != 0 || u.noticeAlert {
+				if delivery != nil || len(u.issues.Notices.Pending()) != 0 || u.feedback.Alert {
 					t.Fatal("recovered or interrupted turn retained a failure notice")
 				}
 				return
 			}
-			if delivery == nil || len(delivery.errors.notices) != 2 || !strings.Contains(u.notice, "StatusServiceRestart") || !strings.Contains(u.notice, "NormalClosure") {
-				t.Fatalf("terminal failure lost its diagnostic batch: %s", u.notice)
+			if delivery == nil || len(delivery.errors.Messages) != 2 || !strings.Contains(u.feedback.Text, "StatusServiceRestart") || !strings.Contains(u.feedback.Text, "NormalClosure") {
+				t.Fatalf("terminal failure lost its diagnostic batch: %s", u.feedback.Text)
 			}
-			delivery.errors.finish(true)
-			if len(u.issues.Pending()) != 0 {
+			delivery.errors.Finish(true)
+			if len(u.issues.Notices.Pending()) != 0 {
 				t.Fatal("delivered terminal failure stayed pending")
 			}
 		})
@@ -114,7 +114,7 @@ func TestNativeRequestNoticesWaitForHostTurnOutcome(t *testing.T) {
 
 func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.issues = NewCriticalErrors()
+	u.issues = testCriticalErrors()
 	activity := newSubagentActivity()
 	activity.observe("main", "", "/root", false)
 	activity.observe("child", "main", "/root/worker", true)
@@ -125,18 +125,18 @@ func TestNativeRequestNoticeChildOutcomeKeepsOtherTurnsPending(t *testing.T) {
 	}
 	queueCritical(u.issues, "main") // Auxiliary/unidentified failures stay immediate.
 	delivery := u.applyCriticalNotices()
-	if delivery == nil || len(delivery.errors.notices) != 1 {
+	if delivery == nil || len(delivery.errors.Messages) != 1 {
 		t.Fatal("retry gating hid an unrelated actionable notice")
 	}
-	delivery.errors.finish(true)
+	delivery.errors.Finish(true)
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "turn", "status": "failed"}})
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "main", "turn": map[string]any{"id": "turn", "status": "completed"}})
 	delivery = u.applyCriticalNotices()
-	if delivery == nil || len(delivery.errors.notices) != 1 || !strings.Contains(u.notice, "/root/worker: ") || strings.Contains(u.notice, "upstream closed for main") {
-		t.Fatalf("child completion crossed turn scope: %s", u.notice)
+	if delivery == nil || len(delivery.errors.Messages) != 1 || !strings.Contains(u.feedback.Text, "/root/worker: ") || strings.Contains(u.feedback.Text, "upstream closed for main") {
+		t.Fatalf("child completion crossed turn scope: %s", u.feedback.Text)
 	}
-	delivery.errors.finish(true)
-	if pending := u.issues.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "upstream closed for other") {
+	delivery.errors.Finish(true)
+	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "upstream closed for other") {
 		t.Fatalf("unobserved turn lost launcher recovery: %v", pending)
 	}
 }
@@ -147,7 +147,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_STATE_HOME", stateHome)
-	issues := NewCriticalErrors()
+	issues := testCriticalErrors()
 	issues.diagnostics = testDiagnostics(nil, nil)
 	failure := failureStoreTestFinalization("native-storage-failure")
 	issues.persistFailure(failure)
@@ -164,7 +164,7 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 	owner.issues = issues
 	owner.view.conversation = true
 	delivery := owner.applyCriticalNotices()
-	if delivery == nil || len(delivery.errors.notices) != 1 || len(owner.view.entries) != 0 || !owner.noticeAlert {
+	if delivery == nil || len(delivery.errors.Messages) != 1 || len(owner.view.entries) != 0 || !owner.feedback.Alert {
 		t.Fatalf("owning root did not receive the storage notice: delivery=%v entries=%d", delivery, len(owner.view.entries))
 	}
 	rows, _ := owner.mainFrame(100, 12, 0)
@@ -173,8 +173,8 @@ func TestFailureStorageNoticeReachesOwningNativeRootBeforeShutdown(t *testing.T)
 		t.Fatalf("storage failure did not appear in the composer before shutdown: %s", feed)
 	}
 	delivery.finish(true)
-	if len(issues.Pending()) != 0 {
-		t.Fatalf("painted notice remained pending: %v", issues.Pending())
+	if len(issues.Notices.Pending()) != 0 {
+		t.Fatalf("painted notice remained pending: %v", issues.Notices.Pending())
 	}
 }
 
@@ -182,7 +182,7 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 	for _, state := range []string{"status", "replaced", "compact"} {
 		t.Run(state, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.issues = NewCriticalErrors()
+			u.issues = testCriticalErrors()
 			queueCritical(u.issues, u.thread)
 			delivery := u.applyCriticalNotices()
 			u.ensureShell()
@@ -200,22 +200,22 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 			u.mainFrame(80, height, 0)
 			delivery.finish(true)
 			if state == "compact" {
-				if u.mainContentPainted || len(u.issues.Pending()) != 0 {
+				if u.mainContentPainted || len(u.issues.Notices.Pending()) != 0 {
 					t.Fatal("compact composer did not deliver independently of transcript")
 				}
 				return
 			}
-			if len(u.issues.Pending()) != 1 {
+			if len(u.issues.Notices.Pending()) != 1 {
 				t.Fatal("hidden or replaced notice was acknowledged")
 			}
 			u.statusPanel = nil
 			retry := u.applyCriticalNotices()
-			if retry == nil || u.notice != delivery.composerText {
+			if retry == nil || u.feedback.Text != delivery.composerText {
 				t.Fatal("hidden batch could not retry")
 			}
 			u.mainFrame(80, 12, 0)
 			retry.finish(true)
-			if len(u.issues.Pending()) != 0 {
+			if len(u.issues.Notices.Pending()) != 0 {
 				t.Fatal("visible retry remained pending")
 			}
 			u.applyCriticalNotices().finish(false) // Empty polls retain nil-safe acknowledgement.
@@ -225,25 +225,25 @@ func TestNativeCriticalNoticeComposerVisibility(t *testing.T) {
 
 func TestNativeCriticalNoticeMixedBatchDismissal(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.issues = NewCriticalErrors()
+	u.issues = testCriticalErrors()
 	u.issues.addNotice("", "capacity", "router error")
-	u.issues.addNotice("", "storage_cleanup_planning", "cleanup progress")
+	u.issues.cleanupNotice("", "", "planning", "cleanup progress")
 	delivery := u.applyCriticalNotices()
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	u.mainFrame(80, 3, 0)
 	delivery.finish(true)
-	if pending := u.issues.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
+	if pending := u.issues.Notices.Pending(); len(pending) != 1 || !strings.Contains(pending[0], "cleanup progress") {
 		t.Fatalf("mixed batch acknowledged the wrong surface: %v", pending)
 	}
 	u.composerNoticeMouse(0, u.noticeDismiss.x, u.noticeDismiss.y, false)
 	retry := u.applyCriticalNotices()
-	if u.notice != "" || len(u.view.entries) != 1 {
+	if u.feedback.Text != "" || len(u.view.entries) != 1 {
 		t.Fatal("dismissed error returned or progress duplicated")
 	}
 	u.mainFrame(80, 12, 0)
 	retry.finish(true)
-	if len(u.issues.Pending()) != 0 {
+	if len(u.issues.Notices.Pending()) != 0 {
 		t.Fatal("visible progress remained pending")
 	}
 }

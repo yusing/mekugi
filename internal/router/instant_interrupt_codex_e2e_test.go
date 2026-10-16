@@ -206,7 +206,7 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			client := newProviderClient(upstream.URL, upstream.Client())
 			client.openai.EnableWebSockets(t.Context())
 			defer client.openai.Close()
-			issues := NewCriticalErrors()
+			issues := testCriticalErrors()
 			created := make(chan struct{}, 1)
 			handler := responsesHandler(t.Context(), time.Minute, client, issues, proxy)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -230,14 +230,14 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			select {
 			case <-provider.requests:
 			case <-terminal.ctx.Done():
-				t.Fatalf("first provider request missing: notices=%v\n%s", issues.Pending(), terminal.screen.String())
+				t.Fatalf("first provider request missing: notices=%v\n%s", issues.Notices.Pending(), terminal.screen.String())
 			}
 			// Steer only after response copying has delivered the first event,
 			// rather than racing provider admission or startup inspection.
 			select {
 			case <-created:
 			case <-terminal.ctx.Done():
-				t.Fatalf("response.created was not delivered: %v", issues.Pending())
+				t.Fatalf("response.created was not delivered: %v", issues.Notices.Pending())
 			}
 			if mode == "code" {
 				deadline := time.After(10 * time.Second)
@@ -280,7 +280,7 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			}
 			terminal.await("completed")
 			terminal.quit()
-			if pending := issues.Pending(); len(pending) != 0 {
+			if pending := issues.Notices.Pending(); len(pending) != 0 {
 				t.Fatalf("instant interruption produced router failures: %v", pending)
 			}
 		})

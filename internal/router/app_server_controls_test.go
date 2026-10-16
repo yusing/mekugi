@@ -33,7 +33,7 @@ func TestNativeControlsLockKeyboardInterrupt(t *testing.T) {
 			if err := u.shell.send("\x1b"); err != nil {
 				t.Fatal(err)
 			}
-			if wire.Len() != 0 || u.interruption.beforeStart || u.interruption.target != "" || !strings.Contains(u.notice, "/unlock") {
+			if wire.Len() != 0 || u.interruption.beforeStart || u.interruption.target != "" || !strings.Contains(u.feedback.Text, "/unlock") {
 				t.Fatalf("locked cancellation reached host: %s %+v", wire.Bytes(), u)
 			}
 			if state == "queued" && len(u.queued) != 1 {
