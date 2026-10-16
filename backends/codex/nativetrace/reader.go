@@ -355,6 +355,9 @@ func (t *Reader) ReadCell(thread, callID, source string) *Cell {
 			copy.tools = nil
 			for _, tool := range cell.tools {
 				clone := *tool
+				if tool.ExitCode != nil {
+					clone.ExitCode = new(*tool.ExitCode)
+				}
 				clone.environmentID = append(jsontext.Value(nil), tool.environmentID...)
 				copy.tools = append(copy.tools, &clone)
 			}

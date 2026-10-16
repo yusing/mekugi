@@ -370,3 +370,22 @@ func TestNativeTraceRetainedToolEvidenceRemainsBounded(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeTraceReturnedExitCodeDoesNotMutateReader(t *testing.T) {
+	f := newNativeTraceFixture(t)
+	f.start("author", "cell", "outer", "source")
+	f.tool("author", "cell", "command", "exec_command", `{"cmd":"exit 7"}`)
+	f.result("author", "command", "completed", map[string]any{"exit_code": 7})
+	f.end("author", "cell")
+	reader := nativetrace.New(f.root)
+	commands := []commandanalysis.Command{{Command: "exit 7"}}
+	results, confirmed := reader.ReadCell("author", "outer", "source").Commands(commands, "/work")
+	if !confirmed || len(results) != 1 || results[0].ExitCode == nil || *results[0].ExitCode != 7 {
+		t.Fatalf("initial command result = %+v, confirmed=%v", results, confirmed)
+	}
+	*results[0].ExitCode = 0
+	results, confirmed = reader.ReadCell("author", "outer", "source").Commands(commands, "/work")
+	if !confirmed || len(results) != 1 || results[0].ExitCode == nil || *results[0].ExitCode != 7 {
+		t.Fatalf("returned exit mutation changed reader evidence: %s, confirmed=%v", responses.MustMarshalJSON(results), confirmed)
+	}
+}
