@@ -3,6 +3,8 @@ package activity
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Elision counts content a row leaves out of view. Every hint renders through
@@ -64,7 +66,7 @@ func (e Elision) String() string {
 	if e.Hovered {
 		text = Underline(text)
 	}
-	return Dim + text + Undim
+	return terminalui.Dim + text + terminalui.Undim
 }
 
 // lineCount labels n lines.

@@ -92,7 +92,7 @@ type liveActivityView struct {
 	feedLines, feedRows int
 	feedSnippets        []liveActivitySnippet
 	feedQuestions       []uint64
-	copyRows            [][]activityui.CopySpan
+	copyRows            [][]terminalui.CopySpan
 	questionRows        map[uint64]int
 	pendingTarget       uint64 // Cross-pane jump resolved after the destination layout is rendered.
 	// questionHover is the pointed viewport row plus one; zero points at none.
@@ -528,17 +528,17 @@ func (v *liveActivityView) latest(name string) int {
 // event, or a sent plaintext final answer. None of them claims completion.
 func (v *liveActivityView) glyph(agent activityPaneAgent) string {
 	if role := liveActivityRole(agent); role != "" {
-		return v.roleColor(role) + string(v.agentStatus(agent)) + activityui.Reset
+		return v.roleColor(role) + string(v.agentStatus(agent)) + terminalui.Reset
 	}
 	switch v.agentStatus(agent) {
 	case '◐':
-		return activityui.Amber + "◐" + activityui.Reset
+		return activityui.Amber + "◐" + terminalui.Reset
 	case '!':
-		return activityui.Red + "!" + activityui.Reset
+		return activityui.Red + "!" + terminalui.Reset
 	case '✓':
-		return activityui.Green + "✓" + activityui.Reset
+		return activityui.Green + "✓" + terminalui.Reset
 	}
-	return activityui.Dim + "·" + activityui.Undim
+	return terminalui.Dim + "·" + terminalui.Undim
 }
 
 // agentStatus is the glyph's fact; counts use it so they agree with visible rows.
@@ -627,7 +627,7 @@ func underlineLink(line string) string {
 	if !ok {
 		return line
 	}
-	return lead + "\x1b[4m" + strings.ReplaceAll("↩"+link, activityui.Reset, activityui.Reset+"\x1b[4m") + "\x1b[24m"
+	return lead + "\x1b[4m" + strings.ReplaceAll("↩"+link, terminalui.Reset, terminalui.Reset+"\x1b[4m") + "\x1b[24m"
 }
 
 // pointSnippet underlines a hovered snippet's count. A click on an operation
@@ -799,14 +799,14 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 		feed := v.viewport(v.renderFeed(feedWidth, body), body)
 		v.feedLeft = cardWidth + 4
 		for i := range body {
-			lines = append(lines, liveActivityPad(cards[i], cardWidth)+activityui.Dim+" │ "+activityui.Undim+feed[i])
+			lines = append(lines, liveActivityPad(cards[i], cardWidth)+terminalui.Dim+" │ "+terminalui.Undim+feed[i])
 		}
 	case len(rows) > 0 && body >= 8:
 		roster := v.renderRoster(rows, text, max(2, body/3), now)
 		v.rosterTop, v.rosterBottom, v.rosterRight = 2, len(roster)+1, text
 		feedRows := body - len(roster) - 1
 		lines = append(lines, roster...)
-		lines = append(lines, activityui.Dim+strings.Repeat("─", text)+activityui.Undim)
+		lines = append(lines, terminalui.Dim+strings.Repeat("─", text)+terminalui.Undim)
 		v.feedTop = len(lines) + 1
 		lines = append(lines, v.viewport(v.renderFeed(text, feedRows), feedRows)...)
 	case len(rows) > 0:
@@ -820,16 +820,16 @@ func (v *liveActivityView) render(width, height int, now time.Time) []string {
 	if footer {
 		lines = append(lines, v.footer(text))
 	}
-	v.copyRows = make([][]activityui.CopySpan, len(lines))
+	v.copyRows = make([][]terminalui.CopySpan, len(lines))
 	for row := range lines {
-		lines[row], v.copyRows[row] = activityui.ExtractCopy(lines[row])
+		lines[row], v.copyRows[row] = terminalui.ExtractCopy(lines[row])
 	}
 	return lines
 }
 
 func liveActivityHint(theme diffrender.Theme, label string, width int) string {
 	label = ansi.Truncate(label, width, "")
-	return strings.Repeat(" ", max(0, (width-ansi.StringWidth(label))/2)) + theme.Accent() + label + activityui.Reset
+	return strings.Repeat(" ", max(0, (width-ansi.StringWidth(label))/2)) + theme.Accent() + label + terminalui.Reset
 }
 
 func liveActivityPad(line string, width int) string {
@@ -853,16 +853,16 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	if v.childrenOnly && !rosterOnly {
 		return v.activityHeader(width)
 	}
-	left := "\x1b[1m" + v.painter.Theme.Accent() + title + activityui.Reset
+	left := "\x1b[1m" + v.painter.Theme.Accent() + title + terminalui.Reset
 	responding, errors := v.statusCounts(rows)
 	switch {
 	case v.feedOnly && !rosterOnly && !v.only:
 		left += " · all"
 	case len(rows) == 0:
-		left += activityui.Dim + " · waiting for subagent activity" + activityui.Undim
+		left += terminalui.Dim + " · waiting for subagent activity" + terminalui.Undim
 	case v.only && !rosterOnly:
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.Agent(v.selected), activityui.Dim, index+1, len(rows), activityui.Undim)
+		left += fmt.Sprintf(" · only %s %s(%d/%d)%s", v.painter.Agent(v.selected), terminalui.Dim, index+1, len(rows), terminalui.Undim)
 	default:
 		left += fmt.Sprintf("  %d agents · %d responding", len(rows), responding)
 		if errors > 0 {
@@ -874,7 +874,7 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 	}
 	right := "FOLLOW"
 	if !v.following {
-		right = activityui.Amber + "PAUSED" + activityui.Reset
+		right = activityui.Amber + "PAUSED" + terminalui.Reset
 		if v.unseen > 0 {
 			right += fmt.Sprintf(" · %d new", v.unseen)
 		}
@@ -896,19 +896,19 @@ func (v *liveActivityView) renderHeader(rows []liveActivityRosterRow, width int,
 // activityHeader names the native feed and its filter. Following the live
 // edge is the default, so only a paused feed says so.
 func (v *liveActivityView) activityHeader(width int) string {
-	left := "\x1b[1m" + v.painter.Theme.Accent() + "Activity" + activityui.Reset
+	left := "\x1b[1m" + v.painter.Theme.Accent() + "Activity" + terminalui.Reset
 	if v.only {
 		rows := v.feedAgents()
 		index := slices.IndexFunc(rows, func(row liveActivityRosterRow) bool { return row.agent.Name == v.selected })
-		left += activityui.Dim + " · only " + activityui.Undim + v.painter.Agent(v.selected) + activityui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + activityui.Undim
+		left += terminalui.Dim + " · only " + terminalui.Undim + v.painter.Agent(v.selected) + terminalui.Dim + fmt.Sprintf(" %d/%d", index+1, len(rows)) + terminalui.Undim
 	}
 	right := v.status
 	if right == "" && !v.following {
-		right = activityui.Amber + "paused" + activityui.Reset
+		right = activityui.Amber + "paused" + terminalui.Reset
 		if v.unseen > 0 {
-			right += activityui.Amber + fmt.Sprintf(" · %d new", v.unseen) + activityui.Reset
+			right += activityui.Amber + fmt.Sprintf(" · %d new", v.unseen) + terminalui.Reset
 		}
-		right += activityui.Dim + " · End follows" + activityui.Undim
+		right += terminalui.Dim + " · End follows" + terminalui.Undim
 	}
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
 	if right == "" || gap < 2 {
@@ -923,7 +923,7 @@ func (v *liveActivityView) current(agent activityPaneAgent, now time.Time, width
 	if len(widths) > 0 {
 		width = max(1, widths[0])
 	}
-	summary := activityui.Dim + "—" + activityui.Undim
+	summary := terminalui.Dim + "—" + terminalui.Undim
 	source := v
 	if agent.Name == "/root" && v.mainView != nil {
 		source = v.mainView
@@ -1014,14 +1014,14 @@ func liveActivityTurns(agent activityPaneAgent) string {
 	if agent.RoundtripsPartial {
 		prefix = "≥"
 	}
-	return activityui.Dim + prefix + "T+" + activityui.Undim + fmt.Sprint(agent.Roundtrips)
+	return terminalui.Dim + prefix + "T+" + terminalui.Undim + fmt.Sprint(agent.Roundtrips)
 }
 
 // selectRow fills the selected agent's rows, so selection takes no column of
 // its own. Resets inside the row restore the fill.
 func (v *liveActivityView) selectRow(line string, width int) string {
 	fill := v.painter.Theme.SelectionBackground()
-	line = strings.ReplaceAll(line, activityui.Reset, activityui.Reset+fill)
+	line = strings.ReplaceAll(line, terminalui.Reset, terminalui.Reset+fill)
 	return fill + line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line))) + "\x1b[49m"
 }
 
@@ -1135,7 +1135,7 @@ func (v *liveActivityView) hiddenRoster(rows []liveActivityRosterRow, direction 
 	if errors > 0 {
 		line += fmt.Sprintf(" · %d !", errors)
 	}
-	return activityui.Dim + line + activityui.Undim
+	return terminalui.Dim + line + terminalui.Undim
 }
 
 // renderAgentRows gives each roster agent one row with its metrics inline;
@@ -1198,7 +1198,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 		}
 		name = strings.TrimRight(liveActivityMiddle(name, available), " ")
 		split := strings.LastIndexAny(name, " /") + 1
-		styled := activityui.DimColor(row.agent.Name) + name[:split] + activityui.Undim + activityui.Color(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + activityui.Reset
+		styled := activityui.DimColor(row.agent.Name) + name[:split] + terminalui.Undim + activityui.Color(row.agent.Name) + v.hoverName(name[split:], row.agent.Name) + terminalui.Reset
 		prefix := " " + v.glyph(row.agent) + " "
 		switch {
 		case cards && !compact:
@@ -1206,11 +1206,11 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 			gap := width - 3 - ansi.StringWidth(name) - ansi.StringWidth(last)
 			line := prefix + styled
 			if gap >= 2 {
-				line += strings.Repeat(" ", gap) + activityui.Dim + last + activityui.Undim
+				line += strings.Repeat(" ", gap) + terminalui.Dim + last + terminalui.Undim
 			}
 			add(line)
 			summary, _ := v.current(row.agent, now, width-3-ansi.StringWidth(indents[i-start]))
-			add("   " + activityui.Dim + indents[i-start] + activityui.Undim + summary)
+			add("   " + terminalui.Dim + indents[i-start] + terminalui.Undim + summary)
 		case cards:
 			line := prefix + styled + strings.Repeat(" ", max(0, nameWidth-ansi.StringWidth(name))) + "  "
 			summary, _ := v.current(row.agent, now, width-ansi.StringWidth(line))
@@ -1228,7 +1228,7 @@ func (v *liveActivityView) renderAgentRows(rows []liveActivityRosterRow, width, 
 			}
 		}
 		if cards && (!compact || (metrics && i == selected)) {
-			add("   " + activityui.Dim + indents[i-start] + activityui.Undim + liveActivityCardMetrics(row.agent))
+			add("   " + terminalui.Dim + indents[i-start] + terminalui.Undim + liveActivityCardMetrics(row.agent))
 		}
 		if i == selected {
 			for j := first - 2; j < len(lines); j++ {
@@ -1267,12 +1267,12 @@ func (v *liveActivityView) metricTable(rows []liveActivityRosterRow, now time.Ti
 		tokens := liveActivityTokens(row.agent)
 		if tokens != "" {
 			input, output := liveActivityTokenParts(row.agent)
-			tokens = activityui.Dim + "↑ " + activityui.Undim + liveActivityPad(input, 6) + activityui.Dim + " ↓ " + activityui.Undim + liveActivityPad(output, 6)
+			tokens = terminalui.Dim + "↑ " + terminalui.Undim + liveActivityPad(input, 6) + terminalui.Dim + " ↓ " + terminalui.Undim + liveActivityPad(output, 6)
 		}
 		timerCell := ""
 		if timer != "" {
 			elapsed, age, _ := strings.Cut(timer, " · ")
-			timerCell = strings.Repeat(" ", max(0, 3-len(elapsed))) + liveActivityMetricValues(elapsed) + activityui.Dim + " · " + activityui.Undim + liveActivityMetricValues(age)
+			timerCell = strings.Repeat(" ", max(0, 3-len(elapsed))) + liveActivityMetricValues(elapsed) + terminalui.Dim + " · " + terminalui.Undim + liveActivityMetricValues(age)
 		}
 		cost, turns := "", ""
 		if row.agent.Turns > 0 && row.agent.CostKnown {
@@ -1314,15 +1314,15 @@ func liveActivityMetricValues(text string) string {
 	for _, r := range text {
 		if value := r >= '0' && r <= '9' || r == '.'; value == dim {
 			if dim = !value; dim {
-				b.WriteString(activityui.Dim)
+				b.WriteString(terminalui.Dim)
 			} else {
-				b.WriteString(activityui.Undim)
+				b.WriteString(terminalui.Undim)
 			}
 		}
 		b.WriteRune(r)
 	}
 	if dim {
-		b.WriteString(activityui.Undim)
+		b.WriteString(terminalui.Undim)
 	}
 	return b.String()
 }
@@ -1332,12 +1332,12 @@ func liveActivityCardMetrics(agent activityPaneAgent) string {
 	if cost := liveActivityCost(agent); cost != "" {
 		parts = append(parts, cost)
 	} else if agent.InputTokens > 0 {
-		parts = append(parts, activityui.Dim+"↑ "+activityui.Undim+formatUsageTokens(agent.InputTokens))
+		parts = append(parts, terminalui.Dim+"↑ "+terminalui.Undim+formatUsageTokens(agent.InputTokens))
 	}
 	if turns := liveActivityTurns(agent); turns != "" {
 		parts = append(parts, turns)
 	}
-	return strings.Join(parts, activityui.Dim+" · "+activityui.Undim)
+	return strings.Join(parts, terminalui.Dim+" · "+terminalui.Undim)
 }
 
 // renderStrip is the one-line roster for short panes.
@@ -1349,7 +1349,7 @@ func (v *liveActivityView) renderStrip(rows []liveActivityRosterRow, width int) 
 		if row.agent.Name == v.selected || row.agent.Name == v.hovered {
 			name = activityui.Underline(name)
 		}
-		part := v.glyph(row.agent) + " " + activityui.Color(row.agent.Name) + name + activityui.Reset
+		part := v.glyph(row.agent) + " " + activityui.Color(row.agent.Name) + name + terminalui.Reset
 		if last := min(width, column+ansi.StringWidth(part)-1); column <= last {
 			v.hits = append(v.hits, liveActivityHit{row: 2, first: column, last: last, agent: row.agent.Name})
 		}
@@ -1614,7 +1614,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			detail = "· " + role
 		}
 	}
-	heading := activityui.EventHeading(activityui.Gutter(agent, v.painter.Theme)+"●"+activityui.Reset, head, detail, observed, width)
+	heading := activityui.EventHeading(activityui.Gutter(agent, v.painter.Theme)+"●"+terminalui.Reset, head, detail, observed, width)
 
 	run := liveActivityRun{
 		lines:     []string{heading},
@@ -1622,9 +1622,9 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 		questions: make([]uint64, 1),
 		entryRows: make(map[uint64]int),
 	}
-	gutter := activityui.Gutter(agent, v.painter.Theme) + "▎" + activityui.Reset + " "
+	gutter := activityui.Gutter(agent, v.painter.Theme) + "▎" + terminalui.Reset + " "
 	if v.childrenOnly {
-		gutter = activityui.Gutter(agent, v.painter.Theme) + "│" + activityui.Reset + " "
+		gutter = activityui.Gutter(agent, v.painter.Theme) + "│" + terminalui.Reset + " "
 	}
 	previousMessage, previousSummary := false, false
 	operation := func(block activityui.Block) bool { return block.Kind == "op" || block.Kind == "reads" }
@@ -1721,7 +1721,7 @@ func (v *liveActivityView) renderRun(first uint64, agent string, observed time.T
 			}
 		case v.childrenOnly && continued(block) && rail != "":
 			for k := range part {
-				part[k] = activityui.Dim + rail + activityui.Undim + part[k]
+				part[k] = terminalui.Dim + rail + terminalui.Undim + part[k]
 			}
 		default:
 			rail = ""
@@ -1884,7 +1884,7 @@ func (v *liveActivityView) footer(width int) string {
 	if width < 60 {
 		keys = "n/p · a · j/k · End"
 	}
-	return ansi.Truncate("\x1b[1m"+mode+activityui.Undim+activityui.Dim+" · "+keys+activityui.Undim, width, "…")
+	return ansi.Truncate("\x1b[1m"+mode+terminalui.Undim+terminalui.Dim+" · "+keys+terminalui.Undim, width, "…")
 }
 
 // liveActivityMiddle shortens a path while keeping its leaf name visible.

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
@@ -29,12 +30,12 @@ type DialogPage struct {
 // DialogLine is one numbered source/output line, a logical unnumbered error
 // line, or a pre-laid-out row such as a note or rendered Markdown.
 type DialogLine struct {
-	Wrap        bool          // Keep an unnumbered logical line intact for search; wrap only for display.
-	Number      int           // Zero leaves the number column blank.
-	Gutter      string        // "│" before source, "┆" before output, empty for other rows.
-	GutterStyle string        // Optional number style, including wrapped rows and their left padding.
-	Text        string        // Styled.
-	copySource  *CopyFragment // Original output behind a generated file heading.
+	Wrap        bool                     // Keep an unnumbered logical line intact for search; wrap only for display.
+	Number      int                      // Zero leaves the number column blank.
+	Gutter      string                   // "│" before source, "┆" before output, empty for other rows.
+	GutterStyle string                   // Optional number style, including wrapped rows and their left padding.
+	Text        string                   // Styled.
+	copySource  *terminalui.CopyFragment // Original output behind a generated file heading.
 }
 
 // dialogHighlightBytes bounds the content the dialog colors; larger content
@@ -74,16 +75,16 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	}
 	switch {
 	case view.Exited && view.Exit != 0:
-		detail = append(detail, Red+"exit "+strconv.Itoa(view.Exit)+Reset+Dim)
+		detail = append(detail, Red+"exit "+strconv.Itoa(view.Exit)+terminalui.Reset+terminalui.Dim)
 	case view.Exited && block.Verb == "Run":
 		detail = append(detail, "exit 0")
 	}
-	page.Detail = Dim + strings.Join(detail, " · ") + Undim
+	page.Detail = terminalui.Dim + strings.Join(detail, " · ") + terminalui.Undim
 	if len(detail) == 0 && block.Detail != "" {
 		page.Detail = block.Detail
 	}
 	if block.Skipped {
-		page.Detail = Dim + "skipped" + Undim
+		page.Detail = terminalui.Dim + "skipped" + terminalui.Undim
 	}
 	add := func(line DialogLine) {
 		page.Lines = append(page.Lines, line)
@@ -94,10 +95,10 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	if block.Approval != "" {
 		label := approvalLabel(block.Approval)
 		if label != "" {
-			add(DialogLine{Text: Dim + "Approval: " + Undim + label})
+			add(DialogLine{Text: terminalui.Dim + "Approval: " + terminalui.Undim + label})
 		}
 		if ansi.Strip(label) != block.Approval {
-			add(DialogLine{Text: Dim + diffrender.Safe(block.Approval, false) + Undim, Wrap: true})
+			add(DialogLine{Text: terminalui.Dim + diffrender.Safe(block.Approval, false) + terminalui.Undim, Wrap: true})
 		}
 	}
 	gap := func() {
@@ -127,11 +128,11 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		rows := block.Rows
 		if block.Kind == "error" {
 			for line := range strings.SplitSeq(page.Text, "\n") {
-				add(DialogLine{Text: Red + line + Reset, Wrap: true})
+				add(DialogLine{Text: Red + line + terminalui.Reset, Wrap: true})
 			}
 		} else {
 			if rows == nil {
-				rows = func(width int) []string { return p.markdown(block.Body, width, block.Kind == "summary") }
+				rows = func(width int) []string { return p.Markdown(block.Body, width, block.Kind == "summary") }
 			}
 			for _, row := range rows(width) {
 				add(DialogLine{Text: row})
@@ -157,7 +158,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		gap()
 	}
 	for _, note := range notes {
-		for _, row := range Wrap(Dim+note+Undim, width, false) {
+		for _, row := range terminalui.Wrap(terminalui.Dim+note+terminalui.Undim, width, false) {
 			add(DialogLine{Text: row})
 		}
 	}
@@ -167,7 +168,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	content := strings.Join(view.Lines, "\n")
 	page.Text = content
 	if block.MarkdownOutput() {
-		for _, row := range p.Markdown(content, width) {
+		for _, row := range p.Markdown(content, width, false) {
 			add(DialogLine{Text: row})
 		}
 		return page
@@ -186,12 +187,12 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	}
 	var identity uint64
 	if p.CopySource && !p.LayoutOnly {
-		identity = copyID(content, p.CopyScope)
+		identity = terminalui.CopyID(content, p.CopyScope)
 	}
 	for i, line := range colored {
 		row := DialogLine{Number: first + i, Gutter: gutter, Text: line}
 		if p.CopySource && !p.LayoutOnly && ansi.Strip(line) != view.Lines[i] {
-			row.copySource = &CopyFragment{ID: copyID(strconv.Itoa(i), identity), Prefix: view.Lines[i]}
+			row.copySource = &terminalui.CopyFragment{ID: terminalui.CopyID(strconv.Itoa(i), identity), Prefix: view.Lines[i]}
 		}
 		add(row)
 	}
@@ -207,22 +208,22 @@ func (p *Painter) dialogSearchLine(block Block, line string) string {
 	if parts == nil {
 		// rg omits the filename when exactly one file was requested.
 		_, target, ok := strings.Cut(block.Label, " in ")
-		path, end, valid := liveActivityCodeSpan(target, 0)
+		path, end, valid := terminalui.CodeSpan(target, 0)
 		number, content, numbered := strings.Cut(line, ":")
 		n, err := strconv.Atoi(number)
 		if !ok || !valid || end != len(target) || !numbered || err != nil || n < 1 {
 			return line
 		}
-		if rows, err := p.syntax.ColorSource(context.Background(), p.Theme, path, content+"\n"); err == nil && len(rows) == 1 {
+		if rows, err := p.Syntax.ColorSource(context.Background(), p.Theme, path, content+"\n"); err == nil && len(rows) == 1 {
 			content = rows[0]
 		}
-		return Dim + number + ":" + Undim + content
+		return terminalui.Dim + number + ":" + terminalui.Undim + content
 	}
 	content := parts[3]
-	if rows, err := p.syntax.ColorSource(context.Background(), p.Theme, parts[1], content+"\n"); err == nil && len(rows) == 1 {
+	if rows, err := p.Syntax.ColorSource(context.Background(), p.Theme, parts[1], content+"\n"); err == nil && len(rows) == 1 {
 		content = rows[0]
 	}
-	return Path(parts[1]) + Dim + ":" + parts[2] + ":" + Undim + content
+	return Path(parts[1]) + terminalui.Dim + ":" + parts[2] + ":" + terminalui.Undim + content
 }
 
 // dialogLanguage uses the same source language for the title and body.
@@ -242,9 +243,9 @@ func (p *Painter) dialogHighlight(block Block, source string) []string {
 		var rows []string
 		var err error
 		if strings.EqualFold(lang, "diff") {
-			rows, err = p.syntax.ColorDiffPath(context.Background(), p.Theme, path, source)
+			rows, err = p.Syntax.ColorDiffPath(context.Background(), p.Theme, path, source)
 		} else {
-			rows, err = p.syntax.ColorSource(context.Background(), p.Theme, path, source+"\n")
+			rows, err = p.Syntax.ColorSource(context.Background(), p.Theme, path, source+"\n")
 		}
 		if err == nil && len(rows) > 0 {
 			return rows
@@ -331,26 +332,26 @@ func (d DialogPage) Rows(i, width int) []string {
 	line := d.Lines[i]
 	if line.Gutter == "" {
 		if line.Wrap {
-			return Wrap(line.Text, max(1, width), true)
+			return terminalui.Wrap(line.Text, max(1, width), true)
 		}
 		return []string{line.Text}
 	}
-	parts := Wrap(line.Text, d.textWidth(width), true)
+	parts := terminalui.Wrap(line.Text, d.textWidth(width), true)
 	rows := make([]string, len(parts))
 	for k, part := range parts {
 		if line.copySource != nil {
 			fragment := *line.copySource
 			fragment.Width = ansi.StringWidth(part)
-			part = copyTag(fragment) + part
+			part = terminalui.AttachCopy(part, []terminalui.CopySpan{{CopyFragment: fragment}})
 		}
 		number := ""
 		if k == 0 && line.Number > 0 {
 			number = strconv.Itoa(line.Number)
 		}
-		style, end := Dim, Undim
+		style, end := terminalui.Dim, terminalui.Undim
 		gutter := line.Gutter
 		if line.GutterStyle != "" {
-			style, end = line.GutterStyle, Reset
+			style, end = line.GutterStyle, terminalui.Reset
 			gutter = "\x1b[49m" + gutter
 		}
 		rows[k] = style + strings.Repeat(" ", d.digits-len(number)) + number + " " + gutter + end + " " + part
@@ -391,7 +392,7 @@ type DialogFrame struct {
 // attributes give way to faint text, and cursor moves stay in place.
 func Backdrop(row string) string {
 	var out strings.Builder
-	out.WriteString(Dim)
+	out.WriteString(terminalui.Dim)
 	var state byte
 	for row != "" {
 		seq, _, n, next := ansi.DecodeSequence(row, state, nil)
@@ -418,13 +419,13 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 		return nil
 	}
 	// Accent edges and an opaque surface separate the modal from the panes.
-	edge := func(s string) string { return p.Theme.Accent() + s + Reset }
+	edge := func(s string) string { return p.Theme.Accent() + s + terminalui.Reset }
 	inner := width - 4
 	right := f.Position
 	if f.Page.Live {
-		live := Green + "● live" + Reset
+		live := Green + "● live" + terminalui.Reset
 		if f.Paused {
-			live += Dim + " · paused" + Undim
+			live += terminalui.Dim + " · paused" + terminalui.Undim
 		}
 		right = strings.TrimSpace(live + " " + right)
 	}
@@ -437,16 +438,16 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	if room < 1 {
 		right, room = " "+DialogClose+" ", width-8-DialogCloseWidth
 	}
-	title := ansi.Truncate(f.Page.Title, room, "…") + Reset
+	title := ansi.Truncate(f.Page.Title, room, "…") + terminalui.Reset
 	fill := max(0, width-6-ansi.StringWidth(title)-ansi.StringWidth(right))
 	lines := []string{edge("╭─ ") + title + " " + edge(strings.Repeat("─", fill)) + right + edge("─╮")}
 	row := func(text string, thumb bool, gutterStyle string) string {
 		text = ansi.Truncate(text, inner, "…")
 		closing := edge("│")
 		if thumb {
-			closing = p.Theme.Accent() + "▌" + Reset
+			closing = p.Theme.Accent() + "▌" + terminalui.Reset
 		}
-		return edge("│") + gutterStyle + " " + Reset + text + Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
+		return edge("│") + gutterStyle + " " + terminalui.Reset + text + terminalui.Reset + strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))) + " " + closing
 	}
 	lines = append(lines, row(f.Page.Detail, false, ""))
 	body := height - DialogChrome
@@ -473,8 +474,8 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 		lines = append(lines, row(text, i >= thumbFrom && i <= thumbTo, gutterStyle))
 	}
 	footer := ansi.Truncate(f.Footer, max(0, width-6), "…")
-	lines = append(lines, edge("╰─ ")+footer+Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
-	background, ink := p.codeBackground(), "\x1b[38;2;230;237;243m"
+	lines = append(lines, edge("╰─ ")+footer+terminalui.Reset+" "+edge(strings.Repeat("─", max(0, width-5-ansi.StringWidth(footer)))+"╯"))
+	background, ink := p.CodeBackground(), "\x1b[38;2;230;237;243m"
 	if background == "" {
 		background = "\x1b[48;2;32;35;40m"
 	}
@@ -491,7 +492,7 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 // without overwriting explicit syntax colors, diff fills, or selection styles.
 func dialogSurface(row, ink, fill string) string {
 	var out strings.Builder
-	out.WriteString(Reset + ink + fill)
+	out.WriteString(terminalui.Reset + ink + fill)
 	var style uv.Style
 	parser := ansi.GetParser()
 	defer func() { parser.SetHandler(ansi.Handler{}); ansi.PutParser(parser) }()
@@ -515,7 +516,7 @@ func dialogSurface(row, ink, fill string) string {
 		}
 		row, state = row[n:], next
 	}
-	out.WriteString(Reset)
+	out.WriteString(terminalui.Reset)
 	return out.String()
 }
 
@@ -536,18 +537,18 @@ func (p *Painter) DialogPageTitle(block Block, now time.Time, width int) string 
 			verb = "Message"
 		}
 	}
-	title := VerbColor(block.Verb) + "\x1b[1m" + verb + Reset
+	title := VerbColor(block.Verb) + "\x1b[1m" + verb + terminalui.Reset
 	if block.Hook != nil {
-		title = block.runColor() + "\x1b[1m" + verb + Reset
+		title = block.runColor() + "\x1b[1m" + verb + terminalui.Reset
 	}
 	if target := dialogTarget(p, block); target != "" {
-		title += Dim + " · " + Undim + target
+		title += terminalui.Dim + " · " + terminalui.Undim + target
 	}
 	if outcome := approvalLabel(block.Approval); outcome != "" {
-		title += Dim + " · " + Undim + outcome
+		title += terminalui.Dim + " · " + terminalui.Undim + outcome
 	}
 	if elapsed := RunElapsed(block, now); elapsed != "" {
-		title += Dim + " · " + elapsed + Undim
+		title += terminalui.Dim + " · " + elapsed + terminalui.Undim
 	}
 	return title
 }

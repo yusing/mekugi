@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/shellinstrumentation"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -207,7 +207,7 @@ func (v *liveActivityView) commandOutputPages(source uint64) []activityui.Block 
 					for _, block := range activityui.GroupOperations(classified) {
 						rows = append(rows, v.painter.Block(block, width)...)
 					}
-					return append(append(rows, ""), v.painter.Markdown(pages[0].Body, width)...)
+					return append(append(rows, ""), v.painter.Markdown(pages[0].Body, width, false)...)
 				}
 			}
 			setCommandTiming(pages, entry.activityPaneEntry)
@@ -279,9 +279,9 @@ func (d *outputDialog) tabRow(width int) string {
 		label = ansi.Truncate(label, cell, "…")
 		label += strings.Repeat(" ", max(0, cell-ansi.StringWidth(label)))
 		if i == d.page {
-			label = d.view.painter.Theme.Accent() + "\x1b[7m" + label + activityui.Reset
+			label = d.view.painter.Theme.Accent() + "\x1b[7m" + label + terminalui.Reset
 		} else {
-			label = activityui.Dim + label + activityui.Undim
+			label = terminalui.Dim + label + terminalui.Undim
 		}
 		d.tabs = append(d.tabs, outputTab{i, (i - first) * cell, (i - first + 1) * cell})
 		out.WriteString(label)
@@ -447,8 +447,8 @@ func (d *outputDialog) layout(width int) {
 			}
 			first := len(d.laid.Lines)
 			page := d.view.painter.DialogPage(segment, width)
-			heading := activityui.Dim + "─ " + segment.Label + " "
-			heading += strings.Repeat("─", max(0, width-ansi.StringWidth(heading))) + activityui.Undim
+			heading := terminalui.Dim + "─ " + segment.Label + " "
+			heading += strings.Repeat("─", max(0, width-ansi.StringWidth(heading))) + terminalui.Undim
 			d.laid.Lines = append(d.laid.Lines, activityui.DialogLine{Text: heading})
 			d.laid.Lines = append(d.laid.Lines, page.Lines...)
 			d.segmentLines = append(d.segmentLines, [2]int{first, len(d.laid.Lines)})
@@ -680,7 +680,7 @@ func (u *terminalUI) paintOutput(rows []string, width, height int) {
 			line = d.highlight(line, d.laid.Indent(i), i == d.match)
 			if i >= d.flashFrom && i < d.flashTo && time.Now().Before(d.flashUntil) {
 				fill := d.view.painter.Theme.SelectionBackground()
-				line = fill + strings.ReplaceAll(line, activityui.Reset, activityui.Reset+fill) + "\x1b[49m"
+				line = fill + strings.ReplaceAll(line, terminalui.Reset, terminalui.Reset+fill) + "\x1b[49m"
 			}
 			body = append(body, line)
 			indents = append(indents, d.laid.Indent(i))
@@ -741,7 +741,7 @@ func (d *outputDialog) highlight(row string, indent int, current bool) string {
 		if current {
 			match = activityui.TextSelection(match, d.view.painter.Theme)
 		} else {
-			match = mark + strings.ReplaceAll(match, activityui.Reset, activityui.Reset+mark) + unmark
+			match = mark + strings.ReplaceAll(match, terminalui.Reset, terminalui.Reset+mark) + unmark
 		}
 		out += ansi.Cut(text, cell, from) + match
 		cell, offset = to, offset+i+len(d.query)
@@ -754,7 +754,7 @@ func (d *outputDialog) highlight(row string, indent int, current bool) string {
 
 // footer is the dialog's controls, or the search being typed.
 func (d *outputDialog) footer(width int) string {
-	dim, undim := activityui.Dim, activityui.Undim
+	dim, undim := terminalui.Dim, terminalui.Undim
 	if d.typing {
 		return "/" + d.draft + "▏" + dim + "  enter find · esc cancel" + undim
 	}
@@ -778,7 +778,7 @@ func (d *outputDialog) footer(width int) string {
 	}
 	footer := dim + strings.Join(keys, " · ") + undim
 	if d.missed {
-		footer = activityui.Amber + "no match" + activityui.Reset + dim + " · " + undim + footer
+		footer = activityui.Amber + "no match" + terminalui.Reset + dim + " · " + undim + footer
 	}
 	if ansi.StringWidth(footer) > width-6 {
 		footer = dim + "↑↓ scroll · / find · y copy · esc" + undim

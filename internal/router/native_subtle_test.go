@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-
 	"github.com/charmbracelet/x/vt"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -20,9 +22,9 @@ func TestUISnapshotNativeFaintLabelForeground(t *testing.T) {
 	u := &appServerUI{model: "model", view: newLiveActivityView()}
 	frame, _ := u.mainFrame(width, 3, 0)
 	rows := []string{
-		nativeRule("┌", "┐", "─", nativeTitle(2, "Diff", "", false), activityui.Dim+"metadata"+activityui.Undim, width, nativeBorder(false)),
+		nativeRule("┌", "┐", "─", nativeTitle(2, "Diff", "", false), terminalui.Dim+"metadata"+terminalui.Undim, width, nativeBorder(false)),
 		nativeRule("┌", "┐", "─", nativeTitle(1, "Main", "", true), "", width, nativeBorder(true)),
-		nativeRule("┌", "┐", "─", "\x1b[38;5;170m"+activityui.Dim+"agent"+activityui.Undim, "", width, nativeBorder(false)),
+		nativeRule("┌", "┐", "─", "\x1b[38;5;170m"+terminalui.Dim+"agent"+terminalui.Undim, "", width, nativeBorder(false)),
 	}
 	screen := vt.NewEmulator(width, 1)
 	defer screen.Close()

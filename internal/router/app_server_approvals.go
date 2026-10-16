@@ -2,21 +2,21 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/contracts/approval"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/contracts/approval"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/shell"
 )
@@ -744,7 +744,7 @@ func (u *appServerUI) approvalRows(width, height int) []string {
 		return nil
 	}
 	p := &u.view.painter
-	accent, dim, reset := p.Theme.Accent(), activityui.Dim, activityui.Reset
+	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
 	if !d.open {
 		label := accent + "! " + reset + fmt.Sprintf("%d approval", len(d.pending))
 		if len(d.pending) > 1 {

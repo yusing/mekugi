@@ -3,6 +3,8 @@ package activity
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -42,7 +44,7 @@ func FaintFallback(frame string) string {
 					}
 				}
 			}
-			out.WriteString(Reset)
+			out.WriteString(terminalui.Reset)
 			out.WriteString(lowered.String())
 		} else {
 			out.WriteString(seq)

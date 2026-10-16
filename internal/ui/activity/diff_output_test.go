@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -54,16 +54,16 @@ func TestDiffOutputSourceAndLayout(t *testing.T) {
 			if line.copySource == nil {
 				continue
 			}
-			var parts []CopyFragment
+			var parts []terminalui.CopyFragment
 			for _, row := range page.Rows(i, width) {
-				_, spans := ExtractCopy(row)
+				_, spans := terminalui.ExtractCopy(row)
 				for _, span := range spans {
 					if part, ok := span.Clip(0, width); ok {
 						parts = append(parts, part)
 					}
 				}
 			}
-			if got := CopyText(parts); got != block.Tail[i] {
+			if got := terminalui.CopyText(parts); got != block.Tail[i] {
 				t.Fatalf("header copy %d = %q, want %q", i, got, block.Tail[i])
 			}
 		}

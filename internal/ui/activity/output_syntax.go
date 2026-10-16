@@ -6,12 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
-
-// Untyped command output may select an expensive, unrelated lexer. Keep
-// automatic decoration bounded on the paint path; explicit hints and diffs
-// retain the larger shared highlighting bound.
-const outputAutoHighlightBytes = 8 << 10
 
 // Output syntax follows the content, never the command that produced it.
 // Both inline tails and dialogs use the same bounded renderer and cache.
@@ -66,11 +62,11 @@ func (p *Painter) outputColorsAt(block Block, rows []string, indexes []int) []st
 		}
 		return colored
 	}
-	if p.LayoutOnly || path == "" && len(content) > outputAutoHighlightBytes {
+	if p.LayoutOnly || path == "" && len(content) > terminalui.AutoHighlightBytes {
 		return selectRows(rows)
 	}
 	// Supply a terminator so a retained trailing blank row keeps its position.
-	colored, err := p.syntax.ColorSource(context.Background(), p.Theme, path, content+"\n")
+	colored, err := p.Syntax.ColorSource(context.Background(), p.Theme, path, content+"\n")
 	if err != nil || len(colored) != len(rows) {
 		return selectRows(rows)
 	}
@@ -85,8 +81,8 @@ func (p *Painter) diffOutput(block Block, content string, rows int) []string {
 		view := block.Output.View()
 		complete = view.Done && !view.Truncated && rows == len(view.Lines)
 	}
-	p.syntax.LayoutOnly = p.LayoutOnly
-	colored, err := p.syntax.DiffOutput(context.Background(), p.Theme, content, complete)
+	p.Syntax.LayoutOnly = p.LayoutOnly
+	colored, err := p.Syntax.DiffOutput(context.Background(), p.Theme, content, complete)
 	if err != nil {
 		return strings.Split(content, "\n")
 	}
@@ -117,8 +113,8 @@ func (p *Painter) hookColors(rows []string) []string {
 		}
 		if hookEntryKind(rows[start]) == "context" {
 			body := strings.TrimPrefix(strings.Join(rows[start:end], "\n"), label)
-			if len(body) <= outputAutoHighlightBytes {
-				lines, err := p.syntax.ColorSource(context.Background(), p.Theme, "", body+"\n")
+			if len(body) <= terminalui.AutoHighlightBytes {
+				lines, err := p.Syntax.ColorSource(context.Background(), p.Theme, "", body+"\n")
 				if err == nil && len(lines) == end-start {
 					copy(colored[start:end], lines)
 					colored[start] = label + colored[start]

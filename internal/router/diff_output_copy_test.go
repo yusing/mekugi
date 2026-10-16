@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -13,9 +15,9 @@ func TestDiffOutputSectionSourceSelection(t *testing.T) {
 	block := activityui.Block{Kind: "op", Verb: "Diff", Tail: strings.Split(source, "\n")}
 	raw := p.Block(block, 40)[1:]
 	rows := make([]string, len(raw))
-	meta := make([][]activityui.CopySpan, len(raw))
+	meta := make([][]terminalui.CopySpan, len(raw))
 	for i, row := range raw {
-		rows[i], meta[i] = activityui.ExtractCopy(row)
+		rows[i], meta[i] = terminalui.ExtractCopy(row)
 	}
 	u := selectionTestUI(rows...)
 	u.paintedCopy = append(meta, nil)

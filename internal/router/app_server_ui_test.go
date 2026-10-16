@@ -2,6 +2,9 @@ package router
 
 import (
 	"bytes"
+
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	json "encoding/json/v2"
 	"strings"
 	"testing"
@@ -9,7 +12,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 type appServerTestInput struct{ bytes.Buffer }
@@ -115,7 +117,7 @@ func TestAppServerComposerNoticeKeepsTurnStateAndClearsOnEdit(t *testing.T) {
 func TestAppServerIdleStateUsesDefaultText(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.status = "Ready"
-	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+activityui.Reset {
+	if label := u.stateLabel(time.Now()); label != "\x1b[39mReady"+terminalui.Reset {
 		t.Fatalf("idle label = %q", label)
 	}
 }

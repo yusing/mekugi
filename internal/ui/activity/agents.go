@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Agent colors derive from the canonical path alone, so the agents pane and
@@ -26,7 +28,7 @@ func Color(name string) string {
 // DimColor keeps the agent foreground and marks it faint for the output policy.
 func DimColor(name string) string {
 	if name == "" || name == "/root" {
-		return Dim
+		return terminalui.Dim
 	}
 	return strings.Replace(Color(name), "1;", "2;", 1)
 }

@@ -5,11 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Source: codex-rs/tui/src/bottom_pane/{picker_rows,skill_popup,
@@ -72,7 +71,7 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 			frame[y] = ansi.Truncate(text, width, "")
 		}
 	}
-	bold, dim, reset := "\x1b[1m", activityui.Dim, activityui.Reset
+	bold, dim, reset := "\x1b[1m", terminalui.Dim, terminalui.Reset
 	if p.modal == "menu" {
 		p.top = 0
 		if height < 5 {

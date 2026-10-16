@@ -1,4 +1,4 @@
-package activity
+package terminalui
 
 import (
 	"strconv"
@@ -59,7 +59,7 @@ func selectedMarkdown(t *testing.T, source string, width int) string {
 	t.Helper()
 	p := Painter{CopySource: true}
 	var parts []CopyFragment
-	for _, row := range p.Markdown(source, width) {
+	for _, row := range p.Markdown(source, width, false) {
 		clean, spans := ExtractCopy(row)
 		if strings.Contains(clean, "mekugi-copy") {
 			t.Fatal("private metadata leaked")
@@ -87,7 +87,7 @@ func TestMarkdownSourceCopyTables(t *testing.T) {
 
 func TestMarkdownSourceCopyPartialCell(t *testing.T) {
 	p := Painter{CopySource: true}
-	rows := p.Markdown("A | B\n--- | ---\n**alpha** | SECRET", 50)
+	rows := p.Markdown("A | B\n--- | ---\n**alpha** | SECRET", 50, false)
 	for _, row := range rows {
 		_, spans := ExtractCopy(row)
 		for _, span := range spans {
@@ -126,7 +126,7 @@ func TestMarkdownSourceCopyWhitespaceAndFormatting(t *testing.T) {
 
 func TestMarkdownCopyWideGraphemeAndProjection(t *testing.T) {
 	p := Painter{CopySource: true}
-	row := p.Markdown("**A猫👩‍💻B**", 30)[0]
+	row := p.Markdown("**A猫👩‍💻B**", 30, false)[0]
 	clean, spans := ExtractCopy("\x1b[11G│ " + row)
 	if ansi.Strip(clean) != "\x1b[11G│ A猫👩‍💻B" && !strings.Contains(ansi.Strip(clean), "A猫👩‍💻B") {
 		t.Fatal(clean)
@@ -142,7 +142,7 @@ func TestMarkdownCopyWideGraphemeAndProjection(t *testing.T) {
 
 func TestMarkdownSourceCopyRepeatedPartialRecordLabel(t *testing.T) {
 	p := Painter{CopySource: true}
-	rows := p.Markdown("LongHeader | Other\n--- | ---\nx | y\nz | w", 12)
+	rows := p.Markdown("LongHeader | Other\n--- | ---\nx | y\nz | w", 12, false)
 	var fragments []CopyFragment
 	first := true
 	for _, row := range rows {
@@ -172,7 +172,7 @@ func TestMarkdownSourceCopyNarrowIndentedList(t *testing.T) {
 		}
 	}
 	p := Painter{CopySource: true}
-	for _, row := range p.Markdown("    - alpha", 8) {
+	for _, row := range p.Markdown("    - alpha", 8, false) {
 		_, spans := ExtractCopy(row)
 		for _, span := range spans {
 			if span.Text == "alpha" {
@@ -201,7 +201,7 @@ func TestMarkdownSourceMetadataDoesNotChangeLayout(t *testing.T) {
 	for _, width := range []int{8, 30, 80} {
 		var reference []string
 		for _, p := range []Painter{{}, {CopySource: true}, {CopySource: true, LayoutOnly: true}} {
-			rows := p.Markdown(source, width)
+			rows := p.Markdown(source, width, false)
 			for i, row := range rows {
 				rows[i], _ = ExtractCopy(row)
 				rows[i] = ansi.Strip(rows[i])
@@ -231,7 +231,7 @@ func TestMarkdownSourceCopyInlineBoundaries(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Painter{CopySource: true}
-			_, spans := ExtractCopy(p.Markdown(tc.source, 80)[0])
+			_, spans := ExtractCopy(p.Markdown(tc.source, 80, false)[0])
 			f, ok := spans[0].Clip(tc.left, tc.right)
 			if !ok {
 				t.Fatal("selection omitted")

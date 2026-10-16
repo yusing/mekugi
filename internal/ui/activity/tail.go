@@ -7,9 +7,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Bounded tails show the latest rows of something still growing and count
@@ -66,7 +66,7 @@ func Underline(text string) string {
 }
 
 // Match the statBar producer's styled span, not bar-like filename text.
-var editStatBarPattern = regexp.MustCompile(regexp.QuoteMeta(Green) + "━*" + regexp.QuoteMeta(Red) + "━*" + regexp.QuoteMeta("\x1b[39m"+Dim) + "━*" + regexp.QuoteMeta(Undim))
+var editStatBarPattern = regexp.MustCompile(regexp.QuoteMeta(Green) + "━*" + regexp.QuoteMeta(Red) + "━*" + regexp.QuoteMeta("\x1b[39m"+terminalui.Dim) + "━*" + regexp.QuoteMeta(terminalui.Undim))
 var editGutterPattern = regexp.MustCompile(`^ *(?:[│└├]─? )? *`)
 
 // UnderlineEdit marks text, not the tree gutter, alignment gaps, or stat bar.

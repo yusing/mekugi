@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -104,7 +105,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 				style = bold + accent
 			}
 			wrapValue := func(width int) []string {
-				return u.view.painter.CopyWrapped(pickerWrap(value, width), activityui.CopyFragment{ID: uint64(index + 1), Text: ansi.Strip(value)}, 0)
+				return u.view.painter.CopyWrapped(pickerWrap(value, width), terminalui.CopyFragment{ID: uint64(index + 1), Text: ansi.Strip(value)}, 0)
 			}
 			// Reserve a bounded label column for wrapping. Actual alignment is measured
 			// below from visible rows only, so off-screen labels cannot widen it.
@@ -176,9 +177,9 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 		if row.label != "" {
 			prefix := dim + pad(strings.TrimSpace(row.label), labelWidth) + reset + "  "
 			if label := strings.TrimSpace(row.label); label != "" {
-				_, spans := activityui.ExtractCopy(text)
+				_, spans := terminalui.ExtractCopy(text)
 				if len(spans) > 0 {
-					prefix = activityui.AttachCopy(prefix, []activityui.CopySpan{{CopyFragment: activityui.CopyFragment{ID: spans[0].ID, Text: label + "  ", Offset: -len(label) - 2, Width: ansi.StringWidth(prefix)}}})
+					prefix = terminalui.AttachCopy(prefix, []terminalui.CopySpan{{CopyFragment: terminalui.CopyFragment{ID: spans[0].ID, Text: label + "  ", Offset: -len(label) - 2, Width: ansi.StringWidth(prefix)}}})
 				}
 			}
 			text = prefix + text

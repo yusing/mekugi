@@ -208,7 +208,7 @@ func (p *uiReplayPlayback) bar(width int) string {
 	if width >= 100 {
 		label += hint
 	}
-	return p.ui.view.painter.Theme.Accent() + ansi.Truncate(label, max(1, width), "…") + activityui.Reset
+	return p.ui.view.painter.Theme.Accent() + ansi.Truncate(label, max(1, width), "…") + terminalui.Reset
 }
 
 func replayTime(d time.Duration) string {

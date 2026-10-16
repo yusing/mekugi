@@ -3,9 +3,9 @@ package activity
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Question is a presentation snapshot, never an editable or transport record.
@@ -14,7 +14,7 @@ type Question struct {
 }
 
 func (p *Painter) QuestionState(state string) string {
-	color := Dim
+	color := terminalui.Dim
 	switch state {
 	case "answered", "answered elsewhere":
 		color = "\x1b[38;2;165;214;167m"
@@ -24,38 +24,38 @@ func (p *Painter) QuestionState(state string) string {
 	case "open", "waiting", "sending":
 		color = p.Theme.Accent()
 	}
-	return color + state + Reset
+	return color + state + terminalui.Reset
 }
 
 func (p *Painter) questionRows(block Block, width int) []string {
 	count, state, _ := strings.Cut(block.Label, " · ")
-	header := p.Theme.Accent() + "Asked" + Reset + "  " + Dim + count + Undim
+	header := p.Theme.Accent() + "Asked" + terminalui.Reset + "  " + terminalui.Dim + count + terminalui.Undim
 	if state != "" {
 		header += " · " + p.QuestionState(state)
 	}
-	rows := Wrap(header, width, false)
+	rows := terminalui.Wrap(header, width, false)
 	inner := max(1, width-2)
 	for i, q := range block.Questions {
 		if i > 0 {
 			rows = append(rows, "")
 		}
 		text := diffrender.Safe(q.Text, false)
-		rows = append(rows, liveActivityIndent(Wrap(text, inner, false), "  ")...)
+		rows = append(rows, liveActivityIndent(terminalui.Wrap(text, inner, false), "  ")...)
 		if len(block.Questions) > 1 {
 			rows = append(rows, "  "+p.QuestionState(q.State))
 		}
 		switch {
 		case q.Answer != "":
-			answer := p.Markdown(q.Answer, max(1, width-4))
+			answer := p.Markdown(q.Answer, max(1, width-4), false)
 			for j, row := range answer {
 				prefix := "    "
 				if j == 0 {
-					prefix = "  " + p.Theme.Accent() + "└ " + Reset
+					prefix = "  " + p.Theme.Accent() + "└ " + terminalui.Reset
 				}
 				rows = append(rows, prefix+row)
 			}
 		case q.Options != "":
-			rows = append(rows, liveActivityIndent(Wrap(Dim+diffrender.Safe(q.Options, false)+Undim, inner, false), "  ")...)
+			rows = append(rows, liveActivityIndent(terminalui.Wrap(terminalui.Dim+diffrender.Safe(q.Options, false)+terminalui.Undim, inner, false), "  ")...)
 		}
 	}
 	for i, row := range rows {

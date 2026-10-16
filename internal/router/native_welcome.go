@@ -4,7 +4,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Release builds set this to their tag with -ldflags -X.
@@ -53,5 +53,5 @@ func (u *appServerUI) welcome() string {
 	if u.backendVersion != "" {
 		label += " v" + u.backendVersion
 	}
-	return "\x1b[1m" + label + activityui.Reset
+	return "\x1b[1m" + label + terminalui.Reset
 }

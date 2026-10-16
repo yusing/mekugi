@@ -5,10 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -20,7 +19,7 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := activityui.Colors{Foreground: diffrender.RGB{R: 220, G: 214, B: 200}, Background: diffrender.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true}
+	want := terminalui.Colors{Foreground: diffrender.RGB{R: 220, G: 214, B: 200}, Background: diffrender.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true}
 	for _, view := range []*liveActivityView{u.view, u.agents} {
 		if view.painter.Colors != want || view.painter.Theme != diffrender.DarkTheme {
 			t.Fatalf("pane palette = %+v theme %v", view.painter.Colors, view.painter.Theme)

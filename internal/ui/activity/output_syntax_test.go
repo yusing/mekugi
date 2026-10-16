@@ -6,22 +6,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestCommandOutputAutoHighlightLimit(t *testing.T) {
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-		for _, size := range []int{outputAutoHighlightBytes, outputAutoHighlightBytes + 1} {
+		for _, size := range []int{terminalui.AutoHighlightBytes, terminalui.AutoHighlightBytes + 1} {
 			source := "var answer = 42 // "
 			source += strings.Repeat("x", size-len(source))
 			rows := []string{source}
 			p := Painter{Theme: theme}
 			got := p.outputColors(Block{Verb: "Run"}, rows)
-			if ansi.Strip(got[0]) != source || (got[0] != source) != (size <= outputAutoHighlightBytes) {
+			if ansi.Strip(got[0]) != source || (got[0] != source) != (size <= terminalui.AutoHighlightBytes) {
 				t.Fatalf("size %d: text or color boundary changed", size)
 			}
 		}

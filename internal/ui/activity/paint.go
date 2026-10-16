@@ -1,25 +1,18 @@
 package activity
 
 import (
-	"context"
 	"fmt"
-	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/terminalui/mermaid"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 const (
-	Dim   = diffrender.Subtle
-	Undim = diffrender.SubtleReset
-	Reset = "\x1b[0m"
 	Green = "\x1b[38;5;114m"
 	Red   = "\x1b[38;5;203m"
 	Amber = "\x1b[38;5;214m"
@@ -28,19 +21,8 @@ const (
 // Painter lays out parsed blocks as terminal rows. Syntax colors
 // come from the same renderer and theme as the live diff pane.
 type Painter struct {
-	Theme  diffrender.Theme
-	Colors Colors
-	syntax diffrender.Renderer
-	Clock  func() time.Time // Optional presentation clock, shared with replay.
-	// LayoutOnly skips syntax decoration while retaining exact text geometry.
-	// The feed uses it for cold off-screen runs, never visible rows or dialogs.
-	LayoutOnly bool
-	// CopySource carries semantic annotations to the native viewport.
-	CopySource bool
-	CopyScope  uint64 // Stable native entry/block scope for cached source identities.
-	// FileLink checks local destinations against the caller's workspace metadata.
-	// Without a resolver, only web destinations become clickable.
-	FileLink func(target string) bool
+	terminalui.Painter
+	Clock func() time.Time // Optional presentation clock, shared with replay.
 }
 
 func (p *Painter) now() time.Time {
@@ -86,140 +68,18 @@ func (p *Painter) Agent(name string) string {
 	if color == "" {
 		color = "\x1b[1m" + p.Theme.Accent()
 	}
-	return color + AgentDisplayName(name) + Reset
+	return color + AgentDisplayName(name) + terminalui.Reset
 }
 
 func (p *Painter) recipient(name string) string {
-	return Gutter(name, p.Theme) + AgentDisplayName(name) + Reset
-}
-
-func liveActivityLanguagePath(lang string) string {
-	switch strings.ToLower(lang) {
-	case "":
-		return ""
-	case "bash", "sh", "shell", "console":
-		return "command.sh"
-	case "javascript", "js":
-		return "source.js"
-	case "typescript", "ts":
-		return "source.ts"
-	case "python", "py":
-		return "source.py"
-	case "perl":
-		return "source.pl"
-	case "ruby", "rb":
-		return "source.rb"
-	}
-	return "source." + strings.ToLower(lang)
-}
-
-// highlight colors source by language, falling back to exact plain text.
-func (p *Painter) Highlight(lang, source string) []string {
-	if p.LayoutOnly {
-		if !strings.EqualFold(lang, "diff") {
-			source = strings.TrimSuffix(source, "\n")
-		}
-		return strings.Split(source, "\n")
-	}
-	if strings.EqualFold(lang, "diff") {
-		lines, err := p.syntax.ColorDiff(context.Background(), p.Theme, source)
-		if err != nil {
-			return strings.Split(source, "\n")
-		}
-		return lines
-	}
-	lines, err := p.syntax.ColorSource(context.Background(), p.Theme, liveActivityLanguagePath(lang), source)
-	if err != nil || len(lines) == 0 {
-		return strings.Split(source, "\n")
-	}
-	return lines
-}
-
-// Wrap restores the complete SGR state on continuation rows,
-// which may be painted independently after a gutter or terminal reset.
-func Wrap(text string, width int, hard bool) []string {
-	width = max(1, width)
-	var wrapped string
-	if hard {
-		wrapped = ansi.Hardwrap(text, width, true)
-	} else {
-		wrapped = ansi.Wrap(text, width, "")
-	}
-	var lines []string
-	var style uv.Style
-	var link uv.Link
-	parser := ansi.GetParser()
-	defer func() {
-		parser.SetHandler(ansi.Handler{})
-		ansi.PutParser(parser)
-	}()
-	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
-		if cmd == 'm' {
-			uv.ReadStyle(params, &style)
-		}
-	}, HandleOsc: func(cmd int, data []byte) {
-		if cmd == 8 {
-			uv.ReadLink(data, &link)
-		}
-	}})
-	carry := ""
-	for line := range strings.SplitSeq(wrapped, "\n") {
-		plain := ansi.Strip(line)
-		if blanks := len(plain) - len(strings.TrimRight(plain, " ")); blanks > 0 && ansi.StringWidth(plain) > width {
-			// ansi.Wrap keeps the blank it breaks at; drop it, keeping escapes.
-			line = ansi.Truncate(line, ansi.StringWidth(plain)-blanks, "")
-		}
-		row := carry + line
-		parser.Parse([]byte(line))
-		// Padding and the next row's gutter are outside the styled content.
-		if !style.IsZero() {
-			row += Reset
-		}
-		if !link.IsZero() {
-			row += "\x1b]8;;\x1b\\"
-		}
-		lines = append(lines, row)
-		carry = style.String()
-		if style.IsZero() {
-			// Enclosing bands recognize this canonical reset to reapply their background.
-			carry = Reset
-		}
-		if !link.IsZero() {
-			carry += ansi.SetHyperlink(link.URL, link.Params)
-		}
-	}
-	return lines
-}
-
-// hang places a styled label after a lead, wrapping continuations under the label.
-func liveActivityHang(lead, label string, width int) []string {
-	indent := ansi.StringWidth(lead)
-	if label == "" {
-		return []string{ansi.Truncate(lead, width, "…")}
-	}
-	if indent > width/2 {
-		lines := []string{ansi.Truncate(lead, width, "…")}
-		for _, line := range Wrap(label, width-2, false) {
-			lines = append(lines, "  "+line)
-		}
-		return lines
-	}
-	var lines []string
-	for i, line := range Wrap(label, width-indent, false) {
-		if i == 0 {
-			lines = append(lines, lead+line)
-		} else {
-			lines = append(lines, strings.Repeat(" ", indent)+line)
-		}
-	}
-	return lines
+	return Gutter(name, p.Theme) + AgentDisplayName(name) + terminalui.Reset
 }
 
 func Path(path string) string {
 	if i := strings.LastIndex(strings.TrimSuffix(path, "/"), "/"); i >= 0 {
-		return Dim + path[:i+1] + Undim + "\x1b[1m" + path[i+1:] + Undim
+		return terminalui.Dim + path[:i+1] + terminalui.Undim + "\x1b[1m" + path[i+1:] + terminalui.Undim
 	}
-	return "\x1b[1m" + path + Undim
+	return "\x1b[1m" + path + terminalui.Undim
 }
 
 // code styles a code span according to the operation that carries it.
@@ -236,7 +96,7 @@ func (p *Painter) code(verb, code string) string {
 		if end < 0 {
 			end = len(code)
 		}
-		return prefix + "\x1b[1m" + code[:end] + Undim + code[end:]
+		return prefix + "\x1b[1m" + code[:end] + terminalui.Undim + code[end:]
 	case "Run", "Send":
 		return strings.Join(p.Highlight("bash", code), " ")
 	case "Search":
@@ -255,13 +115,13 @@ func (p *Painter) Label(verb, label string) string {
 	if slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, verb) {
 		if head, source, ok := strings.CutLast(label, " · "); ok && !strings.ContainsRune(source, '`') {
 			// Source metadata uses the same secondary foreground as UI chrome.
-			return p.Label(verb, head) + Dim + " · " + source + Undim + "\x1b[39m"
+			return p.Label(verb, head) + terminalui.Dim + " · " + source + terminalui.Undim + "\x1b[39m"
 		}
 	}
 	var out strings.Builder
 	searchTargets := false
 	for i := 0; i < len(label); {
-		if code, end, ok := liveActivityCodeSpan(label, i); ok {
+		if code, end, ok := terminalui.CodeSpan(label, i); ok {
 			if verb == "Search" && searchTargets {
 				out.WriteString(Path(code))
 			} else {
@@ -288,7 +148,7 @@ func (p *Painter) Label(verb, label string) string {
 			case len(word) > 1 && word[0] == '-':
 				word = Red + word + "\x1b[39m"
 			case word != "":
-				word = Dim + word + Undim
+				word = terminalui.Dim + word + terminalui.Undim
 			}
 			out.WriteString(word)
 		}
@@ -297,438 +157,15 @@ func (p *Painter) Label(verb, label string) string {
 	return out.String()
 }
 
-// inline renders the commentary Markdown inline subset.
-func (p *Painter) Inline(line string) string {
-	line = diffrender.Safe(line, false)
-	var out strings.Builder
-	bold := false
-	for i := 0; i < len(line); {
-		if line[i] == '[' {
-			if label, target, end, ok := liveActivityLink(line[i:]); ok {
-				if p.linkAllowed(target) {
-					out.WriteString(p.inlineLink(label, target))
-				} else {
-					out.WriteString(label)
-				}
-				i += end
-				continue
-			}
-		}
-		if code, end, ok := liveActivityCodeSpan(line, i); ok {
-			if rawFilePath(code) && p.linkAllowed(code) {
-				out.WriteString(p.inlineLink(code, code))
-				i = end
-				continue
-			}
-			// Inline spans have no language tag. Detect from their content,
-			// retaining the accent for plain text and uncolored tokens.
-			highlighted := code
-			if !p.LayoutOnly && len(code) <= outputAutoHighlightBytes {
-				highlighted = strings.Join(p.Highlight("", code), "\n")
-			}
-			out.WriteString(p.Theme.Accent() + strings.ReplaceAll(highlighted, "\x1b[39m", p.Theme.Accent()) + "\x1b[39m")
-			i = end
-			continue
-		}
-		if strings.HasPrefix(line[i:], "**") {
-			bold = !bold
-			if bold {
-				out.WriteString("\x1b[1m")
-			} else {
-				out.WriteString(Undim)
-			}
-			i += 2
-			continue
-		}
-		if i == 0 || strings.ContainsRune(" \t<([\"'", rune(line[i-1])) || i >= 2 && line[i-2:i] == "**" {
-			end := len(line)
-			if stop := strings.IndexAny(line[i:], " \t<>[](){}\"'`*"); stop >= 0 {
-				end = i + stop
-			}
-			path := strings.TrimRight(line[i:end], ".,;!?")
-			if rawFilePath(path) && p.linkAllowed(path) {
-				out.WriteString(p.inlineLink(path, path))
-				i += len(path)
-				continue
-			}
-		}
-		out.WriteByte(line[i])
-		i++
-	}
-	if bold {
-		out.WriteString(Undim)
-	}
-	return out.String()
-}
-
-func (p *Painter) linkAllowed(target string) bool {
-	return strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") || p.FileLink != nil && p.FileLink(target)
-}
-
-func (p *Painter) inlineLink(label, target string) string {
-	if strings.HasPrefix(target, "/") {
-		path := url.URL{Scheme: "file", Path: target}
-		target = path.String()
-	}
-	return "\x1b]8;;" + target + "\x1b\\" + p.Theme.Accent() + "\x1b[4m" + label + "\x1b[24;39m\x1b]8;;\x1b\\"
-}
-
-// Recognize file-shaped operands without reading the filesystem during painting.
-// Canonical agent names are identifiers, not file links.
-func rawFilePath(path string) bool {
-	if path == "" || strings.ContainsAny(path[:1], "#!@$?") || strings.ContainsAny(path, "\x00\r\n\x1b\"'(){}[]=*;") || strings.Contains(path, "://") {
-		return false
-	}
-	base := path
-	if colon := strings.LastIndexByte(base, ':'); colon >= 0 {
-		base = base[:colon]
-	}
-	name := base[strings.LastIndexByte(base, '/')+1:]
-	file := strings.Contains(name, ".") && strings.Trim(name, ". ") != ""
-	if strings.HasPrefix(base, "/") {
-		first := strings.SplitN(base[1:], "/", 2)[0]
-		_, ordinal := strconv.Atoi(first)
-		return name != "" && ordinal != nil && (first != "root" || file)
-	}
-	first := strings.SplitN(base, "/", 2)[0]
-	return !strings.Contains(base, ":") && !strings.ContainsAny(first, " \t") && name != "" && (strings.Contains(base, "/") || file)
-}
-
-// Parse local paths, file URLs and HTTP(S) URLs independently of clickability,
-// so missing destinations retain the same visible label and copy annotations.
-func liveActivityLink(s string) (label, target string, end int, ok bool) {
-	close, depth := -1, 0
-	for i, c := range s {
-		if c == '[' {
-			depth++
-		}
-		if c == ']' {
-			depth--
-			if depth == 0 {
-				close = i
-				break
-			}
-		}
-	}
-	if close < 2 || s[0] != '[' || close+1 >= len(s) || s[close+1] != '(' {
-		return
-	}
-	rest := s[close+2:]
-	if strings.HasPrefix(rest, "<") {
-		if i := strings.Index(rest, ">)"); i >= 0 {
-			target, end = rest[1:i], close+2+i+2
-		}
-	} else if i := strings.IndexByte(rest, ')'); i >= 0 {
-		target, end = rest[:i], close+2+i+1
-	}
-	if end == 0 || strings.ContainsAny(target, "\x00\x1b\r\n") {
-		return "", "", 0, false
-	}
-	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "file://") || strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") {
-		return s[1:close], target, end, true
-	}
-	path := target
-	if colon := strings.LastIndexByte(path, ':'); colon >= 0 {
-		from, to, ranged := strings.Cut(path[colon+1:], "-")
-		first, err := strconv.Atoi(from)
-		last, lastErr := strconv.Atoi(to)
-		if err == nil && first > 0 && (!ranged || lastErr == nil && last >= first) {
-			path = path[:colon]
-		}
-	}
-	// Raw relative operands keep literal URL punctuation. Only an initial
-	// fragment or URI scheme is non-file syntax.
-	if path == "" || strings.HasPrefix(path, "#") || strings.HasPrefix(path, "?") || strings.Contains(strings.SplitN(path, "/", 2)[0], ":") {
-		return "", "", 0, false
-	}
-	return s[1:close], target, end, true
-}
-
-// markdown renders authored text: fenced programs are highlighted on a
-// fill, list items hang, and tables lay out within the available width.
-func (p *Painter) Markdown(text string, width int) []string {
-	return p.markdown(text, width, false)
-}
-
-// Reasoning keeps source indentation on soft-wrapped continuation rows too.
-// Ordinary authored message layout is unchanged.
-func (p *Painter) markdown(text string, width int, reasoning bool) []string {
-	copying := p.CopySource && !p.LayoutOnly
-	identity := uint64(0)
-	if copying {
-		identity = copyID(text, p.CopyScope)
-	}
-	annotate := func(rows []string, source, prefix string, gutter, index int) []string {
-		if !copying {
-			return rows
-		}
-		f := copyInline(source)
-		f.ID = copyID(strconv.Itoa(index), identity)
-		f.Prefix = prefix
-		return p.CopyWrapped(rows, f, gutter)
-	}
-	annotateHang := func(rows []string, source, prefix string, gutter, index int) []string {
-		if !copying {
-			return rows
-		}
-		if gutter > width/2 && len(rows) > 1 {
-			rows[0] = CopyDecoration(rows[0])
-			annotate(rows[1:], source, prefix, 2, index)
-			return rows
-		}
-		return annotate(rows, source, prefix, gutter, index)
-	}
-	var lines, program, quote []string
-	flushQuote := func() {
-		if len(quote) > 0 {
-			lines = append(lines, p.Quote(strings.Join(quote, "\n"), width)...)
-			quote = nil
-		}
-	}
-	fence, lang := "", ""
-	fenceIdentity := uint64(0)
-	source := strings.Split(text, "\n")
-	for i := 0; i < len(source); i++ {
-		raw := source[i]
-		line := diffrender.Safe(raw, false)
-		if fence != "" {
-			if !closesFence(line, fence) {
-				program = append(program, raw)
-				continue
-			}
-			body := strings.Join(program, "\n")
-			var diagram []string
-			if strings.EqualFold(lang, "mermaid") {
-				diagram, _ = mermaid.Render(diffrender.Safe(body, false), width)
-			}
-			if len(diagram) > 0 {
-				lines = append(lines, diagram...)
-			} else {
-				lines = append(lines, p.fenced(lang, body, width, fenceIdentity)...)
-			}
-			fence, program = "", nil
-			continue
-		}
-		trimmed := strings.TrimLeft(line, " ")
-		if len(line)-len(trimmed) <= 3 && strings.HasPrefix(trimmed, ">") {
-			quote = append(quote, strings.TrimPrefix(trimmed[1:], " "))
-			continue
-		}
-		flushQuote()
-		if delimiter, ok := FenceDelimiter(line); ok {
-			fence, lang = delimiter, strings.TrimSpace(line[len(delimiter):])
-			if copying {
-				fenceIdentity = copyID(strconv.Itoa(i), identity)
-			}
-			continue
-		}
-		if table, consumed := parseMarkdownTable(source[i:]); consumed > 0 {
-			if copying {
-				table.copyID = copyID(strings.Join(source[i:i+consumed], "\n"), identity+uint64(i))
-			}
-			lines = append(lines, p.markdownTable(table, max(1, width))...)
-			i += consumed - 1
-			continue
-		}
-		indent := line[:len(line)-len(trimmed)]
-		// Headings follow Bun's terminal Markdown: one bold color per level and
-		// a rule under the first two, from three cells up to the full width.
-		heading := func(level int, prefix, title, closing, underline string) {
-			style, color := "\x1b[1m", ""
-			if !reasoning {
-				color = p.Theme.HeadingColor(level)
-			}
-			style += color
-			// Inline spans end with their own resets; restore the heading style after each.
-			inline := strings.NewReplacer(Reset, Reset+style, Undim, Undim+"\x1b[1m", "\x1b[39m", "\x1b[39m"+color, "\x1b[24;39m", "\x1b[24;39m"+color).Replace(p.Inline(title))
-			rows := Wrap(style+inline+Reset, width, false)
-			if copying {
-				f := copyInline(title)
-				f.ID, f.Prefix = copyID(strconv.Itoa(i), identity), prefix
-				if closing != "" {
-					f.Styles = append(f.Styles, copyStyle{0, len(f.Text), "", closing, -1})
-				}
-				rows = p.CopyWrapped(rows, f, 0)
-			}
-			lines = append(lines, rows...)
-			if level > 2 || reasoning {
-				if underline != "" {
-					i++
-				}
-				return
-			}
-			cells := 0
-			for _, row := range rows {
-				cells = max(cells, ansi.StringWidth(row))
-			}
-			rule := "─"
-			if level == 1 {
-				rule = "═"
-			}
-			row := Dim + strings.Repeat(rule, min(width, max(3, cells))) + Reset
-			if copying && underline != "" {
-				row = copyTag(CopyFragment{ID: copyID(strconv.Itoa(i+1), identity), Text: underline, Width: ansi.StringWidth(row)}) + row
-			} else if copying {
-				row = CopyDecoration(row)
-			}
-			lines = append(lines, row)
-			if underline != "" {
-				i++
-			}
-		}
-		if len(indent) <= 3 {
-			if level, prefix, title, closing, ok := atxHeading(trimmed); ok {
-				heading(level, prefix, title, closing, "")
-				continue
-			}
-			if i+1 < len(source) && trimmed != "" && !strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "* ") {
-				if level, underline, ok := setextUnderline(diffrender.Safe(source[i+1], false)); ok {
-					heading(level, "", strings.TrimRight(trimmed, " \t"), "", underline)
-					continue
-				}
-			}
-		}
-		switch {
-		case strings.HasPrefix(trimmed, "- "), strings.HasPrefix(trimmed, "* "):
-			lines = append(lines, annotateHang(liveActivityHang(indent+Dim+"•"+Undim+" ", p.Inline(trimmed[2:]), width), trimmed[2:], indent+trimmed[:2], ansi.StringWidth(indent)+2, i)...)
-		default:
-			if reasoning && indent != "" {
-				lines = append(lines, annotateHang(liveActivityHang(indent, p.Inline(trimmed), width), trimmed, indent, ansi.StringWidth(indent), i)...)
-			} else {
-				lines = append(lines, annotate(Wrap(p.Inline(line), width, false), line, "", 0, i)...)
-			}
-		}
-	}
-	flushQuote()
-	if fence != "" {
-		lines = append(lines, p.fenced(lang, strings.Join(program, "\n"), width, fenceIdentity)...)
-	}
-	// Providers may open or close a message with blank lines; they only pad the block.
-	for len(lines) > 0 && ansi.Strip(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
-	}
-	for len(lines) > 0 && ansi.Strip(lines[0]) == "" {
-		lines = lines[1:]
-	}
-	return lines
-}
-
-// atxHeading parses a CommonMark ATX heading: one to six markers followed by
-// whitespace or the line end, and an optional closing marker sequence.
-func atxHeading(line string) (level int, prefix, title, closing string, ok bool) {
-	level = len(line) - len(strings.TrimLeft(line, "#"))
-	rest := line[level:]
-	if level == 0 || level > 6 || rest != "" && rest[0] != ' ' && rest[0] != '\t' {
-		return 0, "", "", "", false
-	}
-	title = strings.TrimLeft(rest, " \t")
-	prefix = line[:len(line)-len(title)]
-	title = strings.TrimRight(title, " \t")
-	if open := strings.TrimRight(title, "#"); open == "" || strings.HasSuffix(open, " ") || strings.HasSuffix(open, "\t") {
-		title = strings.TrimRight(open, " \t")
-		closing = strings.TrimRight(line[len(prefix)+len(title):], " \t")
-	}
-	return level, prefix, title, closing, true
-}
-
-// setextUnderline reports a line of only = or - markers that turns the
-// preceding paragraph line into a level one or two heading.
-func setextUnderline(line string) (level int, underline string, ok bool) {
-	underline = strings.TrimRight(line, " \t")
-	marks := strings.TrimLeft(underline, " ")
-	if len(underline)-len(marks) > 3 || marks == "" || strings.Trim(marks, marks[:1]) != "" || marks[0] != '=' && marks[0] != '-' {
-		return 0, "", false
-	}
-	if marks[0] == '=' {
-		return 1, underline, true
-	}
-	return 2, underline, true
-}
-
-// quote keeps a visible bar on every wrapped row and renders the quoted
-// Markdown normally, including lists, nested quotes, and fenced code. The bar
-// is heavier than feed gutters so a quote reads as quoted, not as a thread.
-func (p *Painter) Quote(text string, width int) []string {
-	rows := p.Markdown(text, max(1, width-2))
-	if len(rows) == 0 {
-		rows = []string{""}
-	}
-	for i, row := range rows {
-		if p.CopySource && !p.LayoutOnly {
-			clean, spans := ExtractCopy(row)
-			for j := range spans {
-				spans[j].Quote = "> " + spans[j].Quote
-			}
-			row = AttachCopy(clean, spans)
-		}
-		rows[i] = ansi.Truncate(Dim+"▎"+Undim+" "+row, max(1, width), "")
-	}
-	return rows
-}
-
 // program keeps operation source under a gutter beside its verb.
 func (p *Painter) program(lang, source string, width int) []string {
 	var lines []string
 	for _, line := range p.Highlight(lang, source) {
-		for _, part := range Wrap(line, width-2, true) {
-			lines = append(lines, Dim+"│"+Undim+" "+part)
+		for _, part := range terminalui.Wrap(line, width-2, true) {
+			lines = append(lines, terminalui.Dim+"│"+terminalui.Undim+" "+part)
 		}
 	}
 	return lines
-}
-
-// fenced sets authored code on a padded fill so it cannot be mistaken for a
-// quote. An undetected theme (as behind mosh, which answers no OSC 11 query)
-// gets a self-contained dark block: highlighting already assumes dark, and an
-// explicit foreground keeps plain text readable on either terminal theme.
-func (p *Painter) fenced(lang, source string, width int, identity uint64) []string {
-	fill, ink := p.codeBackground(), ""
-	if fill == "" {
-		fill, ink = "\x1b[48;2;32;35;40m", "\x1b[38;2;230;237;243m"
-	}
-	var lines []string
-	var sources []string
-	if p.CopySource && !p.LayoutOnly {
-		sources = strings.Split(source, "\n")
-	}
-	for index, line := range p.Highlight(lang, diffrender.Safe(source, false)) {
-		parts := Wrap(line, width-2, true)
-		if len(sources) > 0 {
-			parts = p.CopyWrapped(parts, copyCode(sources[index], copyID(strconv.Itoa(index), identity)), 0)
-		}
-		for _, part := range parts {
-			if ink != "" {
-				part = strings.ReplaceAll(part, "\x1b[39m", ink)
-			}
-			pad := strings.Repeat(" ", max(0, width-1-ansi.StringWidth(part)))
-			row := fill + ink + " " + strings.ReplaceAll(part, Reset, Reset+fill+ink) + pad + "\x1b[49m"
-			if ink != "" {
-				row += "\x1b[39m"
-			}
-			lines = append(lines, row)
-		}
-	}
-	return lines
-}
-
-// codeBackground lifts the reported terminal background slightly toward its
-// foreground side, falling back to fixed fills for a theme known only by name.
-func (p *Painter) codeBackground() string {
-	if p.Colors.HasBackground {
-		bg, to := p.Colors.Background, uint8(255)
-		if p.Theme == diffrender.LightTheme {
-			to = 0
-		}
-		channel := func(from uint8) int { return int(float64(from) + (float64(to)-float64(from))*.07 + .5) }
-		return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", channel(bg.R), channel(bg.G), channel(bg.B))
-	}
-	switch p.Theme {
-	case diffrender.LightTheme:
-		return "\x1b[48;2;242;243;245m"
-	case diffrender.DarkTheme:
-		return "\x1b[48;2;32;35;40m"
-	}
-	return ""
 }
 
 func liveActivityIndent(lines []string, prefix string) []string {
@@ -747,19 +184,19 @@ func (p *Painter) Block(block Block, width int) []string {
 		for _, timeout := range block.Timeouts {
 			labels = append(labels, "(timeout "+formatTimeout(timeout)+")")
 		}
-		suffix := Dim + strings.Join(labels, " ") + Undim
+		suffix := terminalui.Dim + strings.Join(labels, " ") + terminalui.Undim
 		if ansi.StringWidth(lines[0])+1+ansi.StringWidth(suffix) <= width {
 			lines[0] += " " + suffix
 		} else {
-			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), suffix, width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), suffix, width)...)
 		}
 	}
 	if outcome := approvalLabel(block.Approval); outcome != "" && len(lines) > 0 {
-		suffix := Dim + " · " + Undim + outcome
+		suffix := terminalui.Dim + " · " + terminalui.Undim + outcome
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), outcome, width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), outcome, width)...)
 		}
 	}
 	if block.ShowWorkdir && block.Workdir != "" && block.Verb != "Run" && len(lines) > 0 {
@@ -767,16 +204,16 @@ func (p *Painter) Block(block Block, width int) []string {
 		if suffix := " " + workdirLabel(block.Workdir); ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), workdirLabel(block.Workdir), width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), workdirLabel(block.Workdir), width)...)
 		}
 	}
 	if block.Verb != "Run" && !block.Skipped && len(lines) > 0 {
 		if elapsed := RunElapsed(block, p.now()); elapsed != "" {
-			suffix := Dim + " · " + elapsed + Undim
+			suffix := terminalui.Dim + " · " + elapsed + terminalui.Undim
 			if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 				lines[0] += suffix
 			} else {
-				lines = append(lines, strings.Repeat(" ", block.cell(RowVerb(block)))+Dim+"· "+elapsed+Undim)
+				lines = append(lines, strings.Repeat(" ", block.cell(RowVerb(block)))+terminalui.Dim+"· "+elapsed+terminalui.Undim)
 			}
 		}
 	}
@@ -788,33 +225,33 @@ func (p *Painter) Block(block Block, width int) []string {
 		}
 	}
 	if block.Repeated != "" && len(lines) > 0 {
-		suffix := Dim + " · " + block.Repeated + Undim
+		suffix := terminalui.Dim + " · " + block.Repeated + terminalui.Undim
 		if ansi.StringWidth(lines[0])+ansi.StringWidth(suffix) <= width {
 			lines[0] += suffix
 		} else {
-			lines = slices.Insert(lines, 1, liveActivityHang(strings.Repeat(" ", block.cell(RowVerb(block))), Dim+block.Repeated+Undim, width)...)
+			lines = slices.Insert(lines, 1, terminalui.Hang(strings.Repeat(" ", block.cell(RowVerb(block))), terminalui.Dim+block.Repeated+terminalui.Undim, width)...)
 		}
 	}
 	if block.Skipped {
 		for i, line := range lines {
-			lines[i] = Dim + ansi.Strip(line) + Reset
+			lines[i] = terminalui.Dim + ansi.Strip(line) + terminalui.Reset
 		}
 	}
 	if block.Expanded && block.MarkdownOutput() && len(block.Tail) > 0 {
 		indent := min(block.cell(RowVerb(block)), max(0, width-8))
-		rows := p.Markdown(strings.Join(block.Tail, "\n"), width-indent)
+		rows := p.Markdown(strings.Join(block.Tail, "\n"), width-indent, false)
 		if block.TailOmitted > 0 {
-			rows = append([]string{Dim + Elision{Hidden: block.TailOmitted, Form: ElisionEarlier}.Text() + " not retained" + Undim}, rows...)
+			rows = append([]string{terminalui.Dim + Elision{Hidden: block.TailOmitted, Form: ElisionEarlier}.Text() + " not retained" + terminalui.Undim}, rows...)
 		}
 		return append(lines, liveActivityIndent(rows, strings.Repeat(" ", indent))...)
 	}
 	if !block.Collapsed {
 		tail := p.tailColors(block)
 		if p.CopySource && !p.LayoutOnly {
-			identity := copyID(strings.Join(block.Tail, "\n"), p.CopyScope)
+			identity := terminalui.CopyID(strings.Join(block.Tail, "\n"), p.CopyScope)
 			for i, row := range tail {
 				if ansi.Strip(row) != block.Tail[i] {
-					tail[i] = copyTag(CopyFragment{ID: copyID(strconv.Itoa(i), identity), Prefix: block.Tail[i], Width: ansi.StringWidth(row)}) + row
+					tail[i] = terminalui.AttachCopy(row, []terminalui.CopySpan{{CopyFragment: terminalui.CopyFragment{ID: terminalui.CopyID(strconv.Itoa(i), identity), Prefix: block.Tail[i], Width: ansi.StringWidth(row)}}})
 				}
 			}
 		}
@@ -828,13 +265,13 @@ func (p *Painter) Block(block Block, width int) []string {
 func approvalLabel(outcome string) string {
 	switch {
 	case strings.HasPrefix(outcome, "Pending Approval"):
-		return Amber + "Pending Approval" + Reset
+		return Amber + "Pending Approval" + terminalui.Reset
 	case strings.HasPrefix(outcome, "Auto Denied"):
-		return Red + "Auto Denied" + Reset
+		return Red + "Auto Denied" + terminalui.Reset
 	case strings.HasPrefix(outcome, "Approved"), strings.HasPrefix(outcome, "Granted"), strings.HasPrefix(outcome, "Allowed"):
-		return Green + "Approved" + Reset
+		return Green + "Approved" + terminalui.Reset
 	case strings.HasPrefix(outcome, "Denied"), strings.HasPrefix(outcome, "Declined"), strings.HasPrefix(outcome, "Blocked"):
-		return Red + "Denied" + Reset
+		return Red + "Denied" + terminalui.Reset
 	}
 	return ""
 }
@@ -842,7 +279,7 @@ func approvalLabel(outcome string) string {
 // workdirLabel names the directory a command ran in when it is not the
 // workspace, so its relative paths do not read as workspace paths.
 func workdirLabel(workdir string) string {
-	return Dim + "· in " + Undim + Path(workdir)
+	return terminalui.Dim + "· in " + terminalui.Undim + Path(workdir)
 }
 
 // segmentTrailer names a tracked segment's outcome where its row would not:
@@ -857,7 +294,7 @@ func segmentTrailer(block Block) string {
 	case block.Kind == "op" && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)):
 		return "" // The row already shows the exit.
 	}
-	return Dim + "· " + Undim + exitText(block.ExitCode)
+	return terminalui.Dim + "· " + terminalui.Undim + exitText(block.ExitCode)
 }
 
 func (p *Painter) blockRows(block Block, width int) []string {
@@ -871,7 +308,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.Label != "" && block.Hovered {
 			text = Underline(text)
 		}
-		return Wrap(style+"• "+text+Reset, width, false)
+		return terminalui.Wrap(style+"• "+text+terminalui.Reset, width, false)
 	case "summary":
 		// Public reasoning shares one streaming block across providers.
 		if block.Label == "" {
@@ -882,7 +319,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			// A request's thinking block before its first delta.
 			if block.Live && strings.TrimSpace(block.Body) == "" {
 				header, _ := p.thinkingHeader(block, width-2)
-				return []string{Dim + "• " + header + Undim}
+				return []string{terminalui.Dim + "• " + header + terminalui.Undim}
 			}
 			return nil
 		}
@@ -895,7 +332,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if !block.Live && block.Elapsed != "" {
 				text = reasoningFor(text, block.Elapsed)
 			}
-			rows = liveActivityHang("• ", text, width)
+			rows = terminalui.Hang("• ", text, width)
 			for i, row := range rows {
 				rows[i] = reasoningRow(row)
 			}
@@ -905,7 +342,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if block.Hovered {
 				header = Underline(header)
 			}
-			return []string{Dim + "• " + header + Undim}
+			return []string{terminalui.Dim + "• " + header + terminalui.Undim}
 		}
 		if block.Live && !block.Expanded {
 			var hidden int
@@ -913,7 +350,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 				suffix := " · " + Elision{Hidden: hidden, Form: ElisionSuffix, Hovered: block.Hovered}.String()
 				suffix = ansi.Truncate(suffix, max(0, width-3), "…")
 				header, headingElided = p.thinkingHeader(block, width-2-ansi.StringWidth(suffix))
-				header += suffix + Dim
+				header += suffix + terminalui.Dim
 			}
 		}
 		if block.Hovered && headingElided && !titleOnly {
@@ -922,9 +359,9 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		for i, row := range rows {
 			rows[i] = reasoningRow("  " + row)
 		}
-		return append([]string{Dim + "• " + header + Undim}, rows...)
+		return append([]string{terminalui.Dim + "• " + header + terminalui.Undim}, rows...)
 	case "final":
-		return append([]string{Green + "✓ Final answer" + Reset}, liveActivityIndent(p.Markdown(block.Body, width-2), "  ")...)
+		return append([]string{Green + "✓ Final answer" + terminalui.Reset}, liveActivityIndent(p.Markdown(block.Body, width-2, false), "  ")...)
 	case "reads":
 		color := VerbColor(block.Verb)
 		lead, count := block.lead(color, block.Verb), ResultCount(block.Results)+readLines(block)
@@ -951,7 +388,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 				item = p.code(block.Verb, path)
 			}
 			if len(read.Ranges) > 0 {
-				item += " " + Dim + lineRanges(read.Ranges) + Undim
+				item += " " + terminalui.Dim + lineRanges(read.Ranges) + terminalui.Undim
 			}
 			return item + lineSuffix(read.Lines, block.Hovered)
 		}
@@ -959,12 +396,12 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		for _, read := range block.Reads {
 			items = append(items, item(read.Path, read))
 		}
-		joined := strings.Join(items, Dim+" · "+Undim) + count
+		joined := strings.Join(items, terminalui.Dim+" · "+terminalui.Undim) + count
 		if indent+ansi.StringWidth(joined) <= width || indent > width/2 {
-			return liveActivityHang(lead, joined, width)
+			return terminalui.Hang(lead, joined, width)
 		}
 		if len(items) < 2 {
-			return liveActivityHang(lead, item(fit(block.Reads[0], 1, true), block.Reads[0])+count, width)
+			return terminalui.Hang(lead, item(fit(block.Reads[0], 1, true), block.Reads[0])+count, width)
 		}
 		// Items that do not fit on one row take one row each, rather than
 		// leaving separators dangling at wrapped row ends. Their ranges share
@@ -978,7 +415,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		for i, read := range block.Reads {
 			if len(read.Ranges) > 0 && !literal && indent+column+2+ansi.StringWidth(lineRanges(read.Ranges)+lineSuffix(read.Lines, false)) <= width {
-				items[i] = Path(paths[i]) + strings.Repeat(" ", column-ansi.StringWidth(paths[i])+2) + Dim + lineRanges(read.Ranges) + Undim + lineSuffix(read.Lines, block.Hovered)
+				items[i] = Path(paths[i]) + strings.Repeat(" ", column-ansi.StringWidth(paths[i])+2) + terminalui.Dim + lineRanges(read.Ranges) + terminalui.Undim + lineSuffix(read.Lines, block.Hovered)
 			}
 		}
 		items[len(items)-1] += count
@@ -987,7 +424,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			if i > 0 {
 				lead = strings.Repeat(" ", indent)
 			}
-			lines = append(lines, liveActivityHang(lead, item, width)...)
+			lines = append(lines, terminalui.Hang(lead, item, width)...)
 		}
 		return lines
 	case "op":
@@ -1004,7 +441,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		if block.Path != "" {
 			path := Path(diffrender.Safe(block.Path, false))
 			if label != "" {
-				path += Dim + " · " + Undim + label
+				path += terminalui.Dim + " · " + terminalui.Undim + label
 			}
 			label = path
 		}
@@ -1014,7 +451,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		code, body := block.Code, block.Body
 		exit := ""
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
-			exit = Red + fmt.Sprintf("(exit %d)", block.ExitCode) + Reset
+			exit = Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 		}
 		// Keep exec source below its long heading, regardless of source line count.
 		// Other single-line programs or arguments read best on the operation row.
@@ -1025,16 +462,16 @@ func (p *Painter) blockRows(block Block, width int) []string {
 			}
 			label, code = strings.TrimSpace(label+" "+inline), ""
 		}
-		lines := liveActivityHang(block.lead(VerbColor(block.Verb), block.Verb), label, width)
+		lines := terminalui.Hang(block.lead(VerbColor(block.Verb), block.Verb), label, width)
 		if code != "" {
 			lang := block.Lang
 			if !block.Fenced && (block.Verb == "MCP" || strings.HasPrefix(block.Verb, "Tool")) {
 				lang = "json"
 			}
-			lines = append(lines, clipSource(liveActivityIndent(p.program(lang, sourceTabs(code), width-2), "  "), block, "  "+Dim+"│"+Undim+" ")...)
+			lines = append(lines, clipSource(liveActivityIndent(p.program(lang, sourceTabs(code), width-2), "  "), block, "  "+terminalui.Dim+"│"+terminalui.Undim+" ")...)
 		}
 		if body != "" {
-			lines = append(lines, liveActivityIndent(p.Markdown(body, width-2), "  ")...)
+			lines = append(lines, liveActivityIndent(p.Markdown(body, width-2, false), "  ")...)
 		}
 		if exit != "" {
 			last := len(lines) - 1
@@ -1047,37 +484,37 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		return lines
 	case "message":
 		lines := []string{ansi.Truncate(p.messageDirection(block), width, "…")}
-		return append(lines, p.Markdown(block.Body, width)...)
+		return append(lines, p.Markdown(block.Body, width, false)...)
 	case "start":
-		head := Green + "\x1b[1m▶ Started" + Reset
-		lines := liveActivityHang(head+" · ", p.Inline(block.Label), width)
+		head := Green + "\x1b[1m▶ Started" + terminalui.Reset
+		lines := terminalui.Hang(head+" · ", p.Inline(block.Label), width)
 		if block.Body != "" {
-			lines = append(lines, p.Markdown(block.Body, width)...)
+			lines = append(lines, p.Markdown(block.Body, width, false)...)
 		}
 		return lines
 	case "compaction":
-		return []string{Amber + "◉ Context compacted" + Reset}
+		return []string{Amber + "◉ Context compacted" + terminalui.Reset}
 	case "batch":
 		return p.batchRow(block, width)
 	case "filter":
 		return filterRows(block.Body, width, min(block.cell("Run"), width/2))
 	case "error":
-		return liveActivityIndent(ErrorRows(block, width-2), Red+"✗"+Reset+" ")
+		return liveActivityIndent(ErrorRows(block, width-2), Red+"✗"+terminalui.Reset+" ")
 	}
-	return p.Markdown(block.Body, width)
+	return p.Markdown(block.Body, width, false)
 }
 
 // filterRows aligns an auxiliary note with its command text.
 func filterRows(body string, width, indent int) []string {
-	rows := Wrap(body, width-indent, true)
+	rows := terminalui.Wrap(body, width-indent, true)
 	for i := range rows {
-		rows[i] = strings.Repeat(" ", indent) + Dim + rows[i] + Reset
+		rows[i] = strings.Repeat(" ", indent) + terminalui.Dim + rows[i] + terminalui.Reset
 	}
 	return rows
 }
 
 func exitText(code int) string {
-	return Red + fmt.Sprintf("exit %d", code) + Reset
+	return Red + fmt.Sprintf("exit %d", code) + terminalui.Reset
 }
 
 // editGroupRow lays out one file row of an edit group. Rows share one verb
@@ -1095,7 +532,7 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 	cell := max(block.cell("Edit"), block.VerbAlign+1)
 	lead := strings.Repeat(" ", cell)
 	if start || block.Verb != "Edit" {
-		lead = color + "\x1b[1m" + verb + Reset + strings.Repeat(" ", cell-ansi.StringWidth(verb))
+		lead = color + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", cell-ansi.StringWidth(verb))
 	}
 	block.Label = editLabel(block)
 	if status != "" {
@@ -1110,18 +547,18 @@ func (p *Painter) editGroupRow(block Block, width int) []string {
 	if start && !block.DirectoryDeletion() {
 		trailer = p.groupSource(block)
 		if status != "" {
-			trailer = append(trailer, Dim+"· "+Undim+color+status+Reset)
+			trailer = append(trailer, terminalui.Dim+"· "+terminalui.Undim+color+status+terminalui.Reset)
 		}
 	}
 	if block.ExitCode != 0 {
-		trailer = append(trailer, Dim+"· "+Undim+exitText(block.ExitCode))
+		trailer = append(trailer, terminalui.Dim+"· "+terminalui.Undim+exitText(block.ExitCode))
 	}
-	rows := liveActivityHang(lead, row, width)
+	rows := terminalui.Hang(lead, row, width)
 	// The trailer follows the file when it fits, and otherwise takes its own row.
 	if last, text := len(rows)-1, strings.Join(trailer, " "); text == "" || ansi.StringWidth(rows[last])+1+ansi.StringWidth(text) <= width {
 		rows[last] = strings.TrimSuffix(rows[last]+" "+text, " ")
 	} else {
-		rows = append(rows, liveActivityHang(strings.Repeat(" ", cell), text, width)...)
+		rows = append(rows, terminalui.Hang(strings.Repeat(" ", cell), text, width)...)
 	}
 	return rows
 }
@@ -1133,12 +570,12 @@ func (p *Painter) groupSource(block Block) []string {
 	if source := strings.TrimSuffix(block.EditSource, requestedEdit); source != "" && source != "apply_patch" {
 		var sources []string
 		for part := range strings.SplitSeq(source, ", ") {
-			sources = append(sources, strings.Join(p.Highlight("bash", part), " ")+Reset)
+			sources = append(sources, strings.Join(p.Highlight("bash", part), " ")+terminalui.Reset)
 		}
-		parts = append(parts, Dim+"via "+Undim+strings.Join(sources, Dim+", "+Undim))
+		parts = append(parts, terminalui.Dim+"via "+terminalui.Undim+strings.Join(sources, terminalui.Dim+", "+terminalui.Undim))
 	}
 	if block.GroupCount > 1 {
-		parts = append(parts, Dim+fmt.Sprintf("×%d", block.GroupCount)+Undim)
+		parts = append(parts, terminalui.Dim+fmt.Sprintf("×%d", block.GroupCount)+terminalui.Undim)
 	}
 	return parts
 }
@@ -1205,7 +642,7 @@ func statBar(added, removed, scale int) string {
 		green = min(green, filled-1)
 	}
 	return Green + strings.Repeat("━", green) + Red + strings.Repeat("━", filled-green) + "\x1b[39m" +
-		Dim + strings.Repeat("━", statBarCells-filled) + Undim
+		terminalui.Dim + strings.Repeat("━", statBarCells-filled) + terminalui.Undim
 }
 
 // fitPath shortens a path wider than width from its start, dropping whole
@@ -1277,7 +714,7 @@ func lineRanges(ranges []string) string {
 func (p *Painter) ranRow(block Block, width int) []string {
 	code, label := sourceTabs(block.Code), strings.TrimSpace(p.Label(block.Verb, block.Label)+ResultCount(block.Results))
 	if code == "" {
-		if span, end, ok := liveActivityCodeSpan(block.Label, 0); ok && end == len(block.Label) {
+		if span, end, ok := terminalui.CodeSpan(block.Label, 0); ok && end == len(block.Label) {
 			code, label = span, ""
 		}
 	}
@@ -1286,7 +723,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	}
 	color, exit := block.runColor(), ""
 	if block.ExitCode != 0 {
-		color, exit = Red, Dim+"· "+Undim+exitText(block.ExitCode)
+		color, exit = Red, terminalui.Dim+"· "+terminalui.Undim+exitText(block.ExitCode)
 	}
 	verb := RowVerb(block)
 	lead, indent := block.lead(color, verb), block.cell(verb)
@@ -1297,7 +734,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 			lines[last] += " " + text
 			return lines
 		}
-		return append(lines, liveActivityHang(padding, text, width)...)
+		return append(lines, terminalui.Hang(padding, text, width)...)
 	}
 	var lines []string
 	switch {
@@ -1311,15 +748,15 @@ func (p *Painter) ranRow(block Block, width int) []string {
 			lines = suffix(lines, label)
 		}
 	case code != "":
-		program := clipSource(liveActivityIndent(p.program(block.Lang, code, width-indent), padding), block, padding+Dim+"│"+Undim+" ")
+		program := clipSource(liveActivityIndent(p.program(block.Lang, code, width-indent), padding), block, padding+terminalui.Dim+"│"+terminalui.Undim+" ")
 		if label != "" {
-			lines = liveActivityHang(lead, label, width)
+			lines = terminalui.Hang(lead, label, width)
 		} else {
 			program[0] = lead + strings.TrimPrefix(program[0], padding)
 		}
 		lines = append(lines, program...)
 	default:
-		lines = liveActivityHang(lead, label, width)
+		lines = terminalui.Hang(lead, label, width)
 	}
 	switch {
 	case exit != "" && strings.Contains(code, "\n"):
@@ -1330,13 +767,13 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	}
 	if elapsed := RunElapsed(block, p.now()); elapsed != "" {
 		if strings.Contains(code, "\n") {
-			lines = append(lines, padding+Dim+"· "+elapsed+Undim)
+			lines = append(lines, padding+terminalui.Dim+"· "+elapsed+terminalui.Undim)
 		} else {
-			lines = suffix(lines, Dim+"· "+elapsed+Undim)
+			lines = suffix(lines, terminalui.Dim+"· "+elapsed+terminalui.Undim)
 		}
 	}
 	if block.Body != "" {
-		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2), padding+"  ")...)
+		lines = append(lines, liveActivityIndent(p.Markdown(block.Body, width-indent-2, false), padding+"  ")...)
 	}
 	return lines
 }
@@ -1403,7 +840,7 @@ func outputRows(block Block, lines []string, width int) []string {
 	// Output uses a dashed gutter, distinct from the program gutter above it.
 	if block.Collapsed && len(tail) > 0 {
 		hint := Elision{Hidden: omitted + len(tail), Hovered: block.Hovered}
-		return append(lines, padding+ansi.Truncate(Dim+"┆ "+Undim+hint.String(), width-indent, "…"))
+		return append(lines, padding+ansi.Truncate(terminalui.Dim+"┆ "+terminalui.Undim+hint.String(), width-indent, "…"))
 	}
 	for i, line := range tail {
 		lead := padding
@@ -1413,10 +850,10 @@ func outputRows(block Block, lines []string, width int) []string {
 			} else {
 				// A count wider than the verb column keeps its own row.
 				count.Form = ElisionEarlier
-				lines = append(lines, padding+ansi.Truncate(Dim+"┆ "+Undim+count.String(), width-indent, "…"))
+				lines = append(lines, padding+ansi.Truncate(terminalui.Dim+"┆ "+terminalui.Undim+count.String(), width-indent, "…"))
 			}
 		}
-		lines = append(lines, lead+ansi.Truncate(Dim+"┆"+Undim+" "+line, width-indent, "…"))
+		lines = append(lines, lead+ansi.Truncate(terminalui.Dim+"┆"+terminalui.Undim+" "+line, width-indent, "…"))
 	}
 	return lines
 }
@@ -1429,7 +866,7 @@ func (p *Painter) command(lead, lang, code string, width int, block Block) []str
 	indent := ansi.StringWidth(lead)
 	padding := strings.Repeat(" ", indent)
 	if indent > width/2 || ansi.Strip(styled) != code {
-		return clipSource(liveActivityHang(lead, styled, width), block, padding)
+		return clipSource(terminalui.Hang(lead, styled, width), block, padding)
 	}
 	var lines []string
 	wrapped, hidden := shellWrap(styled, code, width-indent, lang == "bash", block.SourceRows)
@@ -1517,9 +954,9 @@ func shellWrap(styled, plain string, width int, shell bool, limit int) ([]wrapRo
 			hidden++
 			return
 		}
-		text := ansi.Cut(styled, start, end) + Reset
+		text := ansi.Cut(styled, start, end) + terminalui.Reset
 		if continuation {
-			text += Dim + " \\" + Undim
+			text += terminalui.Dim + " \\" + terminalui.Undim
 		}
 		rows = append(rows, wrapRow{text, deeper})
 	}
@@ -1583,16 +1020,16 @@ func (p *Painter) Event(block Block, width int) []string {
 	label := func(head string, body []string) []string {
 		return append([]string{ansi.Truncate(head, width, "…")}, p.Flash(block, body)...)
 	}
-	done := Green + "✓" + Reset + Dim + " answer" + Undim
+	done := Green + "✓" + terminalui.Reset + terminalui.Dim + " answer" + terminalui.Undim
 	switch block.Kind {
 	case "message":
-		return label(p.Route(block), p.Markdown(block.Body, width))
+		return label(p.Route(block), p.Markdown(block.Body, width, false))
 	case "start":
-		head := Green + "▶" + Reset + Dim + " started"
+		head := Green + "▶" + terminalui.Reset + terminalui.Dim + " started"
 		if model := strings.TrimSpace(ansi.Strip(p.Inline(block.Label))); model != "" {
 			head += " · " + model
 		}
-		return label(head+Undim, p.Markdown(block.Body, width))
+		return label(head+terminalui.Undim, p.Markdown(block.Body, width, false))
 	case "final":
 		// The answer is a card, so it stands apart from the work before it.
 		inner := width - 4
@@ -1600,13 +1037,13 @@ func (p *Painter) Event(block Block, width int) []string {
 			inner = width
 		}
 		title := done
-		rows := p.Markdown(block.Body, inner)
+		rows := p.Markdown(block.Body, inner, false)
 		if width < 12 {
 			return label(title, rows)
 		}
 		return liveActivityCard(title, p.Flash(block, rows), width, block.Flash)
 	case "text":
-		return p.Flash(block, p.Markdown(block.Body, width))
+		return p.Flash(block, p.Markdown(block.Body, width, false))
 	}
 	return p.Flash(block, p.Block(block, width))
 }
@@ -1639,7 +1076,7 @@ func (p *Painter) Flash(block Block, rows []string) []string {
 	fill := p.Theme.SelectionBackground()
 	flashed := make([]string, len(rows))
 	for i, row := range rows {
-		flashed[i] = fill + strings.ReplaceAll(row, Reset, Reset+fill) + "\x1b[49m"
+		flashed[i] = fill + strings.ReplaceAll(row, terminalui.Reset, terminalui.Reset+fill) + "\x1b[49m"
 	}
 	return flashed
 }
@@ -1648,7 +1085,7 @@ func Verb(verb string) string {
 	if verb == "" {
 		return ""
 	}
-	return VerbColor(verb) + "\x1b[1m" + verb + Reset + strings.Repeat(" ", max(1, 7-ansi.StringWidth(verb)))
+	return VerbColor(verb) + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", max(1, 7-ansi.StringWidth(verb)))
 }
 
 // cell is the width of a row's verb column: the column its adjacent
@@ -1662,11 +1099,11 @@ func (b Block) cell(verb string) int {
 
 // lead is a row's bold verb in color, padded to its column.
 func (b Block) lead(color, verb string) string {
-	return color + "\x1b[1m" + verb + Reset + strings.Repeat(" ", b.cell(verb)-ansi.StringWidth(verb))
+	return color + "\x1b[1m" + verb + terminalui.Reset + strings.Repeat(" ", b.cell(verb)-ansi.StringWidth(verb))
 }
 
 func SummaryVerb(verb string) string {
-	return VerbColor(verb) + verb + Reset + " "
+	return VerbColor(verb) + verb + terminalui.Reset + " "
 }
 
 // Summary is the roster's one-line view of an agent's current activity.
@@ -1681,54 +1118,13 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 	block := blocks[len(blocks)-1]
 	more := ""
 	if len(blocks) > 1 {
-		more = Dim + " · " + Undim + Elision{Hidden: len(blocks) - 1, Unit: "more", Form: ElisionSuffix}.String()
+		more = terminalui.Dim + " · " + terminalui.Undim + Elision{Hidden: len(blocks) - 1, Unit: "more", Form: ElisionSuffix}.String()
 	}
-	firstLine := func(text string) string {
-		// Summaries describe tables and diagrams, not their decorative borders.
-		source := strings.Split(strings.TrimSpace(text), "\n")
-		source = source[:min(len(source), 3)]
-		for i, line := range source {
-			for {
-				trimmed := strings.TrimLeft(line, " ")
-				if len(line)-len(trimmed) > 3 || !strings.HasPrefix(trimmed, ">") {
-					break
-				}
-				line = strings.TrimPrefix(trimmed[1:], " ")
-			}
-			source[i] = line
-		}
-		if fence, ok := FenceDelimiter(source[0]); ok && strings.EqualFold(strings.TrimSpace(source[0][len(fence):]), "mermaid") {
-			for _, line := range source[1:] {
-				if closesFence(line, fence) {
-					break
-				}
-				if line = strings.TrimSpace(line); line != "" {
-					return "Mermaid: " + ansi.Strip(line)
-				}
-			}
-			return "Mermaid diagram"
-		}
-		if table, consumed := parseMarkdownTable(source); consumed > 0 {
-			cells := make([]string, len(table.align))
-			for c, header := range table.rows[0] {
-				cells[c] = header
-				if len(table.rows) > 1 {
-					cells[c] += ": " + table.rows[1][c]
-				}
-			}
-			return ansi.Strip(p.Inline(strings.Join(cells, " · ")))
-		}
-		for _, line := range p.Markdown(text, 1<<16) {
-			if plain := strings.TrimSpace(strings.TrimPrefix(ansi.Strip(line), "│")); plain != "" {
-				return strings.TrimSpace(strings.TrimPrefix(plain, "• "))
-			}
-		}
-		return ""
-	}
+
 	switch block.Kind {
 	case "progress":
 		style := p.statusStyle(block.Live)
-		return style + block.progressText(style) + Reset
+		return style + block.progressText(style) + terminalui.Reset
 	case "summary":
 		var headers []string
 		for i := len(blocks) - 1; i >= 0 && blocks[i].Kind == "summary"; i-- {
@@ -1745,9 +1141,9 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 			}
 		}
 		slices.Reverse(headers)
-		return p.statusStyle(block.Live) + strings.Join(headers, ", ") + Reset
+		return p.statusStyle(block.Live) + strings.Join(headers, ", ") + terminalui.Reset
 	case "final":
-		text := firstLine(block.Body)
+		text := p.MarkdownPreview(block.Body)
 		// The roster's status glyph already marks a sent final answer.
 		return text
 	case "reads":
@@ -1775,35 +1171,35 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 			detail = strings.TrimSpace(code + " " + detail)
 		}
 		if block.ExitCode != 0 && (block.Verb == "Run" || block.Verb == "Skill" || block.Verb == "Capture" || slices.Contains([]string{"Create", "Edit", "Delete", "Move"}, block.Verb)) {
-			detail += " " + Red + fmt.Sprintf("(exit %d)", block.ExitCode) + Reset
+			detail += " " + Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 		}
 		verb := block.Verb
 		if block.Running {
 			verb = "Running"
 		}
 		if block.Hook != nil {
-			return block.runColor() + RowVerb(block) + Reset + " " + detail + more
+			return block.runColor() + RowVerb(block) + terminalui.Reset + " " + detail + more
 		}
 		return SummaryVerb(verb) + detail + more
 	case "message":
-		text := firstLine(block.Body)
+		text := p.MarkdownPreview(block.Body)
 		if text == "" {
 			text = strings.TrimSuffix(block.Verb, ":")
 		}
 		return p.messageDirection(block) + " " + text
 	case "start":
-		return Green + "▶ Started" + Reset + " " + p.Inline(block.Label)
+		return Green + "▶ Started" + terminalui.Reset + " " + p.Inline(block.Label)
 	case "compaction":
-		return Amber + "◉ Context compacted" + Reset
+		return Amber + "◉ Context compacted" + terminalui.Reset
 	case "error":
-		return Red + "✗ " + ErrorPreview(block.Body) + Reset
+		return Red + "✗ " + ErrorPreview(block.Body) + terminalui.Reset
 	}
-	return firstLine(block.Body)
+	return p.MarkdownPreview(block.Body)
 }
 
 // Route names both ends of a message, sender first.
 func (p Painter) Route(block Block) string {
-	return p.recipient(block.From) + Dim + " → " + Undim + p.recipient(block.To)
+	return p.recipient(block.From) + terminalui.Dim + " → " + terminalui.Undim + p.recipient(block.To)
 }
 
 // liveActivityCard frames rows under a titled top edge. A glowing card was
@@ -1822,17 +1218,17 @@ func Card(title, right string, rows []string, width int, glow bool) []string {
 	inner := width - 4
 	title = ansi.Truncate(title, max(0, width-6), "…")
 	if right != "" && width-7-ansi.StringWidth(title)-ansi.StringWidth(right) >= 2 {
-		right = " " + Reset + Dim + right + Undim + edge + " "
+		right = " " + terminalui.Reset + terminalui.Dim + right + terminalui.Undim + edge + " "
 	} else {
 		right = ""
 	}
-	top := edge + "╭─ " + Reset + title + edge + " " + strings.Repeat("─", max(0, width-5-ansi.StringWidth(title)-ansi.StringWidth(right))) + right + "╮" + Reset
+	top := edge + "╭─ " + terminalui.Reset + title + edge + " " + strings.Repeat("─", max(0, width-5-ansi.StringWidth(title)-ansi.StringWidth(right))) + right + "╮" + terminalui.Reset
 	lines := []string{ansi.Truncate(top, width, "")}
 	for _, row := range rows {
 		row = ansi.Truncate(row, inner, "…")
-		lines = append(lines, edge+"│"+Reset+" "+row+strings.Repeat(" ", max(0, inner-ansi.StringWidth(row)))+" "+edge+"│"+Reset)
+		lines = append(lines, edge+"│"+terminalui.Reset+" "+row+strings.Repeat(" ", max(0, inner-ansi.StringWidth(row)))+" "+edge+"│"+terminalui.Reset)
 	}
-	return append(lines, edge+"╰"+strings.Repeat("─", max(0, width-2))+"╯"+Reset)
+	return append(lines, edge+"╰"+strings.Repeat("─", max(0, width-2))+"╯"+terminalui.Reset)
 }
 
 // Tree joins operation rows into one tree: ├ before each but the
@@ -1846,9 +1242,9 @@ func Tree(parts [][]string) []string {
 		}
 		for k, line := range part {
 			if k == 0 {
-				lines = append(lines, Dim+lead+Undim+line)
+				lines = append(lines, terminalui.Dim+lead+terminalui.Undim+line)
 			} else {
-				lines = append(lines, Dim+rail+Undim+line)
+				lines = append(lines, terminalui.Dim+rail+terminalui.Undim+line)
 			}
 		}
 	}
@@ -1861,14 +1257,14 @@ func (p Painter) messageDirection(block Block) string {
 	if block.Owner == block.To {
 		direction, peer = "← ", block.From
 	}
-	return Dim + direction + Undim + p.recipient(peer)
+	return terminalui.Dim + direction + terminalui.Undim + p.recipient(peer)
 }
 
 func ResultCount(count *int) string {
 	if count == nil {
 		return ""
 	}
-	return Dim + fmt.Sprintf(" (%d results)", *count) + Undim
+	return terminalui.Dim + fmt.Sprintf(" (%d results)", *count) + terminalui.Undim
 }
 
 func runDuration(block Block, now time.Time) time.Duration {

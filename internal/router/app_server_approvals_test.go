@@ -5,9 +5,9 @@ import (
 	"encoding/json/jsontext"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	json "encoding/json/v2"
@@ -21,8 +21,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/coder/websocket"
-
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -641,7 +641,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			if tc.choice != 0 {
 				color, label = activityui.Red, "Denied"
 			}
-			if !strings.Contains(strings.Join(rows, "\n"), color+label+activityui.Reset) || entry.Agent == "Session" {
+			if !strings.Contains(strings.Join(rows, "\n"), color+label+terminalui.Reset) || entry.Agent == "Session" {
 				t.Fatalf("approval rows = %q", rows)
 			}
 			assertNativeUISnapshot(t, "approval-outcome-"+tc.name, rows)
@@ -654,7 +654,7 @@ func TestUISnapshotNativeApprovalOutcomes(t *testing.T) {
 			}
 			rows = make([]string, 18)
 			u.shell.paintOutput(rows, 80, len(rows))
-			if !strings.Contains(u.shell.output.laid.Title, color+label+activityui.Reset) {
+			if !strings.Contains(u.shell.output.laid.Title, color+label+terminalui.Reset) {
 				t.Fatalf("dialog lost the decision: %q", rows)
 			}
 			assertNativeUISnapshot(t, "approval-dialog-"+tc.name, rows)

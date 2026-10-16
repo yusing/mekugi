@@ -7,11 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Busy input follows Codex's composer queue: Enter steers the running turn,
@@ -426,7 +425,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 		if len(parts) == 0 {
 			return
 		}
-		lines = append(lines, ansi.Truncate(activityui.Dim+"• "+activityui.Undim+header, width, "…")+activityui.Reset)
+		lines = append(lines, ansi.Truncate(terminalui.Dim+"• "+terminalui.Undim+header, width, "…")+terminalui.Reset)
 		var texts []string
 		for _, part := range parts {
 			text := part.text
@@ -441,10 +440,10 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 			if i == 0 {
 				prefix = "  ↳ "
 			}
-			lines = append(lines, ansi.Truncate(activityui.Dim+prefix+row, width, "…")+activityui.Reset)
+			lines = append(lines, ansi.Truncate(terminalui.Dim+prefix+row, width, "…")+terminalui.Reset)
 		}
 		if len(rows) > 3 {
-			lines = append(lines, activityui.Dim+ansi.Truncate("    …", width, "")+activityui.Reset)
+			lines = append(lines, terminalui.Dim+ansi.Truncate("    …", width, "")+terminalui.Reset)
 		}
 	}
 	steers := u.steerParts(u.steers)

@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -30,12 +31,12 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 			for _, reverse := range []bool{false, true} {
 				for _, action := range []byte{'r', 'c'} {
 					p := activityui.Painter{CopySource: true}
-					raw := p.Markdown(tc.source, 40)
+					raw := p.Markdown(tc.source, 40, false)
 					rows := make([]string, len(raw))
-					meta := make([][]activityui.CopySpan, len(raw))
+					meta := make([][]terminalui.CopySpan, len(raw))
 					x, y := -1, -1
 					for i, row := range raw {
-						rows[i], meta[i] = activityui.ExtractCopy(row)
+						rows[i], meta[i] = terminalui.ExtractCopy(row)
 						for _, s := range meta[i] {
 							if s.Text == tc.visible {
 								x, y = s.Column, i
@@ -79,11 +80,11 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 
 func TestTerminalSourceSelectionCodeLiteralDecoration(t *testing.T) {
 	p := activityui.Painter{CopySource: true}
-	raw := p.Markdown("```\n│ literal  \n\n\n  tail\n```", 40)
+	raw := p.Markdown("```\n│ literal  \n\n\n  tail\n```", 40, false)
 	rows := make([]string, len(raw))
-	meta := make([][]activityui.CopySpan, len(raw))
+	meta := make([][]terminalui.CopySpan, len(raw))
 	for i, row := range raw {
-		rows[i], meta[i] = activityui.ExtractCopy(row)
+		rows[i], meta[i] = terminalui.ExtractCopy(row)
 	}
 	u := selectionTestUI(rows...)
 	u.paintedCopy = append(meta, nil)

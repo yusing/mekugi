@@ -4,9 +4,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -310,11 +311,11 @@ func (v *liveActivityView) conversationLead(index int) bool {
 func (v *liveActivityView) continuation(index, width int) string {
 	entry, p := v.entries[index].activityPaneEntry, &v.painter
 	if entry.Kind == "text" {
-		return conversationHeading(p.Theme.Accent()+"●"+activityui.Reset, "\x1b[1m"+p.Theme.Accent()+"main"+activityui.Reset, "continued", entry, width)
+		return conversationHeading(p.Theme.Accent()+"●"+terminalui.Reset, "\x1b[1m"+p.Theme.Accent()+"main"+terminalui.Reset, "continued", entry, width)
 	}
-	suffix := activityui.Dim + " · continued" + activityui.Undim
+	suffix := terminalui.Dim + " · continued" + terminalui.Undim
 	row := p.Block(v.entries[index].blocks[0], width)[0]
-	return ansi.Truncate(row, max(0, width-ansi.StringWidth(suffix)), "…") + activityui.Reset + suffix
+	return ansi.Truncate(row, max(0, width-ansi.StringWidth(suffix)), "…") + terminalui.Reset + suffix
 }
 
 // conversationThread places an item in a thread: adjacent agent traffic with
@@ -525,7 +526,7 @@ func (v *liveActivityView) conversationItem(first, last, width int, thread conve
 				}
 			}
 		}
-		out.hang(gutter, gutter, p.Markdown(entry.Text, width-2))
+		out.hang(gutter, gutter, p.Markdown(entry.Text, width-2, false))
 	default:
 		v.agentItem(&out, entry, blocks, first, width, thread)
 		if entry.Kind == "error" && len(blocks) > 0 && activityui.ErrorHasDetails(blocks[0]) {
@@ -547,15 +548,15 @@ func conversationHeading(glyph, name, detail string, entry activityPaneEntry, wi
 // mainHeading and mainGutter mark Main's own replies the way agent traffic
 // is marked, so every transcript item starts with who spoke and when.
 func mainHeading(p *activityui.Painter, entry activityPaneEntry, width int) string {
-	name := "\x1b[1m" + p.Theme.Accent() + "main" + activityui.Reset
+	name := "\x1b[1m" + p.Theme.Accent() + "main" + terminalui.Reset
 	if entry.Agent != "Main" {
 		name = p.Agent(entry.Agent)
 	}
-	return conversationHeading(p.Theme.Accent()+"●"+activityui.Reset, name, "", entry, width)
+	return conversationHeading(p.Theme.Accent()+"●"+terminalui.Reset, name, "", entry, width)
 }
 
 func mainGutter(p *activityui.Painter) string {
-	return p.Theme.Accent() + "┃" + activityui.Reset + " "
+	return p.Theme.Accent() + "┃" + terminalui.Reset + " "
 }
 
 func (v *liveActivityView) userItemContinued(out *conversationLines, entry activityPaneEntry, width int, continued bool) {
@@ -565,23 +566,23 @@ func (v *liveActivityView) userItemContinued(out *conversationLines, entry activ
 		// Bound input stays literal; Markdown must not consume token text.
 		rows, _ = activityui.LayoutSpans(entry.Text, entry.native.spans, width-2)
 	} else {
-		rows = v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(entry.Text, width-2) })
+		rows = v.paintBlock(len(out.lines), 0, func() []string { return v.painter.Markdown(entry.Text, width-2, false) })
 	}
 	if len(rows) == 0 {
 		rows = []string{""}
 	}
-	stamp := activityui.Dim + entry.Observed.Local().Format("15:04:05") + activityui.Undim
+	stamp := terminalui.Dim + entry.Observed.Local().Format("15:04:05") + terminalui.Undim
 	for k, row := range rows {
 		lead := "  "
 		if k == 0 && !continued {
-			lead = liveActivityPrompt + "❯" + activityui.Reset + " "
+			lead = liveActivityPrompt + "❯" + terminalui.Reset + " "
 		}
-		line := activityui.Reset + ansi.Truncate(lead+row, width, "…") + activityui.Reset
+		line := terminalui.Reset + ansi.Truncate(lead+row, width, "…") + terminalui.Reset
 		if k == 0 && !continued && ansi.StringWidth(line)+2+ansi.StringWidth(stamp) <= width {
 			line += strings.Repeat(" ", width-ansi.StringWidth(line)-ansi.StringWidth(stamp)) + stamp
 		}
 		if band != "" {
-			line = strings.ReplaceAll(line, activityui.Reset, activityui.Reset+band)
+			line = strings.ReplaceAll(line, terminalui.Reset, terminalui.Reset+band)
 			line = band + line + strings.Repeat(" ", max(0, width-ansi.StringWidth(line))) + "\x1b[49m"
 		}
 		out.add(0, line)
@@ -594,7 +595,7 @@ func (v *liveActivityView) userItemContinued(out *conversationLines, entry activ
 // already shows above it.
 func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneEntry, blocks []activityui.Block, index, width int, thread conversationThread) {
 	p := &v.painter
-	glyph, detail := activityui.Dim+"●"+activityui.Undim, ""
+	glyph, detail := terminalui.Dim+"●"+terminalui.Undim, ""
 	var block activityui.Block
 	if len(blocks) > 0 {
 		block = blocks[0]
@@ -606,24 +607,24 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 	reply := block.From != "/root" && block.Kind != "start" && entry.Kind != "assignment"
 	switch {
 	case block.Kind == "start":
-		glyph, detail = activityui.Green+"▶"+activityui.Reset, "started"
+		glyph, detail = activityui.Green+"▶"+terminalui.Reset, "started"
 		if block.Label != "" {
 			detail += " · " + ansi.Strip(p.Inline(block.Label))
 		}
 	case block.Kind == "message" && block.From == "/root":
-		glyph = activityui.Dim + "→" + activityui.Undim
+		glyph = terminalui.Dim + "→" + terminalui.Undim
 		if thread.joined {
 			detail = "follow-up"
 		}
 	case block.Kind == "message":
-		glyph = activityui.Dim + "←" + activityui.Undim
+		glyph = terminalui.Dim + "←" + terminalui.Undim
 		if thread.joined {
 			detail = "replied"
 		}
 	case block.Kind == "final":
-		glyph, detail = activityui.Green+"✓"+activityui.Reset, "finished"
+		glyph, detail = activityui.Green+"✓"+terminalui.Reset, "finished"
 	case block.Kind == "error":
-		glyph = activityui.Red + "✗" + activityui.Reset
+		glyph = activityui.Red + "✗" + terminalui.Reset
 		if thread.joined {
 			detail = "failed"
 		}
@@ -633,7 +634,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 		agent = entry.Agent
 		name = p.Agent(agent)
 		if block.Kind == "message" {
-			glyph, name = activityui.Dim+"✉"+activityui.Undim, p.Route(block)
+			glyph, name = terminalui.Dim+"✉"+terminalui.Undim, p.Route(block)
 		}
 		if i := slices.IndexFunc(v.agents, func(a activityPaneAgent) bool { return a.Name == entry.Agent }); i >= 0 {
 			if role := liveActivityRole(v.agents[i]); role != "" {
@@ -647,12 +648,12 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 		color = activityui.Gutter(block.From, p.Theme)
 	}
 	if thread.joined {
-		out.add(0, threadHeading(color+"├─"+activityui.Reset+glyph, detail, entry, v.entries[thread.previous].activityPaneEntry, reply, width))
+		out.add(0, threadHeading(color+"├─"+terminalui.Reset+glyph, detail, entry, v.entries[thread.previous].activityPaneEntry, reply, width))
 	} else {
 		out.add(0, conversationHeading(glyph, name, detail, entry, width))
 	}
-	gutter := color + "│" + activityui.Reset + " "
-	tail, limit := color+"╰─"+activityui.Reset, conversationLatestRows
+	gutter := color + "│" + terminalui.Reset + " "
+	tail, limit := color+"╰─"+terminalui.Reset, conversationLatestRows
 	if thread.followed {
 		tail, limit = gutter, conversationEarlierRows
 	}
@@ -667,9 +668,9 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 			v.replyExcerpt(out, entry, block.Body, gutter, tail, body, limit)
 		case v.excerpt(v.passed[entry.Seq]) && v.sentExcerpt(out, entry, block, gutter, tail, body, limit):
 		case thread.followed:
-			v.collapsedItem(out, entry, p.Markdown(block.Body, body), gutter, body)
+			v.collapsedItem(out, entry, p.Markdown(block.Body, body, false), gutter, body)
 		default:
-			out.hang(gutter, gutter, p.Markdown(block.Body, body))
+			out.hang(gutter, gutter, p.Markdown(block.Body, body, false))
 		}
 	default:
 		for _, block := range blocks {
@@ -691,7 +692,7 @@ func (v *liveActivityView) agentItem(out *conversationLines, entry activityPaneE
 				if entry.activitySeq != 0 {
 					v.replyExcerpt(out, entry, block.Body, gutter, tail, body, limit)
 				} else {
-					out.hang(gutter, gutter, p.Markdown(block.Body, body))
+					out.hang(gutter, gutter, p.Markdown(block.Body, body, false))
 				}
 				continue
 			}
@@ -708,11 +709,11 @@ func threadHeading(lead, detail string, entry, previous activityPaneEntry, reply
 	}
 	head := lead
 	if detail != "" {
-		head += " " + activityui.Dim + detail + activityui.Undim
+		head += " " + terminalui.Dim + detail + terminalui.Undim
 	}
 	head = ansi.Truncate(head, width, "…")
 	if !reply {
-		stamp := activityui.Dim + entry.Observed.Local().Format("15:04:05") + activityui.Undim
+		stamp := terminalui.Dim + entry.Observed.Local().Format("15:04:05") + terminalui.Undim
 		if gap := width - ansi.StringWidth(head) - ansi.StringWidth(stamp); gap >= 2 {
 			head += strings.Repeat(" ", gap) + stamp
 		}
@@ -749,11 +750,11 @@ func (v *liveActivityView) replyContext(out *conversationLines, question activit
 	if question.assignment != nil {
 		text = question.assignment.text
 	}
-	header := v.painter.Theme.Accent() + "↩ re: " + target + activityui.Reset
+	header := v.painter.Theme.Accent() + "↩ re: " + target + terminalui.Reset
 	if question.Seq == 0 {
-		header = activityui.Dim + "↩ re: original message (not loaded)" + activityui.Undim
+		header = terminalui.Dim + "↩ re: original message (not loaded)" + terminalui.Undim
 	} else if !question.Observed.IsZero() {
-		header += activityui.Dim + " " + question.Observed.Local().Format("15:04:05") + activityui.Undim
+		header += terminalui.Dim + " " + question.Observed.Local().Format("15:04:05") + terminalui.Undim
 	}
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
 	rows, _ := liveActivityExcerpt(v.painter.Quote(diffrender.Safe(text, false), width), width, 2)
@@ -763,14 +764,14 @@ func (v *liveActivityView) replyContext(out *conversationLines, question activit
 }
 
 func (v *liveActivityView) replyExcerpt(out *conversationLines, entry activityPaneEntry, text, gutter, tail string, width, limit int) {
-	v.linkedExcerpt(out, entry, "reply", v.painter.Markdown(text, width), gutter, tail, width, limit)
+	v.linkedExcerpt(out, entry, "reply", v.painter.Markdown(text, width, false), gutter, tail, width, limit)
 }
 
 // sentExcerpt shortens a sent message that has scrolled out of view the way a
 // reply is shortened. It adds nothing and reports false when the excerpt would
 // omit nothing, since the link would then only add a row.
 func (v *liveActivityView) sentExcerpt(out *conversationLines, entry activityPaneEntry, block activityui.Block, gutter, tail string, width, limit int) bool {
-	rows := v.painter.Markdown(block.Body, width)
+	rows := v.painter.Markdown(block.Body, width, false)
 	if _, hidden := liveActivityExcerpt(rows, width, limit); entry.activitySeq == 0 || hidden == 0 {
 		return false
 	}
@@ -789,9 +790,9 @@ func (v *liveActivityView) linkedExcerpt(out *conversationLines, entry activityP
 	}
 	rows, hidden := liveActivityExcerpt(rows, width, limit)
 	out.hang(gutter, gutter, rows)
-	link := v.painter.Theme.Accent() + "↩ Open " + noun + activityui.Reset
+	link := v.painter.Theme.Accent() + "↩ Open " + noun + terminalui.Reset
 	if hidden > 0 {
-		link += activityui.Dim + " · " + activityui.Undim + activityui.Elision{Hidden: hidden, Form: activityui.ElisionSuffix}.String()
+		link += terminalui.Dim + " · " + terminalui.Undim + activityui.Elision{Hidden: hidden, Form: activityui.ElisionSuffix}.String()
 	}
 	out.add(entry.Seq, tail+ansi.Truncate(link, width, "…"))
 }
@@ -836,7 +837,7 @@ func liveActivityExcerpt(rows []string, width, limit int) ([]string, int) {
 			continue
 		}
 		if hidden == 0 {
-			kept[limit-1] = ansi.Truncate(kept[limit-1], max(0, width-1), "") + activityui.Dim + "…" + activityui.Undim
+			kept[limit-1] = ansi.Truncate(kept[limit-1], max(0, width-1), "") + terminalui.Dim + "…" + terminalui.Undim
 		}
 		hidden++
 	}

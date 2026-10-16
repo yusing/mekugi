@@ -1381,7 +1381,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	if room > 0 {
 		frame = transcript.render(width, room, u.now())
 		for row := range frame {
-			frame[row] = activityui.AttachCopy(frame[row], transcript.copyRows[row])
+			frame[row] = terminalui.AttachCopy(frame[row], transcript.copyRows[row])
 		}
 		if !readOnly && u.keybindings && (u.shell == nil || u.shell.focus == 0) {
 			u.mainContentPainted = false
@@ -1450,9 +1450,9 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 			line = before + "\x1b[7m" + cell + "\x1b[27m" + rest
 		}
 		if boxed {
-			frame = append(frame, border+"│"+inputColor+" "+prefix+line+strings.Repeat(" ", textWidth-ansi.StringWidth(line))+border+"│"+activityui.Reset)
+			frame = append(frame, border+"│"+inputColor+" "+prefix+line+strings.Repeat(" ", textWidth-ansi.StringWidth(line))+border+"│"+terminalui.Reset)
 		} else {
-			frame = append(frame, inputColor+prefix+line+activityui.Reset)
+			frame = append(frame, inputColor+prefix+line+terminalui.Reset)
 		}
 	}
 	if boxed {
@@ -1493,7 +1493,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		if room := width - 7 - ansi.StringWidth(context) - 3; model != "" && room > 0 {
 			caption = ansi.Truncate(model, room, "…") + " • " + context
 		}
-		caption = activityui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + activityui.Reset
+		caption = terminalui.Dim + ansi.Truncate(caption, max(0, width-7), "…") + terminalui.Reset
 		frame = append(frame, composerBorder("╰", "╯", "", caption, width, border))
 	}
 	return frame, terminalRect{0, dockAt, width, dock}
@@ -1520,7 +1520,7 @@ func composerBorder(open, close, left, right string, width int, color string) st
 		}
 	}
 	fill := max(0, inner-ansi.StringWidth(l)-ansi.StringWidth(r)-2)
-	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + activityui.Reset
+	return color + open + "─" + l + strings.Repeat("─", fill) + r + "─" + close + terminalui.Reset
 }
 
 func (u *appServerUI) sessionAnimating() bool {
@@ -1529,16 +1529,16 @@ func (u *appServerUI) sessionAnimating() bool {
 
 func (u *appServerUI) sessionLabel(now time.Time) string {
 	if u.replacement.phase == replacementArchive {
-		return activityui.StatusPulse("Archiving session…", now, u.view.painter.Colors) + activityui.Reset
+		return activityui.StatusPulse("Archiving session…", now, u.view.painter.Colors) + terminalui.Reset
 	}
 	status := strings.ReplaceAll(diffrender.Safe(u.status, false), "\n", " ")
 	switch {
 	case status == "":
 		return ""
 	case u.alert:
-		return activityui.Red + "✗ " + activityui.ErrorPreview(u.status) + activityui.Reset
+		return activityui.Red + "✗ " + activityui.ErrorPreview(u.status) + terminalui.Reset
 	case u.turn != "":
-		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
+		label := "\x1b[39m◐ " + activityui.StatusPulse(status, now, u.view.painter.Colors) + terminalui.Reset
 		if status == "Working" {
 			if u.shellCommand.standalone() {
 				status = "Running shell"
@@ -1547,17 +1547,17 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 			} else if u.polling != nil {
 				status = "Still running"
 			}
-			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.Colors) + activityui.Reset
+			label = "\x1b[39m◐ " + activityui.ReasoningShimmer(status, now.Sub(u.turnStarted), u.view.painter.Colors) + terminalui.Reset
 		}
 		if !u.turnStarted.IsZero() {
-			label += activityui.Dim + " " + activityui.FormatDuration(now.Sub(u.turnStarted)) + activityui.Undim
+			label += terminalui.Dim + " " + activityui.FormatDuration(now.Sub(u.turnStarted)) + terminalui.Undim
 		}
 		return label
 	case u.starting() || u.submission.text != "" || u.restoring != nil || u.thread == "":
-		return activityui.StatusPulse(status, now, u.view.painter.Colors) + activityui.Reset
+		return activityui.StatusPulse(status, now, u.view.painter.Colors) + terminalui.Reset
 	}
 	// Idle states use default text; the border color would otherwise carry over.
-	return "\x1b[39m" + status + activityui.Reset
+	return "\x1b[39m" + status + terminalui.Reset
 }
 
 // scrollLabel shows how much of the feed lies above the viewport and, once
@@ -1570,9 +1570,9 @@ func scrollLabel(v *liveActivityView) string {
 		if v.unseen > 0 {
 			label += fmt.Sprintf(" · %d new", v.unseen)
 		}
-		return activityui.Amber + label + activityui.Reset
+		return activityui.Amber + label + terminalui.Reset
 	case v.offset > 0:
-		return activityui.Dim + fmt.Sprintf("▲ %d", v.offset) + activityui.Undim
+		return terminalui.Dim + fmt.Sprintf("▲ %d", v.offset) + terminalui.Undim
 	}
 	return ""
 }

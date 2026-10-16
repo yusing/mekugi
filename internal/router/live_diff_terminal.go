@@ -17,7 +17,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"golang.org/x/term"
@@ -902,5 +901,5 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	if visible > 1 {
 		right = append(right, fmt.Sprintf("%d/%d", position, visible))
 	}
-	return left, strings.Join(right, activityui.Dim+" · "+activityui.Undim)
+	return left, strings.Join(right, terminalui.Dim+" · "+terminalui.Undim)
 }

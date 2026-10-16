@@ -16,18 +16,17 @@ observation capacity must remain visible and bounded without terminating unrelat
   and file-status classification. It operates on supplied values without filesystem
   reads or terminal types. Callers choose display paths; terminal views own colors,
   labels, geometry, selection, and follow state.
-- `internal/ui/activity` owns display blocks, Markdown and
-  syntax presentation, source-aware Markdown copy annotations and reconstruction,
-  agent labels/colors, and reasoning/status animation.
+- `internal/ui/activity` owns display blocks, operation cards, agent labels/colors,
+  and reasoning/status animation. Its painter embeds the shared terminal painter.
 - `internal/ui/diffview` owns file/change navigation and live preview cards, including
   their viewport and reveal animation. Captured-file composition and attribution
   remain in `internal/livediff`; router observations supply preview snapshots.
   Rendering a preview cannot finalize evidence.
 - [Diff rendering](../../libraries/diffrender/SPEC.md) owns shared syntax, themes,
   row decoration, wrapping and terminal sanitization.
-- [Terminal primitives](../../libraries/terminalui/SPEC.md) owns raw-mode lifetime,
-  input decoding, scrolling and Mermaid drawing. Feature adapters retain pane
-  composition, focus and follow policy.
+- [Terminal presentation](../../libraries/terminalui/SPEC.md) owns raw-mode lifetime,
+  input decoding, scrolling, Markdown/Mermaid painting and source-copy fragments.
+  Feature adapters retain pane composition, focus and follow policy.
 - Router-native `/session` presentation consumes a detached capturer snapshot.
   It owns only view, scroll and retained-exchange selection, never a metric store.
 - [The Codex backend](../../backends/codex/SPEC.md) owns newline-delimited stdio RPC and the launched Codex process:

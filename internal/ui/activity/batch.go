@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // batchTally names how a collapsed batch counts one verb: the past tense it
@@ -104,7 +106,7 @@ func (p *Painter) batchRow(block Block, width int) []string {
 			}
 			verb, rest = name.past, fmt.Sprintf(" %d %s", count, noun)
 		}
-		parts = append(parts, VerbColor(t.verb)+"\x1b[1m"+verb+Reset+rest)
+		parts = append(parts, VerbColor(t.verb)+"\x1b[1m"+verb+terminalui.Reset+rest)
 	}
 	failed := 0
 	seen := make(map[uint64]bool)
@@ -119,11 +121,11 @@ func (p *Painter) batchRow(block Block, width int) []string {
 		if failed == 1 {
 			noun = "command"
 		}
-		parts = append(parts, Red+fmt.Sprintf("%d failed %s", failed, noun)+Reset)
+		parts = append(parts, Red+fmt.Sprintf("%d failed %s", failed, noun)+terminalui.Reset)
 	}
-	row := strings.Join(parts, Dim+" • "+Undim)
+	row := strings.Join(parts, terminalui.Dim+" • "+terminalui.Undim)
 	if block.Hovered {
 		row = Underline(row)
 	}
-	return Wrap(row, width, false)
+	return terminalui.Wrap(row, width, false)
 }

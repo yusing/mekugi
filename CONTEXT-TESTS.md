@@ -142,6 +142,7 @@ sessions, the Agents roster, and responsive Activity layouts. Activity blocks an
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
 Launcher debug handoffs live in `apps/mekugi/cmd/mekugi/testdata/snapshots/`.
+Shared Markdown, links and Mermaid fixtures live in `libraries/terminalui/testdata/snapshots/`.
 Shared source syntax styles live in `libraries/diffrender/testdata/snapshots/`;
 composed Diff rows remain in `internal/livediff/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories.

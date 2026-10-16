@@ -25,10 +25,10 @@ func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
 		v.conversation = main
 		v.feedTop, v.feedLeft, v.feedRight = 1, 1, 100
 		target := liveActivitySnippet{run: 1, block: editNavigationSnippet}
-		bar := activityui.Green + "━━━━━━━━" + activityui.Red + "\x1b[39m" + activityui.Dim + activityui.Undim
+		bar := activityui.Green + "━━━━━━━━" + activityui.Red + "\x1b[39m" + terminalui.Dim + terminalui.Undim
 		feed := liveActivityFeed{
 			lines: []string{
-				"│ " + activityui.Green + "Edited" + activityui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
+				"│ " + activityui.Green + "Edited" + terminalui.Reset + "  src/a ━━━━━━━━.go   +15 -1  " + bar,
 				"└         ─file.go   +30     " + bar,
 			},
 			heads: []int{0, 0}, snippets: []liveActivitySnippet{target, target}, questions: []uint64{0, 0},
@@ -352,7 +352,7 @@ func TestLiveActivityPainterColors(t *testing.T) {
 		t.Fatalf("run verb = %q", run)
 	}
 	read := strings.Join(painter.Block(activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "dir/a.go", Ranges: []string{"1:2"}}}}, 60), "\n")
-	if !strings.Contains(read, activityui.Dim+"dir/") || !strings.Contains(read, "\x1b[1ma.go") {
+	if !strings.Contains(read, terminalui.Dim+"dir/") || !strings.Contains(read, "\x1b[1ma.go") {
 		t.Fatalf("read path = %q", read)
 	}
 	failure := strings.Join(painter.Block(activityui.Block{Kind: "error", Body: "boom"}, 60), "\n")
@@ -513,7 +513,7 @@ func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
 				if !strings.HasPrefix(ansi.Strip(row), strings.Repeat(" ", indent)) || ansi.StringWidth(row) > width {
 					t.Fatalf("filter alignment width %d: %q", width, row)
 				}
-				if !strings.Contains(row, activityui.Dim) || !strings.HasSuffix(row, activityui.Reset) {
+				if !strings.Contains(row, terminalui.Dim) || !strings.HasSuffix(row, terminalui.Reset) {
 					t.Fatalf("filter is not muted and isolated: %q", row)
 				}
 			}

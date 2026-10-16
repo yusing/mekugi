@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 func renderNativeKeybindings(width, height int) []string {
@@ -53,7 +53,7 @@ func renderNativeKeybindings(width, height int) []string {
 			{"ctrl+b o", "Older child history"},
 		}},
 	}
-	lines := []string{"", "  " + bold + "Keyboard shortcuts" + activityui.Reset, ""}
+	lines := []string{"", "  " + bold + "Keyboard shortcuts" + terminalui.Reset, ""}
 	var band []string
 	used := 0
 	for _, group := range groups {
@@ -61,10 +61,10 @@ func renderNativeKeybindings(width, height int) []string {
 		for _, key := range group.keys {
 			keyWidth = max(keyWidth, ansi.StringWidth(key[0]))
 		}
-		column := []string{bold + group.title + activityui.Reset}
+		column := []string{bold + group.title + terminalui.Reset}
 		columnWidth := ansi.StringWidth(group.title)
 		for _, key := range group.keys {
-			line := blue + key[0] + activityui.Reset + strings.Repeat(" ", keyWidth-ansi.StringWidth(key[0])+2) + key[1]
+			line := blue + key[0] + terminalui.Reset + strings.Repeat(" ", keyWidth-ansi.StringWidth(key[0])+2) + key[1]
 			column = append(column, line)
 			columnWidth = max(columnWidth, ansi.StringWidth(line))
 		}
@@ -92,7 +92,7 @@ func renderNativeKeybindings(width, height int) []string {
 		used += columnWidth
 	}
 	lines = append(lines, band...)
-	lines = append(lines, "", "  "+blue+"? / esc"+activityui.Reset+"  Close shortcuts")
+	lines = append(lines, "", "  "+blue+"? / esc"+terminalui.Reset+"  Close shortcuts")
 	// Give controls priority over spacing when an extra binding fills a narrow frame.
 	for i := len(lines) - 2; len(lines) > height && i >= 0; i-- {
 		if strings.TrimSpace(lines[i]) == "" {

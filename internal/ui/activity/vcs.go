@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // VCS operations read as their own rows rather than Run previews. Their
@@ -79,19 +80,19 @@ func (p *Painter) vcsRow(block Block, width int) []string {
 	}
 	lead := block.lead(color, verb)
 	head, source, _ := vcsSource(block.Label)
-	tail := Dim + "· " + source + Undim
+	tail := terminalui.Dim + "· " + source + terminalui.Undim
 	if block.ExitCode != 0 {
-		tail += Dim + " · " + Undim + exitText(block.ExitCode)
+		tail += terminalui.Dim + " · " + terminalui.Undim + exitText(block.ExitCode)
 	}
 	heading := p.vcsHeading(block.Verb, head)
 	if heading == "" {
-		return liveActivityHang(lead, tail, width)
+		return terminalui.Hang(lead, tail, width)
 	}
 	// Below a readable width the heading wraps rather than shrinking to a stub.
 	if room := width - ansi.StringWidth(lead) - 1 - ansi.StringWidth(tail); ansi.StringWidth(heading) > room && room >= 16 {
-		heading = ansi.Truncate(heading, room, "…") + Reset
+		heading = ansi.Truncate(heading, room, "…") + terminalui.Reset
 	}
-	return liveActivityHang(lead, heading+" "+tail, width)
+	return terminalui.Hang(lead, heading+" "+tail, width)
 }
 
 // vcsHeading styles a VCS heading: a leading span is the subject or scope,
@@ -100,7 +101,7 @@ func (p *Painter) vcsRow(block Block, width int) []string {
 func (p *Painter) vcsHeading(verb, head string) string {
 	var out strings.Builder
 	for i := 0; i < len(head); {
-		if code, end, ok := liveActivityCodeSpan(head, i); ok {
+		if code, end, ok := terminalui.CodeSpan(head, i); ok {
 			switch {
 			case i > 0 || verb == "Stage":
 				out.WriteString(Path(code))
@@ -124,7 +125,7 @@ func (p *Painter) vcsHeading(verb, head string) string {
 		if next >= 0 {
 			text = head[i : i+1+next]
 		}
-		out.WriteString(Dim + text + Undim)
+		out.WriteString(terminalui.Dim + text + terminalui.Undim)
 		i += len(text)
 	}
 	return out.String()
@@ -138,9 +139,9 @@ func (p *Painter) vcsSummary(block Block) string {
 	if counts := editCounts(ChangeTotals(block.Changes)); counts != "" {
 		detail = strings.TrimSpace(detail + " " + countText(counts))
 	}
-	detail = strings.TrimSpace(detail + " " + Dim + "· " + source + Undim)
+	detail = strings.TrimSpace(detail + " " + terminalui.Dim + "· " + source + terminalui.Undim)
 	if block.ExitCode != 0 {
-		detail += " " + Red + fmt.Sprintf("(exit %d)", block.ExitCode) + Reset
+		detail += " " + Red + fmt.Sprintf("(exit %d)", block.ExitCode) + terminalui.Reset
 	}
 	return SummaryVerb(RowVerb(block)) + detail
 }

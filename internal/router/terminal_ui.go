@@ -9,7 +9,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/vt"
-	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
@@ -42,7 +41,7 @@ type terminalUI struct {
 	layout                                         terminalLayout
 	paneTabs                                       [4]terminalRect // Visible status-bar selectors, indexed by pane.
 	paintedRows                                    []string
-	paintedCopy                                    [][]activityui.CopySpan
+	paintedCopy                                    [][]terminalui.CopySpan
 	paintedWidth                                   int
 	faint                                          bool // Output capability is local to this terminal, not request or global state.
 }

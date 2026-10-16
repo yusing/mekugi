@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -25,7 +26,7 @@ func TestMutedAgentPalette(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			screen := vt.NewEmulator(4, 1)
 			defer screen.Close()
-			fmt.Fprint(screen, activityui.FaintFallback(activityui.Color(tc.name)+"N"+activityui.Reset+activityui.DimColor(tc.name)+"D"+activityui.Reset+"X"))
+			fmt.Fprint(screen, activityui.FaintFallback(activityui.Color(tc.name)+"N"+terminalui.Reset+activityui.DimColor(tc.name)+"D"+terminalui.Reset+"X"))
 			expected := vt.NewEmulator(4, 1)
 			defer expected.Close()
 			fmt.Fprintf(expected, "\x1b[1;38;5;%dmN\x1b[0;38;5;%dmD\x1b[0mX", tc.normal, tc.dim)
@@ -78,7 +79,7 @@ func TestUISnapshotWaitingBreathing(t *testing.T) {
 				if theme == diffrender.LightTheme {
 					fg, bg = bg, fg
 				}
-				p.Colors = activityui.Colors{Foreground: fg, Background: bg, HasForeground: true, HasBackground: true}
+				p.Colors = terminalui.Colors{Foreground: fg, Background: bg, HasForeground: true, HasBackground: true}
 			}
 			wait := activityui.Block{Kind: "progress", Body: "Waiting for agent (timeout 600s)", Live: true, WaitTargets: []activityui.WaitTarget{{Name: "/root/agent1"}, {Name: "/root/agent6"}}}
 			reasoning := activityui.Block{Kind: "summary", Body: "Checking results", Live: true}

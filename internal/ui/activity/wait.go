@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // WaitTarget retains canonical identity for both live and restored wait notices.
@@ -27,7 +28,7 @@ func (b Block) progressText(style string) string {
 		}
 		name := diffrender.Safe(AgentDisplayName(target.Name), false)
 		if style != "" {
-			name = DimColor(target.Name) + name + Reset + style
+			name = DimColor(target.Name) + name + terminalui.Reset + style
 		}
 		text.WriteString(name)
 		if target.Status != "" {
