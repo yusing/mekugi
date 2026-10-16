@@ -432,6 +432,7 @@ func startAppServerUI(service *history.Service, prefs *preferences.Service, segm
 			}
 		}
 		u.finishCommandSegments()
+		u.execTrack.detachOutputs()
 		u.hideQuestions()
 		u.hideApprovals()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {

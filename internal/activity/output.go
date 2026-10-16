@@ -142,6 +142,7 @@ func (o *Output) Release() {
 	o.changed()
 	if o.owner != nil {
 		o.owner.charge(-before)
+		o.owner = nil
 	}
 }
 

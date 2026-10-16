@@ -152,6 +152,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.alert = false
 	u.feedback = noticepresentation.Model{}
 	u.noticeDetails, u.noticeDismiss = terminalRect{}, terminalRect{}
+	u.execTrack.detachOutputs()
 	u.session.outputs = activitymodel.Retention{}
 	painter := u.view.painter
 	*u.view = *newLiveActivityView()

@@ -55,8 +55,11 @@ reports, never reconstructed unrecorded streams.
 
 The application owns one retention lifetime per attached session and serializes
 mutation. Session replacement drops it with the associated feeds and dialogs;
-feed trimming alone does not invalidate an open dialog's output. Terminal pacing,
-selection and fallback to a released output's display tail remain consumer-owned.
+feed trimming alone does not invalidate an open dialog's output. Detached command
+reports retain timing and outcomes, but discarded segment output remains
+unavailable. Returning to those commands uses the host's combined output.
+Terminal pacing, selection and fallback to a released output's display tail remain
+consumer-owned.
 
 ## Acceptance
 
