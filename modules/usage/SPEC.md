@@ -49,8 +49,10 @@ pending publication; cancellation of a waiting caller MUST NOT discard observati
 
 ### Reference pricing
 
-Cost estimates use built-in reference list API prices, not subscription
-rates or live billing quotes. No pricing fetch is required. Each response is priced
+Cost estimates use reference API prices, not subscription rates or billing quotes.
+OpenAI and Grok use built-in rates; OpenCode uses its request-pinned
+[catalog price snapshot](../../providers/opencode/SPEC.md), with offline bootstrap
+rates when no usable cache exists. Accounting performs no pricing fetch. Each response is priced
 using its effective provider-request model, service tier, and input size before
 accumulation, so model switches and long-context rates do not reprice earlier responses.
 OpenAI long-context rates begin above 272,000 input tokens, not at that exact count.
