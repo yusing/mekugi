@@ -194,11 +194,11 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			flags.debug = true
-			debug, err := openDebugOutput(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
+			debug, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), flags.debug, flags.captureOutput)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = debug.close() })
+			t.Cleanup(func() { _ = debug.Close() })
 			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, titleRequestFields()))
 			if err != nil {
@@ -210,7 +210,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			if !errors.Is(err, test.err) {
 				t.Fatalf("original cause lost: %v", err)
 			}
-			data, err := os.ReadFile(debug.paths[0])
+			data, err := os.ReadFile(debug.Paths()[0])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -264,11 +264,11 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 			t.Setenv("TMPDIR", t.TempDir())
 			flags := newRouterFlags(io.Discard)
 			flags.debug = true
-			debug, err := openDebugOutput(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
+			debug, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), flags.debug, flags.captureOutput)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = debug.close() })
+			t.Cleanup(func() { _ = debug.Close() })
 			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
 			request, err := codexresponses.ParseRequest(mustTestJSON(t, titleRequestFields()))
 			if err != nil {
@@ -280,7 +280,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 				Body: io.NopCloser(strings.NewReader(test.body)),
 			}}}}
 			_ = executeRequest(ctx, ctx, request, serverMetadataHeaders(t, "turn", nil), "diagnostic-session", provider, test.output, issues, nil)
-			data, err := os.ReadFile(debug.paths[0])
+			data, err := os.ReadFile(debug.Paths()[0])
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -94,17 +94,13 @@ native dialog expose invocation-owned metrics, which expire on shutdown.
 Interactive launches use Mekugi-owned terminal splits, including a
 [live diff pane](changes.md#live-terminal-view), under its session and lifecycle contract.
 
-Detailed operational logging is absent unless `--debug` is enabled. Failure records
-are always retained with time, thread, phase, diagnostic code/reference, the complete
-error string, and bounded stream diagnostics. Error strings may contain request content
-or credentials supplied by an upstream error. They share the
-managed store's quota and retention policy and can be looked up after restart using
-`mekugi inspect-session --failures [REF]`. Failure to retain a record produces a notice,
-not a claim of successful persistence or a different request outcome. Startup and cleanup failures are concise stderr
-errors outside the active Codex UI. Critical request failures use the user-only
-commentary contract. The launcher prints undelivered notices and repetition
-summaries after Codex exits. In-memory metrics, explicit sanitized capture,
-and debug metrics exports are not operational logging.
+Detailed operational logging requires `--debug`. The composed
+[diagnostics module](../../modules/diagnostics/SPEC.md) retains private failure
+references independently of debugging. Startup and cleanup failures go to stderr
+outside the active UI. Critical request failures use the
+[notice contract](notices.md); the launcher prints undelivered notices and
+repetition summaries after Codex exits. Metrics and sanitized capture are
+separate from operational logging.
 `mekugi` mode also retains private durable replay state so resumed and forked conversations restore
 their original model-visible tools. This is correctness state, not an operational session log.
 It lives at `$XDG_STATE_HOME/mekugi/replay`, or `~/.local/state/mekugi/replay` when that variable is
@@ -123,7 +119,7 @@ or upstream request. Background work notices pressure promptly without waiting f
 An age-sweep failure does not fail an
 unrelated request and is reported as a router-wide notice with the failed cleanup
 phase and underlying error.
-Generated debug bundles have independent age retention below. Roster usage retains
+Generated debug bundles follow [diagnostics retention](../../modules/diagnostics/SPEC.md#private-debug-bundles). Roster usage retains
 bounded pending per-thread deltas and coalesces bursts before publication;
 shutdown drains its writer.
 
@@ -155,67 +151,27 @@ wrapper exit do not create token-usage Markdown files or announce metrics paths.
 
 ### Debug evidence
 
-`--debug` is a boolean flag requiring no argument. It creates a private, unique
-`mekugi-debug-*` directory under `$XDG_STATE_HOME/mekugi/debug` (default
-`~/.local/state/mekugi/debug`), with router diagnostics,
-sanitized capture, final metrics, an instruction dump, runtime read log, and AX report.
-Debug implies AX instrumentation: the wrapper supplies the read-log path to the executor
-and the authenticated worker manifest retains it across child environment changes.
-Explicit capture and `MEKUGI_AX_OUTPUT` destinations retain precedence.
-The background storage owner removes generated bundles after 14 days of inactivity,
-checking their owner marker and exclusive process lease. Running bundles remain
-protected; inactivity begins at close (or last lease timestamp after a crash).
-Cleanup does not follow symlinks to external capture files. Existing temporary
-bundles are not migrated or discovered for deletion. Copy a bundle outside the
-managed debug directory to retain it indefinitely.
-The debug bundle's `capture.jsonl` resolves to the selected capture destination
-when overridden, so the same bundle remains usable for offline replay.
-The wrapper prints one `To diagnose this session, ask an agent to run:`
-heading followed by a single shell-quoted
-`mekugi inspect-session --debug-dir DIR --field diagnostic` command.
-The command selects the bundle once; [session inspection](session.md#debug-bundle-diagnosis)
-owns its diagnostic report and request-level drill-down.
-It writes to stderr only on exit,
-after the child and router have stopped; it never prints debug paths
-over the active Codex UI. Startup failures after debug initialization also report the command.
-The files survive shutdown. Default files use mode 0600 and the directory uses mode 0700.
+`--debug` selects the [diagnostics bundle](../../modules/diagnostics/SPEC.md)
+under `$XDG_STATE_HOME/mekugi/debug`, defaulting to
+`~/.local/state/mekugi/debug`. The wrapper passes its selected AX read-log path
+to the executor and authenticated worker manifest, preserving it across child
+environment changes. Explicit capture and `MEKUGI_AX_OUTPUT` paths take precedence.
 
-The instruction JSONL records preserve instruction text and JSON values for the final
-`instructions`, developer-role input messages, top-level tools, and `additional_tools`
-items after all request rewriting. Each request retains one line with
-`schema: mekugi.instructions.v2`. Large repeated content values are stored once inline
-and subsequently represented by `content_refs`, mapping the original field name to
-the SHA-256 of its compact encoded JSON value. References resolve within the same
-file, against inline values on earlier lines or the same line, including reuse between
-projected and wire fields. Only the six instruction/tool content fields may be referenced.
-Values of at most 128 encoded bytes stay inline; a 4,096-entry digest dictionary bounds
-writer memory, with unseen content staying inline once full. Request identity, cache
-and wire provenance always remain inline. Inspection resolves these references and
-still reads older inline-only bundles; missing content is reported, not treated as empty.
-Existing bundles are not rewritten. Records include timestamp, unique local request ID,
-client request ID, thread/session IDs, model, previous response ID, and cached input count.
-The dump uses `scope: projected_responses_request` for the local projection before
-cached-prefix removal. Separate `wire_developer_messages`, `wire_additional_tools`,
-`wire_previous_response_id`, and `wire_input_items` describe the prepared outgoing subset.
-`cache_rebased` identifies a full-history replacement of a stale instruction prefix;
-`cached_input_items` counts only the prefix actually reused. `wire_request_present` is false
-for automatic successors. A prepared snapshot does not claim successful provider acceptance;
-Grok records precede Chat Completions conversion. No ordinary user messages,
-tool call bodies, or authentication headers are exported as separate diagnostic fields;
-error strings can contain any of them. Router diagnostics record lifecycle
-and parsed-request outcome/phase/status, plus a diagnostic code, reference, and complete error
-string for failures. Known provider error codes are retained through a fixed allowlist; unknown codes,
-messages, and error payloads are not exported to sanitized metrics or capture. Caller-facing
-failure notices include the actual provider error for terminal `error` and `response.failed`
-events and failed non-stream responses, including provider status when available. These
-details retain the provider error text and original error payload without credential redaction
-or display-length truncation;
-different details remain distinct notices. Forwarding failures classify known wrapped
-transport errors and display the complete wrapped error, including addresses, URLs,
-WebSocket close reasons, and arbitrary error text. Debug files remain
-separate from sanitized metrics/capture. Initialization failure prevents launch; subsequent
-debug write failures are surfaced on exit without changing request execution.
-Model-catalog failures are identified as catalog refresh failures, not failed inference turns.
+After the child and router stop and the terminal is restored, the wrapper prints
+one `To diagnose this session, ask an agent to run:` heading and one shell-quoted
+`mekugi inspect-session --debug-dir DIR --field diagnostic` command to stderr.
+Startup failures after bundle initialization also report that command.
+
+The request adapter supplies final projected instruction/tool content after
+rewriting and separately identifies the prepared outgoing subset. Cached-prefix
+counts describe actual reuse; automatic successors have no prepared wire request,
+and Grok observations precede Chat Completions conversion. The adapter supplies
+observed thread identities and bounded rollout discovery at shutdown; diagnostics
+owns collection, encoding, export and read-only inspection.
+
+Private failure details and their delivery follow the [notice contract](notices.md).
+Model-catalog errors are catalog refresh failures, not failed inference turns.
+
 They do not queue terminal notices. Diagnostics retain the complete error, transport class or
 upstream HTTP status, reference, and upstream/downstream status. The catalog HTTP error
 response remains available to Codex, and failures are not cached.
@@ -270,23 +226,12 @@ stream completion; unfinished tool input must not replace that cause with a tran
 Stream diagnostics retain a sanitized write-termination category and, when available,
 a numeric write-side WebSocket close code, separately from read termination.
 
-The AX report uses the [agent-metrics contract](../../modules/agentmetrics/SPEC.md) calculations. At router shutdown it discovers
-local Codex rollout filenames for at most 256 observed thread identities under
-`$CODEX_HOME/sessions` and `archived_sessions`, or the default `~/.codex` location.
-Discovery is bounded to 100000 entries and five seconds. Filename suffixes select
-candidates only; a candidate is attributed by the exact ID in its bounded first
-`session_meta` record, never by a hyphen-suffixed thread name. Unreadable or invalid
-candidate metadata makes discovery incomplete rather than certifying uniqueness.
-The inspector validates the full rollout identity and infers per-call workspace metadata. Missing, ambiguous, incomplete,
-or mismatched evidence receives a fixed state code; available runtime read counts remain
-visible even when rollout-dependent measurements are unavailable. The report contains metrics and
-coverage, not scripts or command output; missing defect assessments stay unassessed.
-It describes whole-rollout evidence available at shutdown, not just calls from this
-router lifetime. Read-log-only threads (at most 256, sorted, with explicit truncation)
-and unattributed reads are reported separately, never silently filtered or guessed to
-be tests/descendants. Their rollout identities can be inspected without promoting them
-to known router threads. An invalid read log has an explicit state and no partial counts.
-These files are separate from sanitized transport metrics.
+For [AX export](../../modules/diagnostics/SPEC.md#offline-diagnosis), the
+application discovers candidate rollouts under `$CODEX_HOME/sessions` and
+`archived_sessions`, or the default `~/.codex` location. Filename suffixes select
+candidates; the backend validates their exact metadata identity. Invalid or
+unreadable candidates make discovery incomplete, and session inspection validates
+selected rollouts in full. No discovery result executes retained input.
 
 `request_complete` records monotonic elapsed milliseconds and, when present, the
 capturer's immutable `capture_id` and `request_sequence`. All request-scoped debug and

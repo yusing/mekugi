@@ -1,4 +1,5 @@
-package router
+// Source: internal/router/debug_instructions.go@[ac8511fa] compact instruction records.
+package diagnostic
 
 import (
 	"crypto/sha256"
@@ -10,19 +11,19 @@ import (
 	"slices"
 )
 
-const debugInstructionSchema = "mekugi.instructions.v2"
-const debugInstructionDictionaryLimit = 4096
+const instructionSchema = "mekugi.instructions.v2"
+const instructionDictionaryLimit = 4096
 
-var debugInstructionContentKeys = []string{"instructions", "developer_messages", "tools", "additional_tools", "wire_developer_messages", "wire_additional_tools"}
+var instructionContentKeys = []string{"instructions", "developer_messages", "tools", "additional_tools", "wire_developer_messages", "wire_additional_tools"}
 
-func debugInstructionDigest(value jsontext.Value) string {
+func instructionDigest(value jsontext.Value) string {
 	digest := sha256.Sum256(value)
 	return hex.EncodeToString(digest[:])
 }
 
 // References stay within this append-only file. The writer retains only digests,
 // not private payloads, and falls back to inline values when its dictionary fills.
-func (d *debugOutput) writeInstructions(fields map[string]any) {
+func (d *Bundle) Instructions(fields map[string]any) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.err != nil {
@@ -32,7 +33,7 @@ func (d *debugOutput) writeInstructions(fields map[string]any) {
 		d.instructionContent = make(map[string]bool)
 	}
 	refs := make(map[string]string)
-	for _, key := range debugInstructionContentKeys {
+	for _, key := range instructionContentKeys {
 		value, err := json.Marshal(fields[key], json.Deterministic(true))
 		if err != nil {
 			d.err = err
@@ -42,15 +43,15 @@ func (d *debugOutput) writeInstructions(fields map[string]any) {
 		if len(value) <= 128 {
 			continue
 		}
-		digest := debugInstructionDigest(value)
+		digest := instructionDigest(value)
 		if d.instructionContent[digest] {
 			refs[key] = digest
 			delete(fields, key)
-		} else if len(d.instructionContent) < debugInstructionDictionaryLimit {
+		} else if len(d.instructionContent) < instructionDictionaryLimit {
 			d.instructionContent[digest] = true
 		}
 	}
-	fields["schema"] = debugInstructionSchema
+	fields["schema"] = instructionSchema
 	if len(refs) != 0 {
 		fields["content_refs"] = refs
 	}
@@ -59,15 +60,15 @@ func (d *debugOutput) writeInstructions(fields map[string]any) {
 
 // The inspector also accepts legacy inline records. Resolve before selecting a
 // request so shared content remains available without exposing unrelated text.
-type debugInstructionDecoder struct {
+type instructionDecoder struct {
 	content map[string]jsontext.Value
 }
 
-func (d *debugInstructionDecoder) resolve(row map[string]jsontext.Value) error {
-	if _, compact := row["content_refs"]; !compact && debugInspectionString(row, "schema") != debugInstructionSchema {
+func (d *instructionDecoder) resolve(row map[string]jsontext.Value) error {
+	if _, compact := row["content_refs"]; !compact && recordString(row, "schema") != instructionSchema {
 		return nil
 	}
-	if debugInspectionString(row, "schema") != debugInstructionSchema {
+	if recordString(row, "schema") != instructionSchema {
 		return errors.New("unsupported instruction reference schema")
 	}
 	var refs map[string]string
@@ -79,17 +80,17 @@ func (d *debugInstructionDecoder) resolve(row map[string]jsontext.Value) error {
 	if d.content == nil {
 		d.content = make(map[string]jsontext.Value)
 	}
-	for _, key := range debugInstructionContentKeys {
+	for _, key := range instructionContentKeys {
 		value, ok := row[key]
 		if !ok || len(value) <= 128 {
 			continue
 		}
-		if len(d.content) < debugInstructionDictionaryLimit {
-			d.content[debugInstructionDigest(value)] = value
+		if len(d.content) < instructionDictionaryLimit {
+			d.content[instructionDigest(value)] = value
 		}
 	}
 	for key, digest := range refs {
-		if !slices.Contains(debugInstructionContentKeys, key) {
+		if !slices.Contains(instructionContentKeys, key) {
 			return fmt.Errorf("unsupported instruction reference field %q", key)
 		}
 		if _, inline := row[key]; inline {

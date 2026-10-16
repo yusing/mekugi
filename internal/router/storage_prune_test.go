@@ -271,3 +271,11 @@ func TestBackgroundPruneDelayedAgeRetryPressureAndRecovery(t *testing.T) {
 		})
 	}
 }
+
+func (s *mekugiReplayStore) cleanupSessions(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	scope := s.retentionScope(ctx)
+	return scope.store.Cleanup(ctx, scope.writes, scope.limits, scope.thread, scope.notice)
+}

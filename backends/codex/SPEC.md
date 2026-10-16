@@ -167,6 +167,10 @@ identities fail. Missing call IDs are invalid. Unknown record kinds are ignored.
 Workspace canonicalization, retained-record matching and query results belong to
 the inspection consumer.
 
+Discovery can read only a supplied file's first metadata record using the same
+file and line bounds. This identifies a candidate; it does not validate the
+remaining rollout or certify that discovery found every matching source.
+
 An optional observer receives decoded command and task/turn events. Without it,
 event-specific payloads are not interpreted. Persisted execution endpoints take
 precedence over envelope recording time; absent or null endpoints remain unknown.

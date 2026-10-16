@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/yusing/mekugi/contracts/diagnosticsection"
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -41,6 +44,7 @@ func (h *Handle[S]) Value() S {
 }
 
 type entry struct {
+	diagnostics  []diagnosticsection.Contribution
 	inspection   []inspection.Contribution
 	id           module.ID
 	requires     []module.ID
@@ -102,7 +106,24 @@ func (c *Composition) Add[D, S any, B interface {
 		}
 		node.inspection = append(node.inspection, contribution)
 	}
+	for _, definition := range descriptor.Contributes.DiagnosticSections {
+		contribution := diagnosticsection.Contribution{Transport: definition.Transport}
+		if definition.PrepareReads != nil {
+			contribution.PrepareReads = func(path string, outputs ...string) error {
+				return definition.PrepareReads(handle.Value(), path, outputs...)
+			}
+		}
+		if definition.ReadSnapshot != nil {
+			contribution.ReadSnapshot = func(ctx context.Context, path string) (diagnosticsection.Reads, error) {
+				return definition.ReadSnapshot(handle.Value(), ctx, path)
+			}
+		}
+		node.diagnostics = append(node.diagnostics, contribution)
+	}
 	node.construct = func(slots module.Slots, binder binding.Binder, runtime *Runtime) error {
+		if !descriptor.HostsDiagnosticSections {
+			slots.DiagnosticSections = nil
+		}
 		if !descriptor.HostsInspection {
 			slots.Inspection = nil
 		}
@@ -205,6 +226,7 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
+	Diagnostics          *diagnostic.Service
 	Inspection           *query.Service
 	TransportDiagnostics *transportcapture.Service
 	AgentMetrics         *evidence.Service
@@ -244,6 +266,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 	runtime := new(Runtime)
 	records := slices.Clone(c.LegacyRecordKinds)
 	var inspections []inspection.Contribution
+	var diagnostics []diagnosticsection.Contribution
 	var references []reference.Resolver
 	var guidance []guidance.Section
 	positions := make(map[module.ID]int)
@@ -261,6 +284,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		references = append(references, node.references...)
 		guidance = append(guidance, node.guidance...)
 		inspections = append(inspections, node.inspection...)
+		diagnostics = append(diagnostics, node.diagnostics...)
 	}
 	for i, node := range c.entries {
 		if !node.validFactory {
@@ -314,7 +338,7 @@ func (c *Composition) Activate(ctx context.Context, binder binding.Binder) (*Run
 		return nil, err
 	}
 	for _, node := range c.entries {
-		if err := node.construct(module.Slots{Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
+		if err := node.construct(module.Slots{DiagnosticSections: slices.Clone(diagnostics), Inspection: slices.Clone(inspections), Commands: slices.Clone(runtime.Commands), RecordKinds: slices.Clone(records), References: slices.Clone(references), Guidance: slices.Clone(guidance)}, binder, runtime); err != nil {
 			return nil, fmt.Errorf("construct %s: %w", node.id, err)
 		}
 	}

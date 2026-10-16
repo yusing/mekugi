@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -87,7 +89,12 @@ func TestAgentMetricsReaderAuthenticatedDestinationPrecedesEnvironment(t *testin
 	t.Parallel()
 	directory := t.TempDir()
 	log, conflicting := filepath.Join(directory, "manifest.jsonl"), filepath.Join(directory, "environment.jsonl")
-	ctx := context.WithValue(t.Context(), debugContextKey{}, &debugOutput{axReadPath: log})
+	bundle, err := testDiagnostics(new(evidence.Service), nil).OpenBundle(diagnostic.BundleOptions{Root: filepath.Join(directory, "bundles"), ReadLogPath: log, Discover: discoverDebugRollouts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bundle.Close() })
+	ctx := context.WithValue(t.Context(), debugContextKey{}, &debugOutput{bundle})
 	registry, err := buildToolRegistryForTest(t, ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +151,7 @@ func TestAgentMetricsSessionInspectionWholeRolloutAndDefectEvidence(t *testing.T
 		t.Helper()
 		var stdout, stderr bytes.Buffer
 		args := append([]string{"--session", rollout, "--replay-dir", replay}, options...)
-		status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), args, &stdout, &stderr)
+		status := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), args, &stdout, &stderr)
 		var result sessionInspection
 		if status == 0 {
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {

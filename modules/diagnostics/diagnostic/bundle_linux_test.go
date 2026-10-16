@@ -1,8 +1,7 @@
-package router
+package diagnostic
 
 import (
 	"errors"
-	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -10,10 +9,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 // A child process keeps the real filesystem fault and signal handling isolated
@@ -28,8 +23,6 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 		return
 	}
 	directory := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", directory)
-	t.Setenv(evidence.AXReadOutputEnvironment, "")
 	signal.Ignore(syscall.SIGXFSZ)
 	var original syscall.Rlimit
 	if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &original); err != nil {
@@ -40,16 +33,14 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
 		t.Fatal(err)
 	}
-	flags := newRouterFlags(io.Discard)
-	flags.debug = true
-	debug, initErr := openDebugOutput(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
+	debug, initErr := (&Service{}).OpenBundle(BundleOptions{Root: directory})
 	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &original); err != nil {
 		t.Fatal(err)
 	}
 	if debug != nil || !errors.Is(initErr, syscall.EFBIG) || !strings.Contains(initErr.Error(), "initialize debug artifacts") {
 		t.Fatalf("startup did not reject failed first write: %v, %v", debug, initErr)
 	}
-	logs, err := filepath.Glob(filepath.Join(directory, "mekugi", "debug", "mekugi-debug-*", "router.jsonl"))
+	logs, err := filepath.Glob(filepath.Join(directory, "mekugi-debug-*", "router.jsonl"))
 	if err != nil || len(logs) != 1 {
 		t.Fatalf("startup did not reach initial event: %v, %v", logs, err)
 	}

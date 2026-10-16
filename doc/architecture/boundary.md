@@ -47,8 +47,10 @@ before rename; successful application-write byte counts are invocation-owned.
 The kernel owns flushing. Store locks and dependency-first publication preserve
 reader visibility, not power-loss durability. Replay and roster usage retain their
 existing paths below the state root; generated debug bundles use its debug subtree
-with process leases and age cleanup owned by storage maintenance. Generated debug
-bundles do not consume the correctness-state quota; retained failure records do.
+with bundle leases and age cleanup owned by
+[diagnostics](../../modules/diagnostics/SPEC.md). Application maintenance schedules
+cleanup. Bundles have independent retention; diagnostics publishes failure records
+through session history and shares its quota.
 
 [Session history](../../modules/sessionhistory/SPEC.md) owns publication, catalogs,
 namespace allocation, leases, and retention. Feature owners contribute record

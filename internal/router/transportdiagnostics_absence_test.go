@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/usage/accounting"
@@ -34,25 +36,23 @@ func TestTransportDiagnosticsAbsentDebugSession(t *testing.T) {
 	defer usage.Close()
 	var paths []string
 	ready := false
-	err = RunSession(history, testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), nil, testInspector(new(evidence.Service), nil),
-		ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil,
-		func(session Session) {
-			defer cancel()
-			ready = true
-			if session.AXReadOutput == "" {
-				t.Error("transport omission disabled independent AX evidence")
-			}
-			client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
-			response, err := client.Get(strings.TrimSuffix(session.BaseURL, "/v1") + "/api/metrics")
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			response.Body.Close()
-			if response.StatusCode != http.StatusNotFound {
-				t.Errorf("absent diagnostics metrics status = %d", response.StatusCode)
-			}
-		}, func(artifacts []string) { paths = artifacts })
+	err = RunSession(history, testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage, new(evidence.Service), nil, testDiagnostics(new(evidence.Service), nil), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
+		defer cancel()
+		ready = true
+		if session.AXReadOutput == "" {
+			t.Error("transport omission disabled independent AX evidence")
+		}
+		client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
+		response, err := client.Get(strings.TrimSuffix(session.BaseURL, "/v1") + "/api/metrics")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusNotFound {
+			t.Errorf("absent diagnostics metrics status = %d", response.StatusCode)
+		}
+	}, func(artifacts []string) { paths = artifacts })
 	if err != nil || !ready || len(paths) != 4 {
 		t.Fatalf("ready=%t artifacts=%q error=%v", ready, paths, err)
 	}
@@ -93,9 +93,7 @@ func TestTransportDiagnosticsAbsentRejectsCaptureOutput(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Capability rejection precedes session resources and mutable outputs.
-			err = RunSession(nil, nil, nil, nil, nil, nil, nil, nil, t.Context(), nil, nil, nil, nil, nil, options, nil,
-				func(Session) { t.Error("unavailable capture reached readiness") },
-				func([]string) { t.Error("unavailable capture created debug artifacts") })
+			err = RunSession(nil, nil, nil, nil, nil, nil, nil, nil, t.Context(), nil, nil, nil, nil, nil, options, nil, func(Session) { t.Error("unavailable capture reached readiness") }, func([]string) { t.Error("unavailable capture created debug artifacts") })
 			if err == nil || !strings.Contains(err.Error(), "transport diagnostics are unavailable") {
 				t.Fatalf("capture capability error = %v", err)
 			}
@@ -117,8 +115,8 @@ func TestTransportDiagnosticsAbsentDebugInspection(t *testing.T) {
 		writeDebugInspectionFixture(t, filepath.Join(directory, name), "invalid stale transport evidence")
 	}
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testInspector(new(evidence.Service), nil), new(evidence.Service), nil, t.Context(), []string{"--debug-dir", directory, "--request-id", "req-b", "--field", "all"}, &stdout, &stderr)
-	var result debugSessionInspection
+	code := RunSessionInspection(testInspector(new(evidence.Service), nil), testDiagnostics(new(evidence.Service), nil), t.Context(), []string{"--debug-dir", directory, "--request-id", "req-b", "--field", "all"}, &stdout, &stderr)
+	var result diagnostic.Report
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || code != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspection code=%d stderr=%q decode=%v", code, &stderr, err)
 	}
@@ -158,7 +156,7 @@ func TestTransportDiagnosticsAbsentOfflineConsumers(t *testing.T) {
 		}
 	}
 	var stdout, stderr bytes.Buffer
-	code := RunSessionInspection(testInspector(new(evidence.Service), nil), new(evidence.Service), nil, t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir()}, &stdout, &stderr)
+	code := RunSessionInspection(testInspector(new(evidence.Service), nil), testDiagnostics(new(evidence.Service), nil), t.Context(), []string{"--session", rollout, "--replay-dir", t.TempDir()}, &stdout, &stderr)
 	var single sessionInspection
 	if err := json.Unmarshal(stdout.Bytes(), &single); err != nil || code != 0 || stderr.Len() != 0 || single.TotalCalls != 1 || len(single.Calls) != 1 || single.Calls[0].CallID != "read" {
 		t.Fatalf("single code=%d result=%+v stderr=%q decode=%v", code, single, &stderr, err)

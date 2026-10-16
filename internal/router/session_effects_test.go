@@ -103,7 +103,7 @@ func TestSessionInspectionShellEffects(t *testing.T) {
 				before[entry.Name()] = info
 			}
 			var stdout, stderr bytes.Buffer
-			code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), new(evidence.Service), new(transportcapture.Service), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--text-bytes", "15", "--ax"}, &stdout, &stderr)
+			code := RunSessionInspection(testInspector(new(evidence.Service), new(transportcapture.Service)), testDiagnostics(new(evidence.Service), new(transportcapture.Service)), t.Context(), []string{"--session", rollout, "--replay-dir", replay, "--field", "all", "--text-bytes", "15", "--ax"}, &stdout, &stderr)
 			if tc.mismatch {
 				if code != 1 || !strings.Contains(stderr.String(), "inconsistent effect observation") {
 					t.Fatalf("identity accepted: %d %s", code, stderr.String())

@@ -11,16 +11,14 @@ import (
 	"io"
 	"slices"
 
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	"github.com/yusing/mekugi/modules/sessioninspection/query"
-
-	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
-
-	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 // RunSessionInspection is an offline, read-only entry point. It deliberately does
 // not open the writable replay store or install a router/runtime.
-func RunSessionInspection(inspector *query.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunSessionInspection(inspector *query.Service, diagnostics *diagnostic.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-session", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	session := flags.String("session", "", "Codex rollout JSONL file")
@@ -67,7 +65,19 @@ func RunSessionInspection(inspector *query.Service, agentMetrics *evidence.Servi
 			flags.Usage()
 			return 2
 		}
-		return inspectDebugSession(agentMetrics, diagnostics, ctx, *debugDir, *requestID, *field, *offset, *limit, *textBytes, stdout, stderr)
+		if diagnostics == nil {
+			return fail(errors.New("diagnostics are unavailable in this composition"))
+		}
+		result, failures := diagnostics.InspectBundle(ctx, diagnostic.InspectOptions{Directory: *debugDir, RequestID: *requestID, Field: *field, Offset: *offset, Limit: *limit, TextBytes: *textBytes})
+		code := 0
+		for _, failure := range failures {
+			fmt.Fprintf(stderr, "mekugi inspect-session: %s: %v\n", failure.Path, failure.Err)
+			code = 1
+		}
+		if err := json.MarshalEncode(jsontext.NewEncoder(stdout), &result, json.Deterministic(true)); err != nil {
+			return fail(err)
+		}
+		return code
 	}
 	if *requestID != "" {
 		flags.Usage()
@@ -86,7 +96,14 @@ func RunSessionInspection(inspector *query.Service, agentMetrics *evidence.Servi
 				return fail(err)
 			}
 		}
-		if err := inspectFailures(ctx, *replayDir, flags.Arg(0), stdout); err != nil {
+		if diagnostics == nil {
+			return fail(errors.New("diagnostics are unavailable in this composition"))
+		}
+		records, err := diagnostics.ReadFailures(ctx, *replayDir, flags.Arg(0))
+		if err != nil {
+			return fail(err)
+		}
+		if err := json.MarshalEncode(jsontext.NewEncoder(stdout), records); err != nil {
 			return fail(err)
 		}
 		return 0

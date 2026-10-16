@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/modules/changehistory"
@@ -17,7 +19,7 @@ import (
 )
 
 func testHistory() *history.Service {
-	service, err := history.NewService(append(append(append(append(RetainedRecordKinds(), accounting.RecordKinds()...), changehistory.Module.Contributes.RecordKinds...), recovery.RecordKinds()...), reports.RecordKinds()...))
+	service, err := history.NewService(append(append(append(append(append(RetainedRecordKinds(), diagnostic.Failures), accounting.RecordKinds()...), changehistory.Module.Contributes.RecordKinds...), recovery.RecordKinds()...), reports.RecordKinds()...))
 	if err != nil {
 		panic(err)
 	}
