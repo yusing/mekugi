@@ -16,8 +16,8 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, "/compact\r")
 			r := appServerOneRequest(t, w, "thread/compact/start", "")
-			if !u.compaction.ackPending || !u.starting() || u.submission.text != "" || len(u.view.Entries) != 0 {
-				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.compaction.ackPending, u.starting(), u.view.Entries)
+			if !u.compaction.AcknowledgementPending() || !u.starting() || u.submission.text != "" || len(u.view.Entries) != 0 {
+				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.compaction.AcknowledgementPending(), u.starting(), u.view.Entries)
 			}
 			if beforeAck {
 				appServerTestTurn(t, u, "compact-turn")
@@ -28,8 +28,8 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 				appServerTestTurn(t, u, "compact-turn")
 				appServerTestTurnEnd(t, u, "compact-turn", "completed")
 			}
-			if u.compaction.ackPending || u.starting() || u.draft != "" || len(appServerTurnRequests(t, w)) != 0 {
-				t.Fatalf("compact lifecycle not settled: pending=%v starting=%v draft=%q", u.compaction.ackPending, u.starting(), u.draft)
+			if u.compaction.AcknowledgementPending() || u.starting() || u.draft != "" || len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatalf("compact lifecycle not settled: pending=%v starting=%v draft=%q", u.compaction.AcknowledgementPending(), u.starting(), u.draft)
 			}
 		})
 	}
@@ -62,7 +62,7 @@ func TestAppServerCompactFailureRestoresCommand(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\r")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if u.draft != "/compact" || u.compaction.ackPending || u.starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
+	if u.draft != "/compact" || u.compaction.AcknowledgementPending() || u.starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
 		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.draft, u.feedback.Text, u.view.Entries)
 	}
 }
@@ -83,8 +83,8 @@ func TestAppServerClearWaitsForCompactAcknowledgement(t *testing.T) {
 	appServerTestTurn(t, u, "compact-turn")
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerTestKeys(t, u, "/clear\r")
-	if w.Len() != 0 || u.replacement.pending() || !u.compaction.ackPending || strings.TrimSpace(u.draft) != "/clear" {
-		t.Fatalf("clear overtook compact acknowledgement: wire=%q clearing=%v compact=%v draft=%q", w.String(), u.replacement.pending(), u.compaction.ackPending, u.draft)
+	if w.Len() != 0 || u.replacement.pending() || !u.compaction.AcknowledgementPending() || strings.TrimSpace(u.draft) != "/clear" {
+		t.Fatalf("clear overtook compact acknowledgement: wire=%q clearing=%v compact=%v draft=%q", w.String(), u.replacement.pending(), u.compaction.AcknowledgementPending(), u.draft)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestKeys(t, u, "\r")

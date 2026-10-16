@@ -611,9 +611,8 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			return nil
 		}
 		if method == "compact/interrupt" {
-			u.compaction.interruptAckPending = false
+			u.compaction.Acknowledge(m.Error != nil)
 			if m.Error != nil {
-				u.compaction.interrupting = false
 				u.interruption.finish()
 				u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 				u.unsent, u.queued = nil, nil
@@ -875,7 +874,7 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 		if p.ThreadID == u.thread {
 			u.started(p.Turn.ID)
 			u.status, u.alert, u.turnStarted = "Working", false, u.now()
-			if u.interruption.beforeStart {
+			if u.interruption.beforeStart || u.compaction.InterruptTarget() != "" {
 				return u.interruptTurn()
 			}
 		}
@@ -1092,7 +1091,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		if u.cancelQueuedCompact() {
 			return false, nil
 		}
-		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.pending() || u.compaction.continueTask || len(u.unsent)+len(u.queued) > 0 {
+		if u.turn != "" || u.starting() || u.submission.text != "" || u.compaction.Pending() || u.compaction.ContinuationPending() || len(u.unsent)+len(u.queued) > 0 {
 			return false, u.keyboardInterrupt()
 		}
 		if u.interruptLocked {
@@ -1668,14 +1667,21 @@ func (u *appServerUI) applyObservedActivity() {
 
 // interruptTurn preserves the composer while interrupting the active turn.
 func (u *appServerUI) interruptTurn() error {
-	if u.compaction.running() || u.compaction.ackPending || u.compaction.continueTask {
+	turn := u.turn
+	if u.compaction.Cancel() {
 		// Restore waiting input when cancellation is admitted, even if Codex
 		// completes compaction successfully before acknowledging the interrupt.
 		u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 		u.unsent, u.queued = nil, nil
+		turn = u.compaction.InterruptTarget()
+		if turn == "" {
+			if u.compaction.Starting() {
+				u.status = "Interrupting…"
+			}
+			return nil
+		}
 	}
-	u.compaction.cancelContinuation()
-	if u.turn == "" {
+	if turn == "" {
 		if u.starting() || u.submission.text != "" {
 			u.interruption.deferUntilStart()
 			u.status = "Interrupting…"
@@ -1685,22 +1691,22 @@ func (u *appServerUI) interruptTurn() error {
 		u.unsent, u.queued = nil, nil
 		return nil
 	}
-	if !u.interruption.begin(u.turn) {
+	if !u.interruption.begin(turn) {
 		return nil
 	}
-	u.endSyncQuestions(u.turn)
+	u.endSyncQuestions(turn)
 	u.status = "Interrupting…"
-	if u.compaction.interrupting {
-		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn}, "main", appServerRequest{label: "compact/interrupt"})
+	if u.compaction.PreservesWaitingInput() {
+		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": turn}, "main", appServerRequest{label: "compact/interrupt"})
 		return err
 	}
 	if u.sendSteersAfterInterrupt {
 		u.steerInterruptAckPending = true
-		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn}, "main", appServerRequest{label: "steer/interrupt"})
+		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": turn}, "main", appServerRequest{label: "steer/interrupt"})
 		if err != nil {
 			u.steerInterruptAckPending = false
 		}
 		return err
 	}
-	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+	return u.request("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": turn})
 }

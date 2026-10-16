@@ -93,12 +93,10 @@ changes only reasoning effort to null, and submits `thread/settings/update`:
 the RPC's plain `effort:null` means no change. Input and snapshot replacement stay
 gated until the authoritative notification arrives. No user configuration is written.
 
-Queued manual compaction is native-client intent, not replayed lifecycle evidence.
-The composer tracks continuation intent only for a command queued while Main was
-busy. Both the compact RPC acknowledgement and successful compact-turn completion
-must precede a new `turn/start`. Waiting user input takes precedence over the one
-automatic continuation message. Interrupt cancels that intent immediately; replay
-and session switching never revive it. Codex still owns compaction and execution.
+Application [session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md)
+owns the manual-compaction workflow. The composer retains queued payloads and
+restores waiting input when that owner admits cancellation; presentation does not
+derive completion or continuation from displayed status.
 
 Dependencies point from router integration into feature presentation and shared
 libraries. Rendering introduces no second capturer, history store or transcript.

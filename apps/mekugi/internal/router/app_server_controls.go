@@ -42,7 +42,7 @@ func (u *appServerUI) keyboardEscape() error {
 	if u.sendSteersAfterInterrupt || u.steerInterruptAckPending {
 		return nil
 	}
-	if u.turn != "" && u.interruption.target == "" && !u.compaction.pending() {
+	if u.turn != "" && u.interruption.target == "" && !u.compaction.Pending() {
 		u.sendSteersAfterInterrupt = len(u.steers) > 0 ||
 			u.submission.turn != "" && !u.submission.committed ||
 			len(u.unsent) > 0 && u.unsent[0].text != "/compact"

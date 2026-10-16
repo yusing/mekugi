@@ -3,11 +3,12 @@ package router
 import (
 	"os"
 	"slices"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 )
 
 type composerDraft struct {
-	continueTask     bool // Busy /compact requests automatic continuation.
-	queueCompact     bool // Tab waits for Main instead of interrupting it.
+	compact          sessioncontrol.CompactIntent
 	questionCall     *nativeQuestionCall
 	text             string
 	cursorBack       int

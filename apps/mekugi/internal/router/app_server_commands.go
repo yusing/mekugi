@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/contracts/scope"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -84,8 +85,8 @@ func (u *appServerUI) submitCompact(queue bool) error {
 		return nil
 	}
 	draft := u.takeDraft()
-	draft.text, draft.queueCompact = "/compact", queue
-	draft.continueTask = u.turn != "" || u.starting()
+	draft.text = "/compact"
+	draft.compact = sessioncontrol.CompactIntent{WaitForIdle: queue, Continue: u.turn != "" || u.starting()}
 	u.unsent = append(u.unsent, draft)
 	return u.flushInput()
 }
@@ -98,18 +99,15 @@ func (u *appServerUI) sessionBusy() bool {
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
 func (u *appServerUI) cancelQueuedCompact() bool {
-	if u.compaction.running() || u.compaction.ackPending {
-		return false
-	}
 	isCompact := func(d composerDraft) bool { return d.text == "/compact" }
-	if !slices.ContainsFunc(u.unsent, isCompact) && !slices.ContainsFunc(u.queued, isCompact) {
+	hasQueued := slices.ContainsFunc(u.unsent, isCompact) || slices.ContainsFunc(u.queued, isCompact)
+	cancelled, interruptionIssued := u.compaction.CancelQueued(hasQueued)
+	if !cancelled {
 		return false
 	}
-	u.compaction.cancelContinuation()
 	u.restoreDrafts(slices.Concat(u.unsent, u.queued)...)
 	u.unsent, u.queued = nil, nil
-	if u.compaction.interrupting {
-		u.compaction.interrupting = false
+	if interruptionIssued {
 		u.setNotice("Compaction cancelled · input restored · interruption already requested", false)
 	} else {
 		u.setNotice("Queued compaction cancelled · input restored · Main continues", false)

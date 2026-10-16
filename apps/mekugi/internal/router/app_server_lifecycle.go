@@ -1,18 +1,19 @@
 package router
 
 import (
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 )
 
-// appServerLifecycle owns live host operations, not rendered status or replayed
-// activity. RPC acknowledgement, turn identity and committed input are separate
-// observations: none may stand in for another when admitting the next input.
+// appServerLifecycle joins sessioncontrol's compaction workflow with the remaining
+// composer and host-operation records. RPC acknowledgement, turn identity and
+// committed input are separate observations when admitting the next input.
 type appServerLifecycle struct {
 	thread, turn string
 	appServerInputOperation
 	appServerResumeOperation
-	compaction   appServerCompactOperation
+	compaction   sessioncontrol.Compaction
 	interruption appServerInterruptOperation
 	shellCommand appServerShellOperation
 	settings     appServerSettingsOperation
@@ -20,25 +21,25 @@ type appServerLifecycle struct {
 }
 
 func (h *appServerLifecycle) starting() bool {
-	return h.awaitingTurn || h.compaction.phase == compactStarting || h.shellCommand.phase == shellStarting
+	return h.awaitingTurn || h.compaction.Starting() || h.shellCommand.phase == shellStarting
 }
 
 func (h *appServerLifecycle) started(turn string) {
 	h.turn, h.awaitingTurn = turn, false
-	h.compaction.started()
+	h.compaction.Started(turn)
 	h.shellCommand.started(turn)
 }
 
 func (h *appServerLifecycle) completed(success bool) {
+	h.compaction.Completed(h.turn, success)
 	h.turn, h.awaitingTurn = "", false
-	h.compaction.completed(success)
 	h.shellCommand.completed()
 	// Input settlement still owns restoring uncommitted input to the composer.
 	h.interruption.finish()
 }
 
 func (h *appServerLifecycle) compactResponse(failed bool) {
-	h.compaction.acknowledge(failed)
+	h.compaction.Acknowledge(failed)
 	if failed {
 		h.awaitingTurn = false
 		h.interruption.cancelDeferred()
@@ -49,7 +50,7 @@ func (h *appServerLifecycle) compactResponse(failed bool) {
 // retain their own owners and are checked by the UI before this gate.
 func (h *appServerLifecycle) acceptsInput() bool {
 	return h.thread != "" && !h.replacement.pending() && !h.starting() &&
-		!h.appServerInputOperation.pending() && !h.steerInterruptAckPending && !h.compaction.pending() &&
+		!h.appServerInputOperation.pending() && !h.steerInterruptAckPending && !h.compaction.Pending() &&
 		!h.settings.blocksInput() && !h.shellCommand.blocksInput(h.turn) &&
 		(h.turn == "" || h.turn != h.interruption.target)
 }
@@ -62,7 +63,7 @@ func (h *appServerLifecycle) acceptsShell() bool {
 }
 
 func (h *appServerLifecycle) busy() bool {
-	return h.turn != "" || h.starting() || h.compaction.pending() ||
+	return h.turn != "" || h.starting() || h.compaction.Pending() ||
 		h.appServerInputOperation.pending() || h.settings.pending() ||
 		h.shellCommand.pending.text != "" || len(h.unsent)+len(h.queued) > 0
 }
@@ -129,60 +130,6 @@ func (o *appServerInputOperation) acknowledge() composerSubmission {
 func (o *appServerInputOperation) withdrawStart() {
 	o.awaitingTurn = false
 	o.pendingStart = composerSubmission{}
-}
-
-type compactPhase uint8
-
-const (
-	compactIdle compactPhase = iota
-	compactStarting
-	compactRunning
-	compactCompleted
-)
-
-type appServerCompactOperation struct {
-	phase               compactPhase
-	ackPending          bool
-	continueTask        bool
-	interrupting        bool // Preserve waiting input across the pre-compaction interrupt.
-	interruptAckPending bool
-}
-
-func (o *appServerCompactOperation) begin(continueTask bool) {
-	*o = appServerCompactOperation{phase: compactStarting, ackPending: true, continueTask: continueTask}
-}
-func (o *appServerCompactOperation) started() {
-	if o.phase == compactStarting {
-		o.phase = compactRunning
-	}
-}
-func (o *appServerCompactOperation) running() bool {
-	return o.phase == compactStarting || o.phase == compactRunning
-}
-func (o *appServerCompactOperation) pending() bool {
-	return o.interruptAckPending || o.ackPending || o.running()
-}
-func (o *appServerCompactOperation) acknowledge(failed bool) {
-	o.ackPending = false
-	if failed {
-		*o = appServerCompactOperation{}
-	}
-}
-func (o *appServerCompactOperation) completed(success bool) {
-	if o.running() {
-		o.phase = compactCompleted
-		if !success {
-			o.cancelContinuation()
-		}
-	}
-}
-func (o *appServerCompactOperation) cancelContinuation() { o.continueTask = false }
-func (o *appServerCompactOperation) takeContinuation() bool {
-	if o.pending() || !o.continueTask {
-		return false
-	}
-	o.continueTask = false
-	return true
 }
 
 type appServerInterruptOperation struct {

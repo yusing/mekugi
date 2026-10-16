@@ -1,12 +1,16 @@
 package router
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
+)
 
 func TestAppServerLifecycleCompactAdmission(t *testing.T) {
 	for _, ackFirst := range []bool{false, true} {
 		for _, success := range []bool{false, true} {
 			h := appServerLifecycle{thread: "main"}
-			h.compaction.begin(true)
+			h.compaction.Begin(sessioncontrol.CompactIntent{Continue: true})
 			if h.acceptsInput() || !h.starting() || !h.busy() {
 				t.Fatal("starting compaction admitted input or lost its busy state")
 			}
@@ -22,17 +26,17 @@ func TestAppServerLifecycleCompactAdmission(t *testing.T) {
 			}
 			h.completed(success)
 			if !ackFirst {
-				if h.acceptsInput() || !h.busy() || h.compaction.takeContinuation() {
+				if h.acceptsInput() || !h.busy() || h.compaction.Continue(false) != "" {
 					t.Fatal("completion overtook the compact acknowledgement")
 				}
 				h.compactResponse(false)
 			}
-			if !h.acceptsInput() || h.busy() || h.compaction.takeContinuation() != success {
+			if !h.acceptsInput() || h.busy() || (h.compaction.Continue(false) != "") != success {
 				t.Fatalf("settled compact: ackFirst=%v success=%v state=%+v", ackFirst, success, h)
 			}
 			h.completed(success)
 			h.compactResponse(false)
-			if h.compaction.takeContinuation() {
+			if h.compaction.Continue(false) != "" {
 				t.Fatal("duplicate observations revived continuation")
 			}
 		}
@@ -86,7 +90,7 @@ func TestAppServerLifecycleSettingsRestoration(t *testing.T) {
 
 func TestAppServerLifecycleRejectionKeepsIssuedInterrupt(t *testing.T) {
 	h := appServerLifecycle{thread: "main"}
-	h.compaction.begin(true)
+	h.compaction.Begin(sessioncontrol.CompactIntent{Continue: true})
 	h.interruption.deferUntilStart()
 	h.started("compact")
 	h.interruption.begin("compact")
@@ -102,7 +106,7 @@ func TestAppServerLifecycleRejectionKeepsIssuedInterrupt(t *testing.T) {
 
 func TestAppServerLifecycleReplacementRetiresOperations(t *testing.T) {
 	h := appServerLifecycle{thread: "old", turn: "old-turn", resumePendingEffort: true}
-	h.compaction.begin(true)
+	h.compaction.Begin(sessioncontrol.CompactIntent{Continue: true})
 	h.interruption.deferUntilStart()
 	h.shellCommand.begin(composerDraft{text: "!pwd"}, "old-turn")
 	h.settings.begin(map[string]any{"effort": "high"}, "old-turn")
@@ -112,7 +116,7 @@ func TestAppServerLifecycleReplacementRetiresOperations(t *testing.T) {
 	h.unsent = []composerDraft{{text: "new input"}}
 	h.queued = []composerDraft{{text: "next input"}}
 	h.leaveThread()
-	if h.starting() || h.compaction.pending() || h.compaction.takeContinuation() ||
+	if h.starting() || h.compaction.Pending() || h.compaction.Continue(false) != "" ||
 		h.interruption.beforeStart || h.shellCommand.blocksInput("") ||
 		h.settings.blocksInput() || h.replacement.pending() || h.pendingStart.text != "" {
 		t.Fatalf("replacement inherited a live operation: %+v", h)

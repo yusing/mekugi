@@ -130,7 +130,7 @@ func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
 func (u *appServerUI) editQueued() {
 	parts := slices.Concat(u.unsent, u.queued)
 	u.unsent, u.queued = nil, nil
-	u.compaction.interrupting = false
+	u.compaction.CancelQueued(true)
 	u.restoreDrafts(parts...)
 }
 
@@ -147,13 +147,13 @@ func (u *appServerUI) flushInput() error {
 			return err
 		}
 	}
-	compactSteer := len(u.unsent) > 0 && u.unsent[0].text == "/compact" && !u.unsent[0].queueCompact
+	compactSteer := len(u.unsent) > 0 && u.unsent[0].text == "/compact" && !u.unsent[0].compact.WaitForIdle
 	if u.waitingQuestion() && !compactSteer {
 		return nil
 	}
-	if u.turn == "" && u.compaction.takeContinuation() {
-		if len(u.unsent)+len(u.queued) == 0 {
-			u.unsent = append(u.unsent, composerDraft{text: "Continue the task from where you left off before compaction."})
+	if u.turn == "" {
+		if text := u.compaction.Continue(len(u.unsent)+len(u.queued) != 0); text != "" {
+			u.unsent = append(u.unsent, composerDraft{text: text})
 		}
 	}
 	var parts []composerDraft
@@ -177,11 +177,10 @@ func (u *appServerUI) flushInput() error {
 			u.unsent = slices.Concat(prompt, u.unsent[:first], rest)
 		}
 		if steer && u.unsent[0].text == "/compact" {
-			if u.unsent[0].queueCompact {
-				return nil
+			if u.compaction.InterruptBefore(u.unsent[0].compact, u.turn) {
+				return u.interruptTurn()
 			}
-			u.compaction.interrupting, u.compaction.interruptAckPending = true, true
-			return u.interruptTurn()
+			return nil
 		}
 		parts, u.unsent = questionSubmissionBatch(u.unsent)
 	case !steer && len(u.queued) > 0:
@@ -203,7 +202,7 @@ func (u *appServerUI) flushInput() error {
 
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	if len(parts) == 1 && parts[0].text == "/compact" {
-		u.compaction.begin(parts[0].continueTask)
+		u.compaction.Begin(parts[0].compact)
 		u.status = "Compacting context" + "…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.thread})
 	}
@@ -283,7 +282,7 @@ func (u *appServerUI) withdraw(s composerSubmission) {
 	if s.interrupted && len(u.view.Entries) == 0 {
 		u.status, u.turnStarted = "Ready", time.Time{}
 	}
-	if s.interrupted && u.compaction.interrupting {
+	if s.interrupted && u.compaction.PreservesWaitingInput() {
 		u.restoreDrafts(s.parts...)
 		return
 	}
@@ -400,7 +399,7 @@ func (u *appServerUI) settleSteers(interrupted bool) {
 	sendNow := interrupted && u.sendSteersAfterInterrupt
 	u.sendSteersAfterInterrupt = false
 	switch {
-	case interrupted && u.compaction.interrupting:
+	case interrupted && u.compaction.PreservesWaitingInput():
 		// The explicit command survives its own interruption. Host-owned
 		// uncommitted steers still return to the editor, never get replayed.
 		u.restoreDrafts(steers...)
@@ -453,7 +452,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 	}
 	header := "Steering after the next tool call · esc sends now · ctrl+c interrupts and restores input"
 	switch {
-	case u.compaction.interrupting:
+	case u.compaction.PreservesWaitingInput():
 		header = "Compacting after interruption · ctrl+c cancels compaction"
 	case u.shellCommand.standalone():
 		header = "Waiting for shell command to finish"
@@ -461,7 +460,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 		header = "Sending steer once interrupted · ctrl+c restores input"
 	case u.interruption.target != "":
 		header = "Restoring input once interrupted"
-	case u.compaction.running():
+	case u.compaction.Active():
 		header = "Waiting for context compaction"
 	case len(u.unsent) > 0 && u.unsent[0].text == "/compact":
 		header = "Compaction queued after this turn · ctrl+c cancels; Main continues"
