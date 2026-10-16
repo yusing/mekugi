@@ -140,10 +140,10 @@ func routerFaultCodexStreamResponse(wire string) *http.Response {
 func routerFaultCodexEnvironment(t *testing.T) []string {
 	t.Helper()
 	configRoot := t.TempDir()
-	environment := make([]string, 0, len(os.Environ())+2)
+	environment := make([]string, 0, len(os.Environ())+3)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" || key == shellhook.Environment {
+		if key == "HOME" || key == "ZDOTDIR" || key == "CODEX_HOME" || key == "XDG_CONFIG_HOME" || key == "BASH_ENV" || key == shellhook.Environment {
 			continue
 		}
 		if key == "PATH" {
@@ -151,7 +151,7 @@ func routerFaultCodexEnvironment(t *testing.T) []string {
 		}
 		environment = append(environment, entry)
 	}
-	return append(environment, "CODEX_HOME="+configRoot, "XDG_CONFIG_HOME="+configRoot)
+	return append(environment, "HOME="+configRoot, "CODEX_HOME="+configRoot, "XDG_CONFIG_HOME="+configRoot)
 }
 
 func runRouterFaultNativeCodex(t *testing.T, serverURL, prompt string) (stdout, stderr string, runErr error) {

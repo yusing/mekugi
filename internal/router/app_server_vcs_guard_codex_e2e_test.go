@@ -25,6 +25,24 @@ import (
 // Real Codex runs guarded remote writes with its yolo policy. Guard answers
 // apply only to the reached write, preserving local commands and later reads.
 func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
+	// Compile the native helper before changing the inherited fixture home.
+	if _, err := execTrackHelper(); err != nil {
+		t.Fatal(err)
+	}
+	callerDirectory := t.TempDir()
+	marker := filepath.Join(callerDirectory, "startup-ran")
+	for _, startup := range []string{".bashrc", ".zshrc"} {
+		if err := os.WriteFile(filepath.Join(callerDirectory, startup), []byte("printf inherited-startup > "+quoteShellWord(marker)+"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", callerDirectory)
+	t.Setenv("ZDOTDIR", callerDirectory)
+	t.Cleanup(func() {
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Errorf("Codex fixture sourced caller startup: %v", err)
+		}
+	})
 	for _, tc := range []struct {
 		name       string
 		shell      string // Model-chosen exec_command shell; empty for Codex's default.

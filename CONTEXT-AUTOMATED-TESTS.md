@@ -2,7 +2,9 @@
 
 Tagged router fixtures use the installed Codex consumer with a deterministic
 local provider. They exercise stock execution and native collaboration without
-credentials or live model usage. These tests require the `codex_e2e` build tag.
+credentials or live model usage. The shared host environment isolates the home
+and configuration directories so shell snapshots do not source personal startup
+files. These tests require the `codex_e2e` build tag.
 
 ## Focused host acceptance
 
