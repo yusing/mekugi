@@ -158,7 +158,8 @@ An optional observer receives decoded command and task/turn events. Without it,
 event-specific payloads are not interpreted. Persisted execution endpoints take
 precedence over envelope recording time; absent or null endpoints remain unknown.
 The consumer owns metric identity validation, pairing and completeness. Observer
-failure stops the read without claiming a complete source.
+failure or cancellation stops the read without claiming a complete source,
+including an empty source or cancellation while observing its final record.
 
 ## Acceptance
 

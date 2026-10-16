@@ -1,6 +1,7 @@
 package rollout
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,29 @@ import (
 	"testing"
 	"time"
 )
+
+func TestInspectionCancellationAtSourceBoundaries(t *testing.T) {
+	t.Run("empty canceled source", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		result, err := Inspect(ctx, inspectionSource(t), nil)
+		if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(result, Inspection{}) {
+			t.Fatalf("canceled empty source = %+v, %v", result, err)
+		}
+	})
+	t.Run("final observer cancels", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		path := inspectionSource(t, `{"type":"event_msg","payload":{"type":"turn_complete","turn_id":"turn"}}`)
+		result, err := Inspect(ctx, path, func(InspectionEvent) error {
+			cancel()
+			return nil
+		})
+		if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(result, Inspection{}) {
+			t.Fatalf("canceled final observer = %+v, %v", result, err)
+		}
+	})
+}
 
 func inspectionSource(t *testing.T, records ...string) string {
 	t.Helper()

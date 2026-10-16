@@ -78,6 +78,9 @@ type InspectionEvent struct {
 // decoding. Observer errors abort the read; emitted events alone do not establish
 // a complete source. Historical rollouts retain JSON v1 decoding semantics.
 func Inspect(ctx context.Context, path string, observe func(InspectionEvent) error) (Inspection, error) {
+	if err := ctx.Err(); err != nil {
+		return Inspection{}, err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return Inspection{}, err
@@ -244,6 +247,9 @@ func Inspect(ctx context.Context, path string, observe func(InspectionEvent) err
 	}
 	if reader.N == 0 {
 		return Inspection{}, errors.New("session exceeds 64 MiB")
+	}
+	if err := ctx.Err(); err != nil {
+		return Inspection{}, err
 	}
 	result.Calls = calls
 	return result, nil
