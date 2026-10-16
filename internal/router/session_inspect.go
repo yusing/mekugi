@@ -117,7 +117,7 @@ func RunSessionInspection(service *history.Service, agentMetrics *evidence.Servi
 	workspace := flags.String("workspace", "", "override workspace inferred from rollout metadata")
 	replayDir := flags.String("replay-dir", "", "replay directory (default platform state directory)")
 	ax := flags.Bool("ax", false, "include whole-rollout AX measurements, independent of call pagination")
-	failures := flags.Bool("failures", false, "list sanitized failures, optionally selecting one reference")
+	failures := flags.Bool("failures", false, "list private failures with complete error text, optionally selecting one reference")
 	readLog := flags.String("read-log", "", "runtime AX read log; implies --ax")
 	defects := flags.String("defects", "", "JSON defect assessments with evidence paths; implies --ax")
 	callID := flags.String("call-id", "", "select one call identity")
@@ -129,7 +129,8 @@ func RunSessionInspection(service *history.Service, agentMetrics *evidence.Servi
 		fmt.Fprintln(stderr, "Usage: mekugi inspect-session --session PATH [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session --debug-dir DIR [--request-id ID] [options]")
 		fmt.Fprintln(stderr, "       mekugi inspect-session [--replay-dir PATH] --failures [REF]")
-		fmt.Fprintln(stderr, "Read local calls without running operations. Text is omitted unless --field is selected.")
+		fmt.Fprintln(stderr, "Read local evidence without running operations. Rollout and debug text requires --field.")
+		fmt.Fprintln(stderr, "--failures includes complete private errors, which may contain request content or credentials.")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {

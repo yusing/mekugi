@@ -55,8 +55,10 @@ evidence](../../doc/spec/router.md#debug-evidence).
 
 ### Inspect a session
 
-Inspection runs no recorded operations. Default reports omit private text; selected
-`--field` values may include it. `--request-id ID --field all` drills into one request.
+Inspection runs no recorded operations. Rollout and debug-bundle reports omit private
+text unless `--field` selects it. `--request-id ID --field all` drills into one request.
+Failure lookup with `--failures [REF]` always includes complete private error text,
+which may contain request content or credentials.
 
 ```sh
 mekugi inspect-session --session /path/to/rollout.jsonl
