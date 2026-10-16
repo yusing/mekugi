@@ -80,7 +80,7 @@ func TestOutputDialogSelectionPendingDrag(t *testing.T) {
 		if err := u.key(key); err != nil {
 			t.Fatal(err)
 		}
-		if u.output == nil || u.selection != selected || !selected.dragging || u.clipboard != "" || u.main.draft != "" {
+		if u.output == nil || u.selection != selected || !selected.dragging || u.clipboard != "" || u.main.Text != "" {
 			t.Fatalf("key %d acted before drag completion", key)
 		}
 	}
@@ -251,11 +251,11 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 			u.outputMouse(0, u.output.rect.x+3+tt.at, u.output.rect.y+u.output.rect.h-1, false)
 			switch tt.action {
 			case 0:
-				if u.output == nil || u.selection != selection || u.clipboard != "" || u.main.draft != "" {
+				if u.output == nil || u.selection != selection || u.clipboard != "" || u.main.Text != "" {
 					t.Fatal("clipped hint executed a selection action")
 				}
 			case 'r':
-				if u.output != nil || len(u.main.selections) != 1 || u.main.selections[0].text != "alpha" {
+				if u.output != nil || len(u.main.Selections) != 1 || u.main.Selections[0].Text != "alpha" {
 					t.Fatal("fully visible Reference hint did not insert the selected text")
 				}
 			case 'c':
@@ -263,7 +263,7 @@ func TestOutputDialogSelectionFooterClippedHints(t *testing.T) {
 					t.Fatal("fully visible Copy hint did not copy the selected text")
 				}
 			case 27:
-				if u.output == nil || u.selection != nil || u.clipboard != "" || u.main.draft != "" {
+				if u.output == nil || u.selection != nil || u.clipboard != "" || u.main.Text != "" {
 					t.Fatal("fully visible Clear hint did not clear only the selection")
 				}
 			}

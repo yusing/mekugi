@@ -85,7 +85,7 @@ func (u *appServerUI) submitCompact(queue bool) error {
 		return nil
 	}
 	draft := u.takeDraft()
-	draft.text = "/compact"
+	draft.Text = "/compact"
 	draft.compact = sessioncontrol.CompactIntent{WaitForIdle: queue, Continue: u.Turn != "" || u.Starting()}
 	u.unsent = append(u.unsent, draft)
 	return u.flushInput()
@@ -99,7 +99,7 @@ func (u *appServerUI) sessionBusy() bool {
 // A queued compact is a local action, not Main's running turn. Return waiting
 // input for retry without interrupting that turn or an in-flight submission.
 func (u *appServerUI) cancelQueuedCompact() bool {
-	isCompact := func(d composerDraft) bool { return d.text == "/compact" }
+	isCompact := func(d composerDraft) bool { return d.Text == "/compact" }
 	hasQueued := slices.ContainsFunc(u.unsent, isCompact) || slices.ContainsFunc(u.queued, isCompact)
 	cancelled, interruptionIssued := u.Compaction.CancelQueued(hasQueued)
 	if !cancelled {

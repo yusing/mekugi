@@ -69,8 +69,8 @@ func TestTerminalSourceSelectionDirectionsAndActions(t *testing.T) {
 						if !strings.Contains(u.clipboard, want) {
 							t.Fatal(u.clipboard)
 						}
-					} else if len(u.main.selections) != 1 || u.main.selections[0].text != tc.want {
-						t.Fatalf("reference=%+v", u.main.selections)
+					} else if len(u.main.Selections) != 1 || u.main.Selections[0].Text != tc.want {
+						t.Fatalf("reference=%+v", u.main.Selections)
 					}
 				}
 			}
@@ -147,13 +147,13 @@ func TestTerminalBTWSourceCopyAndEscape(t *testing.T) {
 	if u.btw == nil || u.shell.selection != nil {
 		t.Fatal("copy closed the dock or retained selection")
 	}
-	u.draft, u.cursorBack = "before after", len("after")
+	u.Text, u.CursorBack = "before after", len("after")
 	selectionTestDrag(t, u.shell, x, y, x+10, y)
 	if err := u.shell.key('r'); err != nil {
 		t.Fatal(err)
 	}
-	if u.btw == nil || u.shell.selection != nil || u.shell.focus != 0 || u.draft != "before [Selected side answer] after" || len(u.selections) != 1 || u.selections[0].text != "**side answer**" {
-		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.draft, u.selections, u.btw != nil)
+	if u.btw == nil || u.shell.selection != nil || u.shell.focus != 0 || u.Text != "before [Selected side answer] after" || len(u.Selections) != 1 || u.Selections[0].Text != "**side answer**" {
+		t.Fatalf("btw reference: draft=%q selections=%+v dock=%v", u.Text, u.Selections, u.btw != nil)
 	}
 }
 

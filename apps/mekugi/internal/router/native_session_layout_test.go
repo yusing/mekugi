@@ -19,23 +19,23 @@ func TestNativeUISessionLiveToggle(t *testing.T) {
 	u.Settings.BeginLive()
 	appServerTestKeys(t, u, "/live\r")
 	defer u.shell.diffScreen.Close()
-	if !u.shell.liveHidden || u.picker.open || u.draft != "" || wire.Len() != 0 {
+	if !u.shell.liveHidden || u.picker.open || u.Text != "" || wire.Len() != 0 {
 		t.Fatal("toggle did not hide Live locally")
 	}
 	appServerTestKeys(t, u, "/live\r")
-	if u.shell.liveHidden || u.picker.open || u.draft != "" || wire.Len() != 0 {
+	if u.shell.liveHidden || u.picker.open || u.Text != "" || wire.Len() != 0 {
 		t.Fatal("second toggle did not show Live locally")
 	}
 	for _, command := range []string{"/live off", "/live off", "/live on", "/live on"} {
 		appServerTestKeys(t, u, command+"\r")
-		if u.shell.liveHidden != strings.HasSuffix(command, "off") || u.picker.open || u.draft != "" || wire.Len() != 0 {
+		if u.shell.liveHidden != strings.HasSuffix(command, "off") || u.picker.open || u.Text != "" || wire.Len() != 0 {
 			t.Fatalf("direct setting failed: %s", command)
 		}
 	}
 	for _, command := range []string{"/live invalid", "/live on extra"} {
 		u.loadDraft(composerDraft{})
 		appServerTestKeys(t, u, command+"\r")
-		if u.shell.liveHidden || u.draft != command || !u.feedback.Alert {
+		if u.shell.liveHidden || u.Text != command || !u.feedback.Alert {
 			t.Fatal("invalid value changed preference or lost draft")
 		}
 	}
@@ -150,7 +150,7 @@ func TestNativeUISessionLayoutRendered(t *testing.T) {
 
 func TestNativeUIComposerGap(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.draft = "draft"
+	u.Text = "draft"
 	rows, _ := u.mainFrame(80, 24, 0)
 	border := u.composerRect.y - 1
 	if len(rows) != 24 || strings.TrimSpace(ansi.Strip(rows[border-1])) != "" {

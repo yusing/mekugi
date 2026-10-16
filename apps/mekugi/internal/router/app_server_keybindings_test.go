@@ -31,14 +31,14 @@ func TestNativeUIKeybindings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			u.ensureShell()
-			u.draft, u.shell.focus = tc.draft, tc.focus
+			u.Text, u.shell.focus = tc.draft, tc.focus
 			for _, key := range []byte(tc.input) {
 				if err := u.shell.key(key); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.draft != tc.want || u.keybindings != tc.open {
-				t.Fatalf("draft=%q open=%v", u.draft, u.keybindings)
+			if u.Text != tc.want || u.keybindings != tc.open {
+				t.Fatalf("draft=%q open=%v", u.Text, u.keybindings)
 			}
 		})
 	}
@@ -91,7 +91,7 @@ func TestNativeUIKeybindingsPaintAndEscape(t *testing.T) {
 	if err := u.shell.key('?'); err != nil {
 		t.Fatal(err)
 	}
-	if !u.keybindings || u.draft != "" {
+	if !u.keybindings || u.Text != "" {
 		t.Fatal("cannot reopen after Escape")
 	}
 }

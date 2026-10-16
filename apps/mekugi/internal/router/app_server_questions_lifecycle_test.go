@@ -15,7 +15,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
-	request := appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
+	request := appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].Text)
 	u.hideQuestions()
 	if u.questionCount() != 1 || u.questions.calls[0].resolved || !u.questions.calls[0].sent {
 		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questions.calls[0])
@@ -53,7 +53,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
-	request := appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
+	request := appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].Text)
 	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 {
 		t.Fatal("queued answer still required action")
 	}
@@ -67,8 +67,8 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 	}
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
-	if u.draft != "Customers only" {
-		t.Fatalf("rejected answer lost its draft: %q", u.draft)
+	if u.Text != "Customers only" {
+		t.Fatalf("rejected answer lost its draft: %q", u.Text)
 	}
 }
 
@@ -183,7 +183,7 @@ func TestQuestionAnswerOnlyAppearsUnderAsked(t *testing.T) {
 			u.openQuestions()
 			questionTestPaint(t, u, 70)
 			appServerTestKeys(t, u, "2\r")
-			reply, id := u.inputPayloads[u.Submission().ID].text, u.Submission().ID
+			reply, id := u.inputPayloads[u.Submission().ID].Text, u.Submission().ID
 			if len(questionReplies(reply)) != 1 {
 				t.Fatal("reply not submitted")
 			}
@@ -245,7 +245,7 @@ func TestQuestionRecordPreservesLiteralNotePrefix(t *testing.T) {
 			questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "literal"})
 		} else {
 			appServerTestKeys(t, u, "3"+literal+"\r")
-			lifecycleUserMessage(t, u, "turn", "reply", u.inputPayloads[u.Submission().ID].text)
+			lifecycleUserMessage(t, u, "turn", "reply", u.inputPayloads[u.Submission().ID].Text)
 		}
 		entry := u.view.Entries[0].Source
 		if got := entry.native.questions[0].Answer; got != literal {

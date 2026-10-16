@@ -11,21 +11,14 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
 // Source: codex-rs/tui/src/bottom_pane/chat_composer.rs:2094:2250,2744:2805
 // @86be5320b068ef67b56348b02aa8c33706955da6. File and skill completion. Searches
 // remain Codex-owned, through app-server rather than a second filesystem index.
-type composerFile struct {
-	start, end int
-	path       string
-}
-
-type composerSkill struct {
-	start, end int
-	name, path string
-}
 
 type composerTarget struct {
 	kind       byte
@@ -84,30 +77,30 @@ func (u *appServerUI) completionTarget() composerTarget {
 	if u.shellMode() {
 		return composerTarget{}
 	}
-	at := u.cursor()
-	if strings.HasPrefix(u.draft, "/") && at > 0 {
-		end := strings.IndexFunc(u.draft, unicode.IsSpace)
+	at := u.Cursor()
+	if strings.HasPrefix(u.Text, "/") && at > 0 {
+		end := strings.IndexFunc(u.Text, unicode.IsSpace)
 		if end < 0 {
-			end = len(u.draft)
+			end = len(u.Text)
 		}
 		if at <= end {
-			return composerTarget{kind: '/', end: end, query: u.draft[1:end]}
+			return composerTarget{kind: '/', end: end, query: u.Text[1:end]}
 		}
 	}
 	start := at
 	for start > 0 {
-		r, n := utf8.DecodeLastRuneInString(u.draft[:start])
+		r, n := utf8.DecodeLastRuneInString(u.Text[:start])
 		if unicode.IsSpace(r) {
 			break
 		}
 		start -= n
 	}
-	if start == len(u.draft) || (u.draft[start] != '@' && u.draft[start] != '$') {
+	if start == len(u.Text) || (u.Text[start] != '@' && u.Text[start] != '$') {
 		return composerTarget{}
 	}
 	end := at
-	for end < len(u.draft) {
-		r, n := utf8.DecodeRuneInString(u.draft[end:])
+	for end < len(u.Text) {
+		r, n := utf8.DecodeRuneInString(u.Text[end:])
 		if unicode.IsSpace(r) {
 			break
 		}
@@ -116,39 +109,39 @@ func (u *appServerUI) completionTarget() composerTarget {
 	if at < start {
 		return composerTarget{}
 	}
-	for _, file := range u.files {
-		if start < file.end && end > file.start {
+	for _, file := range u.Files {
+		if start < file.End && end > file.Start {
 			return composerTarget{}
 		}
 	}
-	for _, skill := range u.skills {
-		if start < skill.end && end > skill.start {
+	for _, skill := range u.Skills {
+		if start < skill.End && end > skill.Start {
 			return composerTarget{}
 		}
 	}
-	for _, image := range u.images {
-		if start < image.end && end > image.start {
+	for _, image := range u.Images {
+		if start < image.End && end > image.Start {
 			return composerTarget{}
 		}
 	}
-	for _, selection := range u.selections {
-		if start < selection.end && end > selection.start {
+	for _, selection := range u.Selections {
+		if start < selection.End && end > selection.Start {
 			return composerTarget{}
 		}
 	}
-	query := u.draft[start+1 : end]
-	if u.draft[start] == '$' && !u.skillQueryCompletable(query) {
+	query := u.Text[start+1 : end]
+	if u.Text[start] == '$' && !u.skillQueryCompletable(query) {
 		return composerTarget{}
 	}
-	return composerTarget{u.draft[start], start, end, query}
+	return composerTarget{u.Text[start], start, end, query}
 }
 
 func (u *appServerUI) refreshPicker() {
 	for _, stack := range [][]composerDraft{u.unsent, u.queued} {
 		for i := range stack {
-			before := len(stack[i].skills)
+			before := len(stack[i].Skills)
 			u.bindSkills(&stack[i], true)
-			if len(stack[i].skills) > before {
+			if len(stack[i].Skills) > before {
 				u.snapshotDraftSkills(&stack[i])
 			}
 		}
@@ -157,13 +150,13 @@ func (u *appServerUI) refreshPicker() {
 		u.picker.open = false
 		return
 	}
-	if u.paste || u.escape != "" || !utf8.ValidString(u.draft) {
+	if u.paste || u.escape != "" || !utf8.ValidString(u.Text) {
 		return
 	}
 	p := &u.picker
 	draft := u.draftSnapshot()
 	u.bindSkills(&draft, false)
-	u.skills = draft.skills
+	u.Skills = draft.Skills
 	target := u.completionTarget()
 	bindingOnly := false
 	if target.kind == 0 && p.modal == "" && (!p.skillsLoaded || p.skillsCwd != u.session.cwd) {
@@ -376,7 +369,7 @@ func (u *appServerUI) pickerMessage(method string, m appserver.Message) bool {
 			}
 			// Codex can return the .git directory itself even though its walk
 			// excludes its contents. Normal @ must not expose git internals.
-			if pickerVCSPath(file.Path) {
+			if composer.VCSPath(file.Path) {
 				continue
 			}
 			choices = append(choices, composerChoice{name: file.Path, path: file.Path, directory: file.MatchType == "directory", indices: file.Indices})
@@ -481,8 +474,8 @@ func (u *appServerUI) pickerKey(key string) bool {
 		choice, target := p.choices[p.selected], p.target
 		if target.kind == '/' {
 			u.deleteDraftRange(target.start, target.end)
-			u.insertDraftText(choice.name + " ")
-			u.run, p.open = runNone, false
+			u.InsertText(choice.name + " ")
+			u.Run, p.open = composer.NoRun, false
 			// Enter continues through the existing local command dispatcher.
 			return key == "\t"
 		}
@@ -503,29 +496,29 @@ func (u *appServerUI) pickerKey(key string) bool {
 			}
 			if imageFile(path) {
 				imagePath = path
-				text = fmt.Sprintf("[Image %d]", len(u.images)+1)
+				text = fmt.Sprintf("[Image %d]", len(u.Images)+1)
 			}
 		}
 		// One undo step restores the original token, not a half-completed edit.
 		u.deleteDraftRange(target.start, target.end)
-		u.insertDraftText(text)
+		u.InsertText(text)
 		if imagePath != "" {
-			u.images = append(u.images, composerImage{target.start, target.start + len(text), imagePath})
-			u.renumberImages()
+			u.Images = append(u.Images, composer.Token{Start: target.start, End: target.start + len(text), Path: imagePath})
+			u.RenumberImages()
 		}
 		if target.kind == '@' && imagePath == "" {
-			u.files = append(u.files, composerFile{target.start, target.start + len(text), choice.path})
-			slices.SortFunc(u.files, func(a, b composerFile) int { return a.start - b.start })
+			u.Files = append(u.Files, composer.Token{Start: target.start, End: target.start + len(text), Path: choice.path})
+			slices.SortFunc(u.Files, func(a, b composer.Token) int { return a.Start - b.Start })
 		}
 		if target.kind == '$' {
-			u.skills = append(u.skills, composerSkill{start: target.start, end: target.start + len(text), name: choice.name, path: choice.path})
+			u.Skills = append(u.Skills, composer.Token{Start: target.start, End: target.start + len(text), Name: choice.name, Path: choice.path})
 		}
-		if u.cursor() == len(u.draft) || u.draft[u.cursor()] != ' ' {
-			u.insertDraftText(" ")
+		if u.Cursor() == len(u.Text) || u.Text[u.Cursor()] != ' ' {
+			u.InsertText(" ")
 		} else {
-			u.cursorBack--
+			u.CursorBack--
 		}
-		u.run, p.open = runNone, false
+		u.Run, p.open = composer.NoRun, false
 		return true
 	}
 	return false

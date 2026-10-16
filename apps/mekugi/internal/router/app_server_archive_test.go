@@ -32,7 +32,7 @@ func TestUISnapshotAppServerArchive(t *testing.T) {
 			if len(requests) != 1 || requests[0].Method != "thread/archive" || requests[0].Params["threadId"] != "main" || u.quitRequested {
 				t.Fatalf("archive dispatch = %s, quit=%v", wire.String(), u.quitRequested)
 			}
-			u.queued = []composerDraft{{text: "pending follow-up"}}
+			u.queued = []composerDraft{{Text: "pending follow-up"}}
 			appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
 			appServerTestKeys(t, u, "/resume other\r\x03")
 			if wire.Len() == 0 || len(pickerRequests(t, wire)) != 1 || u.AcceptsInput() || u.AcceptsShell() {
@@ -62,8 +62,8 @@ func TestAppServerArchiveCancelAndUnavailable(t *testing.T) {
 		}
 		u.pickerKey(cancel)
 		u.refreshPicker()
-		if wire.Len() != 0 || u.picker.open || u.Replacement.Pending() || u.quitRequested || u.draft != "" {
-			t.Fatalf("cancel %q archived, left confirmation open or accepted hidden paste: %q", cancel, u.draft)
+		if wire.Len() != 0 || u.picker.open || u.Replacement.Pending() || u.quitRequested || u.Text != "" {
+			t.Fatalf("cancel %q archived, left confirmation open or accepted hidden paste: %q", cancel, u.Text)
 		}
 	}
 	for _, state := range []string{"startup", "restoring", "replacement"} {

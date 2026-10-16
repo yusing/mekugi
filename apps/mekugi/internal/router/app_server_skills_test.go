@@ -36,8 +36,8 @@ func TestUISnapshotSkillsMenuAndActions(t *testing.T) {
 		t.Fatalf("up selected = %d", u.picker.selected)
 	}
 	u.skillsModalKey("\r")
-	if u.picker.open || u.draft != "$" {
-		t.Fatalf("list action = open %v, draft %q", u.picker.open, u.draft)
+	if u.picker.open || u.Text != "$" {
+		t.Fatalf("list action = open %v, draft %q", u.picker.open, u.Text)
 	}
 }
 
@@ -103,15 +103,15 @@ func TestUISnapshotSkillsManagerViewportAndPaste(t *testing.T) {
 		})
 	}
 	appServerTestKeys(t, u, "\x1b[200~skill-03\x1b[201~")
-	if u.draft != "" || u.picker.query != "skill-03" || len(u.picker.choices) != 1 {
-		t.Fatalf("paste escaped manager: %q %+v", u.draft, u.picker)
+	if u.Text != "" || u.picker.query != "skill-03" || len(u.picker.choices) != 1 {
+		t.Fatalf("paste escaped manager: %q %+v", u.Text, u.picker)
 	}
 }
 
 func TestSkillsShellVariablesStayLiteral(t *testing.T) {
 	for _, query := range []string{"HOME", "PATH", "1", "?", "-", "_", "{HOME}"} {
 		u, _ := newAppServerTestUI()
-		u.draft = "$" + query
+		u.Text = "$" + query
 		if u.completionTarget().kind != 0 {
 			t.Fatalf("shell token $%s opened picker", query)
 		}

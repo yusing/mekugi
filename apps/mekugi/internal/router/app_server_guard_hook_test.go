@@ -60,8 +60,8 @@ func TestAppServerGuardHookFailureRestoresDrafts(t *testing.T) {
 		appServerTestKeys(t, u, "first\rsecond\rtyping")
 		request := appServerOneRequest(t, wire, "hooks/list", "")
 		appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,%s}`, request.ID, response))
-		if wire.Len() != 0 || u.draft != "first\nsecond\ntyping" || len(u.unsent)+len(u.queued) != 0 || !u.feedback.Alert || u.feedback.Text == "" {
-			t.Fatalf("failure lost drafts or submitted input: draft=%q unsent=%+v queued=%+v notice=%q wire=%q", u.draft, u.unsent, u.queued, u.feedback.Text, wire.String())
+		if wire.Len() != 0 || u.Text != "first\nsecond\ntyping" || len(u.unsent)+len(u.queued) != 0 || !u.feedback.Alert || u.feedback.Text == "" {
+			t.Fatalf("failure lost drafts or submitted input: draft=%q unsent=%+v queued=%+v notice=%q wire=%q", u.Text, u.unsent, u.queued, u.feedback.Text, wire.String())
 		}
 		appServerTestKeys(t, u, "\r")
 		appServerOneRequest(t, wire, "hooks/list", "")

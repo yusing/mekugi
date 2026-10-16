@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -49,10 +51,8 @@ type nativeQuestionCall struct {
 
 // A parked editor includes the navigation and undo state, not just its text.
 type questionEditor struct {
-	snapshot   composerUndo
-	undo, redo []composerUndo
-	column     *int
-	run        composerRun
+	composer.State
+	column *int
 }
 type nativeQuestionDock struct {
 	inputTurns map[string]bool
@@ -67,12 +67,11 @@ type nativeQuestionDock struct {
 }
 
 func (u *appServerUI) saveQuestionEditor() questionEditor {
-	return questionEditor{u.undoSnapshot(), u.undoDrafts, u.redoDrafts, u.cursorColumn, u.run}
+	return questionEditor{u.Editor.Park(), u.cursorColumn}
 }
 func (u *appServerUI) loadQuestionEditor(e questionEditor) {
-	u.loadDraft(e.snapshot.composerDraft)
-	u.historyBack, u.historyDraft = e.snapshot.historyBack, e.snapshot.historyDraft
-	u.undoDrafts, u.redoDrafts, u.cursorColumn, u.run = e.undo, e.redo, e.column, e.run
+	u.Editor.Resume(e.State)
+	u.cursorColumn = e.column
 }
 func (u *appServerUI) currentQuestion() *nativeQuestion {
 	d := &u.questions
@@ -135,7 +134,7 @@ func (u *appServerUI) composerVacant() bool {
 	if u.composerReadOnly() {
 		return false
 	}
-	if u.draft != "" || len(u.images) > 0 || len(u.files) > 0 || len(u.skills) > 0 || len(u.selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.open {
+	if u.Text != "" || len(u.Images) > 0 || len(u.Files) > 0 || len(u.Skills) > 0 || len(u.Selections) > 0 || u.paste || u.escape != "" || u.pickerVisible() || u.keybindings || u.statusPanel != nil || u.resumePicker != nil || u.approvals.open {
 		return false
 	}
 	return u.shell == nil || u.shell.focus == 0 && !u.shell.paste && u.shell.sequence == ""
@@ -257,8 +256,8 @@ func (u *appServerUI) observeQuestionItem(thread, turn string, item appServerIte
 	return true
 }
 func (u *appServerUI) saveUnsentAnswer(q *nativeQuestion) {
-	if !q.IsSecret && q.editor.snapshot.text != "" {
-		u.rememberInput(q.editor.snapshot.composerDraft)
+	if !q.IsSecret && q.editor.Snapshot.Text != "" {
+		u.rememberInput(composerDraft{Draft: q.editor.Snapshot.Draft})
 		u.setNotice("unsent answer saved to input history", false)
 	}
 	q.editor = questionEditor{}
@@ -424,11 +423,11 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		if !q.skipped {
 			if q.selected < len(q.choices) {
 				q.answer = []string{q.choices[q.selected].Label}
-				if len(c.request) > 0 && u.draft != "" {
-					q.answer = append(q.answer, "user_note: "+u.draft)
+				if len(c.request) > 0 && u.Text != "" {
+					q.answer = append(q.answer, "user_note: "+u.Text)
 				}
-			} else if u.draft != "" {
-				answer := u.draft
+			} else if u.Text != "" {
+				answer := u.Text
 				if len(c.request) > 0 {
 					answer = "user_note: " + answer
 				}
@@ -457,7 +456,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 			return true, u.submitQuestions()
 		}
 	default:
-		if c.sudo == nil && len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !q.note && u.draft == "" {
+		if c.sudo == nil && len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !q.note && u.Text == "" {
 			selected := int(key[0] - '1')
 			if selected <= len(q.choices) {
 				q.selected = selected
@@ -506,15 +505,15 @@ func (u *appServerUI) submitQuestions() error {
 			c.questions[i].editor = questionEditor{}
 		}
 		u.renderQuestionRecord(c)
-		if len(attached.answerImages) > 0 || len(attached.attachments) > 0 {
+		if len(attached.AnswerImages) > 0 || len(attached.Attachments) > 0 {
 			d := attached
-			d.text, d.questionCall, d.inHistory = "Attachments accompanying answers to "+c.item+":\n", c, true
-			d.answerImages = nil
-			for i, path := range attached.answerImages {
+			d.Text, d.questionCall, d.InHistory = "Attachments accompanying answers to "+c.item+":\n", c, true
+			d.AnswerImages = nil
+			for i, path := range attached.AnswerImages {
 				label := fmt.Sprintf("[Image %d]", i+1)
-				start := len(d.text)
-				d.text += label + "\n"
-				d.images = append(d.images, composerImage{start, start + len(label), path})
+				start := len(d.Text)
+				d.Text += label + "\n"
+				d.Images = append(d.Images, composer.Token{Start: start, End: start + len(label), Path: path})
 			}
 			u.unsent = append(u.unsent, d)
 			return u.flushInput()
@@ -547,7 +546,7 @@ func (u *appServerUI) submitQuestions() error {
 		return nil
 	}
 	data, _ := json.Marshal(replies)
-	attached.text, attached.questionCall, attached.inHistory = questionReplyStart+string(data)+questionReplyEnd, c, true
+	attached.Text, attached.questionCall, attached.InHistory = questionReplyStart+string(data)+questionReplyEnd, c, true
 	u.unsent = append(u.unsent, attached)
 	u.renderQuestionRecord(c)
 	return u.flushInput()
@@ -563,21 +562,21 @@ func questionAnswerAttachments(c *nativeQuestionCall) composerDraft {
 		if !q.done || q.skipped || q.outcome != "" {
 			continue
 		}
-		d := q.editor.snapshot.composerDraft
-		if len(d.images) == 0 && len(c.request) == 0 && q.selected < len(q.choices) {
+		d := q.editor.Snapshot.Draft
+		if len(d.Images) == 0 && len(c.request) == 0 && q.selected < len(q.choices) {
 			continue // Async option-only replies do not submit the parked free text.
 		}
-		drafts = append(drafts, d)
-		if len(d.images) == 0 {
+		drafts = append(drafts, composerDraft{Draft: d})
+		if len(d.Images) == 0 {
 			continue
 		}
-		text := d.text
-		for j := len(d.images) - 1; j >= 0; j-- {
-			image := d.images[j]
-			text = text[:image.start] + fmt.Sprintf("[Image %d]", len(paths)+j+1) + text[image.end:]
+		text := d.Text
+		for j := len(d.Images) - 1; j >= 0; j-- {
+			image := d.Images[j]
+			text = text[:image.Start] + fmt.Sprintf("[Image %d]", len(paths)+j+1) + text[image.End:]
 		}
-		for _, image := range d.images {
-			paths = append(paths, image.path)
+		for _, image := range d.Images {
+			paths = append(paths, image.Path)
 		}
 		q.answer = []string{text}
 		if q.selected < len(q.choices) {
@@ -587,8 +586,8 @@ func questionAnswerAttachments(c *nativeQuestionCall) composerDraft {
 		}
 	}
 	attached := joinDrafts(drafts...)
-	attached.snapshotFileAttachments("") // Answer editors bind selections, not files.
-	return composerDraft{answerImages: paths, attachments: attached.attachments, attachmentNotice: attached.attachmentNotice}
+	attached.SnapshotFiles("") // Answer editors bind selections, not files.
+	return composerDraft{AnswerImages: paths, Attachments: attached.Attachments, AttachmentNotice: attached.AttachmentNotice}
 }
 
 const questionReplyStart = "<send_user_message_question_reply>"
@@ -673,9 +672,9 @@ func pendingQuestionReplies(parts []composerDraft) []composerDraft {
 			continue
 		}
 		attached := questionAnswerAttachments(c)
-		part.answerImages, part.attachments, part.attachmentNotice = attached.answerImages, attached.attachments, attached.attachmentNotice
+		part.AnswerImages, part.Attachments, part.AttachmentNotice = attached.AnswerImages, attached.Attachments, attached.AttachmentNotice
 		var replies []nativeQuestionReply
-		for _, r := range questionReplies(part.text) {
+		for _, r := range questionReplies(part.Text) {
 			item, index, ok := questionReplyIdentity(r)
 			if ok && item == c.item && index < len(c.questions) && c.questions[index].outcome == "" {
 				r.Answer = strings.Join(c.questions[index].answer, "\n")
@@ -686,7 +685,7 @@ func pendingQuestionReplies(parts []composerDraft) []composerDraft {
 			continue
 		}
 		data, _ := json.Marshal(replies)
-		part.text = questionReplyStart + string(data) + questionReplyEnd
+		part.Text = questionReplyStart + string(data) + questionReplyEnd
 		pending = append(pending, part)
 	}
 	return pending
@@ -833,7 +832,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
 	if d.active == nil {
 		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
-		if u.Turn == "" && u.draft != "" {
+		if u.Turn == "" && u.Text != "" {
 			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", u.questionCount()) + reset
 		}
 		return []string{ansi.Truncate(label, width, "…")}

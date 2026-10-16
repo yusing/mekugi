@@ -600,9 +600,9 @@ func (u *appServerUI) flushApprovalUpdates() {
 }
 
 func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalChoice) error {
-	reason := a.editor.snapshot.text
+	reason := a.editor.Snapshot.Text
 	if u.approvals.open && u.approvals.pending[0] == a && a.denialChoice() >= 0 {
-		reason = u.draft
+		reason = u.Text
 	}
 	reason = strings.TrimSpace(reason)
 	feedback := "user denied this command without a reason"
@@ -712,7 +712,7 @@ func (u *appServerUI) approvalKey(key string) (bool, error) {
 			a.selected = deny
 		}
 	default:
-		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' && (a.denialChoice() < 0 || u.draft == "") {
+		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' && (a.denialChoice() < 0 || u.Text == "") {
 			if index := int(key[0] - '1'); index < len(a.choices) {
 				a.selected = index
 			}

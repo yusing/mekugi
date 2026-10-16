@@ -120,8 +120,8 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 			t.Fatalf("replay key %q: quit=%v error=%v", key, quit, err)
 		}
 	}
-	if p.Paused || p.Position != p.From || p.ui.draft != "" || outgoing.Len() != 0 {
-		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q writes=%d", p.Paused, p.Position, p.ui.draft, outgoing.Len())
+	if p.Paused || p.Position != p.From || p.ui.Text != "" || outgoing.Len() != 0 {
+		t.Fatalf("replay controls leaked into live composer/transport: paused=%v position=%v draft=%q writes=%d", p.Paused, p.Position, p.ui.Text, outgoing.Len())
 	}
 	if p.ui.proxy != nil || p.ui.execTrack != nil || p.ui.session.waitStore != nil {
 		t.Fatal("offline playback constructed live execution dependencies")

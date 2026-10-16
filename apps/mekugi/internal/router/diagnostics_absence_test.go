@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -89,7 +91,7 @@ func runDiagnosticsAbsentSession(t *testing.T, ctx context.Context, args []strin
 		t.Fatal(err)
 	}
 	defer usage.Close()
-	return RunSession(new(previewmodel.Service), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage,
+	return RunSession(composer.Service{}, new(previewmodel.Service), new(activitymodel.Service), history, testPreferences(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), usage,
 		new(evidence.Service), new(transportcapture.Service), nil, ctx,
 		testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, testCriticalErrors(), ready,
 		func(paths []string) { t.Errorf("absent diagnostics published artifacts: %v", paths) })

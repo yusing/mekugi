@@ -94,18 +94,18 @@ func TestAppServerUIDelayedSubmissionEditing(t *testing.T) {
 	for _, rejected := range []bool{false, true} {
 		u, _ := newAppServerTestUI()
 		appServerTestKeys(t, u, "first\rnext")
-		if u.draft != "next" {
-			t.Fatalf("accepted input leaked into draft: %q", u.draft)
+		if u.Text != "next" {
+			t.Fatalf("accepted input leaked into draft: %q", u.Text)
 		}
 		if rejected {
 			appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-			if u.draft != "first\nnext" {
-				t.Fatalf("lost rejected input or new typing: %q", u.draft)
+			if u.Text != "first\nnext" {
+				t.Fatalf("lost rejected input or new typing: %q", u.Text)
 			}
 		} else {
 			appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"t"}}}`)
-			if u.draft != "next" {
-				t.Fatalf("lost new typing: %q", u.draft)
+			if u.Text != "next" {
+				t.Fatalf("lost new typing: %q", u.Text)
 			}
 		}
 	}
@@ -114,10 +114,10 @@ func TestAppServerUIDelayedSubmissionEditing(t *testing.T) {
 func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "\x1bhello")
-	if u.draft != "hello" {
-		t.Fatalf("Escape swallowed input: %q", u.draft)
+	if u.Text != "hello" {
+		t.Fatalf("Escape swallowed input: %q", u.Text)
 	}
-	u.draft = strings.Repeat("a", 88) + "VISIBLE_TAIL"
+	u.Text = strings.Repeat("a", 88) + "VISIBLE_TAIL"
 	var frame bytes.Buffer
 	if err := u.paint(&frame, 24, 12); err != nil {
 		t.Fatal(err)
@@ -125,11 +125,11 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 	if !strings.HasSuffix(appServerComposerScreenText(t, frame.Bytes(), 24, 12), "VISIBLE_TAIL") {
 		t.Fatalf("insertion point not visible: %q", frame.String())
 	}
-	u.draft = ""
+	u.Text = ""
 	appServerTestKeys(t, u, "\x1b")
 	appServerTestKeys(t, u, "[200~split\rpaste\x1b")
 	appServerTestKeys(t, u, "[201~")
-	if u.draft != "split\npaste" || w.Len() != 0 {
+	if u.Text != "split\npaste" || w.Len() != 0 {
 		t.Fatal("split paste submitted or lost data")
 	}
 }
@@ -137,22 +137,22 @@ func TestAppServerUIEscapeAndLongDraft(t *testing.T) {
 func TestAppServerCtrlCClearsDraftThenInterruptsOrQuits(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "draft\x03")
-	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again quits") {
-		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.draft, u.feedback.Text)
+	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again quits") {
+		t.Fatalf("first Ctrl-C draft=%q notice=%q", u.Text, u.feedback.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "draft" || u.feedback.Text != "" {
-		t.Fatalf("cleared draft not restorable: %q notice=%q", u.draft, u.feedback.Text)
+	if u.Text != "draft" || u.feedback.Text != "" {
+		t.Fatalf("cleared draft not restorable: %q notice=%q", u.Text, u.feedback.Text)
 	}
-	u.draft = ""
+	u.Text = ""
 	if quit, err := u.key(3); !quit || err != nil {
 		t.Fatalf("idle Ctrl-C quit=%v err=%v", quit, err)
 	}
 	u, w = newAppServerTestUI()
 	u.Turn = "turn"
 	appServerTestKeys(t, u, "steer\x03")
-	if u.draft != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again interrupts") {
-		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.draft, w.String())
+	if u.Text != "" || w.Len() != 0 || !strings.Contains(u.feedback.Text, "Ctrl-C again interrupts") {
+		t.Fatalf("draft not cleared before interrupt: %q sent=%q", u.Text, w.String())
 	}
 	if quit, err := u.key(3); quit || err != nil || !strings.Contains(w.String(), "turn/interrupt") {
 		t.Fatalf("active Ctrl-C quit=%v err=%v sent=%q", quit, err, w.String())
@@ -209,17 +209,17 @@ func appServerTestMessage(t *testing.T, u *appServerUI, wire string) {
 func TestAppServerUIInput(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "你好🙂\x7f")
-	if u.draft != "你好" {
-		t.Fatalf("Unicode backspace: %q", u.draft)
+	if u.Text != "你好" {
+		t.Fatalf("Unicode backspace: %q", u.Text)
 	}
-	u.draft = ""
+	u.Text = ""
 	appServerTestKeys(t, u, "\x7f\x1b[200~one\rtwo\n你好\x1b[201~")
-	if u.draft != "one\ntwo\n你好" || u.paste || w.Len() != 0 {
-		t.Fatalf("paste submitted or corrupted: draft=%q paste=%v wire=%q", u.draft, u.paste, w.String())
+	if u.Text != "one\ntwo\n你好" || u.paste || w.Len() != 0 {
+		t.Fatalf("paste submitted or corrupted: draft=%q paste=%v wire=%q", u.Text, u.paste, w.String())
 	}
-	u.draft = "/unsupported"
+	u.Text = "/unsupported"
 	appServerTestKeys(t, u, "\r")
-	if w.Len() != 0 || u.draft != "/unsupported" {
+	if w.Len() != 0 || u.Text != "/unsupported" {
 		t.Fatalf("unsupported slash submitted: %q", w.String())
 	}
 }
@@ -232,8 +232,8 @@ func TestAppServerUIShellUnicodeInput(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u.draft != "你好" {
-		t.Fatalf("shell corrupted typed Unicode: %q", u.draft)
+	if u.Text != "你好" {
+		t.Fatalf("shell corrupted typed Unicode: %q", u.Text)
 	}
 }
 
@@ -251,7 +251,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 		}
 		if rejected {
 			appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-			if len(u.view.Entries) != 0 || u.draft != "你好 first message" || u.Starting() {
+			if len(u.view.Entries) != 0 || u.Text != "你好 first message" || u.Starting() {
 				t.Fatal("rejection retained a false user message or lost the draft")
 			}
 			continue
@@ -268,7 +268,7 @@ func TestAppServerUIImmediateInputEcho(t *testing.T) {
 
 func TestAppServerUIStartAndRejectedSteer(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.draft = "first"
+	u.Text = "first"
 	appServerTestKeys(t, u, "\r\r")
 	var start struct {
 		Method string `json:"method"`
@@ -287,12 +287,12 @@ func TestAppServerUIStartAndRejectedSteer(t *testing.T) {
 		t.Fatalf("wrong start: %+v", start)
 	}
 	appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"turn-1"}}}`)
-	if !u.Starting() || u.draft != "" {
+	if !u.Starting() || u.Text != "" {
 		t.Fatal("response must clear accepted draft but retain start guard until notification")
 	}
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn-1"}}}`)
 	w.Reset()
-	u.draft = "steer me"
+	u.Text = "steer me"
 	appServerTestKeys(t, u, "\r")
 	var steer struct {
 		Method string `json:"method"`
@@ -309,19 +309,19 @@ func TestAppServerUIStartAndRejectedSteer(t *testing.T) {
 	}
 	w.Reset()
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"turn changed"}}`)
-	if u.draft != "steer me" || u.Turn != "turn-1" || w.Len() != 0 {
+	if u.Text != "steer me" || u.Turn != "turn-1" || w.Len() != 0 {
 		t.Fatal("rejected steer lost draft or silently started a new turn")
 	}
 }
 
 func TestAppServerUINotificationBeforeResponseAndItems(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.draft = "first"
+	u.Text = "first"
 	appServerTestKeys(t, u, "\r")
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"main","turn":{"id":"t"}}}`)
-	u.draft = "next draft"
+	u.Text = "next draft"
 	appServerTestMessage(t, u, `{"id":1,"result":{"turn":{"id":"t"}}}`)
-	if u.Turn != "t" || u.draft != "next draft" {
+	if u.Turn != "t" || u.Text != "next draft" {
 		t.Fatal("late response reset active identity or newer draft")
 	}
 	for _, wire := range []string{
@@ -375,8 +375,8 @@ func TestAppServerSteerStatusAcknowledgement(t *testing.T) {
 			if u.status != before || u.Turn != "" {
 				t.Fatal("late acknowledgement revived completed turn")
 			}
-		} else if u.status != "Working" || u.Turn != "t" || u.inputPayloads[u.Submission().ID].text != "" {
-			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.Turn, u.inputPayloads[u.Submission().ID].text)
+		} else if u.status != "Working" || u.Turn != "t" || u.inputPayloads[u.Submission().ID].Text != "" {
+			t.Fatalf("steer stayed pending: status=%s turn=%s submitted=%s", u.status, u.Turn, u.inputPayloads[u.Submission().ID].Text)
 		}
 	}
 }
@@ -411,7 +411,7 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 	for _, active := range []bool{false, true} {
 		u, w := newAppServerTestUI()
 		u.ensureShell()
-		u.draft = "unfinished draft"
+		u.Text = "unfinished draft"
 		if active {
 			u.Turn = "turn"
 		}
@@ -422,8 +422,8 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		if err := u.shell.flushEscape(); err != nil {
 			t.Fatal(err)
 		}
-		if u.draft != "unfinished draft" || u.quitRequested {
-			t.Fatalf("Escape changed draft or quit: %+v", u.draft)
+		if u.Text != "unfinished draft" || u.quitRequested {
+			t.Fatalf("Escape changed draft or quit: %+v", u.Text)
 		}
 		if active {
 			appServerOneRequest(t, w, "turn/interrupt", "")
@@ -436,7 +436,7 @@ func TestNativeUIEscapeInterruptPreservesDraft(t *testing.T) {
 		if err := u.shell.key('x'); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(u.draft, "x") {
+		if !strings.Contains(u.Text, "x") {
 			t.Fatal("Escape swallowed subsequent input")
 		}
 	}

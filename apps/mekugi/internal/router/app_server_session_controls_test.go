@@ -16,7 +16,7 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, "/compact\r")
 			r := appServerOneRequest(t, w, "thread/compact/start", "")
-			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.inputPayloads[u.Submission().ID].text != "" || len(u.view.Entries) != 0 {
+			if !u.Compaction.AcknowledgementPending() || !u.Starting() || u.inputPayloads[u.Submission().ID].Text != "" || len(u.view.Entries) != 0 {
 				t.Fatalf("compact treated as conversation input: pending=%v starting=%v entries=%+v", u.Compaction.AcknowledgementPending(), u.Starting(), u.view.Entries)
 			}
 			if beforeAck {
@@ -28,8 +28,8 @@ func TestAppServerCompactIdleAndLifecycle(t *testing.T) {
 				appServerTestTurn(t, u, "compact-turn")
 				appServerTestTurnEnd(t, u, "compact-turn", "completed")
 			}
-			if u.Compaction.AcknowledgementPending() || u.Starting() || u.draft != "" || len(appServerTurnRequests(t, w)) != 0 {
-				t.Fatalf("compact lifecycle not settled: pending=%v starting=%v draft=%q", u.Compaction.AcknowledgementPending(), u.Starting(), u.draft)
+			if u.Compaction.AcknowledgementPending() || u.Starting() || u.Text != "" || len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatalf("compact lifecycle not settled: pending=%v starting=%v draft=%q", u.Compaction.AcknowledgementPending(), u.Starting(), u.Text)
 			}
 		})
 	}
@@ -45,7 +45,7 @@ func TestAppServerCompactBusyQueuesAheadOfLaterText(t *testing.T) {
 	}
 	appServerTestTurnEnd(t, u, "work", "completed")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
-	if len(u.unsent) != 1 || u.unsent[0].text != "after compact" {
+	if len(u.unsent) != 1 || u.unsent[0].Text != "after compact" {
 		t.Fatalf("input behind compact lost: %+v", u.unsent)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
@@ -62,8 +62,8 @@ func TestAppServerCompactFailureRestoresCommand(t *testing.T) {
 	appServerTestKeys(t, u, "/compact\r")
 	r := appServerOneRequest(t, w, "thread/compact/start", "")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-	if u.draft != "/compact" || u.Compaction.AcknowledgementPending() || u.Starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
-		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.draft, u.feedback.Text, u.view.Entries)
+	if u.Text != "/compact" || u.Compaction.AcknowledgementPending() || u.Starting() || !strings.Contains(u.feedback.Text, "rejected") || len(u.view.Entries) != 0 {
+		t.Fatalf("failed compact not restored: draft=%q notice=%q entries=%+v", u.Text, u.feedback.Text, u.view.Entries)
 	}
 }
 
@@ -83,8 +83,8 @@ func TestAppServerClearWaitsForCompactAcknowledgement(t *testing.T) {
 	appServerTestTurn(t, u, "compact-turn")
 	appServerTestTurnEnd(t, u, "compact-turn", "completed")
 	appServerTestKeys(t, u, "/clear\r")
-	if w.Len() != 0 || u.Replacement.Pending() || !u.Compaction.AcknowledgementPending() || strings.TrimSpace(u.draft) != "/clear" {
-		t.Fatalf("clear overtook compact acknowledgement: wire=%q clearing=%v compact=%v draft=%q", w.String(), u.Replacement.Pending(), u.Compaction.AcknowledgementPending(), u.draft)
+	if w.Len() != 0 || u.Replacement.Pending() || !u.Compaction.AcknowledgementPending() || strings.TrimSpace(u.Text) != "/clear" {
+		t.Fatalf("clear overtook compact acknowledgement: wire=%q clearing=%v compact=%v draft=%q", w.String(), u.Replacement.Pending(), u.Compaction.AcknowledgementPending(), u.Text)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, r.ID))
 	appServerTestKeys(t, u, "\r")
@@ -160,8 +160,8 @@ func TestAppServerClearFailureRestoresNewInputInsteadOfSendingToOldThread(t *tes
 	r := appServerOneRequest(t, w, "thread/start", "")
 	appServerTestKeys(t, u, "new session only\r")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, r.ID))
-	if u.draft != "new session only" || len(appServerTurnRequests(t, w)) != 0 {
-		t.Fatalf("new input escaped to old thread: %q", u.draft)
+	if u.Text != "new session only" || len(appServerTurnRequests(t, w)) != 0 {
+		t.Fatalf("new input escaped to old thread: %q", u.Text)
 	}
 }
 
@@ -172,8 +172,8 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			appServerTestKeys(t, u, "/clear\r")
 			r := appServerOneRequest(t, w, "thread/start", "")
 			appServerTestKeys(t, u, command+"\r")
-			if strings.TrimSpace(u.draft) != command || u.Settings.Pending() || u.shellDraft.text != "" || u.btw != nil || len(appServerTurnRequests(t, w)) != 0 {
-				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.draft, u.Settings.Pending(), u.shellDraft.text, u.btw)
+			if strings.TrimSpace(u.Text) != command || u.Settings.Pending() || u.shellDraft.Text != "" || u.btw != nil || len(appServerTurnRequests(t, w)) != 0 {
+				t.Fatalf("command escaped while clearing: draft=%q settings=%v shell=%q btw=%+v", u.Text, u.Settings.Pending(), u.shellDraft.Text, u.btw)
 			}
 			if accepted, err := u.updateSettings(map[string]any{"effort": "high"}); err != nil || accepted || w.Len() != 0 {
 				t.Fatalf("shortcut bypassed clear gate: accepted=%v err=%v wire=%s", accepted, err, w.String())
@@ -182,8 +182,8 @@ func TestAppServerClearKeepsThreadCommandsUntilNewSessionReady(t *testing.T) {
 			appServerTurnRequests(t, w)
 			appServerTestMessage(t, u, `{"method":"thread/settings/updated","params":{"threadId":"main","threadSettings":{"model":"stale"}}}`)
 			appServerTestTurn(t, u, "old-shell-turn")
-			if strings.TrimSpace(u.draft) != command || u.Turn != "" || u.Settings.Pending() || u.shellDraft.text != "" {
-				t.Fatalf("old lifecycle affected fresh session: draft=%q turn=%q", u.draft, u.Turn)
+			if strings.TrimSpace(u.Text) != command || u.Turn != "" || u.Settings.Pending() || u.shellDraft.Text != "" {
+				t.Fatalf("old lifecycle affected fresh session: draft=%q turn=%q", u.Text, u.Turn)
 			}
 			appServerTestKeys(t, u, "\x03fresh prompt\r")
 			appServerOneRequest(t, w, "turn/start", "fresh prompt")

@@ -36,7 +36,7 @@ func TestTerminalUIBatchKeepsSettlingTime(t *testing.T) {
 
 func TestTerminalUIIncrementalPaint(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.draft = "old draft text"
+	u.Text = "old draft text"
 	screen := vt.NewEmulator(120, 30)
 	defer screen.Close()
 	var wire bytes.Buffer
@@ -51,7 +51,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 	if strings.Contains(wire.String(), "\x1b[2K") {
 		t.Fatal("unchanged frame erased terminal rows")
 	}
-	u.draft = "new"
+	u.Text = "new"
 	wire.Reset()
 	if err := u.paint(out, 120, 30); err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestTerminalUIIncrementalPaint(t *testing.T) {
 	}
 	fresh, _ := newAppServerTestUI()
 	fresh.ensureShell()
-	fresh.draft = "new"
+	fresh.Text = "new"
 	want := vt.NewEmulator(80, 20)
 	defer want.Close()
 	if err := fresh.paint(want, 80, 20); err != nil {

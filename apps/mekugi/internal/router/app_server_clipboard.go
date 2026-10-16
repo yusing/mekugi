@@ -15,63 +15,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/backends/codex/appserver"
-	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
-
-type composerImage struct {
-	start, end int
-	path       string
-}
-
-func (u *appServerUI) renumberImages() {
-	d := u.draftSnapshot()
-	d.renumberImages()
-	u.loadDraft(d)
-}
-
-func (d *composerDraft) renumberImages() {
-	slices.SortFunc(d.images, func(a, b composerImage) int { return a.start - b.start })
-	at := len(d.text) - min(d.cursorBack, len(d.text))
-	for i := range d.images {
-		attachment := &d.images[i]
-		label := fmt.Sprintf("[Image %d]", i+1)
-		delta := len(label) - (attachment.end - attachment.start)
-		d.text = d.text[:attachment.start] + label + d.text[attachment.end:]
-		if at >= attachment.end {
-			at += delta
-		}
-		for j := range d.skills {
-			if d.skills[j].start >= attachment.end {
-				d.skills[j].start += delta
-				d.skills[j].end += delta
-			}
-		}
-		for j := range d.files {
-			if d.files[j].start >= attachment.end {
-				d.files[j].start += delta
-				d.files[j].end += delta
-			}
-		}
-		for j := range d.selections {
-			if d.selections[j].start >= attachment.end {
-				d.selections[j].start += delta
-				d.selections[j].end += delta
-			}
-		}
-		attachment.end += delta
-		for j := i + 1; j < len(d.images); j++ {
-			d.images[j].start += delta
-			d.images[j].end += delta
-		}
-	}
-	d.cursorBack = len(d.text) - at
-}
 
 // attachImage takes ownership of a clipboard file for cleanup.
 func (u *appServerUI) attachImage(path string) {
@@ -84,13 +34,9 @@ func (u *appServerUI) attachImage(path string) {
 
 // insertImage is its own undoable edit.
 func (u *appServerUI) insertImage(path string) {
-	u.run = runNone
-	at := u.cursor()
-	label := fmt.Sprintf("[Image %d]", len(u.images)+1)
-	u.insertDraft(label)
-	u.images = append(u.images, composerImage{start: at, end: at + len(label), path: path})
-	u.renumberImages()
-	u.run = runNone
+	u.Editor.InsertImage(path)
+	u.cursorColumn = nil
+	u.setNotice("", false)
 	u.pruneDraftImages()
 }
 
@@ -110,14 +56,14 @@ func (u *appServerUI) finishPaste() {
 	if !ok {
 		if text != "" {
 			u.insertDraft(text)
-			u.run = runNone
+			u.Run = composer.NoRun
 		}
 		return
 	}
 	u.insertImage(path)
-	u.run = runInsert // The separating space belongs to the attachment's edit.
+	u.Run = composer.InsertRun // The separating space belongs to the attachment's edit.
 	u.insertDraft(" ")
-	u.run = runNone
+	u.Run = composer.NoRun
 }
 
 // Source: codex-rs/tui/src/clipboard_paste.rs:251:287 and
@@ -191,42 +137,6 @@ func shellWord(text string) (string, bool) {
 		}
 	}
 	return word.String(), quote == 0 && word.Len() > 0
-}
-
-func (d composerDraft) input() []map[string]any {
-	var input []map[string]any
-	appendText := func(start, end int) {
-		part := appserver.Input(d.text[start:end])[0]
-		var elements []composerTextElement
-		for _, span := range d.displaySpans() {
-			if span.Kind != activityui.ImageToken && span.Start >= start && span.End <= end {
-				elements = append(elements, composerTextElement{
-					ByteRange:   composerByteRange{Start: span.Start - start, End: span.End - start},
-					Placeholder: d.text[span.Start:span.End],
-				})
-			}
-		}
-		part["text_elements"] = elements
-		input = append(input, part)
-	}
-	at := 0
-	for _, attachment := range d.images {
-		if attachment.start > at {
-			appendText(at, attachment.start)
-		}
-		input = append(input, map[string]any{"type": "localImage", "path": attachment.path})
-		at = attachment.end
-	}
-	if at < len(d.text) || len(input) == 0 {
-		appendText(at, len(d.text))
-	}
-	for _, path := range d.answerImages {
-		input = append(input, map[string]any{"type": "localImage", "path": path})
-	}
-	for _, attachment := range d.attachments {
-		input = append(input, appserver.Input(attachment)...)
-	}
-	return input
 }
 
 func (u *appServerUI) pasteImage() {
@@ -307,7 +217,7 @@ func (u *appServerUI) pasteByte(key byte) {
 		if a := u.approvals.pending[0]; a.denialChoice() >= 0 && len(u.pasted) > 0 {
 			a.selected = a.denialChoice()
 			u.insertDraft(string(u.pasted))
-			u.run = runNone
+			u.Run = composer.NoRun
 		}
 		u.pasted = nil
 	case u.picker.modal == "manage":

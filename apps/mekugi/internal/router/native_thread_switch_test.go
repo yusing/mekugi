@@ -16,7 +16,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	u.clock = func() time.Time { return now }
 	u.view.clock, u.agents.clock = u.clock, u.clock
 	appServerTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "reader"}})
-	u.draft = "retained draft"
+	u.Text = "retained draft"
 	for _, settings := range []struct{ thread, model, effort, tier string }{
 		{"main", "parent-model", "high", "priority"},
 		{"child", "child-model", "low", "flex"},
@@ -70,7 +70,7 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if !strings.Contains(frame, "child result") || !strings.Contains(frame, "eta") || strings.Contains(frame, "main result") || !strings.Contains(frame, "Read-only") || u.Thread != "main" {
 		t.Fatalf("child view or input identity: %s", frame)
 	}
-	if !strings.Contains(frame, "child-model (low) · flex") || !strings.Contains(frame, "25K/100K • 25%") || strings.Contains(frame, "parent-model") || strings.Contains(frame, u.draft) {
+	if !strings.Contains(frame, "child-model (low) · flex") || !strings.Contains(frame, "25K/100K • 25%") || strings.Contains(frame, "parent-model") || strings.Contains(frame, u.Text) {
 		t.Fatalf("child composer: %s", frame)
 	}
 	keys("\x022")
@@ -91,13 +91,13 @@ func TestUISnapshotNativeThreadSwitch(t *testing.T) {
 	if err := u.shell.send("\x1b"); err != nil {
 		t.Fatal(err)
 	}
-	if u.draft != "retained draft" || u.picker.open || u.paste || u.shell.paste || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
+	if u.Text != "retained draft" || u.picker.open || u.paste || u.shell.paste || u.quitRequested || u.Turn != "active" || w.Len() != 0 {
 		t.Fatal("read-only composer accepted editing, paste, submission or interruption")
 	}
 	u.Turn = ""
 	click("/root")
 	frame = paint("native-thread-return-main")
-	if u.agents.only || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.draft != "retained draft" {
+	if u.agents.only || !strings.Contains(frame, "main result") || strings.Contains(frame, "Input: Main") || u.Text != "retained draft" {
 		t.Fatal("returning to Main lost its transcript or draft")
 	}
 	keys("\x021\r")
@@ -111,13 +111,13 @@ func TestNativeChildReferenceReturnsToMain(t *testing.T) {
 	u := selectionTestUI("child answer")
 	u.agents = newLiveActivityView()
 	u.main.agents = u.agents
-	u.main.draft = "draft "
+	u.main.Text = "draft "
 	u.main.agents.only, u.main.agents.selected = true, "/root/reader"
 	u.main.agents.feedLeft, u.main.agents.feedTop = 1, 1
 	u.main.agents.feedRight, u.main.agents.feedRows = 40, 1
 	selectionTestDrag(t, u, 0, 0, 4, 0)
 	u.selectionAction('r')
-	if u.main.composerReadOnly() || !strings.HasPrefix(u.main.draft, "draft ") || len(u.main.selections) != 1 || u.focus != 0 {
+	if u.main.composerReadOnly() || !strings.HasPrefix(u.main.Text, "draft ") || len(u.main.Selections) != 1 || u.focus != 0 {
 		t.Fatal("child reference did not return to the preserved Main draft")
 	}
 }

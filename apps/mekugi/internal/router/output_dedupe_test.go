@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/module"
@@ -247,7 +249,7 @@ func TestDuplicateOutputSourceIDs(t *testing.T) {
 	a := "package router\n" + strings.Repeat("alpha source body\n", 20)
 	b := "package router\n" + strings.Repeat("bravo source body\n", 20)
 	c := "package router\n" + strings.Repeat("charlie source body\n", 20)
-	frame := frameComposerFile("/missing/source.go", a)[0]
+	frame := composer.FileFrames("/missing/source.go", a)[0]
 	header, _, _ := strings.Cut(frame, "\n")
 	input := []any{
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{frame})}}},
@@ -321,8 +323,8 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 		name  string
 		frame func(string) string
 	}{
-		{"file snapshot", func(body string) string { return frameComposerFile("/missing/file.go", body)[0] }},
-		{"skill snapshot", func(body string) string { return frameComposerSkillFromPath("review", "/missing/SKILL.md", body)[0] }},
+		{"file snapshot", func(body string) string { return composer.FileFrames("/missing/file.go", body)[0] }},
+		{"skill snapshot", func(body string) string { return composer.SkillFrames("review", "/missing/SKILL.md", body)[0] }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			frame := tc.frame(body)
@@ -404,7 +406,7 @@ func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
 	for i := range 12 {
 		body += fmt.Sprintf("attached body source text %02d\n", i)
 	}
-	frame := frameComposerFile("/missing/example", body)[0]
+	frame := composer.FileFrames("/missing/example", body)[0]
 	user := func(content any) any { return map[string]any{"role": "user", "content": content} }
 	parts := []any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{frame})}, map[string]any{"type": "input_image", "image_url": "image"}}
 	classified := map[string]any{"role": "user", "content": parts, "internal_chat_message_metadata_passthrough": map[string]any{"content_item_kinds": []string{"agents_md.instructions", "user.image"}}}
@@ -442,7 +444,7 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 	for i := range 12 {
 		body += fmt.Sprintf("distinct delivered frame row %02d\n", i)
 	}
-	frame := frameComposerFile("/missing/delivery", body)[0]
+	frame := composer.FileFrames("/missing/delivery", body)[0]
 	envelope := attachments.Encode([]string{frame})
 	part := func(kind, text string) any { return map[string]any{"type": kind, "text": text} }
 	for _, content := range []any{

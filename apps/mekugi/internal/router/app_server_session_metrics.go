@@ -23,7 +23,7 @@ var sessionMetricViews = []string{"Overview", "Transport", "Exchanges"}
 
 func (u *appServerUI) showSessionMetrics() {
 	u.statusPanel = &appServerStatusReport{metrics: new(sessionMetricsPanel)}
-	u.deleteDraftRange(0, len(u.draft))
+	u.deleteDraftRange(0, len(u.Text))
 	u.refreshSessionMetrics(true)
 }
 

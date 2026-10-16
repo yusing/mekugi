@@ -102,7 +102,7 @@ func TestTerminalSelectionSyntaxColors(t *testing.T) {
 func TestTerminalSelectionComposerCaretStyles(t *testing.T) {
 	for _, back := range []int{0, 3} {
 		main, _ := newAppServerTestUI()
-		main.draft, main.cursorBack = "abcdef", back
+		main.Text, main.CursorBack = "abcdef", back
 		frame, _ := main.mainFrame(40, 12, 0)
 		u := &terminalUI{main: main, width: 40, height: len(frame), paintedWidth: 40, paintedRows: frame, layout: terminalLayout{codex: terminalRect{0, 0, 40, len(frame)}}}
 		x, y := main.composerRect.x, main.composerRect.y
@@ -199,7 +199,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				} else {
 					selectionTestDrag(t, u, 0, 0, 4, 0)
 				}
-				u.main.draft, u.main.cursorBack, u.focus = "before after", len("after"), 2
+				u.main.Text, u.main.CursorBack, u.focus = "before after", len("after"), 2
 				if key == "question" {
 					u.main.questions.active = &nativeQuestionCall{questions: []nativeQuestion{{}}}
 				}
@@ -241,14 +241,14 @@ func TestTerminalUISelectionActions(t *testing.T) {
 				}
 				if reference {
 					want := "before " + mention + " after"
-					if len(u.main.selections) != 1 || u.main.selections[0].text != "hello" {
+					if len(u.main.Selections) != 1 || u.main.Selections[0].Text != "hello" {
 						t.Fatal("reference lost quote")
 					}
-					if u.main.draft != want || u.focus != 0 {
-						t.Fatalf("reference draft=%q focus=%d", u.main.draft, u.focus)
+					if u.main.Text != want || u.focus != 0 {
+						t.Fatalf("reference draft=%q focus=%d", u.main.Text, u.focus)
 					}
 					u.main.undoDraft(false)
-					if u.main.draft != "before after" || u.main.cursorBack != len("after") {
+					if u.main.Text != "before after" || u.main.CursorBack != len("after") {
 						t.Fatal("undo lost draft/caret")
 					}
 				} else {
@@ -256,7 +256,7 @@ func TestTerminalUISelectionActions(t *testing.T) {
 					if action != "\x1b" {
 						want = "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("hello")) + "\x07"
 					}
-					if u.clipboard != want || u.main.draft != "before after" || u.focus != 2 {
+					if u.clipboard != want || u.main.Text != "before after" || u.focus != 2 {
 						t.Fatal("copy/clear changed draft, focus or clipboard")
 					}
 				}
@@ -434,8 +434,8 @@ func TestTerminalUISelectionRenderedClipboard(t *testing.T) {
 		if activity {
 			mention = "[Selected message] "
 		}
-		if u.draft != mention || len(u.selections) != 1 || u.selections[0].text != "[report](https://example.com/report)" {
-			t.Fatalf("reference=%q %+v", u.draft, u.selections)
+		if u.Text != mention || len(u.Selections) != 1 || u.Selections[0].Text != "[report](https://example.com/report)" {
+			t.Fatalf("reference=%q %+v", u.Text, u.Selections)
 		}
 	}
 }
@@ -460,7 +460,7 @@ func TestTerminalUISelectionComposer(t *testing.T) {
 		if err := u.shell.key(3); err != nil {
 			t.Fatal(err)
 		}
-		if u.draft != "你好abc\nsecond" || u.quitRequested {
+		if u.Text != "你好abc\nsecond" || u.quitRequested {
 			t.Fatal("copy changed draft or quit")
 		}
 		want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("你好")) + "\x07"

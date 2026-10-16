@@ -25,6 +25,7 @@ use (
 	./modules/boundedcommand
 	./modules/changehistory
 	./modules/commandsegments
+	./modules/conversation
 	./modules/contextreset
 	./modules/diagnostics
 	./modules/fileread

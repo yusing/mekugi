@@ -103,7 +103,7 @@ func TestAppServerSessionMetricsLocalNavigation(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.Turn, u.status = "active", "Working"
 	appServerTestKeys(t, u, "/session\r")
-	if u.statusPanel == nil || u.statusPanel.metrics == nil || u.draft != "" {
+	if u.statusPanel == nil || u.statusPanel.metrics == nil || u.Text != "" {
 		t.Fatal("session command did not open a local dialog")
 	}
 	u.statusPanel.metrics.snapshot = sessionMetricsFixture(t)

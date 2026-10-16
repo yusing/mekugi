@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 type pickerScanResult struct {
@@ -96,7 +98,7 @@ func scanPickerFiles(ctx context.Context, cwd, query string) ([]composerChoice, 
 		if path == cwd {
 			return nil
 		}
-		if pickerVCSPath(entry.Name()) {
+		if composer.VCSPath(entry.Name()) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
@@ -151,15 +153,4 @@ func (u *appServerUI) applyPickerScan(result pickerScanResult) {
 	p.resolved, p.resolvedCwd = result.target, result.cwd
 	p.selected = min(p.selected, max(0, len(p.choices)-1))
 	u.dirty = true
-}
-
-// Ignore-rule bypass never exposes version-control implementation metadata.
-func pickerVCSPath(path string) bool {
-	for part := range strings.SplitSeq(filepath.ToSlash(path), "/") {
-		switch part {
-		case ".git", ".svn", ".hg", ".bzr", "_darcs", "CVS":
-			return true
-		}
-	}
-	return false
 }

@@ -449,20 +449,10 @@ completion picker. Both dock above the composer and hide its live-edit dock
 while focused. Up/Down or Ctrl-P/Ctrl-N wrap selection,
 Tab or Enter inserts the selected result without sending, and Escape dismisses
 without deleting the token. Bracketed paste does not open a picker. File paths
-with spaces are quoted. Selected files retain the `@` prefix as highlighted,
-atomic composer tokens, including navigation, deletion, undo, local input
-history, and rejected submissions. On submission or queueing, selected text files and directories
-are snapshotted from the active thread's absolute workspace. The model receives
-the prompt with its inline `@` tokens, followed by separate user messages with
-path and byte-range frames containing file contents or a bounded directory tree. Repeated paths in a
-draft attach once. Line boundaries are preferred when splitting; long rows split
-only at UTF-8 boundaries, without dropping bytes. Supported images attach through
-the existing image composer.
-Native skill selections retain the exact source path supplied by Codex metadata
-through undo, local input history, and rejected submissions. They attach that file's
-actual contents through the same snapshot pipeline as `@`, with a skill header,
-rather than sending only selected-skill metadata. Generated managed placeholders
-resolve through the manager instead of attaching their frontmatter-only metadata.
+with spaces are quoted. Selected files retain the `@` prefix as highlighted atomic tokens. Files,
+directories, images and skills use the conversation composer's shared attachment
+snapshots and editing lifecycle. Native skill metadata retains its exact source
+path; managed placeholders resolve through the manager.
 Complete enabled `$name` references also bind automatically after a word boundary
 or on submission, including pasted prompts. Names must match exactly and have
 one enabled path in the active workspace's Codex catalog. In Mekugi mode with
@@ -490,9 +480,9 @@ leaves unavailable references as text without blocking available skills from the
 other source. Managed metadata merges into the workspace-scoped Codex picker
 catalog; stale responses cannot bind another workspace's draft.
 
-Single-unit spans use shared logic for every bound token kind, including file
-references, skill references, selection mentions, and `[Image N]` placeholders. Navigation and deletion
-never split a token. Composer and submitted-input rendering keep a token on one
+The [conversation composer](../../modules/conversation/SPEC.md) owns atomic token
+editing, draft history, joining, and external-editor reconciliation. Composer and
+submitted-input rendering keep a token on one
 row when it fits; oversized tokens wrap only at grapheme boundaries without losing
 content. Token types have distinct colors: images are magenta, files green,
 skills amber, and selection mentions cyan, consistently across composer and transcript. Literal lookalikes do
@@ -504,32 +494,9 @@ unambiguous skill references when text elements are absent; explicit text
 elements take precedence for repeated identical labels. Without either kind of
 metadata historical lookalikes stay literal.
 
-File and directory snapshots travel in Codex-owned input history, not a router-lifetime lookup.
-Queued and restored input, fork/resume, and provider switches retain
-the submitted content without reopening files. The native transcript and recalled
-prompt hide transport framing. A recalled draft with live file bindings takes a
-fresh snapshot when submitted again. Attachment contents never become developer or
-system instructions.
-
-Each draft has a 192 KiB encoded attachment budget, with half reserved for omission
-notices; file reads are bounded to 96 KiB and framed content chunks to 24 KiB.
-Directory references snapshot a deterministic name-only tree at submission, never
-recursive file contents. Root children are depth 1, their children depth 2; deeper
-descendants and child symlink targets are not traversed. Ancestor and nested
-`.gitignore` files apply, stopping ancestor lookup at the nearest Git root, and
-VCS metadata is excluded even when attaching an ignored-picker reference.
-Trees list at most 256 entries and 16 KiB, scanning at most 4,096 entries including
-ignored names. A directory exceeding the remaining scan allowance is omitted
-whole rather than selecting a filesystem-order subset. Incomplete trees carry an
-explicit truncation marker; an empty filtered tree is identified as empty.
-Ignore-file input is limited to 64 KiB across at most 64 ancestor levels and the
-visited children. Unavailable ignore rules omit the affected listing explicitly.
-Directory trees reuse file framing, receipts, dialogs, shared path display and the
-encoded attachment budget. Git global excludes and repository info/exclude are
-not applied.
-Unreadable, non-regular/non-directory, non-UTF-8, NUL-containing, and oversized files are not
-silently truncated: the model receives explicit omission notices and the composer
-reports the first omission. Each submitted user item shows file outcomes before
+Attachment content, bounds and omission behavior are owned by the
+[conversation composer](../../modules/conversation/SPEC.md). The transcript and
+recalled prompt hide transport framing. Each submitted user item shows file outcomes before
 agent activity: an `Attached` operation per included file, or `Attach failed`
 with the file and omission reason. Chunked files appear once per submitted snapshot; stacked submissions retain
 separate receipts for each snapshot. These operations
@@ -779,12 +746,8 @@ atomic cyan composer token through navigation, deletion, undo, queueing, input
 history, the external editor, and rejected submissions, and the host echo keeps it
 as a styled transcript token through its text element. After resume, recalled
 input rebinds a mention to its submitted quote when its label occurs once.
-On submission or queueing, each mention's selected text follows any file contents
-in the same versioned attachment envelope, as its own user message framed with the
-label and, for Diff, the file path. A selection over 96 KiB is refused with a
-notice; one that exceeds the remaining envelope budget is replaced by an explicit
-omission frame, and the composer reports it. Question answers use the same reference
-tokens and quoted attachments as the main composer.
+Selected text travels through the composer's shared quoted-attachment pipeline,
+including question answers. The UI reports oversized selections and omissions.
 Reference from a dialog closes it and focuses the composer. Copy and Clear keep
 the dialog open; `y` is also a dialog selection-copy shortcut.
 Copy requests the terminal clipboard via OSC 52, and Clear leaves the draft intact.
@@ -805,9 +768,7 @@ does nothing. Missing local file destinations are not clickable.
 Clipboard availability is controlled by the user's terminal.
 Arrow keys move the insertion caret across graphemes and displayed
 rows. At the first/last displayed row, Up/Down recalls older/newer submitted
-input, restoring the draft and caret after the newest entry. History is bounded
-to 100 entries per thread; live entries retain attachments, while resume hydrates
-text only from Codex user messages. There is no additional durable input store.
+input using the conversation composer’s local history.
 Ctrl+Left/Right and Alt/Option+Left/Right move to the previous word start or next
 word end, skipping whitespace and punctuation in the travel direction.
 Ctrl+Up/Down move to logical line boundaries. Word navigation accepts modified-arrow sequences and
@@ -853,13 +814,11 @@ A partial escape inside pasted content cannot swallow that marker, combine
 consecutive pastes, or leave the composer locked. Editing resumes immediately
 after an image-path paste without requiring another paste. Images are individual units for character and word navigation and
 deletion, including when immediately adjacent to text. Ctrl+Z undoes and Ctrl+Y
-redoes draft edits; each typed word, run of Backspace or Delete presses,
-bracketed paste, attachment, draft clear, and editor save is an undoable unit. History is bounded to 100 edits and resets on submission.
+redoes the composer’s grouped edits.
 Ctrl+G opens `$EDITOR` (then `$VISUAL`, then `vi`) with a temporary draft file,
 after releasing the terminal and input reader. Returning restores the UI without
-submitting. Exact image placeholders retain their attachments when moved or
-removed in the editor; duplicate placeholders reject the edit. Editor failure
-keeps the original draft and reports the recovery file.
+submitting. The composer reconciles attachment bindings with the edited text.
+Editor failure keeps the original draft and reports the recovery file.
 Images are numbered in draft order and sent as `localImage` inputs, leaving image
 XML framing to Codex. Failed submissions restore attachments with the text.
 Submitted and restored attachments retain the composer's highlighted `[Image N]`

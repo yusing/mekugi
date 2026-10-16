@@ -45,8 +45,8 @@ func TestComposerFilePickerExcludedMode(t *testing.T) {
 		t.Fatalf("excluded picker = %+v", u.picker)
 	}
 	appServerTestKeys(t, u, "\t")
-	if strings.Contains(u.draft, "@!") || !strings.Contains(u.draft, "excluded") {
-		t.Fatalf("modifier leaked into selection: %q", u.draft)
+	if strings.Contains(u.Text, "@!") || !strings.Contains(u.Text, "excluded") {
+		t.Fatalf("modifier leaked into selection: %q", u.Text)
 	}
 }
 
@@ -83,14 +83,14 @@ func TestComposerFilePickerCanceledResultsCannotReopen(t *testing.T) {
 
 func TestComposerFilePickerUsesWholeTokenAtCaret(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.draft = "see @src/main.go next"
-	u.cursorBack = len("main.go next")
+	u.Text = "see @src/main.go next"
+	u.CursorBack = len("main.go next")
 	target := u.completionTarget()
 	if target.query != "src/main.go" || target.start != 4 || target.end != 16 {
 		t.Fatalf("caret completion = %+v", target)
 	}
-	u.draft = "email@example.com"
-	u.cursorBack = 0
+	u.Text = "email@example.com"
+	u.CursorBack = 0
 	if u.completionTarget().kind != 0 {
 		t.Fatal("email opened picker")
 	}
@@ -106,8 +106,8 @@ func TestComposerFilePickerNarrowingClampsSelectedResult(t *testing.T) {
 	requests := pickerRequests(t, w)
 	pickerReply(t, u, requests[len(requests)-1].ID, `{"files":[{"root":"/work","path":"ab.go"}]}`)
 	appServerTestKeys(t, u, "\t")
-	if u.draft != "@ab.go " {
-		t.Fatalf("narrowed selection = %q", u.draft)
+	if u.Text != "@ab.go " {
+		t.Fatalf("narrowed selection = %q", u.Text)
 	}
 }
 
@@ -139,7 +139,7 @@ func TestComposerFilePickerLateSkillSaveDoesNotReplaceResults(t *testing.T) {
 		t.Fatalf("skill response corrupted file results: %+v", u.picker.choices)
 	}
 	appServerTestKeys(t, u, "\t")
-	if u.draft != "@target.txt " {
-		t.Fatalf("late save selection = %q", u.draft)
+	if u.Text != "@target.txt " {
+		t.Fatalf("late save selection = %q", u.Text)
 	}
 }

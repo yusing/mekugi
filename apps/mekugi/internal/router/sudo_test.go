@@ -131,7 +131,7 @@ func TestSudoUnlockDialog(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatal("sudo did not complete")
 			}
-			if input.Len() != 0 || len(u.unsent) != 0 || len(u.inputHistory) != 0 || u.questions.active != nil {
+			if input.Len() != 0 || len(u.unsent) != 0 || len(u.InputHistory) != 0 || u.questions.active != nil {
 				t.Fatal("local sudo answer escaped into host input or history")
 			}
 			if strings.Contains(approvalTestTranscript(t, u), "1234-secret") {
@@ -166,7 +166,7 @@ func TestSudoPasswordWithdrawal(t *testing.T) {
 	appServerTestKeys(t, u, "private-draft")
 	request.outcome = "withdrawn"
 	close(request.done)
-	if !u.expireApprovals() || u.questions.active != nil || len(u.inputHistory) != 0 || len(u.questions.calls) != 0 {
+	if !u.expireApprovals() || u.questions.active != nil || len(u.InputHistory) != 0 || len(u.questions.calls) != 0 {
 		t.Fatal("withdrawal retained a secret draft")
 	}
 	if len(request.reply) != 0 {
@@ -180,7 +180,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	u.openSudoPassword(&nativeApproval{thread: "main", turn: "old-turn", subject: "sudo id", guard: request})
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "fixture-secret")
-	if _, err := u.key(7); err != nil || u.draft != "fixture-secret" {
+	if _, err := u.key(7); err != nil || u.Text != "fixture-secret" {
 		t.Fatalf("secret editor dispatch: %v", err)
 	}
 	u.hideQuestions()
@@ -195,7 +195,7 @@ func TestSudoSecretEditorAndSessionSwitch(t *testing.T) {
 	}
 	u.openQuestions()
 	questionTestPaint(t, u, 80)
-	if u.draft != "fixture-secret" {
+	if u.Text != "fixture-secret" {
 		t.Fatal("session switch lost the password draft")
 	}
 	appServerTestKeys(t, u, "\r")

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -18,7 +20,7 @@ func TestUISnapshotLoadedSkillsRestoreClickAndReset(t *testing.T) {
 	for _, thread := range []string{"main", "child"} {
 		t.Run(thread, func(t *testing.T) {
 			u := newAppServerSessionTestUI(t, t.TempDir())
-			content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frameComposerSkillFromPath("council", "/work/council/SKILL.md", "# Council\n"))}})
+			content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(composer.SkillFrames("council", "/work/council/SKILL.md", "# Council\n"))}})
 			info := appServerThreadInfo{ID: thread, Cwd: u.session.cwd, AgentNickname: "worker", AgentRole: "worker", Turns: []appServerHistoryTurn{{ID: "t", Status: "completed", Items: []appServerItem{
 				{ID: "old", Type: "commandExecution", Command: "skills-mgr get old", ExitCode: new(0)},
 				{ID: "boundary", Type: "contextCompaction"},

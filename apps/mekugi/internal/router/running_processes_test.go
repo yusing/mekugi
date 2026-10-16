@@ -171,7 +171,7 @@ func TestRunningProcessesInteraction(t *testing.T) {
 		if err := u.shell.send(closeKey); err != nil {
 			t.Fatal(err)
 		}
-		if u.shell.output != nil || u.Turn != "active" || u.runningProcessCount() != 20 || wire.Len() != 0 || u.draft != "" {
+		if u.shell.output != nil || u.Turn != "active" || u.runningProcessCount() != 20 || wire.Len() != 0 || u.Text != "" {
 			t.Fatalf("dialog changed work or sent a model request: %s", wire.String())
 		}
 	}

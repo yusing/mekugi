@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -24,9 +27,9 @@ func TestLiveActivityAttachmentOutcomes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Repeat("private file contents\n", 1500)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	draft := composerDraft{text: "Review files", files: []composerFile{{path: path}, {path: filepath.Join(cwd, "missing.txt")}}}
-	draft.snapshotFileAttachments(cwd)
-	content, err := json.Marshal(draft.input())
+	draft := composerDraft{Text: "Review files", Files: []composer.Token{{Path: path}, {Path: filepath.Join(cwd, "missing.txt")}}}
+	draft.SnapshotFiles(cwd)
+	content, err := json.Marshal(conversationbinding.Input(draft.Draft))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +112,7 @@ func TestUISnapshotExpandedSkillMatchesDialog(t *testing.T) {
 	const body = "# Commit\n\nA documented project convention (**contributing guide**, `commitlint` or similar config) takes precedence over the message format below.\n\n## Shape commits\n\n- Make each commit one coherent, independently valid change.\n\n```sh\ngit status --short\n```"
 	for _, child := range []bool{false, true} {
 		v := sharedEventsView(child)
-		content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frameComposerSkillFromPath("commit", "/workspace/SKILL.md", body))}})
+		content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(composer.SkillFrames("commit", "/workspace/SKILL.md", body))}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,9 +144,9 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 		for _, body := range []string{"", "one", "one\n\nlast\n", "\x1b[2Jtab\tvalue\r\x07\n", strings.Repeat("界", attachments.Chunk)} {
 			for _, skill := range []bool{false, true} {
 				v := sharedEventsView(child)
-				frames := frameComposerFile("/workspace/sample.go", body)
+				frames := composer.FileFrames("/workspace/sample.go", body)
 				if skill {
-					frames = frameComposerSkillFromPath("guide", "/workspace/SKILL.md", body)
+					frames = composer.SkillFrames("guide", "/workspace/SKILL.md", body)
 				}
 				frames = append(frames, "Attached file \"/workspace/missing\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
 				content, err := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
@@ -215,8 +218,8 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 
 func TestUISnapshotAttachmentDialogs(t *testing.T) {
 	v := sharedEventsView(false)
-	frames := frameComposerFile("/workspace/sample.go", "package sample\n\nfunc Answer() int { return 42 }\n")
-	frames = append(frames, frameComposerSkillFromPath("guide", "/workspace/SKILL.md", "# Guide\n\nUse **submitted** instructions.\n")...)
+	frames := composer.FileFrames("/workspace/sample.go", "package sample\n\nfunc Answer() int { return 42 }\n")
+	frames = append(frames, composer.SkillFrames("guide", "/workspace/SKILL.md", "# Guide\n\nUse **submitted** instructions.\n")...)
 	frames = append(frames, "Attached file \"/workspace/missing.txt\": CONTENT NOT ATTACHED (\"missing\"). Read this separately if needed.")
 	content, _ := json.Marshal([]map[string]string{{"type": "text", "text": attachments.Encode(frames)}})
 	v.applyAppServerItem(true, "/workspace", "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
@@ -244,9 +247,9 @@ func TestUISnapshotDirectoryAttachment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	draft := composerDraft{text: "Review @src", files: []composerFile{{path: "src"}}}
-	draft.snapshotFileAttachments(cwd)
-	content, _ := json.Marshal(draft.input())
+	draft := composerDraft{Text: "Review @src", Files: []composer.Token{{Path: "src"}}}
+	draft.SnapshotFiles(cwd)
+	content, _ := json.Marshal(conversationbinding.Input(draft.Draft))
 	v := sharedEventsView(false)
 	v.applyAppServerItem(true, cwd, "main", "main", "turn", "input", "item/completed", "", appServerItem{Type: "userMessage", Content: content})
 	feed := v.renderFeed(80, 40)
@@ -265,14 +268,14 @@ func TestLiveActivityAttachmentStackedSnapshots(t *testing.T) {
 		for _, second := range []string{"first\n", "second\n"} {
 			var drafts []composerDraft
 			for _, body := range []string{"first\n", second} {
-				frames := frameComposerFile("/workspace/sample.txt", body)
+				frames := composer.FileFrames("/workspace/sample.txt", body)
 				if skill {
-					frames = frameComposerSkillFromPath("guide", "/workspace/SKILL.md", body)
+					frames = composer.SkillFrames("guide", "/workspace/SKILL.md", body)
 				}
-				drafts = append(drafts, composerDraft{text: "review", attachments: []string{attachments.Encode(frames)}})
+				drafts = append(drafts, composerDraft{Text: "review", Attachments: []string{attachments.Encode(frames)}})
 			}
 			joined := joinDrafts(drafts...)
-			content, err := json.Marshal(joined.input())
+			content, err := json.Marshal(conversationbinding.Input(joined.Draft))
 			if err != nil {
 				t.Fatal(err)
 			}

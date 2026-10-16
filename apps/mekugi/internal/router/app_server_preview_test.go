@@ -155,7 +155,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	p := newNativePreview(t)
 	defer p.close()
 	// These renderer assertions exercise Activity, not automatic pane choice.
-	p.ui.draft = "Keep my draft"
+	p.ui.Text = "Keep my draft"
 	render := func(name string, want ...string) string {
 		t.Helper()
 		screen := vt.NewEmulator(160, 48)
@@ -251,7 +251,7 @@ func TestNativeUIPreviewRenderedFrame(t *testing.T) {
 	}
 	for p.advance() {
 	}
-	if p.ui.draft != "Keep my draft" {
+	if p.ui.Text != "Keep my draft" {
 		t.Fatal("playback overwrote typed input")
 	}
 	render("finished session", "● main", "↩ re: your message", "↩ re: assignment", "finished", "$")
@@ -328,25 +328,25 @@ func TestNativeUIPreviewKeysBehaveLikeUI(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("also check Unsubscribe\r")
-	if p.ui.inputPayloads[p.ui.Submission().ID].text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
+	if p.ui.inputPayloads[p.ui.Submission().ID].Text != "" || p.ui.Turn == "" || !slices.ContainsFunc(p.ui.view.Entries, func(e liveActivityRecord) bool {
 		return e.Source.Agent == "You" && e.Source.Text == "also check Unsubscribe"
 	}) {
-		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.inputPayloads[p.ui.Submission().ID].text, p.ui.Turn)
+		t.Fatalf("steer not accepted: submitted=%q turn=%q", p.ui.inputPayloads[p.ui.Submission().ID].Text, p.ui.Turn)
 	}
 	keys("queued follow-up\t")
-	if len(p.ui.queued) != 1 || p.ui.draft != "" {
+	if len(p.ui.queued) != 1 || p.ui.Text != "" {
 		t.Fatal("Tab did not queue during playback")
 	}
 	keys("scratch\x03")
-	if p.ui.draft != "" || p.ui.Turn == "" || p.ui.quitRequested {
+	if p.ui.Text != "" || p.ui.Turn == "" || p.ui.quitRequested {
 		t.Fatal("first Ctrl-C did not only clear the draft")
 	}
 	keys("\x03")
 	if p.ui.Turn != "" || p.ui.status != "Interrupted" || p.advance() || len(p.active) != 0 {
 		t.Fatalf("interrupt left playback running: turn=%q status=%q active=%v", p.ui.Turn, p.ui.status, p.active)
 	}
-	if p.ui.draft != "queued follow-up" || len(p.ui.queued) != 0 {
-		t.Fatalf("interrupt did not return queued input: %q", p.ui.draft)
+	if p.ui.Text != "queued follow-up" || len(p.ui.queued) != 0 {
+		t.Fatalf("interrupt did not return queued input: %q", p.ui.Text)
 	}
 	keys("\x03")
 	for _, agent := range p.ui.agents.Agents {
@@ -389,7 +389,7 @@ func TestNativeUIPreviewSessionControlsRendered(t *testing.T) {
 	}
 	p.until("main streams its patch")
 	keys("/compact\t")
-	if p.ui.Turn == "" || len(p.ui.unsent) != 1 || p.ui.unsent[0].text != "/compact" {
+	if p.ui.Turn == "" || len(p.ui.unsent) != 1 || p.ui.unsent[0].Text != "/compact" {
 		t.Fatal("busy compact was not queued locally")
 	}
 	if frame := render(); !strings.Contains(frame, "/compact") {
@@ -1432,7 +1432,7 @@ func TestNativePreviewEditMouseNavigation(t *testing.T) {
 func TestNativeUIPreviewQuestions(t *testing.T) {
 	p := newNativePreview(t)
 	defer p.close()
-	p.ui.draft = "Keep my draft"
+	p.ui.Text = "Keep my draft"
 	p.until("sync question")
 	p.ui.openQuestions()
 	rows, _ := p.ui.mainFrame(72, 28, 0)
@@ -1443,7 +1443,7 @@ func TestNativeUIPreviewQuestions(t *testing.T) {
 	p.ui.mainFrame(72, 28, 0)
 	appServerTestKeys(t, p.ui, "2\r")
 	p.serve()
-	if p.ui.questionCount() != 0 || p.ui.draft != "Keep my draft" {
+	if p.ui.questionCount() != 0 || p.ui.Text != "Keep my draft" {
 		t.Fatal("preview did not resolve both questions and restore its draft")
 	}
 	for _, width := range []int{24, 40, 72} {

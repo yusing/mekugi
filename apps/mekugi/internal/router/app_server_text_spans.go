@@ -6,22 +6,25 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
-func composerContentSkills(content []composerUserContent) []composerSkill {
-	var skills []composerSkill
+func composerContentSkills(content []composerUserContent) []composer.Token {
+	var skills []composer.Token
 	for _, part := range content {
 		if part.Type == "skill" && part.Path != "" {
-			skills = append(skills, composerSkill{name: part.Name, path: part.Path})
+			skills = append(skills, composer.Token{Name: part.Name, Path: part.Path})
 		}
 		if part.Type == "text" {
 			frames, _ := attachments.Decode(part.Text)
 			for _, frame := range frames {
 				if name, path, _ := attachments.ParseSkillFrame(frame); name != "" {
-					skills = append(skills, composerSkill{name: name, path: path})
+					skills = append(skills, composer.Token{Name: name, Path: path})
 				}
 			}
 		}
@@ -30,27 +33,14 @@ func composerContentSkills(content []composerUserContent) []composerSkill {
 }
 
 type composerUserContent struct {
-	Type     string                `json:"type"`
-	Text     string                `json:"text"`
-	Name     string                `json:"name"`
-	Path     string                `json:"path"`
-	Elements []composerTextElement `json:"text_elements"`
+	Type     string                     `json:"type"`
+	Text     string                     `json:"text"`
+	Name     string                     `json:"name"`
+	Path     string                     `json:"path"`
+	Elements []binding.InputTextElement `json:"text_elements"`
 }
 
-// Source: codex-rs/app-server-protocol/src/protocol/v2/turn.rs:423:431@75a714843.
-// The enum field is text_elements; TextElement itself uses camelCase.
-// Codex TextElement ranges are relative to each text part, not the whole draft.
-type composerByteRange struct {
-	Start int `json:"start"`
-	End   int `json:"end"`
-}
-
-type composerTextElement struct {
-	ByteRange   composerByteRange `json:"byteRange"`
-	Placeholder string            `json:"placeholder"`
-}
-
-func composerElementSpans(text string, elements []composerTextElement) []activityui.TextSpan {
+func composerElementSpans(text string, elements []binding.InputTextElement) []activityui.TextSpan {
 	var spans []activityui.TextSpan
 	for _, element := range elements {
 		start, end := element.ByteRange.Start, element.ByteRange.End
@@ -66,7 +56,7 @@ func composerElementSpans(text string, elements []composerTextElement) []activit
 		case strings.HasPrefix(label, "@"):
 		case strings.HasPrefix(label, "$"):
 			kind = activityui.SkillToken
-		case composerSelectionLabel(label):
+		case composer.SelectionLabel(label):
 			kind = activityui.SelectionToken
 		default:
 			continue
@@ -86,30 +76,18 @@ func composerElementSpans(text string, elements []composerTextElement) []activit
 
 // Rebind only complete, unambiguous skill tokens from authoritative history or
 // the edited draft. A similarly prefixed word must not activate a stale skill.
-func restoredSkillBindings(text, name, path string) []composerSkill {
-	var skills []composerSkill
-	at := 0
-	for word := range strings.FieldsSeq(text) {
-		start := at + strings.Index(text[at:], word)
-		if word == "$"+name {
-			skills = append(skills, composerSkill{start: start, end: start + len(word), name: name, path: path})
-		}
-		at = start + len(word)
-	}
-	return skills
-}
 
-func unambiguousSkillBindings(text string, skills []composerSkill, spans []activityui.TextSpan) []composerSkill {
+func unambiguousSkillBindings(text string, skills []composer.Token, spans []activityui.TextSpan) []composer.Token {
 	paths := make(map[string]string)
 	ambiguous := make(map[string]bool)
 	for _, skill := range skills {
-		if previous, ok := paths[skill.name]; ok && previous != skill.path {
-			ambiguous[skill.name] = true
+		if previous, ok := paths[skill.Name]; ok && previous != skill.Path {
+			ambiguous[skill.Name] = true
 		} else if !ok {
-			paths[skill.name] = skill.path
+			paths[skill.Name] = skill.Path
 		}
 	}
-	var bindings []composerSkill
+	var bindings []composer.Token
 	for name, path := range paths {
 		if ambiguous[name] {
 			continue
@@ -120,14 +98,14 @@ func unambiguousSkillBindings(text string, skills []composerSkill, spans []activ
 				explicit = append(explicit, span)
 			}
 		}
-		for _, binding := range restoredSkillBindings(text, name, path) {
+		for _, binding := range composer.SkillBindings(text, name, path) {
 			if len(explicit) == 0 || slices.ContainsFunc(explicit, func(span activityui.TextSpan) bool {
-				return span.Start == binding.start && span.End == binding.end
+				return span.Start == binding.Start && span.End == binding.End
 			}) {
 				bindings = append(bindings, binding)
 			}
 		}
 	}
-	slices.SortFunc(bindings, func(a, b composerSkill) int { return a.start - b.start })
+	slices.SortFunc(bindings, func(a, b composer.Token) int { return a.Start - b.Start })
 	return bindings
 }

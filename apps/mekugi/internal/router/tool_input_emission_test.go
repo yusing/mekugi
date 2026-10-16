@@ -43,7 +43,7 @@ func TestQuestionAnswerWaitsForToolInput(t *testing.T) {
 			if err := u.flushInput(); err != nil {
 				t.Fatal(err)
 			}
-			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
+			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].Text)
 		})
 	}
 }
@@ -70,7 +70,7 @@ func TestToolInputEmissionDoesNotBlockNormalPromptsOrOtherSessions(t *testing.T)
 				questionTestPaint(t, u, 70)
 			}
 			appServerTestKeys(t, u, "1\r")
-			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].text)
+			appServerOneRequest(t, wire, "turn/steer", u.inputPayloads[u.Submission().ID].Text)
 		})
 	}
 }

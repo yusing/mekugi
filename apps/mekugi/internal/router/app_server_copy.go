@@ -14,7 +14,7 @@ import (
 // Source: codex-rs/tui/src/chatwidget/copy_picker.rs:10:105@1cc7e236.
 // Reuse the transcript and OSC 52 owner rather than a second clipboard backend.
 func (u *appServerUI) showCopyPicker() {
-	u.deleteDraftRange(0, len(u.draft))
+	u.deleteDraftRange(0, len(u.Text))
 	var response string
 	for _, entry := range slices.Backward(u.view.Entries) {
 		n := entry.Source.native

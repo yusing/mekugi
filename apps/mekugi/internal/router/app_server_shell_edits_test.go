@@ -31,7 +31,7 @@ func newShellEditTestUI(t *testing.T) *appServerUI {
 
 func startShellEditTestCommand(t *testing.T, u *appServerUI, command, item string) *appServerShellEdit {
 	t.Helper()
-	u.draft = "!" + command
+	u.Text = "!" + command
 	if err := u.submitShell(); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestAppServerShellEditsFailedWriterAndNoEffect(t *testing.T) {
 		}
 	}
 	// A rejected request closes its window without capturing external edits.
-	u.draft = "!printf rejected > saved.txt"
+	u.Text = "!printf rejected > saved.txt"
 	if err := u.submitShell(); err != nil {
 		t.Fatal(err)
 	}

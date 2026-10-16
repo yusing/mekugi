@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -26,9 +28,9 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	}
 	u, w := newAppServerTestUI()
 	u.session.cwd = cwd
-	u.draft = "Review "
+	u.Text = "Review "
 	bindComposerFile(u, `@"file name.go"`, "file name.go")
-	u.draft += " please"
+	u.Text += " please"
 	draft := u.takeDraft()
 	if err := os.WriteFile(path, []byte("changed after queueing"), 0600); err != nil {
 		t.Fatal(err)
@@ -41,7 +43,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("expected prompt and attachment input: %+v", requests)
 	}
 	input := requests[0].Params.Input
-	if input[0].Text != draft.text {
+	if input[0].Text != draft.Text {
 		t.Fatalf("changed inline placeholder: %q", input[0].Text)
 	}
 	frames, ok := attachments.Decode(input[1].Text)
@@ -49,19 +51,19 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 		t.Fatalf("snapshot lost: %q", frames)
 	}
 	content, _ := json.Marshal(input)
-	if text, _, ok := appServerUserText(content); !ok || text != draft.text {
+	if text, _, ok := appServerUserText(content); !ok || text != draft.Text {
 		t.Fatalf("transport envelope leaked into transcript: %q", text)
 	}
 	resumed, _ := newAppServerTestUI()
 	resumed.agents = newLiveActivityView()
 	resumed.session.start(resumed.Thread, cwd)
 	resumed.restoreHistory([]appServerHistoryTurn{{ID: "saved", Status: "completed", Items: []appServerItem{{Type: "userMessage", ID: "saved-input", Content: content}}}})
-	if len(resumed.inputHistory) != 1 || resumed.inputHistory[0].text != draft.text {
+	if len(resumed.InputHistory) != 1 || resumed.InputHistory[0].Text != draft.Text {
 		t.Fatal("resume leaked attachment framing into recalled prompt")
 	}
 	providerParts := []map[string]any{{"type": "input_text", "text": input[0].Text}, {"type": "input_image", "image_url": "data:image/png;base64,test"}, {"type": "input_text", "text": input[1].Text}}
 	raw := responses.MustMarshalJSON([]any{map[string]any{"type": "message", "role": "user", "content": providerParts}})
-	if question := binding.SubmittedUserText(raw, "/root", false); question != draft.text {
+	if question := binding.SubmittedUserText(raw, "/root", false); question != draft.Text {
 		t.Fatalf("attachment became naming text: %q", question)
 	}
 	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
@@ -73,7 +75,7 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	if err := json.Unmarshal(request.Fields["input"], &messages); err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 2 || len(messages[0].Content) != 2 || messages[0].Content[0]["text"] != draft.text || messages[0].Content[1]["type"] != "input_image" || messages[1].Role != "user" || messages[1].Content[0]["text"] != frames[0] {
+	if len(messages) != 2 || len(messages[0].Content) != 2 || messages[0].Content[0]["text"] != draft.Text || messages[0].Content[1]["type"] != "input_image" || messages[1].Role != "user" || messages[1].Content[0]["text"] != frames[0] {
 		t.Fatalf("projection did not preserve prompt/media and separate file: %+v", messages)
 	}
 	first := bytes.Clone(request.Fields["input"])
@@ -126,13 +128,13 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 func TestComposerFileAttachmentNoticeBudget(t *testing.T) {
 	d := composerDraft{}
 	for i := range 1200 {
-		d.files = append(d.files, composerFile{path: strings.Repeat("missing", 25) + string(rune(0x4e00+i))})
+		d.Files = append(d.Files, composer.Token{Path: strings.Repeat("missing", 25) + string(rune(0x4e00+i))})
 	}
-	d.snapshotFileAttachments(t.TempDir())
-	if len(d.attachments) != 1 || len(d.attachments[0]) > attachments.Budget {
+	d.SnapshotFiles(t.TempDir())
+	if len(d.Attachments) != 1 || len(d.Attachments[0]) > attachments.Budget {
 		t.Fatal("omission notices exceeded attachment budget")
 	}
-	frames, ok := attachments.Decode(d.attachments[0])
+	frames, ok := attachments.Decode(d.Attachments[0])
 	if !ok || !strings.Contains(frames[len(frames)-1], "remaining contents NOT ATTACHED") {
 		t.Fatal("omitted references were not reported")
 	}
@@ -140,7 +142,7 @@ func TestComposerFileAttachmentNoticeBudget(t *testing.T) {
 
 func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 	for _, content := range []string{"", strings.Repeat("界", attachments.Chunk), strings.Repeat("row\r\n", 13000), strings.Repeat("\"\\\t", 10000)} {
-		frames := frameComposerFile("/work/example", content)
+		frames := composer.FileFrames("/work/example", content)
 		var recovered strings.Builder
 		for _, frame := range frames {
 			_, body, ok := strings.Cut(frame, ":\n")
@@ -165,13 +167,13 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 	}
 	d := composerDraft{}
 	for _, path := range []string{"empty", "empty", "binary", "invalid", "large", "escaped", "missing"} {
-		d.files = append(d.files, composerFile{path: path})
+		d.Files = append(d.Files, composer.Token{Path: path})
 	}
-	d.snapshotFileAttachments(cwd)
-	if len(d.attachments) != 1 || len(d.attachments[0]) > attachments.Budget || d.attachmentNotice == "" {
+	d.SnapshotFiles(cwd)
+	if len(d.Attachments) != 1 || len(d.Attachments[0]) > attachments.Budget || d.AttachmentNotice == "" {
 		t.Fatal("attachment budget/notice missing")
 	}
-	frames, ok := attachments.Decode(d.attachments[0])
+	frames, ok := attachments.Decode(d.Attachments[0])
 	if !ok || len(frames) != 6 {
 		t.Fatalf("deduplication or notices lost: %q", frames)
 	}
@@ -183,7 +185,7 @@ func TestComposerFileAttachmentChunksAndBounds(t *testing.T) {
 			t.Fatalf("unreadable/oversize file silently lost: %q", frame)
 		}
 	}
-	if _, err := readComposerFile("relative.txt"); err == nil {
+	if _, err := composer.ReadFile("relative.txt"); err == nil {
 		t.Fatal("relative file used process cwd")
 	}
 }
@@ -220,7 +222,7 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 	} {
 		for _, multipart := range []bool{false, true} {
 			t.Run(test.name+map[bool]string{false: "/string", true: "/parts"}[multipart], func(t *testing.T) {
-				frames := frameComposerSkillFromPath(name, test.path, "snapshot instructions")
+				frames := composer.SkillFrames(name, test.path, "snapshot instructions")
 				if test.omitted {
 					frames = []string{strings.Split(frames[0], " (UTF-8 bytes ")[0] + `: CONTENT NOT ATTACHED ("too large"). Read this separately if needed.`}
 				}
@@ -258,23 +260,23 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 
 func TestComposerFileAttachmentOversizedInputRestoresDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
-	d := composerDraft{text: strings.Repeat("x", composerTextLimit), attachments: []string{attachments.Encode([]string{"Attached file data"})}}
+	d := composerDraft{Text: strings.Repeat("x", composerTextLimit), Attachments: []string{attachments.Encode([]string{"Attached file data"})}}
 	if err := u.send([]composerDraft{d}, false); err != nil {
 		t.Fatal(err)
 	}
-	if w.Len() != 0 || u.draft != d.text || !u.feedback.Alert || u.Starting() {
+	if w.Len() != 0 || u.Text != d.Text || !u.feedback.Alert || u.Starting() {
 		t.Fatal("oversized input was sent or draft lost")
 	}
 }
 
 func TestComposerFileAttachmentLeavesOrdinaryUnicodeLimitToCodex(t *testing.T) {
 	u, w := newAppServerTestUI()
-	d := composerDraft{text: strings.Repeat("界", 400_000)}
+	d := composerDraft{Text: strings.Repeat("界", 400_000)}
 	if err := u.send([]composerDraft{d}, false); err != nil {
 		t.Fatal(err)
 	}
 	requests := appServerTurnRequests(t, w)
-	if len(requests) != 1 || requests[0].text() != d.text {
+	if len(requests) != 1 || requests[0].text() != d.Text {
 		t.Fatal("attachment safety limit rejected an ordinary Unicode prompt")
 	}
 }

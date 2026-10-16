@@ -42,10 +42,10 @@ func TestAppServerClipboardImage(t *testing.T) {
 			t.Setenv("PATH", dir)
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, "before \x16 after")
-			if u.draft != "before [Image 1] after" || len(u.images) != 1 {
-				t.Fatalf("paste = %q, images=%v, notice=%s", u.draft, u.images, u.feedback.Text)
+			if u.Text != "before [Image 1] after" || len(u.Images) != 1 {
+				t.Fatalf("paste = %q, images=%v, notice=%s", u.Text, u.Images, u.feedback.Text)
 			}
-			path := u.images[0].path
+			path := u.Images[0].Path
 			t.Cleanup(func() { _ = os.Remove(path) })
 			data, err := os.ReadFile(path)
 			if err != nil || !bytes.Equal(data, pngData.Bytes()) {
@@ -53,13 +53,13 @@ func TestAppServerClipboardImage(t *testing.T) {
 			}
 			// An undoable deletion retains the image until its draft history is released.
 			appServerTestKeys(t, u, "\x1b[H\x1b[C\x1b[C\x1b[C\x1b[C\x1b[C\x1b[C\x1b[C\x1b[3~")
-			if u.draft != "before  after" || len(u.images) != 0 {
-				t.Fatalf("delete image = %q, %v", u.draft, u.images)
+			if u.Text != "before  after" || len(u.Images) != 0 {
+				t.Fatalf("delete image = %q, %v", u.Text, u.Images)
 			}
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("undoable image lost: %v", err)
 			}
-			u.undoDrafts, u.redoDrafts = nil, nil
+			u.UndoDrafts, u.RedoDrafts = nil, nil
 			u.pruneDraftImages()
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatalf("unreferenced draft image remains: %v", err)
@@ -68,7 +68,7 @@ func TestAppServerClipboardImage(t *testing.T) {
 				t.Fatal(err)
 			}
 			appServerTestKeys(t, u, "\x16")
-			if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "PNG image") || len(u.images) != 0 {
+			if !u.feedback.Alert || !strings.Contains(u.feedback.Text, "PNG image") || len(u.Images) != 0 {
 				t.Fatalf("bad clipboard not reported: %q", u.feedback.Text)
 			}
 		})
@@ -102,14 +102,14 @@ func TestAppServerPastedImagePathAttaches(t *testing.T) {
 	} {
 		u, _ := newAppServerTestUI()
 		appServerTestKeys(t, u, "see \x1b[200~"+pasted+"\x1b[201~now")
-		if u.draft != "see [Image 1] now" || len(u.images) != 1 || u.images[0].path != path {
-			t.Fatalf("paste %q = %q, images=%v", pasted, u.draft, u.images)
+		if u.Text != "see [Image 1] now" || len(u.Images) != 1 || u.Images[0].Path != path {
+			t.Fatalf("paste %q = %q, images=%v", pasted, u.Text, u.Images)
 		}
 		appServerTestKeys(t, u, "\x1a\x1a")
-		if u.draft != "see " {
-			t.Fatalf("attachment and its space are not one undo: %q", u.draft)
+		if u.Text != "see " {
+			t.Fatalf("attachment and its space are not one undo: %q", u.Text)
 		}
-		u.undoDrafts, u.redoDrafts = nil, nil
+		u.UndoDrafts, u.RedoDrafts = nil, nil
 		u.pruneDraftImages()
 		u.discardDraftImages()
 		if _, err := os.Stat(path); err != nil {
@@ -119,8 +119,8 @@ func TestAppServerPastedImagePathAttaches(t *testing.T) {
 	for _, pasted := range []string{text, path + " " + path, "relative.png", filepath.Join(dir, "missing.png"), dir, "file://host" + path} {
 		u, _ := newAppServerTestUI()
 		appServerTestKeys(t, u, "\x1b[200~"+pasted+"\x1b[201~")
-		if u.draft != pasted || len(u.images) != 0 {
-			t.Fatalf("non-image paste %q = %q, images=%v", pasted, u.draft, u.images)
+		if u.Text != pasted || len(u.Images) != 0 {
+			t.Fatalf("non-image paste %q = %q, images=%v", pasted, u.Text, u.Images)
 		}
 	}
 }

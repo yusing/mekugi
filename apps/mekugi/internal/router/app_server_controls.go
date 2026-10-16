@@ -4,7 +4,7 @@ func (u *appServerUI) controlsCommand(text string) (bool, error) {
 	switch text {
 	case "/lock", "/unlock":
 		u.interruptLocked = text == "/lock"
-		u.deleteDraftRange(0, len(u.draft))
+		u.deleteDraftRange(0, len(u.Text))
 		if u.interruptLocked {
 			u.lockNotice()
 		} else {
@@ -39,7 +39,7 @@ func (u *appServerUI) keyboardEscape() error {
 	}
 	// Completion can arrive before either acknowledgement. A repeated Escape
 	// must not restore the waiting input or interrupt its replacement turn.
-	if !u.PrepareEscape(len(u.unsent) > 0 && u.unsent[0].text != "/compact") {
+	if !u.PrepareEscape(len(u.unsent) > 0 && u.unsent[0].Text != "/compact") {
 		return nil
 	}
 	err := u.interruptTurn()

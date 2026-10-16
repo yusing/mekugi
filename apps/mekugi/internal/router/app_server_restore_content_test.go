@@ -91,7 +91,7 @@ func TestAppServerRestoreRosterAndActivityFromObservationalHistory(t *testing.T)
 	if len(u.resumePending) != 1 || u.session.paths["live"] != "" {
 		t.Fatal("live event was applied before history hydration")
 	}
-	u.draft = "do not send yet"
+	u.Text = "do not send yet"
 	appServerTestKeys(t, u, "\r")
 	child := map[string]any{"id": "child", "cwd": workspace, "parentThreadId": "main", "agentRole": "review", "createdAt": 100, "updatedAt": 110,
 		"source": map[string]any{"subAgent": map[string]any{"thread_spawn": map[string]any{"agent_path": "/root/reviewer"}}}}
@@ -280,7 +280,7 @@ func TestAppServerRestoreWaitsForDurableDiffBeforeInput(t *testing.T) {
 			}
 			restoreContentReply(t, u, 0, map[string]any{"data": []any{}})
 			restoreContentReply(t, u, 1, map[string]any{"data": []any{}})
-			u.draft = "next turn"
+			u.Text = "next turn"
 			appServerTestKeys(t, u, "\r")
 			if u.restoring == nil || len(u.shell.diff.data.files()) != 0 || len(restoreContentRequests(t, w)) != 2 {
 				t.Fatal("input unlocked before the Diff controller consumed the restored scope")

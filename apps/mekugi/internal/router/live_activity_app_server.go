@@ -198,8 +198,8 @@ func appServerUserText(content jsontext.Value) (string, []activityui.TextSpan, b
 			spans = append(spans, activityui.TextSpan{Start: start, End: len(text), Kind: activityui.ImageToken})
 		}
 	}
-	draft := composerDraft{text: text}
-	draft.skills = unambiguousSkillBindings(text, composerContentSkills(contents), spans)
+	draft := composerDraft{Text: text}
+	draft.Skills = unambiguousSkillBindings(text, composerContentSkills(contents), spans)
 	for _, span := range draft.displaySpans() {
 		if !slices.ContainsFunc(spans, func(existing activityui.TextSpan) bool {
 			return span.Start < existing.End && span.End > existing.Start

@@ -26,7 +26,7 @@ func (u *appServerUI) titleCommand(text string) bool {
 		u.setNotice("Wait for the session to be ready", false)
 		return true
 	}
-	u.deleteDraftRange(0, len(u.draft))
+	u.deleteDraftRange(0, len(u.Text))
 	u.setNotice("", false)
 	u.renameSessionTitle(name)
 	return true

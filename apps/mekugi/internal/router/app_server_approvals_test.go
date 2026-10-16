@@ -193,8 +193,8 @@ func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 		t.Fatalf("banner missing:\n%s", paint)
 	}
 	appServerTestKeys(t, u, "1")
-	if u.draft != "draft1" || strings.Contains(input.String(), `"decision"`) {
-		t.Fatalf("draft=%q response=%s", u.draft, input.String())
+	if u.Text != "draft1" || strings.Contains(input.String(), `"decision"`) {
+		t.Fatalf("draft=%q response=%s", u.Text, input.String())
 	}
 	if !u.openApprovals() {
 		t.Fatal("approval did not reopen")
@@ -206,8 +206,8 @@ func TestNativeApprovalWaitsForAnEmptyComposer(t *testing.T) {
 	u.openApprovals()
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "x\x7f\x17\t\x1b[200~pasted\x1b[201~2\r")
-	if u.draft != "draft1" || !strings.Contains(input.String(), `"decision":"decline"`) {
-		t.Fatalf("draft=%q response=%s", u.draft, input.String())
+	if u.Text != "draft1" || !strings.Contains(input.String(), `"decision":"decline"`) {
+		t.Fatalf("draft=%q response=%s", u.Text, input.String())
 	}
 }
 
@@ -335,7 +335,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			u.insertDraft("kept draft")
 			image := answerImageFixture(t)
 			u.attachImage(image)
-			kept := u.draft
+			kept := u.Text
 			request := <-shell.guard.requests
 			if request.executable != shell.real+"/git" {
 				t.Fatalf("resolved executable = %q", request.executable)
@@ -348,7 +348,7 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 				t.Fatal("typing did not select plain-text denial")
 			}
 			u.hideApprovals()
-			if u.draft != kept {
+			if u.Text != kept {
 				t.Fatal("approval changed parked draft")
 			}
 			if _, err := os.Stat(image); err != nil {
@@ -362,8 +362,8 @@ func TestNativeApprovalTypedDenialReachesCommand(t *testing.T) {
 			if keys != "3" {
 				want = "user denied this command with a reason: !do not publish yet"
 			}
-			if run.code != 1 || run.stderr != "mekugi: remote write denied: "+want+"\n" || len(shell.invoked(t)) != 0 || u.draft != kept || len(u.images) != 1 {
-				t.Fatalf("result=%+v draft=%q", run, u.draft)
+			if run.code != 1 || run.stderr != "mekugi: remote write denied: "+want+"\n" || len(shell.invoked(t)) != 0 || u.Text != kept || len(u.Images) != 1 {
+				t.Fatalf("result=%+v draft=%q", run, u.Text)
 			}
 		})
 	}
@@ -415,7 +415,7 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 	if err := u.shell.mouse(fmt.Sprintf("\x1b[<0;%d;%dM", u.questions.rect.x+1, u.questions.rect.y+1)); err != nil {
 		t.Fatal(err)
 	}
-	if u.approvals.open || u.currentQuestion() == nil || u.draft != "" {
+	if u.approvals.open || u.currentQuestion() == nil || u.Text != "" {
 		t.Fatal("question and approval share the composer")
 	}
 	questionTestPaint(t, u, 80)
@@ -424,8 +424,8 @@ func TestNativeApprovalQuestionEditorOwnership(t *testing.T) {
 		t.Fatalf("question answer sent to approval: %s", wire.String())
 	}
 	u.openApprovals()
-	if u.draft != "wait for review" {
-		t.Fatalf("approval reason lost: %q", u.draft)
+	if u.Text != "wait for review" {
+		t.Fatalf("approval reason lost: %q", u.Text)
 	}
 	questionTestPaint(t, u, 80)
 	appServerTestKeys(t, u, "\r")
@@ -444,7 +444,7 @@ func TestNativeApprovalWithoutProxyKeepsHostDecisions(t *testing.T) {
 		t.Fatal("proxy-free UI offers unavailable feedback")
 	}
 	appServerTestKeys(t, u, "ignored reason2\r")
-	if !strings.Contains(wire.String(), `"decision":"cancel"`) || len(u.approvals.pending) != 0 || u.draft != "" {
+	if !strings.Contains(wire.String(), `"decision":"cancel"`) || len(u.approvals.pending) != 0 || u.Text != "" {
 		t.Fatalf("proxy-free native denial did not complete: %s", wire.String())
 	}
 }
@@ -535,7 +535,7 @@ func TestUISnapshotNativeApprovalDock(t *testing.T) {
 			appServerTestKeys(t, u, "do not publish yet")
 		}},
 		{"approval-banner", 80, func(t *testing.T, u *appServerUI) {
-			u.draft = "Keep this draft."
+			u.Text = "Keep this draft."
 			approvalTestCommand(t, u, 1, nil)
 			approvalTestCommand(t, u, 2, nil)
 		}},

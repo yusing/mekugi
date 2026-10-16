@@ -116,7 +116,7 @@ func (u *appServerUI) renderPicker(width, height int) []string {
 	footer := "  " + bold + "enter" + reset + dim + " insert · " + reset + bold + "esc" + reset + dim + " close" + reset
 	if p.target.kind == '/' {
 		tab := "complete"
-		if strings.TrimSpace(u.draft) == "/compact" && p.modal == "" {
+		if strings.TrimSpace(u.Text) == "/compact" && p.modal == "" {
 			tab = "queue"
 		}
 		footer = "  " + bold + "↑/↓" + reset + dim + " navigate · " + reset + bold + "enter" + reset + dim + " select · " + reset + bold + "tab" + reset + dim + " " + tab + " · " + reset + bold + "esc" + reset + dim + " close" + reset

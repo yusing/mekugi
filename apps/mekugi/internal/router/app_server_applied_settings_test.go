@@ -219,7 +219,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 				appliedSettingsTestNotify(t, u, "saved-model", "", "")
 			} else {
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, correctionID))
-				if u.draft != "held" || !u.Settings.RestoreEffort || u.Settings.Pending() || w.Len() != 0 {
+				if u.Text != "held" || !u.Settings.RestoreEffort || u.Settings.Pending() || w.Len() != 0 {
 					t.Fatal("rejected restoration ran input or lost its recovery draft")
 				}
 				if err := u.flushInput(); err != nil || w.Len() != 0 {
@@ -243,7 +243,7 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 					appServerOneRequest(t, w, "thread/settings/update", "")
 					appliedSettingsTestNotify(t, u, "saved-model", effort, "")
 				}
-				if w.Len() != 0 || u.draft != "held" {
+				if w.Len() != 0 || u.Text != "held" {
 					t.Fatal("reasoning selection automatically submitted the recovered draft")
 				}
 				appServerTestKeys(t, u, "\r")

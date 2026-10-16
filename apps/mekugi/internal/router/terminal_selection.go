@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rivo/uniseg"
@@ -317,7 +319,7 @@ func (u *terminalUI) selectionAction(action byte) {
 		}
 		u.main.insertSelection(description, s.text(), source)
 		u.main.refreshPicker()
-		u.main.run = runNone
+		u.main.Run = composer.NoRun
 		u.focus = 0
 		u.output = nil
 	case 'c':

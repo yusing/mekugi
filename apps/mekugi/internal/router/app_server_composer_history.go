@@ -2,156 +2,86 @@ package router
 
 import (
 	"os"
-	"slices"
+
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 )
 
 type composerDraft struct {
-	compact          sessioncontrol.CompactIntent
-	questionCall     *nativeQuestionCall
-	text             string
-	cursorBack       int
-	images           []composerImage
-	answerImages     []string // Images accompanying a complete question-reply envelope.
-	skills           []composerSkill
-	files            []composerFile
-	selections       []composerSelection
-	attachments      []string // Immutable snapshots captured when queued/submitted.
-	attachmentNotice string
-	inHistory        bool // An accepted steer being resent is already in input history.
+	composer.Draft
+	compact      sessioncontrol.CompactIntent
+	questionCall *nativeQuestionCall
 }
 
-// History is local to this thread. Resume hydrates text from Codex history;
-// session entries retain attachments without creating a second durable store.
 func (u *appServerUI) rememberInput(draft composerDraft) {
-	if draft.text == "" || draft.questionCall != nil || len(questionReplies(draft.text)) > 0 {
-		return
-	}
-	u.inputHistory = append(u.inputHistory, draft)
-	if len(u.inputHistory) > 100 {
-		u.inputHistory = slices.Clone(u.inputHistory[len(u.inputHistory)-100:])
+	if draft.questionCall == nil && len(questionReplies(draft.Text)) == 0 {
+		u.Editor.Remember(draft.Draft)
 	}
 }
-
 func (u *appServerUI) recallInput(backward bool) {
-	next := u.historyBack - 1
-	if backward {
-		next = u.historyBack + 1
+	if u.Editor.Recall(backward) {
+		u.cursorColumn = nil
+		u.setNotice("", false)
+		u.pruneDraftImages()
 	}
-	if next < 0 || next > len(u.inputHistory) {
-		return
-	}
-	if u.historyBack == 0 {
-		u.historyDraft = u.draftSnapshot()
-	}
-	u.recordDraft()
-	u.historyBack = next
-	snapshot := u.historyDraft
-	if next > 0 {
-		snapshot = u.inputHistory[len(u.inputHistory)-next]
-	}
-	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
-	u.skills = slices.Clone(snapshot.skills)
-	u.files = slices.Clone(snapshot.files)
-	u.selections = slices.Clone(snapshot.selections)
-	u.cursorColumn = nil
 }
-
-func (u *appServerUI) draftSnapshot() composerDraft {
-	return composerDraft{text: u.draft, cursorBack: u.cursorBack, images: slices.Clone(u.images), skills: slices.Clone(u.skills), files: slices.Clone(u.files), selections: slices.Clone(u.selections)}
-}
-
-func (u *appServerUI) loadDraft(d composerDraft) {
-	u.draft, u.cursorBack, u.images = d.text, d.cursorBack, slices.Clone(d.images)
-	u.skills, u.files, u.selections = slices.Clone(d.skills), slices.Clone(d.files), slices.Clone(d.selections)
-}
-
-type composerUndo struct {
-	composerDraft
-	historyBack  int
-	historyDraft composerDraft
-}
-
-func (u *appServerUI) undoSnapshot() composerUndo {
-	return composerUndo{u.draftSnapshot(), u.historyBack, u.historyDraft}
-}
-
+func (u *appServerUI) draftSnapshot() composerDraft { return composerDraft{Draft: u.Draft.Editable()} }
+func (u *appServerUI) loadDraft(d composerDraft)    { u.Draft = d.Draft.Editable() }
 func (u *appServerUI) recordDraft() {
-	u.undoDrafts = append(u.undoDrafts, u.undoSnapshot())
-	if len(u.undoDrafts) > 100 {
-		u.undoDrafts = slices.Clone(u.undoDrafts[len(u.undoDrafts)-100:])
-	}
-	u.redoDrafts = nil
-	u.run = runNone
+	u.Editor.Record()
 	u.setNotice("", false)
 	u.pruneDraftImages()
 }
-
 func (u *appServerUI) undoDraft(redo bool) {
-	from, to := &u.undoDrafts, &u.redoDrafts
-	if redo {
-		from, to = to, from
-	}
-	u.run = runNone
+	u.Editor.Undo(redo)
 	u.cursorColumn = nil
 	u.setNotice("", false)
-	if len(*from) == 0 {
-		return
-	}
-	*to = append(*to, u.undoSnapshot())
-	snapshot := (*from)[len(*from)-1]
-	*from = (*from)[:len(*from)-1]
-	u.historyBack, u.historyDraft = snapshot.historyBack, snapshot.historyDraft
-	u.draft, u.cursorBack, u.images = snapshot.text, snapshot.cursorBack, slices.Clone(snapshot.images)
-	u.skills = slices.Clone(snapshot.skills)
-	u.files = slices.Clone(snapshot.files)
-	u.selections = slices.Clone(snapshot.selections)
 }
 
 // Images referenced by undo/redo remain usable. Submission transfers file
 // lifetime to Codex; only this session's never-submitted files are reclaimed.
 func (u *appServerUI) pruneDraftImages() {
 	used := make(map[string]bool)
-	for _, image := range u.images {
-		used[image.path] = true
+	for _, image := range u.Images {
+		used[image.Path] = true
 	}
 	if u.btw != nil {
-		for _, image := range u.btw.pending.images {
-			used[image.path] = true
+		for _, image := range u.btw.pending.Images {
+			used[image.Path] = true
 		}
 	}
-	stacks := [][]composerUndo{u.undoDrafts, u.redoDrafts}
+	stacks := [][]composer.Undo{u.UndoDrafts, u.RedoDrafts}
 	for _, call := range u.questions.calls {
 		for _, question := range call.questions {
 			e := question.editor
-			stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
+			stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 		}
 	}
 	if u.questions.active != nil {
 		e := u.questions.parked
-		stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
+		stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 	}
 	if u.approvals.open && u.approvals.pending[0].denialChoice() >= 0 {
 		e := u.approvals.parked
-		stacks = append(stacks, e.undo, e.redo, []composerUndo{e.snapshot})
+		stacks = append(stacks, e.UndoDrafts, e.RedoDrafts, []composer.Undo{e.Snapshot})
 	}
 	for _, stack := range stacks {
 		for _, snapshot := range stack {
-			for _, draft := range []composerDraft{snapshot.composerDraft, snapshot.historyDraft} {
-				for _, image := range draft.images {
-					used[image.path] = true
+			for _, draft := range []composer.Draft{snapshot.Draft, snapshot.HistoryDraft} {
+				for _, image := range draft.Images {
+					used[image.Path] = true
 				}
 			}
 		}
 	}
-	for _, history := range [][]composerDraft{u.inputHistory, {u.historyDraft}, u.unsent, u.queued} {
+	for _, history := range [][]composer.Draft{u.InputHistory, {u.HistoryDraft}, draftValues(u.unsent), draftValues(u.queued)} {
 		for _, snapshot := range history {
-			for _, path := range snapshot.answerImages {
+			for _, path := range snapshot.AnswerImages {
 				used[path] = true
 			}
-			for _, image := range snapshot.images {
-				used[image.path] = true
+			for _, image := range snapshot.Images {
+				used[image.Path] = true
 			}
 		}
 	}

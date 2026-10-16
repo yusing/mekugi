@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	"github.com/charmbracelet/x/ansi"
@@ -98,8 +100,8 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 		t.Fatalf("skill filtering = %+v", u.picker.choices)
 	}
 	appServerTestKeys(t, u, "\t")
-	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != path || len(u.view.Entries) != 0 {
-		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.draft, u.skills, len(u.view.Entries))
+	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path || len(u.view.Entries) != 0 {
+		t.Fatalf("skill insertion submitted or lost binding: draft=%q skills=%+v entries=%d", u.Text, u.Skills, len(u.view.Entries))
 	}
 	w.Reset()
 	appServerTestKeys(t, u, "\r")
@@ -118,12 +120,12 @@ func TestComposerSkillPickerFiltersAndSubmitsAttachedContents(t *testing.T) {
 		t.Fatalf("skill contents were not sent in a text attachment: %+v", request.Params.Input)
 	}
 	frames, ok := attachments.Decode(request.Params.Input[1].Text)
-	if !ok || len(frames) != 1 || frames[0] != frameComposerSkillFromPath("quiet", path, instructions)[0] {
+	if !ok || len(frames) != 1 || frames[0] != composer.SkillFrames("quiet", path, instructions)[0] {
 		t.Fatalf("skill contents or source path missing: %+v", frames)
 	}
 	appServerTestMessage(t, u, `{"id":2,"error":{"code":-1,"message":"rejected"}}`)
-	if u.draft != "$quiet " || len(u.skills) != 1 || u.skills[0].path != path {
-		t.Fatalf("rejected submission lost skill: draft=%q skills=%+v", u.draft, u.skills)
+	if u.Text != "$quiet " || len(u.Skills) != 1 || u.Skills[0].Path != path {
+		t.Fatalf("rejected submission lost skill: draft=%q skills=%+v", u.Text, u.Skills)
 	}
 }
 
@@ -136,22 +138,22 @@ func TestComposerFilePickerInsertionUndoRedoAndPasteOpacity(t *testing.T) {
 	requests = pickerRequests(t, w)
 	pickerReply(t, u, requests[1].ID, `{"files":[{"root":"/work","path":"file name.go"}]}`)
 	appServerTestKeys(t, u, "\t")
-	if u.draft != `see @"file name.go" ` || len(u.view.Entries) != 0 {
-		t.Fatalf("file insertion submitted or did not quote whitespace: %q", u.draft)
+	if u.Text != `see @"file name.go" ` || len(u.view.Entries) != 0 {
+		t.Fatalf("file insertion submitted or did not quote whitespace: %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "see @fi" {
-		t.Fatalf("undo picker replacement = %q", u.draft)
+	if u.Text != "see @fi" {
+		t.Fatalf("undo picker replacement = %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x19")
-	if u.draft != `see @"file name.go" ` {
-		t.Fatalf("redo picker replacement = %q", u.draft)
+	if u.Text != `see @"file name.go" ` {
+		t.Fatalf("redo picker replacement = %q", u.Text)
 	}
 	v, input := newAppServerTestUI()
 	v.session.cwd = "/work"
 	appServerTestKeys(t, v, "\x1b[200~@secret $quiet\x1b[201~")
-	if v.draft != "@secret $quiet" || v.picker.open || input.Len() != 0 {
-		t.Fatalf("paste opened search: draft=%q picker=%+v", v.draft, v.picker)
+	if v.Text != "@secret $quiet" || v.picker.open || input.Len() != 0 {
+		t.Fatalf("paste opened search: draft=%q picker=%+v", v.Text, v.picker)
 	}
 }
 
@@ -174,8 +176,8 @@ func TestComposerPickerEscapeViaShellAndFrameBounds(t *testing.T) {
 	if err := u.shell.flushEscape(); err != nil {
 		t.Fatal(err)
 	}
-	if u.picker.open || u.draft != "@file" {
-		t.Fatalf("escape altered draft or left picker open: %q %+v", u.draft, u.picker)
+	if u.picker.open || u.Text != "@file" {
+		t.Fatalf("escape altered draft or left picker open: %q %+v", u.Text, u.picker)
 	}
 	u.refreshPicker()
 	if u.picker.open {
@@ -204,31 +206,31 @@ func TestComposerSkillPickerUndoHistoryAndAtomicEditing(t *testing.T) {
 	requests := pickerRequests(t, w)
 	pickerReply(t, u, requests[0].ID, `{"data":[{"cwd":"/work","skills":[{"name":"review","path":"/work/review/SKILL.md","enabled":true}]}]}`)
 	appServerTestKeys(t, u, "\r")
-	if u.draft != "$review " || len(u.skills) != 1 {
-		t.Fatalf("selection = %q %+v", u.draft, u.skills)
+	if u.Text != "$review " || len(u.Skills) != 1 {
+		t.Fatalf("selection = %q %+v", u.Text, u.Skills)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "$" || len(u.skills) != 0 {
-		t.Fatalf("undo = %q %+v", u.draft, u.skills)
+	if u.Text != "$" || len(u.Skills) != 0 {
+		t.Fatalf("undo = %q %+v", u.Text, u.Skills)
 	}
 	appServerTestKeys(t, u, "\x19")
-	if u.draft != "$review " || len(u.skills) != 1 {
-		t.Fatalf("redo = %q %+v", u.draft, u.skills)
+	if u.Text != "$review " || len(u.Skills) != 1 {
+		t.Fatalf("redo = %q %+v", u.Text, u.Skills)
 	}
 	appServerTestKeys(t, u, "\x7f\x7f")
-	if u.draft != "" || len(u.skills) != 0 {
-		t.Fatalf("atomic deletion = %q %+v", u.draft, u.skills)
+	if u.Text != "" || len(u.Skills) != 0 {
+		t.Fatalf("atomic deletion = %q %+v", u.Text, u.Skills)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if len(u.skills) != 1 {
+	if len(u.Skills) != 1 {
 		t.Fatal("undo deletion lost skill")
 	}
 	appServerTestKeys(t, u, "\r")
 	requests = pickerRequests(t, w)
 	pickerReply(t, u, requests[len(requests)-1].ID, `{"turn":{"id":"turn"}}`)
 	u.recallInput(true)
-	if len(u.skills) != 1 || u.skills[0].path != "/work/review/SKILL.md" {
-		t.Fatalf("history = %+v", u.skills)
+	if len(u.Skills) != 1 || u.Skills[0].Path != "/work/review/SKILL.md" {
+		t.Fatalf("history = %+v", u.Skills)
 	}
 }
 
@@ -242,19 +244,19 @@ func TestComposerSkillPickerResumeAndEditorBindings(t *testing.T) {
 	}
 	u.restoreHistory(turns)
 	u.recallInput(true)
-	if len(u.skills) != 1 || u.skills[0].start != 4 {
-		t.Fatalf("restored skills = %+v", u.skills)
+	if len(u.Skills) != 1 || u.Skills[0].Start != 4 {
+		t.Fatalf("restored skills = %+v", u.Skills)
 	}
 	if err := u.applyEditorDraft("now use $review please"); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.skills) != 1 || u.skills[0].start != 8 {
-		t.Fatalf("editor skills = %+v", u.skills)
+	if len(u.Skills) != 1 || u.Skills[0].Start != 8 {
+		t.Fatalf("editor skills = %+v", u.Skills)
 	}
 	if err := u.applyEditorDraft("$review-other"); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.skills) != 0 {
+	if len(u.Skills) != 0 {
 		t.Fatal("editor retained binding for a different word")
 	}
 }
@@ -320,21 +322,21 @@ func TestComposerFilePickerImageAndUndoCapacity(t *testing.T) {
 	}
 	for range 110 {
 		u.insertDraft("word ")
-		u.run = runNone
+		u.Run = composer.NoRun
 	}
 	u.insertDraft("@s")
 	target := u.completionTarget()
 	u.picker = composerPicker{open: true, target: target, choices: []composerChoice{{name: "shot.png", path: "shot.png"}}}
-	before := u.draft
-	if !u.pickerKey("\t") || len(u.images) != 1 || u.images[0].path != path {
-		t.Fatalf("image choice: %q %+v", u.draft, u.images)
+	before := u.Text
+	if !u.pickerKey("\t") || len(u.Images) != 1 || u.Images[0].Path != path {
+		t.Fatalf("image choice: %q %+v", u.Text, u.Images)
 	}
 	u.undoDraft(false)
-	if u.draft != before || len(u.images) != 0 {
-		t.Fatalf("undo at capacity = %q %+v", u.draft, u.images)
+	if u.Text != before || len(u.Images) != 0 {
+		t.Fatalf("undo at capacity = %q %+v", u.Text, u.Images)
 	}
 	u.undoDraft(true)
-	if len(u.images) != 1 {
+	if len(u.Images) != 1 {
 		t.Fatal("redo lost image")
 	}
 	if _, err := os.Stat(path); err != nil {
@@ -346,7 +348,7 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 	for _, key := range []string{"\t", "\r"} {
 		u, _ := newAppServerTestUI()
 		u.session.cwd = "/work"
-		u.draft = "long prompt @file"
+		u.Text = "long prompt @file"
 		u.refreshPicker()
 		target := u.completionTarget()
 		u.picker = composerPicker{open: true, target: target, resolved: target, resolvedCwd: "/work", choices: []composerChoice{{name: "file.go", path: "file.go"}}}
@@ -357,11 +359,11 @@ func TestComposerPickerEditorRefreshBeforeSelection(t *testing.T) {
 			t.Fatal("editor left stale picker visible")
 		}
 		appServerTestKeys(t, u, key)
-		if len(u.images) != 0 || len(u.skills) != 0 || strings.Contains(u.draft, "file.go") {
+		if len(u.Images) != 0 || len(u.Skills) != 0 || strings.Contains(u.Text, "file.go") {
 			t.Fatal("stale selection changed edited draft")
 		}
-		if key == "\r" && u.inputPayloads[u.Submission().ID].text != "new" {
-			t.Fatalf("edited submission = %q", u.inputPayloads[u.Submission().ID].text)
+		if key == "\r" && u.inputPayloads[u.Submission().ID].Text != "new" {
+			t.Fatalf("edited submission = %q", u.inputPayloads[u.Submission().ID].Text)
 		}
 	}
 }

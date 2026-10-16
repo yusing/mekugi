@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -15,20 +17,20 @@ func TestAppServerComposerUndoRedoGroupsTypingAndPaste(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "你好🙂")
 	appServerTestKeys(t, u, "\x1b[200~a\rb\x1b[201~")
-	if u.draft != "你好🙂a\nb" {
-		t.Fatalf("draft = %q", u.draft)
+	if u.Text != "你好🙂a\nb" {
+		t.Fatalf("draft = %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "你好🙂" {
-		t.Fatalf("undo paste = %q", u.draft)
+	if u.Text != "你好🙂" {
+		t.Fatalf("undo paste = %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "" {
-		t.Fatalf("undo UTF-8 typing = %q", u.draft)
+	if u.Text != "" {
+		t.Fatalf("undo UTF-8 typing = %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x19\x19")
-	if u.draft != "你好🙂a\nb" {
-		t.Fatalf("redo groups = %q", u.draft)
+	if u.Text != "你好🙂a\nb" {
+		t.Fatalf("redo groups = %q", u.Text)
 	}
 }
 
@@ -40,15 +42,15 @@ func TestAppServerComposerUndoImageDeletionKeepsFile(t *testing.T) {
 	}
 	u.attachImage(path)
 	appServerTestKeys(t, u, "\x7f")
-	if u.draft != "" || len(u.images) != 0 {
-		t.Fatalf("image deletion = %q, %+v", u.draft, u.images)
+	if u.Text != "" || len(u.Images) != 0 {
+		t.Fatalf("image deletion = %q, %+v", u.Text, u.Images)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("undoable image file unavailable: %v", err)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "[Image 1]" || len(u.images) != 1 || u.images[0].path != path {
-		t.Fatalf("restored image = %q, %+v", u.draft, u.images)
+	if u.Text != "[Image 1]" || len(u.Images) != 1 || u.Images[0].Path != path {
+		t.Fatalf("restored image = %q, %+v", u.Text, u.Images)
 	}
 	appServerTestKeys(t, u, "\r")
 	want := []composerWirePart{{Type: "localImage", Path: path}}
@@ -76,13 +78,13 @@ func TestAppServerComposerRedoInvalidatedAndSubmitClearsHistory(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	appServerTestKeys(t, u, "abc\x1a")
 	appServerTestKeys(t, u, "new\x19")
-	if u.draft != "new" {
-		t.Fatalf("redo after new edit = %q", u.draft)
+	if u.Text != "new" {
+		t.Fatalf("redo after new edit = %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\r")
 	appServerTestKeys(t, u, "\x1a\x19")
-	if u.draft != "" {
-		t.Fatalf("submitted history restored into new draft: %q", u.draft)
+	if u.Text != "" {
+		t.Fatalf("submitted history restored into new draft: %q", u.Text)
 	}
 }
 
@@ -95,9 +97,9 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 			u.attachImage(filepath.Join(t.TempDir(), "image.png"))
 		}},
 		{"skill", "$review", func(_ *testing.T, u *appServerUI) {
-			start := len(u.draft)
-			u.draft += "$review"
-			u.skills = append(u.skills, composerSkill{start: start, end: len(u.draft), name: "review", path: "/work/review/SKILL.md"})
+			start := len(u.Text)
+			u.Text += "$review"
+			u.Skills = append(u.Skills, composer.Token{Start: start, End: len(u.Text), Name: "review", Path: "/work/review/SKILL.md"})
 		}},
 		{"file", `@"file name.go"`, func(_ *testing.T, u *appServerUI) {
 			bindComposerFile(u, `@"file name.go"`, "file name.go")
@@ -127,8 +129,8 @@ func TestAppServerComposerTokenIsOneNavigationUnit(t *testing.T) {
 					appServerTestKeys(t, u, "a")
 					token.attach(t, u)
 					appServerTestKeys(t, u, "b"+tt.keys)
-					if u.draft != tt.want {
-						t.Fatalf("draft = %q, want %q", u.draft, tt.want)
+					if u.Text != tt.want {
+						t.Fatalf("draft = %q, want %q", u.Text, tt.want)
 					}
 				})
 			}
@@ -164,25 +166,25 @@ func TestAppServerComposerUndoGroupsWordsAndDeletions(t *testing.T) {
 	appServerTestKeys(t, u, "hello big world")
 	for _, want := range []string{"hello big ", "hello ", ""} {
 		appServerTestKeys(t, u, "\x1a")
-		if u.draft != want {
-			t.Fatalf("word undo = %q, want %q", u.draft, want)
+		if u.Text != want {
+			t.Fatalf("word undo = %q, want %q", u.Text, want)
 		}
 	}
 	appServerTestKeys(t, u, "\x19\x19\x19\x7f\x7f\x7f\x7f\x7f")
-	if u.draft != "hello big " {
-		t.Fatalf("backspaces = %q", u.draft)
+	if u.Text != "hello big " {
+		t.Fatalf("backspaces = %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "hello big world" || u.cursor() != len(u.draft) {
-		t.Fatalf("backspace run undo = %q at %d", u.draft, u.cursor())
+	if u.Text != "hello big world" || u.Cursor() != len(u.Text) {
+		t.Fatalf("backspace run undo = %q at %d", u.Text, u.Cursor())
 	}
 	appServerTestKeys(t, u, "\x1b[H\x1b[3~\x1b[3~\x1b[3~\x1a")
-	if u.draft != "hello big world" {
-		t.Fatalf("forward-delete run undo = %q", u.draft)
+	if u.Text != "hello big world" {
+		t.Fatalf("forward-delete run undo = %q", u.Text)
 	}
 	// A different kind of edit ends the run.
 	appServerTestKeys(t, u, "\x1b[F\x7f\x7fX\x7f\x1a")
-	if u.draft != "hello big worX" {
-		t.Fatalf("mixed edits undo = %q", u.draft)
+	if u.Text != "hello big worX" {
+		t.Fatalf("mixed edits undo = %q", u.Text)
 	}
 }

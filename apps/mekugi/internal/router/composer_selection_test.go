@@ -3,6 +3,10 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -26,27 +30,27 @@ func TestComposerSelectionMentionIsOneToken(t *testing.T) {
 	u.insertDraft("see ")
 	u.insertSelection("message", "first\nquote", "")
 	u.insertSelection("message", "second", "")
-	if want := "see [Selected message] [Selected message 2] "; u.draft != want {
-		t.Fatalf("draft = %q, want %q", u.draft, want)
+	if want := "see [Selected message] [Selected message 2] "; u.Text != want {
+		t.Fatalf("draft = %q, want %q", u.Text, want)
 	}
 	spans := u.draftSnapshot().displaySpans()
-	if len(spans) != 2 || spans[0].Kind != activityui.SelectionToken || u.draft[spans[1].Start:spans[1].End] != "[Selected message 2]" {
+	if len(spans) != 2 || spans[0].Kind != activityui.SelectionToken || u.Text[spans[1].Start:spans[1].End] != "[Selected message 2]" {
 		t.Fatalf("spans = %+v", spans)
 	}
 	// Backspace after the token removes it whole, then undo restores it.
-	u.cursorBack = len(" ")
+	u.CursorBack = len(" ")
 	u.deleteDraft(true)
-	if u.draft != "see [Selected message]  " || len(u.selections) != 1 {
-		t.Fatalf("backspace split token: %q %+v", u.draft, u.selections)
+	if u.Text != "see [Selected message]  " || len(u.Selections) != 1 {
+		t.Fatalf("backspace split token: %q %+v", u.Text, u.Selections)
 	}
 	u.undoDraft(false)
-	if len(u.selections) != 2 || u.selections[1].text != "second" {
-		t.Fatalf("undo lost token: %+v", u.selections)
+	if len(u.Selections) != 2 || u.Selections[1].Text != "second" {
+		t.Fatalf("undo lost token: %+v", u.Selections)
 	}
 	// Queue joining shifts later entries' tokens.
-	joined := joinDrafts(composerDraft{text: "x"}, u.draftSnapshot())
-	if got := joined.selections[0]; joined.text[got.start:got.end] != "[Selected message]" {
-		t.Fatalf("joined token = %q", joined.text[got.start:got.end])
+	joined := joinDrafts(composerDraft{Text: "x"}, u.draftSnapshot())
+	if got := joined.Selections[0]; joined.Text[got.Start:got.End] != "[Selected message]" {
+		t.Fatalf("joined token = %q", joined.Text[got.Start:got.End])
 	}
 }
 
@@ -55,11 +59,11 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	u.insertDraft("explain ")
 	u.insertSelection("diff hunk @amber1:42-45", "+new\n-old", "a.go")
 	d := u.takeDraft()
-	input := d.input()
+	input := conversationbinding.Input(d.Draft)
 	if len(input) != 2 {
 		t.Fatalf("input = %+v", input)
 	}
-	elements, _ := input[0]["text_elements"].([]composerTextElement)
+	elements, _ := input[0]["text_elements"].([]binding.InputTextElement)
 	if input[0]["text"] != "explain [Selected diff hunk @amber1:42-45] " || len(elements) != 1 || elements[0].Placeholder != "[Selected diff hunk @amber1:42-45]" {
 		t.Fatalf("prompt part = %+v", input[0])
 	}
@@ -86,16 +90,16 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 func TestComposerSelectionOverBudgetIsExplicit(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.insertSelection("message", strings.Repeat("a", attachments.Budget/2+1), "")
-	if len(u.selections) != 0 || u.draft != "" {
-		t.Fatalf("oversized selection inserted: %q", u.draft)
+	if len(u.Selections) != 0 || u.Text != "" {
+		t.Fatalf("oversized selection inserted: %q", u.Text)
 	}
 	for range 3 {
 		u.insertSelection("message", strings.Repeat("b\n", attachments.Budget/5), "")
 	}
 	d := u.takeDraft()
-	frames, ok := attachments.Decode(d.attachments[0])
-	if !ok || !strings.Contains(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded)") || d.attachmentNotice == "" {
-		t.Fatalf("omission missing: ok=%v notice=%q last=%q", ok, d.attachmentNotice, frames[len(frames)-1][:40])
+	frames, ok := attachments.Decode(d.Attachments[0])
+	if !ok || !strings.Contains(frames[len(frames)-1], "CONTENT NOT ATTACHED (attachment budget exceeded)") || d.AttachmentNotice == "" {
+		t.Fatalf("omission missing: ok=%v notice=%q last=%q", ok, d.AttachmentNotice, frames[len(frames)-1][:40])
 	}
 }
 
@@ -134,8 +138,8 @@ func TestTerminalUIDiffSelectionMentionsChangeLines(t *testing.T) {
 		}
 	}
 	u.selectionAction('r')
-	if u.main.draft != "[Selected diff hunks @amber1 +1] " || u.main.selections[0].text != "-old\n ctx\n+other" {
-		t.Fatalf("diff mention draft = %q", u.main.draft)
+	if u.main.Text != "[Selected diff hunks @amber1 +1] " || u.main.Selections[0].Text != "-old\n ctx\n+other" {
+		t.Fatalf("diff mention draft = %q", u.main.Text)
 	}
 }
 
@@ -211,8 +215,8 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 				text += part.Text
 			}
 		}
-		restored := restoredSelections(text, frames)
-		if len(restored) != 2 || restored[0].text != "first quote" || restored[1].text != "second quote" || text[restored[0].start:restored[0].end] == text[restored[1].start:restored[1].end] {
+		restored := composer.RestoreSelections(text, frames)
+		if len(restored) != 2 || restored[0].Text != "first quote" || restored[1].Text != "second quote" || text[restored[0].Start:restored[0].End] == text[restored[1].Start:restored[1].End] {
 			t.Fatalf("retry lost distinct quotes: text=%q restored=%+v", text, restored)
 		}
 	})
@@ -221,8 +225,8 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		u.insertSelection("message", "one", "")
 		u.queued = append(u.queued, u.takeDraft())
 		u.insertSelection("message", "two", "")
-		if u.draft != "[Selected message 2] " {
-			t.Fatalf("queued label reused: %q", u.draft)
+		if u.Text != "[Selected message 2] " {
+			t.Fatalf("queued label reused: %q", u.Text)
 		}
 	})
 	t.Run("hidden question releases parked labels", func(t *testing.T) {
@@ -231,10 +235,10 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		questionTestAsync(t, u, "parked", "Which scope?")
 		u.openQuestions()
 		u.hideQuestions()
-		u.deleteDraftRange(0, len(u.draft))
+		u.deleteDraftRange(0, len(u.Text))
 		u.insertSelection("message", "replacement quote", "")
-		if u.draft != "[Selected message] " {
-			t.Fatalf("inactive parked editor reserved a label: %q", u.draft)
+		if u.Text != "[Selected message] " {
+			t.Fatalf("inactive parked editor reserved a label: %q", u.Text)
 		}
 	})
 	t.Run("omissions never overflow the envelope", func(t *testing.T) {
@@ -245,9 +249,9 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 			u.insertSelection("message", "tiny but over budget", "")
 		}
 		d := u.takeDraft()
-		frames, ok := attachments.Decode(d.attachments[0])
-		if !ok || len(d.attachments[0]) > attachments.Budget || !strings.Contains(frames[len(frames)-1], "remaining mentions: CONTENT NOT ATTACHED") {
-			t.Fatalf("envelope %d bytes decoded=%v", len(d.attachments[0]), ok)
+		frames, ok := attachments.Decode(d.Attachments[0])
+		if !ok || len(d.Attachments[0]) > attachments.Budget || !strings.Contains(frames[len(frames)-1], "remaining mentions: CONTENT NOT ATTACHED") {
+			t.Fatalf("envelope %d bytes decoded=%v", len(d.Attachments[0]), ok)
 		}
 	})
 	t.Run("resume recalls quotes", func(t *testing.T) {
@@ -256,9 +260,9 @@ func TestComposerSelectionReviewEdges(t *testing.T) {
 		u.insertSelection("diff hunk @amber1:3", strings.Repeat("x\n", attachments.Chunk), "a.go")
 		u.insertSelection("message", "short", "")
 		d := u.takeDraft()
-		frames, _ := attachments.Decode(d.attachments[0])
-		restored := restoredSelections(d.text, frames)
-		if len(restored) != 2 || restored[0].text != strings.Repeat("x\n", attachments.Chunk) || restored[0].source != "a.go" || d.text[restored[1].start:restored[1].end] != "[Selected message]" || restored[1].text != "short" {
+		frames, _ := attachments.Decode(d.Attachments[0])
+		restored := composer.RestoreSelections(d.Text, frames)
+		if len(restored) != 2 || restored[0].Text != strings.Repeat("x\n", attachments.Chunk) || restored[0].Source != "a.go" || d.Text[restored[1].Start:restored[1].End] != "[Selected message]" || restored[1].Text != "short" {
 			t.Fatalf("restored = %+v", restored)
 		}
 		if len(frames) < 3 {

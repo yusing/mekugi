@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -80,115 +82,106 @@ type appServerItem struct {
 }
 
 type appServerUI struct {
+	composer.Editor
 	feedback noticepresentation.Model
 	history  *history.Service
 	segments *reports.Service
 	sessioncontrol.Live
-	unsent, queued            []composerDraft
-	inputPayloads             map[string]composerSubmission
-	shellDraft                composerDraft
-	resumeThread, resumeCwd   string
-	resumeConfig              map[string]any
-	resumeEvidence            preferences.Evidence
-	resumePending             []appserver.Message
-	replay                    *uiReplayPlayback // Offline transport controls; nil for live sessions.
-	clock                     func() time.Time  // Optional presentation clock for offline replay.
-	backendVersion            string
-	title                     string            // Host-confirmed thread name, independent of naming work.
-	pendingTitle              string            // Manual name entered before the host thread exists.
-	titleRenames              map[string]string // Latest manual name awaiting host confirmation, by thread.
-	titleGenerator            *sessionNaming
-	titleUpdates              <-chan sessionTitleUpdate
-	btw                       *appServerBTW
-	btwThreads                map[string]*appServerBTW
-	notifications             *nativeNotifications
-	questions                 nativeQuestionDock
-	approvals                 nativeApprovalDock
-	approvalMode              bool // Codex's configured policy applies, not --yolo's.
-	guardHookCheck            approvalHookCheck
-	statusPanel               *appServerStatusReport
-	sessionCapture            *transportcapture.Recorder
-	resumePicker              *appServerResumePicker
-	statusConfig              appServerStatusConfig
-	picker                    composerPicker
-	skillEnvironment          []string
-	commitReads               chan gitCommitKey        // Commit objects read off the UI goroutine.
-	commandSegmentWrites      chan commandSegmentWrite // Completed replay writes, consumed only by the UI.
-	commandSegmentPending     int
-	restoredSegments          map[string]*reports.Report // Turn-local, validated and adopted history.
-	files                     []composerFile
-	selections                []composerSelection
-	skills                    []composerSkill
-	client                    *appserver.Client
-	view                      *liveActivityView
-	agents                    *liveActivityView
-	proxy                     *mekugiProxy
-	guard                     *shellApprovalServer
-	execTrack                 *execTrackHub // Per-segment command reports; nil when not tracking.
-	shellEdits                appServerShellEdits
-	pendingEditReceipts       []*capturedActivityEdit // Observed edits can precede their host Activity item.
-	issues                    *CriticalErrors
-	shell                     *terminalUI
-	session                   appServerSession
-	ctx                       context.Context
-	quitRequested             bool
-	archived                  bool
-	interruptLocked           bool
-	mainContentPainted        bool
-	status                    string
-	exitUsage                 appServerTokenUsage
-	resumeArgv                []string
-	replayDebugDirectory      string
-	compacting                *[2]string   // Main turn and compaction item.
-	polling                   *[2]string   // Main turn and polled process.
-	alert                     bool         // The status reports a failure or blocked request.
-	noticeDetails             terminalRect // Truncated composer error, relative to Main.
-	noticeDismiss             terminalRect // Check button, relative to Main.
-	turnStarted               time.Time    // Shown as elapsed time while a turn runs.
-	model, reasoningEffort    string
-	serviceTier               string
-	serviceTiers              *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
-	models                    []appServerModel
-	modelsLoading             bool
-	reasoningKey              *bool
-	settingsChoices           string
-	requests                  *sessioncontrol.Requests[appServerRequest]
-	draft                     string
-	retiredThreads            map[string]string
-	composerRect              terminalRect // Visible draft text, relative to Main.
-	cursorBack, composerWidth int
-	cursorColumn              *int
-	images                    []composerImage
-	undoDrafts, redoDrafts    []composerUndo
-	inputHistory              []composerDraft
-	historyDraft              composerDraft
-	historyBack               int
-	run                       composerRun // The edit that the next like keystroke extends.
-	ownedImages               map[string]bool
-	escape                    string
-	paste                     bool
-	pasted                    []byte // Bracketed paste text, inserted when the paste ends.
-	dirty                     bool
-	keybindings               bool
-	resumeNotice              string // Settings fallback survives the old session's presentation reset.
-	panes                     *nativePreferences
-	waitRelease               func()
-	restoring                 *appServerActivityRestore
-	childHistory              map[string]*appServerChildHistory
-	historyLoading            *appServerChildHistory
+	unsent, queued          []composerDraft
+	inputPayloads           map[string]composerSubmission
+	shellDraft              composerDraft
+	resumeThread, resumeCwd string
+	resumeConfig            map[string]any
+	resumeEvidence          preferences.Evidence
+	resumePending           []appserver.Message
+	replay                  *uiReplayPlayback // Offline transport controls; nil for live sessions.
+	clock                   func() time.Time  // Optional presentation clock for offline replay.
+	backendVersion          string
+	title                   string            // Host-confirmed thread name, independent of naming work.
+	pendingTitle            string            // Manual name entered before the host thread exists.
+	titleRenames            map[string]string // Latest manual name awaiting host confirmation, by thread.
+	titleGenerator          *sessionNaming
+	titleUpdates            <-chan sessionTitleUpdate
+	btw                     *appServerBTW
+	btwThreads              map[string]*appServerBTW
+	notifications           *nativeNotifications
+	questions               nativeQuestionDock
+	approvals               nativeApprovalDock
+	approvalMode            bool // Codex's configured policy applies, not --yolo's.
+	guardHookCheck          approvalHookCheck
+	statusPanel             *appServerStatusReport
+	sessionCapture          *transportcapture.Recorder
+	resumePicker            *appServerResumePicker
+	statusConfig            appServerStatusConfig
+	picker                  composerPicker
+	skillEnvironment        []string
+	commitReads             chan gitCommitKey        // Commit objects read off the UI goroutine.
+	commandSegmentWrites    chan commandSegmentWrite // Completed replay writes, consumed only by the UI.
+	commandSegmentPending   int
+	restoredSegments        map[string]*reports.Report // Turn-local, validated and adopted history.
+	client                  *appserver.Client
+	view                    *liveActivityView
+	agents                  *liveActivityView
+	proxy                   *mekugiProxy
+	guard                   *shellApprovalServer
+	execTrack               *execTrackHub // Per-segment command reports; nil when not tracking.
+	shellEdits              appServerShellEdits
+	pendingEditReceipts     []*capturedActivityEdit // Observed edits can precede their host Activity item.
+	issues                  *CriticalErrors
+	shell                   *terminalUI
+	session                 appServerSession
+	ctx                     context.Context
+	quitRequested           bool
+	archived                bool
+	interruptLocked         bool
+	mainContentPainted      bool
+	status                  string
+	exitUsage               appServerTokenUsage
+	resumeArgv              []string
+	replayDebugDirectory    string
+	compacting              *[2]string   // Main turn and compaction item.
+	polling                 *[2]string   // Main turn and polled process.
+	alert                   bool         // The status reports a failure or blocked request.
+	noticeDetails           terminalRect // Truncated composer error, relative to Main.
+	noticeDismiss           terminalRect // Check button, relative to Main.
+	turnStarted             time.Time    // Shown as elapsed time while a turn runs.
+	model, reasoningEffort  string
+	serviceTier             string
+	serviceTiers            *serviceTierSettings // Invocation defaults and confirmed thread/model choices.
+	models                  []appServerModel
+	modelsLoading           bool
+	reasoningKey            *bool
+	settingsChoices         string
+	requests                *sessioncontrol.Requests[appServerRequest]
+	retiredThreads          map[string]string
+	composerRect            terminalRect // Visible draft text, relative to Main.
+	composerWidth           int
+	cursorColumn            *int
+	ownedImages             map[string]bool
+	escape                  string
+	paste                   bool
+	pasted                  []byte // Bracketed paste text, inserted when the paste ends.
+	dirty                   bool
+	keybindings             bool
+	resumeNotice            string // Settings fallback survives the old session's presentation reset.
+	panes                   *nativePreferences
+	waitRelease             func()
+	restoring               *appServerActivityRestore
+	childHistory            map[string]*appServerChildHistory
+	historyLoading          *appServerChildHistory
 }
 
 // StartAppServerUI starts the native terminal frontend without router observers.
 // Codex app-server owns execution; the launcher
 // still owns routing, environment, invocation-local configuration and cancellation.
-func StartAppServerUI(activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
+func StartAppServerUI(conversation composer.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, notices *notice.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 	faint, _ := terminalui.SupportsFaint(ctx, "auto")
 	issues := NewCriticalErrors(notices)
-	return startAppServerUI(activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
+	return startAppServerUI(conversation, activity, service, prefs, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
+func startAppServerUI(conversation composer.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {
@@ -217,7 +210,7 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{Editor: conversation.NewEditor(), session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
@@ -438,18 +431,18 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 		u.shell.review.Close()
 		u.hideQuestions()
 		u.hideApprovals()
-		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
-			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.text, false))
+		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.Text != "" {
+			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.Text, false))
 		}
 		unknown := slices.Clone(u.Steers())
 		if !u.Submission().Committed {
 			unknown = append(unknown, u.Submission().ID)
 		}
-		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
-			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.text, false))
+		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.Text != "" {
+			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.Text, false))
 		}
-		if u.shellDraft.text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.shellDraft.text, false))
+		if u.shellDraft.Text != "" {
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.shellDraft.Text, false))
 		}
 		if err != nil {
 			c.Diagnostics.Lock()
@@ -610,7 +603,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == "thread/compact/start" {
 			u.CompactResponse(m.Error != nil)
 			if m.Error != nil {
-				u.restoreDrafts(append([]composerDraft{{text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
+				u.restoreDrafts(append([]composerDraft{{Text: "/compact"}}, slices.Concat(u.unsent, u.queued)...)...)
 				u.unsent, u.queued = nil, nil
 				u.setNotice("Compaction failed: "+m.Error.Message, true)
 				u.status = "Ready"
@@ -964,7 +957,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		return false, nil
 	}
 	// An exact /compact has a submission meaning for Tab, not just completion.
-	compactTab := key == '\t' && strings.TrimSpace(u.draft) == "/compact" && u.picker.modal == ""
+	compactTab := key == '\t' && strings.TrimSpace(u.Text) == "/compact" && u.picker.modal == ""
 	if u.escape == "" && key != 27 && !compactTab && u.pickerKey(string([]byte{key})) {
 		return false, nil
 	}
@@ -987,7 +980,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		u.escape = ""
 	}
 	if u.escape == "" {
-		if u.currentQuestion() == nil && !u.approvals.open && key == '?' && u.draft == "" && (u.shell == nil || u.shell.focus == 0) {
+		if u.currentQuestion() == nil && !u.approvals.open && key == '?' && u.Text == "" && (u.shell == nil || u.shell.focus == 0) {
 			u.keybindings = !u.keybindings
 			return false, nil
 		}
@@ -1029,7 +1022,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			case "\x1b[200~":
 				u.paste = true
 				u.pasted = nil
-				u.run = runNone
+				u.Run = composer.NoRun
 			case "\x1b[201~": // A stray terminator is not composer input.
 
 			case "\x1b[5~":
@@ -1050,15 +1043,16 @@ func (u *appServerUI) key(key byte) (bool, error) {
 	case 23: // macOS terminals may encode Option+Backspace as Ctrl+W.
 		u.deleteWord(true)
 	case 11: // Ctrl+K kills to the logical line end, or joins at its newline.
-		at := u.cursor()
-		end := len(u.draft)
-		if next := strings.IndexByte(u.draft[at:], '\n'); next >= 0 {
+		at := u.Cursor()
+		end := len(u.Text)
+		if next := strings.IndexByte(u.Text[at:], '\n'); next >= 0 {
 			end = at + next
 			if next == 0 {
 				end++
 			}
 		}
-		for start, tokenEnd := range u.draftTokenSpans() {
+		for _, span := range u.Spans() {
+			start, tokenEnd := span.Start, span.End
 			if end > start && end < tokenEnd {
 				end = tokenEnd
 			}
@@ -1083,8 +1077,8 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		}
 		// As in Codex, Ctrl-C first clears the draft (undoable with Ctrl+Z),
 		// then cancels queued compaction, interrupts the active turn, or quits.
-		if u.draft != "" {
-			u.deleteDraftRange(0, len(u.draft))
+		if u.Text != "" {
+			u.deleteDraftRange(0, len(u.Text))
 			u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again quits", false)
 			if u.Turn != "" || u.Starting() || u.InputPending() {
 				u.setNotice("Draft cleared · Ctrl+Z restores · Ctrl-C again interrupts", false)
@@ -1114,7 +1108,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			u.setNotice("Archiving session…", false)
 			return false, nil
 		}
-		text := strings.TrimSpace(u.draft)
+		text := strings.TrimSpace(u.Text)
 		if text == "/archive" {
 			u.showArchivePicker()
 			return false, nil
@@ -1153,13 +1147,13 @@ func (u *appServerUI) key(key byte) (bool, error) {
 			return false, nil
 		}
 		if text == "/skills" {
-			u.deleteDraftRange(0, len(u.draft))
+			u.deleteDraftRange(0, len(u.Text))
 			u.picker.modal, u.picker.open, u.picker.selected, u.picker.top = "menu", true, 0, 0
 			return false, nil
 		}
 		if text == "/quit" {
 			if u.Turn == "" && !u.Starting() && !u.InputPending() {
-				u.draft = ""
+				u.Text = ""
 				return true, nil
 			}
 			u.setNotice("Interrupt the active turn before quitting", false)
@@ -1187,7 +1181,7 @@ func (u *appServerUI) key(key byte) (bool, error) {
 		return false, u.flushInput()
 	case '\t':
 		// Tab queues busy input for the next turn; otherwise it sends like Enter.
-		text := strings.TrimSpace(u.draft)
+		text := strings.TrimSpace(u.Text)
 		if text == "/compact" {
 			return false, u.submitCompact(true)
 		}
@@ -1315,7 +1309,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	}
 	caret := points[len(points)-1]
 	for _, point := range points {
-		if point.Offset == u.cursor() {
+		if point.Offset == u.Cursor() {
 			caret = point
 			break
 		}
@@ -1450,7 +1444,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		line = ansi.Truncate(line, textWidth, "")
 		if focused && textWidth > 1 && i+firstRow == caret.Row {
 			before := ansi.Cut(line, 0, caret.Column)
-			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.draft[u.cursor():], -1)
+			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.Text[u.Cursor():], -1)
 			cellWidth := max(1, ansi.StringWidth(textsanitize.Safe(cluster, false)))
 			cell := ansi.Cut(line, caret.Column, caret.Column+cellWidth)
 			if ansi.StringWidth(cell) == 0 {

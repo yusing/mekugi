@@ -31,8 +31,8 @@ func TestNativeUIQueuedEscapeContinuation(t *testing.T) {
 			if err := u.drainKeys(keys); err != nil {
 				t.Fatal(err)
 			}
-			if u.draft != tc.want || wire.Len() != 0 || u.shell.paste || u.paste {
-				t.Fatalf("draft=%q want=%q wire=%q paste=%v/%v", u.draft, tc.want, wire.String(), u.shell.paste, u.paste)
+			if u.Text != tc.want || wire.Len() != 0 || u.shell.paste || u.paste {
+				t.Fatalf("draft=%q want=%q wire=%q paste=%v/%v", u.Text, tc.want, wire.String(), u.shell.paste, u.paste)
 			}
 		})
 	}
@@ -42,7 +42,7 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 	u, wire := newAppServerTestUI()
 	u.ensureShell()
 	u.Turn = "active"
-	u.draft = "keep me"
+	u.Text = "keep me"
 	if err := u.shell.key(27); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestNativeUIInputDrainPreservesStandaloneEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/interrupt", "")
-	if u.draft != "keep me" || u.Interruption.Target != "active" {
+	if u.Text != "keep me" || u.Interruption.Target != "active" {
 		t.Fatal("standalone Escape did not preserve interrupt behavior")
 	}
 }
@@ -76,7 +76,7 @@ func TestNativeUIInputDrainBoundedAndClosed(t *testing.T) {
 	if err := u.drainKeys(keys); err != nil {
 		t.Fatal(err)
 	}
-	if u.draft != strings.Repeat("a", 255) || u.cursorBack != 1 {
+	if u.Text != strings.Repeat("a", 255) || u.CursorBack != 1 {
 		t.Fatal("sequence crossing drain budget was corrupted")
 	}
 	close(keys)

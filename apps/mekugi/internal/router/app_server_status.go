@@ -103,7 +103,7 @@ func (u *appServerUI) showStatus() error {
 	report.body = rows
 	u.statusPanel = report
 	u.renderStatus(report, statusNotice("Loading account…"))
-	u.deleteDraftRange(0, len(u.draft))
+	u.deleteDraftRange(0, len(u.Text))
 	return u.requestStatus("account/read", map[string]any{"refreshToken": false}, report)
 }
 

@@ -103,8 +103,8 @@ func TestAppServerBTWIsolationAndFollowUp(t *testing.T) {
 			}
 			turn, status, entries, agents, usage := u.Turn, u.status, len(u.view.Entries), len(u.session.agents), u.exitUsage
 			btwTestStart(t, u, w)
-			if u.draft != "" {
-				t.Fatalf("side draft retained: %q", u.draft)
+			if u.Text != "" {
+				t.Fatalf("side draft retained: %q", u.Text)
 			}
 			appServerTestMessage(t, u, `{"method":"thread/started","params":{"thread":{"id":"side"}}}`)
 			appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"side","turn":{"id":"side-turn"}}}`)
@@ -134,8 +134,8 @@ func TestAppServerBTWBusyRetainsDraft(t *testing.T) {
 	u, w := newAppServerTestUI()
 	btwTestStart(t, u, w)
 	appServerTestKeys(t, u, "/btw next question\r")
-	if u.draft != "/btw next question" || w.Len() != 0 || u.btw.question != "why?" {
-		t.Fatalf("busy submission lost draft or sent: draft=%q wire=%s", u.draft, w.String())
+	if u.Text != "/btw next question" || w.Len() != 0 || u.btw.question != "why?" {
+		t.Fatalf("busy submission lost draft or sent: draft=%q wire=%s", u.Text, w.String())
 	}
 }
 
@@ -216,8 +216,8 @@ func TestAppServerBTWCompletionBeforeStartAckKeepsNextDraft(t *testing.T) {
 	appServerTestMessage(t, u, `{"method":"turn/started","params":{"threadId":"side","turn":{"id":"first-turn"}}}`)
 	appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"side","turn":{"id":"first-turn","status":"completed"}}}`)
 	appServerTestKeys(t, u, "/btw second\r")
-	if u.draft != "/btw second" || w.Len() != 0 || u.btw.question != "first" {
-		t.Fatalf("next side turn sent before first start ack: draft=%q request=%s", u.draft, w.String())
+	if u.Text != "/btw second" || w.Len() != 0 || u.btw.question != "first" {
+		t.Fatalf("next side turn sent before first start ack: draft=%q request=%s", u.Text, w.String())
 	}
 	btwTestReply(t, u, start, `{"turn":{"id":"first-turn"}}`)
 	appServerTestKeys(t, u, "\r")
@@ -305,7 +305,7 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 			if err := os.WriteFile(path, []byte("image"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			u.draft = "/btw Explain "
+			u.Text = "/btw Explain "
 			u.insertImage(path)
 			u.ownedImages = map[string]bool{path: true}
 			u.insertDraft(" ")
@@ -322,16 +322,16 @@ func TestAppServerBTWRejectedAttachmentsReturnWithNewDraft(t *testing.T) {
 			}
 			appServerTestKeys(t, u, "new draft")
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, r.ID))
-			if !strings.HasPrefix(u.draft, "/btw\n") || !strings.Contains(u.draft, "Explain ") || !strings.HasSuffix(u.draft, "new draft") || len(u.images) != 1 || len(u.files) != 1 {
-				t.Fatalf("rejected input lost: %q images=%+v files=%+v", u.draft, u.images, u.files)
+			if !strings.HasPrefix(u.Text, "/btw\n") || !strings.Contains(u.Text, "Explain ") || !strings.HasSuffix(u.Text, "new draft") || len(u.Images) != 1 || len(u.Files) != 1 {
+				t.Fatalf("rejected input lost: %q images=%+v files=%+v", u.Text, u.Images, u.Files)
 			}
-			if u.draft[u.images[0].start:u.images[0].end] != "[Image 1]" || u.draft[u.files[0].start:u.files[0].end] != "@missing.txt" {
+			if u.Text[u.Images[0].Start:u.Images[0].End] != "[Image 1]" || u.Text[u.Files[0].Start:u.Files[0].End] != "@missing.txt" {
 				t.Fatal("restored token offsets changed")
 			}
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("rejected image removed: %v", err)
 			}
-			if u.btw.pending.text != "" || w.Len() != 0 {
+			if u.btw.pending.Text != "" || w.Len() != 0 {
 				t.Fatal("failed side input was automatically resent")
 			}
 		})
@@ -374,7 +374,7 @@ func TestAppServerBTWRenderAndScroll(t *testing.T) {
 			}
 		}
 	}
-	u.draft = "COMPOSER_DRAFT"
+	u.Text = "COMPOSER_DRAFT"
 	var frame bytes.Buffer
 	if err := u.paint(&frame, 80, 30); err != nil {
 		t.Fatal(err)

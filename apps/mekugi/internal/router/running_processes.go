@@ -36,7 +36,7 @@ func (u *appServerUI) runningProcessCount() int {
 
 // showRunningProcesses opens the shared output dialog on every live command.
 func (u *appServerUI) showRunningProcesses() {
-	u.deleteDraftRange(0, len(u.draft))
+	u.deleteDraftRange(0, len(u.Text))
 	u.ensureShell()
 	u.shell.selection = nil
 	u.shell.output = &outputDialog{view: u.agents, match: -1, processes: u.processPages}

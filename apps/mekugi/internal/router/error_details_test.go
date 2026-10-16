@@ -72,13 +72,13 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
 			u.shell.outputKey("q")
 			u.shell.focus = focus
-			u.draft = "keep the user's draft"
+			u.Text = "keep the user's draft"
 			for _, key := range []byte{2, '!'} {
 				if err := u.shell.key(key); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if u.draft != "keep the user's draft" || u.shell.focus != focus || u.shell.output == nil {
+			if u.Text != "keep the user's draft" || u.shell.focus != focus || u.shell.output == nil {
 				t.Fatal("keyboard detail navigation modified composer or failed to open")
 			}
 			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
@@ -211,7 +211,7 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 			}
 			full := "Failed: " + strings.Repeat("diagnostic ", 40) + "\nrejected: forced cleanup is not permitted"
 			view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: agent, Kind: "error", Text: full}}})
-			u.draft = "preserve draft"
+			u.Text = "preserve draft"
 			if child {
 				u.agents.only, u.agents.selected = true, agent
 			}
@@ -235,7 +235,7 @@ func TestErrorDetailsTerminalClick(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if u.shell.output == nil || u.draft != "preserve draft" || view.offset != offset || view.following != following {
+			if u.shell.output == nil || u.Text != "preserve draft" || view.offset != offset || view.following != following {
 				t.Fatal("terminal click did not open details without disturbing the pane")
 			}
 			assertErrorDialog(t, u.shell, full)

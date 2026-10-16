@@ -25,7 +25,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	}
 	u.shell.focus, u.shell.split, u.shell.diffOpen = 1, 67, true
 	u.shell.diff.navigation.Columns = 22
-	u.draft = "unsent private text"
+	u.Text = "unsent private text"
 	u.view.offset = 99
 	if err := p.save(u.shell, time.Now(), true); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(data, []byte(u.draft)) || bytes.Contains(data, []byte("offset")) {
+	if bytes.Contains(data, []byte(u.Text)) || bytes.Contains(data, []byte("offset")) {
 		t.Fatalf("saved non-layout state: %s", data)
 	}
 	info, err := os.Stat(testPanePath(t, p))
@@ -60,7 +60,7 @@ func TestNativePaneStateResumeAndIsolation(t *testing.T) {
 			if restored.shell.paneState() != u.shell.paneState() {
 				t.Fatalf("lost pane state: %+v", restored.shell.paneState())
 			}
-			if restored.draft != "" || restored.view.offset != 0 {
+			if restored.Text != "" || restored.view.offset != 0 {
 				t.Fatal("restored out-of-scope view state")
 			}
 			var frame bytes.Buffer

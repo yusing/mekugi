@@ -16,6 +16,11 @@ observation capacity must remain visible and bounded without terminating unrelat
   and file-status classification. It operates on supplied values without filesystem
   reads or terminal types. Callers choose display paths; terminal views own colors,
   labels, geometry, selection, and follow state.
+- [Conversation](../../modules/conversation/SPEC.md) owns editable drafts, atomic
+  attachment bindings, undo and local input history, snapshot budgets, and draft
+  joining. Main, parked question/approval editors, queued input and side questions
+  use the same neutral values. Terminal adapters retain geometry, key decoding,
+  clipboard acquisition and file cleanup; backend bindings encode host input.
 - [Activity](../../modules/activity/SPEC.md) owns feed records, roster derivation, semantic values,
   canonical group membership and retained output in the attached session store. Its terminal view owns disclosure, geometry,
   cards, agent colors and reveal animation over those values.

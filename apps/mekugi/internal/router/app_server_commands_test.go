@@ -19,8 +19,8 @@ func TestComposerCommandCatalog(t *testing.T) {
 		t.Fatalf("missing command labels/descriptions: %s", frame)
 	}
 	appServerTestKeys(t, u, "\x1b[B\t")
-	if u.draft != "/reasoning " || u.picker.open || len(pickerRequests(t, wire)) != 0 {
-		t.Fatalf("Tab did not complete locally: draft=%q picker=%+v", u.draft, u.picker)
+	if u.Text != "/reasoning " || u.picker.open || len(pickerRequests(t, wire)) != 0 {
+		t.Fatalf("Tab did not complete locally: draft=%q picker=%+v", u.Text, u.picker)
 	}
 }
 
@@ -31,14 +31,14 @@ func TestComposerCommandEnterAndDismiss(t *testing.T) {
 		t.Fatalf("filtered choices = %+v", u.picker.choices)
 	}
 	appServerTestKeys(t, u, "\r")
-	if u.picker.modal != "menu" || u.draft != "" || len(pickerRequests(t, wire)) != 0 {
+	if u.picker.modal != "menu" || u.Text != "" || len(pickerRequests(t, wire)) != 0 {
 		t.Fatalf("Enter did not open skills menu: %+v", u.picker)
 	}
 	u, _ = newAppServerTestUI()
 	appServerTestKeys(t, u, "/")
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.open || u.draft != "/" {
+	if u.picker.open || u.Text != "/" {
 		t.Fatal("Escape must dismiss without changing the draft")
 	}
 	appServerTestKeys(t, u, "mod")
@@ -102,7 +102,7 @@ func TestUISnapshotComposerCommandWithPastedImage(t *testing.T) {
 			path := answerImageFixture(t)
 			appServerTestKeys(t, u, "\n\x1b[200~"+path+"\x1b[201~\x1b[H\x1b[D/bt")
 			if !u.picker.open || u.picker.target.query != "bt" {
-				t.Fatalf("image blocked command completion: %q %+v", u.draft, u.picker)
+				t.Fatalf("image blocked command completion: %q %+v", u.Text, u.picker)
 			}
 			if key == "\t" {
 				rows, _ := u.mainFrame(60, 10, 0)
@@ -113,16 +113,16 @@ func TestUISnapshotComposerCommandWithPastedImage(t *testing.T) {
 			if key == "\r" {
 				btwTestRequest(t, wire, "thread/fork", "main")
 				draft = u.btw.pending
-			} else if wire.Len() != 0 || !strings.HasPrefix(draft.text, "/btw ") {
-				t.Fatalf("Tab submitted or lost command: %q %s", draft.text, wire.String())
+			} else if wire.Len() != 0 || !strings.HasPrefix(draft.Text, "/btw ") {
+				t.Fatalf("Tab submitted or lost command: %q %s", draft.Text, wire.String())
 			}
-			if len(draft.images) != 1 || draft.images[0].path != path || draft.text[draft.images[0].start:draft.images[0].end] != "[Image 1]" {
+			if len(draft.Images) != 1 || draft.Images[0].Path != path || draft.Text[draft.Images[0].Start:draft.Images[0].End] != "[Image 1]" {
 				t.Fatalf("completion lost attachment: %+v", draft)
 			}
 			if key == "\t" {
 				appServerTestKeys(t, u, "\x1a")
-				if u.draft != "/bt\n[Image 1] " || len(u.images) != 1 {
-					t.Fatalf("undo lost original draft: %q", u.draft)
+				if u.Text != "/bt\n[Image 1] " || len(u.Images) != 1 {
+					t.Fatalf("undo lost original draft: %q", u.Text)
 				}
 			}
 		})

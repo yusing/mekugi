@@ -167,7 +167,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 			return true, nil
 		}
 		u.recordDraft()
-		u.draft, u.cursorBack, u.images = "", 0, nil
+		u.Text, u.CursorBack, u.Images = "", 0, nil
 		u.setLivePane(value)
 		return true, nil
 	}
@@ -190,7 +190,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 		}
 	}
 	if len(fields) == 1 {
-		u.deleteDraftRange(0, len(u.draft))
+		u.deleteDraftRange(0, len(u.Text))
 		u.showSettingsPicker(command, choices)
 		return true, nil
 	}
@@ -219,7 +219,7 @@ func (u *appServerUI) settingsCommand(text string) (bool, error) {
 	if accepted {
 		notice, alert := u.feedback.Text, u.feedback.Alert
 		u.recordDraft()
-		u.draft, u.cursorBack, u.images = "", 0, nil
+		u.Text, u.CursorBack, u.Images = "", 0, nil
 		u.setNotice(notice, alert)
 	}
 	return true, err

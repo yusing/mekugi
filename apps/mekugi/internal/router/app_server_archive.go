@@ -8,7 +8,7 @@ func (u *appServerUI) showArchivePicker() {
 		u.setNotice("Wait for the session to be ready", false)
 		return
 	}
-	u.deleteDraftRange(0, len(u.draft))
+	u.deleteDraftRange(0, len(u.Text))
 	u.cancelPickerScan()
 	p := &u.picker
 	p.modal, p.open, p.selected, p.top = "archive", true, 0, 0

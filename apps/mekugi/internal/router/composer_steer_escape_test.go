@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -55,14 +57,14 @@ func TestComposerEscapeExpeditesSteersInHostEventOrder(t *testing.T) {
 					}
 					if i < 2 {
 						composerShellEscape(t, u)
-						if wire.Len() != 0 || u.draft != "draft" {
-							t.Fatalf("repeated Escape disturbed settlement after %c: draft=%q wire=%s", event, u.draft, wire.String())
+						if wire.Len() != 0 || u.Text != "draft" {
+							t.Fatalf("repeated Escape disturbed settlement after %c: draft=%q wire=%s", event, u.Text, wire.String())
 						}
 					}
 				}
 				appServerOneRequest(t, wire, "turn/start", "older\nfirst\nsecond")
-				if u.draft != "draft" || u.cursorBack != 1 || len(u.queued) != 1 || u.queued[0].text != "queued" {
-					t.Fatalf("expedite altered draft or queue: draft=%q caret=%d queued=%+v", u.draft, u.cursorBack, u.queued)
+				if u.Text != "draft" || u.CursorBack != 1 || len(u.queued) != 1 || u.queued[0].Text != "queued" {
+					t.Fatalf("expedite altered draft or queue: draft=%q caret=%d queued=%+v", u.Text, u.CursorBack, u.queued)
 				}
 				appServerTestTurn(t, u, "expedited")
 				if wire.Len() != 0 {
@@ -94,11 +96,11 @@ func TestComposerEscapeCommittedSteerIsNotResent(t *testing.T) {
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
 			if unsent {
 				appServerOneRequest(t, wire, "turn/start", "second")
-				if u.draft != "draft" || len(u.queued) != 1 {
+				if u.Text != "draft" || len(u.queued) != 1 {
 					t.Fatal("remaining steer did not preserve editor and queue")
 				}
-			} else if wire.Len() != 0 || u.draft != "queued\ndraft" {
-				t.Fatalf("committed input or queue was resent: draft=%q wire=%s", u.draft, wire.String())
+			} else if wire.Len() != 0 || u.Text != "queued\ndraft" {
+				t.Fatalf("committed input or queue was resent: draft=%q wire=%s", u.Text, wire.String())
 			}
 		})
 	}
@@ -124,8 +126,8 @@ func TestComposerEscapeRejectedInterruptDoesNotResend(t *testing.T) {
 			if !completionFirst {
 				appServerTestTurnEnd(t, u, "t", "interrupted")
 			}
-			if wire.Len() != 0 || u.draft != "first\nqueued\ndraft" {
-				t.Fatalf("rejected interrupt delivered input: draft=%q wire=%s", u.draft, wire.String())
+			if wire.Len() != 0 || u.Text != "first\nqueued\ndraft" {
+				t.Fatalf("rejected interrupt delivered input: draft=%q wire=%s", u.Text, wire.String())
 			}
 		})
 	}
@@ -151,8 +153,8 @@ func TestComposerEscapeExpeditesAttachments(t *testing.T) {
 	if len(requests) != 1 || requests[0].Method != "turn/start" {
 		t.Fatalf("requests=%+v", requests)
 	}
-	input := u.inputPayloads[u.Submission().ID].input()
-	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.inputPayloads[u.Submission().ID].selections) != 1 || u.inputPayloads[u.Submission().ID].selections[0].text != "exact quote" || u.inputPayloads[u.Submission().ID].text != "[Image 1][Selected message] \n[Image 2]" {
+	input := conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)
+	if input[0]["path"] != "first.png" || input[2]["path"] != "second.png" || len(u.inputPayloads[u.Submission().ID].Selections) != 1 || u.inputPayloads[u.Submission().ID].Selections[0].Text != "exact quote" || u.inputPayloads[u.Submission().ID].Text != "[Image 1][Selected message] \n[Image 2]" {
 		t.Fatalf("expedite corrupted attachments: %+v draft=%+v", input, u.inputPayloads[u.Submission().ID].composerDraft)
 	}
 }
@@ -178,8 +180,8 @@ func TestComposerCtrlCCancelsEscapeDelivery(t *testing.T) {
 				appServerTestTurnEnd(t, u, "t", "interrupted")
 			}
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, interrupt.ID))
-			if wire.Len() != 0 || u.draft != "first\nqueued" {
-				t.Fatalf("Ctrl-C failed to restore: draft=%q wire=%s", u.draft, wire.String())
+			if wire.Len() != 0 || u.Text != "first\nqueued" {
+				t.Fatalf("Ctrl-C failed to restore: draft=%q wire=%s", u.Text, wire.String())
 			}
 		})
 	}
@@ -235,8 +237,8 @@ func TestComposerEscapeExpeditesOnlyLocallyWaitingSteer(t *testing.T) {
 		t.Fatal(err)
 	}
 	appServerOneRequest(t, wire, "turn/start", "first")
-	if u.draft != "draft" {
-		t.Fatalf("local steer restored over draft: %q", u.draft)
+	if u.Text != "draft" {
+		t.Fatalf("local steer restored over draft: %q", u.Text)
 	}
 }
 

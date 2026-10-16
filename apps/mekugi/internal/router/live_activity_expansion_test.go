@@ -46,7 +46,7 @@ func TestUISnapshotLiveActivityExpansion(t *testing.T) {
 func TestNativeUIExpansionFocus(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
-	u.draft = "Keep this draft"
+	u.Text = "Keep this draft"
 	for _, focus := range []int{0, 2} {
 		u.shell.focus = 0
 		u.agents.only, u.agents.selected = focus == 2, "/root/worker"
@@ -58,7 +58,7 @@ func TestNativeUIExpansionFocus(t *testing.T) {
 		if err := u.shell.key(5); err != nil {
 			t.Fatal(err)
 		}
-		if u.draft != "Keep this draft" || u.shell.focus != 0 || view.expansion != (before+1)%3 {
+		if u.Text != "Keep this draft" || u.shell.focus != 0 || view.expansion != (before+1)%3 {
 			t.Fatal("Ctrl+E changed the draft, focus or wrong pane")
 		}
 		if !strings.Contains(ansi.Strip(u.shell.nativeStatus()), "^B 1-3 views") {

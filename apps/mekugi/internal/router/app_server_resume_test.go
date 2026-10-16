@@ -41,7 +41,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	}
 	w.Reset()
 	appServerTestKeys(t, u, "next prompt\r")
-	if w.Len() != 0 || u.draft != "next prompt" {
+	if w.Len() != 0 || u.Text != "next prompt" {
 		t.Fatal("input submitted before resume succeeded")
 	}
 	appServerTestMessage(t, u, `{"method":"item/completed","params":{"threadId":"saved","turnId":"old","item":{"type":"agentMessage","id":"answer","text":"Saved answer"}}}`)
@@ -152,7 +152,7 @@ func TestAppServerResumeLastStartup(t *testing.T) {
 	}
 	w.Reset()
 	appServerTestKeys(t, u, "next prompt\r")
-	if w.Len() != 0 || u.draft != "next prompt" {
+	if w.Len() != 0 || u.Text != "next prompt" {
 		t.Fatal("submitted input during lookup")
 	}
 	appServerTestMessage(t, u, `{"id":1,"result":{"data":[{"id":"latest","cwd":"/workspace"}],"nextCursor":null}}`)

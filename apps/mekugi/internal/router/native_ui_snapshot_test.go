@@ -29,7 +29,7 @@ func TestUISnapshotNativeMainComposer(t *testing.T) {
 				{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the snapshot workflow.", Observed: now},
 				{Seq: 2, Agent: "Main", Kind: "final", Text: "Review the **rendered frame**, accept its baseline, then rerun the offline check.", Observed: now},
 			}})
-			u.draft = "Add narrow-screen coverage.\nKeep the interaction assertions."
+			u.Text = "Add narrow-screen coverage.\nKeep the interaction assertions."
 			rows, _ := u.mainFrame(width, 16, 0)
 			assertNativeUISnapshot(t, fmt.Sprintf("native-main-%d", width), rows)
 		})
@@ -52,7 +52,7 @@ func TestUISnapshotShellComposer(t *testing.T) {
 				u.view.painter.Theme = theme
 				u.status = "Ready"
 				appServerTestKeys(t, u, "\x1b[200~!printf '%s\\n' \"你好\n$HOME\" | cat\n# comment\n\x1b[201~")
-				u.cursorBack = len(u.draft) - strings.Index(u.draft, "$HOME")
+				u.CursorBack = len(u.Text) - strings.Index(u.Text, "$HOME")
 				rows, _ := u.mainFrame(width, 12, 0)
 				rows = append(rows, "plain after shell")
 				u.deleteDraftRange(0, 1)

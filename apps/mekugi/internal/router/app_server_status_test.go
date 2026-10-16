@@ -100,8 +100,8 @@ func TestAppServerStatusLocalAndAccountRefresh(t *testing.T) {
 	u.statusConfig.Instructions = []string{"/workspace/AGENTS.md"}
 	appServerTestNotify(t, u, "thread/tokenUsage/updated", map[string]any{"threadId": "main", "tokenUsage": map[string]any{"total": map[string]any{"inputTokens": 1200, "outputTokens": 30}, "last": map[string]any{"totalTokens": 1000}, "modelContextWindow": 4000}})
 	appServerTestKeys(t, u, "/status\r")
-	if len(u.view.Entries) != 0 || u.draft != "" || u.Turn != "active" || u.status != "Working" {
-		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.draft, u.Turn, u.status, len(u.view.Entries))
+	if len(u.view.Entries) != 0 || u.Text != "" || u.Turn != "active" || u.status != "Working" {
+		t.Fatalf("status altered session: draft=%q turn=%q status=%q entries=%d", u.Text, u.Turn, u.status, len(u.view.Entries))
 	}
 	for _, want := range []string{"Model: gpt-6-sol", "Reasoning: high", "Service tier: priority", "Directory: /workspace", "Approvals: never", "Sandbox: danger-full-access", "Agents.md: /workspace/AGENTS.md", "75% left", "Loading account"} {
 		if !strings.Contains(statusReportText(u.statusPanel), want) {
@@ -258,7 +258,7 @@ func TestAppServerStatusTerminalPasteCanClose(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if u.statusPanel == nil || u.draft != "" || shell.paste {
+	if u.statusPanel == nil || u.Text != "" || shell.paste {
 		t.Fatal("paste affected panel or composer")
 	}
 	if err := shell.key('q'); err != nil {

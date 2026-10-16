@@ -143,8 +143,8 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 		t.Fatal("sync question took focus mid-typing")
 	}
 	appServerTestKeys(t, u, "7")
-	if u.draft != "draft7" {
-		t.Fatalf("keystroke leaked into question: %q", u.draft)
+	if u.Text != "draft7" {
+		t.Fatalf("keystroke leaked into question: %q", u.Text)
 	}
 	before := u.saveQuestionEditor()
 	u.openQuestions()
@@ -152,15 +152,15 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	appServerTestKeys(t, u, "3private")
 	u.hideQuestions()
 	if !reflect.DeepEqual(u.saveQuestionEditor(), before) {
-		t.Fatalf("parked draft not restored: %q", u.draft)
+		t.Fatalf("parked draft not restored: %q", u.Text)
 	}
 	u.openQuestions()
 	questionTestPaint(t, u, 60)
-	if u.draft != "private" {
-		t.Fatalf("answer draft lost on reopen: %q", u.draft)
+	if u.Text != "private" {
+		t.Fatalf("answer draft lost on reopen: %q", u.Text)
 	}
 	questionTestMessage(t, u, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "midtyping"})
-	if len(u.inputHistory) == 0 || u.inputHistory[len(u.inputHistory)-1].text != "private" {
+	if len(u.InputHistory) == 0 || u.InputHistory[len(u.InputHistory)-1].Text != "private" {
 		t.Fatal("unsent answer not saved to input history")
 	}
 	v, _ := newAppServerTestUI()
@@ -169,7 +169,7 @@ func TestNativeQuestionParkedEditorMidTypingAndSecret(t *testing.T) {
 	questionTestPaint(t, v, 60)
 	appServerTestKeys(t, v, "3secret")
 	questionTestMessage(t, v, nil, "serverRequest/resolved", map[string]any{"threadId": "main", "requestId": "secret"})
-	if len(v.inputHistory) != 0 {
+	if len(v.InputHistory) != 0 {
 		t.Fatal("secret answer entered input history")
 	}
 }
@@ -178,7 +178,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 	t.Run("rejected send", func(t *testing.T) {
 		u, input := newAppServerTestUI()
 		u.Turn = "turn"
-		u.draft = "kept main draft"
+		u.Text = "kept main draft"
 		questionTestAsync(t, u, "pending", "Who receives it?")
 		u.openQuestions()
 		questionTestPaint(t, u, 70)
@@ -190,18 +190,18 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		if u.questionCount() != 1 || u.questions.calls[0].sent {
 			t.Fatal("rejected question did not reopen")
 		}
-		if u.draft != "kept main draft" {
-			t.Fatalf("main draft changed: %q", u.draft)
+		if u.Text != "kept main draft" {
+			t.Fatalf("main draft changed: %q", u.Text)
 		}
 		u.openQuestions()
 		questionTestPaint(t, u, 70)
-		if u.draft != "Customers only" {
-			t.Fatalf("answer draft changed: %q", u.draft)
+		if u.Text != "Customers only" {
+			t.Fatalf("answer draft changed: %q", u.Text)
 		}
 	})
 	t.Run("supersede and steer", func(t *testing.T) {
 		u, _ := newAppServerTestUI()
-		u.draft = "new prompt"
+		u.Text = "new prompt"
 		questionTestAsync(t, u, "pending", "Who receives it?")
 		if got := strings.Join(u.questionRows(80, 10), " "); !strings.Contains(got, "dismisses 1 questions") {
 			t.Fatalf("missing supersede warning: %q", got)
@@ -283,7 +283,7 @@ func TestNativeQuestionGapsQueueAndLiteralAnswers(t *testing.T) {
 	v.openQuestions()
 	questionTestPaint(t, v, 60)
 	appServerTestKeys(t, v, "\x1b[200~! @file $skill /quit\x1b[201~")
-	if v.shellMode() || v.picker.open || len(v.files) != 0 || v.draft != "! @file $skill /quit" {
+	if v.shellMode() || v.picker.open || len(v.Files) != 0 || v.Text != "! @file $skill /quit" {
 		t.Fatal("answer paste was interpreted")
 	}
 }
@@ -293,7 +293,7 @@ func TestNativeQuestionBeforePaintAndSecretFrame(t *testing.T) {
 	u.Turn = "turn"
 	questionTestSync(t, u, "unpainted", false)
 	appServerTestKeys(t, u, "7")
-	if u.draft != "7" || u.questions.active != nil || w.Len() != 0 {
+	if u.Text != "7" || u.questions.active != nil || w.Len() != 0 {
 		t.Fatal("buffered key reached unseen dock")
 	}
 	v, _ := newAppServerTestUI()
@@ -333,7 +333,7 @@ func TestNativeQuestionsWaitForEmptyComposerAndRespectHide(t *testing.T) {
 	appServerTestKeys(t, u, "draft")
 	questionTestAsync(t, u, "pending", "Pending question?")
 	questionTestPaint(t, u, 70)
-	if u.questions.active != nil || u.draft != "draft" {
+	if u.questions.active != nil || u.Text != "draft" {
 		t.Fatal("arrival disrupted a nonempty composer")
 	}
 	appServerTestKeys(t, u, "\x7f\x7f\x7f\x7f\x7f")
@@ -398,8 +398,8 @@ func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
 					send("\t")
 				}
 				send("one two three" + mapping.left + mapping.left + "X" + mapping.right + "Y")
-				if u.draft != "one XtwoY three" || u.questions.index != 0 || w.Len() != 0 {
-					t.Fatalf("draft=%q question=%d requests=%s", u.draft, u.questions.index, w.String())
+				if u.Text != "one XtwoY three" || u.questions.index != 0 || w.Len() != 0 {
+					t.Fatalf("draft=%q question=%d requests=%s", u.Text, u.questions.index, w.String())
 				}
 				if mode == "note" && !u.currentQuestion().note {
 					t.Fatal("word movement left the option note")
@@ -409,11 +409,11 @@ func TestNativeQuestionAnswerWordNavigation(t *testing.T) {
 					// can still navigate questions without losing the draft.
 					send("\x10")
 					send("\x1b[C")
-					if u.questions.index != 1 || u.draft != "" {
+					if u.questions.index != 1 || u.Text != "" {
 						t.Fatal("plain right did not navigate to the second question")
 					}
 					send("\x1b[D")
-					if u.questions.index != 0 || u.draft != "one XtwoY three" {
+					if u.questions.index != 0 || u.Text != "one XtwoY three" {
 						t.Fatal("plain left did not restore the first answer")
 					}
 				}
@@ -445,8 +445,8 @@ func TestNativeQuestionAnswerBareArrowNavigation(t *testing.T) {
 				send("\t")
 			}
 			send("one two\x1b[D\x1b[DX\x1b[CY")
-			if u.draft != "one tXwYo" || u.questions.index != 0 || wire.Len() != 0 {
-				t.Fatalf("draft=%q question=%d requests=%s", u.draft, u.questions.index, wire.String())
+			if u.Text != "one tXwYo" || u.questions.index != 0 || wire.Len() != 0 {
+				t.Fatalf("draft=%q question=%d requests=%s", u.Text, u.questions.index, wire.String())
 			}
 			if mode == "note" && !u.currentQuestion().note {
 				t.Fatal("caret movement left the option note")

@@ -10,6 +10,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
@@ -57,60 +59,14 @@ func readSkillAttachment(ctx context.Context, cwd string, environment []string, 
 		data, err := readManagedSkill(ctx, cwd, environment, name)
 		return data, true, err
 	}
-	data, err := readComposerFile(path)
+	data, err := composer.ReadFile(path)
 	return data, false, err
 }
-func frameComposerSkillFromPath(name, path, content string) []string {
-	header := fmt.Sprintf("Attached skill %q", name)
-	if path != "" {
-		header += fmt.Sprintf(" from %q", path)
-	}
-	return frameAttachmentText(content, func(start, end, total int) string {
-		return fmt.Sprintf("%s (UTF-8 bytes %d:%d of %d; skill instructions; %s):\n", header, start, end, total, attachments.ReadGuidance)
-	})
-}
 func (u *appServerUI) snapshotDraftSkills(d *composerDraft) {
-	d.snapshotSkillAttachments(u.session.cwd, u.skillEnvironment)
-}
-
-// Skills use the file attachment store, budgets, framing and delivery. Only
-// source resolution and the header differ; no second snapshot lifecycle exists.
-func (d *composerDraft) snapshotSkillAttachments(cwd string, environment []string) {
-	var frames []string
-	seen := make(map[string]bool)
-	for _, attachment := range d.attachments {
-		retained, ok := attachments.Decode(attachment)
-		if !ok {
-			continue
-		}
-		frames = append(frames, retained...)
-		for _, frame := range retained {
-			if name, path, _ := attachments.ParseSkillFrame(frame); name != "" {
-				seen[name+"\x00"+path] = true
-			}
-		}
-	}
-	for _, skill := range d.skills {
-		key := skill.name + "\x00" + skill.path
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		header := fmt.Sprintf("Attached skill %q", skill.name)
-		if skill.path != "" {
-			header += fmt.Sprintf(" from %q", skill.path)
-		}
+	d.SnapshotSkills(func(name, path string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		data, _, err := readSkillAttachment(ctx, cwd, environment, skill.name, skill.path)
-		cancel()
-		next := frameComposerSkillFromPath(skill.name, skill.path, string(data))
-		var more bool
-		frames, more = d.appendAttachmentSnapshot(frames, next, header, err)
-		if !more {
-			break
-		}
-	}
-	if len(frames) > 0 {
-		d.attachments = []string{attachments.Encode(frames)}
-	}
+		defer cancel()
+		data, _, err := readSkillAttachment(ctx, u.session.cwd, u.skillEnvironment, name, path)
+		return data, err
+	})
 }

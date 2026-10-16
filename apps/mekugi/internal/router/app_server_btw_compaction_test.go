@@ -90,7 +90,7 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 			}
 			start := btwTestRequest(t, w, "turn/start", "side")
 			btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-			if len(u.btw.pending.images) != 1 || u.btw.pending.text == "" {
+			if len(u.btw.pending.Images) != 1 || u.btw.pending.Text == "" {
 				t.Fatal("start acknowledgement discarded retry input")
 			}
 			appServerTestKeys(t, u, "newer draft")
@@ -107,19 +107,19 @@ func TestAppServerBTWCompactionRestoresAttachmentsOnce(t *testing.T) {
 				errorEvent()
 				completion()
 			}
-			before := u.draft
+			before := u.Text
 			errorEvent()
 			completion()
-			if u.draft != before || strings.Count(before, "/btw") != 1 || !strings.HasSuffix(before, "newer draft") || len(u.images) != 1 || u.images[0].path != image {
-				t.Fatalf("restoration lost/duplicated input: %q images=%+v", u.draft, u.images)
+			if u.Text != before || strings.Count(before, "/btw") != 1 || !strings.HasSuffix(before, "newer draft") || len(u.Images) != 1 || u.Images[0].Path != image {
+				t.Fatalf("restoration lost/duplicated input: %q images=%+v", u.Text, u.Images)
 			}
-			if u.btw.busy || u.btw.pending.text != "" || u.btw.status != btwCompactionRequired || u.Turn != "main-turn" || u.status != "Working" {
+			if u.btw.busy || u.btw.pending.Text != "" || u.btw.status != btwCompactionRequired || u.Turn != "main-turn" || u.status != "Working" {
 				t.Fatalf("failure state = %+v Main=%s/%s", u.btw, u.Turn, u.status)
 			}
 			if err := u.submitBTW(); err != nil {
 				t.Fatal(err)
 			}
-			if w.Len() != 0 || u.draft != before {
+			if w.Len() != 0 || u.Text != before {
 				t.Fatal("rejected side accepted follow-up")
 			}
 		})
@@ -145,8 +145,8 @@ func TestAppServerBTWCompactionCloseRecreateIgnoresLateFailure(t *testing.T) {
 	btwTestReply(t, u, interrupt, `{}`)
 	unload := btwTestRequest(t, w, "thread/unsubscribe", "side")
 	btwTestReply(t, u, unload, `{}`)
-	if u.btw == old || u.btw.thread != "new-side" || !u.btw.busy || u.draft != "" || u.proxy.isBTWThread("side") || !u.proxy.isBTWThread("new-side") {
-		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.btw, u.draft)
+	if u.btw == old || u.btw.thread != "new-side" || !u.btw.busy || u.Text != "" || u.proxy.isBTWThread("side") || !u.proxy.isBTWThread("new-side") {
+		t.Fatalf("late events crossed lifecycle: %+v draft=%q", u.btw, u.Text)
 	}
 }
 
@@ -158,10 +158,10 @@ func TestAppServerBTWCompactionBeforeStartAckDoesNotResend(t *testing.T) {
 	btwTestReply(t, u, fork, `{"thread":{"id":"side"}}`)
 	start := btwTestRequest(t, w, "turn/start", "side")
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": "side", "turn": map[string]any{"id": "side-turn", "status": "failed", "error": map[string]any{"message": btwCompactionRequired}}})
-	before := u.draft
+	before := u.Text
 	btwTestReply(t, u, start, `{"turn":{"id":"side-turn"}}`)
-	if w.Len() != 0 || u.btw.turn != "" || u.btw.busy || u.draft != before || !strings.Contains(before, "initial") {
-		t.Fatalf("late start acknowledgement revived rejection: panel=%+v draft=%q sent=%q", u.btw, u.draft, w.String())
+	if w.Len() != 0 || u.btw.turn != "" || u.btw.busy || u.Text != before || !strings.Contains(before, "initial") {
+		t.Fatalf("late start acknowledgement revived rejection: panel=%+v draft=%q sent=%q", u.btw, u.Text, w.String())
 	}
 }
 

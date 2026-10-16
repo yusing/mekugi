@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 )
 
@@ -36,8 +38,8 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	first, second := answerImageFixture(t), answerImageFixture(t)
 	appServerTestKeys(t, u, "\x1b[200~"+first+"\x1b[201~")
-	if u.draft != "[Image 1] " || len(u.images) != 1 || len(u.draftSnapshot().displaySpans()) != 1 {
-		t.Fatalf("answer did not reuse composer: %q %+v", u.draft, u.images)
+	if u.Text != "[Image 1] " || len(u.Images) != 1 || len(u.draftSnapshot().displaySpans()) != 1 {
+		t.Fatalf("answer did not reuse composer: %q %+v", u.Text, u.Images)
 	}
 	u.insertSelection("message", "first quote", "")
 	appServerTestKeys(t, u, "\r")
@@ -45,8 +47,8 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	appServerTestKeys(t, u, "\x1b[200~"+second+"\x1b[201~")
 	u.insertSelection("message", "second quote", "")
 	appServerTestKeys(t, u, "\r")
-	if u.draft != "main draft" {
-		t.Fatalf("parked editor changed: %q", u.draft)
+	if u.Text != "main draft" {
+		t.Fatalf("parked editor changed: %q", u.Text)
 	}
 	var request struct {
 		Method string `json:"method"`
@@ -76,7 +78,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if !ok || len(frames) != 2 || !strings.HasSuffix(frames[0], "\nfirst quote") || !strings.HasSuffix(frames[1], "\nsecond quote") {
 		t.Fatalf("answer selections lost: %q", frames)
 	}
-	content, err := json.Marshal(u.inputPayloads[u.Submission().ID].input())
+	content, err := json.Marshal(conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestQuestionAsyncImagesUseComposerInput(t *testing.T) {
 	if !ok || len(questionReplies(text)) != 2 || len(spans) != 0 {
 		t.Fatalf("reply images created a user band: %q %+v", text, spans)
 	}
-	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.Submission().ID, "content": u.inputPayloads[u.Submission().ID].input()}})
+	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{"id": "reply", "type": "userMessage", "clientUserMessageId": u.Submission().ID, "content": conversationbinding.Input(u.inputPayloads[u.Submission().ID].Draft)}})
 	for _, q := range u.questions.calls[0].questions {
 		if q.outcome != "answered" {
 			t.Fatalf("image answer not committed: %+v", q)
@@ -105,7 +107,7 @@ func TestQuestionSyncImageSendsHostOwnedCompanion(t *testing.T) {
 	if !strings.Contains(wire.String(), `"user_note: [Image 1] "`) || strings.Contains(wire.String(), `"localImage"`) {
 		t.Fatalf("sync tool response must be strings, companion waits for resolution: %s", wire.String())
 	}
-	if len(u.unsent) != 1 || len(u.unsent[0].images) != 1 {
+	if len(u.unsent) != 1 || len(u.unsent[0].Images) != 1 {
 		t.Fatal("missing image companion")
 	}
 	wire.Reset()
@@ -141,8 +143,8 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	appServerTestMessage(t, u, `{"id":`+requestID+`,"error":{"code":-1,"message":"rejected"}}`)
 	u.openQuestions()
 	questionTestPaint(t, u, 70)
-	if len(u.images) != 1 || u.images[0].path != path || len(u.selections) != 1 || u.selections[0].text != "retry quote" {
-		t.Fatalf("retry lost image: %q %+v", u.draft, u.images)
+	if len(u.Images) != 1 || u.Images[0].Path != path || len(u.Selections) != 1 || u.Selections[0].Text != "retry quote" {
+		t.Fatalf("retry lost image: %q %+v", u.Text, u.Images)
 	}
 	wire.Reset()
 	appServerTestKeys(t, u, "\r")

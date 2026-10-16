@@ -31,7 +31,7 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			u, w := newAppServerTestUI()
-			u.model, u.reasoningEffort, u.draft = "test", tt.effort, "keep draft"
+			u.model, u.reasoningEffort, u.Text = "test", tt.effort, "keep draft"
 			if err := json.Unmarshal([]byte(`[{"model":"test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}]`), &u.models); err != nil {
 				t.Fatal(err)
 			}
@@ -43,7 +43,7 @@ func TestAppServerSettingsReasoningKeys(t *testing.T) {
 			} else {
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", "effort": tt.want})
 			}
-			if u.draft != "keep draft" || u.reasoningEffort != tt.effort {
+			if u.Text != "keep draft" || u.reasoningEffort != tt.effort {
 				t.Fatal("shortcut changed draft or authoritative effort optimistically")
 			}
 		})
@@ -67,11 +67,11 @@ func TestAppServerSettingsSlashControls(t *testing.T) {
 				u.Turn, u.model, u.reasoningEffort, u.serviceTier = turn, "original", "low", "flex"
 				appServerTestKeys(t, u, tt.command+"\r")
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", tt.field: tt.value})
-				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.inputPayloads[u.Submission().ID].text != "" || !u.Settings.Pending() {
+				if u.model != "original" || u.reasoningEffort != "low" || u.serviceTier != "flex" || u.inputPayloads[u.Submission().ID].Text != "" || !u.Settings.Pending() {
 					t.Fatal("command submitted conversation or changed metadata before notification")
 				}
 				appServerTestKeys(t, u, "next prompt\r")
-				if w.Len() != 0 || u.draft != "" || len(u.unsent) != 1 || u.unsent[0].text != "next prompt" {
+				if w.Len() != 0 || u.Text != "" || len(u.unsent) != 1 || u.unsent[0].Text != "next prompt" {
 					t.Fatal("pending settings allowed conversation submission or lost stacked input")
 				}
 			})
@@ -107,7 +107,7 @@ func TestAppServerSettingsAuthoritativeLiveUpdate(t *testing.T) {
 			if u.Settings.Pending() || !strings.Contains(u.feedback.Text, tt.notice) || u.reasoningEffort != "high" {
 				t.Fatalf("live result state: pending=%v effort=%s notice=%q", u.Settings.Pending(), u.reasoningEffort, u.feedback.Text)
 			}
-			if w.Len() != 0 || u.inputPayloads[u.Submission().ID].text != "" {
+			if w.Len() != 0 || u.inputPayloads[u.Submission().ID].Text != "" {
 				t.Fatal("live settings response submitted conversation")
 			}
 		})
@@ -143,8 +143,8 @@ func TestAppServerSettingsPendingCommandRetainsDraft(t *testing.T) {
 	appServerTestKeys(t, u, "/reasoning high\r")
 	w.Reset()
 	appServerTestKeys(t, u, "/tier priority\r")
-	if u.draft != "/tier priority" || w.Len() != 0 {
-		t.Fatalf("pending command lost: %q wire=%q", u.draft, w.String())
+	if u.Text != "/tier priority" || w.Len() != 0 {
+		t.Fatalf("pending command lost: %q wire=%q", u.Text, w.String())
 	}
 }
 
@@ -189,11 +189,11 @@ func TestAppServerSettingsUnchangedDoesNotWaitForNotification(t *testing.T) {
 		} else if w.Len() != 0 {
 			t.Fatalf("no-op wrote thread update: %q", w.String())
 		}
-		if u.Settings.Pending() || u.draft != "" {
+		if u.Settings.Pending() || u.Text != "" {
 			t.Fatal("no-op command remains pending")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.inputPayloads[u.Submission().ID].text != "prompt" {
+		if u.inputPayloads[u.Submission().ID].Text != "prompt" {
 			t.Fatal("no-op blocked prompt")
 		}
 	}
@@ -210,7 +210,7 @@ func TestAppServerSettingsChoicesRenderedInPicker(t *testing.T) {
 	if !strings.Contains(rendered, "first-choice") || !strings.Contains(rendered, "last-choice-that-would-not-fit") {
 		t.Fatalf("missing choices: %s", rendered)
 	}
-	if len(u.view.Entries) != 0 || len(u.inputHistory) != 0 || u.inputPayloads[u.Submission().ID].text != "" {
+	if len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.inputPayloads[u.Submission().ID].Text != "" {
 		t.Fatal("local choices submitted to host")
 	}
 }
@@ -227,7 +227,7 @@ func TestAppServerSettingsTierAliasNoop(t *testing.T) {
 			t.Fatal("alias queued unchanged thread settings")
 		}
 		appServerTestKeys(t, u, "prompt\r")
-		if u.Settings.Pending() || u.inputPayloads[u.Submission().ID].text != "prompt" {
+		if u.Settings.Pending() || u.inputPayloads[u.Submission().ID].Text != "prompt" {
 			t.Fatal("alias no-op blocked prompt")
 		}
 	}
@@ -243,7 +243,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					t.Fatal(err)
 				}
 				appServerTestKeys(t, u, command+"\r")
-				if u.picker.modal != "settings" || len(u.picker.choices) != 2 || u.draft != "" || w.Len() != 0 {
+				if u.picker.modal != "settings" || len(u.picker.choices) != 2 || u.Text != "" || w.Len() != 0 {
 					t.Fatalf("picker did not open locally: %+v", u.picker)
 				}
 				appServerTestKeys(t, u, "\x1b[B\r")
@@ -255,7 +255,7 @@ func TestAppServerSettingsPickerSelection(t *testing.T) {
 					field, value = "serviceTier", nil
 				}
 				assertAppServerSettingsRequest(t, w, "thread/settings/update", map[string]any{"threadId": "main", field: value})
-				if u.picker.open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.inputHistory) != 0 || u.inputPayloads[u.Submission().ID].text != "" {
+				if u.picker.open || u.model != "one" || u.reasoningEffort != "low" || u.serviceTier != "priority" || len(u.view.Entries) != 0 || len(u.InputHistory) != 0 || u.inputPayloads[u.Submission().ID].Text != "" {
 					t.Fatal("selection polluted transcript or changed confirmed settings")
 				}
 			})
@@ -279,7 +279,7 @@ func TestAppServerSettingsPickerLoadingAndCancellation(t *testing.T) {
 		}
 		appServerTestMessage(t, u, `{"id":99,"result":{"data":[{"model":"one"}]}}`)
 		if cancel {
-			if u.picker.open || u.draft != "retained draft" {
+			if u.picker.open || u.Text != "retained draft" {
 				t.Fatal("late catalog reopened cancelled picker or changed draft")
 			}
 		} else if u.picker.loading || len(u.picker.choices) != 1 {
@@ -298,7 +298,7 @@ func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 		t.Fatal("empty catalog lacks feedback or submits")
 	}
 	appServerTestKeys(t, u, "\x1b[200~do not submit\x1b[201~")
-	if u.draft != "" || u.picker.modal != "settings" {
+	if u.Text != "" || u.picker.modal != "settings" {
 		t.Fatal("paste escaped modal")
 	}
 	u.pickerKey("\x1b")

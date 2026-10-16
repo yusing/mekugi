@@ -11,14 +11,14 @@ import (
 )
 
 func (u *appServerUI) shellMode() bool {
-	return u.currentQuestion() == nil && !u.approvals.open && strings.HasPrefix(u.draft, "!")
+	return u.currentQuestion() == nil && !u.approvals.open && strings.HasPrefix(u.Text, "!")
 }
 
 // Paint complete logical lines before cutting them to the existing draft layout.
 // Soft wraps must not change Bash's multiline lexical state or cursor geometry.
 func (u *appServerUI) paintShellDraft(rows []string) {
 	// Highlight returns cached rows. The mode marker belongs only to this draft.
-	lines := slices.Clone(u.view.painter.Highlight("bash", textsanitize.Safe(u.draft[1:], false)+"\n"))
+	lines := slices.Clone(u.view.painter.Highlight("bash", textsanitize.Safe(u.Text[1:], false)+"\n"))
 	lines[0] = "!" + lines[0]
 	line, column := 0, 0
 	for i, row := range rows {
@@ -40,7 +40,7 @@ func (u *appServerUI) paintShellDraft(rows []string) {
 // Codex owns execution, cancellation and history: active shell results inject
 // into the running turn; standalone results wait in history for the next input.
 func (u *appServerUI) submitShell() error {
-	command := strings.TrimSpace(strings.TrimPrefix(u.draft, "!"))
+	command := strings.TrimSpace(strings.TrimPrefix(u.Text, "!"))
 	if command == "" {
 		u.setNotice("Type a shell command after !", false)
 		return nil
@@ -52,7 +52,7 @@ func (u *appServerUI) submitShell() error {
 		u.setNotice("Waiting for the pending request · press Enter again when ready", false)
 		return nil
 	}
-	if len(u.images) != 0 || len(u.skills) != 0 || len(u.files) != 0 || len(u.selections) != 0 {
+	if len(u.Images) != 0 || len(u.Skills) != 0 || len(u.Files) != 0 || len(u.Selections) != 0 {
 		u.setNotice("Shell commands use plain text · remove attachments and picker tokens first", true)
 		return nil
 	}
@@ -79,7 +79,7 @@ func (u *appServerUI) shellResponse(failure *appserver.Error) {
 		u.discardShellEdit(u.shellEdits.pending)
 		u.shellEdits.pending = nil
 		hint := ""
-		if u.draft == "" {
+		if u.Text == "" {
 			u.loadDraft(draft)
 		} else {
 			// Never join a later prose draft onto an executable shell script.

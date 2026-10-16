@@ -8,6 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
@@ -252,43 +254,43 @@ func (u *appServerUI) skillQueryCompletable(query string) bool {
 // names with different paths are ambiguous and remain literal until selected.
 func (u *appServerUI) bindSkills(d *composerDraft, final bool) {
 	p := &u.picker
-	if strings.HasPrefix(d.text, "!") || d.questionCall != nil {
+	if strings.HasPrefix(d.Text, "!") || d.questionCall != nil {
 		return
 	}
 	if !p.skillsLoaded || p.skillsCwd != u.session.cwd {
 		return
 	}
-	var catalog []composerSkill
+	var catalog []composer.Token
 	for _, choice := range p.skills {
 		if choice.enabled && u.skillQueryCompletable(choice.name) {
-			catalog = append(catalog, composerSkill{name: choice.name, path: choice.path})
+			catalog = append(catalog, composer.Token{Name: choice.name, Path: choice.path})
 		}
 	}
 	spans := d.displaySpans()
-	for _, binding := range unambiguousSkillBindings(d.text, catalog, nil) {
-		if !final && binding.end == len(d.text) {
+	for _, binding := range unambiguousSkillBindings(d.Text, catalog, nil) {
+		if !final && binding.End == len(d.Text) {
 			continue // A still-growing word stays editable.
 		}
 		if !slices.ContainsFunc(spans, func(span activityui.TextSpan) bool {
-			return binding.start < span.End && binding.end > span.Start
+			return binding.Start < span.End && binding.End > span.Start
 		}) {
-			d.skills = append(d.skills, binding)
+			d.Skills = append(d.Skills, binding)
 		}
 	}
-	slices.SortFunc(d.skills, func(a, b composerSkill) int { return a.start - b.start })
+	slices.SortFunc(d.Skills, func(a, b composer.Token) int { return a.Start - b.Start })
 }
 
 func (u *appServerUI) skillBindingQuery(d composerDraft, final bool) string {
-	if strings.HasPrefix(d.text, "!") || d.questionCall != nil {
+	if strings.HasPrefix(d.Text, "!") || d.questionCall != nil {
 		return ""
 	}
 	at := 0
 	spans := d.displaySpans()
-	for word := range strings.FieldsSeq(d.text) {
-		start := at + strings.Index(d.text[at:], word)
+	for word := range strings.FieldsSeq(d.Text) {
+		start := at + strings.Index(d.Text[at:], word)
 		at = start + len(word)
 		name, ok := strings.CutPrefix(word, "$")
-		if !ok || name == "" || !u.skillQueryCompletable(name) || !final && at == len(d.text) {
+		if !ok || name == "" || !u.skillQueryCompletable(name) || !final && at == len(d.Text) {
 			continue
 		}
 		bound := false

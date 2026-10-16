@@ -1,12 +1,17 @@
 package router
 
 import (
+	"context"
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/backends/codex/binding"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
@@ -30,17 +35,20 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 	appServerTestKeys(t, u, " ")
 	bindComposerFile(u, `@"file name.go"`, "/work/file name.go")
 	appServerTestKeys(t, u, " ")
-	start := len(u.draft)
+	start := len(u.Text)
 	appServerTestKeys(t, u, "$review")
-	u.skills = append(u.skills, composerSkill{start: start, end: len(u.draft), name: "review", path: skillPath})
+	u.Skills = append(u.Skills, composer.Token{Start: start, End: len(u.Text), Name: "review", Path: skillPath})
 	draft := u.draftSnapshot()
-	draft.snapshotSkillAttachments(u.session.cwd, nil)
-	input := draft.input()
+	draft.SnapshotSkills(func(name, path string) ([]byte, error) {
+		data, _, err := readSkillAttachment(context.Background(), u.session.cwd, nil, name, path)
+		return data, err
+	})
+	input := conversationbinding.Input(draft.Draft)
 	foundSkillContents := false
 	for _, part := range input {
 		if raw, ok := part["text"].(string); ok {
 			frames, ok := attachments.Decode(raw)
-			if ok && len(frames) == 1 && frames[0] == frameComposerSkillFromPath("review", skillPath, "Review instruction 世界.\n")[0] {
+			if ok && len(frames) == 1 && frames[0] == composer.SkillFrames("review", skillPath, "Review instruction 世界.\n")[0] {
 				foundSkillContents = true
 			}
 		}
@@ -53,7 +61,7 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	text, spans, ok := appServerUserText(content)
-	if !ok || text != draft.text || len(spans) != 3 {
+	if !ok || text != draft.Text || len(spans) != 3 {
 		t.Fatalf("lost typed spans or bound literal lookalike: %q %+v", text, spans)
 	}
 	if spans[0].Kind != activityui.ImageToken || spans[1].Kind != activityui.FileToken || spans[2].Kind != activityui.SkillToken {
@@ -88,12 +96,12 @@ func TestAppServerTypedTokensAcrossSubmissionAndResume(t *testing.T) {
 
 func TestComposerElementSpansRejectInvalidRanges(t *testing.T) {
 	text := "界@file"
-	elements := []composerTextElement{
-		{composerByteRange{-1, 4}, "bad"},
-		{composerByteRange{1, 6}, text[1:6]},
-		{composerByteRange{3, 100}, "@file"},
-		{composerByteRange{3, 8}, "@file"},
-		{composerByteRange{3, 8}, "@file"},
+	elements := []binding.InputTextElement{
+		{binding.InputByteRange{-1, 4}, "bad"},
+		{binding.InputByteRange{1, 6}, text[1:6]},
+		{binding.InputByteRange{3, 100}, "@file"},
+		{binding.InputByteRange{3, 8}, "@file"},
+		{binding.InputByteRange{3, 8}, "@file"},
 	}
 	spans := composerElementSpans(text, elements)
 	if len(spans) != 1 || spans[0].Start != 3 || spans[0].End != 8 {

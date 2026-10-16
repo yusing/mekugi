@@ -1,4 +1,5 @@
-package router
+// Source: apps/mekugi/internal/router/composer_directory_attachment.go:1:180@[e9da429a] bounded directory snapshots.
+package composer
 
 import (
 	"errors"
@@ -27,7 +28,7 @@ type composerTreeIgnore struct {
 
 // Directory attachments read names only. Bounds include ignored entries and
 // ignore-file input, not just the resulting visible tree.
-func composerDirectoryTree(root string) (string, error) {
+func DirectoryTree(root string) (string, error) {
 	// The selected alias remains in attachment framing/display, but ignore
 	// ancestry must describe the directory actually being read.
 	resolved, err := filepath.EvalSymlinks(root)
@@ -49,7 +50,7 @@ func composerDirectoryTree(root string) (string, error) {
 	ignoreBytes := 0
 	loadIgnore := func(directory string) (composerTreeIgnore, error) {
 		group := composerTreeIgnore{directory: directory}
-		data, err := readComposerFile(filepath.Join(directory, ".gitignore"))
+		data, err := ReadFile(filepath.Join(directory, ".gitignore"))
 		if errors.Is(err, os.ErrNotExist) {
 			return group, nil
 		}
@@ -98,7 +99,7 @@ func composerDirectoryTree(root string) (string, error) {
 		slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
 		for _, entry := range entries {
 			path := filepath.Join(directory, entry.Name())
-			if pickerVCSPath(entry.Name()) || composerTreeIgnored(path, entry.IsDir(), ignores) {
+			if VCSPath(entry.Name()) || composerTreeIgnored(path, entry.IsDir(), ignores) {
 				continue
 			}
 			name := entry.Name()

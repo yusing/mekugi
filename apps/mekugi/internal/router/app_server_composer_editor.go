@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
+
+	"github.com/yusing/mekugi/modules/conversation/composer"
 )
 
 var errOpenComposerEditor = errors.New("open composer editor")
@@ -28,7 +27,7 @@ func (u *appServerUI) openComposerEditor(stdin, stdout *os.File) {
 		return
 	}
 	path := file.Name()
-	_, writeErr := file.WriteString(u.draft)
+	_, writeErr := file.WriteString(u.Text)
 	if err = errors.Join(writeErr, file.Close()); err != nil {
 		_ = os.Remove(path)
 		u.setNotice("Open editor: "+err.Error(), true)
@@ -71,83 +70,18 @@ func (u *appServerUI) runEditor(path string, stdin, stdout *os.File) error {
 
 func (u *appServerUI) applyEditorDraft(text string) error {
 	defer u.refreshPicker()
-	u.run = runNone
+	u.Run = composer.NoRun
 	if q := u.currentQuestion(); q != nil && !q.note {
 		q.selected = len(q.choices)
 	}
-	if text == u.draft {
+	if text == u.Text {
 		return nil
 	}
-	if !utf8.ValidString(text) {
-		return errors.New("edited draft is not valid UTF-8")
+	if err := u.Editor.ApplyExternal(text); err != nil {
+		return err
 	}
-	var images []composerImage
-	for _, image := range u.images {
-		label := u.draft[image.start:image.end]
-		if strings.Count(text, label) > 1 {
-			return fmt.Errorf("attachment %s appears more than once", label)
-		}
-		if start := strings.Index(text, label); start >= 0 {
-			image.start, image.end = start, start+len(label)
-			images = append(images, image)
-		}
-	}
-	var selections []composerSelection
-	for _, selection := range u.selections {
-		label := u.draft[selection.start:selection.end]
-		if strings.Count(text, label) > 1 {
-			return fmt.Errorf("selection %s appears more than once", label)
-		}
-		if start := strings.Index(text, label); start >= 0 {
-			selection.start, selection.end = start, start+len(label)
-			selections = append(selections, selection)
-		}
-	}
-	slices.SortFunc(selections, func(a, b composerSelection) int { return a.start - b.start })
-	var skills []composerSkill
-	for _, skill := range u.skills {
-		bindings := restoredSkillBindings(text, skill.name, skill.path)
-		if len(bindings) == 1 {
-			skills = append(skills, bindings[0])
-		}
-	}
-	var files []composerFile
-	next := make(map[string]int)
-	for _, file := range u.files {
-		label := u.draft[file.start:file.end]
-		oldBefore, _ := utf8.DecodeLastRuneInString(u.draft[:file.start])
-		oldAfter, _ := utf8.DecodeRuneInString(u.draft[file.end:])
-		for offset := next[label]; offset < len(text); {
-			index := strings.Index(text[offset:], label)
-			if index < 0 {
-				break
-			}
-			start := offset + index
-			end := start + len(label)
-			offset = end
-			before, _ := utf8.DecodeLastRuneInString(text[:start])
-			after, _ := utf8.DecodeRuneInString(text[end:])
-			// Existing adjacent text belongs outside the atomic token. Keep it
-			// across unrelated editor changes, but do not bind a newly extended
-			// filename merely because its prefix matches the old label.
-			if start > 0 && !unicode.IsSpace(before) && (file.start == 0 || before != oldBefore) ||
-				end < len(text) && !unicode.IsSpace(after) && (file.end == len(u.draft) || after != oldAfter) {
-				continue
-			}
-			file.start, file.end = start, end
-			next[label] = end
-			files = append(files, file)
-			break
-		}
-	}
-	slices.SortFunc(files, func(a, b composerFile) int { return a.start - b.start })
-	u.recordDraft()
-	u.files = files
-	u.selections = selections
-	u.skills = skills
-	u.draft, u.images, u.cursorBack = text, images, 0
 	u.cursorColumn = nil
-	u.renumberImages()
+	u.setNotice("", false)
 	u.pruneDraftImages()
 	return nil
 }

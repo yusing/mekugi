@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/charmbracelet/x/vt"
@@ -151,7 +153,7 @@ func runAppServerPreviewWith(t *testing.T, provider responseProvider, proxy *mek
 	if err != nil {
 		t.Fatal(err)
 	}
-	wait, err := startAppServerUI(new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, options.approvals)
+	wait, err := startAppServerUI(composer.Service{}, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, cmd, terminal, terminal, proxy, nil, "", true, nil, nil, nil, "", nil, options.approvals)
 	if err != nil {
 		t.Fatal(err)
 	}

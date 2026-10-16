@@ -36,7 +36,7 @@ func TestAppServerShellSubmission(t *testing.T) {
 					t.Fatalf("shell request: %+v", request)
 				}
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
-				if u.draft != "" || len(u.inputHistory) != 1 || len(appServerTurnRequests(t, w)) != 0 {
+				if u.Text != "" || len(u.InputHistory) != 1 || len(appServerTurnRequests(t, w)) != 0 {
 					t.Fatal("acknowledgement started model input or lost history")
 				}
 				if busy {
@@ -100,8 +100,8 @@ func TestAppServerShellWaitsForCompaction(t *testing.T) {
 				}
 			}
 			appServerTestKeys(t, u, "!pwd\r")
-			if wire.Len() != 0 || u.draft != "!pwd" || u.feedback.Text == "" {
-				t.Fatalf("shell overtook compaction: wire=%s draft=%q notice=%q", wire.String(), u.draft, u.feedback.Text)
+			if wire.Len() != 0 || u.Text != "!pwd" || u.feedback.Text == "" {
+				t.Fatalf("shell overtook compaction: wire=%s draft=%q notice=%q", wire.String(), u.Text, u.feedback.Text)
 			}
 			if prerequisite {
 				return // Existing busy-turn shell coverage checks ordinary Main admission.
@@ -120,13 +120,13 @@ func TestAppServerShellWaitsForCompaction(t *testing.T) {
 func TestAppServerShellRejectedAndEmpty(t *testing.T) {
 	u, w := newAppServerTestUI()
 	appServerTestKeys(t, u, "!\r")
-	if w.Len() != 0 || u.draft != "!" || u.feedback.Text == "" {
+	if w.Len() != 0 || u.Text != "!" || u.feedback.Text == "" {
 		t.Fatal("empty shell command was submitted or silently discarded")
 	}
 	appServerTestKeys(t, u, "pwd\rnext")
 	w.Reset()
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"unavailable"}}`)
-	if u.draft != "next" || !u.feedback.Alert || u.Starting() || u.Shell.Standalone() || w.Len() != 0 || len(u.inputHistory) != 1 || u.inputHistory[0].text != "!pwd" {
+	if u.Text != "next" || !u.feedback.Alert || u.Starting() || u.Shell.Standalone() || w.Len() != 0 || len(u.InputHistory) != 1 || u.InputHistory[0].Text != "!pwd" {
 		t.Fatalf("rejected shell lost input or blocked composer: %+v", u)
 	}
 	appServerTestKeys(t, u, "\x1b[A\r")
@@ -200,11 +200,11 @@ func TestAppServerShellComposer(t *testing.T) {
 	appServerTestKeys(t, u, "\x03\x1b[200~!printf '%s\\n' \"你好\n$HOME\"\n\x1b[201~")
 	appServerTestKeys(t, u, "\x1b[A\x1b[H")
 	frame, _ = u.mainFrame(18, 20, 0)
-	if u.cursor() != strings.Index(u.draft, "$HOME") || !strings.Contains(ansi.Strip(strings.Join(frame, "\n")), "$HOME") {
+	if u.Cursor() != strings.Index(u.Text, "$HOME") || !strings.Contains(ansi.Strip(strings.Join(frame, "\n")), "$HOME") {
 		t.Fatal("multiline navigation or wrapped command changed")
 	}
 	appServerTestKeys(t, u, "x\r")
-	if !strings.Contains(w.String(), `"command":"printf '%s\\n' \"你好\nx$HOME\""`) || u.draft != "" {
-		t.Fatalf("paint/edit changed shell submission: %s draft=%q", w.String(), u.draft)
+	if !strings.Contains(w.String(), `"command":"printf '%s\\n' \"你好\nx$HOME\""`) || u.Text != "" {
+		t.Fatalf("paint/edit changed shell submission: %s draft=%q", w.String(), u.Text)
 	}
 }

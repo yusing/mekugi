@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -257,7 +259,7 @@ func startAppResumeTerminalWithProxy(t *testing.T, newCommand func(context.Conte
 	if len(capture) > 0 {
 		recorder = capture[0]
 	}
-	wait, err := startAppServerUI(new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, false)
+	wait, err := startAppServerUI(composer.Service{}, new(activitymodel.Service), testHistory(), testPreferences(), testReports(), ctx, newCommand(ctx), inner, inner, proxy, nil, resumeThread, true, nil, recorder, nil, "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,6 +3,8 @@ package router
 import (
 	"bytes"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -18,6 +20,28 @@ import (
 	"strings"
 	"testing"
 )
+
+// Expected bounds are the attachment contract, independent of implementation constants.
+const (
+	composerTreeEntries = 256
+	composerTreeScan    = 4096
+	composerTreeBytes   = 16 << 10
+	composerIgnoreBytes = 64 << 10
+)
+
+func directoryAttachmentFrames(t *testing.T, path string) []string {
+	t.Helper()
+	draft := composer.Draft{Files: []composer.Token{{Path: path}}}
+	draft.SnapshotFiles("")
+	if draft.AttachmentNotice != "" || len(draft.Attachments) != 1 {
+		t.Fatalf("snapshot failed: %+v", draft)
+	}
+	frames, ok := attachments.Decode(draft.Attachments[0])
+	if !ok {
+		t.Fatal("snapshot envelope did not decode")
+	}
+	return frames
+}
 
 func directoryAttachmentRoot(t *testing.T) string {
 	t.Helper()
@@ -42,7 +66,7 @@ func directoryAttachmentWrite(t *testing.T, root, name, content string) {
 
 func directoryAttachmentTree(t *testing.T, root string) string {
 	t.Helper()
-	tree, err := composerDirectoryTree(root)
+	tree, err := composer.DirectoryTree(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,10 +121,7 @@ func TestDirectoryAttachmentPOSIXIgnoreMatchesGit(t *testing.T) {
 	if oracle != strings.Join(ignored, "\n")+"\n" {
 		t.Fatalf("unexpected Git oracle output: %q", oracle)
 	}
-	frames, err := frameComposerPath(g.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	frames := directoryAttachmentFrames(t, g.dir)
 	_, body, _ := strings.Cut(frames[0], ":\n")
 	for _, name := range ignored {
 		if strings.Contains(body, "- "+name+"\n") {
@@ -124,9 +145,9 @@ func TestDirectoryAttachmentRootAliasUsesTargetIgnoreAncestry(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{filepath.Join(root, "src"), alias} {
-		frames, err := frameComposerPath(path)
-		if err != nil || len(frames) != 1 || !strings.HasPrefix(frames[0], "Attached file "+strconv.Quote(path)+" (") || !strings.HasSuffix(frames[0], ":\n./\n- public.txt\n") {
-			t.Fatalf("selected path/target ignore ancestry lost: frames=%q err=%v", frames, err)
+		frames := directoryAttachmentFrames(t, path)
+		if len(frames) != 1 || !strings.HasPrefix(frames[0], "Attached file "+strconv.Quote(path)+" (") || !strings.HasSuffix(frames[0], ":\n./\n- public.txt\n") {
+			t.Fatalf("selected path/target ignore ancestry lost: frames=%q", frames)
 		}
 	}
 }
@@ -151,9 +172,9 @@ func TestDirectoryAttachmentSymlinksAndUnsafeNames(t *testing.T) {
 	if err := os.Symlink(outside, alias); err != nil {
 		t.Fatal(err)
 	}
-	frames, err := frameComposerPath(alias)
-	if err != nil || len(frames) != 1 || !strings.HasSuffix(frames[0], ":\n./\n- outside-secret\n") {
-		t.Fatalf("explicit root symlink frames = %q, error = %v", frames, err)
+	frames := directoryAttachmentFrames(t, alias)
+	if len(frames) != 1 || !strings.HasSuffix(frames[0], ":\n./\n- outside-secret\n") {
+		t.Fatalf("explicit root symlink frames = %q", frames)
 	}
 }
 
@@ -198,7 +219,7 @@ func TestDirectoryAttachmentBounds(t *testing.T) {
 		padding := "#" + strings.Repeat("x", composerIgnoreBytes/2)
 		directoryAttachmentWrite(t, root, ".gitignore", padding)
 		directoryAttachmentWrite(t, root, "scope/.gitignore", padding)
-		if _, err := composerDirectoryTree(filepath.Join(root, "scope")); err == nil || !strings.Contains(err.Error(), "ignore rules exceed") {
+		if _, err := composer.DirectoryTree(filepath.Join(root, "scope")); err == nil || !strings.Contains(err.Error(), "ignore rules exceed") {
 			t.Fatalf("aggregate ignore limit error = %v", err)
 		}
 	})
@@ -209,7 +230,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 	directoryAttachmentWrite(t, root, "src/original.go", "FILE CONTENT MUST NEVER APPEAR")
 	u, w := newAppServerTestUI()
 	u.session.cwd = root
-	u.draft = "Review "
+	u.Text = "Review "
 	bindComposerFile(u, "@src", "src")
 	draft := u.takeDraft()
 	if err := os.Rename(filepath.Join(root, "src/original.go"), filepath.Join(root, "src/changed.go")); err != nil {
@@ -268,13 +289,13 @@ func TestDirectoryAttachmentSharedEnvelopeBudget(t *testing.T) {
 		for j := range 80 {
 			directoryAttachmentWrite(t, root, filepath.Join(dir, fmt.Sprintf("%04d-%s", j, strings.Repeat("x", 200))), "")
 		}
-		draft.files = append(draft.files, composerFile{path: dir})
+		draft.Files = append(draft.Files, composer.Token{Path: dir})
 	}
-	draft.snapshotFileAttachments(root)
-	if len(draft.attachments) != 1 || len(draft.attachments[0]) > attachments.Budget || draft.attachmentNotice == "" {
+	draft.SnapshotFiles(root)
+	if len(draft.Attachments) != 1 || len(draft.Attachments[0]) > attachments.Budget || draft.AttachmentNotice == "" {
 		t.Fatal("directory attachments bypassed shared envelope budget/notice")
 	}
-	frames, ok := attachments.Decode(draft.attachments[0])
+	frames, ok := attachments.Decode(draft.Attachments[0])
 	if !ok || !strings.Contains(strings.Join(frames, "\n"), "CONTENT NOT ATTACHED") || !strings.Contains(frames[0], "directory tree, max depth 2") {
 		t.Fatalf("directory snapshot or omission notice missing: %q", frames)
 	}

@@ -30,12 +30,12 @@ func TestAppServerComposerEditorDraft(t *testing.T) {
 	if err := u.applyEditorDraft("[Image 2]b[Image 1]"); err != nil {
 		t.Fatal(err)
 	}
-	if u.draft != "[Image 1]b[Image 2]" || !strings.HasSuffix(u.images[0].path, "two.png") {
-		t.Fatalf("reordered images: %q %v", u.draft, u.images)
+	if u.Text != "[Image 1]b[Image 2]" || !strings.HasSuffix(u.Images[0].Path, "two.png") {
+		t.Fatalf("reordered images: %q %v", u.Text, u.Images)
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if u.draft != "[Image 1]a[Image 2]" || !strings.HasSuffix(u.images[0].path, "one.png") {
-		t.Fatalf("editor undo: %q %v", u.draft, u.images)
+	if u.Text != "[Image 1]a[Image 2]" || !strings.HasSuffix(u.Images[0].Path, "one.png") {
+		t.Fatalf("editor undo: %q %v", u.Text, u.Images)
 	}
 	if err := u.applyEditorDraft("[Image 1][Image 1]"); err == nil {
 		t.Fatal("duplicate attachment accepted")
@@ -43,11 +43,11 @@ func TestAppServerComposerEditorDraft(t *testing.T) {
 	if err := u.applyEditorDraft("cleared"); err != nil {
 		t.Fatal(err)
 	}
-	if len(u.images) != 0 {
+	if len(u.Images) != 0 {
 		t.Fatal("removed placeholder retained image")
 	}
 	appServerTestKeys(t, u, "\x1a")
-	if len(u.images) != 2 {
+	if len(u.Images) != 2 {
 		t.Fatal("undo did not restore attachments")
 	}
 }
@@ -82,7 +82,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	t.Setenv("EDITOR", commandargs.QuoteArgument(editor)+" --wait")
 	u, _ := newAppServerTestUI()
 	u.ctx = ctx
-	u.draft = "original"
+	u.Text = "original"
 	u.ensureShell()
 	defer u.shell.diffScreen.Close()
 	path := filepath.Join(dir, "selected ' $(touch injected).txt")
@@ -207,11 +207,11 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 	}
 	if selectedFile {
 		data, err := os.ReadFile(path)
-		if err != nil || string(data) != "edited from terminal" || u.draft != "original" || u.shell.focus != 1 || !u.shell.diff.navigation.Focused {
-			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.draft, u.shell.focus, err)
+		if err != nil || string(data) != "edited from terminal" || u.Text != "original" || u.shell.focus != 1 || !u.shell.diff.navigation.Focused {
+			t.Fatalf("file=%q draft=%q focus=%d error=%v", data, u.Text, u.shell.focus, err)
 		}
-	} else if u.draft != "edited from terminalx" {
-		t.Fatalf("draft=%q", u.draft)
+	} else if u.Text != "edited from terminalx" {
+		t.Fatalf("draft=%q", u.Text)
 	}
 	after, err := term.GetState(int(slave.Fd()))
 	if err != nil || !reflect.DeepEqual(after, before) {
@@ -221,7 +221,7 @@ func testAppServerEditorTerminalHandoff(t *testing.T, selectedFile bool) {
 
 func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.draft = "original"
+	u.Text = "original"
 	editor := filepath.Join(t.TempDir(), "editor")
 	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'recover me' > \"$1\"\nexit 1\n"), 0700); err != nil {
 		t.Fatal(err)
@@ -237,8 +237,8 @@ func TestAppServerComposerEditorFailurePreservesRecovery(t *testing.T) {
 	}
 	defer u.shell.diffScreen.Close()
 	u.openComposerEditor(output, output)
-	if u.draft != "original" || !u.feedback.Alert {
-		t.Fatalf("editor failure: draft=%q notice=%q", u.draft, u.feedback.Text)
+	if u.Text != "original" || !u.feedback.Alert {
+		t.Fatalf("editor failure: draft=%q notice=%q", u.Text, u.feedback.Text)
 	}
 	_, path, ok := strings.Cut(u.feedback.Text, "draft preserved at ")
 	if !ok {

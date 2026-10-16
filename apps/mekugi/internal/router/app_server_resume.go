@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/modules/sessionpreferences/preferences"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -303,9 +305,9 @@ func (u *appServerUI) restoreHistoryItem(turn appServerHistoryTurn, item appServ
 					text.WriteString(part.Text)
 				}
 			}
-			draft := composerDraft{text: text.String()}
-			draft.selections = restoredSelections(draft.text, attached)
-			draft.skills = unambiguousSkillBindings(draft.text, composerContentSkills(content), spans)
+			draft := composerDraft{Text: text.String()}
+			draft.Selections = composer.RestoreSelections(draft.Text, attached)
+			draft.Skills = unambiguousSkillBindings(draft.Text, composerContentSkills(content), spans)
 			u.rememberInput(draft)
 		}
 	}

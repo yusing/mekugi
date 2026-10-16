@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/libraries/textsanitize"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	json "encoding/json/v2"
 	"strings"
@@ -61,7 +62,7 @@ func (p *mekugiProxy) isBTWThread(thread string) bool {
 }
 
 func (u *appServerUI) submitBTW() error {
-	text := strings.TrimSpace(u.draft)
+	text := strings.TrimSpace(u.Text)
 	question := strings.TrimSpace(strings.TrimPrefix(text, "/btw"))
 	if question == "" {
 		u.setNotice("Use /btw QUESTION · repeat /btw for a follow-up · Esc closes", false)
@@ -84,10 +85,10 @@ func (u *appServerUI) submitBTW() error {
 	}
 	b := u.btw
 	// Remove the command through the composer so attachment offsets stay valid.
-	prefix := strings.Index(u.draft, "/btw") + len("/btw")
+	prefix := strings.Index(u.Text, "/btw") + len("/btw")
 	u.deleteDraftRange(0, prefix)
 	b.pending = u.takeDraft()
-	b.attachmentNotice = b.pending.attachmentNotice
+	b.attachmentNotice = b.pending.AttachmentNotice
 	b.question, b.answer, b.scroll = question, nil, 0
 	b.truncated = false
 	b.started = time.Time{}
@@ -103,7 +104,7 @@ func (u *appServerUI) btwRequest(b *appServerBTW, method string, params any) err
 
 func (u *appServerUI) flushBTW() error {
 	b := u.btw
-	if b == nil || b.pending.text == "" || b.starting || b.turn != "" || u.Replacement.Pending() {
+	if b == nil || b.pending.Text == "" || b.starting || b.turn != "" || u.Replacement.Pending() {
 		return nil
 	}
 	parts := []composerDraft{b.pending}
@@ -144,19 +145,19 @@ func (u *appServerUI) flushBTW() error {
 	}
 	b.starting, b.status = true, "Answering"
 	b.started = u.now()
-	input := b.pending.input()
+	input := conversationbinding.Input(b.pending.Draft)
 	input = append(appserver.Input("This is a /btw side question. Answer only the side question using the conversation context. Do not continue the main task or use tools."), input...)
 	textBytes := 0
 	for _, part := range input {
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if (len(b.pending.attachments) > 0 || len(b.pending.skills) > 0) && textBytes > composerTextLimit {
+	if (len(b.pending.Attachments) > 0 || len(b.pending.Skills) > 0) && textBytes > composerTextLimit {
 		u.failBTW(b, "Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.")
 		return nil
 	}
-	for _, image := range b.pending.images {
-		delete(u.ownedImages, image.path)
+	for _, image := range b.pending.Images {
+		delete(u.ownedImages, image.Path)
 	}
 	return u.btwRequest(b, "turn/start", map[string]any{
 		"threadId": b.thread, "input": input, "environments": []any{},
@@ -165,10 +166,10 @@ func (u *appServerUI) flushBTW() error {
 
 func (u *appServerUI) failBTW(b *appServerBTW, message string) {
 	b.busy, b.starting, b.alert, b.status = false, false, true, message
-	if !b.closed && b.pending.text != "" {
+	if !b.closed && b.pending.Text != "" {
 		// Reuse the composer restorer to retain image/file tokens and any newer
 		// draft. The command and question may be separated by a newline.
-		u.restoreDrafts(joinDrafts(composerDraft{text: "/btw"}, b.pending))
+		u.restoreDrafts(joinDrafts(composerDraft{Text: "/btw"}, b.pending))
 		u.setNotice("Side question restored ahead of draft · edit before resending", true)
 	}
 	b.pending = composerDraft{}

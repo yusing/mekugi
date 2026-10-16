@@ -187,7 +187,7 @@ func TestTerminalUINotificationFocusReports(t *testing.T) {
 				t.Fatal("focus-in not consumed")
 			}
 			send("\x1b[O")
-			if u.notifications.focused || u.draft != "" || u.shell.focus != pane || u.shell.sequence != "" {
+			if u.notifications.focused || u.Text != "" || u.shell.focus != pane || u.shell.sequence != "" {
 				t.Fatal("focus report leaked into pane input")
 			}
 			send("\x1b[200~\x1b[I\x1b[201~")

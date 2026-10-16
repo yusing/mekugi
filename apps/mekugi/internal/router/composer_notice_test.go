@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -29,23 +31,23 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			u, wire := newAppServerTestUI()
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
-			u.Turn, u.status, u.draft = "active", "Working", "keep draft"
+			u.Turn, u.status, u.Text = "active", "Working", "keep draft"
 			switch tc.kind {
 			case "command":
-				u.draft = "/unknown"
+				u.Text = "/unknown"
 				appServerTestKeys(t, u, "\r")
 			case "attachment":
-				d := composerDraft{files: []composerFile{{path: "/missing/setup.sh"}}}
-				d.snapshotFileAttachments("/missing")
-				u.setNotice(d.attachmentNotice, true)
-				frames, ok := attachments.Decode(d.attachments[0])
-				if !ok || strings.Contains(strings.Join(frames, "\n"), d.attachmentNotice) || !strings.Contains(strings.Join(frames, "\n"), "CONTENT NOT ATTACHED") {
+				d := composerDraft{Files: []composer.Token{{Path: "/missing/setup.sh"}}}
+				d.SnapshotFiles("/missing")
+				u.setNotice(d.AttachmentNotice, true)
+				frames, ok := attachments.Decode(d.Attachments[0])
+				if !ok || strings.Contains(strings.Join(frames, "\n"), d.AttachmentNotice) || !strings.Contains(strings.Join(frames, "\n"), "CONTENT NOT ATTACHED") {
 					t.Fatal("UI warning leaked into the model attachment result")
 				}
 			case "host":
 				appServerTestMessage(t, u, `{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"active","status":"failed","error":{"message":"provider failed\nFull diagnostics"}}}}`)
 			}
-			full, draft, turn, sent := u.composerErrorText(), u.draft, u.Turn, wire.String()
+			full, draft, turn, sent := u.composerErrorText(), u.Text, u.Turn, wire.String()
 			screen := vt.NewEmulator(tc.width+2, 16)
 			defer screen.Close()
 			if err := u.paint(screen, tc.width+2, 16); err != nil {
@@ -71,7 +73,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 			}
 			u.shell.outputKey("q")
 			click(u.noticeDismiss)
-			if u.composerErrorText() != "" || u.draft != draft || u.Turn != turn || wire.String() != sent || len(u.view.Entries) != 0 {
+			if u.composerErrorText() != "" || u.Text != draft || u.Turn != turn || wire.String() != sent || len(u.view.Entries) != 0 {
 				t.Fatal("dismissal changed draft, host state, wire, or transcript")
 			}
 		})

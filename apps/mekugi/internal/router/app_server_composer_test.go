@@ -48,8 +48,8 @@ func TestAppServerComposerFrame(t *testing.T) {
 	if len(frame) != 8 || !slices.Equal(frame[len(frame)-len(want):], want) {
 		t.Fatalf("composer frame = %q, want final rows %q in 8-row frame", frame, want)
 	}
-	if u.draft != "first\n你好" {
-		t.Fatalf("render mutated draft: %q", u.draft)
+	if u.Text != "first\n你好" {
+		t.Fatalf("render mutated draft: %q", u.Text)
 	}
 }
 
@@ -58,7 +58,7 @@ func TestAppServerComposerResizeKeepsDraftTail(t *testing.T) {
 		width, height, composerRows int
 	}{{20, 8, 6}, {7, 6, 6}, {7, 3, 3}, {6, 2, 2}, {2, 1, 1}, {1, 1, 1}} {
 		u, _ := newAppServerTestUI()
-		u.draft = "old\nlines\nmore\n你好\nlast\nZ"
+		u.Text = "old\nlines\nmore\n你好\nlast\nZ"
 		frame, _ := u.mainFrame(size.width, size.height, 0)
 		if len(frame) != size.height {
 			t.Fatalf("size %v: got %d rows", size, len(frame))
@@ -96,7 +96,7 @@ func TestAppServerComposerCaretFollowsFocusAndWrap(t *testing.T) {
 	for _, focus := range []int{0, 1} {
 		u, _ := newAppServerTestUI()
 		u.shell = &terminalUI{focus: focus}
-		u.draft = "12345678901" // Fills the 11-column input, placing its caret on the next row.
+		u.Text = "12345678901" // Fills the 11-column input, placing its caret on the next row.
 		screen := vt.NewEmulator(16, 8)
 		t.Cleanup(func() { screen.Close() })
 		if _, err := screen.Write([]byte(strings.Join(first(u.mainFrame(16, 8, 0)), "\r\n"))); err != nil {

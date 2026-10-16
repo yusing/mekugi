@@ -37,8 +37,8 @@ func TestAppServerComposerEditingKeys(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u, w := newAppServerTestUI()
 			appServerTestKeys(t, u, tt.keys)
-			if u.draft != tt.want || w.Len() != 0 {
-				t.Fatalf("draft = %q, want %q; unexpected wire = %q", u.draft, tt.want, w.String())
+			if u.Text != tt.want || w.Len() != 0 {
+				t.Fatalf("draft = %q, want %q; unexpected wire = %q", u.Text, tt.want, w.String())
 			}
 		})
 	}
@@ -56,8 +56,8 @@ func TestAppServerComposerVerticalEditing(t *testing.T) {
 			appServerTestKeys(t, u, tt.draft)
 			u.mainFrame(16, 10, 0) // Eleven display cells remain after borders and prompt.
 			appServerTestKeys(t, u, tt.keys)
-			if u.draft != tt.want {
-				t.Fatalf("draft = %q, want %q", u.draft, tt.want)
+			if u.Text != tt.want {
+				t.Fatalf("draft = %q, want %q", u.Text, tt.want)
 			}
 		})
 	}
@@ -93,8 +93,8 @@ func TestAppServerComposerImagesOrderedOnWire(t *testing.T) {
 	u.attachImage(path1)
 	appServerTestKeys(t, u, " after\x1b[H")
 	u.attachImage(path2)
-	if u.draft != "[Image 1]before [Image 2] after" {
-		t.Fatalf("draft = %q", u.draft)
+	if u.Text != "[Image 1]before [Image 2] after" {
+		t.Fatalf("draft = %q", u.Text)
 	}
 	appServerTestKeys(t, u, "\r")
 	want := []composerWirePart{{Type: "localImage", Path: path2}, {Type: "text", Text: "before "}, {Type: "localImage", Path: path1}, {Type: "text", Text: " after"}}
@@ -113,12 +113,12 @@ func TestAppServerComposerImageTokenAtomic(t *testing.T) {
 		appServerTestKeys(t, u, "before ")
 		u.attachImage(path)
 		appServerTestKeys(t, u, "\x1b[DX\x1b[C")
-		if u.draft != "before X[Image 1]" {
-			t.Fatalf("arrow split image token: %q", u.draft)
+		if u.Text != "before X[Image 1]" {
+			t.Fatalf("arrow split image token: %q", u.Text)
 		}
 		appServerTestKeys(t, u, keys)
-		if u.draft != "before X" {
-			t.Fatalf("deletion split token: %q", u.draft)
+		if u.Text != "before X" {
+			t.Fatalf("deletion split token: %q", u.Text)
 		}
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("undoable image was removed: %v", err)
@@ -139,8 +139,8 @@ func TestAppServerComposerRejectedImagesRestored(t *testing.T) {
 	appServerTestKeys(t, u, "\rnext ")
 	u.attachImage(path2)
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"rejected"}}`)
-	if u.draft != "first [Image 1]\nnext [Image 2]" {
-		t.Fatalf("restored draft = %q", u.draft)
+	if u.Text != "first [Image 1]\nnext [Image 2]" {
+		t.Fatalf("restored draft = %q", u.Text)
 	}
 	w.Reset()
 	appServerTestKeys(t, u, "\r")
@@ -213,12 +213,12 @@ func TestAppServerComposerFullLineNewlineCaret(t *testing.T) {
 			}
 		}
 	}
-	if carets != 1 || u.cursor() != 11 {
-		t.Fatalf("caret count=%d, offset=%d", carets, u.cursor())
+	if carets != 1 || u.Cursor() != 11 {
+		t.Fatalf("caret count=%d, offset=%d", carets, u.Cursor())
 	}
 	appServerTestKeys(t, u, "Z")
-	if u.draft != "12345678901Z\nx" {
-		t.Fatalf("draft=%q", u.draft)
+	if u.Text != "12345678901Z\nx" {
+		t.Fatalf("draft=%q", u.Text)
 	}
 }
 
@@ -230,15 +230,15 @@ func TestAppServerComposerImageAdjacentCombiningMark(t *testing.T) {
 	}
 	u.attachImage(path)
 	appServerTestKeys(t, u, "\u0301\x7f")
-	if u.draft != "[Image 1]" || len(u.images) != 1 {
-		t.Fatalf("mark deletion broke attachment: %q, %v", u.draft, u.images)
+	if u.Text != "[Image 1]" || len(u.Images) != 1 {
+		t.Fatalf("mark deletion broke attachment: %q, %v", u.Text, u.Images)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatal(err)
 	}
 	appServerTestKeys(t, u, "\x7f")
-	if u.draft != "" || len(u.images) != 0 {
-		t.Fatalf("attachment deletion=%q, %v", u.draft, u.images)
+	if u.Text != "" || len(u.Images) != 0 {
+		t.Fatalf("attachment deletion=%q, %v", u.Text, u.Images)
 	}
 }
 
@@ -262,8 +262,8 @@ func TestAppServerComposerAltWordDeletion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, tt.keys)
-			if u.draft != tt.want {
-				t.Fatalf("draft=%q, want %q", u.draft, tt.want)
+			if u.Text != tt.want {
+				t.Fatalf("draft=%q, want %q", u.Text, tt.want)
 			}
 		})
 	}
@@ -272,8 +272,8 @@ func TestAppServerComposerAltWordDeletion(t *testing.T) {
 		appServerTestKeys(t, u, "before ")
 		u.attachImage(filepath.Join(t.TempDir(), "image.png"))
 		appServerTestKeys(t, u, keys)
-		if u.draft != "before " || len(u.images) != 0 {
-			t.Fatalf("word deletion split image: %q, %v", u.draft, u.images)
+		if u.Text != "before " || len(u.Images) != 0 {
+			t.Fatalf("word deletion split image: %q, %v", u.Text, u.Images)
 		}
 	}
 }
@@ -299,29 +299,29 @@ func TestAppServerComposerOptionWordNavigation(t *testing.T) {
 			}
 			keys("one  你好👩‍💻 three")
 			keys(encoding.left + encoding.left + "X")
-			if u.draft != "one  X你好👩‍💻 three" {
-				t.Fatalf("backward: %q", u.draft)
+			if u.Text != "one  X你好👩‍💻 three" {
+				t.Fatalf("backward: %q", u.Text)
 			}
 			keys(encoding.right + "Y")
-			if u.draft != "one  X你好👩‍💻Y three" {
-				t.Fatalf("forward: %q", u.draft)
+			if u.Text != "one  X你好👩‍💻Y three" {
+				t.Fatalf("forward: %q", u.Text)
 			}
 			keys(strings.Repeat(encoding.left, 5))
-			if u.cursor() != 0 {
-				t.Fatalf("start boundary: %d", u.cursor())
+			if u.Cursor() != 0 {
+				t.Fatalf("start boundary: %d", u.Cursor())
 			}
 			keys(strings.Repeat(encoding.right, 5))
-			if u.cursor() != len(u.draft) {
-				t.Fatalf("end boundary: %d", u.cursor())
+			if u.Cursor() != len(u.Text) {
+				t.Fatalf("end boundary: %d", u.Cursor())
 			}
 			u.attachImage(filepath.Join(t.TempDir(), "image.png"))
-			end := u.cursor()
+			end := u.Cursor()
 			keys(encoding.left)
-			if u.cursor() != end-len("[Image 1]") {
-				t.Fatalf("split image moving left: %d", u.cursor())
+			if u.Cursor() != end-len("[Image 1]") {
+				t.Fatalf("split image moving left: %d", u.Cursor())
 			}
 			keys(encoding.right)
-			if u.cursor() != end || len(u.images) != 1 {
+			if u.Cursor() != end || len(u.Images) != 1 {
 				t.Fatal("split image moving right")
 			}
 			if wire.Len() != 0 {
@@ -367,19 +367,19 @@ func TestAppServerComposerKillShortcutsThroughTerminal(t *testing.T) {
 			}
 			keys(tt.draft)
 			keys(tt.movement)
-			at := u.cursor()
+			at := u.Cursor()
 			keys(tt.key)
-			if u.draft != tt.want {
-				t.Fatalf("draft=%q, want %q", u.draft, tt.want)
+			if u.Text != tt.want {
+				t.Fatalf("draft=%q, want %q", u.Text, tt.want)
 			}
 			if tt.want != tt.draft {
 				keys("\x1a")
-				if u.draft != tt.draft || u.cursor() != at {
-					t.Fatalf("undo=%q at %d", u.draft, u.cursor())
+				if u.Text != tt.draft || u.Cursor() != at {
+					t.Fatalf("undo=%q at %d", u.Text, u.Cursor())
 				}
 				keys("\x19")
-				if u.draft != tt.want {
-					t.Fatalf("redo=%q", u.draft)
+				if u.Text != tt.want {
+					t.Fatalf("redo=%q", u.Text)
 				}
 			}
 			if wire.Len() != 0 {
@@ -395,12 +395,12 @@ func TestAppServerComposerKillShortcutsThroughTerminal(t *testing.T) {
 			appServerTestKeys(t, u, "\x1b[D")
 		}
 		appServerTestKeys(t, u, key)
-		if u.draft != "before " || len(u.images) != 0 {
-			t.Fatalf("split attachment: %q", u.draft)
+		if u.Text != "before " || len(u.Images) != 0 {
+			t.Fatalf("split attachment: %q", u.Text)
 		}
 		appServerTestKeys(t, u, "\x1a")
-		if u.draft != "before [Image 1]" || len(u.images) != 1 {
-			t.Fatalf("attachment undo: %q", u.draft)
+		if u.Text != "before [Image 1]" || len(u.Images) != 1 {
+			t.Fatalf("attachment undo: %q", u.Text)
 		}
 	}
 }
@@ -415,8 +415,8 @@ func TestAppServerComposerKeycapWordBoundaries(t *testing.T) {
 		} {
 			u, _ := newAppServerTestUI()
 			appServerTestKeys(t, u, tt.keys)
-			if u.draft != tt.want {
-				t.Fatalf("keys %q: got %q, want %q", tt.keys, u.draft, tt.want)
+			if u.Text != tt.want {
+				t.Fatalf("keys %q: got %q, want %q", tt.keys, u.Text, tt.want)
 			}
 		}
 	}

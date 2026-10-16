@@ -28,8 +28,8 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 	if !u.shell.diff.backgrounded || u.shell.diff.background != want.Background || u.shell.diff.theme != diffrender.DarkTheme {
 		t.Fatal("diff pane did not take the reported background")
 	}
-	if u.draft != "" {
-		t.Fatalf("color reports leaked into the draft: %q", u.draft)
+	if u.Text != "" {
+		t.Fatalf("color reports leaked into the draft: %q", u.Text)
 	}
 }
 

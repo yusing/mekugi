@@ -33,8 +33,8 @@ func TestNativeFileEditorSelectionAndFilter(t *testing.T) {
 		t.Fatalf("filter input: %q %v", c.navigation.Query, err)
 	}
 	u.shell.focus = 0
-	if err := u.shell.key('e'); err != nil || u.draft != "e" {
-		t.Fatalf("composer input: %q %v", u.draft, err)
+	if err := u.shell.key('e'); err != nil || u.Text != "e" {
+		t.Fatalf("composer input: %q %v", u.Text, err)
 	}
 }
 

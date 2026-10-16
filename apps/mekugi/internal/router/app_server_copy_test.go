@@ -54,15 +54,15 @@ func TestAppServerCopyPicker(t *testing.T) {
 	u.view.applyAppServerItem(true, "", "main", "main", "new", "stream", "item/agentMessage/delta", "Partial", appServerItem{})
 	u.Turn = "new"
 	appServerTestKeys(t, u, "/cop\r")
-	if u.picker.modal != "copy" || u.draft != "" || len(u.picker.choices) != 2 {
-		t.Fatalf("picker=%+v draft=%q", u.picker, u.draft)
+	if u.picker.modal != "copy" || u.Text != "" || len(u.picker.choices) != 2 {
+		t.Fatalf("picker=%+v draft=%q", u.picker, u.Text)
 	}
 	frame := ansi.Strip(strings.Join(u.renderPicker(80, 8), "\n"))
 	if !strings.Contains(frame, "Copy to clipboard") || !strings.Contains(frame, "Whole response") {
 		t.Fatalf("frame=%s", frame)
 	}
 	appServerTestKeys(t, u, "\x1b[200~pasted\rtext\x1b[201~")
-	if u.draft != "" || u.shell.clipboard != "" || u.picker.modal != "copy" {
+	if u.Text != "" || u.shell.clipboard != "" || u.picker.modal != "copy" {
 		t.Fatal("paste changed draft or copied a choice")
 	}
 	appServerTestKeys(t, u, "\x1b[B\r")
@@ -98,7 +98,7 @@ func TestAppServerCopyEmptyCancelAndRestore(t *testing.T) {
 	}
 	u.pickerKey("\x1b")
 	u.refreshPicker()
-	if u.picker.open || u.shell.clipboard != "" || u.draft != "" {
+	if u.picker.open || u.shell.clipboard != "" || u.Text != "" {
 		t.Fatal("cancel copied or reopened")
 	}
 	u.Thread = "different"

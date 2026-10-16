@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -33,43 +36,15 @@ type composerSubmission struct {
 	seq   uint64          // The transcript echo of a turn/start.
 }
 
-// joinDrafts separates entries by newlines and renumbers their images.
-func joinDrafts(parts ...composerDraft) composerDraft {
-	var joined composerDraft
-	for _, part := range parts {
-		if part.text == "" {
-			continue
-		}
-		if joined.text != "" {
-			joined.text += "\n"
-		}
-		shift := len(joined.text)
-		joined.text += part.text
-		joined.attachments = append(joined.attachments, part.attachments...)
-		joined.answerImages = append(joined.answerImages, part.answerImages...)
-		if part.attachmentNotice != "" {
-			joined.attachmentNotice = part.attachmentNotice
-		}
-		for _, image := range part.images {
-			image.start, image.end = image.start+shift, image.end+shift
-			joined.images = append(joined.images, image)
-		}
-		for _, skill := range part.skills {
-			skill.start, skill.end = skill.start+shift, skill.end+shift
-			joined.skills = append(joined.skills, skill)
-		}
-		for _, file := range part.files {
-			file.start, file.end = file.start+shift, file.end+shift
-			joined.files = append(joined.files, file)
-		}
-		for _, selection := range part.selections {
-			selection.start, selection.end = selection.start+shift, selection.end+shift
-			joined.selections = append(joined.selections, selection)
-		}
-		joined.cursorBack = part.cursorBack // The caret stays in the last entry.
+func draftValues(parts []composerDraft) []composer.Draft {
+	values := make([]composer.Draft, len(parts))
+	for i := range parts {
+		values[i] = parts[i].Draft
 	}
-	joined.renumberImages()
-	return joined
+	return values
+}
+func joinDrafts(parts ...composerDraft) composerDraft {
+	return composerDraft{Draft: composer.Join(draftValues(parts)...)}
 }
 
 func (u *appServerUI) steerParts(ids []string) []composerDraft {
@@ -96,16 +71,11 @@ func (u *appServerUI) pruneInputPayloads() {
 // takeDraft empties the composer. The caller stacks the draft, which keeps its
 // image files until sent.
 func (u *appServerUI) takeDraft() composerDraft {
-	d := u.draftSnapshot()
+	d := composerDraft{Draft: u.Editor.Take()}
 	u.bindSkills(&d, true)
-	d.snapshotFileAttachments(u.session.cwd)
+	d.SnapshotFiles(u.session.cwd)
 	u.snapshotDraftSkills(&d)
-	d.cursorBack = 0
-	u.loadDraft(composerDraft{})
 	u.cursorColumn = nil
-	u.historyBack, u.historyDraft = 0, composerDraft{}
-	u.undoDrafts, u.redoDrafts = nil, nil
-	u.run = runNone
 	return d
 }
 
@@ -130,10 +100,8 @@ func (u *appServerUI) restoreDrafts(parts ...composerDraft) {
 	if len(parts) == 0 {
 		return
 	}
-	u.undoDrafts, u.redoDrafts = nil, nil
-	u.run = runNone
+	u.Editor.Restore(draftValues(parts)...)
 	u.cursorColumn = nil
-	u.loadDraft(joinDrafts(append(slices.Clone(parts), u.draftSnapshot())...))
 }
 
 // editQueued returns all locally waiting input to the composer as one stack.
@@ -158,13 +126,13 @@ func (u *appServerUI) flushInput() error {
 			return err
 		}
 	}
-	compactSteer := len(u.unsent) > 0 && u.unsent[0].text == "/compact" && !u.unsent[0].compact.WaitForIdle
+	compactSteer := len(u.unsent) > 0 && u.unsent[0].Text == "/compact" && !u.unsent[0].compact.WaitForIdle
 	if u.waitingQuestion() && !compactSteer {
 		return nil
 	}
 	if u.Turn == "" {
 		if text := u.Compaction.Continue(len(u.unsent)+len(u.queued) != 0); text != "" {
-			u.unsent = append(u.unsent, composerDraft{text: text})
+			u.unsent = append(u.unsent, composerDraft{Text: text})
 		}
 	}
 	var parts []composerDraft
@@ -187,7 +155,7 @@ func (u *appServerUI) flushInput() error {
 			prompt, rest := questionSubmissionBatch(u.unsent[first:])
 			u.unsent = slices.Concat(prompt, u.unsent[:first], rest)
 		}
-		if steer && u.unsent[0].text == "/compact" {
+		if steer && u.unsent[0].Text == "/compact" {
 			if u.Compaction.InterruptBefore(u.unsent[0].compact, u.Turn) {
 				return u.interruptTurn()
 			}
@@ -213,7 +181,7 @@ func (u *appServerUI) flushInput() error {
 
 func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	defer u.pruneInputPayloads()
-	if len(parts) == 1 && parts[0].text == "/compact" {
+	if len(parts) == 1 && parts[0].Text == "/compact" {
 		u.Compaction.Begin(parts[0].compact)
 		u.status = "Compacting context" + "…"
 		return u.request("thread/compact/start", map[string]any{"threadId": u.Thread})
@@ -224,13 +192,13 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 	}
 	s := composerSubmission{composerDraft: joinDrafts(parts...), parts: parts}
 	id, turn := rand.Text(), ""
-	input := s.input()
+	input := conversationbinding.Input(s.Draft)
 	textBytes := 0
 	for _, part := range input {
 		text, _ := part["text"].(string)
 		textBytes += len(text)
 	}
-	if (len(s.attachments) > 0 || len(s.skills) > 0) && textBytes > composerTextLimit {
+	if (len(s.Attachments) > 0 || len(s.Skills) > 0) && textBytes > composerTextLimit {
 		u.restoreDrafts(parts...)
 		u.setNotice("Input with attachments exceeds the safe 1 MiB text limit. Reduce the draft or attachments and retry.", true)
 		return nil
@@ -245,16 +213,16 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		if tier := u.selectedServiceTier(); tier != "" {
 			params["serviceTier"] = tier
 		}
-		if len(questionReplies(s.text)) == 0 {
+		if len(questionReplies(s.Text)) == 0 {
 			s.seq = u.view.LastSeq + 1
-			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.text, Observed: u.now(),
+			u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: s.seq, Agent: "You", Kind: "text", Text: s.Text, Observed: u.now(),
 				native: &liveActivityNativeItem{thread: u.Thread, item: fmt.Sprintf("input/%d", s.seq), phase: "input/pending", spans: s.composerDraft.displaySpans()}}}})
 		}
 	}
-	for _, image := range s.images {
-		delete(u.ownedImages, image.path)
+	for _, image := range s.Images {
+		delete(u.ownedImages, image.Path)
 	}
-	for _, path := range s.answerImages {
+	for _, path := range s.AnswerImages {
 		delete(u.ownedImages, path)
 	}
 	if u.inputPayloads == nil {
@@ -266,8 +234,8 @@ func (u *appServerUI) send(parts []composerDraft, steer bool) error {
 		u.guardHookCheck.readyThread = ""
 	}
 	u.status, u.alert = "Sending…", false
-	if s.attachmentNotice != "" {
-		notice := s.attachmentNotice
+	if s.AttachmentNotice != "" {
+		notice := s.AttachmentNotice
 		if strings.HasPrefix(u.feedback.Text, "Skill attachment unavailable:") || strings.HasPrefix(u.feedback.Text, "Skill catalog incomplete:") {
 			notice = u.feedback.Text + " " + notice
 		}
@@ -310,9 +278,9 @@ func (u *appServerUI) submissionResponse(method string, failure *appserver.Error
 	s := u.inputPayloads[id]
 	if failure == nil {
 		for i, part := range s.parts {
-			if !part.inHistory {
+			if !part.InHistory {
 				u.rememberInput(part)
-				s.parts[i].inHistory = true
+				s.parts[i].InHistory = true
 			}
 		}
 	}
@@ -354,11 +322,11 @@ func (u *appServerUI) commitSteer(item appServerItem) {
 		return
 	}
 	text, _, _ := appServerUserText(item.Content)
-	if id := u.PendingStart(); id != "" && u.inputPayloads[id].text == text {
+	if id := u.PendingStart(); id != "" && u.inputPayloads[id].Text == text {
 		u.CommitInput(id)
 	}
 	for _, id := range append([]string{u.Submission().ID}, u.Steers()...) {
-		if id != "" && u.inputPayloads[id].text == text {
+		if id != "" && u.inputPayloads[id].Text == text {
 			u.CommitInput(id)
 			return
 		}
@@ -400,7 +368,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 		lines = append(lines, ansi.Truncate(terminalui.Dim+"• "+terminalui.Undim+header, width, "…")+terminalui.Reset)
 		var texts []string
 		for _, part := range parts {
-			text := part.text
+			text := part.Text
 			if replies := questionReplies(text); len(replies) > 0 {
 				text = fmt.Sprintf("Answering %d question(s)", len(replies))
 			}
@@ -434,7 +402,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 		header = "Restoring input once interrupted"
 	case u.Compaction.Active():
 		header = "Waiting for context compaction"
-	case len(u.unsent) > 0 && u.unsent[0].text == "/compact":
+	case len(u.unsent) > 0 && u.unsent[0].Text == "/compact":
 		header = "Compaction queued after this turn · ctrl+c cancels; Main continues"
 	case u.Turn != "" || u.Starting():
 	case u.Settings.Pending() || u.Settings.RestoreEffort:
@@ -450,8 +418,8 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 // A tool call's reply is one submission, never joined with another call or prompt.
 func questionSubmissionBatch(stack []composerDraft) ([]composerDraft, []composerDraft) {
 	n := 1
-	if stack[0].questionCall == nil && stack[0].text != "/compact" {
-		for n < len(stack) && stack[n].questionCall == nil && stack[n].text != "/compact" {
+	if stack[0].questionCall == nil && stack[0].Text != "/compact" {
+		for n < len(stack) && stack[n].questionCall == nil && stack[n].Text != "/compact" {
 			n++
 		}
 	}

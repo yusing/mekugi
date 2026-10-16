@@ -14,6 +14,9 @@ import (
 	"testing"
 	"time"
 
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -32,8 +35,8 @@ func TestSubmittedAttachmentHostSchema(t *testing.T) {
 	if !ok || !reflect.DeepEqual(spans, want) {
 		t.Fatalf("host spans=%+v", spans)
 	}
-	draft := composerDraft{text: text, skills: []composerSkill{{start: 0, end: 21, name: "batch-agent-sessions"}}, files: []composerFile{{start: 22, end: 31, path: "/work/FIXME.md"}}}
-	input := draft.input()
+	draft := composerDraft{Text: text, Skills: []composer.Token{{Start: 0, End: 21, Name: "batch-agent-sessions"}}, Files: []composer.Token{{Start: 22, End: 31, Path: "/work/FIXME.md"}}}
+	input := conversationbinding.Input(draft.Draft)
 	if _, old := input[0]["textElements"]; old {
 		t.Fatal("wrong camelCase enum field")
 	}
@@ -98,16 +101,16 @@ func TestComposerPasteBoundariesAndImages(t *testing.T) {
 			}
 		}
 		feed("\x1b[200~" + payload + "\x1b[201~")
-		if u.paste || u.shell.paste || u.escape != "" || u.draft != "plain" {
-			t.Fatalf("opaque paste=%q states=%v/%v escape=%q", u.draft, u.paste, u.shell.paste, u.escape)
+		if u.paste || u.shell.paste || u.escape != "" || u.Text != "plain" {
+			t.Fatalf("opaque paste=%q states=%v/%v escape=%q", u.Text, u.paste, u.shell.paste, u.escape)
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~typed")
-		if u.draft != "plain"+"[Image 1] typed" || len(u.images) != 1 || u.paste || u.shell.paste {
-			t.Fatalf("next paste stuck: %q %+v", u.draft, u.images)
+		if u.Text != "plain"+"[Image 1] typed" || len(u.Images) != 1 || u.paste || u.shell.paste {
+			t.Fatalf("next paste stuck: %q %+v", u.Text, u.Images)
 		}
 		feed("\x1b[200~'" + image + "'\x1b[201~")
-		if len(u.images) != 2 || !strings.HasSuffix(u.draft, "[Image 2] ") {
-			t.Fatalf("consecutive image paste=%q", u.draft)
+		if len(u.Images) != 2 || !strings.HasSuffix(u.Text, "[Image 2] ") {
+			t.Fatalf("consecutive image paste=%q", u.Text)
 		}
 		if _, err := os.Stat(image); err != nil {
 			t.Fatal("user image removed")
@@ -145,8 +148,8 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 						return err
 					}
 					if b == '!' && !u.paste {
-						if u.shell.paste || len(u.images) != 2 || u.draft != "[Image 1] [Image 2] editable!" {
-							return fmt.Errorf("paste lifecycle: %q images=%d state=%v/%v", u.draft, len(u.images), u.paste, u.shell.paste)
+						if u.shell.paste || len(u.Images) != 2 || u.Text != "[Image 1] [Image 2] editable!" {
+							return fmt.Errorf("paste lifecycle: %q images=%d state=%v/%v", u.Text, len(u.Images), u.paste, u.shell.paste)
 						}
 						var frame bytes.Buffer
 						if err := u.paint(&frame, 80, 20); err != nil {
@@ -185,7 +188,7 @@ func TestComposerImagePastePTYLifecycle(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	if strings.Contains(ansi.Strip(u.draft), "[201~") {
+	if strings.Contains(ansi.Strip(u.Text), "[201~") {
 		t.Fatal("boundary leaked")
 	}
 }
