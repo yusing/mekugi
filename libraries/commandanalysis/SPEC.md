@@ -28,6 +28,15 @@ source recognition accepts only fully decoded literal objects and excludes any
 explicit environment selector, including null. These input forms deliberately
 have different recognition coverage.
 
+## Version-control effects
+
+Shared VCS facts distinguish possible worktree changes from remote writes. Global
+option values are not subcommands. Known readers remain read-only unless their
+options explicitly write output; unknown commands retain conservative effect
+classification. GitHub CLI request method, fields and query source determine its
+remote-write classification. These facts perform no alias lookup or process I/O
+and grant no approval. Remote-write policy supplies any local Git alias lookup.
+
 ## Ownership and acceptance
 
 Shell syntax and wrapper operands live in `shellsyntax`. Shared JavaScript AST

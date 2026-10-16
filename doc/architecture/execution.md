@@ -62,9 +62,9 @@ launcher, helper, capture observer and display projection share its rewrite and
 recognition rules. It generates source and discovers executable paths for startup;
 execution, approval decisions and report transport remain with their callers.
 The [command-analysis library](../../libraries/commandanalysis/SPEC.md) owns VCS
-executable facts, stock command argument resolution, and literal JavaScript
-command extraction. Its `shellsyntax` package owns wrapper operands and
-non-evaluating command-word classification. Shared AST call/member matching lives
+executable/option facts and shared effect classification, stock command argument
+resolution, and literal JavaScript command extraction. Its `shellsyntax` package
+owns wrapper operands and non-evaluating command-word classification. Shared AST call/member matching lives
 in `libraries/sourceanalysis/sourceparse`, used by observation and presentation.
 The dynamic-source flag remains separate from recognized literal commands so
 capture does not narrow its coverage to only the statically visible subset.

@@ -8,7 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 
-	"github.com/yusing/mekugi/internal/vcsguard"
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
@@ -750,7 +749,7 @@ func (w *execShellWalker) call(call *syntax.CallExpr) {
 	if commandanalysis.IsVCSTool(identity) {
 		w.vcsOrigin = w.program.Label
 		values, literal := shellsyntax.Args(args)
-		w.program.VCS = !literal || vcsguard.WorktreeWrites(append([]string{identity}, values...))
+		w.program.VCS = !literal || commandanalysis.WorktreeWrites(append([]string{identity}, values...))
 		start := len(w.plan.Scope)
 		defer func() {
 			for i := start; i < len(w.plan.Scope); i++ {
@@ -2086,7 +2085,7 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 	restWords := args[len(args)-len(rest):]
 	switch subcommand {
 	case "diff", "log", "show", "format-patch":
-		if len(rest) > 0 && vcsguard.WorktreeWrites(append([]string{"git", subcommand}, rest...)) {
+		if len(rest) > 0 && commandanalysis.WorktreeWrites(append([]string{"git", subcommand}, rest...)) {
 			w.opaque("git " + subcommand + " writes output files")
 			return
 		}
@@ -2193,7 +2192,7 @@ func (w *execShellWalker) git(args []*syntax.Word) {
 		w.plan.add(Entry{Kind: kind, Operands: operands})
 		return
 	}
-	if vcsguard.GitReadOnlyCommand(subcommand) {
+	if commandanalysis.GitReadOnlyCommand(subcommand) {
 		return
 	}
 	w.opaque("git " + subcommand + " may change worktree files")
@@ -2217,7 +2216,7 @@ func (w *execShellWalker) svn(args []*syntax.Word) {
 		return
 	}
 	subcommand := values[0]
-	if vcsguard.SVNReadOnlyCommand(subcommand) || subcommand == "--version" {
+	if commandanalysis.SVNReadOnlyCommand(subcommand) || subcommand == "--version" {
 		return
 	}
 	switch subcommand {

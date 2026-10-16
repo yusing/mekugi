@@ -80,7 +80,7 @@ func writes(argv []string, lookup Lookup, depth int) bool {
 	case "git":
 		return gitWrites(args, lookup, depth)
 	case "gh":
-		return ghWrites(args)
+		return commandanalysis.GitHubRemoteWrite(args)
 	case "hg":
 		return hgWrites(args)
 	case "svn":
@@ -145,13 +145,6 @@ func literal(word *syntax.Word) string {
 	return value.String()
 }
 
-func helps(args []string) bool {
-	return slices.ContainsFunc(args, func(arg string) bool { return arg == "--help" || arg == "-h" })
-}
-
-// Git's global options that take a separate value.
-var gitValueGlobals = []string{"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix", "--attr-source"}
-
 // Git commands that cannot be aliases and push nothing themselves: Git runs
 // a built-in or installed command before it considers an alias of the same
 // name. Any other command may be an external program that pushes through
@@ -189,42 +182,15 @@ func dryRun(args []string) bool {
 	return dry
 }
 
-// gitInvocation shares global-option parsing between approval and observation.
-func gitInvocation(args []string) (globals []string, command string, rest []string) {
-	i := 0
-	for ; i < len(args); i++ {
-		arg := args[i]
-		if slices.Contains(gitValueGlobals, arg) {
-			if i+1 == len(args) {
-				return globals, "", nil
-			}
-			globals = append(globals, arg, args[i+1])
-			i++
-			continue
-		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			break
-		}
-		if arg == "--help" || arg == "-h" || arg == "--version" || arg == "-v" || arg == "--exec-path" || arg == "--html-path" || arg == "--man-path" || arg == "--info-path" {
-			return globals, "", nil
-		}
-		globals = append(globals, arg)
-	}
-	if i == len(args) {
-		return globals, "", nil
-	}
-	return globals, args[i], args[i+1:]
-}
-
 func gitWrites(args []string, lookup Lookup, depth int) bool {
-	globals, command, rest := gitInvocation(args)
+	globals, command, rest := commandanalysis.GitInvocation(args)
 	if command == "" {
 		return false
 	}
 	if command == shellsyntax.Dynamic {
 		return true
 	}
-	if helps(rest) && command != "submodule" && command != "rebase" && command != "bisect" {
+	if commandanalysis.HasHelpFlag(rest) && command != "submodule" && command != "rebase" && command != "bisect" {
 		return false
 	}
 	switch command {
@@ -345,139 +311,10 @@ func quote(word string) string {
 	return shellsyntax.Quote(word)
 }
 
-// positionals returns the arguments that are not options. Option values are
-// indistinguishable from operands without each command's option table, so
-// callers only rely on the leading command words, which precede options in
-// ordinary use, and treat anything unrecognized as a write.
-func positionals(args []string) []string {
-	var words []string
-	for i, arg := range args {
-		if arg == "--" {
-			return append(words, args[i+1:]...)
-		}
-		if !strings.HasPrefix(arg, "-") || arg == "-" {
-			words = append(words, arg)
-		}
-	}
-	return words
-}
-
-// gh command groups that only change local configuration or credentials.
-var ghLocal = []string{"alias", "auth", "config", "completion", "help", "version", "status", "search", "browse"}
-
-// Verbs that read from a hosting service or only change local checkouts.
-var ghReads = []string{
-	"list", "ls", "view", "status", "diff", "checks", "checkout", "co", "clone", "download", "watch", "verify",
-	"verify-asset", "get", "check", "field-list", "item-list", "logs", "trusted-root", "search", "set-default",
-}
-
-func ghWrites(args []string) bool {
-	if len(args) == 0 || args[0] == "--version" || args[0] == "--help" || args[0] == "-h" {
-		return false
-	}
-	words := positionals(args)
-	if len(words) == 0 {
-		return false
-	}
-	if slices.Contains(ghLocal, words[0]) {
-		return false
-	}
-	if words[0] == "api" {
-		return ghAPIWrites(args[slices.Index(args, "api")+1:])
-	}
-	if helps(args) {
-		return false
-	}
-	if words[0] == "extension" || words[0] == "extensions" || words[0] == "ext" {
-		return len(words) < 2 || !slices.Contains([]string{"list", "ls", "search", "browse"}, words[1])
-	}
-	if len(words) < 2 {
-		return true
-	}
-	verb := words[1]
-	// Nested groups name their verb next: gh repo deploy-key list.
-	if slices.Contains([]string{"deploy-key", "autolink", "gitignore", "license", "ports"}, verb) && len(words) > 2 {
-		verb = words[2]
-	}
-	if verb == "clone" {
-		// gh label clone copies labels into the current repository.
-		return words[0] != "repo" && words[0] != "gist"
-	}
-	return !slices.Contains(ghReads, verb)
-}
-
-// ghAPIWrites follows gh api: a request is a GET unless it names a method
-// or carries parameters, and GraphQL always posts, so only its document
-// distinguishes a query from a mutation.
-func ghAPIWrites(args []string) bool {
-	method := ""
-	parameters := false
-	var fields []string
-	endpoint := ""
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		value := ""
-		hasValue := false
-		name := arg
-		if before, after, ok := strings.Cut(arg, "="); ok && strings.HasPrefix(arg, "--") {
-			name, value, hasValue = before, after, true
-		} else if len(arg) > 2 && strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.ContainsRune("XfFHqtp", rune(arg[1])) {
-			name, value, hasValue = arg[:2], arg[2:], true
-		}
-		takes := slices.Contains([]string{"-X", "--method", "-f", "--raw-field", "-F", "--field", "--input", "-H", "--header", "-q", "--jq", "-t", "--template", "-p", "--preview", "--hostname", "--cache"}, name)
-		if takes && !hasValue {
-			if i+1 == len(args) {
-				return true
-			}
-			value = args[i+1]
-			i++
-		}
-		switch name {
-		case "-X", "--method":
-			method = strings.ToUpper(value)
-		case "-f", "--raw-field", "-F", "--field":
-			parameters = true
-			fields = append(fields, value)
-		case "--input":
-			parameters = true
-			fields = append(fields, "@"+value)
-		default:
-			if !takes && !strings.HasPrefix(arg, "-") && endpoint == "" {
-				endpoint = arg
-			}
-		}
-	}
-	if endpoint == "" || endpoint == shellsyntax.Dynamic || method == shellsyntax.Dynamic {
-		return true
-	}
-	if endpoint == "graphql" || endpoint == "/graphql" {
-		if method != "" && method != "POST" && method != "GET" {
-			return true
-		}
-		for _, field := range fields {
-			_, value, _ := strings.Cut(field, "=")
-			if strings.HasPrefix(field, "@") || strings.HasPrefix(value, "@") || strings.Contains(field, shellsyntax.Dynamic) || strings.Contains(strings.ToLower(value), "mutation") {
-				return true
-			}
-		}
-		return false
-	}
-	if method == "" {
-		if parameters {
-			return true
-		}
-		method = "GET"
-	}
-	return method != "GET" && method != "HEAD"
-}
-
-// Mercurial global options that take a separate value.
-var hgValueGlobals = []string{"-R", "--repository", "--repo", "--cwd", "--config", "--encoding", "--encodingmode", "--color", "--pager"}
-
 func hgWrites(args []string) bool {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if slices.Contains(hgValueGlobals, arg) {
+		if commandanalysis.VCSValueOption("hg", arg) {
 			i++
 			continue
 		}
@@ -487,7 +324,7 @@ func hgWrites(args []string) bool {
 		if arg == shellsyntax.Dynamic {
 			return true
 		}
-		if helps(args[i+1:]) {
+		if commandanalysis.HasHelpFlag(args[i+1:]) {
 			return false
 		}
 		// Mercurial accepts unambiguous command prefixes.
@@ -510,14 +347,12 @@ var svnURLWrites = []string{
 	"propset", "pset", "ps", "propdel", "pdel", "pd", "propedit", "pedit", "pe",
 }
 
-var svnValueGlobals = []string{"--username", "--password", "--config-dir", "--config-option"}
-
 func svnWrites(args []string) bool {
 	command := ""
 	at := 0
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if slices.Contains(svnValueGlobals, arg) {
+		if commandanalysis.VCSValueOption("svn", arg) {
 			i++
 			continue
 		}
@@ -530,7 +365,7 @@ func svnWrites(args []string) bool {
 		return false
 	}
 	rest := args[at+1:]
-	if helps(rest) {
+	if commandanalysis.HasHelpFlag(rest) {
 		return false
 	}
 	switch {
@@ -546,9 +381,6 @@ func svnWrites(args []string) bool {
 	return false
 }
 
-// Jujutsu global options that take a separate value.
-var jjValueGlobals = []string{"-R", "--repository", "--at-operation", "--at-op", "--color", "--config", "--config-toml", "--config-file"}
-
 // Jujutsu's built-in commands; any other command may be an alias.
 var jjCommands = []string{
 	"abandon", "absorb", "backout", "bisect", "bookmark", "b", "branch", "cat", "checkout", "chmod", "commit", "ci",
@@ -563,7 +395,7 @@ func jjWrites(args []string) bool {
 	var words []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if slices.Contains(jjValueGlobals, arg) {
+		if commandanalysis.VCSValueOption("jj", arg) {
 			i++
 			continue
 		}
@@ -584,80 +416,4 @@ func jjWrites(args []string) bool {
 		return len(words) > 1 && (words[1] == "upload" || words[1] == shellsyntax.Dynamic) && !slices.Contains(args, "--dry-run")
 	}
 	return !slices.Contains(jjCommands, words[0])
-}
-
-var gitReadOnlySubcommands = map[string]bool{
-	"status": true, "diff": true, "log": true, "show": true, "rev-parse": true, "ls-files": true,
-	"grep": true, "blame": true, "describe": true, "show-ref": true, "cat-file": true,
-	"merge-base": true, "rev-list": true, "shortlog": true, "ls-tree": true, "for-each-ref": true,
-	"name-rev": true, "whatchanged": true, "check-ignore": true, "check-attr": true, "var": true,
-	"help": true, "version": true, "count-objects": true, "cherry": true, "range-diff": true,
-}
-
-// GitReadOnlyCommand reports built-in readers with no worktree mutation.
-// Options that write output or run a pager need separate caller checks.
-func GitReadOnlyCommand(command string) bool { return gitReadOnlySubcommands[command] }
-
-// WorktreeWrites reports whether a VCS invocation may import, discard, or
-// write out repository content. Unknown commands remain possible writers. This is effect
-// attribution, independent of remote-write approval.
-func WorktreeWrites(argv []string) bool {
-	if len(argv) == 0 || !commandanalysis.IsVCSTool(argv[0]) {
-		return false
-	}
-	args := argv[1:]
-	switch filepath.Base(argv[0]) {
-	case "git":
-		_, command, rest := gitInvocation(args)
-		if slices.Contains([]string{"diff", "log", "show"}, command) && slices.ContainsFunc(rest, func(arg string) bool {
-			return strings.HasPrefix(arg, "-o") || arg == "--output" || strings.HasPrefix(arg, "--output=")
-		}) {
-			return true
-		}
-		return command != "" && !GitReadOnlyCommand(command)
-	case "gh":
-		words := positionals(args)
-		if len(words) > 1 && slices.Contains([]string{"checkout", "co", "clone"}, words[1]) {
-			return true
-		}
-		return ghWrites(args)
-	case "hg":
-		command, rest := commandAfterGlobals(args, hgValueGlobals)
-		if command == "cat" {
-			return slices.ContainsFunc(rest, func(arg string) bool {
-				return strings.HasPrefix(arg, "-o") || arg == "--output" || strings.HasPrefix(arg, "--output=")
-			})
-		}
-		if command == "branch" {
-			return len(rest) > 0
-		}
-		return command != "" && !slices.Contains([]string{"status", "st", "log", "diff", "annotate", "blame", "root", "id", "identify", "paths"}, command)
-	case "svn":
-		command, _ := commandAfterGlobals(args, svnValueGlobals)
-		return command != "" && !SVNReadOnlyCommand(command)
-	case "jj":
-		command, _ := commandAfterGlobals(args, jjValueGlobals)
-		return command != "" && !slices.Contains([]string{"log", "diff", "status", "st", "show", "root"}, command)
-	}
-	return true
-}
-
-// SVNReadOnlyCommand identifies Subversion's built-in readers and aliases.
-func SVNReadOnlyCommand(command string) bool {
-	return slices.Contains([]string{"status", "st", "stat", "info", "log", "diff", "di", "cat", "list", "ls", "blame", "praise", "annotate", "ann", "propget", "pg", "proplist", "pl", "help"}, command)
-}
-
-// commandAfterGlobals reads the subcommand without treating global option
-// values as command names. It never resolves or executes those values.
-func commandAfterGlobals(args, globals []string) (string, []string) {
-	for i := 0; i < len(args); i++ {
-		if slices.Contains(globals, args[i]) {
-			i++
-			continue
-		}
-		if !strings.HasPrefix(args[i], "-") {
-			return args[i], args[i+1:]
-		}
-	}
-	return "", nil
 }
