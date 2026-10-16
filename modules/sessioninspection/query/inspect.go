@@ -218,6 +218,7 @@ func inspectSessionCall(call Call, record legacycall.Record, found bool, observe
 		Outcome: "unavailable", Text: make(map[string]Text),
 	}
 	values := map[string]string{"script": call.Input}
+	var patchFailed, patchIncomplete bool
 	if call.HasOutput {
 		values["output"] = call.Output
 	}
@@ -242,12 +243,13 @@ func inspectSessionCall(call Call, record legacycall.Record, found bool, observe
 			result.Outcome = "no_changes"
 		}
 		if len(observed) != 0 {
-			applied, noOp, failed := false, true, false
+			applied, noOp := false, true
 			var reports, diagnostics []string
 			for _, patch := range observed {
 				applied = applied || len(patch.ReviewFiles) != 0
 				noOp = noOp && patch.ToolName != "" && patch.AlreadySatisfied
-				failed = failed || patch.TranslationError != ""
+				patchFailed = patchFailed || patch.TranslationError != ""
+				patchIncomplete = patchIncomplete || patch.ToolName == ""
 				if patch.Report != "" {
 					reports = append(reports, patch.Report)
 				}
@@ -260,8 +262,6 @@ func inspectSessionCall(call Call, record legacycall.Record, found bool, observe
 			switch {
 			case applied:
 				result.Outcome = "applied"
-			case failed:
-				result.Outcome = "rejected"
 			case noOp:
 				result.Outcome = "already_satisfied"
 			default:
@@ -309,6 +309,12 @@ func inspectSessionCall(call Call, record legacycall.Record, found bool, observe
 				result.Outcome = "unconfirmed"
 			}
 		}
+	}
+	// A completed shell observation cannot certify another patch's completion.
+	if patchFailed {
+		result.Outcome = "rejected"
+	} else if patchIncomplete && result.Outcome != "rejected" && result.Outcome != "unavailable" {
+		result.Outcome = "unconfirmed"
 	}
 	for name, value := range values {
 		result.Text[name] = TextValue(value, field == "all" || field == name, limit)

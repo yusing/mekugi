@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -329,5 +330,73 @@ func TestDescriptorCorpusFindingAdmission(t *testing.T) {
 	}
 	if len(result.Sessions) != 0 || len(result.Unavailable) != 1 || !strings.Contains(result.Unavailable[0].Reason, "payload does not match") {
 		t.Fatalf("late corrupt evidence escaped validation: %+v", result)
+	}
+}
+
+func TestDescriptorPatchOutcomeRequiresCompletedEvidence(t *testing.T) {
+	changed := &legacycall.History{ToolName: "apply_patch", ReviewFiles: []legacycall.ReviewFile{{AfterPath: "changed.txt"}}, Report: "changed file"}
+	failed := &legacycall.History{ToolName: "apply_patch", TranslationError: "partial patch failure", ReviewFiles: changed.ReviewFiles}
+	for _, tc := range []struct {
+		name, want               string
+		outcomes                 []*legacycall.History
+		hostOutput, shellEffects bool
+		unconfirmed, failures    uint64
+	}{
+		{name: "missing", want: "unconfirmed", outcomes: []*legacycall.History{nil}, unconfirmed: 1},
+		{name: "host output without retained completion", want: "unconfirmed", outcomes: []*legacycall.History{nil}, hostOutput: true, unconfirmed: 1},
+		{name: "partially observed", want: "unconfirmed", outcomes: []*legacycall.History{changed, nil}, unconfirmed: 1},
+		{name: "failed with effects", want: "rejected", outcomes: []*legacycall.History{failed}, failures: 1},
+		{name: "known failure and missing outcome", want: "rejected", outcomes: []*legacycall.History{failed, nil}, failures: 1, unconfirmed: 1},
+		{name: "missing patch with completed shell", want: "unconfirmed", outcomes: []*legacycall.History{nil}, shellEffects: true, unconfirmed: 1},
+		{name: "failed patch with completed shell", want: "rejected", outcomes: []*legacycall.History{failed}, shellEffects: true, failures: 1},
+		{name: "completed changes", want: "applied", outcomes: []*legacycall.History{changed}},
+		{name: "completed no changes", want: "no_changes", outcomes: []*legacycall.History{{ToolName: "apply_patch"}}},
+		{name: "already satisfied", want: "already_satisfied", outcomes: []*legacycall.History{{ToolName: "apply_patch", AlreadySatisfied: true}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace, replay := t.TempDir(), t.TempDir()
+			const patch = "*** Begin Patch\n*** Add File: changed.txt\n+text\n*** End Patch\n"
+			call := binding.RolloutCall{HasCall: true, Workspace: workspace, Item: binding.RolloutItem{Type: "custom_tool_call", Name: "apply_patch", CallID: "patch", Input: patch}}
+			if tc.hostOutput {
+				call.Outputs = []binding.RolloutItem{{Output: []byte(`"host result"`)}}
+			}
+			if tc.shellEffects {
+				call.Item.Name, call.Item.Input = "exec", fmt.Sprintf("text(await tools.apply_patch(%q)); text(await tools.exec_command({cmd: \"true\"}));", patch)
+			}
+			parent := legacycall.Record{Version: 1, Workspace: workspace, CallID: "patch", History: legacycall.History{ToolName: call.Item.Name, CarrierName: call.Item.Name, CarrierKind: "custom", CarrierPayload: call.Item.Input, Script: call.Item.Input}}
+			if tc.shellEffects {
+				parent.History.ExecObservation = &legacycall.Observation{CodeMode: true}
+				shellCall := call
+				shellCall.Item.CallID = legacycall.ExecCallID("patch", true)
+				writeRecord(t, replay, shellCall, legacycall.Record{Version: 1, Workspace: workspace, CallID: shellCall.Item.CallID, History: legacycall.History{ToolName: "exec_command", CorrelationID: "patch\x00exec", ExecOutcome: &legacycall.Outcome{Status: "completed", Coverage: "exact"}, ReviewFiles: changed.ReviewFiles}})
+			}
+			for index, outcome := range tc.outcomes {
+				parent.History.NativePatches = append(parent.History.NativePatches, legacycall.NativePatch{Input: patch})
+				if outcome == nil {
+					continue
+				}
+				derived := *outcome
+				derived.Script, derived.CorrelationID = patch, fmt.Sprintf("patch\x00%d", index)
+				derivedCall := call
+				derivedCall.Item.CallID = legacycall.PatchCallID("patch", index)
+				writeRecord(t, replay, derivedCall, legacycall.Record{Version: 1, Workspace: workspace, CallID: derivedCall.Item.CallID, History: derived})
+			}
+			writeRecord(t, replay, call, parent)
+			metrics := moduletest.New(t, agentmetrics.Module, agentmetrics.Deps{}, module.Slots{}, new(moduletest.Scripted))
+			service, _ := scripted(t, []binding.RolloutCall{call}, moduletest.BindInspection(agentmetrics.Module.Contributes.Inspection[0], metrics))
+			request := options(replay)
+			request.AX, request.Field = true, "all"
+			result, err := service.Inspect(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var report evidence.InspectionReport
+			if err := json.Unmarshal(result.AX, &report); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Calls) != 1 || result.Calls[0].Outcome != tc.want || report.Edits.Unconfirmed != tc.unconfirmed || report.Edits.Failed != tc.failures {
+				t.Fatalf("outcome=%+v edits=%+v; want %s, unconfirmed=%d failures=%d", result.Calls, report.Edits, tc.want, tc.unconfirmed, tc.failures)
+			}
+		})
 	}
 }
