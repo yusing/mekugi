@@ -321,18 +321,18 @@ func inspectionEmptyPoll(call rollout.Call, history mekugiHistory, found bool) b
 	if json.Unmarshal(responses.MustMarshalJSON(call.Item), &item) != nil {
 		return false
 	}
-	if !inspectionEmptyInput(item, history, found) {
+	if !inspectionEmptyInput(item) {
 		return false
 	}
-	classified := executionCallFor(item, history, found, "exec")
-	texts := executionOutputTexts(call.Outputs[len(call.Outputs)-1].Output)
+	classified := binding.ClassifyExecutionCall(item, history.executionEvidence(found), "exec")
+	texts := binding.ExecutionOutputTexts(call.Outputs[len(call.Outputs)-1].Output)
 	if len(texts) == 0 {
 		return false
 	}
 	var session int64
-	if classified.native {
+	if classified.Native {
 		session = binding.NativeExecutionSession(texts[0])
-	} else if classified.codeMode {
+	} else if classified.CodeMode {
 		state, _, body := binding.CodeModeExecutionHeader(texts[0])
 		if state == "" || state == "running" || state == "Script terminated" {
 			return false
@@ -350,11 +350,11 @@ func inspectionEmptyPoll(call rollout.Call, history mekugiHistory, found bool) b
 	if session == 0 {
 		return false
 	}
-	return inspectionEmptyOutput(classified, texts, executionContinuation{Handle: map[string]any{"session_id": session}})
+	return inspectionEmptyOutput(classified, texts, session)
 }
 
 // Empty-poll recognition belongs to offline evidence analysis, not continuation policy.
-func inspectionEmptyInput(item map[string]json.RawMessage, history mekugiHistory, known bool) bool {
+func inspectionEmptyInput(item map[string]json.RawMessage) bool {
 	if namespace := responses.StringField(item, "namespace"); namespace != "" && namespace != "functions" {
 		return false
 	}
@@ -373,12 +373,11 @@ func inspectionEmptyInput(item map[string]json.RawMessage, history mekugiHistory
 	return name == "write_stdin" && json.Unmarshal([]byte(responses.StringField(item, "arguments")), &args) == nil && args.Chars == ""
 }
 
-func inspectionEmptyOutput(call executionCall, texts []string, notice executionContinuation) bool {
-	session, ok := notice.Handle["session_id"].(int64)
-	if !ok || call.resumeHandle != "session:"+strconv.FormatInt(session, 10) {
+func inspectionEmptyOutput(call binding.ExecutionCall, texts []string, session int64) bool {
+	if call.ResumeHandle != "session:"+strconv.FormatInt(session, 10) {
 		return false
 	}
-	if call.native {
+	if call.Native {
 		_, body := binding.NativeExecutionHeader(texts[0])
 		return body == "" && binding.NativeExecutionSession(texts[0]) == session
 	}
@@ -389,7 +388,7 @@ func inspectionEmptyOutput(call executionCall, texts []string, notice executionC
 			continue
 		}
 		part := responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": text})
-		if executionAnnotationMatches(part, notice) {
+		if binding.ExecutionAnnotationMatches(part, map[string]any{"session_id": session}) {
 			continue
 		}
 		var output struct {

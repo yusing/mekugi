@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -168,7 +170,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 		completed := false
 		for _, item := range request.Input {
 			if item.Type == "function_call_output" && item.CallID == "answer-wait" {
-				output := strings.Join(executionOutputTexts([]byte(item.Output)), "\n")
+				output := strings.Join(binding.ExecutionOutputTexts([]byte(item.Output)), "\n")
 				completed = strings.Contains(output, "input-survived") && strings.Contains(output, "Script completed")
 			}
 		}

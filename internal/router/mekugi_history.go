@@ -76,7 +76,7 @@ func (h mekugiHistory) confirmsReport(raw json.RawMessage) bool {
 	if h.TranslationError != "" || h.Report == "" {
 		return false
 	}
-	texts := executionOutputTexts(raw)
+	texts := binding.ExecutionOutputTexts(raw)
 	// exec prepends its metadata as a separate content block before
 	// text(report). Native exec_command instead returns one combined block.
 	if len(texts) == 2 && h.CarrierName != nativeExecCommandToolName {

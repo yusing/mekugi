@@ -385,10 +385,10 @@ func stockToolOutput(raw json.RawMessage) (text string, success *bool) {
 		Success *bool           `json:"success"`
 	}
 	if json.Unmarshal(raw, &object) == nil && (len(object.Content) != 0 || object.Success != nil) {
-		texts := executionOutputTexts(object.Content)
+		texts := binding.ExecutionOutputTexts(object.Content)
 		return strings.Join(texts, "\n"), object.Success
 	}
-	return strings.Join(executionOutputTexts(raw), "\n"), nil
+	return strings.Join(binding.ExecutionOutputTexts(raw), "\n"), nil
 }
 
 // exec's outer completion does not prove a nested apply_patch succeeded:

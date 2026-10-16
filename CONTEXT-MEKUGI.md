@@ -29,7 +29,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Selected-file editor handoff | `internal/router/native_file_editor.go`, `internal/router/terminal_ui.go`; shared editor runner and terminal restoration in `internal/router/app_server_composer_editor.go`, `internal/router/app_server_ui.go` |
 | Shared Diff syntax and word highlighting | `internal/livediff/render.go`, `internal/livediff/word_diff.go`, `internal/livediff/theme.go`; source previews in `internal/ui/diffview/preview.go` |
 | Codex app-server stdio RPC and child-process lifecycle | `backends/codex/appserver` |
-| Transparent Codex JavaScript source recognition | `backends/codex/binding/execution_source.go`; preview, continuation correlation and offline corpus inspection consume its literal candidates without executing them |
+| Codex execution-source and result recognition | `backends/codex/binding/execution_source.go` and `execution_evidence.go`; preview, continuation correlation, restored evidence and offline corpus inspection consume these facts without executing them |
 | Host-selected rollout identity, bounded context usage and resume settings | `backends/codex/rollout`; display precedence and Activity projection stay in router consumers |
 | Supplied rollout decoding, logical call identity and recorded command endpoints | `backends/codex/rollout/inspection.go`; query selection and retained-record joins stay in the inspection consumer, metric pairing in `modules/agentmetrics/evidence` |
 | Router lifecycle, launch flags, modes, and HTTP endpoints | `internal/router/server.go`, `internal/router/flags.go` |

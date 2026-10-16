@@ -127,7 +127,7 @@ func readRestoredRollout(info appServerThreadInfo, agent string) restoredRollout
 				cells[p.CallID] = true
 			}
 		case "response_item/custom_tool_call_output":
-			if text, failed := codeModeFailureText(executionOutputTexts(p.Output)); cells[p.CallID] && failed && turn != "" {
+			if text, failed := codeModeFailureText(binding.ExecutionOutputTexts(p.Output)); cells[p.CallID] && failed && turn != "" {
 				event.entry = activityPaneEntry{Agent: agent, Kind: "error", Text: activityui.ErrorPreview(text), ErrorDetail: text, CallID: p.CallID}
 				r.events = append(r.events, event)
 			}

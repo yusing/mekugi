@@ -129,15 +129,15 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 	request.Fields["input"] = project(request.Fields["input"]).Input
 	got := duplicateTestItems(t, request)
 	for _, at := range []int{1, 2, 3} {
-		texts := executionOutputTexts(got[at]["output"])
+		texts := binding.ExecutionOutputTexts(got[at]["output"])
 		if texts[len(texts)-1] != warning {
 			t.Fatal("router append changed")
 		}
 	}
-	if texts := executionOutputTexts(got[2]["output"]); texts[0] != duplicateTestHeader || texts[1] != "[same as O1]\n" {
+	if texts := binding.ExecutionOutputTexts(got[2]["output"]); texts[0] != duplicateTestHeader || texts[1] != "[same as O1]\n" {
 		t.Fatalf("multipart output = %q", texts)
 	}
-	if text := executionOutputTexts(got[3]["output"])[0]; text != "Chunk ID: xyz\nWall time: 0.2 seconds\nProcess exited with code 1\nFinal output:\n[same as O1]\n" {
+	if text := binding.ExecutionOutputTexts(got[3]["output"])[0]; text != "Chunk ID: xyz\nWall time: 0.2 seconds\nProcess exited with code 1\nFinal output:\n[same as O1]\n" {
 		t.Fatalf("native header changed: %q", text)
 	}
 	for at := 4; at < len(got); at++ {
@@ -193,7 +193,7 @@ func TestDuplicateOutputPreparedContinuationAndScope(t *testing.T) {
 			input = append(input, continuationTestCall("exec", "running", "text('yield')"), continuationTestOutput("running", "Script running with cell ID live-42\nWall time 0.1 seconds\nOutput:\n"+body))
 			request := duplicateTestPrepare(t, proxy, input, metadata)
 			items := duplicateTestItems(t, request)
-			texts := executionOutputTexts(items[len(items)-1]["output"])
+			texts := binding.ExecutionOutputTexts(items[len(items)-1]["output"])
 			if len(texts) != 2 || !strings.Contains(texts[1], `"cell_id":"live-42"`) {
 				t.Fatalf("continuation advice lost: %q", texts)
 			}
@@ -230,7 +230,7 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	// A later occurrence with a different part count must not change the prefix.
 	grown := project(append(grownInput, continuationTestOutput("b", duplicateTestHeader, body)))
 	items := duplicateTestItems(t, grown)
-	if got := executionOutputTexts(items[len(items)-1]["output"]); len(got) != 2 || got[0] != duplicateTestHeader || got[1] != "[same as O1]\n" {
+	if got := binding.ExecutionOutputTexts(items[len(items)-1]["output"]); len(got) != 2 || got[0] != duplicateTestHeader || got[1] != "[same as O1]\n" {
 		t.Fatalf("repeated output identity used the wrong part boundary: %q", got)
 	}
 	exchange := confirmedHistoryExchange(t, original, false)
@@ -268,10 +268,10 @@ func TestDuplicateOutputSourceIDs(t *testing.T) {
 	if !ok || len(frames) != 1 || frames[0] != header+"\n[O1]\n"+a {
 		t.Fatalf("attachment source = %q", frames)
 	}
-	if got, want := executionOutputTexts(items[1]["output"]), []string{duplicateTestHeader, "[O2]\n" + b, "[O3]\n" + c}; !slices.Equal(got, want) {
+	if got, want := binding.ExecutionOutputTexts(items[1]["output"]), []string{duplicateTestHeader, "[O2]\n" + b, "[O3]\n" + c}; !slices.Equal(got, want) {
 		t.Fatalf("sources with the same first line = %q, want %q", got, want)
 	}
-	if got, want := executionOutputTexts(items[2]["output"]), []string{"[same as O1]\n", "[same as O2]\n", "[same as O3]\n"}; !slices.Equal(got, want) {
+	if got, want := binding.ExecutionOutputTexts(items[2]["output"]), []string{"[same as O1]\n", "[same as O2]\n", "[same as O3]\n"}; !slices.Equal(got, want) {
 		t.Fatalf("multipart references = %q, want %q", got, want)
 	}
 }

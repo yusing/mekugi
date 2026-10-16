@@ -49,7 +49,7 @@ func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, r
 			responses.StringField(call, "namespace") != "" && responses.StringField(call, "namespace") != "functions" {
 			continue
 		}
-		if text, failed := codeModeFailureText(executionOutputTexts(item["output"])); failed {
+		if text, failed := codeModeFailureText(binding.ExecutionOutputTexts(item["output"])); failed {
 			p.activity.collectEvent(activityEvent{thread: thread, source: "code-mode-failure\x00" + callID, kind: "error", callID: callID, text: text})
 		}
 		if codeModeReturnedNothing(item["output"]) {

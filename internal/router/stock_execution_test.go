@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -382,7 +384,7 @@ func TestStockExecCommandContinuationUsesWriteStdin(t *testing.T) {
 	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		t.Fatal(err)
 	}
-	texts := executionOutputTexts(items[1]["output"])
+	texts := binding.ExecutionOutputTexts(items[1]["output"])
 	if len(texts) != 2 || !strings.Contains(texts[1], "tools.write_stdin") || !strings.Contains(texts[1], `"session_id":42`) {
 		t.Fatalf("stock continuation = %v", texts)
 	}
