@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
@@ -1361,14 +1363,17 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	var pending []string
 	var approvalRows, questionRows, btwRows []string
 	if !readOnly {
-		approvalRows = u.approvalRows(width, max(1, min(height/2, room)))
+		if d := u.approvals.View(); d.Count > 0 {
+			a := u.approvals.handles[u.approvals.Pending[0]]
+			approvalRows = conversationui.Approvals(d, &u.view.Painter.Painter, &a.layout, u.pickerSelection(), u.approvalAgent(d.Approval.Thread), width, max(1, min(height/2, room)))
+		}
 	}
 	if len(approvalRows) > 0 {
 		dock = 0
 		room -= len(approvalRows)
 	}
 	if !readOnly {
-		questionRows = u.questionRows(width, max(1, min(height/2, room)))
+		questionRows = conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, max(1, min(height/2, room)))
 	}
 	if len(questionRows) > 0 {
 		dock = 0

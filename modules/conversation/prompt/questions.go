@@ -245,6 +245,22 @@ type CallView struct {
 	Sent, Resolved         bool
 }
 
+// QuestionDockView excludes parked and active draft contents, including secrets.
+type QuestionDockView struct {
+	Count, Index, Gaps int
+	Confirm            bool
+	Call               *CallView
+}
+
+func (m *Questions) View(thread string) QuestionDockView {
+	v := QuestionDockView{Count: m.Count(thread), Index: m.Index, Confirm: m.Confirm}
+	if m.Active != nil {
+		call := m.Active.View()
+		v.Call, v.Gaps = &call, m.Active.Gaps()
+	}
+	return v
+}
+
 func (c *Call) View() CallView {
 	v := CallView{Sync: c.Sync, Local: c.Local, ID: c.ID, Thread: c.Thread, Turn: c.Turn, Item: c.Item, Sent: c.Sent, Resolved: c.Resolved}
 	for i, q := range c.Questions {

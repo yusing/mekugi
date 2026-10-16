@@ -120,3 +120,19 @@ func DecodeApproval(method string, id jsontext.Value, p binding.ApprovalRequest,
 	}
 	return &Approval{Record: a, Responses: responses, DisplayCommand: displayCommand}, nil
 }
+
+// ApprovalReview projects a native review without creating an actionable prompt.
+func ApprovalReview(review binding.ApprovalReview) prompt.Approval {
+	a := prompt.Approval{Thread: review.Thread, Turn: review.Turn, Item: review.Item}
+	switch review.Status {
+	case "inProgress":
+		a.Outcome = "Pending Approval"
+	case "approved":
+		a.Outcome = "Approved"
+	case "denied", "timedOut":
+		a.Outcome = "Auto Denied"
+	case "aborted":
+		a.Outcome = "Review aborted"
+	}
+	return a
+}

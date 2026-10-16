@@ -109,7 +109,7 @@ func TestAppServerTerminalTitleQueuedQuestionAnswerIsNotActionRequired(t *testin
 	if u.questionCount() != 0 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
 		t.Fatal("queued answer was marked resolved or still actionable")
 	}
-	if rows := u.questionRows(80, 10); len(rows) != 0 {
+	if rows := testQuestionRows(u, 80, 10); len(rows) != 0 {
 		t.Fatalf("answered question still has a dock: %q", rows)
 	}
 	if preview := strings.Join(u.pendingInputPreview(80), "\n"); !strings.Contains(preview, "Answering 1 question(s)") {

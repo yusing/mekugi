@@ -4,8 +4,31 @@ package binding
 import (
 	"encoding/json/jsontext"
 	json "encoding/json/v2"
+	"slices"
 	"strings"
 )
+
+// QuestionAnswer contains completed input only. Secret answers may pass through
+// this response encoder but never enter the feature's retained answer records.
+type QuestionAnswer struct {
+	ID      string
+	Answers []string
+	Other   bool
+}
+
+func EncodeQuestionResponse(completed []QuestionAnswer) map[string]any {
+	answers := make(map[string]map[string][]string)
+	for _, q := range completed {
+		answer := slices.Clone(q.Answers)
+		for i := range answer {
+			if i > 0 || q.Other {
+				answer[i] = "user_note: " + answer[i]
+			}
+		}
+		answers[q.ID] = map[string][]string{"answers": answer}
+	}
+	return map[string]any{"answers": answers}
+}
 
 type QuestionOption struct {
 	Label       string `json:"label"`

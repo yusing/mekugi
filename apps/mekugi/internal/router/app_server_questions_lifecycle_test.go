@@ -22,7 +22,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	if u.questionCount() != 1 || u.questionCalls()[0].Resolved || !u.questionCalls()[0].Sent {
 		t.Fatalf("sent answer and separate unanswered question confused: count=%d call=%+v", u.questionCount(), u.questionCalls()[0])
 	}
-	if rows := strings.Join(u.questionRows(80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") || strings.Contains(rows, "main asks 2 questions") {
+	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") || strings.Contains(rows, "main asks 2 questions") {
 		t.Fatalf("question dock counted the sent answer: %q", rows)
 	}
 	preview := strings.Join(u.pendingInputPreview(80), "\n")
@@ -33,7 +33,7 @@ func TestQuestionQueuedSteerIsNotStillActionable(t *testing.T) {
 	questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
 		"id": "other-answer", "type": "userMessage", "content": []any{map[string]any{"type": "text", "text": lifecycleReply(t, "second", 0, "Who approves it?", "Internal")}},
 	}})
-	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 || u.questionCalls()[0].Resolved {
+	if u.questionCount() != 0 || len(testQuestionRows(u, 80, 10)) != 0 || u.questionCalls()[0].Resolved {
 		t.Fatal("sent answer remained actionable after the other question was answered")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{"turnId":"turn"}}`, request.ID))
@@ -56,7 +56,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "3Customers only\r")
 	request := appServerOneRequest(t, wire, "turn/steer", u.conversation().Submitted[u.Submission().ID].Text)
-	if u.questionCount() != 0 || len(u.questionRows(80, 10)) != 0 {
+	if u.questionCount() != 0 || len(testQuestionRows(u, 80, 10)) != 0 {
 		t.Fatal("queued answer still required action")
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"rejected"}}`, request.ID))
@@ -64,7 +64,7 @@ func TestQuestionRejectedQueuedSteerReopensDockWithDraft(t *testing.T) {
 		t.Fatal("rejected answer did not become actionable again")
 	}
 	u.hideQuestions()
-	if rows := strings.Join(u.questionRows(80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") {
+	if rows := strings.Join(testQuestionRows(u, 80, 10), "\n"); !strings.Contains(rows, "main asks 1 questions") {
 		t.Fatalf("reopened question missing from dock: %q", rows)
 	}
 	u.openQuestions()

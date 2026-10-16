@@ -34,6 +34,26 @@ type ApprovalRequest struct {
 	AvailableDecisions []jsontext.Value `json:"availableDecisions"`
 }
 
+type ApprovalReview struct {
+	Thread, Turn, Item, Status string
+}
+
+// DecodeApprovalReview names the exact reviewed item, never the review item.
+func DecodeApprovalReview(params jsontext.Value) (ApprovalReview, error) {
+	var p struct {
+		ThreadID string `json:"threadId"`
+		TurnID   string `json:"turnId"`
+		ItemID   string `json:"targetItemId"`
+		Review   struct {
+			Status string `json:"status"`
+		} `json:"review"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return ApprovalReview{}, err
+	}
+	return ApprovalReview{Thread: p.ThreadID, Turn: p.TurnID, Item: p.ItemID, Status: p.Review.Status}, nil
+}
+
 func DecodeApprovalRequest(params jsontext.Value) (ApprovalRequest, error) {
 	var p ApprovalRequest
 	err := json.Unmarshal(params, &p)

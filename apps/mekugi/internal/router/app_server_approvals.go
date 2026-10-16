@@ -2,25 +2,20 @@ package router
 
 import (
 	"encoding/json/jsontext"
-
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-	"github.com/yusing/mekugi/modules/conversation/prompt"
-
-	"github.com/yusing/mekugi/libraries/textsanitize"
-
-	"github.com/yusing/mekugi/libraries/terminalui"
-
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/contracts/approval"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
 // Live response payloads and command-guard handles stay in this adapter.
@@ -29,8 +24,7 @@ type nativeApproval struct {
 	request   jsontext.Value
 	responses []map[string]any
 	guard     *vcsApproval
-	textTop   int
-	column    *int
+	layout    conversationui.ApprovalLayout
 }
 type nativeApprovalDock struct {
 	prompt.Approvals
@@ -160,34 +154,14 @@ func (u *appServerUI) addGuardApproval(request *vcsApproval) {
 func (u *appServerUI) approvalMessage(m appserver.Message) (bool, error) {
 	switch m.Method {
 	case "item/autoApprovalReview/started", "item/autoApprovalReview/completed":
-		var p struct {
-			ThreadID string `json:"threadId"`
-			TurnID   string `json:"turnId"`
-			ItemID   string `json:"targetItemId"`
-			Review   struct {
-				Status string `json:"status"`
-			} `json:"review"`
-		}
-		if err := json.Unmarshal(m.Params, &p); err != nil {
+		review, err := binding.DecodeApprovalReview(m.Params)
+		if err != nil {
 			return true, err
 		}
-		if p.ItemID == "" {
-			return true, nil
+		record := conversationbinding.ApprovalReview(review)
+		if record.Item != "" && record.Outcome != "" {
+			u.recordApproval(&nativeApproval{Approval: record}, record.Outcome)
 		}
-		outcome := ""
-		switch p.Review.Status {
-		case "inProgress":
-			outcome = "Pending Approval"
-		case "approved":
-			outcome = "Approved"
-		case "denied", "timedOut":
-			outcome = "Auto Denied"
-		case "aborted":
-			outcome = "Review aborted"
-		default:
-			return true, nil
-		}
-		u.recordApproval(&nativeApproval{Approval: prompt.Approval{Thread: p.ThreadID, Turn: p.TurnID, Item: p.ItemID}}, outcome)
 		return true, nil
 	case "serverRequest/resolved":
 		var p struct {
@@ -431,7 +405,7 @@ func (u *appServerUI) openApprovals() bool {
 	if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
 		u.promptColumn = u.cursorColumn
 		u.promptEditor.Open(&u.Editor, a.Editor)
-		u.cursorColumn = a.column
+		u.cursorColumn = a.layout.Column
 	}
 	u.approvals.Show()
 	u.approvals.painted = false
@@ -442,7 +416,7 @@ func (u *appServerUI) openApprovals() bool {
 func (u *appServerUI) hideApprovals() {
 	if u.approvals.Open && len(u.pendingApprovals()) > 0 {
 		if a := u.pendingApprovals()[0]; a.DenialChoice() >= 0 {
-			a.column = u.cursorColumn
+			a.layout.Column = u.cursorColumn
 			a.Editor = u.promptEditor.Close(&u.Editor)
 			u.cursorColumn = u.promptColumn
 		}
@@ -451,134 +425,18 @@ func (u *appServerUI) hideApprovals() {
 }
 
 func (u *appServerUI) approvalKey(key string) (bool, error) {
-	if !u.approvals.Open || len(u.pendingApprovals()) == 0 {
+	if !u.approvals.Open || len(u.approvals.Pending) == 0 {
 		return false, nil
 	}
-	a := u.pendingApprovals()[0]
-	switch key {
-	case "\x1b":
+	a := u.approvals.handles[u.approvals.Pending[0]]
+	switch a.layout.Key(&a.Approval, key, u.Text == "") {
+	case conversationui.PromptPass:
+		return false, nil
+	case conversationui.PromptHide:
 		u.hideApprovals()
 		u.approvals.AutoOpen = false
-	case "\x1b[A", "\x10":
-		a.Move(-1)
-	case "\x1b[B", "\x0e":
-		a.Move(1)
-	case "\x1b[5~":
-		a.textTop = max(0, a.textTop-1)
-	case "\x1b[6~":
-		a.textTop++
-	case "\r":
+	case conversationui.PromptSubmit:
 		return true, u.answerApproval(a, a.Choices[a.Selected])
-	case "\t":
-		a.SelectDenial()
-	default:
-		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' && (a.DenialChoice() < 0 || u.Text == "") {
-			if index := int(key[0] - '1'); index < len(a.Choices) {
-				a.Selected = index
-			}
-			return true, nil
-		}
-		if deny := a.DenialChoice(); deny >= 0 {
-			if len(key) == 1 && key[0] >= 32 && key[0] != 127 {
-				a.Selected = deny
-				return false, nil
-			}
-			switch key {
-			case "\x7f", "\x08", "\x17", "\x0b", "\x1a", "\x19", "\n", "\x1b[D", "\x1b[C", "\x1b[H", "\x1b[F", "\x1b[3~":
-				return false, nil
-			}
-		}
-		// No key may edit the hidden draft or answer by accident. Ctrl-C keeps
-		// its meaning, Ctrl-B its pane commands, and other sequences, such as
-		// mouse reports, theirs.
-		if len(key) == 1 {
-			return key != "\x03" && key != "\x02", nil
-		}
-		return key == "\x1b[3~", nil
 	}
 	return true, nil
-}
-
-func (u *appServerUI) approvalRows(width, height int) []string {
-	d := &u.approvals
-	if len(u.pendingApprovals()) == 0 {
-		return nil
-	}
-	p := &u.view.Painter
-	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
-	if !d.Open {
-		label := accent + "! " + reset + fmt.Sprintf("%d approval", len(u.pendingApprovals()))
-		if len(u.pendingApprovals()) > 1 {
-			label += "s"
-		}
-		label += " pending" + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " review" + reset
-		return []string{ansi.Truncate(label, width, "…")}
-	}
-	a := u.pendingApprovals()[0]
-	v := a.View()
-	padding := min(2, max(0, (width-20)/2))
-	inner := max(1, width-2*padding)
-	head := "! " + v.Title
-	state := u.approvalAgent(v.Thread)
-	if len(u.pendingApprovals()) > 1 {
-		state = strings.TrimPrefix(state+fmt.Sprintf(" · 1 of %d", len(u.pendingApprovals())), " · ")
-	}
-	header := accent + "\x1b[1m" + head + reset
-	if gap := inner - ansi.StringWidth(head) - ansi.StringWidth(state); state != "" && gap >= 2 {
-		header += strings.Repeat(" ", gap) + dim + state + reset
-	}
-	rows := []string{ansi.Truncate(header, inner, "")}
-	foot := pickerWrap(accent+fmt.Sprintf("1–%d", len(v.Choices))+reset+dim+" choose · "+reset+accent+"enter"+reset+dim+" confirm · "+reset+accent+"esc"+reset+dim+" hide"+reset, inner)
-	if a.DenialChoice() >= 0 {
-		foot = pickerWrap(accent+fmt.Sprintf("1–%d", len(v.Choices))+reset+dim+" choose · "+reset+accent+"type"+reset+dim+" deny with reason · "+reset+accent+"enter"+reset+dim+" confirm · "+reset+accent+"esc"+reset+dim+" hide"+reset, inner)
-	}
-	var text []string
-	for _, line := range strings.Split(v.Subject, "\n") {
-		text = append(text, pickerWrap(textsanitize.Safe(line, false), inner)...)
-	}
-	for _, detail := range v.Details {
-		for _, line := range pickerWrap(textsanitize.Safe(detail, false), inner) {
-			text = append(text, dim+line+reset)
-		}
-	}
-	// The request text takes precedence over spacing; it scrolls only when
-	// even the unspaced dock cannot hold it.
-	fixed := len(rows) + len(v.Choices) + len(foot)
-	spaced := fixed+len(text)+3 <= height
-	textRoom := height - fixed
-	if spaced {
-		textRoom -= 3
-		rows = append(rows, "")
-	}
-	if len(text) > textRoom {
-		textRoom--
-	}
-	textRoom = max(1, textRoom)
-	a.textTop = min(a.textTop, max(0, len(text)-textRoom))
-	rows = append(rows, text[a.textTop:min(len(text), a.textTop+textRoom)]...)
-	if len(text) > textRoom {
-		rows = append(rows, dim+ansi.Truncate("pgup/pgdn request text", inner, "")+reset)
-	}
-	if spaced {
-		rows = append(rows, "")
-	}
-	for i, choice := range v.Choices {
-		prefix := "  "
-		if i == v.Selected {
-			prefix = "› "
-		}
-		line := ansi.Truncate(fmt.Sprintf("%s%d. %s", prefix, i+1, pickerText(choice.Label)), inner, "…")
-		if i == v.Selected {
-			line = u.pickerSelection() + ansi.Strip(line) + strings.Repeat(" ", max(0, inner-ansi.StringWidth(line))) + reset
-		}
-		rows = append(rows, line)
-	}
-	if spaced {
-		rows = append(rows, "")
-	}
-	rows = append(rows, foot...)
-	for i := range rows {
-		rows[i] = strings.Repeat(" ", padding) + rows[i]
-	}
-	return rows[:min(len(rows), height)]
 }

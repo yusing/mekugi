@@ -11,9 +11,16 @@ The composer API owns text, byte-based caret position, atomic attachment tokens,
 undo/redo, local input history, external-editor reconciliation, and draft joining.
 Main, question answers, approval reasons, queued input, and side questions use the
 same values. Terminal geometry, key decoding, clipboard acquisition, focus, and
-process launching remain renderer responsibilities. The application retains live request handles, submission admission and settlement,
-and secret admission. Conversation retains queued compaction intent and payload ordering. The Codex binding maps protocol identities and answer formats
-to neutral question and approval records.
+process launching remain renderer responsibilities. The application retains live
+request handles, submission admission and settlement, and secret admission.
+Conversation retains queued compaction intent and payload ordering. Its Codex
+binding maps backend-owned identities, offered choices and review facts to neutral
+question and approval records; response wire encoding remains backend-owned.
+
+Detached prompt views exclude draft text, secrets and live handles. Terminal
+presentation consumes those values and returns editor or response intents; the
+application executes their effects. Key interaction and Main input readiness follow
+the [terminal session contract](../../apps/mekugi/internal/terminalsession/SPEC.md#questions-and-approvals).
 
 ## Behavior
 

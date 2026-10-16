@@ -71,3 +71,18 @@ type ApprovalView struct {
 func (a *Approval) View() ApprovalView {
 	return ApprovalView{Selected: a.Selected, ID: a.ID, Thread: a.Thread, Turn: a.Turn, Item: a.Item, Title: a.Title, Subject: a.Subject, Outcome: a.Outcome, Details: slices.Clone(a.Details), Choices: slices.Clone(a.Choices)}
 }
+
+type ApprovalDockView struct {
+	Count        int
+	Open, Reason bool
+	Approval     ApprovalView
+}
+
+func (m *Approvals) View() ApprovalDockView {
+	v := ApprovalDockView{Count: len(m.Pending), Open: m.Open}
+	if len(m.Pending) > 0 {
+		v.Approval = m.Pending[0].View()
+		v.Reason = m.Pending[0].DenialChoice() >= 0
+	}
+	return v
+}

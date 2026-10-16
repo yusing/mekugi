@@ -3,7 +3,6 @@ package codexbinding
 import (
 	"cmp"
 	"encoding/json/jsontext"
-	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -23,22 +22,17 @@ func Questions(thread, turn, item string, request jsontext.Value, questions []bi
 	return c
 }
 func QuestionResponse(c *prompt.Call, secretAnswers map[int][]string) map[string]any {
-	answers := make(map[string]map[string][]string)
+	var answers []binding.QuestionAnswer
 	for i, q := range c.Questions {
 		if q.Done && !q.Skipped {
-			answer := slices.Clone(q.Answer)
+			answer := q.Answer
 			if q.IsSecret {
-				answer = slices.Clone(secretAnswers[i])
+				answer = secretAnswers[i]
 			}
-			for j := range answer {
-				if j > 0 || q.Selected == len(q.Choices) {
-					answer[j] = "user_note: " + answer[j]
-				}
-			}
-			answers[q.ID] = map[string][]string{"answers": answer}
+			answers = append(answers, binding.QuestionAnswer{ID: q.ID, Answers: answer, Other: q.Selected == len(q.Choices)})
 		}
 	}
-	return map[string]any{"answers": answers}
+	return binding.EncodeQuestionResponse(answers)
 }
 func QuestionReplies(c *prompt.Call) string {
 	var replies []binding.QuestionReply

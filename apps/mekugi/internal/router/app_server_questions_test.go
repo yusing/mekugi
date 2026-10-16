@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -261,7 +263,7 @@ func TestNativeQuestionSupersedeBannerAndRejectedSend(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		u.Text = "new prompt"
 		questionTestAsync(t, u, "pending", "Who receives it?")
-		if got := strings.Join(u.questionRows(80, 10), " "); !strings.Contains(got, "dismisses 1 questions") {
+		if got := strings.Join(testQuestionRows(u, 80, 10), " "); !strings.Contains(got, "dismisses 1 questions") {
 			t.Fatalf("missing supersede warning: %q", got)
 		}
 		questionTestMessage(t, u, nil, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": map[string]any{
@@ -417,7 +419,7 @@ func TestNativeSingleQuestionOmitsNavigationHints(t *testing.T) {
 			u, _ := newAppServerTestUI()
 			questionTestAsync(t, u, "hints", titles...)
 			for _, height := range []int{8, 20} {
-				rows := strings.Join(u.questionRows(width, height), "\n")
+				rows := strings.Join(testQuestionRows(u, width, height), "\n")
 				hasNext := strings.Contains(rows, "next")
 				hasArrows := strings.Contains(rows, "←") || strings.Contains(rows, "→")
 				if want := len(titles) > 1; hasNext != want || hasArrows != want {
@@ -523,8 +525,12 @@ func TestUISnapshotQuestionArrowHints(t *testing.T) {
 				if editing {
 					appServerTestKeys(t, u, "answer")
 				}
-				assertNativeUISnapshot(t, fmt.Sprintf("question-arrow-hints-%d-%t", width, editing), u.questionRows(width, 10))
+				assertNativeUISnapshot(t, fmt.Sprintf("question-arrow-hints-%d-%t", width, editing), testQuestionRows(u, width, 10))
 			})
 		}
 	}
+}
+
+func testQuestionRows(u *appServerUI, width, height int) []string {
+	return conversationui.Questions(u.questions.View(u.Thread), &u.view.Painter.Painter, u.questionLayout(u.currentQuestion()), u.pickerSelection(), u.Turn == "" && u.Text != "", width, height)
 }

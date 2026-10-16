@@ -1,27 +1,22 @@
 package router
 
 import (
-	"github.com/yusing/mekugi/backends/codex/binding"
-	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
-	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
-	"github.com/yusing/mekugi/modules/conversation/prompt"
-
 	"encoding/json/jsontext"
-
-	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
-	"github.com/yusing/mekugi/libraries/terminalui"
-	"github.com/yusing/mekugi/libraries/textsanitize"
-	"github.com/yusing/mekugi/modules/conversation/composer"
-
 	"fmt"
 	"slices"
 	"strings"
 
-	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/terminalsession"
 	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-
+	"github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
+	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
+	"github.com/yusing/mekugi/modules/conversation/composer"
+	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
+	"github.com/yusing/mekugi/modules/conversation/prompt"
+	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
 )
 
 type nativeQuestionCall struct {
@@ -37,14 +32,10 @@ type questionEditor struct {
 	composer.State
 	column *int
 }
-type questionLayout struct {
-	column       *int
-	top, textTop int
-}
 type nativeQuestionDock struct {
 	prompt.Questions
 	handles map[*prompt.Call]*nativeQuestionCall
-	layout  map[*prompt.Question]*questionLayout
+	layout  map[*prompt.Question]*conversationui.QuestionLayout
 	rect    terminalsession.Rect
 	painted bool
 }
@@ -59,12 +50,15 @@ func (u *appServerUI) questionCalls() []*nativeQuestionCall {
 func (u *appServerUI) activeQuestionCall() *nativeQuestionCall {
 	return u.questions.handles[u.questions.Active]
 }
-func (u *appServerUI) questionLayout(q *prompt.Question) *questionLayout {
+func (u *appServerUI) questionLayout(q *prompt.Question) *conversationui.QuestionLayout {
+	if q == nil {
+		return nil
+	}
 	if u.questions.layout == nil {
-		u.questions.layout = make(map[*prompt.Question]*questionLayout)
+		u.questions.layout = make(map[*prompt.Question]*conversationui.QuestionLayout)
 	}
 	if u.questions.layout[q] == nil {
-		u.questions.layout[q] = &questionLayout{}
+		u.questions.layout[q] = &conversationui.QuestionLayout{}
 	}
 	return u.questions.layout[q]
 }
@@ -78,7 +72,7 @@ func (u *appServerUI) parkQuestion(q *prompt.Question) {
 		c.secrets[u.questions.Index] = e
 	} else {
 		q.Editor = e.State
-		u.questionLayout(q).column = e.column
+		u.questionLayout(q).Column = e.column
 	}
 }
 func (u *appServerUI) resumeQuestion(q *prompt.Question) {
@@ -86,7 +80,7 @@ func (u *appServerUI) resumeQuestion(q *prompt.Question) {
 		u.loadQuestionEditor(u.activeQuestionCall().secrets[u.questions.Index])
 		return
 	}
-	u.loadQuestionEditor(questionEditor{q.Editor, u.questionLayout(q).column})
+	u.loadQuestionEditor(questionEditor{q.Editor, u.questionLayout(q).Column})
 }
 func (u *appServerUI) discardQuestionEditors(c *nativeQuestionCall) {
 	clear(c.secrets)
@@ -310,57 +304,27 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		return false, nil
 	}
 	c := u.activeQuestionCall()
-	if u.questions.Confirm {
-		if key == "\r" {
-			return true, u.submitQuestions()
-		}
-		if key == "\x1b" {
-			u.questions.Confirm = false
-			return true, nil
-		}
-	}
-	switch key {
-	case "\x1b":
-		if q.Note {
-			q.Note = false
-		} else {
-			u.questions.AutoOpen = false
-			u.hideQuestions()
-		}
-	case "\x1b[A", "\x10", "\x1b[B", "\x0e":
-		step := 1
-		if key == "\x1b[A" || key == "\x10" {
-			step = -1
-		}
-		q.Choose((q.Selected + step + len(q.Choices) + 1) % (len(q.Choices) + 1))
-	case "\x1b[D":
-		if q.Note || q.Selected == len(q.Choices) {
-			u.moveDraft(key)
-		} else {
-			u.moveQuestion(-1)
-		}
-	case "\x1b[C":
-		if q.Note || q.Selected == len(q.Choices) {
-			u.moveDraft(key)
-		} else {
-			u.moveQuestion(1)
-		}
-	case "\x1b[5~":
-		u.questionLayout(q).textTop = max(0, u.questionLayout(q).textTop-1)
-	case "\x1b[6~":
-		u.questionLayout(q).textTop++
-	case "\t":
-		if len(c.request) > 0 && q.Selected < len(q.Choices) {
-			q.Note = true
-		}
-	case "\x16":
-		q.Edit(!q.Note)
+	action := u.questionLayout(q).Key(&u.questions.Questions, key, u.Text == "")
+	switch action {
+	case conversationui.PromptPass:
+		return false, nil
+	case conversationui.PromptHide:
+		u.hideQuestions()
+	case conversationui.PromptCursor:
+		u.moveDraft(key)
+	case conversationui.PromptPrevious:
+		u.moveQuestion(-1)
+	case conversationui.PromptNext:
+		u.moveQuestion(1)
+	case conversationui.PromptAttach:
 		u.pasteImage()
-	case "\r", "\x1d":
+	case conversationui.PromptSubmit:
+		return true, u.submitQuestions()
+	case conversationui.PromptAnswer, conversationui.PromptSkip:
 		u.parkQuestion(q)
 		if q.IsSecret {
 			answer := *q
-			if !answer.Complete(u.Text, c.Sync, key == "\x1d") {
+			if !answer.Complete(u.Text, c.Sync, action == conversationui.PromptSkip) {
 				return true, nil
 			}
 			q.Done, q.Skipped = answer.Done, answer.Skipped
@@ -368,7 +332,7 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 				c.secretAnswers = make(map[int][]string)
 			}
 			c.secretAnswers[u.questions.Index] = answer.Answer
-		} else if !q.Complete(u.Text, c.Sync, key == "\x1d") {
+		} else if !q.Complete(u.Text, c.Sync, action == conversationui.PromptSkip) {
 			return true, nil
 		}
 		if step, submit := u.questions.Advance(); step != 0 {
@@ -376,19 +340,6 @@ func (u *appServerUI) questionKey(key string) (bool, error) {
 		} else if submit {
 			return true, u.submitQuestions()
 		}
-
-	default:
-		if c.sudo == nil && len(key) == 1 && key[0] >= '1' && key[0] <= '9' && !q.Note && u.Text == "" {
-			selected := int(key[0] - '1')
-			if selected <= len(q.Choices) {
-				q.Choose(selected)
-				return true, nil
-			}
-		}
-		if len(key) == 1 {
-			q.Edit(key[0] >= 32 && key[0] != 127 && !q.Note)
-		}
-		return false, nil
 	}
 	return true, nil
 }
@@ -615,125 +566,6 @@ func (u *appServerUI) renderQuestionRecord(c *nativeQuestionCall) {
 		entry := activityPaneEntry{Seq: v.LastSeq + 1, Agent: "Main", Kind: "question", Text: text, Observed: u.now(), native: &liveActivityNativeItem{thread: c.Thread, turn: c.Turn, item: id, phase: "question", questions: records}}
 		v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{entry}})
 	}
-}
-func (u *appServerUI) questionRows(width, height int) []string {
-	d := &u.questions
-	if u.questionCount() == 0 {
-		return nil
-	}
-	p := &u.view.Painter
-	accent, dim, reset := p.Theme.Accent(), terminalui.Dim, terminalui.Reset
-	if u.activeQuestionCall() == nil {
-		label := accent + "? " + reset + fmt.Sprintf("main asks %d questions", u.questionCount()) + dim + " · " + reset + accent + "ctrl+b q" + reset + dim + " answer" + reset
-		if u.Turn == "" && u.Text != "" {
-			label = dim + fmt.Sprintf("enter starts a new turn · dismisses %d questions", u.questionCount()) + reset
-		}
-		return []string{ansi.Truncate(label, width, "…")}
-	}
-	q, c := u.currentQuestion(), u.activeQuestionCall()
-	view := c.View()
-	question := view.Questions[d.Index]
-	layout := u.questionLayout(q)
-	padding := min(2, max(0, (width-20)/2))
-	inner := max(1, width-2*padding)
-	state := "open"
-	if view.Sync || view.Local {
-		state = "waiting"
-	}
-	head := fmt.Sprintf("? %d of %d", d.Index+1, len(view.Questions))
-	if question.Header != question.Text && ansi.StringWidth(head)+ansi.StringWidth(question.Header)+len(state)+6 <= inner {
-		head += " · " + pickerText(question.Header)
-	}
-	gap := inner - ansi.StringWidth(head) - len(state)
-	header := accent + "\x1b[1m" + head + reset
-	if gap >= 2 {
-		header += strings.Repeat(" ", gap) + p.QuestionState(state)
-	}
-	rows := []string{ansi.Truncate(header, inner, "")}
-	if height >= 10 {
-		rows = append(rows, "")
-	}
-	keys := [][2]string{{fmt.Sprintf("1–%d", min(9, len(question.Choices)+1)), "choose"}, {"type", "answer"}}
-	if view.Local {
-		keys = [][2]string{{"type", "password"}, {"enter", "submit"}}
-	}
-	arrows := "question"
-	if question.Note || question.Selected == len(question.Choices) {
-		arrows = "move"
-	}
-	if view.Sync {
-		keys = append(keys, [2]string{"tab", "note"})
-	}
-	if len(view.Questions) > 1 {
-		keys = append(keys, [2]string{"enter", "next"}, [2]string{"←/→", arrows})
-	}
-	keys = append(keys, [2]string{"ctrl+]", "skip"}, [2]string{"esc", "hide"})
-	hints := func(pairs [][2]string) []string {
-		var parts []string
-		for _, pair := range pairs {
-			parts = append(parts, accent+pair[0]+reset+dim+" "+pair[1]+reset)
-		}
-		return pickerWrap(strings.Join(parts, dim+" · "+reset), inner)
-	}
-	foot := hints(keys)
-	if len(foot) > max(2, height/3) {
-		compact := [][2]string{{"↑↓", "pick"}}
-		if len(view.Questions) > 1 {
-			compact = append(compact, [2]string{"↵", "next"}, [2]string{"←→", arrows})
-		}
-		foot = hints(append(compact, [2]string{"^]", "skip"}, [2]string{"esc", "hide"}))
-	}
-	if d.Confirm {
-		gaps := c.Gaps()
-		foot = pickerWrap(accent+fmt.Sprintf("Submit with %d unanswered?", gaps)+reset+" · "+accent+"enter"+reset+dim+" submit · "+reset+accent+"esc"+reset+dim+" back"+reset, inner)
-	}
-	text := pickerWrap(textsanitize.Safe(question.Text, false), inner)
-	textRoom := max(1, height-len(rows)-len(foot)-5)
-	layout.textTop = min(layout.textTop, max(0, len(text)-textRoom))
-	rows = append(rows, text[layout.textTop:min(len(text), layout.textTop+textRoom)]...)
-	if len(text) > textRoom {
-		rows = append(rows, dim+ansi.Truncate("pgup/pgdn question text", inner, "")+reset)
-	}
-	if height >= 10 {
-		rows = append(rows, "")
-	}
-	options := append(slices.Clone(question.Choices), prompt.Option{Label: "Other", Description: "Type your answer"})
-	count := min(8, len(options), max(1, height-len(rows)-len(foot)-2))
-	layout.top = min(question.Selected, min(layout.top, max(0, len(options)-count)))
-	if question.Selected >= layout.top+count {
-		layout.top = question.Selected - count + 1
-	}
-	columns := 0
-	for _, o := range options[layout.top:min(len(options), layout.top+count)] {
-		columns = max(columns, ansi.StringWidth(pickerText(o.Label)))
-	}
-	for i := layout.top; i < min(len(options), layout.top+count); i++ {
-		o := options[i]
-		prefix := "  "
-		if i == question.Selected {
-			prefix = "› "
-		}
-		line := fmt.Sprintf("%s%d. %s", prefix, i+1, pickerText(o.Label))
-		if inner-columns-7 >= 24 {
-			line += strings.Repeat(" ", max(0, columns-ansi.StringWidth(pickerText(o.Label)))+2) + dim + pickerText(o.Description) + reset
-		}
-		line = ansi.Truncate(line, inner, "…")
-		if i == question.Selected {
-			line = u.pickerSelection() + ansi.Strip(line) + strings.Repeat(" ", max(0, inner-ansi.StringWidth(line))) + reset
-		}
-		rows = append(rows, line)
-	}
-	if count < len(options) {
-		rows = append(rows, dim+ansi.Truncate(fmt.Sprintf("option %d/%d", question.Selected+1, len(options)), inner, "")+reset)
-	}
-	if len(rows)+len(foot) < height {
-		rows = append(rows, "")
-	}
-	rows = append(rows, foot...)
-	for i := range rows {
-		rows[i] = strings.Repeat(" ", padding) + rows[i]
-	}
-	return rows[:min(len(rows), height)]
 }
 
 // mainTitleDetail follows Main's pane name: unanswered questions, then the
