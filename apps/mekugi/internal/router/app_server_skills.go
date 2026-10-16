@@ -84,12 +84,14 @@ func (u *appServerUI) skillToggleResponse(m appserver.Message) {
 		problem = "Could not save skill: " + m.Error.Message
 	} else {
 		var result struct {
-			Enabled bool `json:"effectiveEnabled"`
+			Enabled *bool `json:"effectiveEnabled"`
 		}
 		if err := json.Unmarshal(m.Result, &result); err != nil {
 			problem = "Invalid skill save response: " + err.Error()
+		} else if result.Enabled == nil {
+			problem = "Invalid skill save response: effectiveEnabled must be a boolean"
 		} else {
-			updated = p.SkillSaved(cwd, path, result.Enabled)
+			updated = p.SkillSaved(cwd, path, *result.Enabled)
 		}
 	}
 	if ownsManager {

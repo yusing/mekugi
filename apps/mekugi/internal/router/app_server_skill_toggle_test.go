@@ -10,6 +10,43 @@ import (
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
+func TestComposerSkillSaveRequiresEffectiveState(t *testing.T) {
+	for _, test := range []struct {
+		name, result string
+		late         bool
+	}{
+		{name: "missing", result: `{}`},
+		{name: "null", result: `{"effectiveEnabled":null}`},
+		{name: "late_missing", result: `{}`, late: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			u, wire := newAppServerTestUI()
+			u.session.cwd = "/work"
+			u.picker.Catalog([]completion.Choice{{Name: "review", Path: "/work/review/SKILL.md", Enabled: true}}, "/work", true, "")
+			appServerTestKeys(t, u, "/skills\r2 ")
+			write := pickerRequests(t, wire)[0]
+			if test.late {
+				u.pickerKey("\x1b")
+				appServerTestKeys(t, u, "@f")
+				requests := pickerRequests(t, wire)
+				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"current file search failed"}}`, requests[len(requests)-1].ID))
+			}
+			before := u.picker.View()
+			pickerReply(t, u, write.ID, test.result)
+			if !u.picker.Skills[0].Enabled {
+				t.Fatal("missing boolean confirmation disabled the skill")
+			}
+			if test.late {
+				if !reflect.DeepEqual(u.picker.View(), before) || !u.feedback.Alert || !strings.Contains(u.feedback.Text, "Invalid skill save response") {
+					t.Fatalf("late invalid confirmation lost query state or notice: picker=%+v notice=%+v", u.picker.View(), u.feedback)
+				}
+			} else if !strings.Contains(u.picker.Problem, "Invalid skill save response") {
+				t.Fatalf("owning manager lost invalid-response error: %+v", u.picker.View())
+			}
+		})
+	}
+}
+
 func TestComposerLateSkillSavePreservesCurrentSearch(t *testing.T) {
 	for _, test := range []struct {
 		name, response          string
