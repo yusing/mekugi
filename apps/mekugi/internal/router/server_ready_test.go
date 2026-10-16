@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -194,7 +196,7 @@ func TestRunSessionPropagatesShellGuard(t *testing.T) {
 
 // Existing router fixtures select raw arguments; production passes parsed values.
 func testRunSession(service *history.Service, recovered *recovery.Service, ctx context.Context, commands []command.Contribution, args []string, issues *CriticalErrors, ready func(Session), artifacts func([]string)) error {
-	options, err := ParseSessionConfig(args)
+	options, err := launchoptions.Parse(args)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
 	}

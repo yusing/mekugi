@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/BurntSushi/toml"
@@ -155,10 +157,10 @@ func TestThirdPartyDefaultsKeepUserResumeProvenance(t *testing.T) {
 				t.Fatal(err)
 			}
 			args, err = thirdPartyDefaultArgs(args, router.Session{GrokEnabled: true, GrokUnprefixed: mode == "grok"})
-			if err != nil || !router.HasModelOverride(args) {
+			if err != nil || !launchoptions.HasModelOverride(args) {
 				t.Fatalf("startup model missing: %q, %v", args, err)
 			}
-			if router.HasModelOverride(resumeArgv[1:]) != explicit {
+			if launchoptions.HasModelOverride(resumeArgv[1:]) != explicit {
 				t.Fatalf("generated defaults leaked into user resume argv: %q", resumeArgv)
 			}
 		}

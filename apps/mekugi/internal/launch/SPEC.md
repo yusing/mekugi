@@ -10,6 +10,12 @@ standalone router command, or persistent configuration change is introduced.
 
 ## Invocation selection
 
+Launch owns option parsing and invocation-local settings. The same parser serves
+initial launch and resumed model-selection checks, preserving option operands and
+the command delimiter. Parsed values can be reused across invocations; generated
+output paths and resources belong to each run. Configuration errors identify the
+failure without quoting credential-bearing file contents.
+
 - `mekugi [flags] codex [arguments...]` uses Codex authentication and models.
   Third-party credentials do not add models or trigger catalog preparation.
 - `mekugi [flags] [arguments...]` uses authenticated Grok and configured OpenCode

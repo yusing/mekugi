@@ -13,6 +13,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/modules/conversation/composer"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -247,7 +249,7 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	g := newTestSessionNaming(t.Context(), provider)
 	provider.titleGenerator = g
 	g.register(appServerThreadInfo{ID: "main"})
-	handler := responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, nil)
+	handler := responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, nil)
 	request := modelTestRequest(t, "gpt-6-sol")
 	request.Fields["input"] = mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Private host instructions"},

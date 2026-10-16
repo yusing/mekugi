@@ -1,4 +1,4 @@
-package router
+package options
 
 import (
 	"io"
@@ -33,12 +33,13 @@ func TestSplitCommand(t *testing.T) {
 }
 
 func TestDuplicateOutputFlagDefaultAndOptOut(t *testing.T) {
-	flags := newRouterFlags(io.Discard)
-	if !flags.duplicateOutput {
+	config := new(Config)
+	flags := newFlags(io.Discard, config)
+	if !config.DeduplicateOutput {
 		t.Fatal("duplicate output projection must default on")
 	}
-	if err := flags.Parse([]string{"--deduplicate-output=false"}); err != nil || flags.duplicateOutput {
-		t.Fatalf("opt-out = %v, %v", flags.duplicateOutput, err)
+	if err := flags.Parse([]string{"--deduplicate-output=false"}); err != nil || config.DeduplicateOutput {
+		t.Fatalf("opt-out = %v, %v", config.DeduplicateOutput, err)
 	}
 }
 
@@ -107,12 +108,13 @@ func TestShellGuardFlagAndStandaloneSplit(t *testing.T) {
 			if err != nil || !slices.Equal(prefix, tc.prefix) || !slices.Equal(forwarded, command) {
 				t.Fatalf("split = %q, %q, %v", prefix, forwarded, err)
 			}
-			flags := newRouterFlags(io.Discard)
+			config := new(Config)
+			flags := newFlags(io.Discard, config)
 			if err := flags.Parse(prefix); err != nil {
 				t.Fatal(err)
 			}
-			if flags.shellGuard != tc.want {
-				t.Fatalf("guard = %t, want %t", flags.shellGuard, tc.want)
+			if config.ShellGuard != tc.want {
+				t.Fatalf("guard = %t, want %t", config.ShellGuard, tc.want)
 			}
 		})
 	}

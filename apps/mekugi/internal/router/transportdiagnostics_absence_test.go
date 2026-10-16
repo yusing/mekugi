@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -27,7 +29,7 @@ import (
 func TestTransportDiagnosticsAbsentDebugSession(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	t.Setenv(evidence.AXReadOutputEnvironment, "")
-	options, err := ParseSessionConfig([]string{"--debug", "--mode", "passthrough"})
+	options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +95,7 @@ func TestTransportDiagnosticsAbsentRejectsCaptureOutput(t *testing.T) {
 			if existing {
 				writeDebugInspectionFixture(t, path, "retained capture\n")
 			}
-			options, err := ParseSessionConfig([]string{"--debug", "--mode", "passthrough", "--capture-output", path})
+			options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough", "--capture-output", path})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -58,9 +60,6 @@ import (
 
 const (
 	defaultListenAddress      = "127.0.0.1:0"
-	defaultRewriteMode        = "mekugi"
-	defaultRequestTimeout     = 10 * time.Minute
-	defaultStreamIdleTimeout  = 4 * time.Minute
 	requestBodyReadTimeout    = 30 * time.Second
 	shutdownTimeout           = 5 * time.Second
 	modelsResponseBufferBytes = 8 << 20
@@ -88,32 +87,32 @@ type Session struct {
 
 // RunSession owns the private router for one wrapped Codex process.
 // artifacts receives retained debug paths at completion, even if startup was canceled.
-func RunSession(conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options SessionConfig, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
-	if diagnostics == nil && options.captureOutput != "" {
+func RunSession(conversation *conversationmodel.Service, live *previewmodel.Service, activity *activitymodel.Service, service *history.Service, prefs *preferences.Service, recovered *recovery.Service, segments *segmentservice.Service, changes *changecapture.Service, usage *accounting.Service, agentMetrics *evidence.Service, diagnostics *transportcapture.Service, diagnosis *diagnostic.Service, ctx context.Context, commands []command.Contribution, projections []binding.InputProjection, guidance *binding.Guidance, naming *binding.SessionNaming, guards []binding.ShellApproval, options launchoptions.Config, issues *CriticalErrors, ready func(Session), artifacts func([]string)) (runErr error) {
+	if diagnostics == nil && options.CaptureOutput != "" {
 		return errors.New("transport diagnostics are unavailable")
 	}
-	if options.mode == "" {
+	if options.Mode == "" {
 		return errors.New("session configuration has not been parsed")
 	}
-	if !options.shellGuard {
+	if !options.ShellGuard {
 		guards = nil
 	}
-	grokEnabled, standalone := options.grok, options.standalone
-	faint, err := terminalui.SupportsFaint(ctx, options.ansiFaint)
+	grokEnabled, standalone := options.Grok, options.ThirdParty
+	faint, err := terminalui.SupportsFaint(ctx, options.ANSIFaint)
 	if err != nil {
 		return err
 	}
-	config, err := loadMekugiConfig(standalone)
+	config, err := launchoptions.LoadSettings(standalone)
 	if err != nil {
 		return err
 	}
 	openCode := config.Providers
 	if agentMetrics != nil {
-		if err := evidence.ValidateOutputAliases(os.Getenv(evidence.AXReadOutputEnvironment), options.captureOutput); err != nil {
+		if err := evidence.ValidateOutputAliases(os.Getenv(evidence.AXReadOutputEnvironment), options.CaptureOutput); err != nil {
 			return err
 		}
 	}
-	debug, err := openDebugOutput(diagnosis, options.debug, options.captureOutput)
+	debug, err := openDebugOutput(diagnosis, options.Debug, options.CaptureOutput)
 	if err != nil {
 		return err
 	}
@@ -140,13 +139,13 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 	if debug != nil {
 		writes = debug.Writes()
 	}
-	capturePath := options.captureOutput
+	capturePath := options.CaptureOutput
 	if debug != nil {
 		capturePath = debug.CapturePath()
 	}
 	var capture *transportcapture.Recorder
 	if diagnostics != nil {
-		capture, err = diagnostics.Open(transportcapture.Config{Output: capturePath, Mode: options.mode, Writes: writes})
+		capture, err = diagnostics.Open(transportcapture.Config{Output: capturePath, Mode: options.Mode, Writes: writes})
 		if err != nil {
 			return fmt.Errorf("initialize capture: %w", err)
 		}
@@ -172,14 +171,14 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 	}
 	provider := newProviderClient(openai.BaseURL, openaiHTTP)
 	provider.thirdPartyOnly = grokEnabled || standalone
-	provider.openai.StreamIdleTimeout = options.streamIdleTimeout
+	provider.openai.StreamIdleTimeout = options.StreamIdleTimeout
 	provider.openai.EnableWebSockets(ctx)
 	// Cover early setup returns before ctx is canceled; close is idempotent
 	// with enableWebSockets' normal context-shutdown callback.
 	defer provider.openai.Close()
 	if grokEnabled || standalone {
 		apiKey := strings.TrimSpace(os.Getenv("XAI_API_KEY"))
-		path := options.grokAuthFile
+		path := options.GrokAuthFile
 		if path == "" && apiKey == "" {
 			home, err := os.UserHomeDir()
 			if err != nil && !standalone {
@@ -195,7 +194,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 			if capture != nil {
 				client.Transport = capture.Transport(client.Transport)
 			}
-			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: options.streamIdleTimeout}
+			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: options.StreamIdleTimeout}
 		} else if grokEnabled {
 			return authErr
 		}
@@ -220,7 +219,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		if capture != nil {
 			client.Transport = capture.Transport(client.Transport)
 		}
-		provider.opencode[service.Prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.streamIdleTimeout}
+		provider.opencode[service.Prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.StreamIdleTimeout}
 	}
 	var frontendDirectory string
 	titleCtx, cancelTitles := context.WithCancel(ctx)
@@ -230,7 +229,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		issues.diagnostics = diagnosis
 		issues.writes = writes
 	}
-	if options.mode == "mekugi" {
+	if options.Mode == "mekugi" {
 		replayDirectory, err := ReplayDirectory()
 		if err != nil {
 			return fmt.Errorf("initialize replay storage: %w", err)
@@ -255,7 +254,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 			return fmt.Errorf("initialize replay storage: %w", err)
 		}
 		replayStore.writes = writes
-		if !options.duplicateOutput {
+		if !options.DeduplicateOutput {
 			projections = nil
 		}
 		mekugiCalls = newMekugiProxy(registry, projections, usage)
@@ -332,12 +331,12 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		mux.HandleFunc("GET /api/metrics", capture.ServeHTTP)
 	}
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
-	registerCodexAuxiliaryRoutes(mux, ctx, options.timeout, provider)
+	registerCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
-	webSocketEndpoint := responsesWebSocketHandler(ctx, options.timeout, provider, issues, mekugiCalls)
+	webSocketEndpoint := responsesWebSocketHandler(ctx, options.Timeout, provider, issues, mekugiCalls)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
-	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, options.timeout, provider, issues, mekugiCalls))
+	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, options.Timeout, provider, issues, mekugiCalls))
 
 	var handler http.Handler = debug.handler(mux)
 	if capture != nil {
@@ -357,7 +356,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.mode == "mekugi", Guards: guards, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.Mode == "mekugi", Guards: guards, SkillsManagerAvailable: skillsManagerAvailable}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				instrumentation := execInstrumentation{}

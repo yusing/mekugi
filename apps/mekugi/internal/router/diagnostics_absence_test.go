@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -81,7 +83,7 @@ func TestDiagnosticsAbsentRejectsDebugBeforeBundleCreation(t *testing.T) {
 
 func runDiagnosticsAbsentSession(t *testing.T, ctx context.Context, args []string, ready func(Session)) error {
 	t.Helper()
-	options, err := ParseSessionConfig(args)
+	options, err := launchoptions.Parse(args)
 	if err != nil {
 		t.Fatal(err)
 	}

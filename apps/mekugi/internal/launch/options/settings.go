@@ -1,4 +1,4 @@
-package router
+package options
 
 import (
 	"errors"
@@ -11,13 +11,17 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-type mekugiConfig struct {
+// Source: apps/mekugi/internal/router/config.go:14:63@[e448711c]
+
+// Settings contains validated invocation-local configuration.
+type Settings struct {
 	Providers    opencode.Config   `toml:"providers"`
 	ServiceTiers map[string]string `toml:"service_tiers"`
 }
 
-func loadMekugiConfig(withProviders bool) (mekugiConfig, error) {
-	var config mekugiConfig
+// LoadSettings reads Mekugi configuration and optionally applies provider credentials.
+func LoadSettings(withProviders bool) (Settings, error) {
+	var config Settings
 	directory, err := os.UserConfigDir()
 	if err != nil {
 		// Without a configuration directory there can be no file to load.
@@ -30,28 +34,28 @@ func loadMekugiConfig(withProviders bool) (mekugiConfig, error) {
 	}
 	body, err := os.ReadFile(filepath.Join(directory, "mekugi", "config.toml"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return mekugiConfig{}, errors.New("cannot read Mekugi config.toml")
+		return Settings{}, errors.New("cannot read Mekugi config.toml")
 	}
 	if err == nil {
 		metadata, err := toml.Decode(string(body), &config)
 		if err != nil {
 			// TOML errors can quote a line containing a credential.
-			return mekugiConfig{}, errors.New("invalid Mekugi config.toml")
+			return Settings{}, errors.New("invalid Mekugi config.toml")
 		}
 		if len(metadata.Undecoded()) != 0 {
-			return mekugiConfig{}, errors.New("unknown setting in Mekugi config.toml")
+			return Settings{}, errors.New("unknown setting in Mekugi config.toml")
 		}
 	}
 	for model, tier := range config.ServiceTiers {
 		if strings.TrimSpace(model) == "" || model != strings.TrimSpace(model) {
-			return mekugiConfig{}, errors.New("invalid model in Mekugi service_tiers")
+			return Settings{}, errors.New("invalid model in Mekugi service_tiers")
 		}
 		switch tier {
 		case "fast":
 			config.ServiceTiers[model] = "priority"
 		case "priority", "default", "auto", "flex":
 		default:
-			return mekugiConfig{}, errors.New("invalid service tier in Mekugi config.toml")
+			return Settings{}, errors.New("invalid service tier in Mekugi config.toml")
 		}
 	}
 	if !withProviders {

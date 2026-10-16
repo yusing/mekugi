@@ -1,7 +1,6 @@
 package router
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,9 +12,7 @@ import (
 
 func diagnosticDebugOutput(t *testing.T) *debugOutput {
 	t.Helper()
-	flags := newRouterFlags(io.Discard)
-	flags.debug = true
-	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
 	if err != nil {
 		t.Fatal(err)
 	}

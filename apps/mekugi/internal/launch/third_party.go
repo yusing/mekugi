@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/BurntSushi/toml"
 	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 )
@@ -16,7 +18,7 @@ import (
 // Explicit invocation models win over Grok's default, which wins over the
 // latest standard model. Codex's own configured default is not a Grok default.
 func thirdPartyDefaultArgs(args []string, session router.Session) ([]string, error) {
-	if router.HasModelOverride(args) {
+	if launchoptions.HasModelOverride(args) {
 		return args, nil
 	}
 	index := slices.Index(args, "--")

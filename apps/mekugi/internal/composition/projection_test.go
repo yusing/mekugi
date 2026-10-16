@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/apps/mekugi/internal/router"
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -96,7 +98,7 @@ func TestFrontendsRunSessionLivePreviewInputProjection(t *testing.T) {
 			http.DefaultTransport = transport
 			defer func() { http.DefaultTransport = originalTransport; transport.CloseIdleConnections() }()
 
-			options, err := router.ParseSessionConfig(append([]string{"--ansi-faint=off"}, tc.flags...))
+			options, err := launchoptions.Parse(append([]string{"--ansi-faint=off"}, tc.flags...))
 			if err != nil {
 				t.Fatal(err)
 			}

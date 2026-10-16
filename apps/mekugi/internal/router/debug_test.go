@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -104,9 +103,7 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 
 func TestDebugInstructionSelection(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
-	flags := newRouterFlags(io.Discard)
-	flags.debug = true
-	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,9 +160,7 @@ func TestDebugCanceledStartupReportsArtifacts(t *testing.T) {
 
 func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	t.Parallel()
-	flags := newRouterFlags(io.Discard)
-	flags.debug = true
-	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testDiagnostics(new(evidence.Service), new(transportcapture.Service)), true, "")
 	if err != nil {
 		t.Fatal(err)
 	}

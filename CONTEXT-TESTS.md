@@ -93,7 +93,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Retained paging | `./modules/outputrecovery/... ./apps/mekugi/internal/frontends`, then router mread/storage/fork integration |
 | Shared command options and output admission | `./libraries/commandargs/... ./libraries/outputbudget/...`, plus affected frontend integration |
 | Bounded commands | `./modules/boundedcommand/... ./apps/mekugi/internal/frontends`, plus `./apps/mekugi/internal/router -run MRun` for authenticated delivery and process lifecycle |
-| Invocation launch and process dispatch | `./apps/mekugi/internal/launch`, plus executable build |
+| Invocation options, configuration, launch and process dispatch | `./apps/mekugi/internal/launch/...`, plus router reused-configuration, resume-model, service-tier and startup consumers and executable build |
 | Native frontend host acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestNativeToolFrontendCodexE2E$'` (installed Codex, local mock provider) |
 | Native mrun continuation acceptance | `-tags codex_e2e ./apps/mekugi/internal/router -run '^TestMRunNativeCodexYieldAndWriteStdinE2E$'` (installed Codex, local mock provider) |
 | Cross-package or broad contract | `@workspace` |

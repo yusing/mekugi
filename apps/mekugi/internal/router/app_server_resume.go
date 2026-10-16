@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -188,8 +190,8 @@ func appServerResumeConfig(args, resumeArgv []string) map[string]any {
 		}
 	}
 	if len(resumeArgv) > 0 {
-		_, userArgs, err := SplitCommand(resumeArgv[1:])
-		if err == nil && !HasModelOverride(userArgs) {
+		_, userArgs, err := launchoptions.SplitCommand(resumeArgv[1:])
+		if err == nil && !launchoptions.HasModelOverride(userArgs) {
 			// Startup defaults are not explicit resume overrides. Retain the
 			// original invocation's selection, not launcher-generated config.
 			delete(config, "model")

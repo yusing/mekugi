@@ -12,6 +12,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/contracts/inference"
@@ -120,7 +122,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 						}
 						return client.Do(request)
 					})
-					var handler http.Handler = http.HandlerFunc(responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy))
+					var handler http.Handler = http.HandlerFunc(responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, proxy))
 					if recorder != nil {
 						handler = recorder.Handler(handler)
 					}
@@ -220,7 +222,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				httpRequest.Header.Set(sessionIDHeader, "transport-session")
 				done := make(chan struct{})
 				go func() {
-					responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy)(out, httpRequest)
+					responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, proxy)(out, httpRequest)
 					close(done)
 				}()
 				synctest.Wait()

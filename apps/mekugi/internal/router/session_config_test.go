@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -21,7 +23,7 @@ import (
 
 func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	options, err := ParseSessionConfig([]string{"--debug", "--mode", "passthrough", "--ansi-faint", "off"})
+	options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough", "--ansi-faint", "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +43,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("run %d: %v", run, err)
 		}
-		if options != original || options.captureOutput != "" {
+		if options != original || options.CaptureOutput != "" {
 			t.Fatalf("run %d changed the supplied configuration: %+v", run, options)
 		}
 		if len(paths) != 6 || readLog == "" || readLog != paths[4] {

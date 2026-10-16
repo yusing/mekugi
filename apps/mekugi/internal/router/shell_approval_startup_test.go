@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -42,7 +44,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					segments.Live.Close()
 					segments.LiveError = nil
 				}
-				options, err := ParseSessionConfig([]string{"--mode", "mekugi", "--ansi-faint", "off", fmt.Sprintf("--shell-guard=%v", guard)})
+				options, err := launchoptions.Parse([]string{"--mode", "mekugi", "--ansi-faint", "off", fmt.Sprintf("--shell-guard=%v", guard)})
 				if err != nil {
 					t.Fatal(err)
 				}

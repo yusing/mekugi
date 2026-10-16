@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
@@ -76,7 +78,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if err := validateCodexArgs(args); err != nil {
 		return 2, err
 	}
-	options, err := router.ParseSessionConfig(routerArgs)
+	options, err := launchoptions.Parse(routerArgs)
 	if err != nil {
 		return 2, err
 	}

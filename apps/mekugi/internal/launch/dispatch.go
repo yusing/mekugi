@@ -11,6 +11,8 @@ import (
 	"slices"
 	"syscall"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 	"github.com/yusing/mekugi/contracts/command"
 
@@ -73,9 +75,9 @@ func Run() (exitCode int) {
 			return router.RunStorageInspection(runtime.History, runtime.Segments.Reports, ctx, os.Args[2:], os.Stdout, os.Stderr)
 		}
 	}
-	routerArgs, command, err := router.SplitCommand(os.Args[1:])
+	routerArgs, command, err := launchoptions.SplitCommand(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
-		router.PrintUsage(os.Stdout)
+		launchoptions.PrintUsage(os.Stdout)
 		return 0
 	}
 	if err != nil {

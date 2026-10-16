@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
@@ -30,7 +32,7 @@ func TestAgentMetricsAbsentDebugSession(t *testing.T) {
 	const existing = "retained AX evidence\n"
 	writeDebugInspectionFixture(t, axPath, existing)
 	t.Setenv(evidence.AXReadOutputEnvironment, axPath)
-	options, err := ParseSessionConfig([]string{"--debug", "--mode", "passthrough"})
+	options, err := launchoptions.Parse([]string{"--debug", "--mode", "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}

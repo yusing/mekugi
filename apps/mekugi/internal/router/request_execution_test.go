@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -89,7 +91,7 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 						}
 						provider.results = append(provider.results, serverForwardResult{response: response})
 					}
-					handler := responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, nil)
+					handler := responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, nil)
 					for range 3 {
 						req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 						req.Header = headers.Clone()
