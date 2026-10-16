@@ -1,4 +1,4 @@
-package router
+package inferencegateway
 
 import (
 	"errors"
@@ -32,7 +32,7 @@ func TestProviderBoundaryChatUsage(t *testing.T) {
 			{"both", 3, 5},
 		} {
 			t.Run(provider.name+"/"+counts.name, func(t *testing.T) {
-				tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
+				tr, err := testTranslateProviderRequest(mustTestJSON(t, map[string]any{
 					"model": provider.model, "input": []any{},
 				}), provider.service)
 				if err != nil {
@@ -93,7 +93,7 @@ func TestProviderBoundaryOpenCodeChatFailures(t *testing.T) {
 		{"provider detail", grokTestSSE(map[string]any{"error": map[string]string{"message": "Grok quota exhausted"}}), "opencode_stream_provider_error", "OpenCode: Grok quota exhausted\nRaw response: {\"message\":\"Grok quota exhausted\"}"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			tr, err := translateProviderRequest(openCodeTestRequest(t, service, true), &service)
+			tr, err := testTranslateProviderRequest(openCodeTestRequest(t, service, true), &service)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -107,7 +107,7 @@ func TestProviderBoundaryOpenCodeChatFailures(t *testing.T) {
 
 func TestProviderBoundaryMixedRefusalDiagnostics(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
-	for _, policy := range []codexresponses.Policy{grokTranslationPolicy(), openCodeTranslationPolicy(&service, openCodeTestModel(service), "chat")} {
+	for _, policy := range []codexresponses.Policy{grokTranslationPolicy(testDiagnostics()), testOpenCodePolicy(&service, openCodeTestModel(service), "chat")} {
 		t.Run(policy.Diagnostics.Name, func(t *testing.T) {
 			tr := testProviderRequest(t, policy, "", "chat", nil)
 			stream := grokTestSSE(map[string]any{"choices": []any{map[string]any{
@@ -126,8 +126,8 @@ func assertProviderBoundaryFailure(t *testing.T, tr *providerRequest, stream, co
 		events = append(events, event)
 		return nil
 	}, openCodeTestFailureDetail)
-	diagnostic, ok := errors.AsType[*criticalDiagnosticError](err)
-	if result != nil || !ok || diagnostic.code != code || err.Error() != message {
+	diagnostic, ok := errors.AsType[*testDiagnosticError](err)
+	if result != nil || !ok || diagnostic.Code != code || err.Error() != message {
 		t.Fatalf("result=%v error=%v; want diagnostic %s: %s", result, err, code, message)
 	}
 	if len(events) < 2 || events[0]["type"] != "response.created" {

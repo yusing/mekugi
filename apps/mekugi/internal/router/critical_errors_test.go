@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -27,7 +29,7 @@ import (
 
 func queueCritical(c *CriticalErrors, session string) {
 	c.record(&requestFinalization{sessionID: session, threadID: session, failurePhase: requestFailurePrepare,
-		observation: requestObservation{outcome: requestOutcomeFailed}}, incompatibleRequest("unsupported_tool_catalog", "Enable supported tools."))
+		observation: requestObservation{outcome: requestOutcomeFailed}}, inferencegateway.IncompatibleRequest("unsupported_tool_catalog", "Enable supported tools."))
 }
 
 func TestCriticalErrorsDeduplicateReserveAndRetainUntilDelivery(t *testing.T) {
@@ -158,7 +160,7 @@ func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 		request.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 		request.Header.Set(sessionIDHeader, "one")
 		output := httptest.NewRecorder()
-		responsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy)(output, request)
+		testResponsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy)(output, request)
 		if output.Code != 400 || len(provider.forwarded) != 0 {
 			t.Fatalf("catalog reached upstream or remained retryable: %d %s", output.Code, output.Body.String())
 		}
@@ -171,9 +173,9 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 		err  error
 		code string
 	}{
-		{"handshake401", &webSocketStatusError{status: 401, body: []byte("private")}, "upstream_websocket_http_401"},
-		{"handshake403", &webSocketStatusError{status: 403, body: []byte("private")}, "upstream_websocket_http_403"},
-		{"handshake429", &webSocketStatusError{status: 429, body: []byte("private")}, "upstream_websocket_http_429"},
+		{"handshake401", fmt.Errorf("private: %w", &inferencegateway.WebSocketStatusError{Status: 401}), "upstream_websocket_http_401"},
+		{"handshake403", fmt.Errorf("private: %w", &inferencegateway.WebSocketStatusError{Status: 403}), "upstream_websocket_http_403"},
+		{"handshake429", fmt.Errorf("private: %w", &inferencegateway.WebSocketStatusError{Status: 429}), "upstream_websocket_http_429"},
 		{"eof", fmt.Errorf("private URL: %w", io.EOF), "upstream_eof"},
 		{"unexpected eof", io.ErrUnexpectedEOF, "upstream_unexpected_eof"},
 		{"reset", &net.OpError{Op: "read", Err: syscall.ECONNRESET}, "upstream_connection_reset"},
@@ -221,12 +223,12 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 				t.Fatalf("missing reference: %v", record)
 			}
 			notices := strings.Join(issues.Notices.Pending(), "\n")
-			if rejection, ok := errors.AsType[*webSocketStatusError](test.err); ok {
-				if record["upstream_status"] != float64(rejection.status) {
+			if rejection, ok := errors.AsType[*inferencegateway.WebSocketStatusError](test.err); ok {
+				if record["upstream_status"] != float64(rejection.Status) {
 					t.Fatalf("handshake status lost: %v", record)
 				}
 				guidance := "credentials"
-				if rejection.status == 429 {
+				if rejection.Status == 429 {
 					guidance = "Wait before retrying"
 				}
 				if !strings.Contains(notices, guidance) {

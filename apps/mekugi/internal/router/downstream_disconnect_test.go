@@ -11,7 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
@@ -22,7 +23,7 @@ import (
 )
 
 func TestDownstreamEOFDuringResponseSniffing(t *testing.T) {
-	disconnected := downstreamDisconnectError(io.EOF)
+	disconnected := inferencegateway.DownstreamDisconnectError(io.EOF)
 	response := &http.Response{
 		Header: make(http.Header),
 		Body:   io.NopCloser(finalAnswerErrorReader{disconnected}),
@@ -55,14 +56,14 @@ func TestDownstreamDisconnectFinalization(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			for _, started := range []bool{false, true} {
 				// The reader has not canceled the context yet.
-				err := fmt.Errorf("%w: %w", codexresponses.ErrWrite, downstreamDisconnectError(fmt.Errorf("private address: %w", test.err)))
+				err := fmt.Errorf("%w: %w", codexresponses.ErrWrite, inferencegateway.DownstreamDisconnectError(fmt.Errorf("private address: %w", test.err)))
 				if !errors.Is(err, test.err) {
 					t.Fatal("lost original cause")
 				}
 				f := &requestFinalization{}
 				f.classifyCopyError(err)
 				issues := testCriticalErrors()
-				f.finish(t.Context(), err, &webSocketOutput{committed: started}, issues)
+				f.finish(t.Context(), err, &trackedResponseWriter{committed: started}, issues)
 				want := requestOutcomeFailed
 				if test.disconnected {
 					want = requestOutcomeCanceledBeforeResponse
@@ -185,70 +186,10 @@ func TestHTTPDownstreamDisconnectFinalization(t *testing.T) {
 	}
 }
 
-func TestWebSocketOutputDisconnectBeforeReaderCancellation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	accepted := make(chan *websocket.Conn, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			return
-		}
-		accepted <- conn
-	}))
-	defer server.Close()
-	client, _, err := websocket.Dial(ctx, server.URL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer client.CloseNow()
-	var downstream *websocket.Conn
-	select {
-	case downstream = <-accepted:
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-	}
-	defer downstream.CloseNow()
-	output := &webSocketOutput{exchange: &webSocketExchange{
-		state: confirmedHistoryExchange(t, nil, false),
-		ctx:   ctx, session: &responsesWebSocket{downstream: downstream},
-	}}
-	// A successful event must count as response-started for WebSocket output.
-	read := make(chan error, 1)
-	go func() {
-		_, _, err := client.Read(ctx)
-		read <- err
-	}()
-	event := []byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n")
-	if _, err := output.Write(event); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-read; err != nil {
-		t.Fatal(err)
-	}
-	if !requestResponseStarted(output) {
-		t.Fatal("WebSocket delivery was not tracked")
-	}
-	// No downstream reader runs here: closing the socket cannot cancel ctx.
-	if err := downstream.CloseNow(); err != nil {
-		t.Fatal(err)
-	}
-	_, err = output.Write(event)
-	if !errors.Is(err, codexresponses.ErrDownstreamDisconnected) || ctx.Err() != nil {
-		t.Fatalf("write error=%v, context=%v", err, ctx.Err())
-	}
-	f := &requestFinalization{}
-	issues := testCriticalErrors()
-	f.finish(ctx, errors.Join(codexresponses.ErrWrite, err), output, issues)
-	if f.observation.outcome != requestOutcomeCanceledAfterResponse || len(issues.Notices.Pending()) != 0 {
-		t.Fatalf("disconnect produced outcome %v, notices %v", f.observation.outcome, issues.Notices.Pending())
-	}
-}
-
 func TestDownstreamWriteDiagnostics(t *testing.T) {
 	original := websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private reason"}
 	d := &transportcapture.Stream{ReadOrigin: "upstream", ReadTermination: "upstream_eof"}
-	recordStreamCopyStop(d, errors.Join(codexresponses.ErrWrite, downstreamDisconnectError(original)))
+	recordStreamCopyStop(d, errors.Join(codexresponses.ErrWrite, inferencegateway.DownstreamDisconnectError(original)))
 	if d.WriteTermination != "downstream_websocket_close_1001" || d.WriteWebSocketCloseCode != 1001 {
 		t.Fatalf("missing write cause: %+v", d)
 	}
@@ -263,13 +204,13 @@ func TestDownstreamWriteDiagnostics(t *testing.T) {
 func TestDownstreamDisconnectDuringAnswerStreaming(t *testing.T) {
 	transform, _, _ := newSubagentCommentaryTestTransform(t, nil)
 	reader := strings.NewReader(finalAnswerTestWire(finalAnswerTestEvents(t, "final_answer")))
-	disconnected := downstreamDisconnectError(websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private"})
+	disconnected := inferencegateway.DownstreamDisconnectError(websocket.CloseError{Code: websocket.StatusGoingAway, Reason: "private"})
 	diagnostics := &transportcapture.Stream{}
 	_, err := copySSETransformed(serverErrorWriter{err: disconnected}, reader, transform, &responseHooks{streamDiagnostics: diagnostics})
 	f := &requestFinalization{}
 	f.classifyCopyError(err)
 	issues := testCriticalErrors()
-	f.finish(t.Context(), err, &webSocketOutput{}, issues)
+	f.finish(t.Context(), err, &trackedResponseWriter{}, issues)
 	if f.observation.outcome != requestOutcomeCanceledBeforeResponse || len(issues.Notices.Pending()) != 0 {
 		t.Fatalf("stream disconnect: %v, outcome %v, notices %v", err, f.observation.outcome, issues.Notices.Pending())
 	}

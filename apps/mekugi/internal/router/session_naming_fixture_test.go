@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/module"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -24,7 +26,7 @@ var testNaming = sync.OnceValue(func() *binding.SessionNaming {
 	return registry.RegisteredNaming()
 })
 
-func newTestSessionNaming(ctx context.Context, provider responseProvider) *sessionNaming {
+func newTestSessionNaming(ctx context.Context, provider inferencegateway.Forwarder) *sessionNaming {
 	return newSessionNaming(ctx, provider, testNaming())
 }
 

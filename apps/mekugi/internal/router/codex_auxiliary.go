@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 
@@ -31,8 +33,8 @@ var codexAuxiliaryPaths = []string{
 	"alpha/notes/v2/thread_hint",
 }
 
-func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context, responseStartTimeout time.Duration, provider *providerClient) {
-	if provider.thirdPartyOnly {
+func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context, responseStartTimeout time.Duration, provider *inferencegateway.Client) {
+	if provider.ThirdPartyOnly {
 		return
 	}
 	for _, path := range codexAuxiliaryPaths {
@@ -42,7 +44,7 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 				http.Error(writer, err.Error(), http.StatusBadRequest)
 				return
 			}
-			startCtx, executionCtx, cancel := requestContexts(request.Context(), lifecycle, responseStartTimeout)
+			startCtx, executionCtx, cancel := inferencegateway.RequestContexts(request.Context(), lifecycle, responseStartTimeout)
 			defer cancel()
 			ctx, cancelUpstream := context.WithCancel(executionCtx)
 			defer cancelUpstream()
@@ -70,7 +72,7 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 					upstream.Header.Add(name, value)
 				}
 			}
-			response, err := provider.openai.Forward(upstream)
+			response, err := provider.OpenAI.Forward(upstream)
 			if err != nil {
 				http.Error(writer, "forward Codex auxiliary request", http.StatusBadGateway)
 				return
@@ -80,8 +82,8 @@ func registerCodexAuxiliaryRoutes(mux *http.ServeMux, lifecycle context.Context,
 				http.Error(writer, "Codex auxiliary request timed out or was canceled", http.StatusBadGateway)
 				return
 			}
-			if provider.openai.StreamIdleTimeout > 0 {
-				response.Body = httptransport.IdleRead(ctx, response.Body, provider.openai.StreamIdleTimeout)
+			if provider.OpenAI.StreamIdleTimeout > 0 {
+				response.Body = httptransport.IdleRead(ctx, response.Body, provider.OpenAI.StreamIdleTimeout)
 			}
 			copyAuxiliaryResponseHeaders(writer.Header(), response.Header)
 			writer.WriteHeader(response.StatusCode)

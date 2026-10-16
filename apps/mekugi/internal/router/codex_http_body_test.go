@@ -35,7 +35,7 @@ func TestResponsesHandlerDecodesCodexHTTPBody(t *testing.T) {
 			request := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(body))
 			request.Header.Set("Content-Encoding", codec)
 			recorder := httptest.NewRecorder()
-			responsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
+			testResponsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
 			if recorder.Code != http.StatusOK || len(provider.forwarded) != 1 {
 				t.Fatalf("status=%d forwards=%d body=%q", recorder.Code, len(provider.forwarded), recorder.Body.String())
 			}
@@ -66,7 +66,7 @@ func TestResponsesHandlerRejectsInvalidOrOversizedCodexHTTPBody(t *testing.T) {
 			request := httptest.NewRequest("POST", "/v1/responses", test.body(t))
 			request.Header.Set("Content-Encoding", test.codec)
 			recorder := httptest.NewRecorder()
-			responsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
+			testResponsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
 			if recorder.Code != test.status || len(provider.forwarded) != 0 {
 				t.Fatalf("status=%d forwards=%d, want %d and none; body=%q", recorder.Code, len(provider.forwarded), test.status, recorder.Body.String())
 			}

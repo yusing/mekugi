@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/contracts/inference"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -59,15 +61,15 @@ func TestProviderWebSocketReuseAndMetadata(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
 	headers := http.Header{"Authorization": {"Bearer test"}, openai.AccountIDHeader: {"account"}}
 	headers.Set(codexresponses.ThreadIDHeader, "thread")
 	for _, turn := range []string{"one", "two"} {
 		headers.Set("x-codex-turn-state", turn)
 		headers.Set(codexresponses.TurnMetadataHeader, turn)
-		response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), headers, "session")
+		response, err := client.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), headers, "session")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,15 +135,15 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 				_, _, _ = conn.Read(r.Context())
 			}))
 			defer upstream.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.openai.EnableWebSockets(t.Context())
-			defer client.openai.Close()
+			client := newTestProviderClient(upstream.URL, upstream.Client())
+			client.OpenAI.EnableWebSockets(t.Context())
+			defer client.OpenAI.Close()
 			if scenario == "idle timeout" {
-				client.openai.StreamIdleTimeout = 20 * time.Millisecond
+				client.OpenAI.StreamIdleTimeout = 20 * time.Millisecond
 			}
 			responseCtx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			response, err := client.forwardExecution(t.Context(), responseCtx, []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
+			response, err := client.ForwardExecution(t.Context(), responseCtx, []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 			if err != nil {
 				close(release)
 				t.Fatal(err)
@@ -169,7 +171,7 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 			}
 			if scenario != "close during read" {
 				if scenario == "cancel" {
-					_, err = copyUpstreamBodyTransformed(io.Discard, response, true, nil, nil)
+					_, err = copyUpstreamBodyTransformed(io.Discard, response.Response, true, nil, nil)
 				} else {
 					_, err = io.ReadAll(response.Body)
 				}
@@ -196,7 +198,7 @@ func TestProviderWebSocketPoisonedLeasesAreNotReplayed(t *testing.T) {
 				}
 				_ = response.Body.Close()
 			}
-			next, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
+			next, err := client.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -230,10 +232,10 @@ func TestProviderWebSocketHandshakeFallbackBoundary(t *testing.T) {
 				_, _ = io.WriteString(w, `{"status":"completed","output":[]}`)
 			}))
 			defer upstream.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.openai.EnableWebSockets(t.Context())
-			defer client.openai.Close()
-			response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","input":[]}`), codexAuthHeaders(), "session")
+			client := newTestProviderClient(upstream.URL, upstream.Client())
+			client.OpenAI.EnableWebSockets(t.Context())
+			defer client.OpenAI.Close()
+			response, err := client.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","input":[]}`), codexAuthHeaders(), "session")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -282,12 +284,12 @@ func TestProviderWebSocketConcurrentAndAuthIsolation(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
 	done := make(chan error, 2)
 	run := func(headers http.Header) {
-		response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","input":[]}`), headers, "same-session")
+		response, err := client.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","input":[]}`), headers, "same-session")
 		if err == nil {
 			_, err = io.ReadAll(response.Body)
 			_ = response.Body.Close()
@@ -347,17 +349,17 @@ func TestProviderWebSocketNonstreamReconstructsOutput(t *testing.T) {
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
-	response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":false,"input":[]}`), codexAuthHeaders(), "session")
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
+	response, err := client.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":false,"input":[]}`), codexAuthHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
 	transform := &webSocketCountingTransform{}
 	usage := inference.Usage{}
-	state, err := copyUpstreamBodyTransformed(&output, response, false, transform, &responseHooks{onUsage: func(counts inference.Usage) { usage = counts }})
+	state, err := copyUpstreamBodyTransformed(&output, response.Response, false, transform, &responseHooks{onUsage: func(counts inference.Usage) { usage = counts }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,10 +405,10 @@ func TestProviderWebSocketWrappedErrorPreservesStatusAndHeaders(t *testing.T) {
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
-	response, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
+	response, err := client.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"gpt-test","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,15 +534,15 @@ func TestWebSocketCapturePreservesCompletedResponseAfterCancellation(t *testing.
 		t.Fatal(err)
 	}
 	defer capture.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 		payload := []byte(`{"model":"model","stream":true,"input":[]}`)
 		transportcapture.ObserveProjectedRequest(ctx, payload)
-		response, err := client.forwardExecution(ctx, ctx, payload, codexAuthHeaders(), "session")
+		response, err := client.ForwardExecution(ctx, ctx, payload, codexAuthHeaders(), "session")
 		if err != nil {
 			t.Error(err)
 			return
@@ -593,11 +595,11 @@ func TestWebSocketCaptureCountsFirstUnreadMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer capture.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response, err := client.forwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
+		response, err := client.ForwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 		if err != nil {
 			t.Error(err)
 			return
@@ -632,11 +634,11 @@ func TestProviderWebSocketLeavesGrokOnHTTP(t *testing.T) {
 		_, _ = io.WriteString(w, grokTextStream())
 	}))
 	defer upstream.Close()
-	client := newProviderClient("http://127.0.0.1:1", nil)
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
-	client.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-test", httptransport.Client(nil))}
-	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders(), "session")
+	client := newTestProviderClient("http://127.0.0.1:1", nil)
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
+	client.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "grok-test", httptransport.Client(nil))}
+	response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,9 +674,9 @@ func TestProviderWebSocketAncillaryEventsAndEventOwnedCompletion(t *testing.T) {
 				_, _, _ = conn.Read(r.Context())
 			}))
 			defer upstream.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.openai.EnableWebSockets(t.Context())
-			defer client.openai.Close()
+			client := newTestProviderClient(upstream.URL, upstream.Client())
+			client.OpenAI.EnableWebSockets(t.Context())
+			defer client.OpenAI.Close()
 			parsed := serverRequest(t, func(fields map[string]any) { fields["stream"] = stream })
 			output := httptest.NewRecorder()
 			if err := executeRequest(t.Context(), t.Context(), parsed, codexAuthHeaders(), "session", client, output, nil, nil); err != nil {
@@ -736,16 +738,16 @@ func TestWebSocketCaptureIncludesQueuedAndReservedReadsOnClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer capture.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
 	received := make(chan struct{})
-	begin := client.openai.ObserveWebSocket
-	client.openai.ObserveWebSocket = func(ctx context.Context, payload []byte, headers, responseHeaders http.Header) openai.Observation {
+	begin := client.OpenAI.ObserveWebSocket
+	client.OpenAI.ObserveWebSocket = func(ctx context.Context, payload []byte, headers, responseHeaders http.Header) openai.Observation {
 		return captureReceiveBarrier{Observation: begin(ctx, payload, headers, responseHeaders), terminal: reserved, received: received}
 	}
 	handler := capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response, err := client.forwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
+		response, err := client.ForwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 		if err != nil {
 			t.Error(err)
 			return
@@ -787,7 +789,7 @@ func TestWebSocketCaptureIncludesQueuedAndReservedReadsOnClose(t *testing.T) {
 	if count == nil || *count != 7 {
 		t.Fatal("already-received terminal evidence was discarded before capture Finish")
 	}
-	next, err := client.forwardExecution(t.Context(), t.Context(), []byte(`{"model":"model","input":[]}`), codexAuthHeaders(), "session")
+	next, err := client.ForwardExecution(t.Context(), t.Context(), []byte(`{"model":"model","input":[]}`), codexAuthHeaders(), "session")
 	if err != nil {
 		t.Fatal(err)
 	}

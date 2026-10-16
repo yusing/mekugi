@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 
 	"github.com/yusing/mekugi/contracts/inference"
@@ -49,21 +51,9 @@ func TestOpenCodeCatalogConsumers(t *testing.T) {
 	catalog := openCodeTestCatalog(t, func() map[string]opencode.Metadata { return models })
 	config := opencode.Config{Go: opencode.ServiceConfig{APIKey: "private-key"}, Catalog: catalog}
 	service := config.Services()[0]
-	for _, format := range []string{"chat", "responses"} {
-		m := models["new-model"]
-		m.Format = format
-		models["new-model"] = m
-		if err := catalog.Refresh(t.Context(), true); err != nil {
-			t.Fatal(err)
-		}
-		body, err := modelcatalog.Build([]byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2"}]}`), modelcatalog.Selection{OpenCode: config})
-		if err != nil || !strings.Contains(string(body), `"description":"Upstream description"`) || !strings.Contains(string(body), `"effort":"max"`) || !strings.Contains(string(body), `"default_reasoning_level":null`) {
-			t.Fatalf("catalog projection: %s %v", body, err)
-		}
-		tr, err := translateProviderRequest([]byte(`{"model":"opencode-go:new-model","input":[]}`), &service)
-		if err != nil || tr.format != format {
-			t.Fatalf("format %s: %v", format, err)
-		}
+	body, err := modelcatalog.Build([]byte(`{"models":[{"slug":"gpt-5.6-sol","multi_agent_version":"v2"}]}`), modelcatalog.Selection{OpenCode: config})
+	if err != nil || !strings.Contains(string(body), `"description":"Upstream description"`) || !strings.Contains(string(body), `"effort":"max"`) || !strings.Contains(string(body), `"default_reasoning_level":null`) {
+		t.Fatalf("catalog projection: %s %v", body, err)
 	}
 	m, _ := service.Model("new-model")
 	cost := estimateOpenCodeCost(m.Cost, "", inference.Usage{InputTokens: 100, UncachedInputTokens: 80, CacheWriteTokens: 10, OutputTokens: 20})
@@ -87,7 +77,7 @@ func TestOpenCodeInflightPriceSurvivesRemoval(t *testing.T) {
 			models := map[string]opencode.Metadata{"glm-5.3-flash": {Format: "chat", Cost: opencode.Price{Input: new(1.0), Output: new(2.0)}}}
 			catalog := openCodeTestCatalog(t, func() map[string]opencode.Metadata { return models })
 			service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}, Catalog: catalog}).Services()[0]
-			client := &grokClient{openCode: &service, httpClient: &http.Client{
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{
 				Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 					// Another request refreshes/removes the model after this
 					// request selected its format and prices, before completion.
@@ -101,14 +91,14 @@ func TestOpenCodeInflightPriceSurvivesRemoval(t *testing.T) {
 					)), nil
 				}),
 			}}
-			response, err := client.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, stream), grokTestHeaders())
+			response, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, stream), grokTestHeaders())
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer response.Body.Close()
 			usage := newTestUsage(t)
 			observation := usage.Observation("thread", "", "opencode-go:glm-5.3-flash", "")
-			observation.Price = pinnedOpenCodePrice(response.Body.(*grokResponseBody).openCodePrice)
+			observation.Price = pinnedOpenCodePrice(response.Price)
 			if _, err := io.ReadAll(response.Body); err != nil {
 				t.Fatal(err)
 			}
@@ -116,43 +106,6 @@ func TestOpenCodeInflightPriceSurvivesRemoval(t *testing.T) {
 			report, ok := usage.Snapshot("thread")
 			if !ok || !report.Cost.Known || report.Cost.UncachedInput != 10.0/1e6 || report.Cost.Output != 8.0/1e6 {
 				t.Fatalf("in-flight price lost after removal: %+v", report)
-			}
-		})
-	}
-}
-
-func TestOpenCodeMetadataReasoningEffort(t *testing.T) {
-	for _, format := range []string{"chat", "anthropic", "responses"} {
-		t.Run(format, func(t *testing.T) {
-			service := openCodeTestService(t, map[string]opencode.Metadata{"new-model": {Format: format, Efforts: []string{"none", "low", "max"}}})
-			for _, effort := range []string{"", "high", "none", "low", "max"} {
-				tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
-					"model": "opencode-go:new-model", "input": []any{},
-					"reasoning": map[string]string{"effort": effort},
-				}), &service)
-				if err != nil {
-					t.Fatalf("%s: %v", effort, err)
-				}
-				var got any
-				switch format {
-				case "chat":
-					got = tr.body["reasoning_effort"]
-				case "anthropic":
-					if config, ok := tr.body["output_config"].(map[string]any); ok {
-						got = config["effort"]
-					}
-				case "responses":
-					if reasoning, ok := tr.body["reasoning"].(map[string]string); ok {
-						got = reasoning["effort"]
-					}
-				}
-				if effort == "" || effort == "high" {
-					if got != nil {
-						t.Fatalf("unsupported/inherited effort forwarded: %v", got)
-					}
-				} else if got != effort {
-					t.Fatalf("supported effort %s became %v", effort, got)
-				}
 			}
 		})
 	}

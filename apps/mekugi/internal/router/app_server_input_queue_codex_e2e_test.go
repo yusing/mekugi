@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 )
 
 // appQueueProvider holds each gated inference until the test releases it.
@@ -23,7 +25,7 @@ type appQueueProvider struct {
 	count    int
 }
 
-func (p *appQueueProvider) forwardExecution(ctx, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+func (p *appQueueProvider) ForwardExecution(ctx, _ context.Context, body []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
 	p.mu.Lock()
 	index := p.count
 	p.count++
@@ -36,7 +38,7 @@ func (p *appQueueProvider) forwardExecution(ctx, _ context.Context, body []byte,
 			return nil, ctx.Err()
 		}
 	}
-	return routerFaultCodexSuccessResponse(), nil
+	return testGatewayResponse(routerFaultCodexSuccessResponse(), nil)
 }
 
 // Real Codex discards uncommitted steers on interrupt, commits accepted steers
@@ -47,7 +49,7 @@ func TestAppServerSteerAndQueueNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &appQueueProvider{requests: make(chan []byte, 8), gates: []chan struct{}{make(chan struct{}), make(chan struct{})}}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, p, nil, nil))
 	defer server.Close()
 	defer func() {
 		for _, gate := range p.gates {

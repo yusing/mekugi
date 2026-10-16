@@ -31,7 +31,7 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appQueueProvider{requests: make(chan []byte, 8)}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	t.Cleanup(func() { server.Close() })
 	newCommand := func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server",
@@ -98,7 +98,7 @@ func TestComposerFileAttachmentsNativeCodexE2E(t *testing.T) {
 	}
 	// Fresh router handler and Codex process must recover only the submitted snapshot.
 	server.Close()
-	server = httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server = httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	second := startAppResumeTerminal(t, newCommand, "--last")
 	second.await("Ready")
 	second.await("Attached")
@@ -167,7 +167,7 @@ func TestSkillContentsNativeCodexE2E(t *testing.T) {
 				proxy.skillsManager = true
 			}
 			provider := &appQueueProvider{requests: make(chan []byte, 2)}
-			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+			server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 			defer server.Close()
 			command := func(ctx context.Context) *exec.Cmd {
 				cmd := exec.CommandContext(ctx, codex, "app-server", "-c", `model_providers.preview={name="preview",base_url=`+strconv.Quote(server.URL+"/v1")+`,wire_api="responses",requires_openai_auth=false}`, "-c", `model_provider="preview"`, "-c", `model="gpt-6-astra"`, "-c", "features.plugins=false", "-c", "include_collaboration_mode_instructions=false")

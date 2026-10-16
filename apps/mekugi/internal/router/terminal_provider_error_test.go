@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -61,7 +63,7 @@ func TestTerminalProviderErrorNotices(t *testing.T) {
 
 func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 	payload := []byte(`{"type":"error","status":400,"error":{"message":"actual detail credential-secret\u001b\n"}}`)
-	err := terminalProviderError(payload, true)
+	err := inferencegateway.TerminalProviderError(payload, true)
 	if err == nil || !strings.Contains(err.Error(), "actual detail credential-secret\x1b\n") {
 		t.Fatalf("incomplete provider error: %v", err)
 	}
@@ -78,7 +80,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 			sessionID: "same", failurePhase: requestFailureTerminalValidation,
 			upstreamTerminalState: responseevents.TerminalFailed,
 			observation:           requestObservation{outcome: requestOutcomeFailed},
-			providerFailure:       terminalProviderError(body, true),
+			providerFailure:       inferencegateway.TerminalProviderError(body, true),
 		}, nil)
 	}
 	notices := issues.Notices.Pending()
@@ -87,7 +89,7 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 		t.Fatalf("distinct causes were merged: %q", notices)
 	}
 	body, _ := json.Marshal(map[string]any{"type": "error", "message": strings.Repeat("x", 3000)})
-	if err := terminalProviderError(body, true); err == nil || !strings.Contains(err.Error(), strings.Repeat("x", 3000)) {
+	if err := inferencegateway.TerminalProviderError(body, true); err == nil || !strings.Contains(err.Error(), strings.Repeat("x", 3000)) {
 		t.Fatalf("provider error truncated: %v", err)
 	}
 }
@@ -102,9 +104,9 @@ func TestAdaptedProviderErrorDelivery(t *testing.T) {
 				if format == "responses" {
 					payload = `{"type":"response.failed","response":{"status":"failed","error":{"code":"invalid_request_error","message":"actual rejection provider-secret caller-secret"}}}`
 				}
-				provider := newProviderClient("http://unused.invalid", nil)
-				provider.opencode = map[string]*grokClient{service.Prefix: {
-					openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+				provider := newTestProviderClient("http://unused.invalid", nil)
+				provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: providerCodecDiagnostics(),
+					OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}},
 							Body: io.NopCloser(strings.NewReader("data: " + payload + "\n\n"))}, nil
 					})},
@@ -115,7 +117,7 @@ func TestAdaptedProviderErrorDelivery(t *testing.T) {
 				req.Header.Set("Authorization", "Bearer caller-secret")
 				issues := testCriticalErrors()
 				recorder := httptest.NewRecorder()
-				responsesHandler(t.Context(), 5*time.Second, provider, issues, nil)(recorder, req)
+				testResponsesHandler(t.Context(), 5*time.Second, provider, issues, nil)(recorder, req)
 				for _, text := range []string{recorder.Body.String(), strings.Join(issues.Notices.Pending(), "\n")} {
 					if !strings.Contains(text, "actual rejection provider-secret caller-secret") {
 						t.Fatalf("incomplete adapted error: %s", text)

@@ -143,10 +143,10 @@ func TestCodexCacheAffinityE2E(t *testing.T) {
 	transport := &cacheAffinityE2ETransport{delegate: upstreamTransport}
 
 	httpClient := &http.Client{Transport: transport}
-	handler := responsesHandler(
+	handler := testResponsesHandler(
 		t.Context(),
 		10*time.Minute,
-		newProviderClient(openai.BaseURL, httpClient),
+		newTestProviderClient(openai.BaseURL, httpClient),
 		nil,
 		newManagedMekugiProxy(t),
 	)

@@ -123,7 +123,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 						}
 						return client.Do(request)
 					})
-					var handler http.Handler = http.HandlerFunc(responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, proxy))
+					var handler http.Handler = http.HandlerFunc(testResponsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, proxy))
 					if recorder != nil {
 						handler = recorder.Handler(handler)
 					}
@@ -223,7 +223,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				httpRequest.Header.Set(sessionIDHeader, "transport-session")
 				done := make(chan struct{})
 				go func() {
-					responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, proxy)(out, httpRequest)
+					testResponsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, proxy)(out, httpRequest)
 					close(done)
 				}()
 				synctest.Wait()

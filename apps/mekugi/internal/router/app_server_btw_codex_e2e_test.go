@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 )
 
 type btwCodexRequest struct {
@@ -29,7 +31,7 @@ type btwCodexProvider struct {
 	canceled                       chan struct{}
 }
 
-func (p *btwCodexProvider) forwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*http.Response, error) {
+func (p *btwCodexProvider) ForwardExecution(ctx, responseCtx context.Context, body []byte, headers http.Header, key string) (*inferencegateway.Response, error) {
 	p.requests <- btwCodexRequest{bytes.Clone(body), key, headers.Clone()}
 	var request struct {
 		Input []struct {
@@ -78,7 +80,7 @@ func (p *btwCodexProvider) forwardExecution(ctx, responseCtx context.Context, bo
 	wire = bytes.ReplaceAll(wire, []byte("Recovered after a retry."), []byte(answer))
 	if gate == nil {
 		response.Body = io.NopCloser(bytes.NewReader(wire))
-		return response, nil
+		return testGatewayResponse(response, nil)
 	}
 	// Deliver a real streamed delta, then withhold finalization until the test
 	// has inspected the rendered terminal or canceled only this side answer.
@@ -104,7 +106,7 @@ func (p *btwCodexProvider) forwardExecution(ctx, responseCtx context.Context, bo
 			_ = writer.CloseWithError(responseCtx.Err())
 		}
 	}()
-	return response, nil
+	return testGatewayResponse(response, nil)
 }
 
 func TestAppServerBTWNativeCodexE2E(t *testing.T) {
@@ -118,7 +120,7 @@ func TestAppServerBTWNativeCodexE2E(t *testing.T) {
 			}
 			p := &btwCodexProvider{requests: make(chan btwCodexRequest, 12), mainGate: make(chan struct{}), sideGate: make(chan struct{}), cancelGate: make(chan struct{}), canceled: make(chan struct{})}
 			proxy := newManagedMekugiProxy(t)
-			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, proxy))
+			server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, p, nil, proxy))
 			defer server.Close()
 			defer func() {
 				for _, gate := range []chan struct{}{p.mainGate, p.sideGate, p.cancelGate} {

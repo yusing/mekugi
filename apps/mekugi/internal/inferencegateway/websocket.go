@@ -1,4 +1,6 @@
-package router
+package inferencegateway
+
+// Source: apps/mekugi/internal/router/server_websocket.go:1:636@[bd606c09] dedicated Responses transport.
 
 import (
 	"bytes"
@@ -28,11 +30,11 @@ import (
 // A downstream socket owns a dedicated provider socket. In particular it never
 // enters the HTTP pool: accepted steering and previous_response_id are scoped
 // to this connection, including the quiet interval after response.completed.
-func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration, provider *providerClient, issues *CriticalErrors, proxy *mekugiProxy) *responsesWebSocketEndpoint {
+func NewWebSocketEndpoint(lifecycle context.Context, timeout time.Duration, provider *Client, execute Execute) *WebSocketEndpoint {
 	lifecycle, cancel := context.WithCancel(lifecycle)
-	endpoint := &responsesWebSocketEndpoint{cancel: cancel}
+	endpoint := &WebSocketEndpoint{cancel: cancel}
 	endpoint.handler = func(w http.ResponseWriter, r *http.Request) {
-		if provider.grok == nil && len(provider.opencode) == 0 {
+		if provider.Grok == nil && len(provider.OpenCode) == 0 {
 			if _, _, err := openai.Credentials(r.Header); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -50,7 +52,7 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 		defer stop()
 		s := &responsesWebSocket{
 			ctx: ctx, downstream: conn, provider: provider, headers: r.Header.Clone(),
-			timeout: timeout, issues: issues, proxy: proxy,
+			timeout: timeout, dispatch: execute,
 			clientMessages: readResponsesWebSocket(ctx, conn, cancel),
 		}
 		defer func() {
@@ -67,7 +69,7 @@ func responsesWebSocketHandler(lifecycle context.Context, timeout time.Duration,
 
 // net/http stops tracking upgraded connections. The endpoint therefore owns
 // admission and waits for their handlers before shared router resources close.
-type responsesWebSocketEndpoint struct {
+type WebSocketEndpoint struct {
 	handler http.HandlerFunc
 	cancel  context.CancelFunc
 	mu      sync.Mutex
@@ -75,7 +77,7 @@ type responsesWebSocketEndpoint struct {
 	active  sync.WaitGroup
 }
 
-func (e *responsesWebSocketEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (e *WebSocketEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.mu.Lock()
 	if e.closed {
 		e.mu.Unlock()
@@ -88,7 +90,7 @@ func (e *responsesWebSocketEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Re
 	e.handler(w, r)
 }
 
-func (e *responsesWebSocketEndpoint) Close() {
+func (e *WebSocketEndpoint) Close() {
 	e.mu.Lock()
 	e.closed = true
 	e.cancel()
@@ -96,29 +98,29 @@ func (e *responsesWebSocketEndpoint) Close() {
 	e.active.Wait()
 }
 
-type webSocketStatusError struct {
-	status int
+type WebSocketStatusError struct {
+	Status int
 	body   []byte
 }
 
-func (e *webSocketStatusError) Error() string {
+func (e *WebSocketStatusError) Error() string {
 	if len(e.body) == 0 {
-		return fmt.Sprintf("provider WebSocket upgrade returned HTTP %d", e.status)
+		return fmt.Sprintf("provider WebSocket upgrade returned HTTP %d", e.Status)
 	}
-	return fmt.Sprintf("provider WebSocket upgrade returned HTTP %d: %s", e.status, e.body)
+	return fmt.Sprintf("provider WebSocket upgrade returned HTTP %d: %s", e.Status, e.body)
 }
 
 func (s *responsesWebSocket) writeError(ctx context.Context, err error) ([]byte, error) {
 	status := http.StatusBadGateway
-	if _, ok := errors.AsType[*requestCompatibilityError](err); ok {
+	if _, ok := errors.AsType[*CompatibilityError](err); ok {
 		status = http.StatusBadRequest
 	}
-	if rejection, ok := errors.AsType[*providerHTTPError](err); ok {
-		status = rejection.status
+	if rejection, ok := errors.AsType[*ProviderHTTPError](err); ok {
+		status = rejection.Status
 	}
 	fields := map[string]any{"type": "error", "status": status, "error": map[string]string{"type": "invalid_request_error", "message": err.Error()}}
-	if upstream, ok := errors.AsType[*webSocketStatusError](err); ok {
-		fields["status"] = upstream.status
+	if upstream, ok := errors.AsType[*WebSocketStatusError](err); ok {
+		fields["status"] = upstream.Status
 		var body map[string]json.RawMessage
 		if json.Unmarshal(upstream.body, &body) == nil && len(body["error"]) != 0 {
 			fields["error"] = body["error"]
@@ -137,7 +139,7 @@ type webSocketMessage struct {
 
 // A closed reader channel is not evidence of an upstream EOF. Cancellation can
 // win the reader's final send; preserve it rather than inventing a transport end.
-func webSocketMessageReadError(ctx context.Context, message webSocketMessage) error {
+func webSocketMessageReadError(ctx context.Context, message webSocketMessage, diagnostics codexresponses.Diagnostics) error {
 	if message.err != nil {
 		return message.err
 	}
@@ -147,12 +149,12 @@ func webSocketMessageReadError(ctx context.Context, message webSocketMessage) er
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return staticCriticalDiagnostic("websocket_reader_closed", "a WebSocket message reader stopped without delivering a terminal cause")
+	return diagnostics.Error("websocket_reader_closed", "a WebSocket message reader stopped without delivering a terminal cause", "")
 }
 
 // A peer disconnect can reach the writer before the reader cancels the
 // session. Classify it by its transport cause, not goroutine scheduling.
-func downstreamDisconnectError(err error) error {
+func DownstreamDisconnectError(err error) error {
 	code := websocket.CloseStatus(err)
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.EPIPE) ||
@@ -171,7 +173,7 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 		for {
 			kind, body, err := conn.Read(ctx)
 			if err != nil && disconnected != nil {
-				err = downstreamDisconnectError(err)
+				err = DownstreamDisconnectError(err)
 				disconnected()
 			}
 			readFailed := err != nil
@@ -182,7 +184,7 @@ func readResponsesWebSocket(ctx context.Context, conn *websocket.Conn, disconnec
 				err = errors.New("responses WebSocket received invalid JSON")
 			}
 			if !readFailed && err != nil && disconnected != nil {
-				err = incompatibleRequest("invalid_websocket_request", err.Error())
+				err = IncompatibleRequest("invalid_websocket_request", err.Error())
 			}
 			// disconnected can cancel ctx before this error is published.
 			// Preserve the actual close/error whenever the bounded slot is free.
@@ -211,13 +213,12 @@ type responsesWebSocket struct {
 	ctx              context.Context
 	downstream       *websocket.Conn
 	upstream         *websocket.Conn
-	provider         *providerClient
+	provider         *Client
 	headers          http.Header
 	clientMessages   <-chan webSocketMessage
 	providerMessages <-chan webSocketMessage
 	timeout          time.Duration
-	issues           *CriticalErrors
-	proxy            *mekugiProxy
+	dispatch         Execute
 	queuedCreate     []byte
 	errorDelivered   bool
 }
@@ -236,7 +237,7 @@ func (s *responsesWebSocket) run() error {
 		case <-s.ctx.Done():
 			return s.ctx.Err()
 		case message := <-s.clientMessages:
-			if err := webSocketMessageReadError(s.ctx, message); err != nil {
+			if err := webSocketMessageReadError(s.ctx, message, s.provider.Diagnostics); err != nil {
 				return err
 			}
 			var fields map[string]json.RawMessage
@@ -249,7 +250,7 @@ func (s *responsesWebSocket) run() error {
 				return err
 			}
 		case message := <-s.providerMessages:
-			if err := webSocketMessageReadError(s.ctx, message); err != nil {
+			if err := webSocketMessageReadError(s.ctx, message, s.provider.Diagnostics); err != nil {
 				return err
 			}
 			var fields map[string]json.RawMessage
@@ -273,17 +274,17 @@ func (s *responsesWebSocket) control(body []byte) error {
 	_ = json.Unmarshal(body, &fields)
 	if responseevents.StringField(fields, "type") == responseevents.Create {
 		if s.queuedCreate != nil {
-			return incompatibleRequest("invalid_websocket_request", "a Responses WebSocket continuation is already queued")
+			return IncompatibleRequest("invalid_websocket_request", "a Responses WebSocket continuation is already queued")
 		}
 		s.queuedCreate = bytes.Clone(body)
 		return nil
 	}
 	if s.upstream == nil {
-		return incompatibleRequest("invalid_websocket_request", "send response.create before a WebSocket control message; Chat Completions providers do not support steering")
+		return IncompatibleRequest("invalid_websocket_request", "send response.create before a WebSocket control message; Chat Completions providers do not support steering")
 	}
 	if responseevents.StringField(fields, "type") == responseevents.Steer {
 		if err := s.history.AddSteering(fields); err != nil {
-			return webSocketProtocolError(err)
+			return ProtocolError(err)
 		}
 	}
 	// Steering is user input, not an inference request. Forward it exactly once,
@@ -328,7 +329,7 @@ func (s *responsesWebSocket) providerControl(body []byte) error {
 func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	state, parsed, err := s.history.Prepare(command, firstEvent)
 	if err != nil {
-		return webSocketProtocolError(err)
+		return ProtocolError(err)
 	}
 	headers := s.headers.Clone()
 	var metadata map[string]json.RawMessage
@@ -339,15 +340,14 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 			}
 		}
 	}
-	exchange := &webSocketExchange{session: s, state: state, first: firstEvent}
+	exchange := &Exchange{session: s, State: state, first: firstEvent}
 	captureCtx, clientObservation := transportcapture.BeginResponsesWebSocket(s.ctx, headers, command)
 	exchange.clientObservation = clientObservation
-	startCtx, executionCtx, cancel := requestContexts(captureCtx, s.ctx, s.timeout)
+	startCtx, executionCtx, cancel := RequestContexts(captureCtx, s.ctx, s.timeout)
 	defer cancel()
 	exchange.ctx = executionCtx
 	output := &webSocketOutput{exchange: exchange}
-	executor := requestExecutor{provider: exchange, output: output, issues: s.issues, mekugiCalls: s.proxy, serviceTiers: s.provider.serviceTiers, titleGenerator: s.provider.titleGenerator}
-	err = executor.execute(startCtx, executionCtx, parsed, headers, routingSessionID(headers, parsed))
+	err = s.dispatch(startCtx, executionCtx, parsed, headers, exchange, output)
 	if err != nil && executionCtx.Err() == nil && !s.errorDelivered {
 		if payload, writeErr := s.writeError(executionCtx, err); writeErr == nil {
 			clientObservation.Message(payload)
@@ -358,10 +358,11 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	return err
 }
 
-type webSocketExchange struct {
-	streamDiagnostics *transportcapture.Stream
+type Exchange struct {
+	StreamDiagnostics *transportcapture.Stream
+	ReadEnd           func(error, string)
 	session           *responsesWebSocket
-	state             *codexresponses.SessionExchange
+	State             *codexresponses.SessionExchange
 	ctx               context.Context
 	first             []byte
 	clientObservation *transportcapture.ResponsesWebSocket
@@ -370,7 +371,7 @@ type webSocketExchange struct {
 	ended             bool
 }
 
-func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
+func (e *Exchange) ForwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*Response, error) {
 	s := e.session
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
@@ -378,8 +379,8 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	}
 	// Retain the actual submitted projection, not the native history. A later
 	// terminal event is required before it can authorize incremental reuse.
-	if err := e.state.BeginProvider(fields); err != nil {
-		return nil, webSocketProtocolError(err)
+	if err := e.State.BeginProvider(fields); err != nil {
+		return nil, ProtocolError(err)
 	}
 	previous := fields["previous_response_id"]
 	delete(fields, "previous_response_id")
@@ -387,16 +388,16 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	if isChatCompletionsModel(responseevents.StringField(fields, "model")) {
+	if IsThirdPartyModel(responseevents.StringField(fields, "model")) {
 		if string(fields["generate"]) == "false" {
 			// Chat Completions has no non-generating transport warmup. Preserve Codex's
 			// prewarm/history handshake without running and discarding inference.
 			response := map[string]any{"id": "resp_mekugi_warm_" + rand.Text(), "status": "completed", "output": []any{}}
 			payload := responseevents.MustMarshalJSON(map[string]any{"type": responseevents.Completed, "response": response})
-			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
-				Body: io.NopCloser(bytes.NewReader(append(append([]byte("data: "), payload...), '\n', '\n')))}, nil
+			return &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}},
+				Body: io.NopCloser(bytes.NewReader(append(append([]byte("data: "), payload...), '\n', '\n')))}, Transport: "unknown"}, nil
 		}
-		return s.provider.forwardExecution(startCtx, responseCtx, native, headers, cacheKey)
+		return s.provider.ForwardExecution(startCtx, responseCtx, native, headers, cacheKey)
 	}
 	authorization, account, err := openai.Credentials(headers)
 	if err != nil {
@@ -420,7 +421,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 	}
 	var responseHeaders http.Header
 	if s.upstream == nil {
-		conn, response, dialErr := s.provider.openai.Dial(startCtx, handshake)
+		conn, response, dialErr := s.provider.OpenAI.Dial(startCtx, handshake)
 
 		if rejected := response; rejected != nil && rejected.StatusCode != http.StatusSwitchingProtocols {
 			attempt := transportcapture.BeginWebSocketAttempt(responseCtx, nil, handshake, rejected.Header)
@@ -429,7 +430,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 			// by Codex for authentication recovery or rate-limit handling.
 			payload, _ := io.ReadAll(io.LimitReader(body, maxUpstreamErrorDetailBytes))
 			_ = body.Close()
-			return nil, &webSocketStatusError{status: rejected.StatusCode, body: payload}
+			return nil, &WebSocketStatusError{Status: rejected.StatusCode, body: payload}
 		}
 		if dialErr != nil {
 			if response != nil && response.Body != nil {
@@ -443,16 +444,16 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		s.providerMessages = readResponsesWebSocket(s.ctx, conn, nil)
 	}
 	captured := payload
-	if e.state.Automatic() {
+	if e.State.Automatic() {
 		captured = nil
 	}
-	if e.streamDiagnostics != nil {
+	if e.StreamDiagnostics != nil {
 		if id := responseHeaders.Get("X-Request-Id"); responseevents.SafeDiagnosticIdentity(id) {
-			e.streamDiagnostics.ProviderRequestID = id
+			e.StreamDiagnostics.ProviderRequestID = id
 		}
 	}
 	e.observation = transportcapture.BeginWebSocketAttempt(responseCtx, captured, handshake, responseHeaders)
-	if !e.state.Automatic() {
+	if !e.State.Automatic() {
 		if err := s.upstream.Write(startCtx, websocket.MessageText, payload); err != nil {
 			return nil, err
 		}
@@ -477,14 +478,14 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 		case <-startCtx.Done():
 			return nil, startCtx.Err()
 		case message := <-s.clientMessages:
-			if err := webSocketMessageReadError(responseCtx, message); err != nil {
+			if err := webSocketMessageReadError(responseCtx, message, s.provider.Diagnostics); err != nil {
 				return nil, err
 			}
 			if err := s.control(message.body); err != nil {
 				return nil, err
 			}
 		case message := <-s.providerMessages:
-			if err := webSocketMessageReadError(responseCtx, message); err != nil {
+			if err := webSocketMessageReadError(responseCtx, message, s.provider.Diagnostics); err != nil {
 				return nil, err
 			}
 			var fields map[string]json.RawMessage
@@ -496,7 +497,7 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 				continue
 			}
 			if responseevents.Kind(responseevents.StringField(fields, "type")).Ancillary() {
-				e.streamDiagnostics.Observe(message.body)
+				e.StreamDiagnostics.Observe(message.body)
 				e.observation.Message(message.body)
 				e.clientObservation.Message(message.body)
 				if err := s.providerControl(message.body); err != nil {
@@ -507,10 +508,10 @@ func (e *webSocketExchange) forwardExecution(startCtx, responseCtx context.Conte
 			e.first = message.body
 		}
 	}
-	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: e}, nil
+	return &Response{Response: &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: e}, Transport: "websocket"}, nil
 }
 
-func (e *webSocketExchange) Read(buffer []byte) (int, error) {
+func (e *Exchange) Read(buffer []byte) (int, error) {
 	if e.buffer.Len() != 0 {
 		return e.buffer.Read(buffer)
 	}
@@ -522,30 +523,30 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	e.first = nil
 	var timer *time.Timer
 	var idle <-chan time.Time
-	if s.provider.openai.StreamIdleTimeout > 0 {
-		timer = time.NewTimer(s.provider.openai.StreamIdleTimeout)
+	if s.provider.OpenAI.StreamIdleTimeout > 0 {
+		timer = time.NewTimer(s.provider.OpenAI.StreamIdleTimeout)
 		idle = timer.C
 		defer timer.Stop()
 	}
 	for len(body) == 0 {
 		select {
 		case <-e.ctx.Done():
-			recordStreamReadEnd(e.streamDiagnostics, e.ctx.Err(), "context")
+			e.observeReadEnd(e.ctx.Err(), "context")
 			return 0, e.ctx.Err()
 		case <-idle:
 			return 0, httptransport.ErrStreamIdleTimeout
 		case message := <-s.clientMessages:
-			if err := webSocketMessageReadError(e.ctx, message); err != nil {
-				recordStreamReadEnd(e.streamDiagnostics, err, "downstream")
+			if err := webSocketMessageReadError(e.ctx, message, s.provider.Diagnostics); err != nil {
+				e.observeReadEnd(err, "downstream")
 				return 0, err
 			}
 			if err := s.control(message.body); err != nil {
-				recordStreamReadEnd(e.streamDiagnostics, err, "router_control")
+				e.observeReadEnd(err, "router_control")
 				return 0, err
 			}
 		case message := <-s.providerMessages:
-			if err := webSocketMessageReadError(e.ctx, message); err != nil {
-				recordStreamReadEnd(e.streamDiagnostics, err, "upstream")
+			if err := webSocketMessageReadError(e.ctx, message, s.provider.Diagnostics); err != nil {
+				e.observeReadEnd(err, "upstream")
 				return 0, err
 			}
 			body = message.body
@@ -555,8 +556,8 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
 	kind := responseevents.StringField(fields, "type")
-	if err := e.state.ObserveProvider(body); err != nil {
-		recordStreamReadEnd(e.streamDiagnostics, err, "router_history")
+	if err := e.State.ObserveProvider(body); err != nil {
+		e.observeReadEnd(err, "router_history")
 		return 0, err
 	}
 	e.ended = responseevents.Kind(kind).EndsExchange()
@@ -571,12 +572,12 @@ func (e *webSocketExchange) Read(buffer []byte) (int, error) {
 	return e.buffer.Read(buffer)
 }
 
-func (e *webSocketExchange) Close() error { return nil }
+func (e *Exchange) Close() error { return nil }
 
-// executeRequest retains the normal SSE transformer composition. This final
+// The application executor retains the normal SSE transformer composition. This final
 // adapter changes framing only, after tool restoration and replay.
 type webSocketOutput struct {
-	exchange  *webSocketExchange
+	exchange  *Exchange
 	buffer    bytes.Buffer
 	committed bool
 }
@@ -609,14 +610,14 @@ func (w *webSocketOutput) message(payload []byte) error {
 	if err := json.Unmarshal(payload, &event); err != nil {
 		return err
 	}
-	if err := e.state.ObserveOutput(payload); err != nil {
+	if err := e.State.ObserveOutput(payload); err != nil {
 		return err
 	}
 	if event.Type == responseevents.Error {
 		s.errorDelivered = true
 	}
 	if err := s.downstream.Write(e.ctx, websocket.MessageText, payload); err != nil {
-		return downstreamDisconnectError(err)
+		return DownstreamDisconnectError(err)
 	}
 	w.committed = true
 	if isWebSocketSteering(payload) {
@@ -628,9 +629,20 @@ func (w *webSocketOutput) message(payload []byte) error {
 }
 
 // Map backend admission failures to the application's compatibility diagnostic.
-func webSocketProtocolError(err error) error {
+func ProtocolError(err error) error {
 	if invalid, ok := errors.AsType[*codexresponses.InvalidRequestError](err); ok {
-		return incompatibleRequest("invalid_websocket_request", invalid.Message)
+		return IncompatibleRequest("invalid_websocket_request", invalid.Message)
 	}
 	return err
 }
+
+// Execute binds one prepared connection exchange to the application's request pipeline.
+type Execute func(startCtx, executionCtx context.Context, request codexresponses.Request, headers http.Header, exchange *Exchange, output io.Writer) error
+
+func (e *Exchange) observeReadEnd(err error, origin string) {
+	if e.ReadEnd != nil {
+		e.ReadEnd(err, origin)
+	}
+}
+
+func (w *webSocketOutput) ResponseStarted() bool { return w.committed }

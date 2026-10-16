@@ -54,7 +54,7 @@ func TestTurnStateRoundTrip(t *testing.T) {
 					}
 				}))
 				defer upstream.Close()
-				provider := newProviderClient(upstream.URL, upstream.Client())
+				provider := newTestProviderClient(upstream.URL, upstream.Client())
 				var proxy *mekugiProxy
 				if mode != "passthrough" {
 					proxy = newManagedMekugiProxy(t)

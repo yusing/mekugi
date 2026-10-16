@@ -1,4 +1,6 @@
-package router
+package inferencegateway
+
+// Source: apps/mekugi/internal/router/provider_boundary.go:1:169@[bd606c09] configured-provider policy.
 
 import (
 	"errors"
@@ -15,39 +17,16 @@ import (
 
 const providerNoHostedSearchInstruction = "\nOpenAI-hosted web search is unavailable on this route. Use only the provided tools; do not claim to have performed unavailable searches."
 
-// providerCodecDiagnostics preserves router error identity at the codec boundary.
-func providerCodecDiagnostics(name, subject, prefix, contentCode string) codexresponses.Diagnostics {
-	return codexresponses.Diagnostics{
-		Name: name, Subject: subject, Prefix: prefix, ContentErrorCode: contentCode,
-		BufferBytes: codexresponses.MaxResponseBytes,
-		Error: func(code, summary, detail string) error {
-			if detail == "" {
-				return staticCriticalDiagnostic(code, summary)
-			}
-			return &criticalDiagnosticError{err: errors.New("provider reported a streaming error"), code: code, summary: summary, callerDetail: detail, distinct: true}
-		},
-		DescribeError: func(err error) (string, string, bool) {
-			d, ok := errors.AsType[*criticalDiagnosticError](err)
-			if !ok {
-				return "", "", false
-			}
-			message := d.summary
-			if d.callerDetail != "" {
-				message = d.callerDetail
-			}
-			return d.code, message, true
-		},
-		Incompatible: incompatibleRequest,
-		ForwardError: forwardCriticalDiagnostic,
-	}
+// codecDiagnostics adds the selected route identity to application diagnostics.
+func codecDiagnostics(d codexresponses.Diagnostics, name, subject, prefix, contentCode string) codexresponses.Diagnostics {
+	d.Name, d.Subject, d.Prefix, d.ContentErrorCode = name, subject, prefix, contentCode
+	d.BufferBytes = codexresponses.MaxResponseBytes
+	return d
 }
 
 func providerCodecPolicy(d codexresponses.Diagnostics) codexresponses.Policy {
 	return codexresponses.Policy{Diagnostics: d,
 		NoHostedSearchInstruction: providerNoHostedSearchInstruction,
-		CustomInputInstruction:    grokInputInstruction,
-		ExecInstruction:           grokExecInstruction,
-		FormatInstructionPrefix:   grokFormatPrefixInstruction,
 	}
 }
 
@@ -80,9 +59,9 @@ type providerRequest struct {
 	codec  *codexresponses.Stream
 }
 
-func grokTranslationPolicy() codexresponses.Policy {
+func grokTranslationPolicy(d codexresponses.Diagnostics) codexresponses.Policy {
 	// Mixed refusal/text output keeps its legacy shared content error code.
-	p := providerCodecPolicy(providerCodecDiagnostics("Grok", "grok", "grok", "opencode_stream_invalid"))
+	p := providerCodecPolicy(codecDiagnostics(d, "Grok", "grok", "grok", "opencode_stream_invalid"))
 	p.ResolveEffort = func(effort string) (string, error) {
 		switch effort {
 		case "", "low", "medium", "high", "xhigh":
@@ -94,8 +73,8 @@ func grokTranslationPolicy() codexresponses.Policy {
 	return p
 }
 
-func openCodeTranslationPolicy(service *opencode.Service, model, format string) codexresponses.Policy {
-	p := providerCodecPolicy(providerCodecDiagnostics("OpenCode", "OpenCode", "opencode", "opencode_stream_invalid"))
+func openCodeTranslationPolicy(service *opencode.Service, model, format string, d codexresponses.Diagnostics) codexresponses.Policy {
+	p := providerCodecPolicy(codecDiagnostics(d, "OpenCode", "OpenCode", "opencode", "opencode_stream_invalid"))
 	p.CompletionIncludesReasoning = true
 	p.ReplaySummaries = true
 	p.ResolveEffort = func(effort string) (string, error) {
@@ -116,15 +95,15 @@ func openCodeTranslationPolicy(service *opencode.Service, model, format string) 
 
 // translateProviderRequest selects identity and capabilities before entering the
 // shared validator. The service is already pinned by the transport boundary.
-func translateProviderRequest(body []byte, service *opencode.Service) (_ *providerRequest, err error) {
+func translateProviderRequest(body []byte, service *opencode.Service, d codexresponses.Diagnostics) (_ *providerRequest, err error) {
 	var policy codexresponses.Policy
 	if service != nil {
 		// OpenCode exposes request compatibility errors even for malformed JSON.
 		// Existing structured diagnostics pass through without text/code rewriting.
 		defer func() {
 			if err != nil {
-				if _, ok := errors.AsType[*requestCompatibilityError](err); !ok {
-					err = incompatibleRequest("opencode_unsupported_request", err.Error())
+				if _, ok := errors.AsType[*CompatibilityError](err); !ok {
+					err = IncompatibleRequest("opencode_unsupported_request", err.Error())
 				}
 			}
 		}()
@@ -139,7 +118,7 @@ func translateProviderRequest(body []byte, service *opencode.Service) (_ *provid
 		if !slices.Contains(grok.Models(), model) {
 			return nil, errors.New("unsupported Grok model")
 		}
-		policy = grokTranslationPolicy()
+		policy = grokTranslationPolicy(d)
 	} else {
 		var ok bool
 		model, ok = strings.CutPrefix(request.Model(), service.Prefix+":")
@@ -157,11 +136,26 @@ func translateProviderRequest(body []byte, service *opencode.Service) (_ *provid
 		default:
 			return nil, errors.New("OpenCode model API format is missing or unsupported in the online catalog")
 		}
-		policy = openCodeTranslationPolicy(service, model, format)
+		policy = openCodeTranslationPolicy(service, model, format, d)
 	}
 	wire, codec, err := codexresponses.Translate(request.Fields, model, format, policy)
 	if err != nil {
 		return nil, err
 	}
 	return &providerRequest{body: wire, codec: codec, format: format, stream: request.Stream}, nil
+}
+
+// CollaborationGuidance resolves the configured invocation models without exposing
+// credential or transport internals to request preparation.
+func (c *Client) CollaborationGuidance() (codexresponses.CollaborationGuidance, bool) {
+	var models []string
+	for _, prefix := range []string{"opencode-go", "opencode-zen"} {
+		if client := c.OpenCode[prefix]; client != nil {
+			for _, model := range client.OpenCode.Models() {
+				models = append(models, prefix+":"+model.ID)
+			}
+		}
+	}
+	enabled := c.Grok != nil
+	return collaborationGuidance(enabled, enabled && c.Grok.Unprefixed, models...), enabled || len(models) > 0
 }

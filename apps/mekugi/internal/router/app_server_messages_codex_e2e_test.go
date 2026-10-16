@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -46,7 +48,7 @@ func TestAppServerDirectedChildMessageNativeCodexE2E(t *testing.T) {
 	}
 	provider := &appServerDirectedMessageProvider{turns: make(map[string]int), assignment: assignment, message: message}
 	proxy := newManagedMekugiProxy(t)
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
@@ -156,7 +158,7 @@ func (p *appServerDirectedMessageProvider) completed() bool {
 	return p.rootDone
 }
 
-func (p *appServerDirectedMessageProvider) forwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
+func (p *appServerDirectedMessageProvider) ForwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*inferencegateway.Response, error) {
 	metadata, _ := decodeCodexTurnMetadata(headers)
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
@@ -233,5 +235,5 @@ func (p *appServerDirectedMessageProvider) forwardExecution(_, _ context.Context
 	}
 	result := serverHTTPResponse(wire.String())
 	result.Header.Set("Content-Type", "text/event-stream")
-	return result, nil
+	return testGatewayResponse(result, nil)
 }

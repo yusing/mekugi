@@ -4,8 +4,8 @@
 
 Own service credentials, catalog acquisition, immutable request snapshots, model
 capabilities, price metadata, and authenticated inference transport. The application
-selects the cache path and loads invocation configuration. It applies the Codex
-adaptation policy below; shared authority and failure semantics belong to
+selects the cache path and loads invocation configuration. Codex adaptation,
+shared authority and failure semantics belong to
 [provider routing](../../docs/contracts/provider-routing.md).
 
 ## Catalog and credentials
@@ -75,45 +75,19 @@ Codex response framing and price accounting remain with their respective owners.
 
 ## Codex adaptation and accounting
 
-[Launch](../../apps/mekugi/internal/launch/SPEC.md#model-catalog) projects the
-selected services into the private Codex catalog, advertising supported online
-`reasoning_options` efforts without inventing a default. Explicit supported values
-pass as Chat `reasoning_effort`, Responses `reasoning.effort` or Messages
-`output_config.effort`; structured output can coexist with effort. An absent or
-unsupported inherited value leaves provider defaults alone. `none` is forwarded
-only when advertised; toggle-only or token-budget-only controls are not efforts.
+[Provider routing](../../docs/contracts/provider-routing.md#opencode) owns the
+request-pinned effort, reasoning replay, output-budget and usage policy. The
+[Responses adapter](../../backends/codex/responses/SPEC.md) owns wire translation,
+and [usage accounting](../../modules/usage/SPEC.md) owns accumulated estimates.
 
-Chat reasoning summaries are replayed on the corresponding assistant message,
-including tool-free and resumed turns. Messages thinking/signature/redacted blocks
-and Responses reasoning items use versioned, service/model-bound opaque envelopes.
-They restore only on that route; foreign encrypted history fails locally.
-Visible Chat, Messages and Responses reasoning streams as received, including
-completed-item text when no deltas exist. The backend's item lifecycle preserves
-its order relative to the answer. Messages/Responses visible summaries belong to
-the same opaque item; closing without a replay envelope retains no summary-only
-reasoning, which those formats cannot restore.
-
-OpenCode completion counts already include reasoning; Responses output retains
-that total and exposes reasoning only as a breakdown. Missing usage remains
-missing. Messages input includes uncached input plus cache reads/writes, and its
-output includes thinking. Messages requires a generation ceiling, defaulting to
-32,768 tokens; an explicit total-output budget maps to `max_tokens`. Responses
-preserves the requested total budget; Chat rejects incompatible total budgets.
-
-All three formats preserve provider-returned model aliases for JSON and streaming
-clients. They share native tool identity and complete-argument validation. Messages
-uses `input_schema`, `tool_use` and `tool_result`; Responses uses flat function
-schemas/calls. Custom tool input is one wire parameter, restored exactly before
-Codex execution. Signed reasoning and call identities survive JSON persistence.
-Refusals remain ordinary refusal output. Transport capture includes opaque
-reasoning separately from user-visible text.
+## Reference prices
 
 Reference estimates use the request-pinned online rates for input, output, cache
 reads/writes and explicit context tiers. Explicit context tiers take precedence
 over legacy 200k pricing; zero is free, while missing prices, unknown tier types
 and unsupported service tiers are unknown. These are API reference estimates,
-not subscription charges or billing quotes. [Usage](../../modules/usage/SPEC.md)
-owns accumulation and retained accounting.
+not subscription charges or billing quotes. The usage module owns accumulation
+and retained accounting.
 
 ## Lifetime and failures
 

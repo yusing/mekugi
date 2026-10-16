@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
@@ -169,13 +171,13 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 	if capture != nil {
 		openaiHTTP.Transport = capture.Transport(openaiHTTP.Transport)
 	}
-	provider := newProviderClient(openai.BaseURL, openaiHTTP)
-	provider.thirdPartyOnly = grokEnabled || standalone
-	provider.openai.StreamIdleTimeout = options.StreamIdleTimeout
-	provider.openai.EnableWebSockets(ctx)
+	provider := inferencegateway.NewClient(openai.BaseURL, openaiHTTP, providerCodecDiagnostics())
+	provider.ThirdPartyOnly = grokEnabled || standalone
+	provider.OpenAI.StreamIdleTimeout = options.StreamIdleTimeout
+	provider.OpenAI.EnableWebSockets(ctx)
 	// Cover early setup returns before ctx is canceled; close is idempotent
 	// with enableWebSockets' normal context-shutdown callback.
-	defer provider.openai.Close()
+	defer provider.OpenAI.Close()
 	if grokEnabled || standalone {
 		apiKey := strings.TrimSpace(os.Getenv("XAI_API_KEY"))
 		path := options.GrokAuthFile
@@ -194,12 +196,12 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 			if capture != nil {
 				client.Transport = capture.Transport(client.Transport)
 			}
-			provider.grok = &grokClient{httpClient: client, auth: auth, unprefixed: grokEnabled, streamIdleTimeout: options.StreamIdleTimeout}
+			provider.Grok = &inferencegateway.ThirdPartyClient{HTTPClient: client, Auth: auth, Unprefixed: grokEnabled, StreamIdleTimeout: options.StreamIdleTimeout, Diagnostics: provider.Diagnostics}
 		} else if grokEnabled {
 			return authErr
 		}
 	}
-	if standalone && provider.grok == nil && !openCode.Enabled() {
+	if standalone && provider.Grok == nil && !openCode.Enabled() {
 		return errors.New("no authenticated third-party providers; run grok login --oauth or set XAI_API_KEY, OPENCODE_GO_API_KEY, or OPENCODE_ZEN_API_KEY")
 	}
 	if openCode.Enabled() {
@@ -212,19 +214,19 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 			log.Printf("OpenCode catalog: refresh/cache update unavailable; retaining last usable metadata")
 		}
 	}
-	provider.serviceTiers = &serviceTierSettings{configured: config.ServiceTiers}
-	provider.opencode = make(map[string]*grokClient)
+	serviceTiers := &serviceTierSettings{configured: config.ServiceTiers}
+	provider.OpenCode = make(map[string]*inferencegateway.ThirdPartyClient)
 	for _, service := range openCode.Services() {
 		client := httptransport.Client(nil)
 		if capture != nil {
 			client.Transport = capture.Transport(client.Transport)
 		}
-		provider.opencode[service.Prefix] = &grokClient{httpClient: client, openCode: &service, streamIdleTimeout: options.StreamIdleTimeout}
+		provider.OpenCode[service.Prefix] = &inferencegateway.ThirdPartyClient{HTTPClient: client, OpenCode: &service, StreamIdleTimeout: options.StreamIdleTimeout, Diagnostics: provider.Diagnostics}
 	}
 	var frontendDirectory string
 	titleCtx, cancelTitles := context.WithCancel(ctx)
 	defer cancelTitles()
-	provider.titleGenerator = newSessionNaming(titleCtx, provider, naming)
+	titleGenerator := newSessionNaming(titleCtx, provider, naming)
 	if issues != nil {
 		issues.diagnostics = diagnosis
 		issues.writes = writes
@@ -258,8 +260,8 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 			projections = nil
 		}
 		mekugiCalls = newMekugiProxy(registry, projections, usage)
-		if provider.titleGenerator != nil {
-			provider.titleGenerator.usage = mekugiCalls.usage
+		if titleGenerator != nil {
+			titleGenerator.usage = mekugiCalls.usage
 		}
 		traceDirectory, traceErr := os.MkdirTemp("", "mekugi-native-trace-")
 		if traceErr == nil {
@@ -333,10 +335,11 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 	mux.HandleFunc("GET /v1/models", modelsHandler(provider, issues))
 	registerCodexAuxiliaryRoutes(mux, ctx, options.Timeout, provider)
 
-	webSocketEndpoint := responsesWebSocketHandler(ctx, options.Timeout, provider, issues, mekugiCalls)
+	executor := requestExecutor{provider: provider, client: provider, issues: issues, mekugiCalls: mekugiCalls, serviceTiers: serviceTiers, titleGenerator: titleGenerator}
+	webSocketEndpoint := inferencegateway.NewWebSocketEndpoint(ctx, options.Timeout, provider, executor.executeWebSocket)
 	defer webSocketEndpoint.Close()
 	mux.Handle("GET /v1/responses", webSocketEndpoint)
-	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, options.Timeout, provider, issues, mekugiCalls))
+	mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, options.Timeout, executor))
 
 	var handler http.Handler = debug.handler(mux)
 	if capture != nil {
@@ -356,7 +359,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		serverError <- server.Serve(listener)
 	}()
 	if ready != nil && ctx.Err() == nil {
-		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.thirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.Mode == "mekugi", Guards: guards, SkillsManagerAvailable: skillsManagerAvailable}
+		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.Grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.ThirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.Mode == "mekugi", Guards: guards, SkillsManagerAvailable: skillsManagerAvailable}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
 				instrumentation := execInstrumentation{}
@@ -397,7 +400,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 			if debug != nil {
 				debugDirectory = filepath.Dir(debug.Paths()[0])
 			}
-			return startAppServerUI(conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, provider.serviceTiers, capture, resumeArgv, debugDirectory, provider.titleGenerator, observations, approvals)
+			return startAppServerUI(conversation, activity, service, prefs, segments.Reports, ctx, cmd, stdin, stdout, mekugiCalls, issues, resumeThread, faint, serviceTiers, capture, resumeArgv, debugDirectory, titleGenerator, observations, approvals)
 		}
 		if mekugiCalls != nil && mekugiCalls.nativeTrace != nil {
 			session.NativeTraceDirectory = mekugiCalls.nativeTrace.Directory()
@@ -428,7 +431,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 	}
 }
 
-func modelsHandler(provider *providerClient, issues *CriticalErrors) http.HandlerFunc {
+func modelsHandler(provider *inferencegateway.Client, issues *CriticalErrors) http.HandlerFunc {
 	// Session-local, single-entry cache. The gate coalesces concurrent refreshes
 	// without keeping canceled callers waiting for an upstream operation.
 	gate := make(chan struct{}, 1)
@@ -485,7 +488,7 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 			}
 		}
 
-		response, err := provider.forwardModels(request.Context(), request.Header, request.URL.RawQuery)
+		response, err := provider.ForwardModels(request.Context(), request.Header, request.URL.RawQuery)
 		if err != nil {
 			failure = modelsForwardDiagnostic(err)
 			release()
@@ -530,6 +533,9 @@ func modelsHandler(provider *providerClient, issues *CriticalErrors) http.Handle
 }
 
 func modelsForwardDiagnostic(err error) error {
+	if _, invalid := errors.AsType[*inferencegateway.ModelCredentialsError](err); invalid {
+		return criticalDiagnostic(err, "models_auth_headers", "the model catalog request is missing valid Codex Authorization or account headers", true)
+	}
 	if _, classified := errors.AsType[*criticalDiagnosticError](err); classified {
 		return err
 	}
@@ -542,19 +548,7 @@ func modelsForwardDiagnostic(err error) error {
 		summary: "the model catalog could not be fetched: " + diagnostic.summary, distinct: true}
 }
 
-func responsesHandler(
-	lifecycle context.Context,
-	responseStartTimeout time.Duration,
-	provider responseProvider,
-	issues *CriticalErrors,
-	mekugiCalls *mekugiProxy,
-) http.HandlerFunc {
-	var serviceTiers *serviceTierSettings
-	var titleGenerator *sessionNaming
-	if client, ok := provider.(*providerClient); ok {
-		serviceTiers = client.serviceTiers
-		titleGenerator = client.titleGenerator
-	}
+func responsesHandler(lifecycle context.Context, responseStartTimeout time.Duration, executor requestExecutor) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		trackedWriter := &trackedResponseWriter{ResponseWriter: writer}
 		body, status, err := readCodexHTTPBody(request)
@@ -571,24 +565,14 @@ func responsesHandler(
 			http.Error(trackedWriter, err.Error(), http.StatusBadRequest)
 			return
 		}
-		startCtx, executionCtx, cancelRequest := requestContexts(request.Context(), lifecycle, responseStartTimeout)
+		startCtx, executionCtx, cancelRequest := inferencegateway.RequestContexts(request.Context(), lifecycle, responseStartTimeout)
 		defer cancelRequest()
 		sessionID := routingSessionID(request.Header, parsedRequest)
-		executor := requestExecutor{provider: provider, output: trackedWriter, issues: issues, mekugiCalls: mekugiCalls, serviceTiers: serviceTiers, titleGenerator: titleGenerator}
+		executor := executor
+		executor.output = trackedWriter
 		if err := executor.execute(startCtx, executionCtx, parsedRequest, request.Header, sessionID); err != nil {
 			writeRequestError(trackedWriter, err)
 		}
-	}
-}
-
-func requestContexts(requestCtx, serverCtx context.Context, responseStartTimeout time.Duration) (context.Context, context.Context, func()) {
-	executionCtx, cancelExecution := context.WithCancelCause(requestCtx)
-	stopServerCancellation := context.AfterFunc(serverCtx, func() { cancelExecution(errRouterShutdown) })
-	startCtx, cancelStart := context.WithTimeoutCause(executionCtx, responseStartTimeout, errResponseStartTimeout)
-	return startCtx, executionCtx, func() {
-		stopServerCancellation()
-		cancelStart()
-		cancelExecution(nil)
 	}
 }
 
@@ -613,14 +597,14 @@ func (w *trackedResponseWriter) Write(body []byte) (int, error) {
 		w.WriteHeader(http.StatusOK)
 	}
 	n, err := w.ResponseWriter.Write(body)
-	return n, downstreamDisconnectError(err)
+	return n, inferencegateway.DownstreamDisconnectError(err)
 }
 
 func (w *trackedResponseWriter) FlushError() error {
 	if !w.committed {
 		w.WriteHeader(http.StatusOK)
 	}
-	return downstreamDisconnectError(http.NewResponseController(w.ResponseWriter).Flush())
+	return inferencegateway.DownstreamDisconnectError(http.NewResponseController(w.ResponseWriter).Flush())
 }
 
 func (w *trackedResponseWriter) Unwrap() http.ResponseWriter {
@@ -630,12 +614,12 @@ func (w *trackedResponseWriter) Unwrap() http.ResponseWriter {
 func writeRequestError(writer *trackedResponseWriter, requestErr error) {
 	if !writer.committed {
 		status := http.StatusBadGateway
-		if _, ok := errors.AsType[*requestCompatibilityError](requestErr); ok {
+		if _, ok := errors.AsType[*inferencegateway.CompatibilityError](requestErr); ok {
 			status = http.StatusBadRequest
 		}
-		if rejection, ok := errors.AsType[*providerHTTPError](requestErr); ok {
+		if rejection, ok := errors.AsType[*inferencegateway.ProviderHTTPError](requestErr); ok {
 			writer.Header().Set("Content-Type", "application/json")
-			writer.WriteHeader(rejection.status)
+			writer.WriteHeader(rejection.Status)
 			_, _ = writer.Write(responses.MustMarshalJSON(map[string]any{"error": map[string]string{
 				"type": "provider_error", "message": rejection.Error(),
 			}}))
@@ -706,15 +690,11 @@ func (f *requestFinalization) finish(
 }
 
 func requestResponseStarted(output io.Writer) bool {
-	switch writer := output.(type) {
-	case *trackedResponseWriter:
-		return writer.committed
-	case *webSocketOutput:
-		return writer.committed
-	default:
-		return false
-	}
+	writer, ok := output.(interface{ ResponseStarted() bool })
+	return ok && writer.ResponseStarted()
 }
+
+func (w *trackedResponseWriter) ResponseStarted() bool { return w.committed }
 
 func (f *requestFinalization) classifyCopyError(err error) {
 	switch {

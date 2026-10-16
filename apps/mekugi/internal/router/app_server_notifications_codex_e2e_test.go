@@ -30,7 +30,7 @@ func TestAppServerNotificationsNativeCodexE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, &appPreviewProvider{}, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, &appPreviewProvider{}, nil, nil))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()

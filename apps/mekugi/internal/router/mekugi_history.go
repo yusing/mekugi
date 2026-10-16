@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
@@ -356,7 +358,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		}
 		callID := responses.StringField(item, "call_id")
 		if callID == "" {
-			return nil, incompatibleRequest("unsupported_tool_history", "A retained tool item has no host call identity. Start a new session.")
+			return nil, inferencegateway.IncompatibleRequest("unsupported_tool_history", "A retained tool item has no host call identity. Start a new session.")
 		}
 		if itemType == "function_call" {
 			var args struct {
@@ -410,7 +412,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 			history.confirmed = false
 		}
 		if strings.HasPrefix(history.ToolName, "__mekugi_") {
-			return nil, incompatibleRequest("unsupported_tool_history", "This session contains a retired router-local tool call. Start a new session.")
+			return nil, inferencegateway.IncompatibleRequest("unsupported_tool_history", "This session contains a retired router-local tool call. Start a new session.")
 		}
 		carrierKind := history.effectiveCarrierKind()
 		if itemType == carrierOutputItemType(carrierKind) {

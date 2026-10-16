@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -90,7 +92,7 @@ func testResponsesSocket(t *testing.T, ctx context.Context, upstream http.Handle
 	t.Helper()
 	provider := httptest.NewServer(upstream)
 	t.Cleanup(provider.Close)
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, proxy)
+	endpoint := testWebSocketEndpoint(ctx, 5*time.Second, newTestProviderClient(provider.URL, provider.Client()), nil, proxy)
 	t.Cleanup(endpoint.Close)
 	router := httptest.NewServer(endpoint)
 	t.Cleanup(router.Close)
@@ -281,8 +283,8 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 	defer cancel()
 	started := make(chan []byte, 1)
 	stopped := make(chan struct{})
-	provider := newProviderClient("http://unused.invalid", nil)
-	provider.grok = &grokClient{auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{
+	provider := newTestProviderClient("http://unused.invalid", nil)
+	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{
 		Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 			body, _ := io.ReadAll(request.Body)
 			started <- body
@@ -291,7 +293,7 @@ func TestResponsesWebSocketGrokPrewarmContinuationAndDisconnect(t *testing.T) {
 			return nil, request.Context().Err()
 		}),
 	}}
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, provider, nil, nil)
+	endpoint := testWebSocketEndpoint(ctx, 5*time.Second, provider, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -352,7 +354,7 @@ func TestResponsesWebSocketEndpointCloseWaitsAndRejectsNewAdmission(t *testing.T
 		_, _, _ = conn.Read(ctx)
 	}))
 	defer provider.Close()
-	endpoint := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, nil)
+	endpoint := testWebSocketEndpoint(ctx, 5*time.Second, newTestProviderClient(provider.URL, provider.Client()), nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -473,7 +475,7 @@ func TestMekugiPrewarmRequiresExplicitNonGeneratingRequest(t *testing.T) {
 				request.Fields["generate"] = json.RawMessage(generate)
 			}
 			proxy := &mekugiProxy{registry: &frontends.Registry{Guidance: testGuidance()}}
-			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &webSocketExchange{}, io.Discard, nil, proxy); err == nil {
+			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &inferencegateway.Exchange{}, io.Discard, nil, proxy); err == nil {
 				t.Fatal("generating prewarm bypassed turn validation")
 			}
 		})
@@ -487,7 +489,7 @@ func TestResponsesHTTPPrewarmCannotBypassPreparation(t *testing.T) {
 	request.Header.Set(codexresponses.ThreadIDHeader, "prewarm-thread")
 	provider := &serverFakeProvider{}
 	recorder := httptest.NewRecorder()
-	responsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{registry: &frontends.Registry{Guidance: testGuidance()}})(recorder, request)
+	testResponsesHandler(t.Context(), time.Minute, provider, nil, &mekugiProxy{registry: &frontends.Registry{Guidance: testGuidance()}})(recorder, request)
 	if len(provider.forwarded) != 0 {
 		t.Fatal("HTTP prewarm reached a potentially generating provider")
 	}

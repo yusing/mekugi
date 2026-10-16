@@ -16,7 +16,7 @@ import (
 // Queue compaction during a blocked inference, then supply no more user input.
 func TestAppServerQueuedCompactContinuesNativeCodex(t *testing.T) {
 	provider := &appQueueProvider{requests: make(chan []byte, 8), gates: []chan struct{}{make(chan struct{})}}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	defer func() {
 		select {

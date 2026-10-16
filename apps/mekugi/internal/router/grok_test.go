@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 
@@ -68,14 +70,14 @@ func TestGrokToolStreamThroughMekugi(t *testing.T) {
 				kind = "function"
 				arguments = `{"query":"test"}`
 			}
-			tr := testProviderRequest(t, grokTranslationPolicy(), "", "chat", []any{map[string]string{"type": kind, "name": name}})
+			request := mustTestJSON(t, map[string]any{"model": grokModel, "stream": true, "input": []any{}, "tools": []any{map[string]string{"type": kind, "name": name}}})
 			stream := grokTestSSE(map[string]any{"choices": []any{map[string]any{
 				"index": 0, "delta": map[string]any{"tool_calls": []any{map[string]any{
 					"index": 0, "id": "call-test", "function": map[string]string{"name": name, "arguments": arguments},
 				}}}, "finish_reason": "tool_calls",
 			}}})
 			var completed int
-			_, err := tr.codec.Read(strings.NewReader(stream), func(event map[string]any) error {
+			_, err := readGrokTestEvents(t, request, strings.NewReader(stream), func(event map[string]any) error {
 				visible, err := transform.TransformSSE(mustTestJSON(t, event))
 				if err != nil {
 					return fmt.Errorf("%s: %w", event["type"], err)
@@ -90,7 +92,7 @@ func TestGrokToolStreamThroughMekugi(t *testing.T) {
 					}
 				}
 				return nil
-			}, grokTestFailureDetail)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -114,8 +116,8 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 				io.WriteString(w, grokTextStream())
 			}))
 			defer server.Close()
-			client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", httptransport.Client(nil)), streamIdleTimeout: time.Second}
-			response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), grokTestHeaders())
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil)), StreamIdleTimeout: time.Second}
+			response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), grokTestHeaders())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -130,7 +132,7 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 			headers := grokTestHeaders()
 			headers.Del(codexresponses.SubagentHeader)
 			headers.Del(codexresponses.TurnMetadataHeader)
-			response, err = client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), headers)
+			response, err = client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, stream), headers)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -156,9 +158,9 @@ func TestGrokClientIsolationStreamingJSONAndCancellation(t *testing.T) {
 		close(canceled)
 	}))
 	defer server.Close()
-	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 	ctx, cancel := context.WithCancel(t.Context())
-	response, err := client.forwardExecution(ctx, ctx, grokTestRequest(t, true), grokTestHeaders())
+	response, err := client.ForwardExecution(ctx, ctx, grokTestRequest(t, true), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,8 +210,8 @@ func TestGrokUnauthorizedRefreshRetriesOnceWithoutCredentialLeak(t *testing.T) {
 		io.WriteString(w, grokTextStream())
 	}))
 	defer server.Close()
-	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: auth}
-	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders())
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: auth}
+	response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, false), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,13 +223,13 @@ func TestGrokUnauthorizedRefreshRetriesOnceWithoutCredentialLeak(t *testing.T) {
 }
 
 func TestGrokDisabledAndUnknownModelFailBeforeProvider(t *testing.T) {
-	provider := newProviderClient("http://127.0.0.1:1", nil)
-	_, err := provider.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders(), "")
+	provider := newTestProviderClient("http://127.0.0.1:1", nil)
+	_, err := provider.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders(), "")
 	if err == nil || !strings.Contains(err.Error(), "mekugi grok") {
 		t.Fatalf("disabled route=%v", err)
 	}
 	body := bytes.Replace(grokTestRequest(t, true), []byte(grokModel), []byte("grok:unknown"), 1)
-	if _, err := translateProviderRequest(body, nil); err == nil {
+	if _, err := (&inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics()}).ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders()); err == nil {
 		t.Fatal("accepted unknown model")
 	}
 }
@@ -249,9 +251,9 @@ func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
 				io.WriteString(w, grokTextStream())
 			}))
 			defer server.Close()
-			client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth("", "xai-test", httptransport.Client(nil))}
 			body := mustTestJSON(t, map[string]any{"model": "grok:" + model, "input": []any{}})
-			response, err := client.forwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
+			response, err := client.ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
 			if model == "grok-4.7-build-fast" {
 				if err == nil || !strings.Contains(err.Error(), "requires Grok OAuth") || calls != 0 {
 					t.Fatalf("Build Fast API route: response=%v err=%v calls=%d", response, err, calls)
@@ -275,9 +277,9 @@ func TestGrokModelRoutingAndBuildFastCredentialBoundary(t *testing.T) {
 		io.WriteString(w, grokTextStream())
 	}))
 	defer server.Close()
-	client := &grokClient{httpClient: grokTestHTTPClient(t, server), auth: grok.NewAuth(path, "", httptransport.Client(nil))}
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, server), Auth: grok.NewAuth(path, "", httptransport.Client(nil))}
 	body := mustTestJSON(t, map[string]any{"model": "grok:grok-4.7-build-fast", "input": []any{}})
-	response, err := client.forwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
+	response, err := client.ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,10 +307,10 @@ func grokTestHTTPClient(t *testing.T, server *httptest.Server) *http.Client {
 func TestGrokCloseUnblocksUpstreamRead(t *testing.T) {
 	upstream, writer := io.Pipe()
 	defer writer.Close()
-	client := &grokClient{auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: upstream}, nil
 	})}}
-	response, err := client.forwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
+	response, err := client.ForwardExecution(t.Context(), t.Context(), grokTestRequest(t, true), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +351,7 @@ func TestGrokAPIKeyStartupWithoutHome(t *testing.T) {
 }
 
 func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
-	client := &grokClient{auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		t.Error("unsupported budget reached provider")
 		return nil, fmt.Errorf("unexpected inference")
 	})}}
@@ -358,17 +360,25 @@ func TestGrokOutputBudgetRejectedBeforeInference(t *testing.T) {
 		t.Fatal(err)
 	}
 	request["max_output_tokens"] = 1000
-	if _, err := client.forwardExecution(t.Context(), t.Context(), mustTestJSON(t, request), grokTestHeaders()); err == nil || !strings.Contains(err.Error(), "max_output_tokens") {
+	if _, err := client.ForwardExecution(t.Context(), t.Context(), mustTestJSON(t, request), grokTestHeaders()); err == nil || !strings.Contains(err.Error(), "max_output_tokens") {
 		t.Fatalf("expected explicit budget rejection, got %v", err)
 	}
 	request["max_output_tokens"] = nil
-	tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
+	client.HTTPClient.Transport = grokTestTransport(func(upstream *http.Request) (*http.Response, error) {
+		var forwarded map[string]any
+		if err := json.NewDecoder(upstream.Body).Decode(&forwarded); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := forwarded["max_tokens"]; ok {
+			t.Fatal("forwarded a Chat token budget")
+		}
+		return serverHTTPResponse(grokTextStream()), nil
+	})
+	response, err := client.ForwardExecution(t.Context(), t.Context(), mustTestJSON(t, request), grokTestHeaders())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := tr.body["max_tokens"]; ok {
-		t.Fatal("forwarded a Chat token budget")
-	}
+	response.Body.Close()
 }
 
 func TestGrokWhitespaceAPIKeyUsesOAuthHome(t *testing.T) {
@@ -381,23 +391,3 @@ func TestGrokWhitespaceAPIKeyUsesOAuthHome(t *testing.T) {
 }
 
 // Other models miss that an unprinted nested result never reaches them.
-func TestGrokCodeModeExecNamesPrintedResults(t *testing.T) {
-	var request map[string]any
-	_ = json.Unmarshal(grokTestRequest(t, true), &request)
-	request["tools"] = append(request["tools"].([]any), map[string]any{"type": "custom", "name": "other", "description": "Other input"})
-	tr, err := translateProviderRequest(mustTestJSON(t, request), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	descriptions := make(map[string]string)
-	for _, tool := range tr.body["tools"].([]any) {
-		fn := tool.(map[string]any)["function"].(map[string]any)
-		descriptions[fn["name"].(string)] = fn["description"].(string)
-	}
-	if got := descriptions["exec"]; got != "Run exact input\n"+grokExecInstruction {
-		t.Fatalf("exec description = %q", got)
-	}
-	if got := descriptions["other"]; got != "Other input" {
-		t.Fatalf("other custom tool description = %q", got)
-	}
-}

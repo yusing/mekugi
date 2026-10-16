@@ -5,7 +5,7 @@
 Own model IDs, API-key selection, OAuth credential reads, trusted discovery,
 token refresh, credential publication and authenticated inference transport. The application
 selects the credential path and configured HTTP transport. Grok owns interactive
-login. The application applies the routing and Codex adaptation policy below. Shared
+login. The application applies the selected routing and Codex adaptation policy. Shared
 authority and failure semantics belong to [provider routing](../../docs/contracts/provider-routing.md).
 
 ## Models and invocation
@@ -58,27 +58,12 @@ cause, including cancellation after refresh. Final rejected responses and accept
 body lifetime use the shared [HTTP exchange](../../libraries/httptransport/SPEC.md).
 Codex response framing belongs to the backend adapter, not this transport.
 
-## Codex adaptation policy
+## Codex adaptation
 
-The Chat adapter preserves supported text/images, plaintext agent messages,
-parallel custom/function calls and results, structured output, effort and usage.
-Unsupported provider tools, encrypted reasoning/messages, opaque file IDs and
-provider-only history fail before inference. Hosted OpenAI search is unavailable
-and the model is told so. Fresh-context spawning avoids foreign encrypted history;
-compatibility failures use HTTP/WebSocket status 400.
-
-Non-null `max_output_tokens` rejects locally: Chat completion limits exclude
-reasoning and cannot enforce a Responses total-output budget. Grok completion and
-reasoning counts combine into Responses output tokens, with reasoning retained as
-a breakdown rather than charged twice. Provider-returned model aliases remain
-unchanged; transport metrics describe the actual Chat exchange.
-
-Wire aliases cover namespaces and reserved names consistently across catalogs,
-tool choice and replay. In particular, native `wait` is never sent under bare
-`wait`, and its advertised `yield_time_ms` and `max_tokens` are integers. Responses
-restores the original names and exact submitted arguments. Plaintext reasoning
-streams as Responses summaries under the backend item lifecycle, but those
-unencrypted summaries are not replayed to Grok.
+[Provider routing](../../docs/contracts/provider-routing.md#grok) owns the selected
+Chat policy, request compatibility, reasoning and usage interpretation. The
+[Responses adapter](../../backends/codex/responses/SPEC.md) owns wire translation
+and executable-call integrity.
 
 ## Lifetime and failure
 

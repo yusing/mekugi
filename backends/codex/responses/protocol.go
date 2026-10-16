@@ -145,14 +145,14 @@ func Translate(fields map[string]json.RawMessage, model, format string, policy P
 						fn["strict"] = strict
 					}
 				} else {
-					fn["parameters"] = map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string", "description": policy.CustomInputInstruction}}, "required": []string{"input"}, "additionalProperties": false}
+					fn["parameters"] = map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string", "description": customInputInstruction}}, "required": []string{"input"}, "additionalProperties": false}
 					if namespace == "" && name == "exec" {
 						// Codex's description leaves implicit that unprinted nested
 						// results never reach the model; other models miss it.
-						fn["description"] = fn["description"].(string) + "\n" + policy.ExecInstruction
+						fn["description"] = fn["description"].(string) + "\n" + execInstruction
 					}
 					if format, ok := def["format"]; ok {
-						fn["description"] = fn["description"].(string) + "\n" + policy.FormatInstructionPrefix + " " + string(format)
+						fn["description"] = fn["description"].(string) + "\n" + formatPrefixInstruction + " " + string(format)
 					}
 				}
 				tools = append(tools, fn)

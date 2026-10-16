@@ -98,14 +98,14 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 							providerDone <- send(terminal)
 						}))
 						defer upstream.Close()
-						client := newProviderClient(upstream.URL, upstream.Client())
+						client := newTestProviderClient(upstream.URL, upstream.Client())
 						if upstreamWS {
-							client.openai.EnableWebSockets(ctx)
-							defer client.openai.Close()
+							client.OpenAI.EnableWebSockets(ctx)
+							defer client.OpenAI.Close()
 						}
-						var handler http.Handler = responsesHandler(ctx, time.Second, client, nil, proxy)
+						var handler http.Handler = testResponsesHandler(ctx, time.Second, client, nil, proxy)
 						if downstreamWS {
-							endpoint := responsesWebSocketHandler(ctx, time.Second, client, nil, proxy)
+							endpoint := testWebSocketEndpoint(ctx, time.Second, client, nil, proxy)
 							defer endpoint.Close()
 							handler = endpoint
 						}

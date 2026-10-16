@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/frontends"
@@ -51,13 +53,13 @@ type mchangesNestedCodexProvider struct {
 	workspace                 string
 }
 
-func (p *mchangesNestedCodexProvider) forwardExecution(
+func (p *mchangesNestedCodexProvider) ForwardExecution(
 	ctx context.Context,
 	_ context.Context,
 	body []byte,
 	headers http.Header,
 	_ string,
-) (*http.Response, error) {
+) (*inferencegateway.Response, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.turns++
@@ -79,10 +81,10 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 		if !bytes.Contains(body, []byte(applyPatchToolName)) || !bytes.Contains(body, []byte(nativeExecCommandToolName)) {
 			return nil, fmt.Errorf("Codex request does not advertise both nested stock tools")
 		}
-		return mchangesNestedCodexResponse(p.turns, map[string]any{
+		return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{
 			"type": "custom_tool_call", "id": p.callID + "-item", "call_id": p.callID,
 			"name": "exec", "status": "completed", "input": p.program,
-		}), nil
+		}), nil)
 	}
 	if p.turns > 8 {
 		return nil, fmt.Errorf("unexpected provider turn %d", p.turns)
@@ -136,7 +138,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 			p.sawPending = true
 			p.processWait = true
 			p.waitCall = "nested-process-wait"
-			return mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "write_stdin", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"session_id": session, "chars": "", "yield_time_ms": 10000}))}), nil
+			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "write_stdin", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"session_id": session, "chars": "", "yield_time_ms": 10000}))}), nil)
 		}
 		if cell != "" {
 			if p.expectPending {
@@ -152,7 +154,7 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 				p.sawPending = true
 			}
 			p.waitCall = fmt.Sprintf("nested-wait-%d", p.turns)
-			return mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil
+			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil)
 		}
 		p.resultSeen = terminal
 		break
@@ -160,10 +162,10 @@ func (p *mchangesNestedCodexProvider) forwardExecution(
 	if !p.resultSeen {
 		return nil, fmt.Errorf("Codex did not return the completed exec cell result: %.3000s", body)
 	}
-	return mchangesNestedCodexResponse(p.turns, map[string]any{
+	return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{
 		"type": "message", "id": p.callID + "-final", "role": "assistant", "status": "completed",
 		"content": []any{map[string]any{"type": "output_text", "text": p.finalMessage}},
-	}), nil
+	}), nil)
 }
 
 func mchangesNestedCodexResponse(turn int, item map[string]any) *http.Response {
@@ -528,7 +530,7 @@ func runMChangesNestedCodexCell(
 	proxy.replayStore = store
 	proxy.nativeTrace = nativetrace.New(traceRoot)
 	provider.trace = proxy.nativeTrace
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
 	defer server.Close()
 	config := `model_providers.mchanges_fixture={name="mchanges_fixture",base_url=` +
 		strconv.Quote(server.URL+"/v1") + `,wire_api="responses",requires_openai_auth=false}`

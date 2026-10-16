@@ -35,7 +35,7 @@ func TestCodexAuxiliaryRoutesPreserveNativeOperations(t *testing.T) {
 			}
 			headers.Set("X-Unrelated-Caller-Data", "private")
 			calls := 0
-			provider := newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
+			provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 				calls++
 				if request.Method != http.MethodPost || request.URL.String() != testProviderBaseURL+"/"+path+"?cursor=a%2Fb&cursor=c" {
 					t.Errorf("upstream request = %s %s", request.Method, request.URL)
@@ -100,7 +100,7 @@ func TestCodexAuxiliaryDoesNotFollowRedirects(t *testing.T) {
 			}))
 			defer upstream.Close()
 			mux := http.NewServeMux()
-			registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, newProviderClient(upstream.URL, upstream.Client()))
+			registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, newTestProviderClient(upstream.URL, upstream.Client()))
 			request := httptest.NewRequest("POST", "/v1/alpha/notes/v2/append_to_file", bytes.NewBufferString(`{"text":"once"}`))
 			request.Header = codexAuthHeaders()
 			recorder := httptest.NewRecorder()
@@ -114,7 +114,7 @@ func TestCodexAuxiliaryDoesNotFollowRedirects(t *testing.T) {
 
 func TestCodexAuxiliaryPreservesEncodedStream(t *testing.T) {
 	body := codexZstdBody(t, []byte(`{"input":"opaque"}`))
-	provider := newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
+	provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 		got, err := io.ReadAll(request.Body)
 		if err != nil || !bytes.Equal(got, body) || request.Header.Get("Content-Encoding") != "zstd" || request.ContentLength != -1 || request.GetBody != nil {
 			t.Errorf("stream changed: body=%q error=%v encoding=%q length=%d replayable=%t", got, err, request.Header.Get("Content-Encoding"), request.ContentLength, request.GetBody != nil)
@@ -146,8 +146,8 @@ func TestCodexAuxiliaryRejectsUnsupportedRequests(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			calls := 0
-			provider := newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse("{}"), nil })})
-			provider.thirdPartyOnly = test.thirdParty
+			provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse("{}"), nil })})
+			provider.ThirdPartyOnly = test.thirdParty
 			mux := http.NewServeMux()
 			registerCodexAuxiliaryRoutes(mux, t.Context(), time.Minute, provider)
 			request := httptest.NewRequest(test.method, test.path, bytes.NewBufferString("{}"))
@@ -167,7 +167,7 @@ func TestCodexAuxiliaryFailuresNeverRetryWrites(t *testing.T) {
 	for _, transportFailure := range []bool{false, true} {
 		t.Run(map[bool]string{false: "upstream rejection", true: "transport failure"}[transportFailure], func(t *testing.T) {
 			calls := 0
-			provider := newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+			provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				calls++
 				if transportFailure {
 					return nil, errors.New("connection failed")
@@ -200,7 +200,7 @@ func TestCodexAuxiliaryFailuresNeverRetryWrites(t *testing.T) {
 func TestCodexAuxiliaryResponseStartTimeoutCancelsUpstream(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		calls := 0
-		provider := newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
+		provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 			calls++
 			<-request.Context().Done()
 			return nil, request.Context().Err()

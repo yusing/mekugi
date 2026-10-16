@@ -15,6 +15,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -107,9 +109,9 @@ type responseStoragePressureProvider struct {
 	fill func()
 }
 
-func (p *responseStoragePressureProvider) forwardExecution(ctx, requestCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
+func (p *responseStoragePressureProvider) ForwardExecution(ctx, requestCtx context.Context, body []byte, headers http.Header, cacheKey string) (*inferencegateway.Response, error) {
 	p.fill()
-	return p.serverFakeProvider.forwardExecution(ctx, requestCtx, body, headers, cacheKey)
+	return p.serverFakeProvider.ForwardExecution(ctx, requestCtx, body, headers, cacheKey)
 }
 
 func startResponseRetentionWorker(t *testing.T, store *mekugiReplayStore) {

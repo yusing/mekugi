@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -36,15 +38,13 @@ func executeRequest(
 	request codexresponses.Request,
 	headers http.Header,
 	sessionID string,
-	provider responseProvider,
+	provider inferencegateway.Forwarder,
 	output io.Writer,
 	issues *CriticalErrors,
 	mekugiCalls *mekugiProxy,
 ) error {
-	executor := requestExecutor{
-		provider: provider, output: output, issues: issues,
-		mekugiCalls: mekugiCalls,
-	}
+	executor := testRequestExecutor(provider, issues, mekugiCalls)
+	executor.output = output
 	return executor.execute(ctx, executionCtx, request, headers, sessionID)
 }
 
@@ -91,7 +91,7 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 						}
 						provider.results = append(provider.results, serverForwardResult{response: response})
 					}
-					handler := responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, nil)
+					handler := testResponsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, nil)
 					for range 3 {
 						req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 						req.Header = headers.Clone()

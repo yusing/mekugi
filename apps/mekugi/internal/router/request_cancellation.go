@@ -4,14 +4,11 @@ import (
 	"context"
 	"errors"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
-)
-
-var (
-	errRouterShutdown       = errors.New("router shutdown")
-	errResponseStartTimeout = errors.New("response start timeout")
 )
 
 // A downstream context cancellation is not proof of an explicit user abort.
@@ -21,9 +18,9 @@ func requestCancellationCause(execution context.Context, err error) string {
 		return ""
 	}
 	switch {
-	case errors.Is(err, context.Canceled) && errors.Is(context.Cause(execution), errRouterShutdown):
+	case errors.Is(err, context.Canceled) && errors.Is(context.Cause(execution), inferencegateway.ErrShutdown):
 		return "router_shutdown"
-	case errors.Is(err, context.DeadlineExceeded) && errors.Is(err, errResponseStartTimeout):
+	case errors.Is(err, context.DeadlineExceeded) && errors.Is(err, inferencegateway.ErrStartTimeout):
 		return "response_start_timeout"
 	case errors.Is(err, codexresponses.ErrDownstreamDisconnected):
 		return "downstream_disconnected"
@@ -39,12 +36,4 @@ func requestCancellationCause(execution context.Context, err error) string {
 		return "deadline_unknown"
 	}
 	return ""
-}
-
-// Propagate only our owned cause, not arbitrary parent cancellation text.
-func withRequestStartCause(ctx context.Context, err error) error {
-	if err != nil && ctx.Err() != nil && errors.Is(err, ctx.Err()) && errors.Is(context.Cause(ctx), errResponseStartTimeout) {
-		return errors.Join(err, errResponseStartTimeout)
-	}
-	return err
 }

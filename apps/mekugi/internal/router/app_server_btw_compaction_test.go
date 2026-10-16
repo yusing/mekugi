@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -50,8 +52,8 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	provider := &serverFakeProvider{}
 	var output bytes.Buffer
 	err := executeRequest(t.Context(), t.Context(), request, headers, "side", provider, &output, nil, proxy)
-	compatibility, ok := errors.AsType[*requestCompatibilityError](err)
-	if !ok || compatibility.code != "btw_compaction_required" || compatibility.message != conversationmodel.SideCompactionRequired {
+	compatibility, ok := errors.AsType[*inferencegateway.CompatibilityError](err)
+	if !ok || compatibility.Code != "btw_compaction_required" || compatibility.Message != conversationmodel.SideCompactionRequired {
 		t.Fatalf("rejection = %v", err)
 	}
 	if len(provider.forwarded) != 0 || output.Len() != 0 {
@@ -60,7 +62,7 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 	httpRequest.Header = headers
 	recorder := httptest.NewRecorder()
-	responsesHandler(t.Context(), time.Second, provider, nil, proxy)(recorder, httpRequest)
+	testResponsesHandler(t.Context(), time.Second, provider, nil, proxy)(recorder, httpRequest)
 	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), conversationmodel.SideCompactionRequired) {
 		t.Fatalf("HTTP rejection: %d %s", recorder.Code, recorder.Body.String())
 	}

@@ -38,10 +38,10 @@ func TestCodexMekugiGrammarE2E(t *testing.T) {
 	gitPath := requireExecutable(t, "git")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	server := httptest.NewServer(responsesHandler(
+	server := httptest.NewServer(testResponsesHandler(
 		t.Context(),
 		10*time.Minute,
-		newProviderClient(openai.BaseURL, nil),
+		newTestProviderClient(openai.BaseURL, nil),
 		nil,
 		newManagedMekugiProxy(t),
 	))

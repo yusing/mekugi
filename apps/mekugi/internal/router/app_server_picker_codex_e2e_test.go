@@ -60,7 +60,7 @@ func TestComposerPickersNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appResumeProvider{}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	environment := routerFaultCodexEnvironment(t)
 	newCommand := func(ctx context.Context) *exec.Cmd {

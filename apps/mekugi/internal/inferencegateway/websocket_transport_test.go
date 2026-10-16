@@ -1,13 +1,16 @@
-package router
+package inferencegateway
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestWebSocketOutputFragmentedWrites(t *testing.T) {
@@ -32,8 +35,8 @@ func TestWebSocketOutputFragmentedWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
-	w := &webSocketOutput{exchange: &webSocketExchange{
-		state: confirmedHistoryExchange(t, nil, false),
+	w := &webSocketOutput{exchange: &Exchange{
+		State: confirmedHistoryExchange(t, nil, false),
 		ctx:   t.Context(), session: &responsesWebSocket{downstream: conn},
 	}}
 	want := []byte("{\"type\":\"response.output_text.delta\",\n\"delta\":\"hello 世界\"}")
@@ -64,4 +67,34 @@ func TestWebSocketOutputFragmentedWrites(t *testing.T) {
 	if w.buffer.Len() != 0 {
 		t.Fatalf("unconsumed framing: %q", w.buffer.String())
 	}
+}
+
+func confirmedHistoryExchange(t *testing.T, input []jsontext.Value, automatic bool) *codexresponses.SessionExchange {
+	t.Helper()
+	var session codexresponses.SessionHistory
+	parent, request, err := session.Prepare(responses.MustMarshalJSON(map[string]any{"model": "gpt-test", "input": input}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.BeginProvider(request.Fields); err != nil {
+		t.Fatal(err)
+	}
+	terminal := []byte(`{"type":"response.completed","response":{"id":"parent","output":[]}}`)
+	if err := parent.ObserveProvider(terminal); err != nil {
+		t.Fatal(err)
+	}
+	if err := parent.ObserveOutput(terminal); err != nil {
+		t.Fatal(err)
+	}
+	command := responses.MustMarshalJSON(map[string]any{"previous_response_id": "parent", "input": []any{}})
+	var first []byte
+	if automatic {
+		command = nil
+		first = []byte(`{"type":"response.created","response":{"id":"next","previous_response_id":"parent"}}`)
+	}
+	exchange, _, err := session.Prepare(command, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return exchange
 }

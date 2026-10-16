@@ -131,12 +131,12 @@ func testAppServerBuiltInOpenAI(t *testing.T, fallback bool) {
 	proxy := newManagedMekugiProxy(t)
 	// Use the same durable replay store as production.
 	attachTestReplayStore(t, proxy)
-	providerClient := newProviderClient(upstream.URL, upstream.Client())
-	providerClient.openai.EnableWebSockets(t.Context())
-	defer providerClient.openai.Close()
-	ws := responsesWebSocketHandler(t.Context(), time.Minute, providerClient, nil, proxy)
+	providerClient := newTestProviderClient(upstream.URL, upstream.Client())
+	providerClient.OpenAI.EnableWebSockets(t.Context())
+	defer providerClient.OpenAI.Close()
+	ws := testWebSocketEndpoint(t.Context(), time.Minute, providerClient, nil, proxy)
 	defer ws.Close()
-	httpResponses := responsesHandler(t.Context(), time.Minute, providerClient, nil, proxy)
+	httpResponses := testResponsesHandler(t.Context(), time.Minute, providerClient, nil, proxy)
 	downstream := make(chan string, 32)
 	router := httptest.NewServer(capture.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Deterministic fixture credentials terminate at the local mock.

@@ -5,6 +5,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -35,7 +37,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appServerChildMetadataProvider{turns: make(map[string]int)}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
@@ -112,7 +114,7 @@ type appServerChildMetadataProvider struct {
 	turns map[string]int
 }
 
-func (p *appServerChildMetadataProvider) forwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*http.Response, error) {
+func (p *appServerChildMetadataProvider) ForwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*inferencegateway.Response, error) {
 	metadata, _ := decodeCodexTurnMetadata(headers)
 	thread := headers.Get(codexresponses.ThreadIDHeader)
 	if thread == "" {
@@ -172,5 +174,5 @@ func (p *appServerChildMetadataProvider) forwardExecution(_, _ context.Context, 
 	}
 	result := serverHTTPResponse(wire.String())
 	result.Header.Set("Content-Type", "text/event-stream")
-	return result, nil
+	return testGatewayResponse(result, nil)
 }

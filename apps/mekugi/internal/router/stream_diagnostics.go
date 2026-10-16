@@ -5,6 +5,8 @@ import (
 	"io"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/coder/websocket"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -31,8 +33,8 @@ func (r diagnosticStreamReader) Read(buffer []byte) (int, error) {
 
 // Request rejections pass through transport classification unchanged.
 func streamTerminationCode(err error) string {
-	if rejection, ok := errors.AsType[*requestCompatibilityError](err); ok {
-		return rejection.code
+	if rejection, ok := errors.AsType[*inferencegateway.CompatibilityError](err); ok {
+		return rejection.Code
 	}
 	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err)); ok {
 		return diagnostic.code

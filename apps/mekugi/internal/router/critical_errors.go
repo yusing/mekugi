@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
 	"github.com/yusing/mekugi/modules/diagnostics/diagnostic"
@@ -76,7 +78,7 @@ func criticalDiagnostic(err error, code, summary string, distinct bool) error {
 // Classify wrapped transport errors with stable codes and actionable summaries.
 // Complete error detail remains available to notices and private diagnostics.
 func forwardCriticalDiagnostic(err error) error {
-	if _, ok := errors.AsType[*requestCompatibilityError](err); ok {
+	if _, ok := errors.AsType[*inferencegateway.CompatibilityError](err); ok {
 		return err
 	}
 	code, summary := "upstream_transport_unknown", "the upstream transport failed without a recognized error type"
@@ -111,13 +113,13 @@ func forwardCriticalDiagnostic(err error) error {
 			}
 		}
 	}
-	if rejection, ok := errors.AsType[*webSocketStatusError](err); ok {
-		code = fmt.Sprintf("upstream_websocket_http_%d", rejection.status)
-		summary = fmt.Sprintf("the upstream WebSocket handshake was rejected with HTTP %d", rejection.status)
+	if rejection, ok := errors.AsType[*inferencegateway.WebSocketStatusError](err); ok {
+		code = fmt.Sprintf("upstream_websocket_http_%d", rejection.Status)
+		summary = fmt.Sprintf("the upstream WebSocket handshake was rejected with HTTP %d", rejection.Status)
 	}
-	if rejection, ok := errors.AsType[*providerHTTPError](err); ok {
-		code = fmt.Sprintf("upstream_provider_http_%d", rejection.status)
-		summary = fmt.Sprintf("the provider rejected the request with HTTP %d", rejection.status)
+	if rejection, ok := errors.AsType[*inferencegateway.ProviderHTTPError](err); ok {
+		code = fmt.Sprintf("upstream_provider_http_%d", rejection.Status)
+		summary = fmt.Sprintf("the provider rejected the request with HTTP %d", rejection.Status)
 	}
 	return criticalDiagnostic(err, code, summary, true)
 }
@@ -153,16 +155,16 @@ func (c *CriticalErrors) record(f *requestFinalization, err error) {
 	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok {
 		f.diagnosticCode = diagnostic.code
 	}
-	if compatibility, ok := errors.AsType[*requestCompatibilityError](err); ok {
-		f.diagnosticCode = compatibility.code
+	if compatibility, ok := errors.AsType[*inferencegateway.CompatibilityError](err); ok {
+		f.diagnosticCode = compatibility.Code
 	}
 	category := string(f.failurePhase)
 	message := "Mekugi could not complete the request. Retry the turn; if it persists, restart the session."
 	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](err); ok && diagnostic.callerDetail != "" {
 		category, message = diagnostic.code+":"+f.diagnosticReference, diagnostic.callerDetail
-	} else if compatibility, ok := errors.AsType[*requestCompatibilityError](err); ok {
-		category, message = compatibility.code, compatibility.Error()
-	} else if rejection, ok := errors.AsType[*providerHTTPError](err); ok {
+	} else if compatibility, ok := errors.AsType[*inferencegateway.CompatibilityError](err); ok {
+		category, message = compatibility.Code, compatibility.Error()
+	} else if rejection, ok := errors.AsType[*inferencegateway.ProviderHTTPError](err); ok {
 		category, message = "provider_http_error:"+f.diagnosticReference, rejection.Error()
 	} else {
 		switch {
@@ -313,11 +315,4 @@ func (c *CriticalErrors) takeNative(root string, activity *subagentActivity) *no
 		activity.mu.Unlock()
 	}
 	return c.Notices.Claim(root, descendants)
-}
-
-type requestCompatibilityError struct{ code, message string }
-
-func (e *requestCompatibilityError) Error() string { return "Mekugi " + e.code + ": " + e.message }
-func incompatibleRequest(code, message string) error {
-	return &requestCompatibilityError{code: code, message: message}
 }

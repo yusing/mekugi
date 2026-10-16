@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/providers/grok"
 )
 
@@ -34,7 +36,7 @@ func TestGrokOAuthRetryRetainsTransportCause(t *testing.T) {
 				cause = context.Canceled
 			}
 			calls := 0
-			client := &grokClient{auth: auth, httpClient: &http.Client{Transport: grokTestTransport(func(r *http.Request) (*http.Response, error) {
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Auth: auth, HTTPClient: &http.Client{Transport: grokTestTransport(func(r *http.Request) (*http.Response, error) {
 				calls++
 				if calls == 1 {
 					response := serverHTTPResponse("rejected token")
@@ -51,7 +53,7 @@ func TestGrokOAuthRetryRetainsTransportCause(t *testing.T) {
 				}
 				return nil, cause
 			})}}
-			response, err := client.forwardExecution(ctx, ctx, grokTestRequest(t, true), grokTestHeaders())
+			response, err := client.ForwardExecution(ctx, ctx, grokTestRequest(t, true), grokTestHeaders())
 			if response != nil {
 				response.Body.Close()
 				t.Fatal("failed retry returned a response")

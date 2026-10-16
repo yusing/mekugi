@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	"github.com/coder/websocket"
@@ -55,11 +57,11 @@ func TestGrokEncryptedHistoryCompatibility(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			body := []byte(`{"model":"grok:grok-4.6","input":` + input + `}`)
 			// No auth or HTTP client: rejection must happen before either is used.
-			client := &grokClient{}
-			_, err := client.forwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
+			client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics()}
+			_, err := client.ForwardExecution(t.Context(), t.Context(), body, grokTestHeaders())
 			err = fmt.Errorf("execute request: %w", forwardCriticalDiagnostic(err))
-			compatibility, ok := errors.AsType[*requestCompatibilityError](err)
-			if !ok || compatibility.code != "grok_encrypted_history" {
+			compatibility, ok := errors.AsType[*inferencegateway.CompatibilityError](err)
+			if !ok || compatibility.Code != "grok_encrypted_history" {
 				t.Fatalf("wrong classification: %v", err)
 			}
 			issues := testCriticalErrors()
@@ -75,7 +77,7 @@ func TestGrokEncryptedHistoryCompatibility(t *testing.T) {
 			provider := &serverFakeProvider{results: []serverForwardResult{{err: err}}}
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-			responsesHandler(t.Context(), time.Second, provider, nil, nil)(recorder, request)
+			testResponsesHandler(t.Context(), time.Second, provider, nil, nil)(recorder, request)
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("compatibility rejection is retryable: %d %s", recorder.Code, recorder.Body.String())
 			}
@@ -129,7 +131,7 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 	}))
 	defer upstream.Close()
 	issues := testCriticalErrors()
-	endpoint := responsesWebSocketHandler(ctx, time.Second, newProviderClient(upstream.URL, upstream.Client()), issues, nil)
+	endpoint := testWebSocketEndpoint(ctx, time.Second, newTestProviderClient(upstream.URL, upstream.Client()), issues, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()
@@ -169,9 +171,9 @@ func TestResponsesWebSocketProviderErrorRecovery(t *testing.T) {
 func TestResponsesWebSocketGrokEncryptedHistoryStatus(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	provider := newProviderClient("http://unused.invalid", nil)
-	provider.grok = &grokClient{}
-	endpoint := responsesWebSocketHandler(ctx, time.Second, provider, nil, nil)
+	provider := newTestProviderClient("http://unused.invalid", nil)
+	provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics()}
+	endpoint := testWebSocketEndpoint(ctx, time.Second, provider, nil, nil)
 	defer endpoint.Close()
 	server := httptest.NewServer(endpoint)
 	defer server.Close()

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
@@ -25,7 +27,7 @@ type btwCompactionProvider struct {
 	mainTurns, sideTurns, compactions int
 }
 
-func (p *btwCompactionProvider) forwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*http.Response, error) {
+func (p *btwCompactionProvider) ForwardExecution(_, _ context.Context, _ []byte, headers http.Header, _ string) (*inferencegateway.Response, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	metadata, _ := decodeCodexTurnMetadata(headers)
@@ -60,7 +62,7 @@ func (p *btwCompactionProvider) forwardExecution(_, _ context.Context, _ []byte,
 	)
 	response := serverHTTPResponse(wire)
 	response.Header.Set("Content-Type", "text/event-stream")
-	return response, nil
+	return testGatewayResponse(response, nil)
 }
 
 func TestAppServerBTWCompactionNativeCodexE2E(t *testing.T) {
@@ -74,7 +76,7 @@ func TestAppServerBTWCompactionNativeCodexE2E(t *testing.T) {
 	provider := &btwCompactionProvider{}
 	var observationsMu sync.Mutex
 	rejectedSideCompactions := 0
-	handler := responsesHandler(t.Context(), time.Minute, provider, nil, proxy)
+	handler := testResponsesHandler(t.Context(), time.Minute, provider, nil, proxy)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		metadata, valid := decodeCodexTurnMetadata(r.Header)
 		thread := r.Header.Get(codexresponses.ThreadIDHeader)

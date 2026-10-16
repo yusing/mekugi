@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 )
 
 // Gates keep the provider response open until the actual terminal shows each
@@ -20,7 +22,7 @@ type appReasoningStreamProvider struct {
 	stages [3]chan struct{}
 }
 
-func (p *appReasoningStreamProvider) forwardExecution(_, ctx context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+func (p *appReasoningStreamProvider) ForwardExecution(_, ctx context.Context, _ []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
 	reader, writer := io.Pipe()
 	stop := context.AfterFunc(ctx, func() { _ = writer.CloseWithError(ctx.Err()) })
 	go func() {
@@ -62,7 +64,7 @@ func (p *appReasoningStreamProvider) forwardExecution(_, ctx context.Context, _ 
 			map[string]any{"type": "response.completed", "response": map[string]any{"id": "stream-response", "status": "completed", "output": []any{reason, answer}, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}},
 		)
 	}()
-	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}, nil
+	return testGatewayResponse(&http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}, nil)
 }
 
 func TestAppServerReasoningStreamNativeCodexE2E(t *testing.T) {
@@ -71,7 +73,7 @@ func TestAppServerReasoningStreamNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &appReasoningStreamProvider{stages: [3]chan struct{}{make(chan struct{}), make(chan struct{}), make(chan struct{})}}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, p, nil, nil))
 	defer server.Close()
 	environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {

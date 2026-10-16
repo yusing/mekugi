@@ -4,8 +4,9 @@
 
 Third-party models serve Main and native child agents without requiring child-only
 headers. Codex owns agents, messages, tools, permissions, sandboxing, interruption
-and continuation. The application selects and pins provider policy; provider
-implementations own credentials, metadata and inference transport. The
+and continuation. The application inference gateway selects and pins provider
+policy, binds HTTP and dedicated WebSocket exchanges, and owns downstream socket lifetime. Provider
+implementations own credentials, metadata and upstream transport. The
 [Codex adapter](../../backends/codex/responses/SPEC.md) owns wire translation and
 stream normalization. No provider adapter creates an agent runtime, decrypts
 foreign history or substitutes its own transcript or registry.
@@ -40,6 +41,54 @@ role restrictions, descriptions, required fields, validation and defaults, add n
 missing arguments, and never rewrite submitted arguments. Callers explicitly
 select fresh context and supply a self-contained assignment.
 
+## Selected adaptation policy
+
+The gateway resolves provider capabilities before calling the backend codec.
+Request preparation, execution admission, retained evidence, accounting and notices
+remain application consumers. Socket execution uses that same request pipeline;
+transport does not acquire a second execution or observation authority.
+
+### Grok
+
+Grok uses Chat Completions. Non-null `max_output_tokens` rejects locally: Chat completion limits exclude
+reasoning and cannot enforce a Responses total-output budget. Grok completion and
+reasoning counts combine into Responses output tokens, with reasoning retained as
+a breakdown rather than charged twice. Transport metrics describe the actual Chat exchange.
+
+Plaintext reasoning streams as Responses summaries but is not replayed to Grok.
+Encrypted reasoning/messages, opaque file IDs and provider-only history reject
+before inference. Fresh-context spawning avoids foreign encrypted history.
+
+### OpenCode
+
+[Launch](../../apps/mekugi/internal/launch/SPEC.md#model-catalog) owns the
+Codex catalog projection. Explicit supported reasoning efforts pass as Chat
+`reasoning_effort`, Responses `reasoning.effort` or Messages
+`output_config.effort`; structured output can coexist with effort. An absent or
+unsupported inherited value leaves provider defaults alone. `none` is forwarded
+only when advertised; toggle-only or token-budget-only controls are not efforts.
+
+Chat reasoning summaries are replayed on the corresponding assistant message,
+including tool-free and resumed turns. Messages thinking/signature/redacted blocks
+and Responses reasoning items use versioned, service/model-bound opaque envelopes
+that survive JSON persistence. They restore only on that route; foreign encrypted history fails locally.
+Visible Chat, Messages and Responses reasoning streams as received, including
+completed-item text when no deltas exist. The backend's item lifecycle preserves
+its order relative to the answer. Messages/Responses visible summaries belong to
+the same opaque item; closing without a replay envelope retains no summary-only
+reasoning, which those formats cannot restore.
+
+OpenCode completion counts already include reasoning; Responses output retains
+that total and exposes reasoning only as a breakdown. Missing usage remains
+missing. Messages input includes uncached input plus cache reads/writes, and its
+output includes thinking. Messages requires a generation ceiling, defaulting to
+32,768 tokens; an explicit total-output budget maps to `max_tokens`. Responses
+preserves the requested total budget; Chat rejects incompatible total budgets.
+
+Transport capture keeps opaque reasoning separate from user-visible text. Each
+exchange retains its selected [price metadata](../../providers/opencode/SPEC.md#reference-prices)
+through accounting, even if the catalog refreshes during the request.
+
 ## Isolation and failure
 
 Provider credentials, refresh, clients and redirects remain isolated from OpenAI.
@@ -56,8 +105,8 @@ further truncate those details. Sanitized metrics and capture keep classificatio
 only, never credentials, prompts or provider error text. Explicit Chat, Messages
 and Responses stream errors follow this policy even for non-stream clients.
 
-Unsupported or foreign encrypted history is a local compatibility error, not a
-retryable transport failure, and directs the caller to fresh context. Native call
+Unsupported or foreign encrypted history is a local compatibility error with
+HTTP/WebSocket status 400, not a retryable transport failure, and directs the caller to fresh context. Native call
 identities and argument bytes survive translation and replay. Complete arguments
 are validated before executable calls are exposed; malformed terminals, unfinished
 calls and truncated streams cannot become successful results. Cancellation and

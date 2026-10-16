@@ -1,4 +1,6 @@
-package router
+package inferencegateway
+
+// Source: apps/mekugi/internal/router/provider_http_error.go:1:106@[bd606c09] provider errors.
 
 import (
 	"encoding/json/jsontext"
@@ -9,17 +11,17 @@ import (
 )
 
 // Provider details are included in the caller-facing error and failure records.
-type providerHTTPError struct {
-	status int
+type ProviderHTTPError struct {
+	Status int
 	label  string
 	detail string
 	raw    string
 }
 
-func (e *providerHTTPError) Error() string {
+func (e *ProviderHTTPError) Error() string {
 	message := e.label + ": " + e.detail
-	if e.status != 0 {
-		message = fmt.Sprintf("%s returned HTTP %d: %s", e.label, e.status, e.detail)
+	if e.Status != 0 {
+		message = fmt.Sprintf("%s returned HTTP %d: %s", e.label, e.Status, e.detail)
 	}
 	if e.raw != "" && e.raw != e.detail {
 		message += "\nRaw response: " + e.raw
@@ -27,7 +29,7 @@ func (e *providerHTTPError) Error() string {
 	return message
 }
 
-func newProviderHTTPError(label string, status int, body []byte) error {
+func NewProviderHTTPError(label string, status int, body []byte) error {
 	raw := string(body)
 	detail := strings.TrimSpace(string(body))
 	var envelope struct {
@@ -68,12 +70,12 @@ func newProviderHTTPError(label string, status int, body []byte) error {
 	if detail == "" {
 		detail = http.StatusText(status)
 	}
-	return &providerHTTPError{status: status, label: label, detail: detail, raw: raw}
+	return &ProviderHTTPError{Status: status, label: label, detail: detail, raw: raw}
 }
 
-// terminalProviderError extracts caller-facing details without exporting them
+// TerminalProviderError extracts caller-facing details without exporting them
 // through sanitized stream diagnostics or changing delivery of the original event.
-func terminalProviderError(payload []byte, stream bool) error {
+func TerminalProviderError(payload []byte, stream bool) error {
 	var envelope struct {
 		Status   int            `json:"status"`
 		Response jsontext.Value `json:"response"`
@@ -102,5 +104,13 @@ func terminalProviderError(payload []byte, stream bool) error {
 	if (len(detail.Error) == 0 || string(detail.Error) == "null") && detail.Message == "" {
 		return nil
 	}
-	return newProviderHTTPError("Upstream response failed", status, body)
+	return NewProviderHTTPError("Upstream response failed", status, body)
+}
+
+// CompatibilityError rejects an unsupported model request before inference.
+type CompatibilityError struct{ Code, Message string }
+
+func (e *CompatibilityError) Error() string { return "Mekugi " + e.Code + ": " + e.Message }
+func IncompatibleRequest(code, message string) error {
+	return &CompatibilityError{Code: code, Message: message}
 }

@@ -819,11 +819,8 @@ const nativePreviewGrokReasoning = "The pane blocks on its first frame, so Launc
 // router's own translation, one provider chunk per step, and reports the
 // resulting reasoning item the way Codex app-server does.
 func (p *nativePreview) grokThink(thread, reasoning string) {
-	tr, err := translateProviderRequest(mustTestJSON(p.t, map[string]any{"model": nativePreviewGrokModel, "stream": true,
-		"input": []any{map[string]string{"role": "user", "content": "Unblock the pane"}}}), nil)
-	if err != nil {
-		p.t.Fatal(err)
-	}
+	request := mustTestJSON(p.t, map[string]any{"model": nativePreviewGrokModel, "stream": true,
+		"input": []any{map[string]string{"role": "user", "content": "Unblock the pane"}}})
 	var chunks []any
 	words := strings.SplitAfter(reasoning, " ")
 	for len(words) > 0 {
@@ -833,10 +830,10 @@ func (p *nativePreview) grokThink(thread, reasoning string) {
 	}
 	chunks = append(chunks, map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{}, "finish_reason": "stop"}}})
 	var events []map[string]any
-	if _, err := tr.codec.Read(strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
+	if _, err := readGrokTestEvents(p.t, request, strings.NewReader(grokTestSSE(chunks...)), func(event map[string]any) error {
 		events = append(events, event)
 		return nil
-	}, grokTestFailureDetail); err != nil {
+	}); err != nil {
 		p.t.Fatal(err)
 	}
 	for _, event := range events {
@@ -844,7 +841,7 @@ func (p *nativePreview) grokThink(thread, reasoning string) {
 		appServerItem := func() map[string]any {
 			var summary []string
 			for _, part := range item["summary"].([]any) {
-				summary = append(summary, part.(map[string]string)["text"])
+				summary = append(summary, part.(map[string]any)["text"].(string))
 			}
 			return map[string]any{"id": item["id"], "type": "reasoning", "summary": summary, "content": []string{}}
 		}

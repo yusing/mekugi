@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
@@ -15,7 +17,7 @@ type sessionTitleUpdate struct{ thread, name string }
 // Feature policy lives only in each registered bundle, including across switches.
 type sessionNaming struct {
 	ctx          context.Context
-	provider     responseProvider
+	provider     inferencegateway.Forwarder
 	usage        *accounting.Service
 	registration *binding.SessionNaming
 	updates      chan sessionTitleUpdate
@@ -23,7 +25,7 @@ type sessionNaming struct {
 	threads      map[string]binding.ThreadNaming
 }
 
-func newSessionNaming(ctx context.Context, provider responseProvider, registration *binding.SessionNaming) *sessionNaming {
+func newSessionNaming(ctx context.Context, provider inferencegateway.Forwarder, registration *binding.SessionNaming) *sessionNaming {
 	if registration == nil {
 		return nil
 	}

@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
@@ -115,10 +117,10 @@ func TestThirdPartyResumeModelNativeCodexE2E(t *testing.T) {
 				io.WriteString(w, grokTestSSE(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]string{"content": fmt.Sprintf("RESUME_OK_%d", index)}, "finish_reason": "stop"}}}))
 			}))
 			defer upstream.Close()
-			provider := newProviderClient("http://unused.invalid", nil)
-			provider.thirdPartyOnly = true
-			provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "resume-fixture-only", httptransport.Client(nil)), unprefixed: unprefixed}
-			handler := responsesHandler(t.Context(), time.Minute, provider, nil, nil)
+			provider := newTestProviderClient("http://unused.invalid", nil)
+			provider.ThirdPartyOnly = true
+			provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "resume-fixture-only", httptransport.Client(nil)), Unprefixed: unprefixed}
+			handler := testResponsesHandler(t.Context(), time.Minute, provider, nil, nil)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("Authorization") != "" || r.Header.Get(openai.AccountIDHeader) != "" {
 					t.Error("third-party resume attached Codex authentication")

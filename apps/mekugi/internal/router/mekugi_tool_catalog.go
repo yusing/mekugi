@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -72,7 +74,7 @@ func prepareStockExecution(fields map[string]json.RawMessage, catalog *codexresp
 			result = &executionOwner{group: group, section: section, toolIndex: index, name: tool.Name(),
 				command: strings.Contains(stockDescription, "tools.exec_command") || codeModeDeclaresExecutionTool(stockDescription, "exec_command")}
 		case applyPatchToolName, nativeExecCommandToolName:
-			return incompatibleRequest("unsupported_execution_interface", "This model does not expose the required exec interface. Select a model that supports exec.")
+			return inferencegateway.IncompatibleRequest("unsupported_execution_interface", "This model does not expose the required exec interface. Select a model that supports exec.")
 		}
 		return nil
 	}

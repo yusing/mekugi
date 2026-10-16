@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/creack/pty"
@@ -26,7 +28,7 @@ type appSettingsProvider struct {
 	once     sync.Once
 }
 
-func (p *appSettingsProvider) forwardExecution(ctx, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+func (p *appSettingsProvider) ForwardExecution(ctx, _ context.Context, body []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
 	p.requests <- append([]byte(nil), body...)
 	var err error
 	p.once.Do(func() {
@@ -39,7 +41,7 @@ func (p *appSettingsProvider) forwardExecution(ctx, _ context.Context, body []by
 	if err != nil {
 		return nil, err
 	}
-	return routerFaultCodexSuccessResponse(), nil
+	return testGatewayResponse(routerFaultCodexSuccessResponse(), nil)
 }
 
 // A captured inference stays blocked while real Codex accepts the live update.
@@ -50,7 +52,7 @@ func TestAppServerLiveSettingsNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := &appSettingsProvider{requests: make(chan []byte, 8), release: make(chan struct{})}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, p, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, p, nil, nil))
 	defer server.Close()
 	defer func() {
 		select {
@@ -138,7 +140,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, &appPreviewProvider{}, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, &appPreviewProvider{}, nil, nil))
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()

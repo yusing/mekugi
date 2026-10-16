@@ -13,6 +13,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/modules/conversation/composer"
@@ -245,11 +247,10 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
-	provider := newProviderClient(upstream.URL, upstream.Client())
+	provider := newTestProviderClient(upstream.URL, upstream.Client())
 	g := newTestSessionNaming(t.Context(), provider)
-	provider.titleGenerator = g
 	g.register(appServerThreadInfo{ID: "main"})
-	handler := responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, provider, nil, nil)
+	handler := responsesHandler(t.Context(), launchoptions.DefaultRequestTimeout, requestExecutor{provider: provider, client: provider, titleGenerator: g})
 	request := modelTestRequest(t, "gpt-6-sol")
 	request.Fields["input"] = mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Private host instructions"},
@@ -335,7 +336,7 @@ func TestSessionTitleSkipsWithoutCodexAccess(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				var calls atomic.Int32
-				var provider responseProvider = serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
+				var provider inferencegateway.Forwarder = serverProviderFunc(func(_, _ context.Context, _ []byte, _ http.Header, _ string) (*http.Response, error) {
 					calls.Add(1)
 					return serverHTTPResponse(generatedTitleResponse), nil
 				})

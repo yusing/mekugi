@@ -56,11 +56,11 @@ func TestProviderWebSocketAncillaryResponseStatus(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer recorder.Close()
-				client := newProviderClient(upstream.URL, upstream.Client())
-				client.openai.EnableWebSockets(t.Context())
-				defer client.openai.Close()
+				client := newTestProviderClient(upstream.URL, upstream.Client())
+				client.OpenAI.EnableWebSockets(t.Context())
+				defer client.OpenAI.Close()
 				handler := recorder.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					response, err := client.forwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":`+strconv.FormatBool(stream)+`,"input":[]}`), codexAuthHeaders(), "session")
+					response, err := client.ForwardExecution(r.Context(), r.Context(), []byte(`{"model":"model","stream":`+strconv.FormatBool(stream)+`,"input":[]}`), codexAuthHeaders(), "session")
 					if err != nil {
 						t.Error(err)
 						w.WriteHeader(502)
@@ -140,14 +140,14 @@ func TestProviderWebSocketAncillaryStartDeadline(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
 	responseCtx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	startCtx, cancelStart := context.WithTimeout(responseCtx, 200*time.Millisecond)
 	defer cancelStart()
-	response, err := client.forwardExecution(startCtx, responseCtx, []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
+	response, err := client.ForwardExecution(startCtx, responseCtx, []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 	if response != nil {
 		response.Body.Close()
 	}
@@ -176,12 +176,12 @@ func TestProviderWebSocketAncillaryPrefixBudget(t *testing.T) {
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	client := newProviderClient(upstream.URL, upstream.Client())
-	client.openai.EnableWebSockets(t.Context())
-	defer client.openai.Close()
+	client := newTestProviderClient(upstream.URL, upstream.Client())
+	client.OpenAI.EnableWebSockets(t.Context())
+	defer client.OpenAI.Close()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	response, err := client.forwardExecution(ctx, ctx, []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
+	response, err := client.ForwardExecution(ctx, ctx, []byte(`{"model":"model","stream":true,"input":[]}`), codexAuthHeaders(), "session")
 	if response != nil {
 		response.Body.Close()
 	}

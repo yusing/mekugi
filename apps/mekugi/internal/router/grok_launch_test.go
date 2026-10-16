@@ -1,15 +1,15 @@
 package router
 
 import (
-	"bytes"
 	json "encoding/json/v2"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
-	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/httptransport"
@@ -19,9 +19,9 @@ import (
 
 func TestGrokLaunchRejectsWrongNamespacesAndOpenAI(t *testing.T) {
 	for _, unprefixed := range []bool{false, true} {
-		provider := newProviderClient("http://unused.invalid", nil)
-		provider.thirdPartyOnly = true
-		provider.grok = &grokClient{unprefixed: unprefixed, auth: grok.NewAuth("", "test", httptransport.Client(nil)), httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+		provider := newTestProviderClient("http://unused.invalid", nil)
+		provider.ThirdPartyOnly = true
+		provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), Unprefixed: unprefixed, Auth: grok.NewAuth("", "test", httptransport.Client(nil)), HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			t.Fatal("wrong-mode model reached a provider")
 			return nil, nil
 		})}}
@@ -30,26 +30,11 @@ func TestGrokLaunchRejectsWrongNamespacesAndOpenAI(t *testing.T) {
 			wrongModel = "grok:grok-4.7"
 		}
 		for _, model := range []string{wrongModel, "gpt-6-sol"} {
-			_, err := provider.forwardExecution(t.Context(), t.Context(), mustTestJSON(t, map[string]any{"model": model, "input": []any{}}), grokTestHeaders(), "")
-			if _, ok := err.(*requestCompatibilityError); !ok {
+			_, err := provider.ForwardExecution(t.Context(), t.Context(), mustTestJSON(t, map[string]any{"model": model, "input": []any{}}), grokTestHeaders(), "")
+			if _, ok := err.(*inferencegateway.CompatibilityError); !ok {
 				t.Fatalf("wrong-mode %s did not reject locally: %v", model, err)
 			}
 		}
-	}
-}
-
-func TestGrokDedicatedSpawnGuidance(t *testing.T) {
-	request := bridgeTestRequest(t, false)
-	if _, err := codexresponses.PrepareCollaboration(&request, collaborationGuidance(true, true)); err != nil {
-		t.Fatal(err)
-	}
-	for _, model := range grok.Models() {
-		if !bytes.Contains(request.Fields["tools"], []byte("`"+model+"`")) {
-			t.Fatalf("dedicated Grok model missing from spawn guidance: %s", model)
-		}
-	}
-	if bytes.Contains(request.Fields["tools"], []byte("grok:")) {
-		t.Fatal("dedicated Grok spawn guidance advertises namespaced models")
 	}
 }
 

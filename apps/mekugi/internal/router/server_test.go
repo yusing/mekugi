@@ -19,6 +19,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/providers/openai"
 
@@ -39,10 +41,10 @@ type serverFakeProvider struct {
 	forwardedCacheKey []string
 }
 
-func (f *serverFakeProvider) forwardExecution(_, _ context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
+func (f *serverFakeProvider) ForwardExecution(_, _ context.Context, body []byte, headers http.Header, cacheKey string) (*inferencegateway.Response, error) {
 	f.forwardedHeaders = append(f.forwardedHeaders, headers.Clone())
 	f.forwardedCacheKey = append(f.forwardedCacheKey, cacheKey)
-	return f.next(body)
+	return testGatewayResponse(f.next(body))
 }
 
 func (f *serverFakeProvider) next(body []byte) (*http.Response, error) {
@@ -336,7 +338,7 @@ func TestResponsesHandlerRejectsBackgroundBeforeUpstream(t *testing.T) {
 	)
 	recorder := httptest.NewRecorder()
 	provider := &serverFakeProvider{}
-	responsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
+	testResponsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
@@ -353,7 +355,7 @@ func TestResponsesHandlerRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	provider := &serverFakeProvider{}
 
-	responsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
+	testResponsesHandler(t.Context(), time.Minute, provider, nil, nil)(recorder, request)
 
 	if recorder.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
@@ -365,8 +367,8 @@ func TestResponsesHandlerRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
 
 type serverProviderFunc func(context.Context, context.Context, []byte, http.Header, string) (*http.Response, error)
 
-func (f serverProviderFunc) forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
-	return f(startCtx, responseCtx, body, headers, cacheKey)
+func (f serverProviderFunc) ForwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*inferencegateway.Response, error) {
+	return testGatewayResponse(f(startCtx, responseCtx, body, headers, cacheKey))
 }
 
 type serverCancelableSSEBody struct {
@@ -401,7 +403,7 @@ func TestResponsesHandlerDoesNotLogClientCancellationAsOperationalEvent(t *testi
 		}, nil
 	})
 	issues := testCriticalErrors()
-	handler := responsesHandler(t.Context(), time.Minute, provider, issues, nil)
+	handler := testResponsesHandler(t.Context(), time.Minute, provider, issues, nil)
 	handled := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		handler(writer, request)
@@ -913,7 +915,7 @@ func TestModelsHandlerForwardsCodexAuthenticationQueryAndResponse(t *testing.T) 
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
+	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
 
 	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"models":[]}` {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
@@ -944,7 +946,7 @@ func TestModelsHandlerRejectsUpstreamBodyReadFailure(t *testing.T) {
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
+	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
 
 	if recorder.Code != http.StatusBadGateway || !strings.Contains(recorder.Body.String(), "upstream read failed") {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
@@ -968,7 +970,7 @@ func TestModelsHandlerRejectsBodyBeyondRouterBufferBudget(t *testing.T) {
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
+	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), nil)(recorder, request)
 
 	if recorder.Code != http.StatusBadGateway || !strings.Contains(recorder.Body.String(), "router buffer budget") {
 		t.Fatalf("response = %d %q", recorder.Code, recorder.Body.String())
@@ -984,7 +986,7 @@ func TestModelsHandlerRejectsMissingAuthentication(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	issues := testCriticalErrors()
-	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(
+	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues)(
 		recorder,
 		httptest.NewRequest(http.MethodGet, "/v1/models", nil),
 	)
@@ -1013,7 +1015,7 @@ func TestModelsHandlerReportsCompleteForwardFailure(t *testing.T) {
 	request = request.WithContext(context.WithValue(request.Context(), debugContextKey{}, debug))
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
+	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
 
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d", recorder.Code)
@@ -1056,7 +1058,7 @@ func TestModelsHandlerReportsUpstreamStatusAndBody(t *testing.T) {
 	request.Header = codexAuthHeaders()
 	recorder := httptest.NewRecorder()
 
-	modelsHandler(newProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
+	modelsHandler(newTestProviderClient(testProviderBaseURL, httpClient), issues)(recorder, request)
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d", recorder.Code)
@@ -1148,7 +1150,7 @@ func TestModelsHandlerCatalogFailuresDoNotProduceTerminalNotices(t *testing.T) {
 			issues := testCriticalErrors()
 			request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 			request.Header = codexAuthHeaders()
-			modelsHandler(newProviderClient(testProviderBaseURL, client), issues)(httptest.NewRecorder(), request)
+			modelsHandler(newTestProviderClient(testProviderBaseURL, client), issues)(httptest.NewRecorder(), request)
 			if notices := issues.Notices.Pending(); len(notices) != 0 {
 				t.Fatalf("catalog failure produced terminal notices: %v", notices)
 			}
@@ -1209,9 +1211,9 @@ func TestProviderClientForwardsCodexAuthenticationAndRequestHeaders(t *testing.T
 		}
 		return serverHTTPResponse("{}"), nil
 	})}
-	client := newProviderClient(testProviderBaseURL, httpClient)
-	client.openai.StreamIdleTimeout = time.Minute
-	response, err := client.forwardExecution(t.Context(), t.Context(), []byte("{}"), headers, "cache-key")
+	client := newTestProviderClient(testProviderBaseURL, httpClient)
+	client.OpenAI.StreamIdleTimeout = time.Minute
+	response, err := client.ForwardExecution(t.Context(), t.Context(), []byte("{}"), headers, "cache-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1249,8 +1251,8 @@ func TestProviderClientRejectsMissingOrMalformedCodexAuthentication(t *testing.T
 				forwarded = true
 				return serverHTTPResponse("{}"), nil
 			})}
-			client := newProviderClient(testProviderBaseURL, httpClient)
-			_, err := client.forwardExecution(t.Context(), t.Context(), []byte("{}"), test.headers, "")
+			client := newTestProviderClient(testProviderBaseURL, httpClient)
+			_, err := client.ForwardExecution(t.Context(), t.Context(), []byte("{}"), test.headers, "")
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want containing %q", err, test.want)
 			}
@@ -1274,8 +1276,8 @@ func TestProviderClientOmitsUnsafeCodexCacheKey(t *testing.T) {
 				}
 				return serverHTTPResponse("{}"), nil
 			})}
-			client := newProviderClient(testProviderBaseURL, httpClient)
-			response, err := client.forwardExecution(t.Context(), t.Context(), []byte("{}"), codexAuthHeaders(), cacheKey)
+			client := newTestProviderClient(testProviderBaseURL, httpClient)
+			response, err := client.ForwardExecution(t.Context(), t.Context(), []byte("{}"), codexAuthHeaders(), cacheKey)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1312,8 +1314,8 @@ func TestProviderClientPreservesCodexRequestHeadersAcrossRetries(t *testing.T) {
 		}
 		return serverHTTPResponse("{}"), nil
 	})}
-	client := newProviderClient(testProviderBaseURL, httpClient)
-	response, err := client.forwardExecution(t.Context(), t.Context(), []byte("{}"), headers, "cache-key")
+	client := newTestProviderClient(testProviderBaseURL, httpClient)
+	response, err := client.ForwardExecution(t.Context(), t.Context(), []byte("{}"), headers, "cache-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1348,11 +1350,11 @@ func TestProviderClientCancelsRequestWithCodexRequestHeaders(t *testing.T) {
 		<-request.Context().Done()
 		return nil, request.Context().Err()
 	})}
-	client := newProviderClient(testProviderBaseURL, httpClient)
+	client := newTestProviderClient(testProviderBaseURL, httpClient)
 	ctx, cancel := context.WithCancel(t.Context())
 	result := make(chan error, 1)
 	go func() {
-		_, err := client.forwardExecution(ctx, ctx, []byte("{}"), headers, "cache-key")
+		_, err := client.ForwardExecution(ctx, ctx, []byte("{}"), headers, "cache-key")
 		result <- err
 	}()
 

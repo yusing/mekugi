@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/headless"
 
 	diagnosticstore "github.com/yusing/mekugi/modules/diagnostics/diagnostic"
@@ -35,7 +37,7 @@ type routerFaultCodexProvider struct {
 	toolNames []string
 }
 
-func (provider *routerFaultCodexProvider) forwardExecution(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+func (provider *routerFaultCodexProvider) ForwardExecution(_, _ context.Context, body []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
 	provider.mu.Lock()
 	provider.requests++
 	request := provider.requests
@@ -46,26 +48,26 @@ func (provider *routerFaultCodexProvider) forwardExecution(_, _ context.Context,
 
 	if provider.mode == "transform" {
 		if request == 1 {
-			return routerFaultCodexTransformResponse(), nil
+			return testGatewayResponse(routerFaultCodexTransformResponse(), nil)
 		}
 		// If the terminal failure regresses, complete retries quickly so the
 		// fixture detects them without leaving Codex reconnecting indefinitely.
-		return routerFaultCodexSuccessResponse(), nil
+		return testGatewayResponse(routerFaultCodexSuccessResponse(), nil)
 	}
 	if request == 1 {
 		if provider.mode == "close" {
-			return routerFaultCodexStreamResponse(routerFaultSSE(map[string]any{
+			return testGatewayResponse(routerFaultCodexStreamResponse(routerFaultSSE(map[string]any{
 				"type": "response.created", "response": map[string]any{"id": "closed-response", "status": "in_progress"},
-			})), nil
+			})), nil)
 		}
-		return &http.Response{
+		return testGatewayResponse(&http.Response{
 			StatusCode: http.StatusServiceUnavailable,
 			Status:     "503 Service Unavailable",
 			Header:     http.Header{"Content-Type": []string{"application/json"}, "Retry-After": []string{"0"}},
 			Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"server_error","message":"temporary upstream failure"}}`)),
-		}, nil
+		}, nil)
 	}
-	return routerFaultCodexSuccessResponse(), nil
+	return testGatewayResponse(routerFaultCodexSuccessResponse(), nil)
 }
 
 func routerFaultCodexToolNames(body []byte) []string {
@@ -229,7 +231,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 	issues.failureStore = store.publication
 	issues.failureLimits = store.retentionLimits()
 	issues.diagnostics = testDiagnostics(nil, nil)
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 
 	stdout, stderr, runErr := runRouterFaultNativeCodex(t, server.URL, "Run the deterministic router fault fixture.")
@@ -294,7 +296,7 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 	issues.failureStore = store.publication
 	issues.failureLimits = store.retentionLimits()
 	issues.diagnostics = testDiagnostics(nil, nil)
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, issues, proxy))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, issues, proxy))
 	defer server.Close()
 	codex, err := exec.LookPath("codex")
 	if err != nil {
@@ -331,7 +333,7 @@ func TestRecoveredStreamDoesNotLeaveHeadlessNoticeNativeCodexE2E(t *testing.T) {
 func TestRetryablePrestream5xxStillRetriesInNativeCodexE2E(t *testing.T) {
 	provider := &routerFaultCodexProvider{mode: "retry"}
 	proxy := newManagedMekugiProxy(t)
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, testCriticalErrors(), proxy))
 	defer server.Close()
 
 	stdout, stderr, runErr := runRouterFaultNativeCodex(t, server.URL, "Complete after one retryable provider error.")

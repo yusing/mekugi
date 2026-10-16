@@ -5,13 +5,13 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	launchoptions "github.com/yusing/mekugi/apps/mekugi/internal/launch/options"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-
-	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
@@ -266,13 +266,13 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 				}
 			}))
 			defer upstream.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.serviceTiers = &serviceTierSettings{configured: map[string]string{"gpt-6-astra": "priority"}}
+			client := newTestProviderClient(upstream.URL, upstream.Client())
+			executor := requestExecutor{provider: client, client: client, serviceTiers: &serviceTierSettings{configured: map[string]string{"gpt-6-astra": "priority"}}}
 			request := serverRequest(t, func(fields map[string]any) {
 				fields["model"], fields["service_tier"], fields["stream"] = "gpt-6-astra", "default", transport != "http"
 			})
 			if transport == "websocket" {
-				endpoint := responsesWebSocketHandler(ctx, 10*time.Second, client, nil, nil)
+				endpoint := inferencegateway.NewWebSocketEndpoint(ctx, 10*time.Second, client, executor.executeWebSocket)
 				defer endpoint.Close()
 				server := httptest.NewServer(endpoint)
 				defer server.Close()
@@ -291,7 +291,7 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 				req := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 				req.Header = codexAuthHeaders()
 				recorder := httptest.NewRecorder()
-				responsesHandler(ctx, 10*time.Second, client, nil, nil)(recorder, req)
+				responsesHandler(ctx, 10*time.Second, executor)(recorder, req)
 				if recorder.Code != 200 {
 					t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body)
 				}
@@ -351,39 +351,6 @@ func TestSubagentStartServiceTier(t *testing.T) {
 		got := nativeSubagentStart(&request)
 		if got == nil || *got != (activityStart{model: "gpt-6-astra", effort: "high", tier: tc.want}) {
 			t.Fatalf("tier=%s start=%+v", tc.tier, got)
-		}
-	}
-}
-
-func TestServiceTierSurvivesProviderTranslation(t *testing.T) {
-	for _, service := range []opencode.Service{{}, {Prefix: "opencode-go"}, {Prefix: "opencode-zen"}} {
-		if service.Prefix == "" {
-			tr, err := translateProviderRequest([]byte(`{"model":"grok:grok-4.6","service_tier":"fast","input":[]}`), nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := string(mustTestJSON(t, tr.body["service_tier"])); got != `"fast"` {
-				t.Fatalf("Grok tier=%s", got)
-			}
-			continue
-		}
-		formats := make(map[string]bool)
-		for _, model := range service.Models() {
-			format := service.Format(model.ID)
-			if formats[format] {
-				continue
-			}
-			formats[format] = true
-			t.Run(service.Prefix+"/"+format, func(t *testing.T) {
-				body := mustTestJSON(t, map[string]any{"model": service.Prefix + ":" + model.ID, "service_tier": "fast", "input": []any{}})
-				tr, err := translateProviderRequest(body, &service)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if got := string(mustTestJSON(t, tr.body["service_tier"])); got != `"fast"` {
-					t.Fatalf("tier=%s", got)
-				}
-			})
 		}
 	}
 }

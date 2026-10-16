@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/libraries/mcptransport"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -68,13 +70,13 @@ type toolFrontendCodexProvider struct {
 	observeRequest func([]byte, http.Header) error // Optional consuming-boundary assertion.
 }
 
-func (p *toolFrontendCodexProvider) forwardExecution(
+func (p *toolFrontendCodexProvider) ForwardExecution(
 	_ context.Context,
 	_ context.Context,
 	body []byte,
 	headers http.Header,
 	_ string,
-) (*http.Response, error) {
+) (*inferencegateway.Response, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.turns++
@@ -166,7 +168,7 @@ text(JSON.stringify({output: result.output, exit_code: result.exit_code}));`
 	}
 	result := serverHTTPResponse(wire.String())
 	result.Header.Set("Content-Type", "text/event-stream")
-	return result, nil
+	return testGatewayResponse(result, nil)
 }
 
 func TestNativeToolFrontendCodexE2E(t *testing.T) {
@@ -193,7 +195,7 @@ func TestNativeToolFrontendCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &toolFrontendCodexProvider{workspace: workspace}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 
 	t.Setenv("CODEX_HOME", t.TempDir())
@@ -259,7 +261,7 @@ text(JSON.stringify({started, completed}));`
 		expected:  []string{"continued:codex-input", `\"exit_code\":0`, "session_id"},
 		finalText: "mrun continuation accepted",
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 
 	t.Setenv("CODEX_HOME", t.TempDir())

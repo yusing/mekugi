@@ -38,12 +38,20 @@ Translation validates explicit history and tool identities before inference.
 Only supported representations are translated; opaque foreign history and
 unsupported content fail with the caller's compatibility diagnostic. Stable wire
 aliases preserve native names, namespaces, custom input, tool choice, and replay.
-Known native wait-schema corrections affect advertised parameters, leaving
+Native `wait` uses a wire alias rather than bare `wait`; its advertised
+`yield_time_ms` and `max_tokens` are integers. These schema corrections leave
 submitted argument bytes unchanged. Multipart text retains separate source parts,
 and empty text arrays retain empty-string content. Custom tool grammars remain
 explicit input instructions, validated by their existing owners. Third-party
 `exec` guidance identifies JavaScript input and the requirement to print nested
 results with `text(...)`; Codex models need neither note.
+
+Translated endpoints preserve supported text/images, plaintext agent messages,
+parallel custom/function calls and results, structured output, effort and usage.
+Custom input is one wire parameter, restored exactly before execution. OpenAI-hosted
+search is unavailable on these routes and the model is told so. Provider-returned
+model aliases remain unchanged for JSON and streaming clients; refusals remain
+ordinary refusal output. Native call identities survive persisted replay.
 
 Endpoint adapters normalize their wire framing into one validated stream.
 Complete arguments for every parallel call are validated before any executable
@@ -103,7 +111,9 @@ these responsibilities do not change protocol framing or tool execution.
 Each connection has one synchronous owner for native ancestry, steering admission,
 request reconstruction and provider-confirmed prefixes. Its state is memory only;
 retained user history cannot restore provider confirmation on a fresh connection.
-The application owns sockets, deadlines, provider selection and execution dispatch.
+The [application gateway](../../../docs/contracts/provider-routing.md) owns sockets,
+deadlines and provider selection; its consuming request pipeline owns execution
+admission and dispatch.
 
 Accepted steering remains pending until successor creation, including acknowledgements
 that arrive after request preparation. Creation commits the accepted input before
@@ -147,9 +157,10 @@ Each translated request owns its immutable tool mapping and stream state. The
 adapter creates no process, credential store, transcript, or agent registry.
 Shared wire facts and exact JSON encoding belong to
 [modelprotocol](../../../libraries/modelprotocol/SPEC.md).
-Provider-specific obligations remain in the [Grok](../../../providers/grok/SPEC.md)
-and [OpenCode](../../../providers/opencode/SPEC.md) specifications; cross-owner
-obligations remain in [provider routing](../../../docs/contracts/provider-routing.md).
+The [provider-routing contract](../../../docs/contracts/provider-routing.md) owns
+selected effort, reasoning, output-budget and usage policies. Credentials,
+metadata and upstream exchange remain with [Grok](../../../providers/grok/SPEC.md)
+and [OpenCode](../../../providers/opencode/SPEC.md).
 
 Package tests cover native collaboration and tool identity, custom input, wait
 aliases, fragmented and parallel calls, terminal integrity, reasoning replay,

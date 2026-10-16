@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/launch/modelcatalog"
 
 	"github.com/yusing/mekugi/providers/openai"
@@ -81,14 +83,14 @@ func TestThirdPartyAuthenticationNativeCodexE2E(t *testing.T) {
 					io.WriteString(w, grokTextStream())
 				}))
 				defer upstream.Close()
-				provider := newProviderClient("http://unused.invalid", nil)
-				provider.thirdPartyOnly = true
-				provider.grok = &grokClient{httpClient: grokTestHTTPClient(t, upstream), auth: grok.NewAuth("", "grok-fixture-only", httptransport.Client(nil)), unprefixed: unprefixed}
+				provider := newTestProviderClient("http://unused.invalid", nil)
+				provider.ThirdPartyOnly = true
+				provider.Grok = &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), HTTPClient: grokTestHTTPClient(t, upstream), Auth: grok.NewAuth("", "grok-fixture-only", httptransport.Client(nil)), Unprefixed: unprefixed}
 				mux := http.NewServeMux()
-				endpoint := responsesWebSocketHandler(ctx, time.Minute, provider, nil, nil)
+				endpoint := testWebSocketEndpoint(ctx, time.Minute, provider, nil, nil)
 				defer endpoint.Close()
 				mux.Handle("GET /v1/responses", endpoint)
-				mux.HandleFunc("POST /v1/responses", responsesHandler(ctx, time.Minute, provider, nil, nil))
+				mux.HandleFunc("POST /v1/responses", testResponsesHandler(ctx, time.Minute, provider, nil, nil))
 				router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					boundaryCalls.Add(1)
 					if r.Header.Get("Authorization") != "" || r.Header.Get(openai.AccountIDHeader) != "" {

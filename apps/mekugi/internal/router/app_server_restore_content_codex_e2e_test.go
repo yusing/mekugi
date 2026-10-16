@@ -35,7 +35,7 @@ func TestAppServerRestoreChildContentNativeCodex(t *testing.T) {
 		turns: make(map[string]int), assignment: "Inspect the child message and report one finding.",
 		message: "Restored child finding.",
 	}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, proxy))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, proxy))
 	defer server.Close()
 	newCommand := func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server",

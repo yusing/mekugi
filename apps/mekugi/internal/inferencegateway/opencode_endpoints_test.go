@@ -1,4 +1,4 @@
-package router
+package inferencegateway
 
 import (
 	"bytes"
@@ -84,7 +84,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 					"tools":     []any{map[string]string{"type": "custom", "name": "exec"}},
 					"reasoning": map[string]string{"effort": "none"},
 				}
-				client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(r *http.Request) (*http.Response, error) {
+				client := &ThirdPartyClient{Diagnostics: testDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(r *http.Request) (*http.Response, error) {
 					if !strings.HasSuffix(r.URL.Path, test.path) {
 						t.Fatalf("wrong endpoint: %s", r.URL)
 					}
@@ -105,7 +105,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 					}
 					return serverHTTPResponse(test.fixture), nil
 				})}}
-				response, err := client.forwardExecution(t.Context(), t.Context(), mustTestJSON(t, request), grokTestHeaders())
+				response, err := client.ForwardExecution(t.Context(), t.Context(), mustTestJSON(t, request), grokTestHeaders())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -143,7 +143,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 				}
 				history = append(history, map[string]string{"type": "custom_tool_call_output", "call_id": "call1", "output": "done"})
 				request["input"] = history
-				tr, err := translateProviderRequest(mustTestJSON(t, request), &service)
+				tr, err := testTranslateProviderRequest(mustTestJSON(t, request), &service)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -153,7 +153,7 @@ func TestOpenCodeEndpointRequestsAndReplay(t *testing.T) {
 					t.Fatalf("opaque reasoning/tool replay lost: %s", wire)
 				}
 				request["model"] = service.Prefix + ":glm-5.3"
-				if _, err := translateProviderRequest(mustTestJSON(t, request), &service); err == nil {
+				if _, err := testTranslateProviderRequest(mustTestJSON(t, request), &service); err == nil {
 					t.Fatal("foreign-format encrypted history accepted by Chat route")
 				}
 			}
@@ -172,7 +172,7 @@ func TestOpenCodeEndpointStreamsRejectPartialTools(t *testing.T) {
 			if index < 0 {
 				t.Fatal("fixture terminal not found")
 			}
-			tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{
+			tr, err := testTranslateProviderRequest(mustTestJSON(t, map[string]any{
 				"model": service.Prefix + ":" + test.model, "input": []any{},
 				"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 			}), &service)
@@ -209,7 +209,7 @@ func TestOpenCodeResponsesRefusal(t *testing.T) {
 			fixture = openCodeEvents(map[string]any{"type": "response.refusal.delta", "output_index": 0, "delta": "Cannot fulfill that request."})
 		}
 		fixture += openCodeEvents(map[string]any{"type": "response.completed", "response": map[string]any{"output": []any{item}}})
-		tr, err := translateProviderRequest([]byte(`{"model":"opencode-go:grok-4.6","input":[]}`), &service)
+		tr, err := testTranslateProviderRequest([]byte(`{"model":"opencode-go:grok-4.6","input":[]}`), &service)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -236,7 +236,7 @@ func TestOpenCodeResponsesRefusal(t *testing.T) {
 		if !foundDone {
 			t.Fatal("missing native refusal lifecycle")
 		}
-		replay, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": "opencode-go:grok-4.6", "input": output}), &service)
+		replay, err := testTranslateProviderRequest(mustTestJSON(t, map[string]any{"model": "opencode-go:grok-4.6", "input": output}), &service)
 		if err != nil || !bytes.Contains(responses.MustMarshalJSON(replay.body), []byte(`"type":"refusal"`)) {
 			t.Fatalf("refusal replay lost: %v", err)
 		}
@@ -245,7 +245,7 @@ func TestOpenCodeResponsesRefusal(t *testing.T) {
 
 func TestOpenCodeMessagesCombinesReasoningAndStructuredOutput(t *testing.T) {
 	service := openCodeTestService(t, map[string]opencode.Metadata{"test": {Format: "anthropic", Efforts: []string{"high"}}})
-	tr, err := translateProviderRequest([]byte(`{
+	tr, err := testTranslateProviderRequest([]byte(`{
 		"model":"opencode-go:test","input":[],
 		"reasoning":{"effort":"high"},
 		"text":{"format":{"type":"json_schema","name":"answer","schema":{"type":"object"}}}

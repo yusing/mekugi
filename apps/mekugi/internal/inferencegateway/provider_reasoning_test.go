@@ -1,4 +1,4 @@
-package router
+package inferencegateway
 
 import (
 	"io"
@@ -14,7 +14,7 @@ import (
 // Provider reasoning must reach Codex as it streams: an active summary item
 // that closes before the answer starts, never a trailing item after it.
 func TestProviderReasoningStreamsBeforeText(t *testing.T) {
-	grok, err := translateProviderRequest(grokTestRequest(t, true), nil)
+	grok, err := testTranslateProviderRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestProviderReasoningStreamsBeforeText(t *testing.T) {
 // Text that precedes reasoning keeps its message active; the reasoning
 // completes after it rather than interleaving items.
 func TestProviderReasoningAfterTextIsDeferred(t *testing.T) {
-	tr, err := translateProviderRequest(grokTestRequest(t, true), nil)
+	tr, err := testTranslateProviderRequest(grokTestRequest(t, true), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestProviderReasoningWithoutRetainedItemIsNotReplayed(t *testing.T) {
 		t.Fatal(err)
 	}
 	history := append(result["output"].([]any), map[string]string{"role": "user", "content": "next"})
-	if _, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": service.Prefix + ":grok-4.6", "input": history}), &service); err != nil {
+	if _, err := testTranslateProviderRequest(mustTestJSON(t, map[string]any{"model": service.Prefix + ":grok-4.6", "input": history}), &service); err != nil {
 		t.Fatalf("history with an unsigned visible block does not replay: %v", err)
 	}
 }
@@ -153,7 +153,7 @@ func TestOpenCodeChatReasoningAroundTextReplays(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	model := service.Prefix + ":" + openCodeTestModel(service)
 	history := []any{map[string]string{"role": "user", "content": "Question"}}
-	tr, err := translateProviderRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
+	tr, err := testTranslateProviderRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestOpenCodeChatReasoningAroundTextReplays(t *testing.T) {
 		t.Fatal(err)
 	}
 	history = append(history, result["output"].([]any)...)
-	tr, err = translateProviderRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
+	tr, err = testTranslateProviderRequest(mustTestJSON(t, map[string]any{"model": model, "input": history}), &service)
 	if err != nil {
 		t.Fatal(err)
 	}

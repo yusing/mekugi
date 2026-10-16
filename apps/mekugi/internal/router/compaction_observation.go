@@ -3,6 +3,8 @@ package router
 import (
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -27,7 +29,7 @@ func validateProviderContext(input jsonv1.RawMessage) error {
 	for _, item := range items {
 		kind := responses.StringField(item, "type")
 		if (kind == "compaction" || kind == "compaction_summary") && strings.HasPrefix(responses.StringField(item, "encrypted_content"), "mekugi:") {
-			return incompatibleRequest("unsupported_context_reference", "This session contains an unsupported local context reference. Start a new session.")
+			return inferencegateway.IncompatibleRequest("unsupported_context_reference", "This session contains an unsupported local context reference. Start a new session.")
 		}
 	}
 	return nil

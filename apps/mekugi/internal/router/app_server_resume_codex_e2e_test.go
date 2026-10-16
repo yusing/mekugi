@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	conversationmodel "github.com/yusing/mekugi/modules/conversation/presentation"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
@@ -48,7 +50,7 @@ type appResumeInferenceSettings struct {
 	} `json:"reasoning"`
 }
 
-func (p *appResumeProvider) forwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*http.Response, error) {
+func (p *appResumeProvider) ForwardExecution(_, _ context.Context, body []byte, headers http.Header, _ string) (*inferencegateway.Response, error) {
 	var settings appResumeInferenceSettings
 	if err := json.Unmarshal(body, &settings); err != nil {
 		return nil, err
@@ -62,7 +64,7 @@ func (p *appResumeProvider) forwardExecution(_, _ context.Context, body []byte, 
 	p.threads = append(p.threads, thread)
 	p.settings = append(p.settings, settings)
 	p.mu.Unlock()
-	return routerFaultCodexSuccessResponse(), nil
+	return testGatewayResponse(routerFaultCodexSuccessResponse(), nil)
 }
 
 func (p *appResumeProvider) assertSettings(t *testing.T, index int, model, effort, tier string) {
@@ -92,7 +94,7 @@ func TestAppServerResumeNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appResumeProvider{}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // State belongs to the parent UI, not just its Codex child.
 	environment := routerFaultCodexEnvironment(t)
@@ -387,7 +389,7 @@ func TestAppServerOptionWordNavigationNativeCodex(t *testing.T) {
 	environment := routerFaultCodexEnvironment(t)
 	workspace := t.TempDir()
 	provider := &appResumeProvider{}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	terminal := startAppResumeTerminal(t, func(ctx context.Context) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, codex, "app-server",
@@ -418,7 +420,7 @@ func TestAppServerResumePickerNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &appResumeProvider{}
-	server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+	server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 	defer server.Close()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	environment := routerFaultCodexEnvironment(t)

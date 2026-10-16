@@ -18,7 +18,7 @@ func TestAppServerCompactEnterInterruptsNativeCodex(t *testing.T) {
 	for _, featureFlag := range []string{"--enable", "--disable"} {
 		t.Run(strings.TrimPrefix(featureFlag, "--"), func(t *testing.T) {
 			provider := &appQueueProvider{requests: make(chan []byte, 8), gates: []chan struct{}{make(chan struct{})}}
-			server := httptest.NewServer(responsesHandler(t.Context(), time.Minute, provider, nil, nil))
+			server := httptest.NewServer(testResponsesHandler(t.Context(), time.Minute, provider, nil, nil))
 			defer server.Close()
 			defer close(provider.gates[0])
 			environment, workspace := routerFaultCodexEnvironment(t), t.TempDir()

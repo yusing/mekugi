@@ -10,6 +10,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
 
@@ -25,15 +27,13 @@ import (
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
-type responseProvider interface {
-	forwardExecution(startCtx, responseCtx context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error)
-}
-
 // requestExecutor owns the services used to execute a request.
 type requestExecutor struct {
 	titleGenerator *sessionNaming
 	serviceTiers   *serviceTierSettings
-	provider       responseProvider
+	provider       inferencegateway.Forwarder
+	client         *inferencegateway.Client
+	exchange       *inferencegateway.Exchange
 	output         io.Writer
 	issues         *CriticalErrors
 	mekugiCalls    *mekugiProxy
@@ -65,10 +65,15 @@ type requestAttempt struct {
 	usageTracker    *accounting.Observation
 	providerStarted time.Time
 
-	response          *http.Response
+	response          *inferencegateway.Response
 	streamResponse    bool
 	responseTransform codexresponses.Transformer
 	finishUsage       bool
+}
+
+func (e requestExecutor) executeWebSocket(startCtx, executionCtx context.Context, request codexresponses.Request, headers http.Header, exchange *inferencegateway.Exchange, output io.Writer) error {
+	e.provider, e.exchange, e.output = exchange, exchange, output
+	return e.execute(startCtx, executionCtx, request, headers, routingSessionID(headers, request))
 }
 
 func (e requestExecutor) execute(
@@ -96,8 +101,9 @@ func newRequestAttempt(
 ) *requestAttempt {
 	debug, debugID := debugRequest(startCtx)
 	hooks := &responseHooks{streamDiagnostics: transportcapture.NewStream(startCtx)}
-	if exchange, ok := executor.provider.(*webSocketExchange); ok {
-		exchange.streamDiagnostics = hooks.streamDiagnostics
+	if exchange := executor.exchange; exchange != nil {
+		exchange.StreamDiagnostics = hooks.streamDiagnostics
+		exchange.ReadEnd = func(err error, origin string) { recordStreamReadEnd(hooks.streamDiagnostics, err, origin) }
 	}
 	trace := toolObservationTrace{
 		debug: debug, requestID: debugID,
@@ -134,13 +140,13 @@ func (a *requestAttempt) run() error {
 
 func (a *requestAttempt) prepare() error {
 	if err := a.startCtx.Err(); err != nil {
-		return fmt.Errorf("prepare request: %w", withRequestStartCause(a.startCtx, err))
+		return fmt.Errorf("prepare request: %w", inferencegateway.WithRequestStartCause(a.startCtx, err))
 	}
 	a.hooks.onProviderFailure = func(payload []byte, stream bool) {
 		if !stream && a.response.StatusCode >= http.StatusBadRequest {
-			a.finalization.providerFailure = newProviderHTTPError("Upstream response", a.response.StatusCode, payload)
+			a.finalization.providerFailure = inferencegateway.NewProviderHTTPError("Upstream response", a.response.StatusCode, payload)
 		} else {
-			a.finalization.providerFailure = terminalProviderError(payload, stream)
+			a.finalization.providerFailure = inferencegateway.TerminalProviderError(payload, stream)
 		}
 	}
 	a.metadata, a.metadataValid = decodeCodexTurnMetadata(a.headers)
@@ -158,11 +164,11 @@ func (a *requestAttempt) prepare() error {
 			return err
 		}
 		if a.executor.mekugiCalls.isBTWThread(a.threadID) {
-			return &requestCompatibilityError{code: "btw_compaction_required", message: conversationmodel.SideCompactionRequired}
+			return inferencegateway.IncompatibleRequest("btw_compaction_required", conversationmodel.SideCompactionRequired)
 		}
 	}
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state != nil {
-		if err := exchange.state.RestoreProviderModel(&a.request); err != nil {
+	if exchange := a.executor.exchange; exchange != nil && exchange.State != nil {
+		if err := exchange.State.RestoreProviderModel(&a.request); err != nil {
 			return err
 		}
 	}
@@ -171,8 +177,8 @@ func (a *requestAttempt) prepare() error {
 	if a.request.Model() == "gpt-5.6-terra" {
 		a.request.Fields["model"] = responses.MustMarshalJSON("gpt-6-sol")
 	}
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state != nil {
-		exchange.state.RememberProviderModel(a.request)
+	if exchange := a.executor.exchange; exchange != nil && exchange.State != nil {
+		exchange.State.RememberProviderModel(a.request)
 	}
 	requestedTier := responses.StringField(a.request.Fields, "service_tier")
 	if tier := effectiveServiceTier(a.request.Model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
@@ -189,7 +195,7 @@ func (a *requestAttempt) prepare() error {
 
 	// Only the WebSocket provider guarantees non-generating warmup for every
 	// supported model. HTTP requests retain ordinary preparation checks.
-	_, webSocketRequest := a.executor.provider.(*webSocketExchange)
+	webSocketRequest := a.executor.exchange != nil
 	a.prewarm = webSocketRequest && a.metadataValid &&
 		a.metadata.RequestKind == responses.Prewarm && string(a.request.Fields["generate"]) == "false"
 	if a.executor.mekugiCalls != nil {
@@ -210,8 +216,8 @@ func (a *requestAttempt) prepare() error {
 	if a.mekugiTransform != nil && a.metadataValid {
 		auto := a.executor.mekugiCalls.review.Preview()
 		observeReview(a.executor.mekugiCalls.review, a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
-		exchange, webSocket := a.executor.provider.(*webSocketExchange)
-		if !webSocket || !exchange.state.Automatic() {
+		exchange := a.executor.exchange
+		if exchange == nil || !exchange.State.Automatic() {
 			beginLiveDiffTurn(auto, a.mekugiTransform.directory, a.mekugiTransform.threadID, a.metadata)
 		}
 	}
@@ -230,27 +236,16 @@ func (a *requestAttempt) prepareWire() error {
 		}
 		a.request.Fields["access_programs"] = programs
 	}
-	bridgeProvider := a.executor.provider
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
-		bridgeProvider = exchange.session.provider
-	}
-	client, _ := bridgeProvider.(*providerClient)
-	grokEnabled := client != nil && client.grok != nil
-	var openCodeModels []string
-	if client != nil {
-		for _, prefix := range []string{"opencode-go", "opencode-zen"} {
-			if client.opencode[prefix] != nil {
-				for _, model := range client.opencode[prefix].openCode.Models() {
-					openCodeModels = append(openCodeModels, prefix+":"+model.ID)
-				}
-			}
-		}
+	var guidance codexresponses.CollaborationGuidance
+	var providerGuidance bool
+	if a.executor.client != nil {
+		guidance, providerGuidance = a.executor.client.CollaborationGuidance()
 	}
 	// Compaction keeps request-wide projections but never gains collaboration
 	// tools or their instructions.
 	compaction := a.metadataValid && a.metadata.RequestKind == responses.Compaction
-	if !compaction && (a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || grokEnabled || len(openCodeModels) > 0) {
-		a.bridge, err = codexresponses.PrepareCollaboration(&a.request, collaborationGuidance(grokEnabled, grokEnabled && client.grok.unprefixed, openCodeModels...))
+	if !compaction && (a.mekugiTransform != nil || a.prewarm && a.executor.mekugiCalls != nil || providerGuidance) {
+		a.bridge, err = codexresponses.PrepareCollaboration(&a.request, guidance)
 		if err != nil {
 			return fmt.Errorf("prepare collaboration bridge: %w", err)
 		}
@@ -274,11 +269,11 @@ func (a *requestAttempt) prepareWire() error {
 		return fmt.Errorf("request with file attachments exceeds the %d-byte request limit; reduce attachments or conversation context", codexresponses.MaxRequestBytes)
 	}
 	a.forwardBody = nativeBody
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
+	if exchange := a.executor.exchange; exchange != nil {
 		started := time.Now()
-		reason, err := exchange.state.Reconcile(&a.request, !isChatCompletionsModel(a.request.Model()))
+		reason, err := exchange.State.Reconcile(&a.request, !inferencegateway.IsThirdPartyModel(a.request.Model()))
 		if err != nil {
-			return webSocketProtocolError(err)
+			return inferencegateway.ProtocolError(err)
 		}
 		if a.debug != nil {
 			a.debug.Event(map[string]any{
@@ -288,11 +283,11 @@ func (a *requestAttempt) prepareWire() error {
 			})
 		}
 	}
-	nativeWire, err := a.request.IncrementalBody(nativeBody, !isChatCompletionsModel(a.request.Model()))
+	nativeWire, err := a.request.IncrementalBody(nativeBody, !inferencegateway.IsThirdPartyModel(a.request.Model()))
 	if err != nil {
 		return err
 	}
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state.Automatic() {
+	if exchange := a.executor.exchange; exchange != nil && exchange.State.Automatic() {
 		transportcapture.ObserveProjectedRequest(a.startCtx, nil)
 	} else {
 		transportcapture.ObserveProjectedRequest(a.startCtx, nativeWire)
@@ -309,12 +304,12 @@ func (a *requestAttempt) forward() error {
 		cacheKey = a.sessionID
 	}
 	var err error
-	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, !isChatCompletionsModel(a.request.Model()))
+	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, !inferencegateway.IsThirdPartyModel(a.request.Model()))
 	if err != nil {
 		return err
 	}
 	debugWire := a.forwardBody
-	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.state.Automatic() {
+	if exchange := a.executor.exchange; exchange != nil && exchange.State.Automatic() {
 		debugWire = nil
 	}
 	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.CachedInput)
@@ -336,20 +331,20 @@ func (a *requestAttempt) forward() error {
 	} else {
 		a.providerStarted = time.Now()
 	}
-	a.response, err = a.executor.provider.forwardExecution(
+	a.response, err = a.executor.provider.ForwardExecution(
 		a.startCtx,
 		a.executionCtx,
 		a.forwardBody,
 		a.headers,
 		cacheKey,
 	)
-	rejection, rejectedUpgrade := errors.AsType[*webSocketStatusError](err)
+	rejection, rejectedUpgrade := errors.AsType[*inferencegateway.WebSocketStatusError](err)
 	if rejectedUpgrade {
-		a.finalization.upstreamStatusCode = rejection.status
+		a.finalization.upstreamStatusCode = rejection.Status
 	}
-	providerRejection, rejectedProvider := errors.AsType[*providerHTTPError](err)
+	providerRejection, rejectedProvider := errors.AsType[*inferencegateway.ProviderHTTPError](err)
 	if rejectedProvider {
-		a.finalization.upstreamStatusCode = providerRejection.status
+		a.finalization.upstreamStatusCode = providerRejection.Status
 	}
 	// Definite HTTP rejections did not admit inference. Transport failures and
 	// accepted requests may still have consumed tokens without a usable terminal.
@@ -358,12 +353,13 @@ func (a *requestAttempt) forward() error {
 		a.finishUsage = true
 	}
 	if err != nil {
-		err = withRequestStartCause(a.startCtx, err)
+		err = inferencegateway.WithRequestStartCause(a.startCtx, err)
 		return fmt.Errorf("execute request: %w", forwardCriticalDiagnostic(err))
 	}
-	if body, ok := a.response.Body.(*grokResponseBody); ok && a.usageTracker != nil {
-		a.usageTracker.Price = pinnedOpenCodePrice(body.openCodePrice)
+	if a.usageTracker != nil {
+		a.usageTracker.Price = pinnedOpenCodePrice(a.response.Price)
 	}
+	a.hooks.transport = a.response.Transport
 	a.finalization.upstreamStatusCode = a.response.StatusCode
 	a.finalization.failurePhase = requestFailureInspectResponse
 	if a.mekugiTransform != nil {
@@ -377,7 +373,7 @@ func (a *requestAttempt) forward() error {
 		}
 		a.mekugiTransform.ctx = ctx
 	}
-	a.streamResponse, err = codexresponses.PrepareBody(a.response, a.request.Stream)
+	a.streamResponse, err = codexresponses.PrepareBody(a.response.Response, a.request.Stream)
 	if err != nil {
 		a.response.Body.Close()
 		return fmt.Errorf("execute request: inspect upstream response: %w", err)
@@ -438,7 +434,7 @@ func (a *requestAttempt) deliver() error {
 		var err error
 		a.finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(
 			&staged,
-			a.response,
+			a.response.Response,
 			false,
 			a.responseTransform,
 			a.hooks,
@@ -484,7 +480,7 @@ func (a *requestAttempt) deliver() error {
 		a.finalization.failurePhase = requestFailureInspectResponse
 		a.finalization.upstreamTerminalState, err = copyUpstreamBodyTransformed(
 			a.executor.output,
-			a.response,
+			a.response.Response,
 			a.streamResponse,
 			a.responseTransform,
 			a.hooks,
@@ -538,7 +534,7 @@ func (a *requestAttempt) finish(requestErr error) error {
 	}
 
 	a.finalization.finish(a.executionCtx, requestErr, a.executor.output, a.executor.issues)
-	_, compatibilityFault := errors.AsType[*requestCompatibilityError](requestErr)
+	_, compatibilityFault := errors.AsType[*inferencegateway.CompatibilityError](requestErr)
 	if (a.finalization.failurePhase == requestFailureTransform || a.finalization.failurePhase == requestFailurePrepare && compatibilityFault) &&
 		a.hooks.deliveredResponseID != "" && !a.hooks.deliveredTerminal &&
 		a.finalization.observation.outcome == requestOutcomeFailed {

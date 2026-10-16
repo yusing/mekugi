@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/providers/grok"
 	"github.com/yusing/mekugi/providers/opencode"
 
@@ -281,7 +283,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 			return nil, err
 		}
 		if err := p.observeCompactionInput(ctx, request, sessionID, threadID, metadata); err != nil {
-			if _, incompatible := errors.AsType[*requestCompatibilityError](err); incompatible {
+			if _, incompatible := errors.AsType[*inferencegateway.CompatibilityError](err); incompatible {
 				return nil, err
 			}
 			p.notice(sessionID, threadID, "compaction_observation", "Completed host results could not be retained during compaction. Provider compaction is unchanged; change evidence may be incomplete.")

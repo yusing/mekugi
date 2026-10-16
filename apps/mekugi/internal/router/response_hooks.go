@@ -18,6 +18,7 @@ import (
 type responseHooks struct {
 	onProviderFailure   func([]byte, bool)
 	upstreamStatus      int
+	transport           string
 	streamDiagnostics   *transportcapture.Stream
 	onUsage             func(inference.Usage)
 	receivedAt          time.Time // Body read time, before buffered events are transformed.

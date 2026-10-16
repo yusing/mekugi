@@ -9,9 +9,6 @@ type Policy struct {
 	ReplaySummaries             bool
 	CloseFailedStream           bool
 	NoHostedSearchInstruction   string
-	CustomInputInstruction      string
-	ExecInstruction             string
-	FormatInstructionPrefix     string
 	RestoreReasoning            func(string) (map[string]any, error)
 	SealReasoning               func(any) string
 	ResolveEffort               func(string) (string, error)

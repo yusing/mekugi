@@ -25,7 +25,7 @@ func catalogCacheRequest() *http.Request {
 func TestModelsHandlerCacheReplaysBodyAndHeaders(t *testing.T) {
 	const catalog = `{"models":[{"slug":"gpt-6.1-sol","multi_agent_version":"v2","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"}],"context_window":1050000,"unknown_future_field":42}]}`
 	calls := 0
-	provider := newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+	provider := newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		calls++
 		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}, "Cache-Control": {"private", "max-age=60"}, "Etag": {"version-one"}, "X-Private": {"not-forwarded"}}, Body: io.NopCloser(strings.NewReader(catalog))}, nil
 	})})
@@ -54,7 +54,7 @@ func TestModelsHandlerCachePartitionsAndReplacesLatestEntry(t *testing.T) {
 	for _, field := range []string{"Authorization", "ChatGPT-Account-ID", sessionIDHeader, "query"} {
 		t.Run(field, func(t *testing.T) {
 			calls := 0
-			handler := modelsHandler(newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+			handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				calls++
 				return serverHTTPResponse(fmt.Sprintf(`{"generation":%d}`, calls)), nil
 			})}), nil)
@@ -84,7 +84,7 @@ func TestModelsHandlerCacheDoesNotStoreFailures(t *testing.T) {
 	for _, kind := range []string{"transport", "status", "partial", "oversized"} {
 		t.Run(kind, func(t *testing.T) {
 			calls := 0
-			handler := modelsHandler(newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+			handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				calls++
 				if calls > 1 {
 					return serverHTTPResponse(`{"models":[]}`), nil
@@ -120,7 +120,7 @@ func TestModelsHandlerCacheDoesNotStoreFailures(t *testing.T) {
 
 func TestModelsHandlerWarmCacheStillValidatesAuthentication(t *testing.T) {
 	calls := 0
-	handler := modelsHandler(newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse(`{"models":[]}`), nil })}), nil)
+	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) { calls++; return serverHTTPResponse(`{"models":[]}`), nil })}), nil)
 	handler(httptest.NewRecorder(), catalogCacheRequest())
 	for _, kind := range []string{"missing", "duplicate"} {
 		r := catalogCacheRequest()
@@ -144,7 +144,7 @@ func TestModelsHandlerCacheCoalescesConcurrentRequests(t *testing.T) {
 	var calls atomic.Int32
 	started := make(chan struct{})
 	release := make(chan struct{})
-	handler := modelsHandler(newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
@@ -174,7 +174,7 @@ func TestModelsHandlerCacheCanceledWaitDoesNotForward(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	done := make(chan struct{})
-	handler := modelsHandler(newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
@@ -218,7 +218,7 @@ func TestModelsHandlerCacheGateReleasedBeforeDownstreamWrite(t *testing.T) {
 	for _, mode := range []string{"first success", "cache hit", "upstream error"} {
 		t.Run(mode, func(t *testing.T) {
 			var calls atomic.Int32
-			handler := modelsHandler(newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
+			handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(*http.Request) (*http.Response, error) {
 				n := calls.Add(1)
 				if mode == "upstream error" && n == 1 {
 					return nil, errors.New("temporary upstream failure")
@@ -274,7 +274,7 @@ func TestModelsHandlerCacheGateReleasedBeforeDownstreamWrite(t *testing.T) {
 func TestModelsHandlerCacheCanceledFetchDoesNotBlockRetry(t *testing.T) {
 	var calls atomic.Int32
 	started := make(chan struct{})
-	handler := modelsHandler(newProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
+	handler := modelsHandler(newTestProviderClient(testProviderBaseURL, &http.Client{Transport: serverRoundTripper(func(request *http.Request) (*http.Response, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 			<-request.Context().Done()

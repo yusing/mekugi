@@ -1,4 +1,6 @@
-package router
+package inferencegateway
+
+// Source: apps/mekugi/internal/router/opencode_protocol.go:1:52@[bd606c09] retained reasoning.
 
 import (
 	"encoding/base64"
@@ -32,12 +34,12 @@ func sealOpenCodeReasoning(service *opencode.Service, model string, item any) st
 func restoreOpenCodeReasoning(service *opencode.Service, model, value string) (map[string]any, error) {
 	encoded, ok := strings.CutPrefix(value, openCodeReasoningPrefix)
 	if !ok {
-		return nil, incompatibleRequest("opencode_encrypted_history", "OpenCode cannot read foreign encrypted reasoning; start a fresh thread or use fork_turns=none.")
+		return nil, IncompatibleRequest("opencode_encrypted_history", "OpenCode cannot read foreign encrypted reasoning; start a fresh thread or use fork_turns=none.")
 	}
 	data, err := base64.RawStdEncoding.DecodeString(encoded)
 	var envelope openCodeReasoning
 	if err != nil || json.Unmarshal(data, &envelope) != nil || envelope.Provider != service.Prefix || envelope.Model != model {
-		return nil, incompatibleRequest("opencode_encrypted_history", "OpenCode reasoning belongs to another service or model; start a fresh thread.")
+		return nil, IncompatibleRequest("opencode_encrypted_history", "OpenCode reasoning belongs to another service or model; start a fresh thread.")
 	}
 	var item map[string]any
 	if json.Unmarshal(envelope.Item, &item) != nil || item == nil {

@@ -49,7 +49,7 @@ func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testin
 		_, _, _ = conn.Read(ctx)
 	}))
 	defer provider.Close()
-	handler := responsesWebSocketHandler(ctx, 5*time.Second, newProviderClient(provider.URL, provider.Client()), nil, nil)
+	handler := testWebSocketEndpoint(ctx, 5*time.Second, newTestProviderClient(provider.URL, provider.Client()), nil, nil)
 	defer handler.Close()
 	finished := make(chan struct{})
 	server := httptest.NewServer(record.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

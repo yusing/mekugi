@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/providers/opencode"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -36,7 +38,7 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 		{"controls", `{"error":{"message":"before\u001bafter\u202eend"}}`, "before\x1bafter\u202eend"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := newProviderHTTPError("OpenCode Go", 403, []byte(test.body))
+			err := inferencegateway.NewProviderHTTPError("OpenCode Go", 403, []byte(test.body))
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("missing detail: %v", err)
 			}
@@ -54,7 +56,7 @@ func TestProviderHTTPErrorDetails(t *testing.T) {
 			}
 		})
 	}
-	err := newProviderHTTPError("Grok", 500, []byte(strings.Repeat("界", 3000)))
+	err := inferencegateway.NewProviderHTTPError("Grok", 500, []byte(strings.Repeat("界", 3000)))
 	if !strings.HasSuffix(err.Error(), strings.Repeat("界", 3000)) {
 		t.Fatalf("provider detail was truncated: %d", len([]rune(err.Error())))
 	}
@@ -67,9 +69,9 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			defer cancel()
 			service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "provider-secret"}}).Services()[0]
 			calls := 0
-			provider := newProviderClient("http://unused.invalid", nil)
-			provider.opencode = map[string]*grokClient{service.Prefix: {
-				openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+			provider := newTestProviderClient("http://unused.invalid", nil)
+			provider.OpenCode = map[string]*inferencegateway.ThirdPartyClient{service.Prefix: {Diagnostics: providerCodecDiagnostics(),
+				OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 					calls++
 					return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
 						`{"error":{"type":"provider_failure","message":"Useful provider detail provider-secret"}}`))}, nil
@@ -80,12 +82,12 @@ func TestOpenCodeHTTPErrorDelivery(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 			req.Header = grokTestHeaders()
 			recorder := httptest.NewRecorder()
-			responsesHandler(ctx, time.Second, provider, issues, nil)(recorder, req)
+			testResponsesHandler(ctx, time.Second, provider, issues, nil)(recorder, req)
 			if recorder.Code != status || recorder.Header().Get("Content-Type") != "application/json" ||
 				!strings.Contains(recorder.Body.String(), "Useful provider detail provider-secret") || calls != 1 {
 				t.Fatalf("HTTP error lost: %d %s (calls %d)", recorder.Code, recorder.Body.String(), calls)
 			}
-			endpoint := responsesWebSocketHandler(ctx, time.Second, provider, issues, nil)
+			endpoint := testWebSocketEndpoint(ctx, time.Second, provider, issues, nil)
 			defer endpoint.Close()
 			server := httptest.NewServer(endpoint)
 			defer server.Close()
@@ -125,11 +127,11 @@ func (b *providerErrorBody) Close() error { b.closed = true; return nil }
 
 func TestOpenCodeHTTPErrorBodyLimit(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
-	body := &providerErrorBody{Reader: strings.NewReader(strings.Repeat("x", maxUpstreamErrorDetailBytes+100))}
-	client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	body := &providerErrorBody{Reader: strings.NewReader(strings.Repeat("x", (8<<10)+100))}
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
 	})}}
-	_, err := client.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
+	_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
 	if !body.closed || err == nil || !strings.Contains(err.Error(), "8 KiB limit") {
 		t.Fatalf("unbounded or unclosed error body: %v, closed %v", err, body.closed)
 	}
@@ -138,7 +140,7 @@ func TestOpenCodeHTTPErrorBodyLimit(t *testing.T) {
 func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
 	issues := testCriticalErrors()
 	for _, detail := range []string{"first failure", "second failure", "first failure"} {
-		err := newProviderHTTPError("OpenCode Go", 403, []byte(detail))
+		err := inferencegateway.NewProviderHTTPError("OpenCode Go", 403, []byte(detail))
 		issues.record(&requestFinalization{sessionID: "same", upstreamStatusCode: 403,
 			failurePhase: requestFailureForward, observation: requestObservation{outcome: requestOutcomeFailed}},
 			forwardCriticalDiagnostic(err))
@@ -153,10 +155,10 @@ func TestProviderHTTPErrorNoticesStayDistinct(t *testing.T) {
 func TestOpenCodeHTTPErrorReadFailure(t *testing.T) {
 	service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 	body := &providerErrorBody{Reader: iotest.ErrReader(errors.New("private transport detail"))}
-	client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+	client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 403, Header: http.Header{}, Body: body}, nil
 	})}}
-	_, err := client.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
+	_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
 	if !body.closed || err == nil || !strings.Contains(err.Error(), "could not be read") || !strings.Contains(err.Error(), "private transport detail") {
 		t.Fatalf("read failure hidden: %v", err)
 	}
@@ -167,11 +169,11 @@ func TestOpenCodeHTTPErrorStalledBody(t *testing.T) {
 		service := (opencode.Config{Go: opencode.ServiceConfig{APIKey: "test"}}).Services()[0]
 		reader, writer := io.Pipe()
 		defer writer.Close()
-		client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
+		client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: reader}, nil
 		})}}
 		start := time.Now()
-		_, err := client.forwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
+		_, err := client.ForwardExecution(t.Context(), t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
 		if err == nil || !strings.Contains(err.Error(), "could not be read") || time.Since(start) != 5*time.Second {
 			t.Fatalf("error read not bounded: %v, elapsed %s", err, time.Since(start))
 		}
@@ -185,7 +187,7 @@ func TestOpenCodeHTTPErrorReadCancellation(t *testing.T) {
 		defer writer.Close()
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		client := &grokClient{openCode: &service, httpClient: &http.Client{Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
+		client := &inferencegateway.ThirdPartyClient{Diagnostics: providerCodecDiagnostics(), OpenCode: &service, HTTPClient: &http.Client{Transport: grokTestTransport(func(request *http.Request) (*http.Response, error) {
 			context.AfterFunc(request.Context(), func() { _ = writer.CloseWithError(request.Context().Err()) })
 			return &http.Response{StatusCode: 403, Header: http.Header{}, Body: reader}, nil
 		})}}
@@ -194,7 +196,7 @@ func TestOpenCodeHTTPErrorReadCancellation(t *testing.T) {
 			cancel()
 		}()
 		start := time.Now()
-		_, err := client.forwardExecution(ctx, t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
+		_, err := client.ForwardExecution(ctx, t.Context(), openCodeTestRequest(t, service, false), grokTestHeaders())
 		if !errors.Is(err, context.Canceled) || time.Since(start) != time.Second {
 			t.Fatalf("cancellation lost: %v, elapsed %s", err, time.Since(start))
 		}

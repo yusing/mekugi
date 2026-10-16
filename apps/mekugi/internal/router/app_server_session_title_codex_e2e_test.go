@@ -102,10 +102,9 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	defer upstream.Close()
 	// Unblock a gated upstream before httptest.Server.Close on any failure.
 	defer release()
-	provider := newProviderClient(upstream.URL, upstream.Client())
+	provider := newTestProviderClient(upstream.URL, upstream.Client())
 	generator := newTestSessionNaming(ctx, provider)
-	provider.titleGenerator = generator
-	handler := responsesHandler(ctx, time.Minute, provider, nil, nil)
+	handler := responsesHandler(ctx, time.Minute, requestExecutor{provider: provider, client: provider, titleGenerator: generator})
 	threads := make(chan string, 8)
 	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Fixture authentication is added only at the local router boundary.
@@ -239,7 +238,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 	quit()
 	// A fresh generator and host process restore only durable title metadata.
 	fresh := newTestSessionNaming(ctx, provider)
-	provider.titleGenerator = fresh
+	handler = responsesHandler(ctx, time.Minute, requestExecutor{provider: provider, client: provider, titleGenerator: fresh})
 	awaitResume, sendResume, quitResume := start(thread, fresh)
 	awaitResume("persisted title after fresh app-server resume", func(frame string) bool { return headerHasTitle(frame) && strings.Contains(frame, "Ready") })
 	if fresh.acceptCandidate(thread) {

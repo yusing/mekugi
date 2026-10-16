@@ -5,22 +5,17 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/yusing/mekugi/providers/openai"
-
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func copyUpstreamBodyTransformed(writer io.Writer, response *http.Response, streamResponse bool, transformer codexresponses.Transformer, hooks *responseHooks) (responseevents.TerminalState, error) {
 	if streamResponse && hooks != nil && hooks.streamDiagnostics != nil {
-		fallback := "unknown"
-		switch response.Body.(type) {
-		case *openai.WebSocketBody, *webSocketExchange:
-			fallback = "websocket"
-		case *grokResponseBody:
-			fallback = "chat_response_bridge"
+		transport := hooks.transport
+		if transport == "" {
+			transport = "unknown"
 		}
-		hooks.streamDiagnostics.ResponseStarted(response, fallback)
+		hooks.streamDiagnostics.ResponseStarted(response, transport)
 		if id := response.Header.Get("X-Request-Id"); responseevents.SafeDiagnosticIdentity(id) {
 			hooks.streamDiagnostics.ProviderRequestID = id
 		}

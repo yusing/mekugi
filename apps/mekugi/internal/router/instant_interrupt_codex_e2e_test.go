@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -44,6 +46,27 @@ type instantInterruptCodexProvider struct {
 	cell     string
 }
 
+// Mock providers keep receiving peer cancellation while their response is gated.
+func readTestProviderMessages(ctx context.Context, conn *websocket.Conn, cancel context.CancelFunc) <-chan []byte {
+	messages := make(chan []byte, 1)
+	go func() {
+		defer close(messages)
+		for {
+			_, body, err := conn.Read(ctx)
+			if err != nil {
+				cancel()
+				return
+			}
+			select {
+			case messages <- body:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return messages
+}
+
 func (p *instantInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
@@ -54,18 +77,18 @@ func (p *instantInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Req
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	// Keep detecting peer cancellation while the model response is gated.
-	messages := readResponsesWebSocket(ctx, conn, cancel)
+	messages := readTestProviderMessages(ctx, conn, cancel)
 	for {
-		var message webSocketMessage
+		var message []byte
 		select {
 		case message = <-messages:
 		case <-ctx.Done():
 			return
 		}
-		if webSocketMessageReadError(ctx, message) != nil {
+		if len(message) == 0 {
 			return
 		}
-		response, err := p.forwardExecution(ctx, ctx, message.body, r.Header, "")
+		response, err := p.ForwardExecution(ctx, ctx, message, r.Header, "")
 		if err != nil {
 			return
 		}
@@ -85,7 +108,7 @@ func (p *instantInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Req
 	}
 }
 
-func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, responseCtx context.Context, body []byte, _ http.Header, _ string) (_ *http.Response, resultErr error) {
+func (p *instantInterruptCodexProvider) ForwardExecution(_ context.Context, responseCtx context.Context, body []byte, _ http.Header, _ string) (_ *inferencegateway.Response, resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			p.t.Error(resultErr)
@@ -127,15 +150,15 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 					_ = writer.CloseWithError(responseCtx.Err())
 				}
 			}()
-			return response, nil
+			return testGatewayResponse(response, nil)
 		}
-		return mchangesNestedCodexResponse(1, map[string]any{"type": "custom_tool_call", "id": "instant-exec-item", "call_id": "instant-exec", "name": "exec", "status": "completed", "input": p.program}), nil
+		return testGatewayResponse(mchangesNestedCodexResponse(1, map[string]any{"type": "custom_tool_call", "id": "instant-exec-item", "call_id": "instant-exec", "name": "exec", "status": "completed", "input": p.program}), nil)
 	case 2:
 		if !bytes.Contains(body, []byte("Steer now")) {
 			return nil, fmt.Errorf("steering input missing from replacement request: %.1000s", body)
 		}
 		if p.mode == "model" {
-			return mchangesNestedCodexResponse(2, instantInterruptAnswer("Steered while model response was gated")), nil
+			return testGatewayResponse(mchangesNestedCodexResponse(2, instantInterruptAnswer("Steered while model response was gated")), nil)
 		}
 		for _, item := range request.Input {
 			if item.Type == "custom_tool_call_output" && item.CallID == "instant-exec" {
@@ -145,7 +168,7 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 		if p.cell == "" {
 			return nil, fmt.Errorf("steering did not yield the original exec cell: %.2000s", body)
 		}
-		return mchangesNestedCodexResponse(2, map[string]any{"type": "function_call", "id": "instant-wait-item", "call_id": "instant-wait", "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": p.cell, "yield_time_ms": 10000}))}), nil
+		return testGatewayResponse(mchangesNestedCodexResponse(2, map[string]any{"type": "function_call", "id": "instant-wait-item", "call_id": "instant-wait", "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": p.cell, "yield_time_ms": 10000}))}), nil)
 	case 3:
 		for _, item := range request.Input {
 			if item.Type == "function_call_output" && item.CallID == "instant-wait" {
@@ -153,7 +176,7 @@ func (p *instantInterruptCodexProvider) forwardExecution(_ context.Context, resp
 				if !strings.Contains(output, "cell-survived") || !strings.Contains(output, "Script completed") {
 					return nil, fmt.Errorf("wait did not complete the original cell: %s", output)
 				}
-				return mchangesNestedCodexResponse(3, instantInterruptAnswer("Steered cell completed")), nil
+				return testGatewayResponse(mchangesNestedCodexResponse(3, instantInterruptAnswer("Steered cell completed")), nil)
 			}
 		}
 		return nil, fmt.Errorf("wait result missing")
@@ -203,12 +226,12 @@ func TestInstantInterruptNativeCodexE2E(t *testing.T) {
 			attachTestReplayStore(t, proxy)
 			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 			defer upstream.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.openai.EnableWebSockets(t.Context())
-			defer client.openai.Close()
+			client := newTestProviderClient(upstream.URL, upstream.Client())
+			client.OpenAI.EnableWebSockets(t.Context())
+			defer client.OpenAI.Close()
 			issues := testCriticalErrors()
 			created := make(chan struct{}, 1)
-			handler := responsesHandler(t.Context(), time.Minute, client, issues, proxy)
+			handler := testResponsesHandler(t.Context(), time.Minute, client, issues, proxy)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Fixture credentials terminate at the local mock provider.
 				for key, values := range codexAuthHeaders() {

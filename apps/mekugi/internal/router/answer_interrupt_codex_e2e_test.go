@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -51,18 +53,18 @@ func (p *answerInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Requ
 	conn.SetReadLimit(codexresponses.MaxRequestBytes)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	messages := readResponsesWebSocket(ctx, conn, cancel)
+	messages := readTestProviderMessages(ctx, conn, cancel)
 	for {
-		var message webSocketMessage
+		var message []byte
 		select {
 		case message = <-messages:
 		case <-ctx.Done():
 			return
 		}
-		if webSocketMessageReadError(ctx, message) != nil {
+		if len(message) == 0 {
 			return
 		}
-		response, err := p.forwardExecution(ctx, ctx, message.body, r.Header, "")
+		response, err := p.ForwardExecution(ctx, ctx, message, r.Header, "")
 		if err != nil {
 			if ctx.Err() == nil {
 				p.t.Error(err)
@@ -85,7 +87,7 @@ func (p *answerInterruptCodexProvider) serve(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, body []byte, _ http.Header, _ string) (*inferencegateway.Response, error) {
 	p.mu.Lock()
 	p.turn++
 	turn := p.turn
@@ -97,7 +99,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 	}
 	if turn == 1 {
 		question := &questionCodexProvider{mode: "async", requests: make(chan []byte, 1)}
-		return question.forwardExecution(ctx, ctx, body, nil, "")
+		return question.ForwardExecution(ctx, ctx, body, nil, "")
 	}
 	if turn == 2 {
 		reader, writer := io.Pipe()
@@ -133,7 +135,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 				map[string]any{"type": "response.completed", "response": map[string]any{"id": "answer-emission", "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}}},
 			)
 		}()
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}, nil
+		return testGatewayResponse(&http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}, nil)
 	}
 	if turn == 3 && p.mode == "exec" {
 		var request struct {
@@ -150,7 +152,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 			if item.Type == "custom_tool_call_output" && item.CallID == "answer-tool" {
 				_, _, _, cell := stockPatchResultState("exec", []byte(item.Output))
 				if cell != "" {
-					return mchangesNestedCodexResponse(turn, map[string]any{"type": "function_call", "id": "answer-wait-item", "call_id": "answer-wait", "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil
+					return testGatewayResponse(mchangesNestedCodexResponse(turn, map[string]any{"type": "function_call", "id": "answer-wait-item", "call_id": "answer-wait", "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil)
 				}
 			}
 		}
@@ -179,7 +181,7 @@ func (p *answerInterruptCodexProvider) forwardExecution(_, ctx context.Context, 
 		}
 	}
 	if turn == 3 || turn == 4 && p.mode == "exec" {
-		return mchangesNestedCodexResponse(turn, instantInterruptAnswer("Answer emission acceptance complete")), nil
+		return testGatewayResponse(mchangesNestedCodexResponse(turn, instantInterruptAnswer("Answer emission acceptance complete")), nil)
 	}
 	return nil, fmt.Errorf("unexpected provider request %d", turn)
 }
@@ -227,10 +229,10 @@ func TestAnswerInterruptNativeCodexE2E(t *testing.T) {
 			emitted := make(chan struct{}, 2)
 			upstream := httptest.NewServer(http.HandlerFunc(provider.serve))
 			defer upstream.Close()
-			client := newProviderClient(upstream.URL, upstream.Client())
-			client.openai.EnableWebSockets(t.Context())
-			defer client.openai.Close()
-			handler := responsesHandler(t.Context(), time.Minute, client, issues, proxy)
+			client := newTestProviderClient(upstream.URL, upstream.Client())
+			client.OpenAI.EnableWebSockets(t.Context())
+			defer client.OpenAI.Close()
+			handler := testResponsesHandler(t.Context(), time.Minute, client, issues, proxy)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				for key, values := range codexAuthHeaders() {
 					r.Header[key] = values

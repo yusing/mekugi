@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
+
 	"github.com/yusing/mekugi/modules/usage/accounting"
 
 	json "encoding/json/v2"
@@ -20,7 +22,7 @@ import (
 	"github.com/yusing/mekugi/providers/openai"
 )
 
-func namingCompletion(provider responseProvider, totals *accounting.Service, thread string, headers http.Header) inference.Complete {
+func namingCompletion(provider inferencegateway.Forwarder, totals *accounting.Service, thread string, headers http.Header) inference.Complete {
 	if provider == nil {
 		return nil
 	}
@@ -41,9 +43,9 @@ func namingCompletion(provider responseProvider, totals *accounting.Service, thr
 		if err != nil {
 			return "", err
 		}
-		response, err := provider.forwardExecution(ctx, ctx, body, auxHeaders, "")
+		response, err := provider.ForwardExecution(ctx, ctx, body, auxHeaders, "")
 		var usage *accounting.Observation
-		_, rejected := errors.AsType[*providerHTTPError](err)
+		_, rejected := errors.AsType[*inferencegateway.ProviderHTTPError](err)
 		if totals != nil && !rejected && (response == nil || response.StatusCode >= 200 && response.StatusCode < 300) {
 			usage = totals.Observation(thread, thread, request.Model, "")
 			usage.Reasoning = request.Effort
@@ -56,16 +58,16 @@ func namingCompletion(provider responseProvider, totals *accounting.Service, thr
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
 			return "", errors.New("session title request rejected by upstream")
 		}
-		stream, err := codexresponses.PrepareBody(response, true)
+		stream, err := codexresponses.PrepareBody(response.Response, true)
 		if err != nil {
 			return "", err
 		}
 		collector := new(sessionTitleCollector)
-		hooks := new(responseHooks)
+		hooks := &responseHooks{transport: response.Transport}
 		if usage != nil {
 			hooks.onUsage = usage.Observe
 		}
-		state, err := copyUpstreamBodyTransformed(io.Discard, response, stream, collector, hooks)
+		state, err := copyUpstreamBodyTransformed(io.Discard, response.Response, stream, collector, hooks)
 		if err != nil {
 			return "", err
 		}
