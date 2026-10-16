@@ -30,10 +30,11 @@ type Comparison struct {
 // Result separates file evidence from an unavailable optional workspace comparison.
 // Durable consumers retain Files and Coverage even when SnapshotError is non-nil;
 // provisional consumers may keep their previous completion boundary for retry.
+// Outcome holds capture facts; callers supply host status and publication references.
 type Result struct {
+	Outcome
 	Files         []diffmodel.ReviewFile
 	Complete      bool
-	Coverage      string
 	Claims        Claims
 	SnapshotError error
 }
@@ -49,6 +50,22 @@ func Reconcile(ctx context.Context, observation Observation, comparison Comparis
 	result.Files, result.Complete, result.Coverage = reconcile(observation, comparison.Excluded, snapshot)
 	if result.SnapshotError != nil && result.Coverage == CoverageExact {
 		result.Coverage = CoveragePartial
+	}
+	result.Class, result.Labels, result.CodeMode = observation.Class, observation.Labels, observation.CodeMode
+	result.Scope, result.ScopeReason = observation.ScopePaths(), observation.Reason
+	for _, listing := range observation.Listings {
+		if listing.Entries == nil {
+			continue
+		}
+		if _, err := os.Lstat(listing.Root); errors.Is(err, os.ErrNotExist) {
+			result.DeletedDirectories = AddRoot(result.DeletedDirectories, listing.Root)
+		}
+	}
+	if result.SnapshotError != nil {
+		result.ScopeReason = strings.TrimPrefix(result.ScopeReason+"; workspace snapshot unavailable: "+result.SnapshotError.Error(), "; ")
+	}
+	if observation.RepeatedPaths {
+		result.ScopeReason = strings.TrimPrefix(result.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
 	}
 	return result
 }

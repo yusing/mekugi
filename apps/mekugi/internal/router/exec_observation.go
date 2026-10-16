@@ -7,15 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/command"
-	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
@@ -76,35 +73,6 @@ func requestSessionShell(raw json.RawMessage) string {
 	return shell
 }
 
-// execResultState reads a stock command or exec result. A yielded native
-// session or running cell returns the continuation key that later completes it.
-func execResultState(toolName string, raw json.RawMessage) (terminal bool, exit *int, completed bool, text, pending string) {
-	text, _ = stockToolOutput(raw)
-	if toolName != nativeExecCommandToolName && toolName != "write_stdin" {
-		terminal, completed, text, cell := stockPatchResultState(toolName, raw)
-		if cell != "" {
-			pending = "cell:" + cell
-		}
-		return terminal, nil, completed, text, pending
-	}
-	state, _ := binding.NativeExecutionHeader(text)
-	if session := binding.NativeExecutionSession(text); session != 0 {
-		return false, nil, false, text, "session:" + strconv.FormatInt(session, 10)
-	}
-	if code, ok := strings.CutPrefix(state, "Process exited with code "); ok {
-		if value, err := strconv.Atoi(code); err == nil {
-			return true, &value, value == 0, text, ""
-		}
-	}
-	if toolName == "write_stdin" && !strings.Contains(text, "Unknown process id") {
-		// A failed write, such as one to closed stdin, leaves the process
-		// running; only its exit or disappearance ends the call.
-		return false, nil, false, text, ""
-	}
-	// An aborted, rejected, or unparsable command result has no live session.
-	return true, nil, false, text, ""
-}
-
 func execObservationScript(observation changecapture.Observation) string {
 	if len(observation.Commands) == 0 {
 		return "# exec commands are not literal\n"
@@ -122,20 +90,12 @@ func execObservationScript(observation changecapture.Observation) string {
 	return script.String()
 }
 
-// execCompletion is an observed call whose terminal result has arrived.
+// execCompletion pairs a decoded host result with its original observation.
 type execCompletion struct {
 	callID  string
 	history mekugiHistory
-	output  json.RawMessage
+	result  binding.ExecutionResult
 	host    *binding.ToolResult // Native Shell Mode has an item result, not a tool-output header.
-}
-
-func (c execCompletion) resultState() (terminal bool, exit *int, completed bool, text, pending string) {
-	if c.host != nil {
-		text, _ = stockToolOutput(c.output)
-		return true, c.host.ExitCode, c.host.Status == "completed" && c.host.ExitCode != nil && *c.host.ExitCode == 0, text, ""
-	}
-	return execResultState(c.history.ToolName, c.output)
 }
 
 // execSiblingKey groups calls of one response. Siblings finalized in
@@ -145,73 +105,6 @@ func execSiblingKey(history mekugiHistory) string {
 		return observation.Group
 	}
 	return ""
-}
-
-// mergeExecObservations joins sibling captures into the one observation that
-// their shared record reconciles.
-func mergeExecObservations(members []execCompletion) changecapture.Observation {
-	merged := *members[0].history.ExecObservation
-	if len(members) == 1 {
-		return merged
-	}
-	merged.Commands = slices.Clone(merged.Commands)
-	merged.CommandClasses = merged.CommandClassesForCalls()
-	merged.Labels = slices.Clone(merged.Labels)
-	merged.Programs = slices.Clone(merged.Programs)
-	merged.Roots = slices.Clone(merged.Roots)
-	merged.Files = slices.Clone(merged.Files)
-	merged.Omitted = slices.Clone(merged.Omitted)
-	merged.Listings = slices.Clone(merged.Listings)
-	merged.Excluded = slices.Clone(merged.Excluded)
-	for _, member := range members[1:] {
-		other := member.history.ExecObservation
-		merged.CodeMode = merged.CodeMode || other.CodeMode
-		merged.RepeatedPaths = merged.RepeatedPaths || other.RepeatedPaths
-		merged.Commands = append(merged.Commands, other.Commands...)
-		merged.CommandClasses = append(merged.CommandClasses, other.CommandClassesForCalls()...)
-		if execClassRank(other.Class) > execClassRank(merged.Class) {
-			merged.Class, merged.Reason = other.Class, other.Reason
-		}
-		for _, label := range other.Labels {
-			if !slices.Contains(merged.Labels, label) {
-				merged.Labels = append(merged.Labels, label)
-			}
-		}
-		for _, program := range other.Programs {
-			if !slices.Contains(merged.Programs, program) {
-				merged.Programs = append(merged.Programs, program)
-			}
-		}
-		for _, root := range other.Roots {
-			merged.Roots = changecapture.AddRoot(merged.Roots, root)
-		}
-		merged.Files = append(merged.Files, other.Files...)
-		merged.Omitted = append(merged.Omitted, other.Omitted...)
-		merged.Listings = append(merged.Listings, other.Listings...)
-		merged.Excluded = append(merged.Excluded, other.Excluded...)
-		if other.WindowStart.IsZero() || !merged.WindowStart.IsZero() && other.WindowStart.Before(merged.WindowStart) {
-			merged.WindowStart = other.WindowStart
-		}
-	}
-	// Siblings may start running before later ones are emitted, so the
-	// earliest checkpoint bounds all of their effects.
-	earliest := uint64(0)
-	merged.Tree = ""
-	for _, member := range members {
-		if tree := member.history.ExecObservation.Tree; tree != "" && (merged.Tree == "" || member.history.sequence < earliest) {
-			merged.Tree, earliest = tree, member.history.sequence
-		}
-	}
-	return merged
-}
-
-func execClassRank(class string) int {
-	for rank := execscope.Neutral; rank <= execscope.Opaque; rank++ {
-		if rank.String() == class {
-			return int(rank)
-		}
-	}
-	return int(execscope.Opaque)
 }
 
 func execTruncateReport(text string, limit int) string {
@@ -243,8 +136,7 @@ func execDerivedUpstreamItem(derivedCallID, arguments string) map[string]json.Ra
 func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace string, members []execCompletion) error {
 	var pending []execCompletion
 	for _, member := range members {
-		terminal, _, _, _, _ := member.resultState()
-		if member.history.ExecObservation == nil || !terminal {
+		if member.history.ExecObservation == nil || !member.result.Terminal {
 			continue
 		}
 		derived := legacycall.ExecCallID(member.callID, member.history.ExecObservation.CodeMode)
@@ -266,14 +158,24 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	}
 	first := members[0]
 	thread := first.history.ExecutingThread
-	observation := mergeExecObservations(members)
 	derivedCallID := legacycall.ExecCallID(first.callID, first.history.ExecObservation.CodeMode)
 	correlation := first.callID + "\x00exec"
-	script := execObservationScript(observation)
 	refs := make([]string, 0, len(members))
+	observations := make([]changecapture.Observation, 0, len(members))
+	var tree string
+	var earliest uint64
 	for _, member := range members {
 		refs = append(refs, member.callID)
+		observations = append(observations, *member.history.ExecObservation)
+		// Request sequence selects the checkpoint that bounds every sibling;
+		// command and report order remains the original member order.
+		if checkpoint := member.history.ExecObservation.Tree; checkpoint != "" && (tree == "" || member.history.sequence < earliest) {
+			tree, earliest = checkpoint, member.history.sequence
+		}
 	}
+	observation := changecapture.Merge(observations)
+	observation.Tree = tree
+	script := execObservationScript(observation)
 	if observation.Tree != "" && p.replayStore != nil {
 		// Closing, comparing, and claiming are one step per workspace, so
 		// concurrent finalizations cannot both record one effect.
@@ -291,30 +193,12 @@ func (p *mekugiProxy) finalizeExecObservations(ctx context.Context, workspace st
 	result := changecapture.Reconcile(ctx, observation, comparison)
 	p.execWindows.claim(refs, result.Claims)
 	reviews, complete := result.Files, result.Complete
-	outcome := &changecapture.Outcome{
-		Class: observation.Class, Labels: observation.Labels, Coverage: result.Coverage,
-		ScopeReason: observation.Reason,
-		CodeMode:    observation.CodeMode, Overlaps: view.overlaps, Background: background,
-	}
-	outcome.Scope = observation.ScopePaths()
-	for _, listing := range observation.Listings {
-		if listing.Entries == nil {
-			continue
-		}
-		if _, err := os.Lstat(listing.Root); errors.Is(err, os.ErrNotExist) {
-			outcome.DeletedDirectories = changecapture.AddRoot(outcome.DeletedDirectories, listing.Root)
-		}
-	}
-	if result.SnapshotError != nil {
-		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; workspace snapshot unavailable: "+result.SnapshotError.Error(), "; ")
-	}
-	if observation.RepeatedPaths {
-		outcome.ScopeReason = strings.TrimPrefix(outcome.ScopeReason+"; intermediate writes unobserved (call-window comparison only)", "; ")
-	}
+	outcome := &result.Outcome
+	outcome.Overlaps, outcome.Background = view.overlaps, background
 	var reports, failureReports []string
 	var hostResults []binding.ToolResult
 	for index, member := range members {
-		_, exit, completed, resultText, _ := member.resultState()
+		exit, completed, resultText := member.result.ExitCode, member.result.Succeeded, member.result.Text
 		status := changecapture.StatusCompleted
 		switch {
 		case member.history.ExecObservation.CodeMode && completed:

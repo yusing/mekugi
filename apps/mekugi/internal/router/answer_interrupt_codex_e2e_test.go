@@ -150,7 +150,7 @@ func (p *answerInterruptCodexProvider) ForwardExecution(_, ctx context.Context, 
 		}
 		for _, item := range request.Input {
 			if item.Type == "custom_tool_call_output" && item.CallID == "answer-tool" {
-				_, _, _, cell := stockPatchResultState("exec", []byte(item.Output))
+				cell := strings.TrimPrefix(binding.DecodeExecutionResult("exec", []byte(item.Output)).ResumeHandle, "cell:")
 				if cell != "" {
 					return testGatewayResponse(mchangesNestedCodexResponse(turn, map[string]any{"type": "function_call", "id": "answer-wait-item", "call_id": "answer-wait", "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil)
 				}

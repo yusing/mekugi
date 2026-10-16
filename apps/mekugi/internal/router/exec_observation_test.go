@@ -313,31 +313,6 @@ func TestCodeModeExecLiteralCommandAndResultDependentPollStayDirect(t *testing.T
 	}
 }
 
-func TestExecResultState(t *testing.T) {
-	exited := func(code string) json.RawMessage {
-		return responses.MustMarshalJSON("Chunk ID: 1\nWall time: 0.1 seconds\nProcess exited with code " + code + "\nOutput:\n")
-	}
-	if terminal, exit, completed, _, _ := execResultState(nativeExecCommandToolName, exited("0")); !terminal || !completed || exit == nil || *exit != 0 {
-		t.Fatal("exit 0 was not a completed result")
-	}
-	if terminal, exit, completed, _, _ := execResultState(nativeExecCommandToolName, exited("2")); !terminal || completed || *exit != 2 {
-		t.Fatal("exit 2 was not a failed result")
-	}
-	running := responses.MustMarshalJSON("Wall time: 1.0 seconds\nProcess running with session ID 7\nOutput:\n")
-	if terminal, _, _, _, pending := execResultState(nativeExecCommandToolName, running); terminal || pending != "session:7" {
-		t.Fatalf("running session pending = %q", pending)
-	}
-	if terminal, _, completed, _, _ := execResultState(nativeExecCommandToolName, responses.MustMarshalJSON("aborted by user")); !terminal || completed {
-		t.Fatal("an unparsable result was not a terminal failure")
-	}
-	if terminal, _, _, _, _ := execResultState("write_stdin", responses.MustMarshalJSON("write_stdin failed: stdin is closed for this session")); terminal {
-		t.Fatal("a failed write ended a running session")
-	}
-	if terminal, _, completed, _, _ := execResultState("write_stdin", responses.MustMarshalJSON("Unknown process id 7")); !terminal || completed {
-		t.Fatal("a vanished session was not a terminal failure")
-	}
-}
-
 // retainCommandObservation seeds an older saved command for replay tests.
 // New model calls use exec; retained host evidence keeps its original identity.
 func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, callID, arguments string) {

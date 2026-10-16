@@ -3,8 +3,6 @@ package router
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -96,39 +94,5 @@ func TestExecReceiptOmitsSharedOriginNamedByLabels(t *testing.T) {
 		if strings.Contains(got, "(goimports also ran)") != test.note {
 			t.Errorf("labels %q receipt = %q, want note %v", test.labels, got, test.note)
 		}
-	}
-}
-
-func TestMergedExecObservationReconcilesDuplicatePathsAndExcludesSameCellPatch(t *testing.T) {
-	workspace := t.TempDir()
-	path := filepath.Join(workspace, "shared.txt")
-	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var budget = changecapture.MaxContentBytes
-	before := changecapture.ReadFile(path, &budget)
-	if err := os.WriteFile(path, []byte("after\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	members := []execCompletion{
-		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Files: []changecapture.File{before}}}, callID: "first"},
-		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Files: []changecapture.File{before}}}, callID: "second"},
-	}
-	merged := mergeExecObservations(members)
-	result := changecapture.Reconcile(t.Context(), merged, changecapture.Comparison{})
-	reviews, complete, coverage := result.Files, result.Complete, result.Coverage
-	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 1 || reviews[0].BeforePath != path || reviews[0].AfterPath != path {
-		t.Fatalf("duplicate-path reconciliation = %+v complete=%v coverage=%q", reviews, complete, coverage)
-	}
-
-	excludedMembers := []execCompletion{
-		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Files: []changecapture.File{before}}}, callID: "command"},
-		{history: mekugiHistory{ExecObservation: &changecapture.Observation{Excluded: []string{path}}}, callID: "patch"},
-	}
-	excluded := mergeExecObservations(excludedMembers)
-	result = changecapture.Reconcile(t.Context(), excluded, changecapture.Comparison{})
-	reviews, complete, coverage = result.Files, result.Complete, result.Coverage
-	if !complete || coverage != changecapture.CoverageExact || len(reviews) != 0 {
-		t.Fatalf("same-cell patch exclusion = %+v complete=%v coverage=%q", reviews, complete, coverage)
 	}
 }

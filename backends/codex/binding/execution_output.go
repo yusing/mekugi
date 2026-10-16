@@ -1,10 +1,75 @@
 package binding
 
 import (
-	"encoding/json"
+	jsonv1 "encoding/json"
+	json "encoding/json/v2"
 	"strconv"
 	"strings"
 )
+
+// ExecutionResult describes the host envelope, not the success of any nested
+// tool. Consumers join native trace evidence before assigning nested outcomes.
+type ExecutionResult struct {
+	Terminal     bool
+	Succeeded    bool
+	ExitCode     *int
+	Text         string
+	ResumeHandle string
+}
+
+// DecodeExecutionResult reads retained stock tool output without interpreting
+// program output as a continuation or replacing the original host result.
+func DecodeExecutionResult(toolName string, raw jsonv1.RawMessage) ExecutionResult {
+	var result ExecutionResult
+	var success *bool
+	if json.Unmarshal(raw, &result.Text, jsonv1.DefaultOptionsV1()) != nil {
+		var object struct {
+			Content jsonv1.RawMessage `json:"content"`
+			Success *bool             `json:"success"`
+		}
+		if json.Unmarshal(raw, &object, jsonv1.DefaultOptionsV1()) == nil && (len(object.Content) != 0 || object.Success != nil) {
+			result.Text, success = strings.Join(ExecutionOutputTexts(object.Content), "\n"), object.Success
+		} else {
+			result.Text = strings.Join(ExecutionOutputTexts(raw), "\n")
+		}
+	}
+	if toolName == "apply_patch" {
+		result.Terminal = true
+		result.Succeeded = strings.HasPrefix(strings.TrimSpace(result.Text), "Success.")
+		if success != nil {
+			result.Succeeded = *success
+		}
+		return result
+	}
+	if toolName != "exec_command" && toolName != "write_stdin" {
+		state, cell, _ := CodeModeExecutionHeader(result.Text)
+		switch state {
+		case "running":
+			result.ResumeHandle = "cell:" + cell
+		case "Script completed":
+			result.Terminal, result.Succeeded = true, true
+		case "Script failed", "Script terminated":
+			result.Terminal = true
+		}
+		return result
+	}
+	state, _ := NativeExecutionHeader(result.Text)
+	if session := NativeExecutionSession(result.Text); session != 0 {
+		result.ResumeHandle = "session:" + strconv.FormatInt(session, 10)
+		return result
+	}
+	if code, ok := strings.CutPrefix(state, "Process exited with code "); ok {
+		if value, err := strconv.Atoi(code); err == nil {
+			result.Terminal, result.ExitCode, result.Succeeded = true, new(value), value == 0
+			return result
+		}
+	}
+	// A failed write, such as one to closed stdin, leaves the process running;
+	// only its exit or disappearance ends the call. Other rejected or aborted
+	// native commands have no live session.
+	result.Terminal = toolName != "write_stdin" || strings.Contains(result.Text, "Unknown process id")
+	return result
+}
 
 // Source: internal/router/execution_continuation.go:200:309@b9a7b3fe.
 // Match only the host's leading metadata, never strings printed by the program
@@ -85,13 +150,13 @@ func NativeExecutionSession(text string) int64 {
 }
 
 func NativeJSONSession(text string) int64 {
-	var result map[string]json.RawMessage
-	if json.Unmarshal([]byte(text), &result) != nil {
+	var result map[string]jsonv1.RawMessage
+	if jsonv1.Unmarshal([]byte(text), &result) != nil {
 		return 0
 	}
 	if batch, exists := result["results"]; exists {
-		var results []map[string]json.RawMessage
-		if json.Unmarshal(batch, &results) != nil || len(results) == 0 {
+		var results []map[string]jsonv1.RawMessage
+		if jsonv1.Unmarshal(batch, &results) != nil || len(results) == 0 {
 			return 0
 		}
 		// Completed prefixes have no live session. Only the current final
@@ -100,8 +165,8 @@ func NativeJSONSession(text string) int64 {
 	}
 	var output string
 	var id int64
-	if json.Unmarshal(result["output"], &output) != nil ||
-		json.Unmarshal(result["session_id"], &id) != nil || id <= 0 {
+	if jsonv1.Unmarshal(result["output"], &output) != nil ||
+		jsonv1.Unmarshal(result["session_id"], &id) != nil || id <= 0 {
 		return 0
 	}
 	if exit, exists := result["exit_code"]; exists && string(exit) != "null" {

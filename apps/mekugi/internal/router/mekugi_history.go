@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -342,13 +341,8 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 	}
 	items = filtered
 	validatedCarriers := make(map[string]bool)
-	type completedNativePatch struct {
-		callID  string
-		history mekugiHistory
-		output  json.RawMessage
-	}
-	var completedPatches []completedNativePatch
-	pendingCalls := make(map[string]completedNativePatch)
+	var completedCalls []execCompletion
+	pendingCalls := make(map[string]execCompletion)
 	editOutputs := make(map[string]map[string]json.RawMessage)
 	continuations := make(map[string]string)
 	for index, item := range items {
@@ -385,10 +379,10 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 					if strings.HasPrefix(key, "session:") {
 						resultTool = "write_stdin"
 					}
-					if terminal, _, _, _, _ := execResultState(resultTool, item["output"]); terminal {
-						pending.output = bytes.Clone(item["output"])
+					if result := binding.DecodeExecutionResult(resultTool, item["output"]); result.Terminal {
+						pending.result = result
 						editOutputs[pending.callID] = item
-						completedPatches = append(completedPatches, pending)
+						completedCalls = append(completedCalls, pending)
 						delete(pendingCalls, key)
 					}
 				}
@@ -417,12 +411,12 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		carrierKind := history.effectiveCarrierKind()
 		if itemType == carrierOutputItemType(carrierKind) {
 			if len(history.NativePatches) != 0 || history.ExecObservation != nil || history.ResolvedBaseline != nil {
-				patch := completedNativePatch{callID: callID, history: history, output: bytes.Clone(item["output"])}
-				if terminal, _, _, _, pending := execResultState(history.ToolName, item["output"]); terminal {
-					completedPatches = append(completedPatches, patch)
+				completed := execCompletion{callID: callID, history: history, result: binding.DecodeExecutionResult(history.ToolName, item["output"])}
+				if completed.result.Terminal {
+					completedCalls = append(completedCalls, completed)
 					editOutputs[callID] = item
-				} else if pending != "" {
-					pendingCalls[pending] = patch
+				} else if pending := completed.result.ResumeHandle; pending != "" {
+					pendingCalls[pending] = completed
 					p.execWindows.setSession(callID, pending)
 				}
 			}
@@ -481,8 +475,8 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 	releaseSnapshot()
 	// The native trace supplies per-tool outcomes even when JavaScript discards
 	// or catches a nested result. Never infer them from text printed by the cell.
-	for i := range completedPatches {
-		completed := &completedPatches[i]
+	for i := range completedCalls {
+		completed := &completedCalls[i]
 		if completed.history.ToolName != applyPatchToolName && completed.history.ToolName != nativeExecCommandToolName {
 			source := completed.history.CarrierPayload
 			if source == "" {
@@ -493,7 +487,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		}
 	}
 	execGroups := make(map[string][]execCompletion)
-	for _, completed := range completedPatches {
+	for _, completed := range completedCalls {
 		// A yielded command owns its continuing process, not the completed
 		// patches in its exec cell. Freeze those patches below before a
 		// later call can edit their files; only command capture waits here.
@@ -504,11 +498,11 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		if key == "" {
 			key = completed.callID
 		}
-		execGroups[key] = append(execGroups[key], execCompletion{callID: completed.callID, history: completed.history, output: completed.output})
+		execGroups[key] = append(execGroups[key], completed)
 	}
-	for _, completed := range completedPatches {
+	for _, completed := range completedCalls {
 		thread := completed.history.ExecutingThread
-		if err := p.finalizeNativePatches(ctx, workspace, thread, completed.callID, completed.history, completed.output); err != nil {
+		if err := p.finalizeNativePatches(ctx, workspace, thread, completed.callID, completed.history, completed.result); err != nil {
 			return nil, err
 		}
 		if completed.history.ExecObservation == nil {
@@ -532,7 +526,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexr
 		}
 		p.replayStore.notifyChanges(updates)
 	}
-	for _, completed := range completedPatches {
+	for _, completed := range completedCalls {
 		item := editOutputs[completed.callID]
 		if item == nil {
 			continue

@@ -133,6 +133,65 @@ func (o *Observation) AddCreatedPath(path string, tree bool) {
 	}
 }
 
+// Merge combines a nonempty set of sibling captures without mutating their storage.
+// For multiple captures, the caller selects Tree from its original call order;
+// capture clocks cannot establish which checkpoint bounds all sibling effects.
+func Merge(observations []Observation) Observation {
+	merged := observations[0]
+	if len(observations) == 1 {
+		return merged
+	}
+	merged.Commands = slices.Clone(merged.Commands)
+	merged.CommandClasses = merged.CommandClassesForCalls()
+	merged.Labels = slices.Clone(merged.Labels)
+	merged.Programs = slices.Clone(merged.Programs)
+	merged.Roots = slices.Clone(merged.Roots)
+	merged.Files = slices.Clone(merged.Files)
+	merged.Omitted = slices.Clone(merged.Omitted)
+	merged.Listings = slices.Clone(merged.Listings)
+	merged.Excluded = slices.Clone(merged.Excluded)
+	for _, other := range observations[1:] {
+		merged.CodeMode = merged.CodeMode || other.CodeMode
+		merged.RepeatedPaths = merged.RepeatedPaths || other.RepeatedPaths
+		merged.Commands = append(merged.Commands, other.Commands...)
+		merged.CommandClasses = append(merged.CommandClasses, other.CommandClassesForCalls()...)
+		if classRank(other.Class) > classRank(merged.Class) {
+			merged.Class, merged.Reason = other.Class, other.Reason
+		}
+		for _, label := range other.Labels {
+			if !slices.Contains(merged.Labels, label) {
+				merged.Labels = append(merged.Labels, label)
+			}
+		}
+		for _, program := range other.Programs {
+			if !slices.Contains(merged.Programs, program) {
+				merged.Programs = append(merged.Programs, program)
+			}
+		}
+		for _, root := range other.Roots {
+			merged.Roots = AddRoot(merged.Roots, root)
+		}
+		merged.Files = append(merged.Files, other.Files...)
+		merged.Omitted = append(merged.Omitted, other.Omitted...)
+		merged.Listings = append(merged.Listings, other.Listings...)
+		merged.Excluded = append(merged.Excluded, other.Excluded...)
+		if other.WindowStart.IsZero() || !merged.WindowStart.IsZero() && other.WindowStart.Before(merged.WindowStart) {
+			merged.WindowStart = other.WindowStart
+		}
+	}
+	merged.Tree = ""
+	return merged
+}
+
+func classRank(class string) int {
+	for rank := execscope.Neutral; rank <= execscope.Opaque; rank++ {
+		if rank.String() == class {
+			return int(rank)
+		}
+	}
+	return int(execscope.Opaque)
+}
+
 // Outcome is the finalized status of an observed exec record.
 type Outcome struct {
 	DeletedDirectories []string `json:",omitempty"` // Captured directory roots absent after the call.

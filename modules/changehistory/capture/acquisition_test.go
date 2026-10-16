@@ -1,7 +1,9 @@
 package capture
 
 import (
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -57,5 +59,38 @@ func TestCaptureWorkspaceFallbackAndUnavailableComparison(t *testing.T) {
 	result = Reconcile(t.Context(), *observation, Comparison{Workspace: workspace, Workspaces: snapshots})
 	if result.SnapshotError == nil || !result.Complete || result.Coverage != CoveragePartial || len(result.Files) != 1 || !strings.Contains(result.Files[0].Diff, "+latest") {
 		t.Fatalf("unavailable fallback discarded named evidence: %+v", result)
+	}
+	if !strings.Contains(result.ScopeReason, "workspace snapshot unavailable: "+result.SnapshotError.Error()) {
+		t.Fatalf("missing retained coverage diagnostic: %+v", result.Outcome)
+	}
+}
+
+func TestReconcileAssessesCapturedOutcome(t *testing.T) {
+	workspace := t.TempDir()
+	directory := filepath.Join(workspace, "removed")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "source.txt")
+	writeTestFile(t, path, "before\n")
+	observation, observed := Capture(t.Context(), []commandanalysis.Command{{Command: "rm -r removed", Workdir: workspace, Shell: "bash"}}, false, true, Options{Directory: workspace})
+	if !observed {
+		t.Fatal("missing directory capture")
+	}
+	for _, target := range []string{path, directory} {
+		if err := os.Remove(target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	observation.RepeatedPaths = true
+	result := Reconcile(t.Context(), *observation, Comparison{})
+	if !result.Complete || result.Coverage != CoverageExact || len(result.Files) != 1 || result.Files[0].BeforePath != path || result.Files[0].AfterPath != "" {
+		t.Fatalf("directory effect = %+v", result)
+	}
+	if !slices.Equal(result.DeletedDirectories, []string{directory}) || !slices.Equal(result.Scope, observation.ScopePaths()) || result.Class != observation.Class || !slices.Equal(result.Labels, observation.Labels) || !result.CodeMode {
+		t.Fatalf("capture assessment = %+v", result.Outcome)
+	}
+	if !strings.Contains(result.ScopeReason, "intermediate writes unobserved (call-window comparison only)") || result.Status != "" || result.Exit != nil || result.OutputRef != "" {
+		t.Fatalf("capture assessment changed host or publication facts: %+v", result.Outcome)
 	}
 }

@@ -20,20 +20,22 @@ separate. The terminal view paints saved-review values over the shared diff rend
 
 The `capture` API acquires bounded before-state for literal patch and command
 inputs, then reconciles observed endpoint differences. The shared command-scope
-classifier supplies source facts; capture owns filesystem reads, limits, incomplete
-evidence, rename/copy pairing, and authored-versus-managed provenance. Named
-operands and workspace checkpoints pass through one admission boundary, so stock
+classifier supplies source facts; capture owns merged command scope, filesystem
+reads, limits, incomplete evidence, rename/copy pairing and authored-versus-managed
+provenance. Named operands and workspace checkpoints share admission, so stock
 calls, terminal continuations, and locally submitted shell commands use the same
 recorder. Preview-only capture suppresses workspace checkpoints even when a caller
-supplies that owner. Reconciliation returns named evidence, comparison claims, and
-explicit fallback failure together; missing fallback narrows coverage without
-discarding named evidence. Preview consumers reuse bounded reads and comparison without publishing
-provisional values as retained changes.
+supplies that owner. Reconciliation returns evidence and comparison claims with
+their scope, coverage and snapshot diagnostics. Missing fallback narrows coverage
+without discarding named evidence. Preview consumers use the same assessment
+without publishing provisional values as retained changes.
 
 Workspace checkpoints are private comparison state. Overlapping application
 windows exchange owner-issued claims so a later comparison does not record an
-already claimed effect. The application coordinates window completion with host
-and command-segment facts; replay cannot reopen those windows. Patch batches share
+already claimed effect. Capture merges sibling observations without mutating their
+inputs or losing command order and repeated-write uncertainty. The application
+selects the earliest witnessed checkpoint and coordinates window completion with
+host and command-segment facts; replay cannot reopen those windows. Patch batches share
 one aggregate capture bound and one endpoint window. The
 [change-evidence contract](../../docs/contracts/change-evidence.md) owns scope,
 coverage, attribution, fallback limits, and acceptance cases.

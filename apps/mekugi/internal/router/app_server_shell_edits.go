@@ -105,7 +105,7 @@ func (u *appServerUI) observeShellEdit(thread, method string, item appServerItem
 	}
 	host := &binding.ToolResult{CallID: item.ID, Tool: item.Source, Status: item.Status, ExitCode: item.ExitCode}
 	if err := u.proxy.finalizeExecObservations(context.WithoutCancel(edit.ctx), edit.workspace,
-		[]execCompletion{{callID: edit.call, history: edit.history, output: responses.MustMarshalJSON(output), host: host}}); err != nil {
+		[]execCompletion{{callID: edit.call, history: edit.history, result: binding.ExecutionResult{Terminal: true, Succeeded: host.Status == "completed" && host.ExitCode != nil && *host.ExitCode == 0, ExitCode: host.ExitCode, Text: output}, host: host}}); err != nil {
 		u.discardShellEdit(edit)
 		u.setNotice("Shell change capture failed: "+err.Error(), true)
 	}

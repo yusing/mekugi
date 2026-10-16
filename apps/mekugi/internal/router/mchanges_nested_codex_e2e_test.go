@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
@@ -108,15 +110,15 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 			continue
 		}
 		if p.processWait {
-			terminal, exit, _, _, _ := execResultState("write_stdin", item.Output)
-			if !terminal || exit == nil || *exit != 0 {
+			result := binding.DecodeExecutionResult("write_stdin", item.Output)
+			if !result.Terminal || result.ExitCode == nil || *result.ExitCode != 0 {
 				return nil, fmt.Errorf("native process continuation did not finish successfully")
 			}
 			p.resultSeen = true
 			break
 		}
-		terminal, _, _, cell := stockPatchResultState("exec", item.Output)
-		if terminal && p.expectProcess && !p.sawPending {
+		result := binding.DecodeExecutionResult("exec", item.Output)
+		if result.Terminal && p.expectProcess && !p.sawPending {
 			evidence := p.trace.ReadCell(p.threadID, p.callID, p.program)
 			calls := evidence.Calls()
 			if !evidence.Ended() || !evidence.Pending() || len(calls) != 1 {
@@ -140,7 +142,7 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 			p.waitCall = "nested-process-wait"
 			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "write_stdin", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"session_id": session, "chars": "", "yield_time_ms": 10000}))}), nil)
 		}
-		if cell != "" {
+		if cell := strings.TrimPrefix(result.ResumeHandle, "cell:"); cell != "" {
 			if p.expectPending {
 				pendingCtx, release, err := p.store.beginSession(ctx, p.threadID, "")
 				if err != nil {
@@ -156,7 +158,7 @@ func (p *mchangesNestedCodexProvider) ForwardExecution(
 			p.waitCall = fmt.Sprintf("nested-wait-%d", p.turns)
 			return testGatewayResponse(mchangesNestedCodexResponse(p.turns, map[string]any{"type": "function_call", "id": p.waitCall + "-item", "call_id": p.waitCall, "name": "wait", "status": "completed", "arguments": string(responses.MustMarshalJSON(map[string]any{"cell_id": cell, "yield_time_ms": 10000}))}), nil)
 		}
-		p.resultSeen = terminal
+		p.resultSeen = result.Terminal
 		break
 	}
 	if !p.resultSeen {

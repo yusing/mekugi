@@ -195,53 +195,11 @@ func toolActivityJavaScriptStringFragment(source string) (string, int) {
 	return value.String(), len(source)
 }
 
-func stockToolOutput(raw json.RawMessage) (text string, success *bool) {
-	var direct string
-	if json.Unmarshal(raw, &direct) == nil {
-		return direct, nil
-	}
-	var object struct {
-		Content json.RawMessage `json:"content"`
-		Success *bool           `json:"success"`
-	}
-	if json.Unmarshal(raw, &object) == nil && (len(object.Content) != 0 || object.Success != nil) {
-		texts := binding.ExecutionOutputTexts(object.Content)
-		return strings.Join(texts, "\n"), object.Success
-	}
-	return strings.Join(binding.ExecutionOutputTexts(raw), "\n"), nil
-}
-
-// exec's outer completion does not prove a nested apply_patch succeeded:
-// JavaScript can catch a rejected tool call and finish normally. Nor does a
-// yielded cell's first output finish the nested call. Only a terminal host
-// result may be reconciled with the observed workspace outcome.
-func stockPatchResultState(toolName string, raw json.RawMessage) (terminal, reportedSuccess bool, text, cell string) {
-	text, success := stockToolOutput(raw)
-	if toolName == applyPatchToolName {
-		if success != nil {
-			return true, *success, text, ""
-		}
-		return true, strings.HasPrefix(strings.TrimSpace(text), "Success."), text, ""
-	}
-	state, cell, _ := binding.CodeModeExecutionHeader(text)
-	switch state {
-	case "running":
-		return false, false, text, cell
-	case "Script completed":
-		return true, true, text, ""
-	case "Script failed", "Script terminated":
-		return true, false, text, ""
-	default:
-		return false, false, text, ""
-	}
-}
-
-func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thread, callID string, history mekugiHistory, output json.RawMessage) error {
+func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thread, callID string, history mekugiHistory, result binding.ExecutionResult) error {
 	if len(history.NativePatches) == 0 {
 		return nil
 	}
-	terminal, reportedSuccess, resultText, _ := stockPatchResultState(history.ToolName, output)
-	if !terminal {
+	if !result.Terminal {
 		return nil
 	}
 	windowFiles := changecapture.PatchWindowFiles(history.NativePatches)
@@ -273,7 +231,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 				return changeError(err)
 			}
 		}
-		success := history.ToolName == applyPatchToolName && reportedSuccess && complete
+		success := history.ToolName == applyPatchToolName && result.Succeeded && complete
 		nested, confirmed := history.nativeCell.Patch(observation.Input, occurrence)
 		if confirmed {
 			success = nested.Status == "completed" && complete
@@ -289,7 +247,7 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 			Attempt:          1,
 			AlreadySatisfied: success && len(reviews) == 0 && len(history.NativePatches) == 1,
 			ReviewFiles:      reviews,
-			Report:           resultText,
+			Report:           result.Text,
 			CarrierKind:      codeModeCarrierCustom,
 			CarrierName:      applyPatchToolName,
 			CarrierPayload:   observation.Input,
@@ -314,8 +272,8 @@ func (p *mekugiProxy) finalizeNativePatches(ctx context.Context, workspace, thre
 				}
 			}
 		}
-		if history.ToolName == applyPatchToolName && !reportedSuccess {
-			attempt.TranslationError = strings.TrimSpace(resultText)
+		if history.ToolName == applyPatchToolName && !result.Succeeded {
+			attempt.TranslationError = strings.TrimSpace(result.Text)
 			if attempt.TranslationError == "" {
 				attempt.TranslationError = "stock apply_patch failed"
 			}

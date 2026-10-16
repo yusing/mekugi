@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/backends/codex/nativetrace"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -192,8 +194,8 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			items := []any{call}
 			if test.yielded {
 				items = append(items, codeOutput("Script running with cell ID cell-7"))
-				if terminal, _, output, cell := stockPatchResultState("exec", mustTestJSON(t, items[1].(map[string]any)["output"])); terminal || cell != "cell-7" {
-					t.Fatalf("running state = terminal %v, cell %q, output %q", terminal, cell, output)
+				if result := binding.DecodeExecutionResult("exec", mustTestJSON(t, items[1].(map[string]any)["output"])); result.Terminal || result.ResumeHandle != "cell:cell-7" {
+					t.Fatalf("running state = %+v", result)
 				}
 				reconcile(items)
 				if _, found, err := proxy.replayStore.lookup(transform.ctx, workspace, legacycall.PatchCallID("code-call", 0)); err != nil || found {
@@ -205,8 +207,8 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 						map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.2 seconds\nOutput:\n"},
 					}},
 				)
-				if terminal, _, output, _ := stockPatchResultState("exec", mustTestJSON(t, items[len(items)-1].(map[string]any)["output"])); !terminal {
-					t.Fatalf("wait state = terminal %v, output %q", terminal, output)
+				if result := binding.DecodeExecutionResult("exec", mustTestJSON(t, items[len(items)-1].(map[string]any)["output"])); !result.Terminal {
+					t.Fatalf("wait state = %+v", result)
 				}
 			} else {
 				items = append(items, codeOutput("Script completed"))
@@ -276,7 +278,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 			}
 			trace.end("thread", "runtime")
 			history.nativeCell = nativetrace.New(trace.root).ReadCell("thread", "cell", source.String())
-			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, responses.MustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n")); err != nil {
+			if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON("Script running with cell ID 7\nWall time 0.1 seconds\nOutput:\n"))); err != nil {
 				t.Fatal(err)
 			}
 			if _, found, err := proxy.replayStore.lookup(t.Context(), workspace, legacycall.PatchCallID("cell", 0)); err != nil || found {
@@ -292,7 +294,7 @@ func TestCodeModePatchWindowRecordsSharedPathsOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			for range 2 { // Reconciliation replay must not allocate duplicate evidence.
-				if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, responses.MustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n")); err != nil {
+				if err := proxy.finalizeNativePatches(t.Context(), workspace, "thread", "cell", history, binding.DecodeExecutionResult(history.ToolName, responses.MustMarshalJSON("Script completed\nWall time 0.1 seconds\nOutput:\n"))); err != nil {
 					t.Fatal(err)
 				}
 			}

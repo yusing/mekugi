@@ -148,8 +148,10 @@ retained filesystem evidence remain authoritative; UI labels and corpus findings
 belong to their consumers. Recognition never rewrites the submitted program or
 serializes parallel calls.
 
-The binding also decodes execution handles, result text and host completion
-headers for live continuation projection, restored evidence and offline queries.
+The binding decodes terminal or yielded execution results, preserving outer
+success, known exit status, exact text and pending handles. Outer JavaScript success
+cannot establish nested command success. These facts support live continuation,
+capture, restored evidence and offline queries.
 Retained carrier facts can inform classification after the consumer has validated
 their identity; classification itself authenticates neither a record nor a result.
 Opaque source and printed lookalikes cannot supply native-result provenance.

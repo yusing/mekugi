@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -12,90 +11,10 @@ import (
 
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/commandanalysis/execscope"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 )
-
-func TestMergeExecObservationsDoesNotMutateFirstMember(t *testing.T) {
-	commands := []commandanalysis.Command{{Command: "first"}, {Command: "command spare"}}
-	labels := []string{"shared", "label spare"}
-	programs := []execscope.Program{{Label: "shared"}, {Label: "program spare"}}
-	roots := []string{"/workspace/project", "/root spare"}
-	files := []changecapture.File{{Path: "/workspace/first"}, {Path: "/file spare"}}
-	omitted := []changecapture.Omission{{Path: "/workspace/omitted"}, {Path: "/omission spare"}}
-	listings := []changecapture.Listing{{Root: "/workspace/listed"}, {Root: "/listing spare"}}
-	excluded := []string{"/workspace/excluded", "/excluded spare"}
-	first := &changecapture.Observation{
-		Commands: commands[:1], Class: execscope.Scoped.String(), Reason: "first reason", Labels: labels[:1],
-		Files: files[:1], Omitted: omitted[:1], Listings: listings[:1], Roots: roots[:1],
-		Programs: programs[:1], Excluded: excluded[:1], WindowStart: time.Unix(30, 0),
-	}
-	second := &changecapture.Observation{
-		Commands: []commandanalysis.Command{{Command: "second"}}, Class: execscope.Opaque.String(), Reason: "stronger reason",
-		Labels: []string{"shared", "second"}, Programs: []execscope.Program{{Label: "shared"}, {Label: "second"}},
-		Roots: []string{"/workspace", "/outside"}, Files: []changecapture.File{{Path: "/workspace/second"}},
-		Omitted: []changecapture.Omission{{Path: "/workspace/omitted-2"}}, Listings: []changecapture.Listing{{Root: "/workspace/listed-2"}},
-		Excluded: []string{"/workspace/excluded-2"}, WindowStart: time.Unix(20, 0), CodeMode: true,
-	}
-	third := &changecapture.Observation{
-		Commands: []commandanalysis.Command{{Command: "third"}}, Labels: []string{"third"},
-		Programs: []execscope.Program{{Label: "third"}}, Roots: []string{"/workspace/child", "/last"},
-		Files: []changecapture.File{{Path: "/workspace/third"}}, WindowStart: time.Unix(10, 0),
-	}
-	firstBefore := *first
-	firstBefore.Commands = append([]commandanalysis.Command(nil), first.Commands...)
-	firstBefore.Labels = append([]string(nil), first.Labels...)
-	firstBefore.Programs = append([]execscope.Program(nil), first.Programs...)
-	firstBefore.Roots = append([]string(nil), first.Roots...)
-	firstBefore.Files = append([]changecapture.File(nil), first.Files...)
-	firstBefore.Omitted = append([]changecapture.Omission(nil), first.Omitted...)
-	firstBefore.Listings = append([]changecapture.Listing(nil), first.Listings...)
-	firstBefore.Excluded = append([]string(nil), first.Excluded...)
-
-	merged := mergeExecObservations([]execCompletion{
-		{history: mekugiHistory{ExecObservation: first}},
-		{history: mekugiHistory{ExecObservation: second}},
-		{history: mekugiHistory{ExecObservation: third}},
-	})
-	if !reflect.DeepEqual(*first, firstBefore) {
-		t.Fatalf("merge mutated first member: got %+v, want %+v", *first, firstBefore)
-	}
-	if commands[1].Command != "command spare" || labels[1] != "label spare" || programs[1].Label != "program spare" ||
-		roots[1] != "/root spare" || files[1].Path != "/file spare" || omitted[1].Path != "/omission spare" ||
-		listings[1].Root != "/listing spare" || excluded[1] != "/excluded spare" {
-		t.Fatalf("merge overwrote spare-capacity storage in first member: commands=%+v labels=%+v programs=%+v roots=%+v files=%+v omitted=%+v listings=%+v excluded=%+v",
-			commands, labels, programs, roots, files, omitted, listings, excluded)
-	}
-	if got, want := merged.Commands, []commandanalysis.Command{{Command: "first"}, {Command: "second"}, {Command: "third"}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("commands = %+v, want %+v", got, want)
-	}
-	if got, want := merged.Labels, []string{"shared", "second", "third"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("labels = %v, want %v", got, want)
-	}
-	if got, want := merged.Programs, []execscope.Program{{Label: "shared"}, {Label: "second"}, {Label: "third"}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("programs = %+v, want %+v", got, want)
-	}
-	if got, want := merged.Roots, []string{"/workspace", "/outside", "/last"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("roots = %v, want %v", got, want)
-	}
-	if got, want := merged.Files, []changecapture.File{{Path: "/workspace/first"}, {Path: "/workspace/second"}, {Path: "/workspace/third"}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("files = %+v, want %+v", got, want)
-	}
-	if got, want := merged.Omitted, []changecapture.Omission{{Path: "/workspace/omitted"}, {Path: "/workspace/omitted-2"}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("omitted = %+v, want %+v", got, want)
-	}
-	if got, want := merged.Listings, []changecapture.Listing{{Root: "/workspace/listed"}, {Root: "/workspace/listed-2"}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("listings = %+v, want %+v", got, want)
-	}
-	if got, want := merged.Excluded, []string{"/workspace/excluded", "/workspace/excluded-2"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("excluded = %v, want %v", got, want)
-	}
-	if merged.Class != execscope.Opaque.String() || merged.Reason != "stronger reason" || !merged.CodeMode || !merged.WindowStart.Equal(time.Unix(10, 0)) {
-		t.Errorf("scalar merge fields = %+v", merged)
-	}
-}
 
 func TestExecScopePreviewPublishesOnlyReviewChanges(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

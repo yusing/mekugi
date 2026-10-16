@@ -162,7 +162,7 @@ func (p *instantInterruptCodexProvider) ForwardExecution(_ context.Context, resp
 		}
 		for _, item := range request.Input {
 			if item.Type == "custom_tool_call_output" && item.CallID == "instant-exec" {
-				_, _, _, p.cell = stockPatchResultState("exec", []byte(item.Output))
+				p.cell = strings.TrimPrefix(binding.DecodeExecutionResult("exec", []byte(item.Output)).ResumeHandle, "cell:")
 			}
 		}
 		if p.cell == "" {
