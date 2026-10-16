@@ -152,6 +152,7 @@ must have an `mread` omission receipt, the same workspace, and overlapping
 literal `mcat` path/range selections in stock execution input. They do not establish execution counts,
 unchanged files, unnecessary reads, or actual duplicate delivered bytes. Unsupported
 scripts/carriers are not decoded or executed to manufacture evidence.
+Matching short names from another namespace or tool kind are not stock-read evidence.
 
 `--limit` bounds findings per session (default 25, 1–500); `omitted_findings` reports
 the remainder. Chains retain up to 16 source call references while `call_count` covers

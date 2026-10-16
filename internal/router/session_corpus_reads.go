@@ -18,6 +18,9 @@ import (
 )
 
 func corpusReadSelectionsForCall(call rollout.Call) []corpusReadSelection {
+	if call.Item.Namespace != "" && call.Item.Namespace != "functions" {
+		return nil
+	}
 	readCommand := func(input string) []corpusReadSelection {
 		var arguments struct {
 			Command string `json:"cmd"`
@@ -27,10 +30,11 @@ func corpusReadSelectionsForCall(call rollout.Call) []corpusReadSelection {
 		}
 		return corpusReadSelections(arguments.Command)
 	}
-	if call.Item.Name == "exec_command" {
+	name := strings.TrimPrefix(call.Item.Name, "functions.")
+	if call.Item.Type == "function_call" && name == "exec_command" {
 		return readCommand(call.Item.Arguments)
 	}
-	if call.Item.Name != "exec" {
+	if call.Item.Type != "custom_tool_call" || name != "exec" {
 		return nil
 	}
 	calls, ok := binding.ExecutionCalls(call.Item.Input, false)
