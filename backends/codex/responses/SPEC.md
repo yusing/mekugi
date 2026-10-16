@@ -104,9 +104,22 @@ The application owns sockets, deadlines, provider selection and execution dispat
 Accepted steering remains pending until successor creation, including acknowledgements
 that arrive after request preparation. Creation commits the accepted input before
 downstream delivery, preventing a failed delivery from replaying it. Automatic
-successors inherit the parent model and reasoning contract and send no new request.
+successors inherit the parent's translation context and send no new request.
 Their projected input must match all already-admitted provider input. Explicit
-continuations may rebase changed or unconfirmed prefixes with a full request.
+continuations use their own settings.
+
+The confirmed prefix fingerprints complete projected provider input and raw
+completed output. Only successful, steered or interrupted provider terminals
+confirm it; fingerprints grant no filesystem authority. A matching prefix sends
+only remaining items, including missing application-owned results before new user
+input. A matching continuation after interruption reuses the interrupted response
+ID. A changed, shortened or unconfirmed prefix sends full projected history
+without `previous_response_id`. Reconciliation never reruns tools.
+Accepted steering is not resent against the same parent; pending tool-result
+continuations retain that parent's response identity. Historical guidance on a
+yielded result stays in the prefix after completion; later results establish
+whether its handle remains active. A changed tool catalog can replace obsolete
+guidance and require rebasing.
 
 Raw provider terminals confirm transport history independently of transformed
 native output. Completed streamed items survive partial terminal snapshots, with

@@ -236,5 +236,5 @@ records survive shutdown and remain safe across simultaneous wrappers.
 
 ### Responses transport
 
-The [transport contract](transport.md) owns Codex-facing WebSocket sessions and
+The [transport contract](../../docs/contracts/responses-transport.md) owns Codex-facing WebSocket sessions and
 provider WebSocket transport for HTTP clients.

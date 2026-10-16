@@ -65,7 +65,7 @@ Each projection is a fresh forward pass over the current original input, with
 no persistent matcher state. Compacted, forked, and resumed views can reference
 only their own current input. Fresh projections of the same original host input
 are byte-identical, and extending that input preserves earlier projected items.
-The [transport contract](../../doc/spec/transport.md) owns provider-history reconciliation.
+The [backend history owner](../../backends/codex/responses/SPEC.md#connection-local-history) owns provider-history reconciliation.
 
 ### Local savings estimates
 
