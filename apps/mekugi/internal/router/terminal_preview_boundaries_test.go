@@ -46,7 +46,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 					pane.Update(*event.Preview)
 				}
 			}
-			lines, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 110, 24)
+			lines, err := pane.RenderBatch(t.Context(), "", workspace, diffrender.DarkTheme, 110, 24, 15)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -61,7 +61,7 @@ func TestLiveDiffPreviewBoundaryExpectations(t *testing.T) {
 					t.Fatalf("%s step %d: exposed %q in %q", fixture.Name, phase+1, absent, frame)
 				}
 			}
-			if phase == 0 && (len(pane.Order) != 1 || pane.Order[0] != previous.ID) {
+			if phase == 0 && pane.Order[len(pane.Order)-1] != previous.ID {
 				t.Fatalf("%s header replaced preceding diff", fixture.Name)
 			}
 		}

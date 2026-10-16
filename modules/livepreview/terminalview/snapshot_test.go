@@ -30,27 +30,20 @@ func TestUISnapshotDiffPreview(t *testing.T) {
 	observed.Status = previewmodel.PreviewRunning
 	for _, tc := range []struct {
 		name          string
-		previews      []previewmodel.Preview
+		preview       previewmodel.Preview
 		width, height int
 	}{
-		{"preview_diff_tail", []previewmodel.Preview{tail}, 72, 8},
-		{"preview_diff_tail_wrapped", []previewmodel.Preview{tail}, 36, 10},
-		{"preview_edit_wrapped", []previewmodel.Preview{edit}, 36, 8},
-		{"preview_completed", []previewmodel.Preview{completed}, 72, 7},
-		{"preview_observed", []previewmodel.Preview{observed}, 72, 7},
-		{"preview_pending_footer", []previewmodel.Preview{pending}, 48, 7},
-		{"preview_unavailable", []previewmodel.Preview{{ID: "unavailable", Workspace: "/workspace", Caller: "/root", Status: previewmodel.PreviewUnavailable + "baseline unavailable"}}, 48, 4},
-		{"preview_concurrent", []previewmodel.Preview{pending, edit}, 60, 12},
-		{"preview_accordion", []previewmodel.Preview{pending, edit}, 42, 7},
-		{"preview_hidden_calls", []previewmodel.Preview{pending, edit}, 42, 5},
+		{"preview_diff_tail", tail, 72, 8},
+		{"preview_diff_tail_wrapped", tail, 36, 10},
+		{"preview_edit_wrapped", edit, 36, 8},
+		{"preview_completed", completed, 72, 7},
+		{"preview_observed", observed, 72, 7},
+		{"preview_pending_footer", pending, 48, 7},
+		{"preview_unavailable", previewmodel.Preview{ID: "unavailable", Workspace: "/workspace", Caller: "/root", Status: previewmodel.PreviewUnavailable + "baseline unavailable"}, 48, 4},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Prefer a caller explicitly; never choose the open card by wall-clock arrival time.
-			pane := PreviewPane{Prefer: "/root/worker"}
-			for _, preview := range tc.previews {
-				pane.Update(preview)
-			}
-			rows, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, tc.width, tc.height)
+			view := PreviewView{Current: tc.preview, Complete: tc.preview.Complete}
+			rows, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, tc.width, tc.height, PreviewMotion{})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -48,7 +48,7 @@ func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {
 			}
 			var pane previewview.PreviewPane
 			pane.Update(preview)
-			rows, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 80, 14)
+			rows, err := pane.RenderBatch(t.Context(), preview.Caller, workspace, diffrender.DarkTheme, 80, 16, 15)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -79,14 +79,14 @@ func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
 	var pane previewview.PreviewPane
 	pane.Update(preview)
 	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
-		lines, err := pane.Render(t.Context(), workspace, theme, 100, 12)
+		lines, err := pane.RenderBatch(t.Context(), preview.Caller, workspace, theme, 100, 16, 15)
 		if err != nil {
 			t.Fatal(err)
 		}
 		frame := strings.Join(lines, "\n")
 		plain := ansi.Strip(frame)
 		if !strings.Contains(plain, "-func before() {}") || !strings.Contains(plain, "+func after() {}") || strings.Contains(plain, "*** Update File") {
-			t.Fatalf("terminal rendered patch instructions rather than diff: %q; rows=%+v; diff=%q", plain, pane.Views["patch"].Source, preview.Files[0].Diff)
+			t.Fatalf("terminal rendered patch instructions rather than diff: %q; diff=%q", plain, preview.Files[0].Diff)
 		}
 		if !strings.Contains(frame, theme.Foreground(chroma.Keyword)+"func") {
 			t.Fatalf("Go syntax highlighting was lost: %q", frame)
@@ -179,7 +179,7 @@ func TestPendingPatchBetweenEditsKeepsLastProjectedDiff(t *testing.T) {
 	var pane previewview.PreviewPane
 	pane.Update(first)
 	pane.Update(between)
-	lines, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 100, 10)
+	lines, err := pane.RenderBatch(t.Context(), first.Caller, workspace, diffrender.DarkTheme, 100, 16, 15)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+new()") {
 		t.Fatalf("stream turned blank between edits: %q, %v", lines, err)
 	}
@@ -229,7 +229,7 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 	if len(pane.Order) != 1 || pane.Order[0] != first.ID {
 		t.Fatalf("empty next call replaced completed edit: %v", pane.Order)
 	}
-	lines, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 100, 10)
+	lines, err := pane.RenderBatch(t.Context(), first.Caller, workspace, diffrender.DarkTheme, 100, 16, 15)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+new()") {
 		t.Fatalf("next call blanked previous diff: %q, %v", lines, err)
 	}
@@ -238,10 +238,10 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 		Input: "*** Begin Patch\n*** Update File: first.go\n@@\n-old()\n+later()\n*** End Patch\n",
 	})
 	pane.Update(next)
-	if len(pane.Order) != 1 || pane.Order[0] != next.ID || len(pane.Views[next.ID].Current.Files) != 1 {
-		t.Fatalf("next projected edit did not take over: %v", pane.Order)
+	if len(pane.Order) != 2 || pane.Order[1] != next.ID || len(pane.Views[next.ID].Current.Files) != 1 {
+		t.Fatalf("next projected edit lost the settling call: %v", pane.Order)
 	}
-	lines, err = pane.Render(t.Context(), workspace, diffrender.DarkTheme, 100, 10)
+	lines, err = pane.RenderBatch(t.Context(), next.Caller, workspace, diffrender.DarkTheme, 100, 16, 15)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+later()") {
 		t.Fatalf("next projected edit not displayed: %q, %v", lines, err)
 	}

@@ -105,7 +105,6 @@ func (u *terminalUI) preview(preview previewmodel.Preview, restored bool) {
 		delete(u.livePending, preview.ID)
 		return
 	}
-	dock.Retain = true
 	if preview.Caller == "" && preview.Workspace != "" {
 		preview.Caller = "/root"
 	}

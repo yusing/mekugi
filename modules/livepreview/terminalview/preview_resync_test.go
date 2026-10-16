@@ -9,7 +9,7 @@ import (
 
 func TestPreviewRepeatedCompletionKeepsOriginalHold(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		pane := PreviewPane{Retain: true}
+		pane := PreviewPane{}
 		preview := batchTestPreview("call", "/root", "source.go")
 		pane.Update(preview)
 		batchTestRender(t, &pane, 16)

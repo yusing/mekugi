@@ -8,7 +8,6 @@ import (
 
 	"github.com/yusing/mekugi/libraries/diffrender"
 
-	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -28,15 +27,14 @@ func TestUISnapshotDiffTailStyles(t *testing.T) {
 				"+++ \"src/main.go\"\n@@ -1 +1 @@\n-var x = 1\n+var x = 2\n",
 				"-old\n+new\n",
 			} {
-				pane := PreviewPane{}
-				pane.Update(previewmodel.Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Input: input, DiffText: true, Truncated: true})
-				rows, err := pane.Render(t.Context(), "/workspace", tc.theme, 60, 10)
+				view := PreviewView{Current: previewmodel.Preview{ID: "tail", Workspace: "/workspace", Caller: "/root", Input: input, DiffText: true, Truncated: true}}
+				rows, err := view.Render(t.Context(), "/workspace", tc.theme, 60, 10, PreviewMotion{})
 				if err != nil {
 					t.Fatal(err)
 				}
 				frame = append(frame, rows...)
 				frame = append(frame, "plain after preview")
-				for _, row := range pane.Views["tail"].Source {
+				for _, row := range view.Source {
 					if row.Number != 0 {
 						t.Fatal("tail has fabricated coordinates")
 					}
@@ -48,37 +46,21 @@ func TestUISnapshotDiffTailStyles(t *testing.T) {
 }
 
 func TestPreviewDiffFlagReplacesPlainRows(t *testing.T) {
-	pane := PreviewPane{}
 	preview := previewmodel.Preview{ID: "tail", Workspace: "/workspace", Input: "+new\n"}
-	pane.Update(preview)
-	if _, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5); err != nil {
+	view := PreviewView{Current: preview}
+	if _, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5, PreviewMotion{}); err != nil {
 		t.Fatal(err)
 	}
-	if row := pane.Views["tail"].Source[0]; row.Kind != ' ' || row.Number != 1 || row.Text != "+new\n" {
+	if row := view.Source[0]; row.Kind != ' ' || row.Number != 1 || row.Text != "+new\n" {
 		t.Fatalf("plain input parsed as diff: %+v", row)
 	}
 	preview.DiffText = true
-	pane.Update(preview)
-	if _, err := pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5); err != nil {
+	view.Current = preview
+	if _, err := view.Render(t.Context(), "/workspace", diffrender.DarkTheme, 60, 5, PreviewMotion{}); err != nil {
 		t.Fatal(err)
 	}
-	row := pane.Views["tail"].Source[0]
+	row := view.Source[0]
 	if row.Kind != '+' || row.Number != 0 || row.Text != "new\n" {
 		t.Fatalf("stale plain row: %+v", row)
-	}
-}
-
-func TestLivePreviewOmitsDeletedFiles(t *testing.T) {
-	pane := PreviewPane{}
-	preview := batchTestPreview("call", "/root", "src/kept.go")
-	preview.Files = append(preview.Files, diffmodel.RenderReviewFile("/workspace/src/deleted.go", "", "old\n", ""))
-	pane.Update(preview)
-	if len(pane.Views["call"].Current.Files) != 1 || len(preview.Files) != 2 {
-		t.Fatal("deleted file retained or original evidence changed")
-	}
-	preview.Files = preview.Files[1:]
-	pane.Update(preview)
-	if len(pane.Order) != 0 || len(pane.Callers()) != 0 {
-		t.Fatal("deletion-only preview not withdrawn")
 	}
 }

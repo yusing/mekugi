@@ -25,9 +25,9 @@ func TestUISnapshotPythonReadOnlyScriptSource(t *testing.T) {
 	if err != nil || !recognized || len(files) != 1 {
 		t.Fatalf("script source preview: %+v %t %v", files, recognized, err)
 	}
-	pane := previewview.PreviewPane{Prefer: "/root"}
+	var pane previewview.PreviewPane
 	pane.Update(previewmodel.Preview{ID: "read-only", Workspace: directory, Caller: "/root", Status: previewmodel.PreviewEdit, Files: files})
-	rows, err := pane.Render(t.Context(), directory, diffrender.DarkTheme, 80, 12)
+	rows, err := pane.RenderBatch(t.Context(), "/root", directory, diffrender.DarkTheme, 80, 16, 15)
 	if err != nil {
 		t.Fatal(err)
 	}

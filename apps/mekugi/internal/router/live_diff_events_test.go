@@ -223,7 +223,7 @@ func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 	for _, event := range testReview(broker).TakePreviews(sub) {
 		pane.Update(*event.Preview)
 	}
-	rows, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 60, 8)
+	rows, err := pane.RenderBatch(t.Context(), "", workspace, diffrender.DarkTheme, 60, 16, 15)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,26 +286,18 @@ func TestLiveDiffBoundedPreviewOmitsDeletedFiles(t *testing.T) {
 		if preview.Files[0] != deleted {
 			t.Fatal("original deletion evidence changed")
 		}
-		for _, retain := range []bool{false, true} {
-			pane := previewview.PreviewPane{Retain: retain}
-			pane.Update(bounded)
-			var rows []string
-			var err error
-			if retain {
-				rows, err = pane.RenderBatch(t.Context(), "/root", "/workspace", diffrender.DarkTheme, 72, 31, 15)
-			} else {
-				rows, err = pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 72, 31)
+		var pane previewview.PreviewPane
+		pane.Update(bounded)
+		rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", diffrender.DarkTheme, 72, 31, 15)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mixed {
+			if len(rows) == 0 || len(pane.Callers()) != 1 {
+				t.Fatal("mixed preview lost nondeleted source")
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if mixed {
-				if len(rows) == 0 || len(pane.Callers()) != 1 {
-					t.Fatal("mixed preview lost nondeleted source")
-				}
-			} else if len(rows) != 0 || len(pane.Callers()) != 0 {
-				t.Fatal("oversized deletion opened live dock")
-			}
+		} else if len(rows) != 0 || len(pane.Callers()) != 0 {
+			t.Fatal("oversized deletion opened live dock")
 		}
 	}
 }

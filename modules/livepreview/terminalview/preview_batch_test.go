@@ -25,12 +25,15 @@ func batchTestPreview(id, caller string, paths ...string) previewmodel.Preview {
 }
 
 func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	preview := batchTestPreview("stream", "/root", "src/stream.go")
 	preview.Files = []diffmodel.ReviewFile{diffmodel.RenderReviewFile("", "/workspace/src/stream.go", "", strings.Repeat("source line\n", 40))}
 	pane.Update(preview)
-	batchTestRender(t, &pane, 16)
 	view := pane.batches["/root"].files[previewFileKey{"stream", "/workspace/src/stream.go"}]
+	if view.Source != nil || view.Rendered.ID != "" {
+		t.Fatal("queued snapshot parsed source before painting")
+	}
+	batchTestRender(t, &pane, 16)
 	initialFocus := view.Focus
 	if !pane.ScrollBatch("/root", 'b') || !view.Paused || view.ScrollRow >= initialFocus {
 		t.Fatal("page-up did not pause the file's source viewport")
@@ -109,7 +112,7 @@ func TestUISnapshotNativeBatch(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pane := PreviewPane{Retain: true}
+			pane := PreviewPane{}
 			tc.setup(t, &pane)
 			assertRowsSnapshot(t, "native_batch_"+tc.name, batchTestRender(t, &pane, tc.height))
 		})
@@ -117,7 +120,7 @@ func TestUISnapshotNativeBatch(t *testing.T) {
 }
 
 func TestNativeBatchRetainsCompletedCall(t *testing.T) {
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	first := batchTestPreview("first", "/root", "src/a.go")
 	pane.Update(first)
 	first.Complete = true
@@ -140,7 +143,7 @@ func TestNativeBatchRetainsCompletedCall(t *testing.T) {
 }
 
 func TestNativeBatchRetainsSequentialFilesInOneCall(t *testing.T) {
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	pane.Update(batchTestPreview("exec", "/root", "src/a.go"))
 	batchTestRender(t, &pane, 31)
 	firstKey := previewFileKey{"exec", "/workspace/src/a.go"}
@@ -167,7 +170,7 @@ func TestNativeBatchRetainsSequentialFilesInOneCall(t *testing.T) {
 func TestNativeBatchExpiryIsolation(t *testing.T) {
 	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	hold := 2 * time.Second
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	for _, tc := range []struct {
 		id, caller string
 		complete   bool
@@ -216,7 +219,7 @@ func TestUISnapshotNativeBatchCompletedSiblingExpiry(t *testing.T) {
 			name = "pinned"
 		}
 		t.Run(name, func(t *testing.T) {
-			pane := PreviewPane{Retain: true}
+			pane := PreviewPane{}
 			pane.Update(batchTestPreview("running", "/root", "src/running.go"))
 			batchTestRender(t, &pane, 16)
 			pane.ScrollBatch("/root", 'b')
@@ -256,7 +259,7 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 		{"narrow", "python3", 24, 16},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pane := PreviewPane{Retain: true}
+			pane := PreviewPane{}
 			preview := batchTestPreview("edit", "/root", "src/a.go")
 			preview.Tool = tc.tool
 			pane.Update(preview)
@@ -267,7 +270,7 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 			assertRowsSnapshot(t, "native_batch_tool_"+tc.name, rows)
 		})
 	}
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	patch := batchTestPreview("patch", "/root", "src/patch.go")
 	patch.Tool = "apply_patch"
 	pane.Update(patch)
@@ -286,7 +289,7 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 }
 
 func TestUISnapshotNativeBatchMixedToolCall(t *testing.T) {
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	preview := batchTestPreview("program", "/root", "src/python.go")
 	preview.Tool = "python3"
 	pane.Update(preview)
@@ -303,7 +306,7 @@ func TestUISnapshotNativeBatchMixedToolCall(t *testing.T) {
 }
 
 func TestUISnapshotNativeBatchOmitsDeletedFiles(t *testing.T) {
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	preview := batchTestPreview("mixed", "/root", "src/kept.go")
 	preview.Files[0] = diffmodel.RenderReviewFile("", "/workspace/src/kept.go", "", strings.Repeat("source line\n", 24))
 	preview.Files = append(preview.Files, diffmodel.RenderReviewFile("/workspace/src/deleted.go", "", "package old\n", ""))
@@ -315,7 +318,7 @@ func TestUISnapshotNativeBatchOmitsDeletedFiles(t *testing.T) {
 }
 
 func TestNativeBatchDeletedFileRemovesRetainedViewport(t *testing.T) {
-	pane := PreviewPane{Retain: true}
+	pane := PreviewPane{}
 	pane.Update(batchTestPreview("call", "/root", "src/a.go", "src/b.go"))
 	batchTestRender(t, &pane, 31)
 	pane.NextBatch("/root") // Pin a.go before it disappears.

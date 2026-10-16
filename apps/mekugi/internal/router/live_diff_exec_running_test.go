@@ -305,7 +305,7 @@ func TestExecWatchWithoutCapturedPathsDoesNotCrowdStreamingInput(t *testing.T) {
 	for _, snapshot := range broker.Current() {
 		pane.Update(snapshot)
 	}
-	rows, err := pane.Render(t.Context(), workspace, diffrender.TerminalTheme, 120, 22)
+	rows, err := pane.RenderBatch(t.Context(), "same-caller", workspace, diffrender.TerminalTheme, 120, 22, 15)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,7 @@ func TestExecRunningPreviewShowsAuthoredScopeAndCancelsWithoutEvidence(t *testin
 	})
 	var pane previewview.PreviewPane
 	pane.Update(preview)
-	rows, err := pane.Render(t.Context(), repo, diffrender.TerminalTheme, 240, 22)
+	rows, err := pane.RenderBatch(t.Context(), preview.Caller, repo, diffrender.TerminalTheme, 240, 22, 15)
 	if err != nil {
 		t.Fatal(err)
 	}
