@@ -56,6 +56,14 @@ The transport-failure cases disconnect an unrelated MCP endpoint or remove/fail
 the hook helper after turn admission. Effect markers must remain absent. These
 checks do not establish fail-closed host hook-shell launch or timeout behavior.
 
+The backend's `TestGuardDiscoveryConfigurationNativeCodex` checks invocation-only
+caller-hook replacement, preserved hook identities/trust, and unchanged persistent
+configuration. It starts no thread or model turn:
+
+```sh
+make test TEST_PACKAGES=./backends/codex/shellhook TEST_RUN='^TestGuardDiscoveryConfigurationNativeCodex$' TEST_FLAGS='-tags=codex_e2e -count=1'
+```
+
 The segment-report fixtures in `app_server_exec_track_codex_e2e_test.go` check
 installed Codex execution and measured reports under read-only and workspace-write
 sandboxes. Run the affected acceptance without changing the host policy:

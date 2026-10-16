@@ -4,11 +4,13 @@ package shellhook
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json/jsontext"
 	json "encoding/json/v2"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -39,11 +41,11 @@ type Input struct {
 
 // Config uses the native session-layer hook and exact trust identity. It
 // neither changes user files nor grants sandbox permissions.
-func Config(helper, directory, sudoDirectory, tracker string) (config, state, identityHash string, err error) {
+func Config(helper, directory, sudoDirectory, tracker string, prior Invocation, disabled []string) (config, state, identityHash string, err error) {
 	// Hook runs carry only this description of what the hook does.
 	status := "Tracking shell segments"
 	if directory != "" {
-		status = "Applying VCS guard"
+		status = "Applying shell guard"
 	}
 	arguments := []string{helper, Flag, directory, sudoDirectory, tracker}
 	for i := range arguments {
@@ -64,8 +66,51 @@ func Config(helper, directory, sudoDirectory, tracker string) (config, state, id
 	}
 	hash := sha256.Sum256(data)
 	identityHash = "sha256:" + hex.EncodeToString(hash[:])
-	config = fmt.Sprintf(`hooks.PreToolUse=[{matcher="^Bash$",hooks=[{type="command",command=%q,timeout=5,async=false,statusMessage=%q}]}]`, command, status)
-	state = strconv.Quote(Key) + "={trusted_hash=" + strconv.Quote(identityHash) + "}"
+	group, err := json.Marshal(map[string]any{"matcher": "^Bash$", "hooks": identity["hooks"]})
+	if err != nil {
+		return "", "", "", err
+	}
+	groups := append(slices.Clone(prior.PreToolUse), group)
+	states := maps.Clone(prior.State)
+	if states == nil {
+		states = make(map[string]jsontext.Value)
+	}
+	for _, key := range disabled {
+		fields := make(map[string]jsontext.Value)
+		if value := states[key]; len(value) != 0 {
+			if err := json.Unmarshal(value, &fields); err != nil {
+				return "", "", "", fmt.Errorf("read hook state %q: %w", key, err)
+			}
+		}
+		fields["enabled"] = jsontext.Value("false")
+		value, err := json.Marshal(&fields)
+		if err != nil {
+			return "", "", "", err
+		}
+		states[key] = value
+	}
+	key := fmt.Sprintf("/<session-flags>/config.toml:pre_tool_use:%d:0", len(prior.PreToolUse))
+	states[key], err = json.Marshal(map[string]any{"trusted_hash": identityHash, "enabled": true})
+	if err != nil {
+		return "", "", "", err
+	}
+	groupJSON, err := json.Marshal(&groups)
+	if err != nil {
+		return "", "", "", err
+	}
+	stateJSON, err := json.Marshal(&states)
+	if err != nil {
+		return "", "", "", err
+	}
+	config, err = inlineTOML(groupJSON)
+	if err != nil {
+		return "", "", "", err
+	}
+	state, err = inlineTOML(stateJSON)
+	if err != nil {
+		return "", "", "", err
+	}
+	config, state = "hooks.PreToolUse="+config, "hooks.state="+state
 	return config, state, identityHash, nil
 }
 

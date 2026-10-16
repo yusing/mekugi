@@ -10,8 +10,8 @@ func TestSplitCommand(t *testing.T) {
 	for _, prefix := range [][]string{
 		nil,
 		{"--debug"},
-		{"--vcs-guard"},
-		{"--vcs-guard=false"},
+		{"--shell-guard"},
+		{"--shell-guard=false"},
 		{"--deduplicate-output"},
 		{"--deduplicate-output=false"},
 		{"--ansi-faint=off"},
@@ -91,15 +91,15 @@ func TestHasModelOverridePreservesOperands(t *testing.T) {
 	}
 }
 
-func TestVCSGuardFlagAndStandaloneSplit(t *testing.T) {
+func TestShellGuardFlagAndStandaloneSplit(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		prefix []string
 		want   bool
 	}{
 		{name: "default", want: true},
-		{name: "enabled", prefix: []string{"--vcs-guard"}, want: true},
-		{name: "disabled", prefix: []string{"--vcs-guard=false"}},
+		{name: "enabled", prefix: []string{"--shell-guard"}, want: true},
+		{name: "disabled", prefix: []string{"--shell-guard=false"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			command := []string{"--yolo", "-m", "example"}
@@ -111,8 +111,8 @@ func TestVCSGuardFlagAndStandaloneSplit(t *testing.T) {
 			if err := flags.Parse(prefix); err != nil {
 				t.Fatal(err)
 			}
-			if flags.vcsGuard != tc.want {
-				t.Fatalf("guard = %t, want %t", flags.vcsGuard, tc.want)
+			if flags.shellGuard != tc.want {
+				t.Fatalf("guard = %t, want %t", flags.shellGuard, tc.want)
 			}
 		})
 	}

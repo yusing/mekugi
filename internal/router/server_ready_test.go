@@ -158,14 +158,14 @@ func TestRunSessionPassthroughIgnoresInvalidReplayStorage(t *testing.T) {
 	}
 }
 
-func TestRunSessionPropagatesVCSGuard(t *testing.T) {
+func TestRunSessionPropagatesShellGuard(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		flags []string
 		want  bool
 	}{
 		{name: "default", want: true},
-		{name: "disabled", flags: []string{"--vcs-guard=false"}},
+		{name: "disabled", flags: []string{"--shell-guard=false"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
@@ -173,8 +173,8 @@ func TestRunSessionPropagatesVCSGuard(t *testing.T) {
 			notified := false
 			err := testRunSession(testHistory(), testRecovery(), ctx, testCommands(), append([]string{"--mode", "passthrough"}, tc.flags...), nil, func(session Session) {
 				notified = true
-				if session.VCSGuard != tc.want {
-					t.Errorf("session guard = %t, want %t", session.VCSGuard, tc.want)
+				if session.ShellGuard != tc.want {
+					t.Errorf("session guard = %t, want %t", session.ShellGuard, tc.want)
 				}
 				cancel()
 			}, nil)

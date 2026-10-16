@@ -52,11 +52,11 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 				helper = hookHelper
 			}
 			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-			hook, state, hash, err := shellhook.Config(helper, guard, "", "")
+			hook, state, hash, err := shellhook.Config(helper, guard, "", "", shellhook.Invocation{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			args := []string{"-c", hook, "-c", "hooks.state={" + state + "}", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`}
+			args := []string{"-c", hook, "-c", state, "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`}
 			var inject func() error
 			if failure == "disconnected-mcp" {
 				server := mcp.NewServer(&mcp.Implementation{Name: "reserved", Version: "1"}, nil)

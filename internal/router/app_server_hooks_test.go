@@ -230,7 +230,7 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 			"id": id, "eventName": event, "handlerType": "command", "executionMode": "sync", "sourcePath": source,
 			"status": status, "statusMessage": message, "startedAt": 1000, "completedAt": 1001, "durationMs": 5, "entries": entries}})
 	}
-	run("guard", "preToolUse", builtinHookSource, "completed", "Applying VCS guard")
+	run("guard", "preToolUse", builtinHookSource, "completed", "Applying shell guard")
 	run("context", "sessionStart", global, "completed", "", map[string]any{"kind": "context", "text": "<skills>"})
 	run("rejected", "preToolUse", global, "blocked", "Checking generated files", map[string]any{"kind": "feedback", "text": "generated file"})
 	rows := ansi.Strip(strings.Join(u.view.renderConversation(80).lines, "\n"))
@@ -244,7 +244,7 @@ func TestUISnapshotNativeHookVisibility(t *testing.T) {
 	// Native guard rejection carries the parser's reason, not a command exit.
 	appServerTestNotify(t, u, "hook/completed", map[string]any{"threadId": "main", "run": map[string]any{
 		"id": "guard-rejected", "eventName": "preToolUse", "handlerType": "mcpTool", "executionMode": "sync",
-		"sourcePath": builtinHookSource, "status": "blocked", "statusMessage": "Applying VCS guard",
+		"sourcePath": builtinHookSource, "status": "blocked", "statusMessage": "Applying shell guard",
 		"startedAt": 1000, "completedAt": 1001, "durationMs": 5,
 		"entries": []map[string]any{{"kind": "feedback", "text": "mekugi: VCS guard instrumentation failed: VCS guard: cannot parse command: 1:10: reached EOF without closing quote `'`"}}}})
 	uisnapshot.Assert(t, "testdata/snapshots/native-hook-guard-rejection.txt", strings.Join(u.view.renderConversation(80).lines, "\n")+"\n")

@@ -26,7 +26,6 @@ func TestValidateGuardHookEffectiveConfiguration(t *testing.T) {
 		value       any
 	}{
 		{"disabled", "enabled", false}, {"untrusted", "trustStatus", "untrusted"},
-		{"wrong key", "key", "/user/config.toml:pre_tool_use:0:0"},
 		{"wrong hash", "currentHash", hash + " extra"}, {"wrong type", "handlerType", "mcpTool"}, {"wrong matcher", "matcher", ".*"},
 		{"asynchronous", "async", true}, {"wrong event", "eventName", "postToolUse"},
 	} {
@@ -40,6 +39,7 @@ func TestValidateGuardHookEffectiveConfiguration(t *testing.T) {
 	}
 	for _, trust := range []string{"trusted", "managed"} {
 		hook := guardHookTestEntry(hash)
+		hook["key"] = "/<session-flags>/config.toml:pre_tool_use:3:0"
 		hook["trustStatus"] = trust
 		if err := Validate(guardHookTestResult(t, "/workspace", hook), "/workspace", hash); err != nil {
 			t.Fatal(err)

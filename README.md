@@ -125,8 +125,8 @@ flags go **before** `codex`, `grok`, or standalone Codex arguments.
 
 Codex's approval/sandbox policy applies. The UI's [remote-write guard](#approvals) needs
 unsandboxed execution: configure `sandbox_mode="danger-full-access"`, or use `--yolo` to
-disable Codex approvals/sandboxing while keeping the guard. To disable only the guard
-and keep Codex's configured policy, use `--vcs-guard=false`.
+disable Codex approvals/sandboxing while keeping the guard. To disable Mekugi's
+remote-write and sudo guarding while retaining Codex policy, use `--shell-guard=false`.
 
 ```sh
 mekugi codex
@@ -184,8 +184,10 @@ It needs `mekugi-exec` beside `mekugi`, synchronous native command hooks, and un
 Approve once, approve the exact command/workdir/executable for this UI session, or deny.
 Denial, a five-minute timeout, or an unreachable approval connection fails only that
 command with status 1; the shell follows normal `;`/`&&` behavior. Session grants expire
-when the UI closes. Missing/conflicting trusted guard hooks block turns; explicit hook
-overrides conflict. Read-only commands run without asking.
+when the UI closes. At startup, incompatible caller hooks produce a warning and
+are disabled for that invocation. Other hooks and configuration files remain
+unchanged. Managed conflicts, unverifiable matchers, or missing/conflicting guard
+hooks at turn admission block with an explanation. Read-only commands run without asking.
 
 Coverage is incomplete for runtime-computed commands, `eval`, scripts/sourced files, and
 arbitrary programs invoking VCS internally. See [guard
@@ -193,8 +195,9 @@ limits](doc/spec/execution.md#req-execution-003--guard-remote-vcs-writes).
 
 Interactive sudo commands also ask for approval, even with cached credentials or
 passwordless sudo. If authentication is needed afterward, a separate secret password
-dialog keeps the answer out of model input and retained history. Sudo approval works
-independently of `--vcs-guard` and grants no sandbox permissions. See
+dialog keeps the answer out of model input and retained history. The shared
+`--shell-guard` toggle controls both sudo and remote-write approval and grants no
+sandbox permissions. See
 [sudo support and limits](doc/spec/execution.md#req-execution-004--unlock-sudo-through-the-native-dialog).
 
 ### Headless execution
@@ -343,7 +346,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | --- | --- | --- |
 | `--ansi-faint` | `auto` | Detect mosh; `on` uses ANSI faint, `off` fixed muted colors |
 | `--mode` | `mekugi` | `passthrough` forwards Codex without Mekugi tools |
-| `--vcs-guard` | `true` | Ask before UI remote writes, even with `--yolo` |
+| `--shell-guard` | `true` | Guard UI remote writes and sudo commands, even with `--yolo` |
 | `--deduplicate-output` | `true` | Reference duplicates in model input; full results/evidence stay intact |
 | `--grok-auth-file` | `~/.grok/auth.json` | OAuth store |
 | `--timeout` | `10m` | Wait for response start |
@@ -351,7 +354,7 @@ for that thread/model during the invocation. The composer shows the effective ti
 | `--capture-output PATH` | Disabled | Append sanitized JSONL metrics |
 | `--debug` | Disabled | Record private [diagnostic evidence](docs/contributing/development.md#diagnostics) |
 
-`mekugi --mode passthrough --vcs-guard=false codex` retains Codex policy/metrics, but
+`mekugi --mode passthrough --shell-guard=false codex` retains Codex policy/metrics, but
 disables Mekugi tools/guard. Use `--ansi-faint=off` if a multiplexer hides mosh.
 
 ### Context reset and recovery

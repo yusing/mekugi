@@ -33,7 +33,7 @@ func TestHookConfigCommandAdapter(t *testing.T) {
 				}
 			}
 			resources := []string{filepath.Join(directory, "guard's"), "", filepath.Join(directory, "tracker's")}
-			config, _, _, err := Config(helper, resources[0], resources[1], resources[2])
+			config, _, _, err := Config(helper, resources[0], resources[1], resources[2], Invocation{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

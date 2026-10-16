@@ -44,6 +44,15 @@ approval policy and session grants remain separate from this protocol owner.
 Hook matchers outside the verified shared regex syntax block guarded admission
 with an explanation; an unverified matcher is never treated as nonmatching.
 
+Guarded startup uses a bounded discovery process with the same invocation
+configuration and absolute workspace. Host-resolved session-layer hook groups and
+state are preserved, including empty groups and original handler indices. The
+backend appends its guard and disables exact incompatible ordinary hook keys only
+through invocation overrides. Managed conflicts remain unavailable. Discovery
+starts no thread or inference, closes its process before final launch, and leaves
+persistent settings unchanged. Per-turn validation checks the actual selected
+thread workspace; later conflicts block admission rather than being rewritten.
+
 ## Input projection
 
 Bindings register named two-phase projections in composition order. Preparation

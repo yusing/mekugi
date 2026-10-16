@@ -36,7 +36,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	if err := os.WriteFile(tracker, []byte(shellinstrumentation.ShTracker(helper, shell.transport.Endpoints().Requests, shell.transport.Endpoints().Directory)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	hook, state, _, err := shellhook.Config(helper, "", "", tracker)
+	hook, state, _, err := shellhook.Config(helper, "", "", tracker, shellhook.Invocation{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
 		environment: []string{"PATH=" + execTrackPath(), shellinstrumentation.ShTrackerEnvironment + "=" + tracker},
-		codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
+		codexArgs:   []string{"-c", hook, "-c", state},
 		duringTurn:  during, afterPrompt: after,
 	})
 	if !report.done || report.code != 1 || len(report.segments) != 5 {
@@ -172,7 +172,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The command hook instruments without executing the command script.
-	hook, state, _, err := shellhook.Config(helper, "", "", "")
+	hook, state, _, err := shellhook.Config(helper, "", "", "", shellhook.Invocation{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	}
 	runAppServerPreviewWith(t, provider, proxy, appServerPreview{
 		environment: environment, afterPrompt: after,
-		codexArgs: []string{"-c", hook, "-c", "hooks.state={" + state + "}"},
+		codexArgs: []string{"-c", hook, "-c", state},
 	})
 }
 

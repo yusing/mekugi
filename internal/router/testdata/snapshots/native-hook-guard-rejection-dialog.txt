@@ -3,7 +3,7 @@
 
 
 
-╭─ Hook Blocked · preToolUse · Applying VCS guard · builtin · 5…  [×] ─╮
+╭─ Hook Blocked · preToolUse · Applying shell guard · builtin ·…  [×] ─╮
 │ mcpTool · 1 line                                                     │
 ├──────────────────────────────────────────────────────────────────────┤
 │ 1 ┆ feedback: mekugi: VCS guard instrumentation failed: VCS guard: c │

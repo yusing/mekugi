@@ -237,11 +237,9 @@ func TestFrontendScriptSudo(t *testing.T) {
 				cmd := exec.Command(args[0], args[1:]...)
 				cmd.Env = environment
 				out, err := cmd.CombinedOutput()
-				want := " <bare argument>\n" + filepath.Join(real, "sudo") + " <two words>\n"
+				want := "BYPASSED\nBYPASSED\nBYPASSED\n"
 				if guard {
-					want += filepath.Join(real, "git") + " <push>\n"
-				} else {
-					want += "BYPASSED\n"
+					want = " <bare argument>\n" + filepath.Join(real, "sudo") + " <two words>\n" + filepath.Join(real, "git") + " <push>\n"
 				}
 				want += "CUSTOM\n"
 				if err == nil || cmd.ProcessState.ExitCode() != 7 || string(out) != want {
@@ -858,7 +856,7 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(environment, "PATH="+frontend+":"+sudoask.Path(frontend)+":"+os.Getenv("PATH")) {
+	if !slices.Contains(environment, "PATH="+frontend+":"+os.Getenv("PATH")) {
 		t.Fatalf("unguarded environment = %q", environment)
 	}
 	if slices.Contains(environment, shellinstrumentation.Guard+"=1") || !slices.Contains(environment, shellinstrumentation.ShTrackerEnvironment+"="+filepath.Join(root, "exec-track.sh")) {
@@ -870,6 +868,14 @@ func TestFrontendShellEnvironmentWithoutGuardKeepsTracking(t *testing.T) {
 	guard, _ := vcsguard.Paths(frontend)
 	if _, err := os.Stat(guard); !os.IsNotExist(err) {
 		t.Fatalf("unguarded shell installed guard: %v", err)
+	}
+	if _, err := os.Stat(sudoask.Path(frontend)); !os.IsNotExist(err) {
+		t.Fatalf("unguarded shell installed sudo helpers: %v", err)
+	}
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=") {
+			t.Fatal("unguarded shell exposed sudo instrumentation")
+		}
 	}
 	const script = "printf local; printf read"
 	// The host's hook shell inherits the launcher environment, not the tool's

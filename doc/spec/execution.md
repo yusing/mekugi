@@ -206,11 +206,12 @@ For dash-backed sh, Codex's native `PreToolUse` command hook adds inline
 instrumentation to supported POSIX scripts. It runs in Codex's selected shell,
 without launching a substitute interpreter, and uses the same segment reports,
 measured timing, output retention and UI as Bash. Bash keeps its startup path.
-The native hook is registered for tracking even with `--vcs-guard=false`. Its
+The native hook is registered for tracking even with `--shell-guard=false`. Its
 status message, part of its invocation-local trust identity, describes it in hook
-rows: `Applying VCS guard` with the guard enabled, otherwise `Tracking shell segments`.
-With the VCS guard disabled, explicit caller `PreToolUse` conflicts leave caller
-settings intact and sh untracked; an enabled guard rejects a conflicting launch.
+rows: `Applying shell guard` with the guard enabled, otherwise `Tracking shell segments`.
+With shell guarding disabled, explicit caller `PreToolUse` conflicts leave caller
+settings intact and sh untracked. Enabled guarding replaces incompatible hooks
+for this invocation after warning, as described below.
 Missing or incompatible tracking resources leave commands running once
 with aggregate host output. This support is limited to Linux dash-backed sh;
 other sh implementations are not promised segment tracking.
@@ -326,8 +327,7 @@ Acceptance:
 6. Edit intent and running diff cards use segment lifecycle rather than waiting
    for later non-edit commands. Preview matching requires exact thread, turn and
    authored script identity after removing exact PATH-prefix instrumentation for
-   the current session's VCS and sudo guards, including sudo with the VCS guard
-   disabled. Item-bound instrumentation must match the exact command item.
+   the current session's enabled VCS and sudo guards. Item-bound instrumentation must match the exact command item.
    Helper wrappers, unrecognized source, and other-session source stay intact;
    ambiguous matches are rejected. Report matching and host inputs remain unchanged.
    These live observations never
@@ -352,9 +352,10 @@ Interactive UI launches guard remote version-control writes by default,
 independently of Codex's approval policy, including with `--yolo`. Writes wait
 for the user's approval in the UI. This covers Git, GitHub CLI, Mercurial,
 Subversion and Jujutsu, without restricting the remote, ref or tag being written.
-The Mekugi flag `--vcs-guard=false`, placed before `codex` or standalone Codex
-arguments, disables only this guard, preserving Codex's approval policy and
-command tracking. Headless and noninteractive commands have no guard.
+The Mekugi flag `--shell-guard=false`, placed before `codex` or standalone Codex
+arguments, disables both remote-write and sudo guarding, preserving Codex's
+approval policy and independent command tracking. Headless and noninteractive
+commands have no guard.
 
 The guard requires unsandboxed command execution: configure
 `sandbox_mode="danger-full-access"` or use `--yolo`. The latter disables Codex
@@ -392,10 +393,18 @@ The enabled guard requires Mekugi mode, the installed `mekugi-exec` sibling,
 Codex's native command-hook support and the approval channel. Before each new
 user turn, the UI verifies the workspace's effective hooks. A missing, disabled
 or untrusted guard, a changed hook identity, or a competing trusted synchronous
-shell hook blocks the turn with an explanation and preserves the draft. Explicit CLI overrides of
-`hooks` or `hooks.PreToolUse` prevent a guarded launch. Interactive passthrough
-requires explicit `--vcs-guard=false`, rather than `--yolo`. Invocation-local hook
-setup preserves recovery-hook trust and leaves user configuration files unchanged.
+shell hook blocks the turn with an explanation and preserves the draft. At
+startup, Mekugi queries Codex's effective hooks and session configuration in
+the invocation workspace without starting a thread or model request. It warns
+before disabling incompatible trusted synchronous shell hooks for this invocation,
+then appends its composed guard. Existing groups and handler indices, unrelated
+events, async observers, nonmatching handlers and their trust state remain intact.
+Managed conflicting hooks cannot be replaced and block launch with an explanation.
+User configuration files remain unchanged. Later workspace or configuration changes
+are checked at turn admission; newly conflicting hooks block with the draft retained
+rather than being replaced dynamically. Interactive passthrough
+requires explicit `--shell-guard=false`, rather than `--yolo`. Invocation-local hook
+setup preserves recovery-hook trust.
 
 Guard instrumentation failures reject the native tool with the actual failure
 reason. The hook's shell adapter also converts missing or failing helper
@@ -475,8 +484,9 @@ Acceptance:
 6. A missing, disabled or untrusted effective guard, or a competing trusted
    synchronous shell hook, blocks a new user turn without losing the draft or
    modifying user configuration.
-7. The default guard remains enabled with `--yolo`. Explicit `--vcs-guard=false`
-   removes remote-write prompts while preserving command tracking and the chosen
+7. The default guard remains enabled with `--yolo`. Explicit `--shell-guard=false`
+   removes remote-write and sudo prompts and instrumentation while preserving
+   independent command tracking and the chosen
    Codex approval and sandbox policy. Interactive passthrough rejects an enabled
    guard and accepts the explicit opt-out.
 8. Session approval releases exact queued duplicates and subsequent matching
@@ -513,14 +523,15 @@ and askpass pipe. They never enter host tool arguments, model input, input histo
 activity answer records or retained replay. Hiding the dialog keeps its draft;
 command cancellation, UI shutdown and the approval timeout withdraw it.
 
-This support is independent of `--vcs-guard` and Codex's approval policy. It does
+The shared `--shell-guard` toggle controls this support and remote-write approval.
+Codex's approval policy remains independent. It does
 not grant sandbox permissions or change sudo policy. It requires the interactive
 UI, the installed `mekugi-exec` helper and access to its local approval channel;
 headless and passthrough commands retain their existing behavior. Direct sudo
 names and executable paths through supported command wrappers are instrumented
 by the native command hook. Shell functions keep their existing lookup.
 Inside script files, inherited PATH guards cover bare sudo names. Bash startup
-also covers direct known absolute sudo paths, independently of the VCS guard.
+also covers direct known absolute sudo paths when shell guarding is enabled.
 Scripts keep their original bytes, interpreter, arguments and exit status;
 absolute paths invoked through wrappers inside script files retain the same
 limits as the VCS guard's Bash path functions.

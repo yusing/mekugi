@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,7 +33,7 @@ func TestAutoWrapProcess(t *testing.T) {
 		}
 		var routerArgs []string
 		if os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "off" {
-			routerArgs = []string{"--vcs-guard=false"}
+			routerArgs = []string{"--shell-guard=false"}
 		}
 		code, err := wrapCodex(t.Context(), routerArgs, args)
 		if err != nil {
@@ -41,8 +42,9 @@ func TestAutoWrapProcess(t *testing.T) {
 		os.Exit(code)
 	}
 	if len(os.Args) > 4 && os.Args[4] == "app-server" {
-		if expected := os.Getenv("MEKUGI_AUTO_WRAP_GUARD"); expected != "" {
-			guard := os.Getenv("MEKUGI_VCS_GUARD_HOOK")
+		guard := os.Getenv("MEKUGI_VCS_GUARD_HOOK")
+		preflight := os.Getenv("MEKUGI_AUTO_WRAP_GUARD") == "default" && guard == ""
+		if expected := os.Getenv("MEKUGI_AUTO_WRAP_GUARD"); expected != "" && !preflight {
 			if expected == "default" {
 				link := filepath.Join(filepath.Dir(os.Getenv("BASH_ENV")), "vcs-approval.sock")
 				socket, err := os.Readlink(link)
@@ -57,7 +59,11 @@ func TestAutoWrapProcess(t *testing.T) {
 				t.Fatalf("guard hook for %s = %q", expected, guard)
 			}
 		}
-		marker, err := os.OpenFile(os.Getenv("MEKUGI_AUTO_WRAP_RPC_MARKER"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		markerPath := os.Getenv("MEKUGI_AUTO_WRAP_RPC_MARKER")
+		if preflight {
+			markerPath += ".discovery"
+		}
+		marker, err := os.OpenFile(markerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,8 +71,11 @@ func TestAutoWrapProcess(t *testing.T) {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			var request struct {
-				ID     json.RawMessage `json:"id"`
-				Method string          `json:"method"`
+				ID     jsontext.Value `json:"id"`
+				Method string         `json:"method"`
+				Params struct {
+					Cwds []string `json:"cwds"`
+				} `json:"params"`
 			}
 			if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
 				t.Fatal(err)
@@ -75,6 +84,23 @@ func TestAutoWrapProcess(t *testing.T) {
 			switch request.Method {
 			case "initialize":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{}}`+"\n", request.ID)
+			case "config/read":
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"layers":[{"name":{"type":"sessionFlags"},"config":{"hooks":{"PreToolUse":[],"state":{}}}}]}}`+"\n", request.ID)
+			case "hooks/list":
+				if len(request.Params.Cwds) != 1 {
+					t.Fatal("hook discovery did not select one absolute workspace")
+				}
+				var hooks []map[string]any
+				if preflight {
+					hooks = append(hooks, map[string]any{"key": "caller-fixture", "eventName": "preToolUse", "enabled": true, "trustStatus": "trusted", "matcher": "Bash", "handlerType": "command"})
+				} else {
+					hooks = append(hooks, map[string]any{"key": "/<session-flags>/config.toml:pre_tool_use:0:0", "eventName": "preToolUse", "enabled": true, "trustStatus": "trusted", "matcher": "^Bash$", "handlerType": "command", "currentHash": guard})
+				}
+				result, err := json.Marshal(map[string]any{"data": []any{map[string]any{"cwd": request.Params.Cwds[0], "errors": []any{}, "hooks": hooks}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				fmt.Fprintf(os.Stdout, `{"id":%s,"result":%s}`+"\n", request.ID, result)
 			case "environment/info":
 				fmt.Fprintf(os.Stdout, `{"id":%s,"result":{"shell":{"name":"bash","path":"/bin/bash"}}}`+"\n", request.ID)
 			case "thread/start":
@@ -224,6 +250,13 @@ func TestWrapIntegratedUIAndRedirectedBehavior(t *testing.T) {
 				t.Fatalf("wrapper: %v\n%s", err, output)
 			}
 			if test.guard {
+				discovery, err := os.ReadFile(rpcMarker + ".discovery")
+				if err != nil || string(discovery) != "initialize\ninitialized\nconfig/read\nhooks/list\n" {
+					t.Fatalf("guard preflight lifecycle = %q, %v", discovery, err)
+				}
+				if !bytes.Contains(output, []byte(`shell guard replaces incompatible hook "caller-fixture" for this invocation`)) {
+					t.Fatalf("hook replacement warning missing: %s", output)
+				}
 				data, err := os.ReadFile(rpcMarker + ".guard")
 				if err != nil {
 					t.Fatal(err)

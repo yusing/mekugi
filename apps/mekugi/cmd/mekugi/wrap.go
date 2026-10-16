@@ -181,10 +181,10 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	if session.AXReadOutput != "" {
 		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
 	}
-	guard := appUI && session.VCSGuard
+	guard := appUI && session.ShellGuard
 	if guard && session.FrontendDirectory == "" {
 		cancel()
-		return 1, errors.Join(errors.New("VCS guard requires Mekugi mode; use --vcs-guard=false to disable it"), <-routerDone)
+		return 1, errors.Join(errors.New("Shell guard requires Mekugi mode; use --shell-guard=false to disable it"), <-routerDone)
 	}
 	if session.FrontendDirectory != "" {
 		helper := ""
@@ -215,7 +215,23 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 				}
 			}
 			var hash string
-			cmd.Args, hash, err = vcsGuardHookArgs(cmd.Args, helper, guardDirectory, sudoDirectory, tracker)
+			if guard {
+				prior, disabled, discoverErr := shellhook.Discover(ctx, cmd)
+				if discoverErr != nil {
+					cancel()
+					return 1, errors.Join(fmt.Errorf("prepare shell guard: %w", discoverErr), <-routerDone)
+				}
+				var config, state string
+				config, state, hash, err = shellhook.Config(helper, guardDirectory, sudoDirectory, tracker, prior, disabled)
+				if err == nil {
+					cmd.Args = append(cmd.Args, "-c", config, "-c", state)
+					for _, key := range disabled {
+						fmt.Fprintf(os.Stderr, "mekugi: shell guard replaces incompatible hook %q for this invocation\n", key)
+					}
+				}
+			} else if tracker != "" {
+				cmd.Args, hash, err = optionalTrackingHookArgs(cmd.Args, helper, tracker)
+			}
 			if err != nil {
 				if guard {
 					cancel()
@@ -345,6 +361,9 @@ const frontendBashEnvMarker = "# Mekugi frontend shell startup\n"
 // function for each absolute path to one, in Bash, so remote writes
 // wait for the user's approval.
 func frontendShellEnvironment(environment []string, directory, helper string, guard bool, reports segmenttransport.Endpoints) ([]string, error) {
+	if guard && helper == "" {
+		return nil, errors.New("Shell guard requires mekugi-exec beside mekugi; install both or use --shell-guard=false")
+	}
 	// Login Bash may replace inherited PATH while reading /etc/profile. Its
 	// noninteractive startup file runs afterward, including for `bash -lc`.
 	previous := ""
@@ -378,7 +397,7 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 		startup += ". " + shellsyntax.Quote(previous) + "\n"
 	}
 	front := directory
-	if helper != "" {
+	if guard {
 		sudoDirectory := sudoask.Path(directory)
 		if err := os.MkdirAll(sudoDirectory, 0o700); err != nil {
 			return nil, err
@@ -387,11 +406,6 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 			if err := os.Symlink(helper, filepath.Join(sudoDirectory, name)); err != nil {
 				return nil, err
 			}
-		}
-	}
-	if guard {
-		if helper == "" {
-			return nil, errors.New("VCS guard requires mekugi-exec beside mekugi; install both or use --vcs-guard=false")
 		}
 		guardDirectory, _ := vcsguard.Paths(directory)
 		if err := os.MkdirAll(guardDirectory, 0o700); err != nil {
@@ -402,24 +416,19 @@ func frontendShellEnvironment(environment []string, directory, helper string, gu
 				return nil, fmt.Errorf("prepare VCS write guard: %w", err)
 			}
 		}
-		front = guardDirectory + string(os.PathListSeparator) + directory
-	}
-	if helper != "" {
-		front += string(os.PathListSeparator) + sudoask.Path(directory)
+		front = guardDirectory + string(os.PathListSeparator) + directory + string(os.PathListSeparator) + sudoDirectory
 	}
 	startup += "PATH=" + shellsyntax.Quote(front) + ":\"$PATH\"; export PATH\n"
 	if guard {
 		guardDirectory, _ := vcsguard.Paths(directory)
 		startup += shellinstrumentation.Functions(guardDirectory, shellinstrumentation.KnownPaths(basePath, commandanalysis.VCSTools), commandanalysis.VCSTools)
-	}
-	if helper != "" {
 		tools := []string{"sudo"}
 		startup += shellinstrumentation.Functions(sudoask.Path(directory), shellinstrumentation.KnownPaths(basePath, tools), tools)
 	}
 	environment = slices.DeleteFunc(slices.Clone(environment), func(entry string) bool {
 		return strings.HasPrefix(entry, "PATH=") || strings.HasPrefix(entry, "BASH_ENV=") || strings.HasPrefix(entry, userBashEnvEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.ShTrackerEnvironment+"=") || strings.HasPrefix(entry, shellinstrumentation.Guard+"=") || strings.HasPrefix(entry, "CODEX_THREAD_ID=") || strings.HasPrefix(entry, sudoask.DirectoryEnvironment+"=")
 	})
-	if helper != "" {
+	if guard {
 		environment = append(environment, sudoask.DirectoryEnvironment+"="+sudoask.Path(directory))
 	}
 	if helper != "" && reports.Requests != "" {

@@ -3,12 +3,15 @@
 package router
 
 import (
+	json "encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 
@@ -137,7 +140,32 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 				t.Fatal(err)
 			}
 			guard, _ := vcsguard.Paths(filepath.Join(shell.root, "bin"))
-			hook, state, hash, err := shellhook.Config(helper, guard, "", "")
+			prior := shellhook.Invocation{}
+			var disabled []string
+			conflictMarker := filepath.Join(t.TempDir(), "caller-hook-ran")
+			if tc.name == "denied" {
+				caller := filepath.Join(t.TempDir(), "caller-hook")
+				if err := os.WriteFile(caller, []byte("#!/bin/sh\nprintf reached > "+quoteShellWord(conflictMarker)+"\nprintf '{}\\n'\n"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				callerConfig, callerState, _, err := shellhook.Config(caller, "", "", "", shellhook.Invocation{}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var parsed map[string]any
+				if _, err := toml.Decode(callerConfig+"\n"+callerState, &parsed); err != nil {
+					t.Fatal(err)
+				}
+				data, err := json.Marshal(parsed["hooks"])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal(data, &prior); err != nil {
+					t.Fatal(err)
+				}
+				disabled = []string{shellhook.Key}
+			}
+			hook, state, hash, err := shellhook.Config(helper, guard, "", "", prior, disabled)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -193,10 +221,13 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 			}
 			runAppServerPreviewWith(t, provider, proxy, appServerPreview{
 				environment: []string{"PATH=" + execTrackPath(), shellhook.Environment + "=" + hash},
-				codexArgs:   []string{"-c", hook, "-c", "hooks.state={" + state + "}", "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
+				codexArgs:   []string{"-c", hook, "-c", state, "-c", `sandbox_mode="danger-full-access"`, "-c", `approval_policy="never"`},
 				approvals:   false,
 				duringTurn:  during,
 			})
+			if _, err := os.Stat(conflictMarker); !os.IsNotExist(err) {
+				t.Fatalf("replaced caller hook ran during guarded command: %v", err)
+			}
 			provider.mu.Lock()
 			defer provider.mu.Unlock()
 			if !provider.resultSeen {

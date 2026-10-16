@@ -177,7 +177,7 @@ func StartAppServerUI(service *history.Service, ctx context.Context, cmd *exec.C
 	return startAppServerUI(service, nil, ctx, cmd, stdin, stdout, nil, issues, resumeThread, faint, nil, nil, resumeArgv, "", nil, approvals)
 }
 
-// Codex approval policy and the invocation-local VCS guard are independent.
+// Codex approval policy and the invocation-local Shell guard are independent.
 func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
@@ -186,7 +186,7 @@ func startAppServerUI(service *history.Service, segments *reports.Service, ctx c
 		}
 	}
 	if guardHash != "" && (proxy == nil || proxy.guard == nil) {
-		return nil, errors.New("VCS guard approval channel is unavailable")
+		return nil, errors.New("Shell guard approval channel is unavailable")
 	}
 	var resumeCwd string
 	if resumeThread == "--last" || resumeThread == resumePickerStartup {

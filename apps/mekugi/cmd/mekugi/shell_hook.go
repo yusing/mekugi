@@ -1,6 +1,7 @@
 package main
 
 import (
+	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
@@ -10,18 +11,14 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// vcsGuardHookArgs adds the guard to this invocation. Preserve other events
-// and trust entries, including caller-owned session hooks.
-func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker string) ([]string, string, error) {
-	config, state, hash, err := shellhook.Config(helper, directory, sudoDirectory, tracker)
-	if err != nil {
-		return args, "", err
-	}
+// optionalTrackingHookArgs preserves caller hooks when shell guarding is off.
+// Tracking remains auxiliary and does not start a discovery process.
+func optionalTrackingHookArgs(args []string, helper, tracker string) ([]string, string, error) {
 	index := slices.Index(args, "--")
 	if index < 0 {
 		index = len(args)
 	}
-	previousState := ""
+	prior := shellhook.Invocation{}
 	for i := 0; i < index; i++ {
 		setting, _ := codexArgumentValue(args[:index], &i, "-c", "--config")
 		key, value, _ := strings.Cut(setting, "=")
@@ -39,15 +36,18 @@ func vcsGuardHookArgs(args []string, helper, directory, sudoDirectory, tracker s
 			if _, exists := parsed.State[shellhook.Key]; exists {
 				return args, "", fmt.Errorf("explicit CLI state for the shell hook conflicts")
 			}
-			value = strings.TrimSpace(value)
-			if !strings.HasPrefix(value, "{") || !strings.HasSuffix(value, "}") {
-				return args, "", fmt.Errorf("CLI hook state must be a table")
+			data, err := json.Marshal(&parsed.State)
+			if err != nil {
+				return args, "", err
 			}
-			previousState = strings.TrimSpace(value[1 : len(value)-1])
+			if err := json.Unmarshal(data, &prior.State); err != nil {
+				return args, "", err
+			}
 		}
 	}
-	if previousState != "" {
-		state = previousState + "," + state
+	config, state, hash, err := shellhook.Config(helper, "", "", tracker, prior, nil)
+	if err != nil {
+		return args, "", err
 	}
-	return slices.Insert(slices.Clone(args), index, "-c", config, "-c", "hooks.state={"+state+"}"), hash, nil
+	return slices.Insert(slices.Clone(args), index, "-c", config, "-c", state), hash, nil
 }

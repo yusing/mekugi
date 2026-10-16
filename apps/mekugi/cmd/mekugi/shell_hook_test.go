@@ -9,10 +9,10 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-func TestVCSGuardHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
+func TestOptionalTrackingHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
 	caller := []string{"exec", "-c", `hooks.state={other={trusted_hash="existing"}}`, "--", "-c", "hooks.PreToolUse=[]"}
 	original := slices.Clone(caller)
-	got, identity, err := vcsGuardHookArgs(caller, "/path with spaces/mekugi", "/private/guard", "", "")
+	got, identity, err := optionalTrackingHookArgs(caller, "/path with spaces/mekugi", "/private/tracker")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,14 +38,12 @@ func TestVCSGuardHookArgsPreservesExistingTrustAndCaller(t *testing.T) {
 		t.Fatalf("existing hook trust lost: %+v", config.Hooks.State)
 	}
 	guard := config.Hooks.State[shellhook.Key]
-	// Pin command-hook identity encoding; host acceptance checks effective trust.
-	const hash = "sha256:47b7079ef39b8b57cfded0198db6e9f97b09b47f190c8008f2f3ee390265f081"
-	if guard.TrustedHash != hash || identity != hash || guard.Enabled != nil {
-		t.Fatalf("guard trust identity or enablement changed: %+v", guard)
+	if identity == "" || guard.TrustedHash != identity || guard.Enabled == nil || !*guard.Enabled {
+		t.Fatalf("tracking hook trust or enablement missing: %+v", guard)
 	}
 }
 
-func TestVCSGuardHookArgsRejectsExplicitConflicts(t *testing.T) {
+func TestOptionalTrackingHookArgsRejectsExplicitConflicts(t *testing.T) {
 	for _, setting := range []string{
 		"hooks={PreToolUse=[]}", "hooks.PreToolUse=[]", "hooks.PreToolUse.0.matcher='Bash'",
 		`hooks.state={"/<session-flags>/config.toml:pre_tool_use:0:0"={enabled=false}}`,
@@ -53,7 +51,7 @@ func TestVCSGuardHookArgsRejectsExplicitConflicts(t *testing.T) {
 	} {
 		for _, args := range [][]string{{"exec", "-c", setting}, {"exec", "--config=" + setting}, {"exec", "-c" + setting}} {
 			original := slices.Clone(args)
-			fallback, _, err := vcsGuardHookArgs(args, "/mekugi", "", "", "")
+			fallback, _, err := optionalTrackingHookArgs(args, "/mekugi", "/tracker")
 			if err == nil {
 				t.Errorf("accepted conflicting config: %q", args)
 			}

@@ -51,7 +51,7 @@ func (u *appServerUI) guardHookResponse(message appserver.Message) error {
 		u.restoreDrafts(append(u.unsent, u.queued...)...)
 		u.unsent, u.queued = nil, nil
 		u.status = "Ready"
-		u.setNotice("VCS guard: "+err.Error(), true)
+		u.setNotice("Shell guard: "+err.Error(), true)
 		return nil
 	}
 	u.guardHookCheck.readyThread = thread

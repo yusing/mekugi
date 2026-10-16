@@ -19,7 +19,7 @@ import (
 func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 	for _, guard := range []bool{true, false} {
 		for _, phase := range []string{"acquire", "attach"} {
-			t.Run(fmt.Sprintf("vcs=%v/%s", guard, phase), func(t *testing.T) {
+			t.Run(fmt.Sprintf("guard=%v/%s", guard, phase), func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
 				segments := &segmentservice.Service{Reports: testReports(), LiveError: errors.New("injected report acquisition failure")}
@@ -32,7 +32,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					segments.Live.Close()
 					segments.LiveError = nil
 				}
-				options, err := ParseSessionConfig([]string{"--mode", "mekugi", "--ansi-faint", "off", fmt.Sprintf("--vcs-guard=%v", guard)})
+				options, err := ParseSessionConfig([]string{"--mode", "mekugi", "--ansi-faint", "off", fmt.Sprintf("--shell-guard=%v", guard)})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -49,6 +49,12 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					}
 					_, channel := vcsguard.Paths(session.FrontendDirectory)
 					socket, linkErr := os.Readlink(channel)
+					if !guard {
+						if !errors.Is(linkErr, os.ErrNotExist) {
+							t.Errorf("disabled shell guard acquired approval channel: %v", linkErr)
+						}
+						return
+					}
 					if linkErr != nil {
 						t.Errorf("report failure removed approval channel: %v", linkErr)
 						return

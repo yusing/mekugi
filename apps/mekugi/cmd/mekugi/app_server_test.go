@@ -119,7 +119,7 @@ func TestAppServerModelFlagForms(t *testing.T) {
 }
 
 func TestAppServerArgsRejectsUnmappedAuthorization(t *testing.T) {
-	for _, args := range [][]string{{"--full-auto"}, {"--yolo", "--full-auto"}, {"--yolo", "prompt"}, {"--yolo", "--model"}, {"--yolo", "-c"}, {"--yolo", "--sandbox", "workspace-write"}, {"--ask-for-approval", "never"}} {
+	for _, args := range [][]string{{"--vcs-guard=false"}, {"--full-auto"}, {"--yolo", "--full-auto"}, {"--yolo", "prompt"}, {"--yolo", "--model"}, {"--yolo", "-c"}, {"--yolo", "--sandbox", "workspace-write"}, {"--ask-for-approval", "never"}} {
 		if got, _, _, err := appServerArgs(args); err == nil {
 			t.Errorf("appServerArgs(%q) = %q, wanted rejection", args, got)
 		}

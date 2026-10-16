@@ -21,7 +21,7 @@ type SessionConfig struct {
 	streamIdleTimeout time.Duration
 	mode              string
 	ansiFaint         string
-	vcsGuard          bool
+	shellGuard        bool
 	duplicateOutput   bool
 	grokAuthFile      string
 	captureOutput     string
@@ -76,7 +76,7 @@ func newRouterFlags(stderr io.Writer) *routerFlags {
 	flags.DurationVar(&flags.timeout, "timeout", defaultRequestTimeout, "upstream response-start timeout")
 	flags.DurationVar(&flags.streamIdleTimeout, "stream-idle-timeout", defaultStreamIdleTimeout, "maximum upstream inactivity between WebSocket messages or HTTP response bytes")
 	flags.StringVar(&flags.mode, "mode", defaultRewriteMode, "response mode: mekugi or passthrough")
-	flags.BoolVar(&flags.vcsGuard, "vcs-guard", true, "ask before remote VCS writes in the UI, independently of Codex approval policy")
+	flags.BoolVar(&flags.shellGuard, "shell-guard", true, "ask before remote VCS writes and sudo commands in the UI, independently of Codex approval policy")
 	flags.BoolVar(&flags.duplicateOutput, "deduplicate-output", true, "deduplicate output and attachments in model input")
 	flags.StringVar(&flags.grokAuthFile, "grok-auth-file", "", "Grok OAuth credential file (default ~/.grok/auth.json)")
 	flags.StringVar(&flags.captureOutput, "capture-output", "", "optional sanitized capture JSONL path")
