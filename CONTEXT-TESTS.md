@@ -232,6 +232,5 @@ The following acceptance routes apply only when the requested change touches the
   examples, and idempotence through stock, marked, custom, and multipart
   developer text parts.
 
-The [interface specifications](doc/spec/index.md),
-[ownership contracts](doc/architecture/index.md), and
+The [owner specifications and shared contracts](docs/index.md) and
 [dated Codex observations](doc/codex-router-e2e.md) own the behavior and evidence.

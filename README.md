@@ -410,8 +410,8 @@ Captures exclude prompts, patches, and credentials.
 
 ## Documentation
 
-[Contributing](CONTRIBUTING.md) · [Product](docs/product.md) · [Interfaces](doc/spec/index.md) ·
-[Architecture](doc/architecture/index.md) · [Comparisons](doc/benchmarks.md) · [Codex
+[Documentation](docs/index.md) · [Contributing](CONTRIBUTING.md) ·
+[Comparisons](doc/benchmarks.md) · [Codex
 end-to-end checks](doc/codex-router-e2e.md)
 
 ## License

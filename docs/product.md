@@ -36,9 +36,8 @@ or model prose.
 - **One component owns each meaning.** Features share observed facts instead of
   independently approximating execution outcomes.
 
-Feature specifications own detailed behavior and acceptance. Shared
-[interface](../doc/spec/index.md) and [ownership](../doc/architecture/index.md)
-indexes link those owners rather than defining another copy of their contracts.
+Feature specifications own detailed behavior and acceptance. The
+[documentation index](index.md) links their owners and the shared contracts.
 
 ## User journeys
 

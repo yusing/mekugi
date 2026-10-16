@@ -87,8 +87,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Structural inspection | `modules/sourceoutline`; shared declarations and source coordinates in `libraries/sourceanalysis/structure` |
 | Raw source reading and shared output admission | `modules/fileread`; `libraries/outputbudget`; retained publication and paging belong to `modules/outputrecovery` |
 | Router process signals, wrapped Codex lifecycle, and top-level exit | `apps/mekugi/internal/launch/dispatch.go`, `apps/mekugi/internal/launch/wrap.go`; executable entrypoint in `apps/mekugi/cmd/mekugi` |
-| Normative interface requirements | `doc/spec/index.md` and the listed requirement file |
-| Stable ownership contracts | `doc/architecture/index.md` and the listed contract file |
+| Product, feature and shared contracts | `docs/index.md` links source owners; `docs/reference/modules.md` is generated from feature descriptors and bindings |
 
 ## Session evidence and UI performance
 
