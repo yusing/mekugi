@@ -22,6 +22,7 @@ import (
 	"github.com/yusing/mekugi/modules/sessionreplay/playback"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -58,7 +59,8 @@ func (p *uiReplayPlayback) reset() {
 	p.paintedAt = time.Time{}
 	// The real message/projector/render path, but no app-server process, router,
 	// replay store, filesystem observers, input submission, or notification sink.
-	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: &appserver.Client{Input: replayDiscard{io.Discard}}, view: newLiveActivityView(), agents: newLiveActivityView(), thread: p.Source.Thread, status: "Replay", requests: make(map[string]string), clock: func() time.Time { return p.At }, replay: p}
+	client := &appserver.Client{Input: replayDiscard{io.Discard}}
+	u := &appServerUI{session: appServerSession{activity: p.activity}, ctx: p.ctx, client: client, view: newLiveActivityView(), agents: newLiveActivityView(), thread: p.Source.Thread, status: "Replay", requests: sessioncontrol.NewRequests[appServerRequest](client), clock: func() time.Time { return p.At }, replay: p}
 	u.view.clock, u.agents.clock = u.clock, u.clock
 	u.session.start(p.Source.Thread, p.Source.Cwd)
 	for id := range p.Source.Threads {

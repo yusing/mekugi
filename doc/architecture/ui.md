@@ -39,6 +39,9 @@ observation capacity must remain visible and bounded without terminating unrelat
 - [The Codex backend](../../backends/codex/SPEC.md) owns newline-delimited stdio RPC and the launched Codex process:
   framing, bounded diagnostics, initialization, and shutdown. It does not import the
   router or terminal UI and does not interpret model responses.
+- Application [session control](../../apps/mekugi/internal/sessioncontrol/SPEC.md)
+  owns live request issuance and correlation. Presentation supplies intent and
+  receives the result belonging to that request.
 
 The router integrates the native session, composer, pane navigation and app-server
 event reconciliation with Activity's feed and roster models. It adapts authenticated activity,

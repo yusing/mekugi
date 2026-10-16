@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -13,16 +14,77 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
-type appServerTestInput struct{ bytes.Buffer }
+type appServerTestInput struct {
+	bytes.Buffer
+	requestID string
+}
+
+// Synthetic host responses still enter through the real request ledger. The
+// transport stub reserves their explicit IDs without adding fixture wire output.
+type appServerTestTransport struct {
+	client *appserver.Client
+	input  *appServerTestInput
+}
+
+func (c appServerTestTransport) Send(method string, params any, request bool) (string, error) {
+	if request && c.input.requestID != "" {
+		id := c.input.requestID
+		c.input.requestID = ""
+		return id, nil
+	}
+	return c.client.Send(method, params, request)
+}
+func (c appServerTestTransport) Initialize() (string, error) {
+	if c.input.requestID != "" {
+		return c.Send("initialize", nil, true)
+	}
+	return c.client.Initialize()
+}
+func (c appServerTestTransport) Respond(id jsontext.Value, result any) error {
+	return c.client.Respond(id, result)
+}
+func appServerTestRequest(t *testing.T, u *appServerUI, id, method string) {
+	t.Helper()
+	u.client.Input.(*appServerTestInput).requestID = id
+	if err := u.request(method, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+func appServerTestRequestMethod(u *appServerUI, id string) string {
+	for pendingID, request := range u.requests.All() {
+		if id == pendingID {
+			return request.Method
+		}
+	}
+	return ""
+}
+func appServerTestPendingTitle(u *appServerUI) bool {
+	for _, request := range u.requests.All() {
+		if request.Owner.title != nil {
+			return true
+		}
+	}
+	return false
+}
+func appServerTestPendingStatus(u *appServerUI) bool {
+	for _, request := range u.requests.All() {
+		if request.Owner.status != nil {
+			return true
+		}
+	}
+	return false
+}
 
 func (*appServerTestInput) Close() error { return nil }
 
 func newAppServerTestUI() (*appServerUI, *appServerTestInput) {
 	w := new(appServerTestInput)
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: &appserver.Client{Input: w}, view: newLiveActivityView(), requests: make(map[string]string), thread: "main"}
+	client := &appserver.Client{Input: w}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, issues: testCriticalErrors(), history: testHistory(), client: client, view: newLiveActivityView(), requests: sessioncontrol.NewRequests[appServerRequest](appServerTestTransport{client, w}), thread: "main"}
 	u.approvals.initGuards(testGuards())
 	u.view.painter.FileLink = u.markdownFileExists
 	return u, w

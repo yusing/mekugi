@@ -24,6 +24,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
@@ -91,9 +92,7 @@ type appServerUI struct {
 	titleRenames              map[string]string // Latest manual name awaiting host confirmation, by thread.
 	titleGenerator            *sessionNaming
 	titleUpdates              <-chan sessionTitleUpdate
-	titleRequests             map[string]sessionTitleRequest
 	btw                       *appServerBTW
-	btwRequests               map[string]btwRequest
 	btwThreads                map[string]*appServerBTW
 	notifications             *nativeNotifications
 	questions                 nativeQuestionDock
@@ -104,7 +103,6 @@ type appServerUI struct {
 	sessionCapture            *transportcapture.Recorder
 	resumePicker              *appServerResumePicker
 	statusConfig              appServerStatusConfig
-	statusReports             map[string]*appServerStatusReport
 	picker                    composerPicker
 	skillEnvironment          []string
 	commitReads               chan gitCommitKey        // Commit objects read off the UI goroutine.
@@ -147,7 +145,7 @@ type appServerUI struct {
 	modelsLoading             bool
 	reasoningKey              *bool
 	settingsChoices           string
-	requests                  map[string]string
+	requests                  *sessioncontrol.Requests[appServerRequest]
 	draft                     string
 	retiredThreads            map[string]string
 	composerRect              terminalRect // Visible draft text, relative to Main.
@@ -212,7 +210,7 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 	if err != nil {
 		return nil, err
 	}
-	u := &appServerUI{session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: make(map[string]string), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
+	u := &appServerUI{session: appServerSession{activity: activity}, history: service, segments: segments, client: c, view: newLiveActivityView(), agents: newLiveActivityView(), proxy: proxy, issues: issues, requests: sessioncontrol.NewRequests[appServerRequest](c), status: "Connecting…", dirty: true, ctx: ctx, resumeThread: resumeThread, serviceTiers: serviceTiers, approvalMode: approvals}
 	u.attachActivity()
 	u.guardHookCheck.hash = guardHash
 	if generator != nil {
@@ -458,35 +456,39 @@ func startAppServerUI(activity *activitymodel.Service, service *history.Service,
 	}, nil
 }
 
-func (u *appServerUI) request(method string, params any) error {
-	_, err := u.requestAs(method, method, params)
-	return err
+// appServerRequest contains response routing data, not a second request ledger.
+// Main's lifecycle scope retires on confirmed replacement. Side conversations
+// and title saves retain their own completion and cleanup across that boundary.
+type appServerRequest struct {
+	label  string
+	side   *appServerBTW
+	title  *sessionTitleRequest
+	status *appServerStatusReport
 }
 
-// requestAs correlates the response by label, for owners that share a method.
-func (u *appServerUI) requestAs(method, label string, params any) (string, error) {
-	var id string
-	var err error
+func (u *appServerUI) request(method string, params any) error {
 	if method == "initialize" {
-		id, err = u.client.Initialize()
-	} else {
-		id, err = u.client.Send(method, params, true)
+		_, err := u.requests.Initialize(appServerRequest{})
+		return err
 	}
-	if err == nil {
-		u.requests[id] = label
-	}
-	return id, err
+	_, err := u.requests.Send(method, params, "main", appServerRequest{})
+	return err
 }
 
 func (u *appServerUI) message(m appserver.Message) (err error) {
 	u.issues.observeTurnCompletion(m.Method, m.Params)
 	u.observeShellMessage(m)
-	if u.sessionTitleMessage(m) {
+	var response sessioncontrol.Request[appServerRequest]
+	var correlated bool
+	if m.Method == "" {
+		response, correlated = u.requests.Take(string(m.ID))
+	}
+	if u.sessionTitleMessage(m, response.Owner.title) {
 		return nil
 	}
 	defer u.refreshPicker()
 	// Side-thread traffic never reaches Main's lifecycle, questions or roster.
-	if handled, err := u.btwMessage(m); handled {
+	if handled, err := u.btwMessage(m, response.Method, response.Owner.side); handled {
 		return err
 	}
 	if u.retiredSessionEvent(m) {
@@ -527,11 +529,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		}
 	}
 	if m.Method == "" {
-		method := u.requests[string(m.ID)]
-		if method == "" {
+		if !correlated {
 			return nil
 		}
-		delete(u.requests, string(m.ID))
+		method := response.Method
+		if response.Owner.label != "" {
+			method = response.Owner.label
+		}
 		if method == "thread/archive" {
 			if m.Error != nil {
 				u.replacement.finish()
@@ -557,7 +561,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 		if method == resumePickerList {
 			return u.resumePickerResponse(m)
 		}
-		if handled, err := u.statusMessage(method, m); handled {
+		if handled, err := u.statusMessage(method, m, response.Owner.status); handled {
 			return err
 		}
 		if u.pickerMessage(method, m) {
@@ -669,7 +673,7 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 			if json.Unmarshal(m.Result, &initialized) == nil {
 				u.backendVersion = backendVersion(initialized.UserAgent)
 			}
-			if _, err := u.client.Send("initialized", map[string]any{}, false); err != nil {
+			if err := u.requests.Notify("initialized", map[string]any{}); err != nil {
 				return err
 			}
 			if u.proxy != nil {
@@ -1687,12 +1691,12 @@ func (u *appServerUI) interruptTurn() error {
 	u.endSyncQuestions(u.turn)
 	u.status = "Interrupting…"
 	if u.compaction.interrupting {
-		_, err := u.requestAs("turn/interrupt", "compact/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn}, "main", appServerRequest{label: "compact/interrupt"})
 		return err
 	}
 	if u.sendSteersAfterInterrupt {
 		u.steerInterruptAckPending = true
-		_, err := u.requestAs("turn/interrupt", "steer/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn})
+		_, err := u.requests.Send("turn/interrupt", map[string]any{"threadId": u.thread, "turnId": u.turn}, "main", appServerRequest{label: "steer/interrupt"})
 		if err != nil {
 			u.steerInterruptAckPending = false
 		}

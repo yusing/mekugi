@@ -497,7 +497,7 @@ func (u *appServerUI) submitQuestions() error {
 				answers[q.ID] = map[string][]string{"answers": q.answer}
 			}
 		}
-		if err := u.client.Respond(c.request, map[string]any{"answers": answers}); err != nil {
+		if err := u.requests.Respond(c.request, map[string]any{"answers": answers}); err != nil {
 			return err
 		}
 		c.sent = true

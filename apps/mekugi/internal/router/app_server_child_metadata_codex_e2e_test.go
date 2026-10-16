@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
@@ -50,7 +51,7 @@ func TestAppServerChildMetadataNativeCodexE2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: newLiveActivityView(), agents: newLiveActivityView(), requests: make(map[string]string), ctx: ctx}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, view: newLiveActivityView(), agents: newLiveActivityView(), requests: sessioncontrol.NewRequests[appServerRequest](client), ctx: ctx}
 	u.ensureShell()
 	defer u.shell.diff.close()
 	defer u.shell.diffScreen.Close()

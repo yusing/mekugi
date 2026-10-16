@@ -92,7 +92,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 		}
 	}
 	write("main", 100000)
-	u.requests["1"] = "thread/start"
+	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":1,"result":{"model":"model","thread":{"id":"main","path":%q}}}`, path))
 	frame, _ := u.mainFrame(80, 8, 0)
 	if bottom := ansi.Strip(frame[len(frame)-1]); !strings.Contains(bottom, "model • 100K/400K • 25%") {
@@ -106,7 +106,7 @@ func TestAppServerStartupRestoresContext(t *testing.T) {
 	}
 	// thread/list may omit the rollout path; thread/read can supply it later.
 	u.restoring = &appServerActivityRestore{order: []string{"child"}, listed: true}
-	u.requests["2"] = "thread/read"
+	appServerTestRequest(t, u, "2", "thread/read")
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"thread":{"id":"child","path":%q,"turns":[]}}}`, path))
 	if got := contextWindowLabel(*child); got != "20K/400K • 5%" {
 		t.Fatal(got)

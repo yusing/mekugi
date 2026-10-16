@@ -466,11 +466,11 @@ func TestSessionTitleFailedManualRenameSurvivesResume(t *testing.T) {
 	}
 	// Detach the original view, then resume its still-unnamed completed turn.
 	u.replacement.clear()
-	u.requests["100"] = "thread/start"
+	appServerTestRequest(t, u, "100", "thread/start")
 	appServerTestMessage(t, u, `{"id":100,"result":{"thread":{"id":"other"}}}`)
 	_ = resumeTestRequests(t, wire)
 	u.replacement.resume("main")
-	u.requests["101"] = "thread/resume"
+	appServerTestRequest(t, u, "101", "thread/resume")
 	appServerTestMessage(t, u, `{"id":101,"result":{"thread":{"id":"main","turns":[{"id":"first","status":"completed","items":[]}]}}}`)
 	_ = resumeTestRequests(t, wire)
 	close(release)

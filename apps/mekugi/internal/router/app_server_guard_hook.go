@@ -27,7 +27,7 @@ func (u *appServerUI) checkGuardHook() (bool, error) {
 	if check.pendingThread == "" {
 		check.pendingThread = u.thread
 		u.status = "Checking approval guard…"
-		if _, err := u.requestAs("hooks/list", "approval/hooks", map[string]any{"cwds": []string{u.session.cwd}}); err != nil {
+		if _, err := u.requests.Send("hooks/list", map[string]any{"cwds": []string{u.session.cwd}}, "main", appServerRequest{label: "approval/hooks"}); err != nil {
 			check.pendingThread = ""
 			return false, err
 		}

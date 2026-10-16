@@ -16,6 +16,7 @@ import (
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/creack/pty"
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
@@ -148,7 +149,7 @@ func TestAppServerSettingsCatalogNativeCodex(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, requests: make(map[string]string), view: newLiveActivityView(), agents: newLiveActivityView()}
+	u := &appServerUI{session: appServerSession{activity: new(activitymodel.Service)}, history: testHistory(), client: client, requests: sessioncontrol.NewRequests[appServerRequest](client), view: newLiveActivityView(), agents: newLiveActivityView()}
 	if err := u.request("initialize", nil); err != nil {
 		t.Fatal(err)
 	}

@@ -626,7 +626,7 @@ func (u *appServerUI) answerApproval(a *nativeApproval, choice nativeApprovalCho
 		}
 		a.guard.reply <- reply
 	} else {
-		answer := func() error { return u.client.Respond(a.request, choice.response) }
+		answer := func() error { return u.requests.Respond(a.request, choice.response) }
 		if choice.deny && (u.proxy != nil || reason != "") {
 			if err := u.proxy.answerWithApprovalFeedback(a.thread, a.turn, "Command: "+a.subject+"\n"+feedback, answer); err != nil {
 				return err

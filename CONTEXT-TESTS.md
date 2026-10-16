@@ -46,6 +46,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Activity rendering, diff navigation/previews, terminal input, or session metrics dialog | `./modules/activity/terminalview ./modules/changehistory/terminalview ./modules/livepreview/terminalview`, plus affected router integration tests |
 | Neutral activity content, parsing and retained output | `./modules/activity/... ./contracts/scope ./libraries/sourceanalysis/markdownsyntax`, plus router receipt/command/segment/dialog and terminal operation-group/tail consumers |
 | Codex app-server RPC transport and process lifecycle | `./backends/codex/appserver` and `./apps/mekugi/internal/router -run AppServer` |
+| Live request issuance, correlation and retirement | `./apps/mekugi/internal/sessioncontrol`, plus router initialize/response, resume/clear, title/status, side-answer and approval consumers |
 | Rollout evidence and offline source decoding | `./backends/codex/rollout`, plus router context, resume-settings, restored-Activity, session-inspection, corpus and optional-AX consumers |
 | Offline reconstruction, scheduling and playback | `./modules/sessionreplay/... ./backends/codex/rollout`, plus router `SessionUIReplay`, hook and optional-transport consumers |
 | Authenticated catalog, pinned workers, dispatch and recovery delivery | `./apps/mekugi/internal/frontends`, plus launch `WorkerArguments` and affected router integration |

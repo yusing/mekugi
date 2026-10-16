@@ -23,7 +23,7 @@ import (
 
 func (u *appServerUI) requestResume(thread string) error {
 	u.status = "Resuming thread…"
-	_, err := u.requestAs("thread/read", "resume/settings", map[string]any{"threadId": thread, "includeTurns": false})
+	_, err := u.requests.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, "main", appServerRequest{label: "resume/settings"})
 	return err
 }
 

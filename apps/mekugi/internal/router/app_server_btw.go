@@ -32,10 +32,6 @@ type appServerBTW struct {
 }
 
 type btwAnswer struct{ id, text string }
-type btwRequest struct {
-	panel  *appServerBTW
-	method string
-}
 
 const btwCompactionRequired = "Side question requires compaction. Compact Main, then close this panel and retry /btw."
 
@@ -101,15 +97,8 @@ func (u *appServerUI) submitBTW() error {
 }
 
 func (u *appServerUI) btwRequest(b *appServerBTW, method string, params any) error {
-	id, err := u.client.Send(method, params, true)
-	if err != nil {
-		return err
-	}
-	if u.btwRequests == nil {
-		u.btwRequests = make(map[string]btwRequest)
-	}
-	u.btwRequests[id] = btwRequest{b, method}
-	return nil
+	_, err := u.requests.Send(method, params, "", appServerRequest{side: b})
+	return err
 }
 
 func (u *appServerUI) flushBTW() error {
@@ -208,23 +197,20 @@ func (u *appServerUI) releaseBTW(b *appServerBTW) error {
 	return u.btwRequest(b, "thread/unsubscribe", map[string]any{"threadId": b.thread})
 }
 
-func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
+func (u *appServerUI) btwMessage(m appserver.Message, method string, b *appServerBTW) (bool, error) {
 	if m.Method == "" {
-		r, ok := u.btwRequests[string(m.ID)]
-		if !ok {
+		if b == nil {
 			return false, nil
 		}
-		delete(u.btwRequests, string(m.ID))
-		b := r.panel
 		u.dirty = true
-		if r.method == "turn/interrupt" {
+		if method == "turn/interrupt" {
 			b.turn, b.interrupting = "", false
 			if m.Error != nil {
 				u.setNotice("Could not interrupt side answer: "+m.Error.Message, true)
 			}
 			return true, u.releaseBTW(b)
 		}
-		if r.method == "thread/unsubscribe" {
+		if method == "thread/unsubscribe" {
 			if m.Error != nil {
 				u.setNotice("Could not unload side conversation: "+m.Error.Message, true)
 			} else {
@@ -252,7 +238,7 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 			u.failBTW(b, "Invalid side-thread response: "+err.Error())
 			return true, nil
 		}
-		switch r.method {
+		switch method {
 		case "thread/fork":
 			if result.Thread.ID == "" || result.Thread.ID == u.thread {
 				u.failBTW(b, "Codex did not return a separate side thread")
@@ -295,7 +281,7 @@ func (u *appServerUI) btwMessage(m appserver.Message) (bool, error) {
 	if m.Method == "thread/started" {
 		thread = p.Thread.ID
 	}
-	b := u.btwThreads[thread]
+	b = u.btwThreads[thread]
 	if b == nil {
 		return false, nil
 	}

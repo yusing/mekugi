@@ -61,12 +61,11 @@ func (u *appServerUI) startChildHistory(info appServerThreadInfo) error {
 func (u *appServerUI) requestChildHistory(method string, params map[string]any) error {
 	h := u.historyLoading
 	h.method, h.params, h.failure = method, params, ""
-	id, err := u.client.Send(method, params, true)
+	id, err := u.requests.Send(method, params, "main", appServerRequest{label: "activity/" + method})
 	if err != nil {
 		return err
 	}
 	h.requestID = id
-	u.requests[id] = "activity/" + method
 	if h.initial {
 		if method == "thread/turns/list" {
 			u.status = fmt.Sprintf("Restoring Activity %d/%d · turn page %d…", u.restoring.next+1, len(u.restoring.order), h.turnPages+1)
@@ -297,7 +296,7 @@ func (u *appServerUI) cancelOlderActivity() error {
 	if h == nil || h.initial {
 		return nil
 	}
-	delete(u.requests, h.requestID) // Cancel observation, not any host execution.
+	u.requests.Forget(h.requestID) // Cancel observation, not any host execution.
 	h.requestID = ""
 	u.setNotice("Older child history loading cancelled", false)
 	return u.finishChildHistory()

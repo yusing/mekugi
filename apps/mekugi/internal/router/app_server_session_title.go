@@ -52,8 +52,8 @@ func (u *appServerUI) flushTitleRename(thread string) {
 	if name == "" {
 		return
 	}
-	for _, request := range u.titleRequests {
-		if request.thread == thread {
+	for _, request := range u.requests.All() {
+		if request.Owner.title != nil && request.Owner.title.thread == thread {
 			return // Serialize writes so an older name cannot win at the host.
 		}
 	}
@@ -71,23 +71,17 @@ func (u *appServerUI) persistSessionTitle(update sessionTitleUpdate) {
 }
 
 func (u *appServerUI) requestSessionTitle(update sessionTitleUpdate, manual bool) bool {
-	id, err := u.requestAs("thread/name/set", "session/title", map[string]any{"threadId": update.thread, "name": update.name})
+	_, err := u.requests.Send("thread/name/set", map[string]any{"threadId": update.thread, "name": update.name}, "", appServerRequest{title: &sessionTitleRequest{sessionTitleUpdate: update, manual: manual}})
 	if err != nil {
 		u.setNotice("Session title could not be saved", false)
 		u.dirty = true
 		return false
 	}
-	if u.titleRequests == nil {
-		u.titleRequests = make(map[string]sessionTitleRequest)
-	}
-	u.titleRequests[id] = sessionTitleRequest{sessionTitleUpdate: update, manual: manual}
 	return true
 }
 
-func (u *appServerUI) sessionTitleMessage(m appserver.Message) bool {
-	if update, ok := u.titleRequests[string(m.ID)]; ok {
-		delete(u.titleRequests, string(m.ID))
-		delete(u.requests, string(m.ID))
+func (u *appServerUI) sessionTitleMessage(m appserver.Message, update *sessionTitleRequest) bool {
+	if update != nil {
 		if update.manual && u.titleRenames[update.thread] == update.name {
 			delete(u.titleRenames, update.thread)
 		}

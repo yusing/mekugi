@@ -34,8 +34,8 @@ func TestAppServerSessionTitleHostConfirmation(t *testing.T) {
 		t.Fatalf("unconfirmed title displayed: %q", u.title)
 	}
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, requests[0].ID))
-	if u.title != "Generated title" || len(u.titleRequests) != 0 || len(u.requests) != 0 || !u.dirty {
-		t.Fatalf("confirmation state: title=%q pending=%v requests=%v dirty=%v", u.title, u.titleRequests, u.requests, u.dirty)
+	if u.title != "Generated title" || appServerTestPendingTitle(u) || u.requests.Pending() || !u.dirty {
+		t.Fatalf("confirmation state: title=%q pending=%v requests=%v dirty=%v", u.title, u.requests, u.requests, u.dirty)
 	}
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Host rename"}}`)
 	if u.title != "Host rename" {
@@ -61,7 +61,7 @@ func TestAppServerSessionTitleSaveFailureNonfatal(t *testing.T) {
 				request := resumeTestOne(t, wire, "thread/name/set")
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if u.title != "Confirmed" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || len(u.titleRequests) != 0 || len(u.requests) != 0 {
+			if u.title != "Confirmed" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || appServerTestPendingTitle(u) || u.requests.Pending() {
 				t.Fatalf("save failure disturbed session: title=%q status=%q turn=%q draft=%q notice=%q alert=%v dirty=%v", u.title, u.status, u.turn, u.draft, u.feedback.Text, u.feedback.Alert, u.dirty)
 			}
 		})
@@ -102,8 +102,8 @@ func TestAppServerSessionTitleOldThreadIsolation(t *testing.T) {
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"result":{}}`, request.ID))
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Old host title"}}`)
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"","threadName":"Unscoped title"}}`)
-	if u.title != "Replacement title" || u.dirty || len(u.titleRequests) != 0 {
-		t.Fatalf("old thread renamed Main: title=%q dirty=%v pending=%v", u.title, u.dirty, u.titleRequests)
+	if u.title != "Replacement title" || u.dirty || appServerTestPendingTitle(u) {
+		t.Fatalf("old thread renamed Main: title=%q dirty=%v pending=%v", u.title, u.dirty, u.requests)
 	}
 }
 
@@ -113,8 +113,8 @@ func TestAppServerSessionTitleManualRenameWinsGeneration(t *testing.T) {
 	u.titleGenerator.register(appServerThreadInfo{ID: "main"})
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Manual host title"}}`)
 	u.persistSessionTitle(sessionTitleUpdate{thread: "main", name: "Late generated title"})
-	if u.title != "Manual host title" || wire.Len() != 0 || len(u.titleRequests) != 0 {
-		t.Fatalf("late generation overwrote manual rename: title=%q wire=%q pending=%v", u.title, wire.String(), u.titleRequests)
+	if u.title != "Manual host title" || wire.Len() != 0 || appServerTestPendingTitle(u) {
+		t.Fatalf("late generation overwrote manual rename: title=%q wire=%q pending=%v", u.title, wire.String(), u.requests)
 	}
 }
 
@@ -137,7 +137,7 @@ func TestAppServerSessionTitleSkippedNamingPreservesHostMetadata(t *testing.T) {
 		t.Fatalf("skipped naming changed UI: dirty=%v notice=%q wire=%q", u.dirty, u.feedback.Text, wire.String())
 	}
 	appServerTestMessage(t, u, `{"method":"thread/name/updated","params":{"threadId":"main","threadName":"Saved host title"}}`)
-	if u.title != "Saved host title" || !u.dirty || u.feedback.Text != "Existing host notice" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || wire.Len() != 0 || len(u.titleRequests) != 0 {
+	if u.title != "Saved host title" || !u.dirty || u.feedback.Text != "Existing host notice" || u.status != "Working" || u.turn != "active-turn" || u.draft != "unsent input" || wire.Len() != 0 || appServerTestPendingTitle(u) {
 		t.Fatalf("host metadata after skipped naming: title=%q dirty=%v notice=%q status=%q turn=%q draft=%q wire=%q", u.title, u.dirty, u.feedback.Text, u.status, u.turn, u.draft, wire.String())
 	}
 }
@@ -148,7 +148,7 @@ func TestAppServerSessionTitleStartResumeMetadata(t *testing.T) {
 			t.Run(method+"/"+name, func(t *testing.T) {
 				u, _ := newAppServerTestUI()
 				u.title, u.resumeThread = "Previous thread title", "saved"
-				u.requests["1"] = method
+				appServerTestRequest(t, u, "1", method)
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":1,"result":{"thread":{"id":"saved","name":%q}}}`, name))
 				if u.thread != "saved" || u.title != name {
 					t.Fatalf("metadata title: thread=%q title=%q want=%q", u.thread, u.title, name)
@@ -220,7 +220,7 @@ func TestAppServerSessionTitleBeforeSessionStart(t *testing.T) {
 			if wire.Len() != 0 || u.pendingTitle != "Final name" || !strings.Contains(u.mainHeaderRight(120, true), "Final name") {
 				t.Fatalf("pre-session title: pending=%q wire=%q", u.pendingTitle, wire.String())
 			}
-			u.requests["100"] = method
+			appServerTestRequest(t, u, "100", method)
 			appServerTestMessage(t, u, `{"id":100,"result":{"thread":{"id":"saved","name":""}}}`)
 			requests := appServerDrainRequests[sessionTitleTestRequest](t, wire)
 			wantRequests := 2
@@ -273,7 +273,7 @@ func TestAppServerSessionTitleManualSaveFailure(t *testing.T) {
 				request := sessionTitleTestOne(t, wire)
 				appServerTestMessage(t, u, fmt.Sprintf(`{"id":%d,"error":{"code":-1,"message":"unavailable"}}`, request.ID))
 			}
-			if u.title != "Saved title" || len(u.titleRenames) != 0 || len(u.titleRequests) != 0 || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || u.turn != "active-turn" || u.status != "Working" {
+			if u.title != "Saved title" || len(u.titleRenames) != 0 || appServerTestPendingTitle(u) || u.feedback.Text == "" || u.feedback.Alert || !u.dirty || u.turn != "active-turn" || u.status != "Working" {
 				t.Fatalf("manual save failure: title=%q pending=%v notice=%q turn=%q status=%q", u.title, u.titleRenames, u.feedback.Text, u.turn, u.status)
 			}
 		})

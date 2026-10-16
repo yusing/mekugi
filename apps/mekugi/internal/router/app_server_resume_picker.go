@@ -116,7 +116,7 @@ func (u *appServerUI) loadResumePage(reset bool) error {
 	if p.cursor != "" {
 		params["cursor"] = p.cursor
 	}
-	id, err := u.requestAs("thread/list", resumePickerList, params)
+	id, err := u.requests.Send("thread/list", params, "main", appServerRequest{label: resumePickerList})
 	if err != nil {
 		u.resumePickerFailed("Could not list sessions: " + err.Error())
 		return nil

@@ -102,7 +102,7 @@ func TestAppServerResumePickerStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.thread, u.resumeThread, u.resumeCwd = "", resumePickerStartup, "/work"
 	u.agents = newLiveActivityView()
-	u.requests["0"] = "initialize"
+	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	requests := resumeTestRequests(t, w)
 	if len(requests) != 2 || requests[1].Method != "thread/list" {

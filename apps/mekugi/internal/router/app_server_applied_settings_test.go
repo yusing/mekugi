@@ -161,7 +161,7 @@ func TestAppServerAppliedSettingsStartResultPersists(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u, _ := appliedSettingsTestUI(t, "/workspace", "old")
 	u.settings.restoreEffort = true // A new thread must not inherit a failed resume gate.
-	u.requests["1"] = "thread/start"
+	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"model":"started","reasoningEffort":null,"serviceTier":null,"thread":{"id":"new","cwd":"/workspace"}}}`)
 	state, err := testPanePreferences().read("/workspace", "new")
 	if err != nil || state.Settings.Model != "started" || state.Settings.Effort != "" || state.Settings.Tier != "" || state.Settings.Observed.IsZero() {
@@ -184,7 +184,8 @@ func TestAppServerAppliedSettingsResumeWaitsForDefaultConfirmation(t *testing.T)
 			observed = observed.Add(time.Hour)
 			appliedSettingsTestResume(t, u, w, appServerThreadInfo{ID: "saved", Cwd: "/workspace"})
 			var resumeID string
-			for id, method := range u.requests {
+			for id, request := range u.requests.All() {
+				method := request.Method
 				if method == "thread/resume" {
 					resumeID = id
 				}
@@ -274,7 +275,8 @@ func TestAppServerAppliedSettingsRejectedRestoreRetainsSelectedEvidence(t *testi
 			u, w := appliedSettingsTestUI(t, "/workspace", "other")
 			u.clock = func() time.Time { return time.Date(2026, 9, 30, 13, 0, 0, 0, time.UTC) }
 			appliedSettingsTestResume(t, u, w, info)
-			for id, method := range u.requests {
+			for id, request := range u.requests.All() {
+				method := request.Method
 				if method == "thread/resume" {
 					appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"result":{"model":"selected","reasoningEffort":"high","serviceTier":"flex","collaborationMode":{"mode":"default","settings":{"model":"selected","reasoning_effort":"high","developer_instructions":null}},"thread":{"id":"saved","cwd":"/workspace"}}}`, id))
 					break
@@ -384,7 +386,7 @@ func TestUISnapshotNativeResumeReasoningRejected(t *testing.T) {
 	u.status, u.model, u.reasoningEffort = "Ready", "saved-model", "high"
 	u.settings.restoreEffort = true
 	u.settings.beginLive()
-	u.requests["1"] = "thread/settings/update"
+	appServerTestRequest(t, u, "1", "thread/settings/update")
 	appServerTestKeys(t, u, "held input\r")
 	appServerTestMessage(t, u, `{"id":1,"error":{"code":-1,"message":"host rejected update"}}`)
 	rows, _ := u.mainFrame(100, 16, 0)

@@ -18,7 +18,7 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 	const child = "0123456789-child"
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": child, "turn": map[string]any{"id": "t"}})
 	id := u.session.metadata[child]
-	if id == "" || u.requests[id] != "thread/read" {
+	if id == "" || appServerTestRequestMethod(u, id) != "thread/read" {
 		t.Fatal("child observation did not request metadata")
 	}
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": child, "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "go test ./...", "exitCode": 2}})
@@ -39,7 +39,7 @@ func TestAppServerChildMetadataWithoutThreadStarted(t *testing.T) {
 		t.Fatalf("late rename lost retained activity: %s", feed)
 	}
 	appServerTestNotify(t, u, "turn/completed", map[string]any{"threadId": child, "turn": map[string]any{"id": "t", "status": "completed"}})
-	if len(u.requests) != 0 || u.session.metadata[child] != "" {
+	if u.requests.Pending() || u.session.metadata[child] != "" {
 		t.Fatalf("metadata read repeated: %+v", u.requests)
 	}
 }
@@ -50,7 +50,7 @@ func TestAppServerChildMetadataFailureKeepsActivity(t *testing.T) {
 	id := u.session.metadata["child"]
 	appServerTestMessage(t, u, fmt.Sprintf(`{"id":%s,"error":{"code":-1,"message":"not available"}}`, id))
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "child", "turnId": "t", "item": map[string]any{"id": "cmd", "type": "commandExecution", "command": "mcat child.go"}})
-	if len(u.requests) != 0 || u.alert || !strings.Contains(ansi.Strip(u.agents.agentState(*u.session.agent("/root/child"), 80, u.now())), "child.go") {
+	if u.requests.Pending() || u.alert || !strings.Contains(ansi.Strip(u.agents.agentState(*u.session.agent("/root/child"), 80, u.now())), "child.go") {
 		t.Fatal("metadata failure blocked activity or caused repeated reads")
 	}
 }

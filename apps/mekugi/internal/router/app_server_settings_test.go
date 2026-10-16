@@ -150,7 +150,7 @@ func TestAppServerSettingsPendingCommandRetainsDraft(t *testing.T) {
 
 func TestAppServerSettingsModelListPagination(t *testing.T) {
 	u, w := newAppServerTestUI()
-	u.requests["1"] = "model/list"
+	appServerTestRequest(t, u, "1", "model/list")
 	appServerTestMessage(t, u, `{"id":1,"result":{"data":[{"model":"one"}],"nextCursor":"next"}}`)
 	assertAppServerSettingsRequest(t, w, "model/list", map[string]any{"cursor": "next", "includeHidden": true})
 	appServerTestMessage(t, u, `{"id":1,"result":{"data":[{"model":"two"}],"nextCursor":null}}`)
@@ -166,7 +166,7 @@ func TestAppServerSettingsModelListPagination(t *testing.T) {
 func TestAppServerSettingsReasoningWaitsForCatalog(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.model, u.reasoningEffort, u.modelsLoading = "test", "low", true
-	u.requests["99"] = "model/list"
+	appServerTestRequest(t, u, "99", "model/list")
 	appServerTestKeys(t, u, "\x1b[1;2A")
 	if w.Len() != 0 || u.reasoningKey == nil {
 		t.Fatal("shortcut was lost or sent without metadata")
@@ -267,7 +267,7 @@ func TestAppServerSettingsPickerLoadingAndCancellation(t *testing.T) {
 	for _, cancel := range []bool{false, true} {
 		u, w := newAppServerTestUI()
 		u.modelsLoading = true
-		u.requests["99"] = "model/list"
+		appServerTestRequest(t, u, "99", "model/list")
 		appServerTestKeys(t, u, "/model\r")
 		if !u.picker.loading || u.picker.modal != "settings" {
 			t.Fatal("missing loading picker")
@@ -307,7 +307,7 @@ func TestAppServerSettingsPickerEmptyFailureAndPaste(t *testing.T) {
 		t.Fatal("Escape did not cancel")
 	}
 	u.modelsLoading = true
-	u.requests["99"] = "model/list"
+	appServerTestRequest(t, u, "99", "model/list")
 	appServerTestKeys(t, u, "/model\r")
 	appServerTestMessage(t, u, `{"id":99,"error":{"code":-1,"message":"unavailable"}}`)
 	if u.picker.loading || u.picker.problem == "" || len(u.view.Entries) != 0 {

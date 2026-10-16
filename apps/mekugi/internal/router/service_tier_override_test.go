@@ -192,7 +192,7 @@ func TestUISnapshotNativeTierPickerCatalogStates(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", state, width), func(t *testing.T) {
 				u, _ := newServiceTierPickerTestUI(t, "gpt-6.1-sol", "default", map[string]string{"gpt-6.1-sol": "fast"})
 				u.modelsLoading = true
-				u.requests["99"] = "model/list"
+				appServerTestRequest(t, u, "99", "model/list")
 				appServerTestKeys(t, u, "/tier\r")
 				if state == "failed" {
 					appServerTestMessage(t, u, `{"id":99,"error":{"code":-1,"message":"catalog unavailable"}}`)

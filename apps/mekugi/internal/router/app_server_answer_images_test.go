@@ -132,7 +132,8 @@ func TestQuestionImageLifetimeAcrossNavigationAndRetry(t *testing.T) {
 	questionTestPaint(t, u, 70)
 	appServerTestKeys(t, u, "1\r")
 	requestID := ""
-	for id, method := range u.requests {
+	for id, request := range u.requests.All() {
+		method := request.Method
 		if method == "turn/steer" {
 			requestID = id
 		}

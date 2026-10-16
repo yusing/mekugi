@@ -170,12 +170,11 @@ func (u *appServerUI) toggleSkill() {
 		return
 	}
 	choice := p.choices[p.selected]
-	id, err := u.client.Send("skills/config/write", map[string]any{"path": choice.path, "enabled": !choice.enabled}, true)
+	id, err := u.requests.Send("skills/config/write", map[string]any{"path": choice.path, "enabled": !choice.enabled}, "main", appServerRequest{})
 	if err != nil {
 		p.problem = "Could not save skill: " + err.Error()
 		return
 	}
-	u.requests[id] = "skills/config/write"
 	p.toggleID, p.togglePath, p.problem = id, choice.path, ""
 }
 

@@ -54,7 +54,7 @@ func TestNativeUILiveToggleDuringModelList(t *testing.T) {
 	for _, reply := range []string{`{"id":1,"result":{"data":[]}}`, `{"id":1,"error":{"code":-1,"message":"unavailable"}}`} {
 		u, wire := newAppServerTestUI()
 		u.modelsLoading = true
-		u.requests["1"] = "model/list"
+		appServerTestRequest(t, u, "1", "model/list")
 		appServerTestKeys(t, u, "/live\r")
 		defer u.shell.diffScreen.Close()
 		appServerTestMessage(t, u, reply)

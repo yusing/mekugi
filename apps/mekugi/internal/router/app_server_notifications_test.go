@@ -71,9 +71,9 @@ func TestAppServerNotificationConfig(t *testing.T) {
 			if out.Len() != 0 {
 				t.Fatal("notification before configuration")
 			}
-			u.requests["42"] = "config/read"
+			appServerTestRequest(t, u, "42", "config/read")
 			appServerTestMessage(t, u, `{"id":42,"result":{"config":{"tui":`+tc.tui+`}}}`)
-			if !u.notifications.ready || u.requests["42"] != "" {
+			if !u.notifications.ready || appServerTestRequestMethod(u, "42") != "" {
 				t.Fatal("configuration response was not consumed")
 			}
 			u.notify(tc.event, "test")
@@ -86,7 +86,7 @@ func TestAppServerNotificationConfig(t *testing.T) {
 		u, _ := newAppServerTestUI()
 		out := notificationTestOutput(t, u)
 		u.notifications.ready = false
-		u.requests["42"] = "config/read"
+		appServerTestRequest(t, u, "42", "config/read")
 		appServerTestMessage(t, u, reply)
 		u.notify("agent-turn-complete", "test")
 		if u.notifications.ready || out.Len() != 0 || u.feedback.Text == "" {

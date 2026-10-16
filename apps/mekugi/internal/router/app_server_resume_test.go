@@ -16,7 +16,7 @@ func TestAppServerResumeStartup(t *testing.T) {
 	u.thread, u.resumeThread = "", "saved"
 	u.resumeConfig = map[string]any{"model": "override", "model_provider": "routed"}
 	u.agents = newLiveActivityView()
-	u.requests["0"] = "initialize"
+	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"saved"}}}`)
 	lines := bytes.Split(bytes.TrimSpace(w.Bytes()), []byte("\n"))
@@ -73,7 +73,7 @@ func TestAppServerResumeRejectsFailureAndWrongIdentity(t *testing.T) {
 	for _, wire := range []string{`{"id":1,"error":{"code":-1,"message":"missing thread"}}`, `{"id":1,"result":{"thread":{"id":"other"}}}`, `{"id":1,"result":{"thread":{}}}`} {
 		u, w := newAppServerTestUI()
 		u.thread, u.resumeThread = "", "saved"
-		u.requests["1"] = "thread/resume"
+		appServerTestRequest(t, u, "1", "thread/resume")
 		var m appserver.Message
 		if err := json.Unmarshal([]byte(wire), &m); err != nil {
 			t.Fatal(err)
@@ -133,7 +133,7 @@ func TestAppServerResumeLastStartup(t *testing.T) {
 	u, w := newAppServerTestUI()
 	u.thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
 	u.resumeConfig = map[string]any{"model": "override", "model_provider": "routed"}
-	u.requests["0"] = "initialize"
+	appServerTestRequest(t, u, "0", "initialize")
 	appServerTestMessage(t, u, `{"id":0,"result":{}}`)
 	lines := bytes.Split(bytes.TrimSpace(w.Bytes()), []byte("\n"))
 	if len(lines) != 2 {
@@ -179,7 +179,7 @@ func TestAppServerResumeLastFailure(t *testing.T) {
 	} {
 		u, w := newAppServerTestUI()
 		u.thread, u.resumeThread, u.resumeCwd = "", "--last", "/workspace"
-		u.requests["1"] = "thread/list"
+		appServerTestRequest(t, u, "1", "thread/list")
 		var m appserver.Message
 		if err := json.Unmarshal([]byte(wire), &m); err != nil {
 			t.Fatal(err)

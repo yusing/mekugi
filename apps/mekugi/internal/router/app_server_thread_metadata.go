@@ -17,11 +17,10 @@ func (u *appServerUI) requestThreadMetadata(thread string) error {
 		u.session.metadata[thread] = ""
 		return nil // thread/started or restored history already supplied it.
 	}
-	id, err := u.client.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, true)
+	id, err := u.requests.Send("thread/read", map[string]any{"threadId": thread, "includeTurns": false}, "main", appServerRequest{})
 	if err != nil {
 		return err
 	}
-	u.requests[id] = "thread/read"
 	u.session.metadata[thread] = id
 	return nil
 }

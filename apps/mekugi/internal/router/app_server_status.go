@@ -108,16 +108,11 @@ func (u *appServerUI) showStatus() error {
 }
 
 func (u *appServerUI) requestStatus(method string, params any, report *appServerStatusReport) error {
-	id, err := u.client.Send(method, params, true)
+	_, err := u.requests.Send(method, params, "main", appServerRequest{status: report})
 	if err != nil {
 		u.renderStatus(report, []statusField{{group: "Account", value: "Status refresh failed: " + err.Error(), alert: true}})
 		return err
 	}
-	if u.statusReports == nil {
-		u.statusReports = make(map[string]*appServerStatusReport)
-	}
-	u.statusReports[id] = report
-	u.requests[id] = method
 	return nil
 }
 
@@ -127,12 +122,10 @@ func (u *appServerUI) renderStatus(report *appServerStatusReport, extra []status
 }
 
 // Source: codex-rs/app-server-protocol/src/protocol/v2/account.rs.
-func (u *appServerUI) statusMessage(method string, m appserver.Message) (bool, error) {
-	report := u.statusReports[string(m.ID)]
+func (u *appServerUI) statusMessage(method string, m appserver.Message, report *appServerStatusReport) (bool, error) {
 	if report == nil {
 		return false, nil
 	}
-	delete(u.statusReports, string(m.ID))
 	if report != u.statusPanel {
 		return true, nil
 	}

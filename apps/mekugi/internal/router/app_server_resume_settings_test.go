@@ -137,7 +137,7 @@ func TestAppServerResumeClearsSavedReasoningDefault(t *testing.T) {
 			u, w := newAppServerTestUI()
 			u.thread, u.resumeThread, u.resumePendingEffort = "", "saved", true
 			u.agents = newLiveActivityView()
-			u.requests["1"] = "thread/resume"
+			appServerTestRequest(t, u, "1", "thread/resume")
 			savedEffort := "null"
 			if effort != "" {
 				savedEffort = fmt.Sprintf("%q", effort)

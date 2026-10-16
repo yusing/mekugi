@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/apps/mekugi/internal/sessioncontrol"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
 
@@ -142,6 +143,7 @@ func TestAppServerAnchoredHistoryNativeCodexE2E(t *testing.T) {
 	read.Thread.Turns = nil
 	u, _ := newAppServerTestUI()
 	u.client = client
+	u.requests = sessioncontrol.NewRequests[appServerRequest](client)
 	u.ctx = t.Context()
 	u.agents = newLiveActivityView()
 	u.ensureShell()

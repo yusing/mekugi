@@ -76,14 +76,14 @@ func TestAppServerComposerResizeKeepsDraftTail(t *testing.T) {
 
 func TestAppServerComposerObservedModelCaption(t *testing.T) {
 	u, _ := newAppServerTestUI()
-	u.requests["1"] = "thread/start"
+	appServerTestRequest(t, u, "1", "thread/start")
 	appServerTestMessage(t, u, `{"id":1,"result":{"thread":{"id":"main"},"model":"actual-model","reasoningEffort":"high"}}`)
 	frame, _ := u.mainFrame(70, 8, 0)
 	bottom := ansi.Strip(frame[len(frame)-1])
 	if !strings.HasPrefix(bottom, "╰───") || !strings.HasSuffix(bottom, " actual-model (high) • 0% ─╯") || ansi.StringWidth(bottom) != 70 {
 		t.Fatalf("observed model caption: %q", bottom)
 	}
-	u.requests["2"] = "thread/start"
+	appServerTestRequest(t, u, "2", "thread/start")
 	appServerTestMessage(t, u, `{"id":2,"result":{"thread":{"id":"new"},"reasoningEffort":null}}`)
 	frame, _ = u.mainFrame(70, 8, 0)
 	bottom = ansi.Strip(frame[len(frame)-1])
