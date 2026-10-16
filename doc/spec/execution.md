@@ -37,7 +37,7 @@ evidence decoding shared by live continuation advice and offline inspection.
 
 Completed edit observations may append a separate
 agent-visible change-ID and summary text part as specified in
-[applied changes](changes.md), preserving the original host result content.
+[applied changes](../../docs/contracts/change-evidence.md), preserving the original host result content.
 
 Native command approvals retain Codex's offered session, command-prefix and
 permission scopes. In the UI, command denial uses native decline so
@@ -58,12 +58,12 @@ A streaming `apply_patch` argument, including a decoded JavaScript string litera
 produces a provisional live diff as patch text arrives, without waiting for the
 closing quote, call, or end marker. An unfinished argument or preview has no application
 status. After Codex returns a result and the workspace outcome is observable,
-Mekugi records evidence under [REQ-CHANGES-001](changes.md). The stock tool
+Mekugi records evidence under [REQ-CHANGES-001](../../docs/contracts/change-evidence.md). The stock tool
 result is forwarded unchanged, including errors, except for the model-visible
 duplicate-output projection. A failed call may have a
 partial workspace effect, but it never publishes a successful edit receipt.
 
-Command observation under [REQ-CHANGES-001](changes.md) reads the completed
+Command observation under [REQ-CHANGES-001](../../docs/contracts/change-evidence.md) reads the completed
 `exec_command` arguments or literal nested command text. The forwarded call
 stays byte-identical through observation; command tracking or the approval guard
 may subsequently instrument command text through the native hook described above. Pre-call capture

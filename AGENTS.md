@@ -35,7 +35,7 @@ acceptance cases, not a blanket request to implement every listed concern.
   separate.
   Persist completed evidence/output before exposing dependent references. Failures and missing
   coverage are not success, zero, or no-ops. Replay validates retained facts without rerunning tools.
-  See [changes](doc/spec/changes.md) and [storage](doc/architecture/boundary.md).
+  See [capture](docs/contracts/change-evidence.md), [changes](modules/changehistory/SPEC.md), and [storage](doc/architecture/boundary.md).
 - **Scope/isolation:** resolve filesystem operands from selected metadata, never router cwd;
   reject relative operands without it. Keep request views, thread identity, workspace replay, and
   process resources separate; reclaim only owned resources and protect running/shared dependencies.
@@ -45,10 +45,10 @@ acceptance cases, not a blanket request to implement every listed concern.
 - **Continuity:** preserve existing behavior for affected forks, side threads, switching, and
   fresh resume. Restore inherited authorization from durable records/visible history, never live
   parents; replay cannot revive processes or handles. See [replay](apps/mekugi/internal/frontends/SPEC.md),
-  [changes](doc/spec/changes.md), and [guide](modules/agentguidance/SPEC.md).
+  [changes](modules/changehistory/SPEC.md), and [guide](modules/agentguidance/SPEC.md).
 - **Read boundaries:** independent multi-target reads attempt all targets, preserve successful
   stdout and target-qualified stderr, and fail nonzero if any target fails. Mutation dependencies
-  remain mandatory for apply/revert. See [changes](doc/spec/changes.md).
+  remain mandatory for apply/revert. See [changes](modules/changehistory/SPEC.md).
 - **Presentation:** reuse stock/shared UI and path formatting. Derive list widths from visible rows;
   unknown state gets no label. Format workspace paths with `libraries/pathdisplay.ForWorkspace`,
   preserving external and operational paths. If genuinely new UI lacks a stock counterpart,

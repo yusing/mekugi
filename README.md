@@ -269,7 +269,7 @@ only the editing agent's transcript. `/live` toggles them without stopping captu
 new launches enable them again. `v` switches views, `s` opens the navigator, `/` filters,
 `n`/`p` changes files, `[`/`]` jumps hunks. Tab opens Changes by caller. Click an Edit
 for its hunk; `Ctrl-B e` pins files, `Ctrl-B r` resumes following.
-See [all diff controls](doc/spec/changes.md#live-terminal-view).
+See [all diff controls](doc/spec/native_ui.md).
 
 ### Agents pane
 
@@ -317,7 +317,7 @@ Captured edits are not a live Git diff. Named ignored files are included; unknow
 commands capture observed effects, possibly from other writers. Previews are
 provisional; missing evidence is labeled. Dependency-directory contents are not retained
 and cannot be reverted/reapplied. Revert merges later edits, may create conflicts, and
-is captured too. See [changes](doc/spec/changes.md) and [retained reads](modules/outputrecovery/SPEC.md).
+is captured too. See [changes](modules/changehistory/SPEC.md), [capture coverage](docs/contracts/change-evidence.md), and [retained reads](modules/outputrecovery/SPEC.md).
 
 ## Configuration
 

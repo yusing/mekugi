@@ -891,7 +891,7 @@ exists, the rejected command is saved separately in input history instead of
 turning that draft into executable shell text. Acknowledgements do
 not claim command completion. Removing `!` returns to normal compose mode.
 Completed shell edits update Diff totals, the saved pane, and Changes history
-through the [command recorder](changes.md#command-effects).
+through the [command recorder](../../docs/contracts/change-evidence.md#capture-scope).
 
 The host's opt-in `instant_interrupt` feature lets new input preempt model
 responses and yield long-running `exec` calls without terminating their

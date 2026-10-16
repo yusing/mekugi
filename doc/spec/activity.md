@@ -19,7 +19,7 @@ reconstruct a parallel activity lifecycle from request history.
 Nested JavaScript tool activity follows the host's event stream. Independent
 `Promise.allSettled` calls remain parallel; presentation cannot serialize their
 execution. Static source recognition used for [execution previews](execution.md)
-and [change capture](changes.md) remains separate from native activity delivery.
+and [change capture](../../docs/contracts/change-evidence.md) remains separate from native activity delivery.
 The host emits no item for an `exec` cell itself. When a new cell result carries
 the host's `Script failed` header, the router adds one error row to that agent's
 activity with a bounded first-line preview of the host's trailing script error,
@@ -197,7 +197,7 @@ the command text. Paths inside the workspace display relatively; outside paths
 remain absolute. Incomplete captures show unavailable counts. Failed and
 unfinished patches produce no successful edit summary, and repeated receipts
 are deduplicated. The live pane separately owns full provisional and completed
-diff display under [REQ-CHANGES-001](changes.md).
+diff display under [REQ-CHANGES-001](../../docs/contracts/change-evidence.md).
 Completed native file-change items can open their own host-supplied diffs before
 the containing `exec` batch exits. Durable captured review remains preferred
 when available; this immediate navigation neither snapshots the workspace nor
@@ -221,6 +221,6 @@ Acceptance:
 2. Parallel `Promise.allSettled` operations remain concurrent. Host event identity,
    not guessed JavaScript or printed results, establishes their activity state.
 3. Edit intent is not successful edit evidence. Confirmed summaries require retained
-   host results and observed workspace effects under [changes](changes.md).
+   host results and observed workspace effects under [changes](../../docs/contracts/change-evidence.md).
 4. Unknown calls preserve their identity and arguments; projection neither executes
    source nor claims agent completion.

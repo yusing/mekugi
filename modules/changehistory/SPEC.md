@@ -9,7 +9,7 @@ Retain, review, apply, and revert observed filesystem change evidence.
 The module owns change identities, stream allocation, attempt membership,
 retained review and mutation semantics, frozen read selections, semantic
 retirement, and renderer-neutral saved-review presentation. The application supplies validated host observations and publishes
-immutable evidence before its change membership. Capture acquisition, provisional
+immutable evidence before its change membership. [Capture acquisition](../../docs/contracts/change-evidence.md), provisional
 live previews and host execution have separate owners. The module's terminal view
 paints its presentation values over the shared diff renderer.
 

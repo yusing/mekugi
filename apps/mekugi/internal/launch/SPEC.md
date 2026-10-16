@@ -56,6 +56,9 @@ contract remains in [headless behavior](../../../../doc/spec/router.md#headless-
 
 ## Host integration
 
+In a Herdr-managed terminal, launch sets invocation-local `HERDR_AGENT=codex`
+before starting session integration. It invokes no Herdr commands or pane APIs.
+
 Interactive reasoning shortcuts `--low`, `--medium`, `--high`, `--xhigh`, `--max`
 and `--ultra` become invocation-local reasoning-effort overrides. They also work
 after `headless`; option operands, non-session subcommands and content after `--`
