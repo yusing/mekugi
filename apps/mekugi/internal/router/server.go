@@ -362,7 +362,7 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 		session := Session{BaseURL: baseURL, FrontendDirectory: frontendDirectory, GrokEnabled: provider.Grok != nil, GrokUnprefixed: grokEnabled, ThirdPartyOnly: provider.ThirdPartyOnly, OpenCode: openCode, CodeModeEnabled: options.Mode == "mekugi", Guards: guards, SkillsManagerAvailable: skillsManagerAvailable}
 		session.StartAppUI = func(ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, resumeThread string, resumeArgv []string, approvals bool) (func() error, error) {
 			if mekugiCalls != nil && frontendDirectory != "" {
-				instrumentation := execInstrumentation{}
+				instrumentation := segmentservice.Instrumentation{}
 				if len(session.Guards) != 0 {
 					guard, channel := shellapproval.Paths(frontendDirectory)
 					var approvalErr error
@@ -373,9 +373,9 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 					for _, registration := range guards {
 						switch registration.Kind {
 						case binding.RemoteWrite:
-							instrumentation.vcs = guard
+							instrumentation.VCS = guard
 						case binding.Sudo:
-							instrumentation.sudo = shellapproval.SudoDirectory(frontendDirectory)
+							instrumentation.Sudo = shellapproval.SudoDirectory(frontendDirectory)
 						}
 					}
 				}
@@ -383,8 +383,8 @@ func RunSession(conversation *conversationmodel.Service, live *previewmodel.Serv
 				// cannot close the independent command approval channel.
 				reportErr := segments.LiveError
 				if segments.Live != nil {
-					var hub *execTrackHub
-					hub, reportErr = attachExecTrack(segments.Live, instrumentation)
+					var hub *segmentservice.Observer
+					hub, reportErr = segmentservice.NewObserver(segments.Live, instrumentation, activitymodel.OutputBytes)
 					if reportErr == nil {
 						mekugiCalls.execTrack = hub
 						mekugiCalls.execWindows.tracker = hub

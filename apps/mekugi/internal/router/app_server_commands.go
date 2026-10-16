@@ -162,7 +162,11 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.alert = false
 	u.feedback = noticepresentation.Model{}
 	u.noticeDetails, u.noticeDismiss = terminalsession.Rect{}, terminalsession.Rect{}
-	u.execTrack.detachOutputs()
+	for key, run := range u.session.commands {
+		if run.segments.release() {
+			u.execTrack.ReleaseOutput(key)
+		}
+	}
 	waiting := u.conversation()
 	u.session.state = scope.Store{}
 	u.conversation().Unsent, u.conversation().Queued = waiting.Unsent, waiting.Queued

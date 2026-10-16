@@ -18,7 +18,7 @@ func TestShellApprovalLifecycleIndependentOfReports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shell.hub.close()
+	shell.hub.Close()
 
 	start := func() <-chan execTrackRun {
 		results := make(chan execTrackRun, 1)

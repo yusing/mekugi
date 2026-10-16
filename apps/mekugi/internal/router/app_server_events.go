@@ -24,13 +24,6 @@ import (
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
-	"github.com/yusing/mekugi/libraries/shellinstrumentation"
-
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
-
-	"mvdan.cc/sh/v3/expand"
-	"mvdan.cc/sh/v3/syntax"
-
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/rollout"
@@ -64,9 +57,10 @@ type appServerSession struct {
 // appServerCommandRun is a started command whose streamed output tail is
 // re-sent on the next frame. Completion, not the stream, ends it.
 type appServerCommandRun struct {
-	entry  activityPaneEntry
-	output activityui.OutputTail
-	dirty  bool
+	segments execTrackPresentation
+	entry    activityPaneEntry
+	output   activityui.OutputTail
+	dirty    bool
 	// Instant operations, such as reads, show their output at once; other
 	// commands roll a burst through.
 	instant bool
@@ -126,8 +120,9 @@ type appServerTurn struct {
 }
 
 type appServerEvent struct {
-	text   observation.TextEvent `json:"-"`
-	Status struct {
+	command *binding.CommandObservation `json:"-"`
+	text    observation.TextEvent       `json:"-"`
+	Status  struct {
 		Type string `json:"type"`
 	} `json:"status"`
 	ThreadID   string              `json:"threadId"`
@@ -253,21 +248,21 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 	if method == "item/started" {
 		u.observeShellItem(p.ThreadID, p.Item)
 	}
-	if p.Item.Type == "commandExecution" {
-		// Every command is offered for matching, including ones Activity hides,
-		// so their shells never wait for an item that will not arrive.
-		key := [3]string{p.ThreadID, p.TurnID, cmp.Or(p.ItemID, p.Item.ID)}
+	if command := p.command; command != nil {
+		key := command.Key
 		if method == "item/completed" {
-			u.execTrack.completed(key)
+			u.execTrack.Completed(key)
 		}
 		switch {
 		case method == "item/started":
-			u.execTrack.start(key, p.Item.Command)
-		case method == "item/completed" && (u.session.commands[key] == nil || !u.execTrack.tracking(key)):
-			// Only a command Activity presents holds its report until it ends.
-			u.execTrack.finish(key)
+			if script, ok := binding.CommandScript(command.Command); ok {
+				u.execTrack.Start(key, script)
+			}
+		case method == "item/completed" && (u.session.commands[key] == nil || !u.execTrack.Tracking(key)):
+			u.execTrack.Forget(key)
 		}
 	}
+
 	main := p.ThreadID == u.Thread
 	if h := u.childHistory(p.ThreadID); h != nil {
 		h.state.ObserveLive()
@@ -444,7 +439,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				}
 			}
 			s.retainOutput(native, item)
-			if run := s.commands[key]; run != nil && u.execTrack.tracking(key) {
+			if run := s.commands[key]; run != nil && u.execTrack.Tracking(key) {
 				run.completion, run.completed, run.completedAt = &entry, item, now
 				break
 			}
@@ -724,7 +719,7 @@ func appServerOutputTail(output *string) ([]string, int) {
 // Source: codex-rs/shell-command/src/powershell.rs:43:73@86be5320 extract_powershell_command
 // Unlike Codex's argv helper, preserve PowerShell's extra script arguments.
 func appServerDisplayCommand(command string) string {
-	args, ok := appServerCommandArgs(command)
+	args, ok := binding.CommandArgs(command)
 	if !ok {
 		return command
 	}
@@ -750,45 +745,6 @@ func appServerDisplayCommand(command string) string {
 		}
 	}
 	return command
-}
-
-// appServerShellScript is the script of a host Bash or sh command, exactly as the
-// shell receives it with -c or -lc.
-func appServerShellScript(command string) (string, bool) {
-	args, ok := appServerCommandArgs(command)
-	if !ok || len(args) != 3 || args[1] != "-lc" && args[1] != "-c" {
-		return "", false
-	}
-	name := filepath.Base(args[0])
-	name = strings.TrimSuffix(name, filepath.Ext(name))
-	return shellinstrumentation.ShOriginal(args[2]), name == "bash" || name == "sh" || name == "dash"
-}
-
-// appServerCommandArgs unquotes a host command made only of literal words.
-func appServerCommandArgs(command string) ([]string, bool) {
-	program, err := syntax.NewParser().Parse(strings.NewReader(command), "")
-	if err != nil || len(program.Stmts) != 1 {
-		return nil, false
-	}
-	stmt := program.Stmts[0]
-	call, ok := stmt.Cmd.(*syntax.CallExpr)
-	if !ok || stmt.Background || stmt.Negated || stmt.Coprocess || stmt.Disown || len(stmt.Redirs) != 0 || len(call.Assigns) != 0 || len(call.Args) < 3 {
-		return nil, false
-	}
-	args := make([]string, 0, len(call.Args))
-	for _, word := range call.Args {
-		if !shellsyntax.LiteralParts(word.Parts, false) {
-			return nil, false
-		}
-		// Fields removes shell quoting without consulting the environment or
-		// executing substitutions. Reject words that expand to multiple args.
-		fields, err := expand.Fields(&expand.Config{}, word)
-		if err != nil || len(fields) != 1 {
-			return nil, false
-		}
-		args = append(args, fields[0])
-	}
-	return args, true
 }
 
 // appServerEditText is one Activity operation per changed file, with its

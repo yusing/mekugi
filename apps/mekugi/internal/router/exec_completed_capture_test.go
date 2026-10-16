@@ -11,6 +11,7 @@ import (
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	previewmodel "github.com/yusing/mekugi/modules/livepreview/preview"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -30,21 +31,31 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			if scenario == "parallel writer" || scenario == "sequential hosts" {
 				commands = append(commands, commandanalysis.Command{Command: "python3 a.py", Workdir: workspace})
 			}
-			tracking := newExecPreviewTrack(hub.execTrackHub, "main", "turn", commands)
-			defer tracking.close()
+			tracking := newExecPreviewTrack(hub.Observer, "main", "turn", commands)
+			defer tracking.Close()
+			var reports []*execTrackReport
 			for i, command := range commands {
 				call := "edit"
 				if i > 0 {
 					call = "sibling"
 				}
 				appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": appServerItem{ID: call, Type: "commandExecution", Command: "/bin/bash -lc " + quoteShellWord(command.Command), Status: "inProgress"}})
-				match := tracking.matches[command.Command]
-				match.track.hostOnly = false
-				match.track.segments = []execTrackSegment{{source: "python3 opaque.py", edit: execSegmentEdits("python3 opaque.py"), began: true, ended: i == 0}}
-			}
-			if scenario == "sequential hosts" {
-				tracking.matches[commands[0].Command].track.segments = []execTrackSegment{{began: true, ended: true}, {began: true, ended: true}, {began: true, ended: true}, {began: true}}
-				tracking.matches[commands[1].Command].track.segments[0].began = false
+				report := dialExecTrackReport(t, hub, command.Command)
+				reports = append(reports, report)
+				if i == 0 {
+					completed := 1
+					if scenario == "sequential hosts" {
+						completed = 3
+					}
+					for index := range completed {
+						report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: index}, segmenttransport.Message{Type: segmenttransport.End, Index: index, Code: new(0)})
+					}
+					report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: completed})
+					hub.await(t, [3]string{"main", "turn", call}, func(view execTrackView) bool { return len(view.segments) == completed+1 })
+				} else if scenario != "sequential hosts" {
+					report.send(segmenttransport.Message{Type: segmenttransport.Begin})
+					hub.await(t, [3]string{"main", "turn", call}, func(view execTrackView) bool { return len(view.segments) == 1 })
+				}
 			}
 			budget := changecapture.MaxContentBytes
 			observation := changecapture.Observation{Commands: commands, Files: []changecapture.File{changecapture.ReadFile(path, &budget)}, Labels: []string{"python3"}, RepeatedPaths: true}
@@ -76,7 +87,8 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 				if capture.text != "" {
 					t.Fatal("running sibling supplied a completed receipt")
 				}
-				tracking.matches[commands[1].Command].track.segments[0].ended = true
+				reports[1].send(segmenttransport.Message{Type: segmenttransport.End, Code: new(0)})
+				hub.await(t, [3]string{"main", "turn", "sibling"}, func(view execTrackView) bool { return len(view.segments) == 1 && !view.segments[0].running })
 			}
 			if scenario == "snapshot retry" {
 				ctx, cancel := context.WithCancel(t.Context())
@@ -103,9 +115,10 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			awaitMain(t, u, "Edited")
 			if scenario == "sequential hosts" {
 				previous := capture.completed
-				hub.completed([3]string{"main", "turn", "edit"})
-				tracking.matches[commands[1].Command].track.segments[0].began = true
-				tracking.matches[commands[1].Command].track.segments[0].ended = true
+				hub.Completed([3]string{"main", "turn", "edit"})
+				reports[1].send(segmenttransport.Message{Type: segmenttransport.Begin})
+				reports[1].send(segmenttransport.Message{Type: segmenttransport.End, Code: new(0)})
+				hub.await(t, [3]string{"main", "turn", "sibling"}, func(view execTrackView) bool { return len(view.segments) == 1 && !view.segments[0].running })
 				writeTestFile(t, path, "second\nline\n")
 				capture.next = time.Time{}
 				capture.update(t.Context(), broker, preview, tracking, tracking.state())
@@ -115,7 +128,8 @@ func TestExecCompletedCaptureOwnershipRetryAndWithdrawal(t *testing.T) {
 			}
 			if scenario == "return to baseline" {
 				writeTestFile(t, path, "before\n")
-				tracking.matches[commands[0].Command].track.segments = append(tracking.matches[commands[0].Command].track.segments, execTrackSegment{edit: true, began: true, ended: true})
+				reports[0].send(segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)})
+				hub.await(t, [3]string{"main", "turn", "edit"}, func(view execTrackView) bool { return len(view.segments) == 2 && !view.segments[1].running })
 				capture.next = time.Time{}
 				capture.update(t.Context(), broker, preview, tracking, tracking.state())
 				for _, event := range testReview(broker).TakePreviews(sub) {

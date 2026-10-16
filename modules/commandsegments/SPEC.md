@@ -7,12 +7,13 @@ them against the host's completed command. Reports are evidence, never execution
 
 ## Scope
 
-This module owns invocation-private report transport, retained reports, their
-compatibility reader, and adoption by a viewing thread. Shell instrumentation is
+This module owns invocation-private report transport, live host/report correlation,
+observation subscriptions, retained reports and adoption by a viewing thread.
+Shell instrumentation is
 owned by the [shared library](../../libraries/shellinstrumentation/SPEC.md), including
-supported shells, source boundaries and untracked cases. The application supplies
-exact live host correlation and authenticated instrumentation scope; presentation
-owns output buffers, notices, and rendering.
+supported shells, source boundaries and untracked cases. The backend supplies
+decoded host facts; the application supplies authenticated instrumentation and
+captured-window scope. Presentation owns output buffers, notices and rendering.
 
 ## Behavior
 
@@ -110,10 +111,10 @@ pending report retains its original workspace/thread after session switching.
 ## Codex connection
 
 The executable helper sends shell reports through invocation-private FIFOs. The
-application supplies host start/completion facts and uniquely correlates exact
-scripts before a report is accepted. Protocol validation uses the same shell
-splitter as the helper. It cannot manufacture host identity or execution authority.
-The application still owns the Codex observation binding during extraction.
+application delivers backend-decoded command facts before presentation queuing;
+the module correlates exact scripts before accepting a report. Host completion
+remains distinct from segment and report closure. Protocol validation uses the
+same shell splitter as the helper and grants no execution authority.
 
 ## Records
 

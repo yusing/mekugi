@@ -14,13 +14,9 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	script := "echo first; echo second"
 	item := map[string]any{"id": key[2], "type": "commandExecution", "command": "bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
-	claimed, track, ok := hub.claim(t.Context(), segmenttransport.Message{Type: segmenttransport.Hello, Thread: key[0], Script: script, Segments: []string{"echo first", "echo second"}})
-	if !ok || claimed != key {
-		t.Fatal("child command report was not claimed")
-	}
-	report := execTrackStream{hub: hub.execTrackHub, key: key, track: track}
-	report.Observe(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0})
-	report.Observe(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "first\n"})
+	report := dialExecTrackReportThread(t, hub, key[0], script)
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "first\n"})
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
 	u.flushStreamOutput()
 	before, _ := hub.view(key, false, execSegmentText, u.session.activity.Outputs(&u.session.state))
 	if len(before.segments) != 1 || before.segments[0].output == nil || !slices.Equal(before.segments[0].output.View().Lines, []string{"first"}) {
@@ -33,20 +29,22 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 	if !retired.View().Released {
 		t.Error("detached child output remains retained")
 	}
-	if !hub.tracking(key) {
+	if !hub.Tracking(key) {
 		t.Fatal("presentation replacement canceled host reporting")
 	}
 	// A subsequent attachment may see the same still-running command. Losing
 	// its earlier bytes must not turn the remaining bytes into complete output.
-	u.session.start("other", u.session.cwd)
-	report.Observe(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "later\n"})
-	report.Observe(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})
-	report.Observe(segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
-	report.Observe(segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "second\n"})
-	report.Observe(segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(3)})
-	report.Observe(segmenttransport.Message{Type: segmenttransport.Done, Code: new(3)})
-	report.Observe(segmenttransport.Message{Type: segmenttransport.Closed})
-	report.End()
+	u.releaseRetired("main")
+	u.session.start("main", u.session.cwd)
+	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
+	report.send(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: "later\n"})
+	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)})
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
+	report.send(segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: "second\n"})
+	report.send(segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(3)})
+	report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(3)})
+	report.send(segmenttransport.Message{Type: segmenttransport.Closed})
+	hub.await(t, key, func(view execTrackView) bool { return view.complete })
 	after, _ := hub.view(key, true, execSegmentText, u.session.activity.Outputs(&u.session.state))
 	if after.output || !after.complete || after.code != 3 || len(after.segments) != 2 {
 		t.Fatalf("detached report lost outcomes or claimed complete output: %+v", after)
@@ -56,10 +54,26 @@ func TestExecTrackSessionReplacementDropsRetainedChildOutput(t *testing.T) {
 			t.Error("detached segment acquired retention in the new attachment")
 		}
 	}
-	// Host completion still uses its authoritative combined output.
-	entry := activityPaneEntry{native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}}
-	done := u.trackedCommandDone(key, entry, appServerItem{Type: "commandExecution", ExitCode: new(3), AggregatedOutput: new("first\nlater\nsecond\n")})
-	if len(done) != 1 || !slices.Equal(done[0].outputTail, []string{"first", "later", "second"}) {
-		t.Fatalf("combined host output was lost: %+v", done)
+	// Without a command in the new attachment, the actual host completion
+	// retires tracking and presents its authoritative combined output.
+	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 3, "first\nlater\nsecond\n"
+	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": key[0], "turnId": key[1], "item": item})
+	if hub.Tracking(key) || u.session.commands[key] != nil {
+		t.Fatal("host completion retained the old command observation")
 	}
+	for _, entry := range u.agents.Entries {
+		native := entry.Source.native
+		if native == nil || native.thread != key[0] || native.item != key[2] {
+			continue
+		}
+		if native.running || len(native.segments) != 0 || native.output == nil {
+			t.Fatalf("completion did not use combined host output: %+v", native)
+		}
+		output := native.output.View()
+		if !output.Done || output.Exit != 3 || !slices.Equal(output.Lines, []string{"first", "later", "second"}) {
+			t.Fatalf("combined host output was lost: %+v", output)
+		}
+		return
+	}
+	t.Fatal("host completion did not reach Activity")
 }

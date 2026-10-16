@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -366,50 +368,50 @@ func TestOutputDialogRestoredMultiReadKeepsCombinedOutput(t *testing.T) {
 func TestOutputDialogTrackedOutputSettlesAndLossyFallsBack(t *testing.T) {
 	key := [3]string{"main", "t", "cmd"}
 	retention := new(activitymodel.Retention)
-	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: {
-		segments: []execTrackSegment{{source: "echo one", began: true, fresh: []byte("initial\n")}, {source: "echo two"}}, dirty: true,
-	}}}
-	view, _ := hub.view(key, false, func(string) string { return "Run `echo one`" }, retention)
-	if !view.output || len(view.segments) != 1 || view.segments[0].output == nil {
+	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	report := hub.begin(t, key, "echo one; echo two")
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "initial\n"})
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
+	view, _ := hub.view(key, false, execSegmentText, retention)
+	retained := view.segments[0].output
+	if !view.output || retained == nil {
 		t.Fatalf("live segment did not retain output: %+v", view)
 	}
-	retained := view.segments[0].output
-	track := hub.tracks[key]
-	track.segments[0].ended = true
-	track.segments[0].code = 2
-	track.ended, track.closed, track.done, track.code = true, true, true, 2
-	view, _ = hub.view(key, true, func(string) string { return "Run `echo one`" }, retention)
-	if !view.complete || view.segments[0].output != retained || !retained.View().Done || retained.View().Exit != 2 {
-		t.Fatalf("final segment did not settle retained output: %+v, %+v", view, retained.View())
+	report.send(segmenttransport.Message{Type: segmenttransport.End, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Done, Code: new(2)}, segmenttransport.Message{Type: segmenttransport.Closed})
+	hub.await(t, key, func(view execTrackView) bool { return view.complete })
+	view, _ = hub.view(key, true, execSegmentText, retention)
+	if view.segments[0].output != retained || !retained.View().Done || retained.View().Exit != 2 {
+		t.Fatalf("final segment did not settle retained output: %+v", retained.View())
 	}
 
 	other := [3]string{"main", "t", "overflow"}
-	hub.tracks[other] = &execTrack{segments: []execTrackSegment{{source: "echo huge", began: true, fresh: []byte("prior\n")}, {source: "echo done"}}}
-	first, _ := hub.view(other, false, func(string) string { return "Run `echo huge`" }, retention)
+	overflowReport := hub.begin(t, other, "echo huge; echo done")
+	overflowReport.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "prior\n"})
+	hub.await(t, other, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
+	first, _ := hub.view(other, false, execSegmentText, retention)
 	previous := first.segments[0].output
 	if previous == nil {
 		t.Fatal("overflow setup did not allocate segment output")
 	}
-	hub.tracks[other].apply(segmenttransport.Message{Type: segmenttransport.Output, Index: 0, Data: strings.Repeat("x", activitymodel.OutputBytes+1)})
-	overflow, _ := hub.view(other, false, func(string) string { return "Run `echo huge`" }, retention)
-	if overflow.output || !hub.tracks[other].lossy {
-		t.Fatal("over-bound fresh output did not select combined host fallback")
-	}
-	if got := previous.View(); !got.Released && !got.Done {
+	overflowReport.send(segmenttransport.Message{Type: segmenttransport.Output, Data: strings.Repeat("x", activitymodel.OutputBytes+1)})
+	hub.await(t, other, func(view execTrackView) bool { return !view.output })
+	if got := previous.View(); !got.Released || !got.Done {
 		t.Fatalf("abandoned segment output remains live: %+v", got)
 	}
 }
 
 func TestOutputDialogLossyMessageReleasesLiveSegment(t *testing.T) {
 	key := [3]string{"main", "t", "lossy"}
-	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("partial")}, {source: "echo done"}}}
-	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
+	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	report := hub.begin(t, key, "echo text; echo done")
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "partial"})
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
 	var retention activitymodel.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
 	output := view.segments[0].output
-	track.apply(segmenttransport.Message{Type: segmenttransport.Lossy})
-	view, _ = hub.view(key, false, execSegmentText, &retention)
-	if view.output || !output.View().Done || !output.View().Released {
+	report.send(segmenttransport.Message{Type: segmenttransport.Lossy})
+	hub.await(t, key, func(view execTrackView) bool { return !view.output })
+	if !output.View().Done || !output.View().Released {
 		t.Fatalf("lossy segment retained live output: %+v", output.View())
 	}
 }
@@ -445,22 +447,23 @@ func TestOutputDialogTerminalKeyDecoderOwnsPrefixAndPaging(t *testing.T) {
 
 func TestOutputDialogTrackedViewDrainsRetainedOutput(t *testing.T) {
 	key := [3]string{"thread", "turn", "item"}
-	track := &execTrack{segments: []execTrackSegment{{source: "echo text", began: true, fresh: []byte("first\n")}, {source: "sleep 1"}}}
-	hub := &execTrackHub{tracks: map[[3]string]*execTrack{key: track}}
+	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	report := hub.begin(t, key, "echo text; sleep 1")
+	report.send(segmenttransport.Message{Type: segmenttransport.Begin}, segmenttransport.Message{Type: segmenttransport.Output, Data: "first\n"})
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && len(view.segments[0].tail) != 0 })
 	var retention activitymodel.Retention
 	view, _ := hub.view(key, false, execSegmentText, &retention)
 	output := view.segments[0].output
 	if output == nil || output.View().Done || strings.Join(output.View().Lines, "\n") != "first" {
 		t.Fatal("live segment output missing")
 	}
-	track.segments[0].fresh = []byte("second\n")
-	track.segments[0].ended = true
-	track.segments[0].code = 3
+	report.send(segmenttransport.Message{Type: segmenttransport.Output, Data: "second\n"}, segmenttransport.Message{Type: segmenttransport.End, Code: new(3)})
+	hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 1 && !view.segments[0].running })
 	view, _ = hub.view(key, true, execSegmentText, &retention)
 	if view.segments[0].output != output || !output.View().Done || output.View().Exit != 3 || strings.Join(output.View().Lines, "\n") != "first\nsecond" {
 		t.Fatalf("settled segment: %+v", output.View())
 	}
-	if len(track.segments[0].fresh) != 0 {
+	if len(hub.presentation(key).segments[0].fresh) != 0 {
 		t.Fatal("pending output not drained")
 	}
 }

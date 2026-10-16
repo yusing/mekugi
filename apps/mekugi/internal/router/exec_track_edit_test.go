@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
 	json "encoding/json/v2"
@@ -88,7 +90,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 
 			if strings.Contains(edit, "git --version") {
 				var err error
-				script, err = shellinstrumentation.RewriteCommands(script, "/private/mekugi-exec", shell.hub.instrumentation.vcs, "", "edit")
+				script, err = shellinstrumentation.RewriteCommands(script, "/private/mekugi-exec", filepath.Join(shell.root, shellinstrumentation.VCSDirectory), "", "edit")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -97,7 +99,8 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 				script = shellinstrumentation.ShScript(filepath.Join(shell.root, "exec-track.sh"), script)
 			}
 			u := newAppServerSessionTestUI(t, workspace)
-			u.execTrack = shell.hub
+			u.execTrack = shell.hub.Observer
+			shell.hub.ui = u
 			u.ensureShell()
 			defer u.shell.diffScreen.Close()
 			u.status = "Working"
@@ -107,7 +110,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			broker := newLivePreview(ctx)
 			setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(broker).Subscribe()
-			registry := &execWindowRegistry{tracker: shell.hub}
+			registry := &execWindowRegistry{tracker: shell.hub.Observer}
 			registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 			defer registry.close("edit")
 			registry.preview("edit", *observation, broker, workspace, "main", "/root", snapshots)
@@ -170,7 +173,7 @@ func TestUISnapshotExecTrackEditCompletesBeforeFollowingCommand(t *testing.T) {
 			if delayedUI {
 				// The shell reached the test before the UI consumed its start.
 				// Without transport observation its tracking deadline has expired.
-				if !shell.hub.tracking([3]string{"main", "turn", "edit"}) {
+				if !shell.hub.Tracking([3]string{"main", "turn", "edit"}) {
 					t.Fatal("edit report lost while host start waited for presentation")
 				}
 				appServerTestNotify(t, u, "item/started", params)
@@ -320,94 +323,34 @@ func TestExecPreviewTrackIdentityAndLifecycle(t *testing.T) {
 		{name: "ambiguous", thread: "main", turn: "turn", ambiguous: true, lastEnded: true, wantTracked: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			track := &execTrack{script: script, serial: 1, ended: tc.ended, done: tc.done, segments: []execTrackSegment{{edit: true, ended: true}, {began: true}, {edit: true, ended: tc.lastEnded}}}
-			hub := &execTrackHub{changed: make(chan struct{}), tracks: map[[3]string]*execTrack{{"main", "turn", "one"}: track}}
+			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+			tracking := newExecPreviewTrack(hub.Observer, tc.thread, tc.turn, []commandanalysis.Command{{Command: script}})
+			defer tracking.Close()
+			key := [3]string{"main", "turn", "one"}
+			report := hub.begin(t, key, script)
+			report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Begin, Index: 1})
+			if tc.lastEnded {
+				report.send(segmenttransport.Message{Type: segmenttransport.Begin, Index: 2}, segmenttransport.Message{Type: segmenttransport.End, Index: 2, Code: new(0)})
+			}
+			if tc.done {
+				report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
+			}
+			if tc.ended {
+				report.conn.Close()
+			}
+			hub.await(t, key, func(view execTrackView) bool {
+				return len(view.segments) >= 2 && (!tc.lastEnded || len(view.segments) == 3) && (!tc.done || view.complete) && (!tc.ended || view.ended)
+			})
+			if tc.pending || tc.ambiguous {
+				hub.start([3]string{"main", "turn", "two"}, "bash -lc "+quoteShellWord(script))
+			}
 			if tc.ambiguous {
-				hub.tracks[[3]string{"main", "turn", "two"}] = track
-			}
-			if tc.pending {
-				hub.started = []execTrackCommand{{key: [3]string{"main", "turn", "two"}, script: script, serial: 1}}
-			}
-			tracking := newExecPreviewTrack(hub, tc.thread, tc.turn, []commandanalysis.Command{{Command: script}})
-			defer tracking.close()
-			if tracking != nil {
-				for key, track := range hub.tracks {
-					tracking.retain(key, track)
-				}
+				dialExecTrackReport(t, hub, script)
 			}
 			state := tracking.state()
 			tracked, settled := state.tracked, state.settled
 			if tracked != tc.wantTracked || settled != tc.wantSettled {
 				t.Fatalf("state = %v, %v", tracked, settled)
-			}
-		})
-	}
-}
-
-func TestExecPreviewTrackGuardIdentity(t *testing.T) {
-	for _, command := range []struct {
-		name, tail string
-		vcs        bool
-	}{
-		{"vcs", "git --version", true},
-		{"sudo", "sudo id", false},
-		{"mixed", "git --version; sudo id", true},
-		{"vcs disabled", "git --version; sudo id", false},
-	} {
-		t.Run(command.name, func(t *testing.T) {
-			original := "gofmt -w source.go; " + command.tail
-			const guard = "/private/session/vcs-guard"
-			for _, scenario := range []string{"current", "item-bound", "wrong item", "captured guarded", "foreign", "pending duplicate", "lookalike helper"} {
-				t.Run(scenario, func(t *testing.T) {
-					hub := &execTrackHub{instrumentation: execInstrumentation{vcs: "/private/session/vcs-guard", sudo: "/private/session/sudo-guard"}, changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
-					script, directory := original, guard
-					sudoDirectory := "/private/session/sudo-guard"
-					if !command.vcs {
-						directory = ""
-					}
-					if scenario == "foreign" {
-						if command.vcs {
-							directory = "/private/other/vcs-guard"
-						}
-						sudoDirectory = "/private/other/sudo-guard"
-					}
-					if scenario == "lookalike helper" {
-						if command.vcs {
-							script = strings.Replace(script, "git --version", "/usr/bin/git --version", 1)
-						} else {
-							script = strings.Replace(script, "sudo id", "/usr/bin/sudo id", 1)
-						}
-					}
-					item := ""
-					if scenario == "item-bound" {
-						item = "command"
-					} else if scenario == "wrong item" {
-						item = "other"
-					}
-					wrapped, err := shellinstrumentation.RewriteCommands(script, "/unrelated/mekugi-exec", directory, sudoDirectory, item)
-					if err != nil {
-						t.Fatal(err)
-					}
-					commands := []commandanalysis.Command{{Command: script}}
-					if scenario == "captured guarded" {
-						commands[0].Command = wrapped
-					}
-					p := newExecPreviewTrack(hub, "main", "turn", commands)
-					defer p.close()
-					key := [3]string{"main", "turn", "command"}
-					hub.start(key, "/bin/bash -lc "+quoteShellWord(wrapped))
-					if _, _, ok := hub.claim(t.Context(), segmenttransport.Message{Thread: "main", Script: wrapped}); !ok {
-						t.Fatal("raw report ownership failed")
-					}
-					hub.completed(key)
-					if scenario == "pending duplicate" {
-						hub.start([3]string{"main", "turn", "pending"}, "/bin/bash -lc "+quoteShellWord(original))
-					}
-					settled := p.state().settled
-					if settled != (scenario == "current" || scenario == "item-bound" || scenario == "captured guarded") {
-						t.Fatalf("preview settled = %v", settled)
-					}
-				})
 			}
 		})
 	}
@@ -434,8 +377,8 @@ func TestAppServerTrackedSkippedEditBeforeHostExit(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
 	script := "false && sed -i 's/a/b/' skipped; go test ./..."
-	tracking := newExecPreviewTrack(hub.execTrackHub, "main", "turn", []commandanalysis.Command{{Command: script}})
-	defer tracking.close()
+	tracking := newExecPreviewTrack(hub.Observer, "main", "turn", []commandanalysis.Command{{Command: script}})
+	defer tracking.Close()
 	item := map[string]any{"id": "edit", "type": "commandExecution", "command": "/bin/bash -lc " + quoteShellWord(script), "status": "inProgress"}
 	appServerTestNotify(t, u, "item/started", map[string]any{"threadId": "main", "turnId": "turn", "item": item})
 	report := dialExecTrackReport(t, hub, script)
@@ -490,7 +433,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	auto.Enable()
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(auto).Subscribe()
-	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
+	proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	transform.openExecWindow("cell", observation, nil)
 	defer proxy.execWindows.close("cell")
@@ -503,7 +446,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 	firstItem["status"], firstItem["exitCode"] = "completed", 0
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn", "item": firstItem})
 	deadline := time.Now().Add(3 * time.Second)
-	for hub.tracking([3]string{"main", "turn", "first"}) {
+	for hub.Tracking([3]string{"main", "turn", "first"}) {
 		u.flushStreamOutput()
 		if time.Now().After(deadline) {
 			t.Fatal("Activity did not retire the first report")
@@ -525,7 +468,7 @@ func TestExecTrackGroupedCodeModePreviewRetainsCompletedCommands(t *testing.T) {
 				if len(event.Preview.Files) != 1 || !strings.Contains(event.Preview.Files[0].Diff, "-before") || !strings.Contains(event.Preview.Files[0].Diff, "+after") {
 					t.Fatalf("grouped preview lost the captured baseline: %+v", event.Preview)
 				}
-				if !hub.tracking([3]string{"main", "turn", "second"}) || !proxy.execWindows.find("cell").closed.IsZero() {
+				if !hub.Tracking([3]string{"main", "turn", "second"}) || !proxy.execWindows.find("cell").closed.IsZero() {
 					t.Fatal("preview completion ended the host command or cell")
 				}
 				return
@@ -562,7 +505,7 @@ func TestExecTrackCodeModeNativeEditEndsBeforeSiblingTest(t *testing.T) {
 			auto.Enable()
 			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(auto).Subscribe()
-			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
+			proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("cell", observation, nil)
 			defer proxy.execWindows.close("cell")
@@ -650,7 +593,7 @@ func TestExecTrackStreamableEditFinishesBeforeFormatter(t *testing.T) {
 	broker := newLivePreview(t.Context())
 	setLiveScope(broker, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(broker).Subscribe()
-	registry := &execWindowRegistry{tracker: hub.execTrackHub}
+	registry := &execWindowRegistry{tracker: hub.Observer}
 	registry.open(&execWindow{ref: "edit", thread: "main", turn: "turn", roots: []string{workspace}})
 	defer registry.close("edit")
 	registry.preview("edit", *observation, broker, workspace, "main", "/root", nil)
@@ -693,7 +636,7 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 			auto.Enable()
 			setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 			sub := testReview(auto).Subscribe()
-			proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
+			proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 			transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 			transform.openExecWindow("new", observation, nil)
 			defer proxy.execWindows.close("new")
@@ -737,23 +680,6 @@ func TestExecTrackPreviewDoesNotAdoptOlderInvocation(t *testing.T) {
 	}
 }
 
-func TestExecTrackDeclinesAmbiguousHostIdentity(t *testing.T) {
-	t.Parallel()
-	const script = "sed -i 's/a/b/' a; go test ./..."
-	hub := &execTrackHub{changed: make(chan struct{}), tracks: make(map[[3]string]*execTrack)}
-	for _, id := range []string{"one", "two"} {
-		hub.start([3]string{"main", "turn", id}, "/bin/bash -lc "+quoteShellWord(script))
-	}
-	for range 2 {
-		if _, _, ok := hub.claim(t.Context(), segmenttransport.Message{Thread: "main", Script: script}); ok {
-			t.Fatal("ambiguous identical scripts borrowed another host invocation's identity")
-		}
-	}
-	if len(hub.tracks) != 0 || len(hub.started) != 2 {
-		t.Fatal("declining observation changed host command ownership")
-	}
-}
-
 func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	t.Parallel()
 	u, hub := newTrackedAppServerUI(t)
@@ -763,7 +689,7 @@ func TestExecTrackSiblingWindowsCannotShareFutureReport(t *testing.T) {
 	auto.Enable()
 	setLiveScope(auto, previewmodel.Scope{Workspaces: map[string]map[string]bool{workspace: {"main": true}}})
 	sub := testReview(auto).Subscribe()
-	proxy := &mekugiProxy{execTrack: hub.execTrackHub, execWindows: &execWindowRegistry{tracker: hub.execTrackHub}, review: testReview(auto)}
+	proxy := &mekugiProxy{execTrack: hub.Observer, execWindows: &execWindowRegistry{tracker: hub.Observer}, review: testReview(auto)}
 	transform := &mekugiResponseTransform{proxy: proxy, directory: workspace, threadID: "main", shellThreadID: "main", shellTurnID: "turn"}
 	script := "cat > source.go <<'EOF'\nafter\nEOF\ngo test ./..."
 	for _, id := range []string{"one", "two"} {

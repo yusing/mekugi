@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 
@@ -44,7 +46,7 @@ type execWindow struct {
 type execWindowRegistry struct {
 	mu      sync.Mutex
 	windows []*execWindow
-	tracker *execTrackHub
+	tracker *segments.Observer
 }
 
 func (r *execWindowRegistry) find(ref string) *execWindow {
@@ -86,7 +88,9 @@ func (r *execWindowRegistry) prune() {
 	})
 	if len(r.windows) > maxExecWindows {
 		for _, window := range r.windows[:len(r.windows)-maxExecWindows] {
-			window.tracking.close()
+			if window.tracking != nil {
+				window.tracking.Close()
+			}
 			if window.previewCancel != nil {
 				window.previewCancel()
 			}
@@ -170,11 +174,13 @@ func (r *execWindowRegistry) view(refs []string, complete bool) execWindowView {
 	for _, ref := range refs {
 		if window := r.find(ref); window != nil {
 			if window.tracking != nil {
-				window.created = window.tracking.createdPaths()
+				window.created = window.tracking.CreatedPaths()
 			}
 			view.created = append(view.created, window.created...)
 			if complete && window.closed.IsZero() {
-				window.tracking.close()
+				if window.tracking != nil {
+					window.tracking.Close()
+				}
 				window.tracking = nil
 				window.closed = now
 				if window.previewCancel != nil {

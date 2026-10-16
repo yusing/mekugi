@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 )
@@ -70,10 +73,16 @@ func TestVCSCommitEnrichmentRequiresProvenSegmentDirectory(t *testing.T) {
 			u.proxy = &mekugiProxy{replayStore: store}
 			key := [3]string{"main", "t", "commit"}
 			command := "git commit -m directory"
-			u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, closed: true, ended: true, segments: []execTrackSegment{
-				{source: prior, began: true, ended: true},
-				{source: command, began: true, ended: true, vcs: true, raw: []byte(output)},
-			}}}}
+			hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+			hub.ui, u.execTrack = u, hub.Observer
+			u.session.commands[key] = &appServerCommandRun{}
+			report := hub.begin(t, key, prior+"; "+command)
+			report.send(
+				segmenttransport.Message{Type: segmenttransport.Begin, Index: 0}, segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0)},
+				segmenttransport.Message{Type: segmenttransport.Begin, Index: 1}, segmenttransport.Message{Type: segmenttransport.Output, Index: 1, Data: output}, segmenttransport.Message{Type: segmenttransport.End, Index: 1, Code: new(0)},
+				segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed},
+			)
+			hub.await(t, key, func(view execTrackView) bool { return view.complete })
 			item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc " + quoteShellWord(prior+"; "+command), Cwd: g.dir, ExitCode: new(0), AggregatedOutput: &output}
 			entry := activityPaneEntry{Kind: "tool", native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2], command: item.Command}}
 			live := u.trackedCommandDone(key, entry, item)[0]

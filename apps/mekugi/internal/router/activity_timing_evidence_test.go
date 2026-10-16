@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 )
 
@@ -91,7 +93,8 @@ func TestActivityTimingRealShellBoundariesAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
-	u.execTrack, u.proxy = shell.hub, &mekugiProxy{replayStore: store}
+	u.execTrack, u.proxy = shell.hub.Observer, &mekugiProxy{replayStore: store}
+	shell.hub.ui = u
 	script := "sleep .04; sleep .12; false && echo never"
 	item := appServerItem{ID: "timed", Type: "commandExecution", Command: "/usr/bin/bash -lc " + quoteShellWord(script), Status: "inProgress"}
 	key := [3]string{"main", "timed-turn", item.ID}
@@ -223,12 +226,15 @@ func TestActivityTimingExitAndErrexitBoundaries(t *testing.T) {
 func TestActivityTimingLiveEvidenceDoesNotInheritHostTotal(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
-	track := &execTrack{segments: []execTrackSegment{{source: "sleep .01"}, {source: "sleep .02"}}}
-	track.apply(segmenttransport.Message{Type: segmenttransport.Begin, Index: 0, Timing: segmenttransport.Timing{Started: start}})
-	track.apply(segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0), Timing: segmenttransport.Timing{Started: start, Ended: start.Add(12 * time.Millisecond), ElapsedNS: int64(12 * time.Millisecond)}})
-	track.apply(segmenttransport.Message{Type: segmenttransport.Begin, Index: 1, Timing: segmenttransport.Timing{Started: start.Add(13 * time.Millisecond)}})
-	hub := &execTrackHub{tracks: map[[3]string]*execTrack{{"thread", "turn", "live"}: track}}
-	view, _ := hub.view([3]string{"thread", "turn", "live"}, false, func(source string) string { return "Run `" + source + "`" }, nil)
+	key := [3]string{"thread", "turn", "live"}
+	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	report := hub.begin(t, key, "sleep .01; sleep .02")
+	report.send(
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 0, Timing: segmenttransport.Timing{Started: start}},
+		segmenttransport.Message{Type: segmenttransport.End, Index: 0, Code: new(0), Timing: segmenttransport.Timing{Started: start, Ended: start.Add(12 * time.Millisecond), ElapsedNS: int64(12 * time.Millisecond)}},
+		segmenttransport.Message{Type: segmenttransport.Begin, Index: 1, Timing: segmenttransport.Timing{Started: start.Add(13 * time.Millisecond)}},
+	)
+	view := hub.await(t, key, func(view execTrackView) bool { return len(view.segments) == 2 })
 	entry := activityPaneEntry{Kind: "tool", Observed: start.Add(-5 * time.Second), native: &liveActivityNativeItem{command: "sleep .01; sleep .02", running: true, duration: 5 * time.Second, segments: view.segments}}
 	blocks := parseLiveActivity(entry)
 	if len(blocks) != 2 || blocks[0].Duration != 12*time.Millisecond || blocks[0].Started != start || blocks[1].Duration != 0 || blocks[1].Started != start.Add(13*time.Millisecond) || !blocks[1].Ended.IsZero() {

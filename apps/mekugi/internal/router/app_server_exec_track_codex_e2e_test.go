@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	"github.com/yusing/mekugi/backends/codex/shellhook"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -42,29 +44,34 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 	}
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	proxy.execTrack = shell.hub
+	proxy.execTrack = shell.hub.Observer
 	gate := filepath.Join(shell.root, "continue")
 	command := "echo DASH_ONE; { sleep 1; while [ ! -f " + quoteShellWord(gate) + " ]; do sleep 0.05; done; }; echo DASH_TWO >&2; false && echo DASH_NEVER"
 	provider := &toolFrontendCodexProvider{
 		program:  `const result = await tools.exec_command({cmd:` + string(responses.MustMarshalJSON(command)) + `,shell:"/bin/sh",login:false}); text(result.output);`,
 		expected: []string{"DASH_ONE", "DASH_TWO"}, finalText: "Recovered after a retry.",
 	}
-	var report *execTrack
+	var tracked *segments.Subscription
 	during := func(t *testing.T, outer io.Writer, await func(string), _ func(func(string) bool), _ *vt.Emulator) {
 		t.Helper()
 		if _, err := io.WriteString(outer, "\x023"); err != nil {
 			t.Fatal(err)
 		}
 		await("┆ DASH_ONE")
-		shell.hub.mu.Lock()
-		for _, track := range shell.hub.tracks {
-			if track.script == command && !track.ended {
-				report = track
+		proxy.execWindows.mu.Lock()
+		for _, window := range proxy.execWindows.windows {
+			if window.tracking == nil {
+				continue
+			}
+			for _, match := range window.tracking.State().Matches {
+				if match.Source == command && match.Report != nil && !match.Report.Ended {
+					tracked = window.tracking.Subscription
+				}
 			}
 		}
-		shell.hub.mu.Unlock()
-		if report == nil {
-			t.Fatal("streamed output has no live dash report")
+		proxy.execWindows.mu.Unlock()
+		if tracked == nil {
+			t.Fatal("streamed output has no live dash observation")
 		}
 		if err := os.WriteFile(gate, nil, 0o600); err != nil {
 			t.Fatal(err)
@@ -148,17 +155,22 @@ func TestAppServerExecTrackNativeCodexDash(t *testing.T) {
 		codexArgs:   []string{"-c", hook, "-c", state},
 		duringTurn:  during, afterPrompt: after,
 	})
-	if !report.done || report.code != 1 || len(report.segments) != 5 {
+	reportState := tracked.State()
+	if len(reportState.Matches) != 1 || reportState.Matches[0].Report == nil {
+		t.Fatalf("missing completed dash observation: %+v", reportState)
+	}
+	report := reportState.Matches[0].Report
+	if !report.Done || report.Code != 1 || len(report.Segments) != 5 {
 		t.Fatalf("dash report = %+v", report)
 	}
-	for i, segment := range report.segments[:4] {
-		elapsed := time.Duration(segment.timing.ElapsedNS)
-		if !segment.began || !segment.ended || elapsed <= 0 || (i == 1 && elapsed < time.Second) {
+	for i, segment := range report.Segments[:4] {
+		elapsed := time.Duration(segment.Timing.ElapsedNS)
+		if !segment.Began || !segment.Ended || elapsed <= 0 || (i == 1 && elapsed < time.Second) {
 			t.Fatalf("segment %d lacks its own measured timing: %+v", i, segment)
 		}
 	}
-	if report.segments[4].began || report.segments[3].code != 1 {
-		t.Fatalf("dash short-circuit status = %+v", report.segments)
+	if report.Segments[4].Began || report.Segments[3].Code != 1 {
+		t.Fatalf("dash short-circuit status = %+v", report.Segments)
 	}
 }
 
@@ -178,7 +190,7 @@ func TestAppServerExecTrackNativeCodex(t *testing.T) {
 	}
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
-	proxy.execTrack = shell.hub
+	proxy.execTrack = shell.hub.Observer
 	// Match the launcher: the parent test command's identity is not the new
 	// Codex process's hook environment. Codex injects identity into its tools.
 	environment := []string{"CODEX_THREAD_ID="}
@@ -224,7 +236,7 @@ func TestAppServerExecTrackNativeCodexSandbox(t *testing.T) {
 			shell := newExecTrackShell(t)
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			proxy.execTrack = shell.hub
+			proxy.execTrack = shell.hub.Observer
 			var environment []string
 			for _, entry := range shell.env {
 				if strings.HasPrefix(entry, "BASH_ENV=") {

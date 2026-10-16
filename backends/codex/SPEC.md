@@ -129,6 +129,12 @@ consumer, without exposing backend execution or private request objects.
 
 ## Execution evidence
 
+The observation binding decodes command starts, output and terminal outcomes,
+preserving host identities, exact shell arguments and unknown exit status.
+Application consumers share that decoding before presentation and during UI
+delivery. [Command segments](../../modules/commandsegments/SPEC.md#live-correlation)
+owns report matching; decoding neither correlates reports nor settles capture.
+
 The binding recognizes supported transparent JavaScript tool invocations for
 preview, continuation correlation and offline inspection. It preserves literal
 tool names and arguments without executing source. Unknown syntax, dynamic

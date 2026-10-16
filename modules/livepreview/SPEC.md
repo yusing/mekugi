@@ -15,8 +15,10 @@ thread/turn retirement, and the attached renderer's bounded mailbox.
 
 The application adapts authenticated backend observations into these APIs. It
 retains streaming-tool argument decoding, input pacing, bounded observation
-workers, command-segment matching, captured endpoint reconciliation, and durable
-receipt loading. The always-on application review join owns scope admission and
+workers, captured endpoint reconciliation and durable receipt loading. It joins
+captured scope with [command-segment observations](../commandsegments/SPEC.md#live-correlation)
+without treating a match as permission to publish changes.
+The always-on application review join owns scope admission and
 retained-change delivery, independently of this optional feature. It supplies an
 immutable admitted scope to preview and uses the existing change-history and
 command-segment owners. The module imports neither feature.

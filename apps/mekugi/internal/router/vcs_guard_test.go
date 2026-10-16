@@ -173,7 +173,7 @@ func TestVCSGuardDenialFailsOnlyThePush(t *testing.T) {
 		default:
 			t.Fatalf("%q: push was not guarded", tc.script)
 		}
-		shell.hub.finish(key)
+		shell.hub.Forget(key)
 	}
 }
 
@@ -370,7 +370,7 @@ func TestVCSGuardClosesPendingApproval(t *testing.T) {
 		t.Fatal("approval did not arrive")
 	}
 	proxy := newManagedMekugiProxy(t)
-	proxy.execTrack = shell.hub
+	proxy.execTrack = shell.hub.Observer
 	proxy.guard = shell.guard
 	if err := proxy.Close(); err != nil {
 		t.Fatal(err)

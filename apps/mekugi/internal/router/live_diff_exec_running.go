@@ -84,7 +84,7 @@ func (r *execWindowRegistry) preview(ref string, observation changecapture.Obser
 	if tracking != nil {
 		tracking.streamable = make(map[string]bool)
 		for _, command := range observation.Commands {
-			tracking.streamable[tracking.authoredScript(command.Command, "")] = true
+			tracking.streamable[tracking.Source(command.Command, "")] = true
 			segments, _ := shellinstrumentation.Split(command.Command)
 			directory := command.Workdir
 			for _, segment := range segments {
@@ -98,7 +98,7 @@ func (r *execWindowRegistry) preview(ref string, observation changecapture.Obser
 				input.Command, input.Workdir = segment.Source, directory
 				files, _ := execPreviewProjected(ctx, changecapture.Observation{Files: observation.Files, Commands: []commandanalysis.Command{input}})
 				if len(files) > 0 {
-					tracking.streamable[tracking.authoredScript(segment.Source, "")] = true
+					tracking.streamable[tracking.Source(segment.Source, "")] = true
 				}
 			}
 		}

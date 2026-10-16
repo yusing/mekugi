@@ -141,7 +141,7 @@ func TestAppServerVCSGuardNativeCodexYolo(t *testing.T) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy) // As a session has.
-			proxy.execTrack = shell.hub
+			proxy.execTrack = shell.hub.Observer
 			proxy.guard = shell.guard
 			// The absolute target is deliberately outside both the startup
 			// directory and PATH. Only the producer hook can guard this call.

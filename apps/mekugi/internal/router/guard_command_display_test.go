@@ -187,22 +187,7 @@ func TestUISnapshotGuardCommandDisplay(t *testing.T) {
 	}
 	report.send(segmenttransport.Message{Type: segmenttransport.Done, Code: new(0)}, segmenttransport.Message{Type: segmenttransport.Closed})
 	report.conn.Close()
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		hub.mu.Lock()
-		track := hub.tracks[[3]string{"main", "t", "cmd"}]
-		ready := track != nil && track.ended && track.closed && track.done
-		changed := hub.changed
-		hub.mu.Unlock()
-		if ready {
-			break
-		}
-		select {
-		case <-changed:
-		case <-time.After(time.Until(deadline)):
-			t.Fatal("segment report did not finish")
-		}
-	}
+	hub.await(t, [3]string{"main", "t", "cmd"}, func(view execTrackView) bool { return view.complete })
 	item["status"], item["exitCode"], item["aggregatedOutput"] = "completed", 0, strings.Join(outputs, "")
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "t", "item": item})
 	awaitMain(t, u, "signature_present")

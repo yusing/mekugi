@@ -5,18 +5,20 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
 )
 
 func TestExecTrackCloseReleasesActiveReport(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	hub := newExecTrackFixture(t, ctx, execInstrumentation{})
+	hub := newExecTrackFixture(t, ctx, segments.Instrumentation{})
 	const script = "echo first; echo second"
 	hub.start([3]string{"main", "turn", "item"}, "/bin/bash -c "+quoteShellWord(script))
 	dialExecTrackReport(t, hub, script) // Keep the accepted producer connection open.
 	closed := make(chan struct{})
-	go func() { hub.close(); close(closed) }()
+	go func() { hub.Close(); close(closed) }()
 	select {
 	case <-closed:
 	case <-time.After(2 * time.Second):

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 
+	commandsegments "github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	"github.com/yusing/mekugi/modules/conversation/completion"
 
 	conversationui "github.com/yusing/mekugi/modules/conversation/terminalview"
@@ -141,7 +143,7 @@ type appServerUI struct {
 	agents                  *activityAdapter
 	proxy                   *mekugiProxy
 	guard                   *shellApprovalServer
-	execTrack               *execTrackHub // Per-segment command reports; nil when not tracking.
+	execTrack               *commandsegments.Observer // Per-segment command reports; nil when not tracking.
 	shellEdits              appServerShellEdits
 	pendingEditReceipts     []*capturedActivityEdit // Observed edits can precede their host Activity item.
 	issues                  *CriticalErrors
@@ -221,11 +223,20 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 	// Live settings and trusted reasoning configuration_update items are Codex
 	// opt-ins. Enable them only for this native app-server invocation.
 	cmd.Args = append(cmd.Args, "-c", "features.step_model_switching=true", "-c", "features.reasoning_effort_override=true")
-	var tracker *execTrackHub
+	var tracker *commandsegments.Observer
 	if proxy != nil {
 		tracker = proxy.execTrack
 	}
-	c, err := appserver.Start(cmd, tracker.observeCommandStart)
+	c, err := appserver.Start(cmd, func(message appserver.Message) {
+		if message.Method != "item/started" {
+			return
+		}
+		if command, ok := binding.DecodeCommandObservation(message.Method, message.Params); ok {
+			if script, ok := binding.CommandScript(command.Command); ok {
+				tracker.Start(command.Key, script)
+			}
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +455,11 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 			}
 		}
 		u.finishCommandSegments()
-		u.execTrack.detachOutputs()
+		for key, run := range u.session.commands {
+			if run.segments.release() {
+				u.execTrack.ReleaseOutput(key)
+			}
+		}
 		u.shell.review.Close()
 		u.hideQuestions()
 		u.hideApprovals()
@@ -877,6 +892,13 @@ func (u *appServerUI) message(m appserver.Message) (err error) {
 	var p appServerEvent
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return fmt.Errorf("%s: %w", m.Method, err)
+	}
+	if command, ok := binding.DecodeCommandObservation(m.Method, m.Params); ok {
+		p.command = &command
+		p.Delta = command.Delta
+		if p.Item.Type == "commandExecution" {
+			p.Item.Command, p.Item.AggregatedOutput, p.Item.ExitCode = command.Command, command.Output, command.Exit
+		}
 	}
 	p.text = observation.TextEvent{At: u.now(), Kind: observation.Kind(m.Method), Delta: p.Delta, Item: transcriptItem(p.Item, p.ThreadID, p.TurnID, p.ItemID)}
 	return u.observedEvent(m.Method, p)

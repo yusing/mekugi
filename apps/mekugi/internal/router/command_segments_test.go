@@ -47,10 +47,9 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 		first, second := u.session.activity.Outputs(&u.session.state).New(), u.session.activity.Outputs(&u.session.state).New()
 		first.Finish(new("first\n"), new(0))
 		second.Finish(new("second\n"), new(0))
-		u.execTrack = &execTrackHub{tracks: map[[3]string]*execTrack{key: {done: true, closed: true, ended: true, segments: []execTrackSegment{
-			{source: "echo first", began: true, ended: true, full: first},
-			{source: "echo second", began: true, ended: true, full: second},
-		}}}}
+		view := execTrackView{complete: true, output: true, segments: []commandSegment{
+			{source: "echo first", output: first}, {source: "echo second", output: second},
+		}}
 		item := appServerItem{ID: key[2], Type: "commandExecution", Command: "bash -lc 'echo first; echo second'", ExitCode: new(0), AggregatedOutput: new("first\nsecond\n")}
 		entry := activityPaneEntry{native: &liveActivityNativeItem{thread: key[0], turn: key[1], item: key[2]}}
 		lock := flock.New(filepath.Join(store.directory, "store.lock"))
@@ -65,12 +64,9 @@ func TestCommandSegmentsRetainAfterStorageContentionWithoutBlockingUI(t *testing
 			t.Fatalf("shared-store contention did not produce the diagnosed deadline error: %v", err)
 		}
 		started := time.Now()
-		done := u.trackedCommandDone(key, entry, item)
+		u.retainCommandSegments(entry, item, view)
 		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
 			t.Fatalf("storage contention blocked command presentation for %s", elapsed)
-		}
-		if len(done) != 1 || len(done[0].native.segments) != 2 || done[0].native.segments[0].output != first {
-			t.Fatalf("live command completion lost its output: %+v", done)
 		}
 		// Switching sessions and releasing live buffers must not change the pending
 		// report's evidence or ownership. Hold beyond the former one-second limit.
@@ -200,7 +196,8 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := newAppServerSessionTestUI(t, workspace)
-	u.execTrack = shell.hub
+	u.execTrack = shell.hub.Observer
+	shell.hub.ui = u
 	path := filepath.Join(t.TempDir(), "SKILL.md")
 	if err := os.WriteFile(path, []byte("first\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -226,7 +223,7 @@ func TestCommandSegmentsRetainRealShellResultsAcrossRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shell.hub.tracking(key) {
+	if shell.hub.Tracking(key) {
 		t.Fatal("test still has a live report")
 	}
 	for _, target := range []string{"main", "fork", "child"} {

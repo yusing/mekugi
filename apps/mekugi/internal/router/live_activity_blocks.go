@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -55,7 +57,7 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 		return compound
 	}
 	command := entry.native.command
-	if script, ok := appServerShellScript(command); ok {
+	if script, ok := binding.CommandScript(command); ok {
 		command = script
 	} else {
 		// Offline replay retains a tracked script without its shell argv;
@@ -328,7 +330,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 	// Classify decoration in the full script, not as a standalone segment.
 	// Keep failed headings visible, and retain every segment for replay/output.
 	command := entry.native.command
-	if script, ok := appServerShellScript(command); ok {
+	if script, ok := binding.CommandScript(command); ok {
 		command = script
 	}
 	_, classified := activitypresentation.ClassifyShell(command, "")

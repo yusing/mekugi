@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 
+	segments "github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	"github.com/yusing/mekugi/apps/mekugi/internal/inferencegateway"
 
 	"github.com/yusing/mekugi/providers/grok"
@@ -43,7 +45,7 @@ type mekugiProxy struct {
 	review           *savedReview
 	activity         *subagentActivity
 	guard            *shellApprovalServer
-	execTrack        *execTrackHub // Set for the UI when command shells are tracked.
+	execTrack        *segments.Observer // Set for the UI when command shells are tracked.
 	skillsManager    bool
 	execWindows      *execWindowRegistry
 	nativeTrace      *nativetrace.Reader
@@ -100,7 +102,7 @@ func (p *mekugiProxy) Close() error {
 	p.closed = true
 	defer p.mu.Unlock()
 	if p.execTrack != nil {
-		p.execTrack.close()
+		p.execTrack.Close()
 	}
 	p.guard.close()
 	var cleanupErr error

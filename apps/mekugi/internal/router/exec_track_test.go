@@ -5,6 +5,11 @@ import (
 	"bytes"
 	"context"
 
+	"github.com/yusing/mekugi/backends/codex/appserver"
+	"github.com/yusing/mekugi/backends/codex/binding"
+	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
+	"github.com/yusing/mekugi/modules/commandsegments/segments"
+
 	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -50,7 +55,7 @@ var execTrackHelper = sync.OnceValues(func() (string, error) {
 })
 
 type execTrackShell struct {
-	hub       *execTrackHub
+	hub       *execTrackFixture
 	transport *segmenttransport.Server
 	env       []string
 	home      string
@@ -97,8 +102,8 @@ func newExecTrackShell(t *testing.T) *execTrackShell {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	fixture := newExecTrackFixture(t, t.Context(), execInstrumentation{vcs: filepath.Join(root, shellinstrumentation.VCSDirectory), sudo: filepath.Join(root, shellinstrumentation.SudoDirectory)})
-	hub := fixture.execTrackHub
+	fixture := newExecTrackFixture(t, t.Context(), segments.Instrumentation{VCS: filepath.Join(root, shellinstrumentation.VCSDirectory), Sudo: filepath.Join(root, shellinstrumentation.SudoDirectory)})
+	hub := fixture
 	endpoints := fixture.server.Endpoints()
 	socket, directory := endpoints.Requests, endpoints.Directory
 	tracker := filepath.Join(root, "exec-track.bash")
@@ -182,7 +187,7 @@ func TestExecTrackCapturesMktempCreation(t *testing.T) {
 			}
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			proxy.execWindows.tracker = shell.hub
+			proxy.execWindows.tracker = shell.hub.Observer
 			transform := prepareNativeStockTransform(t, proxy, workspace, "exec-session")
 			transform.shellThreadID, transform.shellTurnID = "thread", "turn"
 			run := func(call, script string) (execTrackRun, mekugiHistory, *mekugiResponseTransform) {
@@ -328,9 +333,8 @@ c.XXXXXX"`, created: 1, reported: true},
 				if tc.code == 0 && !strings.HasSuffix(got.stdout, "\n") {
 					t.Fatalf("output lost its newline: %q", got.stdout)
 				}
-				shell.hub.mu.Lock()
-				created := slices.Clone(shell.hub.tracks[key].created)
-				shell.hub.mu.Unlock()
+				report, _ := shell.hub.Read(key)
+				created := report.Created
 				if !tc.reported && (!tc.bash || name != "bash") {
 					if len(created) != 0 {
 						t.Fatalf("reported %+v", created)
@@ -349,16 +353,19 @@ c.XXXXXX"`, created: 1, reported: true},
 func TestExecWindowRepeatedOpenKeepsOneReportOwner(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
-	registry := &execWindowRegistry{tracker: shell.hub}
+	registry := &execWindowRegistry{tracker: shell.hub.Observer}
 	command := commandanalysis.Command{Command: "mktemp", Workdir: t.TempDir(), Shell: "bash"}
 	first := &execWindow{ref: "call", thread: "thread", turn: "turn"}
 	registry.open(first, command)
 	registry.open(&execWindow{ref: "call", thread: "thread", turn: "turn"}, command)
-	shell.hub.mu.Lock()
-	defer shell.hub.mu.Unlock()
-	if len(shell.hub.previews) != 1 || first.tracking == nil || first.tracking.matches["mktemp"].ambiguous {
-		t.Fatalf("previews = %d, first = %+v", len(shell.hub.previews), first.tracking)
+	if first.tracking == nil {
+		t.Fatal("missing first subscription")
 	}
+	state := first.tracking.State()
+	if len(state.Matches) != 1 || state.Matches[0].Ambiguous {
+		t.Fatalf("repeated open changed report ownership: %+v", state)
+	}
+
 }
 
 func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
@@ -436,7 +443,7 @@ func TestExecTrackReportsEachSegmentWithoutChangingTheCommand(t *testing.T) {
 		}) {
 			t.Fatalf("%q: segments = %+v, want %+v", tc.script, view.segments, tc.segments)
 		}
-		shell.hub.finish(key)
+		shell.hub.Forget(key)
 	}
 }
 
@@ -459,7 +466,7 @@ func TestExecTrackRelaysExternalCommandIO(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			key := [3]string{"thread", "turn", tc.script}
 			shell.hub.start(key, "/usr/bin/bash -lc "+quoteShellWord(tc.script))
-			defer shell.hub.finish(key)
+			defer shell.hub.Forget(key)
 			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, execTrackShellExecutable(t, "bash"), "-c", tc.script)
@@ -487,11 +494,9 @@ func TestExecTrackRelaysExternalCommandIO(t *testing.T) {
 			}
 			if tc.name != "single" {
 				var reported strings.Builder
-				shell.hub.mu.Lock()
-				for _, segment := range shell.hub.tracks[key].segments {
+				for _, segment := range shell.hub.presentation(key).segments {
 					reported.Write(segment.fresh)
 				}
-				shell.hub.mu.Unlock()
 				if reported.String() != tc.want.stdout+tc.want.stderr {
 					t.Fatalf("reported bytes changed: got %d, want %d", reported.Len(), len(tc.want.stdout)+len(tc.want.stderr))
 				}
@@ -538,7 +543,7 @@ func TestExecTrackMatchesPlainBash(t *testing.T) {
 		if view := shell.awaitView(t, key); !view.complete || view.code != plain.code {
 			t.Errorf("%q: view = %+v, want a complete report with exit %d", script, view, plain.code)
 		}
-		shell.hub.finish(key)
+		shell.hub.Forget(key)
 	}
 }
 
@@ -550,9 +555,7 @@ func TestExecTrackRunsUnmatchedScriptsUntracked(t *testing.T) {
 	if want := (execTrackRun{stdout: "one\ntwo\n"}); tracked != want {
 		t.Fatalf("run = %+v, want %+v", tracked, want)
 	}
-	if len(shell.hub.tracks) != 0 {
-		t.Fatalf("tracks = %v, want none", shell.hub.tracks)
-	}
+
 }
 
 func TestExecTrackMatchesDelayedHostStart(t *testing.T) {
@@ -602,7 +605,7 @@ func TestExecTrackLeavesNestedShellsAlone(t *testing.T) {
 	if len(view.segments) != 2 || !slices.Equal(view.segments[1].tail, []string{"inner", "nested"}) {
 		t.Fatalf("segments = %+v", view.segments)
 	}
-	if shell.hub.tracking([3]string{"thread", "turn", "nested"}) {
+	if shell.hub.Tracking([3]string{"thread", "turn", "nested"}) {
 		t.Fatal("nested shell was tracked")
 	}
 }
@@ -618,6 +621,10 @@ type execTrackReport struct {
 }
 
 func dialExecTrackReport(t *testing.T, hub *execTrackFixture, script string) *execTrackReport {
+	return dialExecTrackReportThread(t, hub, "main", script)
+}
+
+func dialExecTrackReportThread(t *testing.T, hub *execTrackFixture, thread, script string) *execTrackReport {
 	t.Helper()
 	conn, answer, _, err := segmenttransport.OpenReport(hub.server.Endpoints().Requests, hub.server.Endpoints().Directory, time.Second)
 	if err != nil {
@@ -633,7 +640,7 @@ func dialExecTrackReport(t *testing.T, hub *execTrackFixture, script string) *ex
 		sources = append(sources, segment.Source)
 	}
 	r := &execTrackReport{t: t, conn: conn}
-	r.send(segmenttransport.Message{Type: segmenttransport.Hello, Version: segmenttransport.Protocol, Thread: "main", Script: script, Segments: sources})
+	r.send(segmenttransport.Message{Type: segmenttransport.Hello, Version: segmenttransport.Protocol, Thread: thread, Script: script, Segments: sources})
 	deadline := time.Now().Add(time.Second)
 	for {
 		n, err := unix.Poll([]unix.PollFd{{Fd: int32(answer.Fd()), Events: unix.POLLIN}}, max(0, int(time.Until(deadline).Milliseconds())))
@@ -745,7 +752,7 @@ func TestAppServerTrackedCommandPathsLiveAndRestored(t *testing.T) {
 	// A visible Search row can precede report EOF and the retention write.
 	// Drive the UI until it finalizes this invocation before draining writes.
 	deadline := time.Now().Add(2 * time.Second)
-	for u.execTrack.tracking([3]string{"main", "t", item.ID}) {
+	for u.execTrack.Tracking([3]string{"main", "t", item.ID}) {
 		u.flushStreamOutput()
 		if time.Now().After(deadline) {
 			t.Fatal("tracked command did not finalize")
@@ -829,7 +836,7 @@ func TestAppServerIncompleteReportFallsBackToHostOutput(t *testing.T) {
 			if !strings.Contains(main, "┆ a\n") || !strings.Contains(main, "┆ b") || strings.Contains(main, "skipped") {
 				t.Fatalf("Main does not show the host's combined result:\n%s", main)
 			}
-			if hub.tracking([3]string{"main", "t", "cmd"}) {
+			if hub.Tracking([3]string{"main", "t", "cmd"}) {
 				t.Fatal("completed report was retained")
 			}
 		})
@@ -851,31 +858,89 @@ func TestAppServerEarlyEndedReportShowsHostOutputLive(t *testing.T) {
 }
 
 type execTrackFixture struct {
-	*execTrackHub
+	*segments.Observer
+	mu     sync.Mutex // Test shells can view distinct commands concurrently.
 	server *segmenttransport.Server
+	views  map[[3]string]*execTrackPresentation
+	ui     *appServerUI
 }
 
-func newExecTrackFixture(t *testing.T, ctx context.Context, scope execInstrumentation) *execTrackFixture {
+func (h *execTrackFixture) start(key [3]string, command string) {
+	if script, ok := binding.CommandScript(command); ok {
+		h.Start(key, script)
+	}
+}
+
+func (h *execTrackFixture) observeCommandStart(message appserver.Message) {
+	if command, ok := binding.DecodeCommandObservation(message.Method, message.Params); ok && message.Method == "item/started" {
+		h.start(command.Key, command.Command)
+	}
+}
+
+func (h *execTrackFixture) presentation(key [3]string) *execTrackPresentation {
+	if h.ui != nil {
+		if run := h.ui.session.commands[key]; run != nil {
+			return &run.segments
+		}
+	}
+	if h.views == nil {
+		h.views = make(map[[3]string]*execTrackPresentation)
+	}
+	if h.views[key] == nil {
+		h.views[key] = &execTrackPresentation{}
+	}
+	return h.views[key]
+}
+
+func (h *execTrackFixture) view(key [3]string, final bool, text func(string) string, outputs *activitymodel.Retention) (execTrackView, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.presentation(key).view(h.Observer, key, final, text, outputs)
+}
+
+func (h *execTrackFixture) await(t *testing.T, key [3]string, ready func(execTrackView) bool) execTrackView {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		view, _ := h.view(key, false, execSegmentText, nil)
+		if ready(view) {
+			return view
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("report did not reach expected state: %+v", view)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (h *execTrackFixture) begin(t *testing.T, key [3]string, script string) *execTrackReport {
+	t.Helper()
+	h.start(key, "bash -lc "+quoteShellWord(script))
+	return dialExecTrackReportThread(t, h, key[0], script)
+}
+
+func newExecTrackFixture(t *testing.T, ctx context.Context, scope segments.Instrumentation) *execTrackFixture {
 	t.Helper()
 	server, err := segmenttransport.Listen(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(server.Close)
-	hub, err := attachExecTrack(server, scope)
+	hub, err := segments.NewObserver(server, scope, activitymodel.OutputBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(hub.close)
-	return &execTrackFixture{hub, server}
+	t.Cleanup(hub.Close)
+	return &execTrackFixture{Observer: hub, server: server}
 }
 
 func newTrackedAppServerUI(t *testing.T) (*appServerUI, *execTrackFixture) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.Conversation = true
-	hub := newExecTrackFixture(t, t.Context(), execInstrumentation{})
-	u.execTrack = hub.execTrackHub
+	hub := newExecTrackFixture(t, t.Context(), segments.Instrumentation{})
+	u.execTrack = hub.Observer
+	hub.ui = u
 	return u, hub
 }
 
@@ -978,7 +1043,7 @@ func TestExecTrackConcurrentReportsAreIsolated(t *testing.T) {
 		})
 	}
 	t.Cleanup(func() {
-		shell.hub.close()
+		shell.hub.Close()
 		if _, err := os.Stat(shell.transport.Endpoints().Directory); !os.IsNotExist(err) {
 			t.Errorf("private report files remain: %v", err)
 		}
@@ -988,7 +1053,7 @@ func TestExecTrackConcurrentReportsAreIsolated(t *testing.T) {
 func TestExecTrackUnavailableRouterRunsOriginalCommand(t *testing.T) {
 	t.Parallel()
 	shell := newExecTrackShell(t)
-	shell.hub.close() // The invocation-owned request FIFO is removed.
+	shell.hub.Close() // The invocation-owned request FIFO is removed.
 	script := "echo ORIGINAL; echo STDERR >&2; false"
 	got := runExecTrackShell(t, shell.env, script)
 	if got.stdout != "ORIGINAL\n" || got.stderr != "STDERR\n" || got.code != 1 {
@@ -1006,7 +1071,7 @@ func TestExecTrackCancellationDuringStartupPreservesCommand(t *testing.T) {
 			root := t.TempDir()
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			hub := newExecTrackFixture(t, ctx, execInstrumentation{})
+			hub := newExecTrackFixture(t, ctx, segments.Instrumentation{})
 			channel, directory := hub.server.Endpoints().Requests, hub.server.Endpoints().Directory
 			helper, err := execTrackHelper()
 			if err != nil {

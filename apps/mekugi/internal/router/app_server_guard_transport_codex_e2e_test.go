@@ -31,7 +31,7 @@ func TestAppServerGuardTransportFailureNativeCodex(t *testing.T) {
 			shell := newVCSGuardShell(t)
 			proxy := newManagedMekugiProxy(t)
 			attachTestReplayStore(t, proxy)
-			proxy.execTrack = shell.hub
+			proxy.execTrack = shell.hub.Observer
 			proxy.guard = shell.guard
 			helper, err := execTrackHelper()
 			if err != nil {

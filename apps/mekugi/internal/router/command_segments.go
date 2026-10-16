@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/binding"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
@@ -26,7 +28,7 @@ func (u *appServerUI) retainCommandSegments(entry activityPaneEntry, item appSer
 	if u.segments == nil || u.proxy == nil || u.proxy.replayStore == nil || item.AggregatedOutput == nil || item.ExitCode == nil {
 		return
 	}
-	script, ok := appServerShellScript(item.Command)
+	script, ok := binding.CommandScript(item.Command)
 	parts, split := shellinstrumentation.Split(script)
 	if !ok || !split || len(parts) != len(view.segments) || !view.complete || view.code != *item.ExitCode {
 		return
@@ -159,7 +161,7 @@ func (u *appServerUI) prepareCommandSegments(thread, workspace string, turn appS
 			if item.Type != "commandExecution" || item.ExitCode == nil || item.AggregatedOutput == nil {
 				continue
 			}
-			script, ok := appServerShellScript(item.Command)
+			script, ok := binding.CommandScript(item.Command)
 			parts, split := shellinstrumentation.Split(script)
 			if !ok || !split {
 				continue
