@@ -134,11 +134,8 @@ func (c *liveDiffTerminalController) run(
 				}
 			}
 		case <-c.escapeC:
-			c.escapeC = nil
-			if c.escape == "\x1b" {
-				c.escape = ""
-				c.navigation.Filtering, c.navigation.Focused, c.help = false, false, false
-				c.dirty = true
+			if c.expireEscape(keys) {
+				return nil
 			}
 		case <-resizes:
 			c.dirty = true
@@ -148,4 +145,21 @@ func (c *liveDiffTerminalController) run(
 			}
 		}
 	}
+}
+
+// Input already queued before the timer is serviced continues the escape
+// sequence. Rendering delay must not turn terminal replies into navigation.
+func (c *liveDiffTerminalController) expireEscape(keys <-chan byte) bool {
+	select {
+	case key, open := <-keys:
+		return !open || c.handleKey(key)
+	default:
+	}
+	c.escapeC = nil
+	if c.escape == "\x1b" {
+		c.escape = ""
+		c.navigation.Filtering, c.navigation.Focused, c.help = false, false, false
+		c.dirty = true
+	}
+	return false
 }

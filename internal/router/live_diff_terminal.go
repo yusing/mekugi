@@ -618,6 +618,10 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	if key == 3 {
 		return true
 	}
+	if c.escapeTimer != nil {
+		c.escapeTimer.Stop()
+		c.escapeC = nil
+	}
 	if c.osc.Active || c.escape == "\x1b" && key == ']' {
 		c.escape = ""
 		if reply, complete := c.osc.Consume(key); complete {
@@ -629,10 +633,6 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 		return false
 	}
 	// Decode common terminal keys incrementally, including fragmented reads.
-	if c.escapeTimer != nil {
-		c.escapeTimer.Stop()
-		c.escapeC = nil
-	}
 	if key == 27 {
 		if c.escapeTimer == nil {
 			c.escapeTimer = time.NewTimer(40 * time.Millisecond)
