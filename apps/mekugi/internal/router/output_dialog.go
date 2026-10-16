@@ -210,7 +210,7 @@ func (v *activityAdapter) commandOutputPages(source uint64) []activityui.Block {
 			pages := []activityui.Block{{Source: source, Kind: "op", Verb: "Run", Label: "combined output", BatchExit: true, Code: toolActivityShellSource(appServerDisplayCommand(entry.Source.native.command)), Lang: "bash", Output: retainedOutputID(entry.Source.native.output, 1), Tail: entry.Source.outputTail, TailOmitted: entry.Source.outputOmit, Running: entry.Source.native.running, Body: "Per-command output boundaries were not retained for this invocation."}}
 			// Keep edit source out of Run pages just as the feed does. The
 			// operations describe intent; only the batch owns output and exit.
-			classified := toolOperationBlocks(toolActivityShellInDirectory(appServerDisplayCommand(entry.Source.native.command), entry.Source.native.commandCwd))
+			classified := toolOperationBlocks(activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(entry.Source.native.command)), entry.Source.native.commandCwd))
 			if slices.ContainsFunc(classified, func(block activityui.Block) bool { return block.EditSource != "" }) {
 				if segments, ok := shellinstrumentation.Split(pages[0].Code); ok {
 					classified = nil

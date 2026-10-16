@@ -1,8 +1,10 @@
-package router
+package presentation
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/activity/feed"
 )
 
 // Most display tests compare one textual preview; delivery tests check message boundaries.
@@ -23,8 +25,8 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		{"shell combined flag", "sh -ec 'cd dir\nprintf ok'", "sh -ec …", "sh", "cd dir\nprintf ok"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			want := "Run " + toolActivityCode(test.command) + "\n" + toolActivityFenced(test.language, test.program)
-			if got := toolActivityShell(test.source); got != want {
+			want := "Run " + SourceCode(test.command) + "\n" + SourceFence(test.language, test.program)
+			if got := shellSource(test.source); got != want {
 				t.Fatalf("display = %q; want %q", got, want)
 			}
 		})
@@ -42,7 +44,7 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		"cat script.py | python3 -":           "Run",
 		"python3 - arg":                       "Run",
 	} {
-		if got, want := toolActivityShell(source), label+"\n"+toolActivityFenced("bash", source); got != want {
+		if got, want := shellSource(source), label+"\n"+SourceFence("bash", source); got != want {
 			t.Errorf("literal display = %q; want %q", got, want)
 		}
 	}
@@ -56,14 +58,14 @@ func TestSubagentInterpreterWrapperProjection(t *testing.T) {
 		`perl -e 'print "first\n"' -e 'print "second\n"'`,
 		`perl -e 'print "first\n"' '-eprint "second\n"'`,
 	} {
-		if got, want := toolActivityShell(source), "Run\n"+toolActivityFenced("bash", source); got != want {
+		if got, want := shellSource(source), "Run\n"+SourceFence("bash", source); got != want {
 			t.Errorf("dynamic or composed wrapper display = %q; want %q", got, want)
 		}
 	}
 }
 
 func TestToolActivityMultilineFence(t *testing.T) {
-	got := toolActivityCode("echo '```'\necho done")
+	got := SourceCode("echo '```'\necho done")
 	if !strings.HasPrefix(got, "````\n") || !strings.HasSuffix(got, "\n````") {
 		t.Fatalf("unsafe fence: %s", got)
 	}
@@ -79,7 +81,7 @@ func TestToolActivityShellSetupStaysTogether(t *testing.T) {
 		"export ROOT=/tmp\ncat <<'EOF'\nbody\nEOF\ngit log -1",
 	} {
 		source := "cat before\n" + setup + "\nsed -n '1,20p' after"
-		if got, want := toolActivityShell(source), "Run\n"+toolActivityFenced("bash", source); got != want {
+		if got, want := shellSource(source), "Run\n"+SourceFence("bash", source); got != want {
 			t.Errorf("shell setup split: got %q, want %q", got, want)
 		}
 	}
@@ -92,7 +94,7 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 		{"sed -n '1,260p' source.go && echo done", "Read `source.go 1:260`\n\nRun `echo done`"},
 		{"sed -n '261,520p' 'source file.go'", "Read `source file.go 261:520`"},
 	} {
-		if got := toolActivityShell(tc.source); got != tc.want {
+		if got := shellSource(tc.source); got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.source, got, tc.want)
 		}
 	}
@@ -108,8 +110,8 @@ func TestSubagentSedReadDisplay(t *testing.T) {
 		"sed -n '1,260p' a.go b.go",
 		"sed -n '1,260p' source.go > copy.go",
 	} {
-		want := "Run\n" + toolActivityFenced("bash", source)
-		if got := toolActivityShell(source); got != want {
+		want := "Run\n" + SourceFence("bash", source)
+		if got := shellSource(source); got != want {
 			t.Errorf("%s: got %q, want raw source %q", source, got, want)
 		}
 	}
@@ -121,12 +123,12 @@ func TestSubagentCatHeadReadDisplay(t *testing.T) {
 		{"cat 'a b.txt' | head -n 20", "Read `a b.txt`"},
 		{"cat foo bar | head -5", "Read `foo`\n\nRead `bar`"},
 	} {
-		if got := toolActivityShell(tc.source); got != tc.want {
+		if got := shellSource(tc.source); got != tc.want {
 			t.Errorf("%q: got %q, want %q", tc.source, got, tc.want)
 		}
 	}
 	for _, source := range []string{"cat foo | head bar", "cat foo | head -n \"$count\"", "cat foo | head > out"} {
-		if got := toolActivityShell(source); !strings.HasPrefix(got, "Run\n") {
+		if got := shellSource(source); !strings.HasPrefix(got, "Run\n") {
 			t.Errorf("unsafe pipeline %q: %q", source, got)
 		}
 	}
@@ -139,7 +141,7 @@ func TestSubagentCatSedReadDisplay(t *testing.T) {
 		{"cat source.go | sed \\\n -n '45,150p'", "Read `source.go 45:150`"},
 		{`cat "$file" | sed -n '1,2p'`, "Read `\"$file\" 1:2`"},
 	} {
-		if got := toolActivityShell(tc.source); got != tc.want {
+		if got := shellSource(tc.source); got != tc.want {
 			t.Errorf("%q: got %q, want %q", tc.source, got, tc.want)
 		}
 	}
@@ -155,7 +157,7 @@ func TestSubagentCatSedReadDisplay(t *testing.T) {
 		"cat source.go |& sed -n '1,2p'",
 		"cat source.go | sed -n '1,2p' | head -1",
 	} {
-		if got := toolActivityShell(source); got != "Run\n"+toolActivityFenced("bash", source) {
+		if got := shellSource(source); got != "Run\n"+SourceFence("bash", source) {
 			t.Errorf("unsupported pipeline %q changed meaning: %q", source, got)
 		}
 	}
@@ -168,7 +170,7 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 	want := "Read `semantic-assessment.ts 58:154`\n\n" +
 		"Read `judge.ts 79:162`\n\n" +
 		"Read `runner.ts 231:250 314:452`"
-	if got := toolActivityShell(source); got != want {
+	if got := shellSource(source); got != want {
 		t.Fatalf("numbered read display: got %q, want %q", got, want)
 	}
 	for _, invalid := range []string{
@@ -177,8 +179,8 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 		"nl -ba source.go | sed -n '1,2p' > copy.go",
 		"nl -ba source.go | sed -n '1,2p' | head -n 1",
 	} {
-		want := "Run\n" + toolActivityFenced("bash", invalid)
-		if got := toolActivityShell(invalid); got != want {
+		want := "Run\n" + SourceFence("bash", invalid)
+		if got := shellSource(invalid); got != want {
 			t.Errorf("invalid numbered read %q: got %q, want %q", invalid, got, want)
 		}
 	}
@@ -188,7 +190,7 @@ func TestSubagentNumberedReadDisplay(t *testing.T) {
 		"cat source.go; printf '\\nnot a heading\\n'",
 		"cat source.go; printf '\\n--- heading ---\\n'; make test",
 	} {
-		got := toolActivityShell(visible)
+		got := shellSource(visible)
 		if !strings.Contains(got, "Run") {
 			t.Errorf("visible printf %q was hidden: %q", visible, got)
 		}
@@ -213,7 +215,7 @@ func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 		{"cat a;  printf '%s\\n' \\\n    value", "Read `a`\n\nRun\n```bash\nprintf '%s\\n' \\\n    value\n```"},
 		{"cat a\necho first\necho second", "Read `a`\n\nRun `echo first`\n\nRun `echo second`"},
 	} {
-		if got := toolActivityShell(tc.source); got != tc.want {
+		if got := shellSource(tc.source); got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.source, got, tc.want)
 		}
 	}
@@ -221,7 +223,7 @@ func TestSubagentMixedReadRunFallbacks(t *testing.T) {
 		"cat a\nfor f in *.go; do cat \"$f\"; done",
 		"cat a\ncat b &",
 	} {
-		if got, want := toolActivityShell(source), "Read `a`\n\nRun "+toolActivityCode(strings.TrimPrefix(source, "cat a\n")); got != want {
+		if got, want := shellSource(source), "Read `a`\n\nRun "+SourceCode(strings.TrimPrefix(source, "cat a\n")); got != want {
 			t.Errorf("%s: got %q, want %q", source, got, want)
 		}
 	}
@@ -232,7 +234,7 @@ func TestClassifiedToolActivityShowsEveryOperation(t *testing.T) {
 	path := strings.Repeat("a", 4200)
 	input := "cat " + path + "\nrg needle src\ncat last"
 	want := "Read `" + path + "`\n\nSearch `needle` in `src`\n\nRead `last`"
-	if got := toolActivityShell(input); got != want {
+	if got := shellSource(input); got != want {
 		t.Fatalf("display: got %q, want %q", got, want)
 	}
 }
@@ -245,9 +247,9 @@ func TestShellBatchActivityDisplay(t *testing.T) {
 		separator := ending + "#!bash" + ending
 		source := first + separator + search + separator + last
 		want := strings.Join([]string{
-			toolActivityShell(first + ending), toolActivityShell("#!bash" + ending + search + ending), toolActivityShell("#!bash" + ending + last),
+			shellSource(first + ending), shellSource("#!bash" + ending + search + ending), shellSource("#!bash" + ending + last),
 		}, "\n\n")
-		if got := toolActivityShell(source); got != want {
+		if got := shellSource(source); got != want {
 			t.Fatalf("batch display = %q, want %q", got, want)
 		}
 	}
@@ -257,13 +259,13 @@ func TestShellBatchActivityDisplay(t *testing.T) {
 	thirdSource := "cat third"
 	source := firstSource + "\n" + secondSource + "\n#!bash\n" + thirdSource
 	want := "Read `first`\n\n" +
-		toolActivityShell("#!python3\n#!params={\"workdir\":\"/tmp\"}\nprint('SESSION')\n") +
+		shellSource("#!python3\n#!params={\"workdir\":\"/tmp\"}\nprint('SESSION')\n") +
 		"\n\nRead `third`"
-	if got := toolActivityShell(source); got != want {
+	if got := shellSource(source); got != want {
 		t.Fatalf("mixed interpreters and inherited params = %q, want %q", got, want)
 	}
 	for _, invalid := range []string{"#!bash\n#!bash\ncat first", "cat first\n#!bash\n"} {
-		if got := toolActivityShell(invalid); got != "Run\n"+toolActivityFenced("", invalid) {
+		if got := shellSource(invalid); got != "Run\n"+SourceFence("", invalid) {
 			t.Fatalf("invalid batch lost source: %q", got)
 		}
 	}
@@ -272,12 +274,12 @@ func TestShellBatchActivityDisplay(t *testing.T) {
 func TestSubagentMixedHeredocPreview(t *testing.T) {
 	const body = "cat <<EOF; printf done\nhello\nEOF\n"
 	source := "printf 'Working'\n" + body + "printf 'Finished'\n"
-	want := "Run\n" + toolActivityFenced("bash", strings.TrimRight(source, "\n"))
-	if got := toolActivityShell(source); got != want {
+	want := "Run\n" + SourceFence("bash", strings.TrimRight(source, "\n"))
+	if got := shellSource(source); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	source = "cat a\n" + body
-	if got, want := toolActivityShell(source), "Run\n"+toolActivityFenced("bash", source); got != want {
+	if got, want := shellSource(source), "Run\n"+SourceFence("bash", source); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -293,7 +295,7 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 		{`inspect_file "$ROOT/a.go"`, "Inspect `\"$ROOT/a.go\"`"},
 		{`rg needle "$ROOT"`, "Search `needle` in `\"$ROOT\"`"},
 	} {
-		if got := toolActivityShell(tc.source); got != tc.want {
+		if got := shellSource(tc.source); got != tc.want {
 			t.Errorf("%s: got %q, want %q", tc.source, got, tc.want)
 		}
 	}
@@ -309,7 +311,7 @@ func TestSubagentSymbolicReadPaths(t *testing.T) {
 		`mcat <(cat a)`,
 		`"$READER" a.go`,
 	} {
-		if got := toolActivityShell(source); got != "Run\n"+toolActivityFenced("bash", source) {
+		if got := shellSource(source); got != "Run\n"+SourceFence("bash", source) {
 			t.Errorf("%s: unexpected classification %q", source, got)
 		}
 	}
@@ -332,11 +334,11 @@ func TestSubagentSymbolQueryDisplay(t *testing.T) {
 		{`def sample.go Target refs other.go`, "Run"},
 	} {
 		source := "msymbol " + tc.args
-		want := tc.label + " " + toolActivityCode(tc.args)
+		want := tc.label + " " + SourceCode(tc.args)
 		if tc.label == "Run" {
-			want = "Run\n" + toolActivityFenced("bash", source)
+			want = "Run\n" + SourceFence("bash", source)
 		}
-		if got := toolActivityShell(source); got != want {
+		if got := shellSource(source); got != want {
 			t.Errorf("%s: got %q, want %q", source, got, want)
 		}
 	}
@@ -351,8 +353,8 @@ func TestSubagentSedDynamicOperands(t *testing.T) {
 		`$(GOENV=other go env GOROOT)/file.go`,
 	} {
 		source := "sed -n '1,2p' " + operand
-		want := "Read " + toolActivityCode(operand+" 1:2")
-		if got := toolActivityShell(source); got != want {
+		want := "Read " + SourceCode(operand+" 1:2")
+		if got := shellSource(source); got != want {
 			t.Errorf("%s: got %q, want %q", source, got, want)
 		}
 	}
@@ -363,8 +365,31 @@ func TestSubagentSedDynamicOperands(t *testing.T) {
 		`sed -n "$program" $(project-root)/file.go`,
 		`sed "$flags" '1,2p' $(project-root)/file.go`,
 	} {
-		if got := toolActivityShell(source); strings.HasPrefix(got, "Read") {
+		if got := shellSource(source); strings.HasPrefix(got, "Read") {
 			t.Errorf("%s: misclassified as %q", source, got)
 		}
+	}
+}
+
+func shellSource(source string) string { return ShellSource(source, "") }
+
+func TestShellSourceFeedPreservesOperations(t *testing.T) {
+	source := "timeout 5 sed -n '2,4p' /selected/file.go\n" +
+		"unknown 'literal argument'\nmsymbol refs other.go Name"
+	operations := feed.ParseOperations(ShellSource(source, "/selected"))
+	if len(operations) != 3 {
+		t.Fatalf("operations = %+v", operations)
+	}
+	read, run, search := operations[0], operations[1], operations[2]
+	if read.Verb != "Read" || len(read.Timeouts) != 1 || read.Timeouts[0] != "5" ||
+		len(read.Reads) != 1 || read.Reads[0].Path != "file.go" ||
+		len(read.Reads[0].Ranges) != 1 || read.Reads[0].Ranges[0] != "2:4" {
+		t.Fatalf("read source = %+v", read)
+	}
+	if run.Verb != "Run" || run.Label != "`unknown 'literal argument'`" {
+		t.Fatalf("unclassified neighbor = %+v", run)
+	}
+	if search.Verb != "Search" || len(search.Reads) != 1 || search.Reads[0].Path != "refs other.go Name" {
+		t.Fatalf("symbol source = %+v", search)
 	}
 }

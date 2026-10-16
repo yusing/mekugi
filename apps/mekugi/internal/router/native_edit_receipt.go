@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	"github.com/yusing/mekugi/libraries/legacycall"
@@ -162,7 +164,7 @@ func editReceiptText(workspace string, history mekugiHistory) string {
 		}
 		if !file.Binary {
 			if hunks := editReceiptHunks(file.Diff, &budget); hunks != "" {
-				summary += "\n" + toolActivityFenced("diff", hunks)
+				summary += "\n" + activitypresentation.SourceFence("diff", hunks)
 			}
 		}
 		summaries = append(summaries, summary)

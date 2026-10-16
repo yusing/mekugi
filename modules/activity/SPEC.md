@@ -45,7 +45,9 @@ replaces it; restoring a stopped turn applies the same rule without reviving wai
 
 ### Source interpretation
 
-Classification describes the visible operation, not its effects:
+Activity interprets command source using shared shell facts and command argument
+grammar. Application adapters remove authenticated wrappers and supply the selected
+command directory. Classification describes the visible operation, not its effects:
 
 | Label | Recognized source |
 | --- | --- |
@@ -92,9 +94,7 @@ preserves source identities for dialogs and cross-pane navigation under the
 recognition belongs to `sourceanalysis`.
 
 Activity owns literal Git, SVN and change-read source recognition and interpretation
-of their observed output into neutral change rows. Application adapters remove
-authenticated host wrappers and supply the command's selected directory; shared
-shell syntax remains library-owned. Recognition neither evaluates source nor grants
+of their observed output into neutral change rows. Recognition neither evaluates source nor grants
 execution or filesystem authority. Change-history reads retain their existing
 evidence owner.
 

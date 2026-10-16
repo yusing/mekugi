@@ -1,4 +1,6 @@
-package router
+package presentation
+
+// Source: apps/mekugi/internal/router/shell_script_projection.go:1:159@0a356401.
 
 import (
 	"regexp"
@@ -103,7 +105,7 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 		words := slices.Clone(call.Args[:index+3])
 		words[index+2] = &syntax.Word{Parts: []syntax.WordPart{&syntax.Lit{Value: "…"}}}
 		words = append(words, args[index+2:]...)
-		return shellScriptProjection{Source: program, Language: toolActivityLanguage(name), Command: shellWords(words)}, true
+		return shellScriptProjection{Source: program, Language: sourceLanguage(name), Command: shellWords(words)}, true
 	}
 
 	if len(statement.Redirs) != 1 {
@@ -113,7 +115,7 @@ func shellInterpreterScriptProjection(input string) (shellScriptProjection, bool
 	if !ok {
 		return shellScriptProjection{}, false
 	}
-	return shellScriptProjection{Source: program, Language: toolActivityLanguage(name), Command: shellWords(call.Args)}, true
+	return shellScriptProjection{Source: program, Language: sourceLanguage(name), Command: shellWords(call.Args)}, true
 }
 
 // shellInterpreterReadsStdin reports a lone interpreter told by `-` to read its

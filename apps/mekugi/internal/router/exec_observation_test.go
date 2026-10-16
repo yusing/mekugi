@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	changecapture "github.com/yusing/mekugi/modules/changehistory/capture"
 	"github.com/yusing/mekugi/modules/livepreview/projection"
@@ -22,7 +21,6 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
-	"mvdan.cc/sh/v3/syntax"
 )
 
 func writeTestFile(t *testing.T, path, content string) {
@@ -627,15 +625,6 @@ func TestLiveDiffFileOperationsPreserveSiblingStreams(t *testing.T) {
 	if len(files) != 0 || err == nil {
 		t.Fatal("a dependent write borrowed the pre-move baseline")
 	}
-}
-
-func mustShellStatement(t *testing.T, command string) *syntax.Stmt {
-	t.Helper()
-	statements, _, _, parsed := shellsyntax.StreamingStatements(command, "/")
-	if !parsed || len(statements) != 1 {
-		t.Fatalf("%q did not parse", command)
-	}
-	return statements[0]
 }
 
 func TestExecReceiptAndSummaryText(t *testing.T) {

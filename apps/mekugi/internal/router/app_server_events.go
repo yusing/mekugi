@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/modules/activity/waittargets"
 
 	"github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
@@ -654,7 +656,7 @@ func appServerCommandText(item appServerItem, cwd string) string {
 		}
 	}
 	if len(parts) == 0 {
-		return toolActivityShellInDirectory(appServerDisplayCommand(item.Command), cwd)
+		return activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(item.Command)), cwd)
 	}
 	return strings.Join(parts, "\n\n")
 }

@@ -1,4 +1,6 @@
-package router
+package presentation
+
+// Source: apps/mekugi/internal/router/subagent_tool_display_edit.go:1:128@0a356401.
 
 import (
 	"path/filepath"
@@ -15,7 +17,7 @@ import (
 
 // Intent is not a receipt. Keep edit source out of Run cards before capture,
 // without reading target files or claiming the requested writes succeeded.
-func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, bool) {
+func sourceEditStatement(script string, statement *syntax.Stmt) (string, bool) {
 	call, ok := statement.Cmd.(*syntax.CallExpr)
 	if !ok || statement.Background || statement.Negated || statement.Coprocess || statement.Disown || len(call.Assigns) != 0 || len(call.Args) == 0 {
 		return "", false
@@ -50,7 +52,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 					}
 					path = pathdisplay.Move("", path, destination)
 				}
-				paths = append(paths, verb+" "+toolActivityCode(path)+" · "+name+" (requested)")
+				paths = append(paths, verb+" "+SourceCode(path)+" · "+name+" (requested)")
 			}
 		}
 		return strings.Join(paths, "\n\n"), true
@@ -62,18 +64,18 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 				continue
 			}
 			path, literal := shellsyntax.Literal(redirect.Word)
-			if !literal && toolActivityPatternWord(redirect.Word) {
+			if !literal && shellsyntax.PatternWord(redirect.Word) {
 				path = shellWords([]*syntax.Word{redirect.Word})
 			}
 			if path != "" && !strings.HasPrefix(path, "/dev/") {
-				paths = append(paths, "Edit "+toolActivityCode(path)+" · cat (requested)")
+				paths = append(paths, "Edit "+SourceCode(path)+" · cat (requested)")
 			}
 		}
 		if len(paths) != 0 {
 			return strings.Join(paths, "\n\n"), true
 		}
 	}
-	languageName := toolActivityLanguage(command)
+	languageName := sourceLanguage(command)
 	if languageName != "python" && languageName != "javascript" {
 		return "", false
 	}
@@ -100,7 +102,7 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 	if tree.RootNode().HasError() {
 		return "", false
 	}
-	scan := execscope.NewBindings(execscope.SourceInput{Source: data, Deadline: deadline, Python: python, IntentOnly: true, TemporaryEnv: toolActivityTemporaryEnv(script, statement)})
+	scan := execscope.NewBindings(execscope.SourceInput{Source: data, Deadline: deadline, Python: python, IntentOnly: true, TemporaryEnv: sourceTemporaryEnv(script, statement)})
 	result := scan.Analyze(tree.RootNode())
 	if !result.Writes {
 		return "", false
@@ -117,12 +119,12 @@ func toolActivityEditStatement(script string, statement *syntax.Stmt) (string, b
 		for _, operand := range scope.Operands {
 			if operand.Path != "" && !seen[operand.Path] {
 				seen[operand.Path] = true
-				displays = append(displays, "Edit "+toolActivityCode(operand.Path)+suffix)
+				displays = append(displays, "Edit "+SourceCode(operand.Path)+suffix)
 			}
 		}
 	}
 	if result.Unresolved {
-		displays = append(displays, "Run "+toolActivityCode(projection.Command)+"\n"+toolActivityFenced(projection.Language, projection.Source))
+		displays = append(displays, "Run "+SourceCode(projection.Command)+"\n"+SourceFence(projection.Language, projection.Source))
 	}
 	return strings.Join(displays, "\n\n"), true
 }

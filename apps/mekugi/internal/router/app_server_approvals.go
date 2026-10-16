@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	conversationbinding "github.com/yusing/mekugi/modules/conversation/codexbinding"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
@@ -313,7 +315,7 @@ func (u *appServerUI) recordApproval(a *nativeApproval, outcome string) {
 		a.Thread, a.Turn = owner.thread, owner.turn
 		outcome += "\nCommand: " + a.Subject
 	}
-	entry := activityPaneEntry{Seq: u.session.next(), Kind: "tool", Text: toolActivityShell(a.Subject), Observed: u.now(),
+	entry := activityPaneEntry{Seq: u.session.next(), Kind: "tool", Text: activitypresentation.ShellSource(toolActivityShellSource(a.Subject), ""), Observed: u.now(),
 		native: &liveActivityNativeItem{thread: a.Thread, turn: a.Turn, item: a.Item, phase: "approval/updated", approval: outcome}}
 	if u.agents != nil {
 		entry.Agent = u.session.path(a.Thread)

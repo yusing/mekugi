@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -122,7 +124,7 @@ func TestGuardCommandDisplayPreservesUserSource(t *testing.T) {
 		prefix + "git 'unfinished",
 		quoteShellWord(displayGuardHelper) + " --other-mode " + quoteShellWord(displayGuardDirectory) + " git status",
 	} {
-		if got, want := toolActivityShell(source), toolActivityShellLanguage(source, "bash", ""); got != want {
+		if got, want := toolActivityShell(source), activitypresentation.ShellSource(source, ""); got != want {
 			t.Fatalf("user source changed: %q; display = %q, want %q", source, got, want)
 		}
 	}

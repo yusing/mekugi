@@ -1,7 +1,14 @@
-package router
+package presentation
+
+// Source: apps/mekugi/internal/router/subagent_tool_display_search.go:1:125@0a356401.
 
 import (
+	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+	"mvdan.cc/sh/v3/syntax"
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
@@ -11,7 +18,7 @@ import (
 // Display query and target instead of execution flags. Shorten paths against
 // the known command directory and preserve all explicit patterns; this
 // projection never changes the shell command.
-func toolActivitySearch(argv []string, cwd string) (string, bool) {
+func sourceSearch(argv []string, cwd string) (string, bool) {
 	var queries, paths []string
 	files, explicit, optionsEnded := false, false, false
 	for i := 1; i < len(argv); i++ {
@@ -28,7 +35,7 @@ func toolActivitySearch(argv []string, cwd string) (string, bool) {
 					flag, remainder = arg[:2], arg[2:]
 					value, attached = remainder, remainder != ""
 				}
-				kind := toolActivitySearchFlag(argv[0], flag)
+				kind := sourceSearchFlag(argv[0], flag)
 				if kind < 0 {
 					return "", false
 				}
@@ -65,7 +72,7 @@ func toolActivitySearch(argv []string, cwd string) (string, bool) {
 			}
 			target = strings.Join(paths, " ")
 		}
-		return "List " + toolActivityCode(target), true
+		return "List " + SourceCode(target), true
 	}
 	if !explicit && len(paths) != 0 {
 		queries, paths = paths[:1], paths[1:]
@@ -74,7 +81,7 @@ func toolActivitySearch(argv []string, cwd string) (string, bool) {
 		return "", false
 	}
 	var display strings.Builder
-	display.WriteString("Search " + toolActivityCode(strings.Join(queries, " | ")))
+	display.WriteString("Search " + SourceCode(strings.Join(queries, " | ")))
 	if len(paths) != 0 {
 		for i, path := range paths {
 			if i == 0 {
@@ -82,7 +89,7 @@ func toolActivitySearch(argv []string, cwd string) (string, bool) {
 			} else {
 				display.WriteString(" ")
 			}
-			display.WriteString(toolActivityCode(pathdisplay.ForWorkspace(cwd, path)))
+			display.WriteString(SourceCode(pathdisplay.ForWorkspace(cwd, path)))
 		}
 	}
 	return display.String(), true
@@ -90,7 +97,7 @@ func toolActivitySearch(argv []string, cwd string) (string, bool) {
 
 // 0: switch, 1: option value, 2: pattern value, 3: file listing.
 // Unknown arity keeps the original Run preview rather than guessing a query.
-func toolActivitySearchFlag(command, flag string) int {
+func sourceSearchFlag(command, flag string) int {
 	switch flag {
 	case "--files":
 		if command == "rg" {
@@ -122,4 +129,105 @@ func toolActivitySearchFlag(command, flag string) int {
 		return 0
 	}
 	return -1
+}
+
+// SearchResultCount interprets complete observed output for one literal search.
+// The adapter establishes host completion and applies host-specific output caps;
+// unknown or incomplete output never becomes a zero count.
+func SearchResultCount(source string, output *string, exit int) *int {
+	if exit < 0 || exit > 1 {
+		return nil
+	}
+	program, err := syntax.NewParser().Parse(strings.NewReader(source), "")
+	if err != nil || len(program.Stmts) != 1 {
+		return nil
+	}
+	argv, ok := shellsyntax.PatternCall(source, program.Stmts[0])
+	if !ok || len(argv) < 2 {
+		return nil
+	}
+	argv[0] = filepath.Base(argv[0])
+	if argv[0] != "rg" && argv[0] != "grep" {
+		return nil
+	}
+	display, ok := sourceSearch(argv, "")
+	if !ok || !strings.HasPrefix(display, "Search ") {
+		return nil
+	}
+	counts, files := false, false
+	for i := 1; i < len(argv); i++ {
+		arg := argv[i]
+		if arg == "--" {
+			break
+		}
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			continue
+		}
+		for arg != "" {
+			flag, _, attached := strings.Cut(arg, "=")
+			rest := ""
+			if !strings.HasPrefix(arg, "--") {
+				flag, rest = arg[:2], arg[2:]
+				attached = rest != ""
+			}
+			switch flag {
+			case "-A", "-B", "-C", "-q", "-U", "-z", "-Z", "--after-context", "--before-context", "--context", "--quiet", "--multiline", "--null", "--null-data", "--json", "--stats", "--heading", "--replace", "--pre", "-M", "--max-columns":
+				return nil
+			case "-r":
+				if argv[0] == "rg" {
+					return nil
+				}
+			case "-l", "-L", "--files-with-matches", "--files-without-match":
+				files = true
+			case "-c", "--count", "--count-matches":
+				counts = true
+			}
+			if sourceSearchFlag(argv[0], flag) > 0 {
+				if !attached {
+					i++
+				}
+				break
+			}
+			arg = ""
+			if rest != "" {
+				arg = "-" + rest
+			}
+		}
+	}
+	if counts && files {
+		return nil
+	}
+	if output == nil {
+		if exit == 1 {
+			return new(0)
+		}
+		return nil
+	}
+	text := *output
+	if strings.Contains(strings.ToLower(text), "omitted") || strings.ContainsAny(text, "\x00\x1b") || strings.Contains(strings.ToLower(text), "truncat") || strings.Contains(text, "binary file") || strings.Contains(text, "Binary file") {
+		return nil
+	}
+	if text == "" {
+		if exit == 1 {
+			return new(0)
+		}
+		return nil
+	}
+	rows := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	if !counts {
+		return new(len(rows))
+	}
+	total := 0
+	for _, row := range rows {
+		_, count, found := strings.CutLast(row, ":")
+		if !found {
+			count = row
+		}
+		n, err := strconv.Atoi(strings.TrimSuffix(count, "\r"))
+		if err != nil || n < 0 || total > int(^uint(0)>>1)-n {
+			return nil
+		}
+		total += n
+	}
+	return new(total)
 }

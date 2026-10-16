@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -329,10 +331,10 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 	if script, ok := appServerShellScript(command); ok {
 		command = script
 	}
-	_, classified := toolActivityReads(command, "")
+	_, classified := activitypresentation.ClassifyShell(command, "")
 	for segmentIndex, segment := range entry.native.segments {
 		if classified && !segment.skipped && segment.exit == 0 {
-			if program, err := syntax.NewParser().Parse(strings.NewReader(segment.source), ""); err == nil && len(program.Stmts) == 1 && toolActivityReadSeparator(program.Stmts[0]) {
+			if activitypresentation.ShellSeparator(segment.source) {
 				continue
 			}
 		}

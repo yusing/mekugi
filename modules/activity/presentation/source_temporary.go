@@ -1,4 +1,6 @@
-package router
+package presentation
+
+// Source: apps/mekugi/internal/router/subagent_tool_display_temporary.go:1:141@0a356401.
 
 import (
 	"path/filepath"
@@ -14,7 +16,7 @@ import (
 // Temporary roots are capabilities, not guessed filenames or resolved paths.
 // NUL keeps a symbolic mktemp result distinct from any real filesystem operand.
 // This proof is used only by the activity intent scanner, never by capture.
-func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]string {
+func sourceTemporaryEnv(script string, before *syntax.Stmt) map[string]string {
 	end := int(before.Pos().Offset())
 	if end <= 0 || end > len(script) || end > execscope.SourceLimit {
 		return nil
@@ -41,7 +43,7 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 					}
 				}
 				for _, redirect := range statement.Redirs {
-					if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || !toolActivityPatternWord(redirect.Word) || redirect.N != nil && !shellsyntax.IsDigits(redirect.N.Value) {
+					if redirect.Op != syntax.RdrOut && redirect.Op != syntax.AppOut && redirect.Op != syntax.RdrClob || !shellsyntax.PatternWord(redirect.Word) || redirect.N != nil && !shellsyntax.IsDigits(redirect.N.Value) {
 						return nil
 					}
 				}
@@ -60,7 +62,7 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 				if name == "PATH" || name == "BASH_ENV" || name == "ENV" {
 					return nil
 				}
-				vars[name] = toolActivityTemporaryValue(assignment.Value, vars, name)
+				vars[name] = sourceTemporaryValue(assignment.Value, vars, name)
 				if vars[name] == "" {
 					if _, literal := shellsyntax.Literal(assignment.Value); !literal {
 						return nil
@@ -83,7 +85,7 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 					return nil
 				}
 				if assignment.Value != nil {
-					vars[name] = toolActivityTemporaryValue(assignment.Value, vars, name)
+					vars[name] = sourceTemporaryValue(assignment.Value, vars, name)
 					if vars[name] == "" {
 						if _, literal := shellsyntax.Literal(assignment.Value); !literal {
 							return nil
@@ -104,7 +106,7 @@ func toolActivityTemporaryEnv(script string, before *syntax.Stmt) map[string]str
 	return environment
 }
 
-func toolActivityTemporaryValue(word *syntax.Word, vars map[string]string, name string) string {
+func sourceTemporaryValue(word *syntax.Word, vars map[string]string, name string) string {
 	if word == nil || len(word.Parts) != 1 {
 		return ""
 	}
@@ -126,7 +128,7 @@ func toolActivityTemporaryValue(word *syntax.Word, vars map[string]string, name 
 	if statement.Background || statement.Negated || len(statement.Redirs) != 0 {
 		return ""
 	}
-	args, ok := toolActivityLiteralCall(statement)
+	args, ok := shellsyntax.PatternCall("", statement)
 	if !ok || len(args) != 3 || args[0] != "mktemp" || args[1] != "-d" {
 		return ""
 	}

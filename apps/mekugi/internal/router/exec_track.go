@@ -732,10 +732,13 @@ func execSegmentText(source string) string {
 }
 
 func execSegmentTextInDirectory(source, cwd string) string {
-	if text := toolActivityShellInDirectory(source, cwd); strings.TrimSpace(text) != "" {
+	if text := activitypresentation.ShellSource(toolActivityShellSource(source), cwd); strings.TrimSpace(text) != "" {
 		return text
 	}
-	return toolActivityUnclassifiedShell(source)
+	if strings.ContainsAny(source, "\r\n") {
+		source = toolActivityShellSource(source)
+	}
+	return activitypresentation.RunSource(source)
 }
 
 // flushTrackedCommand re-sends a tracked command whose segments changed, and

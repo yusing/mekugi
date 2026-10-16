@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
+
 	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
 
 	"github.com/yusing/mekugi/libraries/textsanitize"
@@ -41,7 +43,7 @@ func mchangesOutputRows(item appServerItem) []activitypresentation.ChangeRow {
 	if err != nil || len(program.Stmts) != 1 {
 		return nil
 	}
-	argv, ok := toolActivityLiteralCall(program.Stmts[0])
+	argv, ok := shellsyntax.PatternCall("", program.Stmts[0])
 	if !ok || len(argv) < 2 || filepath.Base(argv[0]) != "mchanges" {
 		return nil
 	}

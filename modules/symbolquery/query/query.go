@@ -2,13 +2,11 @@ package query
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -55,117 +53,6 @@ type symbolSourceFailure struct{ reason, message string }
 
 func (e *symbolSourceFailure) Error() string { return e.message }
 
-const symbolUsage = "msymbol [--max-tokens N] [--workspace ROOT] (def|refs) PATH [LINE] SYMBOL [N] [(def|refs) PATH [LINE] SYMBOL [N] ...]"
-
-var symbolDigits = regexp.MustCompile(`^[0-9]+$`)
-var combinedSymbolPath = regexp.MustCompile(`^(.*):([1-9][0-9]*)$`)
-
-// Modes projects the parser's query modes for command display.
-// It validates the complete invocation without loading sources or running resolvers.
-func Modes(args []string) ([]string, error) {
-	queries, _, _, _, err := parseSymbolQueries(args)
-	if err != nil {
-		return nil, err
-	}
-	modes := make([]string, len(queries))
-	for i, query := range queries {
-		modes[i] = query.mode
-	}
-	return modes, nil
-}
-
-func positiveSymbolInteger(s, label string) (int, error) {
-	n, e := strconv.Atoi(s)
-	if e != nil || n > 9007199254740991 {
-		return 0, fmt.Errorf("%s is too large", label)
-	}
-	if n < 1 || s != strconv.Itoa(n) {
-		return 0, fmt.Errorf("%s must be a positive decimal integer", label)
-	}
-	return n, nil
-}
-
-// Source: plugins/msymbol.ts:132:176@[543de4f3] parseQueries
-func parseSymbolQueries(args []string) ([]*symbolQuery, string, bool, int, error) {
-	o, rest, err := commandargs.ParseReaderOptions(args, false, 4000, "--workspace")
-	if err != nil {
-		return nil, "", false, 0, err
-	}
-	var operands []string
-	workspace := ""
-	explicit, ended := false, false
-	for i := 0; i < len(rest); i++ {
-		a := rest[i]
-		if a == "--" && !ended {
-			ended = true
-			continue
-		}
-		if a == "--workspace" && !ended {
-			if explicit || i+1 >= len(rest) || rest[i+1] == "" || strings.ContainsRune(rest[i+1], 0) {
-				return nil, "", false, 0, errors.New("--workspace requires one usable directory")
-			}
-			explicit = true
-			i++
-			workspace = rest[i]
-			continue
-		}
-		operands = append(operands, a)
-	}
-	var queries []*symbolQuery
-	for i := 0; i < len(operands); {
-		q := &symbolQuery{mode: operands[i]}
-		i++
-		if q.mode != "def" && q.mode != "refs" {
-			return nil, "", false, 0, errors.New("mode must be def or refs")
-		}
-		if i >= len(operands) || operands[i] == "" || strings.ContainsRune(operands[i], 0) {
-			return nil, "", false, 0, errors.New("path must be usable")
-		}
-		q.path = operands[i]
-		i++
-		if match := combinedSymbolPath.FindStringSubmatch(q.path); match != nil {
-			q.path = match[1]
-			if strings.HasPrefix(q.path, "\"") {
-				if json.Unmarshal([]byte(q.path), &q.path) != nil {
-					return nil, "", false, 0, errors.New("invalid quoted PATH:LINE")
-				}
-			}
-			q.line, err = positiveSymbolInteger(match[2], "line")
-		} else if i < len(operands) && symbolDigits.MatchString(operands[i]) {
-			q.line, err = positiveSymbolInteger(operands[i], "line")
-			i++
-		}
-		if err != nil {
-			return nil, "", false, 0, err
-		}
-		if i >= len(operands) {
-			return nil, "", false, 0, fmt.Errorf("usage: %s", symbolUsage)
-		}
-		q.name = operands[i]
-		i++
-		if _, last, ok := strings.CutLast(q.name, "."); ok {
-			q.name = last
-		}
-		if q.name == "" {
-			return nil, "", false, 0, errors.New("SYMBOL must end with a usable name")
-		}
-		if i < len(operands) && symbolDigits.MatchString(operands[i]) {
-			q.occurrence, err = positiveSymbolInteger(operands[i], "N")
-			i++
-			if err != nil {
-				return nil, "", false, 0, err
-			}
-			if q.line == 0 {
-				return nil, "", false, 0, errors.New("N requires an explicit LINE")
-			}
-		}
-		queries = append(queries, q)
-	}
-	if len(queries) == 0 {
-		return nil, "", false, 0, fmt.Errorf("usage: %s", symbolUsage)
-	}
-	return queries, workspace, explicit, o.Budget, nil
-}
 func outsideSymbolWorkspace(root, path string) bool {
 	relative, err := filepath.Rel(root, path)
 	return err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative)
@@ -336,9 +223,14 @@ func (Service) Execute(ctx context.Context, request command.Request) (command.Ou
 		}
 	}
 
-	queries, root, explicit, budget, err := parseSymbolQueries(args)
+	arguments, err := commandargs.ParseSymbolQueries(args)
 	if err != nil {
 		return failure(err, "invalid_arguments"), nil
+	}
+	root, explicit, budget := arguments.Workspace, arguments.ExplicitWorkspace, arguments.Budget
+	queries := make([]*symbolQuery, len(arguments.Queries))
+	for i, selection := range arguments.Queries {
+		queries[i] = &symbolQuery{mode: selection.Mode, path: selection.Path, name: selection.Name, line: selection.Line, occurrence: selection.Occurrence}
 	}
 	if root == "" {
 		root, err = os.Getwd()

@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	activitypresentation "github.com/yusing/mekugi/modules/activity/presentation"
+
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
@@ -97,7 +99,7 @@ func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 					native := *entry.native
 					native.capturedEdit = nil
 					entry.native = &native
-					entry.Text = toolActivityShellInDirectory(appServerDisplayCommand(native.command), native.commandCwd)
+					entry.Text = activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(native.command)), native.commandCwd)
 					v.replaceEntry(i, entry, parseLiveActivity(entry))
 				}
 				continue
@@ -118,7 +120,7 @@ func (v *activityAdapter) applyCapturedEdits(data *liveDiffData) {
 			if index == 0 && entry.native.command != "" {
 				// Rebuild from the host command so repeated reconciliation never
 				// duplicates receipts or drops neighboring operations.
-				original := toolActivityShellInDirectory(appServerDisplayCommand(entry.native.command), entry.native.commandCwd)
+				original := activitypresentation.ShellSource(toolActivityShellSource(appServerDisplayCommand(entry.native.command)), entry.native.commandCwd)
 				paragraphs := activitymodel.Paragraphs(original)
 				if len(paragraphs) > 1 {
 					var parts []string
