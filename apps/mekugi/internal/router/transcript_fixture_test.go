@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity/transcript"
 )
 
@@ -15,7 +16,8 @@ func applyTranscriptFixture(v *activityAdapter, live bool, cwd, main, thread, tu
 	}
 	event := observation.TextEvent{At: v.Now(), Kind: observation.Kind(method), Delta: delta, Item: transcriptItem(item, thread, turn, id)}
 	var state transcript.State
-	updates := state.Observe(event, true)
+	var threadStore, turnStore scope.Store
+	updates := state.Observe(event, true, observation.TextScope{Thread: &threadStore, Turn: &turnStore})
 	for _, update := range updates {
 		update.Live = live
 		v.applyTranscript(update, item.Content, cwd, main, item.Type == "userMessage")

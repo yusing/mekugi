@@ -463,6 +463,7 @@ func startAppServerUI(conversation *conversationmodel.Service, activity *activit
 		}
 		u.session.state = scope.Store{}
 		u.session.threadStates = nil
+		u.session.turnStates = nil
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
@@ -944,7 +945,7 @@ func (u *appServerUI) observedEvent(method string, p appServerEvent) error {
 				return nil
 			}
 		}
-		for _, update := range u.session.transcript.Observe(p.text, true) {
+		for _, update := range u.session.observeTranscript(p.text, true) {
 			if update.Kind == "reasoning" {
 				u.applyActivity(u.transcriptUpdates([]observation.TextUpdate{update}, true), nil)
 				continue
@@ -1679,7 +1680,7 @@ func (u *appServerUI) applyObservedActivity() {
 	}
 	entries := u.proxy.activity.takeNativeActivity(u.Thread)
 	for _, start := range u.proxy.activity.takeRequestStarts(u.Thread) {
-		entries = append(entries, u.transcriptUpdates(u.session.transcript.ProviderStarted(start.thread, start.at), false)...)
+		entries = append(entries, u.transcriptUpdates(u.session.providerStarted(start.thread, start.at), false)...)
 	}
 	for i := range entries {
 		entries[i].Seq = u.session.next()

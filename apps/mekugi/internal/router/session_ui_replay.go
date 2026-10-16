@@ -87,6 +87,7 @@ func (p *uiReplayPlayback) close() {
 	p.ui.shell.diffScreen.Close()
 	p.ui.session.state = scope.Store{}
 	p.ui.session.threadStates = nil
+	p.ui.session.turnStates = nil
 }
 
 func (p *uiReplayPlayback) apply(e playback.Event) error {
@@ -99,7 +100,7 @@ func (p *uiReplayPlayback) apply(e playback.Event) error {
 		entry.Seq = p.ui.session.next()
 		p.ui.applyActivity([]activityPaneEntry{entry}, nil)
 	case e.Kind == observation.ProviderStarted:
-		p.ui.applyActivity(p.ui.transcriptUpdates(p.ui.session.transcript.ProviderStarted(e.ThreadID, e.At), false), nil)
+		p.ui.applyActivity(p.ui.transcriptUpdates(p.ui.session.providerStarted(e.ThreadID, e.At), false), nil)
 	case e.Kind == observation.ProviderCompleted:
 	default:
 		if p.ui.replayTranscript(e.Event) {

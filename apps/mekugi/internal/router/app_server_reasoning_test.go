@@ -108,6 +108,70 @@ func TestAppServerOldTurnCompletionPreservesCurrentTranscript(t *testing.T) {
 	}
 }
 
+func TestAppServerClosedTurnRejectsLateStreaming(t *testing.T) {
+	for _, thread := range []string{"main", "child"} {
+		t.Run(thread, func(t *testing.T) {
+			u, _ := newActiveWorkTestUI(t)
+			u.agents.setDisplayFilter(false, "/root/worker")
+			delta := map[string]any{"threadId": thread, "turnId": "without-start", "itemId": "summary", "delta": "Initial"}
+			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
+			key := [2]string{thread, "without-start"}
+			if u.session.turnStates[key] == nil {
+				t.Fatal("first item did not establish its turn scope")
+			}
+			reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": thread, "turn": map[string]any{"id": "without-start", "status": "interrupted"}})
+			delta["delta"] = " leaked"
+			reasoningTestNotify(t, u, "item/reasoning/summaryTextDelta", delta)
+			reasoningTestNotify(t, u, "item/started", map[string]any{"threadId": thread, "turnId": "without-start", "item": map[string]any{"id": "late", "type": "reasoning", "summary": []string{"leaked"}}})
+			reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "without-start"}})
+			if store, closed := u.session.turnStates[key]; !closed || store != nil || u.session.agent(u.session.path(thread)).Responding || u.Turn == "without-start" {
+				t.Fatal("late observations revived a closed turn")
+			}
+			view := u.view
+			if thread == "child" {
+				view = u.agents
+			}
+			if got := ansi.Strip(strings.Join(view.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Initial") || strings.Contains(got, "leaked") {
+				t.Fatalf("closed-turn content changed: %q", got)
+			}
+		})
+	}
+}
+
+func TestAppServerClosedCompletionKeepsCurrentTurnSelection(t *testing.T) {
+	u, _ := newActiveWorkTestUI(t)
+	u.agents.setDisplayFilter(false, "/root/worker")
+	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "old", "status": "completed"}})
+	activity := newSubagentActivity()
+	activity.attachNativePane("main")
+	activity.observe("child", "main", "/root/worker", true)
+	u.proxy = &mekugiProxy{activity: activity}
+	activity.beginResponse("child", true)
+	activity.starts[0].at = u.now()
+	u.applyObservedActivity()
+	reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current"}})
+	reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "current", "item": map[string]any{"id": "answer", "type": "agentMessage", "text": "Current answer"}})
+	for _, item := range []appServerItem{{ID: "late-summary", Type: "reasoning", Summary: []string{"Older summary"}}, {ID: "late-answer", Type: "agentMessage", Text: "Older answer"}} {
+		reasoningTestNotify(t, u, "item/completed", map[string]any{"threadId": "child", "turnId": "old", "item": item})
+	}
+	if got := ansi.Strip(strings.Join(u.agents.RenderFeed(90, 40).Lines, "\n")); !strings.Contains(got, "Thinking") || !strings.Contains(got, "Older summary") || !strings.Contains(got, "Older answer") {
+		t.Fatalf("late completion lost content or consumed current thinking: %q", got)
+	}
+	if u.session.turnStates[[2]string{"child", "old"}] != nil {
+		t.Fatal("late completion recreated correlation")
+	}
+	reasoningTestNotify(t, u, "turn/completed", map[string]any{"threadId": "child", "turn": map[string]any{"id": "current", "status": "completed"}})
+	var finals []string
+	for _, entry := range u.agents.Entries {
+		if entry.Source.Kind == "final" {
+			finals = append(finals, entry.Source.Text)
+		}
+	}
+	if !slices.Equal(finals, []string{"Current answer"}) {
+		t.Fatalf("late completion replaced current answer selection: %q", finals)
+	}
+}
+
 func TestAppServerRestorePublicSummaries(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	var turns []appServerHistoryTurn

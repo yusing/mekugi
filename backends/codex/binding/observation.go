@@ -7,7 +7,7 @@ import (
 	"github.com/yusing/mekugi/contracts/scope"
 )
 
-// Observation attaches fresh transient transcript correlation to a session scope.
+// Observation accesses transcript correlation in application-owned scopes.
 // Its callbacks consume public facts and cannot issue host operations.
 type Observation struct {
 	NewTranscript func(*scope.Store) observation.Transcript

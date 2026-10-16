@@ -44,10 +44,11 @@ feature owner. Composition supplies the constructed history service to live
 sessions, frontend workers and offline readers; backend-neutral descriptors need
 no Codex binding.
 
-The application owns each attachment's memory store. Modules use private typed
-keys, initialize entries on first use and cannot read another module's entries.
-The attachment owner serializes access. Stores and keys are not copied after
-use; replacing the store creates fresh state. Attached-session modules acquire
+The application owns memory stores for each attachment, thread and turn. Modules
+use private typed keys, initialize entries on first use and cannot read another
+module's entries. The attachment owner serializes access and retires stores at
+their scope boundaries; late observations cannot recreate a closed turn's state.
+Stores and keys are not copied after use. Attached-session modules acquire
 no invocation resources and have no Start/Stop lifecycle of their own.
 
 ## Import boundaries

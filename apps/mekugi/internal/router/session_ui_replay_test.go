@@ -96,12 +96,16 @@ func TestSessionUIReplayPlaybackUsesRecordedClockAndSeekReset(t *testing.T) {
 	}
 	replayPlaybackTestPaint(t, p, 120, 28)
 	oldUI := p.ui
+	oldThread := p.ui.session.threadStates[p.Source.Thread]
 	outputs := p.activity.Outputs(&p.ui.session.state)
 	if err := p.advance(2 * time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if p.activity.Outputs(&p.ui.session.state) == outputs {
 		t.Fatal("backward seek reused activity state")
+	}
+	if p.ui.session.threadStates[p.Source.Thread] == oldThread || oldUI.session.threadStates != nil || oldUI.session.turnStates != nil {
+		t.Fatal("backward seek retained old correlation scopes")
 	}
 	if p.ui == oldUI || len(p.ui.session.commands) != 0 || p.ui.Turn != "turn" || !p.At.Equal(p.Source.Start.Add(2*time.Second)) {
 		t.Fatalf("seek did not rebuild earlier state: position=%v commands=%d", p.Position, len(p.ui.session.commands))

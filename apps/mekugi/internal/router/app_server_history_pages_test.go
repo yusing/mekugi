@@ -209,7 +209,7 @@ func TestAppServerAnchoredHistoryTurnPagesAndIsolation(t *testing.T) {
 	u.Thread = "other"
 	u.session.start("other", u.session.cwd)
 	restoreContentReply(t, u, 6, map[string]any{"data": []any{historyItem("first", "foreign history", 101000)}})
-	if len(u.agents.Entries) != 0 || u.historyLoading() != nil || len(u.session.threadStates) != 0 {
+	if len(u.agents.Entries) != 0 || u.historyLoading() != nil || len(u.session.threadStates) != 1 || u.session.threadStates["other"] == nil {
 		t.Fatal("late old session response leaked across thread switch")
 	}
 }

@@ -6,8 +6,42 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/observation"
+	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity/transcript"
 )
+
+// transcriptScope admits first observations even when no turn start was seen.
+// Closed turns keep only their identity until the attachment is retired.
+func (s *appServerSession) transcriptScope(thread, turn string) observation.TextScope {
+	if thread == "" || turn == "" {
+		return observation.TextScope{}
+	}
+	if s.turnStates == nil {
+		s.turnStates = make(map[[2]string]*scope.Store)
+	}
+	key := [2]string{thread, turn}
+	store, known := s.turnStates[key]
+	if !known {
+		store = new(scope.Store)
+		s.turnStates[key] = store
+	}
+	return observation.TextScope{Thread: s.threadState(thread), Turn: store}
+}
+
+func (s *appServerSession) observeTranscript(e observation.TextEvent, main bool) []observation.TextUpdate {
+	ref := e.Item.Ref
+	if ref.ThreadID == "" || ref.TurnID == "" || ref.ItemID == "" {
+		return nil
+	}
+	return s.transcript.Observe(e, main, s.transcriptScope(ref.ThreadID, ref.TurnID))
+}
+
+func (s *appServerSession) providerStarted(thread string, at time.Time) []observation.TextUpdate {
+	if thread == "" {
+		return nil
+	}
+	return s.transcript.ProviderStarted(thread, at, s.threadState(thread))
+}
 
 // Host snapshots retain their original payload for control and evidence; this
 // projection supplies only text facts to the shared transcript owner.
@@ -140,7 +174,7 @@ func (u *appServerUI) replayTranscript(e observation.Event) bool {
 			return true
 		}
 	}
-	updates := u.session.transcript.Observe(text, main)
+	updates := u.session.observeTranscript(text, main)
 	if !main {
 		u.applyActivity(u.transcriptUpdates(updates, true), nil)
 	} else {

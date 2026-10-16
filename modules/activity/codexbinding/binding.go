@@ -6,7 +6,6 @@ import (
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
 	"github.com/yusing/mekugi/modules/activity/feed"
-	"github.com/yusing/mekugi/modules/activity/transcript"
 )
 
 type Bindings = binding.Bindings[*feed.Service]
@@ -14,15 +13,12 @@ type Bindings = binding.Bindings[*feed.Service]
 var Codex = Bindings{
 	Requires: []capability.Requirement{{Mechanism: capability.Observation, Required: true}},
 	Observation: func(service *feed.Service) binding.Observation {
+		// Standalone and offline consumers use the same application-owned stores.
+		if service == nil {
+			service = new(feed.Service)
+		}
 		return binding.Observation{NewTranscript: func(store *scope.Store) observation.Transcript {
-			// Activity can be omitted from an offline or standalone UI.
-			// Transient text correlation still needs no output-retention owner.
-			if service == nil {
-				return new(transcript.State)
-			}
-			state := service.Transcript(store)
-			*state = transcript.State{}
-			return state
+			return service.Transcript(store)
 		}}
 	},
 }

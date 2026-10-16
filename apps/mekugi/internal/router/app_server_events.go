@@ -20,7 +20,7 @@ import (
 
 	"github.com/yusing/mekugi/contracts/observation"
 	"github.com/yusing/mekugi/contracts/scope"
-	"github.com/yusing/mekugi/modules/activity/transcript"
+	activitybinding "github.com/yusing/mekugi/modules/activity/codexbinding"
 
 	activitymodel "github.com/yusing/mekugi/modules/activity/feed"
 
@@ -52,6 +52,7 @@ type appServerSession struct {
 	activity     *activitymodel.Service
 	state        scope.Store
 	threadStates map[string]*scope.Store
+	turnStates   map[[2]string]*scope.Store // A nil entry retains a closed turn's identity.
 	cwd          string
 	waits        map[[3]string][]waittargets.Target // Start-time targets by thread, turn, item.
 	waitStore    *mekugiReplayStore
@@ -149,11 +150,14 @@ type appServerEvent struct {
 func (s *appServerSession) start(thread, cwd string) {
 	s.paths = map[string]string{thread: "/root"}
 	s.threadStates = nil
+	s.turnStates = nil
+	s.threadState(thread)
 	s.agents = []activityPaneAgent{{thread: thread, Name: "/root", Role: "main"}}
-	s.transcript = new(transcript.State)
-	if s.observations != nil {
-		s.transcript = s.observations.NewTranscript(&s.state)
+	if s.observations == nil {
+		observations := activitybinding.Codex.Observation(s.activity)
+		s.observations = &observations
 	}
+	s.transcript = s.observations.NewTranscript(&s.state)
 	s.metadata = make(map[string]string)
 	s.commands = make(map[[3]string]*appServerCommandRun)
 	s.waits = make(map[[3]string][]waittargets.Target)
@@ -162,6 +166,9 @@ func (s *appServerSession) start(thread, cwd string) {
 }
 
 func (s *appServerSession) registerThread(info appServerThreadInfo) {
+	if info.ID != "" {
+		s.threadState(info.ID)
+	}
 	var source struct {
 		SubAgent struct {
 			ThreadSpawn struct {
@@ -309,6 +316,9 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		}
 		u.observeCost(p.ThreadID, agent)
 	case "turn/started":
+		if s.transcriptScope(p.ThreadID, p.Turn.ID).Turn == nil {
+			return true, nil
+		}
 		if u.proxy != nil {
 			u.proxy.review.Preview().SetTurn(p.ThreadID, p.Turn.ID, true)
 		}
@@ -322,7 +332,6 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			agent.Started = now
 		}
 		agent.Turns++
-		s.transcript.TurnStarted(p.ThreadID)
 	case "turn/completed":
 		u.endTurnPreviews(p.ThreadID, p.Turn.ID)
 		entries = append(entries, u.endTurnWaits(p.ThreadID, p.Turn.ID, now)...)
@@ -336,8 +345,12 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		if !main {
 			active = agent.turn
 		}
-		current := active == "" || active == p.Turn.ID
-		entries = append(entries, u.transcriptUpdates(s.transcript.TurnCompleted(p.ThreadID, p.Turn.ID, p.Turn.Status, now, current), true)...)
+		stores := s.transcriptScope(p.ThreadID, p.Turn.ID)
+		current := stores.Turn != nil && (active == "" || active == p.Turn.ID)
+		if stores.Turn != nil {
+			entries = append(entries, u.transcriptUpdates(s.transcript.TurnCompleted(p.ThreadID, p.Turn.ID, p.Turn.Status, now, current, stores), true)...)
+			s.turnStates[[2]string{p.ThreadID, p.Turn.ID}] = nil
+		}
 		if current {
 			agent.WorkTimer.update(false, now)
 			agent.Responding, agent.LastResponse = false, now
@@ -355,7 +368,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			run.dirty = true
 		}
 	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
-		entries = append(entries, u.transcriptUpdates(u.session.transcript.Observe(p.text, main), true)...)
+		entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, main), true)...)
 
 	case "item/started", "item/completed", "item/agentMessage/delta":
 		item := p.Item
@@ -363,8 +376,8 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 		item = u.waitItem(item, p.ThreadID, p.TurnID, id, method == "item/started")
 		native := &liveActivityNativeItem{thread: p.ThreadID, turn: p.TurnID, item: id, phase: method, live: true, command: item.Command, status: item.Status, duration: appServerDuration(item), workdir: appServerCommandWorkdir(item, s.cwd)}
 		agent := s.path(p.ThreadID)
-		if method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" {
-			if dropped := u.transcriptUpdates(s.transcript.OtherItemStarted(p.ThreadID), false); len(dropped) != 0 {
+		if method != "item/completed" && item.Type != "reasoning" && item.Type != "userMessage" && s.transcriptScope(p.ThreadID, p.TurnID).Turn != nil {
+			if dropped := u.transcriptUpdates(s.transcript.OtherItemStarted(p.ThreadID, s.threadState(p.ThreadID)), false); len(dropped) != 0 {
 				u.applyActivity(dropped, nil)
 			}
 		}
@@ -390,7 +403,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 				}
 			}
 		case "reasoning":
-			entries = append(entries, u.transcriptUpdates(u.session.transcript.Observe(p.text, main), true)...)
+			entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, main), true)...)
 
 		case "commandExecution", "webSearch":
 			if item.Type == "commandExecution" && u.proxy != nil {
@@ -465,7 +478,7 @@ func (u *appServerUI) sessionEvent(method string, p appServerEvent) (bool, error
 			if main {
 				return false, nil
 			}
-			entries = append(entries, u.transcriptUpdates(u.session.transcript.Observe(p.text, false), true)...)
+			entries = append(entries, u.transcriptUpdates(s.observeTranscript(p.text, false), true)...)
 
 		default:
 			if main {

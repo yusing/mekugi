@@ -110,12 +110,17 @@ Git or inheriting live enrichment caches. Rendering and disclosure remain termin
 Main and child messages and public reasoning share one interpretation across live
 observations, restored history and simulated replay. The application supplies
 [Conversation's](../conversation/SPEC.md) user-text, attachment and question-reply
-interpretation and retains input settlement. Activity correlates transcript facts
-within the attachment, without keeping another transcript. Completed public-summary
-bodies follow feed retention; observation correlation does not extend their lifetime.
+interpretation and retains input settlement. Activity correlates live facts within
+application-owned thread and turn scopes. Completion releases turn correlation;
+completed public-summary bodies follow feed retention instead.
 
-Historical projection preserves item identity and order without replacing live
-state or promoting older-page commentary. The [presentation contract](CONTRACT.md#authored-content)
+Provider thinking may precede a known turn, and item observations may arrive without
+a start event. Closed-turn starts and deltas cannot revive correlation. Authoritative
+late completions can update their original feed identities without consuming a newer
+turn's thinking or changing its answer selection. Historical projection is stateless.
+
+History preserves item identity and order without replacing live state or promoting
+older-page commentary. The [presentation contract](CONTRACT.md#authored-content)
 owns child-answer selection, public-summary disclosure and terminal pacing;
 [replay](../sessionreplay/SPEC.md#recorded-clock-and-synthetic-streaming) owns seek
 and reset behavior.
@@ -179,7 +184,9 @@ The composed activity service keeps feed models, roster state and output retenti
 in the application's attached session store. Main and children have distinct feeds
 and share output retention; separate attachments and offline
 replay resets receive distinct stores. Confirmed replacement retires the old store;
-a failed replacement keeps it. The application serializes access. Replacement
+a failed replacement keeps it. Child display changes neither work scopes nor host
+operations. The application serializes access and retires thread/turn correlation
+with the attachment on replacement, replay reset or shutdown. Replacement
 drops output state with the associated feeds and dialogs;
 feed trimming alone does not invalidate an open dialog's output. Detached command
 reports retain timing and outcomes, but discarded segment output remains

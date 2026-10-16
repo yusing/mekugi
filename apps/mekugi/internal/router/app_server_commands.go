@@ -151,6 +151,7 @@ func (u *appServerUI) clearSessionPresentation() error {
 	u.statusPanel = nil
 	u.requests.Retire("main") // Retire old-thread response correlation.
 	u.session.threadStates = nil
+	u.session.turnStates = nil
 	if err := u.request("thread/unsubscribe", map[string]any{"threadId": u.Thread}); err != nil {
 		return err
 	}
