@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -92,9 +94,9 @@ func TestStreamDiagnosticsProviderErrorCodes(t *testing.T) {
 		{`{"type":"error","error":{"code":"private_identifier","message":"private"}}`, "other"},
 		{`{"type":"error","error":{"message":"private"}}`, "other"},
 	} {
-		d := &streamDiagnostics{}
-		d.observe([]byte(test.payload))
-		encoded, err := json.Marshal(d.snapshot())
+		d := &transportcapture.Stream{}
+		d.Observe([]byte(test.payload))
+		encoded, err := json.Marshal(d.Snapshot())
 		if err != nil || d.ProviderErrorCode != test.want || strings.Contains(string(encoded), "private") {
 			t.Fatalf("unsafe or missing code: %s, %v", encoded, err)
 		}

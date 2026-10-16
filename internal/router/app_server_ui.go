@@ -20,13 +20,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/modules/commandsegments/reports"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"golang.org/x/term"
 )
 
@@ -91,7 +91,7 @@ type appServerUI struct {
 	approvalMode              bool // Codex's configured policy applies, not --yolo's.
 	guardHookCheck            approvalHookCheck
 	statusPanel               *appServerStatusReport
-	sessionCapture            *capturer.Recorder
+	sessionCapture            *transportcapture.Recorder
 	resumePicker              *appServerResumePicker
 	statusConfig              appServerStatusConfig
 	statusReports             map[string]*appServerStatusReport
@@ -178,7 +178,7 @@ func StartAppServerUI(service *history.Service, ctx context.Context, cmd *exec.C
 }
 
 // Codex approval policy and the invocation-local Shell guard are independent.
-func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *capturer.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
+func startAppServerUI(service *history.Service, segments *reports.Service, ctx context.Context, cmd *exec.Cmd, stdin, stdout *os.File, proxy *mekugiProxy, issues *CriticalErrors, resumeThread string, faint bool, serviceTiers *serviceTierSettings, capture *transportcapture.Recorder, resumeArgv []string, debugDirectory string, generator *sessionNaming, approvals bool) (func() error, error) {
 	guardHash := ""
 	for _, entry := range cmd.Environ() {
 		if hash, ok := strings.CutPrefix(entry, shellhook.Environment+"="); ok {

@@ -12,9 +12,9 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/inference"
 	"github.com/yusing/mekugi/internal/livediff"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/modules/usage/accounting"
 )
 
@@ -67,7 +67,7 @@ func TestOutputThroughputRestoredThreadIsolation(t *testing.T) {
 }
 
 func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
-	for _, mode := range []string{"no-proxy", "thread", "module-absent"} {
+	for _, mode := range []string{"no-proxy", "thread", "module-absent", "diagnostics-absent"} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("stream=%v/%s", stream, mode), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
@@ -89,27 +89,40 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 							"data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"delta\":\"additional output\"}\n\n" +
 							"data: {\"type\":\"response.completed\",\"response\":" + terminal + "}\n\n"
 					}
-					recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
-					if err != nil {
-						t.Fatal(err)
+					var recorder *transportcapture.Recorder
+					if mode != "diagnostics-absent" {
+						var err error
+						recorder, err = new(transportcapture.Service).Open(transportcapture.Config{Mode: "mekugi"})
+						if err != nil {
+							t.Fatal(err)
+						}
+						t.Cleanup(func() { _ = recorder.Close() })
 					}
-					t.Cleanup(func() { _ = recorder.Close() })
-					client := &http.Client{Transport: recorder.Transport(serverRoundTripper(func(_ *http.Request) (*http.Response, error) {
+					client := &http.Client{Transport: serverRoundTripper(func(_ *http.Request) (*http.Response, error) {
 						time.Sleep(2 * time.Second)
 						response := serverHTTPResponse(wire)
 						if stream {
 							response.Header.Set("Content-Type", "text/event-stream")
 						}
 						return response, nil
-					}))}
+					})}
+					if recorder != nil {
+						client.Transport = recorder.Transport(client.Transport)
+					}
 					provider := serverProviderFunc(func(ctx, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
+						if mode == "diagnostics-absent" && transportcapture.NewStream(ctx) != nil {
+							t.Fatal("absent diagnostics created a stream tracker")
+						}
 						request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://provider.invalid/responses", bytes.NewReader(body))
 						if err != nil {
 							return nil, err
 						}
 						return client.Do(request)
 					})
-					handler := recorder.Handler(http.HandlerFunc(responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy)))
+					var handler http.Handler = http.HandlerFunc(responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy))
+					if recorder != nil {
+						handler = recorder.Handler(handler)
+					}
 					request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, req.Fields)))
 					request.Header = headers
 					out := &throughputSlowWriter{ResponseRecorder: httptest.NewRecorder()}
@@ -117,11 +130,13 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 					if out.Code != http.StatusOK {
 						t.Fatalf("response=%d %s", out.Code, out.Body.String())
 					}
-					measurement := recorder.Snapshot().Usage.OutputThroughput
-					if rate, known := measurement.Rate(); !known || rate != 40 {
-						t.Fatalf("capture throughput=%+v", measurement)
+					if recorder != nil {
+						measurement := recorder.Snapshot().Usage.OutputThroughput
+						if rate, known := measurement.Rate(); !known || rate != 40 {
+							t.Fatalf("capture throughput=%+v", measurement)
+						}
 					}
-					if mode == "thread" {
+					if mode == "thread" || mode == "diagnostics-absent" {
 						report := requireRoundThroughput(t, proxy.usage, "thread-1", 40, true)
 						if report.OutputTokens != 80 || report.Roundtrips != 1 {
 							t.Fatal(report)

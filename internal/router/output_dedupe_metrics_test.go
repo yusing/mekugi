@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestDuplicateOutputMeasuredReceiptReachesCapture(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	proxy.inputProjections = testInputProjections()
-	recorder, err := capturer.New(capturer.Config{Mode: "mekugi"})
+	recorder, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}

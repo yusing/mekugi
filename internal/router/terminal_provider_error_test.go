@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	"github.com/yusing/mekugi/providers/opencode"
@@ -63,9 +65,9 @@ func TestTerminalProviderErrorCompletenessAndCaptureIsolation(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "actual detail credential-secret\x1b\n") {
 		t.Fatalf("incomplete provider error: %v", err)
 	}
-	diagnostics := &streamDiagnostics{}
-	diagnostics.observe(payload)
-	encoded, marshalErr := json.Marshal(diagnostics.snapshot())
+	diagnostics := &transportcapture.Stream{}
+	diagnostics.Observe(payload)
+	encoded, marshalErr := json.Marshal(diagnostics.Snapshot())
 	if marshalErr != nil || strings.Contains(string(encoded), "actual detail") || strings.Contains(string(encoded), "credential-secret") {
 		t.Fatalf("provider details leaked to diagnostics: %s %v", encoded, marshalErr)
 	}

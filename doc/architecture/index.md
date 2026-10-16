@@ -16,7 +16,7 @@ pjdoc:
     - boundary.md
     - plugin.md
     - execution.md
-    - metrics.md
+    - ../../modules/transportdiagnostics/SPEC.md
 ---
 # Mekugi architecture ownership
 
@@ -54,4 +54,4 @@ to the [backend adapter](../../backends/codex/responses/SPEC.md).
 - [`CTR-BOUNDARY-001`](boundary.md): filesystem, history, and output authority
 - [`CTR-PLUGIN-001`](plugin.md): authenticated executable catalog
 - [`CTR-EXECUTION-001`](execution.md): host-owned editing and process lifecycle
-- [`CTR-METRICS-001`](metrics.md): capture-owned transport metrics
+- [Transport diagnostics](../../modules/transportdiagnostics/SPEC.md): capture-owned transport metrics

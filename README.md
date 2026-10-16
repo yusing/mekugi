@@ -396,7 +396,7 @@ Left/Right or Tab switches tabs; Up/Down/PgUp/PgDn scrolls, `[`/`]` selects exch
 usage. Throughput divides authoritative output tokens (including reasoning) by measured
 request seconds, including latency/retries, excluding tools/idle time. Missing
 measurements are unavailable; costs are API estimates, not subscription charges. Local
-estimates are not billing figures. See [metrics](doc/spec/metrics.md).
+estimates are not billing figures. See [metrics](modules/transportdiagnostics/SPEC.md).
 
 ```sh
 curl -sS "${MEKUGI_BASE_URL%/v1}/api/metrics"

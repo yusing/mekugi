@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
@@ -38,7 +40,7 @@ func TestShellApprovalStartupSurvivesReportFailure(t *testing.T) {
 					t.Fatal(err)
 				}
 				ready := false
-				err = RunSession(testHistory(), testRecovery(), segments, testChanges(), newTestUsage(t), new(evidence.Service), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, NewCriticalErrors(), func(session Session) {
+				err = RunSession(testHistory(), testRecovery(), segments, testChanges(), newTestUsage(t), new(evidence.Service), new(transportcapture.Service), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, NewCriticalErrors(), func(session Session) {
 					ready = true
 					defer cancel()
 					// Stop at backend launch, after the production approval startup boundary.

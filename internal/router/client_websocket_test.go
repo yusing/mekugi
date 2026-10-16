@@ -28,7 +28,7 @@ import (
 	"github.com/yusing/mekugi/providers/grok"
 
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/capturer"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestProviderWebSocketReuseAndMetadata(t *testing.T) {
@@ -527,7 +527,7 @@ func TestWebSocketCapturePreservesCompletedResponseAfterCancellation(t *testing.
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	capture, err := capturer.New(capturer.Config{Mode: "passthrough"})
+	capture, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,7 +539,7 @@ func TestWebSocketCapturePreservesCompletedResponseAfterCancellation(t *testing.
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
 		payload := []byte(`{"model":"model","stream":true,"input":[]}`)
-		capturer.ObserveProjectedRequest(ctx, payload)
+		transportcapture.ObserveProjectedRequest(ctx, payload)
 		response, err := client.forwardExecution(ctx, ctx, payload, codexAuthHeaders(), "session")
 		if err != nil {
 			t.Error(err)
@@ -588,7 +588,7 @@ func TestWebSocketCaptureCountsFirstUnreadMessage(t *testing.T) {
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	capture, err := capturer.New(capturer.Config{Mode: "passthrough"})
+	capture, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -731,7 +731,7 @@ func TestWebSocketCaptureIncludesQueuedAndReservedReadsOnClose(t *testing.T) {
 		_, _, _ = conn.Read(r.Context())
 	}))
 	defer upstream.Close()
-	capture, err := capturer.New(capturer.Config{Mode: "passthrough"})
+	capture, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -67,7 +67,7 @@ func (c *CriticalErrors) persistFailure(f *requestFinalization) {
 			Phase: f.failurePhase, Code: f.diagnosticCode, Reference: f.diagnosticReference,
 			Error: f.diagnosticError}
 		if f.streamDiagnostics != nil {
-			record.Stream, err = json.Marshal(f.streamDiagnostics.snapshot())
+			record.Stream, err = json.Marshal(f.streamDiagnostics.Snapshot())
 		}
 		if err == nil {
 			err = store.appendFailure(ctx, record)

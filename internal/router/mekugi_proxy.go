@@ -19,7 +19,7 @@ import (
 	"sync"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-	"github.com/yusing/mekugi/capturer"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -452,7 +452,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexres
 		if summary == nil {
 			continue
 		}
-		capturer.ObserveOutputDeduplication(ctx, summary.OutputRepetitions, summary.SavedTokens, summary.TokensMeasured)
+		transportcapture.ObserveOutputDeduplication(ctx, summary.OutputRepetitions, summary.SavedTokens, summary.TokensMeasured)
 		if len(summary.RepeatedCalls) == 0 {
 			continue
 		}

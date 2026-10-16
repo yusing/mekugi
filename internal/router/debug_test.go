@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -112,7 +114,7 @@ func TestDebugCustomCaptureBundleSupportsReplay(t *testing.T) {
 		replayTestItem("root", "turn", replayTestEpoch+1, replayTestEpoch+2, map[string]any{
 			"type": "AgentMessage", "id": "answer", "content": []map[string]any{{"text": "Replay complete."}},
 		}))
-	replay, err := readSessionUIReplay(testHistory(), t.Context(), rollout, debugDir, 1)
+	replay, err := readSessionUIReplay(testHistory(), new(transportcapture.Service), t.Context(), rollout, debugDir, 1)
 	if err != nil || replay == nil || replay.Providers != 1 {
 		t.Fatalf("custom capture replay: %v, error=%v", replay, err)
 	}
@@ -122,7 +124,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testHistory(), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +193,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	t.Parallel()
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testHistory(), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}

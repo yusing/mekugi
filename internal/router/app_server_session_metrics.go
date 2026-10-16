@@ -6,14 +6,14 @@ import (
 	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 // This panel owns only navigation. Accounting and retained detail belong to the
 // invocation's capturer, including requests from other threads in the launch.
 type sessionMetricsPanel struct {
-	snapshot  capturer.MetricsSnapshot
+	snapshot  transportcapture.MetricsSnapshot
 	tab       int
 	sequence  uint64 // Zero follows the newest retained exchange.
 	refreshed time.Time

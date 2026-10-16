@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
@@ -40,7 +42,7 @@ func TestDebugInitialWriteFailure(t *testing.T) {
 	}
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	debug, initErr := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
+	debug, initErr := openDebugOutput(testHistory(), new(evidence.Service), new(transportcapture.Service), flags.debug, flags.captureOutput)
 	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &original); err != nil {
 		t.Fatal(err)
 	}

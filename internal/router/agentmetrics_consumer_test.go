@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/contracts/command"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
@@ -140,7 +142,7 @@ func TestAgentMetricsSessionInspectionWholeRolloutAndDefectEvidence(t *testing.T
 		t.Helper()
 		var stdout, stderr bytes.Buffer
 		args := append([]string{"--session", rollout, "--replay-dir", replay}, options...)
-		status := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), args, &stdout, &stderr)
+		status := RunSessionInspection(testHistory(), new(evidence.Service), new(transportcapture.Service), t.Context(), args, &stdout, &stderr)
 		var result sessionInspection
 		if status == 0 {
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {

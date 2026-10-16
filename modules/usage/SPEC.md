@@ -18,7 +18,7 @@ separate owners. No usage message or Markdown export is added to the conversatio
 JSON and streaming responses use the same cumulative provider-authoritative per-thread
 counts. The native roster consumes these totals without adding usage messages to the
 conversation. Main completion and wrapper exit do not write Markdown usage files.
-Thread accounting remains separate from capture-owned [capture metrics](../../doc/spec/metrics.md);
+Thread accounting remains separate from capture-owned [capture metrics](../transportdiagnostics/SPEC.md);
 compaction and routing-session changes do not reset totals. Repeated terminal observations
 within one request count once. Retained totals survive router shutdown and restore
 idle completed agents as well as resumed requests, without a lifetime thread-count

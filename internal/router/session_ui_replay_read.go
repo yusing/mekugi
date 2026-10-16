@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
@@ -88,7 +90,7 @@ func readReplayLines(ctx context.Context, path string, visit func([]byte) error)
 	return s.Err()
 }
 
-func readSessionUIReplay(service *history.Service, ctx context.Context, path, debugDir string, seed uint64) (*sessionUIReplay, error) {
+func readSessionUIReplay(service *history.Service, diagnostics *transportcapture.Service, ctx context.Context, path, debugDir string, seed uint64) (*sessionUIReplay, error) {
 	r := &sessionUIReplay{Threads: make(map[string]string), Unsupported: make(map[string]int)}
 	// Read only published records. Opening the writable store would create it
 	// and acquire process resources that offline presentation must not own.
@@ -264,7 +266,7 @@ func readSessionUIReplay(service *history.Service, ctx context.Context, path, de
 	if len(r.Events) == 0 {
 		return nil, errors.New("session has no timestamped UI events")
 	}
-	if debugDir != "" {
+	if debugDir != "" && diagnostics != nil {
 		if err := r.readProviders(ctx, filepath.Join(debugDir, "capture.jsonl"), loaded); err != nil {
 			return nil, err
 		}

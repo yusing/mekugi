@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/contracts/capability"
 	"github.com/yusing/mekugi/contracts/command"
@@ -185,19 +187,20 @@ func (r *moduleRegistrar) ShellApproval(guard binding.ShellApproval) error {
 }
 
 type Runtime struct {
-	AgentMetrics     *evidence.Service
-	Usage            *accounting.Service
-	Guards           []binding.ShellApproval
-	Naming           *binding.SessionNaming
-	Guidance         *binding.Guidance
-	InputProjections []binding.InputProjection
-	Changes          changes.Service
-	Segments         *segments.Service
-	Recovery         *recovery.Service
-	History          *history.Service
-	Commands         []command.Contribution
-	Gaps             []Gap
-	started          []entry
+	TransportDiagnostics *transportcapture.Service
+	AgentMetrics         *evidence.Service
+	Usage                *accounting.Service
+	Guards               []binding.ShellApproval
+	Naming               *binding.SessionNaming
+	Guidance             *binding.Guidance
+	InputProjections     []binding.InputProjection
+	Changes              changes.Service
+	Segments             *segments.Service
+	Recovery             *recovery.Service
+	History              *history.Service
+	Commands             []command.Contribution
+	Gaps                 []Gap
+	started              []entry
 }
 
 func (r *Runtime) Close(ctx context.Context) error {

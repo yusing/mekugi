@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
@@ -49,7 +51,7 @@ type debugSessionInspection struct {
 
 // inspectDebugSession reads the selected bundle only. Each artifact is independent:
 // startup failures can leave useful diagnostics alongside missing final reports.
-func inspectDebugSession(agentMetrics *evidence.Service, ctx context.Context, directory, requestID, field string, offset, limit, textBytes int, stdout, stderr io.Writer) int {
+func inspectDebugSession(agentMetrics *evidence.Service, diagnostics *transportcapture.Service, ctx context.Context, directory, requestID, field string, offset, limit, textBytes int, stdout, stderr io.Writer) int {
 	directory, err := filepath.Abs(directory)
 	if err != nil {
 		fmt.Fprintln(stderr, "mekugi inspect-session:", err)
@@ -96,6 +98,9 @@ func inspectDebugSession(agentMetrics *evidence.Service, ctx context.Context, di
 		"instructions.jsonl": append(append([]string{}, identityKeys...), "scope", "model", "cached_input_items", "projected_input_bytes", "wire_input_bytes", "cache_rebased", "wire_request_present"),
 	}
 	for _, name := range []string{"router.jsonl", "capture.jsonl", "instructions.jsonl"} {
+		if name == "capture.jsonl" && diagnostics == nil {
+			continue
+		}
 		path := filepath.Join(directory, name)
 		keys := metadataKeys[name]
 		artifact := debugInspectionArtifact{Name: name, Path: path, State: "observed", Counts: make(map[string]int)}
@@ -177,7 +182,10 @@ func inspectDebugSession(agentMetrics *evidence.Service, ctx context.Context, di
 		result.Artifacts = append(result.Artifacts, artifact)
 	}
 	readLog := filepath.Join(directory, "reads.jsonl")
-	reports := []string{"metrics.json"}
+	var reports []string
+	if diagnostics != nil {
+		reports = append(reports, "metrics.json")
+	}
 	if agentMetrics != nil {
 		reports = append(reports, "ax.json")
 	}

@@ -32,6 +32,7 @@ use (
 	./modules/sourceoutline
 	./modules/sudoapproval
 	./modules/symbolquery
+	./modules/transportdiagnostics
 	./modules/usage
 	./providers/grok
 	./providers/openai

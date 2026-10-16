@@ -92,7 +92,7 @@ func TestFrontendsRunSessionInputProjection(t *testing.T) {
 			done := make(chan error, 1)
 			go func() {
 				defer close(done)
-				done <- router.RunSession(runtime.History, runtime.Recovery, runtime.Segments, runtime.Changes, runtime.Usage, runtime.AgentMetrics,
+				done <- router.RunSession(runtime.History, runtime.Recovery, runtime.Segments, runtime.Changes, runtime.Usage, runtime.AgentMetrics, runtime.TransportDiagnostics,
 					ctx, runtime.Commands, runtime.InputProjections, runtime.Guidance, runtime.Naming, runtime.Guards, options, router.NewCriticalErrors(),
 					func(session router.Session) { ready <- session }, nil)
 			}()

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
-	"github.com/yusing/mekugi/capturer"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 	"github.com/yusing/mekugi/providers/openai"
 )
 
@@ -28,7 +28,7 @@ type providerClient struct {
 func newProviderClient(baseURL string, supplied *http.Client) *providerClient {
 	provider := openai.New(baseURL, supplied)
 	provider.ObserveWebSocket = func(ctx context.Context, payload []byte, headers, responseHeaders http.Header) openai.Observation {
-		return capturer.BeginWebSocketAttempt(ctx, payload, headers, responseHeaders)
+		return transportcapture.BeginWebSocketAttempt(ctx, payload, headers, responseHeaders)
 	}
 	return &providerClient{openai: provider}
 }

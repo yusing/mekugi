@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -17,18 +19,18 @@ func TestStreamDiagnosticsRejectedWebSocketControl(t *testing.T) {
 				ctx: t.Context(), provider: newProviderClient("http://unused.invalid", nil),
 				clientMessages: messages, queuedCreate: []byte(`{"type":"response.create"}`),
 			}
-			diagnostics := &streamDiagnostics{}
+			diagnostics := &transportcapture.Stream{}
 			exchange := &webSocketExchange{ctx: t.Context(), session: session, streamDiagnostics: diagnostics}
 			n, err := exchange.Read(make([]byte, 1))
 			rejection, ok := errors.AsType[*requestCompatibilityError](err)
 			if n != 0 || !ok || rejection.code != "invalid_websocket_request" {
 				t.Fatalf("request rejection changed: n=%d err=%v", n, err)
 			}
-			diagnostics.copyStopped(err)
+			recordStreamCopyStop(diagnostics, err)
 			if diagnostics.ReadOrigin != "router_control" || diagnostics.EndReason != "router_control_invalid_websocket_request" || diagnostics.CopyStop != "read_error" {
 				t.Fatalf("rejection diagnostics: %+v", diagnostics)
 			}
-			if strings.Contains(string(responses.MustMarshalJSON(diagnostics.snapshot())), "private") {
+			if strings.Contains(string(responses.MustMarshalJSON(diagnostics.Snapshot())), "private") {
 				t.Fatal("control payload leaked into diagnostics")
 			}
 		})

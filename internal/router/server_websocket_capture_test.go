@@ -10,15 +10,15 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestResponsesWebSocketCaptureSeparatesSteeringAndAutomaticRequest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	directory := t.TempDir()
-	record, err := capturer.New(capturer.Config{Output: filepath.Join(directory, "capture.jsonl"), Mode: "passthrough"})
+	record, err := new(transportcapture.Service).Open(transportcapture.Config{Output: filepath.Join(directory, "capture.jsonl"), Mode: "passthrough"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/yusing/mekugi/modules/sourceoutline"
 	"github.com/yusing/mekugi/modules/sudoapproval"
 	"github.com/yusing/mekugi/modules/symbolquery"
+	"github.com/yusing/mekugi/modules/transportdiagnostics"
 	"github.com/yusing/mekugi/modules/usage"
 )
 
@@ -26,6 +27,7 @@ import (
 // frontend host. Host observation records remain application contributions.
 func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	c := Composition{LegacyRecordKinds: router.RetainedRecordKinds()}
+	diagnostics := c.Add(transportdiagnostics.Module, func() transportdiagnostics.Deps { return transportdiagnostics.Deps{} })
 	metrics := c.Add(agentmetrics.Module, func() agentmetrics.Deps { return agentmetrics.Deps{} })
 	history := c.Add(sessionhistory.Module, func() sessionhistory.Deps { return sessionhistory.Deps{} })
 	usage := c.Add(usage.Module, func() usage.Deps { return usage.Deps{History: history.Value()} })
@@ -46,6 +48,7 @@ func Frontends(ctx context.Context, liveReports bool) (*Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	runtime.TransportDiagnostics = diagnostics.Value()
 	runtime.AgentMetrics = metrics.Value()
 	runtime.Usage = usage.Value()
 	runtime.Changes = changes.Value()

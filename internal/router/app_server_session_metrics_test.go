@@ -14,9 +14,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/persistence"
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
 
 func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
@@ -55,9 +55,9 @@ func TestSessionMetricsWrappedDirectoryCopy(t *testing.T) {
 }
 
 // Decode the public snapshot boundary rather than naming capture-owned types.
-func sessionMetricsFixture(t *testing.T) capturer.MetricsSnapshot {
+func sessionMetricsFixture(t *testing.T) transportcapture.MetricsSnapshot {
 	t.Helper()
-	var snapshot capturer.MetricsSnapshot
+	var snapshot transportcapture.MetricsSnapshot
 	err := json.Unmarshal([]byte(`{
   "schema":"mekugi.capture.metrics.v7","mode":"mekugi",
   "requests":{"logical":2,"provider_attempts":3,"retries":1,"completed":2,"failed":0},
@@ -171,7 +171,7 @@ func TestAppServerSessionMetricsSelectionSurvivesRetention(t *testing.T) {
 }
 
 func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
-	capture, err := capturer.New(capturer.Config{Mode: "mekugi"})
+	capture, err := new(transportcapture.Service).Open(transportcapture.Config{Mode: "mekugi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 				m.snapshot = sessionMetricsFixture(t)
 			}
 			if strings.HasPrefix(tc.name, "deduplication") {
-				m.snapshot.OutputDeduplication = capturer.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}
+				m.snapshot.OutputDeduplication = transportcapture.OutputDeduplicationMetrics{Projections: 3, Occurrences: 12, SavedTokens: 1234}
 			}
 			if strings.HasPrefix(tc.name, "storage") {
 				m.snapshot.StorageWrites = &persistence.Snapshot{Bytes: 12345, Scope: new(persistence.Counter).Snapshot().Scope}

@@ -5,6 +5,8 @@ import (
 	json "encoding/json/v2"
 	"time"
 
+	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/inference"
 
@@ -16,7 +18,7 @@ import (
 type responseHooks struct {
 	onProviderFailure   func([]byte, bool)
 	upstreamStatus      int
-	streamDiagnostics   *streamDiagnostics
+	streamDiagnostics   *transportcapture.Stream
 	onUsage             func(inference.Usage)
 	receivedAt          time.Time // Body read time, before buffered events are transformed.
 	deliveredResponseID string
@@ -28,7 +30,7 @@ func (h *responseHooks) Observe(payload []byte, stream bool) {
 		return
 	}
 	if stream {
-		h.streamDiagnostics.observe(payload)
+		h.streamDiagnostics.Observe(payload)
 	} else {
 		h.receivedAt = time.Now()
 	}
@@ -65,7 +67,7 @@ func (h *responseHooks) ReadEnded(err error, unterminated bool) {
 	if h == nil {
 		return
 	}
-	h.streamDiagnostics.readEnded(err)
+	recordStreamReadEnd(h.streamDiagnostics, err, "")
 	if h.streamDiagnostics != nil {
 		h.streamDiagnostics.UnterminatedEvent = unterminated
 	}
