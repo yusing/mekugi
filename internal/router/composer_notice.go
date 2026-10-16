@@ -5,8 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/modules/notifications/notice"
 
@@ -56,7 +57,7 @@ func (u *appServerUI) stateLabel(now time.Time) string {
 		}
 		label += activityui.StatusPulse(fmt.Sprintf("%d running processes", count), now, u.view.painter.Colors) + terminalui.Reset
 	}
-	notice := strings.ReplaceAll(diffrender.Safe(u.feedback.Text, false), "\n", " ")
+	notice := strings.ReplaceAll(textsanitize.Safe(u.feedback.Text, false), "\n", " ")
 	switch {
 	case notice == "":
 		return label

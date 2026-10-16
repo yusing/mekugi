@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -248,7 +250,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 	if c.diffMode && len(lines) > 0 && !navigatorVisible {
 		header = diffrender.Gutter(active.Highlighted, c.theme) + diffrender.Header(header, diffWidth-3, c.rendering.Counts[c.view.Selected], c.theme)
 	} else {
-		header = diffrender.Gutter(false, c.theme) + diffrender.Safe(header, false)
+		header = diffrender.Gutter(false, c.theme) + textsanitize.Safe(header, false)
 	}
 	if titled {
 		writeRow(1, header)
@@ -333,7 +335,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				})
 				text = ""
 				if row < len(help) {
-					text = diffrender.Safe(help[row], false)
+					text = textsanitize.Safe(help[row], false)
 				}
 			}
 			switch {
@@ -390,7 +392,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		scope := ""
 		if c.view.Caller != "" {
 			name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
-			scope = " · @" + diffrender.Safe(name, false) + " (0 all)"
+			scope = " · @" + textsanitize.Safe(name, false) + " (0 all)"
 		}
 		writeRow(height, "DIFF · "+stream+mode+scope+" · c scope · s files · Tab changes · ? help")
 	default:
@@ -891,11 +893,11 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	}
 	if c.coverage != "" {
 		status, _, _ := strings.Cut(c.coverage, ":")
-		right = append(right, diffrender.Safe(status, false))
+		right = append(right, textsanitize.Safe(status, false))
 	}
 	if c.view.Caller != "" {
 		name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
-		right = append(right, "@"+diffrender.Safe(name, false))
+		right = append(right, "@"+textsanitize.Safe(name, false))
 	}
 
 	if visible > 1 {

@@ -3,13 +3,14 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	activitymodel "github.com/yusing/mekugi/internal/activity"
 
 	json "encoding/json/v2"
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -68,12 +69,12 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 				}
 				key := verb + "\x00skill\x00" + name + "\x00" + source
 				if verb == "Attached skill" {
-					appendContent(key, rest, activityui.Block{Kind: "op", Verb: verb, Label: diffrender.Safe(label, false)}, source)
+					appendContent(key, rest, activityui.Block{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)}, source)
 					continue
 				}
 				if !seen[key] {
 					seen[key] = true
-					blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Label: diffrender.Safe(label, false)})
+					blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Label: textsanitize.Safe(label, false)})
 				}
 				continue
 			}
@@ -108,12 +109,12 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 			}
 			if !seen[key] {
 				seen[key] = true
-				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), Label: diffrender.Safe(label, false)})
+				blocks = append(blocks, activityui.Block{Kind: "op", Verb: verb, Path: pathdisplay.ForWorkspace(cwd, path), Label: textsanitize.Safe(label, false)})
 			}
 		}
 	}
 	for index, content := range contents {
-		blocks[index].Tail = strings.Split(diffrender.Safe(content, false), "\n")
+		blocks[index].Tail = strings.Split(textsanitize.Safe(content, false), "\n")
 	}
 	return blocks
 }

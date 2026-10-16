@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
@@ -63,7 +65,7 @@ func TestComposerErrorClickAndDismiss(t *testing.T) {
 				t.Fatal("truncated error did not open")
 			}
 			drawOutputDialog(u.shell)
-			if u.shell.output.laid.Text != diffrender.Safe(full, false) {
+			if u.shell.output.laid.Text != textsanitize.Safe(full, false) {
 				t.Fatal("details lost full error")
 			}
 			u.shell.outputKey("q")

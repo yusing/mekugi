@@ -3,7 +3,8 @@ package activity
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
@@ -19,20 +20,20 @@ func (b Block) progressText(style string) string {
 	if b.Label != "" {
 		body = b.Label // Progress disclosures keep the full message in Body.
 	}
-	text.WriteString(diffrender.Safe(body, false))
+	text.WriteString(textsanitize.Safe(body, false))
 	for i, target := range b.WaitTargets {
 		if i == 0 {
 			text.WriteString(" · ")
 		} else {
 			text.WriteString(", ")
 		}
-		name := diffrender.Safe(AgentDisplayName(target.Name), false)
+		name := textsanitize.Safe(AgentDisplayName(target.Name), false)
 		if style != "" {
 			name = DimColor(target.Name) + name + terminalui.Reset + style
 		}
 		text.WriteString(name)
 		if target.Status != "" {
-			text.WriteString(": " + diffrender.Safe(target.Status, false))
+			text.WriteString(": " + textsanitize.Safe(target.Status, false))
 		}
 	}
 	return text.String()

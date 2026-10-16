@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
@@ -161,7 +163,7 @@ func Hang(lead, label string, width int) []string {
 
 // Inline renders the supported Markdown inline subset.
 func (p *Painter) Inline(line string) string {
-	line = diffrender.Safe(line, false)
+	line = textsanitize.Safe(line, false)
 	var out strings.Builder
 	bold := false
 	for i := 0; i < len(line); {
@@ -346,7 +348,7 @@ func (p *Painter) Markdown(text string, width int, subdued bool) []string {
 	source := strings.Split(text, "\n")
 	for i := 0; i < len(source); i++ {
 		raw := source[i]
-		line := diffrender.Safe(raw, false)
+		line := textsanitize.Safe(raw, false)
 		if fence != "" {
 			if !markdownsyntax.ClosesFence(line, fence) {
 				program = append(program, raw)
@@ -355,7 +357,7 @@ func (p *Painter) Markdown(text string, width int, subdued bool) []string {
 			body := strings.Join(program, "\n")
 			var diagram []string
 			if strings.EqualFold(lang, "mermaid") {
-				diagram, _ = mermaid.Render(diffrender.Safe(body, false), width)
+				diagram, _ = mermaid.Render(textsanitize.Safe(body, false), width)
 			}
 			if len(diagram) > 0 {
 				lines = append(lines, diagram...)
@@ -438,7 +440,7 @@ func (p *Painter) Markdown(text string, width int, subdued bool) []string {
 				continue
 			}
 			if i+1 < len(source) && trimmed != "" && !strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "* ") {
-				if level, underline, ok := setextUnderline(diffrender.Safe(source[i+1], false)); ok {
+				if level, underline, ok := setextUnderline(textsanitize.Safe(source[i+1], false)); ok {
 					heading(level, "", strings.TrimRight(trimmed, " \t"), "", underline)
 					continue
 				}
@@ -536,7 +538,7 @@ func (p *Painter) fenced(lang, source string, width int, identity uint64) []stri
 	if p.CopySource && !p.LayoutOnly {
 		sources = strings.Split(source, "\n")
 	}
-	for index, line := range p.Highlight(lang, diffrender.Safe(source, false)) {
+	for index, line := range p.Highlight(lang, textsanitize.Safe(source, false)) {
 		parts := Wrap(line, width-2, true)
 		if len(sources) > 0 {
 			parts = p.CopyWrapped(parts, copyCode(sources[index], CopyID(strconv.Itoa(index), identity)), 0)

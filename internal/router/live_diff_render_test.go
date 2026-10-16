@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	chroma "github.com/alecthomas/chroma/v2"
@@ -79,7 +81,7 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, line := range render.Lines {
-			if ansi.StringWidth(line) > width-1 || diffrender.Safe(line, true) != line {
+			if ansi.StringWidth(line) > width-1 || textsanitize.Safe(line, true) != line {
 				t.Fatalf("width %d: unsafe or overflowing row: %q", width, line)
 			}
 		}

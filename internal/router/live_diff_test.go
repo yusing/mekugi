@@ -39,16 +39,6 @@ func TestLiveDiffRedirectedWithoutExternalRenderer(t *testing.T) {
 	}
 }
 
-func TestLiveDiffSafeText(t *testing.T) {
-	got := diffrender.Safe("\x1b]52;c;clipboard\a\x1b[2J\x1b[31mred\x1b[0m\t界\r\n", true)
-	if got != "\x1b[31mred\x1b[0m    界\n" {
-		t.Fatalf("unsafe rendering: %q", got)
-	}
-	if ansi.StringWidth(ansi.Truncate(got, 7, "")) > 7 {
-		t.Fatal("wide text escaped viewport")
-	}
-}
-
 func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	workspace := t.TempDir()
 	before := filepath.Join(workspace, "old name.txt")

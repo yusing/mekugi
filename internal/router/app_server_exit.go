@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 )
 
 // Source: codex-rs/tui/src/token_usage.rs:20:88@1cc7e236 TokenUsage
@@ -28,14 +28,14 @@ func (u *appServerUI) writeExitSummary(w io.Writer, color bool) error {
 		text.WriteByte('\n')
 	}
 	commandLine := func(argv []string) string {
-		command := diffrender.Safe(shellCommandString(argv[0], argv[1:]), false)
+		command := textsanitize.Safe(shellCommandString(argv[0], argv[1:]), false)
 		if color {
 			command = "\x1b[36m" + command + "\x1b[39m"
 		}
 		return command
 	}
 	if u.archived {
-		fmt.Fprintf(&text, "Session archived: %s\n", diffrender.Safe(u.thread, false))
+		fmt.Fprintf(&text, "Session archived: %s\n", textsanitize.Safe(u.thread, false))
 	} else if u.thread != "" {
 		argv := slices.Clone(u.resumeArgv)
 		if len(argv) == 0 {

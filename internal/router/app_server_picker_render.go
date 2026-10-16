@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/libraries/diffrender"
@@ -36,7 +38,7 @@ func pickerWrap(text string, width int) []string {
 }
 
 func pickerText(text string) string {
-	return strings.ReplaceAll(diffrender.Safe(text, false), "\n", " ")
+	return strings.ReplaceAll(textsanitize.Safe(text, false), "\n", " ")
 }
 
 func (u *appServerUI) pickerSelection() string {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -63,7 +65,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	page := DialogPage{Title: p.DialogPageTitle(block, p.now(), width), Live: block.Live || !view.Done}
 	var detail []string
 	if block.Hook != nil {
-		detail = append(detail, diffrender.Safe(block.Hook.HandlerType, false))
+		detail = append(detail, textsanitize.Safe(block.Hook.HandlerType, false))
 		if block.Hook.ExecutionMode == "async" {
 			detail = append(detail, "async")
 		}
@@ -99,7 +101,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			add(DialogLine{Text: terminalui.Dim + "Approval: " + terminalui.Undim + label})
 		}
 		if ansi.Strip(label) != block.Approval {
-			add(DialogLine{Text: terminalui.Dim + diffrender.Safe(block.Approval, false) + terminalui.Undim, Wrap: true})
+			add(DialogLine{Text: terminalui.Dim + textsanitize.Safe(block.Approval, false) + terminalui.Undim, Wrap: true})
 		}
 	}
 	gap := func() {
@@ -108,7 +110,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 	}
 
-	code := diffrender.Safe(block.Code, false)
+	code := textsanitize.Safe(block.Code, false)
 	page.Text = code
 	if code != "" && (block.Path != "" || strings.Contains(code, "\n") || ansi.StringWidth(code) > width/2) {
 		colored := strings.Split(code, "\n")
@@ -123,7 +125,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	if block.Body != "" {
 		page.Text = block.Body
 		if block.Kind == "error" {
-			page.Text = diffrender.Safe(block.Body, false)
+			page.Text = textsanitize.Safe(block.Body, false)
 		}
 		gap()
 		rows := block.Rows
@@ -266,13 +268,13 @@ func dialogTarget(p *Painter, block Block) string {
 	case block.Kind == "reads":
 		var paths []string
 		for _, read := range block.Reads {
-			paths = append(paths, Path(diffrender.Safe(read.Path, false)))
+			paths = append(paths, Path(textsanitize.Safe(read.Path, false)))
 		}
 		return strings.Join(paths, ", ")
 	case block.Path != "":
-		return Path(diffrender.Safe(block.Path, false))
+		return Path(textsanitize.Safe(block.Path, false))
 	case block.Code != "":
-		first, _, _ := strings.Cut(diffrender.Safe(block.Code, false), "\n")
+		first, _, _ := strings.Cut(textsanitize.Safe(block.Code, false), "\n")
 		if len(first) <= dialogHighlightBytes {
 			return strings.Join(p.dialogHighlight(block, first), " ")
 		}

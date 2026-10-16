@@ -19,6 +19,7 @@ use (
 	./libraries/shellinstrumentation
 	./libraries/sourceanalysis
 	./libraries/terminalui
+	./libraries/textsanitize
 	./modules/agentguidance
 	./modules/agentmetrics
 	./modules/boundedcommand

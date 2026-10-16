@@ -3,6 +3,8 @@ package activity
 import (
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -39,7 +41,7 @@ func (p *Painter) questionRows(block Block, width int) []string {
 		if i > 0 {
 			rows = append(rows, "")
 		}
-		text := diffrender.Safe(q.Text, false)
+		text := textsanitize.Safe(q.Text, false)
 		rows = append(rows, liveActivityIndent(terminalui.Wrap(text, inner, false), "  ")...)
 		if len(block.Questions) > 1 {
 			rows = append(rows, "  "+p.QuestionState(q.State))
@@ -55,7 +57,7 @@ func (p *Painter) questionRows(block Block, width int) []string {
 				rows = append(rows, prefix+row)
 			}
 		case q.Options != "":
-			rows = append(rows, liveActivityIndent(terminalui.Wrap(terminalui.Dim+diffrender.Safe(q.Options, false)+terminalui.Undim, inner, false), "  ")...)
+			rows = append(rows, liveActivityIndent(terminalui.Wrap(terminalui.Dim+textsanitize.Safe(q.Options, false)+terminalui.Undim, inner, false), "  ")...)
 		}
 	}
 	for i, row := range rows {

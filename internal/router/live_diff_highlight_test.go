@@ -150,16 +150,6 @@ func TestLiveDiffRenderHighlights(t *testing.T) {
 	}
 }
 
-func TestLiveDiffSafePreservesZeroWidthText(t *testing.T) {
-	const source = "e\u0301 界 👩\u200d💻 क\u094d\u200cष ✈\ufe0f"
-	for _, colors := range []bool{false, true} {
-		got := diffrender.Safe("\x1b]52;c;clipboard\a\x1b[2J"+source+"\x00\x1b[6n\n", colors)
-		if got != source+"\n" {
-			t.Fatalf("colors=%t: source text damaged or terminal controls retained: %q", colors, got)
-		}
-	}
-}
-
 func TestLiveDiffHighlightPreservesSyntaxColors(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "file.go")

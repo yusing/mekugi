@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
@@ -757,7 +759,7 @@ func (v *liveActivityView) replyContext(out *conversationLines, question activit
 		header += terminalui.Dim + " " + question.Observed.Local().Format("15:04:05") + terminalui.Undim
 	}
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
-	rows, _ := liveActivityExcerpt(v.painter.Quote(diffrender.Safe(text, false), width), width, 2)
+	rows, _ := liveActivityExcerpt(v.painter.Quote(textsanitize.Safe(text, false), width), width, 2)
 	for _, row := range rows {
 		out.add(question.Seq, gutter+row)
 	}

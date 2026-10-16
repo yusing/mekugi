@@ -7,8 +7,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
@@ -214,7 +215,7 @@ func outputText(raw []byte) string {
 	if len(line) > OutputTailBytes {
 		line = strings.ToValidUTF8(line[:OutputTailBytes], "") + "…"
 	}
-	if line = strings.TrimRight(diffrender.Safe(line, false), " "); strings.TrimSpace(line) != "" {
+	if line = strings.TrimRight(textsanitize.Safe(line, false), " "); strings.TrimSpace(line) != "" {
 		return line
 	}
 	return ""

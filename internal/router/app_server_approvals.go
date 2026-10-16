@@ -3,6 +3,8 @@ package router
 import (
 	"encoding/json/jsontext"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	json "encoding/json/v2"
@@ -16,7 +18,6 @@ import (
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	"github.com/yusing/mekugi/contracts/approval"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"mvdan.cc/sh/v3/shell"
 )
@@ -772,10 +773,10 @@ func (u *appServerUI) approvalRows(width, height int) []string {
 	}
 	var text []string
 	for _, line := range strings.Split(a.subject, "\n") {
-		text = append(text, pickerWrap(diffrender.Safe(line, false), inner)...)
+		text = append(text, pickerWrap(textsanitize.Safe(line, false), inner)...)
 	}
 	for _, detail := range a.details {
-		for _, line := range pickerWrap(diffrender.Safe(detail, false), inner) {
+		for _, line := range pickerWrap(textsanitize.Safe(detail, false), inner) {
 			text = append(text, dim+line+reset)
 		}
 	}

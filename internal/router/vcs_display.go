@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
@@ -765,9 +765,9 @@ func gitCommitRows(call vcsCall, cwd string, lines []string) ([]activityui.Chang
 		return nil, gitCommitKey{}
 	}
 	branch, _ := strings.CutSuffix(head[1], " (root-commit)")
-	notes := []string{"on " + diffrender.Safe(branch, false)}
+	notes := []string{"on " + textsanitize.Safe(branch, false)}
 	if call.subject == "" {
-		notes = append([]string{diffrender.Safe(head[3], false)}, notes...)
+		notes = append([]string{textsanitize.Safe(head[3], false)}, notes...)
 	}
 	if footer.Note != "" {
 		notes = append(notes, footer.Note)
@@ -1204,7 +1204,7 @@ func vcsPath(path string) string {
 			path = unquoted
 		}
 	}
-	return diffrender.Safe(path, false)
+	return textsanitize.Safe(path, false)
 }
 
 // gitRenamePaths expands git's compact rename forms, `old => new` and
@@ -1484,7 +1484,7 @@ func gitStatusRows(lines []string) []activityui.ChangeRow {
 		note = strings.TrimSpace(note + " · clean")
 		note = strings.TrimPrefix(note, "· ")
 	}
-	return append(rows, activityui.ChangeRow{Footer: true, Label: diffrender.Safe(branch, false), Note: note})
+	return append(rows, activityui.ChangeRow{Footer: true, Label: textsanitize.Safe(branch, false), Note: note})
 }
 
 var svnStatusRow = regexp.MustCompile(`^([ ACDIMRX?!~])([ CM])[ L][ +][ SX][ KOTB][ C] (.+)$`)

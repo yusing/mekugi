@@ -3,6 +3,8 @@ package terminalui
 import (
 	"encoding/base64"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
 
 	// Source: internal/ui/activity/copy.go:1:508@[b5ba67e3] shared source presentation.
@@ -17,7 +19,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
-	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 // Source: codex-rs/tui/src/markdown_copy.rs:301:340@[75a714843] selection.
@@ -63,7 +64,7 @@ type CopySpan struct {
 }
 
 func copyInline(source string) CopyFragment {
-	source = diffrender.Safe(source, false)
+	source = textsanitize.Safe(source, false)
 	var f CopyFragment
 	var text strings.Builder
 	text.Grow(len(source))
@@ -491,7 +492,7 @@ func copyCode(source string, identity uint64) CopyFragment {
 			f.Tabs = append(f.Tabs, len(f.Text))
 			f.Text += "    "
 		}
-		f.Text += diffrender.Safe(part, false)
+		f.Text += textsanitize.Safe(part, false)
 	}
 	return f
 }
@@ -506,7 +507,7 @@ func CopyDecoration(row string) string {
 func MarkdownSource(text string) string {
 	parts := strings.Split(text, "\t")
 	for i := range parts {
-		parts[i] = diffrender.Safe(parts[i], false)
+		parts[i] = textsanitize.Safe(parts[i], false)
 	}
 	return strings.Join(parts, "\t")
 }

@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/libraries/terminalui"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	json "encoding/json/v2"
 	"strings"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/libraries/diffrender"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
@@ -416,7 +416,7 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	if b.alert {
 		color = activityui.Red
 	}
-	status := diffrender.Safe(b.status, false)
+	status := textsanitize.Safe(b.status, false)
 	if (b.busy || b.starting) && b.status == "Answering" && !b.alert && !b.started.IsZero() {
 		elapsed := max(time.Duration(0), u.now().Sub(b.started))
 		status = activityui.ReasoningShimmer("Answering", elapsed, u.view.painter.Colors) + terminalui.Dim + " · " + activityui.FormatDuration(elapsed) + terminalui.Reset
@@ -424,12 +424,12 @@ func (u *appServerUI) btwRows(width, height int) []string {
 	label := " /btw · " + status
 	rows := []string{ansi.Truncate(color+"╭─"+label+terminalui.Reset, width, "…")}
 	inner := max(1, width-2)
-	question := terminalui.Wrap(diffrender.Safe(b.question, false), inner, true)
+	question := terminalui.Wrap(textsanitize.Safe(b.question, false), inner, true)
 	for _, row := range question[:min(2, len(question))] {
 		rows = append(rows, ansi.Truncate(color+"│ "+terminalui.Reset+row, width, "…"))
 	}
 	if b.attachmentNotice != "" {
-		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+diffrender.Safe(b.attachmentNotice, false)+terminalui.Reset, width, "…"))
+		rows = append(rows, ansi.Truncate(activityui.Red+"│ "+textsanitize.Safe(b.attachmentNotice, false)+terminalui.Reset, width, "…"))
 	}
 	var answer []string
 	for index, item := range b.answer {
