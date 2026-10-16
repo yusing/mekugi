@@ -5,13 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 func diagnosticDebugOutput(t *testing.T) *debugOutput {
 	t.Helper()
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testHistory(), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,8 +1,11 @@
-package capturer
+// Source: capturer/ax_diagnostics_test.go@fdb889f8.
+package evidence
 
 import (
 	"context"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	"encoding/json/jsontext"
+	json "encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +16,7 @@ import (
 func TestAXFailureEvidenceAndExplicitExclusions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	for _, tc := range []struct{ thread, class string }{{"child", "invalid_arguments"}, {"other", "not_found"}, {"", "retained_file"}} {
-		observation, err := StartAXReadWithContext(path, tc.thread, "mcat", AXReadContext{CallID: "call-shell", ShellID: "shell-1"})
+		observation, err := new(Service).StartRead(path, tc.thread, "mcat", AXReadContext{CallID: "call-shell", ShellID: "shell-1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -21,7 +24,7 @@ func TestAXFailureEvidenceAndExplicitExclusions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	reads, err := ReadAXReads(t.Context(), path, "child")
+	reads, err := new(Service).ReadReads(t.Context(), path, "child")
 	if err != nil || reads.Failed != 1 || reads.OtherThreadStarted != 1 || reads.UnattributedStarted != 1 || reads.FailuresByClass["invalid_arguments"] != 1 {
 		t.Fatalf("%+v: %v", reads, err)
 	}
@@ -29,7 +32,7 @@ func TestAXFailureEvidenceAndExplicitExclusions(t *testing.T) {
 	if failure.CallID != "call-shell" || failure.ShellID != "shell-1" || failure.ID == "" || failure.ExitCode == nil || *failure.ExitCode != 1 {
 		t.Fatalf("lost correlation: %+v", failure)
 	}
-	empty, err := ReadAXReads(t.Context(), path, "")
+	empty, err := new(Service).ReadReads(t.Context(), path, "")
 	if err != nil || empty.State != "unavailable" || empty.Started != 0 || empty.OtherThreadStarted != 2 || empty.UnattributedStarted != 1 {
 		t.Fatalf("anonymous reads became attributed: %+v %v", empty, err)
 	}
@@ -42,14 +45,14 @@ func TestAXRejectsUnsupportedSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := axReadEvent{Schema: "mekugi.ax.read.v1", ID: "old", ThreadID: "thread", Tool: "mcat", Phase: "start", At: time.Now()}
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(event); err != nil {
+	encoder := jsontext.NewEncoder(file, jsonv1.DefaultOptionsV1())
+	if err := json.MarshalEncode(encoder, event, jsonv1.DefaultOptionsV1()); err != nil {
 		t.Fatal(err)
 	}
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reads, err := ReadAXReads(t.Context(), path, "thread")
+	reads, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err == nil || reads.State != "unavailable" {
 		t.Fatalf("accepted unsupported schema: %+v %v", reads, err)
 	}
@@ -57,7 +60,7 @@ func TestAXRejectsUnsupportedSchema(t *testing.T) {
 
 func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
-	observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
+	observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +71,7 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 	if strings.Contains(string(data), "private") {
 		t.Fatal("raw diagnostic leaked")
 	}
-	reads, err := ReadAXReads(t.Context(), path, "thread")
+	reads, err := new(Service).ReadReads(t.Context(), path, "thread")
 	if err != nil || reads.Incomplete != 1 || reads.Completed != 0 {
 		t.Fatalf("invalid diagnostic became completed: %+v %v", reads, err)
 	}
@@ -87,11 +90,11 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		encoder := json.NewEncoder(file)
-		_ = encoder.Encode(start)
-		_ = encoder.Encode(finish)
+		encoder := jsontext.NewEncoder(file, jsonv1.DefaultOptionsV1())
+		_ = json.MarshalEncode(encoder, start, jsonv1.DefaultOptionsV1())
+		_ = json.MarshalEncode(encoder, finish, jsonv1.DefaultOptionsV1())
 		_ = file.Close()
-		log, err := ReadAXReadLog(t.Context(), path)
+		log, err := new(Service).ReadLog(t.Context(), path)
 		if err == nil || len(log.Threads) != 0 {
 			t.Fatalf("accepted inconsistent evidence: %+v %v", finish, err)
 		}
@@ -101,7 +104,7 @@ func TestAXRejectsUnsafeDiagnosticAndMismatchedIdentity(t *testing.T) {
 func TestAXFailureDetailsBoundDoesNotDropCounts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "reads.jsonl")
 	for range 257 {
-		observation, err := StartAXReadWithContext(path, "thread", "mcat", AXReadContext{})
+		observation, err := new(Service).StartRead(path, "thread", "mcat", AXReadContext{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,7 +112,7 @@ func TestAXFailureDetailsBoundDoesNotDropCounts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	reads, err := ReadAXReads(context.Background(), path, "thread")
+	reads, err := new(Service).ReadReads(context.Background(), path, "thread")
 	if err != nil || reads.Failed != 257 || reads.FailuresByClass["unknown"] != 257 || len(reads.Failures) != 256 || reads.DroppedFailures != 1 {
 		t.Fatalf("counts truncated: %+v %v", reads, err)
 	}

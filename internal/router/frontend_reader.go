@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/contracts/command"
 )
 
 const codexThreadIDEnvironment = "CODEX_THREAD_ID"
@@ -48,13 +48,13 @@ func frontendExecutionFailure(execution command.Output, err error) string {
 func beginFrontendRead(manifest toolWorkerManifest, name string) func(*command.Output, error, bool, string) {
 	log := manifest.AXReadOutput
 	if log == "" {
-		log = os.Getenv(capturer.AXReadOutputEnvironment)
+		log = os.Getenv(evidence.AXReadOutputEnvironment)
 	}
-	observation, observeErr := capturer.StartAXReadWithContext(
+	observation, observeErr := manifest.agentMetrics.StartRead(
 		log,
 		os.Getenv(codexThreadIDEnvironment),
 		name,
-		capturer.AXReadContext{},
+		evidence.AXReadContext{},
 	)
 	var notices strings.Builder
 	if observeErr != nil {

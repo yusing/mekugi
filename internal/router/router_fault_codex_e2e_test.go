@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 type routerFaultCodexProvider struct {
@@ -261,7 +262,7 @@ func TestRouterTransformFaultNativeCodexE2E(t *testing.T) {
 		t.Fatalf("reopen failure store after native Codex exits: %v", err)
 	}
 	var inspected, diagnostic bytes.Buffer
-	status := RunSessionInspection(testHistory(), t.Context(), []string{
+	status := RunSessionInspection(testHistory(), new(evidence.Service), t.Context(), []string{
 		"--failures", "--replay-dir", replayDirectory, reference,
 	}, &inspected, &diagnostic)
 	if status != 0 {

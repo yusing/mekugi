@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 
 	"github.com/yusing/mekugi/contracts/command"
@@ -101,11 +103,11 @@ func RecognizeToolWorker(argv0 string) (*WorkerInvocation, error) {
 }
 
 // Run dispatches an authenticated frontend in its dedicated host process.
-func (invocation *WorkerInvocation) Run(service *history.Service, recovered *recovery.Service, commands []command.Contribution, ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
-	return runAuthenticatedToolWorker(service, recovered, commands, command.DedicatedHostProcess, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
+func (invocation *WorkerInvocation) Run(service *history.Service, recovered *recovery.Service, agentMetrics *evidence.Service, commands []command.Contribution, ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
+	return runAuthenticatedToolWorker(service, recovered, agentMetrics, commands, command.DedicatedHostProcess, ctx, invocation.directory, invocation.name, args, stdin, stdout, stderr)
 }
 
-func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Service, commands []command.Contribution, processScope command.ProcessScope,
+func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Service, agentMetrics *evidence.Service, commands []command.Contribution, processScope command.ProcessScope,
 	ctx context.Context,
 	directory, name string,
 	args []string,
@@ -124,7 +126,7 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 	if err != nil {
 		return fail(err)
 	}
-	manifest.history, manifest.recovery = service, recovered
+	manifest.history, manifest.recovery, manifest.agentMetrics = service, recovered, agentMetrics
 	if manifest.Version != 2 {
 		return fail(errors.New("tool worker manifest is inconsistent"))
 	}
@@ -203,7 +205,7 @@ func runAuthenticatedToolWorker(service *history.Service, recovered *recovery.Se
 	request := command.Request{Args: args, Stdin: stdin, ProcessScope: processScope,
 		Scope: scope.Retained{Directory: manifest.ReplayDirectory, Namespace: retainedIdentity.Namespace, Thread: retainedIdentity.Thread}}
 	var execution command.Output
-	if observeRead {
+	if observeRead && agentMetrics != nil {
 		execution, err = executeFrontendReader(ctx, manifest, name, request, run)
 	} else {
 		execution, err = run(ctx, request)

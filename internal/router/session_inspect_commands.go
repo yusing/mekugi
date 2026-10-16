@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 const axCarrierCallIDPrefix = "# mekugi:ax:call_id="
@@ -26,7 +26,7 @@ func inspectionAXCallID(encoded json.RawMessage) string {
 	metadata, body, newline := strings.Cut(command, "\n")
 	identity, marked := strings.CutPrefix(metadata, axCarrierCallIDPrefix)
 	if marked {
-		if !newline || !capturer.ValidAXIdentity(identity) {
+		if !newline || !evidence.ValidAXIdentity(identity) {
 			return ""
 		}
 		command = body

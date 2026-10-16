@@ -16,6 +16,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 func readDebugInstructionRows(ctx context.Context, path string) ([][]byte, error) {
@@ -121,7 +122,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testHistory(), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +191,7 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 	t.Parallel()
 	flags := newRouterFlags(io.Discard)
 	flags.debug = true
-	d, err := openDebugOutput(testHistory(), flags.debug, flags.captureOutput)
+	d, err := openDebugOutput(testHistory(), new(evidence.Service), flags.debug, flags.captureOutput)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,9 +16,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -68,18 +69,18 @@ type sessionAXInput struct {
 	Cwd        string
 	Models     []string
 	ThreadID   string
-	Completion capturer.AXCompletionAccumulator
-	Commands   capturer.AXCommandAccumulator
+	Completion evidence.AXCompletionAccumulator
+	Commands   evidence.AXCommandAccumulator
 }
 
 type sessionAXReport struct {
-	Commands       capturer.AXCommandMetrics    `json:"commands"`
+	Commands       evidence.AXCommandMetrics    `json:"commands"`
 	Scope          string                       `json:"scope"`
 	ThreadID       string                       `json:"thread_id"`
-	Edits          capturer.AXEditMetrics       `json:"edits"`
-	Reads          capturer.AXReadMetrics       `json:"reads"`
-	Completion     capturer.AXCompletionMetrics `json:"completion"`
-	Defects        capturer.AXDefectMetrics     `json:"defect_assessments"`
+	Edits          evidence.AXEditMetrics       `json:"edits"`
+	Reads          evidence.AXReadMetrics       `json:"reads"`
+	Completion     evidence.AXCompletionMetrics `json:"completion"`
+	Defects        evidence.AXDefectMetrics     `json:"defect_assessments"`
 	UnmatchedCalls uint64                       `json:"unmatched_calls"`
 }
 
@@ -105,7 +106,7 @@ type sessionInspectionCall struct {
 
 // RunSessionInspection is an offline, read-only entry point. It deliberately does
 // not open the writable replay store or install a router/runtime.
-func RunSessionInspection(service *history.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
+func RunSessionInspection(service *history.Service, agentMetrics *evidence.Service, ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("inspect-session", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	session := flags.String("session", "", "Codex rollout JSONL file")
@@ -139,6 +140,10 @@ func RunSessionInspection(service *history.Service, ctx context.Context, args []
 		fmt.Fprintln(stderr, "mekugi inspect-session:", err)
 		return 1
 	}
+	withAX := *ax || *readLog != "" || *defects != ""
+	if withAX && agentMetrics == nil {
+		return fail(errors.New("agent metrics are unavailable in this composition"))
+	}
 	fields := []string{"script", "report", "diagnostic", "output"}
 	if *debugDir != "" {
 		if flags.NArg() != 0 || *session != "" || *failures || *ax || *readLog != "" || *defects != "" ||
@@ -147,7 +152,7 @@ func RunSessionInspection(service *history.Service, ctx context.Context, args []
 			flags.Usage()
 			return 2
 		}
-		return inspectDebugSession(ctx, *debugDir, *requestID, *field, *offset, *limit, *textBytes, stdout, stderr)
+		return inspectDebugSession(agentMetrics, ctx, *debugDir, *requestID, *field, *offset, *limit, *textBytes, stdout, stderr)
 	}
 	if *requestID != "" {
 		flags.Usage()
@@ -198,7 +203,7 @@ func RunSessionInspection(service *history.Service, ctx context.Context, args []
 	// permits lock-free inspection without creating store.lock or changing modes.
 	store := &mekugiReplayStore{publication: service.Attach(*replayDir), directory: *replayDir}
 	var observations sessionAXInput
-	calls, err := readSessionInspection(ctx, *session, &observations)
+	calls, err := readSessionInspection(ctx, *session, &observations, agentMetrics != nil)
 	if err != nil {
 		return fail(err)
 	}
@@ -212,13 +217,12 @@ func RunSessionInspection(service *history.Service, ctx context.Context, args []
 	}
 	start := min(*offset, len(calls))
 	end := min(len(calls), start+*limit)
-	withAX := *ax || *readLog != "" || *defects != ""
 	inspected := calls[start:end]
 	selected := make(map[string]bool, len(inspected))
 	for _, call := range inspected {
 		selected[call.item.CallID] = true
 	}
-	var edits capturer.AXEditAccumulator
+	var edits evidence.AXEditAccumulator
 	editCalls := make(map[string]bool)
 	if withAX {
 		inspected = allCalls
@@ -306,11 +310,11 @@ func RunSessionInspection(service *history.Service, ctx context.Context, args []
 	}
 	if withAX {
 		result.AX.Edits = edits.Metrics
-		result.AX.Reads, err = capturer.ReadAXReads(ctx, *readLog, observations.ThreadID)
+		result.AX.Reads, err = agentMetrics.ReadReads(ctx, *readLog, observations.ThreadID)
 		if err != nil {
 			return fail(err)
 		}
-		result.AX.Defects, err = capturer.ReadAXDefects(*defects, editCalls)
+		result.AX.Defects, err = agentMetrics.ReadDefects(*defects, editCalls)
 		if err != nil {
 			return fail(err)
 		}
@@ -326,7 +330,7 @@ func RunSessionInspection(service *history.Service, ctx context.Context, args []
 	return 0
 }
 
-func readSessionInspection(ctx context.Context, path string, observations *sessionAXInput) ([]sessionInspectionCall, error) {
+func readSessionInspection(ctx context.Context, path string, observations *sessionAXInput, collectAX bool) ([]sessionInspectionCall, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -398,7 +402,7 @@ func readSessionInspection(ctx context.Context, path string, observations *sessi
 				workspace = metadata.Cwd
 			}
 		}
-		if envelope.Type == "event_msg" && observations != nil {
+		if collectAX && envelope.Type == "event_msg" && observations != nil {
 			var event struct {
 				Type          string          `json:"type"`
 				TurnID        string          `json:"turn_id"`

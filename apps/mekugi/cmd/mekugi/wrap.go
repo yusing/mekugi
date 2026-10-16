@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/backends/codex/shellhook"
@@ -25,7 +27,6 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 
-	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/internal/router"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -139,7 +140,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		fmt.Fprintf(os.Stderr, "  mekugi inspect-session --debug-dir %s --field diagnostic\n", shellsyntax.Quote(directory))
 	}()
 	go func() {
-		routerDone <- router.RunSession(frontends.History, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Guards, options, issues, func(session router.Session) {
+		routerDone <- router.RunSession(frontends.History, frontends.Recovery, frontends.Segments, frontends.Changes, frontends.Usage, frontends.AgentMetrics, ctx, frontends.Commands, frontends.InputProjections, frontends.Guidance, frontends.Naming, frontends.Guards, options, issues, func(session router.Session) {
 			ready <- session
 		}, func(paths []string) { debugPaths = paths })
 	}()
@@ -181,7 +182,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 		cmd.Env = append(cmd.Env, "CODEX_ROLLOUT_TRACE_ROOT="+session.NativeTraceDirectory)
 	}
 	if session.AXReadOutput != "" {
-		cmd.Env = append(cmd.Env, capturer.AXReadOutputEnvironment+"="+session.AXReadOutput)
+		cmd.Env = append(cmd.Env, evidence.AXReadOutputEnvironment+"="+session.AXReadOutput)
 	}
 	guards := session.Guards
 	if !appUI {

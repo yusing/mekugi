@@ -52,7 +52,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Inactive instruction-file loading | `modules/contextreset`; supplied-history decoding in `codexbinding`, bounded source collection in `guidance`; no production caller |
 | Projected frontend guidance | `modules/agentguidance/codexbinding` renders selected command descriptions and module-owned `guidance.md` contributions; `internal/router/tool_registry.go` authenticates and publishes the invocation snapshot. |
 | Inherited instruction cleanup and request-phase integration | `modules/agentguidance`; `internal/router/request_guidance.go`, `internal/router/instruction_cache_test.go`, `internal/router/stock_guidance_workflow_test.go`; recorded stock fixtures in `internal/router/testdata/instruction-cleanup/`, contract in `modules/agentguidance/SPEC.md` |
-| AX runtime evidence and offline measurements | `capturer/ax.go`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
+| AX runtime evidence and offline measurements | `modules/agentmetrics/evidence`; authenticated reader dispatch in `internal/router/tool_plugin_worker.go` |
 | Offline logical session inspection | `internal/router/session_inspect.go`, dispatched by `apps/mekugi/cmd/mekugi/main.go` |
 | Offline UI replay and profiling | `internal/router/session_ui_replay.go`; interface in `doc/spec/session_replay.md`, usage in `docs/contributing/development.md` |
 | Live session and offline replay performance profiling | `internal/router/profiling.go`, `internal/router/profiling_disabled.go`; diagnostic binary recipe in `Makefile` |

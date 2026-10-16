@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 )
 
@@ -24,7 +26,7 @@ func TestRunSessionReusesParsedConfigWithIndependentDebugOutputs(t *testing.T) {
 		var paths []string
 		var readLog string
 		// RunSession returns only after cancellation has joined its owned work.
-		err := RunSession(testHistory(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), newTestUsage(t), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
+		err := RunSession(testHistory(), testRecovery(), &segmentservice.Service{Reports: testReports()}, testChanges(), newTestUsage(t), new(evidence.Service), ctx, testCommands(), testInputProjections(), testGuidance(), testNaming(), testGuards(), options, nil, func(session Session) {
 			readLog = session.AXReadOutput
 			cancel()
 		}, func(artifacts []string) { paths = artifacts })

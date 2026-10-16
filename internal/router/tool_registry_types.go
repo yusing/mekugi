@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
+
 	"github.com/yusing/mekugi/backends/codex/binding"
 
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
@@ -33,6 +35,7 @@ type (
 	}
 
 	toolWorkerManifest struct {
+		agentMetrics    *evidence.Service
 		recovery        *recovery.Service
 		history         *history.Service
 		ReplayDirectory string             `json:"replay_directory,omitempty"`

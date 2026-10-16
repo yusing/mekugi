@@ -270,7 +270,7 @@ stream completion; unfinished tool input must not replace that cause with a tran
 Stream diagnostics retain a sanitized write-termination category and, when available,
 a numeric write-side WebSocket close code, separately from read termination.
 
-The AX report uses [REQ-AX-001](ax.md) calculations. At router shutdown it discovers
+The AX report uses the [agent-metrics contract](../../modules/agentmetrics/SPEC.md) calculations. At router shutdown it discovers
 local Codex rollout filenames for at most 256 observed thread identities under
 `$CODEX_HOME/sessions` and `archived_sessions`, or the default `~/.codex` location.
 Discovery is bounded to 100000 entries and five seconds. Filename suffixes select

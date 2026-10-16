@@ -17,18 +17,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/modules/agentmetrics/evidence"
 )
 
 type debugAXThread struct {
-	Reads    *capturer.AXReadMetrics `json:"reads,omitempty"`
+	Reads    *evidence.AXReadMetrics `json:"reads,omitempty"`
 	ThreadID string                  `json:"thread_id"`
 	State    string                  `json:"state"`
 	Report   *sessionAXReport        `json:"report,omitempty"`
 }
 
 func (d *debugOutput) observeAXThread(id string) {
-	if d == nil || id == "" {
+	if d == nil || d.agentMetrics == nil || id == "" {
 		return
 	}
 	d.mu.Lock()
@@ -44,9 +44,12 @@ func (d *debugOutput) observeAXThread(id string) {
 // identities remain separate from known router threads; they are not presumed
 // to be children or tests. Every supplied event is validated, including exclusions.
 func (d *debugOutput) writeAXReport() error {
+	if d.agentMetrics == nil {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	log, logErr := capturer.ReadAXReadLog(ctx, d.paths[4])
+	log, logErr := d.agentMetrics.ReadLog(ctx, d.axReadPath)
 	threads := slices.Sorted(maps.Keys(d.axThreads))
 	var logOnly []string
 	for id := range log.Threads {
@@ -67,10 +70,10 @@ func (d *debugOutput) writeAXReport() error {
 		Threads           []debugAXThread         `json:"threads"`
 		LogOnlyThreads    []debugAXThread         `json:"log_only_threads"`
 		DroppedLogThreads bool                    `json:"dropped_log_threads"`
-		UnattributedReads *capturer.AXReadMetrics `json:"unattributed_reads,omitempty"`
+		UnattributedReads *evidence.AXReadMetrics `json:"unattributed_reads,omitempty"`
 	}{
 		Schema: "mekugi.ax.debug.v2", Scope: "known router threads and separately labeled log-only evidence; whole-rollout evidence at shutdown",
-		ReadLog: d.paths[4], LogState: "observed", DroppedThreads: d.axDroppedThreads,
+		ReadLog: d.axReadPath, LogState: "observed", DroppedThreads: d.axDroppedThreads,
 		Threads: []debugAXThread{}, LogOnlyThreads: []debugAXThread{}, DroppedLogThreads: dropped,
 	}
 	if logErr != nil {
@@ -93,7 +96,7 @@ func (d *debugOutput) writeAXReport() error {
 			var stdout, stderr bytes.Buffer
 			// Reuse the one validated log snapshot rather than rescanning it
 			// for every thread (or accepting partial evidence on a later timeout).
-			code := RunSessionInspection(d.history, ctx, []string{"--session", paths[id][0], "--ax", "--limit", "1"}, &stdout, &stderr)
+			code := RunSessionInspection(d.history, d.agentMetrics, ctx, []string{"--session", paths[id][0], "--ax", "--limit", "1"}, &stdout, &stderr)
 			var inspection sessionInspection
 			if code != 0 || json.Unmarshal(stdout.Bytes(), &inspection) != nil || inspection.AX == nil {
 				entry.State = "inspection_failed"
@@ -115,7 +118,7 @@ func (d *debugOutput) writeAXReport() error {
 	for _, id := range logOnly {
 		report.LogOnlyThreads = append(report.LogOnlyThreads, inspect(id))
 	}
-	file, err := os.OpenFile(d.paths[5], os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	file, err := os.OpenFile(d.axReportPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
