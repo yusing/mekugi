@@ -29,6 +29,7 @@ import (
 
 	"github.com/yusing/mekugi/apps/mekugi/internal/composition"
 
+	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/router"
 
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
@@ -118,7 +119,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	issues := router.NewCriticalErrors(frontends.Notifications)
 	defer func() {
 		for _, message := range issues.Notices.Pending() {
-			fmt.Fprintln(os.Stderr, message)
+			fmt.Fprintln(os.Stderr, livediff.Safe(message, false))
 		}
 	}()
 	defer func() {

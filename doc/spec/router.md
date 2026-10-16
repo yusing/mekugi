@@ -99,7 +99,9 @@ Detailed operational logging requires `--debug`. The composed
 references independently of debugging. Startup and cleanup failures go to stderr
 outside the active UI. Critical request failures use the
 [notice contract](../../modules/notifications/SPEC.md); the launcher prints undelivered notices and
-repetition summaries after Codex exits. Metrics and sanitized capture are
+repetition summaries after Codex exits, stripping terminal control sequences while
+preserving readable text. Private diagnostic records retain complete details.
+Metrics and sanitized capture are
 separate from operational logging.
 `mekugi` mode also retains private durable replay state so resumed and forked conversations restore
 their original model-visible tools. This is correctness state, not an operational session log.
@@ -195,8 +197,8 @@ After a delivered `response.created`, a deterministic response-translation fault
 `response.failed` with error code `invalid_prompt`, unless a terminal has already been delivered
 or the downstream cannot be written. Its message carries the safe cause code and diagnostic
 reference and advises switching model, using passthrough, or relaunching with `--debug` and
-reporting the reference; retrying the unchanged request is not advised. The terminal itself
-delivers the notice. Repeated references in the same identified thread/turn are neither
+reporting the reference; retrying the unchanged request is not advised. Writing the
+protocol failure does not acknowledge user-visible notice delivery. Repeated references in the same identified thread/turn are neither
 re-injected nor counted again. Pre-stream retryable provider failures retain their retry behavior.
 
 Stream-end diagnostics identify the actual upstream transport separately from a synthetic
