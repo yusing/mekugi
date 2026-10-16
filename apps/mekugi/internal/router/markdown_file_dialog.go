@@ -17,6 +17,7 @@ import (
 
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 	"github.com/yusing/mekugi/libraries/sourceanalysis/sourcekind"
+	"github.com/yusing/mekugi/libraries/sourceanalysis/sourceparse"
 	activityui "github.com/yusing/mekugi/modules/activity/terminalview"
 )
 
@@ -123,11 +124,19 @@ func markdownFileLocation(path string) (base, location string, first, last int) 
 // envelope budget. Larger or binary files show a copyable read error.
 func readMarkdownFile(path string) ([]byte, error) {
 	const limit = 8 << 20
-	f, err := os.Open(path)
+	f, err := sourceparse.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
+	// The selected path may have been replaced before it was opened.
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("file is not a regular file")
+	}
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
 		return nil, err
