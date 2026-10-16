@@ -3,6 +3,9 @@ package router
 import (
 	"bytes"
 	"encoding/json/jsontext"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"io"
@@ -173,12 +176,12 @@ func frameAttachmentText(content string, header func(start, end, total int) stri
 
 // projectFileAttachments splits only complete versioned text parts. Malformed
 // lookalikes remain ordinary user text; non-user messages are never interpreted.
-func projectFileAttachments(request *parsedResponsesRequest) bool {
-	if !bytes.Contains(request.fields["input"], []byte("mekugi-file-attachments-v1")) {
+func projectFileAttachments(request *codexresponses.Request) bool {
+	if !bytes.Contains(request.Fields["input"], []byte("mekugi-file-attachments-v1")) {
 		return false
 	}
 	var items []map[string]jsontext.Value
-	if json.Unmarshal(request.fields["input"], &items) != nil {
+	if json.Unmarshal(request.Fields["input"], &items) != nil {
 		return false
 	}
 	var projected []map[string]jsontext.Value
@@ -267,7 +270,7 @@ func projectFileAttachments(request *parsedResponsesRequest) bool {
 	}
 	if changed {
 		input, _ := json.Marshal(projected)
-		request.setInput(input)
+		request.Fields["input"] = input
 	}
 	return changed
 }

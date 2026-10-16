@@ -4,12 +4,11 @@ import (
 	"bytes"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/module"
-	"github.com/yusing/mekugi/modules/outputdeduplication"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/outputdeduplication"
 
 	jsonv1 "encoding/json"
 
@@ -42,9 +41,9 @@ func duplicateTestInput(command, id, body string) []any {
 	}
 }
 
-func duplicateTestPrepare(t *testing.T, proxy *mekugiProxy, input []any, metadata codexTurnMetadata) *parsedResponsesRequest {
+func duplicateTestPrepare(t *testing.T, proxy *mekugiProxy, input []any, metadata codexTurnMetadata) *codexresponses.Request {
 	t.Helper()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": input, "tools": testExecResponsesTools(),
 	}))
 	if err != nil {
@@ -60,10 +59,10 @@ func duplicateTestPrepare(t *testing.T, proxy *mekugiProxy, input []any, metadat
 	return &request
 }
 
-func duplicateTestItems(t *testing.T, request *parsedResponsesRequest) []map[string]jsonv1.RawMessage {
+func duplicateTestItems(t *testing.T, request *codexresponses.Request) []map[string]jsonv1.RawMessage {
 	t.Helper()
 	var items []map[string]jsonv1.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		t.Fatal(err)
 	}
 	return items
@@ -90,12 +89,12 @@ func TestDuplicateOutputPreparedMatching(t *testing.T) {
 			if got := responses.StringField(items[1], "output"); got != duplicateTestHeader+"[O1]\n"+tc.before {
 				t.Fatal("source anchor or verbatim body changed")
 			}
-			if !sameJSONValue(request.originalFields["input"], responses.MustMarshalJSON(input)) {
+			if !responses.SameJSONValue(request.OriginalField("input"), responses.MustMarshalJSON(input)) {
 				t.Fatal("original host input changed")
 			}
-			projected := bytes.Clone(request.fields["input"])
+			projected := bytes.Clone(request.Fields["input"])
 			fresh := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
-			if !bytes.Equal(projected, fresh.fields["input"]) {
+			if !bytes.Equal(projected, fresh.Fields["input"]) {
 				t.Fatal("same original input projected differently")
 			}
 		})
@@ -115,8 +114,8 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		continuationTestOutput("", body),
 		map[string]any{"type": "function_call_output", "call_id": "image", "output": []any{map[string]any{"type": "input_image", "image_url": "data:image/png;base64,example"}}},
 	)
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
-	project := testInputProjections()[0].Prepare(request.fields["input"])
+	request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
+	project := testInputProjections()[0].Prepare(request.Fields["input"])
 	items := duplicateTestItems(t, request)
 	// Use the production append owner after the original boundary was recorded.
 	for _, at := range []int{1, 2, 3} {
@@ -126,8 +125,8 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		}
 		items[at]["output"] = appended
 	}
-	request.setInput(responses.MustMarshalJSON(items))
-	request.setInput(project(request.fields["input"]).Input)
+	request.Fields["input"] = responses.MustMarshalJSON(items)
+	request.Fields["input"] = project(request.Fields["input"]).Input
 	got := duplicateTestItems(t, request)
 	for _, at := range []int{1, 2, 3} {
 		texts := executionOutputTexts(got[at]["output"])
@@ -142,7 +141,7 @@ func TestDuplicateOutputHostPartsAndExclusions(t *testing.T) {
 		t.Fatalf("native header changed: %q", text)
 	}
 	for at := 4; at < len(got); at++ {
-		if !sameJSONValue(responses.MustMarshalJSON(got[at]), responses.MustMarshalJSON(items[at])) {
+		if !responses.SameJSONValue(responses.MustMarshalJSON(got[at]), responses.MustMarshalJSON(items[at])) {
 			t.Fatalf("excluded item %d changed", at)
 		}
 	}
@@ -215,7 +214,7 @@ func TestDuplicateOutputPreparedContinuationAndScope(t *testing.T) {
 func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	body := strings.Repeat("prefix command output ", 20) + "\n"
 	input := append(duplicateTestInput("cat file", "a", body), duplicateTestInput("cat file", "b", body)...)
-	project := func(input []any) *parsedResponsesRequest {
+	project := func(input []any) *codexresponses.Request {
 		proxy := newManagedMekugiProxy(t)
 		proxy.inputProjections = testInputProjections()
 		return duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
@@ -223,7 +222,7 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 	// The source must already have its anchor before the first repeat arrives.
 	first := project(input[:2])
 	var original []jsonv1.RawMessage
-	if err := json.Unmarshal(first.fields["input"], &original); err != nil {
+	if err := json.Unmarshal(first.Fields["input"], &original); err != nil {
 		t.Fatal(err)
 	}
 	state, err := (providerHistory{confirmed: true}).append(original)
@@ -238,11 +237,11 @@ func TestDuplicateOutputProviderPrefix(t *testing.T) {
 		t.Fatalf("repeated output identity used the wrong part boundary: %q", got)
 	}
 	exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
-	grown.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.fields)); err != nil {
+	grown.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.Fields)); err != nil {
 		t.Fatal(err)
 	}
-	if grown.cachedInput != len(original) || grown.rebaseInput {
+	if grown.CachedInput != len(original) || grown.RebaseInput {
 		t.Fatal("growing projection rebased a confirmed prefix")
 	}
 }
@@ -258,9 +257,9 @@ func TestDuplicateOutputSourceIDs(t *testing.T) {
 		continuationTestOutput("batch", duplicateTestHeader, b, c),
 		continuationTestOutput("repeat", a, b, c),
 	}
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
-	project := testInputProjections()[0].Prepare(request.fields["input"])
-	request.setInput(project(request.fields["input"]).Input)
+	request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
+	project := testInputProjections()[0].Prepare(request.Fields["input"])
+	request.Fields["input"] = project(request.Fields["input"]).Input
 	items := duplicateTestItems(t, request)
 	var parts []struct {
 		Text string `json:"text"`
@@ -294,10 +293,10 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 	input = append(input, duplicateTestInput("literal", "f", literal)...)
 	input = append(input, duplicateTestInput("literal again", "g", literal)...)
 	original := responses.MustMarshalJSON(input)
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": original}}
-	project := testInputProjections()[0].Prepare(request.fields["input"])
-	request.setInput(project(request.fields["input"]).Input)
-	first := bytes.Clone(request.fields["input"])
+	request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": original}}
+	project := testInputProjections()[0].Prepare(request.Fields["input"])
+	request.Fields["input"] = project(request.Fields["input"]).Input
+	first := bytes.Clone(request.Fields["input"])
 	items := duplicateTestItems(t, request)
 	if responses.StringField(items[7], "output") != responses.StringField(items[9], "output") || strings.Contains(responses.StringField(items[9], "output"), "combined") {
 		t.Fatal("new markers referenced a marker-only unit")
@@ -305,10 +304,10 @@ func TestDuplicateOutputMarkersPointToVerbatim(t *testing.T) {
 	if responses.StringField(items[11], "output") != duplicateTestHeader+"[O4]\n"+literal || responses.StringField(items[13], "output") != duplicateTestHeader+"[same as O4]\n" {
 		t.Fatal("literal host marker text did not remain a verbatim source")
 	}
-	request.setInput(original)
+	request.Fields["input"] = original
 	project = testInputProjections()[0].Prepare(original)
-	request.setInput(project(request.fields["input"]).Input)
-	if !bytes.Equal(first, request.fields["input"]) {
+	request.Fields["input"] = project(request.Fields["input"]).Input
+	if !bytes.Equal(first, request.Fields["input"]) {
 		t.Fatal("same original input projected differently")
 	}
 }
@@ -344,9 +343,9 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 				if enabled {
 					proxy.inputProjections = testInputProjections()
 				}
-				wire := func(input []any) *parsedResponsesRequest {
+				wire := func(input []any) *codexresponses.Request {
 					request := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{})
-					if fresh := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{}); !bytes.Equal(request.fields["input"], fresh.fields["input"]) {
+					if fresh := duplicateTestPrepare(t, proxy, input, codexTurnMetadata{}); !bytes.Equal(request.Fields["input"], fresh.Fields["input"]) {
 						t.Fatal("same original attachment input projected differently")
 					}
 					attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}, mekugiCalls: proxy}, t.Context(), t.Context(), *request, http.Header{}, "")
@@ -372,15 +371,15 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 					want = header + "[same as O1]\n"
 				}
 				if texts(items[0]) != source || texts(items[1]) != body || texts(items[2]) != want {
-					t.Fatalf("wire content changed incorrectly: %s", request.fields["input"])
+					t.Fatalf("wire content changed incorrectly: %s", request.Fields["input"])
 				}
-				if !sameJSONValue(request.originalFields["input"], responses.MustMarshalJSON(input)) {
+				if !responses.SameJSONValue(request.OriginalField("input"), responses.MustMarshalJSON(input)) {
 					t.Fatal("original snapshot changed")
 				}
 				if !enabled || tc.name != "skill snapshot" {
 					continue
 				}
-				first := request.fields["input"]
+				first := request.Fields["input"]
 				var prefix []jsonv1.RawMessage
 				if err := json.Unmarshal(first, &prefix); err != nil {
 					t.Fatal(err)
@@ -394,11 +393,11 @@ func TestDuplicateOutputAttachmentsAndWirePrefix(t *testing.T) {
 					t.Fatal("third snapshot referenced a generated marker")
 				}
 				exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
-				grown.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-				if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.fields)); err != nil {
+				grown.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+				if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.Fields)); err != nil {
 					t.Fatal(err)
 				}
-				if grown.cachedInput != len(prefix) || grown.rebaseInput {
+				if grown.CachedInput != len(prefix) || grown.RebaseInput {
 					t.Fatal("attachment projection rewrote the confirmed prefix")
 				}
 			}
@@ -424,19 +423,19 @@ func TestDuplicateOutputAttachmentEligibility(t *testing.T) {
 		user([]any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{frame})}}),
 	}
 	input = append(input, duplicateTestInput("read file", "output", body)...)
-	request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
-	project := testInputProjections()[0].Prepare(request.fields["input"])
-	request.setInput(project(request.fields["input"]).Input)
+	request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON(input)}}
+	project := testInputProjections()[0].Prepare(request.Fields["input"])
+	request.Fields["input"] = project(request.Fields["input"]).Input
 	items := duplicateTestItems(t, request)
 	for at := range 5 {
-		if !sameJSONValue(responses.MustMarshalJSON(items[at]), responses.MustMarshalJSON(input[at])) {
+		if !responses.SameJSONValue(responses.MustMarshalJSON(items[at]), responses.MustMarshalJSON(input[at])) {
 			t.Fatalf("ineligible item %d changed", at)
 		}
 	}
 	header, _, _ := strings.Cut(frame, "\n")
 	header += "\n"
 	source := user([]any{map[string]any{"type": "input_text", "text": attachments.Encode([]string{header + "[O1]\n" + body})}})
-	if !sameJSONValue(responses.MustMarshalJSON(items[5]), responses.MustMarshalJSON(source)) {
+	if !responses.SameJSONValue(responses.MustMarshalJSON(items[5]), responses.MustMarshalJSON(source)) {
 		t.Fatal("eligible attachment source lost its anchor or verbatim body")
 	}
 	if got := responses.StringField(items[7], "output"); got != duplicateTestHeader+"[same as O1]\n" {
@@ -473,7 +472,7 @@ func TestDuplicateOutputAttachmentDeliveredShape(t *testing.T) {
 		_, array := content.([]any)
 		supported := array && len(content.([]any)) == 2
 		if strings.Contains(responses.StringField(items[len(items)-1], "output"), "[same as") != supported {
-			t.Fatalf("wrong source eligibility for %T: %s", content, attempt.request.fields["input"])
+			t.Fatalf("wrong source eligibility for %T: %s", content, attempt.request.Fields["input"])
 		}
 		if supported {
 			var parts []struct {
@@ -496,13 +495,13 @@ func TestDuplicateOutputSummary(t *testing.T) {
 	}
 	input := append(duplicateTestInput("a", "a", body), duplicateTestInput("b", "b", body)...)
 	input = append(input, duplicateTestInput("c", "c", body+"new line\n")...)
-	request, err := parseResponsesRequest(responses.MustMarshalJSON(map[string]any{"input": input}))
+	request, err := codexresponses.ParseRequest(responses.MustMarshalJSON(map[string]any{"input": input}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	project := testInputProjections()[0].Prepare(request.fields["input"])
-	result := project(request.fields["input"])
-	request.setInput(result.Input)
+	project := testInputProjections()[0].Prepare(request.Fields["input"])
+	result := project(request.Fields["input"])
+	request.Fields["input"] = result.Input
 	summary := result.Receipt
 	if summary.OutputRepetitions != 2 || summary.RepeatedCalls["b"] != "repeated" || summary.RepeatedCalls["c"] != "20 lines repeated" {
 		t.Fatalf("summary = %+v", summary)

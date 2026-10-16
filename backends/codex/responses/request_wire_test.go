@@ -1,8 +1,9 @@
-package router
+package responses
 
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -14,11 +15,11 @@ func TestRequestWireBodyPreservesUnchangedBytes(t *testing.T) {
 		`{"model":"first","model":"last","input": "<a>"}`,
 		" { } \n",
 	} {
-		request, err := parseResponsesRequest([]byte(body))
+		request, err := ParseRequest([]byte(body))
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := request.wireBody(request.fields)
+		got, err := request.WireBody(request.Fields)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -30,13 +31,13 @@ func TestRequestWireBodyPreservesUnchangedBytes(t *testing.T) {
 
 func TestRequestWireBodyReplacesOnlyProjectedFields(t *testing.T) {
 	body := ` { "model":"first", "model" : "last", "input" : "<unchanged>&\u0061", "stream": false } `
-	request, err := parseResponsesRequest([]byte(body))
+	request, err := ParseRequest([]byte(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.fields["model"] = json.RawMessage(`"new"`)
-	request.fields["instructions"] = json.RawMessage(`"<native>&"`)
-	got, err := request.wireBody(request.fields)
+	request.Fields["model"] = json.RawMessage(`"new"`)
+	request.Fields["instructions"] = json.RawMessage(`"<native>&"`)
+	got, err := request.WireBody(request.Fields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,36 +49,27 @@ func TestRequestWireBodyReplacesOnlyProjectedFields(t *testing.T) {
 		t.Fatal("original request mutated")
 	}
 	for _, empty := range []string{"{}", " { \n } "} {
-		r, err := parseResponsesRequest([]byte(empty))
+		r, err := ParseRequest([]byte(empty))
 		if err != nil {
 			t.Fatal(err)
 		}
-		r.fields["model"] = json.RawMessage(`"new"`)
-		encoded, err := r.wireBody(r.fields)
-		if err != nil || !json.Valid(encoded) {
+		r.Fields["model"] = json.RawMessage(`"new"`)
+		encoded, err := r.WireBody(r.Fields)
+		want := strings.Replace(empty, "}", `"model":"new"}`, 1)
+		if err != nil || string(encoded) != want {
 			t.Fatalf("added field: %s, %v", encoded, err)
 		}
 	}
 }
 
-func TestProtocolJSONDoesNotEscapeHTML(t *testing.T) {
-	got, err := responses.MarshalJSON(map[string]any{"text": "<tag>&", "nested": map[string]string{"text": "<&>"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(got, []byte(`\u00`)) || !bytes.Contains(got, []byte(`<tag>&`)) {
-		t.Fatalf("HTML escaped: %s", got)
-	}
-}
-
 func TestRequestWirePreservesSemanticallyUnchangedProjection(t *testing.T) {
 	body := []byte(` { "input": [ { "content":"<>&", "role" : "user" } ], "instructions":"native" } `)
-	request, err := parseResponsesRequest(body)
+	request, err := ParseRequest(body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.fields["input"] = json.RawMessage(`[{"role":"user","content":"\u003c\u003e\u0026"}]`)
-	got, err := request.wireBody(request.fields)
+	request.Fields["input"] = json.RawMessage(`[{"role":"user","content":"\u003c\u003e\u0026"}]`)
+	got, err := request.WireBody(request.Fields)
 	if err != nil || !bytes.Equal(got, body) {
 		t.Fatalf("unchanged projected value rewritten: %s, %v", got, err)
 	}
@@ -85,11 +77,11 @@ func TestRequestWirePreservesSemanticallyUnchangedProjection(t *testing.T) {
 
 func TestPromptCacheKeyRejectsUnsafeRoutingValues(t *testing.T) {
 	for _, key := range []string{" surrounding ", "line\nbreak", "line\rbreak", "control\x01", "delete\x7f"} {
-		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "model", "prompt_cache_key": key}))
+		request, err := ParseRequest(responses.MustMarshalJSON(map[string]any{"model": "model", "prompt_cache_key": key}))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if request.promptCacheKey() != "" {
+		if request.PromptCacheKey() != "" {
 			t.Fatal("unsafe prompt cache key suppressed the valid session fallback")
 		}
 	}

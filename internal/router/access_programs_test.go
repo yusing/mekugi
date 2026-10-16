@@ -14,9 +14,9 @@ func TestRequestCyberAccessOptOut(t *testing.T) {
 			t.Run(model+"/"+raw, func(t *testing.T) {
 				request := modelTestRequest(t, model)
 				if raw != "" {
-					request.fields["access_programs"] = []byte(raw)
+					request.Fields["access_programs"] = []byte(raw)
 				}
-				input := bytes.Clone(request.fields["input"])
+				input := bytes.Clone(request.Fields["input"])
 				attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}}, t.Context(), t.Context(), request, http.Header{}, "")
 				if err := attempt.prepareWire(); err != nil {
 					t.Fatal(err)

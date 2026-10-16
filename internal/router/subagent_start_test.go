@@ -3,10 +3,12 @@ package router
 import (
 	"strings"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestSubagentStartHasOnlyObservedModelHeader(t *testing.T) {
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-effective", "reasoning": map[string]any{"effort": "high"}, "service_tier": "priority",
 		"input": []any{nativeAssignmentTestMessage("/root/child", "NEW_TASK", "Private assignment body")},
 	}))

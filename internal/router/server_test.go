@@ -64,7 +64,7 @@ func serverHTTPResponse(body string) *http.Response {
 	}
 }
 
-func serverRequest(t *testing.T, mutate func(map[string]any)) parsedResponsesRequest {
+func serverRequest(t *testing.T, mutate func(map[string]any)) codexresponses.Request {
 	t.Helper()
 	request := map[string]any{
 		"model":     "gpt-test",
@@ -79,7 +79,7 @@ func serverRequest(t *testing.T, mutate func(map[string]any)) parsedResponsesReq
 	if mutate != nil {
 		mutate(request)
 	}
-	parsed, err := parseResponsesRequest(mustTestJSON(t, request))
+	parsed, err := codexresponses.ParseRequest(mustTestJSON(t, request))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestExecuteRequestDoesNotRequireWorkspaceMetadata(t *testing.T) {
 
 func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	repeated := strings.Repeat("exact compaction text with a reserved !V prefix and repeated content; ", 20)
-	parsed, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	parsed, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model":           "gpt-test",
 		"access_programs": map[string]string{"cyber": "standard"},
 		"input": []any{
@@ -207,7 +207,7 @@ func TestExecuteRequestForwardsCompactionWithoutRouterRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	originalBody, err := json.Marshal(parsed.fields)
+	originalBody, err := json.Marshal(parsed.Fields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestExecuteRequestPassesThroughOriginalRequestAndRecordsUsage(t *testing.T)
 		request["prompt_cache_key"] = "control-cache"
 		request["access_programs"] = map[string]string{"cyber": "standard"}
 	})
-	originalBody, err := json.Marshal(parsed.fields)
+	originalBody, err := json.Marshal(parsed.Fields)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1408,7 +1408,7 @@ func TestExecuteRequestUnsafeCacheKeyRetainsSessionAffinity(t *testing.T) {
 			request["prompt_cache_key"] = key
 			request["access_programs"] = map[string]string{"cyber": "standard"}
 		})
-		original := bytes.Clone(parsed.originalBody)
+		original := bytes.Clone(requestTestBody(t, parsed))
 		provider := &serverFakeProvider{results: []serverForwardResult{{response: serverHTTPResponse(`{"status":"completed","output":[]}`)}}}
 		if err := executeRequest(t.Context(), t.Context(), parsed, http.Header{}, "stable-session", provider, io.Discard, nil, nil); err != nil {
 			t.Fatal(err)
@@ -1420,4 +1420,13 @@ func TestExecuteRequestUnsafeCacheKeyRetainsSessionAffinity(t *testing.T) {
 			t.Fatal("cache routing fallback rewrote client request")
 		}
 	}
+}
+
+func requestTestBody(t *testing.T, request codexresponses.Request) []byte {
+	t.Helper()
+	body, err := request.WireBody(request.Fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
 }

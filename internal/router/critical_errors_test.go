@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func queueCritical(c *CriticalErrors, session string) {
@@ -153,7 +154,7 @@ func TestInvalidNativeCatalogIsBadRequestBeforeForwarding(t *testing.T) {
 		proxy := newManagedMekugiProxy(t)
 		provider := &serverFakeProvider{}
 		parsed := serverRequest(t, func(fields map[string]any) { fields["input"] = []any{}; fields["tools"] = tools })
-		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(parsed.originalBody)))
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(requestTestBody(t, parsed))))
 		request.Header = serverMetadataHeaders(t, "turn", map[string]json.RawMessage{t.TempDir(): nil})
 		request.Header.Set(sessionIDHeader, "one")
 		output := httptest.NewRecorder()
@@ -195,7 +196,7 @@ func TestForwardFailureDiagnostics(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = debug.close() })
 			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
-			request, err := parseResponsesRequest(mustTestJSON(t, titleRequestFields()))
+			request, err := codexresponses.ParseRequest(mustTestJSON(t, titleRequestFields()))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -265,7 +266,7 @@ func TestCriticalSynthesizedDiagnosticCodes(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = debug.close() })
 			ctx := context.WithValue(t.Context(), debugContextKey{}, debug)
-			request, err := parseResponsesRequest(mustTestJSON(t, titleRequestFields()))
+			request, err := codexresponses.ParseRequest(mustTestJSON(t, titleRequestFields()))
 			if err != nil {
 				t.Fatal(err)
 			}

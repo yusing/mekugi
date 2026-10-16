@@ -16,26 +16,25 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yusing/mekugi/providers/openai"
-
-	"github.com/yusing/mekugi/libraries/httptransport"
-
-	"github.com/yusing/mekugi/providers/grok"
-	"github.com/yusing/mekugi/providers/opencode"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/capturer"
 	"github.com/yusing/mekugi/contracts/command"
+	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/libraries/persistence"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
+	"github.com/yusing/mekugi/providers/grok"
+	"github.com/yusing/mekugi/providers/openai"
+	"github.com/yusing/mekugi/providers/opencode"
+
+	"github.com/yusing/mekugi/backends/codex/shellapproval"
 	segmentservice "github.com/yusing/mekugi/modules/commandsegments/segments"
 	"github.com/yusing/mekugi/modules/outputrecovery/recovery"
 	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	// Source: main.go:20:551 HTTP lifecycle and Responses proxy execution.
-	"github.com/yusing/mekugi/backends/codex/shellapproval"
+
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
@@ -538,7 +537,7 @@ func responsesHandler(
 			http.Error(trackedWriter, "responses request body is empty", http.StatusBadRequest)
 			return
 		}
-		parsedRequest, err := parseResponsesRequest(body)
+		parsedRequest, err := codexresponses.ParseRequest(body)
 		if err != nil {
 			http.Error(trackedWriter, err.Error(), http.StatusBadRequest)
 			return

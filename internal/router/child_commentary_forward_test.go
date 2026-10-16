@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestCollaborationCallsPassThroughWithoutCommentary(t *testing.T) {
@@ -38,11 +40,11 @@ func TestCollaborationCallsPassThroughWithoutCommentary(t *testing.T) {
 				if err := json.Unmarshal(output, &response); err != nil || len(response.Output) != 1 || !bytes.Equal(response.Output[0], original) {
 					t.Fatalf("collaboration JSON changed: %s, %v", output, err)
 				}
-				request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call})}}
+				request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call})}}
 				if err := proxy.reconcileInputPrefix(request, transform.historySessionID); err != nil {
 					t.Fatal(err)
 				}
-				if !bytes.Equal(request.fields["input"], mustTestJSON(t, []any{call})) {
+				if !bytes.Equal(request.Fields["input"], mustTestJSON(t, []any{call})) {
 					t.Fatal("collaboration replay changed")
 				}
 			})

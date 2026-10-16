@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -47,12 +48,12 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 				map[string]any{"type": "custom_tool_call_output", "call_id": "rejected", "output": output},
 			})
 			original := bytes.Clone(input)
-			request := &parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": input}}
+			request := &codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": input}}
 			for range 2 {
 				proxy.observeCodeModeFailures(thread, "exec", request, nil)
 				u.applyObservedActivity()
 			}
-			if !bytes.Equal(original, request.fields["input"]) {
+			if !bytes.Equal(original, request.Fields["input"]) {
 				t.Fatal("stock host evidence changed")
 			}
 			full := "exec script failed: " + detail

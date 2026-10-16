@@ -3,9 +3,9 @@ package router
 import (
 	"context"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	jsonv1 "encoding/json"
 	"encoding/json/jsontext"
@@ -20,14 +20,14 @@ import (
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
-func projectedEditOutput(t *testing.T, request *parsedResponsesRequest, callID string) []map[string]any {
+func projectedEditOutput(t *testing.T, request *codexresponses.Request, callID string) []map[string]any {
 	t.Helper()
 	var items []struct {
 		CallID string         `json:"call_id"`
 		Type   string         `json:"type"`
 		Output jsontext.Value `json:"output"`
 	}
-	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range items {
@@ -48,7 +48,7 @@ func projectedEditOutput(t *testing.T, request *parsedResponsesRequest, callID s
 	return nil
 }
 
-func assertEditNotice(t *testing.T, ctx context.Context, proxy *mekugiProxy, workspace string, request *parsedResponsesRequest, outputCall, recordCall, original, filename string, wantNotice bool) {
+func assertEditNotice(t *testing.T, ctx context.Context, proxy *mekugiProxy, workspace string, request *codexresponses.Request, outputCall, recordCall, original, filename string, wantNotice bool) {
 	t.Helper()
 	parts := projectedEditOutput(t, request, outputCall)
 	if len(parts) == 0 || parts[0]["type"] != "input_text" || parts[0]["text"] != original {
@@ -93,7 +93,7 @@ func TestAgentEditNoticeNativePatchProjectionAndReplay(t *testing.T) {
 		map[string]any{"type": "custom_tool_call", "id": "patch-item", "call_id": "patch-call", "name": applyPatchToolName, "input": patch, "status": "completed"},
 		map[string]any{"type": "custom_tool_call_output", "call_id": "patch-call", "output": original},
 	}
-	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
 	for range 2 {
 		if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 			t.Fatal(err)
@@ -125,7 +125,7 @@ func TestAgentEditNoticeShellProjection(t *testing.T) {
 				map[string]any{"type": "function_call", "id": "shell-call-item", "call_id": "shell-call", "name": nativeExecCommandToolName, "arguments": arguments},
 				map[string]any{"type": "function_call_output", "call_id": "shell-call", "output": original},
 			}
-			request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
+			request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
 			if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 				t.Fatal(err)
 			}
@@ -154,7 +154,7 @@ func TestAgentEditNoticeCodeModeStructuredOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := "Script completed\nWall time 0.1 seconds\nOutput:\n"
-	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
 		"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{map[string]any{"type": "input_text", "text": original}},
 	}})}}
 	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
@@ -179,7 +179,7 @@ func TestAgentEditNoticeShellContinuation(t *testing.T) {
 		map[string]any{"type": "function_call", "id": "shell-call-item", "call_id": "shell-call", "name": nativeExecCommandToolName, "arguments": arguments},
 		map[string]any{"type": "function_call_output", "call_id": "shell-call", "output": running},
 	}
-	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
 	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestAgentEditNoticeShellContinuation(t *testing.T) {
 		map[string]any{"type": "function_call", "call_id": "stdin-call", "name": "write_stdin", "arguments": `{"session_id":9,"chars":""}`},
 		map[string]any{"type": "function_call_output", "call_id": "stdin-call", "output": completed},
 	)
-	request = parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
+	request = codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
 	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 		t.Fatal(err)
 	}

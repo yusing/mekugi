@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -20,7 +21,7 @@ func TestDeprecatedTerraRoutesToSol(t *testing.T) {
 	if err := attempt.prepare(); err != nil {
 		t.Fatal(err)
 	}
-	if got := attempt.request.modelDescription(); got != "gpt-6-sol medium" {
+	if got := strings.TrimSpace(attempt.request.Model() + " " + attempt.request.ReasoningEffort()); got != "gpt-6-sol medium" {
 		t.Fatalf("route=%q", got)
 	}
 }
@@ -30,7 +31,7 @@ func TestDeprecatedTerraRoutesToSol(t *testing.T) {
 func executeRequest(
 	ctx context.Context,
 	executionCtx context.Context,
-	request parsedResponsesRequest,
+	request codexresponses.Request,
 	headers http.Header,
 	sessionID string,
 	provider responseProvider,
@@ -52,9 +53,9 @@ const (
 	threadSpawnSubagentKind = "thread_spawn"
 )
 
-func modelTestRequest(t *testing.T, model string) parsedResponsesRequest {
+func modelTestRequest(t *testing.T, model string) codexresponses.Request {
 	t.Helper()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model":     model,
 		"reasoning": map[string]any{"effort": "medium", "summary": "auto"},
 		"input":     []any{map[string]any{"type": "message", "role": "user", "content": "keep exact history"}},
@@ -71,7 +72,7 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 			for _, stream := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/child=%t/stream=%t", model, child, stream), func(t *testing.T) {
 					request := modelTestRequest(t, model)
-					request.fields["stream"] = mustTestJSON(t, stream)
+					request.Fields["stream"] = mustTestJSON(t, stream)
 					headers := serverMetadataHeaders(t, "turn", nil)
 					if child {
 						headers.Set(codexresponses.SubagentHeader, threadSpawnSubagent)
@@ -90,7 +91,7 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 					}
 					handler := responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, nil)
 					for range 3 {
-						req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
+						req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 						req.Header = headers.Clone()
 						output := httptest.NewRecorder()
 						handler(output, req)
@@ -102,16 +103,16 @@ func TestResponsesPreserveConfiguredModelAndReasoning(t *testing.T) {
 						t.Fatalf("provider requests=%d want=3", len(provider.forwarded))
 					}
 					for _, body := range provider.forwarded {
-						forwarded, err := parseResponsesRequest(body)
+						forwarded, err := codexresponses.ParseRequest(body)
 						if err != nil {
 							t.Fatal(err)
 						}
-						if forwarded.model() != model {
-							t.Fatalf("model=%q want=%q", forwarded.model(), model)
+						if forwarded.Model() != model {
+							t.Fatalf("model=%q want=%q", forwarded.Model(), model)
 						}
 						for _, key := range []string{"reasoning", "input"} {
-							if !bytes.Equal(forwarded.fields[key], request.fields[key]) {
-								t.Fatalf("%s changed: %s", key, forwarded.fields[key])
+							if !bytes.Equal(forwarded.Fields[key], request.Fields[key]) {
+								t.Fatalf("%s changed: %s", key, forwarded.Fields[key])
 							}
 						}
 					}

@@ -76,11 +76,11 @@ func TestGrokDedicatedSpawnGuidance(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, model := range grokModels {
-		if !bytes.Contains(request.fields["tools"], []byte("`"+model+"`")) {
+		if !bytes.Contains(request.Fields["tools"], []byte("`"+model+"`")) {
 			t.Fatalf("dedicated Grok model missing from spawn guidance: %s", model)
 		}
 	}
-	if bytes.Contains(request.fields["tools"], []byte("grok:")) {
+	if bytes.Contains(request.Fields["tools"], []byte("grok:")) {
 		t.Fatal("dedicated Grok spawn guidance advertises namespaced models")
 	}
 }

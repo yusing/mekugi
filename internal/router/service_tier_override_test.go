@@ -87,11 +87,11 @@ func TestUISnapshotNativeConfiguredServiceTier(t *testing.T) {
 			if err := executor.execute(t.Context(), t.Context(), request, serverMetadataHeaders(t, "turn", nil), "tier"); err != nil {
 				t.Fatal(err)
 			}
-			forwarded, err := parseResponsesRequest(provider.forwarded[0])
+			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := responses.StringField(forwarded.fields, "service_tier"); got != tc.want {
+			if got := responses.StringField(forwarded.Fields, "service_tier"); got != tc.want {
 				t.Fatalf("provider tier=%s, display=%s", got, tc.want)
 			}
 		})
@@ -244,11 +244,11 @@ func TestServiceTierPickerSelectionUpdatesEffectiveTier(t *testing.T) {
 			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
-			forwarded, err := parseResponsesRequest(provider.forwarded[0])
+			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := responses.StringField(forwarded.fields, "service_tier"); got != want {
+			if got := responses.StringField(forwarded.Fields, "service_tier"); got != want {
 				t.Fatalf("provider tier=%s want=%s", got, want)
 			}
 		})
@@ -313,14 +313,14 @@ func TestServiceTierOverrideAcrossTransports(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer conn.CloseNow()
-				request.fields["type"] = responses.MustMarshalJSON("response.create")
-				socketWrite(t, ctx, conn, request.fields)
+				request.Fields["type"] = responses.MustMarshalJSON("response.create")
+				socketWrite(t, ctx, conn, request.Fields)
 				event := socketRead(t, ctx, conn)
 				if responses.StringField(event, "type") != "response.completed" {
 					t.Fatalf("event=%s", event)
 				}
 			} else {
-				req := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
+				req := httptest.NewRequest("POST", "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 				req.Header = codexAuthHeaders()
 				recorder := httptest.NewRecorder()
 				responsesHandler(ctx, 10*time.Second, client, nil, nil)(recorder, req)
@@ -351,7 +351,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if err := executor.execute(t.Context(), t.Context(), request, headers, "tier"); err != nil {
 				t.Fatal(err)
 			}
-			forwarded, err := parseResponsesRequest(provider.forwarded[0])
+			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -359,7 +359,7 @@ func TestServiceTierOverrideUsesEffectiveModel(t *testing.T) {
 			if model == "gpt-5.6-terra" {
 				wantTier, wantModel = "priority", "gpt-6-sol"
 			}
-			if got := responses.StringField(forwarded.fields, "service_tier"); got != wantTier {
+			if got := responses.StringField(forwarded.Fields, "service_tier"); got != wantTier {
 				t.Fatalf("tier=%s want=%s", got, wantTier)
 			}
 			start := nativeSubagentStart(&forwarded)
@@ -446,11 +446,11 @@ func TestServiceTierChildRequestAndRootNotice(t *testing.T) {
 	if len(provider.forwarded) != 1 {
 		t.Fatalf("forwarded=%d", len(provider.forwarded))
 	}
-	forwarded, err := parseResponsesRequest(provider.forwarded[0])
+	forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := responses.StringField(forwarded.fields, "service_tier"); got != "priority" {
+	if got := responses.StringField(forwarded.Fields, "service_tier"); got != "priority" {
 		t.Fatalf("provider tier=%s want=priority", got)
 	}
 	entries := proxy.activity.takeNativeActivity("root")
@@ -474,7 +474,7 @@ func TestServiceTierRequestAliases(t *testing.T) {
 			if err := executor.execute(t.Context(), t.Context(), request, http.Header{}, "alias"); err != nil {
 				t.Fatal(err)
 			}
-			forwarded, err := parseResponsesRequest(provider.forwarded[0])
+			forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -482,7 +482,7 @@ func TestServiceTierRequestAliases(t *testing.T) {
 			if tier == "fast" {
 				want = "priority"
 			}
-			if got := responses.StringField(forwarded.fields, "service_tier"); got != want {
+			if got := responses.StringField(forwarded.Fields, "service_tier"); got != want {
 				t.Fatalf("wire tier=%q want=%q", got, want)
 			}
 		})

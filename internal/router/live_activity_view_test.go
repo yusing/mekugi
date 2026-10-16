@@ -6,11 +6,15 @@ import (
 	"testing"
 	"time"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
+
 	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 )
 
@@ -153,7 +157,7 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 }
 
 func TestLiveActivityRendersSpawnAssignment(t *testing.T) {
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-effective", "input": []any{nativeAssignmentTestMessage("/root/explorer", "NEW_TASK", "Inspect parser.\n\n- Preserve behavior.")},
 	}))
 	if err != nil {

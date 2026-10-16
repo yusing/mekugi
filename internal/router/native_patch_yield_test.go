@@ -1,6 +1,7 @@
 package router
 
 import (
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
@@ -58,7 +59,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 	}
 	reconcile := func(items []any) {
 		t.Helper()
-		request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
+		request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, items)}}
 		if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +108,7 @@ func testCompletedPatchBeforeYieldedCommand(t *testing.T, exit int) {
 
 	secondCall := codeCall("second-cell", secondSource)
 	// Each model response has its own transform and history commit.
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, items...),
 		"tools": []any{map[string]any{"type": "function", "name": "lookup"}}, "tool_choice": "auto",
 	}))

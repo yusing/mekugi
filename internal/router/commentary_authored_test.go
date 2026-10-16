@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -18,14 +19,14 @@ func TestFunctionToolCallsPassThrough(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			original, proxy, request, workspace := newMekugiTestTransform(t)
-			request.fields["tools"] = json.RawMessage(tc.tools)
+			request.Fields["tools"] = json.RawMessage(tc.tools)
 			var input []any
 			if err := json.Unmarshal([]byte(tc.input), &input); err != nil {
 				t.Fatal(err)
 			}
 			input = append(input, testCodeModeAdditionalTools(testCodeModeDescription))
-			request.fields["input"] = responses.MustMarshalJSON(input)
-			prepared, err := parseResponsesRequest(responses.MustMarshalJSON(request.fields))
+			request.Fields["input"] = responses.MustMarshalJSON(input)
+			prepared, err := codexresponses.ParseRequest(responses.MustMarshalJSON(request.Fields))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -36,8 +37,8 @@ func TestFunctionToolCallsPassThrough(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer transform.Close()
-			if !sameJSONValue(prepared.fields["tools"], json.RawMessage(tc.tools)) {
-				t.Fatalf("stock schema changed: %s", prepared.fields["tools"])
+			if !responses.SameJSONValue(prepared.Fields["tools"], json.RawMessage(tc.tools)) {
+				t.Fatalf("stock schema changed: %s", prepared.Fields["tools"])
 			}
 			call := map[string]any{"type": "function_call", "id": "item", "call_id": "call", "name": "lookup", "namespace": tc.namespace, "arguments": tc.arguments}
 			for _, event := range []map[string]any{

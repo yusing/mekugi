@@ -61,7 +61,9 @@ process-execution tools keep their stock execution catalog after validation. Top
 catalogs fail as unsupported execution interfaces.
 
 Request preparation and response restoration retain stock tool identity,
-replay, and native execution behavior. Connection-local native history supplies ordinary
+replay, and native execution behavior. The
+[backend envelope contract](../../backends/codex/responses/SPEC.md#request-envelopes-and-catalogs)
+owns parsing, tool catalogs and byte-preserving projection. Connection-local native history supplies ordinary
 projection and durable replay. Separately, the transport fingerprints the complete
 provider input plus raw completed output, reconciling streamed items with terminal
 snapshots before any client-facing transformation. Only a successful, steered, or interrupted

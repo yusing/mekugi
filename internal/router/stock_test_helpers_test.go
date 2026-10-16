@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 const testCodeModeDescription = "Run JavaScript. All nested tools are available on the global `tools` object, including `tools.exec_command` and `tools.apply_patch`.\n\n### `exec_command`\nRun a command.\n\nexec tool declaration:\n```ts\ndeclare const tools: { exec_command(args: { cmd: string }): Promise<unknown>; };\n```\n\n### `apply_patch`\nApply a patch.\n\nexec tool declaration:\n```ts\ndeclare const tools: { apply_patch(input: string): Promise<unknown>; };\n```"
@@ -61,7 +63,7 @@ func newManagedMekugiProxy(t *testing.T) *mekugiProxy {
 	return newProxyWithSharedTestRegistry(t, sharedProxyTestRegistry(t))
 }
 
-func (p *mekugiProxy) prepareRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
+func (p *mekugiProxy) prepareRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexTurnMetadata, metadataValid bool) (*mekugiResponseTransform, error) {
 	return p.prepareModelRequest(ctx, request, sessionID, threadID, metadata, metadataValid, false)
 }
 
@@ -75,15 +77,15 @@ func attachTestReplayStore(t *testing.T, proxy *mekugiProxy) {
 	proxy.replayStore = store
 }
 
-func newMekugiTestTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest, string) {
+func newMekugiTestTransform(t *testing.T) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request, string) {
 	t.Helper()
 	return newMekugiTestTransformWithProxy(t, newManagedMekugiProxy(t))
 }
 
-func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest, string) {
+func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request, string) {
 	t.Helper()
 	workspace := t.TempDir()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{testCodeModeAdditionalTools(testCodeModeDescription), map[string]any{"role": "user", "content": "task"}}, "tools": []any{map[string]any{"type": "function", "name": "lookup"}}, "tool_choice": "auto",
 	}))
 	if err != nil {
@@ -99,10 +101,10 @@ func newMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiR
 	return transform, proxy, &request, workspace
 }
 
-func newTopLevelMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *parsedResponsesRequest) {
+func newTopLevelMekugiTestTransformWithProxy(t *testing.T, proxy *mekugiProxy) (*mekugiResponseTransform, *codexresponses.Request) {
 	t.Helper()
 	workspace := t.TempDir()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{map[string]any{"role": "user", "content": "task"}},
 		"tools": testExecResponsesTools(), "tool_choice": "auto",
 	}))

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv2 "encoding/json/v2"
@@ -46,36 +46,36 @@ type executionContinuationTools struct {
 	nestedSessionWaitMS         int
 }
 
-func executionTools(catalog *responsesToolCatalog, execName string) executionContinuationTools {
+func executionTools(catalog *codexresponses.ToolCatalog, execName string) executionContinuationTools {
 	var found executionContinuationTools
-	var visit func(*responsesToolSection, string)
-	visit = func(section *responsesToolSection, namespace string) {
-		if section == nil || section.err != nil {
+	var visit func(*codexresponses.ToolSection, string)
+	visit = func(section *codexresponses.ToolSection, namespace string) {
+		if section == nil || section.Err != nil {
 			return
 		}
-		for _, tool := range section.tools {
-			if tool == nil || tool.fields == nil {
+		for _, tool := range section.Tools {
+			if !tool.IsObject() {
 				continue
 			}
-			if tool.Type == "namespace" {
-				visit(tool.nested, qualifiedToolName(namespace, tool.Name))
+			if tool.Type() == "namespace" {
+				visit(tool.Nested, qualifiedToolName(namespace, tool.Name()))
 				continue
 			}
 			if namespace != "" && namespace != "functions" {
 				continue
 			}
-			name := strings.TrimPrefix(tool.Name, "functions.")
-			path := qualifiedToolName(namespace, tool.Name)
-			if tool.Type == "custom" && name == strings.TrimPrefix(execName, "functions.") {
+			name := strings.TrimPrefix(tool.Name(), "functions.")
+			path := qualifiedToolName(namespace, tool.Name())
+			if tool.Type() == "custom" && name == strings.TrimPrefix(execName, "functions.") {
 				found.exec = path
-				waitSection := codeModeSessionWaitSection(tool.Description)
+				waitSection := codeModeSessionWaitSection(tool.Description())
 				found.nestedSessionWait = strings.Contains(waitSection, "declare const tools: { write_stdin(") &&
 					strings.Contains(waitSection, "session_id") && strings.Contains(waitSection, "chars")
 				if found.nestedSessionWait && strings.Contains(waitSection, "yield_time_ms") {
 					found.nestedSessionWaitMS = minimumStatusWaitMS
 				}
 			}
-			if tool.Type != "function" {
+			if tool.Type() != "function" {
 				continue
 			}
 			var schema struct {
@@ -84,7 +84,7 @@ func executionTools(catalog *responsesToolCatalog, execName string) executionCon
 					Maximum json.RawMessage `json:"maximum"`
 				} `json:"properties"`
 			}
-			if json.Unmarshal(tool.rawField("parameters"), &schema) != nil {
+			if json.Unmarshal(tool.RawField("parameters"), &schema) != nil {
 				continue
 			}
 			timing := schema.Properties["yield_time_ms"]
@@ -104,9 +104,9 @@ func executionTools(catalog *responsesToolCatalog, execName string) executionCon
 			}
 		}
 	}
-	visit(catalog.top, "")
-	for _, group := range catalog.additional {
-		visit(group.tools, "")
+	visit(catalog.Top, "")
+	for _, group := range catalog.Additional {
+		visit(group.Tools, "")
 	}
 	return found
 }
@@ -266,9 +266,9 @@ func executionCallFor(item map[string]json.RawMessage, history mekugiHistory, kn
 
 // Project only after replay validation has established the original calls.
 // Cell provenance is request-local transcript evidence, not a session registry.
-func projectExecutionContinuations(request *parsedResponsesRequest, catalog *responsesToolCatalog, execName string, visible map[string]mekugiHistory) {
+func projectExecutionContinuations(request *codexresponses.Request, catalog *codexresponses.ToolCatalog, execName string, visible map[string]mekugiHistory) {
 	var items []map[string]json.RawMessage
-	if json.Unmarshal(request.fields["input"], &items) != nil {
+	if json.Unmarshal(request.Fields["input"], &items) != nil {
 		return
 	}
 	tools := executionTools(catalog, execName)
@@ -370,7 +370,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 		if json.Unmarshal(item["output"], &parts) == nil {
 			kept := parts[:0:0]
 			for _, part := range parts {
-				if executionAnnotationMatches(part, notice) && !sameJSONValue(part, annotation) {
+				if executionAnnotationMatches(part, notice) && !responses.SameJSONValue(part, annotation) {
 					changed = true
 					continue
 				}
@@ -389,7 +389,7 @@ func projectExecutionContinuations(request *parsedResponsesRequest, catalog *res
 		}
 	}
 	if changed {
-		request.setInput(responses.MustMarshalJSON(items))
+		request.Fields["input"] = responses.MustMarshalJSON(items)
 	}
 }
 
@@ -398,7 +398,7 @@ func executionAnnotationMatches(part json.RawMessage, notice executionContinuati
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
-	if json.Unmarshal(part, &content) != nil || content.Type != "input_text" || !sameJSONValue(part, responses.MustMarshalJSON(content)) {
+	if json.Unmarshal(part, &content) != nil || content.Type != "input_text" || !responses.SameJSONValue(part, responses.MustMarshalJSON(content)) {
 		return false
 	}
 	var envelope struct {
@@ -407,8 +407,8 @@ func executionAnnotationMatches(part json.RawMessage, notice executionContinuati
 	if json.Unmarshal([]byte(content.Text), &envelope) != nil || envelope.Continuation == nil {
 		return false
 	}
-	return sameJSONValue([]byte(content.Text), responses.MustMarshalJSON(envelope)) &&
-		sameJSONValue(responses.MustMarshalJSON(envelope.Continuation.Handle), responses.MustMarshalJSON(notice.Handle))
+	return responses.SameJSONValue([]byte(content.Text), responses.MustMarshalJSON(envelope)) &&
+		responses.SameJSONValue(responses.MustMarshalJSON(envelope.Continuation.Handle), responses.MustMarshalJSON(notice.Handle))
 }
 
 func executionHandleKey(notice executionContinuation) string {

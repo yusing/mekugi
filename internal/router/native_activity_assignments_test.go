@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestNativeActivityFollowupAssignments(t *testing.T) {
@@ -16,7 +17,7 @@ func TestNativeActivityFollowupAssignments(t *testing.T) {
 	a.observe("child", "main", "/root/reviewer", true)
 	first := nativeAssignmentTestMessage("/root/reviewer", "NEW_TASK", "Check the original answer.")
 	first["id"] = "task-1"
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{first}}))
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{first}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +67,7 @@ func TestNativeActivityAssignmentsPreserveOriginalTime(t *testing.T) {
 		item["internal_chat_message_metadata_passthrough"] = map[string]any{"create_time": 1700000000.125 + float64(i*60)}
 		items = append(items, item)
 	}
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"input": items}))
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": items}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,11 @@ package router
 
 import (
 	"bytes"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -211,7 +215,7 @@ func TestAppServerRestoreRolloutFailuresAndCommunications(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := map[string]jsonv1.RawMessage{"model": []byte(`"gpt-6-luna"`), "input": input}
-	activity.collectSubagentStart("child", &parsedResponsesRequest{fields: fields}, "/root/reviewer")
+	activity.collectSubagentStart("child", &codexresponses.Request{Fields: fields}, "/root/reviewer")
 	for _, reply := range prepareSubagentInputEnvelopes(fields, "/root/reviewer").replies {
 		activity.collectEvent(activityEvent{thread: "child", source: reply.source, kind: "reply", text: reply.message.text, message: &reply.message})
 	}

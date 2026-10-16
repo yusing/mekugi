@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
 
@@ -177,7 +178,7 @@ func TestLiveDiffCodeModeSSEStreamsEditWithoutChangingEvents(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
 	proxy := newManagedMekugiProxy(t)
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{testCodeModeAdditionalTools(testCodeModeDescription)},
 		"tools": []any{},
 	}))

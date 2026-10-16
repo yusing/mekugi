@@ -7,21 +7,21 @@ import (
 	"testing"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
 func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 	selected := "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nbody\n</skill>"
 	want := `<skill name="demo"/>`
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{
 		"input": responses.MustMarshalJSON([]any{
 			map[string]any{"role": "user", "content": []any{map[string]string{"type": "input_text", "text": selected}, map[string]string{"type": "input_image", "image_url": selected}}},
 			map[string]string{"role": "developer", "content": selected},
 			map[string]string{"role": "user", "content": "quote " + selected},
 		}),
 	}}
-	if err := request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+	if err := projectRequestInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 		return testGuidance().AfterAttachments(input, true)
 	}); err != nil {
 		t.Fatal(err)
@@ -31,13 +31,13 @@ func TestRewriteRequestSelectedSkillInstructions(t *testing.T) {
 		map[string]string{"role": "developer", "content": selected},
 		map[string]string{"role": "user", "content": "quote " + selected},
 	})
-	if !sameJSONValue(request.fields["input"], wantInput) {
-		t.Fatalf("input = %s, want %s", request.fields["input"], wantInput)
+	if !responses.SameJSONValue(request.Fields["input"], wantInput) {
+		t.Fatalf("input = %s, want %s", request.Fields["input"], wantInput)
 	}
-	before := string(request.fields["input"])
-	if err := request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+	before := string(request.Fields["input"])
+	if err := projectRequestInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 		return testGuidance().AfterAttachments(input, true)
-	}); err != nil || string(request.fields["input"]) != before {
+	}); err != nil || string(request.Fields["input"]) != before {
 		t.Fatalf("repeat changed input: %v", err)
 	}
 }
@@ -46,11 +46,11 @@ func TestRewriteRequestSelectedSkillInstructionsDisabled(t *testing.T) {
 	input := responses.MustMarshalJSON([]any{map[string]string{
 		"role": "user", "content": "<skill>\n<name>demo</name>\n<path>/tmp/demo/SKILL.md</path>\nbody\n</skill>",
 	}})
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": input}}
-	if err := request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": input}}
+	if err := projectRequestInstructions(&request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 		return testGuidance().AfterAttachments(input, false)
-	}); err != nil || !sameJSONValue(request.fields["input"], input) {
-		t.Fatalf("disabled rewrite changed input: %v, %s", err, request.fields["input"])
+	}); err != nil || !responses.SameJSONValue(request.Fields["input"], input) {
+		t.Fatalf("disabled rewrite changed input: %v, %s", err, request.Fields["input"])
 	}
 }
 

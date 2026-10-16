@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/contracts/command"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -42,22 +42,22 @@ func TestRecordedInstructionCleanupBoundaries(t *testing.T) {
 		preserved.WriteString("~~~text" + newline + source + newline + "~~~" + newline + "<recommended_plugins>" + newline + "custom policy")
 		source += preserved.String()
 		want += preserved.String()
-		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+		request := codexresponses.Request{Fields: map[string]json.RawMessage{
 			"instructions": responses.MustMarshalJSON(source),
 			"input": responses.MustMarshalJSON([]any{
 				map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
 			}),
 		}}
-		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
+		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
-		if got := responses.StringField(request.fields, "instructions"); got != want {
+		if got := responses.StringField(request.Fields, "instructions"); got != want {
 			t.Fatalf("instruction cleanup differs from recorded projection for newline %q", newline)
 		}
 		wantInput := responses.MustMarshalJSON([]any{
 			map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": want}}},
 		})
-		if !sameJSONValue(request.fields["input"], wantInput) {
+		if !responses.SameJSONValue(request.Fields["input"], wantInput) {
 			t.Fatal("developer cleanup changed retained policy")
 		}
 	}
@@ -67,7 +67,7 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 	const progress = "As you work, you send messages to the `commentary` channel."
 	const planOnly = "Use the `request_user_input` tool only when it is listed in the available tools for this turn."
 	const ordinary = "- To reduce round trips, batch independent searches, reads, and other tool calls in one functions.exec using await Promise.allSettled([...]); keep each batch bounded to decision-relevant output by selecting needed ranges or fields first, and inspect every returned result. If output truncates, retrieve only the missing evidence rather than repeating an unchanged whole scan. Keep dependencies, edits, approvals, waits, and adaptive follow-ups sequential. Avoid unnecessary output."
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{
 		"instructions": responses.MustMarshalJSON("Lead\n" + progress + "\n```text\n" + progress + "\n```\n" + ordinary),
 		"tools": responses.MustMarshalJSON([]any{map[string]string{
 			"type": "function", "name": "request_user_input", "description": "This tool is only available in Plan mode.",
@@ -83,15 +83,15 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 			map[string]string{"type": "function_call_output", "output": progress},
 		}),
 	}}
-	if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
+	if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
 		t.Fatal(err)
 	}
-	base := responses.StringField(request.fields, "instructions")
+	base := responses.StringField(request.Fields, "instructions")
 	if strings.Count(base, progress) != 1 || !strings.Contains(base, "```text\n"+progress+"\n```") || !strings.Contains(base, ordinary) {
 		t.Fatalf("top-level rewrite changed unrelated or fenced text: %q", base)
 	}
 	var items []map[string]json.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		t.Fatal(err)
 	}
 	var parts []map[string]json.RawMessage
@@ -109,8 +109,8 @@ func TestConflictRewriteOnlyInstructionCarriers(t *testing.T) {
 			t.Fatalf("non-developer content changed: %s", responses.MustMarshalJSON(item))
 		}
 	}
-	before := responses.MustMarshalJSON(request.fields)
-	if err := request.projectInstructions(testGuidance().ForExecution); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
+	before := responses.MustMarshalJSON(request.Fields)
+	if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
 		t.Fatalf("conflict rewrite not idempotent: %v", err)
 	}
 }
@@ -123,7 +123,7 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 	for _, newline := range []string{"\n", "\r\n"} {
 		suffix := newline + "```text" + newline + conflict + newline + "```" + newline + policy
 		source := conflict + suffix
-		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+		request := codexresponses.Request{Fields: map[string]json.RawMessage{
 			"instructions": responses.MustMarshalJSON(source),
 			"input": responses.MustMarshalJSON([]any{
 				map[string]any{"role": "developer", "content": []any{
@@ -133,10 +133,10 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 				map[string]string{"role": "system", "content": source},
 			}),
 		}}
-		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
+		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
-		if got := responses.StringField(request.fields, "instructions"); got != replacement+suffix {
+		if got := responses.StringField(request.Fields, "instructions"); got != replacement+suffix {
 			t.Fatalf("top-level rewrite = %q", got)
 		}
 		wantInput := responses.MustMarshalJSON([]any{
@@ -146,11 +146,11 @@ func TestSolLunaInstructionConflictRewrite(t *testing.T) {
 			map[string]string{"role": "user", "content": source},
 			map[string]string{"role": "system", "content": source},
 		})
-		if !sameJSONValue(request.fields["input"], wantInput) {
-			t.Fatalf("input rewrite = %s", request.fields["input"])
+		if !responses.SameJSONValue(request.Fields["input"], wantInput) {
+			t.Fatalf("input rewrite = %s", request.Fields["input"])
 		}
-		before := responses.MustMarshalJSON(request.fields)
-		if err := request.projectInstructions(testGuidance().ForExecution); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
+		before := responses.MustMarshalJSON(request.Fields)
+		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
 			t.Fatalf("conflict rewrite not idempotent: %v", err)
 		}
 	}
@@ -168,11 +168,11 @@ func TestConflictRewriteLeavesOrdinaryStockAdvice(t *testing.T) {
 			generic + newline +
 			"- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan." + newline +
 			"- Use the plan tool to explain the work" + newline + delegation + newline
-		request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(input)}}
-		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
+		request := codexresponses.Request{Fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(input)}}
+		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
-		output := responses.StringField(request.fields, "instructions")
+		output := responses.StringField(request.Fields, "instructions")
 		if !strings.Contains(output, ordinary) || !strings.Contains(output, customized) ||
 			output != input {
 			t.Fatalf("conflict rewrite kept stripped-tool guidance or changed caller advice: %q", output)
@@ -190,7 +190,7 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 			for _, newline := range []string{"\n", "\r\n"} {
 				suffix := newline + policy + newline + test.source + " Caller qualification." + newline + "```text" + newline + test.source + newline + "```"
 				source := test.source + suffix
-				request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+				request := codexresponses.Request{Fields: map[string]json.RawMessage{
 					"instructions": responses.MustMarshalJSON(source),
 					"input": responses.MustMarshalJSON([]any{
 						map[string]any{"role": "developer", "content": []any{map[string]string{"type": "input_text", "text": source}}},
@@ -198,10 +198,10 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 						map[string]string{"role": "system", "content": source},
 					}),
 				}}
-				if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
+				if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
 					t.Fatal(err)
 				}
-				if got := responses.StringField(request.fields, "instructions"); got != test.want+suffix {
+				if got := responses.StringField(request.Fields, "instructions"); got != test.want+suffix {
 					t.Errorf("top-level conflict not resolved: %q", got)
 				}
 				wantInput := responses.MustMarshalJSON([]any{
@@ -209,11 +209,11 @@ func TestConflictRewriteRestoresWaitGuidance(t *testing.T) {
 					map[string]string{"role": "user", "content": source},
 					map[string]string{"role": "system", "content": source},
 				})
-				if !sameJSONValue(request.fields["input"], wantInput) {
+				if !responses.SameJSONValue(request.Fields["input"], wantInput) {
 					t.Error("developer conflict unresolved or unrelated carriers changed")
 				}
-				before := responses.MustMarshalJSON(request.fields)
-				if err := request.projectInstructions(testGuidance().ForExecution); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
+				before := responses.MustMarshalJSON(request.Fields)
+				if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
 					t.Fatalf("conflict rewrite not idempotent: %v", err)
 				}
 			}
@@ -279,26 +279,26 @@ func TestCompletionConflictCleanupPreservesCallerQualifications(t *testing.T) {
 		"Do NOT put a final response (e.g. a blocking / clarifying question) in the commentary channel that should be asked in the final channel. Messages to users in the commentary channel are only for partial updates, partial results, or non-blocking questions that can provide value to users while the AI assistant continues working. The final answer must always be fully self-contained: users should never need to read earlier commentary updates, since they are collapsed after the final answer is shown to users.",
 		"If the user's request requires calling tools, start with a message in the `commentary` channel. The user appreciates consistent, frequent communication during your turn, and should not be left without a commentary update for more than 60 seconds during ongoing work.",
 	} {
-		request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+		request := codexresponses.Request{Fields: map[string]json.RawMessage{
 			"instructions": responses.MustMarshalJSON(conflict),
 			"input":        responses.MustMarshalJSON([]any{map[string]string{"role": "developer", "content": conflict}}),
 		}}
-		if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
+		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
 			t.Fatal(err)
 		}
-		if got := responses.StringField(request.fields, "instructions"); got != "" {
+		if got := responses.StringField(request.Fields, "instructions"); got != "" {
 			t.Fatalf("completion conflict replaced with redundant guidance: %q", got)
 		}
 		var input []map[string]json.RawMessage
-		if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+		if err := json.Unmarshal(request.Fields["input"], &input); err != nil {
 			t.Fatal(err)
 		}
 		if got := responses.StringField(input[0], "content"); got != "" {
 			t.Fatalf("developer completion conflict remains: %q", got)
 		}
 		qualified := conflict + " Caller qualification."
-		request.fields["instructions"] = responses.MustMarshalJSON(qualified)
-		if err := request.projectInstructions(testGuidance().ForExecution); err != nil || responses.StringField(request.fields, "instructions") != qualified {
+		request.Fields["instructions"] = responses.MustMarshalJSON(qualified)
+		if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil || responses.StringField(request.Fields, "instructions") != qualified {
 			t.Fatalf("caller qualification changed: %v", err)
 		}
 	}
@@ -314,11 +314,11 @@ func TestCachedStockProgressConflicts(t *testing.T) {
 	} {
 		for _, newline := range []string{"\n", "\r\n"} {
 			suffix := newline + conflict + " Caller qualification." + newline + "```text" + newline + conflict + newline + "```"
-			request := parsedResponsesRequest{fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(conflict + suffix)}}
-			if err := request.projectInstructions(testGuidance().ForExecution); err != nil {
+			request := codexresponses.Request{Fields: map[string]json.RawMessage{"instructions": responses.MustMarshalJSON(conflict + suffix)}}
+			if err := projectRequestInstructions(&request, testGuidance().ForExecution); err != nil {
 				t.Fatal(err)
 			}
-			if got := responses.StringField(request.fields, "instructions"); got != suffix {
+			if got := responses.StringField(request.Fields, "instructions"); got != suffix {
 				t.Fatalf("stock conflict or caller text changed incorrectly: %q", got)
 			}
 		}

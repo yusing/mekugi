@@ -3,8 +3,8 @@ package router
 import (
 	"bytes"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -231,7 +231,7 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 		map[string]any{"type": "input_text", "text": input[0].Text},
 		map[string]any{"type": "input_text", "text": input[1].Text},
 	}}})
-	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
 	projectFileAttachments(&request)
 	var messages []struct {
 		Role    string `json:"role"`
@@ -239,23 +239,23 @@ func TestDirectoryAttachmentSnapshotAndProviderReplay(t *testing.T) {
 			Text string `json:"text"`
 		} `json:"content"`
 	}
-	if err := json.Unmarshal(request.fields["input"], &messages); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &messages); err != nil {
 		t.Fatal(err)
 	}
 	if len(messages) != 2 || messages[1].Role != "user" || len(messages[1].Content) != 1 || messages[1].Content[0].Text != frames[0] {
 		t.Fatalf("provider directory projection = %+v", messages)
 	}
-	first := bytes.Clone(request.fields["input"])
+	first := bytes.Clone(request.Fields["input"])
 	projectFileAttachments(&request)
-	if !bytes.Equal(first, request.fields["input"]) {
+	if !bytes.Equal(first, request.Fields["input"]) {
 		t.Fatal("directory projection is not idempotent")
 	}
 	if err := os.RemoveAll(filepath.Join(root, "src")); err != nil {
 		t.Fatal(err)
 	}
-	replayed := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
+	replayed := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
 	projectFileAttachments(&replayed)
-	if !sameJSONValue(first, replayed.fields["input"]) {
+	if !responses.SameJSONValue(first, replayed.Fields["input"]) {
 		t.Fatal("provider replay reopened directory instead of retaining submitted snapshot")
 	}
 }

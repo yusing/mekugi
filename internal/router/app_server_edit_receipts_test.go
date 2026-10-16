@@ -1,6 +1,7 @@
 package router
 
 import (
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -298,7 +299,7 @@ func TestCodeModeCellEditReceipt(t *testing.T) {
 	}
 	visible := maps.Clone(call)
 	visible["input"] = source
-	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{visible, map[string]any{
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": mustTestJSON(t, []any{visible, map[string]any{
 		"type": "custom_tool_call_output", "call_id": "cell", "output": "Script completed\nWall time 0.1 seconds\nOutput:\n",
 	}})}}
 	if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {

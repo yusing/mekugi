@@ -49,12 +49,12 @@ func TestTokenUsageManualSwitch(t *testing.T) {
 				if err := executeRequest(t.Context(), t.Context(), req, headers, fmt.Sprint("session-", i), provider, &out, nil, proxy); err != nil {
 					t.Fatal(err)
 				}
-				forwarded, err := parseResponsesRequest(provider.forwarded[0])
+				forwarded, err := codexresponses.ParseRequest(provider.forwarded[0])
 				if err != nil {
 					t.Fatal(err)
 				}
-				if forwarded.model() != wants[i] {
-					t.Fatalf("model=%s want=%s", forwarded.model(), wants[i])
+				if forwarded.Model() != wants[i] {
+					t.Fatalf("model=%s want=%s", forwarded.Model(), wants[i])
 				}
 			}
 			got, ok := proxy.usage.snapshot("thread-1")
@@ -127,7 +127,7 @@ func TestTokenUsageWebSocketHandshakeRecovery(t *testing.T) {
 				}
 				defer conn.CloseNow()
 				conn.SetReadLimit(upstreamJSONBufferBytes)
-				socketWrite(t, ctx, conn, request.fields)
+				socketWrite(t, ctx, conn, request.Fields)
 				for {
 					event := socketRead(t, ctx, conn)
 					kind := responses.StringField(event, "type")
@@ -409,7 +409,7 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		f["stream"] = true
 		f["type"] = "response.create"
 	})
-	socketWrite(t, ctx, conn, request.fields)
+	socketWrite(t, ctx, conn, request.Fields)
 	if event := socketRead(t, ctx, conn); responses.StringField(event, "type") != "response.created" {
 		t.Fatalf("first=%s", responses.MustMarshalJSON(event))
 	}
@@ -439,11 +439,11 @@ func testTokenUsageAutomaticSuccessor(t *testing.T, configured, leader, requeste
 		t.Fatalf("successor repriced unsent model: report=%+v total=%v want=%v", got, total, 2*initialCost)
 	}
 	if configured != "gpt-5.6-terra" {
-		request.fields["model"] = responses.MustMarshalJSON("gpt-6-astra")
+		request.Fields["model"] = responses.MustMarshalJSON("gpt-6-astra")
 	}
-	request.fields["previous_response_id"] = responses.MustMarshalJSON("successor")
-	request.fields["input"] = responses.MustMarshalJSON([]any{map[string]any{"role": "user", "content": "next task"}})
-	socketWrite(t, ctx, conn, request.fields)
+	request.Fields["previous_response_id"] = responses.MustMarshalJSON("successor")
+	request.Fields["input"] = responses.MustMarshalJSON([]any{map[string]any{"role": "user", "content": "next task"}})
+	socketWrite(t, ctx, conn, request.Fields)
 	for {
 		event := socketRead(t, ctx, conn)
 		if responses.StringField(event, "type") == "error" {

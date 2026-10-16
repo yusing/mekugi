@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
 func TestChildCompletionsPreserveTerminalEvents(t *testing.T) {
@@ -49,7 +51,7 @@ func observeTestResponseUsage(t *testing.T, transform *mekugiResponseTransform, 
 func newSubagentCommentaryTestTransform(
 	t *testing.T,
 	conversation []any,
-) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest) {
+) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request) {
 	t.Helper()
 	return newSubagentCommentaryTestTransformWithMetadata(t, conversation, codexTurnMetadata{})
 }
@@ -58,7 +60,7 @@ func newSubagentCommentaryTestTransformWithMetadata(
 	t *testing.T,
 	conversation []any,
 	metadata codexTurnMetadata,
-) (*mekugiResponseTransform, *mekugiProxy, *parsedResponsesRequest) {
+) (*mekugiResponseTransform, *mekugiProxy, *codexresponses.Request) {
 	t.Helper()
 	additional := testCodeModeAdditionalTools(testCodeModeDescription)
 	namespaces := additional["tools"].([]any)
@@ -69,7 +71,7 @@ func newSubagentCommentaryTestTransformWithMetadata(
 		map[string]any{"type": "function", "name": "send_message"},
 	}
 	input := append([]any{additional, map[string]any{"role": "user", "content": "task"}}, conversation...)
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-parent", "reasoning": map[string]any{"effort": "medium"}, "input": input,
 		"tools":       []any{map[string]any{"type": "function", "name": "lookup"}},
 		"tool_choice": "auto", "parallel_tool_calls": true,

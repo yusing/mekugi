@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -35,7 +37,7 @@ func (h providerHistory) append(input []json.RawMessage) (providerHistory, error
 
 // All ordinary projections run before this decision. Native item counts and
 // feature-local invalidation hints cannot prove what a provider already holds.
-func (e *webSocketExchange) reconcileProviderHistory(request *parsedResponsesRequest, body []byte) error {
+func (e *webSocketExchange) reconcileProviderHistory(request *codexresponses.Request, body []byte) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
 		return err
@@ -44,10 +46,10 @@ func (e *webSocketExchange) reconcileProviderHistory(request *parsedResponsesReq
 	if err != nil {
 		return err
 	}
-	request.cachedInput = 0
-	request.rebaseInput = false
+	request.CachedInput = 0
+	request.RebaseInput = false
 	e.reconciliationReason = "full_request"
-	if isChatCompletionsModel(request.model()) {
+	if isChatCompletionsModel(request.Model()) {
 		e.reconciliationReason = "stateless_provider"
 		return nil
 	}
@@ -69,7 +71,7 @@ func (e *webSocketExchange) reconcileProviderHistory(request *parsedResponsesReq
 			return err
 		}
 		if prefix.digest == cached.digest {
-			request.cachedInput = cached.count
+			request.CachedInput = cached.count
 			e.reconciliationReason = "matching_prefix"
 			// An automatic successor has already started; none of this request
 			// will be sent. It cannot adopt additional projected items either.
@@ -85,8 +87,8 @@ func (e *webSocketExchange) reconcileProviderHistory(request *parsedResponsesReq
 		return errors.New("automatic WebSocket successor changed or lacks confirmed cached provider history")
 	}
 	if parentID != "" {
-		request.cachedInput = 0
-		request.rebaseInput = true
+		request.CachedInput = 0
+		request.RebaseInput = true
 		e.reconciliationReason = reason
 	}
 	return nil

@@ -8,15 +8,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func prepareNativeStockTransform(t *testing.T, proxy *mekugiProxy, workspace, session string) *mekugiResponseTransform {
 	t.Helper()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{
 			map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{
 				"type": "input_text", "text": "<environment_context>\n  <cwd>" + workspace + "</cwd>\n  <shell>bash</shell>\n</environment_context>",
@@ -52,7 +52,7 @@ func retainPatchObservation(t *testing.T, transform *mekugiResponseTransform, pa
 
 func reconcileNativePatchResult(t *testing.T, proxy *mekugiProxy, workspace, patch, output string) mekugiHistory {
 	t.Helper()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "tools": testExecResponsesTools(), "tool_choice": "auto",
 		"input": []any{
 			map[string]any{
@@ -191,7 +191,7 @@ func TestCodeModePatchNeedsTerminalResultAndNeverClaimsNestedSuccess(t *testing.
 			}
 			reconcile := func(items []any) {
 				t.Helper()
-				request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustTestJSON(t, items)}}
+				request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, items)}}
 				if _, err := proxy.reconcileVisibleInput(transform.ctx, &request, workspace, transform.historySessionID); err != nil {
 					t.Fatal(err)
 				}

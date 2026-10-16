@@ -9,13 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -375,7 +374,7 @@ func retainCommandObservation(t *testing.T, transform *mekugiResponseTransform, 
 
 func reconcileExecItems(t *testing.T, proxy *mekugiProxy, workspace string, items []any) *mekugiResponseTransform {
 	t.Helper()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "tools": testExecResponsesTools(), "tool_choice": "auto",
 		"input": append(items, map[string]any{"role": "user", "content": "continue"}),
 	}))
@@ -522,7 +521,7 @@ func TestReadCommandFormsAllocateNoChanges(t *testing.T) {
 					if _, err := transform.TransformJSON(mustTestJSON(t, map[string]any{"id": "response", "status": "completed", "output": []any{call}})); err != nil {
 						t.Fatal(err)
 					}
-					request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+					request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
 						"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
 							map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
 						},
@@ -570,7 +569,7 @@ func TestCodeModeExecCommandRecordsUnconfirmedEffects(t *testing.T) {
 		t.Fatalf("exec command was not observed: %+v", history)
 	}
 	writeTestFile(t, filepath.Join(workspace, "f"), "new\n")
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{"input": mustTestJSON(t, []any{call, map[string]any{
 		"type": "custom_tool_call_output", "call_id": "code-call", "output": []any{
 			map[string]any{"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
 		},

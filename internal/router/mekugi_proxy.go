@@ -3,7 +3,11 @@ package router
 import (
 	"bytes"
 	"context"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	jsonv1 "encoding/json"
+
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
@@ -13,6 +17,7 @@ import (
 
 	"github.com/yusing/mekugi/backends/codex/binding"
 	"github.com/yusing/mekugi/capturer"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -180,7 +185,7 @@ func (t *mekugiResponseTransform) observeResponseUsage(counts tokenCounts) {
 	}
 }
 
-func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata codexTurnMetadata) error {
+func validateMekugiCompactionRequest(request *codexresponses.Request, metadata codexTurnMetadata) error {
 	var compaction struct {
 		Trigger        string `json:"trigger"`
 		Reason         string `json:"reason"`
@@ -194,13 +199,13 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	) {
 		return errors.New("mekugi rewrite requires valid compaction metadata")
 	}
-	if !request.streamResponse {
+	if !request.Stream {
 		return errors.New("mekugi compaction bypass requires a streaming request")
 	}
 	v2 := compaction.Implementation == "responses_compaction_v2"
 
 	var tools []jsonv1.RawMessage
-	if rawTools, exists := request.fields["tools"]; exists {
+	if rawTools, exists := request.Fields["tools"]; exists {
 		if err := jsonv1.Unmarshal(rawTools, &tools); err != nil {
 			return fmt.Errorf("decode compaction tools: %w", err)
 		}
@@ -210,7 +215,7 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	}
 
 	var items []jsonv1.RawMessage
-	if err := jsonv1.Unmarshal(request.fields["input"], &items); err != nil {
+	if err := jsonv1.Unmarshal(request.Fields["input"], &items); err != nil {
 		return fmt.Errorf("decode compaction input: %w", err)
 	}
 	if len(items) == 0 {
@@ -244,11 +249,11 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 	}
 
 	var toolChoice string
-	if jsonv1.Unmarshal(request.fields["tool_choice"], &toolChoice) != nil || toolChoice != "auto" {
+	if jsonv1.Unmarshal(request.Fields["tool_choice"], &toolChoice) != nil || toolChoice != "auto" {
 		return errors.New("mekugi compaction request requires automatic tool choice")
 	}
 	var parallelToolCalls bool
-	if err := jsonv1.Unmarshal(request.fields["parallel_tool_calls"], &parallelToolCalls); err != nil || !v2 && parallelToolCalls {
+	if err := jsonv1.Unmarshal(request.Fields["parallel_tool_calls"], &parallelToolCalls); err != nil || !v2 && parallelToolCalls {
 		return errors.New("mekugi compaction request has incompatible parallel tool calls")
 	}
 	return nil
@@ -256,8 +261,8 @@ func validateMekugiCompactionRequest(request *parsedResponsesRequest, metadata c
 
 // Prewarm shares model projection but cannot initialize execution, replay, or
 // agent lifecycle state. Only the non-generating WebSocket path selects it.
-func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedResponsesRequest, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
-	if err := validateProviderContext(request.fields["input"]); err != nil {
+func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *codexresponses.Request, sessionID, threadID string, metadata codexTurnMetadata, metadataValid, prewarm bool) (*mekugiResponseTransform, error) {
+	if err := validateProviderContext(request.Fields["input"]); err != nil {
 		return nil, err
 	}
 	if metadataValid && metadata.RequestKind == responseevents.Compaction {
@@ -283,7 +288,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	}
 	p.execWindows.markBackground(threadID, metadata.TurnID)
 	// Execution-free requests retain their native instructions, tools, and schema.
-	if request.isExecutionFreeRequest() {
+	if isExecutionFreeRequest(request) {
 		if !prewarm && strings.TrimSpace(threadID) == "" {
 			return nil, errors.New("mekugi rewrite requires a valid Codex thread ID")
 		}
@@ -292,14 +297,14 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 	var projections []binding.PreparedInputProjection
 	if !prewarm {
 		for _, registration := range p.inputProjections {
-			projections = append(projections, registration.Prepare(request.fields["input"]))
+			projections = append(projections, registration.Prepare(request.Fields["input"]))
 		}
 	}
 	// Discover an execution owner before projecting tools: a native
 	// handshake may not yet carry the instruction or tool catalog of a turn.
 	if prewarm {
-		tools := request.responseTools()
-		execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, p.registry.guidance)
+		tools := codexresponses.DecodeToolCatalog(request.Fields)
+		execution, err := prepareStockExecution(request.Fields, tools, p.registry.frontendGuidance, p.registry.guidance)
 		if err != nil {
 			return nil, err
 		}
@@ -308,7 +313,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		}
 	}
 	if p.registry.guidance != nil {
-		if err := request.projectInstructions(p.registry.guidance.ForExecution); err != nil {
+		if err := projectRequestInstructions(request, p.registry.guidance.ForExecution); err != nil {
 			return nil, err
 		}
 	}
@@ -323,15 +328,15 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 
 	// Projection deduplication needs the original visible messages. Keep this
 	// request-local result until replay validation succeeds and strips known copies.
-	envelopes := prepareSubagentInputEnvelopes(request.fields, recipient)
+	envelopes := prepareSubagentInputEnvelopes(request.Fields, recipient)
 
-	tools := request.responseTools()
+	tools := codexresponses.DecodeToolCatalog(request.Fields)
 	directory, _ := usableRoutingDirectory(metadata.Directories)
-	originalTools, originalToolsPresent := request.fields["tools"]
+	originalTools, originalToolsPresent := request.Fields["tools"]
 	originalTools = bytes.Clone(originalTools)
-	originalToolChoice, originalToolChoicePresent := request.fields["tool_choice"]
+	originalToolChoice, originalToolChoicePresent := request.Fields["tool_choice"]
 	originalToolChoice = bytes.Clone(originalToolChoice)
-	execution, err := prepareStockExecution(request.fields, tools, p.registry.frontendGuidance, p.registry.guidance)
+	execution, err := prepareStockExecution(request.Fields, tools, p.registry.frontendGuidance, p.registry.guidance)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +401,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		p.activity.markFinal(activityThreadID, final)
 	}
 	if activityThreadID != "" {
-		model := request.model()
+		model := request.Model()
 		p.activity.beginResponse(activityThreadID, isGrokModel(model) || isOpenCodeModel(model))
 	}
 	transform := &mekugiResponseTransform{
@@ -405,7 +410,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		sessionID:        sessionID,
 		shellTurnID:      metadata.TurnID,
 		shellThreadID:    threadID,
-		model:            request.modelDescription(),
+		model:            strings.TrimSpace(request.Model() + " " + request.ReasoningEffort()),
 		historySessionID: historySessionID,
 		visible:          visible,
 		sessionActive:    true,
@@ -421,11 +426,11 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		commentaryAuthor:          metadata.commentaryAuthor(),
 		subagentTurn:              metadata.SubagentKind != "",
 		activityResponding:        activityThreadID != "",
-		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.model(), usageServiceTier(request.fields["service_tier"])),
+		usageTracker:              p.usage.observation(threadID, metadata.ThreadID, request.Model(), usageServiceTier(request.Fields["service_tier"])),
 		codeModeToolName:          codeModeToolName,
-		sessionShell:              requestSessionShell(request.fields["input"]),
+		sessionShell:              requestSessionShell(request.Fields["input"]),
 	}
-	transform.usageTracker.reasoning = request.reasoningEffort()
+	transform.usageTracker.reasoning = request.ReasoningEffort()
 	p.observeCodeModeFailures(activityThreadID, codeModeToolName, request, visible)
 	// Continuation advice is appended to the output the model will see.
 	projectExecutionContinuations(request, tools, codeModeToolName, visible)
@@ -434,10 +439,10 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 		return nil, err
 	}
 	for _, project := range projections {
-		before := request.fields["input"]
+		before := request.Fields["input"]
 		result := project(before)
 		if !bytes.Equal(before, result.Input) {
-			request.setInput(result.Input)
+			request.Fields["input"] = result.Input
 		}
 		summary := result.Receipt
 		if summary == nil {
@@ -448,7 +453,7 @@ func (p *mekugiProxy) prepareModelRequest(ctx context.Context, request *parsedRe
 			continue
 		}
 		var originalItems []map[string]jsonv1.RawMessage
-		_ = json.Unmarshal(request.originalFields["input"], &originalItems)
+		_ = json.Unmarshal(request.OriginalField("input"), &originalItems)
 		sources := make(map[string]string)
 		for _, item := range originalItems {
 			if responseevents.StringField(item, "type") == "custom_tool_call" {
@@ -501,7 +506,7 @@ func (p *mekugiProxy) clearApprovalFeedback(thread, turn string) {
 	delete(p.approvalFeedback, [2]string{thread, turn})
 }
 
-func (p *mekugiProxy) projectApprovalFeedback(request *parsedResponsesRequest, thread, turn string) error {
+func (p *mekugiProxy) projectApprovalFeedback(request *codexresponses.Request, thread, turn string) error {
 	p.approvalMu.Lock()
 	defer p.approvalMu.Unlock()
 	feedback := p.approvalFeedback[[2]string{thread, turn}]
@@ -509,10 +514,10 @@ func (p *mekugiProxy) projectApprovalFeedback(request *parsedResponsesRequest, t
 		return nil
 	}
 	var input []jsonv1.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &input); err != nil {
 		return fmt.Errorf("read input for denial feedback: %w", err)
 	}
 	input = append(input, responseevents.MustMarshalJSON(map[string]any{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": strings.Join(feedback, "\n\n")}}}))
-	request.setInput(responseevents.MustMarshalJSON(input))
+	request.Fields["input"] = responseevents.MustMarshalJSON(input)
 	return nil
 }

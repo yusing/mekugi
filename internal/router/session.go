@@ -16,13 +16,13 @@ const (
 	maxSessionTurns     = 128
 )
 
-func routingSessionID(headers http.Header, request parsedResponsesRequest) string {
+func routingSessionID(headers http.Header, request codexresponses.Request) string {
 	for _, value := range headers.Values(sessionIDHeader) {
 		if strings.TrimSpace(value) != "" {
 			return value
 		}
 	}
-	if key := request.promptCacheKey(); key != "" {
+	if key := request.PromptCacheKey(); key != "" {
 		return key
 	}
 	for _, value := range headers.Values(codexresponses.ClientRequestIDHeader) {

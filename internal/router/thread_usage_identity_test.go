@@ -21,7 +21,7 @@ func TestThreadUsageIgnoresMalformedAuxiliaryIdentity(t *testing.T) {
 					if requestKind == "compaction" {
 						headers = serverCompactionMetadataHeaders(t)
 						var err error
-						request, err = parseResponsesRequest(mustTestJSON(t, map[string]any{
+						request, err = codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 							"model": "gpt-test", "input": []any{map[string]any{"role": "user", "content": "compact"}},
 							"stream": true, "tool_choice": "auto", "parallel_tool_calls": false,
 						}))

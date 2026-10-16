@@ -515,7 +515,6 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 		fullInput = parent.items()
 	}
 	fullInput = append(fullInput, steering...)
-	cachedInput := len(fullInput)
 	fullInput = append(fullInput, input...)
 	requestFields["input"] = responseevents.MustMarshalJSON(fullInput)
 	requestFields["stream"] = json.RawMessage("true")
@@ -529,14 +528,13 @@ func (s *responsesWebSocket) execute(command, firstEvent []byte) error {
 	if len(body) > responsesRequestBufferBytes {
 		return errors.New("responses WebSocket reconstructed request exceeds the router buffer budget")
 	}
-	parsed, err := parseResponsesRequest(body)
+	parsed, err := codexresponses.ParseRequest(body)
 	if err != nil {
 		if automatic {
 			return err
 		}
 		return incompatibleRequest("invalid_websocket_request", err.Error())
 	}
-	parsed.cachedInput = cachedInput
 	headers := s.headers.Clone()
 	var metadata map[string]json.RawMessage
 	if json.Unmarshal(requestFields["client_metadata"], &metadata) == nil {

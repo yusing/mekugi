@@ -10,10 +10,10 @@ import (
 	"slices"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/httptransport"
-
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/capturer"
+	"github.com/yusing/mekugi/libraries/httptransport"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -35,7 +35,7 @@ type requestAttempt struct {
 	executor     requestExecutor
 	startCtx     context.Context
 	executionCtx context.Context
-	request      parsedResponsesRequest
+	request      codexresponses.Request
 	headers      http.Header
 	sessionID    string
 
@@ -66,7 +66,7 @@ type requestAttempt struct {
 func (e requestExecutor) execute(
 	startCtx context.Context,
 	executionCtx context.Context,
-	request parsedResponsesRequest,
+	request codexresponses.Request,
 	headers http.Header,
 	sessionID string,
 ) (requestErr error) {
@@ -82,7 +82,7 @@ func newRequestAttempt(
 	executor requestExecutor,
 	startCtx context.Context,
 	executionCtx context.Context,
-	request parsedResponsesRequest,
+	request codexresponses.Request,
 	headers http.Header,
 	sessionID string,
 ) *requestAttempt {
@@ -141,7 +141,7 @@ func (a *requestAttempt) prepare() error {
 	}
 	a.threadID = codexThreadID(a.headers)
 	if a.metadataValid && a.metadata.RequestKind == responses.Turn {
-		a.executor.titleGenerator.observeInput(a.threadID, a.request.fields["input"])
+		a.executor.titleGenerator.observeInput(a.threadID, a.request.Fields["input"])
 	}
 	a.finalization.threadID = a.threadID
 	a.finalization.turnID = a.metadata.TurnID
@@ -159,31 +159,31 @@ func (a *requestAttempt) prepare() error {
 			if parent == nil || parent.providerModel == "" {
 				return errors.New("automatic WebSocket successor has no retained provider model")
 			}
-			a.request.fields["model"] = responses.MustMarshalJSON(parent.providerModel)
+			a.request.Fields["model"] = responses.MustMarshalJSON(parent.providerModel)
 			if len(parent.providerReasoning) == 0 {
-				delete(a.request.fields, "reasoning")
+				delete(a.request.Fields, "reasoning")
 			} else {
-				a.request.fields["reasoning"] = parent.providerReasoning
+				a.request.Fields["reasoning"] = parent.providerReasoning
 			}
 		}
 	}
 	// Terra remains a selectable legacy Codex model, but all provider requests
 	// use Sol. Do this after automatic-continuation selection.
-	if a.request.model() == "gpt-5.6-terra" {
-		a.request.fields["model"] = responses.MustMarshalJSON("gpt-6-sol")
+	if a.request.Model() == "gpt-5.6-terra" {
+		a.request.Fields["model"] = responses.MustMarshalJSON("gpt-6-sol")
 	}
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.history != nil {
-		exchange.history.providerModel = a.request.model()
-		exchange.history.providerReasoning = a.request.fields["reasoning"]
+		exchange.history.providerModel = a.request.Model()
+		exchange.history.providerReasoning = a.request.Fields["reasoning"]
 	}
-	requestedTier := responses.StringField(a.request.fields, "service_tier")
-	if tier := effectiveServiceTier(a.request.model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
-		a.request.fields["service_tier"] = responses.MustMarshalJSON(tier)
+	requestedTier := responses.StringField(a.request.Fields, "service_tier")
+	if tier := effectiveServiceTier(a.request.Model(), requestedTier, a.executor.serviceTiers, a.threadID); tier != requestedTier {
+		a.request.Fields["service_tier"] = responses.MustMarshalJSON(tier)
 	}
 
 	if a.executor.mekugiCalls != nil {
 		if guidance := a.executor.mekugiCalls.registry.guidance; guidance != nil {
-			if err := a.request.projectInstructions(guidance.BeforePreparation); err != nil {
+			if err := projectRequestInstructions(&a.request, guidance.BeforePreparation); err != nil {
 				return err
 			}
 		}
@@ -193,7 +193,7 @@ func (a *requestAttempt) prepare() error {
 	// supported model. HTTP requests retain ordinary preparation checks.
 	_, webSocketRequest := a.executor.provider.(*webSocketExchange)
 	a.prewarm = webSocketRequest && a.metadataValid &&
-		a.metadata.RequestKind == responses.Prewarm && string(a.request.fields["generate"]) == "false"
+		a.metadata.RequestKind == responses.Prewarm && string(a.request.Fields["generate"]) == "false"
 	if a.executor.mekugiCalls != nil {
 		var err error
 		a.mekugiTransform, err = a.executor.mekugiCalls.prepareModelRequest(
@@ -225,12 +225,12 @@ func (a *requestAttempt) prepare() error {
 
 func (a *requestAttempt) prepareWire() error {
 	var err error
-	if !isGrokModel(a.request.model()) && !isOpenCodeModel(a.request.model()) {
-		programs, err := standardCyberAccess(a.request.fields["access_programs"])
+	if !isGrokModel(a.request.Model()) && !isOpenCodeModel(a.request.Model()) {
+		programs, err := standardCyberAccess(a.request.Fields["access_programs"])
 		if err != nil {
 			return err
 		}
-		a.request.fields["access_programs"] = programs
+		a.request.Fields["access_programs"] = programs
 	}
 	bridgeProvider := a.executor.provider
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok {
@@ -261,14 +261,14 @@ func (a *requestAttempt) prepareWire() error {
 	// Match attachment sources before compact skill rewriting drops native paths.
 	if a.executor.mekugiCalls != nil {
 		if guidance := a.executor.mekugiCalls.registry.guidance; guidance != nil {
-			if err := a.request.projectInstructions(func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
+			if err := projectRequestInstructions(&a.request, func(input binding.InstructionInput) (binding.InstructionUpdate, error) {
 				return guidance.AfterAttachments(input, a.executor.mekugiCalls.skillsManager)
 			}); err != nil {
 				return err
 			}
 		}
 	}
-	nativeBody, err := a.request.wireBody(a.request.fields)
+	nativeBody, err := a.request.WireBody(a.request.Fields)
 	if err != nil {
 		return fmt.Errorf("encode native Responses request: %w", err)
 	}
@@ -283,11 +283,11 @@ func (a *requestAttempt) prepareWire() error {
 		}
 		a.debug.event(map[string]any{
 			"event": "provider_history_reconciliation", "request_id": a.debugID,
-			"reason": exchange.reconciliationReason, "reused_input_items": a.request.cachedInput,
+			"reason": exchange.reconciliationReason, "reused_input_items": a.request.CachedInput,
 			"duration_us": time.Since(started).Microseconds(),
 		})
 	}
-	nativeWire, err := a.request.incrementalBody(nativeBody)
+	nativeWire, err := a.request.IncrementalBody(nativeBody, !isChatCompletionsModel(a.request.Model()))
 	if err != nil {
 		return err
 	}
@@ -303,12 +303,12 @@ func (a *requestAttempt) prepareWire() error {
 func (a *requestAttempt) forward() error {
 	projectedBody := a.forwardBody
 	a.finalization.failurePhase = requestFailureForward
-	cacheKey := a.request.promptCacheKey()
+	cacheKey := a.request.PromptCacheKey()
 	if cacheKey == "" {
 		cacheKey = a.sessionID
 	}
 	var err error
-	a.forwardBody, err = a.request.incrementalBody(a.forwardBody)
+	a.forwardBody, err = a.request.IncrementalBody(a.forwardBody, !isChatCompletionsModel(a.request.Model()))
 	if err != nil {
 		return err
 	}
@@ -316,7 +316,7 @@ func (a *requestAttempt) forward() error {
 	if exchange, ok := a.executor.provider.(*webSocketExchange); ok && exchange.automatic {
 		debugWire = nil
 	}
-	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.cachedInput)
+	a.debug.instructions(projectedBody, debugWire, a.headers, a.sessionID, a.debugID, a.request.CachedInput)
 	if !a.prewarm {
 		if a.mekugiTransform != nil {
 			a.usageTracker = a.mekugiTransform.usageTracker
@@ -324,13 +324,13 @@ func (a *requestAttempt) forward() error {
 			a.usageTracker = a.executor.mekugiCalls.usage.observation(
 				a.threadID,
 				a.metadata.ThreadID,
-				a.request.model(),
-				usageServiceTier(a.request.fields["service_tier"]),
+				a.request.Model(),
+				usageServiceTier(a.request.Fields["service_tier"]),
 			)
 		}
 	}
 	if a.usageTracker != nil {
-		a.usageTracker.reasoning = a.request.reasoningEffort()
+		a.usageTracker.reasoning = a.request.ReasoningEffort()
 		a.usageTracker.begin()
 	} else {
 		a.providerStarted = time.Now()
@@ -376,7 +376,7 @@ func (a *requestAttempt) forward() error {
 		}
 		a.mekugiTransform.ctx = ctx
 	}
-	a.streamResponse, err = prepareUpstreamBody(a.response, a.request.streamResponse)
+	a.streamResponse, err = prepareUpstreamBody(a.response, a.request.Stream)
 	if err != nil {
 		a.response.Body.Close()
 		return fmt.Errorf("execute request: inspect upstream response: %w", err)

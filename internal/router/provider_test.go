@@ -10,11 +10,11 @@ import (
 
 func testProviderRequest(t *testing.T, policy codexresponses.Policy, model, format string, tools []any) *providerRequest {
 	t.Helper()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"input": []any{}, "tools": tools}))
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": []any{}, "tools": tools}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, codec, err := codexresponses.Translate(request.fields, model, format, policy)
+	body, codec, err := codexresponses.Translate(request.Fields, model, format, policy)
 	if err != nil {
 		t.Fatal(err)
 	}

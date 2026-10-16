@@ -57,13 +57,13 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 			w.WriteHeader(400)
 			return
 		}
-		request, err := parseResponsesRequest(body)
+		request, err := codexresponses.ParseRequest(body)
 		if err != nil {
 			t.Error(err)
 			w.WriteHeader(400)
 			return
 		}
-		if request.model() == sessionTitleModel {
+		if request.Model() == sessionTitleModel {
 			if manual {
 				namingCalls.Add(1)
 				t.Error("manual rename made an automatic naming request")
@@ -76,7 +76,7 @@ func testAppServerSessionTitleNativeCodexE2E(t *testing.T, manual bool) {
 				w.WriteHeader(400)
 				return
 			}
-			if request.reasoningEffort() != "medium" || binding.SubmittedUserText(request.fields["input"], "/root", true) != "Explain native session naming" {
+			if request.ReasoningEffort() != "medium" || binding.SubmittedUserText(request.Fields["input"], "/root", true) != "Explain native session naming" {
 				t.Error("naming request lost medium effort or first prompt")
 			}
 			close(namingStarted)

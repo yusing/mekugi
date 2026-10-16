@@ -108,11 +108,11 @@ func translateProviderRequest(body []byte, service *opencode.Service) (_ *provid
 			}
 		}()
 	}
-	request, err := parseResponsesRequest(body)
+	request, err := codexresponses.ParseRequest(body)
 	if err != nil {
 		return nil, err
 	}
-	model, supported := grokProviderModel(request.model())
+	model, supported := grokProviderModel(request.Model())
 	format := "chat"
 	if service == nil {
 		if !supported {
@@ -121,13 +121,13 @@ func translateProviderRequest(body []byte, service *opencode.Service) (_ *provid
 		policy = grokTranslationPolicy()
 	} else {
 		var ok bool
-		model, ok = strings.CutPrefix(request.model(), service.Prefix+":")
+		model, ok = strings.CutPrefix(request.Model(), service.Prefix+":")
 		_, supported = service.Model(model)
 		if !ok || !supported {
 			return nil, errors.New("unsupported OpenCode model")
 		}
 		// Preserve the explicit-history rejection before catalog-format validation.
-		if responses.StringField(request.fields, "previous_response_id") != "" {
+		if responses.StringField(request.Fields, "previous_response_id") != "" {
 			return nil, errors.New("OpenCode requires explicit conversation history, not previous_response_id")
 		}
 		format = service.Format(model)
@@ -138,9 +138,9 @@ func translateProviderRequest(body []byte, service *opencode.Service) (_ *provid
 		}
 		policy = openCodeTranslationPolicy(service, model, format)
 	}
-	wire, codec, err := codexresponses.Translate(request.fields, model, format, policy)
+	wire, codec, err := codexresponses.Translate(request.Fields, model, format, policy)
 	if err != nil {
 		return nil, err
 	}
-	return &providerRequest{body: wire, codec: codec, format: format, stream: request.streamResponse}, nil
+	return &providerRequest{body: wire, codec: codec, format: format, stream: request.Stream}, nil
 }

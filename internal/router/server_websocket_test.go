@@ -495,12 +495,12 @@ func TestResponsesWebSocketStartupPrewarmMetadata(t *testing.T) {
 func TestMekugiPrewarmRequiresExplicitNonGeneratingRequest(t *testing.T) {
 	for _, generate := range []string{"", "true", "null", `"false"`} {
 		t.Run("generate="+generate, func(t *testing.T) {
-			request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","input":[]}`))
+			request, err := codexresponses.ParseRequest([]byte(`{"model":"gpt-test","input":[]}`))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if generate != "" {
-				request.fields["generate"] = json.RawMessage(generate)
+				request.Fields["generate"] = json.RawMessage(generate)
 			}
 			proxy := &mekugiProxy{registry: &toolRegistry{guidance: testGuidance()}}
 			if err := executeRequest(t.Context(), t.Context(), request, serverMetadataHeaders(t, "prewarm", nil), "session", &webSocketExchange{}, io.Discard, nil, proxy); err == nil {

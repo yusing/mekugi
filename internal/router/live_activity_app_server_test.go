@@ -9,7 +9,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/internal/livediff"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -300,7 +302,7 @@ func TestAppServerNativeAssignmentQuestionLink(t *testing.T) {
 	u, _ := newAppServerTestUI()
 	u.ensureShell()
 	assignment := "Check the original question link."
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{nativeAssignmentTestMessage("/root/reviewer", "NEW_TASK", assignment)}}))
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-6-astra", "input": []any{nativeAssignmentTestMessage("/root/reviewer", "NEW_TASK", assignment)}}))
 	if err != nil {
 		t.Fatal(err)
 	}

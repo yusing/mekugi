@@ -115,7 +115,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				t.Fatal(err)
 			}
 			t.Cleanup(proxy.replayStore.snapshots.close)
-			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 				"model": "gpt-test", "stream": true,
 				"access_programs": map[string]string{"cyber": "standard"},
 				"tool_choice":     "auto", "parallel_tool_calls": false,
@@ -132,13 +132,13 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 			metadata.Directories = map[string]json.RawMessage{workspace: nil}
 			headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 			headers.Set(codexresponses.ThreadIDHeader, thread)
-			request.fields["input"] = mustTestJSON(t, append(items, map[string]any{"role": "user", "content": "Summarize."}))
+			request.Fields["input"] = mustTestJSON(t, append(items, map[string]any{"role": "user", "content": "Summarize."}))
 			if missingWorkspace {
 				metadata, _ := decodeCodexTurnMetadata(headers)
 				metadata.Directories = nil
 				headers.Set(codexresponses.TurnMetadataHeader, string(mustTestJSON(t, metadata)))
 			}
-			original, err := request.wireBody(request.fields)
+			original, err := request.WireBody(request.Fields)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -163,7 +163,7 @@ func testCompactionCapture(t *testing.T, tool string, failed bool) {
 				if len(provider.forwarded) != 1 || !bytes.Equal(provider.forwarded[0], original) || !bytes.Equal(output.Bytes(), wire) {
 					t.Fatalf("compaction observation altered provider request/response: forwarded=%q output=%s", provider.forwarded, &output)
 				}
-				unchanged, err := request.wireBody(request.fields)
+				unchanged, err := request.WireBody(request.Fields)
 				if err != nil || !bytes.Equal(unchanged, original) {
 					t.Fatalf("observation mutated caller-owned request: %s, %v", unchanged, err)
 				}

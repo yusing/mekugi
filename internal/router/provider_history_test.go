@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -51,13 +52,13 @@ func TestProviderHistoryReconciliation(t *testing.T) {
 			}
 			// Stale native boundaries and feature-local rebase hints must not
 			// override complete provider evidence.
-			request := &parsedResponsesRequest{fields: fields, cachedInput: 999, rebaseInput: true}
+			request := &codexresponses.Request{Fields: fields, CachedInput: 999, RebaseInput: true}
 			err := exchange.reconcileProviderHistory(request, responses.MustMarshalJSON(fields))
 			if (err != nil) != tc.wantError {
 				t.Fatalf("reconcile error: %v", err)
 			}
-			if request.cachedInput != tc.wantCached || request.rebaseInput != tc.wantRebase {
-				t.Fatalf("cached=%d rebase=%v", request.cachedInput, request.rebaseInput)
+			if request.CachedInput != tc.wantCached || request.RebaseInput != tc.wantRebase {
+				t.Fatalf("cached=%d rebase=%v", request.CachedInput, request.RebaseInput)
 			}
 		})
 	}
@@ -164,11 +165,11 @@ func TestProviderHistoryBranchAndFreshConnection(t *testing.T) {
 	// cannot. An explicit full-history request remains usable on a fresh socket.
 	fresh := &webSocketExchange{history: &webSocketHistory{input: input}}
 	fields := map[string]json.RawMessage{"input": responses.MustMarshalJSON(input)}
-	request := &parsedResponsesRequest{fields: fields}
+	request := &codexresponses.Request{Fields: fields}
 	if err := fresh.reconcileProviderHistory(request, responses.MustMarshalJSON(fields)); err != nil {
 		t.Fatal(err)
 	}
-	if request.cachedInput != 0 || request.rebaseInput {
+	if request.CachedInput != 0 || request.RebaseInput {
 		t.Fatal("fresh connection borrowed retained provider state")
 	}
 }

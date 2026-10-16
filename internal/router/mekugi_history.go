@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -298,14 +298,14 @@ func (p *mekugiProxy) history(sessionID, callID string) (mekugiHistory, bool) {
 // reconcileVisibleInput constructs recovery ancestry from the validated request,
 // never from a routing session's most recent turn. All changes stay local until
 // the entire input is valid, including output confirmations.
-func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsedResponsesRequest, workspace, sessionID string) (map[string]mekugiHistory, error) {
+func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *codexresponses.Request, workspace, sessionID string) (map[string]mekugiHistory, error) {
 	releaseSnapshot, err := p.replayStore.lockStorageSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer releaseSnapshot()
 	visible := make(map[string]mekugiHistory)
-	raw, ok := request.fields["input"]
+	raw, ok := request.Fields["input"]
 	if !ok {
 		raw = json.RawMessage(`[]`)
 	}
@@ -316,8 +316,7 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 	changed := false
 	commentaryIDs := p.commentaryMessageIDs(sessionID)
 	filtered := make([]map[string]json.RawMessage, 0, len(items))
-	removedCached := 0
-	for index, item := range items {
+	for _, item := range items {
 		if responses.StringField(item, "type") == "message" {
 			id := responses.StringField(item, "id")
 			_, generated := commentaryIDs[id]
@@ -327,9 +326,6 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 				if err != nil {
 					return nil, err
 				}
-			}
-			if generated && index < request.cachedInput {
-				removedCached++
 			}
 			if generated {
 				changed = true
@@ -545,13 +541,12 @@ func (p *mekugiProxy) reconcileVisibleInput(ctx context.Context, request *parsed
 			changed = true
 		}
 	}
-	request.cachedInput -= removedCached
 	if changed {
 		encoded, err := responses.MarshalJSON(items)
 		if err != nil {
 			return nil, fmt.Errorf("encode replayed Responses input: %w", err)
 		}
-		request.setInput(encoded)
+		request.Fields["input"] = encoded
 	}
 	return visible, nil
 }
@@ -566,7 +561,7 @@ func appendToolOutputWarning(raw json.RawMessage, warning string) (json.RawMessa
 	}
 	notice := responses.MustMarshalJSON(map[string]string{"type": "input_text", "text": warning})
 	for _, part := range parts {
-		if sameJSONValue(part, notice) {
+		if responses.SameJSONValue(part, notice) {
 			return raw, false, nil
 		}
 	}

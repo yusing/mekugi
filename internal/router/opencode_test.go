@@ -240,11 +240,11 @@ func TestOpenCodeReasoningToolReplay(t *testing.T) {
 		"input": input,
 		"tools": []any{map[string]string{"type": "custom", "name": "exec"}},
 	}
-	parsed, err := parseResponsesRequest(mustTestJSON(t, request))
+	parsed, err := codexresponses.ParseRequest(mustTestJSON(t, request))
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := parsed.wireBody(parsed.fields)
+	body, err := parsed.WireBody(parsed.Fields)
 	if err != nil {
 		t.Fatal(err)
 	}

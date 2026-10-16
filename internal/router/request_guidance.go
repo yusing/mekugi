@@ -1,17 +1,20 @@
 package router
 
-import "github.com/yusing/mekugi/backends/codex/binding"
+import (
+	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+)
 
-func (request *parsedResponsesRequest) projectInstructions(project func(binding.InstructionInput) (binding.InstructionUpdate, error)) error {
-	update, err := project(binding.InstructionInput{Instructions: request.fields["instructions"], Input: request.fields["input"]})
+func projectRequestInstructions(request *codexresponses.Request, project func(binding.InstructionInput) (binding.InstructionUpdate, error)) error {
+	update, err := project(binding.InstructionInput{Instructions: request.Fields["instructions"], Input: request.Fields["input"]})
 	if err != nil {
 		return err
 	}
 	if update.InstructionsChanged {
-		request.fields["instructions"] = update.Instructions
+		request.Fields["instructions"] = update.Instructions
 	}
 	if update.InputChanged {
-		request.setInput(update.Input)
+		request.Fields["input"] = update.Input
 	}
 	return nil
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv2 "encoding/json/v2"
@@ -16,12 +16,12 @@ import (
 // JavaScript syntax error. The host emits no item for the cell itself, so a
 // script that failed before any nested tool call would otherwise leave no row.
 // Only outputs new in this request are read; the result passes unchanged.
-func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, request *parsedResponsesRequest, visible map[string]mekugiHistory) {
+func (p *mekugiProxy) observeCodeModeFailures(thread, codeModeToolName string, request *codexresponses.Request, visible map[string]mekugiHistory) {
 	if thread == "" || codeModeToolName == "" {
 		return
 	}
 	var items []map[string]json.RawMessage
-	if jsonv2.Unmarshal(request.fields["input"], &items) != nil {
+	if jsonv2.Unmarshal(request.Fields["input"], &items) != nil {
 		return
 	}
 	trailing := len(items)

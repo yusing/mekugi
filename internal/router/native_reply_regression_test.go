@@ -150,7 +150,7 @@ func TestNativeDirectedMessagesDoNotInjectLegacyEnvelopes(t *testing.T) {
 	p.activity.attachNativePane("r")
 	envelope := map[string]any{"type": "agent_message", "id": "parent-message", "author": "/root", "recipient": "/root/reviewer", "content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root/reviewer\nSender: /root\nPayload:\nPlease finish."}}}
 	child, request := prepareActivityTest(t, p, "child", "reviewer", "r", "/root/reviewer", []any{envelope})
-	if !strings.Contains(string(request.fields["input"]), "Please finish.") {
+	if !strings.Contains(string(request.Fields["input"]), "Please finish.") {
 		t.Fatal("native display changed model input")
 	}
 	output, err := child.TransformJSON([]byte(`{"status":"completed","output":[]}`))
@@ -170,7 +170,7 @@ func TestNativeDirectedMessageDisplayBudget(t *testing.T) {
 			envelope := map[string]any{"type": "agent_message", "id": "large-message", "author": "/root/worker", "recipient": "/root", "content": []any{map[string]any{"type": "input_text", "text": "Message Type: MESSAGE\nTask name: /root\nSender: /root/worker\nPayload:\n" + text}}}
 			transform, request := prepareActivityTest(t, p, "root-next", "r", "", "/root", []any{envelope})
 			defer transform.Close()
-			if !strings.Contains(string(request.fields["input"]), text) {
+			if !strings.Contains(string(request.Fields["input"]), text) {
 				t.Fatal("display limit altered model input")
 			}
 			var reply activityPaneEntry

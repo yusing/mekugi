@@ -382,11 +382,11 @@ func TestNativeApprovalDenialProjectsFeedbackInSameTurn(t *testing.T) {
 				t.Fatalf("denial steered or started a turn: %s", wire.String())
 			}
 			for _, scope := range [][2]string{{thread, "other"}, {"other", "turn"}, {thread, "turn"}, {thread, "turn"}} {
-				request := &parsedResponsesRequest{fields: map[string]jsontext.Value{"input": jsontext.Value(`[{"type":"custom_tool_call_output","call_id":"call","output":"exec command rejected by user"}]`)}}
+				request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": jsontext.Value(`[{"type":"custom_tool_call_output","call_id":"call","output":"exec command rejected by user"}]`)}}
 				if err := u.proxy.projectApprovalFeedback(request, scope[0], scope[1]); err != nil {
 					t.Fatal(err)
 				}
-				got := string(request.fields["input"])
+				got := string(request.Fields["input"])
 				want := scope == [2]string{thread, "turn"}
 				if strings.Contains(got, "user denied this command with a reason: wait for review") != want || !strings.Contains(got, "exec command rejected by user") {
 					t.Fatalf("feedback scope %v: %s", scope, got)

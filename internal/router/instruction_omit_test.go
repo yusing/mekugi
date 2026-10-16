@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -30,7 +31,7 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 					content = []any{map[string]string{"type": "input_text", "text": text}, image, map[string]string{"type": "text", "text": text}}
 					expected = []any{map[string]string{"type": "input_text", "text": want}, image, map[string]string{"type": "text", "text": want}}
 				}
-				request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+				request := codexresponses.Request{Fields: map[string]json.RawMessage{
 					"instructions": responses.MustMarshalJSON("base" + block),
 					"input": responses.MustMarshalJSON([]any{
 						map[string]any{"role": role, "content": content},
@@ -38,10 +39,10 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 						map[string]string{"type": "function_call_output", "call_id": "call", "output": block},
 					}),
 				}}
-				if err := request.projectInstructions(testGuidance().BeforePreparation); err != nil {
+				if err := projectRequestInstructions(&request, testGuidance().BeforePreparation); err != nil {
 					t.Fatal(err)
 				}
-				if got := responses.StringField(request.fields, "instructions"); got != "base" {
+				if got := responses.StringField(request.Fields, "instructions"); got != "base" {
 					t.Fatalf("instructions = %q", got)
 				}
 				wantInput := responses.MustMarshalJSON([]any{
@@ -49,11 +50,11 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 					map[string]string{"role": "user", "content": "Please explain " + block},
 					map[string]string{"type": "function_call_output", "call_id": "call", "output": block},
 				})
-				if !sameJSONValue(request.fields["input"], wantInput) {
-					t.Fatalf("input = %s, want %s", request.fields["input"], wantInput)
+				if !responses.SameJSONValue(request.Fields["input"], wantInput) {
+					t.Fatalf("input = %s, want %s", request.Fields["input"], wantInput)
 				}
-				before := string(request.fields["input"])
-				if err := request.projectInstructions(testGuidance().BeforePreparation); err != nil || string(request.fields["input"]) != before {
+				before := string(request.Fields["input"])
+				if err := projectRequestInstructions(&request, testGuidance().BeforePreparation); err != nil || string(request.Fields["input"]) != before {
 					t.Fatalf("repeat changed input: %v", err)
 				}
 			})
@@ -63,14 +64,14 @@ func TestStripRequestInstructionOmissions(t *testing.T) {
 
 func TestStripDirectorylessAgentInstructions(t *testing.T) {
 	text := "# AGENTS.md instructions\n<INSTRUCTIONS>keep" + instructionOmitStart + "use rtk" + instructionOmitEnd + "</INSTRUCTIONS>"
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{
 		"input": responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": text}}),
 	}}
-	if err := request.projectInstructions(testGuidance().BeforePreparation); err != nil {
+	if err := projectRequestInstructions(&request, testGuidance().BeforePreparation); err != nil {
 		t.Fatal(err)
 	}
 	want := responses.MustMarshalJSON([]any{map[string]string{"role": "user", "content": "# AGENTS.md instructions\n<INSTRUCTIONS>keep</INSTRUCTIONS>"}})
-	if !sameJSONValue(request.fields["input"], want) {
-		t.Fatalf("input = %s, want %s", request.fields["input"], want)
+	if !responses.SameJSONValue(request.Fields["input"], want) {
+		t.Fatalf("input = %s, want %s", request.Fields["input"], want)
 	}
 }

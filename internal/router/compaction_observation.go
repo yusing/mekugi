@@ -3,11 +3,10 @@ package router
 import (
 	"context"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/legacycall"
-
-	"github.com/yusing/mekugi/modules/sessionhistory/history"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/sessionhistory/history"
 
 	jsonv1 "encoding/json"
 
@@ -36,7 +35,7 @@ func validateProviderContext(input jsonv1.RawMessage) error {
 
 // Compaction can carry the first completed host result for an observed edit.
 // Retain that evidence without projecting changes into the provider request.
-func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *parsedResponsesRequest, session, thread string, metadata codexTurnMetadata) error {
+func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *codexresponses.Request, session, thread string, metadata codexTurnMetadata) error {
 	if p == nil || p.replayStore == nil || thread == "" {
 		return nil
 	}
@@ -63,7 +62,7 @@ func (p *mekugiProxy) observeCompactionInput(ctx context.Context, request *parse
 		return err
 	}
 	observed := *request
-	observed.fields = maps.Clone(request.fields)
+	observed.Fields = maps.Clone(request.Fields)
 	_, err = p.reconcileVisibleInput(ctx, &observed, workspace, workspace+"\x00"+thread)
 	return err
 }

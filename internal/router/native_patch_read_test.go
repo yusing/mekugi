@@ -7,12 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/commandanalysis"
-
-	"github.com/yusing/mekugi/modules/changehistory/changes"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/internal/execscope"
+	"github.com/yusing/mekugi/libraries/commandanalysis"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
+	"github.com/yusing/mekugi/modules/changehistory/changes"
 )
 
 func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
@@ -85,7 +84,7 @@ func TestCodeModeLiteralPatchRetainsNeutralReadersThroughReplay(t *testing.T) {
 			}}
 			reconcile := func(p *mekugiProxy) {
 				t.Helper()
-				request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"input": items}))
+				request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"input": items}))
 				if err != nil {
 					t.Fatal(err)
 				}

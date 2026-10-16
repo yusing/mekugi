@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/yusing/mekugi/backends/codex/binding"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -36,7 +37,7 @@ func (s *activityStart) label() string {
 
 // The native pane keeps every observed NEW_TASK, including follow-ups, keyed by
 // the host item and payload. Full-history requests cannot replay its display.
-func (a *subagentActivity) collectSubagentStart(thread string, request *parsedResponsesRequest, recipient string) {
+func (a *subagentActivity) collectSubagentStart(thread string, request *codexresponses.Request, recipient string) {
 	if a == nil {
 		return
 	}
@@ -50,7 +51,7 @@ func (a *subagentActivity) collectSubagentStart(thread string, request *parsedRe
 	a.mu.Unlock()
 	start := nativeSubagentStart(request)
 	var items []map[string]jsonv1.RawMessage
-	if json.Unmarshal(request.fields["input"], &items) != nil {
+	if json.Unmarshal(request.Fields["input"], &items) != nil {
 		items = nil
 	}
 	var assignments []*activityAssignment

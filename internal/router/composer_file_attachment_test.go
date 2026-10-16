@@ -4,9 +4,8 @@ import (
 	"bytes"
 
 	"github.com/yusing/mekugi/backends/codex/binding"
-
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -65,30 +64,30 @@ func TestComposerFileAttachmentSnapshotAndProjection(t *testing.T) {
 	if question := binding.SubmittedUserText(raw, "/root", false); question != draft.text {
 		t.Fatalf("attachment became naming text: %q", question)
 	}
-	request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
+	request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
 	projectFileAttachments(&request)
 	var messages []struct {
 		Role    string              `json:"role"`
 		Content []map[string]string `json:"content"`
 	}
-	if err := json.Unmarshal(request.fields["input"], &messages); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &messages); err != nil {
 		t.Fatal(err)
 	}
 	if len(messages) != 2 || len(messages[0].Content) != 2 || messages[0].Content[0]["text"] != draft.text || messages[0].Content[1]["type"] != "input_image" || messages[1].Role != "user" || messages[1].Content[0]["text"] != frames[0] {
 		t.Fatalf("projection did not preserve prompt/media and separate file: %+v", messages)
 	}
-	first := bytes.Clone(request.fields["input"])
+	first := bytes.Clone(request.Fields["input"])
 	projectFileAttachments(&request)
-	if !bytes.Equal(first, request.fields["input"]) {
+	if !bytes.Equal(first, request.Fields["input"]) {
 		t.Fatal("projection is not idempotent")
 	}
 	// A fresh request built only from persisted Codex input needs no live UI or file.
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	replayed := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
+	replayed := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
 	projectFileAttachments(&replayed)
-	if !sameJSONValue(first, replayed.fields["input"]) {
+	if !responses.SameJSONValue(first, replayed.Fields["input"]) {
 		t.Fatal("replay changed submitted snapshot")
 	}
 }
@@ -99,7 +98,7 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 		map[string]any{"type": "input_text", "text": "Review @example"},
 		map[string]any{"type": "input_text", "text": attachments.Encode([]string{"Attached file /work/example:\nexact content"})},
 	}}})
-	request.setInput(raw)
+	request.Fields["input"] = raw
 	attempt := newRequestAttempt(requestExecutor{provider: &serverFakeProvider{}}, t.Context(), t.Context(), request, http.Header{}, "")
 	if err := attempt.prepareWire(); err != nil {
 		t.Fatal(err)
@@ -115,14 +114,14 @@ func TestComposerFileAttachmentWireAndProviderPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, automatic := range []bool{false, true} {
-		request.setInput(raw)
-		request.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+		request.Fields["input"] = raw
+		request.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
 		projectFileAttachments(&request)
 		exchange := &webSocketExchange{parentID: "parent", automatic: automatic, history: &webSocketHistory{parent: &webSocketHistory{providerHistory: prefix}}}
-		if err := exchange.reconcileProviderHistory(&request, responses.MustMarshalJSON(request.fields)); err != nil {
+		if err := exchange.reconcileProviderHistory(&request, responses.MustMarshalJSON(request.Fields)); err != nil {
 			t.Fatal(err)
 		}
-		if request.cachedInput != 2 || request.rebaseInput {
+		if request.CachedInput != 2 || request.RebaseInput {
 			t.Fatal("replayed snapshot changed provider prefix")
 		}
 	}
@@ -200,9 +199,9 @@ func TestComposerFileAttachmentProjectionLeavesLookalikes(t *testing.T) {
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": attachments.Prefix + "invalid" + attachments.Suffix}}},
 	} {
 		raw := responses.MustMarshalJSON([]any{item})
-		request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": raw}}
+		request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": raw}}
 		projectFileAttachments(&request)
-		if !bytes.Equal(raw, request.fields["input"]) {
+		if !bytes.Equal(raw, request.Fields["input"]) {
 			t.Fatal("changed non-attachment input")
 		}
 	}
@@ -237,23 +236,23 @@ func TestSkillAttachmentProjectionMatchesSuccessfulSource(t *testing.T) {
 				if multipart {
 					content = []map[string]string{{"type": "input_text", "text": text}}
 				}
-				request := parsedResponsesRequest{fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{
+				request := codexresponses.Request{Fields: map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{
 					map[string]any{"role": "user", "content": content},
 					map[string]any{"role": "user", "content": []map[string]string{{"type": "input_text", "text": attachments.Encode(frames)}}},
 				})}}
 				projectFileAttachments(&request)
 				var messages []map[string]jsonv1.RawMessage
-				if err := json.Unmarshal(request.fields["input"], &messages); err != nil {
+				if err := json.Unmarshal(request.Fields["input"], &messages); err != nil {
 					t.Fatal(err)
 				}
 				want := 2
 				if test.suppressed {
 					want = 1
 				}
-				if len(messages) != want || !test.suppressed && !sameJSONValue(messages[0]["content"], responses.MustMarshalJSON(content)) {
-					t.Fatalf("wrong selected-skill suppression: %s", request.fields["input"])
+				if len(messages) != want || !test.suppressed && !responses.SameJSONValue(messages[0]["content"], responses.MustMarshalJSON(content)) {
+					t.Fatalf("wrong selected-skill suppression: %s", request.Fields["input"])
 				}
-				if !sameJSONValue(messages[len(messages)-1]["content"], responses.MustMarshalJSON([]map[string]string{{"type": "input_text", "text": frames[0]}})) {
+				if !responses.SameJSONValue(messages[len(messages)-1]["content"], responses.MustMarshalJSON([]map[string]string{{"type": "input_text", "text": frames[0]}})) {
 					t.Fatal("snapshot or omission notice changed")
 				}
 			})

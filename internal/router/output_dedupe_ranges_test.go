@@ -85,7 +85,7 @@ func TestDuplicateOutputNativeMCatRanges(t *testing.T) {
 			if got := responses.StringField(items[3], "output"); got != duplicateTestHeader+want {
 				t.Fatalf("projected reader output = %q, want %q", got, duplicateTestHeader+want)
 			}
-			if responses.StringField(items[1], "output") != duplicateTestHeader+"[O1]\n"+first || !sameJSONValue(request.originalFields["input"], responses.MustMarshalJSON(input)) {
+			if responses.StringField(items[1], "output") != duplicateTestHeader+"[O1]\n"+first || !responses.SameJSONValue(request.OriginalField("input"), responses.MustMarshalJSON(input)) {
 				t.Fatal("original reader evidence changed")
 			}
 		})
@@ -119,7 +119,7 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 	if got, want := responses.StringField(firstItems[3], "output"), duplicateTestHeader+"[O2]\n[same as O1 L7-10]\n"+strings.Join(rows[10:], ""); got != want {
 		t.Fatalf("second read = %q, want %q", got, want)
 	}
-	prefix := bytes.Clone(first.fields["input"])
+	prefix := bytes.Clone(first.Fields["input"])
 	var original []jsonv1.RawMessage
 	if err := json.Unmarshal(prefix, &original); err != nil {
 		t.Fatal(err)
@@ -138,18 +138,18 @@ func TestDuplicateOutputNativeMCatThirdReadProviderPrefix(t *testing.T) {
 		t.Fatalf("third read = %q, want direct verbatim references %q", got, want)
 	}
 	var projected []jsonv1.RawMessage
-	if err := json.Unmarshal(grown.fields["input"], &projected); err != nil {
+	if err := json.Unmarshal(grown.Fields["input"], &projected); err != nil {
 		t.Fatal(err)
 	}
-	if !sameJSONValue(responses.MustMarshalJSON(projected[:len(original)]), prefix) {
+	if !responses.SameJSONValue(responses.MustMarshalJSON(projected[:len(original)]), prefix) {
 		t.Fatal("third read changed the already projected provider prefix")
 	}
 	exchange := &webSocketExchange{parentID: "parent", history: &webSocketHistory{parent: &webSocketHistory{providerHistory: state}}}
-	grown.fields["previous_response_id"] = responses.MustMarshalJSON("parent")
-	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.fields)); err != nil {
+	grown.Fields["previous_response_id"] = responses.MustMarshalJSON("parent")
+	if err := exchange.reconcileProviderHistory(grown, responses.MustMarshalJSON(grown.Fields)); err != nil {
 		t.Fatal(err)
 	}
-	if grown.cachedInput != len(original) || grown.rebaseInput {
+	if grown.CachedInput != len(original) || grown.RebaseInput {
 		t.Fatal("third read rebased a confirmed provider prefix")
 	}
 }

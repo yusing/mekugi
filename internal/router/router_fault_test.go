@@ -57,7 +57,7 @@ func TestRouterTransformFaultAfterCreatedEmitsActionableTerminalFailure(t *testi
 	proxy := newManagedMekugiProxy(t)
 	attachTestReplayStore(t, proxy)
 
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "stream": true,
 		"input": []any{map[string]any{"role": "user", "content": "run a command"}},
 		"tools": testExecResponsesTools(), "tool_choice": "auto",

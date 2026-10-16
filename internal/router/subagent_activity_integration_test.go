@@ -2,14 +2,16 @@ package router
 
 import (
 	"testing"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 )
 
-func prepareActivityTest(t *testing.T, proxy *mekugiProxy, session, thread, parent, name string, input []any) (*mekugiResponseTransform, *parsedResponsesRequest) {
+func prepareActivityTest(t *testing.T, proxy *mekugiProxy, session, thread, parent, name string, input []any) (*mekugiResponseTransform, *codexresponses.Request) {
 	t.Helper()
 	return prepareActivityModelTest(t, proxy, "gpt-test", session, thread, parent, name, input)
 }
 
-func prepareActivityModelTest(t *testing.T, proxy *mekugiProxy, model, session, thread, parent, name string, input []any) (*mekugiResponseTransform, *parsedResponsesRequest) {
+func prepareActivityModelTest(t *testing.T, proxy *mekugiProxy, model, session, thread, parent, name string, input []any) (*mekugiResponseTransform, *codexresponses.Request) {
 	t.Helper()
 	tools := []any{
 		map[string]any{"type": "function", "name": "lookup", "parameters": map[string]any{"type": "object", "properties": map[string]any{}}},
@@ -17,7 +19,7 @@ func prepareActivityModelTest(t *testing.T, proxy *mekugiProxy, model, session, 
 			map[string]any{"type": "function", "name": "send_message"}, map[string]any{"type": "function", "name": "followup_task"},
 		}},
 	}
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": model, "input": append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, input...), "tools": tools}))
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": model, "input": append([]any{testCodeModeAdditionalTools(testCodeModeDescription)}, input...), "tools": tools}))
 	if err != nil {
 		t.Fatal(err)
 	}

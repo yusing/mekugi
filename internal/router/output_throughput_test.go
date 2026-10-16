@@ -158,7 +158,7 @@ func TestOutputThroughputProviderRequestJSONAndSSE(t *testing.T) {
 						return client.Do(request)
 					})
 					handler := recorder.Handler(http.HandlerFunc(responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, proxy)))
-					request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, req.fields)))
+					request := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, req.Fields)))
 					request.Header = headers
 					out := &throughputSlowWriter{ResponseRecorder: httptest.NewRecorder()}
 					handler.ServeHTTP(out, request)
@@ -247,7 +247,7 @@ func TestUISnapshotOutputThroughputStreamingRetainsMeasuredRate(t *testing.T) {
 				})
 				request := serverRequest(t, func(f map[string]any) { f["stream"] = true; f["model"] = "gpt-6.1-sol" })
 				out := httptest.NewRecorder()
-				httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
+				httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 				httpRequest.Header = serverMetadataHeaders(t, "turn", nil)
 				httpRequest.Header.Set(sessionIDHeader, "transport-session")
 				done := make(chan struct{})

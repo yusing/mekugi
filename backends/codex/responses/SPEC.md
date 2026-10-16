@@ -8,6 +8,26 @@ Codex consumes. The caller supplies resolved provider policy and diagnostics.
 Provider authentication, model selection, HTTP transport, history reconciliation,
 and native tool execution remain with their existing owners.
 
+## Request envelopes and catalogs
+
+The request envelope retains received bytes separately from projected fields.
+Untouched fields preserve their original JSON spelling, whitespace and ordering.
+An unchanged duplicate member remains byte-identical; changing that member
+replaces every occurrence with the projected value. Added members have stable
+ordering. Removing an original member through ordinary projection fails.
+Existing permissive duplicate-name and invalid-UTF-8 decoding remains supported;
+background requests and multiple top-level values remain rejected.
+
+Catalogs describe the fields at the point of tool discovery. Presence, null,
+malformed sections and additional-tool groups stay distinct so each consumer can
+apply its own admission policy. Raw tool fields are authoritative, including unknown extensions.
+
+Incremental encoding slices only the workflow-supplied cached prefix and
+can remove its previous-response dependency when rebasing. The caller selects
+whether its provider uses that connection-local cache. Provider-history
+reconciliation, execution admission and guidance policy remain
+with the consuming workflow.
+
 ## Request and stream behavior
 
 Translation validates explicit history and tool identities before inference.

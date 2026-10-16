@@ -127,14 +127,14 @@ func TestFinalAnswerTransportStreamsBeforeTerminal(t *testing.T) {
 							}
 							defer conn.CloseNow()
 							var create map[string]jsonv1.RawMessage
-							if err := json.Unmarshal(request.originalBody, &create); err != nil {
+							if err := json.Unmarshal(requestTestBody(t, request), &create); err != nil {
 								t.Fatal(err)
 							}
 							create["type"] = responses.MustMarshalJSON("response.create")
 							socketWrite(t, ctx, conn, create)
 							next = func() ([]byte, error) { _, payload, err := conn.Read(ctx); return payload, err }
 						} else {
-							req, err := http.NewRequestWithContext(ctx, http.MethodPost, downstream.URL, bytes.NewReader(request.originalBody))
+							req, err := http.NewRequestWithContext(ctx, http.MethodPost, downstream.URL, bytes.NewReader(requestTestBody(t, request)))
 							if err != nil {
 								t.Fatal(err)
 							}

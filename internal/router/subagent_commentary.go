@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/internal/commentaryid"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
@@ -23,15 +24,15 @@ func subagentCommentaryMessageID(seed string) string {
 // Start metadata and any readable assignment come from the child's actual
 // request. Native roles can override the parent's model and reasoning settings,
 // while opaque native collaboration arguments must remain opaque.
-func nativeSubagentStart(request *parsedResponsesRequest) *activityStart {
-	model := request.model()
+func nativeSubagentStart(request *codexresponses.Request) *activityStart {
+	model := request.Model()
 	var reasoning struct {
 		Effort string `json:"effort"`
 	}
-	if raw, ok := request.fields["reasoning"]; ok && json.Unmarshal(raw, &reasoning) != nil {
+	if raw, ok := request.Fields["reasoning"]; ok && json.Unmarshal(raw, &reasoning) != nil {
 		return nil
 	}
-	return subagentStart(model, reasoning.Effort, responses.StringField(request.fields, "service_tier"))
+	return subagentStart(model, reasoning.Effort, responses.StringField(request.Fields, "service_tier"))
 }
 
 // subagentStart validates the model settings a child actually ran with; a

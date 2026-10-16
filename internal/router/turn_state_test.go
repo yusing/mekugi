@@ -71,7 +71,12 @@ func TestTurnStateRoundTrip(t *testing.T) {
 						fields["instructions"] = testBaseInstructions
 						fields["stream"] = stream
 					})
-					original := bytes.Clone(parsed.originalBody)
+					source := requestTestBody(t, parsed)
+					parsed, err := codexresponses.ParseRequest(source)
+					if err != nil {
+						t.Fatal(err)
+					}
+					original := bytes.Clone(source)
 					output := httptest.NewRecorder()
 					if err := executeRequest(t.Context(), t.Context(), parsed, headers, "stable-session", provider, output, nil, proxy); err != nil {
 						t.Fatal(err)
@@ -86,7 +91,7 @@ func TestTurnStateRoundTrip(t *testing.T) {
 					if got := output.Header().Get("x-codex-turn-state"); got != want {
 						t.Fatal("provider turn state not returned to Codex")
 					}
-					if !bytes.Equal(original, parsed.originalBody) {
+					if !bytes.Equal(original, source) {
 						t.Fatal("original request bytes changed")
 					}
 					if !strings.Contains(output.Body.String(), "completed") {

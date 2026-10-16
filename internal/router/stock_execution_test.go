@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -47,7 +48,7 @@ func TestStockSearchOutputPassesThroughRequestPreparation(t *testing.T) {
 				}}
 			}
 			input = append(input, map[string]any{"role": "assistant", "content": "Looking for result-0.go."}, call, output)
-			request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": input, "tools": tools}))
+			request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": input, "tools": tools}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -62,11 +63,11 @@ func TestStockSearchOutputPassesThroughRequestPreparation(t *testing.T) {
 				}
 				transform.Close()
 				var projected []map[string]json.RawMessage
-				if err := json.Unmarshal(request.fields["input"], &projected); err != nil {
+				if err := json.Unmarshal(request.Fields["input"], &projected); err != nil {
 					t.Fatal(err)
 				}
-				if !sameJSONValue(mustTestJSON(t, call), mustTestJSON(t, projected[len(projected)-2])) ||
-					!sameJSONValue(mustTestJSON(t, output), mustTestJSON(t, projected[len(projected)-1])) {
+				if !responses.SameJSONValue(mustTestJSON(t, call), mustTestJSON(t, projected[len(projected)-2])) ||
+					!responses.SameJSONValue(mustTestJSON(t, output), mustTestJSON(t, projected[len(projected)-1])) {
 					t.Fatal("stock search arguments or result changed")
 				}
 			}
@@ -192,7 +193,7 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 		if err := json.Unmarshal(fields["tools"], &before); err != nil {
 			t.Fatal(err)
 		}
-		execution, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance())
+		execution, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance())
 		if err != nil || execution == nil {
 			t.Fatalf("execution = %+v, %v", execution, err)
 		}
@@ -200,7 +201,7 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 		if err := json.Unmarshal(fields["tools"], &after); err != nil {
 			t.Fatal(err)
 		}
-		if !sameJSONValue(responses.MustMarshalJSON(before), responses.MustMarshalJSON(after)) {
+		if !responses.SameJSONValue(responses.MustMarshalJSON(before), responses.MustMarshalJSON(after)) {
 			t.Fatalf("unrelated stock tool changed: before=%s after=%s", responses.MustMarshalJSON(before), responses.MustMarshalJSON(after))
 		}
 		if !strings.Contains(string(fields["input"]), frontendGuidanceStart) ||
@@ -212,10 +213,10 @@ func TestPrepareStockExecutionPreservesCodeModeAndNativeTools(t *testing.T) {
 	t.Run("unsupported execution", func(t *testing.T) {
 		fields := map[string]json.RawMessage{"tools": responses.MustMarshalJSON([]any{map[string]any{"type": "function", "name": "exec_command"}})}
 		before := responses.MustMarshalJSON(fields)
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err == nil || !strings.Contains(err.Error(), "required exec interface") {
+		if _, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance()); err == nil || !strings.Contains(err.Error(), "required exec interface") {
 			t.Fatalf("unsupported model accepted: %v", err)
 		}
-		if !sameJSONValue(before, responses.MustMarshalJSON(fields)) {
+		if !responses.SameJSONValue(before, responses.MustMarshalJSON(fields)) {
 			t.Fatal("rejected catalog was changed")
 		}
 	})
@@ -237,7 +238,7 @@ func TestStockExecutionNamespacesUseOneInterface(t *testing.T) {
 			if additional {
 				fields = map[string]json.RawMessage{"input": responses.MustMarshalJSON([]any{map[string]any{"type": "additional_tools", "role": "developer", "tools": definitions}})}
 			}
-			owner, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance())
+			owner, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance())
 			if name != "exec" {
 				if err == nil || !strings.Contains(err.Error(), "required exec interface") {
 					t.Fatalf("additional=%v %s accepted: %v", additional, name, err)
@@ -248,7 +249,7 @@ func TestStockExecutionNamespacesUseOneInterface(t *testing.T) {
 				t.Fatalf("additional=%v exec guidance missing: %v", additional, err)
 			}
 			before := responses.MustMarshalJSON(fields)
-			if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil || !sameJSONValue(before, responses.MustMarshalJSON(fields)) {
+			if _, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance()); err != nil || !responses.SameJSONValue(before, responses.MustMarshalJSON(fields)) {
 				t.Fatalf("namespace refresh changed stock catalog: %v", err)
 			}
 		}
@@ -262,7 +263,7 @@ func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
 		{map[string]any{"type": "function", "name": "collaboration.wait_agent"}},
 	} {
 		fields := map[string]json.RawMessage{"tools": responses.MustMarshalJSON(tools)}
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil {
+		if _, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance()); err != nil {
 			t.Fatalf("stock subset %s: %v", fields["tools"], err)
 		}
 	}
@@ -271,13 +272,13 @@ func TestStockExecutionAllowsHostSelectedToolSubset(t *testing.T) {
 		"tools": responses.MustMarshalJSON([]any{}),
 		"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools(description)}),
 	}
-	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil || result == nil {
+	if result, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance()); err != nil || result == nil {
 		t.Fatalf("exec subset = %+v, %v", result, err)
 	}
 	fields = map[string]json.RawMessage{
 		"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools("Run JS with tools.apply_patch.\n" + guide)}),
 	}
-	if result, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil || result == nil {
+	if result, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance()); err != nil || result == nil {
 		t.Fatalf("patch-only exec subset = %+v, %v", result, err)
 	}
 	if strings.Contains(string(fields["input"]), "mekugi-frontends:start") {
@@ -370,7 +371,7 @@ func TestCodeModeOpaqueSourcePassesThroughUnchanged(t *testing.T) {
 }
 
 func TestStockExecCommandContinuationUsesWriteStdin(t *testing.T) {
-	request := parsedResponsesRequest{fields: map[string]json.RawMessage{
+	request := codexresponses.Request{Fields: map[string]json.RawMessage{
 		"input": responses.MustMarshalJSON([]any{
 			continuationTestCall(nativeExecCommandToolName, "run-call", `{"cmd":"sleep 100"}`),
 			continuationTestOutput("run-call", "Wall time: 0.1 seconds\nProcess running with session ID 42\nOutput:\npartial"),
@@ -378,7 +379,7 @@ func TestStockExecCommandContinuationUsesWriteStdin(t *testing.T) {
 	}}
 	projectExecutionContinuations(&request, continuationTestCatalog(), "exec", nil)
 	var items []map[string]json.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &items); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &items); err != nil {
 		t.Fatal(err)
 	}
 	texts := executionOutputTexts(items[1]["output"])

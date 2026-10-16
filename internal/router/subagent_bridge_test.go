@@ -10,10 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
-func bridgeTestRequest(t *testing.T, additional bool) parsedResponsesRequest {
+func bridgeTestRequest(t *testing.T, additional bool) codexresponses.Request {
 	t.Helper()
 	ns := map[string]any{"type": "namespace", "name": "collaboration", "tools": []any{map[string]any{"type": "function", "name": "spawn_agent", "parameters": map[string]any{"type": "object", "properties": map[string]any{"message": map[string]any{"type": "string", "encrypted": true}, "model": map[string]string{"type": "string"}}}}}}
 	request := map[string]any{"model": "gpt-test", "instructions": "keep", "tools": []any{ns}, "input": []any{map[string]string{"type": "function_call", "namespace": "collaboration", "name": "spawn_agent", "arguments": "{}", "call_id": "c1"}}}
@@ -21,7 +22,7 @@ func bridgeTestRequest(t *testing.T, additional bool) parsedResponsesRequest {
 		request["tools"] = []any{}
 		request["input"] = append(request["input"].([]any), map[string]any{"type": "additional_tools", "tools": []any{ns}})
 	}
-	parsed, err := parseResponsesRequest(mustTestJSON(t, request))
+	parsed, err := codexresponses.ParseRequest(mustTestJSON(t, request))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +35,7 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data := responses.MustMarshalJSON(request.fields)
+		data := responses.MustMarshalJSON(request.Fields)
 		for _, model := range grokModels {
 			if !bytes.Contains(data, []byte("grok:"+model)) {
 				t.Fatalf("model missing from projected override guidance: %s", model)
@@ -47,7 +48,7 @@ func TestSubagentBridgeProjectsAndRestoresPlaintext(t *testing.T) {
 		if bytes.Contains(data, []byte(`"encrypted":true`)) || !bytes.Contains(data, []byte(`"namespace":"mekugi_collaboration"`)) {
 			t.Fatalf("projection=%s", data)
 		}
-		if responses.StringField(request.fields, "instructions") != "keep" || !bytes.Contains(data, responses.MustMarshalJSON(collaborationNamespaceInstruction)) {
+		if responses.StringField(request.Fields, "instructions") != "keep" || !bytes.Contains(data, responses.MustMarshalJSON(collaborationNamespaceInstruction)) {
 			t.Fatal("bridge guidance changed base instructions or is missing from the projected namespace")
 		}
 		item := map[string]any{"type": "function_call", "namespace": subagentBridgeNamespace, "name": "spawn_agent", "call_id": "c1", "arguments": `{"message":"plain"}`}
@@ -78,9 +79,9 @@ func TestSubagentBridgeLeavesRecordedDispatchInstructionUnchanged(t *testing.T) 
 	const prior = "Note that collaboration tools cannot be called from inside `functions.exec`. Call `spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `interrupt_agent`, and `list_agents` only as direct tool calls using the recipient shown in their tool definitions, such as `to=functions.collaboration.spawn_agent`, since they are intentionally absent from the `functions.exec` `tools.*` namespace. Available tools in `functions.exec` are explicitly described with a `tools` namespace in the developer message."
 	for _, additional := range []bool{false, true} {
 		request := bridgeTestRequest(t, additional)
-		request.fields["instructions"] = mustTestJSON(t, prior)
+		request.Fields["instructions"] = mustTestJSON(t, prior)
 		var input []any
-		if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+		if err := json.Unmarshal(request.Fields["input"], &input); err != nil {
 			t.Fatal(err)
 		}
 		offset := len(input)
@@ -91,15 +92,15 @@ func TestSubagentBridgeLeavesRecordedDispatchInstructionUnchanged(t *testing.T) 
 			}},
 			map[string]any{"type": "message", "role": "user", "content": prior},
 		)
-		request.setInput(mustTestJSON(t, input))
+		request.Fields["input"] = mustTestJSON(t, input)
 		if _, err := prepareSubagentBridge(&request, false, false); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(responses.StringField(request.fields, "instructions"), prior) {
+		if !strings.HasPrefix(responses.StringField(request.Fields, "instructions"), prior) {
 			t.Fatal("top-level recorded dispatch instruction was rewritten")
 		}
 		var got []map[string]json.RawMessage
-		if err := json.Unmarshal(request.fields["input"], &got); err != nil {
+		if err := json.Unmarshal(request.Fields["input"], &got); err != nil {
 			t.Fatal(err)
 		}
 		if responses.StringField(got[offset], "content") != prior {
@@ -151,15 +152,15 @@ func TestGrokCatalogPreservesNativeMetadata(t *testing.T) {
 func TestSubagentBridgePreservesScalarOpenAIInput(t *testing.T) {
 	for _, withTools := range []bool{false, true} {
 		request := bridgeTestRequest(t, false)
-		request.fields["input"] = responses.MustMarshalJSON("hello")
+		request.Fields["input"] = responses.MustMarshalJSON("hello")
 		if !withTools {
-			delete(request.fields, "tools")
+			delete(request.Fields, "tools")
 		}
 		_, err := prepareSubagentBridge(&request, true, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(request.fields["input"]) != `"hello"` {
+		if string(request.Fields["input"]) != `"hello"` {
 			t.Fatal("scalar input was rewritten")
 		}
 	}
@@ -246,20 +247,20 @@ func TestSubagentBridgeSpawnArgumentGuidancePreservesNativeContract(t *testing.T
 			fn := map[string]any{"type": "function", "name": "spawn_agent", "description": "Native lifecycle rules", "strict": true, "parameters": schema}
 			ns := map[string]any{"type": "namespace", "name": "collaboration", "tools": []any{fn}}
 			request := bridgeTestRequest(t, false)
-			request.fields["tools"] = responses.MustMarshalJSON([]any{ns})
-			request.fields["input"] = responses.MustMarshalJSON([]any{})
+			request.Fields["tools"] = responses.MustMarshalJSON([]any{ns})
+			request.Fields["input"] = responses.MustMarshalJSON([]any{})
 			if additional {
-				request.fields["tools"] = responses.MustMarshalJSON([]any{})
-				request.fields["input"] = responses.MustMarshalJSON([]any{map[string]any{"type": "additional_tools", "tools": []any{ns}}})
+				request.Fields["tools"] = responses.MustMarshalJSON([]any{})
+				request.Fields["input"] = responses.MustMarshalJSON([]any{map[string]any{"type": "additional_tools", "tools": []any{ns}}})
 			}
 			bridge, err := prepareSubagentBridge(&request, true, false)
 			if err != nil {
 				t.Fatal(err)
 			}
-			catalog := request.fields["tools"]
+			catalog := request.Fields["tools"]
 			if additional {
 				var input []map[string]json.RawMessage
-				if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+				if err := json.Unmarshal(request.Fields["input"], &input); err != nil {
 					t.Fatal(err)
 				}
 				catalog = input[0]["tools"]
@@ -342,9 +343,9 @@ func TestSubagentBridgeDoesNotAddAbsentSpawnArguments(t *testing.T) {
 	if _, err := prepareSubagentBridge(&request, true, false); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(request.fields["tools"], []byte(`"fork_turns":`)) ||
-		bytes.Contains(request.fields["tools"], []byte(`"reasoning_effort":`)) {
-		t.Fatalf("projection added absent arguments: %s", request.fields["tools"])
+	if bytes.Contains(request.Fields["tools"], []byte(`"fork_turns":`)) ||
+		bytes.Contains(request.Fields["tools"], []byte(`"reasoning_effort":`)) {
+		t.Fatalf("projection added absent arguments: %s", request.Fields["tools"])
 	}
 }
 
@@ -355,12 +356,12 @@ func TestSubagentBridgeWithoutGrok(t *testing.T) {
 		if err != nil || bridge == nil {
 			t.Fatalf("prepare ordinary bridge: %v", err)
 		}
-		wire := responses.MustMarshalJSON(request.fields)
+		wire := responses.MustMarshalJSON(request.Fields)
 		if !bytes.Contains(wire, []byte(subagentBridgeNamespace)) || bytes.Contains(wire, []byte("grok:")) ||
 			bytes.Contains(wire, []byte(`"encrypted":true`)) {
 			t.Fatalf("ordinary projection exposes wrong contract: %s", wire)
 		}
-		if !bytes.Contains(wire, responses.MustMarshalJSON(collaborationNamespaceInstruction)) || responses.StringField(request.fields, "instructions") != "keep" {
+		if !bytes.Contains(wire, responses.MustMarshalJSON(collaborationNamespaceInstruction)) || responses.StringField(request.Fields, "instructions") != "keep" {
 			t.Fatal("missing plaintext guidance")
 		}
 	}
@@ -376,7 +377,7 @@ func TestOrdinaryCollaborationBridgeAtServerBoundary(t *testing.T) {
 				}
 				base := bridgeTestRequest(t, false)
 				request := serverRequest(t, func(fields map[string]any) {
-					fields["tools"] = json.RawMessage(base.fields["tools"])
+					fields["tools"] = json.RawMessage(base.Fields["tools"])
 					fields["stream"] = stream
 				})
 				namespace := "collaboration"
@@ -429,16 +430,16 @@ func TestSubagentBridgePreservesEncryptedHistory(t *testing.T) {
 		"arguments": `{"message":"plaintext"}`, "call_id": "new", "encrypted_function_args": []string{}}
 	message := nativeAssignmentTestMessage("/root/child", "NEW_TASK", "")
 	message["content"] = append(message["content"].([]any), map[string]any{"type": "encrypted_content", "encrypted_content": "opaque"})
-	request.fields["input"] = mustTestJSON(t, []any{encrypted, message, plain})
+	request.Fields["input"] = mustTestJSON(t, []any{encrypted, message, plain})
 	if _, err := prepareSubagentBridge(&request, false, false); err != nil {
 		t.Fatal(err)
 	}
 	var input []map[string]json.RawMessage
-	if err := json.Unmarshal(request.fields["input"], &input); err != nil {
+	if err := json.Unmarshal(request.Fields["input"], &input); err != nil {
 		t.Fatal(err)
 	}
-	if !sameJSONValue(responses.MustMarshalJSON(input[0]), responses.MustMarshalJSON(encrypted)) ||
-		!sameJSONValue(responses.MustMarshalJSON(input[1]), responses.MustMarshalJSON(message)) {
+	if !responses.SameJSONValue(responses.MustMarshalJSON(input[0]), responses.MustMarshalJSON(encrypted)) ||
+		!responses.SameJSONValue(responses.MustMarshalJSON(input[1]), responses.MustMarshalJSON(message)) {
 		t.Fatal("old encrypted call or assignment changed")
 	}
 	if responses.StringField(input[2], "namespace") != subagentBridgeNamespace ||

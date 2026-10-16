@@ -1,6 +1,7 @@
 package router
 
 import (
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	jsonv1 "encoding/json"
@@ -14,10 +15,10 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 	checkStableRefresh := func(t *testing.T, fields map[string]jsonv1.RawMessage) {
 		t.Helper()
 		before := responses.MustMarshalJSON(fields)
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil {
+		if _, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance()); err != nil {
 			t.Fatal(err)
 		}
-		if !sameJSONValue(before, responses.MustMarshalJSON(fields)) {
+		if !responses.SameJSONValue(before, responses.MustMarshalJSON(fields)) {
 			t.Fatal("refreshing stock guidance changed an already-projected request")
 		}
 	}
@@ -25,11 +26,11 @@ func TestProjectedStockGuidanceRetainsAgentWorkflows(t *testing.T) {
 	t.Run("exec exec_command", func(t *testing.T) {
 		const stock = testCodeModeDescription
 		fields := map[string]jsonv1.RawMessage{"input": responses.MustMarshalJSON([]any{testCodeModeAdditionalTools(stock)})}
-		if _, err := prepareStockExecution(fields, decodeResponsesToolCatalog(fields), guide, testGuidance()); err != nil {
+		if _, err := prepareStockExecution(fields, codexresponses.DecodeToolCatalog(fields), guide, testGuidance()); err != nil {
 			t.Fatal(err)
 		}
-		catalog := decodeResponsesToolCatalog(fields)
-		got := catalog.additional[0].tools.tools[0].nested.tools[0].Description
+		catalog := codexresponses.DecodeToolCatalog(fields)
+		got := catalog.Additional[0].Tools.Tools[0].Nested.Tools[0].Description()
 		if !strings.Contains(got, stock) {
 			t.Fatal("exec stock description was not preserved")
 		}

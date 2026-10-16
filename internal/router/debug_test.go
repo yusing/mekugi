@@ -147,7 +147,7 @@ func TestDebugInstructionSelectionAndWriteFailure(t *testing.T) {
 	if bytes.Contains(dump, []byte("excluded")) {
 		t.Fatal("dump retained data outside instruction scope")
 	}
-	if got.Scope != "projected_responses_request" || !sameJSONValue(responses.MustMarshalJSON(got.WireDevelopers), responses.MustMarshalJSON(got.Developers)) {
+	if got.Scope != "projected_responses_request" || !responses.SameJSONValue(responses.MustMarshalJSON(got.WireDevelopers), responses.MustMarshalJSON(got.Developers)) {
 		t.Fatal("dump does not distinguish projection from wire instructions")
 	}
 	// Post-startup write failure is retained for shutdown, not returned into
@@ -245,8 +245,8 @@ func TestDebugWebSocketInheritedInstructions(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if !sameJSONValue(record.Instructions, request["instructions"]) || len(record.Developers) == 0 || !sameJSONValue(responses.MustMarshalJSON(record.Developers), responses.MustMarshalJSON(firstDevelopers)) {
-				t.Errorf("dump lost exact final or inherited instructions: top-level equal=%v, dump developer count=%d, wire count=%d", sameJSONValue(record.Instructions, request["instructions"]), len(record.Developers), len(firstDevelopers))
+			if !responses.SameJSONValue(record.Instructions, request["instructions"]) || len(record.Developers) == 0 || !responses.SameJSONValue(responses.MustMarshalJSON(record.Developers), responses.MustMarshalJSON(firstDevelopers)) {
+				t.Errorf("dump lost exact final or inherited instructions: top-level equal=%v, dump developer count=%d, wire count=%d", responses.SameJSONValue(record.Instructions, request["instructions"]), len(record.Developers), len(firstDevelopers))
 			}
 			if record.WireBytes != len(request["input"]) || record.ProjectedBytes < record.WireBytes || (id == "second" && record.ProjectedBytes == record.WireBytes) {
 				t.Errorf("incorrect projected/wire byte evidence: %d/%d", record.ProjectedBytes, record.WireBytes)

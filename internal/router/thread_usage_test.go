@@ -103,7 +103,7 @@ func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 	first, _ := prepareActivityTest(t, proxy, "before", "root-thread", "", "/root", nil)
 	first.observeResponseUsage(tokenCounts{InputTokens: 10, UncachedInputTokens: 4, OutputTokens: 3, ReasoningTokens: 2})
 	first.Close()
-	request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 		"model": "gpt-test", "input": []any{map[string]any{"type": "message", "role": "user", "content": "compact this"}},
 		"stream": true, "tool_choice": "auto", "parallel_tool_calls": false,
 	}))
@@ -138,7 +138,7 @@ func TestThreadUsageIncludesCompactionWithoutRewritingIt(t *testing.T) {
 		t.Fatal("compaction tokens missing from lifetime total", got, valid)
 	}
 	var forwarded map[string]json.RawMessage
-	if len(provider.forwarded) != 1 || json.Unmarshal(provider.forwarded[0], &forwarded) != nil || !bytes.Equal(forwarded["input"], request.fields["input"]) {
+	if len(provider.forwarded) != 1 || json.Unmarshal(provider.forwarded[0], &forwarded) != nil || !bytes.Equal(forwarded["input"], request.Fields["input"]) {
 		t.Fatal("compaction request changed")
 	}
 }

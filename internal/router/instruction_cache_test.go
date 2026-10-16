@@ -63,7 +63,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 						bytes.Contains(request["input"], []byte("tools.exec_command")), bytes.Contains(request["tools"], []byte(`"shell"`)))
 				}
 			case "turn":
-				if !sameJSONValue(warmedTools, request["tools"]) {
+				if !responses.SameJSONValue(warmedTools, request["tools"]) {
 					t.Error("first turn changed the warmed tool catalog")
 				}
 				if responses.StringField(request, "previous_response_id") != "warm" || len(input) != 1 {
@@ -73,7 +73,7 @@ func TestWebSocketPrewarmToolGuidanceDelivery(t *testing.T) {
 				if responses.StringField(request, "previous_response_id") != ids[index-1] || len(input) != 1 {
 					t.Errorf("%s unnecessarily resent unchanged history", id)
 				}
-				if !sameJSONValue(warmedTools, request["tools"]) {
+				if !responses.SameJSONValue(warmedTools, request["tools"]) {
 					t.Errorf("%s changed model-independent tool guidance", id)
 				}
 			}
@@ -134,14 +134,14 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 			}
 			warmFields := fields(leading)
 			warmFields["generate"] = false
-			warm, err := parseResponsesRequest(mustTestJSON(t, warmFields))
+			warm, err := codexresponses.ParseRequest(mustTestJSON(t, warmFields))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if transform, err := proxy.prepareModelRequest(t.Context(), &warm, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true); err != nil || transform != nil {
 				t.Fatalf("prewarm projection: %v, %v", transform, err)
 			}
-			turn, err := parseResponsesRequest(mustTestJSON(t, fields(append(slices.Clone(leading), map[string]any{"type": "message", "role": "user", "content": "task"}))))
+			turn, err := codexresponses.ParseRequest(mustTestJSON(t, fields(append(slices.Clone(leading), map[string]any{"type": "message", "role": "user", "content": "task"}))))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,35 +153,35 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 			}
 			t.Cleanup(transform.Close)
 
-			for name, value := range warm.fields {
+			for name, value := range warm.Fields {
 				if name == "input" || name == "generate" {
 					continue
 				}
-				if !sameJSONValue(value, turn.fields[name]) {
-					t.Errorf("first turn changed prewarmed %s:\nprewarm: %s\nturn:    %s", name, value, turn.fields[name])
+				if !responses.SameJSONValue(value, turn.Fields[name]) {
+					t.Errorf("first turn changed prewarmed %s:\nprewarm: %s\nturn:    %s", name, value, turn.Fields[name])
 				}
 			}
-			for name := range turn.fields {
-				if _, present := warm.fields[name]; !present && name != "input" {
+			for name := range turn.Fields {
+				if _, present := warm.Fields[name]; !present && name != "input" {
 					t.Errorf("first turn added %s absent from the prewarm", name)
 				}
 			}
 			var warmInput, turnInput []json.RawMessage
-			if err := json.Unmarshal(warm.fields["input"], &warmInput); err != nil {
+			if err := json.Unmarshal(warm.Fields["input"], &warmInput); err != nil {
 				t.Fatal(err)
 			}
-			if err := json.Unmarshal(turn.fields["input"], &turnInput); err != nil {
+			if err := json.Unmarshal(turn.Fields["input"], &turnInput); err != nil {
 				t.Fatal(err)
 			}
 			if len(turnInput) != len(warmInput)+1 {
 				t.Fatalf("first turn input items = %d, want prewarm %d plus the user message", len(turnInput), len(warmInput))
 			}
 			for index := range warmInput {
-				if !sameJSONValue(warmInput[index], turnInput[index]) {
+				if !responses.SameJSONValue(warmInput[index], turnInput[index]) {
 					t.Errorf("first turn changed prewarmed input item %d:\nprewarm: %s\nturn:    %s", index, warmInput[index], turnInput[index])
 				}
 			}
-			if got := responses.StringField(warm.fields, "instructions"); got != testBaseInstructions+"\n"+projected {
+			if got := responses.StringField(warm.Fields, "instructions"); got != testBaseInstructions+"\n"+projected {
 				t.Fatalf("effective instruction cleanup = %q", got)
 			}
 			for _, raw := range warmInput {
@@ -192,8 +192,8 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 				}
 			}
 			// The comparison is meaningful only if the prewarm was projected.
-			if bytes.Contains(warm.fields["input"], []byte(conflictingProgress)) || !bytes.Contains(append(slices.Clone(warm.fields["tools"]), warm.fields["input"]...), []byte(frontendGuidanceStart)) {
-				t.Fatalf("prewarm skipped Mekugi projection: %s", responses.MustMarshalJSON(warm.fields))
+			if bytes.Contains(warm.Fields["input"], []byte(conflictingProgress)) || !bytes.Contains(append(slices.Clone(warm.Fields["tools"]), warm.Fields["input"]...), []byte(frontendGuidanceStart)) {
+				t.Fatalf("prewarm skipped Mekugi projection: %s", responses.MustMarshalJSON(warm.Fields))
 			}
 		})
 	}
@@ -201,7 +201,7 @@ func TestPrewarmProjectionMatchesFirstTurnPrefix(t *testing.T) {
 
 func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.T) {
 	exchange := &webSocketExchange{automatic: true, history: &webSocketHistory{}}
-	request := &parsedResponsesRequest{cachedInput: 1}
+	request := &codexresponses.Request{CachedInput: 1}
 	err := exchange.reconcileProviderHistory(request, []byte(`{"input":[{"role":"developer","content":"changed"}]}`))
 	if err == nil || !strings.Contains(err.Error(), "cached provider history") {
 		t.Fatalf("automatic successor silently accepted a different prefix: %v", err)
@@ -211,16 +211,16 @@ func TestInstructionCacheAutomaticSuccessorCannotSilentlyDropChanges(t *testing.
 func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	stock, _ := recordedInstructionCleanup(t)
-	request, err := parseResponsesRequest(responses.MustMarshalJSON(map[string]any{"model": "gpt-test", "generate": false, "instructions": stock, "tools": []any{map[string]string{"type": "web_search"}}, "input": []any{}}))
+	request, err := codexresponses.ParseRequest(responses.MustMarshalJSON(map[string]any{"model": "gpt-test", "generate": false, "instructions": stock, "tools": []any{map[string]string{"type": "web_search"}}, "input": []any{}}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := responses.MustMarshalJSON(request.fields)
+	before := responses.MustMarshalJSON(request.Fields)
 	transform, err := proxy.prepareModelRequest(t.Context(), &request, "", "", codexTurnMetadata{RequestKind: "prewarm"}, true, true)
 	if err != nil || transform != nil {
 		t.Fatalf("native handshake initialized execution or failed: %v, %v", transform, err)
 	}
-	if !sameJSONValue(before, responses.MustMarshalJSON(request.fields)) {
+	if !responses.SameJSONValue(before, responses.MustMarshalJSON(request.Fields)) {
 		t.Fatal("unsupported prewarm catalog was partially rewritten")
 	}
 }
@@ -228,7 +228,7 @@ func TestPrewarmUnsupportedCatalogRemainsNative(t *testing.T) {
 func TestPrewarmMalformedCatalogRejectsWithoutPanic(t *testing.T) {
 	proxy := newManagedMekugiProxy(t)
 	for _, catalog := range []string{`[42]`, `"invalid"`, `[{"type":"function","name":"lookup"},42]`} {
-		request, err := parseResponsesRequest([]byte(`{"model":"gpt-test","generate":false,"tools":` + catalog + `,"input":[]}`))
+		request, err := codexresponses.ParseRequest([]byte(`{"model":"gpt-test","generate":false,"tools":` + catalog + `,"input":[]}`))
 		if err != nil {
 			t.Fatal(err)
 		}

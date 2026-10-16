@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	responseevents "github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -21,7 +23,7 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request := &parsedResponsesRequest{fields: map[string]json.RawMessage{
+	request := &codexresponses.Request{Fields: map[string]json.RawMessage{
 		"input": mustTestJSON(t, []any{
 			assistantCommentaryMessage(known, "router-authored"),
 			assistantCommentaryMessage(unknown, "model-authored"),
@@ -31,11 +33,11 @@ func TestCommentaryReplayFilteringRequiresExactRetainedID(t *testing.T) {
 	if _, err := proxy.reconcileVisibleInput(t.Context(), request, "workspace", "session"); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(request.fields["input"], []byte(known)) {
-		t.Fatalf("known router commentary survived replay: %s", request.fields["input"])
+	if bytes.Contains(request.Fields["input"], []byte(known)) {
+		t.Fatalf("known router commentary survived replay: %s", request.Fields["input"])
 	}
-	if !bytes.Contains(request.fields["input"], []byte(unknown)) {
-		t.Fatalf("unretained prefix-matching message was removed: %s", request.fields["input"])
+	if !bytes.Contains(request.Fields["input"], []byte(unknown)) {
+		t.Fatalf("unretained prefix-matching message was removed: %s", request.Fields["input"])
 	}
 }
 

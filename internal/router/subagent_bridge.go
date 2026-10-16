@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 )
 
@@ -19,7 +20,7 @@ type subagentBridge struct {
 	names map[string]bool
 }
 
-func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnprefixed bool, openCode ...string) (*subagentBridge, error) {
+func prepareSubagentBridge(request *codexresponses.Request, grokEnabled, grokUnprefixed bool, openCode ...string) (*subagentBridge, error) {
 	grokModelNote := strings.ReplaceAll(grokModelInstruction, "%MODELS%", "`grok:"+strings.Join(grokModels, "`, `grok:")+"`")
 	if grokUnprefixed {
 		grokModelNote = strings.ReplaceAll(grokModelNote, "grok:", "")
@@ -115,16 +116,16 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 		}
 		return json.Marshal(tools)
 	}
-	if raw, ok := request.fields["tools"]; ok {
+	if raw, ok := request.Fields["tools"]; ok {
 		projected, err := projectTools(raw)
 		if err != nil {
 			return nil, err
 		}
-		request.fields["tools"] = projected
+		request.Fields["tools"] = projected
 	}
 	var input []map[string]json.RawMessage
 	var scalarInput string
-	if raw, ok := request.fields["input"]; ok && json.Unmarshal(raw, &scalarInput) != nil {
+	if raw, ok := request.Fields["input"]; ok && json.Unmarshal(raw, &scalarInput) != nil {
 		if err := json.Unmarshal(raw, &input); err != nil {
 			return nil, fmt.Errorf("decode collaboration history: %w", err)
 		}
@@ -154,20 +155,16 @@ func prepareSubagentBridge(request *parsedResponsesRequest, grokEnabled, grokUnp
 				}
 			}
 		}
-		request.fields["input"] = responses.MustMarshalJSON(input)
+		request.Fields["input"] = responses.MustMarshalJSON(input)
 	}
-	request.toolCatalog = nil
 	if len(bridge.names) == 0 {
 		return nil, nil
 	}
-	if input != nil {
-		request.setInput(responses.MustMarshalJSON(input))
-	}
-	if raw, ok := request.fields["tool_choice"]; ok {
+	if raw, ok := request.Fields["tool_choice"]; ok {
 		var choice map[string]json.RawMessage
 		if json.Unmarshal(raw, &choice) == nil && responses.StringField(choice, "namespace") == "collaboration" {
 			choice["namespace"] = responses.MustMarshalJSON(subagentBridgeNamespace)
-			request.fields["tool_choice"] = responses.MustMarshalJSON(choice)
+			request.Fields["tool_choice"] = responses.MustMarshalJSON(choice)
 		}
 	}
 	return bridge, nil

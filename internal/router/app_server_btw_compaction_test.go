@@ -23,8 +23,8 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	workspace := t.TempDir()
 	thread := "side"
 	proxy.setBTWThread(thread, true)
-	requestFor := func(thread string) (parsedResponsesRequest, http.Header) {
-		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{
+	requestFor := func(thread string) (codexresponses.Request, http.Header) {
+		request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{
 			"model": "gpt-test", "stream": true,
 			"tool_choice": "auto", "parallel_tool_calls": false,
 			"input": []any{map[string]any{"role": "user", "content": "Summarize."}},
@@ -54,7 +54,7 @@ func TestAppServerBTWCompactionRejectsBeforeProvider(t *testing.T) {
 	if len(provider.forwarded) != 0 || output.Len() != 0 {
 		t.Fatalf("side request escaped: upstream=%d output=%q", len(provider.forwarded), output.String())
 	}
-	httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.fields)))
+	httpRequest := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(mustTestJSON(t, request.Fields)))
 	httpRequest.Header = headers
 	recorder := httptest.NewRecorder()
 	responsesHandler(t.Context(), time.Second, provider, nil, proxy)(recorder, httpRequest)

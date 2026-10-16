@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -109,7 +110,7 @@ func TestAppServerFailedCodeModeCellShowsItsError(t *testing.T) {
 				`{"type":"custom_tool_call","call_id":"ok","name":"exec","input":"text('x')"},` +
 				`{"type":"custom_tool_call_output","call_id":"bad","output":` + failed + `},` +
 				`{"type":"custom_tool_call_output","call_id":"ok","output":` + completed + `}]`
-			request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": json.RawMessage(input)}}
+			request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": json.RawMessage(input)}}
 			// A repeated request carries the same output again; it is still one row.
 			for range 2 {
 				proxy.observeCodeModeFailures(thread, "exec", request, nil)
@@ -168,7 +169,7 @@ func TestAppServerUnreturnedCodeModeOutputIsNoted(t *testing.T) {
 			"id": command.id, "type": "commandExecution", "command": command.cmd, "status": "completed", "exitCode": 0, "aggregatedOutput": output}})
 	}
 	rollCommandOutput(u)
-	request := &parsedResponsesRequest{fields: map[string]json.RawMessage{"input": json.RawMessage("[" + strings.Join(input, ",") + "]")}}
+	request := &codexresponses.Request{Fields: map[string]json.RawMessage{"input": json.RawMessage("[" + strings.Join(input, ",") + "]")}}
 	for range 2 { // A repeated request notes each command once.
 		proxy.observeCodeModeFailures("main", "exec", request, nil)
 		u.applyObservedActivity()

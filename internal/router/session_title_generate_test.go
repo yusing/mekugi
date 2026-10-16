@@ -45,15 +45,15 @@ func TestSessionTitleGenerationRequest(t *testing.T) {
 		t.Run(fmt.Sprint(stream), func(t *testing.T) {
 			provider := serverProviderFunc(func(_, _ context.Context, body []byte, headers http.Header, cacheKey string) (*http.Response, error) {
 				// Use the project's existing parser to inspect actual wire fields.
-				parsed, err := parseResponsesRequest(body)
+				parsed, err := codexresponses.ParseRequest(body)
 				if err != nil {
 					t.Error(err)
 					return nil, err
 				}
-				if parsed.model() != "gpt-6-luna" || parsed.reasoningEffort() != "medium" || !parsed.streamResponse {
+				if parsed.Model() != "gpt-6-luna" || parsed.ReasoningEffort() != "medium" || !parsed.Stream {
 					t.Errorf("naming settings: %s", body)
 				}
-				if strings.Contains(string(body), "tools") || binding.SubmittedUserText(parsed.fields["input"], "/root", true) != "First request" {
+				if strings.Contains(string(body), "tools") || binding.SubmittedUserText(parsed.Fields["input"], "/root", true) != "First request" {
 					t.Errorf("naming input: %s", body)
 				}
 				if headers.Get("Authorization") != "Bearer test" || headers.Get(openai.AccountIDHeader) != "account" || headers.Get(codexresponses.TurnMetadataHeader) != "" || headers.Get(codexresponses.ThreadIDHeader) != "" || cacheKey != "" {
@@ -162,8 +162,8 @@ func TestSessionTitleUpstreamCompletionTrigger(t *testing.T) {
 				}))
 				g.register(appServerThreadInfo{ID: "main"})
 				request := modelTestRequest(t, "gpt-6-sol")
-				request.fields["stream"] = mustTestJSON(t, stream)
-				request.streamResponse = stream
+				request.Fields["stream"] = mustTestJSON(t, stream)
+				request.Stream = stream
 				headers := serverMetadataHeaders(t, "turn", nil)
 				headers.Set(codexresponses.ThreadIDHeader, "main")
 				headers.Set("Authorization", "Bearer test")
@@ -220,7 +220,7 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		request, err := parseResponsesRequest(body)
+		request, err := codexresponses.ParseRequest(body)
 		if err != nil {
 			t.Error(err)
 			w.WriteHeader(400)
@@ -228,12 +228,12 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 		}
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		if request.model() == sessionTitleModel {
-			if request.reasoningEffort() != "medium" {
+		if request.Model() == sessionTitleModel {
+			if request.ReasoningEffort() != "medium" {
 				t.Error("naming effort was overridden")
 			}
-			if !sameJSONValue(request.fields["input"], wantInput) {
-				t.Errorf("naming input = %s, want submitted file content %s", request.fields["input"], wantInput)
+			if !responses.SameJSONValue(request.Fields["input"], wantInput) {
+				t.Errorf("naming input = %s, want submitted file content %s", request.Fields["input"], wantInput)
 			}
 			_, _ = io.WriteString(w, generatedTitleResponse)
 		} else {
@@ -247,14 +247,14 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 	g.register(appServerThreadInfo{ID: "main"})
 	handler := responsesHandler(t.Context(), defaultRequestTimeout, provider, nil, nil)
 	request := modelTestRequest(t, "gpt-6-sol")
-	request.setInput(mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
+	request.Fields["input"] = mustTestJSON(t, []any{map[string]any{"role": "user", "content": []any{
 		map[string]any{"type": "input_text", "text": "Private host instructions"},
 		map[string]any{"type": "input_text", "text": prompt},
 		map[string]any{"type": "input_text", "text": attachments.Encode(frames)},
 	}, "internal_chat_message_metadata_passthrough": map[string]any{
 		"content_item_kinds": []string{"agents_md.instructions", "user.text", "user.text"},
-	}}}))
-	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(string(mustTestJSON(t, request.fields))))
+	}}})
+	req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(string(mustTestJSON(t, request.Fields))))
 	req.Header = serverMetadataHeaders(t, "turn", nil)
 	req.Header.Set(codexresponses.ThreadIDHeader, "main")
 	req.Header.Set("Authorization", "Bearer fixture-token")
@@ -272,18 +272,18 @@ func TestSessionTitleHTTPConsumer(t *testing.T) {
 
 func TestSessionTitlePromptKeepsRequestLocal(t *testing.T) {
 	request := modelTestRequest(t, "gpt-6-sol")
-	request.setInput(mustTestJSON(t, []any{
+	request.Fields["input"] = mustTestJSON(t, []any{
 		map[string]any{"role": "user", "content": []any{
 			map[string]any{"type": "input_text", "text": "Review @old.go"},
 			map[string]any{"type": "input_text", "text": attachments.Encode(frameComposerFile("/work/old.go", "Old file content"))},
 		}},
 		map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_image", "image_url": "image"}}},
-	}))
-	raw := string(request.fields["input"])
-	if got := binding.SubmittedUserText(request.fields["input"], "/root", true); got != "" {
+	})
+	raw := string(request.Fields["input"])
+	if got := binding.SubmittedUserText(request.Fields["input"], "/root", true); got != "" {
 		t.Fatalf("media-only request selected old attachment: %q", got)
 	}
-	if string(request.fields["input"]) != raw {
+	if string(request.Fields["input"]) != raw {
 		t.Fatal("title extraction changed execution input")
 	}
 }
@@ -378,8 +378,8 @@ func TestSessionTitleUnavailableLunaSkipsSilently(t *testing.T) {
 				var calls atomic.Int32
 				g := newTestSessionNaming(t.Context(), serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
 					calls.Add(1)
-					request, _ := parseResponsesRequest(body)
-					if request.model() != sessionTitleModel || request.reasoningEffort() != "medium" {
+					request, _ := codexresponses.ParseRequest(body)
+					if request.Model() != sessionTitleModel || request.ReasoningEffort() != "medium" {
 						t.Error("naming fell back to another model or effort")
 					}
 					if tc.transportError {
@@ -419,8 +419,8 @@ func TestSessionTitleThirdPartyRequestWithoutCodexAuth(t *testing.T) {
 		const primary = `{"id":"primary","status":"completed","output":[]}`
 		var output strings.Builder
 		executor := requestExecutor{titleGenerator: g, output: &output, provider: serverProviderFunc(func(_, _ context.Context, body []byte, _ http.Header, _ string) (*http.Response, error) {
-			forwarded, err := parseResponsesRequest(body)
-			if err != nil || forwarded.model() != "opencode-go:test" {
+			forwarded, err := codexresponses.ParseRequest(body)
+			if err != nil || forwarded.Model() != "opencode-go:test" {
 				t.Error("primary session model was changed")
 			}
 			return serverHTTPResponse(primary), nil

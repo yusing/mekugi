@@ -2,17 +2,20 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
+
 	json "encoding/json/v2"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -67,9 +70,9 @@ func TestComposerSelectionSubmitsQuotedFrames(t *testing.T) {
 	// The model receives the quote as its own user message.
 	content, _ := json.Marshal([]map[string]string{{"type": "input_text", "text": "explain [Selected diff hunk @amber1:42-45] "}, {"type": "input_text", "text": envelope}})
 	items, _ := json.Marshal([]map[string]jsontext.Value{{"type": []byte(`"message"`), "role": []byte(`"user"`), "content": content}})
-	request := &parsedResponsesRequest{fields: map[string]jsontext.Value{"input": items}}
-	if !projectFileAttachments(request) || !strings.Contains(string(request.fields["input"]), `+new\n-old`) || strings.Contains(string(request.fields["input"]), "mekugi-file-attachments") {
-		t.Fatalf("projected input = %s", request.fields["input"])
+	request := &codexresponses.Request{Fields: map[string]jsontext.Value{"input": items}}
+	if !projectFileAttachments(request) || !strings.Contains(string(request.Fields["input"]), `+new\n-old`) || strings.Contains(string(request.Fields["input"]), "mekugi-file-attachments") {
+		t.Fatalf("projected input = %s", request.Fields["input"])
 	}
 	// The host echo keeps the concise label as one styled token.
 	spans := composerElementSpans(input[0]["text"].(string), elements)

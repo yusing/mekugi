@@ -32,7 +32,7 @@ func TestMalformedAgentAuthorIsAuxiliary(t *testing.T) {
 			t.Fatal(metadata, valid)
 		}
 		proxy := newManagedMekugiProxy(t)
-		request, err := parseResponsesRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": []any{testCodeModeAdditionalTools(testCodeModeDescription)}}))
+		request, err := codexresponses.ParseRequest(mustTestJSON(t, map[string]any{"model": "gpt-test", "input": []any{testCodeModeAdditionalTools(testCodeModeDescription)}}))
 		if err != nil {
 			t.Fatal(err)
 		}
