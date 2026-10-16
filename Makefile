@@ -1,4 +1,8 @@
 GO ?= go
+# Compact noninteractive output when rtk is available; RTK= keeps raw output.
+RTK := $(shell rtk --version >/dev/null 2>&1 && printf rtk)
+RTK_ERR = $(if $(RTK),$(RTK) err)
+RTK_TEST = $(if $(RTK),$(RTK) test)
 # Reuse compiled packages across implementation, review, and staged checkouts.
 GO_BUILD_FLAGS ?= -trimpath
 # Bound concurrent compiler work; callers can select larger local budgets.
@@ -38,18 +42,18 @@ workspace-check:
 	$(WORKSPACE) check
 
 build: workspace-check
-	$(WORKSPACE) run $(GO) build $(GO_BUILD_FLAGS) @workspace
+	$(WORKSPACE) run $(RTK_ERR) $(GO) build $(GO_BUILD_FLAGS) @workspace
 
 build-binaries: build
-	$(GO) build $(GO_BUILD_FLAGS) -ldflags='$(BUILD_LDFLAGS)' -o '$(BUILD_OUTPUT)/' ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
+	$(RTK_ERR) $(GO) build $(GO_BUILD_FLAGS) -ldflags='$(BUILD_LDFLAGS)' -o '$(BUILD_OUTPUT)/' ./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec
 
 generate: workspace-check
 	$(WORKSPACE) run $(GO) generate @workspace
 
 # Diagnostic build, with symbols and the same optimized code as production.
 mekugi-pprof:
-	$(GO) build $(GO_BUILD_FLAGS) -tags pprof -o bin/mekugi-pprof ./apps/mekugi/cmd/mekugi
-	$(GO) build $(GO_BUILD_FLAGS) -o bin/mekugi-exec ./apps/mekugi/cmd/mekugi-exec
+	$(RTK_ERR) $(GO) build $(GO_BUILD_FLAGS) -tags pprof -o bin/mekugi-pprof ./apps/mekugi/cmd/mekugi
+	$(RTK_ERR) $(GO) build $(GO_BUILD_FLAGS) -o bin/mekugi-exec ./apps/mekugi/cmd/mekugi-exec
 
 # Interactive native Main fixtures. No Codex process or model requests.
 # Plays a fake session automatically; keys act as in the real UI (Ctrl-C clears,
@@ -59,7 +63,7 @@ preview-native-ui:
 
 # Select the changed owner without rebuilding assets or disabling Go's test cache.
 test: workspace-check
-	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
+	env -u BASH_ENV -u MEKUGI_EXEC_TRACK -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(RTK_TEST) $(GO) test $(GO_BUILD_FLAGS) $(TEST_PACKAGES) $(TEST_SUPPORT_PACKAGES) -run '$(value TEST_RUN)' -parallel=$(TEST_PARALLEL) $(TEST_FLAGS)
 
 # Installed Codex, isolated local mocks, no installation or live model requests.
 test-host:
@@ -75,7 +79,7 @@ test-host:
 	$(MAKE) --no-print-directory test TEST_PACKAGES=./internal/router TEST_RUN="$$pattern" TEST_FLAGS='-tags=codex_e2e -count=1 -v'
 
 lint: workspace-check
-	env -u BASH_ENV $(WORKSPACE) run golangci-lint run @workspace
+	env -u BASH_ENV $(WORKSPACE) run $(RTK_ERR) golangci-lint run @workspace
 	@set -e; findings="$$(env -u BASH_ENV $(WORKSPACE) run deadcode -f='{{range .Funcs}}{{printf "%s.%s\n" $$.Path .Name}}{{end}}' @workspace)"; \
 	findings="$$(printf '%s\n' "$$findings" | awk 'NR == FNR { allowed[$$0] = 1; next } /^github.com\/yusing\/mekugi\/testsupport\// { next } NF && !($$0 in allowed)' .deadcode-allowlist -)"; \
 	if [ -n "$$findings" ]; then printf '%s\n' "$$findings"; exit 1; fi
@@ -84,8 +88,8 @@ lint: workspace-check
 
 # Offline rendered-output regression checks. Mismatches leave .txt.new candidates.
 test-ui-snapshots:
-	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV -u MEKUGI_UPDATE_UI_SNAPSHOTS $(WORKSPACE) run $(RTK_TEST) $(GO) test $(GO_BUILD_FLAGS) ./testsupport/uisnapshot/... $(SNAPSHOT_PACKAGES) -run 'TestSnapshot|$(value SNAPSHOT)' -count=1
 
 # Replaces baselines for the selected tests; review candidates/diffs first.
 update-ui-snapshots:
-	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(WORKSPACE) run $(GO) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
+	env -u BASH_ENV MEKUGI_UPDATE_UI_SNAPSHOTS=1 $(WORKSPACE) run $(RTK_TEST) $(GO) test $(GO_BUILD_FLAGS) $(SNAPSHOT_PACKAGES) -run '$(value SNAPSHOT)' -count=1
