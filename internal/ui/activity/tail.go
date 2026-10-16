@@ -7,8 +7,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 // Bounded tails show the latest rows of something still growing and count
@@ -213,7 +214,7 @@ func outputText(raw []byte) string {
 	if len(line) > OutputTailBytes {
 		line = strings.ToValidUTF8(line[:OutputTailBytes], "") + "…"
 	}
-	if line = strings.TrimRight(livediff.Safe(line, false), " "); strings.TrimSpace(line) != "" {
+	if line = strings.TrimRight(diffrender.Safe(line, false), " "); strings.TrimSpace(line) != "" {
 		return line
 	}
 	return ""

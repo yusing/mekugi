@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
-	"github.com/yusing/mekugi/internal/livediff"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -181,7 +182,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.Local)
 	u.clock = func() time.Time { return now }
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		view.clock, view.painter.Theme = u.clock, livediff.DarkTheme
+		view.clock, view.painter.Theme = u.clock, diffrender.DarkTheme
 		view.feedOnly, view.bare = true, true
 	}
 	u.session.registerThread(appServerThreadInfo{ID: "child", AgentNickname: "worker"})
@@ -202,7 +203,7 @@ func TestUISnapshotRunningProcesses(t *testing.T) {
 	appServerTestKeys(t, u, "/ps\r")
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-dialog.txt", append(processDialog(u, 80, 16), "plain"), 80)
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		view.painter.Theme = livediff.LightTheme
+		view.painter.Theme = diffrender.LightTheme
 	}
 	uisnapshot.AssertTerminal(t, "testdata/snapshots/running-processes-light.txt", append(processDialog(u, 44, 14), "plain"), 44)
 	for _, thread := range []string{"main", "child"} {

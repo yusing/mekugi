@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 )
@@ -95,7 +97,7 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := controller.previewPane.Render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12); err != nil {
+	if _, err := controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,7 +113,7 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 	if _, err := controller.applyEvent(t.Context(), liveDiffEvent{Kind: "preview", Preview: &preview}); err != nil {
 		t.Fatal(err)
 	}
-	lines, err := controller.previewPane.Render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12)
+	lines, err := controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +123,7 @@ func TestLiveDiffStreamWheelPauseSurvivesUpdates(t *testing.T) {
 	}
 
 	controller.handleKey('r')
-	lines, err = controller.previewPane.Render(t.Context(), "/workspace", livediff.TerminalTheme, 70, 12)
+	lines, err = controller.previewPane.Render(t.Context(), "/workspace", diffrender.TerminalTheme, 70, 12)
 	if err != nil {
 		t.Fatal(err)
 	}

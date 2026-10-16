@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -25,7 +26,7 @@ func (u *appServerUI) statusPanelFrame(width, height int) []string {
 	const bold = "\x1b[1m"
 	const dim = "\x1b[2m"
 	accent, warning, danger := "\x1b[38;2;104;174;245m", "\x1b[38;2;230;181;94m", "\x1b[38;2;239;117;117m"
-	if u.view.painter.Theme == livediff.LightTheme {
+	if u.view.painter.Theme == diffrender.LightTheme {
 		accent, warning, danger = "\x1b[38;2;25;94;164m", "\x1b[38;2;134;86;16m", "\x1b[38;2;178;43;43m"
 	}
 	panelWidth := min(82, width)

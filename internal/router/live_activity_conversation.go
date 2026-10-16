@@ -4,8 +4,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -14,11 +15,11 @@ const liveActivityPrompt = "\x1b[38;2;196;167;231m"
 
 // userBand tints the user's prompts so turns are easy to find while scrolling.
 // An undetected theme keeps the terminal background rather than guessing.
-func userBand(theme livediff.Theme) string {
+func userBand(theme diffrender.Theme) string {
 	switch theme {
-	case livediff.LightTheme:
+	case diffrender.LightTheme:
 		return "\x1b[48;2;240;238;246m"
-	case livediff.DarkTheme:
+	case diffrender.DarkTheme:
 		return "\x1b[48;2;34;32;42m"
 	}
 	return ""
@@ -755,7 +756,7 @@ func (v *liveActivityView) replyContext(out *conversationLines, question activit
 		header += activityui.Dim + " " + question.Observed.Local().Format("15:04:05") + activityui.Undim
 	}
 	out.add(question.Seq, gutter+ansi.Truncate(header, width, "…"))
-	rows, _ := liveActivityExcerpt(v.painter.Quote(livediff.Safe(text, false), width), width, 2)
+	rows, _ := liveActivityExcerpt(v.painter.Quote(diffrender.Safe(text, false), width), width, 2)
 	for _, row := range rows {
 		out.add(question.Seq, gutter+row)
 	}

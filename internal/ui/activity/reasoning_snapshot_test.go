@@ -5,10 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -19,7 +20,7 @@ const reasoningSnapshotBody = "First I will inspect the stream renderer and its 
 	"- Preserve the final observation and reopen the complete reasoning after collapse."
 
 func TestUISnapshotReasoningElidedHeading(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	title := "**Investigating the very long reasoning heading with UNIQUE_HIDDEN_SUFFIX**"
 	var rows []string
 	for _, live := range []bool{false, true} {
@@ -51,7 +52,7 @@ func TestUISnapshotReasoningStreaming(t *testing.T) {
 				body = "**Inspecting the reasoning display**\n\n" + body
 			}
 			t.Run(name, func(t *testing.T) {
-				p := Painter{Theme: livediff.DarkTheme}
+				p := Painter{Theme: diffrender.DarkTheme}
 				rows := p.Block(Block{Kind: "summary", Body: body, Live: true}, width)
 				uisnapshot.Assert(t, "testdata/snapshots/reasoning_streaming_"+name+".txt", strings.Join(rows, "\n")+"\n")
 			})
@@ -72,7 +73,7 @@ func TestUISnapshotReasoningCompleted(t *testing.T) {
 		} {
 			name := fmt.Sprintf("%s_%d", tc.name, width)
 			t.Run(name, func(t *testing.T) {
-				p := Painter{Theme: livediff.DarkTheme}
+				p := Painter{Theme: diffrender.DarkTheme}
 				block := Block{Kind: "summary", Body: reasoningSnapshotBody, Elapsed: "12s", Collapsed: tc.collapsed, Hovered: tc.hovered}
 				uisnapshot.Assert(t, "testdata/snapshots/reasoning_completed_"+name+".txt", strings.Join(p.Block(block, width), "\n")+"\n")
 			})
@@ -84,7 +85,7 @@ func TestUISnapshotReasoningDialog(t *testing.T) {
 	for _, width := range []int{36, 84} {
 		name := fmt.Sprintf("complete_%d", width)
 		t.Run(name, func(t *testing.T) {
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			block := Block{Kind: "summary", Body: "**Inspecting the reasoning display**\n\n" + reasoningSnapshotBody, Elapsed: "12s", Collapsed: true}
 			page := p.DialogPage(block, width-4)
 			var rows []string
@@ -109,7 +110,7 @@ func TestUISnapshotReasoningShortSummary(t *testing.T) {
 		{"tiny", "Locating rendition file", "12s", 8},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			block := Block{Kind: "summary", Body: tc.body, Elapsed: tc.elapsed, Collapsed: true}
 			rows := p.Block(block, tc.width)
 			uisnapshot.Assert(t, "testdata/snapshots/reasoning_short_"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
@@ -127,7 +128,7 @@ func TestUISnapshotReasoningShortSummary(t *testing.T) {
 }
 
 func TestUISnapshotReasoningShortUncollapsed(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	block := Block{Kind: "summary", Body: "Locating rendition file", Elapsed: "12s"}
 	rows := p.Block(block, 26)
 	uisnapshot.Assert(t, "testdata/snapshots/reasoning_short_uncollapsed.txt", strings.Join(rows, "\n")+"\n")

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 func newActiveWorkTestUI(t *testing.T) (*appServerUI, *time.Time) {
@@ -128,7 +128,7 @@ func TestAppServerActiveWorkRestoresClosedSpans(t *testing.T) {
 
 func TestUISnapshotNativeRosterActiveWork(t *testing.T) {
 	u, at := newActiveWorkTestUI(t)
-	u.agents.painter.Theme = livediff.DarkTheme
+	u.agents.painter.Theme = diffrender.DarkTheme
 	u.agents.only, u.agents.selected = false, "/root/worker"
 	for _, thread := range []string{"main", "child"} {
 		appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "first"}})

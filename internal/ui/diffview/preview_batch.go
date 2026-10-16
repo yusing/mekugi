@@ -7,10 +7,11 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/libraries/diffmodel"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // Native batches retain calls, but give every file its own source viewport.
@@ -86,7 +87,7 @@ func (p *PreviewPane) batch(caller string) *previewBatch {
 // RenderBatch uses a newest-following window rather than shrinking older files.
 // Cycling pins that window, so arriving edits never steal a manual selection.
 // minRows includes the file heading. A smaller terminal shows only a summary.
-func (p *PreviewPane) RenderBatch(ctx context.Context, caller, workspace string, theme livediff.Theme, width, height, minRows int) ([]string, error) {
+func (p *PreviewPane) RenderBatch(ctx context.Context, caller, workspace string, theme diffrender.Theme, width, height, minRows int) ([]string, error) {
 	b := p.batch(caller)
 	count := len(b.order)
 	if count == 0 || height <= 0 {
@@ -102,7 +103,7 @@ func (p *PreviewPane) RenderBatch(ctx context.Context, caller, workspace string,
 	}
 	label := "LIVE"
 	if tool := b.files[b.selected].Current.Tool; tool != "" {
-		label += " · " + livediff.Safe(tool, false)
+		label += " · " + diffrender.Safe(tool, false)
 	}
 	label += fmt.Sprintf(" · %d %s", count, noun)
 	if slots == 0 {

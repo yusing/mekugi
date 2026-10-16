@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestAppServerRosterReasoningTitlePreservesTranscript(t *testing.T) {
@@ -56,7 +57,7 @@ func TestUISnapshotNativeRosterReasoningTitles(t *testing.T) {
 			at := time.Date(2026, 9, 30, 8, 0, 0, 0, time.UTC)
 			u.clock = func() time.Time { return at }
 			u.view.clock, u.agents.clock = u.clock, u.clock
-			u.view.painter.Theme, u.agents.painter.Theme = livediff.DarkTheme, livediff.DarkTheme
+			u.view.painter.Theme, u.agents.painter.Theme = diffrender.DarkTheme, diffrender.DarkTheme
 			reasoningTestNotify(t, u, "thread/started", map[string]any{"thread": map[string]any{"id": "child", "agentNickname": "worker", "agentRole": "worker"}})
 			for _, thread := range []string{"main", "child"} {
 				reasoningTestNotify(t, u, "turn/started", map[string]any{"threadId": thread, "turn": map[string]any{"id": "t"}})

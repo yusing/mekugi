@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -19,13 +20,13 @@ func TestNativeUITerminalColorReports(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := activityui.Colors{Foreground: livediff.RGB{R: 220, G: 214, B: 200}, Background: livediff.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true}
+	want := activityui.Colors{Foreground: diffrender.RGB{R: 220, G: 214, B: 200}, Background: diffrender.RGB{R: 24, G: 22, B: 30}, HasForeground: true, HasBackground: true}
 	for _, view := range []*liveActivityView{u.view, u.agents} {
-		if view.painter.Colors != want || view.painter.Theme != livediff.DarkTheme {
+		if view.painter.Colors != want || view.painter.Theme != diffrender.DarkTheme {
 			t.Fatalf("pane palette = %+v theme %v", view.painter.Colors, view.painter.Theme)
 		}
 	}
-	if !u.shell.diff.backgrounded || u.shell.diff.background != want.Background || u.shell.diff.theme != livediff.DarkTheme {
+	if !u.shell.diff.backgrounded || u.shell.diff.background != want.Background || u.shell.diff.theme != diffrender.DarkTheme {
 		t.Fatal("diff pane did not take the reported background")
 	}
 	if u.draft != "" {
@@ -59,7 +60,7 @@ func TestUISnapshotNativeStatusBreathing(t *testing.T) {
 	now := time.Unix(0, 0)
 	u.clock = func() time.Time { return now }
 	u.view.clock, u.agents.clock = u.clock, u.clock
-	u.agents.painter.Theme = livediff.DarkTheme
+	u.agents.painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "turn/started", map[string]any{"threadId": "main", "turn": map[string]any{"id": "t"}})
 	waitTargetTestAgent(t, u, "child", "/root/reviewer", true)
 	waitTargetTestEvent(t, u, "item/started", "main", "t", "w")

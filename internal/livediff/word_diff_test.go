@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -43,7 +45,7 @@ func TestWordDiffReplacementBlocks(t *testing.T) {
 		{"removal", "removed line\nkeep\n", "keep\n", "", ""},
 		{"bounded", strings.Repeat("old ", 1100) + "\n", strings.Repeat("next ", 1100) + "\n", "", ""},
 	} {
-		const theme = DarkTheme
+		const theme = diffrender.DarkTheme
 		t.Run(tc.name, func(t *testing.T) {
 			review := diffmodel.RenderReviewFile("file.go", "file.go", tc.old, tc.next)
 			hunks, err := review.Hunks()
@@ -51,16 +53,16 @@ func TestWordDiffReplacementBlocks(t *testing.T) {
 				t.Fatal(err)
 			}
 			var removed, added strings.Builder
-			var renderer Renderer
+			var renderer diffrender.Renderer
 			for _, hunk := range hunks {
 				before, after, err := renderer.ColorHunk(t.Context(), theme, review, hunk.Rows)
 				if err != nil {
 					t.Fatal(err)
 				}
 				rows := append([]diffmodel.ReviewRow(nil), hunk.Rows...)
-				AlignHunkColors(rows, before, after)
+				diffrender.AlignHunkColors(rows, before, after)
 				for i, row := range rows {
-					if ansi.Strip(row.Text) != Safe(strings.TrimSuffix(hunk.Rows[i].Text, "\n"), false) {
+					if ansi.Strip(row.Text) != diffrender.Safe(strings.TrimSuffix(hunk.Rows[i].Text, "\n"), false) {
 						t.Fatal("word colors changed source text")
 					}
 					for _, kind := range []byte{'-', '+'} {
@@ -96,12 +98,12 @@ func TestWordDiffGraphemeGeometry(t *testing.T) {
 		review := diffmodel.RenderReviewFile("emoji.unknown", "emoji.unknown", prefix+pair[0]+"\n", prefix+pair[1]+"\n")
 		files := []File{{Path: "emoji.unknown", Chunks: []Chunk{{Review: review}}}}
 		for _, width := range []int{78, 80} {
-			want, err := new(Renderer).Render(t.Context(), DarkTheme, files, "", width)
+			want, err := new(Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", width)
 			if err != nil {
 				t.Fatal(err)
 			}
 			renderer := Renderer{LayoutOnly: true}
-			got, err := renderer.Render(t.Context(), DarkTheme, files, "", width)
+			got, err := renderer.Render(t.Context(), diffrender.DarkTheme, files, "", width)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,7 +114,7 @@ func TestWordDiffGraphemeGeometry(t *testing.T) {
 			assertViewportGeometry(t, got, want)
 			var marked strings.Builder
 			for _, line := range got.Lines {
-				marked.WriteString(emphasizedText(line, DarkTheme.WordBackground('+')))
+				marked.WriteString(emphasizedText(line, diffrender.DarkTheme.WordBackground('+')))
 			}
 			if marked.String() != pair[1] {
 				t.Fatalf("split or lost grapheme emphasis: %q", marked.String())
@@ -124,7 +126,7 @@ func TestWordDiffGraphemeGeometry(t *testing.T) {
 func TestUISnapshotWordDiffWrappedSourceStyles(t *testing.T) {
 	const old, next = "return old_identifier\n", "return very_long_new_identifier\n"
 	review := diffmodel.RenderReviewFile("file.go", "file.go", old, next)
-	for _, theme := range []Theme{TerminalTheme, DarkTheme, LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.TerminalTheme, diffrender.DarkTheme, diffrender.LightTheme} {
 		render, err := new(Renderer).Render(t.Context(), theme, []File{{Path: "file.go", Chunks: []Chunk{{Review: review}}}}, "", 16)
 		if err != nil {
 			t.Fatal(err)

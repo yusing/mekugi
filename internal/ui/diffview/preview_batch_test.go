@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 )
 
@@ -60,7 +61,7 @@ func TestNativeBatchSourceScrollAndFollow(t *testing.T) {
 
 func batchTestRender(t *testing.T, pane *PreviewPane, height int) []string {
 	t.Helper()
-	rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", livediff.DarkTheme, 72, height, 15)
+	rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", diffrender.DarkTheme, 72, height, 15)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +257,7 @@ func TestUISnapshotNativeBatchToolIdentity(t *testing.T) {
 			preview := batchTestPreview("edit", "/root", "src/a.go")
 			preview.Tool = tc.tool
 			pane.Update(preview)
-			rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", livediff.DarkTheme, tc.width, tc.height, 15)
+			rows, err := pane.RenderBatch(t.Context(), "/root", "/workspace", diffrender.DarkTheme, tc.width, tc.height, 15)
 			if err != nil {
 				t.Fatal(err)
 			}

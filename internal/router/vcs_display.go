@@ -16,12 +16,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 
 	"github.com/yusing/mekugi/libraries/commandanalysis/shellsyntax"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -764,9 +765,9 @@ func gitCommitRows(call vcsCall, cwd string, lines []string) ([]activityui.Chang
 		return nil, gitCommitKey{}
 	}
 	branch, _ := strings.CutSuffix(head[1], " (root-commit)")
-	notes := []string{"on " + livediff.Safe(branch, false)}
+	notes := []string{"on " + diffrender.Safe(branch, false)}
 	if call.subject == "" {
-		notes = append([]string{livediff.Safe(head[3], false)}, notes...)
+		notes = append([]string{diffrender.Safe(head[3], false)}, notes...)
 	}
 	if footer.Note != "" {
 		notes = append(notes, footer.Note)
@@ -1203,7 +1204,7 @@ func vcsPath(path string) string {
 			path = unquoted
 		}
 	}
-	return livediff.Safe(path, false)
+	return diffrender.Safe(path, false)
 }
 
 // gitRenamePaths expands git's compact rename forms, `old => new` and
@@ -1483,7 +1484,7 @@ func gitStatusRows(lines []string) []activityui.ChangeRow {
 		note = strings.TrimSpace(note + " · clean")
 		note = strings.TrimPrefix(note, "· ")
 	}
-	return append(rows, activityui.ChangeRow{Footer: true, Label: livediff.Safe(branch, false), Note: note})
+	return append(rows, activityui.ChangeRow{Footer: true, Label: diffrender.Safe(branch, false), Note: note})
 }
 
 var svnStatusRow = regexp.MustCompile(`^([ ACDIMRX?!~])([ CM])[ L][ +][ SX][ KOTB][ C] (.+)$`)

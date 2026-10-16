@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 // DialogPage is one invocation's source and output as the output dialog
@@ -60,7 +61,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	page := DialogPage{Title: p.DialogPageTitle(block, p.now(), width), Live: block.Live || !view.Done}
 	var detail []string
 	if block.Hook != nil {
-		detail = append(detail, livediff.Safe(block.Hook.HandlerType, false))
+		detail = append(detail, diffrender.Safe(block.Hook.HandlerType, false))
 		if block.Hook.ExecutionMode == "async" {
 			detail = append(detail, "async")
 		}
@@ -96,7 +97,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 			add(DialogLine{Text: Dim + "Approval: " + Undim + label})
 		}
 		if ansi.Strip(label) != block.Approval {
-			add(DialogLine{Text: Dim + livediff.Safe(block.Approval, false) + Undim, Wrap: true})
+			add(DialogLine{Text: Dim + diffrender.Safe(block.Approval, false) + Undim, Wrap: true})
 		}
 	}
 	gap := func() {
@@ -105,7 +106,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 		}
 	}
 
-	code := livediff.Safe(block.Code, false)
+	code := diffrender.Safe(block.Code, false)
 	page.Text = code
 	if code != "" && (block.Path != "" || strings.Contains(code, "\n") || ansi.StringWidth(code) > width/2) {
 		colored := strings.Split(code, "\n")
@@ -120,7 +121,7 @@ func (p *Painter) DialogPage(block Block, width int) DialogPage {
 	if block.Body != "" {
 		page.Text = block.Body
 		if block.Kind == "error" {
-			page.Text = livediff.Safe(block.Body, false)
+			page.Text = diffrender.Safe(block.Body, false)
 		}
 		gap()
 		rows := block.Rows
@@ -263,13 +264,13 @@ func dialogTarget(p *Painter, block Block) string {
 	case block.Kind == "reads":
 		var paths []string
 		for _, read := range block.Reads {
-			paths = append(paths, Path(livediff.Safe(read.Path, false)))
+			paths = append(paths, Path(diffrender.Safe(read.Path, false)))
 		}
 		return strings.Join(paths, ", ")
 	case block.Path != "":
-		return Path(livediff.Safe(block.Path, false))
+		return Path(diffrender.Safe(block.Path, false))
 	case block.Code != "":
-		first, _, _ := strings.Cut(livediff.Safe(block.Code, false), "\n")
+		first, _, _ := strings.Cut(diffrender.Safe(block.Code, false), "\n")
 		if len(first) <= dialogHighlightBytes {
 			return strings.Join(p.dialogHighlight(block, first), " ")
 		}
@@ -477,7 +478,7 @@ func (p *Painter) Dialog(f DialogFrame, width, height int) []string {
 	if background == "" {
 		background = "\x1b[48;2;32;35;40m"
 	}
-	if p.Theme == livediff.LightTheme {
+	if p.Theme == diffrender.LightTheme {
 		ink = "\x1b[38;2;31;41;55m"
 	}
 	for i, line := range lines {

@@ -12,11 +12,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffmodel"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"golang.org/x/term"
 )
 
@@ -28,9 +31,9 @@ type liveDiffTerminalController struct {
 
 	data *liveDiffData
 	// callerCounts totals captured edit lines by caller key for the roster.
-	callerCounts map[string]livediff.Counts
+	callerCounts map[string]diffmodel.Counts
 	// netCounts is the unfiltered composed project outcome, not caller activity.
-	netCounts   *livediff.Counts
+	netCounts   *diffmodel.Counts
 	scope       liveDiffScope
 	coverage    string
 	view        livediff.View
@@ -44,7 +47,7 @@ type liveDiffTerminalController struct {
 	renderer        livediff.Renderer
 	rendering       livediff.Render
 	rendered        []livediff.File
-	renderedTheme   livediff.Theme
+	renderedTheme   diffrender.Theme
 	lastWidth       int
 	lastHeight      int
 	diffWidth       int
@@ -81,19 +84,19 @@ type liveDiffTerminalController struct {
 	sourceX, sourceY int
 	// back undoes the last list action on Esc.
 	back  liveDiffBack
-	theme livediff.Theme
+	theme diffrender.Theme
 	// A reported background replaces the theme's assumed fade canvas.
-	background   livediff.RGB
+	background   diffrender.RGB
 	backgrounded bool
 	mouse        terminalui.Mouse
-	osc          livediff.OSC
+	osc          diffrender.OSC
 	escape       string
 }
 
 func newLiveDiffTerminalController(store *mekugiReplayStore, workspace string, stdout *os.File) *liveDiffTerminalController {
 	previewFrame := time.NewTimer(time.Hour)
 	previewFrame.Stop()
-	theme := livediff.EnvironmentTheme(os.Getenv("COLORFGBG"))
+	theme := diffrender.EnvironmentTheme(os.Getenv("COLORFGBG"))
 	return &liveDiffTerminalController{
 		store: store, workspace: workspace, stdout: stdout,
 		size: func() (int, int, error) { return term.GetSize(int(stdout.Fd())) },
@@ -244,9 +247,9 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		fmt.Fprintf(&screen, "\x1b[%d;1H\x1b[0m\x1b[2K%s\x1b[0m", row, ansi.Truncate(text, max(0, width-1), ""))
 	}
 	if c.diffMode && len(lines) > 0 && !navigatorVisible {
-		header = livediff.Gutter(active.Highlighted, c.theme) + livediff.Header(header, diffWidth-3, c.rendering.Counts[c.view.Selected], c.theme)
+		header = diffrender.Gutter(active.Highlighted, c.theme) + diffrender.Header(header, diffWidth-3, c.rendering.Counts[c.view.Selected], c.theme)
 	} else {
-		header = livediff.Gutter(false, c.theme) + livediff.Safe(header, false)
+		header = diffrender.Gutter(false, c.theme) + diffrender.Safe(header, false)
 	}
 	if titled {
 		writeRow(1, header)
@@ -278,7 +281,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 			for row := range stack {
 				writeRow(row+1, stacked[row])
 			}
-			writeRow(stack+1, livediff.Subtle+strings.Repeat("─", max(0, width-1))+"\x1b[0m")
+			writeRow(stack+1, diffrender.Subtle+strings.Repeat("─", max(0, width-1))+"\x1b[0m")
 		}
 		// Without a title row, pin the open file's header while its content
 		// scrolls, so a mid-file viewport still names its file.
@@ -323,7 +326,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				text = nav[row]
 			} else if navWidth > 0 {
 				left := nav[row]
-				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + livediff.Subtle + "│\x1b[0m" + text
+				text = left + strings.Repeat(" ", max(0, navWidth-ansi.StringWidth(left))) + diffrender.Subtle + "│\x1b[0m" + text
 			}
 			if c.help {
 				help := slices.DeleteFunc([]string{"", "  Diff navigation", "", "  s       focus / hide files", "  Tab     files / changes by caller", "          Changes: Enter caller filters · Enter h/l expand / collapse change", "  /       filter paths, or changes by id, @caller, source · Ctrl-U clear", "  t       tree / flat list", "  ↑↓ j/k  move focused list / scroll diff", "  ←→ h/l  collapse / expand folder", "  Enter   focus diff or toggle folder", "  n/p     next / previous matching file", "  [ / ]   previous / next hunk", "  { / }   previous / next change", "  a / 0   next caller / all callers", "  PgUp/Dn page · Home/End first / last", "  v       stream / diff", "  Esc     close picker or help", "  ?       close help", "  Ctrl-C  quit"}, func(line string) bool {
@@ -331,7 +334,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 				})
 				text = ""
 				if row < len(help) {
-					text = livediff.Safe(help[row], false)
+					text = diffrender.Safe(help[row], false)
 				}
 			}
 			switch {
@@ -388,7 +391,7 @@ func (c *liveDiffTerminalController) renderFrame(ctx context.Context) error {
 		scope := ""
 		if c.view.Caller != "" {
 			name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
-			scope = " · @" + livediff.Safe(name, false) + " (0 all)"
+			scope = " · @" + diffrender.Safe(name, false) + " (0 all)"
 		}
 		writeRow(height, "DIFF · "+stream+mode+scope+" · c scope · s files · Tab changes · ? help")
 	default:
@@ -498,23 +501,23 @@ func (c *liveDiffTerminalController) applyEvent(ctx context.Context, event liveD
 // liveDiffNetCounts reuses the saved view's composition and workspace scope.
 // A caller filter affects navigation only, never the overall outcome. Only a
 // filtered view needs another projection; the normal case reuses its cache.
-func liveDiffNetCounts(view *livediff.View) *livediff.Counts {
+func liveDiffNetCounts(view *livediff.View) *diffmodel.Counts {
 	all := *view
 	if all.Caller != "" {
 		all.Caller, all.Visible = "", nil
 	}
 	all.RefreshVisible()
-	var total *livediff.Counts
+	var total *diffmodel.Counts
 	for _, file := range all.Files {
 		if !slices.ContainsFunc(file.Chunks, liveDiffProjectCapture) {
 			continue
 		}
 		if total == nil {
-			total = new(livediff.Counts)
+			total = new(diffmodel.Counts)
 		}
 		count := all.Visible[file.Key()].NetCounts()
 		if count.Added < 0 || count.Removed < 0 {
-			return new(livediff.Counts{Added: -1, Removed: -1})
+			return new(diffmodel.Counts{Added: -1, Removed: -1})
 		}
 		total.Added += count.Added
 		total.Removed += count.Removed
@@ -535,8 +538,8 @@ func liveDiffProjectCapture(chunk livediff.Chunk) bool {
 // hiding confirmed edits from the same caller behind an unknown total.
 // Files outside the capturing workspace, such as rewritten scratch files, are
 // not project edits and stay out of the totals.
-func liveDiffCallerCounts(files []livediff.File) map[string]livediff.Counts {
-	counts := make(map[string]livediff.Counts)
+func liveDiffCallerCounts(files []livediff.File) map[string]diffmodel.Counts {
+	counts := make(map[string]diffmodel.Counts)
 	for _, file := range files {
 		for _, chunk := range file.Chunks {
 			added, removed := chunk.Review.LineCounts()
@@ -625,9 +628,9 @@ func (c *liveDiffTerminalController) handleKey(key byte) bool {
 	if c.osc.Active || c.escape == "\x1b" && key == ']' {
 		c.escape = ""
 		if reply, complete := c.osc.Consume(key); complete {
-			if detected, ok := livediff.BackgroundTheme(reply); ok {
+			if detected, ok := diffrender.BackgroundTheme(reply); ok {
 				c.theme = detected
-				c.background, c.backgrounded = livediff.BackgroundColor(reply)
+				c.background, c.backgrounded = diffrender.BackgroundColor(reply)
 			}
 		}
 		return false
@@ -859,14 +862,14 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 		}
 	}
 	if len(c.files) > 0 {
-		var total livediff.Counts
+		var total diffmodel.Counts
 		for _, file := range c.files {
 			if len(file.Chunks) == 0 {
 				continue
 			}
 			count := file.NetCounts()
 			if count.Added < 0 || count.Removed < 0 {
-				total = livediff.Counts{Added: -1, Removed: -1}
+				total = diffmodel.Counts{Added: -1, Removed: -1}
 				break
 			}
 			total.Added += count.Added
@@ -889,11 +892,11 @@ func (c *liveDiffTerminalController) nativeTitle() (string, string) {
 	}
 	if c.coverage != "" {
 		status, _, _ := strings.Cut(c.coverage, ":")
-		right = append(right, livediff.Safe(status, false))
+		right = append(right, diffrender.Safe(status, false))
 	}
 	if c.view.Caller != "" {
 		name, _ := diffview.CallerStyle(c.theme)(c.view.Caller)
-		right = append(right, "@"+livediff.Safe(name, false))
+		right = append(right, "@"+diffrender.Safe(name, false))
 	}
 
 	if visible > 1 {

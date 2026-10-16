@@ -4,7 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -35,7 +36,7 @@ Codex --> Permissions["Permissions and patch review"]`, 80},
 			if !strings.HasPrefix(text, ">") {
 				text = "```mermaid\n" + text + "\n```"
 			}
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			uisnapshot.Assert(t, "testdata/snapshots/mermaid_"+tc.name+".txt", strings.Join(p.Markdown(text, tc.width), "\n")+"\n")
 		})
 	}

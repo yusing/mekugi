@@ -1,5 +1,6 @@
-package livediff
+package diffrender
 
+// Source: internal/livediff/safe_pool_test.go@[b95dde39]
 import (
 	"fmt"
 	"strings"

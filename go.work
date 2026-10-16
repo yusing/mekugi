@@ -8,6 +8,7 @@ use (
 	./libraries/commandanalysis
 	./libraries/commandargs
 	./libraries/diffmodel
+	./libraries/diffrender
 	./libraries/httptransport
 	./libraries/legacycall
 	./libraries/mcptransport
@@ -17,6 +18,7 @@ use (
 	./libraries/persistence
 	./libraries/shellinstrumentation
 	./libraries/sourceanalysis
+	./libraries/terminalui
 	./modules/agentguidance
 	./modules/agentmetrics
 	./modules/boundedcommand

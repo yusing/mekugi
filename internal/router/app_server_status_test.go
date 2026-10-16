@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
@@ -35,7 +36,7 @@ func TestUISnapshotAppServerStatusResetCredits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, sent := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			appServerTestKeys(t, u, "/status\r")
 			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
 			response := string(wire)
@@ -74,7 +75,7 @@ func TestUISnapshotAppServerStatusSystemTimezone(t *testing.T) {
 				t.Fatal(err)
 			}
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			appServerTestKeys(t, u, "/status\r")
 			appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","planType":"pro"}}}`)
 			appServerTestMessage(t, u, fmt.Sprintf(`{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":20,"windowDurationMins":300,"resetsAt":%d}}}}`, tc.reset.Unix()))
@@ -293,7 +294,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 	appServerTestKeys(t, u, "/status\r")
 	appServerTestMessage(t, u, `{"id":1,"result":{"account":{"type":"chatgpt","email":"yusing@example.com","planType":"pro"}}}`)
 	appServerTestMessage(t, u, `{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":22,"windowDurationMins":300},"secondary":{"usedPercent":83,"windowDurationMins":10080},"credits":{"unlimited":false,"balance":"12.50"}}}}`)
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		u.view.painter.Theme = theme
 		for _, size := range [][2]int{{88, 42}, {44, 20}, {12, 8}, {1, 1}} {
 			frame := u.statusPanelFrame(size[0], size[1])
@@ -336,7 +337,7 @@ func TestAppServerStatusPanelVisual(t *testing.T) {
 
 	// Render through the real pane compositor and terminal emulator, then verify
 	// closing clears the already-painted panel, not only its backing state.
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.statusPanel.top = 0
 	screen := vt.NewEmulator(160, 48)
 	defer screen.Close()

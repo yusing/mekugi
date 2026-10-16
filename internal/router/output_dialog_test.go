@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	segmenttransport "github.com/yusing/mekugi/modules/commandsegments/transport"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -257,7 +258,7 @@ func TestUISnapshotOutputDialogVTOverlayWideAndNarrow(t *testing.T) {
 			output.Write("modal content\n")
 			output.Finish(nil, new(0))
 			u := dialogForOutput(output)
-			u.output.view.painter.Theme = livediff.TerminalTheme
+			u.output.view.painter.Theme = diffrender.TerminalTheme
 			const height = 20
 			rows := make([]string, height)
 			for i := range rows {

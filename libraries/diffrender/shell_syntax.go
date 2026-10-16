@@ -1,5 +1,6 @@
-package livediff
+package diffrender
 
+// Source: internal/livediff/shell_syntax.go@[b95dde39]
 import (
 	"strings"
 

@@ -5,14 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestRosterSummaryFormatting(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := activityui.Painter{Theme: theme}
 		for _, source := range []string{"Run `git status --short`", "Run\n```bash\ngit status --short\n```"} {
 			summary := p.Summary(parseLiveActivity(activityPaneEntry{Kind: "tool", Text: source}), 80)

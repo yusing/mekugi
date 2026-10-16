@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/contracts/inference"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func restoredUsageRosterFixture(t *testing.T) *appServerUI {
@@ -74,7 +75,7 @@ func TestUISnapshotNativeRosterRestoredUsage(t *testing.T) {
 	u.proxy.usage.Observation("historical", "historical", "gpt-6-sol", "").Observe(inference.Usage{InputTokens: 100_000, UncachedInputTokens: 100_000, OutputTokens: 10_000})
 	u.observeCost("historical", u.session.agent(u.session.paths["historical"]))
 	u.agents.apply(activityPaneEvent{Kind: "agents", Agents: u.session.agents})
-	u.agents.painter.Theme = livediff.DarkTheme
+	u.agents.painter.Theme = diffrender.DarkTheme
 	u.agents.selected = u.session.paths["child"]
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	assertNativeUISnapshot(t, "native-roster-restored-usage", u.agents.nativeRoster(140, 8, now, true))

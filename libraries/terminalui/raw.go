@@ -1,4 +1,4 @@
-package terminal
+package terminalui
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 )
 
 // WithRawPane owns raw mode, screen setup, and a cancellable key reader for a
-// router pane. The reader is joined before terminal state is restored.
+// caller's pane. The reader is joined before terminal state is restored.
 func WithRawPane(ctx context.Context, stdin, stdout *os.File, enter, leave string, body func(<-chan byte) error) (err error) {
 	old, err := term.MakeRaw(int(stdin.Fd()))
 	if err != nil {

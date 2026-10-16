@@ -1,5 +1,6 @@
-package livediff
+package diffrender
 
+// Source: internal/livediff/fade.go@[b95dde39]
 import (
 	"fmt"
 	"strconv"

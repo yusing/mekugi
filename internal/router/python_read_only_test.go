@@ -6,7 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -62,7 +63,7 @@ func TestUISnapshotPythonReadOnlyScriptSource(t *testing.T) {
 	}
 	pane := diffview.PreviewPane{Prefer: "/root"}
 	pane.Update(diffview.Preview{ID: "read-only", Workspace: directory, Caller: "/root", Status: diffview.PreviewEdit, Files: files})
-	rows, err := pane.Render(t.Context(), directory, livediff.DarkTheme, 80, 12)
+	rows, err := pane.Render(t.Context(), directory, diffrender.DarkTheme, 80, 12)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -77,7 +78,7 @@ func TestUISnapshotActivityBlocks(t *testing.T) {
 			if len(tc.block.Timeouts) > 0 {
 				tc.block.Duration = 500 * time.Millisecond
 			}
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			uisnapshot.Assert(t, "testdata/snapshots/activity_"+tc.name+".txt", strings.Join(p.Block(tc.block, tc.width), "\n")+"\n")
 		})
 	}
@@ -132,7 +133,7 @@ func TestUISnapshotActivityOutputDialog(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			page := p.DialogPage(tc.block, tc.width-4)
 			var body []string
 			for i := range page.Lines {

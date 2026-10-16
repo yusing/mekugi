@@ -1,4 +1,4 @@
-package terminal
+package terminalui
 
 const (
 	PaneWheelUp    byte = 0x80

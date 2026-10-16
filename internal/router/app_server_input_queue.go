@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -434,7 +435,7 @@ func (u *appServerUI) pendingInputPreview(width int) []string {
 			}
 			texts = append(texts, text)
 		}
-		rows := strings.Split(livediff.Safe(strings.Join(texts, "\n"), false), "\n")
+		rows := strings.Split(diffrender.Safe(strings.Join(texts, "\n"), false), "\n")
 		for i, row := range rows[:min(3, len(rows))] {
 			prefix := "    "
 			if i == 0 {

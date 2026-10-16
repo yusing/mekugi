@@ -5,8 +5,9 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -51,7 +52,7 @@ func TestErrorDetailsHover(t *testing.T) {
 func TestErrorDialogPreservesFullLiteralBody(t *testing.T) {
 	body := "\x1b[31m**Failure**\x1b[0m\x07\n\n" + strings.Repeat("x", 300) + "\n```sh\nprintf '<details>'\n```\nlate-search-needle\tend\x1b]0;injected\x07"
 	want := "**Failure**\n\n" + strings.Repeat("x", 300) + "\n```sh\nprintf '<details>'\n```\nlate-search-needle    end"
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	for _, width := range []int{16, 60} {
 		page := p.DialogPage(Block{Kind: "error", Body: body}, width)
 		if page.Text != want {
@@ -74,7 +75,7 @@ func TestErrorDialogPreservesFullLiteralBody(t *testing.T) {
 }
 
 func TestErrorDialogLogicalSearchRows(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	page := p.DialogPage(Block{Kind: "error", Body: "界aaNeedle crosses a visual boundary\nsecond line"}, 4)
 	if len(page.Lines) != 2 || !page.Lines[0].Wrap {
 		t.Fatal("error lines were split before search")
@@ -107,7 +108,7 @@ func TestUISnapshotActivityErrorInline(t *testing.T) {
 		{"narrow", 20, "Request failed: permission denied\nFull diagnostic", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			rows := p.Block(Block{Kind: "error", Body: tc.body, Hovered: tc.hovered}, tc.width)
 			uisnapshot.Assert(t, "testdata/snapshots/activity_error_inline_"+tc.name+".txt", strings.Join(rows, "\n")+"\n")
 		})
@@ -124,7 +125,7 @@ func TestUISnapshotActivityErrorDialog(t *testing.T) {
 		{"narrow", 24, 20},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			page := p.DialogPage(Block{Kind: "error", Body: body}, tc.width-4)
 			var rows []string
 			for i := range page.Lines {

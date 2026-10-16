@@ -1,5 +1,6 @@
-package livediff
+package diffrender
 
+// Source: internal/livediff/theme.go@[b95dde39]
 import (
 	"fmt"
 	"strconv"

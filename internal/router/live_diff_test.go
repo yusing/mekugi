@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
@@ -38,7 +40,7 @@ func TestLiveDiffRedirectedWithoutExternalRenderer(t *testing.T) {
 }
 
 func TestLiveDiffSafeText(t *testing.T) {
-	got := livediff.Safe("\x1b]52;c;clipboard\a\x1b[2J\x1b[31mred\x1b[0m\t界\r\n", true)
+	got := diffrender.Safe("\x1b]52;c;clipboard\a\x1b[2J\x1b[31mred\x1b[0m\t界\r\n", true)
 	if got != "\x1b[31mred\x1b[0m    界\n" {
 		t.Fatalf("unsafe rendering: %q", got)
 	}
@@ -56,7 +58,7 @@ func TestLiveDiffRelativeDisplayKeepsSourceAndCapture(t *testing.T) {
 	chunk := livediff.Chunk{
 		Review: diffmodel.ReviewFile{BeforePath: before, AfterPath: after, Diff: diff},
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: after, Chunks: []livediff.Chunk{chunk}}}, workspace, 240)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: after, Chunks: []livediff.Chunk{chunk}}}, workspace, 240)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +221,7 @@ func TestLiveDiffNativeRenderer(t *testing.T) {
 	file := livediff.File{Path: path, Chunks: []livediff.Chunk{{
 		Review: diffmodel.ReviewFile{BeforePath: path, AfterPath: path, Diff: "--- " + strconv.Quote(path) + "\n+++ " + strconv.Quote(path) + "\n@@ -1 +1 @@\n-old\n+new\n"},
 	}}}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{file}, workspace, 80)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{file}, workspace, 80)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,10 +312,10 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	waitFor("v stream")
 	for _, reply := range []struct {
 		text  string
-		theme livediff.Theme
+		theme diffrender.Theme
 	}{
-		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", livediff.LightTheme},
-		{"\x1b]11;rgb:1111/1111/1111\a", livediff.DarkTheme},
+		{"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", diffrender.LightTheme},
+		{"\x1b]11;rgb:1111/1111/1111\a", diffrender.DarkTheme},
 	} {
 		// Exercise a reply fragmented at every byte, including ESC + ST.
 		for _, key := range []byte(reply.text) {
@@ -340,13 +342,13 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	selectedFileHighlighted := func(output, name string, height int) bool {
 		for row := 1; row <= height; row++ {
 			raw := liveDiffFrameRawRow(output, row)
-			if strings.Contains(ansi.Strip(raw), name) && strings.Contains(raw, livediff.DarkTheme.SelectionBackground()) {
+			if strings.Contains(ansi.Strip(raw), name) && strings.Contains(raw, diffrender.DarkTheme.SelectionBackground()) {
 				return true
 			}
 		}
 		return false
 	}
-	before := waitFor("M second.go", "DIFF · v stream", livediff.DarkTheme.SelectionBackground())
+	before := waitFor("M second.go", "DIFF · v stream", diffrender.DarkTheme.SelectionBackground())
 	if !selectedFileHighlighted(before, "M second.go", 20) {
 		t.Fatalf("navigation did not select second.go: %q", liveDiffFrameRow(before, 5))
 	}
@@ -360,7 +362,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	_, beforeSource, _ := strings.Cut(lastRow(before, 2), "│")
 	liveDiffTestChange(t, store, workspace, "three", "first.go")
 	liveDiffTestChange(t, store, workspace, "four", "third.go")
-	after := waitFor("M second.go", "3/3 · tree", "DIFF · v stream", livediff.DarkTheme.SelectionBackground())
+	after := waitFor("M second.go", "3/3 · tree", "DIFF · v stream", diffrender.DarkTheme.SelectionBackground())
 	if !selectedFileHighlighted(after, "M second.go", 20) {
 		t.Fatalf("new files moved paused selection: %q", liveDiffFrameRow(after, 5))
 	}
@@ -371,14 +373,14 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 	if err := pty.Setsize(terminal, &pty.Winsize{Rows: 25, Cols: 100}); err != nil {
 		t.Fatal(err)
 	}
-	resized := waitFor("M second.go", livediff.DarkTheme.SelectionBackground())
+	resized := waitFor("M second.go", diffrender.DarkTheme.SelectionBackground())
 	if !selectedFileHighlighted(resized, "M second.go", 25) {
 		t.Fatal("resize lost selected file highlight")
 	}
 	if _, err := terminal.Write([]byte("r")); err != nil {
 		t.Fatal(err)
 	}
-	if output := waitFor("DIFF · v stream", "M second.go", livediff.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M second.go", 25) {
+	if output := waitFor("DIFF · v stream", "M second.go", diffrender.DarkTheme.SelectionBackground()); !selectedFileHighlighted(output, "M second.go", 25) {
 		t.Fatalf("removed r shortcut changed selected file: %s", output)
 	}
 	if _, err := terminal.Write([]byte{3}); err != nil {
@@ -397,7 +399,7 @@ func TestLiveDiffTerminalProcess(t *testing.T) {
 }
 
 func TestLiveDiffOutputBound(t *testing.T) {
-	var out livediff.Output
+	var out diffrender.Output
 	out.Grow(changes.MaxReadBytes)
 	out.WriteString(strings.Repeat("x", changes.MaxReadBytes))
 	if _, err := out.WriteString("overflow"); err == nil {

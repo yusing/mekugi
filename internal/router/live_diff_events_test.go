@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/legacycall"
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
@@ -511,7 +513,7 @@ func TestUISnapshotLiveDiffRequiresHunk(t *testing.T) {
 	for _, event := range broker.takePreviews(sub) {
 		pane.Update(*event.Preview)
 	}
-	rows, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 60, 8)
+	rows, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 60, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -607,9 +609,9 @@ func TestLiveDiffBoundedPreviewOmitsDeletedFiles(t *testing.T) {
 			var rows []string
 			var err error
 			if retain {
-				rows, err = pane.RenderBatch(t.Context(), "/root", "/workspace", livediff.DarkTheme, 72, 31, 15)
+				rows, err = pane.RenderBatch(t.Context(), "/root", "/workspace", diffrender.DarkTheme, 72, 31, 15)
 			} else {
-				rows, err = pane.Render(t.Context(), "/workspace", livediff.DarkTheme, 72, 31)
+				rows, err = pane.Render(t.Context(), "/workspace", diffrender.DarkTheme, 72, 31)
 			}
 			if err != nil {
 				t.Fatal(err)

@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/contracts/inference"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/persistence"
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
 )
@@ -192,7 +193,7 @@ func TestAppServerSessionMetricsRefreshAndBounds(t *testing.T) {
 	now = now.Add(500 * time.Millisecond)
 	u.refreshSessionMetrics(false)
 	sessionMetricField(t, u, "Requests", "Logical", "1")
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		u.view.painter.Theme = theme
 		for tab := range sessionMetricViews {
 			u.statusPanel.metrics.tab = tab
@@ -243,7 +244,7 @@ func TestUISnapshotAppServerSessionMetrics(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u, _ := newAppServerTestUI()
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			u.session.cwd = "/workspace"
 			u.replayDebugDirectory = tc.debug
 			u.showSessionMetrics()

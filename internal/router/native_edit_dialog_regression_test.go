@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 
 	"github.com/charmbracelet/x/ansi"
@@ -29,7 +31,7 @@ func editDialogRegressionCases() []editDialogRegressionCase {
 func openRegressionEditDialog(t *testing.T, tc editDialogRegressionCase, captured bool) (*terminalUI, string) {
 	t.Helper()
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	const path = "answer.go"
 	want := tc.host
 	if captured {
@@ -77,7 +79,7 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 				if want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(wantText)) + "\x07"; u.clipboard != want {
 					t.Fatalf("clipboard bytes changed: %q", u.clipboard)
 				}
-				var renderer livediff.Renderer
+				var renderer diffrender.Renderer
 				for _, side := range []struct {
 					source string
 					kind   byte
@@ -85,13 +87,13 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 					if side.source == "" {
 						continue
 					}
-					colored, err := renderer.ColorSource(t.Context(), livediff.DarkTheme, "answer.go", strings.TrimSuffix(side.source, "\n")+"\n")
+					colored, err := renderer.ColorSource(t.Context(), diffrender.DarkTheme, "answer.go", strings.TrimSuffix(side.source, "\n")+"\n")
 					if err != nil {
 						t.Fatal(err)
 					}
 					wantLine := colored[0]
 					if tc.kind == "update" {
-						before, after, err := renderer.ColorHunk(t.Context(), livediff.DarkTheme,
+						before, after, err := renderer.ColorHunk(t.Context(), diffrender.DarkTheme,
 							diffmodel.ReviewFile{BeforePath: "answer.go", AfterPath: "answer.go"},
 							[]diffmodel.ReviewRow{{Kind: '-', Text: tc.before}, {Kind: '+', Text: tc.after}})
 						if err != nil {
@@ -103,7 +105,7 @@ func TestNativeEditDialogRegressionActionsCopyAndSyntax(t *testing.T) {
 						}
 					}
 					if captured || tc.kind == "update" {
-						wantLine = livediff.SourceLine(livediff.DarkTheme, ansi.StringWidth(wantLine)+4, "", wantLine, side.kind)
+						wantLine = diffrender.SourceLine(diffrender.DarkTheme, ansi.StringWidth(wantLine)+4, "", wantLine, side.kind)
 					}
 					found := false
 					for _, line := range u.output.laid.Lines {

@@ -8,9 +8,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
 )
@@ -326,7 +327,7 @@ func (u *appServerUI) resumePickerFrame(width, height int) []string {
 	}
 	bold, dim, reset := "\x1b[1m", activityui.Dim, activityui.Reset
 	accent := "\x1b[38;2;104;174;245m"
-	if u.view.painter.Theme == livediff.LightTheme {
+	if u.view.painter.Theme == diffrender.LightTheme {
 		accent = "\x1b[38;2;25;94;164m"
 	}
 	option := func(label string, on bool) string {

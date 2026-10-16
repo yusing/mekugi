@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -33,7 +34,7 @@ func TestUISnapshotMChangesCaptureCompleteness(t *testing.T) {
 	t.Parallel()
 	output := "amber1 incomplete captured scope; use --history for diagnostics\nA\t2\t0\ttestdata/snapshots/new.txt\n?\t-\t-\toutside.txt\t\"resolved path is outside the pre-cell baseline\"\n"
 	u := mchangesDisplay(t, "mchanges amber1 --summary", output)
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	uisnapshot.Assert(t, "testdata/snapshots/mchanges-capture-completeness.txt", mainFeed(u, 100)+"\n")
 }
 

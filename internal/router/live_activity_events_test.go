@@ -6,15 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func sharedEventsView(child bool) *liveActivityView {
 	v := newLiveActivityView()
 	v.conversation, v.childrenOnly = !child, child
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	v.clock = func() time.Time { return time.Date(2026, 10, 2, 12, 34, 56, 0, time.Local) }
 	return v
 }

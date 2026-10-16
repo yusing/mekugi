@@ -219,7 +219,7 @@ func TestNativeRosterShowsEditedLines(t *testing.T) {
 		{Chunks: []livediff.Chunk{chunk("/root", "@@ -1 +1,2 @@\n-a\n+b\n+c", ""), chunk("/root/a", "@@ -1 +1 @@\n-x\n+y", ""), chunk("/root/a", "", "tool-managed coverage")}},
 		{Chunks: []livediff.Chunk{chunk("/root", "@@ -0,0 +1 @@\n+d", ""), chunk("/root/b", "", "truncated")}},
 	})
-	v.netCounts = new(livediff.Counts{Added: 2, Removed: 1})
+	v.netCounts = new(diffmodel.Counts{Added: 2, Removed: 1})
 	lines := v.nativeRoster(150, 8, now, true)
 	var rows []string
 	for _, line := range lines {
@@ -260,7 +260,7 @@ func TestLiveDiffCallerCountsSkipFilesOutsideWorkspace(t *testing.T) {
 		chunk("/root", "", "/tmp/unknown.go", "/tmp/unknown.go"), // Unknown workspace still counts.
 		chunk("/root/scratch", "/w", "", "/tmp/new.txt"),
 	}}})
-	if got, want := counts["/root"], (livediff.Counts{Added: 3, Removed: 3}); got != want {
+	if got, want := counts["/root"], (diffmodel.Counts{Added: 3, Removed: 3}); got != want {
 		t.Fatalf("/root counts = %+v, want %+v", got, want)
 	}
 	if _, ok := counts["/root/scratch"]; ok {
@@ -273,7 +273,7 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 	now := time.Now()
 	agent := activityPaneAgent{Name: "/root", Started: now.Add(-time.Minute), Turns: 1, CostKnown: true, Cost: 1, InputTokens: 100_000, OutputTokens: 1000}
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
-	v.lineCounts = map[string]livediff.Counts{"/root": {Added: 10, Removed: 2}}
+	v.lineCounts = map[string]diffmodel.Counts{"/root": {Added: 10, Removed: 2}}
 	row := func(at time.Time) string {
 		t.Helper()
 		return ansi.Strip(v.nativeRoster(150, 8, at, true)[1])
@@ -284,7 +284,7 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 	}
 	agent.InputTokens, agent.Cost = 200_000, 2
 	v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{agent}})
-	v.lineCounts = map[string]livediff.Counts{"/root": {Added: 110, Removed: 2}}
+	v.lineCounts = map[string]diffmodel.Counts{"/root": {Added: 110, Removed: 2}}
 	row(now)
 	mid := row(now.Add(rosterMetricEase / 4))
 	if strings.Contains(mid, "↑100K") || strings.Contains(mid, "↑200K") || strings.Contains(mid, "+10 ") || strings.Contains(mid, "+110") || strings.Contains(mid, "$1.00") || strings.Contains(mid, "$2.00") || !v.rosterEasing {
@@ -308,14 +308,14 @@ func TestNativeRosterMetricsEaseToNewValues(t *testing.T) {
 func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 	v := newLiveActivityView()
 	for _, tt := range []struct {
-		count          livediff.Counts
+		count          diffmodel.Counts
 		added, removed string
 	}{
-		{livediff.Counts{}, "", ""},
-		{livediff.Counts{Added: -1, Removed: -1}, "", ""},
-		{livediff.Counts{Added: 3}, activityui.Green + "+3\x1b[39m", ""},
-		{livediff.Counts{Removed: 2}, "", activityui.Red + "-2\x1b[39m"},
-		{livediff.Counts{Added: 3, Removed: 2}, activityui.Green + "+3\x1b[39m", activityui.Red + "-2\x1b[39m"},
+		{diffmodel.Counts{}, "", ""},
+		{diffmodel.Counts{Added: -1, Removed: -1}, "", ""},
+		{diffmodel.Counts{Added: 3}, activityui.Green + "+3\x1b[39m", ""},
+		{diffmodel.Counts{Removed: 2}, "", activityui.Red + "-2\x1b[39m"},
+		{diffmodel.Counts{Added: 3, Removed: 2}, activityui.Green + "+3\x1b[39m", activityui.Red + "-2\x1b[39m"},
 	} {
 		added, removed := v.lineCountParts(tt.count)
 		if added != tt.added || removed != tt.removed {
@@ -324,7 +324,7 @@ func TestNativeRosterLineCountColorsAndZeros(t *testing.T) {
 		view := newLiveActivityView()
 		now := time.Now()
 		view.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root", Started: now, InputTokens: 100}}})
-		view.lineCounts = map[string]livediff.Counts{"/root": tt.count}
+		view.lineCounts = map[string]diffmodel.Counts{"/root": tt.count}
 		rows := view.nativeRoster(150, 8, now, true)
 		for _, row := range rows[1:2] {
 			if strings.Contains(row, "+0") || strings.Contains(row, "-0") {

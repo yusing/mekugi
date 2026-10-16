@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestUISnapshotNativeMainRepliesStayInTranscript(t *testing.T) {
@@ -17,7 +18,7 @@ func TestUISnapshotNativeMainRepliesStayInTranscript(t *testing.T) {
 			now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.Local)
 			u.clock = func() time.Time { return now }
 			u.turn, u.status, u.model = "active", "Working", "snapshot-model"
-			u.view.painter.Theme = livediff.DarkTheme
+			u.view.painter.Theme = diffrender.DarkTheme
 			entries := []activityPaneEntry{{Seq: 1, Agent: "Main", Kind: "text", Text: "Main reply stays in the transcript.", Observed: now}}
 			for i := range 20 {
 				entries = append(entries, activityPaneEntry{Seq: uint64(i + 2), Agent: "Main", Kind: "tool", Text: fmt.Sprintf("Ran `echo activity-%02d`", i+1), Observed: now})

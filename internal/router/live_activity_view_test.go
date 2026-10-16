@@ -6,16 +6,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 func TestEditHoverDecoratesOnlyPointedText(t *testing.T) {
@@ -100,7 +101,7 @@ func TestLiveActivityScrollStopsAtLastFullViewport(t *testing.T) {
 }
 
 func TestLiveActivityJavaScriptStableIndent(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		painter := activityui.Painter{Theme: theme}
 		for _, width := range []int{24, 80} {
 			for _, source := range []string{
@@ -361,7 +362,7 @@ func TestLiveActivityPainterColors(t *testing.T) {
 }
 
 func TestLiveActivityLinksAndCommandExit(t *testing.T) {
-	painter := activityui.Painter{Theme: livediff.DarkTheme, FileLink: func(string) bool { return true }}
+	painter := activityui.Painter{Theme: diffrender.DarkTheme, FileLink: func(string) bool { return true }}
 	link := painter.Inline("[report.go](</tmp/review folder/report.go:12>)")
 	if ansi.Strip(link) != "report.go" || !strings.Contains(link, "\x1b]8;;file:///tmp/review%20folder/report.go:12\x1b\\") ||
 		!strings.Contains(link, "\x1b]8;;\x1b\\") {
@@ -424,7 +425,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 			if len(blocks) != 1 || !blocks[0].Fenced {
 				t.Fatalf("interpreter preview = %+v", blocks)
 			}
-			painter := activityui.Painter{Theme: livediff.DarkTheme}
+			painter := activityui.Painter{Theme: diffrender.DarkTheme}
 			rows := painter.Block(blocks[0], 80)
 			// The header names the interpreter the program runs under.
 			if len(rows) < 3 || ansi.Strip(rows[0]) != "Ran    "+tc.header || ansi.Strip(rows[1]) != "       │ "+tc.first || !strings.Contains(ansi.Strip(rows[2]), "       │ "+tc.second) {
@@ -443,7 +444,7 @@ func TestLiveActivityInterpreterPreviewAndSearchColor(t *testing.T) {
 		})
 	}
 
-	painter := activityui.Painter{Theme: livediff.DarkTheme}
+	painter := activityui.Painter{Theme: diffrender.DarkTheme}
 	search := parseLiveActivity(activityPaneEntry{Kind: "tool", Text: "Search `create(MCat|MSymbol)|description:` in `plugins/mrun.ts`"})[0]
 	colored := strings.Join(painter.Block(search, 110), "\n")
 	if !strings.Contains(colored, painter.Theme.Accent()+"create(MCat|MSymbol)|description:\x1b[39m") ||
@@ -503,7 +504,7 @@ func TestLiveActivityReviewRegressions(t *testing.T) {
 
 func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
 	const summary = unreturnedOutputNote
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		painter := activityui.Painter{Theme: theme}
 		for _, width := range []int{8, 18, 40, 100} {
 			rows := painter.Block(activityui.Block{Kind: "filter", Body: summary}, width)
@@ -522,7 +523,7 @@ func TestLiveActivityCommandNoteAlignmentAndDimStyle(t *testing.T) {
 
 func TestLiveActivityFinalAnswerLayout(t *testing.T) {
 	blocks := parseLiveActivity(activityPaneEntry{Kind: "final", Text: "Plain **answer**."})
-	painter := activityui.Painter{Theme: livediff.DarkTheme}
+	painter := activityui.Painter{Theme: diffrender.DarkTheme}
 	if len(blocks) != 1 || ansi.Strip(strings.Join(painter.Block(blocks[0], 80), "\n")) != "✓ Final answer\n  Plain answer." {
 		t.Fatalf("plain final = %+v", blocks)
 	}

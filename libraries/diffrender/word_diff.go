@@ -1,5 +1,6 @@
-package livediff
+package diffrender
 
+// Source: internal/livediff/word_diff.go@[b95dde39]
 import (
 	"context"
 	"slices"

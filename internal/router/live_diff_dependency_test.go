@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/modules/changehistory/changes"
 
 	"github.com/charmbracelet/x/ansi"
@@ -73,7 +75,7 @@ func TestUISnapshotSavedDiffDependencyHistory(t *testing.T) {
 				captures = append(captures, file.Chunks...)
 			}
 			c := liveDiffChangesController(t, 100, 25, captures)
-			c.theme = livediff.DarkTheme
+			c.theme = diffrender.DarkTheme
 			c.frame(t)
 			uisnapshot.Assert(t, fmt.Sprintf("testdata/snapshots/saved-diff-dependency-%t.txt", confirmed), strings.Join(c.lines, "\n")+"\n")
 			for _, file := range c.view.Visible {

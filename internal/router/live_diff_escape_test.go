@@ -5,7 +5,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 func TestLiveDiffOSCDisarmsEscapeTimer(t *testing.T) {
@@ -22,7 +22,7 @@ func TestLiveDiffEscapeTimeoutPreservesQueuedReply(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := newLiveDiffTerminalController(nil, "", nil)
 		defer c.close()
-		c.theme = livediff.DarkTheme
+		c.theme = diffrender.DarkTheme
 		c.navigation.Filtering = true
 		c.handleKey(27)
 		keys := make(chan byte, 32)
@@ -40,7 +40,7 @@ func TestLiveDiffEscapeTimeoutPreservesQueuedReply(t *testing.T) {
 		for len(keys) > 0 {
 			c.handleKey(<-keys)
 		}
-		if c.theme != livediff.LightTheme || !c.navigation.Filtering {
+		if c.theme != diffrender.LightTheme || !c.navigation.Filtering {
 			t.Fatalf("queued reply changed navigation or lost theme: theme=%v filtering=%t", c.theme, c.navigation.Filtering)
 		}
 		c.handleKey(27)

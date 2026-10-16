@@ -6,14 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestCommandOutputAutoHighlightLimit(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		for _, size := range []int{outputAutoHighlightBytes, outputAutoHighlightBytes + 1} {
 			source := "var answer = 42 // "
 			source += strings.Repeat("x", size-len(source))
@@ -67,7 +68,7 @@ func TestCommandOutputAutoHighlightLimit(t *testing.T) {
 func TestUISnapshotCommandOutputAutoHighlightLimit(t *testing.T) {
 	rows := strings.Split(strings.Repeat("var answer = 42\n", 700)+"completed successfully", "\n")
 	block := selectedOutputBlock(Block{Kind: "op", Verb: "Run", Code: "custom-producer", Running: true}, rows, len(rows)-3)
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	uisnapshot.Assert(t, "testdata/snapshots/output_auto_highlight_limit.txt", strings.Join(p.Block(block, 80), "\n")+"\n")
 }
 
@@ -77,7 +78,7 @@ func BenchmarkCommandOutputAutoHighlight(b *testing.B) {
 			rows := strings.Split(strings.Repeat("var answer = 42\n", size/16+1)[:size], "\n")
 			b.ReportAllocs()
 			for b.Loop() {
-				p := Painter{Theme: livediff.DarkTheme}
+				p := Painter{Theme: diffrender.DarkTheme}
 				p.outputColors(Block{Verb: "Run"}, rows)
 			}
 		})
@@ -85,7 +86,7 @@ func BenchmarkCommandOutputAutoHighlight(b *testing.B) {
 }
 
 func TestCommandOutputSyntaxIndependentOfProducer(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := Painter{Theme: theme}
 		for _, tc := range []struct {
 			name, source string
@@ -137,7 +138,7 @@ func TestCommandOutputSyntaxIndependentOfProducer(t *testing.T) {
 }
 
 func TestCommandOutputSyntaxBoundAndExplicitHint(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	source := "package main\n" + strings.Repeat("x", dialogHighlightBytes)
 	rows := strings.Split(source, "\n")
 	if got := strings.Join(p.outputColors(Block{}, rows), "\n"); got != source {
@@ -151,9 +152,9 @@ func TestCommandOutputSyntaxBoundAndExplicitHint(t *testing.T) {
 
 func TestDiffOutputUsesPaneSyntaxAndRetainedTailContext(t *testing.T) {
 	source := "amber1\n--- a/sample.go\n+++ b/sample.go\n@@ -1,3 +1,3 @@\n package main\n \n-var answer = 41\n+var answer = 42"
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := Painter{Theme: theme}
-		var renderer livediff.Renderer
+		var renderer diffrender.Renderer
 		_, want, err := renderer.ColorHunk(t.Context(), theme, diffmodel.ReviewFile{BeforePath: "sample.go", AfterPath: "sample.go"},
 			[]diffmodel.ReviewRow{{Kind: ' ', Text: "package main\n"}, {Kind: ' ', Text: "\n"}, {Kind: '-', Text: "var answer = 41\n"}, {Kind: '+', Text: "var answer = 42\n"}})
 		if err != nil {
@@ -164,7 +165,7 @@ func TestDiffOutputUsesPaneSyntaxAndRetainedTailContext(t *testing.T) {
 			output.Write(source)
 			block := Block{Kind: "op", Verb: verb, Code: "mchanges amber1", Output: &output, Tail: []string{"-var answer = 41", "+var answer = 42"}, TailOmitted: 6}
 			tail := p.tailColors(block)
-			if tail[1] != livediff.SourceLine(theme, ansi.StringWidth(want[2])+4, "", want[2], '+') || !strings.Contains(tail[1], theme.RowBackground('+')) {
+			if tail[1] != diffrender.SourceLine(theme, ansi.StringWidth(want[2])+4, "", want[2], '+') || !strings.Contains(tail[1], theme.RowBackground('+')) {
 				t.Fatalf("tail lacks pane syntax: %q, want %q", tail, want[2])
 			}
 			for _, collapsed := range []bool{false, true} {
@@ -188,11 +189,11 @@ func TestDiffOutputUsesPaneSyntaxAndRetainedTailContext(t *testing.T) {
 }
 
 func TestCapturedEditDialogUsesPaneSyntax(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	source := "--- a/main.go\n+++ b/main.go\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42"
 	block := Block{Kind: "op", Verb: "Edit", Path: "main.go", Code: source, Lang: "diff", Fenced: true}
 	page := p.DialogPage(block, 120)
-	var renderer livediff.Renderer
+	var renderer diffrender.Renderer
 	_, want, err := renderer.ColorHunk(t.Context(), p.Theme, diffmodel.ReviewFile{BeforePath: "main.go", AfterPath: "main.go"},
 		[]diffmodel.ReviewRow{{Kind: '-', Text: "var answer = 41\n"}, {Kind: '+', Text: "var answer = 42\n"}})
 	if err != nil {
@@ -203,7 +204,7 @@ func TestCapturedEditDialogUsesPaneSyntax(t *testing.T) {
 	}
 	found := false
 	for _, line := range page.Lines {
-		if line.Text == livediff.SourceLine(p.Theme, ansi.StringWidth(want[0])+4, "", want[0], '+') {
+		if line.Text == diffrender.SourceLine(p.Theme, ansi.StringWidth(want[0])+4, "", want[0], '+') {
 			found = true
 		}
 	}
@@ -215,15 +216,15 @@ func TestCapturedEditDialogUsesPaneSyntax(t *testing.T) {
 func TestTimestampedDiffRetainedSyntax(t *testing.T) {
 	var output Output
 	output.Write("--- old path.go\t2026-09-30 10:00:00.123 +0800\n+++ new path.go\t2026-09-30 10:01:00.123 +0800\n@@ -1 +1 @@\n-var answer = 41\n+var answer = 42")
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	block := Block{Kind: "op", Verb: "Run", Output: &output, Tail: []string{"+var answer = 42"}, TailOmitted: 4}
-	var renderer livediff.Renderer
+	var renderer diffrender.Renderer
 	_, source, err := renderer.ColorHunk(t.Context(), p.Theme, diffmodel.ReviewFile{BeforePath: "path.go", AfterPath: "path.go"},
 		[]diffmodel.ReviewRow{{Kind: '-', Text: "var answer = 41\n"}, {Kind: '+', Text: "var answer = 42\n"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := livediff.SourceLine(p.Theme, ansi.StringWidth(source[0])+4, "", source[0], '+')
+	want := diffrender.SourceLine(p.Theme, ansi.StringWidth(source[0])+4, "", source[0], '+')
 	if got := p.tailColors(block)[0]; got != want {
 		t.Fatalf("timestamp lost tail syntax: %q", got)
 	}

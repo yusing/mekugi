@@ -1,5 +1,6 @@
-package livediff
+package diffrender
 
+// Source: internal/livediff/diff_alignment_test.go@[b95dde39]
 import (
 	"testing"
 

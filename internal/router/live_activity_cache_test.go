@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
 )
 
 // Compare the complete feed and hit targets, not just the visible text: an
@@ -46,7 +46,7 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			v := newLiveActivityView()
 			v.childrenOnly = true
-			v.painter.Theme = livediff.DarkTheme
+			v.painter.Theme = diffrender.DarkTheme
 			v.clock = func() time.Time { return now }
 			entry := activityPaneEntry{Seq: 3, Agent: "/root/working", Kind: "tool", CallID: "command", Text: "Run `printf hello`", Observed: now,
 				native:     &liveActivityNativeItem{thread: "child", turn: "turn", item: "command", phase: "item/commandExecution/outputDelta"},
@@ -125,7 +125,7 @@ func TestLiveActivityCacheEntryUpdates(t *testing.T) {
 func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 	v := newLiveActivityView()
 	v.conversation = true
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.clock = func() time.Time { return now }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{Seq: 1, Agent: "You", Kind: "text", Text: "Explain the result", Observed: now}}})
@@ -150,7 +150,7 @@ func TestLiveActivityCacheMainUpdateRemainsFresh(t *testing.T) {
 func TestLiveActivityCacheMainInvalidatesLaterQuotes(t *testing.T) {
 	v := newLiveActivityView()
 	v.conversation = true
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	v.clock = func() time.Time { return now }
 	v.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{
@@ -198,7 +198,7 @@ func BenchmarkLiveActivityCacheCommandDelta(b *testing.B) {
 					now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 					v := newLiveActivityView()
 					v.conversation, v.childrenOnly = main, !main
-					v.painter.Theme = livediff.DarkTheme
+					v.painter.Theme = diffrender.DarkTheme
 					v.clock = func() time.Time { return now }
 					for i := range 80 {
 						agent := fmt.Sprintf("/root/agent%d", i)

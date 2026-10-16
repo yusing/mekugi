@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestRequestedEditGroupsMergeAdjacentInvocations(t *testing.T) {
@@ -59,7 +60,7 @@ func TestUISnapshotUnresolvedEditCommand(t *testing.T) {
 			t.Run(fmt.Sprintf("partial=%v/tracked=%v", partial, tracked), func(t *testing.T) {
 				u := newAppServerSessionTestUI(t, t.TempDir())
 				u.view.conversation = true
-				u.view.painter.Theme = livediff.DarkTheme
+				u.view.painter.Theme = diffrender.DarkTheme
 				now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 				u.view.clock = func() time.Time { return now }
 				native := &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed"}
@@ -106,7 +107,7 @@ func TestUISnapshotMoveIntent(t *testing.T) {
 	const move = "mv testdata/output.txt.new testdata/output.txt"
 	command := move + "; gofmt -w internal/router/native_shell.go"
 	u := newAppServerSessionTestUI(t, t.TempDir())
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	u.view.apply(activityPaneEvent{Kind: "entries", Entries: []activityPaneEntry{{
 		Seq: 1, Agent: "Main", Kind: "tool", CallID: "cmd", Text: toolActivityShell(command),
 		native: &liveActivityNativeItem{thread: "main", item: "cmd", command: command, status: "completed", segments: []commandSegment{

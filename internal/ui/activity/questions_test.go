@@ -5,15 +5,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestQuestionBlockRendersFullAnswerAtNarrowWidthsInBothThemes(t *testing.T) {
 	question := "Should customers receive the complete launch update, including the rollout schedule?"
 	answer := "Approved: send only to beta users on Friday."
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := Painter{Theme: theme}
 		for _, width := range []int{18, 24, 80} {
 			block := Block{Kind: "op", Verb: "Asked", Label: "1 question · answered", Questions: []Question{{Text: question, Answer: answer, State: "answered"}}}
@@ -38,7 +39,7 @@ func TestQuestionBlockRendersFullAnswerAtNarrowWidthsInBothThemes(t *testing.T) 
 }
 
 func TestUISnapshotQuestionMarkdown(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		p := Painter{Theme: theme, CopySource: true}
 		answer := "> **Recommended next step:** check `host`.\n\n[Selected message] **This?**\n\n- Keep state\n\n```go\ncheck()\n```"
 		rows := p.Block(Block{Kind: "op", Verb: "Asked", Label: "1 question · answered", Questions: []Question{{Text: "Proceed?", Answer: answer, State: "answered"}}}, 42)

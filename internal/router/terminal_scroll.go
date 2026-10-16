@@ -1,7 +1,7 @@
 package router
 
 import (
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 func (c *liveDiffTerminalController) scroll(key byte) bool {

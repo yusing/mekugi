@@ -61,6 +61,7 @@ profiles with `go tool pprof`; aggregate blocked goroutine time is not wall time
 | Inactive instruction loading | `./modules/contextreset/...`, plus router selected-skill acquisition and attachment consumers |
 | Reserved MCP transport | `./libraries/mcptransport`, plus application worker/bridge dispatch and tagged guard-outage fixtures |
 | Shell-hook helper, registration, and effective configuration | `./apps/mekugi/cmd/mekugi ./apps/mekugi/cmd/mekugi-exec ./backends/codex/shellhook ./modules/remotewriteapproval/... ./modules/sudoapproval/... ./backends/codex/shellapproval ./internal/router -run 'TestGuardDiscovery\|TestGuardHook\|TestHookConfig\|TestRewriteHook\|TestOptionalTrackingHookArgs\|TestValidateGuardHook\|TestAppServerGuardHook'`; installed-host guard/fault checks in `CONTEXT-AUTOMATED-TESTS.md` |
+| Shared diff decoration and terminal primitives | `./libraries/diffrender/... ./libraries/terminalui/...`, plus affected native and replay consumers |
 | Live diff UI or streaming | `./internal/livediff` and `./internal/router -run 'Test.*LiveDiff'`, plus terminal acceptance below |
 | Terminal layout, Activity, or Agents | `./internal/router -run 'Roster\|LiveActivity\|TerminalUI\|AppServer\|NativeUI'`; `make preview-native-ui` replays synthetic app-server events through the UI without model requests |
 | Shared Go tokenizer | `./libraries/outputbudget/tokenizer`, `./modules/outputdeduplication/...` |
@@ -141,7 +142,8 @@ sessions, the Agents roster, and responsive Activity layouts. Activity blocks an
 output dialogs live in `internal/ui/activity/testdata/snapshots/`; diff navigation,
 change graphs, and streaming previews live in `internal/ui/diffview/testdata/snapshots/`.
 Launcher debug handoffs live in `apps/mekugi/cmd/mekugi/testdata/snapshots/`.
-Shared Diff syntax and row styles live in `internal/livediff/testdata/snapshots/`.
+Shared source syntax styles live in `libraries/diffrender/testdata/snapshots/`;
+composed Diff rows remain in `internal/livediff/testdata/snapshots/`.
 Other owners keep fixtures in their own `testdata/snapshots/` directories.
 
 `testsupport/uisnapshot.Assert` strips ANSI sequences only: spacing, blank lines,

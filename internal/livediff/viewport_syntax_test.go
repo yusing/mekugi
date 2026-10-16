@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
@@ -46,7 +48,7 @@ func assertViewportGeometry(t *testing.T, got, want Render) {
 func TestLiveDiffViewportSyntaxMatchesEager(t *testing.T) {
 	files := viewportSyntaxFiles(3, "go")
 	var renderer Renderer
-	for _, theme := range []Theme{DarkTheme, LightTheme, TerminalTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme, diffrender.TerminalTheme} {
 		for _, width := range []int{80, 22, 7, 1, 80} {
 			t.Run(fmt.Sprintf("theme-%d/width-%d", theme, width), func(t *testing.T) {
 				want, err := new(Renderer).Render(t.Context(), theme, files, "", width)
@@ -116,7 +118,7 @@ func TestLiveDiffViewportSyntaxOnlyTokenizesIntersectingHunks(t *testing.T) {
 	lexers.Register(lexer)
 	files := viewportSyntaxFiles(4, "viewportfixture")
 	renderer := Renderer{LayoutOnly: true}
-	render, err := renderer.Render(t.Context(), DarkTheme, files, "", 22)
+	render, err := renderer.Render(t.Context(), diffrender.DarkTheme, files, "", 22)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +185,7 @@ func BenchmarkLiveDiffColdViewportSyntax(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				renderer := Renderer{LayoutOnly: layoutOnly}
-				render, err := renderer.Render(b.Context(), DarkTheme, files, "", 80)
+				render, err := renderer.Render(b.Context(), diffrender.DarkTheme, files, "", 80)
 				if err != nil {
 					b.Fatal(err)
 				}

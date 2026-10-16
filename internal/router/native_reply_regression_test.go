@@ -7,14 +7,15 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 func TestUISnapshotNativeMainQuotedReplyBoundary(t *testing.T) {
 	u := newAppServerSessionTestUI(t, t.TempDir())
 	u.view.conversation = true
-	u.view.painter.Theme = livediff.DarkTheme
+	u.view.painter.Theme = diffrender.DarkTheme
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",
 		"item": map[string]any{"id": "prompt", "type": "userMessage", "content": []map[string]string{{"type": "text", "text": "Show me how the new transcript search instruction looks like"}}}})
 	appServerTestNotify(t, u, "item/completed", map[string]any{"threadId": "main", "turnId": "turn",

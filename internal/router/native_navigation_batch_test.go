@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -193,7 +194,7 @@ func TestNativeNavigationBatchFilterBinding(t *testing.T) {
 
 func navigationBatchDialog() *terminalUI {
 	v := newLiveActivityView()
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	d := &outputDialog{view: v, match: -1}
 	retention := new(activityui.Retention)
 	for i, path := range []string{

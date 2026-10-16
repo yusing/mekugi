@@ -10,8 +10,9 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/backends/codex/appserver"
-	"github.com/yusing/mekugi/internal/livediff"
 )
 
 // Headless is an app-server client, not a second task executor. Its JSONL stream
@@ -123,7 +124,7 @@ func headlessHostError(client *appserver.Client, err error) error {
 	}
 	client.Diagnostics.Lock()
 	defer client.Diagnostics.Unlock()
-	if diagnostic := strings.TrimSpace(livediff.Safe(string(client.Diagnostics.Text), false)); diagnostic != "" {
+	if diagnostic := strings.TrimSpace(diffrender.Safe(string(client.Diagnostics.Text), false)); diagnostic != "" {
 		return fmt.Errorf("%w\nCodex: %s", err, diagnostic)
 	}
 	return err

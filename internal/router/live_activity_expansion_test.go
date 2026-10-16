@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -15,7 +16,7 @@ import (
 func expansionFixture(main bool) *liveActivityView {
 	v := newLiveActivityView()
 	v.conversation, v.childrenOnly = main, !main
-	v.painter.Theme = livediff.DarkTheme
+	v.painter.Theme = diffrender.DarkTheme
 	now := time.Date(2026, 9, 30, 22, 31, 0, 0, time.Local)
 	v.clock = func() time.Time { return now }
 	agent := "/root/worker"

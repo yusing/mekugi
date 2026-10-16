@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
 	"github.com/yusing/mekugi/internal/livediff"
@@ -75,7 +77,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	paged := ui.frame(t, func(frame string) bool {
 		for row := 2; row <= 22; row++ {
 			line := liveDiffFrameRow(frame, row)
-			if strings.Contains(line, "file020.go") && strings.Contains(liveDiffFrameRawRow(frame, row), livediff.DarkTheme.SelectionBackground()) {
+			if strings.Contains(line, "file020.go") && strings.Contains(liveDiffFrameRawRow(frame, row), diffrender.DarkTheme.SelectionBackground()) {
 				return true
 			}
 		}
@@ -88,7 +90,7 @@ func TestLiveDiffTerminalFileNavigator(t *testing.T) {
 	ui.write(t, "g")
 	ui.frame(t, func(frame string) bool {
 		return strings.Contains(liveDiffFrameRow(frame, 3), "internal/router") &&
-			strings.Contains(liveDiffFrameRawRow(frame, 3), livediff.DarkTheme.SelectionBackground())
+			strings.Contains(liveDiffFrameRawRow(frame, 3), diffrender.DarkTheme.SelectionBackground())
 	})
 	// Filtering narrows the persistent dock; Enter opens that file.
 	ui.write(t, "/file023.go")
@@ -159,7 +161,7 @@ func TestLiveDiffHunkNavigationAndFileMemory(t *testing.T) {
 	c.files = []livediff.File{{Path: "a.go", Chunks: []livediff.Chunk{{Key: "a", Review: diffmodel.ReviewFile{BeforePath: "a.go", AfterPath: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n@@ -20 +20 @@\n-before\n+after\n"}}}}, {Path: "b.go", Chunks: []livediff.Chunk{{Key: "b", Review: diffmodel.RenderReviewFile("", "b.go", "", "second\n")}}}}
 	c.view.Files = c.files
 	var err error
-	c.rendering, err = c.renderer.Render(t.Context(), livediff.DarkTheme, c.files, "", 80)
+	c.rendering, err = c.renderer.Render(t.Context(), diffrender.DarkTheme, c.files, "", 80)
 	if err != nil {
 		t.Fatal(err)
 	}

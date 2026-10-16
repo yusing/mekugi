@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
@@ -20,7 +22,7 @@ func TestLiveDiffNativeRows(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "file.txt",
 		"@@ -9,3 +9,3 @@\n context\n-old\n+new\n \n")
 	chunk.Status = ""
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: "file.txt", Chunks: []livediff.Chunk{chunk}}}, "", 80)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: "file.txt", Chunks: []livediff.Chunk{chunk}}}, "", 80)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +51,7 @@ func TestLiveDiffCompactCoordinates(t *testing.T) {
 				Diff: "--- file.txt\n+++ /dev/null\n@@ -1,20 +0,0 @@\n" + strings.Repeat("-content\n", 20)}
 		}
 		chunk := livediff.Chunk{Review: review}
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, "", 90)
+		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: path, Chunks: []livediff.Chunk{chunk}}}, "", 90)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,12 +74,12 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 	chunk := liveDiffHighlightChunk("edit", "unknown.extension",
 		"@@ -1 +1 @@\n-before\n\\ No newline at end of file\n+after\x1b]52;c;secret\a\x1b[2J\x1b[31m\t界 é 👩‍💻\n\\ No newline at end of file\n")
 	for _, width := range []int{1, 2, 3, 12, 36, 90} {
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: "unknown.extension", Chunks: []livediff.Chunk{chunk}}}, "", width)
+		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: "unknown.extension", Chunks: []livediff.Chunk{chunk}}}, "", width)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, line := range render.Lines {
-			if ansi.StringWidth(line) > width-1 || livediff.Safe(line, true) != line {
+			if ansi.StringWidth(line) > width-1 || diffrender.Safe(line, true) != line {
 				t.Fatalf("width %d: unsafe or overflowing row: %q", width, line)
 			}
 		}
@@ -93,7 +95,7 @@ func TestLiveDiffNativeNoNewlineAndControls(t *testing.T) {
 
 func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 	review := diffmodel.ReviewFile{BeforePath: "file.go", AfterPath: "file.go"}
-	before, after, err := new(livediff.Renderer).ColorHunk(t.Context(), livediff.TerminalTheme, review, []diffmodel.ReviewRow{
+	before, after, err := new(diffrender.Renderer).ColorHunk(t.Context(), diffrender.TerminalTheme, review, []diffmodel.ReviewRow{
 		{Kind: '-', Text: "/* removed comment\n"},
 		{Kind: '-', Text: "still removed */\n"},
 		{Kind: '+', Text: "return \"new\"\n"},
@@ -103,18 +105,18 @@ func TestLiveDiffNativeSyntaxSidesAndMultiline(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(before) != 3 || len(after) != 2 ||
-		!strings.Contains(before[1], livediff.TerminalTheme.Foreground(chroma.CommentMultiline)) ||
-		!strings.Contains(after[0], livediff.TerminalTheme.Foreground(chroma.Keyword)+livediff.TerminalTheme.WordBackground('+')+"return\x1b[39m") ||
-		!strings.Contains(after[0], livediff.TerminalTheme.Foreground(chroma.LiteralString)) ||
-		!strings.Contains(after[1], livediff.TerminalTheme.Foreground(chroma.LiteralNumberInteger)+"42\x1b[39m") {
+		!strings.Contains(before[1], diffrender.TerminalTheme.Foreground(chroma.CommentMultiline)) ||
+		!strings.Contains(after[0], diffrender.TerminalTheme.Foreground(chroma.Keyword)+diffrender.TerminalTheme.WordBackground('+')+"return\x1b[39m") ||
+		!strings.Contains(after[0], diffrender.TerminalTheme.Foreground(chroma.LiteralString)) ||
+		!strings.Contains(after[1], diffrender.TerminalTheme.Foreground(chroma.LiteralNumberInteger)+"42\x1b[39m") {
 		t.Fatalf("syntax state leaked across sides or rows: before=%q after=%q", before, after)
 	}
 }
 
 func TestLiveDiffNativeSyntaxFallback(t *testing.T) {
-	for _, source := range []string{"plain source\n\n", strings.Repeat("x", livediff.MaxSyntaxBytes+1) + "\n"} {
+	for _, source := range []string{"plain source\n\n", strings.Repeat("x", diffrender.MaxSyntaxBytes+1) + "\n"} {
 		for _, path := range []string{"unknown.extension", "file.go"} {
-			lines, err := new(livediff.Renderer).ColorSource(t.Context(), livediff.TerminalTheme, path, source)
+			lines, err := new(diffrender.Renderer).ColorSource(t.Context(), diffrender.TerminalTheme, path, source)
 			if err != nil || ansi.Strip(strings.Join(lines, "\n"))+"\n" != source {
 				t.Fatalf("fallback lost source for %s: err=%v", path, err)
 			}
@@ -132,7 +134,7 @@ func TestLiveDiffNativeLexerPanicFallsBack(t *testing.T) {
 		})}}}
 	}))
 	const source = "complete source\n"
-	lines, err := new(livediff.Renderer).ColorSource(t.Context(), livediff.TerminalTheme, "broken.fixture", source)
+	lines, err := new(diffrender.Renderer).ColorSource(t.Context(), diffrender.TerminalTheme, "broken.fixture", source)
 	if err != nil || strings.Join(lines, "\n")+"\n" != source {
 		t.Fatalf("lexer failure changed source: %q %v", lines, err)
 	}
@@ -142,7 +144,7 @@ func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{"file.go", "file.py", "file.js", "file.ts", "file.json", "file.yaml", "file.rb", "file.rs", "file.html", "file.raku", "file.sh"} {
 		for _, source := range []string{"/* unterminated\n", "\"unfinished\n", "'''unfinished\n", "`unfinished\n", "<!--unfinished\n", "q:to/END/;\ntext\n", "{{[(\n", "\n\n"} {
-			lines, err := new(livediff.Renderer).ColorSource(t.Context(), livediff.TerminalTheme, path, source)
+			lines, err := new(diffrender.Renderer).ColorSource(t.Context(), diffrender.TerminalTheme, path, source)
 			if err != nil || ansi.Strip(strings.Join(lines, "\n"))+"\n" != source {
 				t.Fatalf("%s: partial source changed: %q %v", path, lines, err)
 			}
@@ -153,19 +155,19 @@ func TestLiveDiffNativePartialSourceCorpus(t *testing.T) {
 func TestLiveDiffNativeErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := new(livediff.Renderer).Render(ctx, livediff.TerminalTheme, nil, "", 80); !errors.Is(err, context.Canceled) {
+	if _, err := new(livediff.Renderer).Render(ctx, diffrender.TerminalTheme, nil, "", 80); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation: %v", err)
 	}
-	if _, err := new(livediff.Renderer).ColorSource(ctx, livediff.TerminalTheme, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
+	if _, err := new(diffrender.Renderer).ColorSource(ctx, diffrender.TerminalTheme, "file.go", "var x = 1\n"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("syntax cancellation: %v", err)
 	}
 	chunk := liveDiffHighlightChunk("edit", "file.go", "@@ -1 +1 @@\n+missing removal\n")
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Path: "file.go", Chunks: []livediff.Chunk{chunk}}}, "", 80)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Path: "file.go", Chunks: []livediff.Chunk{chunk}}}, "", 80)
 	if err == nil || len(render.Lines) != 0 {
 		t.Fatalf("malformed capture returned a partial successful view: %+v %v", render, err)
 	}
 	chunk.Review.Diff = strings.Repeat("x", changes.MaxReadBytes+1)
-	if _, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme, []livediff.File{{Chunks: []livediff.Chunk{chunk}}}, "", 80); err == nil {
+	if _, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme, []livediff.File{{Chunks: []livediff.Chunk{chunk}}}, "", 80); err == nil {
 		t.Fatal("unbounded source accepted")
 	}
 }
@@ -182,7 +184,7 @@ func TestLiveDiffHiddenFilesKeepNavigationAndHistory(t *testing.T) {
 		}}}},
 		{Path: "reverted-last"},
 	}
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.DarkTheme, files, "", 90)
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.DarkTheme, files, "", 90)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +215,7 @@ func TestLiveDiffIncompleteHistory(t *testing.T) {
 	view := livediff.View{}
 	view.Merge([]livediff.File{{Path: "file", Chunks: []livediff.Chunk{chunk}}})
 	view.RefreshVisible()
-	render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme,
+	render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme,
 		[]livediff.File{view.Visible[view.Files[0].Key()]}, "", 100)
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +235,7 @@ func TestLiveDiffCompleteCaptureAfterIncompleteHistory(t *testing.T) {
 		view := livediff.View{}
 		view.Merge([]livediff.File{{Path: "file", Chunks: []livediff.Chunk{incomplete, complete}}})
 		view.RefreshVisible()
-		render, err := new(livediff.Renderer).Render(t.Context(), livediff.TerminalTheme,
+		render, err := new(livediff.Renderer).Render(t.Context(), diffrender.TerminalTheme,
 			[]livediff.File{view.Visible[view.Files[0].Key()]}, "", 100)
 		if err != nil {
 			t.Fatal(err)

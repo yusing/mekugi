@@ -8,10 +8,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	"github.com/yusing/mekugi/backends/codex/shellapproval"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -892,7 +893,7 @@ func (u *appServerUI) questionRows(width, height int) []string {
 		}
 		foot = pickerWrap(accent+fmt.Sprintf("Submit with %d unanswered?", gaps)+reset+" · "+accent+"enter"+reset+dim+" submit · "+reset+accent+"esc"+reset+dim+" back"+reset, inner)
 	}
-	text := pickerWrap(livediff.Safe(q.Question, false), inner)
+	text := pickerWrap(diffrender.Safe(q.Question, false), inner)
 	textRoom := max(1, height-len(rows)-len(foot)-5)
 	q.textTop = min(q.textTop, max(0, len(text)-textRoom))
 	rows = append(rows, text[q.textTop:min(len(text), q.textTop+textRoom)]...)

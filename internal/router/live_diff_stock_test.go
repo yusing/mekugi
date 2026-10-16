@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
 
 	chroma "github.com/alecthomas/chroma/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/internal/ui/diffview"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -45,7 +46,7 @@ func TestUISnapshotLiveDiffCompactProvisionalContext(t *testing.T) {
 			}
 			var pane diffview.PreviewPane
 			pane.Update(preview)
-			rows, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 80, 14)
+			rows, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 80, 14)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +76,7 @@ func TestStockPatchPreviewUsesObservedSourceAndLanguageRenderer(t *testing.T) {
 	}
 	var pane diffview.PreviewPane
 	pane.Update(preview)
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		lines, err := pane.Render(t.Context(), workspace, theme, 100, 12)
 		if err != nil {
 			t.Fatal(err)
@@ -176,7 +177,7 @@ func TestPendingPatchBetweenEditsKeepsLastProjectedDiff(t *testing.T) {
 	var pane diffview.PreviewPane
 	pane.Update(first)
 	pane.Update(between)
-	lines, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 100, 10)
+	lines, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 100, 10)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+new()") {
 		t.Fatalf("stream turned blank between edits: %q, %v", lines, err)
 	}
@@ -226,7 +227,7 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 	if len(pane.Order) != 1 || pane.Order[0] != first.ID {
 		t.Fatalf("empty next call replaced completed edit: %v", pane.Order)
 	}
-	lines, err := pane.Render(t.Context(), workspace, livediff.DarkTheme, 100, 10)
+	lines, err := pane.Render(t.Context(), workspace, diffrender.DarkTheme, 100, 10)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+new()") {
 		t.Fatalf("next call blanked previous diff: %q, %v", lines, err)
 	}
@@ -238,7 +239,7 @@ func TestNextCallPendingPatchKeepsCompletedDiffUntilItHasContent(t *testing.T) {
 	if len(pane.Order) != 1 || pane.Order[0] != next.ID || len(pane.Views[next.ID].Current.Files) != 1 {
 		t.Fatalf("next projected edit did not take over: %v", pane.Order)
 	}
-	lines, err = pane.Render(t.Context(), workspace, livediff.DarkTheme, 100, 10)
+	lines, err = pane.Render(t.Context(), workspace, diffrender.DarkTheme, 100, 10)
 	if err != nil || !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "+later()") {
 		t.Fatalf("next projected edit not displayed: %q, %v", lines, err)
 	}

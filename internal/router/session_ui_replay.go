@@ -21,7 +21,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/backends/codex/appserver"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 	"golang.org/x/term"
 )
 

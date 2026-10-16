@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -37,7 +38,7 @@ func selectionTestDrag(t *testing.T, u *terminalUI, x1, y1, x2, y2 int) {
 }
 
 func TestTerminalSelectionSyntaxColors(t *testing.T) {
-	for _, theme := range []livediff.Theme{livediff.DarkTheme, livediff.LightTheme} {
+	for _, theme := range []diffrender.Theme{diffrender.DarkTheme, diffrender.LightTheme} {
 		for _, dialog := range []bool{false, true} {
 			t.Run(fmt.Sprintf("theme=%d/dialog=%v", theme, dialog), func(t *testing.T) {
 				const source = `var text = "green"`

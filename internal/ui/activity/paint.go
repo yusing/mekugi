@@ -9,15 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
-	"github.com/yusing/mekugi/internal/ui/mermaid"
+	"github.com/yusing/mekugi/libraries/terminalui/mermaid"
 )
 
 const (
-	Dim   = livediff.Subtle
-	Undim = livediff.SubtleReset
+	Dim   = diffrender.Subtle
+	Undim = diffrender.SubtleReset
 	Reset = "\x1b[0m"
 	Green = "\x1b[38;5;114m"
 	Red   = "\x1b[38;5;203m"
@@ -27,9 +28,9 @@ const (
 // Painter lays out parsed blocks as terminal rows. Syntax colors
 // come from the same renderer and theme as the live diff pane.
 type Painter struct {
-	Theme  livediff.Theme
+	Theme  diffrender.Theme
 	Colors Colors
-	syntax livediff.Renderer
+	syntax diffrender.Renderer
 	Clock  func() time.Time // Optional presentation clock, shared with replay.
 	// LayoutOnly skips syntax decoration while retaining exact text geometry.
 	// The feed uses it for cold off-screen runs, never visible rows or dialogs.
@@ -73,7 +74,7 @@ func VerbColor(verb string) string {
 }
 
 // liveAgentGutter is the unbolded agent color used for feed gutters.
-func Gutter(name string, theme livediff.Theme) string {
+func Gutter(name string, theme diffrender.Theme) string {
 	if color := Color(name); color != "" {
 		return strings.Replace(color, "1;", "", 1)
 	}
@@ -298,7 +299,7 @@ func (p *Painter) Label(verb, label string) string {
 
 // inline renders the commentary Markdown inline subset.
 func (p *Painter) Inline(line string) string {
-	line = livediff.Safe(line, false)
+	line = diffrender.Safe(line, false)
 	var out strings.Builder
 	bold := false
 	for i := 0; i < len(line); {
@@ -489,7 +490,7 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 	source := strings.Split(text, "\n")
 	for i := 0; i < len(source); i++ {
 		raw := source[i]
-		line := livediff.Safe(raw, false)
+		line := diffrender.Safe(raw, false)
 		if fence != "" {
 			if line != fence {
 				program = append(program, raw)
@@ -498,7 +499,7 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 			body := strings.Join(program, "\n")
 			var diagram []string
 			if strings.EqualFold(lang, "mermaid") {
-				diagram, _ = mermaid.Render(livediff.Safe(body, false), width)
+				diagram, _ = mermaid.Render(diffrender.Safe(body, false), width)
 			}
 			if len(diagram) > 0 {
 				lines = append(lines, diagram...)
@@ -581,7 +582,7 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 				continue
 			}
 			if i+1 < len(source) && trimmed != "" && !strings.HasPrefix(trimmed, "- ") && !strings.HasPrefix(trimmed, "* ") {
-				if level, underline, ok := setextUnderline(livediff.Safe(source[i+1], false)); ok {
+				if level, underline, ok := setextUnderline(diffrender.Safe(source[i+1], false)); ok {
 					heading(level, "", strings.TrimRight(trimmed, " \t"), "", underline)
 					continue
 				}
@@ -690,7 +691,7 @@ func (p *Painter) fenced(lang, source string, width int, identity uint64) []stri
 	if p.CopySource && !p.LayoutOnly {
 		sources = strings.Split(source, "\n")
 	}
-	for index, line := range p.Highlight(lang, livediff.Safe(source, false)) {
+	for index, line := range p.Highlight(lang, diffrender.Safe(source, false)) {
 		parts := Wrap(line, width-2, true)
 		if len(sources) > 0 {
 			parts = p.CopyWrapped(parts, copyCode(sources[index], copyID(strconv.Itoa(index), identity)), 0)
@@ -715,16 +716,16 @@ func (p *Painter) fenced(lang, source string, width int, identity uint64) []stri
 func (p *Painter) codeBackground() string {
 	if p.Colors.HasBackground {
 		bg, to := p.Colors.Background, uint8(255)
-		if p.Theme == livediff.LightTheme {
+		if p.Theme == diffrender.LightTheme {
 			to = 0
 		}
 		channel := func(from uint8) int { return int(float64(from) + (float64(to)-float64(from))*.07 + .5) }
 		return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", channel(bg.R), channel(bg.G), channel(bg.B))
 	}
 	switch p.Theme {
-	case livediff.LightTheme:
+	case diffrender.LightTheme:
 		return "\x1b[48;2;242;243;245m"
-	case livediff.DarkTheme:
+	case diffrender.DarkTheme:
 		return "\x1b[48;2;32;35;40m"
 	}
 	return ""
@@ -1001,7 +1002,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results)
 		if block.Path != "" {
-			path := Path(livediff.Safe(block.Path, false))
+			path := Path(diffrender.Safe(block.Path, false))
 			if label != "" {
 				path += Dim + " · " + Undim + label
 			}
@@ -1340,7 +1341,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	return lines
 }
 
-// sourceTabs expands tabs as livediff.Safe does; a raw tab has no cell width,
+// sourceTabs expands tabs as diffrender.Safe does; a raw tab has no cell width,
 // so wrapping would misjudge its row.
 func sourceTabs(code string) string {
 	return strings.ReplaceAll(code, "\t", "    ")
@@ -1612,7 +1613,7 @@ func (p *Painter) Event(block Block, width int) []string {
 
 // TextSelection replaces backgrounds while retaining syntax colors. Clear
 // reverse-video carets and restore the fill after resets and code/diff fills.
-func TextSelection(text string, theme livediff.Theme) string {
+func TextSelection(text string, theme diffrender.Theme) string {
 	fill := theme.SelectionBackground() + "\x1b[27m"
 	var out strings.Builder
 	out.WriteString(fill)

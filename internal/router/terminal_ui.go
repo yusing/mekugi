@@ -6,11 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/vt"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/internal/ui/diffview"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 // The native shell owns terminal presentation; Codex app-server owns execution.
@@ -311,18 +312,18 @@ func (u *terminalUI) terminalColor(reply string) {
 	if u.main != nil {
 		views = append(views, u.main.view)
 	}
-	if fg, ok := livediff.ForegroundColor(reply); ok {
+	if fg, ok := diffrender.ForegroundColor(reply); ok {
 		for _, view := range views {
 			if view != nil {
 				view.painter.Colors.Foreground, view.painter.Colors.HasForeground = fg, true
 			}
 		}
 	}
-	theme, ok := livediff.BackgroundTheme(reply)
+	theme, ok := diffrender.BackgroundTheme(reply)
 	if !ok {
 		return
 	}
-	bg, _ := livediff.BackgroundColor(reply)
+	bg, _ := diffrender.BackgroundColor(reply)
 	for _, view := range views {
 		if view != nil {
 			view.painter.Theme = theme

@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -16,10 +17,10 @@ const sectionedDiff = "amber1\n--- /dev/null\n+++ \"internal/a new.go\"\n@@ -0,0
 func TestUISnapshotDiffOutputSections(t *testing.T) {
 	for _, tc := range []struct {
 		name, text string
-		theme      livediff.Theme
+		theme      diffrender.Theme
 		width      int
 	}{
-		{"dark", "wide", livediff.DarkTheme, 80}, {"light", "wide", livediff.LightTheme, 80}, {"narrow", "narrow", livediff.TerminalTheme, 32},
+		{"dark", "wide", diffrender.DarkTheme, 80}, {"light", "wide", diffrender.LightTheme, 80}, {"narrow", "narrow", diffrender.TerminalTheme, 32},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Painter{Theme: tc.theme}
@@ -39,7 +40,7 @@ func TestUISnapshotDiffOutputSections(t *testing.T) {
 
 func TestDiffOutputSourceAndLayout(t *testing.T) {
 	block := Block{Kind: "op", Verb: "Diff", Tail: strings.Split(sectionedDiff, "\n")}
-	p := Painter{Theme: livediff.DarkTheme, CopySource: true}
+	p := Painter{Theme: diffrender.DarkTheme, CopySource: true}
 	layout := Painter{Theme: p.Theme, LayoutOnly: true}
 	for _, width := range []int{18, 80} {
 		if got, want := ansi.Strip(strings.Join(p.Block(block, width), "\n")), ansi.Strip(strings.Join(layout.Block(block, width), "\n")); got != want {

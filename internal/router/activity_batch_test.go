@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yusing/mekugi/internal/livediff"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -80,7 +81,7 @@ func TestUISnapshotActivityPlainPrintfHeadings(t *testing.T) {
 				}
 			}
 			v := newLiveActivityView()
-			v.painter.Theme = livediff.DarkTheme
+			v.painter.Theme = diffrender.DarkTheme
 			v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/probe", Final: true}}, Entries: []activityPaneEntry{entry}})
 			assertNativeUISnapshot(t, "activity-plain-printf-"+state, v.render(100, 18, now))
 		})
@@ -176,7 +177,7 @@ func TestUISnapshotActivityPrintfSuccessMarkers(t *testing.T) {
 					}
 				}
 				v := newLiveActivityView()
-				v.painter.Theme = livediff.DarkTheme
+				v.painter.Theme = diffrender.DarkTheme
 				v.apply(activityPaneEvent{Kind: "snapshot", Agents: []activityPaneAgent{{Name: "/root/probe", Final: true}}, Entries: []activityPaneEntry{entry}})
 				assertNativeUISnapshot(t, "activity-printf-success-"+producer.name+"-"+state, v.render(100, 18, now))
 			})

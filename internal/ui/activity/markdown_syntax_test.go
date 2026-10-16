@@ -5,19 +5,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotMarkdownStyles(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		theme livediff.Theme
+		theme diffrender.Theme
 	}{
-		{"terminal", livediff.TerminalTheme},
-		{"dark", livediff.DarkTheme},
-		{"light", livediff.LightTheme},
+		{"terminal", diffrender.TerminalTheme},
+		{"dark", diffrender.DarkTheme},
+		{"light", diffrender.LightTheme},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Painter{Theme: tc.theme, FileLink: func(string) bool { return true }}
@@ -49,8 +50,8 @@ const markdownSyntaxSource = "Run `git commit -m 'amend: parser'` then `echo \"$
 func TestUISnapshotMarkdownHeadings(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		theme livediff.Theme
-	}{{"terminal", livediff.TerminalTheme}, {"dark", livediff.DarkTheme}, {"light", livediff.LightTheme}} {
+		theme diffrender.Theme
+	}{{"terminal", diffrender.TerminalTheme}, {"dark", diffrender.DarkTheme}, {"light", diffrender.LightTheme}} {
 		for _, width := range []int{12, 40} {
 			t.Run(tc.name+"_"+strconv.Itoa(width), func(t *testing.T) {
 				p := Painter{Theme: tc.theme, CopySource: true}
@@ -67,10 +68,10 @@ func TestUISnapshotMarkdownHeadings(t *testing.T) {
 func TestUISnapshotMarkdownSyntax(t *testing.T) {
 	for _, width := range []int{18, 72} {
 		t.Run(strconv.Itoa(width), func(t *testing.T) {
-			p := Painter{Theme: livediff.DarkTheme, CopySource: true}
+			p := Painter{Theme: diffrender.DarkTheme, CopySource: true}
 			rows := p.Markdown(markdownSyntaxSource, width)
 			uisnapshot.Assert(t, "testdata/snapshots/markdown_syntax_"+strconv.Itoa(width)+".txt", strings.Join(rows, "\n")+"\n")
-			layout := Painter{Theme: livediff.DarkTheme, LayoutOnly: true}
+			layout := Painter{Theme: diffrender.DarkTheme, LayoutOnly: true}
 			plain := layout.Markdown(markdownSyntaxSource, width)
 			if len(rows) != len(plain) {
 				t.Fatal("highlighting changed row count")

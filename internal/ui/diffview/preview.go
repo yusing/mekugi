@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
-	terminalui "github.com/yusing/mekugi/internal/ui/terminal"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
+	terminalui "github.com/yusing/mekugi/libraries/terminalui"
 )
 
 const (
@@ -62,7 +63,7 @@ const liveDiffDockHold = 1500 * time.Millisecond
 // Motion is display-only. Without it, rows appear at their final colors.
 type PreviewMotion struct {
 	Enabled bool
-	Canvas  livediff.Canvas
+	Canvas  diffrender.Canvas
 	Now     time.Time
 }
 
@@ -78,7 +79,7 @@ type PreviewView struct {
 	ScrollRow int
 	rows      int
 	file      int
-	renderer  livediff.Renderer
+	renderer  diffrender.Renderer
 	Source    []PreviewRow
 	born      []time.Time // When each source row was revealed, for its fade.
 	updated   time.Time   // The latest snapshot's arrival, for choosing the open card.
@@ -191,7 +192,7 @@ func (p *PreviewPane) Animating(now time.Time) bool {
 	return false
 }
 
-func (p *PreviewPane) Render(ctx context.Context, workspace string, theme livediff.Theme, width, height int) ([]string, error) {
+func (p *PreviewPane) Render(ctx context.Context, workspace string, theme diffrender.Theme, width, height int) ([]string, error) {
 	if height <= 0 || len(p.Order) == 0 {
 		return nil, nil
 	}
@@ -225,7 +226,7 @@ func (p *PreviewPane) Render(ctx context.Context, workspace string, theme livedi
 // renderAccordion keeps card order, so positions stay stable while one card
 // holds the source rows and the others fold to their heading. When even the
 // headings do not fit, the remainder is counted rather than cycled.
-func (p *PreviewPane) renderAccordion(ctx context.Context, workspace string, theme livediff.Theme, width, height int) ([]string, error) {
+func (p *PreviewPane) renderAccordion(ctx context.Context, workspace string, theme diffrender.Theme, width, height int) ([]string, error) {
 	open := p.chooseOpen(p.Motion.Now)
 	openAt := slices.Index(p.Order, open)
 	shown := min(len(p.Order), max(1, height-(liveDiffDockRows-1)))
@@ -246,7 +247,7 @@ func (p *PreviewPane) renderAccordion(ctx context.Context, workspace string, the
 	for _, id := range p.Order[start : start+shown] {
 		view := p.Views[id]
 		if id != open {
-			lines = append(lines, ansi.Truncate(livediff.Gutter(false, theme)+livediff.Subtle+"▸"+livediff.SubtleReset+" "+view.Title(workspace, theme, width-2), max(0, width-1), ""))
+			lines = append(lines, ansi.Truncate(diffrender.Gutter(false, theme)+diffrender.Subtle+"▸"+diffrender.SubtleReset+" "+view.Title(workspace, theme, width-2), max(0, width-1), ""))
 			continue
 		}
 		rows := height - shown + 1
@@ -418,7 +419,7 @@ func (p *PreviewView) prepare(now time.Time) error {
 	var err error
 	if current.Input != "" {
 		if current.DiffText {
-			for _, row := range livediff.DiffRows(strings.TrimSuffix(current.Input, "\n")) {
+			for _, row := range diffrender.DiffRows(strings.TrimSuffix(current.Input, "\n")) {
 				source = append(source, PreviewRow{Kind: row.Kind, Text: row.Text + "\n"})
 			}
 		} else {
@@ -506,7 +507,7 @@ func liveDiffPreviewEase(progress float64) float64 {
 
 // Render and color only a bounded source window around the streaming tip.
 // Captured history composition stays out of this high-frequency path.
-func (p *PreviewView) Render(ctx context.Context, workspace string, theme livediff.Theme, width, height int, motion PreviewMotion) ([]string, error) {
+func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffrender.Theme, width, height int, motion PreviewMotion) ([]string, error) {
 	if height <= 0 || p.Current.ID == "" {
 		return nil, nil
 	}
@@ -518,12 +519,12 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 		return nil, err
 	}
 	p.Fading = time.Time{}
-	header := ansi.Truncate(livediff.Gutter(false, theme)+p.Title(workspace, theme, width), max(0, width-1), "")
+	header := ansi.Truncate(diffrender.Gutter(false, theme)+p.Title(workspace, theme, width), max(0, width-1), "")
 	lines := []string{header}
 	rows := height - 1
 	var footer []string
 	if p.Current.Footer != "" && rows > 0 {
-		footer = []string{ansi.Truncate(livediff.Safe(p.Current.Footer, false), max(0, width-1), "…")}
+		footer = []string{ansi.Truncate(diffrender.Safe(p.Current.Footer, false), max(0, width-1), "…")}
 		rows--
 	}
 	finish := func(lines []string) []string {
@@ -539,7 +540,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 	}
 	digits, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
-		text := livediff.Safe(strings.TrimSuffix(p.Source[i].Text, "\n"), false)
+		text := diffrender.Safe(strings.TrimSuffix(p.Source[i].Text, "\n"), false)
 		return strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
 	}
 	// Keep the tip's last wrapped fragment visible before admitting trailing
@@ -577,18 +578,18 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 	if p.Current.Input != "" && p.Current.DiffText && len(p.Current.Files) == 0 {
 		// Input is a bounded unified tail. Parse its headers before selecting
 		// the window so an off-screen header still selects the source lexer.
-		colored, colorErr := p.renderer.ColorDiffRows(ctx, theme, "", livediff.Safe(strings.TrimSuffix(p.Current.Input, "\n"), false))
+		colored, colorErr := p.renderer.ColorDiffRows(ctx, theme, "", diffrender.Safe(strings.TrimSuffix(p.Current.Input, "\n"), false))
 		if colorErr != nil {
 			return nil, colorErr
 		}
 		copy(source, colored[colorStart:end])
 		for i := range source {
-			source[i].Text = livediff.Safe(source[i].Text, true)
+			source[i].Text = diffrender.Safe(source[i].Text, true)
 			if source[i].Kind == 0 {
 				if strings.HasPrefix(source[i].Text, "--- ") || strings.HasPrefix(source[i].Text, "+++ ") {
-					source[i].Text = livediff.Subtle + source[i].Text[:4] + livediff.SubtleReset + activityui.Path(source[i].Text[4:])
+					source[i].Text = diffrender.Subtle + source[i].Text[:4] + diffrender.SubtleReset + activityui.Path(source[i].Text[4:])
 				} else {
-					source[i].Text = livediff.Subtle + source[i].Text + livediff.SubtleReset
+					source[i].Text = diffrender.Subtle + source[i].Text + diffrender.SubtleReset
 				}
 			}
 		}
@@ -596,7 +597,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 		if p.Current.Input != "" && len(p.Current.Files) == 0 {
 			// Pending scope lists are plain text, not diffs.
 			for _, row := range source {
-				after = append(after, livediff.Safe(strings.TrimSuffix(row.Text, "\n"), false))
+				after = append(after, diffrender.Safe(strings.TrimSuffix(row.Text, "\n"), false))
 			}
 			before = after
 		} else {
@@ -605,7 +606,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 		if err != nil {
 			return nil, err
 		}
-		livediff.AlignHunkColors(source, before, after)
+		diffrender.AlignHunkColors(source, before, after)
 	}
 
 	for i := colorStart; i < end && len(lines) <= rows; i++ {
@@ -616,9 +617,9 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 		}
 		numbers := ""
 		if digits > 0 && width-3 >= digits+4 {
-			numbers = fmt.Sprintf(livediff.Subtle+"%*d│"+livediff.SubtleReset, digits, row.Number)
+			numbers = fmt.Sprintf(diffrender.Subtle+"%*d│"+diffrender.SubtleReset, digits, row.Number)
 		}
-		for n, fragment := range livediff.WrapSource(text, sourceWidth) {
+		for n, fragment := range diffrender.WrapSource(text, sourceWidth) {
 			if i == start && n < skip {
 				continue
 			}
@@ -627,7 +628,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 			}
 			prefix := numbers
 			if n > 0 && numbers != "" {
-				prefix = livediff.Subtle + strings.Repeat(" ", digits) + "│" + livediff.SubtleReset
+				prefix = diffrender.Subtle + strings.Repeat(" ", digits) + "│" + diffrender.SubtleReset
 			}
 			// Only changed text fades in. Context, chrome, and row fills appear
 			// settled. Completion can replace the streaming source with its
@@ -639,13 +640,13 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 				}
 				progress := float64(motion.Now.Sub(p.born[i])) / float64(liveDiffPreviewFade)
 				progress = liveDiffPreviewFadeFloor + (1-liveDiffPreviewFadeFloor)*liveDiffPreviewEase(progress)
-				fragment = livediff.Fade(fragment, progress, theme.TextCanvas(row.Kind, motion.Canvas))
+				fragment = diffrender.Fade(fragment, progress, theme.TextCanvas(row.Kind, motion.Canvas))
 			}
 			kind := row.Kind
 			if kind == 0 {
 				kind = ' ' // Metadata has no source marker.
 			}
-			line := livediff.Gutter(i == p.Focus, theme) + livediff.SourceLine(theme, width, prefix, fragment, kind)
+			line := diffrender.Gutter(i == p.Focus, theme) + diffrender.SourceLine(theme, width, prefix, fragment, kind)
 			lines = append(lines, ansi.Truncate(line, max(0, width-1), ""))
 		}
 	}
@@ -654,13 +655,13 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme livedi
 
 // title follows the agents roster: a state glyph, then what the card shows.
 // Edits use the file navigator's status letter and live line counts.
-func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) string {
+func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int) string {
 	glyph := activityui.Amber + "◐" + activityui.Reset
 	var label string
 	reason, unavailable := strings.CutPrefix(p.Current.Status, PreviewUnavailable)
 	switch {
 	case unavailable:
-		glyph, label = activityui.Red+"!"+activityui.Reset, livediff.Safe(reason, false)
+		glyph, label = activityui.Red+"!"+activityui.Reset, diffrender.Safe(reason, false)
 	case len(p.Current.Files) > 0:
 		file := p.Current.Files[p.file]
 		path := file.AfterPath
@@ -669,9 +670,9 @@ func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) s
 		}
 		added, removed := file.LineCounts()
 		label = FileLabel(diffmodel.StatusOf(file), pathdisplay.ForWorkspace(workspace, path), workspace, theme) +
-			CountStats(livediff.Counts{Added: added, Removed: removed}, theme)
+			CountStats(diffmodel.Counts{Added: added, Removed: removed}, theme)
 		if len(p.Current.Files) > 1 {
-			label += fmt.Sprintf(" "+livediff.Subtle+"%d/%d files"+livediff.SubtleReset, p.file+1, len(p.Current.Files))
+			label += fmt.Sprintf(" "+diffrender.Subtle+"%d/%d files"+diffrender.SubtleReset, p.file+1, len(p.Current.Files))
 		}
 	case p.Current.Status == PreviewPending:
 		label = "scoped effects"
@@ -679,10 +680,10 @@ func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) s
 		label = "edit"
 	}
 	if p.Current.Status == PreviewRunning && !p.Complete {
-		label += " " + livediff.Subtle + "· observed so far" + livediff.SubtleReset
+		label += " " + diffrender.Subtle + "· observed so far" + diffrender.SubtleReset
 	}
 	if p.Current.Input != "" && p.Current.Truncated {
-		label += " " + livediff.Subtle + "· tail" + livediff.SubtleReset
+		label += " " + diffrender.Subtle + "· tail" + diffrender.SubtleReset
 	}
 	if p.Complete && !unavailable {
 		// Input completion keeps predictions provisional. Running observations
@@ -690,9 +691,9 @@ func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) s
 		// command success; neither case earns a success checkmark.
 		glyph = activityui.Dim + "○" + activityui.Reset
 		if p.Current.Status == PreviewRunning {
-			label += " " + livediff.Subtle + "· observed" + livediff.SubtleReset
+			label += " " + diffrender.Subtle + "· observed" + diffrender.SubtleReset
 		} else {
-			label += " " + livediff.Subtle + "· preview" + livediff.SubtleReset
+			label += " " + diffrender.Subtle + "· preview" + diffrender.SubtleReset
 		}
 	}
 	label = glyph + " " + label
@@ -705,7 +706,7 @@ func (p *PreviewView) Title(workspace string, theme livediff.Theme, width int) s
 	}
 	// Put attribution first so narrow panes do not silently lose the caller.
 	// The caller keeps the agents pane's color for the same canonical path.
-	caller = ansi.Truncate(livediff.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
+	caller = ansi.Truncate(diffrender.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
 	if color := activityui.Color(p.Current.Caller); color != "" {
 		caller = color + caller + "\x1b[0m"
 	}

@@ -7,13 +7,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/internal/livediff"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
 func TestUISnapshotReasoningRosterWidth(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	for _, width := range []int{20, 80} {
 		for _, live := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%d-live-%v", width, live), func(t *testing.T) {
@@ -43,7 +44,7 @@ func TestUISnapshotReasoningRosterTitles(t *testing.T) {
 		{"pending", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p := Painter{Theme: livediff.DarkTheme}
+			p := Painter{Theme: diffrender.DarkTheme}
 			blocks := ReasoningSections(tc.body)
 			for i := range blocks {
 				blocks[i].Live, blocks[i].Elapsed = tc.live, "12s"
@@ -63,7 +64,7 @@ func TestUISnapshotReasoningRosterTitles(t *testing.T) {
 }
 
 func TestReasoningRosterUsesExplicitLabel(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	block := Block{Kind: "summary", Label: "Checking `renderer`", Body: "**Other heading**\n\n" + reasoningSnapshotBody, Live: true}
 	if got := ansi.Strip(p.Summary([]Block{block}, 80)); got != "Checking renderer" {
 		t.Fatalf("explicit transcript label ignored: %q", got)
@@ -71,7 +72,7 @@ func TestReasoningRosterUsesExplicitLabel(t *testing.T) {
 }
 
 func TestReasoningRosterConsecutiveSummaries(t *testing.T) {
-	p := Painter{Theme: livediff.DarkTheme}
+	p := Painter{Theme: diffrender.DarkTheme}
 	blocks := []Block{
 		{Kind: "op", Verb: "Read", Label: "file.go"},
 		{Kind: "summary", Body: "**Inspecting**\n\n" + reasoningSnapshotBody},
