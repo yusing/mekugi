@@ -5,11 +5,6 @@ RTK := $(shell rtk --version >/dev/null 2>&1 && printf rtk)
 GO_OUTPUT = $(if $(filter-out go,$(GO)),,$(RTK)) $(GO)
 # Reuse compiled packages across implementation, review, and staged checkouts.
 GO_BUILD_FLAGS ?= -trimpath
-# Bound concurrent compiler work; callers can select larger local budgets.
-GOMAXPROCS ?= 2
-GOMEMLIMIT ?= 1536MiB
-export GOMAXPROCS GOMEMLIMIT
-
 .PHONY: build build-binaries generate workspace-check install uninstall mekugi-pprof preview-native-ui test test-host lint test-ui-snapshots update-ui-snapshots
 
 WORKSPACE = $(GO) run $(GO_BUILD_FLAGS) ./apps/mekugi/cmd/workspace

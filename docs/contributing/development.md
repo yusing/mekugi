@@ -25,9 +25,7 @@ Interpreter and query fixtures use Node.js/ripgrep; lint needs `golangci-lint`/`
 Focus tests with `TEST_PACKAGES`/`TEST_RUN`/`TEST_FLAGS`; `-count=1` bypasses caching.
 Make builds use `-trimpath` so unchanged packages reuse the Go build cache across
 worktrees and staged snapshot checks. Set `GO_BUILD_FLAGS=` when absolute source
-paths are needed. Make defaults to `GOMAXPROCS=2` and `GOMEMLIMIT=1536MiB`;
-override either for local build and test budgets. The memory limit is soft and
-applies to each Go process, not the combined memory of concurrent builds.
+paths are needed.
 Use `make test-host` for the focused installed-Codex checks with local mock providers;
 see [host acceptance](../../CONTEXT-AUTOMATED-TESTS.md).
 Built-in frontends are Go. `make preview-native-ui` uses no models.
