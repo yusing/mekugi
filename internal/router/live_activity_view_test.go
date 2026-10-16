@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
@@ -144,8 +145,8 @@ func TestParseLiveActivityBlocks(t *testing.T) {
 	if ops[0].Kind != "op" || ops[0].Verb != "Run" || !ops[0].Fenced || ops[0].Lang != "bash" || ops[0].Code != "go test ./...\n\necho done" {
 		t.Fatalf("run = %+v", ops[0])
 	}
-	want := []activityui.Read{{Path: "a.go", Ranges: []string{"1:2", "5:6"}}, {Path: "b.go"}}
-	if ops[1].Kind != "reads" || !slices.EqualFunc(ops[1].Reads, want, func(a, b activityui.Read) bool { return a.Path == b.Path && slices.Equal(a.Ranges, b.Ranges) }) {
+	want := []activitymodel.Read{{Path: "a.go", Ranges: []string{"1:2", "5:6"}}, {Path: "b.go"}}
+	if ops[1].Kind != "reads" || !slices.EqualFunc(ops[1].Reads, want, func(a, b activitymodel.Read) bool { return a.Path == b.Path && slices.Equal(a.Ranges, b.Ranges) }) {
 		t.Fatalf("reads = %+v", ops[1].Reads)
 	}
 	if ops[2].Verb != "Search" || len(ops[2].Reads) != 1 || ops[2].Reads[0].Path != "rg x" {
@@ -351,7 +352,7 @@ func TestLiveActivityPainterColors(t *testing.T) {
 	if !strings.HasPrefix(run, activityui.Amber) || !strings.Contains(run, "Ran") {
 		t.Fatalf("run verb = %q", run)
 	}
-	read := strings.Join(painter.Block(activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "dir/a.go", Ranges: []string{"1:2"}}}}, 60), "\n")
+	read := strings.Join(painter.Block(activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "dir/a.go", Ranges: []string{"1:2"}}}}, 60), "\n")
 	if !strings.Contains(read, terminalui.Dim+"dir/") || !strings.Contains(read, "\x1b[1ma.go") {
 		t.Fatalf("read path = %q", read)
 	}

@@ -1,9 +1,13 @@
 package activity
 
-import "testing"
+import (
+	"testing"
+
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+)
 
 func TestCollapseBatchKeepsUnsettledOrSingleWork(t *testing.T) {
-	read := Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "a.go"}}}
+	read := Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "a.go"}}}
 	run := Block{Kind: "op", Verb: "Run", Code: "go test"}
 	for name, blocks := range map[string][]Block{
 		"single":         {read, {Kind: "filter"}},

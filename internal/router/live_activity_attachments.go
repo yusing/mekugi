@@ -2,12 +2,14 @@ package router
 
 import (
 	"encoding/json/jsontext"
+
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	json "encoding/json/v2"
 	"strconv"
 	"strings"
 
 	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -38,7 +40,7 @@ func appServerAttachmentBlocks(cwd string, content jsontext.Value) []activityui.
 			index = len(blocks)
 			indexes[key] = index
 			block.Collapsed = true
-			block.Reads = []activityui.Read{{Path: source}}
+			block.Reads = []activitymodel.Read{{Path: source}}
 			blocks = append(blocks, block)
 		}
 		contents[index] += body

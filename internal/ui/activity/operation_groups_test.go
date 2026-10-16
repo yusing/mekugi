@@ -7,12 +7,14 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
 func TestGroupOperationsGroupsOnlyEdits(t *testing.T) {
 	input := []activityui.Block{
-		{Source: 1, Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}},
+		{Source: 1, Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "a.go"}}},
 		{Source: 2, Kind: "op", Verb: "Search", Label: "needle", Results: new(3)},
 		{Source: 3, Kind: "op", Verb: "List", Label: "internal"},
 		{Source: 4, Kind: "op", Verb: "Inspect", Label: "a.go"},
@@ -184,8 +186,8 @@ func TestOperationGroupWrapping(t *testing.T) {
 			blocks := activityui.GroupOperations([]activityui.Block{
 				{Kind: "op", Verb: "Edit", Label: "`internal/router/long_activity_filename.go` +13 -11 · python3", EditSource: "python3", EditHeader: true},
 				{Kind: "op", Verb: "Edit", Label: "`a.go` +1 -1 · python3", EditSource: "python3"},
-				{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "internal/router/long_activity_filename.go", Ranges: []string{"1:100"}}}},
-				{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: "a.go"}}},
+				{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "internal/router/long_activity_filename.go", Ranges: []string{"1:100"}}}},
+				{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "a.go"}}},
 			})
 			for _, block := range []activityui.Block{blocks[0], blocks[2]} {
 				rows := p.Block(block, width)
@@ -308,7 +310,7 @@ func TestFitPathKeepsFileName(t *testing.T) {
 	p := activityui.Painter{}
 	long := "/tmp/codex-go-quality/37a43aab6e2751ad1c16ab071dfd2df9160db3e5ed0eedcf/reports/a7c95cd1cbde870158cbe777f6e8bf8db071e4291.diff"
 	for _, path := range []string{long, "/tmp/codex-go-quality/37a43aab6e2751ad1c16ab071dfd2df9160db3e5ed0eedcf/reports/r.diff"} {
-		block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: path, Ranges: []string{"1:9"}}}}
+		block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: path, Ranges: []string{"1:9"}}}}
 		rows := p.Block(block, 60)
 		plain := ansi.Strip(rows[0])
 		if len(rows) != 1 || ansi.StringWidth(rows[0]) > 60 || !strings.Contains(plain, "…") || !strings.HasSuffix(plain, ".diff L1–9") {
@@ -326,7 +328,7 @@ func TestFitPathDropsLeadingDirectories(t *testing.T) {
 		44: "Read   …/tests/tools.test.ts L1–85",
 		33: "Read   …/tools.test.ts L1–85",
 	} {
-		block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: path, Ranges: []string{"1:85"}}}}
+		block := activityui.Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: path, Ranges: []string{"1:85"}}}}
 		if got := strings.Join(plainLines(p.Block(block, width)), "\n"); got != want {
 			t.Errorf("width %d: got %q, want %q", width, got, want)
 		}
@@ -464,7 +466,7 @@ func TestMergedReadsCountContentPerTarget(t *testing.T) {
 	p := activityui.Painter{}
 	test := "internal/router/toolplugin/tests/tools.test.ts"
 	read := func(source uint64, path, span string, lines int) activityui.Block {
-		return activityui.Block{Source: source, Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: path, Ranges: []string{span}}}, Tail: make([]string, lines), Collapsed: true}
+		return activityui.Block{Source: source, Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: path, Ranges: []string{span}}}, Tail: make([]string, lines), Collapsed: true}
 	}
 	open := read(5, "open.go", "1:2", 3)
 	open.Collapsed = false // Open output stays with its invocation.
@@ -472,7 +474,7 @@ func TestMergedReadsCountContentPerTarget(t *testing.T) {
 		read(1, test, "1147:1167", 19),
 		read(2, test, "1738:1788", 50),
 		read(3, "plugins/inspect_file.ts", "135:185", 50),
-		{Source: 4, Kind: "reads", Verb: "Read", Reads: []activityui.Read{{Path: test, Ranges: []string{"1:85"}}}},
+		{Source: 4, Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: test, Ranges: []string{"1:85"}}}},
 		open,
 	})
 	if len(blocks) != 2 || len(blocks[0].Members) != 4 || !blocks[0].Collapsed {

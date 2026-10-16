@@ -2,8 +2,10 @@
 
 ## CTR-ACTIVITY-001 — Activity identity and collection
 
-Native session integration in `internal/router` consumes Codex app-server events;
-`internal/ui/activity` owns presentation. The [UI boundary](ui.md) owns their
+Native session integration in `internal/router` consumes Codex app-server events.
+[Parsed operations](../../internal/activity/SPEC.md) own renderer-neutral source
+interpretation; `internal/ui/activity` owns terminal blocks, aggregation and painting.
+The [UI boundary](ui.md) owns their
 integration, and the [activity contract](../spec/activity.md) owns classification.
 Codex retains execution, scheduling, recipients, interrupts, waits, and lifecycle.
 

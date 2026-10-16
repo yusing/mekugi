@@ -24,6 +24,8 @@ func TestWorkspaceImportBoundaries(t *testing.T) {
 		allowed            bool
 	}{
 		{"libraries/outputbudget", ".", "libraries/sourceanalysis/rows", true},
+		{"libraries/terminalui", ".", "libraries/sourceanalysis/markdownsyntax", true},
+		{"libraries/sourceanalysis", "markdownsyntax", "libraries/terminalui", false},
 		{"libraries/outputbudget", ".", "backends/codex/binding", false},
 		{"libraries/pathdisplay", ".", "libraries/persistence", false},
 		{"backends/codex", "binding", "contracts/command", true},

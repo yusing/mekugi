@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 )
 
@@ -117,12 +119,12 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 				// Rebuild from the host command so repeated reconciliation never
 				// duplicates receipts or drops neighboring operations.
 				original := toolActivityShellInDirectory(appServerDisplayCommand(entry.native.command), entry.native.commandCwd)
-				paragraphs := activityui.Paragraphs(original)
+				paragraphs := activitymodel.Paragraphs(original)
 				if len(paragraphs) > 1 {
 					var parts []string
 					inserted := false
 					for _, paragraph := range paragraphs {
-						block := activityui.ParseOperation(paragraph)
+						block := activitymodel.ParseOperation(paragraph)
 						if slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 							if !inserted {
 								parts = append(parts, receipt.text)
@@ -140,8 +142,8 @@ func (v *liveActivityView) applyCapturedEdits(data *liveDiffData) {
 			}
 			if index > 0 {
 				var remaining []string
-				for _, paragraph := range activityui.Paragraphs(entry.Text) {
-					block := activityui.ParseOperation(paragraph)
+				for _, paragraph := range activitymodel.Paragraphs(entry.Text) {
+					block := activitymodel.ParseOperation(paragraph)
 					if exit == 0 && (batch == nil || batch.ExitCode == 0) && slices.Contains([]string{"Edit", "Create", "Delete", "Move"}, block.Verb) {
 						continue
 					}

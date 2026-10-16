@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 )
 
 func TestMarkdownClosingFenceBoundaries(t *testing.T) {
@@ -20,11 +21,11 @@ func TestMarkdownClosingFenceBoundaries(t *testing.T) {
 			if strings.Contains(painted, "**AFTER**") == tc.valid {
 				t.Fatalf("closing=%v: %q", tc.valid, painted)
 			}
-			paragraphs := Paragraphs("Run\n" + body + "\n\nRead `next.go`")
+			paragraphs := activitymodel.Paragraphs("Run\n" + body + "\n\nRead `next.go`")
 			if (len(paragraphs) == 2) != tc.valid {
 				t.Fatalf("paragraphs=%q", paragraphs)
 			}
-			block := ParseOperation("Run\n" + body)
+			block := activitymodel.ParseOperation("Run\n" + body)
 			if (block.Code == "code") != tc.valid {
 				t.Fatalf("code=%q", block.Code)
 			}

@@ -13,6 +13,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Shared source capability and shell-header semantics | `libraries/sourceanalysis/sourcekind`, `libraries/commandanalysis/shellsyntax` |
 | Shared source parsing, literal decoding, and nonblocking source-file opens | `libraries/sourceanalysis/sourceparse`; execution classification uses `internal/execscope`, while preview evaluation remains in `internal/router` |
 | Activity presentation, diff navigation/previews, and terminal primitives | `internal/ui/activity`, `internal/ui/diffview`, `libraries/terminalui`; native session integration remains in `internal/router` |
+| Renderer-neutral classified operation parsing | `internal/activity`; terminal blocks embed its values, and router feed/dialog assembly attaches observed state |
 | Native screen composition, transcript switching, and pane layout | `internal/router/native_shell.go`; preview fixtures in `internal/router/app_server_preview_test.go` |
 | Applied settings, recovery evidence and renderer preferences | `modules/sessionpreferences/preferences`; terminal schema and host control adaptation in `internal/router/app_server_panes.go` and `app_server_resume.go` |
 | Session/composer controller and host-event reconciliation | `internal/router/app_server_ui.go`; input paths in `internal/router/app_server_input.go`; composer error display in `internal/router/composer_notice.go` |

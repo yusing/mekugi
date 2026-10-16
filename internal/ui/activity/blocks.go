@@ -1,6 +1,8 @@
 package activity
 
 import (
+	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+
 	"fmt"
 	"regexp"
 	"slices"
@@ -9,44 +11,33 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/yusing/mekugi/libraries/terminalui"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 )
 
-// The agents pane parses the router's own commentary grammar back into parts
-// so it can lay them out natively. Unrecognized text stays a plain text block;
-// nothing is interpreted, expanded, or executed.
+// Block attaches terminal interaction, layout and retained-output state to
+// renderer-neutral activity content. Rendering never executes its source.
 type Block struct {
+	activitymodel.Content
 	Repeated           string        // Model-input deduplication receipt for this output group.
 	Ended              time.Time     // Observed command end; zero when unavailable.
 	Started            time.Time     // Observed live command start, presentation only.
 	Duration           time.Duration // Host or measured segment duration; zero means unavailable.
 	NotificationTiming bool          // Timestamps are UI notification observations, not host execution boundaries; Duration is host elapsed.
 	Questions          []Question
-	Source             uint64   // Activity entry identity for exact cross-pane navigation.
-	Section            int      // Reasoning section ordinal within that entry, retained by dialogs.
-	Kind               string   // op, reads, message, start, error, text
-	Verb               string   // Operation verb, or a message headline.
-	Label              string   // Markdown remainder of the operation label.
-	Path               string   // Literal operation target, rendered with shared path styling.
-	SyntaxPath         string   // File identity when Path is a compressed display label.
-	Workdir            string   // Display path of a command directory other than the workspace; set on every row it applies to.
-	ShowWorkdir        bool     // The invocation's first row labels Workdir.
-	Timeouts           []string // Explicit execution bounds, as displayed.
-	Code               string   // Inline code or fenced program under the label.
-	Lang               string
-	Fenced             bool
+	Source             uint64 // Activity entry identity for exact cross-pane navigation.
+	Section            int    // Reasoning section ordinal within that entry, retained by dialogs.
+	Path               string // Literal operation target, rendered with shared path styling.
+	SyntaxPath         string // File identity when Path is a compressed display label.
+	Workdir            string // Display path of a command directory other than the workspace; set on every row it applies to.
+	ShowWorkdir        bool   // The invocation's first row labels Workdir.
 	From, To           string
 	Owner              string
-	Body               string
-	Reads              []Read
 	WaitTargets        []WaitTarget // Canonical identity and observed status, not parsed display text.
 	Results            *int
 	ExitCode           int    // Nonzero command exit; zero means no failure label.
 	Approval           string // Approval outcome, distinct from execution status and exit.
 	BatchExit          bool   // This row owns an invocation-wide exit, not an individual operation's.
-	EditSource         string // Editing source shared by this invocation's file rows.
 	EditOutcome        string // Live segment outcome, distinct from captured file evidence.
-	EditHeader         bool   // First row of a contiguous source group.
 	GroupHeader        string // Presentation-only edit outcome shared by a group's rows.
 	GroupStart         bool
 	GroupCount         int  // Edit invocations in this group.
@@ -341,7 +332,7 @@ var editStatPattern = regexp.MustCompile(`^(?: ·)? \+(\d+) [-−](\d+)((?: · [
 
 // EditPath returns the unshortened target of an edit row, when known.
 func EditPath(block Block) string {
-	path, _, _ := terminalui.CodeSpan(block.Label, 0)
+	path, _, _ := markdownsyntax.CodeSpan(block.Label, 0)
 	return path
 }
 
@@ -349,13 +340,13 @@ var directoryDeletionPattern = regexp.MustCompile(`^ • [0-9]+ files?(?: · .*)
 
 // DirectoryDeletion reports a captured directory removal summary.
 func (b Block) DirectoryDeletion() bool {
-	_, end, ok := terminalui.CodeSpan(b.Label, 0)
+	_, end, ok := markdownsyntax.CodeSpan(b.Label, 0)
 	return b.Verb == "Delete" && ok && directoryDeletionPattern.MatchString(b.Label[end:])
 }
 
 // EditStat reads a file row label as a path, line counts, and a trailing status.
 func EditStat(label string) (path string, added, removed int, tail string, ok bool) {
-	path, end, ok := terminalui.CodeSpan(label, 0)
+	path, end, ok := markdownsyntax.CodeSpan(label, 0)
 	if !ok {
 		return "", 0, 0, "", false
 	}
@@ -366,119 +357,6 @@ func EditStat(label string) (path string, added, removed int, tail string, ok bo
 	added, _ = strconv.Atoi(match[1])
 	removed, _ = strconv.Atoi(match[2])
 	return path, added, removed, match[3], true
-}
-
-type Read struct {
-	Path   string
-	Ranges []string
-	Lines  int // Collapsed content read from this target, once merged.
-}
-
-// Read previews append line spans as space-separated N:M pairs.
-var liveActivityReadRange = regexp.MustCompile(`^(.+?) (\d+:\d+(?: \d+:\d+)*)$`)
-
-// Paragraphs splits operations at blank lines outside fences.
-func Paragraphs(text string) []string {
-	var paragraphs, current []string
-	flush := func() {
-		if len(current) > 0 {
-			paragraphs = append(paragraphs, strings.Join(current, "\n"))
-			current = nil
-		}
-	}
-	fence := ""
-	for line := range strings.SplitSeq(text, "\n") {
-		switch {
-		case fence != "":
-			current = append(current, line)
-			if terminalui.ClosesFence(line, fence) {
-				fence = ""
-			}
-			continue
-		case strings.TrimSpace(line) == "":
-			flush()
-			continue
-		}
-		if delimiter, ok := terminalui.FenceDelimiter(line); ok {
-			fence = delimiter
-		}
-		current = append(current, line)
-	}
-	flush()
-	return paragraphs
-}
-
-func ParseOperation(paragraph string) Block {
-	lines := strings.Split(paragraph, "\n")
-	label := lines[0]
-	var timeouts []string
-	for strings.HasSuffix(label, ")") {
-		at := strings.LastIndex(label, " (timeout ")
-		if at < 0 {
-			break
-		}
-		timeouts = append([]string{label[at+len(" (timeout ") : len(label)-1]}, timeouts...)
-		label = label[:at]
-	}
-	cut := len(label)
-	if i := strings.IndexByte(label, '`'); i >= 0 {
-		cut = i
-	}
-	if i := strings.Index(label, " · "); i >= 0 && i < cut {
-		cut = i
-	}
-	block := Block{Kind: "op", Verb: strings.TrimSuffix(strings.TrimSpace(label[:cut]), ":"), Label: strings.TrimSpace(label[cut:]), Timeouts: timeouts}
-	if rest := lines[1:]; len(rest) > 0 {
-		joined := strings.Join(rest, "\n")
-		if delimiter, ok := terminalui.FenceDelimiter(rest[0]); ok {
-			body := rest[1:]
-			if n := len(body); n > 0 && terminalui.ClosesFence(body[n-1], delimiter) {
-				body = body[:n-1]
-			}
-			block.Fenced, block.Lang, block.Code = true, strings.TrimSpace(rest[0][len(delimiter):]), strings.Join(body, "\n")
-		} else if code, end, ok := terminalui.CodeSpan(joined, 0); ok && end == len(joined) {
-			block.Code = code
-		} else {
-			block.Body = joined
-		}
-	}
-	if slices.Contains([]string{"Read", "View", "Inspect", "List", "Search", "Skill", "Create", "Edit", "Delete", "Move", "Write"}, block.Verb) && len(lines) == 1 && !(block.Verb == "Skill" && strings.HasPrefix(block.Label, "`run ")) {
-		if reads, ok := parseLiveActivityReads(block.Label); ok {
-			if block.Verb != "Read" {
-				for i := range reads {
-					if len(reads[i].Ranges) > 0 {
-						reads[i].Path += " " + strings.Join(reads[i].Ranges, " ")
-						reads[i].Ranges = nil
-					}
-				}
-			}
-			block.Kind, block.Reads, block.Label = "reads", reads, ""
-		}
-	}
-	return block
-}
-
-func parseLiveActivityReads(label string) ([]Read, bool) {
-	var reads []Read
-	for i := 0; i < len(label); {
-		code, end, ok := terminalui.CodeSpan(label, i)
-		if !ok {
-			return nil, false
-		}
-		read := Read{Path: code}
-		if match := liveActivityReadRange.FindStringSubmatch(code); match != nil {
-			read.Path = match[1]
-			read.Ranges = strings.Fields(match[2])
-		}
-		reads = append(reads, read)
-		if i = end; i < len(label) {
-			if label[i] != ' ' {
-				return nil, false
-			}
-			i++
-		}
-	}
-	return reads, len(reads) > 0
 }
 
 // MergeLiveActivityReads collapses adjacent targets of the same action, joining
@@ -516,11 +394,11 @@ func MergeLiveActivityReads(blocks []Block) []Block {
 		last.Collapsed = last.Collapsed || block.Collapsed
 		block.countContent()
 		for _, read := range block.Reads {
-			if i := slices.IndexFunc(last.Reads, func(r Read) bool { return r.Path == read.Path }); i >= 0 {
+			if i := slices.IndexFunc(last.Reads, func(r activitymodel.Read) bool { return r.Path == read.Path }); i >= 0 {
 				last.Reads[i].Ranges = append(last.Reads[i].Ranges, read.Ranges...)
 				last.Reads[i].Lines += read.Lines
 			} else {
-				last.Reads = append(last.Reads, Read{Path: read.Path, Ranges: slices.Clone(read.Ranges), Lines: read.Lines})
+				last.Reads = append(last.Reads, activitymodel.Read{Path: read.Path, Ranges: slices.Clone(read.Ranges), Lines: read.Lines})
 			}
 		}
 	}
@@ -535,26 +413,6 @@ func mergesReads(last, next Block) bool {
 			(len(b.Tail) == 0 && b.TailOmitted == 0 || b.readContent())
 	}
 	return last.Verb == next.Verb && last.Workdir == next.Workdir && joins(last) && joins(next)
-}
-
-// AddTimeouts carries presentation metadata outside command and operand spans.
-func AddTimeouts(text string, timeouts []string) string {
-	paragraphs := Paragraphs(text)
-	for i, paragraph := range paragraphs {
-		known := ParseOperation(paragraph).Timeouts
-		heading, body, multiline := strings.Cut(paragraph, "\n")
-		for _, timeout := range timeouts {
-			if !slices.Contains(known, timeout) {
-				heading += " (timeout " + timeout + ")"
-				known = append(known, timeout)
-			}
-		}
-		paragraphs[i] = heading
-		if multiline {
-			paragraphs[i] += "\n" + body
-		}
-	}
-	return strings.Join(paragraphs, "\n\n")
 }
 
 // readContent reports collapsed content that one target's row can count.

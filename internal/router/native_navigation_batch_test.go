@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+	"github.com/yusing/mekugi/libraries/diffrender"
+
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
@@ -209,7 +210,7 @@ func navigationBatchDialog() *terminalUI {
 		output.Finish(nil, new(0))
 		block := activityui.Block{Kind: "op", Verb: "Read", Path: path, Output: output}
 		if i == 2 {
-			block.Path, block.Reads = "", []activityui.Read{{Path: path}}
+			block.Path, block.Reads = "", []activitymodel.Read{{Path: path}}
 		}
 		d.pages = append(d.pages, block)
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
@@ -170,7 +171,7 @@ func TestTimeoutSuffixIsMuted(t *testing.T) {
 		{"skipped", Block{Skipped: true, Duration: time.Second}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			block := ParseOperation("Skill `skill` (timeout 123)")
+			block := Block{Content: activitymodel.ParseOperation("Skill `skill` (timeout 123)")}
 			block.Running, block.Started, block.Duration, block.Skipped = tc.block.Running, tc.block.Started, tc.block.Duration, tc.block.Skipped
 			raw := strings.Join(p.Block(block, 80), "\n")
 			if got := strings.Contains(raw, terminalui.Dim+"(timeout 2m3s)"+terminalui.Undim); got != tc.want {

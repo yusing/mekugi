@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -65,8 +66,8 @@ func (u *terminalUI) preview(preview diffview.Preview) {
 		if len(receipt.pages) == 0 {
 			// Large live cards discard Files. Their receipt still carries bounded
 			// observed hunks, including an explicit marker for omitted lines.
-			for _, paragraph := range activityui.Paragraphs(receipt.text) {
-				block := activityui.ParseOperation(paragraph)
+			for _, paragraph := range activitymodel.Paragraphs(receipt.text) {
+				block := activityui.Block{Content: activitymodel.ParseOperation(paragraph)}
 				if block.Lang == "diff" && block.Code != "" {
 					block.Path = activityui.EditPath(block)
 					receipt.pages = append(receipt.pages, block)

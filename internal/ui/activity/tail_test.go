@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 )
 
 func TestOutputTailStreamsBoundedTail(t *testing.T) {
@@ -98,7 +99,7 @@ func TestTailRowsSkipsGaps(t *testing.T) {
 
 func TestOutputRowsCountEarlierLinesInVerbColumn(t *testing.T) {
 	var p Painter
-	block := Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "a.go"}}, Tail: []string{"one", "two", "three", "four", "five"}, TailOmitted: 7}
+	block := Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "a.go"}}, Tail: []string{"one", "two", "three", "four", "five"}, TailOmitted: 7}
 	plain := func(block Block) string {
 		var rows []string
 		for _, row := range p.Block(block, 60) {
@@ -130,7 +131,7 @@ func TestOutputRowsCountEarlierLinesInVerbColumn(t *testing.T) {
 func TestCollapsedReadCountsLinesAfterTarget(t *testing.T) {
 	var p Painter
 	path := "internal/router/toolplugin/tests/tools.test.ts"
-	block := Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: path, Ranges: []string{"1:85"}}}, Tail: make([]string, 84), Collapsed: true}
+	block := Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: path, Ranges: []string{"1:85"}}}, Tail: make([]string, 84), Collapsed: true}
 	rows := p.Block(block, 50)
 	if got, want := ansi.Strip(strings.Join(rows, "\n")), "Read   …/tests/tools.test.ts L1–85 (84 lines)"; got != want {
 		t.Fatalf("fitted read = %q, want %q", got, want)
@@ -139,7 +140,7 @@ func TestCollapsedReadCountsLinesAfterTarget(t *testing.T) {
 	if row := p.Block(block, 50)[0]; !strings.Contains(row, "\x1b[4m(84 lines)") {
 		t.Fatalf("hovered count is not underlined: %q", row)
 	}
-	skill := Block{Kind: "reads", Verb: "Skill", Reads: []Read{{Path: "frontend-design"}}, Tail: []string{"only"}, TailOmitted: 1, Collapsed: true}
+	skill := Block{Kind: "reads", Verb: "Skill", Reads: []activitymodel.Read{{Path: "frontend-design"}}, Tail: []string{"only"}, TailOmitted: 1, Collapsed: true}
 	if got, want := ansi.Strip(strings.Join(p.Block(skill, 60), "\n")), "Skill  frontend-design (2 lines)"; got != want {
 		t.Fatalf("skill read = %q, want %q", got, want)
 	}
@@ -156,7 +157,7 @@ func TestOutputRowsFollowPaddedVerbColumn(t *testing.T) {
 	ran := Block{Kind: "op", Verb: "Run", Label: "`python3 --version`", Tail: []string{"Python 3"}, TailOmitted: 2}
 	for _, neighbor := range []Block{
 		{Kind: "op", Verb: "Inspect", Label: "`command -v go`"},
-		{Kind: "reads", Verb: "Skill", Reads: []Read{{Path: "mekugi-owners"}}},
+		{Kind: "reads", Verb: "Skill", Reads: []activitymodel.Read{{Path: "mekugi-owners"}}},
 		{Kind: "op", Verb: "List", Label: "`/tmp/x`"},
 	} {
 		for _, collapsed := range []bool{false, true} {

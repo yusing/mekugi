@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
-
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
+	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
 )
 
@@ -64,7 +64,7 @@ func TestOutputSelectedTailPreservesSourceAndDiffContext(t *testing.T) {
 		rows  []string
 		start int
 	}{
-		{"multiline source", Block{Verb: "Read", Kind: "reads", Reads: []Read{{Path: "main.go"}}}, []string{"package main", "/* comment starts", "var answer = 42", "comment ends */"}, 2},
+		{"multiline source", Block{Verb: "Read", Kind: "reads", Reads: []activitymodel.Read{{Path: "main.go"}}}, []string{"package main", "/* comment starts", "var answer = 42", "comment ends */"}, 2},
 		{"search diff precedence", Block{Verb: "Search"}, []string{"--- a/main.go", "+++ b/main.go", "@@ -1 +1 @@", "-var answer = 41", "+var answer = 42"}, 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

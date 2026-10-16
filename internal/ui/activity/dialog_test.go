@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	activitymodel "github.com/yusing/mekugi/internal/activity"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 	"github.com/yusing/mekugi/testsupport/uisnapshot"
@@ -69,7 +70,7 @@ func TestDialogPageNumberingAndGutters(t *testing.T) {
 	if page.Text != "one\ntwo" {
 		t.Fatalf("copy = %q", page.Text)
 	}
-	read := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "sample.txt", Ranges: []string{"42:43"}}}, Tail: []string{"one", "two"}}, 80)
+	read := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt", Ranges: []string{"42:43"}}}, Tail: []string{"one", "two"}}, 80)
 	if len(read.Lines) != 2 || read.Lines[0].Number != 42 || read.Lines[1].Number != 43 || read.Lines[0].Gutter != "│" {
 		t.Fatalf("read lines = %+v", read.Lines)
 	}
@@ -174,7 +175,7 @@ func TestDialogCopiesShortSourceWithoutOutput(t *testing.T) {
 
 func TestDialogDroppedReadKeepsRangeOffset(t *testing.T) {
 	var p Painter
-	page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: "sample.txt", Ranges: []string{"42:100"}}}, Output: &Output{done: true, dropped: 3, lines: []string{"kept"}}}, 80)
+	page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: "sample.txt", Ranges: []string{"42:100"}}}, Output: &Output{done: true, dropped: 3, lines: []string{"kept"}}}, 80)
 	for _, line := range page.Lines {
 		if line.Gutter == "│" {
 			if line.Number != 45 {
@@ -194,7 +195,7 @@ func TestDialogReadSyntaxPreservesLines(t *testing.T) {
 				lines = append(lines, "")
 			}
 			var p Painter
-			page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []Read{{Path: path}}, Tail: lines}, 80)
+			page := p.DialogPage(Block{Kind: "reads", Verb: "Read", Reads: []activitymodel.Read{{Path: path}}, Tail: lines}, 80)
 			if len(page.Lines) != len(lines) || page.Text != strings.Join(lines, "\n") {
 				t.Fatalf("%s: changed retained content: %+v", path, page)
 			}
@@ -263,7 +264,7 @@ func TestDialogSkillReadMarkdown(t *testing.T) {
 		for _, width := range []int{24, 80} {
 			for _, retained := range []bool{false, true} {
 				p := Painter{Theme: theme}
-				block := ParseOperation("Skill `example`")
+				block := Block{Content: activitymodel.ParseOperation("Skill `example`")}
 				block.Tail = strings.Split(content, "\n")
 				if retained {
 					block.Output = &Output{done: true, lines: block.Tail}
@@ -324,7 +325,7 @@ func TestDialogSkillOutputStates(t *testing.T) {
 		})
 	}
 	var p Painter
-	block := ParseOperation("Skill `run example/script.sh`")
+	block := Block{Content: activitymodel.ParseOperation("Skill `run example/script.sh`")}
 	block.Tail = []string{"# literal", "**output**"}
 	page := p.DialogPage(block, 80)
 	for i, line := range page.Lines {
