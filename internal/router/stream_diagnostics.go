@@ -242,6 +242,17 @@ func (d *streamDiagnostics) observe(payload []byte) {
 	}
 }
 
+// Request rejections pass through transport classification unchanged.
+func streamTerminationCode(err error) string {
+	if rejection, ok := errors.AsType[*requestCompatibilityError](err); ok {
+		return rejection.code
+	}
+	if diagnostic, ok := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err)); ok {
+		return diagnostic.code
+	}
+	return ""
+}
+
 func (d *streamDiagnostics) readEnded(err error) {
 	if d == nil || err == nil || d.ReadTermination != "" {
 		return
@@ -250,8 +261,7 @@ func (d *streamDiagnostics) readEnded(err error) {
 	if d.ReadOrigin == "" {
 		d.ReadOrigin = "upstream"
 	}
-	diagnostic, _ := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err))
-	d.ReadTermination = diagnostic.code
+	d.ReadTermination = streamTerminationCode(err)
 	if errors.Is(err, httptransport.ErrStreamIdleTimeout) {
 		d.ReadTermination = "upstream_idle_timeout"
 	}
@@ -272,11 +282,10 @@ func (d *streamDiagnostics) readEndedFrom(err error, origin string) {
 }
 
 func (d *streamDiagnostics) writeStopped(err error) {
-	if d == nil {
+	if d == nil || err == nil {
 		return
 	}
-	diagnostic, _ := errors.AsType[*criticalDiagnosticError](forwardCriticalDiagnostic(err))
-	d.WriteTermination = "downstream_" + strings.TrimPrefix(diagnostic.code, "upstream_")
+	d.WriteTermination = "downstream_" + strings.TrimPrefix(streamTerminationCode(err), "upstream_")
 	if code := websocket.CloseStatus(err); code != -1 {
 		d.WriteWebSocketCloseCode = int(code)
 	}

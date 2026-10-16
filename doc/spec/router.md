@@ -253,7 +253,9 @@ distinguishes an actual read error/close from a stopped reader channel; cancella
 preserved rather than converted into a synthetic upstream EOF. A reader publishes its
 actual terminal error into an available bounded slot before cancellation can discard it;
 queued messages are not evicted and an abandoned consumer cannot block shutdown. The first observed
-termination origin is not overwritten by outer readers. The sanitized stream-diagnostics
+termination origin is not overwritten by outer readers. Rejected WebSocket controls
+retain their request-error classification without diagnostic observation replacing
+the rejection or interrupting error delivery. The sanitized stream-diagnostics
 fields never contain close reasons, response text, credentials, or arbitrary headers;
 the separate raw error string may contain them. These facts classify the observable
 end; an unreported provider-internal cause is not inferred.
