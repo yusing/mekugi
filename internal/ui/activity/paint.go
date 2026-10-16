@@ -492,7 +492,7 @@ func (p *Painter) markdown(text string, width int, reasoning bool) []string {
 		raw := source[i]
 		line := diffrender.Safe(raw, false)
 		if fence != "" {
-			if line != fence {
+			if !closesFence(line, fence) {
 				program = append(program, raw)
 				continue
 			}
@@ -1699,7 +1699,10 @@ func (p *Painter) Summary(blocks []Block, width int) string {
 		}
 		if fence, ok := FenceDelimiter(source[0]); ok && strings.EqualFold(strings.TrimSpace(source[0][len(fence):]), "mermaid") {
 			for _, line := range source[1:] {
-				if line = strings.TrimSpace(line); line != "" && line != fence {
+				if closesFence(line, fence) {
+					break
+				}
+				if line = strings.TrimSpace(line); line != "" {
 					return "Mermaid: " + ansi.Strip(line)
 				}
 			}

@@ -106,6 +106,7 @@ func TestMarkdownSourceCopyPartialCell(t *testing.T) {
 func TestMarkdownSourceCopyWhitespaceAndFormatting(t *testing.T) {
 	for _, tc := range []struct{ source, want string }{
 		{"```go\n\tx := 1\t  \n\n\t  y := 2\n```", "\tx := 1\t  \n\n\t  y := 2"},
+		{"```go\n\tx := 1\t  \n\n\t  y := 2\n   ```` \t\n**after**", "\tx := 1\t  \n\n\t  y := 2\n**after**"},
 		{"```go\n  x := 1  \n\n\n    y := 2\n```", "  x := 1  \n\n\n    y := 2"},
 		{"**some long bold words**\nnext  \nline", "**some long bold words**\nnext  \nline"},
 		{"[hello world](https://example.com)", "[hello world](https://example.com)"},

@@ -21,20 +21,19 @@ func ReasoningSections(text string) []Block {
 		}
 	}
 	for i, line := range lines {
+		if fence != "" {
+			if closesFence(line, fence) {
+				fence = ""
+			}
+			continue
+		}
 		trimmed := strings.TrimSpace(line)
 		mark, delimiter := FenceDelimiter(trimmed)
 		if !delimiter && strings.HasPrefix(trimmed, "~~~") {
 			mark, delimiter = trimmed[:len(trimmed)-len(strings.TrimLeft(trimmed, "~"))], true
 		}
 		if delimiter {
-			if fence == "" {
-				fence = mark
-			} else if strings.HasPrefix(mark, fence) && strings.TrimSpace(trimmed[len(mark):]) == "" {
-				fence = ""
-			}
-			continue
-		}
-		if fence != "" {
+			fence = mark
 			continue
 		}
 		title := reasoningTitle(lines, i)

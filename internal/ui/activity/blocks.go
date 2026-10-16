@@ -410,7 +410,7 @@ func Paragraphs(text string) []string {
 		switch {
 		case fence != "":
 			current = append(current, line)
-			if line == fence {
+			if closesFence(line, fence) {
 				fence = ""
 			}
 			continue
@@ -451,7 +451,7 @@ func ParseOperation(paragraph string) Block {
 		joined := strings.Join(rest, "\n")
 		if delimiter, ok := FenceDelimiter(rest[0]); ok {
 			body := rest[1:]
-			if n := len(body); n > 0 && body[n-1] == delimiter {
+			if n := len(body); n > 0 && closesFence(body[n-1], delimiter) {
 				body = body[:n-1]
 			}
 			block.Fenced, block.Lang, block.Code = true, strings.TrimSpace(rest[0][len(delimiter):]), strings.Join(body, "\n")
