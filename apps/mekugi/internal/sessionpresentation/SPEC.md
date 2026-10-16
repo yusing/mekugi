@@ -1,48 +1,39 @@
 # Session presentation
 
-The application owns displayed-thread identity, Main's input destination and
-read-only admission, and child-history pagination here. Activity owns transcript
-content. Session control issues backend requests; the host adapter decodes pages
-and retains protocol payloads and buffered notifications. The terminal owns
-roster focus, geometry, scroll anchors, key bindings and history hints.
+The application owns displayed-thread identity, Main's input destination,
+read-only admission and child-history pagination. [Activity](../../../../modules/activity/SPEC.md)
+owns transcript content, [session control](../sessioncontrol/SPEC.md) issues backend
+requests, and [terminal session](../terminalsession/SPEC.md) owns focus, navigation,
+geometry and rendering.
 
 Displaying a child changes no execution identity and cancels no host work. Main
 remains the input, question and approval destination. Child display makes the
-composer read-only; returning to Main restores its existing draft. Replay is
-read-only even while Main is displayed. Display and pagination intents name the
-view version and target identity, so a stale intent cannot affect a replacement
-session. View values are detached data without terminal or backend types.
-
-An attachment's state lives in the application's session store. Each child's
-history lives in its thread store; replacement drops these stores rather than
-retaining an independent thread registry. A highlighted roster row is not the
-displayed thread. Metadata can rename a caller without changing its identity.
+composer read-only; returning to Main restores its existing draft.
+[Replay](../../../../modules/sessionreplay/SPEC.md) is read-only even while Main is
+displayed. Display and pagination intents name their view version and target
+identity, so stale actions cannot affect a replacement session. View values are
+detached data without terminal or backend types. A highlighted roster row is not
+the displayed thread. Metadata can rename a caller without changing its identity.
 
 ## History
 
-Child history opens at the newest turn's recent items. Older pages continue after
-the last retained item, or use the host cursor after an empty page. Pages
-deduplicate turn and item identities and reject repeated cursors or foreign items.
+Child history opens at the newest turn's recent items. Older pages continue from
+the last retained item. Pages deduplicate turn and item identities and reject
+repeated cursors or foreign items.
 Deferred evidence joins its original item when that page arrives, preserving
-Activity's entry, output and navigation identities. Older pages cannot replace
-newer live metadata or promote old commentary to a final answer. Archived children
-use the same observation flow.
+entry, output and navigation identities. Older pages cannot replace newer live
+metadata or promote old commentary to a final answer. Archived children use the
+same observation flow.
 
 Only one child-history read is active at a time. Other threads continue normally.
 Cancellation retires that observation and releases buffered live events without
 interrupting the child. Saturated buffering gives live observations precedence.
 Late responses cannot revive a cancelled read or cross an attachment boundary.
 History distinguishes intentionally unloaded content, loading, failure and
-exhaustion. Failed reads preserve loaded content and remain retryable; the renderer
-supplies controls and labels for these states. Reading history never resumes a
-child or revives commands, previews or delivery receipts.
+exhaustion. Failed reads preserve loaded content and remain retryable. Reading
+history never resumes a child or revives commands, previews or delivery receipts.
 
-Acceptance includes a non-terminal consumer of display, admission, paging,
-retry, cancellation and replay values, plus live-adapter history reconciliation
-and unchanged terminal snapshots. Offline replay does not establish live host
-coverage.
-
-## Codex history binding
+### Codex history binding
 
 Codex supplies lineage, including inherited fork items and archived descendants.
 Fresh resume rediscovers history instead of reviving continuation handles. Child
@@ -54,13 +45,11 @@ history reads because Codex's item-list API does not support their rollouts.
 Errors never trigger an unbounded fallback. Limits bound item counts rather than
 bytes, so one large item can still require a large frame.
 
-Active skills reconstruct from event history without another durable store;
-their display contract is [Activity's loaded-skill presentation](../../../../modules/activity/CONTRACT.md#agents-roster-and-navigation).
-Skill scans remain independent of lazy transcript pages. Descending thread-wide
-item reads include inherited history and stop at the latest completed
-compaction. One bounded scan runs at a time; incomplete or failed scans leave
-counts unknown with a notice. Live resets override historical scans and session
-replacement retires correlation.
+Active skills reconstruct from event history independently of lazy transcript
+pages, including inherited history since the latest completed compaction.
+Incomplete or failed scans leave counts unknown with a notice. Live resets take
+precedence over history. [Activity's loaded-skill presentation](../../../../modules/activity/CONTRACT.md#agents-roster-and-navigation)
+owns the display contract.
 
 ## Resume and switching
 
@@ -198,3 +187,10 @@ have explicit states. Debug launch shows its actual artifact directory even with
 capture, using shared workspace-relative formatting; it stays invocation-local and
 out of sanitized metrics. Closing releases only the view. The JSON metrics endpoint
 remains independent; there is no HTML dashboard or startup dashboard announcement.
+
+## Acceptance
+
+Display, read-only admission and history controls remain usable without a terminal
+consumer. Acceptance includes retry, cancellation, replacement and replay isolation,
+live history reconciliation and retained terminal presentation. Offline replay
+does not establish live host coverage.

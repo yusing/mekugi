@@ -9,10 +9,9 @@ Reconstruct timed, read-only session presentation from retained observations.
 The module owns offline timing, synthetic streaming, corpus bounds and semantic
 playback controls. The application exposes `mekugi replay-session --session ID`
 and feeds scheduled observations into the same presentation used by live sessions.
-[Codex](../../backends/codex/SPEC.md#supplied-offline-rollouts) owns rollout decoding;
-[session history](../sessionhistory/SPEC.md) owns retained hook facts;
-[transport diagnostics](../transportdiagnostics/SPEC.md) optionally contributes
-provider timing. Terminal keys, painting and profiling remain application-owned.
+Terminal keys, painting and profiling remain application-owned. See
+[terminal replay](../../apps/mekugi/internal/terminalsession/SPEC.md#offline-playback)
+and the [profiling guide](../../docs/contributing/development.md#profile-live-sessions-and-replay).
 
 Replay starts no backend, provider, command, approval, filesystem observer or
 writable store. It restores facts, never processes, handles or authority. Recorded
@@ -40,10 +39,11 @@ The corpus is bounded to 256 MiB across decoded rollouts and retained hook input
 128 threads and 500,000 generated item/hook events. Source admission and individual
 record bounds belong to the backend. Playback duration is at most 24 hours.
 
-With a timing contributor, `--debug-dir` selects `capture.jsonl`; its owner supplies
-provider intervals for loaded threads only. With no contributor, replay remains
-usable and leaves the optional source unopened. Multiple timing contributors are
-ambiguous and fail construction. Timing does not infer missing provider activity.
+With a timing contributor, `--debug-dir` selects `capture.jsonl` for provider
+intervals from loaded threads only; [transport diagnostics](../transportdiagnostics/SPEC.md)
+supplies this optional source. Without a contributor, replay remains usable and
+leaves the source unopened. Multiple contributors are ambiguous and fail
+construction. Timing does not infer missing provider activity.
 
 ### Recorded clock and synthetic streaming
 
@@ -71,23 +71,22 @@ completion exits.
 
 ## Lifecycle
 
-The composed service holds decoder and optional timing registrations only. A
-query owns its bounded timeline; one attached player owns its cursor and recorded
-clock. The application owns elapsed-time ticks and supplies reset/application
-callbacks. No module goroutine, live timer or store lease is started or restored.
+Each playback owns a bounded timeline, cursor and recorded clock. The application
+supplies elapsed time and resets presentation when seeking backward. Replay starts
+no independent timer or background worker and retains no live-session resources.
 
 ## Codex connection
 
-The required Rollout binding supplies decoded observations and source-identity
-verification. An unbound or incomplete source fails explicitly. Replayed facts
-drive read-only presentation without starting Codex, settling live input or issuing
-control requests. Messages and public reasoning share
+The required Rollout binding supplies [Codex's offline decoding and source-identity
+verification](../../backends/codex/SPEC.md#supplied-offline-rollouts). An unbound or
+incomplete source fails explicitly. Messages and public reasoning share
 [Activity's interpretation](../activity/SPEC.md#transcript-observations).
 
 ## Records
 
-None. Existing owner-validated facts are read without publication, permission
-changes or creation of storage directories.
+Replay publishes no records. [Session history](../sessionhistory/SPEC.md) owns
+retained hook facts; replay reads them without permission changes or creating
+storage directories.
 
 ## Failure
 
@@ -99,11 +98,8 @@ profiling, cancellation or rendering failure.
 
 ## Acceptance
 
-Descriptor tests use a scripted Rollout binding and real session history without
-Codex, terminal or network. They cover timing contribution absence, source
-binding, deterministic UTF-8 synthesis, recorded-clock controls and backward-reset
-isolation. Application acceptance covers decoded item variants, fork ownership,
-Main/child history, source rejection, read-only controls and unchanged renderer
-snapshots. Offline replay does not establish live host behavior or original
-terminal latency. See [terminal replay](../../apps/mekugi/internal/terminalsession/SPEC.md#offline-playback)
-and the [profiling guide](../../docs/contributing/development.md#profile-live-sessions-and-replay).
+Acceptance requires deterministic UTF-8 synthesis, recorded-clock controls,
+backward-reset isolation, source rejection and operation without optional timing.
+Application integration preserves item interpretation, fork ownership, Main/child
+history and read-only presentation. Offline replay does not establish live host
+behavior or original terminal latency.

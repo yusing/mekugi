@@ -1,36 +1,21 @@
 # Session control
 
-The application owns app-server request issuance, response correlation and live
-Main operation control here.
-Codex owns request identities, transport, execution, permissions, and process
-lifetime. Live presentation supplies intent and consumes correlated results;
-it does not issue operations directly through the backend client.
+The application coordinates Main's submissions, interruption, native shell,
+settings and session replacement. It issues app-server requests and correlates
+their results; Codex owns request identities, transport, execution, permissions
+and process lifetime.
 
-One typed ledger retains each successfully issued request and its consumer
-context. Responses consume that identity once. Unknown, duplicate, and retired
-responses cannot settle a newer operation. Notifications and answers to host
-requests preserve their original method, payload, and identity without becoming
-outbound requests. Transport failure is returned to the caller without retry.
+Admission follows outstanding operations, not displayed status or elapsed time.
+Request acknowledgement, committed user input and host turn completion are separate
+observations. Unknown, duplicate or retired responses cannot settle a newer
+operation. Notifications and answers to host requests preserve their original
+method, payload and identity. Transport failures are returned without retry.
 
-Live control owns thread/turn identity, submission admission and settlement,
-interruption, native shell, settings operations, and session replacement.
-Admission derives from these operation records, not displayed status, elapsed
-time, or activity items. Request acknowledgement, committed user input, and host
-turn completion remain separate observations.
-
-[Conversation](../../../../modules/conversation/SPEC.md) retains draft queues,
-attachments, neutral question/approval models, input history and provisional
-transcript rows. Sent payloads remain indexed by submission
-identity while control retains an outstanding acknowledgement or commitment.
-Control returns synchronous restoration or requeue decisions naming those
-identities; it never stores composer payloads or invokes presentation callbacks.
-The application adapter maps observations and semantic decisions to admission,
-response and settlement operations; rendering and live handles stay outside
-Conversation's models.
-
-[Session presentation](../sessionpresentation/SPEC.md) owns displayed-thread and
-child-history intent state. This owner issues the resulting observational reads
-without changing execution or input identity.
+[Conversation](../../../../modules/conversation/SPEC.md) owns composer payloads,
+queues and provisional transcript rows; control decides which submissions settle,
+return to the composer or requeue. [Session presentation](../sessionpresentation/SPEC.md)
+owns displayed-thread and child-history intent. Control issues its observational
+reads without changing execution or input identity.
 
 ## Interactive operations
 
@@ -61,9 +46,8 @@ steering uses the same host path without aborting turns or replaying tools.
 
 ### Compaction
 
-Manual compaction separates live workflow from displayed progress. Queued intent
-accompanies composer payloads; session control owns its host correlation,
-prerequisite interruption, cancellation and continuation eligibility.
+Session control owns manual compaction's prerequisite interruption, cancellation
+and continuation; displayed progress does not determine its outcome.
 `/compact` with Enter interrupts busy Main before compaction; Tab waits for it.
 Both prerequisite-interrupt acknowledgement and interrupted-turn completion precede
 compaction. Both compact acknowledgement and successful compact-turn completion
@@ -97,12 +81,10 @@ newer prose exists, local history instead. Observed edits use the ordinary recor
 
 ### Session replacement and exit
 
-Confirmed replacement retires Main's source operations and correlation scope
-together, preserving queued input and the target's restoration intent. Rejection
-leaves source operations intact. Resume metadata, configuration, preference evidence
-and buffered history remain adapter inputs. Independent side cleanup and title
-saves retain their owners; forgetting observations never cancels work, claims
-completion or restores live resources.
+Confirmed replacement retires Main's source operations together, preserving queued
+input and the target's restoration intent. Rejection leaves source operations
+intact. Independent side cleanup and title saves retain their owners; forgetting
+observations never cancels work, claims completion or restores live resources.
 
 `/clear` starts a fresh host session with current workspace/settings only when no
 task or submission is pending. Existing saved sessions and files remain. Failure
@@ -133,20 +115,19 @@ requested tier. Explicit confirmed choices override per-model defaults for this
 thread/model throughout the invocation, including after compaction. Children and
 persistent configuration are unchanged.
 
-The app-server invocation enables `step_model_switching` and
-`reasoning_effort_override` locally. `thread/settings/update` waits for the scoped
-authoritative notification before publishing settings or admitting dependent input.
-An unchanged default does not wait for a notification the host suppresses. Updates
-to the same active turn use `turn/settings/update`; `targetUnavailable` reports
-next-turn-only success. Applied publication affects only subsequent captures.
-The update never targets a replacement turn. Applied values and recovery evidence
-belong to [session preferences](../../../../modules/sessionpreferences/SPEC.md).
-Codex alone authors capability-gated configuration history items.
+Settings wait for authoritative host confirmation before publication or dependent
+input. An unchanged default does not wait for a notification the host suppresses.
+An active-turn update targets only the turn that received the intent; if that turn
+is unavailable, the result reports next-turn-only success. Applied settings affect
+only subsequent captures. Applied values and recovery evidence belong to
+[session preferences](../../../../modules/sessionpreferences/SPEC.md).
+Codex alone authors configuration history items when supported.
 
-Resume reads metadata, preferences and the identity-validated host rollout before
-`thread/resume` can checkpoint invocation defaults. Explicit launch overrides remain
-authoritative and Codex validates the effective settings. Nullable reasoning copies
-the returned collaboration mode and changes only its effort to null; plain RPC
-`effort:null` means no change. Input and snapshot replacement wait for authoritative
-confirmation. Rejection returns waiting input to the composer; explicit reasoning
-selection can repair the gate. No operation writes user configuration.
+Resume recovers settings from metadata, preferences and the identity-validated host
+rollout before the host can checkpoint invocation defaults. Explicit launch
+overrides remain authoritative, and restoration preserves an unset reasoning
+effort rather than substituting defaults. Codex validates the effective settings.
+Input and snapshot replacement wait for confirmation. Rejection returns waiting
+input to the composer; explicit reasoning selection can repair the gate. Host
+feature overrides remain invocation-local, and no operation writes user
+configuration.
