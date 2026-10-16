@@ -41,6 +41,21 @@ func TestRendererPreservesSourceAndTheme(t *testing.T) {
 	}
 }
 
+func TestRendererOriginPreservesSourceMatchingCaller(t *testing.T) {
+	chunk := testChunk("edit", "file.txt", "@@ -1 +1 @@\n-old\n+new\n")
+	chunk.Origin = Origin{Change: "amber1", Caller: "/root/worker", Source: "/root/worker"}
+	chunk.Status = "pending"
+	renderer := Renderer{Caller: func(path string) (string, string) { return "Worker", "" }}
+	render, err := renderer.Render(t.Context(), TerminalTheme, []File{{Path: "file.txt", Chunks: []Chunk{chunk}}}, "", 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := ansi.Strip(strings.Join(render.Lines, "\n"))
+	if !strings.Contains(text, "pending · Worker · /root/worker") {
+		t.Fatalf("caller label changed recorded source: %q", text)
+	}
+}
+
 func TestShellCommandsAndColorSource(t *testing.T) {
 	source := "VALUE=argument rg pattern file | head -10\n"
 	commands := shellCommands(source)

@@ -39,11 +39,12 @@ func (r *Renderer) caller(path string) (string, string) {
 
 // originLabel is the plain attribution of a capture: ID · caller · source.
 func (r *Renderer) originLabel(origin Origin) string {
+	caller := origin.Caller
+	if caller != "" {
+		caller, _ = r.caller(caller)
+	}
 	var parts []string
-	for _, part := range []string{origin.Change, origin.Caller, origin.Source} {
-		if part == origin.Caller && part != "" {
-			part, _ = r.caller(part)
-		}
+	for _, part := range []string{origin.Change, caller, origin.Source} {
 		if part != "" {
 			parts = append(parts, part)
 		}
