@@ -333,7 +333,10 @@ func TestLiveDiffTerminalConcurrentCallers(t *testing.T) {
 	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "STREAM · v diff") })
 	ui.write(t, "v")
 	ui.write(t, "g")
-	ui.frame(t, func(frame string) bool { return strings.Contains(frame, "DIFF · v stream") })
+	// Footer mode is visible before the authenticated broker subscription is ready.
+	ui.frame(t, func(frame string) bool {
+		return strings.Contains(frame, "DIFF · v stream") && !strings.Contains(frame, "CONNECTING")
+	})
 	ui.write(t, "v")
 	first := previewViewFixture("first", 100)
 	first.Workspace, first.Caller = workspace, "/root"
