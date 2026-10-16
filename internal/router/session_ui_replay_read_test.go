@@ -198,6 +198,40 @@ func TestSessionUIReplayDiscoversSiblingThreadsAndFiltersProviders(t *testing.T)
 	}
 }
 
+func TestSessionUIReplayVerifiesChildMetadata(t *testing.T) {
+	t.Parallel()
+	for _, ids := range [][]string{{"other-child"}, {"other-child", "child"}, {"child", "child"}} {
+		t.Run(strings.Join(ids, "+"), func(t *testing.T) {
+			dir := t.TempDir()
+			root := replayTestWrite(t, dir, "root.jsonl", replayTestMeta("root"),
+				replayTestItem("root", "turn", replayTestEpoch+1000, replayTestEpoch+2000,
+					map[string]any{"type": "SubAgentActivity", "id": "spawn", "agent_thread_id": "child", "kind": "spawn"}))
+			for i, id := range ids {
+				replayTestWrite(t, dir, fmt.Sprintf("rollout-%d-child.jsonl", i), replayTestMeta(id),
+					replayTestItem(id, "child-turn", replayTestEpoch+2200, replayTestEpoch+2800,
+						map[string]any{"type": "AgentMessage", "id": "answer", "text": "retained response"}))
+			}
+			source, err := readSessionUIReplay(testHistory(), nil, t.Context(), root, "", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			unique := slices.Contains(ids, "child") && ids[0] != "child"
+			if unique {
+				if len(source.Missing) != 0 || source.Items != 2 {
+					t.Fatalf("unique verified child was not loaded: missing=%v items=%d", source.Missing, source.Items)
+				}
+			} else if !slices.Equal(source.Missing, []string{"child"}) || source.Items != 1 {
+				t.Fatalf("unavailable child was not disclosed: missing=%v items=%d", source.Missing, source.Items)
+			}
+			for _, event := range source.Events {
+				if event.Params.ThreadID != "root" && (!unique || event.Params.ThreadID != "child") {
+					t.Fatalf("unverified child event was replayed: %+v", event)
+				}
+			}
+		})
+	}
+}
+
 func TestSessionUIReplayRejectsInvalidEvidence(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

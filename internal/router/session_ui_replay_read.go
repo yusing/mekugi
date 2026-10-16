@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yusing/mekugi/backends/codex/rollout"
 	"github.com/yusing/mekugi/libraries/commandargs"
 
 	transportcapture "github.com/yusing/mekugi/modules/transportdiagnostics/capture"
@@ -253,6 +254,20 @@ func readSessionUIReplay(service *history.Service, diagnostics *transportcapture
 			if err != nil {
 				return nil, err
 			}
+			verified := matches[:0]
+			for _, candidate := range matches {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				identity, err := rollout.HeaderIdentity(candidate)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", candidate, err)
+				}
+				if identity == child {
+					verified = append(verified, candidate)
+				}
+			}
+			matches = verified
 			if len(matches) != 1 {
 				r.Missing = append(r.Missing, child)
 				continue

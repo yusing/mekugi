@@ -14,7 +14,8 @@ Playback keys control presentation only; recorded content cannot submit intent.
 The first session metadata record identifies the file. Copied ancestor metadata,
 items, and turn lifecycles in child rollouts do not acquire the child's identity.
 Referenced child rollouts are discovered by literal thread ID among sibling files;
-missing or ambiguous children are disclosed rather than replaced by invented data.
+their first metadata ID must match the requested child. Missing or ambiguous
+children are disclosed rather than replaced by unrelated or invented data.
 Unrecognized item variants are counted and disclosed. Known items require an ID,
 turn, and valid epoch-millisecond start/completion timestamps. Malformed input
 fails with a source-qualified error. Inputs are regular files, bounded to 64 MiB
