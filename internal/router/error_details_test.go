@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	codexresponses "github.com/yusing/mekugi/backends/codex/responses"
 	"github.com/yusing/mekugi/libraries/modelprotocol/responses"
@@ -69,7 +69,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			if row < 0 || !u.shell.openOutput(view, feed.snippets[row]) {
 				t.Fatal("error click target cannot open shared dialog")
 			}
-			assertErrorDialog(t, u.shell, diffrender.Safe(full, false))
+			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
 			u.shell.outputKey("q")
 			u.shell.focus = focus
 			u.draft = "keep the user's draft"
@@ -81,7 +81,7 @@ func TestErrorDetailsLiveCodeMode(t *testing.T) {
 			if u.draft != "keep the user's draft" || u.shell.focus != focus || u.shell.output == nil {
 				t.Fatal("keyboard detail navigation modified composer or failed to open")
 			}
-			assertErrorDialog(t, u.shell, diffrender.Safe(full, false))
+			assertErrorDialog(t, u.shell, textsanitize.Safe(full, false))
 		})
 	}
 }

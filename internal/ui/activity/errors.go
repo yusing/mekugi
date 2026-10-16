@@ -3,7 +3,8 @@ package activity
 import (
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/terminalui"
 )
 
@@ -12,7 +13,7 @@ import (
 func ErrorPreview(body string) string {
 	const previewBytes = 240
 	for line := range strings.SplitSeq(body, "\n") {
-		line = strings.TrimSpace(diffrender.Safe(line, false))
+		line = strings.TrimSpace(textsanitize.Safe(line, false))
 		if line == "" {
 			continue
 		}
@@ -26,7 +27,7 @@ func ErrorPreview(body string) string {
 
 // ErrorHasDetails reports content omitted by the inline first-line preview.
 func ErrorHasDetails(block Block) bool {
-	return strings.TrimSpace(diffrender.Safe(block.Body, false)) != ErrorPreview(block.Body)
+	return strings.TrimSpace(textsanitize.Safe(block.Body, false)) != ErrorPreview(block.Body)
 }
 
 // ErrorRows adds a dialog hint only when the preview omits retained content.

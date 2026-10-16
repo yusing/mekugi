@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	activitymodel "github.com/yusing/mekugi/internal/activity"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -400,7 +401,7 @@ func (u *terminalUI) paintNative(ctx context.Context, out io.Writer) error {
 			}
 		}
 		if u.diffFailure != "" {
-			body = []string{"Diff unavailable", diffrender.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
+			body = []string{"Diff unavailable", textsanitize.Safe(u.diffFailure, false), "Use mchanges to review captured edits."}
 		} else {
 			body = strings.Split(u.diffScreen.Render(), "\n")
 		}

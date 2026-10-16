@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/commandargs"
 
@@ -120,7 +120,7 @@ func wrapCodex(ctx context.Context, routerArgs, args []string) (code int, runErr
 	issues := router.NewCriticalErrors(frontends.Notifications)
 	defer func() {
 		for _, message := range issues.Notices.Pending() {
-			fmt.Fprintln(os.Stderr, diffrender.Safe(message, false))
+			fmt.Fprintln(os.Stderr, textsanitize.Safe(message, false))
 		}
 	}()
 	defer func() {

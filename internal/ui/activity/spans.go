@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"slices"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rivo/uniseg"
@@ -53,7 +53,7 @@ func LayoutSpans(text string, spans []TextSpan, width int) ([]string, []TextPoin
 	newline := func() { rows = append(rows, ""); column = 0 }
 	emit := func(start, end int, style string) {
 		if style != "" {
-			size := ansi.StringWidth(diffrender.Safe(text[start:end], false))
+			size := ansi.StringWidth(textsanitize.Safe(text[start:end], false))
 			if column > 0 && size <= width && column+size > width {
 				newline()
 			}
@@ -61,7 +61,7 @@ func LayoutSpans(text string, spans []TextSpan, width int) ([]string, []TextPoin
 		g := uniseg.NewGraphemes(text[start:end])
 		for g.Next() {
 			offset, _ := g.Positions()
-			shown := diffrender.Safe(g.Str(), false)
+			shown := textsanitize.Safe(g.Str(), false)
 			size := ansi.StringWidth(shown)
 			if shown != "\n" && (column >= width || column > 0 && column+size > width) {
 				newline()

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/libraries/modelprotocol/attachments"
 
@@ -179,7 +179,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 						t.Fatal("attachment click did not open shared dialog")
 					}
 					page := v.painter.DialogPage(u.output.pages[0], 80)
-					if page.Text != diffrender.Safe(body, false) {
+					if page.Text != textsanitize.Safe(body, false) {
 						t.Fatalf("dialog changed submitted content: got %d bytes, want %d", len(page.Text), len(body))
 					}
 					for i := range page.Lines {
@@ -205,7 +205,7 @@ func TestLiveActivityAttachmentDialogs(t *testing.T) {
 				resumed.session.start(resumed.thread, "/workspace")
 				resumed.restoreHistory([]appServerHistoryTurn{{ID: "turn", Status: "completed", Items: []appServerItem{item}}})
 				page := resumed.view.painter.DialogPage(resumed.view.entries[1].blocks[0], 80)
-				if page.Text != diffrender.Safe(body, false) {
+				if page.Text != textsanitize.Safe(body, false) {
 					t.Fatal("replay lost submitted content")
 				}
 			}

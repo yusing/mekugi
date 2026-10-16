@@ -7,6 +7,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -103,7 +105,7 @@ func (p *PreviewPane) RenderBatch(ctx context.Context, caller, workspace string,
 	}
 	label := "LIVE"
 	if tool := b.files[b.selected].Current.Tool; tool != "" {
-		label += " · " + diffrender.Safe(tool, false)
+		label += " · " + textsanitize.Safe(tool, false)
 	}
 	label += fmt.Sprintf(" · %d %s", count, noun)
 	if slots == 0 {

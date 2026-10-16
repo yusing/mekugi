@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/diffrender"
 
@@ -1303,7 +1305,7 @@ func liveActivityRole(agent activityPaneAgent) string {
 	if agent.Name == "/root" {
 		return ""
 	}
-	return strings.Join(strings.Fields(diffrender.Safe(agent.Role, false)), " ")
+	return strings.Join(strings.Fields(textsanitize.Safe(agent.Role, false)), " ")
 }
 
 // Keep numerical values bright while labels and units recede, including

@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	activitymodel "github.com/yusing/mekugi/internal/activity"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
@@ -59,7 +60,7 @@ func commandTimingIsCompound(blocks []activityui.Block, entry activityPaneEntry)
 		// A setup script is deliberately one full-source Run event, so its
 		// invocation clock belongs to that row, not a second shell batch row.
 		if len(blocks) == 1 && blocks[0].Verb == "Run" &&
-			blocks[0].Code == diffrender.Safe(toolActivityShellSource(command), false) && shellinstrumentation.HasShellSetup(program) {
+			blocks[0].Code == textsanitize.Safe(toolActivityShellSource(command), false) && shellinstrumentation.HasShellSetup(program) {
 			return compound
 		}
 		compound = compound || len(program.Stmts) > 1
@@ -103,12 +104,12 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		if entry.Kind == "tool" && entry.native != nil && entry.native.workdir != "" && len(blocks) > 0 {
 			// Every row keeps the directory for merging; one label per invocation.
 			for i := range blocks {
-				blocks[i].Workdir = diffrender.Safe(entry.native.workdir, false)
+				blocks[i].Workdir = textsanitize.Safe(entry.native.workdir, false)
 			}
 			blocks[0].ShowWorkdir = true
 		}
 	}()
-	text := diffrender.Safe(entry.Text, false)
+	text := textsanitize.Safe(entry.Text, false)
 	source := terminalui.MarkdownSource(entry.Text)
 	switch entry.Kind {
 	case "hook":
@@ -121,7 +122,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 	case "reply":
 		// Direction comes from the delivered message, never from its text.
 		if entry.message != nil {
-			return []activityui.Block{{Kind: "message", From: entry.message.from, To: entry.message.to, Owner: entry.Agent, Body: strings.Trim(diffrender.Safe(entry.message.text, false), "\n")}}
+			return []activityui.Block{{Kind: "message", From: entry.message.from, To: entry.message.to, Owner: entry.Agent, Body: strings.Trim(textsanitize.Safe(entry.message.text, false), "\n")}}
 		}
 	case "question":
 		label, body, _ := strings.Cut(text, "\n")
@@ -143,7 +144,7 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		return []activityui.Block{{Kind: "progress", Body: text}}
 	case "assignment":
 		if entry.assignment != nil {
-			return []activityui.Block{{Kind: "message", From: entry.assignment.from, To: entry.assignment.to, Owner: entry.Agent, Body: diffrender.Safe(entry.assignment.text, false)}}
+			return []activityui.Block{{Kind: "message", From: entry.assignment.from, To: entry.assignment.to, Owner: entry.Agent, Body: textsanitize.Safe(entry.assignment.text, false)}}
 		}
 	case "reasoning":
 		blocks := activityui.ReasoningSections(source)
@@ -161,22 +162,22 @@ func parseLiveActivity(entry activityPaneEntry) (blocks []activityui.Block) {
 		return blocks
 	case "command":
 		if entry.native != nil {
-			return []activityui.Block{{Kind: "op", Verb: "Run", Label: diffrender.Safe(entry.native.status, false), Code: diffrender.Safe(entry.native.command, false), Lang: "bash", Fenced: true}}
+			return []activityui.Block{{Kind: "op", Verb: "Run", Label: textsanitize.Safe(entry.native.status, false), Code: textsanitize.Safe(entry.native.command, false), Lang: "bash", Fenced: true}}
 		}
 	case "final":
 		return []activityui.Block{{Kind: "final", Body: source, Owner: entry.Agent}}
 	case "start":
 		if entry.start != nil {
-			block := activityui.Block{Kind: "start", Label: diffrender.Safe(entry.start.label(), false)}
+			block := activityui.Block{Kind: "start", Label: textsanitize.Safe(entry.start.label(), false)}
 			if entry.assignment != nil {
 				block.From, block.To = entry.assignment.from, entry.assignment.to
-				block.Body = diffrender.Safe(entry.assignment.text, false)
+				block.Body = textsanitize.Safe(entry.assignment.text, false)
 			}
 			return []activityui.Block{block}
 		}
 	case "error":
 		if entry.ErrorDetail != "" {
-			text = diffrender.Safe(entry.ErrorDetail, false)
+			text = textsanitize.Safe(entry.ErrorDetail, false)
 		}
 		return []activityui.Block{{Kind: "error", Body: text, Label: entry.Agent}}
 	case "compaction":
@@ -231,7 +232,7 @@ func toolOperationBlocks(text string) []activityui.Block {
 // instantOperations reports tool text whose every operation prints what it
 // reads at once, so its output shows whole rather than rolling through.
 func instantOperations(text string) bool {
-	blocks := toolOperationBlocks(diffrender.Safe(text, false))
+	blocks := toolOperationBlocks(textsanitize.Safe(text, false))
 	return len(blocks) > 0 && !slices.ContainsFunc(blocks, func(block activityui.Block) bool { return !block.Instant() })
 }
 
@@ -306,12 +307,12 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 	receipt := entry.native.capturedEdit
 	if receipt != nil && len(receipt.calls) > 0 && receipt.calls[0] == entry.native.item {
 		// Counts belong to the capture as a whole, not any individual segment.
-		blocks = append(blocks, toolOperationBlocks(diffrender.Safe(receipt.text, false))...)
+		blocks = append(blocks, toolOperationBlocks(textsanitize.Safe(receipt.text, false))...)
 	}
 	edited := func(paths []string, source string) activityui.Block {
 		block := activityui.Block{Kind: "op", Verb: "Edited", Label: strings.Join(paths, ", ")}
 		if dialog {
-			block.Code, block.Lang, block.Fenced = diffrender.Safe(source, false), "bash", true
+			block.Code, block.Lang, block.Fenced = textsanitize.Safe(source, false), "bash", true
 		}
 		return block
 	}
@@ -328,7 +329,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 				continue
 			}
 		}
-		operations := toolOperationBlocks(diffrender.Safe(segment.text, false))
+		operations := toolOperationBlocks(textsanitize.Safe(segment.text, false))
 		if receipt != nil && !segment.running && !segment.skipped && segment.exit == 0 {
 			writer := execSegmentEdits(segment.source)
 			var paths []string
@@ -391,7 +392,7 @@ func commandSegmentBlocks(entry activityPaneEntry, dialog bool) []activityui.Blo
 		if len(blocks) == 0 && receipt != nil {
 			blocks = append(blocks, edited(nil, command))
 		} else if len(blocks) == 0 {
-			blocks = append(blocks, activityui.Block{Kind: "op", Verb: "Run", Code: diffrender.Safe(command, false), Lang: "bash", Fenced: true})
+			blocks = append(blocks, activityui.Block{Kind: "op", Verb: "Run", Code: textsanitize.Safe(command, false), Lang: "bash", Fenced: true})
 		}
 		for i := len(blocks) - 1; i >= 0; i-- {
 			if !blocks[i].Skipped {

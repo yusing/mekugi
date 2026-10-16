@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	chroma "github.com/alecthomas/chroma/v2"
@@ -209,7 +211,7 @@ func (n *Navigation) Render(files []livediff.File, counts []diffmodel.Counts, se
 	heading := fmt.Sprintf(" Files  %d/%d · %s", len(n.Matches), n.total, mode)
 	if n.Caller != "" {
 		name, _ := CallerStyle(theme)(n.Caller)
-		heading += " · @" + diffrender.Safe(name, false)
+		heading += " · @" + textsanitize.Safe(name, false)
 	}
 	if n.Focused {
 		heading = theme.Accent() + "▎" + strings.TrimPrefix(heading, " ") + "\x1b[0m"
@@ -220,7 +222,7 @@ func (n *Navigation) Render(files []livediff.File, counts []diffmodel.Counts, se
 	}
 	filter := " / filter paths"
 	if n.Query != "" || n.Filtering {
-		filter = " / " + diffrender.Safe(n.Query, false)
+		filter = " / " + textsanitize.Safe(n.Query, false)
 		if n.Filtering {
 			filter += "▏"
 		}
@@ -249,14 +251,14 @@ func (n *Navigation) Render(files []livediff.File, counts []diffmodel.Counts, se
 			if n.Collapsed[entry.Folder] {
 				arrow = "▶"
 			}
-			label = indent + theme.Accent() + arrow + "\x1b[39m " + diffrender.Safe(entry.Label, false)
+			label = indent + theme.Accent() + arrow + "\x1b[39m " + textsanitize.Safe(entry.Label, false)
 			stats = fmt.Sprintf(" "+diffrender.Subtle+"(%d)"+diffrender.SubtleReset, entry.Count)
 		} else {
 			var regions []diffmodel.ReviewFile
 			for _, chunk := range files[entry.File].Chunks {
 				regions = append(regions, chunk.Review)
 			}
-			label = indent + diffrender.Safe(entry.Label, false)
+			label = indent + textsanitize.Safe(entry.Label, false)
 			if len(regions) > 0 {
 				label = indent + FileLabel(diffmodel.StatusOf(regions...), entry.Label, n.workspace, theme)
 			}
@@ -326,14 +328,14 @@ func FileLabel(status diffmodel.Status, label, workspace string, theme diffrende
 		label = strings.TrimSuffix(label, "/") + "/"
 	}
 	code, color := statusCode(status, theme)
-	label = diffrender.Safe(label, false)
+	label = textsanitize.Safe(label, false)
 	if status.Before != "" && status.After != "" && status.Before != status.After {
 		// The source's base name when it stayed in the same folder.
 		from := pathdisplay.ForWorkspace(workspace, status.Before)
 		if path.Dir(status.Before) == path.Dir(status.After) {
 			from = path.Base(status.Before)
 		}
-		label = diffrender.Safe(from, false) + " → " + label
+		label = textsanitize.Safe(from, false) + " → " + label
 	}
 	return color + code + "\x1b[39m " + label
 }

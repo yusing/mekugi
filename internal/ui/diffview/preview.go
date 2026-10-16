@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -524,7 +526,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	rows := height - 1
 	var footer []string
 	if p.Current.Footer != "" && rows > 0 {
-		footer = []string{ansi.Truncate(diffrender.Safe(p.Current.Footer, false), max(0, width-1), "…")}
+		footer = []string{ansi.Truncate(textsanitize.Safe(p.Current.Footer, false), max(0, width-1), "…")}
 		rows--
 	}
 	finish := func(lines []string) []string {
@@ -540,7 +542,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	}
 	digits, sourceWidth := p.columns(width)
 	fragmentsAt := func(i int) int {
-		text := diffrender.Safe(strings.TrimSuffix(p.Source[i].Text, "\n"), false)
+		text := textsanitize.Safe(strings.TrimSuffix(p.Source[i].Text, "\n"), false)
 		return strings.Count(ansi.Hardwrap(text, sourceWidth, true), "\n") + 1
 	}
 	// Keep the tip's last wrapped fragment visible before admitting trailing
@@ -578,13 +580,13 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 	if p.Current.Input != "" && p.Current.DiffText && len(p.Current.Files) == 0 {
 		// Input is a bounded unified tail. Parse its headers before selecting
 		// the window so an off-screen header still selects the source lexer.
-		colored, colorErr := p.renderer.ColorDiffRows(ctx, theme, "", diffrender.Safe(strings.TrimSuffix(p.Current.Input, "\n"), false))
+		colored, colorErr := p.renderer.ColorDiffRows(ctx, theme, "", textsanitize.Safe(strings.TrimSuffix(p.Current.Input, "\n"), false))
 		if colorErr != nil {
 			return nil, colorErr
 		}
 		copy(source, colored[colorStart:end])
 		for i := range source {
-			source[i].Text = diffrender.Safe(source[i].Text, true)
+			source[i].Text = textsanitize.Safe(source[i].Text, true)
 			if source[i].Kind == 0 {
 				if strings.HasPrefix(source[i].Text, "--- ") || strings.HasPrefix(source[i].Text, "+++ ") {
 					source[i].Text = diffrender.Subtle + source[i].Text[:4] + diffrender.SubtleReset + activityui.Path(source[i].Text[4:])
@@ -597,7 +599,7 @@ func (p *PreviewView) Render(ctx context.Context, workspace string, theme diffre
 		if p.Current.Input != "" && len(p.Current.Files) == 0 {
 			// Pending scope lists are plain text, not diffs.
 			for _, row := range source {
-				after = append(after, diffrender.Safe(strings.TrimSuffix(row.Text, "\n"), false))
+				after = append(after, textsanitize.Safe(strings.TrimSuffix(row.Text, "\n"), false))
 			}
 			before = after
 		} else {
@@ -661,7 +663,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 	reason, unavailable := strings.CutPrefix(p.Current.Status, PreviewUnavailable)
 	switch {
 	case unavailable:
-		glyph, label = activityui.Red+"!"+terminalui.Reset, diffrender.Safe(reason, false)
+		glyph, label = activityui.Red+"!"+terminalui.Reset, textsanitize.Safe(reason, false)
 	case len(p.Current.Files) > 0:
 		file := p.Current.Files[p.file]
 		path := file.AfterPath
@@ -706,7 +708,7 @@ func (p *PreviewView) Title(workspace string, theme diffrender.Theme, width int)
 	}
 	// Put attribution first so narrow panes do not silently lose the caller.
 	// The caller keeps the agents pane's color for the same canonical path.
-	caller = ansi.Truncate(diffrender.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
+	caller = ansi.Truncate(textsanitize.Safe(caller, false), max(1, width/3, width-6-ansi.StringWidth(label)), "…")
 	if color := activityui.Color(p.Current.Caller); color != "" {
 		caller = color + caller + "\x1b[0m"
 	}

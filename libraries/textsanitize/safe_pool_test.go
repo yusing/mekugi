@@ -1,4 +1,4 @@
-package diffrender
+package textsanitize
 
 // Source: internal/livediff/safe_pool_test.go@[b95dde39]
 import (

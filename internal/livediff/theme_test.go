@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -45,7 +47,7 @@ func TestLiveDiffThemeGeometryAndFallback(t *testing.T) {
 				t.Fatalf("theme %d changed geometry at width %d: %q", theme, width, output)
 			}
 			for _, line := range render.Lines {
-				if ansi.StringWidth(line) > width-1 || diffrender.Safe(line, true) != line {
+				if ansi.StringWidth(line) > width-1 || textsanitize.Safe(line, true) != line {
 					t.Fatalf("theme %d produced unsafe or overflowing output: %q", theme, line)
 				}
 			}

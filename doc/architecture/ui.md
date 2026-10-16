@@ -24,7 +24,8 @@ observation capacity must remain visible and bounded without terminating unrelat
   remain in `internal/livediff`; router observations supply preview snapshots.
   Rendering a preview cannot finalize evidence.
 - [Diff rendering](../../libraries/diffrender/SPEC.md) owns shared syntax, themes,
-  row decoration, wrapping and terminal sanitization.
+  row decoration and wrapping. [Text sanitization](../../libraries/textsanitize/SPEC.md)
+  supplies common control removal for content and rendering.
 - [Terminal presentation](../../libraries/terminalui/SPEC.md) owns raw-mode lifetime,
   input decoding, scrolling, Markdown/Mermaid painting and source-copy fragments.
   Feature adapters retain pane composition, focus and follow policy.

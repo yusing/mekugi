@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/backends/codex/appserver"
 )
@@ -124,7 +124,7 @@ func headlessHostError(client *appserver.Client, err error) error {
 	}
 	client.Diagnostics.Lock()
 	defer client.Diagnostics.Unlock()
-	if diagnostic := strings.TrimSpace(diffrender.Safe(string(client.Diagnostics.Text), false)); diagnostic != "" {
+	if diagnostic := strings.TrimSpace(textsanitize.Safe(string(client.Diagnostics.Text), false)); diagnostic != "" {
 		return fmt.Errorf("%w\nCodex: %s", err, diagnostic)
 	}
 	return err

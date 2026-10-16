@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/shellinstrumentation"
@@ -424,7 +426,7 @@ func (d *outputDialog) layout(width int) {
 	}
 	d.laid, d.laidKey = d.view.painter.DialogPage(block, width), key
 	if d.filePath != "" {
-		d.laid.Lines = append([]activityui.DialogLine{{Text: activityui.Path(diffrender.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
+		d.laid.Lines = append([]activityui.DialogLine{{Text: activityui.Path(textsanitize.Safe(d.filePath, false)), Wrap: true}, {}}, d.laid.Lines...)
 		if block.Kind != "error" {
 			d.laid.Text = d.fileText
 			for i := range d.laid.Lines {

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
 	"mvdan.cc/sh/v3/syntax"
@@ -64,7 +64,7 @@ func mchangesOutputRows(item appServerItem) []activityui.ChangeRow {
 		}
 		row, ok := parse(line)
 		if !ok {
-			row = activityui.ChangeRow{Note: diffrender.Safe(line, false)}
+			row = activityui.ChangeRow{Note: textsanitize.Safe(line, false)}
 		}
 		recognized = recognized || ok
 		rows = append(rows, row)
@@ -82,7 +82,7 @@ func mchangesListOutputRow(line string) (activityui.ChangeRow, bool) {
 	if match == nil {
 		return activityui.ChangeRow{}, false
 	}
-	row := activityui.ChangeRow{Label: diffrender.Safe(match[1], false)}
+	row := activityui.ChangeRow{Label: textsanitize.Safe(match[1], false)}
 	row.Added, _ = strconv.Atoi(match[3])
 	row.Removed, _ = strconv.Atoi(match[4])
 	var notes []string
@@ -118,10 +118,10 @@ func mchangesSummaryRow(line string) (activityui.ChangeRow, bool) {
 		return row, true
 	}
 	if match := mchangesManagedGapRow.FindStringSubmatch(line); match != nil {
-		return activityui.ChangeRow{Verb: "?", Label: mchangesManagedFiles, Note: diffrender.Safe(match[1], false)}, true
+		return activityui.ChangeRow{Verb: "?", Label: mchangesManagedFiles, Note: textsanitize.Safe(match[1], false)}, true
 	}
 	if match := mchangesStatusRow.FindStringSubmatch(line); match != nil {
-		return activityui.ChangeRow{Label: diffrender.Safe(match[1], false), Note: match[2]}, true
+		return activityui.ChangeRow{Label: textsanitize.Safe(match[1], false), Note: match[2]}, true
 	}
 	fields := strings.Split(line, "\t")
 	verb, ok := mchangesSummaryVerbs[fields[0]]
@@ -163,7 +163,7 @@ func mchangesSummaryRow(line string) (activityui.ChangeRow, bool) {
 		if err != nil {
 			reasons = rest[1]
 		}
-		notes = append(notes, diffrender.Safe(reasons, false))
+		notes = append(notes, textsanitize.Safe(reasons, false))
 	}
 	row.Note = strings.Join(notes, " · ")
 	return row, true
@@ -178,11 +178,11 @@ func mchangesSummaryPath(text string) (path, rest string, ok bool) {
 			return "", "", false
 		}
 		path, err = strconv.Unquote(quoted)
-		return diffrender.Safe(path, false), text[len(quoted):], err == nil
+		return textsanitize.Safe(path, false), text[len(quoted):], err == nil
 	}
 	before, after, found := strings.Cut(text, " => ")
 	if found {
 		after = " => " + after
 	}
-	return diffrender.Safe(before, false), after, before != ""
+	return textsanitize.Safe(before, false), after, before != ""
 }

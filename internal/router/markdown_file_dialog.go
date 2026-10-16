@@ -11,8 +11,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	activitymodel "github.com/yusing/mekugi/internal/activity"
-	"github.com/yusing/mekugi/libraries/diffrender"
 	"github.com/yusing/mekugi/libraries/terminalui"
 
 	activityui "github.com/yusing/mekugi/internal/ui/activity"
@@ -77,7 +78,7 @@ func (u *terminalUI) openMarkdownFile(view *liveActivityView, target string) boo
 	block := activityui.Block{Kind: "reads", Verb: "Read", Path: display + location, SyntaxPath: path, Reads: []activitymodel.Read{{Path: display + location}}}
 	data, err := readMarkdownFile(path)
 	source := string(data)
-	content := diffrender.Safe(source, false)
+	content := textsanitize.Safe(source, false)
 	if err != nil {
 		block.Kind, block.Verb, block.Body = "error", "", err.Error()
 	} else {

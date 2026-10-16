@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -62,7 +64,7 @@ func TestWordDiffReplacementBlocks(t *testing.T) {
 				rows := append([]diffmodel.ReviewRow(nil), hunk.Rows...)
 				diffrender.AlignHunkColors(rows, before, after)
 				for i, row := range rows {
-					if ansi.Strip(row.Text) != diffrender.Safe(strings.TrimSuffix(hunk.Rows[i].Text, "\n"), false) {
+					if ansi.Strip(row.Text) != textsanitize.Safe(strings.TrimSuffix(hunk.Rows[i].Text, "\n"), false) {
 						t.Fatal("word colors changed source text")
 					}
 					for _, kind := range []byte{'-', '+'} {

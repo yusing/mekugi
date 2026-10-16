@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -146,7 +148,7 @@ func (r *Renderer) ColorHunk(ctx context.Context, theme Theme, review diffmodel.
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		text := Safe(strings.TrimSuffix(row.Text, "\n"), false) + "\n"
+		text := textsanitize.Safe(strings.TrimSuffix(row.Text, "\n"), false) + "\n"
 		if row.Kind != '+' {
 			if _, err := before.WriteString(text); err != nil {
 				return nil, nil, err

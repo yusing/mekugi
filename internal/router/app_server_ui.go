@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yusing/mekugi/libraries/diffrender"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"github.com/yusing/mekugi/modules/notifications/notice"
 	noticepresentation "github.com/yusing/mekugi/modules/notifications/presentation"
@@ -421,7 +421,7 @@ func startAppServerUI(service *history.Service, prefs *preferences.Service, segm
 			u.dirty = true
 		}
 		if saveErr := u.panes.save(u.shell, u.now(), true); saveErr != nil {
-			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", diffrender.Safe(saveErr.Error(), false))
+			fmt.Fprintln(stdout, "Pane layout or settings could not be saved:", textsanitize.Safe(saveErr.Error(), false))
 		}
 		if !exited {
 			if err == nil {
@@ -435,23 +435,23 @@ func startAppServerUI(service *history.Service, prefs *preferences.Service, segm
 		u.hideQuestions()
 		u.hideApprovals()
 		if unsent := joinDrafts(slices.Concat(u.unsent, u.queued, []composerDraft{u.draftSnapshot()})...); unsent.text != "" {
-			fmt.Fprintln(stdout, "Unsent draft:\n"+diffrender.Safe(unsent.text, false))
+			fmt.Fprintln(stdout, "Unsent draft:\n"+textsanitize.Safe(unsent.text, false))
 		}
 		unknown := slices.Clone(u.steers)
 		if !u.submission.committed {
 			unknown = append(unknown, u.submission)
 		}
 		if unknown := joinDrafts(u.steerParts(unknown)...); unknown.text != "" {
-			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+diffrender.Safe(unknown.text, false))
+			fmt.Fprintln(stdout, "Submission outcome unknown; not automatically resent:\n"+textsanitize.Safe(unknown.text, false))
 		}
 		if u.shellCommand.pending.text != "" {
-			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+diffrender.Safe(u.shellCommand.pending.text, false))
+			fmt.Fprintln(stdout, "Shell submission outcome unknown; not automatically rerun:\n"+textsanitize.Safe(u.shellCommand.pending.text, false))
 		}
 		if err != nil {
 			c.Diagnostics.Lock()
 			defer c.Diagnostics.Unlock()
 			if len(c.Diagnostics.Text) > 0 {
-				fmt.Fprintln(stdout, diffrender.Safe(string(c.Diagnostics.Text), false))
+				fmt.Fprintln(stdout, textsanitize.Safe(string(c.Diagnostics.Text), false))
 			}
 		}
 		color := term.IsTerminal(int(stdout.Fd())) && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
@@ -1374,7 +1374,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 	dock = min(dock, room)
 	room -= dock
 	u.mainContentPainted = room > 1
-	transcript.conversation, transcript.feedOnly, transcript.status = true, true, diffrender.Safe(u.status, false)
+	transcript.conversation, transcript.feedOnly, transcript.status = true, true, textsanitize.Safe(u.status, false)
 	var frame []string
 	transcript.feedRows = 0
 	transcript.feedQuestions, transcript.feedSnippets = nil, nil
@@ -1441,7 +1441,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		if focused && textWidth > 1 && i+firstRow == caret.Row {
 			before := ansi.Cut(line, 0, caret.Column)
 			cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(u.draft[u.cursor():], -1)
-			cellWidth := max(1, ansi.StringWidth(diffrender.Safe(cluster, false)))
+			cellWidth := max(1, ansi.StringWidth(textsanitize.Safe(cluster, false)))
 			cell := ansi.Cut(line, caret.Column, caret.Column+cellWidth)
 			if ansi.StringWidth(cell) == 0 {
 				cell = " "
@@ -1481,7 +1481,7 @@ func (u *appServerUI) mainFrame(width, height, dock int) (frameRows []string, do
 		if tier != "" {
 			model += " · " + tier
 		}
-		model = strings.ReplaceAll(diffrender.Safe(model, false), "\n", " ")
+		model = strings.ReplaceAll(textsanitize.Safe(model, false), "\n", " ")
 		context := contextWindowLabel(activityPaneAgent{})
 		if agent != nil {
 			context = contextWindowLabel(*agent)
@@ -1531,7 +1531,7 @@ func (u *appServerUI) sessionLabel(now time.Time) string {
 	if u.replacement.phase == replacementArchive {
 		return activityui.StatusPulse("Archiving session…", now, u.view.painter.Colors) + terminalui.Reset
 	}
-	status := strings.ReplaceAll(diffrender.Safe(u.status, false), "\n", " ")
+	status := strings.ReplaceAll(textsanitize.Safe(u.status, false), "\n", " ")
 	switch {
 	case status == "":
 		return ""
@@ -1609,7 +1609,7 @@ func (u *appServerUI) paint(out io.Writer, width, height int) error {
 	u.ensureShell()
 	u.refreshRosterRoles()
 	u.agents.mainView = u.view
-	u.view.status = diffrender.Safe(u.status, false)
+	u.view.status = textsanitize.Safe(u.status, false)
 	u.shell.width, u.shell.height = max(1, width), max(1, height)
 	u.mainContentPainted = false
 	ctx := u.ctx

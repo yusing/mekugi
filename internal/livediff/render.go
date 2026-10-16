@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/charmbracelet/x/ansi"
@@ -61,12 +63,12 @@ func (r *Renderer) provenance(file File) string {
 			break
 		}
 		name, color := r.caller(origin.Caller)
-		part := diffrender.Safe(origin.Change, false)
+		part := textsanitize.Safe(origin.Change, false)
 		if name != "" {
-			part += " " + color + diffrender.Safe(name, false) + "\x1b[0m"
+			part += " " + color + textsanitize.Safe(name, false) + "\x1b[0m"
 		}
 		if origin.Source != "" {
-			part += diffrender.Subtle + "·" + diffrender.Safe(origin.Source, false) + diffrender.SubtleReset
+			part += diffrender.Subtle + "·" + textsanitize.Safe(origin.Source, false) + diffrender.SubtleReset
 		}
 		parts = append(parts, part)
 	}
@@ -159,7 +161,7 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []F
 		if incomplete {
 			statsWidth = len(" counts unavailable")
 		}
-		headings := strings.Split(ansi.Wrap(diffrender.Safe(label, false), max(1, width-3-statsWidth), ""), "\n")
+		headings := strings.Split(ansi.Wrap(textsanitize.Safe(label, false), max(1, width-3-statsWidth), ""), "\n")
 		for j, heading := range headings {
 			if j == 0 {
 				heading = diffrender.Header(heading, width-3, counts, theme)
@@ -232,7 +234,7 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []F
 					}
 				}
 				continuation := false
-				for line := range strings.SplitSeq(ansi.Wrap(diffrender.Safe(label, false), max(1, width-3), ""), "\n") {
+				for line := range strings.SplitSeq(ansi.Wrap(textsanitize.Safe(label, false), max(1, width-3), ""), "\n") {
 					if err := appendLine(line, chunk.Highlighted, continuation); err != nil {
 						return Render{}, err
 					}
@@ -264,7 +266,7 @@ func (r *Renderer) Render(ctx context.Context, theme diffrender.Theme, files []F
 				for _, row := range hunk.Rows {
 					coordinate, text := 0, ""
 					if r.LayoutOnly {
-						text = diffrender.Safe(strings.TrimSuffix(row.Text, "\n"), false)
+						text = textsanitize.Safe(strings.TrimSuffix(row.Text, "\n"), false)
 						paint.rowStarts = append(paint.rowStarts, len(render.Lines))
 					}
 					if row.Kind != '+' {

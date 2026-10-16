@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/charmbracelet/x/ansi"
 	"github.com/yusing/mekugi/libraries/diffmodel"
 	"github.com/yusing/mekugi/libraries/pathdisplay"
@@ -125,7 +127,7 @@ func (r *Renderer) DiffOutput(ctx context.Context, theme Theme, source string, c
 			stats = " counts unavailable"
 		}
 		lines[section.start] = ""
-		lines[section.start+1] = Header(label, ansi.StringWidth(Safe(label, false)+stats), diffmodel.Counts{added, removed}, theme)
+		lines[section.start+1] = Header(label, ansi.StringWidth(textsanitize.Safe(label, false)+stats), diffmodel.Counts{added, removed}, theme)
 		if r.LayoutOnly {
 			lines[section.start+1] = ansi.Strip(lines[section.start+1])
 		}

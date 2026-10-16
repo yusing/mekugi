@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/yusing/mekugi/libraries/diffrender"
 
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -238,7 +240,7 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 		name, _ := style(callerFilter)
 		scope = "@" + name
 	}
-	heading := fmt.Sprintf(" Changes  %d · %s", len(l.Nodes), diffrender.Safe(scope, false))
+	heading := fmt.Sprintf(" Changes  %d · %s", len(l.Nodes), textsanitize.Safe(scope, false))
 	if focused {
 		heading = theme.Accent() + "▎" + strings.TrimPrefix(heading, " ") + "\x1b[0m"
 	}
@@ -248,7 +250,7 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 	}
 	filter := " / id, @caller, source"
 	if l.Query != "" || filtering {
-		filter = " / " + diffrender.Safe(l.Query, false)
+		filter = " / " + textsanitize.Safe(l.Query, false)
 		if filtering {
 			filter += "▏"
 		}
@@ -301,14 +303,14 @@ func (l *liveDiffChanges) Render(focused bool, filtering bool, callerFilter stri
 		label, source, callerTag, stats := "", "", "", ""
 		switch entry.Kind {
 		case 'b':
-			label = color + diffrender.Safe(name, false) + "\x1b[0m"
+			label = color + textsanitize.Safe(name, false) + "\x1b[0m"
 		case 'c':
-			label = diffrender.Safe(node.Change, false)
+			label = textsanitize.Safe(node.Change, false)
 			if node.Source != "" {
-				source = " " + diffrender.Subtle + diffrender.Safe(node.Source, false) + diffrender.SubtleReset
+				source = " " + diffrender.Subtle + textsanitize.Safe(node.Source, false) + diffrender.SubtleReset
 			}
 			if entry.lane != lane {
-				callerTag = " " + color + diffrender.Safe(name, false) + "\x1b[0m"
+				callerTag = " " + color + textsanitize.Safe(name, false) + "\x1b[0m"
 			}
 			stats = CountStats(diffmodel.Counts{Added: node.added, Removed: node.removed}, theme)
 			if node.unknown {

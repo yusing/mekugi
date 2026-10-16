@@ -8,6 +8,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/yusing/mekugi/libraries/textsanitize"
+
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/rivo/uniseg"
 	"github.com/yusing/mekugi/libraries/diffmodel"
@@ -37,7 +39,7 @@ func colorHunkWords(ctx context.Context, theme Theme, rows []diffmodel.ReviewRow
 		var oldSource, newSource strings.Builder
 		for i < len(rows) && rows[i].Kind != ' ' {
 			row := rows[i]
-			text := Safe(strings.TrimSuffix(row.Text, "\n"), false) + "\n"
+			text := textsanitize.Safe(strings.TrimSuffix(row.Text, "\n"), false) + "\n"
 			if row.Kind == '-' {
 				oldSource.WriteString(text)
 				oldIndex++

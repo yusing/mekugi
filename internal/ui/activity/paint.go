@@ -2,6 +2,7 @@ package activity
 
 import (
 	markdownsyntax "github.com/yusing/mekugi/libraries/sourceanalysis/markdownsyntax"
+	"github.com/yusing/mekugi/libraries/textsanitize"
 
 	"fmt"
 	"slices"
@@ -442,7 +443,7 @@ func (p *Painter) blockRows(block Block, width int) []string {
 		}
 		label := p.Label(block.Verb, block.Label) + ResultCount(block.Results)
 		if block.Path != "" {
-			path := Path(diffrender.Safe(block.Path, false))
+			path := Path(textsanitize.Safe(block.Path, false))
 			if label != "" {
 				path += terminalui.Dim + " · " + terminalui.Undim + label
 			}
@@ -781,7 +782,7 @@ func (p *Painter) ranRow(block Block, width int) []string {
 	return lines
 }
 
-// sourceTabs expands tabs as diffrender.Safe does; a raw tab has no cell width,
+// sourceTabs expands tabs as textsanitize.Safe does; a raw tab has no cell width,
 // so wrapping would misjudge its row.
 func sourceTabs(code string) string {
 	return strings.ReplaceAll(code, "\t", "    ")

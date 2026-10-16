@@ -26,6 +26,7 @@ behavioral contract. UI presentation packages and router session integration are
 | Running-process composer count and `/ps` dialog | `internal/router/running_processes.go`; paging and live output in the shared `internal/router/output_dialog.go`; live commands remain in the app-server session |
 | Dialog integration, Markdown file links, and background fading | `internal/router/output_dialog.go`, `internal/router/markdown_file_dialog.go`, `internal/ui/activity/dialog.go`, `internal/ui/activity/faint.go` |
 | Shared Markdown, source-copy fragments and wrapping | `libraries/terminalui/markdown.go`, `copy.go`, `markdown_table.go`; feature cards remain in `internal/ui/activity/paint.go` |
+| Shared display-text sanitization | `libraries/textsanitize`; retained activity content, diff rendering and Markdown use the same control/Unicode rules |
 | Submitted file attachments | `internal/router/composer_file_attachment.go`; shared path formatting in `libraries/pathdisplay` |
 | Live-diff models and preview presentation | `internal/livediff/model.go`, `internal/ui/diffview/preview.go`; native composition in `internal/router/native_shell.go` |
 | Selected-file editor handoff | `internal/router/native_file_editor.go`, `internal/router/terminal_ui.go`; shared editor runner and terminal restoration in `internal/router/app_server_composer_editor.go`, `internal/router/app_server_ui.go` |
