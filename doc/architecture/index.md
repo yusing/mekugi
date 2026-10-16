@@ -7,7 +7,7 @@ pjdoc:
   revision: "54"
   files:
     - ../../docs/contracts/provider-routing.md
-    - workspace.md
+    - ../../docs/contracts/composition.md
     - ui.md
     - activity.md
     - boundary.md
@@ -40,7 +40,7 @@ resume evidence and renderer-keyed persistence.
 
 ## Inventory
 
-- [`CTR-WORKSPACE-001`](workspace.md): workspace membership, composition, and extraction boundaries
+- [`CTR-WORKSPACE-001`](../../docs/contracts/composition.md): workspace membership, composition, and import boundaries
 
 - [`CTR-UI-001`](ui.md): presentation, app-server client, and router integration boundaries
 

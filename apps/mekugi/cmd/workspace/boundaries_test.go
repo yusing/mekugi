@@ -39,6 +39,21 @@ func TestWorkspaceImportBoundaries(t *testing.T) {
 		{"contracts", "command", "modules/reader", false},
 		{"testsupport/moduletest", ".", "backends/codex/binding", true},
 		{"apps/mekugi", "internal/composition", "testsupport/moduletest", false},
+		{"apps/mekugi", "internal/composition", "apps/mekugi/internal/router", true},
+		{"apps/mekugi", "internal/sessioncontrol", "backends/codex/appserver", true},
+		{"apps/mekugi", "internal/sessioncontrol", "apps/mekugi/internal/router", false},
+		{"apps/mekugi", "internal/sessioncontrol", "libraries/terminalui", false},
+		{"apps/mekugi", "internal/sessioncontrol", "modules/activity/terminalview", false},
+		{"apps/mekugi", "internal/sessionpresentation", "backends/codex/appserver", false},
+		{"apps/mekugi", "internal/sessionpresentation", "modules/activity/presentation", true},
+		{"apps/mekugi", "internal/sessionpresentation/model", "apps/mekugi/internal/terminalsession", false},
+		{"apps/mekugi", "internal/headless", "apps/mekugi/internal/sessioncontrol", true},
+		{"apps/mekugi", "internal/headless", "apps/mekugi/internal/sessionpresentation", false},
+		{"apps/mekugi", "internal/headless", "libraries/diffrender", false},
+		{"apps/mekugi", "internal/frontends", "modules/fileread/read", true},
+		{"apps/mekugi", "internal/frontends/worker", "apps/mekugi/internal/router", false},
+		{"apps/mekugi", "internal/frontends", "apps/mekugi/internal/composition", false},
+		{"apps/mekugi", "internal/frontends", "apps/mekugi/internal/launch", false},
 		{"modules/reader", "codexbinding", "backends/codex/binding", true},
 		{"modules/reader", "internal", "backends/codex/binding", false},
 		{"modules/reader", "terminalview", "libraries/terminalui", true},
@@ -69,6 +84,18 @@ var Module = module.Descriptor[Deps, int, int]{}
 				t.Fatalf("failure lacks source/import identity: %v", err)
 			}
 		})
+	}
+}
+
+func TestRendererNeutralApplicationImports(t *testing.T) {
+	for _, pkg := range []string{"internal/sessioncontrol", "internal/sessionpresentation", "internal/headless"} {
+		for _, target := range []string{"github.com/charmbracelet/ultraviolet", "golang.org/x/term"} {
+			t.Run(pkg+"/"+target, func(t *testing.T) {
+				if err := allowedImport("apps/mekugi", pkg, target); err == nil {
+					t.Fatalf("renderer-neutral %s imported %s", pkg, target)
+				}
+			})
+		}
 	}
 }
 

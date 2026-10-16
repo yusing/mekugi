@@ -165,6 +165,25 @@ func allowedImport(directory, pkg, imported string) error {
 	if strings.HasPrefix(target, "testsupport/") && !strings.HasPrefix(owner, "testsupport/") {
 		return deny()
 	}
+	if owner == "apps/mekugi" {
+		area, _, _ := strings.Cut(strings.TrimPrefix(pkg, "internal/"), "/")
+		neutral := area == "sessioncontrol" || area == "sessionpresentation" || area == "headless"
+		if neutral && (terminalImport(imported) || strings.HasPrefix(target, "modules/") && strings.Contains(target, "/terminalview")) {
+			return deny()
+		}
+		if area == "sessionpresentation" && strings.HasPrefix(target, "backends/") {
+			return deny()
+		}
+		if rest, ok := strings.CutPrefix(target, owner+"/internal/"); ok {
+			dependency, _, _ := strings.Cut(rest, "/")
+			if neutral && (dependency == "router" || dependency == "terminalsession") ||
+				area == "headless" && dependency == "sessionpresentation" ||
+				area == "frontends" && slices.Contains([]string{"router", "composition", "launch"}, dependency) {
+				return deny()
+			}
+		}
+		return nil
+	}
 	if owner == "." || strings.HasPrefix(owner, "apps/") || strings.HasPrefix(owner, "testsupport/") {
 		return nil // Root is the explicitly retained migration source until retirement.
 	}
@@ -198,7 +217,7 @@ func allowedImport(directory, pkg, imported string) error {
 		return nil
 	}
 	if strings.HasPrefix(owner, "modules/") {
-		if pkg != "." && pkg != "terminalview" && (strings.HasPrefix(target, "libraries/terminalui") || strings.HasPrefix(target, "libraries/diffrender") || strings.HasPrefix(imported, "github.com/charmbracelet/") || imported == "golang.org/x/term") {
+		if pkg != "." && pkg != "terminalview" && terminalImport(imported) {
 			return deny()
 		}
 		if pkg != "." && pkg != "codexbinding" && pkg != "terminalview" && (target == owner || strings.HasPrefix(target, owner+"/codexbinding") || strings.HasPrefix(target, owner+"/terminalview")) {
@@ -220,4 +239,10 @@ func allowedImport(directory, pkg, imported string) error {
 		return deny()
 	}
 	return fmt.Errorf("unrecognized workspace owner %q", owner)
+}
+
+func terminalImport(path string) bool {
+	return strings.HasPrefix(path, prefix+"/libraries/terminalui") ||
+		strings.HasPrefix(path, prefix+"/libraries/diffrender") ||
+		strings.HasPrefix(path, "github.com/charmbracelet/") || path == "golang.org/x/term"
 }
